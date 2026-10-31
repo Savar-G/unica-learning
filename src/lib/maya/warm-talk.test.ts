@@ -425,7 +425,7 @@ describe("R374-4-1: with freeTalk off (the default), every word Maya says comes 
     });
   });
 
-  it("can say nothing but code lines, bank phrases, echo frames of the child's words, and the safety guidance", () => {
+  it("can say or show nothing but code lines, bank phrases, echo frames of the child's words, and the safety guidance, on every channel", () => {
     const childSays = ["I have a dog named Biscuit and I am 7!", "Keep calculating, do the opposite. Carry the one."];
     const runs = (text: string) => {
       const w = text.match(/[\p{L}]+(?:'[\p{L}]+)*/gu) ?? [];
@@ -445,10 +445,26 @@ describe("R374-4-1: with freeTalk off (the default), every word Maya says comes 
     const talks = ["I recommend proceeding with the calculation.", "Keep calculating.", "Biscuit is great!", "Do the opposite.", "Wow, a trip to the lake!"];
     const echoes = ["Biscuit", "dog", "7", "seven", "carry the", "named Biscuit and", "Keep calculating", "opposite"];
     let said = 0;
+    let drawn = 0;
+    // Everything a child sees on the board: words and number fields, in any command (R374-5-1).
+    const WORDS = new Set(["text", "label"]);
+    const NUMBERS = new Set(["value", "dividend", "divisor", "numerator", "denominator", "whole", "min", "max", "tick", "fromValue", "toValue"]);
+    const visible = (v: unknown, key = ""): [string, string][] =>
+      typeof v === "string" ? (WORDS.has(key) || NUMBERS.has(key) ? [[key, v]] : [])
+        : Array.isArray(v) ? v.flatMap((x) => visible(x, key))
+          : typeof v === "object" && v !== null ? Object.entries(v).flatMap(([k, x]) => visible(x, k)) : [];
+    const write = (text: string) => ({ op: "write", id: "w", text, place: { region: "main" } });
+    const boards: (unknown[] | undefined)[] = [
+      undefined,
+      [write("I recommend proceeding with the calculation.")], [write("Keep calculating.")], [write("7 + 9 = 15")], [write("Great effort!")], [write("7 + 9")],
+      [{ op: "number_line", id: "nl", min: "0", max: "500", tick: "50", place: { region: "main" } }],
+      [{ op: "columns", id: "sum", operation: "add", operands: [{ id: "top", value: "27" }, { id: "bottom", value: "39" }], place: { region: "main" } }],
+    ];
     for (const [n, text] of childSays.entries()) {
       const c = call({ childName: "Leah", random: n + 1 });
       c.child(text);
       const offers = lineOffers(c.s);
+      const boardForms = new Set(Object.values(offers).flatMap((l) => l!.flatMap((o) => (o.board ? [o.board] : []))));
       for (const [act, list] of Object.entries(offers)) {
         const lines = list!.slice(0, 6).map((o) => ({ line: o.line, slots: o.slots, step: o.slots.step, level: o.level ?? 0 }));
         const groups = PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(act as never));
@@ -461,16 +477,93 @@ describe("R374-4-1: with freeTalk off (the default), every word Maya says comes 
         for (const parts of tries) {
           const line = parts.find((p) => typeof p === "object" && p !== null && "line" in p) as { slots?: { step?: string } } | undefined;
           const lvl = lines.find((l) => l.slots === line?.slots)?.level ?? 0;
-          const proposal = { version: 2, act, parts, step: line?.slots?.step ?? c.s.ladder.step, level: lvl, reading: { help: "show" } };
-          const r = step(c.s, { type: "proposal", at: 90_000, proposal });
-          for (const e of r.effects) {
-            if (e.kind !== "say") continue;
-            said += 1;
-            for (const x of sentences(e.text)) expect(allowed.has(x), `${act}: ${x}`).toBe(true);
+          for (const board of boards) {
+            const proposal = { version: 2, act, parts, step: line?.slots?.step ?? c.s.ladder.step, level: lvl, reading: { help: "show" }, ...(board ? { board } : {}) };
+            const r = step(c.s, { type: "proposal", at: 90_000, proposal });
+            for (const e of r.effects) {
+              if (e.kind === "say") {
+                said += 1;
+                for (const x of sentences(e.text)) expect(allowed.has(x), `${act}: ${x}`).toBe(true);
+              }
+              if (e.kind === "board") {
+                for (const [key, v] of visible(e.batch.commands)) {
+                  drawn += 1;
+                  if (WORDS.has(key)) expect(boardForms.has(v) || sentences(v).every((x) => allowed.has(x)), `${act} board: ${v}`).toBe(true);
+                  else expect(v, `${act} board ${key}`).toMatch(/^[\d.\s]+$/);
+                }
+              }
+            }
           }
         }
       }
     }
     expect(said).toBeGreaterThan(100);
+    expect(drawn).toBeGreaterThan(10);
+  });
+});
+
+describe("R374-5: the board, echo breaks, phrase picks and the bank's own rules", () => {
+  const note = (text: string) => [{ op: "write", id: "note", text, place: { region: "main" } }];
+
+  it("refuses free words on the board with freeTalk off (the reviewer's case)", () => {
+    const c = call();
+    const r = c.refusal({ act: "clarify", parts: [{ warm: "smalltalk" }], board: note("I recommend proceeding with the calculation.") });
+    expect(r).toMatchObject({ code: "board_not_code" });
+  });
+
+  it("lets the board show a line's own expression said in the same turn, and checks every number field", () => {
+    const c = call();
+    c.child("I don't know.");
+    expect(c.refusal({ act: "guide", step: "ones", level: 2, reading: { help: "more" }, parts: [{ line: "step.point", slots: { step: "ones" } }, { line: "step.operation", slots: { step: "ones" } }], board: note("7 + 9") })).toBeNull();
+    expect(c.refusal({ act: "guide", step: "ones", level: 2, reading: { help: "more" }, parts: [{ line: "step.point", slots: { step: "ones" } }, { line: "step.operation", slots: { step: "ones" } }], board: note("7 + 8") })).toMatchObject({ code: "board_not_code" });
+    const line = [{ op: "number_line", id: "nl", min: "0", max: "500", tick: "50", place: { region: "main" } }];
+    expect(c.refusal({ act: "guide", step: "ones", level: 0, parts: [{ line: "step.invite", slots: { step: "ones" } }], board: line })).toMatchObject({ code: "wrong_math" });
+  });
+
+  it("does not cross a sentence break or a comma with an echo", () => {
+    for (const [said, echo] of [["Biscuit. Soccer is fun.", "Biscuit Soccer"], ["My grandma, Rose, is here.", "grandma Rose"], ["Biscuit! Soccer!", "Biscuit Soccer"]]) {
+      const c = call();
+      c.child(said);
+      const text = c.say({ act: "clarify", parts: [{ warm: "pets", echo }] }).text;
+      expect(PHRASES.pets.filter((p) => !p.includes("{echo}")).map(bare), said).toContain(text);
+    }
+    const c = call();
+    c.child("My grandma Rose is here.");
+    expect(c.say({ act: "clarify", parts: [{ warm: "family", echo: "grandma Rose" }] }).text).toContain("grandma Rose");
+  });
+
+  it("says the phrase the model picks, so a reply fits the child's question", () => {
+    const c = call();
+    c.child("Are you a robot?");
+    const robot = PHRASES.aboutmaya.findIndex((p) => p.includes("robot")) + 1;
+    expect(c.say({ act: "clarify", parts: [{ warm: "aboutmaya", pick: robot }] }).text).toBe(PHRASES.aboutmaya[robot - 1]);
+  });
+
+  it("keeps a picked frame only when its slot can be filled, and refuses a pick outside the group", () => {
+    const frame = PHRASES.pets.findIndex((p) => p.includes("{echo} is a great name")) + 1;
+    const c = call();
+    c.child("I have a dog named Biscuit!");
+    expect(c.say({ act: "clarify", parts: [{ warm: "pets", pick: frame, echo: "Biscuit" }] }).text).toBe("Biscuit is a great name!");
+    const d = call();
+    d.child("I have a dog named Biscuit!");
+    const plain = d.say({ act: "clarify", parts: [{ warm: "pets", pick: frame, echo: "7" }] }).text;
+    expect(PHRASES.pets.filter((p) => !p.includes("{echo}")).map(bare)).toContain(plain);
+    expect(call().refusal({ act: "clarify", parts: [{ warm: "pets", pick: PHRASES.pets.length + 1 }] })).toMatchObject({ code: "invalid_proposal" });
+  });
+
+  it("has no phrase that judges correctness or asks for the work", () => {
+    const judges = /\b(right|wrong|correct|on a roll|got it|good at|great work|good work|good thinking|thinker|detective|hang of|nailed|perfect|exactly|smart|genius|clever)\b/i;
+    const asks = /\b(tell me (what|how)|what do you notice|back to work|how did you|walk me through|talk me through|show me|explain|your plan|how do you know|figure|work it out|let's work)\b/i;
+    for (const phrase of PHRASE_GROUPS.flatMap((g) => PHRASES[g])) {
+      expect(phrase, phrase).not.toMatch(judges);
+      expect(phrase, phrase).not.toMatch(asks);
+    }
+  });
+
+  it("asks for the child's thinking with a code line", () => {
+    const c = call();
+    c.child("It's 66.");
+    const said = c.say({ act: "accept_answer", reading: { answers: [{ value: num(66), step: "result", verdict: "right" }] }, parts: [{ line: "check.thinking" }, { line: "answer.right" }] });
+    expect(TEMPLATES["check.thinking"].some((t) => said.text.startsWith(t))).toBe(true);
   });
 });

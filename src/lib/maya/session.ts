@@ -161,6 +161,7 @@ export type RefusalCode =
   | "line_not_offered"
   | "free_talk_in_math_turn"
   | "math_line_not_last"
+  | "board_not_code"
   | "reveals_answer"
   | "missing_disclosure"
   | "board_not_allowed"
@@ -450,7 +451,8 @@ function proposalProblem(p: unknown): string | null {
     // Talk of any length is read: words that fail the guards are replaced, never a reason to fail the turn (D-196).
     const talk = isObject(part) && Object.keys(part).length === 1 && typeof part.talk === "string";
     const warm = isObject(part) && (PHRASE_GROUPS as readonly unknown[]).includes(part.warm) &&
-      Object.keys(part).every((k) => k === "warm" || k === "echo") && (part.echo === undefined || typeof part.echo === "string");
+      Object.keys(part).every((k) => k === "warm" || k === "echo" || k === "pick") && (part.echo === undefined || typeof part.echo === "string") &&
+      (part.pick === undefined || (Number.isSafeInteger(part.pick) && (part.pick as number) >= 1 && (part.pick as number) <= PHRASES[part.warm as PhraseGroup].length));
     const line = isObject(part) && typeof part.line === "string" && (LINE_IDS as readonly string[]).includes(part.line) &&
       Object.keys(part).every((k) => k === "line" || k === "slots") && (part.slots === undefined || isObject(part.slots));
     if (!talk && !warm && !line) return `each part is { line, slots } with a line id, { warm } with a phrase group, or { talk }`;
@@ -1213,18 +1215,26 @@ function withEcho(text: string, echoed: string | null): string {
 }
 
 /**
- * The child's own words for an echo frame (D-196): 1 to 3 words in a row from the child's last turn, matched after
- * case is set aside and copied as the child wrote them, with no math, no work word and not the child's name. Null
+ * The child's own words for an echo frame (D-196): 1 to 3 words in a row from the child's last turn, with no
+ * punctuation between them, matched after case is set aside and copied as the child wrote them, with no math, no work word and not the child's name. Null
  * when they fail, and code then picks a frame with no slot.
  */
 function echoOf(s: Session, raw: string): string | null {
   const last = s.turn?.text ?? [...s.turns].reverse().find((t) => t.speaker === "child")?.text ?? "";
-  const words = [...last.matchAll(/[\p{L}]+(?:['’][\p{L}]+)*/gu)].map((m) => m[0]);
   const want = (raw.match(/[\p{L}]+(?:['’][\p{L}]+)*/gu) ?? []).map((w) => w.toLowerCase());
   if (want.length < 1 || want.length > 3 || raw.replace(/[\p{L}'’\s]/gu, "") !== "") return null;
-  const at = words.findIndex((_, i) => want.every((w, k) => words[i + k]?.toLowerCase() === w));
-  if (at === -1) return null;
-  const echoed = words.slice(at, at + want.length).join(" ");
+  // The run of words stays inside one stretch of the child's text with no punctuation in it: an echo never crosses a
+  // sentence break or a comma ("Biscuit. Soccer" gives no "Biscuit Soccer").
+  let echoed: string | null = null;
+  for (const stretch of last.split(/[^\p{L}'’\s]+/u)) {
+    const words = stretch.match(/[\p{L}]+(?:['’][\p{L}]+)*/gu) ?? [];
+    const at = words.findIndex((_, i) => want.every((w, k) => words[i + k]?.toLowerCase() === w));
+    if (at !== -1) {
+      echoed = words.slice(at, at + want.length).join(" ");
+      break;
+    }
+  }
+  if (echoed === null) return null;
   const name = s.variety.name?.toLowerCase();
   if (talkMath(echoed) !== null || workProblem(echoed) !== null || (name && want.includes(name))) return null;
   return echoed;
@@ -1274,13 +1284,13 @@ function offersFor(s: Session, act: Act, view: View): LineOffer[] {
     case "try_target":
       return [...l.tryTarget(), ...l.question()];
     case "guide":
-      return [...view.steps.flatMap(l.help), ...right, ...view.steps.flatMap(l.notYet), ...l.question()];
+      return [...view.steps.flatMap(l.help), ...right, ...view.steps.flatMap(l.notYet), ...l.question(), ...l.thinking()];
     case "accept_answer":
-      return [...l.answerRight(), ...l.explain(), ...right];
+      return [...l.thinking(), ...l.answerRight(), ...l.explain(), ...right];
     case "give_answer":
       return [...view.steps.flatMap(l.help), ...right];
     case "ask_write":
-      return [...(solved ? [...l.writeAnswer(), ...l.answerRight()] : l.writeYours()), ...(main === "CHECK" ? l.explain() : [])];
+      return [...(solved ? [...l.writeAnswer(), ...l.answerRight()] : l.writeYours()), ...(main === "CHECK" ? [...l.thinking(), ...l.explain()] : [])];
     case "close":
       return solved ? l.closeSolved(solved) : [];
     case "confirm":
@@ -1337,13 +1347,22 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
     const pool = fresh.length > 0 ? fresh : wordings.map((_, i) => i);
     return pool[chooseWording(s.variety, pool.map(id), s.now!)];
   };
-  const phrase = (group: PhraseGroup, echoed: string | null = null) => {
+  const phrase = (group: PhraseGroup, echoed: string | null = null, pick?: number) => {
     const bank = PHRASES[group];
     // A frame with the child's words when they check, else one with no slot (D-196 echo frames).
     const slotted = bank.flatMap((b, i) => (b.includes("{echo}") ? [i] : []));
     const pool = echoed !== null && slotted.length > 0 ? slotted : bank.flatMap((b, i) => (b.includes("{echo}") ? [] : [i]));
-    const k = pickFresh(pool.map((i) => bank[i]), (i) => `phrase:${group}.${pool[i] + 1}`);
-    const text = withEcho(bank[pool[k]], echoed);
+    // The model may name the phrase that fits (R374-5): code keeps it when its slot can be filled, and records it.
+    const chosen = pick !== undefined && pool.includes(pick - 1) ? pick - 1 : null;
+    let index: number;
+    if (chosen !== null) {
+      index = chosen;
+      s.variety.seq += 1;
+      s.variety.heard[`phrase:${group}.${chosen + 1}`] = [s.variety.seq, s.now!];
+    } else {
+      index = pool[pickFresh(pool.map((i) => bank[i]), (i) => `phrase:${group}.${pool[i] + 1}`)];
+    }
+    const text = withEcho(bank[index], echoed);
     const name = text.includes("{name}") && !named && nameNow(s.variety, turn) ? s.variety.name : null;
     if (name !== null) {
       named = true;
@@ -1361,7 +1380,7 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
         const groups = PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(p.act));
         return { code: "line_not_offered", reason: `Warm talk "${part.warm}" does not fit ${p.act}. It fits: ${groups.join(", ") || "none"}.` };
       }
-      add("warm", phrase(part.warm, part.echo === undefined ? null : echoOf(s, part.echo)));
+      add("warm", phrase(part.warm, part.echo === undefined ? null : echoOf(s, part.echo), part.pick));
       continue;
     }
     if ("talk" in part) {
@@ -1398,21 +1417,26 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
   return { text: texts.join(" "), lines, boards: chosen.flatMap((o) => (o.board ? [o.board] : [])), replaced, segments };
 }
 
+/** The fields of a board command a child sees as words. */
+const BOARD_WORDS: ReadonlySet<string> = new Set(["text", "label"]);
+/** The fields of a board command a child sees as numbers. */
+const BOARD_NUMBERS: ReadonlySet<string> = new Set(["value", "dividend", "divisor", "numerator", "denominator", "whole", "min", "max", "tick", "fromValue", "toValue"]);
+
+/** Every word or number field a child sees on the board, in any command, at any depth, with its field name. */
+function boardVisible(v: unknown, key = ""): [string, string][] {
+  if (typeof v === "string") return BOARD_WORDS.has(key) || BOARD_NUMBERS.has(key) ? [[key, v]] : [];
+  if (Array.isArray(v)) return v.flatMap((x) => boardVisible(x, key));
+  return isObject(v) ? Object.entries(v).flatMap(([k, x]) => boardVisible(x, k)) : [];
+}
+
 /**
- * The board's words and digits: a text with math in it is the expression or equation of a line said this turn, and
- * every number put in a cell is in a line said this turn, in the problem's own numbers, or a digit of a done step.
+ * Everything a child sees on the board, checked on every command (R374-5-1). Words are the expression, equation or
+ * text of a line said this turn; with the `freeTalk` flag off nothing else, so every word on the board comes from
+ * code (with it on, a note with no math passes the free-talk guards). Numbers are in a line said this turn, in the
+ * problem's own numbers, or a digit of a done step.
  */
 function boardProblem(s: Session, board: unknown[], role: Problem, spoken: Spoken, done: string[]): { code: RefusalCode; reason: string } | null {
   const pkg = s.package!;
-  for (const t of boardTexts(board, "text")) {
-    if (talkMath(t) !== null && !spoken.boards.includes(t.trim())) {
-      return { code: "math_in_talk", reason: `The board writes math only as a line's expression or equation said this turn, not "${t}".` };
-    }
-    // A note with no math passes the free-talk guards (D-196): nothing on the board points back or instructs the work.
-    if (talkMath(t) === null && freeTalkProblem(/[.?!]$/.test(t.trim()) ? t : `${t}.`, s.variety.name) !== null) {
-      return { code: "math_in_talk", reason: `A board note does not instruct the work or point back to earlier words: "${t}".` };
-    }
-  }
   const { operation, steps } = problemOf(pkg, role);
   const finished = role === "target" ? steps.filter((st) => done.includes(st.id)) : steps.slice(0, s.exampleShown + 1);
   const allowed = [
@@ -1420,11 +1444,24 @@ function boardProblem(s: Session, board: unknown[], role: Problem, spoken: Spoke
     ...operandsOf(operation).flatMap((n) => [number(n), ...[...String(n)].filter((c) => /\d/.test(c)).map((c) => number(Number(c)))]),
     ...finished.flatMap((st) => [...stepAnswers(st), ...("carryOut" in st ? [number(st.carryOut)] : [])]),
   ];
-  for (const v of boardTexts(board, "value")) {
-    const values = valuesIn(v);
-    if (values.length === 0 && talkMath(v) !== null) return { code: "wrong_math", reason: `Code cannot read "${v}" as a number to put on the board.` };
+  const fromCode = new Set([...spoken.boards, ...spoken.lines].map((t) => t.trim()));
+  for (const [key, raw] of boardVisible(board)) {
+    const t = raw.trim();
+    if (t === "") continue;
+    if (BOARD_WORDS.has(key)) {
+      if (fromCode.has(t)) continue;
+      if (!s.freeTalk) return { code: "board_not_code", reason: `With free talk off, the board shows only a line's words said this turn, not "${t}".` };
+      if (talkMath(t) !== null) return { code: "math_in_talk", reason: `The board writes math only as a line's expression or equation said this turn, not "${t}".` };
+      // A note with no math passes the free-talk guards (D-196): nothing on the board points back or instructs the work.
+      if (freeTalkProblem(/[.?!]$/.test(t) ? t : `${t}.`, s.variety.name, childWords(s)) !== null) {
+        return { code: "math_in_talk", reason: `A board note does not instruct the work or point back to earlier words: "${t}".` };
+      }
+      continue;
+    }
+    const values = valuesIn(t);
+    if (values.length === 0 || /\p{L}/u.test(t.replace(/\bR\b/g, ""))) return { code: "wrong_math", reason: `Code cannot read "${t}" as a number to show on the board.` };
     const off = values.find((x) => !allowed.some((a) => equivalent(a, x)));
-    if (off) return { code: "wrong_math", reason: `Maya puts ${valueText(off)} on the board only after a line says it this turn.` };
+    if (off) return { code: "wrong_math", reason: `Maya shows ${valueText(off)} on the board only after a line says it this turn.` };
   }
   return null;
 }

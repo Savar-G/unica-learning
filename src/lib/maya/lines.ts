@@ -36,6 +36,7 @@ export const LINE_IDS = [
   "check.right_step",
   "check.not_yet",
   "check.explain",
+  "check.thinking",
   "answer.right",
   "answer.give",
   "write.answer",
@@ -245,6 +246,11 @@ export const TEMPLATES = {
     "Tell me what you did for {where}.", "What did you do in {where}?",
   ],
 
+  // Asking for the child's thinking is a teaching move, so it is a code line, not warm talk (R374-5).
+  "check.thinking": [
+    "Tell me what you're thinking.", "Walk me through your thinking.", "How did you work it out?", "What made you think of it?",
+    "Talk me through it.", "I'm curious how you figured it out.", "How do you know?",
+  ],
   "answer.right": [
     "Yes! {expr} = {answer}.", "That's right: {expr} = {answer}.", "You got it! {expr} = {answer}.", "Yes, {expr} = {answer}!",
     "Exactly! {expr} = {answer}.", "That's it: {expr} = {answer}.", "Well done! {expr} = {answer}.",
@@ -495,6 +501,7 @@ export function packageLines(pkg: OperationPackage) {
       return step ? [offer("check.not_yet", "check.not_yet", { where: whereOf(step) }, { slots: { step: id }, requires: { answer: "wrong", step: id } })] : [];
     },
     explain: (): LineOffer[] => steps.map((s) => offer("check.explain", "check.explain", { where: whereOf(s) }, { slots: { step: s.id } })),
+    thinking: (): LineOffer[] => [offer("check.thinking", "check.thinking", {})],
     answerRight: (): LineOffer[] => [offer("answer.right", "answer.right", { expr, answer }, { slots: {}, board: `${expr} = ${answer}` })],
     answerGive: (): LineOffer[] => [offer("answer.give", "answer.give", { answer })],
     writeAnswer: (): LineOffer[] => [offer("write.answer", "write.answer", { answer })],
@@ -547,7 +554,7 @@ export function allLineTexts(pkg: OperationPackage, heardValues: readonly Answer
   const offers = [
     ...l.hello(), ...l.question(), ...l.assess(), ...l.exampleIntro(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id)),
     ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.explain(),
-    ...l.answerRight(), ...l.answerGive(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
+    ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
     ...l.otherInput(), ...l.redirect(), ...l.closeSolved("child"), ...l.closeSolved("maya"), ...l.repair(),
   ];
   return [...new Set(offers.flatMap((o) => o.texts.map(sentence)))];

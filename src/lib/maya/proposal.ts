@@ -40,6 +40,11 @@ export interface Talk {
 export interface Warm {
   warm: PhraseGroup;
   echo?: string;
+  /**
+   * The phrase that fits, by its number in the group (1 = the first of PHRASES[warm]). Code says it when its slot can
+   * be filled; else, and without a pick, code picks the one the child heard least lately.
+   */
+  pick?: number;
 }
 /**
  * One part of what Maya says, in order: a code-written line, a bank phrase or the model's own warm words. In a turn
@@ -152,8 +157,8 @@ export const PROPOSAL_SCHEMA = {
           {
             type: "object",
             additionalProperties: false,
-            required: ["warm", "echo"],
-            properties: { warm: { enum: [...PHRASE_GROUPS] }, echo: nullable({ type: "string", maxLength: 40 }) },
+            required: ["warm", "echo", "pick"],
+            properties: { warm: { enum: [...PHRASE_GROUPS] }, echo: nullable({ type: "string", maxLength: 40 }), pick: nullable({ type: "integer", minimum: 1 }) },
           },
           { type: "object", additionalProperties: false, required: ["talk"], properties: { talk: { type: "string", maxLength: PART_LIMITS.talkChars } } },
         ],

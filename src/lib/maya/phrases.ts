@@ -23,7 +23,7 @@ import { forms, talkMath } from "./claims";
 import type { Act } from "./proposal";
 
 export const PHRASE_GROUPS = [
-  "encourage", "empathy", "checkin", "pacing", "thinkaloud", "hearing", "smalltalk", "opening", "closing",
+  "encourage", "empathy", "checkin", "pacing", "hearing", "smalltalk", "opening", "closing",
   // Replies to what children say between the math (D-196 echo frames): "{echo}" is 1 to 3 of the child's own words.
   "pets", "family", "school", "games", "food", "sports", "trips", "tired", "happy", "bored", "frustrated", "aboutmaya",
 ] as const;
@@ -33,14 +33,14 @@ export type PhraseGroup = (typeof PHRASE_GROUPS)[number];
 export const PHRASES: Record<PhraseGroup, readonly string[]> = {
   encourage: [
     "You're working hard on this, {name}.", "I like how you keep trying.", "Great effort!", "You're doing a good job sticking with it.",
-    "Keep going, you've got this.", "I can see you're thinking carefully.", "Nice focus!", "You're getting the hang of this, {name}.",
-    "I love how you're not giving up.", "You're being really patient.", "Way to keep at it!", "You're thinking like a real detective.",
-    "Good thinking, {name}.", "You're doing great work today.", "I'm proud of how hard you're trying.", "You're on a roll!",
-    "You're a brave learner.", "Nice and steady, {name}.",
+    "You've got this.", "I can see you're thinking carefully.", "Nice focus!", "I love how you're not giving up, {name}.",
+    "You're being really patient.", "Way to keep at it!", "I'm proud of how hard you're trying.", "You're a brave learner.",
+    "Nice and steady, {name}.", "Your effort is awesome.", "Thanks for trying so hard.", "I love your patience.", "You're showing real grit.",
+    "You keep showing up, {name}.",
   ],
   empathy: [
     "This part can feel tricky.", "It's okay to find this hard.", "Lots of kids find this tricky.", "Trying again is how we learn.",
-    "It's fine to feel stuck sometimes.", "You don't have to rush.", "We can figure this out together, {name}.", "I'm here to help.",
+    "It's fine to feel stuck sometimes.", "You don't have to rush.", "We can do hard things together, {name}.", "I'm here to help.",
     "Tricky bits are how our brains grow.", "It's okay not to know yet.", "Everyone gets stuck sometimes.", "We'll work through it together.",
     "No worries, {name}. We've got time.", "Feeling unsure is totally normal.", "I'm here with you on this.", "Hard things get easier with practice.",
   ],
@@ -55,32 +55,26 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
     "Whenever you're ready.", "Let's pause for a moment.", "There's no rush at all, {name}.", "Slow and steady is great.",
     "We can take this nice and slow.", "I'm happy to wait.", "Let's not rush this.", "Ready when you are, {name}.",
   ],
-  thinkaloud: [
-    "Tell me what you're thinking.", "Can you say your idea out loud?", "How did you work it out?", "What made you think of it?",
-    "Talk me through it.", "I'd love to hear your idea, {name}.", "What do you notice?", "What are you thinking of doing?",
-    "What's going on in your head?", "Walk me through your thinking.", "How do you know?", "What's your plan?",
-    "I'm curious how you figured it out.", "Tell me how you got there, {name}.",
-  ],
   hearing: [
     "Sorry, I didn't catch it.", "Can you say it again, a bit slower?", "Could you say it again?", "I want to make sure I heard you.",
     "Thanks for your patience.", "Let me listen again.", "My ears missed it, sorry.", "Could you say it a little louder?",
     "I didn't quite hear you, {name}.", "Can you tell me again?", "Just a moment, I want to hear you properly.", "Sorry, it was hard to hear.",
   ],
   smalltalk: [
-    "Hi! It's nice to meet you.", "Thanks for telling me.", "Sounds fun!", "Let's get back to your question.",
-    "Maybe we can talk about it another time.", "I'm only able to help with your workbook today.", "Oh, how fun!", "I'd love to hear about it later.",
-    "I love hearing about it, {name}!", "Cool! Now let's get back to work.", "What a nice thing to tell me.", "Let's save the fun stories for later.",
-    "Ha, I like it!", "Good to know, {name}.",
+    "Hi! It's nice to meet you.", "Thanks for telling me.", "Sounds fun!", "Maybe we can talk about it another time.",
+    "I'm only able to help with your workbook today.", "Oh, how fun!", "I'd love to hear about it later.", "I love hearing about it, {name}!",
+    "What a nice thing to tell me.", "Let's save the fun stories for later.", "Ha, I like it!", "Good to know, {name}.", "Oh, cool!",
+    "How interesting!",
   ],
   opening: [
-    "Our team may review this call to make me better.", "Ready to get started?", "I'm happy to help you today.", "Let's work on this together.",
+    "Our team may review this call to make me better.", "Ready to get started?", "I'm happy to help you today.", "Let's do this together.",
     "It's nice to see you, {name}.", "Let's have some fun with this.", "I'm glad you're here.", "Shall we get going?",
     "We can go at your speed.", "I'm excited to work with you today, {name}.", "Let's begin whenever you're ready.", "Thanks for coming to work with me.",
   ],
   closing: [
     "Thanks for working with me today.", "You worked really hard.", "See you next time!", "Bye for now!", "Have a great day!",
-    "I hope you enjoyed this.", "Great work today, {name}.", "I had fun working with you.", "Take care, {name}!", "You should feel proud of your effort.",
-    "Talk soon!", "Enjoy the rest of your day!", "Thanks for being such a good thinker.",
+    "I hope you enjoyed this.", "Thanks for your effort today, {name}.", "I had fun working with you.", "Take care, {name}!",
+    "You should feel proud of your effort.", "Talk soon!", "Enjoy the rest of your day!", "Thanks for thinking hard with me.",
   ],
   pets: [
     "Ooh, {echo}!", "Aw, {echo}! I love it.", "{echo} is a great name!", "{echo} sounds so sweet.", "I'd love to hear about {echo} after we finish.",
@@ -99,7 +93,7 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
   ],
   games: [
     "Ooh, {echo}! I love games.", "{echo} sounds so fun!", "Wow, {echo}!", "I'd love to hear about {echo} after we finish.",
-    "Games are the best.", "It sounds really fun.", "How cool!", "I love hearing about games.", "You must be good at it.",
+    "Games are the best.", "It sounds really fun.", "How cool!", "I love hearing about games.", "It sounds like you love it.",
     "What a fun thing to play.", "Playing is a great way to learn.", "Ooh, how exciting!",
   ],
   food: [
@@ -157,7 +151,6 @@ export const PHRASE_ACTS: Record<PhraseGroup, readonly Act[]> = {
   empathy: ["guide", "try_target", "example_step", "give_answer", "redirect", "close", "check_in", "repair", "confirm", "clarify"],
   checkin: ["check_in", "wait", "confirm", "guide", "offer_other_input"],
   pacing: ["wait", "check_in", "guide", "example_step", "try_target", "give_answer"],
-  thinkaloud: ["guide", "accept_answer", "ask_write", "clarify", "try_target", "open"],
   hearing: ["confirm", "offer_other_input"],
   smalltalk: ["open", "redirect", "close", "clarify"],
   opening: ["open"],

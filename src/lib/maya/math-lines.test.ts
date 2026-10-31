@@ -194,7 +194,7 @@ describe("every failing sentence of PR #350's review rounds is impossible", () =
 
   it.each(EVERY)("%s: the board does not write %s", (_round, sentence) => {
     const board = [{ op: "write", id: "w", text: sentence, place: { region: "main" } }];
-    expect(call().refusal(show([{ line: "step.show", slots: { step: "ones" } }], { board }))).toMatchObject({ code: expect.stringMatching(/^(math_in_talk|reveals_answer)$/) });
+    expect(call().refusal(show([{ line: "step.show", slots: { step: "ones" } }], { board }))).toMatchObject({ code: expect.stringMatching(/^(board_not_code|math_in_talk|reveals_answer)$/) });
   });
 
   it.each(EVERY)("%s: said aloud anyway, %s starts a repair", (_round, sentence) => {

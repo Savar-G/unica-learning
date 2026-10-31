@@ -437,7 +437,7 @@ describe("CONFIRM_HEARD", () => {
     c.maya({ act: "confirm", parts: [ln("confirm.which", { heard: "15", other: "50" })] });
     expect(c.session.state).toBe("CONFIRM_HEARD");
     c.child("No, I said sixty-six.");
-    c.maya({ act: "accept_answer", parts: [{ warm: "thinkaloud" }, ln("answer.right")], reading: { answers: [right66], correctsHearing: true } });
+    c.maya({ act: "accept_answer", parts: [ln("check.thinking"), ln("answer.right")], reading: { answers: [right66], correctsHearing: true } });
     expect(c.session.state).toBe("CHECK");
     c.child("I carried the ten.");
     c.maya({ act: "ask_write", parts: [ln("write.answer")], understanding: "evidence_observed" });
@@ -479,7 +479,7 @@ describe("WAIT_WRITE", () => {
     c.tick(55);
     expect(c.next).toEqual({ expect: "child", acts: [] });
     c.child("Done! 66.");
-    c.maya({ act: "accept_answer", parts: [{ warm: "thinkaloud" }, ln("answer.right")], reading: { answers: [right66] } });
+    c.maya({ act: "accept_answer", parts: [ln("check.thinking"), ln("answer.right")], reading: { answers: [right66] } });
     expect(c.session.state).toBe("CHECK");
   });
 
