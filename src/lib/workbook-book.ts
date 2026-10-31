@@ -1,0 +1,333 @@
+// The generated book's page content (#363, spec #296): what the real templates (#310, src/lib/workbook-template.ts)
+// need besides the questions, for a book the AI generator (#311, src/lib/workbook-generator.ts) writes. The generator
+// lays each planned page into the template's slots with `layoutDayPage` (pageSlots, after a header that may wrap), asks
+// the AI for exactly those items, then builds the page's content with `dayPageContent`: the header, one block per slot
+// with the numbers of its questions, the panels (Worked example, Watch one, Reminder) made by code from a checked
+// operation, Sam's wrong work on Spot the error, and each item's picture. The cover, How + Plan, back cover and blank
+// pages come from `bookPageContent`.
+//
+// Pictures: a question package's item figure (#377, src/lib/question-package.ts) is drawn by the template from the
+// block's `figures` (src/lib/workbook-page.ts). `pageFigure` maps one to the other: dots keep their groups and the
+// crossed-out count, a ten-frame shows its counters in all (`filled`), a number line gets its hops from the operation
+// (a + b hops from a to a + b), base-ten blocks keep hundreds, tens and ones, and a pattern keeps its shapes.
+//
+// The words here are code's, never the AI's: headers, panel labels and explanations come from the plan and the
+// curriculum. Pure TypeScript: no Next.js, React, network, database, clock or randomness.
+import {
+  operationResult,
+  operationText,
+  stepText,
+  valueText,
+  workedSteps,
+  type Figure as ItemFigure,
+  type Operation,
+  type QuestionPackage,
+} from "@/lib/question-package";
+import type { Curriculum } from "@/lib/workbook-curriculum";
+import {
+  headerGrowth,
+  pageId,
+  pageSlots,
+  type Block,
+  type DayHeader,
+  type Figure,
+  type Omission,
+  type PageContent,
+  type PlannedSlot,
+  type SlotName,
+} from "@/lib/workbook-page";
+import type { PlannedPage, WorkbookPlan } from "@/lib/workbook-plan";
+
+// ---------- Topics and headers ----------
+
+/** The longest topic a page prints: the longest drafted step name is 45 characters. */
+const TOPIC_MAX = 45;
+
+/**
+ * A topic for a skill and step, never cut inside a phrase: the drafted step's name, else the skill's text up to its
+ * first clause when that is short enough, else the level's title.
+ */
+export function pageTopic(curriculum: Curriculum, skill: string | undefined, step: number | undefined): string {
+  if (!skill) return "Review";
+  const named = step ? curriculum.skillSteps(skill)?.[step - 1]?.name : undefined;
+  if (named) return named;
+  const clause = (curriculum.skill(skill)?.text ?? skill).split(/,|;| \(/)[0].trim();
+  return clause.length <= TOPIC_MAX ? clause : curriculum.levelOfSkill(skill)?.title ?? "Review";
+}
+
+/** The headline words of a day page: its topic, title, subtitle and the grown-up line. */
+export function dayHeader(curriculum: Curriculum, page: PlannedPage, level: number): DayHeader {
+  const main = page.parts.find((p) => p.step) ?? page.parts[0];
+  const topic = pageTopic(curriculum, main?.step?.skill ?? main?.skills[0], main?.step?.step);
+  const early = level <= 9;
+  const t = (title: string, subtitle: string) => ({ title, subtitle });
+  let head: { title: string; subtitle: string };
+  // A parent-led page is titled by its first part.
+  const first = page.parts[0]?.kind;
+  const type = page.type !== "parent-led" ? page.type
+    : first === "new-idea" ? "new-idea" : first === "picture-stories" ? "word-problems" : first === "remember-these" ? "remember-these" : first ?? "practice";
+  switch (type) {
+    case "warm-up": head = t("Warm-up", level >= 16 ? "Facts to 20. Beat your own count from last time." : "Facts to 20. Take your time: there is no timer."); break;
+    case "new-idea": head = t(topic, level >= 19 ? "Try it first. Then see how it works." : "Watch how it works. Then try it."); break;
+    case "practice": head = t(`Practice: ${topic}`, "Watch one. Finish two. Then do the rest on your own."); break;
+    case "practice-2": head = t(`More practice: ${topic}`, "Each row is a little harder than the one before."); break;
+    case "word-problems": head = t(`${topic} in stories`, "Read it. Work it out in the box. Write the answer."); break;
+    case "math-in-the-world": head = t("Math in the world", "One real task. Plan it, then work it out."); break;
+    case "unit-b": head = t(topic, `Unit B: ${topic.toLowerCase()}.`); break;
+    case "friday-5": head = t("Remember these? and Friday 5", "Things you learned before, then five with no hints."); break;
+    case "challenge": head = t("Challenge", (page.parts.find((x) => x.kind === "challenge")?.items ?? 1) > 1 ? "Two to stretch you." : "One to stretch you."); break;
+    case "show-what-you-know": head = t("Show what you know", "Ten days of work. Show what you learned!"); break;
+    case "level-test": head = t(`Level U${level} test`, "Do this on your own."); break;
+    default: head = t("Remember these?", "Things you learned before, so they stay fresh.");
+  }
+
+  const parentLed = page.type === "parent-led";
+  const grownUp = parentLed
+    ? "Read each line aloud. Your child circles, colours or writes one number."
+    : early && type === "new-idea" ? "Read the blue box aloud. Show both ways with a finger." : null;
+  return { topic: type === "level-test" ? "Level test" : type === "show-what-you-know" ? "Show what you know" : topic, ...head, grownUp };
+}
+
+/** The most characters a line of the 66 px cover title holds. */
+const COVER_LINE = 19;
+
+/** A level title as two cover lines: the whole title when it wraps into two, else its part before " and " or a comma. */
+export function coverTitleLines(title: string): [string, string] {
+  const wrap = (text: string) => {
+    const lines: string[] = [];
+    for (const word of text.split(" ")) {
+      const last = lines.at(-1);
+      if (last !== undefined && `${last} ${word}`.length <= COVER_LINE) lines[lines.length - 1] = `${last} ${word}`;
+      else lines.push(word);
+    }
+    return lines;
+  };
+  for (const text of [title, title.split(" and ")[0], title.split(",")[0]]) {
+    const lines = wrap(text);
+    if (lines.length === 2 && lines.every((l) => l.length <= COVER_LINE)) return [lines[0], lines[1]];
+    if (lines.length === 1) {
+      const words = text.split(" ");
+      if (words.length > 1) return [words.slice(0, -1).join(" "), words.at(-1)!];
+    }
+  }
+  return [title, ""];
+}
+
+// ---------- Day pages ----------
+
+/** A planned day page laid into the template's slots: its header, its slots and what it leaves out (pageSlots). */
+export interface DayLayout {
+  header: DayHeader;
+  slots: PlannedSlot[];
+  omissions: Omission[];
+}
+
+/** Slots that are panels: code writes them, they hold no question. */
+export const PANEL_SLOTS: readonly SlotName[] = ["worked-example", "watch-one", "reminder"];
+
+export function layoutDayPage(curriculum: Curriculum, plan: WorkbookPlan, day: number, page: PlannedPage): DayLayout {
+  const header = dayHeader(curriculum, page, plan.level);
+  const pages = plan.days.find((d) => d.day === day)?.pages.length ?? page.number;
+  const { slots, omissions } = pageSlots(page, plan.level, { headerGrowth: headerGrowth(header, plan.level, day, page.number, pages) });
+  return { header, slots, omissions };
+}
+
+/**
+ * The item formats each slot takes, for the AI and the check: a slot not listed takes any format. Spot the error,
+ * Solve it two ways, the Mixed set and How do you know? have a layout of their own, so they take only their format.
+ */
+export const SLOT_FORMATS: Partial<Record<SlotName, readonly string[]>> = {
+  "spot-the-error": ["spot-the-error"],
+  "solve-it-two-ways": ["two-ways"],
+  "mixed-set": ["tick-and-number"],
+  "how-do-you-know": ["written-reason"],
+  "word-problems": ["show-work"],
+  challenge: ["show-work"],
+  "warm-up": ["write-number"],
+};
+
+/** Slots whose layout takes only the formats SLOT_FORMATS lists: a question in another format fails its check. */
+export const STRICT_SLOTS: readonly SlotName[] = ["spot-the-error", "solve-it-two-ways", "mixed-set", "how-do-you-know"];
+
+/** A question of a day page as dayPageContent reads it: its number, its slot in the layout, its package or none. */
+export interface PageQuestion {
+  number: number;
+  /** The index of its slot in the layout's slots. */
+  slot: number;
+  package: QuestionPackage | null;
+}
+
+/** An operation with a whole-number answer of two places or more, or any computed operation: the panel's sum. */
+function panelOperation(questions: PageQuestion[], prefer: number[]): Operation | null {
+  const ordered = [...questions.filter((q) => prefer.includes(q.slot)), ...questions.filter((q) => !prefer.includes(q.slot))];
+  for (const q of ordered) {
+    const op = q.package?.easierExample?.operation ?? null;
+    if (op) return op;
+  }
+  for (const q of ordered) if (q.package?.operation) return q.package.operation;
+  return null;
+}
+
+/** The worked lines of an operation: its steps in words (at most `most`), then the sum with its answer in blue. */
+function workedLines(op: Operation, most: number): string[] {
+  const steps = workedSteps(op).filter((s) => s.kind !== "result").map((s) => stepText(s, op));
+  return [...steps.slice(0, most), `${operationText(op)} = [${valueText(operationResult(op))}]`];
+}
+
+/**
+ * A picture for the template from an item's figure: the same numbers, in the template's terms. A number line's hops
+ * come from the operation: a + b hops from a to a + b, a − b from a back to a − b. Null for no figure.
+ */
+export function pageFigure(f: ItemFigure | null | undefined, op: Operation | null): Figure | null {
+  if (!f) return null;
+  switch (f.kind) {
+    case "dots": return { kind: "dots", groups: [...f.groups], takenAway: f.takenAway };
+    case "ten-frame": return { kind: "ten-frame", filled: f.counters.reduce((a, b) => a + b, 0) };
+    case "number-line": {
+      const [a, b] = (op?.operands ?? []) as unknown[];
+      const hops: [number, number][] = typeof a === "number" && typeof b === "number" && (op?.kind === "add" || op?.kind === "subtract")
+        ? [[a, op.kind === "add" ? a + b : a - b]]
+        : [];
+      return { kind: "number-line", from: f.from, to: f.to, step: f.step, hops: hops.filter(([x, y]) => [x, y].every((v) => v >= Math.min(f.from, f.to) && v <= Math.max(f.from, f.to))) };
+    }
+    case "base-ten": return { kind: "blocks", hundreds: f.hundreds, tens: f.tens, ones: f.ones };
+    case "array": return { kind: "array", rows: f.rows, columns: f.columns };
+    case "pattern": return { kind: "pattern", core: [...f.core], length: f.length, blank: f.blank };
+  }
+}
+
+/** Notes and labels of list slots, as the sample sheets show them. */
+const ROW_LABELS = ["Getting started", "A little harder", "Harder again"];
+
+/**
+ * A day page's content for the template: the header, then one block per laid-out slot, each naming its questions by
+ * their number on the page. A question with no package (the AI wrote nothing code could use) is left off the page;
+ * its number stays free, so the numbers of the other questions do not change.
+ */
+export function dayPageContent(o: {
+  curriculum: Curriculum;
+  plan: WorkbookPlan;
+  day: number;
+  page: PlannedPage;
+  layout: DayLayout;
+  questions: PageQuestion[];
+  child: string;
+  workbook: number;
+}): PageContent {
+  const { curriculum, plan, page, layout, questions } = o;
+  const pages = plan.days.find((d) => d.day === o.day)?.pages.length ?? page.number;
+  let row = 0;
+  const blocks: Block[] = layout.slots.map((s, i): Block => {
+    const mine = questions.filter((q) => q.slot === i && q.package);
+    const items = mine.map((q) => q.number);
+    const part = page.parts[s.part];
+    const figures = mine.map((q) => pageFigure(q.package!.item?.figure, q.package!.operation));
+    const withFigures = figures.some(Boolean) ? { figures } : {};
+    // A panel's sum: from the slots of the same part first (its easier example: smaller numbers, same kind).
+    const sameP = layout.slots.flatMap((x, k) => (x.part === s.part && k !== i ? [k] : []));
+    switch (s.slot) {
+      case "worked-example": {
+        const step = part?.step ? curriculum.skillSteps(part.step.skill)?.[part.step.step - 1] : undefined;
+        const op = panelOperation(questions, sameP);
+        const lines = op ? workedLines(op, 3) : [];
+        return {
+          slot: s.slot, items: [], label: op ? operationText(op) : undefined,
+          note: part?.unit === "B" ? "Unit B · new step" : "Unit A · new step",
+          methods: op ? [{ label: "Step by step", lines }] : [],
+          explain: step?.change ?? "Work one step at a time. Then check your answer.",
+        };
+      }
+      case "watch-one": {
+        const op = panelOperation(questions, sameP);
+        return { slot: s.slot, items: [], label: op ? operationText(op) : undefined, note: "Watch one worked out. Then finish two.", lines: op ? workedLines(op, 3) : [] };
+      }
+      case "reminder": {
+        const op = panelOperation(questions, sameP);
+        const step = part?.step ? curriculum.skillSteps(part.step.skill)?.[part.step.step - 1] : undefined;
+        return {
+          slot: s.slot, items: [], label: "Remember", note: "From before",
+          lines: op ? [`${operationText(op)} = [${valueText(operationResult(op))}]`] : [],
+          explain: step?.change ?? "Do it the same way as before. Check each answer.",
+        };
+      }
+      case "spot-the-error": {
+        const q = mine[0]?.package;
+        const shown = q?.item?.error?.answer;
+        return { slot: s.slot, items, who: "Sam", lines: q?.operation && shown ? [`${operationText(q.operation)} = [${valueText(shown)}]`] : [], ...withFigures };
+      }
+      case "practice-row":
+        return { slot: s.slot, items, label: ROW_LABELS[Math.min(row++, ROW_LABELS.length - 1)], ...withFigures };
+      case "finish-these":
+        return { slot: s.slot, items, hints: items.map(() => null), ...withFigures };
+      default:
+        return { slot: s.slot, items, ...withFigures };
+    }
+  });
+  const two = (n: number) => String(n).padStart(2, "0");
+  return {
+    kind: "day", id: pageId(o.child, o.workbook, `D${two(o.day)}·P${page.number}`), level: plan.level, day: o.day, page: page.number, pages,
+    ...layout.header, blocks,
+  };
+}
+
+// ---------- Book pages ----------
+
+/** Each day's row on the plan page: Unit A's topic and the line under it. */
+export function planRow(curriculum: Curriculum, plan: WorkbookPlan, day: number): { topic: string; second: string } {
+  const d = plan.days[day - 1];
+  const topicOf = (track: "A" | "B") => {
+    const part = d.pages.flatMap((p) => p.parts).find((p) => p.unit === track && p.step);
+    return part ? pageTopic(curriculum, part.step!.skill, part.step!.step) : null;
+  };
+  if (d.kind === "test") return { topic: "Level test", second: "Done alone, in one sitting" };
+  if (d.kind === "light") return { topic: "A light day", second: "Remember these? and a challenge" };
+  const a = topicOf("A");
+  const b = topicOf("B");
+  const second = day === 10 ? "Show what you know" : day === 5 ? "Friday 5" : b ?? (d.kind === "mixed" ? "Mixed practice" : "Remember these?");
+  return { topic: a ?? (d.kind === "mixed" ? "Mixed practice" : "Review"), second };
+}
+
+/** The content of a book page that is not a day page: the cover (1), How + Plan (2), the back cover and blanks. */
+export function bookPageContent(o: {
+  curriculum: Curriculum;
+  plan: WorkbookPlan;
+  child: string;
+  workbook: number;
+  type: "cover" | "how-plan" | "back-cover" | "blank";
+  number: number;
+}): PageContent {
+  const { curriculum, plan, child, workbook } = o;
+  const level = plan.level;
+  const id = (rest: string) => pageId(child, workbook, rest);
+  const pagesADay = Math.max(...plan.days.map((d) => d.pages.length));
+  switch (o.type) {
+    case "cover": {
+      const title = curriculum.level(`U${level}`)?.title ?? `Level U${level}`;
+      return {
+        kind: "cover", id: id("COVER"), level, child, workbook, levelTitle: title, title: coverTitleLines(title),
+        madeFrom: workbook === 1 ? "assessment" : "last-workbook", pagesADay, minutes: { ...plan.timeTarget },
+        sentence: workbook === 1
+          ? `${child}'s assessment showed what is secure and what to build next at Level U${level}. So this workbook:`
+          : `${child}'s last workbook showed which steps stuck and which need another go. So this workbook:`,
+        bullets: [
+          plan.testWorkbook ? "Checks the whole level with a test on Day 7" : "Builds the next steps of this level, one small step at a time",
+          "Shows each new idea with a worked example first",
+          "Brings back earlier skills every day, so they stay fresh",
+          workbook === 1 ? "Ends each week with five questions and no hints" : "Fixes last time's mistakes with new questions",
+        ],
+        parentLine: `This fortnight, ask ${child} to show you one worked example and explain it in their own words.`,
+      };
+    }
+    case "how-plan": {
+      let next = 3;
+      const rows = plan.days.map((d) => {
+        const pages: [number, number] = [next, next + d.pages.length - 1];
+        next += d.pages.length;
+        return { day: d.day, ...planRow(curriculum, plan, d.day), pages };
+      });
+      return { kind: "how-plan", id: id("HOW+PLAN"), level, child, workbook, pagesADay, minutes: { ...plan.timeTarget }, rows };
+    }
+    case "back-cover": return { kind: "back-cover", id: id("BACK"), level };
+    case "blank": return { kind: "blank", id: id(`BLANK·P${o.number}`), level };
+  }
+}

@@ -326,7 +326,7 @@ export function AdminWorkbookRun({ email, detail, now, only }: { email: string; 
       {(state === "preparing" || state === "waiting") && <p className="adm-note">This page updates every few seconds. You can leave it: the draft is made in the background.</p>}
 
       {detail.oldFormat !== null && (
-        <p className="adm-note" role="note"><Chip tone="muted">Old draft format</Chip> This draft was stored in an older format (version {detail.oldFormat}), before the page layouts, so its pages are not shown here. Prepare a new draft to review the pages.</p>
+        <p className="adm-note" role="note"><Chip tone="muted">Old draft format</Chip> This draft was stored in an older format (version {detail.oldFormat}), so its pages are not shown here. Prepare a new draft to review the pages.</p>
       )}
       {draft && counts && <>
         <h2>Check results</h2>

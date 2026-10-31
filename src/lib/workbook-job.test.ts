@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { fakeAiClient } from "@/lib/ai-client-fake";
+import { fakeWorkbookItems } from "@/lib/workbook-ai-fake";
 import type { ChildLearnerProfile } from "@/lib/child-profile";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
 import { curriculumFor } from "@/lib/workbook-curriculum";
@@ -20,26 +21,9 @@ const CHILD = "00000000-0000-4000-8000-0000000000c1";
 const PARENT = "00000000-0000-4000-8000-0000000000f1";
 const ADMIN = { id: "00000000-0000-4000-8000-0000000000ad", email: "admin@example.com" };
 
-const num = (value: number) => ({
-  type: "number", value, numerator: null, denominator: null, whole: null, unit: null, hours: null, minutes: null, period: null, parts: [], text: null,
-});
-const addOp = (a: number, b: number) => ({ kind: "add", operands: [num(a), num(b)], expression: null, unit: null, denominator: null, values: [] });
 
-/** A sound item for every slot asked: an addition with a carry, its wrong answers and an easier example. */
-function answer(r: AiJsonRequest) {
-  const asked = JSON.parse((r.content[0] as { text: string }).text) as { slots: { slot: string; skills: string[] }[] };
-  return {
-    items: asked.slots.map((s) => ({
-      slot: s.slot, skill: s.skills[0], difficulty: 2, text: "268 + 157 = ?", format: "write-number", operation: addOp(268, 157),
-      wrongAnswers: [
-        { value: num(315), cause: "O3", description: "Adds each column and forgets to carry.", step: "tens" },
-        { value: num(111), cause: "operation", description: "Takes away instead of adding.", step: null },
-      ],
-      easier: { text: "48 + 37 = ?", operation: addOp(48, 37) },
-      shownWrong: null,
-    })),
-  };
-}
+/** Sound items for every slot asked, in the format its place takes (the dev fake's items). */
+const answer = (r: AiJsonRequest) => fakeWorkbookItems(r);
 
 const child = (over: Partial<ChildInputs> = {}): ChildInputs => ({ parentId: PARENT, name: "Leah", grade: 3, province: "BC", profile: null, workbooks: [], ...over });
 
@@ -75,7 +59,7 @@ async function buildDraft(s: ReturnType<typeof setup>, key: string): Promise<Gen
   let made: GeneratedWorkbook | null = null;
   let n = 0;
   await generateWorkbook(
-    { workbookId: key, childId: CHILD, child: "Leah", number: 1, profileBuild: null, plan: plan.plan, curriculum: curriculumFor("bc")! },
+    { workbookId: key, childId: CHILD, book: { child: "Leah" }, number: 1, profileBuild: null, plan: plan.plan, curriculum: curriculumFor("bc")! },
     { ai: fakeAiClient({ answer }), fit: fits, qrToken: () => `local-token-${String(++n).padStart(8, "0")}`, store: { draft: async () => null, save: async (d) => { made = d; return { status: "saved", draftId: d.id }; } } },
   );
   return made!;
@@ -335,7 +319,8 @@ describe("stale runs", () => {
 
   it("never gives a question a third AI attempt when its page save fails after the second, and the job retries (R379-2-1)", async () => {
     // Slot 1.1 of every page fails the check, so each page uses its second attempt on it (the redo).
-    const bad = (sl: { slot: string; skills: string[] }) => ({ ...answer({ name: "x", system: "", content: [{ type: "text", text: JSON.stringify({ slots: [sl] }) }], schema: {} }).items[0], wrongAnswers: [{ value: num(425), cause: "O3", description: "Right by mistake.", step: null }] });
+    // An operation with no operands: code cannot build it, so the check fails.
+    const bad = (sl: { slot: string; skills: string[] }) => ({ slot: sl.slot, skill: sl.skills[0], difficulty: 2, text: "? + ? = ?", format: "write-number", operation: { kind: "add", operands: [], expression: null, unit: null, denominator: null, values: [] }, wrongAnswers: [], easier: null, shownWrong: null });
     const ai = fakeAiClient({
       answer: (r) => {
         const asked = JSON.parse((r.content[0] as { text: string }).text) as { slots: { slot: string; skills: string[] }[] };
@@ -369,6 +354,52 @@ describe("stale runs", () => {
     // The stored page and the draft show the true count.
     expect(s.runs.pageStore.get(id)!.get(first.number)!.questions.find((x) => x.slot === "1.1")!.attempts).toBe(2);
     expect(draft.pages[first.number - 1]).toEqual(s.runs.pageStore.get(id)!.get(first.number));
+  });
+
+  it("reads every attempt count past the database's row limit, page by page (R379-3-1)", async () => {
+    const s = setup();
+    // A store whose reads answer at most 1000 rows, as the database does.
+    const limited = memoryRunStore({ children: { [CHILD]: PARENT }, now: s.now, newId: s.deps.newId, drafts: s.drafts, rowLimit: 1000 });
+    const start = await startWorkbookRun(limited, CHILD, ADMIN);
+    const id = (start as { runId: string }).runId;
+    await limited.claim(id, "lease");
+    // 1,050 slots on 35 pages; the last slot (in order) has used both attempts.
+    for (let page = 3; page < 38; page++) {
+      const slots = Array.from({ length: 30 }, (_, k) => `1.${k + 1}`);
+      expect(await limited.useAttempts(id, "lease", page, slots)).toEqual({ refused: [] });
+    }
+    expect(await limited.useAttempts(id, "lease", 37, ["1.9"])).toEqual({ refused: [] });
+    const counts = await limited.attempts(id);
+    expect(counts.size).toBe(1050);
+    expect(counts.get("37:1.9")).toBe(2);
+  });
+
+  it("makes no AI call for a slot the store refuses, and stores it as failed with two attempts (R379-3-1)", async () => {
+    const s = setup();
+    s.deps.concurrency = 1;
+    const id = await started(s);
+    // Another reader missed these counts: the store still refuses the slot on page 3 that used both attempts.
+    const runs = s.runs;
+    const asked: string[] = [];
+    s.deps.ai = fakeAiClient({ answer: (r) => {
+      const req = JSON.parse((r.content[0] as { text: string }).text) as { slots: { slot: string }[] };
+      asked.push(...req.slots.map((x) => x.slot));
+      return answer(r);
+    } });
+    s.deps.runs = { ...runs, attempts: async () => new Map(), useAttempts: async (runId, lease, page, slots) => {
+      if (page === 3 && slots.includes("1.1")) {
+        const rest = slots.filter((x) => x !== "1.1");
+        const counted = await runs.useAttempts(runId, lease, page, rest);
+        return counted && { refused: ["1.1"] };
+      }
+      return runs.useAttempts(runId, lease, page, slots);
+    } };
+    expect(await runWorkbookJob(id, s.deps)).toBe("done");
+    const draft = (await s.drafts.draft((await s.runs.run(id))!.draftId!))!;
+    const q = draft.pages[2].questions.find((x) => x.slot === "1.1")!;
+    expect(q).toMatchObject({ attempts: 2, package: null, check: { status: "failed" } });
+    // Page 3 is the first page written: its first call asked for every slot but 1.1.
+    expect(asked.slice(0, draft.pages[2].questions.length - 1)).not.toContain("1.1");
   });
 
   it("reads as stopped when a running run has no progress for the stale time", () => {

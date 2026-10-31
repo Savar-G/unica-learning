@@ -2520,6 +2520,16 @@ export type Database = {
         Args: { p: string; token: string }
         Returns: boolean
       }
+      count_workbook_run_attempts: {
+        Args: {
+          p_lease: string
+          p_max: number
+          p_page: number
+          p_run: string
+          p_slots: string[]
+        }
+        Returns: Json
+      }
       create_family: {
         Args: {
           p_child_grade: number

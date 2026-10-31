@@ -4,7 +4,7 @@ import { readChildProfile } from "@/lib/child-profile";
 import { childProfileStore } from "@/lib/child-profile-store";
 import { toJson, type Database, type Tables } from "@/lib/database";
 import { draftProblem, GENERATED_DRAFT_VERSION } from "@/lib/workbook-generator";
-import type { WorkbookJobSource, WorkbookRun, WorkbookRunStore } from "@/lib/workbook-job";
+import { readPaged, SLOT_ATTEMPTS, type WorkbookJobSource, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
 
 // The runs' store (#312) in Supabase (migration add_workbook_runs), and the job's read of the child. Pass a client with
 // the secret key: the service role runs the run functions and the progress update; admins only read. The functions
@@ -55,11 +55,14 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
       return must(await admin.rpc("yield_workbook_run", { p_run: id, p_lease: lease }), "yield") === true;
     },
     async attempts(id) {
-      const rows = must(await admin.from("workbook_run_attempts").select("page, slot, attempts").eq("run_id", id).range(0, 9999), "attempts load") ?? [];
+      // Ordered and paged (R379-3-1): one request answers at most 1000 rows.
+      const rows = await readPaged(async (from, to) =>
+        must(await admin.from("workbook_run_attempts").select("page, slot, attempts").eq("run_id", id).order("page").order("slot").range(from, to), "attempts load") ?? []);
       return new Map(rows.map((r) => [`${r.page}:${r.slot}`, r.attempts]));
     },
     async useAttempts(id, lease, page, slots) {
-      return must(await admin.rpc("use_workbook_run_attempts", { p_run: id, p_lease: lease, p_page: page, p_slots: slots }), "attempts use") === true;
+      const answer = must(await admin.rpc("count_workbook_run_attempts", { p_run: id, p_lease: lease, p_page: page, p_slots: slots, p_max: SLOT_ATTEMPTS }), "attempts use") as { refused: string[] } | null;
+      return answer ? { refused: answer.refused } : null;
     },
     async pages(id) {
       const rows = must(await admin.from("workbook_run_pages").select("page").eq("run_id", id).order("number"), "pages load") ?? [];

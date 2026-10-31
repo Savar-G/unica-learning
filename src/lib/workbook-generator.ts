@@ -1,7 +1,8 @@
 // The workbook generator (#311, spec #296): a two-week plan (#308, src/lib/workbook-plan.ts) in, one coherent draft
 // workbook out, stored as one unit through the draft store. The plan fixes every page and part; the AI fills the
 // question slots of each page with content only (src/lib/workbook-generator-items.ts), one call per page; code
-// computes every answer and worked step, and the answer checker (#306, #307, #362) runs on every question.
+// computes every answer and worked step, and the answer checker (#306, #307, #362) runs on every question. The formats
+// with no operation (places, order, compare, sequence, count, pattern) and the pictures are #377.
 //
 // - One AI call per day page fills its slots. A question that fails the check (or that the AI left out) is written
 //   again once, in one call for the page's failed slots, with the reason; if it fails again it stays in the draft,
@@ -22,8 +23,8 @@ import type { QuestionPackage } from "@/lib/question-package";
 import { isQrToken, isUuid } from "@/lib/workbook-content";
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import { buildQuestion, ITEMS_SCHEMA, type BuiltQuestion, type QuestionCheck } from "@/lib/workbook-generator-items";
-import { coverContent, dayHeader, howPlanContent, PANEL_SLOTS, panelBlock, spotTheErrorLines } from "@/lib/workbook-book-content";
-import { headerGrowth, pageId, pageSlots, type Block, type DayContent, type DayHeader, type Omission, type PageContent, type SlotName } from "@/lib/workbook-page";
+import { bookPageContent, dayPageContent, layoutDayPage, SLOT_FORMATS, STRICT_SLOTS, type DayLayout } from "@/lib/workbook-book";
+import type { Omission, PageContent, SlotName } from "@/lib/workbook-page";
 import type { PageType, PlannedPage, PlannedPart, WorkbookPlan } from "@/lib/workbook-plan";
 import type { DraftPage } from "@/lib/workbook-render";
 
@@ -65,12 +66,12 @@ export type BookPageType = (typeof BOOK_PAGE_TYPES)[number];
 export interface GeneratedQuestion {
   /** From 1; restarts on each page. */
   number: number;
-  /** Its place in the page's layout: "<layout slot index>.<item index>", both from 1. */
+  /** The plan's slot: "<part index>.<item index>", both from 1. */
   slot: string;
-  /** The template slot it sits in (src/lib/workbook-page.ts). */
-  place: SlotName;
   /** The part of the day it fills. */
   part: PlannedPart["kind"];
+  /** The template slot it sits in ("now-you", "word-problems"), when the book is laid out for the templates (#363). */
+  place?: SlotName;
   check: QuestionCheck;
   /** Its AI attempts: 1, or 2 when it was written again (after a failed check or for a page retry). Never more. */
   attempts: 1 | 2;
@@ -98,10 +99,13 @@ export interface GeneratedPage {
    */
   attempts: 0 | 1 | 2;
   questions: GeneratedQuestion[];
-  /** What the page's template reads besides its questions: the header and the slots, or the cover and plan words. */
-  content: PageContent;
-  /** Planned items the page's layout left out, with why (pageSlots). */
-  omissions: Omission[];
+  /**
+   * What the template lays out (#363): the header, the slots with their question numbers, the panels and pictures.
+   * Set on every page when the book is laid out for the templates (GenerateInput.book); else absent.
+   */
+  content?: PageContent;
+  /** Planned items the page has no room for, with why (pageSlots); only on a laid-out day page that leaves some out. */
+  omissions?: Omission[];
 }
 
 export interface GeneratedWorkbook {
@@ -118,7 +122,7 @@ export interface GeneratedWorkbook {
 }
 
 /** The shape version of a stored GeneratedWorkbook. Raise it when the shape changes. */
-export const GENERATED_DRAFT_VERSION = 2;
+export const GENERATED_DRAFT_VERSION = 1;
 
 export type DraftSave = { status: "saved"; draftId: string } | { status: "refused"; reason: string };
 
@@ -161,11 +165,9 @@ export function draftProblem(d: GeneratedWorkbook): string | null {
 // ---------- Generating ----------
 
 export interface GenerateInput {
-  /** The new draft's id (a UUID), made by the caller. A resumed run passes the same id. */
+  /** The new draft's id (a UUID), made by the caller. */
   workbookId: string;
   childId: string;
-  /** The child's first name, as the cover and page IDs print it. */
-  child: string;
   /** The workbook's place in the child's sequence. */
   number: number;
   /** The child profile build the plan was made from, or null. */
@@ -173,11 +175,18 @@ export interface GenerateInput {
   plan: WorkbookPlan;
   /** The child's curriculum: what the AI is told about each skill and step. */
   curriculum: Curriculum;
+  /**
+   * Lay the book out for the real templates (#310, #363): each day page's questions fill the template's slots
+   * (pageSlots, so a page asks the AI for no more than it holds), every page gets its content, and the fit check reads
+   * it. `child` is the child's first name, as printed on the cover and in each page ID. Absent: the plan's parts give
+   * the slots and no page has content.
+   */
+  book?: { child: string };
 }
 
 /**
- * Where finished day pages are kept while a run works, so a run that stops (a time limit) resumes without writing them
- * again. `save` throws when the run may no longer write: the generation stops.
+ * Where finished day pages are kept while a run works (#312), so a run that stops (a time limit) resumes without
+ * writing them again. `save` throws when the run may no longer write: the generation stops.
  */
 export interface PageStore {
   /** The day pages already finished for this draft. */
@@ -186,14 +195,15 @@ export interface PageStore {
 }
 
 /**
- * The AI attempts each question slot has used, kept outside this call (R379-2-1): `use` records an attempt of each slot
- * before the AI call that makes it, so a later call that goes on after an error or a crash never gives a slot a third
- * attempt, even when its page was never stored. Keys are "<book page>:<slot>". `use` throws when the run may no
+ * The AI attempts each question slot has used, kept outside this call (#312, R379-2-1, R379-3-1). `use` asks to count
+ * one attempt of each slot before the AI call that makes it and answers the slots it refused (a slot that used both
+ * attempts); a refused slot is not asked. So a later call that goes on after an error or a crash never gives a slot a
+ * third attempt, even when its page was never stored. Keys are "<book page>:<slot>". `use` throws when the run may no
  * longer write: the generation stops.
  */
 export interface AttemptLedger {
   load(): Promise<Map<string, number>>;
-  use(page: number, slots: string[]): Promise<void>;
+  use(page: number, slots: string[]): Promise<{ refused: string[] }>;
 }
 
 export interface GenerateDeps {
@@ -204,41 +214,59 @@ export interface GenerateDeps {
   qrToken(): string;
   /** The time limit of one AI call; 3 minutes when not given. */
   timeLimitMs?: number;
-  /** Day pages written at the same time; 1 when not given. Each page keeps its own order of calls. */
-  concurrency?: number;
-  /** Finished pages kept for a resume; none when not given. */
-  pages?: PageStore;
-  /** The attempts used before this call; none when not given (every slot starts with two). */
-  attempts?: AttemptLedger;
-  /** Asked before each day page starts: true stops starting pages (the time budget); the result is "paused". */
-  stop?(): boolean;
   /** Called after each day page is done, with the pages done and the day pages in all. */
   progress?(done: number, total: number): void;
+  /** How many day pages are written at once; 1 when not given. The draft is the same in any order. */
+  concurrency?: number;
+  /** Finished pages kept for a resume (#312); none when not given. */
+  pages?: PageStore;
+  /** The attempts used before this call (#312); none when not given (every slot starts with two). */
+  attempts?: AttemptLedger;
+  /** Asked before each day page starts: true stops starting pages (a time budget); the result is "paused". */
+  stop?(): boolean;
 }
 
 export type GenerateResult =
   | { status: "stored"; draft: GeneratedWorkbook }
+  /** `stop` said to stop before every day page was done: call again with the same input and page store to go on. */
   | { status: "paused"; done: number; total: number }
   | { status: "refused"; reason: string };
 
 const TIME_LIMIT_MS = 180_000;
 
-/** A question slot of a day page: its template slot and the planned part it comes from. */
+/** A question slot of a day page: in a laid-out book, also its template slot and that slot's index in the layout. */
 interface Slot {
   id: string;
-  place: SlotName;
   part: PlannedPart;
+  place: SlotName | null;
+  layoutSlot: number;
+}
+
+const slotsOf = (page: PlannedPage): Slot[] =>
+  page.parts.flatMap((part, i) => Array.from({ length: part.items }, (_, j) => ({ id: `${i + 1}.${j + 1}`, part, place: null, layoutSlot: -1 })));
+
+/** The question slots of a laid-out page, in reading order: ids count each part's items across its template slots. */
+function layoutSlots(page: PlannedPage, layout: DayLayout): Slot[] {
+  const seen = new Map<number, number>();
+  return layout.slots.flatMap((x, k) => Array.from({ length: x.items }, () => {
+    const n = (seen.get(x.part) ?? 0) + 1;
+    seen.set(x.part, n);
+    return { id: `${x.part + 1}.${n}`, part: page.parts[x.part], place: x.slot, layoutSlot: k };
+  }));
 }
 
 const SYSTEM = [
   "You write the questions of one page of a printed math workbook for a child in British Columbia, Canada.",
   "Fill every slot listed, one item per slot, with the slot's id. Use only the skills the slot names.",
+  "A slot may name its place on the page (now-you, word-problems, mixed-set, ...) and the formats that place takes: use one of those formats.",
   "You write content only: the question text, the operation's numbers, expected wrong answers with their causes, an easier example of the same operation, and an item format from the list. The page's layout, fonts, sizes and positions are fixed by the template; never describe them.",
   "Never write the answer or the worked steps: code computes them from the operation. Give the operation as data: its kind and operands (numbers, fractions, amounts with units, clock times), or for evaluate and solve the expression.",
   "Each wrong answer is a mistake a child makes, with a short cause id (a misconception id such as O3 when the input names one, else a short word such as 'operation'), a plain description, and the worked step where it happens: a column's place ('ones', 'tens', 'hundreds') or null when it is not one step.",
-  "The easier example is the same operation kind with smaller numbers or fewer steps.",
-  "Formats: write-number (one answer box); show-work (answer box and work box: stories, challenges); two-ways (Solve it two ways: Method 1 and Method 2); tick-and-number (Mixed set: tick the operation, write the answer; +, −, × or ÷ only); spot-the-error (Sam's wrong work shows one of your wrong answers: give its index in shownWrong); written-reason (How do you know?; no operation, a parent checks it).",
-  "Each slot names its place on the page; use its format: how-do-you-know is written-reason; spot-the-error is spot-the-error; solve-it-two-ways is two-ways; mixed-set is tick-and-number; word-problems, picture-stories, challenge and math-in-the-world are show-work; every other place is write-number.",
+  "The easier example is the same operation kind with smaller numbers or fewer steps, and a different answer (never the question's answer, never the question with its numbers swapped).",
+  "Formats with an operation: write-number (one answer box); show-work (answer box and work box: stories, challenges); two-ways (Solve it two ways: Method 1 and Method 2); tick-and-number (Mixed set: tick the operation, write the answer; +, −, × or ÷ only); spot-the-error (Sam's wrong work shows one of your wrong answers: give its index in shownWrong); number-line (hop on a number line, then write where you land: + or − of whole numbers).",
+  "Formats with no operation (set operation, easier and wrongAnswers to null and empty; code computes every answer): places (one number in numbers; places lists the places to ask, or null for all: 'How many tens and ones?'); order (2 to 6 numbers in numbers, direction up or down); compare (two numbers in numbers: tick or circle <, > or =); sequence (sequence: the first number, the step, how many terms and which terms from 0 are blanks: missing numbers, skip-counting); count (the picture's counts in numbers, with a figure: 'How many dots?'); pattern (pattern: the core that repeats, how many shapes are shown, and which one from 0 is the blank: 'What comes next?').",
+  "Formats a parent checks: written-reason (How do you know?); draw (Draw 6 dots; make a set). No operation, no figure.",
+  "Pictures: figure names a picture kind (dots, ten-frame, number-line, base-ten, array) or null. Code draws it from the operation (dots for 3 + 4 are 3 and 4 dots; an array for 3 × 4) or from numbers (count: dots take each group, a ten-frame each part, base-ten the hundreds, tens and ones, an array the rows and columns); you never draw, size or place it. Picture stories below U10 should have dots or a ten-frame with small whole numbers.",
   "Keep to the part's kind: practice builds from easy to harder in small changes; Fix it uses new numbers on the skills listed, never a question named in 'avoid'; Friday 5, mini-tests and the level test have no hints.",
   "Copy: short plain sentences a child can read; Canadian English (Mom, metre, litre, colour); money in Canadian dollars and cents; never a school grade, a brand name, or a prompt to scan or call anyone; no last names.",
 ].join("\n");
@@ -276,7 +304,7 @@ function pageRequest(input: GenerateInput, day: number, page: PlannedPage, slots
     day,
     pageType: page.type,
     parts,
-    slots: slots.map((s) => ({ slot: s.id, place: s.place, part: s.part.kind, skills: s.part.skills })),
+    slots: slots.map((s) => ({ slot: s.id, part: s.part.kind, skills: s.part.skills, ...(s.place ? { place: s.place, formats: SLOT_FORMATS[s.place] ?? null } : {}) })),
     note,
   };
 }
@@ -303,57 +331,61 @@ async function callAi(deps: GenerateDeps, name: string, request: unknown): Promi
 interface PageWork {
   number: number;
   day: number;
-  /** The day's page count. */
-  pages: number;
   page: PlannedPage;
-  header: DayHeader;
-  /** The page's layout: its template slots in order, each with its part and items. */
-  layout: ReturnType<typeof pageSlots>;
   slots: Slot[];
+  layout: DayLayout | null;
 }
 
 /** Each question has at most this many AI attempts in all, across the question redo and the page retry. */
 const QUESTION_ATTEMPTS = 2;
 
 /** Writes the page's slots at `which` (indexes) in one AI call and builds each; never throws. */
+/** A question that used both AI attempts in an earlier try that stopped before its page was stored. */
+const EXHAUSTED: QuestionCheck = { status: "failed", reason: "it used both AI attempts in an earlier try that stopped before its page was stored" };
+const exhaustedBuild = (): BuiltQuestion => ({ check: EXHAUSTED, package: null, stepIds: [] });
+
 async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork, which: number[], note: string | null, name: string) {
-  const asked = which.map((i) => w.slots[i]);
-  // The attempt is counted before the call, so it stays counted whatever happens after (R379-2-1).
-  await deps.attempts?.use(w.number, asked.map((s) => s.id));
-  const out = await callAi(deps, name, pageRequest(input, w.day, w.page, asked, note));
+  // The attempt is counted before the call, so it stays counted whatever happens after (#312, R379-2-1); a slot the
+  // ledger refuses (both attempts used) is not asked (R379-3-1).
+  const refused = new Set((await deps.attempts?.use(w.number, which.map((i) => w.slots[i].id)))?.refused ?? []);
+  const asking = which.filter((i) => !refused.has(w.slots[i].id));
+  const out = asking.length > 0
+    ? await callAi(deps, name, pageRequest(input, w.day, w.page, asking.map((i) => w.slots[i]), note))
+    : { items: new Map<string, unknown>(), error: null };
   return which.map((i) => {
+    if (refused.has(w.slots[i].id)) return exhaustedBuild();
     const slot = w.slots[i];
     const b = buildQuestion(out.items.get(slot.id), {
       id: `${input.workbookId}:d${w.day}p${w.page.number}s${slot.id}`,
       workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: slot.part.skills,
     });
     if (out.error && !out.items.has(slot.id)) b.check = { status: "failed", reason: `the AI gave no answer: ${out.error}` };
+    // A slot with a layout of its own takes only its format: another would not lay out there.
+    const format = b.package?.item?.format;
+    if (slot.place && STRICT_SLOTS.includes(slot.place) && b.check.status !== "failed" && format && !SLOT_FORMATS[slot.place]?.includes(format)) {
+      b.check = { status: "failed", reason: `the ${slot.place} place takes the ${SLOT_FORMATS[slot.place]!.join(" or ")} format, not ${format}` };
+    }
     return b;
   });
 }
 
 const generated = (w: PageWork, i: number, b: BuiltQuestion, attempts: 1 | 2): GeneratedQuestion => ({
-  number: i + 1, slot: w.slots[i].id, place: w.slots[i].place, part: w.slots[i].part.kind, check: b.check, attempts, package: b.package,
-});
-
-/** A question whose two attempts were used by an earlier call that stopped before its page was stored. */
-const exhausted = (w: PageWork, i: number): GeneratedQuestion => ({
-  number: i + 1, slot: w.slots[i].id, place: w.slots[i].place, part: w.slots[i].part.kind, attempts: 2, package: null,
-  check: { status: "failed", reason: "it used both AI attempts in an earlier try that stopped before its page was stored" },
+  number: i + 1, slot: w.slots[i].id, part: w.slots[i].part.kind, ...(w.slots[i].place ? { place: w.slots[i].place! } : {}), check: b.check, attempts, package: b.package,
 });
 
 /**
  * The first pass at a page: the page call, then one redo call for its failed questions (their last attempt).
- * `spent(i)`: the attempts slot i used in earlier calls; a slot with none left is not asked again.
+ * `spent(i)`: the attempts slot i used in earlier calls (#312); a slot with none left is not asked again.
  */
 async function firstPass(input: GenerateInput, deps: GenerateDeps, w: PageWork, spent: (i: number) => number): Promise<GeneratedQuestion[]> {
   const all = w.slots.map((_, i) => i);
   const open = all.filter((i) => spent(i) < QUESTION_ATTEMPTS);
-  const questions = all.map((i) => exhausted(w, i));
+  const questions = all.map((i) => generated(w, i, exhaustedBuild(), 2));
   if (open.length === 0) return questions;
   const built = await writeSlots(input, deps, w, open, null, "workbook_page");
-  open.forEach((i, k) => { questions[i] = generated(w, i, built[k], (spent(i) + 1) as 1 | 2); });
-  const failedAt = open.map((_, k) => k).filter((k) => built[k].check.status === "failed" && spent(open[k]) + 1 < QUESTION_ATTEMPTS);
+  // A slot the ledger refused counts as both attempts used.
+  open.forEach((i, k) => { questions[i] = generated(w, i, built[k], built[k].check === EXHAUSTED ? 2 : (spent(i) + 1) as 1 | 2); });
+  const failedAt = open.map((_, k) => k).filter((k) => built[k].check.status === "failed" && built[k].check !== EXHAUSTED && spent(open[k]) + 1 < QUESTION_ATTEMPTS);
   const failed = failedAt.map((k) => open[k]);
   if (failed.length === 0) return questions;
   const note = failedAt.map((k) => {
@@ -382,59 +414,28 @@ async function pageRetry(input: GenerateInput, deps: GenerateDeps, w: PageWork, 
   return questions;
 }
 
-/** A day page's content: its header and its slots, with the questions that have a package, and code's panels. */
-function dayContent(input: GenerateInput, w: PageWork, questions: GeneratedQuestion[]): DayContent {
-  const blocks: Block[] = w.layout.slots.map((s, li) => {
-    const mine = questions.filter((q) => q.slot.startsWith(`${li + 1}.`) && q.package);
-    const part = w.page.parts[s.part];
-    if (PANEL_SLOTS.includes(s.slot)) {
-      // Worked from a checked question of the same part, else of the page.
-      const source = questions.find((q) => q.check.status === "checked" && q.package?.easierExample && w.page.parts.indexOf(w.slots[q.number - 1].part) === s.part)
-        ?? questions.find((q) => q.check.status === "checked" && q.package?.easierExample);
-      return { ...panelBlock(s.slot, source?.package ?? null, part?.unit ?? null), items: [] };
-    }
-    const block: Block = { slot: s.slot, items: mine.map((q) => q.number) };
-    if (s.slot === "spot-the-error" && mine[0]?.package) return { ...block, who: "Sam", lines: spotTheErrorLines(mine[0].package) };
-    return block;
+/** A laid-out day page's content for its questions; null when the book is not laid out. */
+function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuestion[]): PageContent | null {
+  if (!input.book || !w.layout) return null;
+  return dayPageContent({
+    curriculum: input.curriculum, plan: input.plan, day: w.day, page: w.page, layout: w.layout, child: input.book.child, workbook: input.number,
+    questions: questions.map((q) => ({ number: q.number, slot: w.slots[q.number - 1].layoutSlot, package: q.package })),
   });
-  return {
-    kind: "day", id: pageId(input.child, input.number, `D${String(w.day).padStart(2, "0")}·P${w.page.number}`), level: input.plan.level,
-    day: w.day, page: w.page.number, pages: w.pages, ...w.header, blocks,
-  };
 }
 
-const fitPage = (input: GenerateInput, w: PageWork, qrToken: string, questions: GeneratedQuestion[]): DraftPage => ({
+const fitPage = (w: PageWork, qrToken: string, questions: GeneratedQuestion[], content: PageContent | null): DraftPage => ({
   number: w.number,
   dayLabel: `Day ${w.day}`,
   type: w.page.type,
   qrToken,
   questions: questions.filter((q) => q.package).map((q) => ({ number: q.number, package: q.package! })),
-  content: dayContent(input, w, questions),
+  ...(content ? { content } : {}),
 });
 
-/** One day page, written, checked and fitted (see the header). Never throws but through the page store. */
-async function writePage(input: GenerateInput, deps: GenerateDeps, w: PageWork, qrToken: string, book: FitBook, spentBefore: Map<string, number>): Promise<GeneratedPage> {
-  const page = { number: w.number, type: w.page.type, dayLabel: `Day ${w.day}`, day: w.day, pageOfDay: w.page.number, qrToken, omissions: w.layout.omissions };
-  if (w.slots.length === 0) return { ...page, fit: { status: "not-needed" }, attempts: 0, questions: [], content: dayContent(input, w, []) };
-  let questions = await firstPass(input, deps, w, (i) => spentBefore.get(`${w.number}:${w.slots[i].id}`) ?? 0);
-  let fit = await deps.fit.fits(fitPage(input, w, qrToken, questions), book);
-  let attempts: 1 | 2 = 1;
-  if (!fit.ok) {
-    const note = `The last page did not fit its template: ${fit.problems.map((p) => (p.question ? `question ${p.question}: ` : "") + p.reason).join("; ")}. Write shorter text and smaller numbers so it fits.`;
-    const retried = await pageRetry(input, deps, w, questions, note);
-    if (retried) {
-      questions = retried;
-      fit = await deps.fit.fits(fitPage(input, w, qrToken, questions), book);
-      attempts = 2;
-    }
-  }
-  return { ...page, fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems }, attempts, questions, content: dayContent(input, w, questions) };
-}
-
 /**
- * Runs `run` on each item, at most `limit` at a time, in item order; stops taking items once `stop` says so. On the
- * first error no new item starts, and every item in flight settles before the error is thrown (R379-2), so nothing of
- * this call is still writing when its caller tries again.
+ * Runs `run` on the items, at most `limit` at once, in item order, and stops taking items once `stop` says so. On the
+ * first error no new item starts, and every item in flight settles before the error is thrown (#312, R379-2), so
+ * nothing of this call is still writing when its caller tries again.
  */
 async function pool<T>(items: T[], limit: number, run: (item: T) => Promise<void>, stop: () => boolean): Promise<void> {
   let next = 0;
@@ -454,77 +455,90 @@ async function pool<T>(items: T[], limit: number, run: (item: T) => Promise<void
 
 /**
  * Generates a draft from a plan and stores it as one unit. Refused, with nothing stored and no AI call, when the input
- * is not sound; refused after generation when the store refuses the draft. Day pages run `concurrency` at a time; each
- * finished page goes to the page store, and a page found there is not written again. "paused": `stop` said to stop
- * before every day page was done; call again with the same input and page store to go on.
+ * is not sound; refused after generation when the store refuses the draft.
  */
 export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps): Promise<GenerateResult> {
   if (!isUuid(input.workbookId)) return { status: "refused", reason: "the workbook id is not a UUID" };
   if (!isUuid(input.childId)) return { status: "refused", reason: "the child id is not a UUID" };
   if (input.plan.days.length === 0) return { status: "refused", reason: "the plan has no days" };
-  const level = input.plan.level;
 
   // The book's pages and their numbers, before any AI call: the cover, How + Plan, the days, the back cover, blanks.
   const work: PageWork[] = [];
   let number = 2;
-  const ranges: [number, number][] = [];
   for (const day of input.plan.days) {
-    ranges.push([number + 1, number + day.pages.length]);
     for (const page of day.pages) {
-      const header = dayHeader(input.curriculum, page, level);
-      const layout = pageSlots(page, level, { headerGrowth: headerGrowth(header, level, day.day, page.number, day.pages.length) });
-      const slots = layout.slots.flatMap((s, li) => (PANEL_SLOTS.includes(s.slot) ? [] : Array.from({ length: s.items }, (_, j) => ({ id: `${li + 1}.${j + 1}`, place: s.slot, part: page.parts[s.part] }))));
-      work.push({ number: ++number, day: day.day, pages: day.pages.length, page, header, layout, slots });
+      const layout = input.book ? layoutDayPage(input.curriculum, input.plan, day.day, page) : null;
+      work.push({ number: ++number, day: day.day, page, layout, slots: layout ? layoutSlots(page, layout) : slotsOf(page) });
     }
   }
   const backCover = number + 1;
   const total = Math.ceil(backCover / 4) * 4;
-  const book: FitBook = { id: input.workbookId, childId: input.childId, number: input.number, levels: [level], profileBuild: input.profileBuild };
-
+  // A resumed run (#312) keeps its stored pages and their tokens; a new token never repeats a kept one (a bounded
+  // number of tries; a maker that keeps repeating is caught by draftProblem).
   const kept = new Map((await deps.pages?.load() ?? []).map((p) => [p.number, p]));
   const spentBefore = await deps.attempts?.load() ?? new Map<string, number>();
   const used = new Set([...kept.values()].map((p) => p.qrToken));
-  // A new token never repeats a kept page's token (a bounded number of tries; a maker that keeps repeating is caught by draftProblem).
-  const token = (n: number) => kept.get(n)?.qrToken ?? (() => {
+  const tokens = Array.from({ length: total }, (_, i) => kept.get(i + 1)?.qrToken ?? (() => {
     let t = deps.qrToken();
     for (let tries = 0; used.has(t) && tries < 1000; tries++) t = deps.qrToken();
     used.add(t);
     return t;
-  })();
-  const tokens = Array.from({ length: total }, (_, i) => token(i + 1));
-  const facts = { curriculum: input.curriculum, plan: input.plan, child: input.child, number: input.number };
-  const plain = (n: number, type: BookPageType, content: PageContent): GeneratedPage => ({
-    number: n, type, dayLabel: null, day: null, pageOfDay: null, qrToken: tokens[n - 1], fit: { status: "not-needed" }, attempts: 0, questions: [], content, omissions: [],
-  });
+  })());
+  const book: FitBook = { id: input.workbookId, childId: input.childId, number: input.number, levels: [input.plan.level], profileBuild: input.profileBuild };
 
-  const done = new Map<number, GeneratedPage>();
-  for (const w of work) if (kept.has(w.number)) done.set(w.number, kept.get(w.number)!);
-  if (done.size > 0) deps.progress?.(done.size, work.length);
-  const todo = work.filter((w) => !done.has(w.number));
-  await pool(todo, deps.concurrency ?? 1, async (w) => {
-    const page = await writePage(input, deps, w, tokens[w.number - 1], book, spentBefore);
+  const plain = (n: number, type: BookPageType): GeneratedPage => ({
+    number: n, type, dayLabel: null, day: null, pageOfDay: null, qrToken: tokens[n - 1], fit: { status: "not-needed" }, attempts: 0, questions: [],
+    ...(input.book ? { content: bookPageContent({ curriculum: input.curriculum, plan: input.plan, child: input.book.child, workbook: input.number, type, number: n }) } : {}),
+  });
+  const finished = new Map<number, GeneratedPage>();
+  for (const w of work) if (kept.has(w.number)) finished.set(w.number, kept.get(w.number)!);
+  if (finished.size > 0) deps.progress?.(finished.size, work.length);
+  const writeDayPage = async (w: PageWork): Promise<GeneratedPage> => {
+    const qrToken = tokens[w.number - 1];
+    const page = { number: w.number, type: w.page.type, dayLabel: `Day ${w.day}`, day: w.day, pageOfDay: w.page.number, qrToken };
+    const laidOut = (questions: GeneratedQuestion[]) => {
+      const content = contentOf(input, w, questions);
+      return { ...(content ? { content } : {}), ...(w.layout?.omissions.length ? { omissions: w.layout.omissions } : {}) };
+    };
+    let result: GeneratedPage;
+    if (w.slots.length === 0) {
+      result = { ...page, fit: { status: "not-needed" }, attempts: 0, questions: [], ...laidOut([]) };
+    } else {
+      let questions = await firstPass(input, deps, w, (i) => spentBefore.get(`${w.number}:${w.slots[i].id}`) ?? 0);
+      let fit = await deps.fit.fits(fitPage(w, qrToken, questions, contentOf(input, w, questions)), book);
+      let attempts: 1 | 2 = 1;
+      if (!fit.ok) {
+        const note = `The last page did not fit its template: ${fit.problems.map((p) => (p.question ? `question ${p.question}: ` : "") + p.reason).join("; ")}. Write shorter text and smaller numbers so it fits.`;
+        const retried = await pageRetry(input, deps, w, questions, note);
+        if (retried) {
+          questions = retried;
+          fit = await deps.fit.fits(fitPage(w, qrToken, questions, contentOf(input, w, questions)), book);
+          attempts = 2;
+        }
+      }
+      result = { ...page, fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems }, attempts, questions, ...laidOut(questions) };
+    }
+    return result;
+  };
+  await pool(work.filter((w) => !finished.has(w.number)), deps.concurrency ?? 1, async (w) => {
+    const page = await writeDayPage(w);
     await deps.pages?.save(page);
-    done.set(w.number, page);
-    deps.progress?.(done.size, work.length);
+    finished.set(w.number, page);
+    deps.progress?.(finished.size, work.length);
   }, () => deps.stop?.() ?? false);
-  if (done.size < work.length) return { status: "paused", done: done.size, total: work.length };
-  // With a page store, the stored pages are the truth (R379-2): the draft is built from them, not from this call's own.
+  if (finished.size < work.length) return { status: "paused", done: finished.size, total: work.length };
+  // With a page store, the stored pages are the truth (#312, R379-2): the draft is built from them.
   if (deps.pages) {
     const stored = new Map((await deps.pages.load()).map((p) => [p.number, p]));
     for (const w of work) {
       const page = stored.get(w.number);
       if (!page) throw new Error(`day page ${w.number} is not stored`);
-      done.set(w.number, page);
+      finished.set(w.number, page);
     }
   }
-
-  const pages: GeneratedPage[] = [
-    plain(1, "cover", coverContent(facts)),
-    plain(2, "how-plan", howPlanContent(facts, ranges)),
-    ...work.map((w) => done.get(w.number)!),
-    plain(backCover, "back-cover", { kind: "back-cover", id: pageId(input.child, input.number, "BACK"), level }),
-  ];
-  for (let n = backCover + 1; n <= total; n++) pages.push(plain(n, "blank", { kind: "blank", id: pageId(input.child, input.number, `BLANK·P${n}`), level }));
+  const pages: GeneratedPage[] = [plain(1, "cover"), plain(2, "how-plan"), ...work.map((w) => finished.get(w.number)!)];
+  pages.push(plain(backCover, "back-cover"));
+  for (let n = backCover + 1; n <= total; n++) pages.push(plain(n, "blank"));
 
   const questions = pages.flatMap((p) => p.questions);
   const draft: GeneratedWorkbook = {

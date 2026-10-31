@@ -9,12 +9,14 @@ const num = (value: number) => ({
 });
 const addOp = (a: number, b: number) => ({ kind: "add", operands: [num(a), num(b)], expression: null, unit: null, denominator: null, values: [] });
 
-function items(r: AiJsonRequest) {
-  const asked = JSON.parse((r.content[0] as { text: string }).text) as { day: number; slots: { slot: string; place: string; skills: string[] }[] };
+/** Sound items for every slot a page request asks, in the format its place takes. */
+export function fakeWorkbookItems(r: AiJsonRequest) {
+  const asked = JSON.parse((r.content[0] as { text: string }).text) as { day?: number; slots: { slot: string; place?: string; skills: string[] }[] };
+  const day = asked.day ?? 1;
   return {
     items: asked.slots.map((s, i) => {
-      const a = 120 + ((asked.day * 37 + i * 53) % 700);
-      const b = 15 + ((asked.day * 11 + i * 29) % 180);
+      const a = 120 + ((day * 37 + i * 53) % 700);
+      const b = 15 + ((day * 11 + i * 29) % 180);
       if (s.place === "how-do-you-know") {
         return { slot: s.slot, skill: s.skills[0], difficulty: 1, text: "How do you know your answer to the last story is right?", format: "written-reason", operation: null, wrongAnswers: [], easier: null, shownWrong: null };
       }
@@ -42,7 +44,7 @@ export function workbookFakeAi(env: Record<string, string | undefined> = process
     model: "fake",
     answer: async (r) => {
       if (mode === "slow") await new Promise((done) => setTimeout(done, 1500));
-      return items(r);
+      return fakeWorkbookItems(r);
     },
   });
 }

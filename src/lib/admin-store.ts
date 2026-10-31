@@ -566,8 +566,14 @@ export interface RunListRow {
   oldFormat: boolean;
 }
 
-const DRAFT_COUNT_COLUMNS = "id, schema_version, pages, questions, failed, not_checked, failed_pages";
-type DraftCountRow = { id: string; schema_version: number; pages: number; questions: number; failed: number; not_checked: number; failed_pages: number };
+const DRAFT_COUNT_COLUMNS = "id, schema_version, pages, questions, failed, not_checked, failed_pages, cover:draft->pages->0->content";
+type DraftCountRow = { id: string; schema_version: number; pages: number; questions: number; failed: number; not_checked: number; failed_pages: number; cover: unknown };
+
+/**
+ * A draft this area cannot show: another shape version, or one made before the books were laid out for the templates
+ * (its pages have no content).
+ */
+const oldDraft = (version: number, cover: unknown) => version !== GENERATED_DRAFT_VERSION || cover === null || cover === undefined;
 const countsOf = (d: DraftCountRow): DraftCounts => ({ pages: d.pages, questions: d.questions, failed: d.failed, notChecked: d.not_checked, failedPages: d.failed_pages });
 
 async function runRows(a: AdminSession, runs: WorkbookRun[]): Promise<RunListRow[]> {
@@ -587,7 +593,7 @@ async function runRows(a: AdminSession, runs: WorkbookRun[]): Promise<RunListRow
     const p = run.draftId ? problems.get(run.draftId) : undefined;
     return {
       run, counts: d ? countsOf(d) : null, notRendered: p ? new Set(p.render_problems.map((x) => x.page)).size : null,
-      oldFormat: !!d && d.schema_version !== GENERATED_DRAFT_VERSION,
+      oldFormat: !!d && oldDraft(d.schema_version, d.cover),
     };
   });
 }
@@ -661,7 +667,7 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
       .then((r) => must<AuditEntry[]>(r, "workbook audit")),
   ]);
   // A draft of an older shape (before the page layouts) is shown as "old draft format", not read as this shape.
-  const oldFormat = draftRow && draftRow.schema_version !== GENERATED_DRAFT_VERSION ? draftRow.schema_version : null;
+  const oldFormat = draftRow && oldDraft(draftRow.schema_version, draftRow.draft.pages[0]?.content) ? draftRow.schema_version : null;
   const current = oldFormat === null ? draftRow : null;
   const paths = current ? revision?.rendering?.pages.map((p) => p.image.path) ?? [] : [];
   const signed = paths.length ? await a.db.storage.from(WORKBOOK_FILES_BUCKET).createSignedUrls(paths, WORKBOOK_URL_SECONDS) : { data: [], error: null };

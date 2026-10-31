@@ -38,7 +38,7 @@ interface Supported {
   difficulty: Difficulty;
   /** The worked step where each coded wrong answer's mistake happens; null when it is not one step. */
   steps: Partial<Record<MisconceptionId, string | null>>;
-  /** Easier examples in order of preference; the first whose ones differ from the question's is used. */
+  /** Easier examples in order of preference; the first whose ones and answer differ from the question's is used. */
   easier: readonly [number, number][];
 }
 
@@ -84,7 +84,9 @@ export function assessmentQuestionPackage(ref: AssessmentQuestionRef, question: 
     wrongAnswers.push({ value: { type: "number", value: Number(w.value) }, cause: w.misconception, description: MISCONCEPTIONS[w.misconception].description, step });
   }
 
-  const pair = known.easier.find((p) => ones(p) !== ones(operands)) ?? known.easier[0];
+  // Never an easier example with the question's answer: it would give the answer away (review R378-1).
+  const otherAnswer = (p: readonly [number, number]) => !sameValue(operationResult({ kind: known.kind, operands: [...p] }), answer);
+  const pair = known.easier.find((p) => ones(p) !== ones(operands) && otherAnswer(p)) ?? known.easier.find(otherAnswer) ?? known.easier[0];
   const easier: Operation = { kind: known.kind, operands: [...pair] };
   const candidate: QuestionPackage = {
     id: `${ref.assessmentId}:${ref.questionId}`,

@@ -436,8 +436,9 @@ describe.each(Object.entries(CASES))("generated %s problems", (kind, c) => {
       if (operationProblem(op) !== null) continue;
       const p = packageFor(op, c.easier);
       const check = checkQuestionPackage(p);
-      // The size rule of the easier example is not what this test checks; a problem as small as the easier one is skipped.
-      if (!check.ok && check.reason === "the easier example is not smaller than the question") continue;
+      // The easier example's rules are not what this test checks: a problem as small as the easier one, or with its
+      // answer, is skipped.
+      if (!check.ok && (check.reason === "the easier example is not smaller than the question" || check.reason === "the easier example has the question's answer")) continue;
       found++;
 
       const result = operationResult(op);

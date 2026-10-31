@@ -470,6 +470,8 @@ export type Statement =
  * - sequence: the terms go up (or down) by `step` each time; each box holds its term (missing numbers).
  * - compare: the choice is <, > or = between `left` and `right`.
  * - yes-no: the choice is `yes` when the statement is true, else `no`.
+ * - count: the box holds the number the item's figure shows (dots, a ten-frame, base-ten blocks or an array).
+ * - pattern: the choice is the shape in the blank of the item's pattern figure.
  */
 export type ItemCheck =
   | { kind: "operation"; region: string }
@@ -479,7 +481,32 @@ export type ItemCheck =
   | { kind: "equations"; equations: Equation[]; different: boolean; numbers: "any" | "whole" | "counting" }
   | { kind: "sequence"; terms: Term[]; step: NumberValue }
   | { kind: "compare"; left: NumberValue; right: NumberValue; region: string }
-  | { kind: "yes-no"; statement: Statement; region: string; yes: string; no: string };
+  | { kind: "yes-no"; statement: Statement; region: string; yes: string; no: string }
+  | { kind: "count"; region: string }
+  | { kind: "pattern"; region: string };
+
+/** The shapes a pattern figure draws. */
+export const PATTERN_SHAPES = ["circle", "square", "triangle", "star", "heart", "diamond"] as const;
+export type PatternShape = (typeof PATTERN_SHAPES)[number];
+
+/**
+ * A picture the child reads, drawn by code from these numbers (DESIGN.md section 4, visual models), never an image and
+ * never a place to write: the renderer sets its size and place. It is content, so the checker checks it agrees with the
+ * question (or the count or pattern check reads it).
+ * - dots: groups of counters, the last `takenAway` of them crossed out (a picture story's 3 and 4, or 7 take away 2).
+ * - ten-frame: one or two ten-frames filled with counters of one colour for each part (7 and 5).
+ * - number-line: whole numbers from `from` to `to`, a tick every `step`.
+ * - base-ten: hundreds flats, tens rods and ones cubes.
+ * - array: rows and columns of squares.
+ * - pattern: `core` repeated over `length` shapes, the shape at `blank` (from 0) left empty for the child.
+ */
+export type Figure =
+  | { kind: "dots"; groups: number[]; takenAway: number }
+  | { kind: "ten-frame"; counters: number[] }
+  | { kind: "number-line"; from: number; to: number; step: number }
+  | { kind: "base-ten"; hundreds: number; tens: number; ones: number }
+  | { kind: "array"; rows: number; columns: number }
+  | { kind: "pattern"; core: PatternShape[]; length: number; blank: number };
 
 /** The wrong worked solution of a spot-the-error item: a wrong answer of the package and the step of its mistake. */
 export interface ShownError {
@@ -501,6 +528,8 @@ export interface Item {
   checks: ItemCheck[];
   /** The wrong worked solution: required for a spot-the-error item with an operation, else null. */
   error: ShownError | null;
+  /** The picture the child reads, drawn by code; absent or null: none (every item before #377 has none). */
+  figure?: Figure | null;
 }
 
 /** Why a question has no trusted package. */
@@ -714,24 +743,37 @@ function amountProblem(value: AnswerValue, exact: AnswerValue, unit: Unit | null
   return sameSize(given, target) ? null : "is not what its operation gives";
 }
 
-/** How big an operation is: the digits it is written with, then its count of worked steps, then its carries. */
+/**
+ * How big an operation is: the digits it is written with, then its count of worked steps, then its carries, then (for
+ * whole numbers) its numbers.
+ */
 interface Size {
   digits: number;
   steps: number;
   carries: number;
+  /** The numbers of a whole-number +, −, × or ÷, from least to greatest; null for any other kind. */
+  numbers: number[] | null;
 }
 /** A step that carries, regroups or changes the hours of a clock time: the harder part of a method. */
 const carries = (s: WorkedStep) => ((s.kind === "add-column" || s.kind === "multiply-digit") && s.carryOut > 0)
   || (s.kind === "subtract-column" && s.regrouped) || (s.kind === "clock-change" && s.from.hours !== s.to.hours);
+const WHOLE_KINDS: readonly string[] = ["add", "subtract", "multiply", "divide"];
 function size(operation: Operation): Size {
   const steps = workedSteps(operation);
-  return { digits: (operationText(operation).match(/\d/g) ?? []).length, steps: steps.length, carries: steps.filter(carries).length };
+  const numbers = WHOLE_KINDS.includes(operation.kind) ? [...(operation.operands as number[])].sort((x, y) => x - y) : null;
+  return { digits: (operationText(operation).match(/\d/g) ?? []).length, steps: steps.length, carries: steps.filter(carries).length, numbers };
 }
 /**
  * An easier example has fewer digits, or as many digits and fewer steps (1/5 + 2/5 is easier than 2/3 + 3/4), or as many
- * of both and fewer carries ($1.20 + $0.30 is easier than $4.75 + $2.50: every dollar amount is written to the cent).
+ * of both and fewer carries ($1.20 + $0.30 is easier than $4.75 + $2.50: every dollar amount is written to the cent), or
+ * as many of all three and smaller whole numbers: each no larger, one smaller, from least to greatest (#377: a one-digit
+ * picture story such as 3 + 4 has no example with fewer digits, steps or carries, but 2 + 1 is easier; 38 + 45 is not
+ * easier than 48 + 37).
  */
-const smaller = (a: Size, b: Size) => a.digits < b.digits || (a.digits === b.digits && (a.steps < b.steps || (a.steps === b.steps && a.carries < b.carries)));
+const fewer = (a: number[] | null, b: number[] | null) =>
+  a !== null && b !== null && a.length === b.length && a.every((x, i) => x <= b[i]) && a.some((x, i) => x < b[i]);
+const smaller = (a: Size, b: Size) => a.digits < b.digits || (a.digits === b.digits && (a.steps < b.steps || (a.steps === b.steps
+  && (a.carries < b.carries || (a.carries === b.carries && fewer(a.numbers, b.numbers))))));
 
 type Problem = ItemProblem;
 const failed = (reason: string | null): Problem | null => (reason ? { status: "failed", reason } : null);
@@ -845,6 +887,11 @@ function contentProblem(p: Record<string, unknown>): string | null {
   if (!isObject(easier.operation) || easier.operation.kind !== target.kind) return "the easier example is not the same operation";
   const easierWork = partProblem(easier.operation, easier.answer, easier.steps, "the easier example");
   if (easierWork) return easierWork;
+  // An easier example that comes to the question's answer, in any form, gives the answer away (review R378-1).
+  const easierAnswer = easier.answer as AnswerValue;
+  if (rightForms.some((r) => equivalent(r, easierAnswer)) || isRight(easierAnswer, rightForms, exact, rules.sameNumberWrong, rules.answer === "amount" ? rules.unit(target) : undefined)) {
+    return "the easier example has the question's answer";
+  }
   if (!smaller(size(easier.operation as Operation), size(target))) return "the easier example is not smaller than the question";
   return null;
 }

@@ -29,7 +29,7 @@ function plan(): WorkbookPlan {
 const PLAN = plan();
 const DAY_PAGES = PLAN.days.flatMap((d) => d.pages);
 
-const input = { workbookId: WORKBOOK, childId: CHILD, child: "Leah", number: 1, profileBuild: null, plan: PLAN, curriculum: BC };
+const input = { workbookId: WORKBOOK, childId: CHILD, number: 1, profileBuild: null, plan: PLAN, curriculum: BC };
 
 const num = (value: number) => ({
   type: "number", value, numerator: null, denominator: null, whole: null, unit: null, hours: null, minutes: null, period: null, parts: [], text: null,
@@ -97,27 +97,16 @@ describe("a full draft", () => {
     expect(dayPages.map((p) => p.dayLabel)).toEqual(PLAN.days.flatMap((day) => day.pages.map(() => `Day ${day.day}`)));
     expect(new Set(draft.pages.map((p) => p.qrToken)).size).toBe(n);
 
-    for (const page of dayPages) {
-      // The page's layout (the template's slots, pageSlots) decides how many questions it holds.
-      const content = page.content;
-      if (content.kind !== "day") throw new Error(`page ${page.number} has no day content`);
-      const slots = content.blocks.reduce((n, b) => n + b.items.length, 0);
-      expect(slots).toBeGreaterThan(0);
+    for (const [i, page] of dayPages.entries()) {
+      const slots = DAY_PAGES[i].parts.reduce((s, part) => s + part.items, 0);
       expect(page.questions.map((q) => q.number)).toEqual(Array.from({ length: slots }, (_, j) => j + 1));
-      // Every question sits in one block, in order, and the header and page ID are code's.
-      expect(content.blocks.flatMap((b) => b.items)).toEqual(page.questions.map((q) => q.number));
-      expect(content.id).toBe(`UL·LEAH·W01·D${String(page.day).padStart(2, "0")}·P${page.pageOfDay}`);
-      expect(content.title.length).toBeGreaterThan(0);
       for (const q of page.questions) {
         expect(q.check).toEqual({ status: "checked" });
         expect(q.package!.ref).toEqual({ source: "workbook", workbookId: WORKBOOK, page: page.number, question: q.number });
       }
     }
     expect(draft.counts).toMatchObject({ pages: n, failed: 0, notChecked: 0, failedPages: 0 });
-    expect(draft.counts.questions).toBe(draft.pages.reduce((s, p) => s + p.questions.length, 0));
-    // Planned items a page's layout leaves out are kept on the page with why, never dropped silently.
-    const planned = DAY_PAGES.reduce((s, p) => s + p.parts.reduce((t, part) => t + part.items, 0), 0);
-    expect(draft.pages.some((p) => p.omissions.length > 0) || draft.counts.questions >= planned).toBe(true);
+    expect(draft.counts.questions).toBe(DAY_PAGES.reduce((s, p) => s + p.parts.reduce((t, part) => t + part.items, 0), 0));
     expect(draft.counts.questions).toBeGreaterThan(0);
   });
 

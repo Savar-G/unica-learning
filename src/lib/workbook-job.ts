@@ -140,8 +140,11 @@ export interface WorkbookRunStore {
   pages(runId: string): Promise<GeneratedPage[]>;
   /** The AI attempts each question slot of the run used, by "<book page>:<slot>". */
   attempts(runId: string): Promise<Map<string, number>>;
-  /** Counts one AI attempt of each slot, before the call (R379-2-1); false (nothing counted) when the lease is lost. */
-  useAttempts(runId: string, lease: string, page: number, slots: string[]): Promise<boolean>;
+  /**
+   * Counts one AI attempt of each slot, before the call (R379-2-1), refusing a slot that used both (R379-3-1): the
+   * refused slots, or null (nothing counted) when the lease is lost.
+   */
+  useAttempts(runId: string, lease: string, page: number, slots: string[]): Promise<{ refused: string[] } | null>;
   /** Stores a finished day page (the first stored wins), with a heartbeat. */
   savePage(runId: string, lease: string, page: GeneratedPage): Promise<boolean>;
   /** Keeps the attempt's error and starts the next attempt; false too when no attempt is left. */
@@ -201,6 +204,24 @@ export interface WorkbookJobDeps {
 }
 
 export type JobOutcome = "done" | "failed" | "stale" | "handed-on" | "not-claimed";
+
+/** The AI attempts a question slot may use: the generator's rule, which the runs' store enforces too. */
+export const SLOT_ATTEMPTS = 2;
+/** Rows a paged read asks for at a time: the database answers at most 1000 rows a request. */
+export const READ_PAGE = 1000;
+
+/**
+ * Every row of an ordered read, page by page (R379-3-1): one request returns at most `size` rows (the server's row
+ * limit), so it reads until a page comes back short.
+ */
+export async function readPaged<T>(page: (from: number, to: number) => Promise<T[]>, size = READ_PAGE): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += size) {
+    const rows = await page(from, from + size - 1);
+    out.push(...rows);
+    if (rows.length < size) return out;
+  }
+}
 
 /** Starts a run for the child with the job's limits. */
 export const startWorkbookRun = (runs: WorkbookRunStore, childId: string, by: RunActor) =>
@@ -414,10 +435,12 @@ async function write(
   const attempts: AttemptLedger = {
     load: () => deps.runs.attempts(run.id),
     async use(page, slots) {
-      if (isLost() || !(await deps.runs.useAttempts(run.id, lease, page, slots))) {
+      const counted = isLost() ? null : await deps.runs.useAttempts(run.id, lease, page, slots);
+      if (!counted) {
         setLost(true);
         throw new Stopped("the run was taken up by another call");
       }
+      return counted;
     },
   };
   const pages: PageStore = {
@@ -431,7 +454,7 @@ async function write(
   };
   const result = await generateWorkbook(
     {
-      workbookId: run.draftKey, childId: run.childId, child: inputs.name, number: run.number,
+      workbookId: run.draftKey, childId: run.childId, book: { child: inputs.name }, number: run.number,
       profileBuild: inputs.profile ? `child profile revision ${inputs.profile.revision}` : null,
       plan: planned.plan, curriculum,
     },

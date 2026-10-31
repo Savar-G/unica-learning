@@ -5,7 +5,7 @@
 // each child's stored workbook numbers; `now` is the clock.
 import type { RenderProblem } from "@/lib/workbook-render";
 import { draftProblem, type GeneratedPage, type WorkbookDraftStore } from "@/lib/workbook-generator";
-import type { DraftRendering, RunActor, WorkbookRun, WorkbookRunStore } from "@/lib/workbook-job";
+import { READ_PAGE, readPaged, SLOT_ATTEMPTS, type DraftRendering, type RunActor, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
 
 export interface MemoryAudit {
   at: string;
@@ -24,7 +24,11 @@ export interface MemoryRevision {
   problems: RenderProblem[];
 }
 
-export function memoryRunStore(o: { children: Record<string, string>; workbooks?: Record<string, number[]>; now: () => Date; newId: () => string; drafts: WorkbookDraftStore }) {
+export function memoryRunStore(o: {
+  children: Record<string, string>; workbooks?: Record<string, number[]>; now: () => Date; newId: () => string; drafts: WorkbookDraftStore;
+  /** The most rows one read answers, as the database's row limit: reads page through it like the Supabase adapter. */
+  rowLimit?: number;
+}) {
   const runs = new Map<string, WorkbookRun & { lease: string | null }>();
   const pages = new Map<string, Map<number, GeneratedPage>>();
   const attempts = new Map<string, Map<string, number>>();
@@ -86,16 +90,20 @@ export function memoryRunStore(o: { children: Record<string, string>; workbooks?
       return true;
     },
     async attempts(id) {
-      return new Map(attempts.get(id) ?? []);
+      // Ordered rows, read a page at a time: a request answers at most rowLimit rows (the database's limit).
+      const rows = [...(attempts.get(id) ?? [])].sort(([a], [b]) => a.localeCompare(b));
+      const limit = o.rowLimit ?? READ_PAGE;
+      return new Map(await readPaged(async (from, to) => rows.slice(from, Math.min(to + 1, from + limit)), limit));
     },
     async useAttempts(id, lease, page, slots) {
       const r = holding(id, lease);
-      if (!r) return false;
+      if (!r) return null;
       if (!attempts.has(id)) attempts.set(id, new Map());
       const counts = attempts.get(id)!;
-      for (const slot of slots) counts.set(`${page}:${slot}`, (counts.get(`${page}:${slot}`) ?? 0) + 1);
+      const refused = slots.filter((slot) => (counts.get(`${page}:${slot}`) ?? 0) >= SLOT_ATTEMPTS);
+      for (const slot of slots) if (!refused.includes(slot)) counts.set(`${page}:${slot}`, (counts.get(`${page}:${slot}`) ?? 0) + 1);
       r.heartbeatAt = iso();
-      return true;
+      return { refused };
     },
     async pages(id) {
       return [...(pages.get(id)?.values() ?? [])].map((p) => structuredClone(p));

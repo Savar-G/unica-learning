@@ -10,6 +10,7 @@ import type {
   AnswerRegion,
   AnswerValue,
   Equation,
+  Figure,
   Item,
   ItemCheck,
   ItemFormat,
@@ -22,6 +23,7 @@ import type {
   Term,
   WrongAnswer,
 } from "@/lib/question-package";
+import { PATTERN_SHAPES } from "@/lib/question-package";
 import {
   beyond,
   decimalDigits,
@@ -213,11 +215,12 @@ const equationTerms = (e: Equation): Term[] => [e.left, e.right, e.result];
 type Box = Extract<AnswerRegion, { kind: "box" }>;
 type Choice = Extract<AnswerRegion, { kind: "choice" }>;
 
-/** What a check reads besides itself: the item's regions, the package's operation and the item's shown error. */
+/** What a check reads besides itself: the item's regions, the package's operation, the shown error and the figure. */
 interface CheckInput {
   regions: Map<string, AnswerRegion>;
   ctx: ItemContext;
   error: ShownError | null;
+  figure: Figure | null;
 }
 
 interface CheckRule<C extends ItemCheck> {
@@ -313,6 +316,31 @@ function statementProblem(s: unknown, ctx: ItemContext): string | null {
 }
 
 const RULES: { [K in ItemCheck["kind"]]: CheckRule<Extract<ItemCheck, { kind: K }>> } = {
+  count: {
+    region: "box",
+    shape: oneRegion,
+    regions: (c) => [c.region],
+    verify: (c, read) => {
+      const shown = read.figure ? figureCount(read.figure) : null;
+      if (shown === null) return fail("a count check needs a figure of dots, a ten-frame, base-ten blocks or an array");
+      const v = boxNumber(read, c.region);
+      if (isProblem(v)) return v;
+      return same(v, [BigInt(shown), ONE]) ? null : fail(`the region "${c.region}" holds ${valueText(boxAnswer(read, c.region))}, but the picture shows ${shown}`);
+    },
+  },
+
+  pattern: {
+    region: "choice",
+    shape: oneRegion,
+    regions: (c) => [c.region],
+    verify: (c, read) => {
+      const f = read.figure;
+      if (f?.kind !== "pattern") return fail("a pattern check needs a pattern figure");
+      const shape = f.core[f.blank % f.core.length];
+      return signProblem(c.region, choiceOf(read, c.region), shape, "the shape in the blank");
+    },
+  },
+
   operation: {
     region: "box",
     shape: oneRegion,
@@ -504,6 +532,160 @@ const RULES: { [K in ItemCheck["kind"]]: CheckRule<Extract<ItemCheck, { kind: K 
   },
 };
 
+// ---------- Figures ----------
+
+const isWholeIn = (v: unknown, least: number, most: number): v is number => Number.isSafeInteger(v) && (v as number) >= least && (v as number) <= most;
+const isCounts = (v: unknown, least: number, most: number, each: number): v is number[] =>
+  Array.isArray(v) && v.length >= least && v.length <= most && v.every((n) => isWholeIn(n, 0, each));
+const sum = (ns: number[]) => ns.reduce((s, n) => s + n, 0);
+
+/**
+ * What is wrong with a figure's shape, or null. Sizes are bounded so the renderer can always draw it. A figure of things
+ * to count (dots, a ten-frame, base-ten blocks) may show none: "How many? 0" is an early-level item. An array has at
+ * least one row and one column.
+ */
+function figureProblem(f: unknown): string | null {
+  if (!isObject(f)) return "the figure is not an object";
+  switch (f.kind) {
+    case "dots":
+      if (!isCounts(f.groups, 1, 3, 20) || sum(f.groups) > 30) return "a dots figure needs 1 to 3 groups of 0 to 20 dots, 0 to 30 in all";
+      return isWholeIn(f.takenAway, 0, sum(f.groups)) ? null : "a dots figure crosses out 0 to all of its dots";
+    case "ten-frame":
+      return isCounts(f.counters, 1, 2, 20) && sum(f.counters) <= 20 ? null : "a ten-frame figure needs 1 or 2 parts of counters, 0 to 20 in all";
+    case "number-line": {
+      if (!isWholeIn(f.from, 0, 10000) || !isWholeIn(f.to, 0, 10000) || !isWholeIn(f.step, 1, 1000)) return "a number line needs whole numbers from, to and a step from 1";
+      const ticks = (f.to - f.from) / f.step;
+      return Number.isInteger(ticks) && ticks >= 1 && ticks <= 20 ? null : "a number line needs 1 to 20 equal steps from its start to its end";
+    }
+    case "base-ten":
+      return isWholeIn(f.hundreds, 0, 9) && isWholeIn(f.tens, 0, 20) && isWholeIn(f.ones, 0, 20)
+        ? null : "base-ten blocks need 0 to 9 hundreds and 0 to 20 tens and ones";
+    case "array":
+      return isWholeIn(f.rows, 1, 10) && isWholeIn(f.columns, 1, 10) ? null : "an array needs 1 to 10 rows and columns";
+    case "pattern": {
+      const shapes: readonly unknown[] = PATTERN_SHAPES;
+      if (!Array.isArray(f.core) || f.core.length < 2 || f.core.length > 4 || !f.core.every((x) => shapes.includes(x))) return "a pattern needs a core of 2 to 4 known shapes";
+      if (new Set(f.core).size < 2) return "a pattern's core needs two different shapes";
+      if (!isWholeIn(f.length, f.core.length * 2, 12)) return "a pattern shows its core at least twice, and at most 12 shapes";
+      return isWholeIn(f.blank, 0, f.length - 1) ? null : "a pattern's blank is not one of its shapes";
+    }
+    default:
+      return "the figure has an unknown kind";
+  }
+}
+
+/** The number a figure shows when the child counts it, or null for a number line or a pattern. */
+export function figureCount(f: Figure): number | null {
+  switch (f.kind) {
+    case "dots":
+      return sum(f.groups) - f.takenAway;
+    case "ten-frame":
+      return sum(f.counters);
+    case "base-ten":
+      return f.hundreds * 100 + f.tens * 10 + f.ones;
+    case "array":
+      return f.rows * f.columns;
+    default:
+      return null;
+  }
+}
+
+/** The figure's text for the reasons. */
+function figureText(f: Figure): string {
+  switch (f.kind) {
+    case "dots":
+      return `dots ${f.groups.join(" and ")}${f.takenAway ? `, ${f.takenAway} crossed out` : ""}`;
+    case "ten-frame":
+      return `a ten-frame of ${f.counters.join(" and ")}`;
+    case "number-line":
+      return `a number line from ${f.from} to ${f.to}`;
+    case "base-ten":
+      return `${f.hundreds} hundreds, ${f.tens} tens and ${f.ones} ones`;
+    case "array":
+      return `${f.rows} rows of ${f.columns}`;
+    case "pattern":
+      return "a pattern";
+  }
+}
+
+/** The whole numbers a list of values is, or null when one is not a whole number from 0. */
+function wholes(values: AnswerValue[], ctx: ItemContext): number[] | null {
+  const out: number[] = [];
+  for (const v of values) {
+    const r = ctx.number(v);
+    if (!r || r[1] !== ONE || r[0] < ZERO || r[0] > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+    out.push(Number(r[0]));
+  }
+  return out;
+}
+
+const sameList = (a: number[], b: number[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+/**
+ * Whether the figure agrees with the question: what code reads it against (the operation's numbers, the places number,
+ * the compared, ordered or sequence numbers) must be what it shows. A count or pattern check reads the figure itself.
+ * Failed when code knows how the figure shows the question and it does not; unsupported when code cannot tell.
+ */
+function figureAgreement(f: Figure, checks: ItemCheck[], read: CheckInput): ItemProblem | null {
+  if (checks.some((c) => c.kind === "count" || c.kind === "pattern")) return null;
+  if (f.kind === "pattern") return fail("a pattern figure needs a pattern check");
+  const { ctx } = read;
+  const unclear = beyond(`code cannot tell whether ${figureText(f)} shows the question`);
+  const differs = (what: string) => fail(`the picture shows ${figureText(f)}, not ${what}`);
+  const onLine = (ns: number[] | null, what: string) => {
+    if (!ns) return unclear;
+    return f.kind === "number-line" && ns.every((n) => n >= f.from && n <= f.to) ? null : differs(what);
+  };
+  const computed = ctx.computed;
+  if (computed) {
+    const op = computed.operation;
+    if (op.kind !== "add" && op.kind !== "subtract" && op.kind !== "multiply") return unclear;
+    const [a, b] = op.operands;
+    const answer = wholes([computed.answer], ctx)?.[0];
+    const what = `${a} ${op.kind === "add" ? "+" : op.kind === "subtract" ? "−" : "×"} ${b}`;
+    switch (f.kind) {
+      case "dots":
+        if (op.kind === "add") return sameList(f.groups, [a, b]) && f.takenAway === 0 ? null : differs(what);
+        if (op.kind === "subtract") return sameList(f.groups, [a]) && f.takenAway === b ? null : differs(what);
+        return f.groups.length === a && f.groups.every((g) => g === b) && f.takenAway === 0 ? null : differs(what);
+      case "ten-frame":
+        if (op.kind === "add") return sameList(f.counters, [a, b]) ? null : differs(what);
+        return op.kind === "subtract" && sameList(f.counters, [a]) ? null : differs(what);
+      case "array":
+        return op.kind === "multiply" && f.rows === a && f.columns === b ? null : differs(what);
+      case "base-ten":
+        return op.kind !== "multiply" && figureCount(f) === a ? null : differs(what);
+      case "number-line":
+        // The hops start at the first number and land on the answer.
+        return onLine(answer === undefined ? null : [a, answer], what);
+    }
+  }
+  const check = checks[0];
+  if (!check) return unclear;
+  switch (check.kind) {
+    case "places":
+      if (f.kind === "number-line") return onLine([check.number].filter(Number.isInteger), String(check.number));
+      return figureCount(f) === check.number ? null : differs(String(check.number));
+    case "compare": {
+      const ns = wholes([check.left, check.right], ctx);
+      if (!ns) return unclear;
+      const what = `${ns[0]} and ${ns[1]}`;
+      if (f.kind === "dots") return sameList(f.groups, ns) && f.takenAway === 0 ? null : differs(what);
+      if (f.kind === "number-line") return onLine(ns, what);
+      return unclear;
+    }
+    case "order":
+      return f.kind === "number-line" ? onLine(wholes(check.numbers, ctx), "the numbers to order") : unclear;
+    case "sequence": {
+      if (f.kind !== "number-line") return unclear;
+      const terms = check.terms.map((t) => (isRegionTerm(t) ? boxAnswer(read, t.region) : t));
+      return onLine(wholes(terms, ctx), "the sequence's numbers");
+    }
+    default:
+      return unclear;
+  }
+}
+
 /** The rule of a check of a known kind. */
 const ruleOf = (c: ItemCheck) => RULES[c.kind] as CheckRule<ItemCheck>;
 
@@ -555,6 +737,11 @@ export function itemProblem(item: unknown, ctx: ItemContext): ItemProblem | null
   if (item.error === undefined) return fail("the item does not say whether it shows a wrong solution");
   const error = errorProblem(format, item.error, ctx);
   if (error) return fail(error);
+  const figure = item.figure ?? null;
+  if (figure !== null) {
+    const problem = figureProblem(figure);
+    if (problem) return fail(problem);
+  }
 
   if (!Array.isArray(item.checks)) return fail("the item's checks are not a list");
   if (item.checks.length > MOST_REGIONS) return fail(`the item has more than ${MOST_REGIONS} checks`);
@@ -573,10 +760,15 @@ export function itemProblem(item: unknown, ctx: ItemContext): ItemProblem | null
       covered.add(id);
     }
   }
-  const read: CheckInput = { regions, ctx, error: item.error as ShownError | null };
+  const read: CheckInput = { regions, ctx, error: item.error as ShownError | null, figure: figure as Figure | null };
   let unsupported: ItemProblem | null = null;
   for (const c of item.checks as ItemCheck[]) {
     const problem = ruleOf(c).verify(c, read);
+    if (problem?.status === "failed") return problem;
+    unsupported ??= problem;
+  }
+  if (figure !== null) {
+    const problem = figureAgreement(figure as Figure, item.checks as ItemCheck[], read);
     if (problem?.status === "failed") return problem;
     unsupported ??= problem;
   }
