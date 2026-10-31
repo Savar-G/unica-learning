@@ -9,6 +9,7 @@ import type { PlanId } from "@/lib/site";
 import type { TestDevice } from "@/lib/test-context";
 import type { StoredReview } from "@/lib/work-review";
 import type { WorkbookStatus } from "@/lib/workbook-content";
+import type { GeneratedWorkbook } from "@/lib/workbook-generator";
 
 export type { Json };
 
@@ -33,6 +34,7 @@ type ColumnTypes = KnownColumns<{
   reports: { model: ReportModel };
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };
   workbooks: { status: WorkbookStatus };
+  workbook_drafts: { draft: GeneratedWorkbook };
 }>;
 type Fits<T, Column> = Json extends Column ? T
   : (null extends T ? 1 : 0) extends (null extends Column ? 1 : 0) ? (NonNullable<T> extends NonNullable<Column> ? T : never) : never;

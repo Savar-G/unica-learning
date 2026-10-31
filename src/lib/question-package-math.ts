@@ -54,7 +54,7 @@ const TIMES = "×";
 const DIVIDE = "÷";
 
 export const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b));
-const lcm = (a: number, b: number) => (a / gcd(a, b)) * b;
+export const lcm = (a: number, b: number) => (a / gcd(a, b)) * b;
 
 /** Long division, one digit of the dividend at a time, from the left. */
 function divideDigits(dividend: number, divisor: number): WorkedStep[] {
