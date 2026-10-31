@@ -63,7 +63,7 @@ const VERBS = [
   "equal", "write", "rewrite", "put", "bring", "cross", "solve", "answer", "group", "square", "times",
 ];
 /** Every form of a verb: -s, -es, -ed, -d, -ing, -er, with a final e dropped, y as i, and a doubled last consonant. */
-function forms(verb: string): string[] {
+export function forms(verb: string): string[] {
   const out = [verb, `${verb}s`, `${verb}es`, `${verb}ed`, `${verb}d`, `${verb}ing`, `${verb}er`, `${verb}ers`];
   if (verb.endsWith("e")) out.push(`${verb.slice(0, -1)}ing`, `${verb.slice(0, -1)}er`);
   if (/[^aeiou]y$/.test(verb)) out.push(`${verb.slice(0, -1)}ies`, `${verb.slice(0, -1)}ied`, `${verb.slice(0, -1)}ier`);

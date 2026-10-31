@@ -69,13 +69,17 @@ function call(input: { random?: number; history?: WordingHistory; childName?: st
 }
 
 describe("the phrase bank", () => {
-  it.each(PHRASE_GROUPS)("has 12 to 20 phrases for %s, each passing the free-talk guards", (group) => {
+  // Bank phrases are code-written and reviewed, so they may encourage ("Keep going!"); they still hold no math and
+  // never point back to an earlier sentence.
+  const POINTS_BACK = /\b(that|those|opposite|instead|ignore|undo|forget|never mind|actually|rather|earlier|previous|said|meant)\b/i;
+
+  it.each(PHRASE_GROUPS)("has 12 to 20 phrases for %s, with no math and no pointing back", (group) => {
     expect(PHRASES[group].length).toBeGreaterThanOrEqual(12);
     expect(PHRASES[group].length).toBeLessThanOrEqual(20);
     expect(new Set(PHRASES[group]).size).toBe(PHRASES[group].length);
     for (const phrase of PHRASES[group]) {
-      expect(freeTalkProblem(bare(phrase)), phrase).toBeNull();
       expect(talkMath(phrase.replace("{name}", "Leah")), phrase).toBeNull();
+      expect(phrase, phrase).not.toMatch(POINTS_BACK);
     }
   });
 
@@ -299,5 +303,72 @@ describe("R374-2-1: every line with math in it is a math line, and free words ne
 
   it.each(["take away", "count on", "count back"])("refuses the pair %s", (pair) => {
     expect(talkMath(`Now ${pair} slowly.`)).not.toBeNull();
+  });
+});
+
+describe("R374-3-1: the assembled turn, with the lines code adds, is checked in one place", () => {
+  it("refuses free talk in a given-answer turn: code adds the answer line, so it is a math turn (the reviewer's case)", () => {
+    let s = createSession({ callId: "r374-3-1", package: PKG, random: 1 });
+    s = step(s, { type: "start", at: 0 }).session;
+    s = step(s, { type: "proposal", at: 0, proposal: { version: 2, act: "open", parts: [{ line: "open.hello" }] } }).session;
+    s = step(s, { type: "tick", at: 541_000 }).session;
+    const r = step(s, { type: "proposal", at: 541_000, proposal: { version: 2, act: "give_answer", parts: [{ talk: "Hello there." }] } });
+    expect(r.refusal).toMatchObject({ code: "free_talk_in_math_turn" });
+    expect(r.effects.some((e) => e.kind === "say")).toBe(false);
+  });
+
+  it("says bank warm talk first and the given answer last", () => {
+    let s = createSession({ callId: "r374-3-1b", package: PKG, random: 1 });
+    s = step(s, { type: "start", at: 0 }).session;
+    s = step(s, { type: "proposal", at: 0, proposal: { version: 2, act: "open", parts: [{ line: "open.hello" }] } }).session;
+    s = step(s, { type: "tick", at: 541_000 }).session;
+    const r = step(s, { type: "proposal", at: 541_000, proposal: { version: 2, act: "give_answer", parts: [{ warm: "empathy" }] } });
+    expect(r.refusal).toBeNull();
+    const said = r.effects.flatMap((e) => (e.kind === "say" ? [e.text] : []))[0];
+    expect(said).toMatch(/66[^.?!]*[.?!]$/);
+    expect(PHRASES.empathy.map(bare).some((p) => said.startsWith(p))).toBe(true);
+  });
+});
+
+describe("R374-3-2: free talk may only react, feel, greet or ask about the child's life", () => {
+  const child = ["I have a dog named Biscuit!"];
+
+  it.each([
+    "Keep calculating.", "Go on.", "Do it again.", "Write it down.", "Try the other way.", "You should check it.", "Can you swap them?",
+    "Now the next one.", "Just keep going.", "Make it bigger.", "Let's keep calculating.", "Please continue.", "Don't stop now.",
+    "First, think about it.", "Then press enter.", "Continue.", "Think harder.", "Guess again.", "Start over.", "Hurry up.", "Figure it out.",
+    "Calculate it.", "Work it out.", "Compute it quickly.", "Solve it now.", "Look again.", "Erase it.", "Change it.", "Fix it.",
+    "Swap them around.", "Oh, keep going.", "Okay, carry on.", "Wow, do it again!", "Use your fingers.", "Stop and think.",
+    "It's time to keep calculating.", "I think you should guess.", "Could you double it?", "Will you finish it?", "Would you redo it?",
+    "You need to hurry.", "You have to finish.", "You must be quick.", "Make sure you are careful.", "Remember to breathe and focus.",
+    "How about you give it a go?", "Why don't you guess?", "Biscuit says keep going.", "Great, now press the button.", "Hmm, flip them.",
+    "Nice! Next one.", "So, figure out the rest.",
+  ])("rejects %s, and the turn says a bank phrase instead", (talk) => {
+    expect(freeTalkProblem(talk, null, child)).not.toBeNull();
+    const c = call();
+    c.child("I have a dog named Biscuit!");
+    const said = c.say({ act: "clarify", parts: [{ talk }] });
+    expect(said.talkReplaced).toBe(1);
+    expect(PHRASES.smalltalk.map(bare)).toContain(said.text);
+  });
+
+  it.each([
+    "Biscuit is a great name!", "Wow, a trip to the lake!", "I love dogs too.", "What's your favourite colour?", "Hi there!", "Hello!",
+    "Thanks for telling me.", "Nice!", "Cool!", "Yay!", "Ha, I love it!", "Aw, poor kitty.", "Oh no, I hope you feel better soon.",
+    "How exciting!", "Who is your best friend?", "Where do you like to play?", "When is your birthday?", "I'm so glad you're here.",
+    "You're so funny!", "It sounds like a great day.", "We're having a good chat.", "Sounds fun!", "What a lovely name!",
+    "A dog! What's your dog's name?", "Have a great day!", "Happy birthday!", "Good morning!",
+  ])("says %s as it is", (talk) => {
+    expect(freeTalkProblem(talk, null, child)).toBeNull();
+    const c = call();
+    c.child("I have a dog named Biscuit!");
+    const said = c.say({ act: "clarify", parts: [{ talk }] });
+    expect(said.talkReplaced).toBeUndefined();
+    expect(said.text).toBe(talk);
+  });
+
+  it("lets a sentence start with a name only when the child said it", () => {
+    expect(freeTalkProblem("Biscuit is a great name!", null, [])).not.toBeNull();
+    expect(freeTalkProblem("Biscuit is a great name!", null, ["My dog is called Biscuit."])).toBeNull();
   });
 });

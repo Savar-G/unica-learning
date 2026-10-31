@@ -603,7 +603,7 @@ describe("TIME_CLOSE and the end", () => {
   it("may give the answer at the time close without climbing the ladder, and records it", () => {
     const c = afterExample();
     c.tick(540);
-    c.maya({ act: "give_answer", parts: [t("We're almost out of time.")] });
+    c.maya({ act: "give_answer", parts: [{ warm: "empathy" }] });
     c.child("Okay, I wrote it.");
     c.maya({ act: "close", parts: [t("Bye for now!")], reading: { paper: "written" } });
     expect(c.session.outcome).toMatchObject({ reason: "solved", assistance: "answer_given", paperStatus: "child_confirmed" });

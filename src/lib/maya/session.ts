@@ -781,7 +781,7 @@ function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
 
   // 4. Maya's words and board: lines code writes for this act, step and level, and warm talk with no math in it.
   const view: View = { steps: [ladder.step], done, checked, rightResult };
-  const spoken = p.act === "safety" ? { text: "", lines: [], boards: [], replaced: 0 } : speak(s, p, view);
+  const spoken: Spoken | { code: RefusalCode; reason: string } = p.act === "safety" ? { text: "", lines: [], boards: [], replaced: 0, segments: [] } : speak(s, p, view);
   if ("code" in spoken) return no(spoken.code, spoken.reason, allowedNow);
   const say = spoken.text;
   if (say === "" && !["wait", "safety", "give_answer"].includes(p.act)) return no("invalid_proposal", "Maya needs words for this act.", allowedNow);
@@ -852,8 +852,8 @@ function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
       if (s.state !== "TIME_CLOSE" && ladder.unlocked < 4) return no("hint_too_high", `The answer comes after help up to H3 and another failed attempt or request (now H${ladder.unlocked}).`, allowedNow);
       // Code says the answer and asks for it on paper, so both are true.
       const [give] = packageLines(pkg!).answerGive();
-      const answer = give.texts[chooseWording(s.variety, give.texts.map((_, i) => `${give.key}#${i}`), s.now!)];
-      text = [say, answer].filter(Boolean).join(" ");
+      // Code adds a math line, so this turn is a math turn whatever the parts are (CODE_MATH_ACTS).
+      spoken.segments.push({ kind: "math", text: give.texts[chooseWording(s.variety, give.texts.map((_, i) => `${give.key}#${i}`), s.now!)] });
       if (s.solved === null) {
         s.solved = "maya";
         s.answerGivenFirst = true;
@@ -909,7 +909,15 @@ function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
       break;
   }
 
-  // 6. Committed: the reading counts now (its answers only when they were judged).
+  // 6. The assembled turn, with every line code added, checked in one place before anything is said (D-196,
+  // R374-3-1): a turn with math takes warm talk only from the bank, and only before its first math line.
+  if (p.act !== "safety") {
+    const order = assembledProblem(spoken.segments, CODE_MATH_ACTS.includes(p.act));
+    if (order) return no(order.code, order.reason, allowedNow);
+    text = spoken.segments.map((x) => x.text).join(" ");
+  }
+
+  // 7. Committed: the reading counts now (its answers only when they were judged).
   if (reading.correctsHearing) s.mishearing.corrections += 1;
   if (reading.paper) s.paper = reading.paper === "written" ? "child_confirmed" : "declined";
   for (const { answer: a, problem } of checked) {
@@ -1141,6 +1149,33 @@ interface Spoken {
   boards: string[];
   /** Pieces of the model's own warm words replaced by a bank phrase. */
   replaced: number;
+  /** The turn's parts in order, with what each is; code adds its own lines here before the turn is checked. */
+  segments: Segment[];
+}
+
+/** One part of a turn as said: a math line, a line with no math (the hello), bank warm talk, or the model's own words. */
+interface Segment {
+  kind: "math" | "plain" | "warm" | "talk";
+  text: string;
+}
+
+/** Acts where code adds a math line itself (the given answer): they are math turns by definition. */
+const CODE_MATH_ACTS: readonly Act[] = ["give_answer"];
+
+/**
+ * The one check of a turn's order (D-196), on the assembled turn: when it holds math (a math line, or an act where code
+ * adds one), none of its warm talk is the model's own words, and no warm talk comes after its first math line.
+ */
+function assembledProblem(segments: readonly Segment[], codeMath: boolean): { code: RefusalCode; reason: string } | null {
+  const first = segments.findIndex((x) => x.kind === "math");
+  if (first === -1 && !codeMath) return null;
+  if (first !== -1 && segments.slice(first).some((x) => x.kind === "warm" || x.kind === "talk")) {
+    return { code: "math_line_not_last", reason: "Warm talk comes before the math line: the math line is the last thing Maya says in a turn." };
+  }
+  if (segments.some((x) => x.kind === "talk")) {
+    return { code: "free_talk_in_math_turn", reason: "A turn with math takes its warm talk from the bank: use { warm: <group> }, not { talk }." };
+  }
+  return null;
 }
 
 /** A 32-bit number from a text (FNV-1a), to seed the wordings of a call that passes no random number. */
@@ -1157,6 +1192,9 @@ export const heardWordings = (session: Session): WordingHistory => heardInCall(s
 export function warmGroups(session: Session): Partial<Record<Act, PhraseGroup[]>> {
   return Object.fromEntries(nextActs(session).acts.map((act) => [act, PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(act))]));
 }
+
+/** What the child has said in this call: free talk may start a sentence with a name the child used (D-196). */
+const childWords = (s: Session) => s.turns.filter((t) => t.speaker === "child").map((t) => t.text);
 
 /** The approved text of Maya's last turn, or "" before she has said anything. */
 const lastSaid = (s: Session) => [...s.turns].reverse().find((t) => t.speaker === "maya")?.text ?? "";
@@ -1239,29 +1277,17 @@ const openings = (text: string) =>
 const isMathLine = (o: LineOffer) => o.texts.some((t) => talkMath(t) !== null);
 
 /**
- * Renders a proposal's parts. Each line must be offered now. Warm talk (D-196): in a turn with a math line it comes
- * from the bank and before the first math line; in a turn without, the model's own words pass the guards or are
- * replaced by a bank phrase of the act's purpose. Wordings are picked by variety.ts.
+ * Renders a proposal's parts into the turn's segments. Each line must be offered now; the model's own warm words pass
+ * the guards or are replaced by a bank phrase of the act's purpose. Which turns may hold them is checked once, on the
+ * assembled turn (assembledProblem). Wordings are picked by variety.ts.
  */
 function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCode; reason: string } {
   const offers = offersFor(s, p.act, view);
   const texts: string[] = [];
+  const segments: Segment[] = [];
   const chosen: LineOffer[] = [];
   const lines: string[] = [];
-  // Every line part is checked first, so the turn is known to carry math before any warm words are taken.
-  const found = new Map<number, LineOffer>();
-  for (const [i, part] of p.parts.entries()) {
-    if (!("line" in part)) continue;
-    const o = findOffer(offers, { line: part.line, slots: normalSlots(part.slots ?? {}) });
-    if (!o) {
-      const ids = [...new Set(offers.map((x) => x.line))];
-      return { code: "line_not_offered", reason: `"${part.line}" with these slots is not offered for ${p.act} now. Offered: ${ids.join(", ") || "no lines"}.` };
-    }
-    found.set(i, o);
-  }
-  const mathTurn = [...found.values()].some(isMathLine);
   const turn = s.turns.filter((t) => t.speaker === "maya").length;
-  let mathSaid = false;
   let named = false;
   let replaced = 0;
   /**
@@ -1284,27 +1310,35 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
     }
     return withName(text, name);
   };
-  for (const [i, part] of p.parts.entries()) {
-    if (!("line" in part)) {
-      if (mathSaid) return { code: "math_line_not_last", reason: "Warm talk comes before the math line: the math line is the last thing Maya says in a turn." };
-      if ("warm" in part) {
-        if (!PHRASE_ACTS[part.warm].includes(p.act)) {
-          const groups = PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(p.act));
-          return { code: "line_not_offered", reason: `Warm talk "${part.warm}" does not fit ${p.act}. It fits: ${groups.join(", ") || "none"}.` };
-        }
-        texts.push(phrase(part.warm));
-        continue;
+  const add = (kind: Segment["kind"], text: string) => {
+    texts.push(text);
+    segments.push({ kind, text });
+  };
+  for (const part of p.parts) {
+    if ("warm" in part) {
+      if (!PHRASE_ACTS[part.warm].includes(p.act)) {
+        const groups = PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(p.act));
+        return { code: "line_not_offered", reason: `Warm talk "${part.warm}" does not fit ${p.act}. It fits: ${groups.join(", ") || "none"}.` };
       }
-      if (mathTurn) return { code: "free_talk_in_math_turn", reason: "A turn with a math line takes its warm talk from the bank: use { warm: <group> }, not { talk }." };
-      if (freeTalkProblem(part.talk, s.variety.name) === null) {
-        texts.push(part.talk.trim());
+      add("warm", phrase(part.warm));
+      continue;
+    }
+    if ("talk" in part) {
+      // The model's own words pass the guards or become a bank phrase; either way they stay the model's part, so a
+      // turn with math refuses them (assembledProblem).
+      if (freeTalkProblem(part.talk, s.variety.name, childWords(s)) === null) {
+        add("talk", part.talk.trim());
       } else {
         replaced += 1;
-        texts.push(phrase(FALLBACK_GROUP[p.act] ?? "encourage"));
+        add("talk", phrase(FALLBACK_GROUP[p.act] ?? "encourage"));
       }
       continue;
     }
-    const o = found.get(i)!;
+    const o = findOffer(offers, { line: part.line, slots: normalSlots(part.slots ?? {}) });
+    if (!o) {
+      const ids = [...new Set(offers.map((x) => x.line))];
+      return { code: "line_not_offered", reason: `"${part.line}" with these slots is not offered for ${p.act} now. Offered: ${ids.join(", ") || "no lines"}.` };
+    }
     if (o.requires && !meets(o.requires, view)) {
       return { code: "line_not_offered", reason: `"${o.line}" needs an answer code checked ${o.requires.answer} for "${o.requires.step}".` };
     }
@@ -1312,8 +1346,7 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
       return { code: "hint_too_high", reason: `"${o.line}" is H${o.level} help, above this guide's level H${p.level ?? 0}.` };
     }
     const text = o.texts[pickFresh(o.texts, (k) => `${o.key}#${k}`)];
-    if (isMathLine(o)) mathSaid = true;
-    texts.push(text);
+    add(isMathLine(o) ? "math" : "plain", text);
     lines.push(text);
     chosen.push(o);
   }
@@ -1321,7 +1354,7 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
   if (p.act === "guide" && level >= 1 && !chosen.some((o) => o.level === level)) {
     return { code: "invalid_proposal", reason: `A guide at H${p.level} says a step line of level H${level}.` };
   }
-  return { text: texts.join(" "), lines, boards: chosen.flatMap((o) => (o.board ? [o.board] : [])), replaced };
+  return { text: texts.join(" "), lines, boards: chosen.flatMap((o) => (o.board ? [o.board] : [])), replaced, segments };
 }
 
 /**
