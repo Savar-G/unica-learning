@@ -6,7 +6,7 @@ import { operationResult } from "@/lib/question-package";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { renderFitCheck } from "@/lib/workbook-fit";
 import { curriculumFor } from "@/lib/workbook-curriculum";
-import { generateWorkbook, type FitCheck, type GenerateDeps, type GeneratedWorkbook } from "@/lib/workbook-generator";
+import { generateWorkbook, type FitCheck, type GenerateDeps, type GeneratedPage, type GeneratedWorkbook } from "@/lib/workbook-generator";
 import { planLevel, planWorkbook, type WorkbookPlan } from "@/lib/workbook-plan";
 import { fixedTemplate } from "@/lib/workbook-template-fixed";
 
@@ -71,7 +71,7 @@ function deps(over: Partial<GenerateDeps> = {}): GenerateDeps & { store: ReturnT
 
 async function generate(d = deps()): Promise<GeneratedWorkbook> {
   const result = await generateWorkbook(input, d);
-  if (result.status !== "stored") throw new Error(result.reason);
+  if (result.status !== "stored") throw new Error(result.status === "refused" ? result.reason : "paused");
   return result.draft;
 }
 
@@ -440,5 +440,59 @@ describe("answers code computes beyond addition", () => {
     const q = await question(op("percent-of", [num(20), num(50)]), [wrong(num(1000))], op("percent-of", [num(10), num(20)]));
     expect(q.check.status).toBe("failed");
     expect(q.package).toBeNull();
+  });
+});
+
+describe("pages in parallel (#312)", () => {
+  it("writes at most `concurrency` pages at a time and makes the same draft as one at a time", async () => {
+    let inFlight = 0;
+    let most = 0;
+    const ai = fakeAiClient({
+      answer: async (r) => {
+        inFlight++;
+        most = Math.max(most, inFlight);
+        await new Promise((done) => setTimeout(done, 1));
+        inFlight--;
+        return fill(r);
+      },
+    });
+    const parallel = await generate(deps({ ai, concurrency: 5 }));
+    expect(most).toBe(5);
+    const serial = await generate(deps());
+    expect(parallel.pages).toEqual(serial.pages);
+  });
+
+  it("keeps two AI attempts a question when pages run in parallel", async () => {
+    // Every first call fails slot 1.1; the redo fails it again: two attempts, never a third.
+    const bad = (s: SlotAsked) => goodItem(s, { wrongAnswers: [{ value: num(425), cause: "O3", description: "Right by mistake.", step: null }] });
+    const asked = new Map<string, number>();
+    const ai = fakeAiClient({
+      answer: (r) => fill(r, (s, req) => {
+        const key = `${req.day}:${req.pageType}:${s.slot}`;
+        asked.set(key, (asked.get(key) ?? 0) + 1);
+        return s.slot === "1.1" ? bad(s) : goodItem(s);
+      }),
+    });
+    const draft = await generate(deps({ ai, concurrency: 6 }));
+    const first = draft.pages.flatMap((p) => p.questions.filter((q) => q.slot === "1.1"));
+    expect(first.length).toBeGreaterThan(0);
+    expect(first.every((q) => q.check.status === "failed" && q.attempts === 2)).toBe(true);
+    // Each page: its first call, then one redo; the fit check passes, so no page retry.
+    expect(ai.requests.length).toBe(2 * draft.pages.filter((p) => p.questions.some((q) => q.slot === "1.1")).length
+      + draft.pages.filter((p) => p.questions.length > 0 && !p.questions.some((q) => q.slot === "1.1")).length);
+  });
+
+  it("resumes from its page store: a kept page is not written again", async () => {
+    const kept = new Map<number, GeneratedPage>();
+    const pages = { load: async () => [...kept.values()], save: async (p: GeneratedPage) => { kept.set(p.number, p); } };
+    let started = 0;
+    const paused = await generateWorkbook(input, deps({ pages, concurrency: 2, stop: () => started++ >= 6 }));
+    expect(paused).toEqual({ status: "paused", done: kept.size, total: DAY_PAGES.length });
+    expect(kept.size).toBeGreaterThan(0);
+    const ai = fakeAiClient({ answer: (r) => fill(r) });
+    const result = await generateWorkbook(input, deps({ ai, pages, concurrency: 2 }));
+    if (result.status !== "stored") throw new Error(result.status === "refused" ? result.reason : result.status);
+    expect(ai.requests.length).toBe(DAY_PAGES.length - (paused as { done: number }).done);
+    for (const p of kept.values()) expect(result.draft.pages[p.number - 1]).toEqual(p);
   });
 });

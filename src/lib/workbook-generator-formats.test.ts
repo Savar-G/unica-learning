@@ -65,7 +65,7 @@ function deps(answer: (s: SlotAsked, r: AiJsonRequest) => unknown) {
 
 async function draft(p: WorkbookPlan, answer: (s: SlotAsked, r: AiJsonRequest) => unknown): Promise<GeneratedWorkbook> {
   const result = await generateWorkbook({ workbookId: WORKBOOK, childId: CHILD, number: 1, profileBuild: null, plan: p, curriculum: BC }, deps(answer));
-  if (result.status !== "stored") throw new Error(result.reason);
+  if (result.status !== "stored") throw new Error(result.status === "refused" ? result.reason : "paused");
   return result.draft;
 }
 

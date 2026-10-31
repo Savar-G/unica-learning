@@ -1,16 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getChild, getChildWorkbooks, requireAdmin } from "@/lib/admin-store";
+import { getChild, getChildRuns, getChildWorkbooks, requireAdmin } from "@/lib/admin-store";
 import { adminChildProfilePath, adminParentPath, adminWorkbookPath, when } from "@/lib/admin-view";
 import { answerFacts, bookMix, fromRow, interestLabel, LEARNING_STYLES } from "@/lib/learning-style";
 import { AdminFrame, Table, TestsTable, gradeAndPlace } from "@/components/admin";
 import { RecordFacts } from "@/components/admin-records";
 import { WorkbookStatusChip } from "@/components/admin-workbook";
+import { ChildRunsTable } from "@/components/admin-workbook-runs";
+import { PrepareWorkbook } from "@/components/prepare-workbook";
 
 export default async function ChildPage({ params }: PageProps<"/admin/children/[id]">) {
   const admin = await requireAdmin();
   const id = (await params).id;
-  const [record, workbooks] = await Promise.all([getChild(admin, id), getChildWorkbooks(admin, id)]);
+  const [record, workbooks, runs] = await Promise.all([getChild(admin, id), getChildWorkbooks(admin, id), getChildRuns(admin, id)]);
   if (!record) notFound();
   const { child: c, family } = record;
   // #126: the parent's answers and the book mix they give. A child with no answer gets the default mix. #195 (D-107):
@@ -38,5 +40,9 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
         <td><WorkbookStatusChip status={w.status} /></td><td>{when(w.createdAt)}</td>
       </tr>)}
     </Table>
+    {/* #312: drafts made in the background, with their progress and check results. */}
+    <h2>Workbook drafts</h2>
+    <PrepareWorkbook childId={c.id} child={c.first_name} />
+    <ChildRunsTable runs={runs} now={new Date()} />
   </AdminFrame>;
 }

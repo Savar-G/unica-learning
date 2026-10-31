@@ -393,23 +393,33 @@ export function figureSvg(f: Figure, scale = 1): string {
     case "dots": {
       let x = 0;
       let body = "";
+      // The last `takenAway` dots, counted from the end, are crossed out.
+      const total = f.groups.reduce((a, b) => a + b, 0);
+      let seen = 0;
       f.groups.forEach((n, g) => {
         const cols = Math.min(5, n);
-        for (let i = 0; i < n; i++) body += `<circle cx="${x + 9 + (i % cols) * 18}" cy="${9 + Math.floor(i / cols) * 18}" r="7" fill="${COUNTER[g % 3]}"/>`;
+        for (let i = 0; i < n; i++) {
+          const cx = x + 9 + (i % cols) * 18;
+          const cy = 9 + Math.floor(i / cols) * 18;
+          body += `<circle cx="${cx}" cy="${cy}" r="7" fill="${COUNTER[g % 3]}"/>`;
+          if (seen++ >= total - (f.takenAway ?? 0)) body += `<path d="M${cx - 8} ${cy + 8}L${cx + 8} ${cy - 8}" stroke="#0C0C0E" stroke-width="2"/>`;
+        }
         x += cols * 18 + 18;
       });
       const rows = Math.max(1, ...f.groups.map((n) => Math.ceil(n / Math.min(5, n || 1))));
       return out(Math.max(18, x - 18), rows * 18, body);
     }
     case "ten-frame": {
+      // A second frame beside the first when more than 10 are filled.
+      const frames = f.filled > 10 ? 2 : 1;
       let body = "";
-      for (let i = 0; i < 10; i++) {
-        const cx = (i % 5) * 30;
-        const cy = Math.floor(i / 5) * 30;
+      for (let i = 0; i < 10 * frames; i++) {
+        const cx = (i % 5) * 30 + Math.floor(i / 10) * 166;
+        const cy = Math.floor((i % 10) / 5) * 30;
         body += `<rect x="${cx + 1}" y="${cy + 1}" width="30" height="30" fill="#fff" stroke="#0C0C0E" stroke-width="1.2"/>`;
         if (i < f.filled) body += `<circle cx="${cx + 16}" cy="${cy + 16}" r="10" fill="#3366F0"/>`;
       }
-      return out(152, 62, body);
+      return out(152 + (frames - 1) * 166, 62, body);
     }
     case "number-line": {
       // Labels are HTML over the drawing, not SVG text, so the print engine can check them like any text.
@@ -430,17 +440,57 @@ export function figureSvg(f: Figure, scale = 1): string {
       return `<div class="nl" style="width:${Math.round(w * scale)}px;height:${Math.round(76 * scale)}px">${out(w, 74, body)}${labels}</div>`;
     }
     case "blocks": {
+      // Hundreds as 100-squares (a 10 by 10 grid), then tens as rods, then ones.
       let body = "";
-      for (let t = 0; t < f.tens; t++) {
-        for (let u = 0; u < 10; u++) body += `<rect x="${t * 14}" y="${u * 10}" width="10" height="10" fill="#fff" stroke="#0C0C0E"/>`;
+      const hundreds = f.hundreds ?? 0;
+      for (let h = 0; h < hundreds; h++) {
+        body += `<rect x="${h * 108}" y="0" width="100" height="100" fill="#fff" stroke="#0C0C0E"/>`;
+        for (let k = 1; k < 10; k++) body += `<path d="M${h * 108 + k * 10} 0V100M${h * 108} ${k * 10}H${h * 108 + 100}" stroke="#0C0C0E" stroke-width="0.6"/>`;
       }
-      for (let u = 0; u < f.ones; u++) body += `<rect x="${f.tens * 14 + 8 + (u % 3) * 14}" y="${70 - Math.floor(u / 3) * 14}" width="10" height="10" fill="#fff" stroke="#0C0C0E"/>`;
-      return out(f.tens * 14 + 8 + 3 * 14, 100, body);
+      const x0 = hundreds * 108;
+      for (let t = 0; t < f.tens; t++) {
+        for (let u = 0; u < 10; u++) body += `<rect x="${x0 + t * 14}" y="${u * 10}" width="10" height="10" fill="#fff" stroke="#0C0C0E"/>`;
+      }
+      for (let u = 0; u < f.ones; u++) body += `<rect x="${x0 + f.tens * 14 + 8 + (u % 3) * 14}" y="${70 - Math.floor(u / 3) * 14}" width="10" height="10" fill="#fff" stroke="#0C0C0E"/>`;
+      return out(x0 + f.tens * 14 + 8 + 3 * 14, 100, body);
+    }
+    case "pattern": {
+      // Each shape in a 30 px cell; the blank is an empty dashed box to draw in.
+      let body = "";
+      for (let i = 0; i < f.length; i++) {
+        const x = i * 38;
+        if (i === f.blank) {
+          body += `<rect x="${x + 1}" y="1" width="30" height="30" fill="#fff" stroke="#0C0C0E" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+          continue;
+        }
+        body += shapeSvg(f.core[i % f.core.length], x + 16, 16, COUNTER[(i % f.core.length) % 3]);
+      }
+      return out(f.length * 38 - 6, 32, body);
     }
     case "array": {
       let body = "";
       for (let r = 0; r < f.rows; r++) for (let c = 0; c < f.columns; c++) body += `<rect x="${c * 12}" y="${r * 12}" width="10" height="10" fill="#3366F0"/>`;
       return out(f.columns * 12, f.rows * 12, body);
+    }
+  }
+}
+
+/** One pattern shape, about 26 px across, centred at (x, y). */
+function shapeSvg(shape: string, x: number, y: number, fill: string): string {
+  switch (shape) {
+    case "circle": return `<circle cx="${x}" cy="${y}" r="12" fill="${fill}"/>`;
+    case "square": return `<rect x="${x - 11}" y="${y - 11}" width="22" height="22" fill="${fill}"/>`;
+    case "triangle": return `<path d="M${x} ${y - 13}L${x + 13} ${y + 11}H${x - 13}Z" fill="${fill}"/>`;
+    case "diamond": return `<path d="M${x} ${y - 13}L${x + 11} ${y}L${x} ${y + 13}L${x - 11} ${y}Z" fill="${fill}"/>`;
+    case "heart": return `<path d="M${x} ${y + 11}C${x - 18} ${y - 1} ${x - 8} ${y - 15} ${x} ${y - 5}C${x + 8} ${y - 15} ${x + 18} ${y - 1} ${x} ${y + 11}Z" fill="${fill}"/>`;
+    default: {
+      // A star: five points.
+      const pts = Array.from({ length: 10 }, (_, k) => {
+        const r = k % 2 === 0 ? 13 : 5.5;
+        const a = -Math.PI / 2 + (k * Math.PI) / 5;
+        return `${(x + r * Math.cos(a)).toFixed(1)} ${(y + r * Math.sin(a)).toFixed(1)}`;
+      });
+      return `<path d="M${pts.join("L")}Z" fill="${fill}"/>`;
     }
   }
 }
@@ -538,8 +588,12 @@ const isMath = (s: string) => /^[\d\s+−×÷=?.,()/$¢a-z]*$/i.test(s) && /\d/.
 const qtext = (q: DraftQuestion) => text(q, isMath(q.package.text) ? "qm" : "qt");
 
 /** A question in a line: its number, its text, its boxes at the right, then any work box or writing lines under it. */
-function lineItem(q: DraftQuestion, band: Band, hint?: WorkedLine | null, work = 60): string {
-  const { inline, full } = regionsSplit(q, { band, work, labels: true, bare: packageItem(q.package).format === "written-reason" });
+function lineItem(q: DraftQuestion, band: Band, hint?: WorkedLine | null, work = 60, figure?: Figure | null): string {
+  const pictured = packageItem(q.package).regions.some((r) => r.kind === "picture");
+  const split = regionsSplit(q, { band, work, labels: true, bare: packageItem(q.package).format === "written-reason", figure: pictured ? figure : null });
+  // A picture the child reads (dots to count, a pattern) sits under the question, before any work box.
+  const inline = split.inline;
+  const full = (figure && !pictured ? `<div class="picr">${figureSvg(figure)}</div>` : "") + split.full;
   return `<div class="q" ${mark.question(q.number)}><span class="n">${q.number}</span><span class="qb">${qtext(q)}${hint ? ` <span class="qm">${worked(hint)}</span>` : ""}</span>`
     + `<span class="rgs">${inline}</span>${full ? `<div class="full">${full}</div>` : ""}</div>`;
 }
@@ -563,8 +617,11 @@ function columnItem(q: DraftQuestion, band: Band): string {
 }
 
 /** A question in a card: number badge, text, its boxes, then work or lines. */
-function cardItem(q: DraftQuestion, band: Band, work: number | "fill" = 80, cls = "card"): string {
-  const { inline, full } = regionsSplit(q, { band, work, labels: true });
+function cardItem(q: DraftQuestion, band: Band, work: number | "fill" = 80, cls = "card", figure?: Figure | null): string {
+  const pictured = packageItem(q.package).regions.some((r) => r.kind === "picture");
+  const split = regionsSplit(q, { band, work, labels: true, figure: pictured ? figure : null });
+  const inline = split.inline;
+  const full = (figure && !pictured ? `<div class="picr">${figureSvg(figure)}</div>` : "") + split.full;
   return `<div class="${cls}" ${mark.question(q.number)}><div class="q"><span class="badge">${q.number}</span><span class="qb">${qtext(q)}</span><span class="rgs">${inline}</span></div>${full ? `<div class="q" style="margin-top:10px">${full}</div>` : ""}</div>`;
 }
 
@@ -594,7 +651,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
   const prev = c.blocks[i - 1]?.slot;
   const parent = band.name === "parent";
   const list = (render: (q: DraftQuestion, k: number) => string, cls = "list") => `<div class="${cls}">${qs.map(render).join("")}</div>`;
-  const line = (q: DraftQuestion, k: number) => (parent ? parentItem(q, band, b.figures?.[k]) : lineItem(q, band, b.hints?.[k]));
+  const line = (q: DraftQuestion, k: number) => (parent ? parentItem(q, band, b.figures?.[k]) : lineItem(q, band, b.hints?.[k], 60, b.figures?.[k]));
   const items = (cls = "list") => (parent ? list(line, "pcards") : list(line, cls));
   const chip = (fallback?: Chip, note?: string) => {
     const own = CHIPS[b.slot] ?? fallback;
@@ -607,14 +664,14 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       return chip() + list((q) => factItem(q, band), "facts");
     case "fix-it":
       if (parent) return chip() + items();
-      return chip() + `<div class="panel p-fx"><div class="inner">${qs.map((q) => cardItem(q, band, 60)).join("")}</div></div>`;
+      return chip() + `<div class="panel p-fx"><div class="inner">${qs.map((q, k) => cardItem(q, band, 60, "card", b.figures?.[k])).join("")}</div></div>`;
     case "in-your-head":
       return `<div class="panel p-hd"><div class="lab">${escape(b.label ?? "In your head")}</div><div class="list" style="margin-top:10px">${qs.map((q) => lineItem(q, band)).join("")}</div></div>`;
     case "remember-these":
       return (firstOfPage ? "" : chip()) + items(parent ? "pcards" : "two");
     case "try-first":
       return (prev === undefined ? chipHtml(NEW_IDEA, b.note) : "")
-        + `<div class="outl"><div class="lab">Try this first</div>${qs.map((q) => lineItem(q, band)).join("")}</div>`;
+        + `<div class="outl"><div class="lab">Try this first</div>${qs.map((q, k) => lineItem(q, band, null, 60, b.figures?.[k])).join("")}</div>`;
     case "worked-example": {
       const head = prev === "try-first" ? "" : chipHtml(NEW_IDEA, b.note);
       const label = `<div class="lab">Worked example${b.label ? ` · ${escape(b.label)}` : ""}</div>`;
@@ -629,11 +686,11 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     case "now-you":
       return parent
         ? items()
-        : `<div class="outl"><div class="lab">Now you${b.label ? `: ${escape(b.label)}` : ""}</div><div class="list">${qs.map((q) => lineItem(q, band)).join("")}</div></div>`;
+        : `<div class="outl"><div class="lab">Now you${b.label ? `: ${escape(b.label)}` : ""}</div><div class="list">${qs.map((q, k) => lineItem(q, band, null, 60, b.figures?.[k])).join("")}</div></div>`;
     case "spot-the-error": {
-      if (parent) return chip() + items();
+      // Full width at every level: Sam's work, the yes/no strip and the fix box do not fit a half-width parent card.
       const who = b.who ?? "Sam";
-      return chip() + `<div class="outl"><div class="q"><span class="lab">${escape(who)}'s work</span><span class="wk">${(b.lines ?? []).map(worked).join(" · ")}</span></div>`
+      return chip() + `<div class="outl"><div class="q" style="align-items:flex-start"><span class="lab">${escape(who)}'s work</span><span class="wk">${(b.lines ?? []).map(worked).join("<br>")}</span></div>`
         + qs.map((q) => {
           const { inline, full } = regionsSplit(q, { band, labels: true });
           return `<div class="list" ${mark.question(q.number)}><div class="q"><span class="n">${q.number}</span><span class="qb">${text(q)}</span><span class="rgs">${inline}</span></div>${full}</div>`;
@@ -646,12 +703,12 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     case "on-your-own": {
       const head = prev === "finish-these" ? `<div class="lab">On your own</div>` : chipHtml(PRACTICE, b.note);
       // Column sums on the 8-page day; the 6-page practice page lists them, as in the sample (DESIGN.md 7.2).
-      const columns = !parent && !ctx.six && qs.length > 0 && qs.every((q) => ["add", "subtract", "multiply"].includes(q.package.operation?.kind ?? "") && packageItem(q.package).regions.length === 1);
+      const columns = !parent && !ctx.six && qs.length > 0 && !b.figures?.some(Boolean) && qs.every((q) => ["add", "subtract", "multiply"].includes(q.package.operation?.kind ?? "") && packageItem(q.package).regions.length === 1);
       return head + (columns ? list((q) => columnItem(q, band), "cols") : items(ctx.six ? "two" : "list"));
     }
     case "practice-row": {
       const head = prev === "practice-row" ? "" : chipHtml(PRACTICE, b.note);
-      const columns = !parent && qs.every((q) => ["add", "subtract", "multiply"].includes(q.package.operation?.kind ?? ""));
+      const columns = !parent && !b.figures?.some(Boolean) && qs.every((q) => ["add", "subtract", "multiply"].includes(q.package.operation?.kind ?? "") && packageItem(q.package).regions.length === 1);
       return head + (b.label ? `<div class="lab">${escape(b.label)}</div>` : "") + (columns ? list((q) => columnItem(q, band), "cols") : items("two"));
     }
     case "unit-b-practice":
@@ -760,9 +817,13 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
     + `<p class="st" ${mark.slot("subtitle")}>${escape(c.subtitle)}</p>`
     + (c.grownUp ? `<p class="gu" ${mark.slot("grown-up")}><b>For the grown-up:</b> ${escape(c.grownUp)}</p>` : "") + `</header>`;
   // A Challenge block takes the free room of its page: its work boxes grow into it (DESIGN.md section 4).
-  const blocks = c.blocks.map((b, i) => `<section class="blk${GROW.has(b.slot) ? " grow" : ""}" data-measure="block-${i}">${blockHtml(b, i, ctx)}</section>`).join("");
+  const blocks = c.blocks.map((b, i) => `<section class="blk${GROW.has(b.slot) ? " grow" : ""}" data-measure="block-${i}">${blockHtml(b, i, ctx)}${missingHtml(b)}</section>`).join("");
   return `<div class="pg ${band.name} f-${familyOf(page, c)}">${scanMarks}<div class="frame">${header}<main class="ct" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
 }
+
+/** A failed question with nothing to print: a red placeholder with its number and why (review drafts only). */
+const missingHtml = (b: Block) => (b.missing ?? []).map((m) =>
+  `<div class="qfail" data-failed-question="${m.number}" style="border:2px dashed #B42318;background:#FDECEA;color:#B42318;border-radius:8px;padding:8px 12px;font:600 13px/1.4 Helvetica,Arial,sans-serif;margin-top:8px">Question ${m.number} failed: ${escape(m.reason)}</div>`).join("");
 
 const UNICA_MARK = `<div class="mk"><i class="y"></i><i></i><i class="b"></i><i></i><i class="o"></i><i></i><i class="g"></i><i></i><i></i></div>`;
 

@@ -9,7 +9,9 @@ import type { PlanId } from "@/lib/site";
 import type { TestDevice } from "@/lib/test-context";
 import type { StoredReview } from "@/lib/work-review";
 import type { WorkbookStatus } from "@/lib/workbook-content";
-import type { GeneratedWorkbook } from "@/lib/workbook-generator";
+import type { GeneratedPage, GeneratedWorkbook } from "@/lib/workbook-generator";
+import type { DraftRendering, RunError, RunStatus, RunStep } from "@/lib/workbook-job";
+import type { RenderProblem } from "@/lib/workbook-render";
 
 export type { Json };
 
@@ -35,6 +37,10 @@ type ColumnTypes = KnownColumns<{
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };
   workbooks: { status: WorkbookStatus };
   workbook_drafts: { draft: GeneratedWorkbook };
+  workbook_runs: { status: RunStatus; step: RunStep | null; errors: RunError[] };
+  workbook_draft_revisions: { kind: "generated" | "edit" | "redo-page"; content: GeneratedWorkbook | null; rendering: DraftRendering | null; render_problems: RenderProblem[] };
+  workbook_audit: { detail: Record<string, Json | undefined> };
+  workbook_run_pages: { page: GeneratedPage };
 }>;
 type Fits<T, Column> = Json extends Column ? T
   : (null extends T ? 1 : 0) extends (null extends Column ? 1 : 0) ? (NonNullable<T> extends NonNullable<Column> ? T : never) : never;
@@ -67,6 +73,9 @@ type NullArgs = KnownArgs<{
   family_deletion_candidates: "after_id";
   family_retention_candidates: "after_id";
   finish_booking_signup: "customer";
+  // A draft none of whose pages rendered has no rendering.
+  finish_workbook_run: "p_rendering";
+  save_workbook_run_draft: "p_profile_build";
   pending_family_payment_operations: "after_id";
   record_reminder_click: "p_assessment";
   save_family_payment_progress: "head_id" | "after_id";

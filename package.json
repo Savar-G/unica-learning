@@ -12,6 +12,7 @@
     "check:templates": "node scripts/check-templates.mjs",
     "db:types": "node scripts/db-types.mjs",
     "import:curriculum": "node scripts/import-curriculum.mjs",
+    "workbooks:samples": "node scripts/workbook-samples.mjs",
     "maya:text": "node scripts/maya-text.mjs"
   },
   "dependencies": {

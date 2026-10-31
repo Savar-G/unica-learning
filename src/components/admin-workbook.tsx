@@ -17,7 +17,7 @@ const STATUS: Record<WorkbookStatus, [string, Tone]> = {
 
 export const WorkbookStatusChip = ({ status }: { status: WorkbookStatus }) => <Chip tone={STATUS[status][1]}>{STATUS[status][0]}</Chip>;
 
-const pageTitle = (p: WorkbookPage) => [`Page ${p.number}`, p.dayLabel, p.type].filter(Boolean).join(" · ");
+export const pageTitle = (p: Pick<WorkbookPage, "number" | "dayLabel" | "type">) => [`Page ${p.number}`, p.dayLabel, p.type].filter(Boolean).join(" · ");
 
 /** The page image with each question's box over it, numbered as on the page. */
 function PageImage({ page, url }: { page: WorkbookPage; url: string | undefined }) {
@@ -68,13 +68,14 @@ function AnswerCell({ p }: { p: QuestionPackage }): ReactNode {
   </>;
 }
 
-function PackageCells({ p }: { p: QuestionPackage }): ReactNode {
+/** A package's cells in the question tables; `check` replaces the code check cell (a draft shows the generator's verdict). */
+export function PackageCells({ p, check }: { p: QuestionPackage; check?: ReactNode }): ReactNode {
   const item = packageItem(p);
   const marking = item.scorable ? "scorable" : item.parentChecked ? "a parent checks it" : "not scored";
   return <>
     <td><span className="adm-wb-text">{p.text}</span><span className="adm-sub adm-mono">{p.id}</span><span className="adm-sub">{item.format} · {marking}</span></td>
     <td><AnswerCell p={p} /></td>
-    <td><CheckCell p={p} /></td>
+    <td>{check ?? <CheckCell p={p} />}</td>
     <td><ol className="adm-wb-steps">{hasOperation(p) && p.steps.map((s) => <li key={s.id}>{stepText(s, p.operation)}</li>)}</ol></td>
     <td className="adm-nowrap">{p.skill.standard}<span className="adm-sub adm-mono">{p.skill.skills.join(", ")}</span></td>
     <td className="adm-nowrap">U{p.level} · {p.difficulty}</td>
