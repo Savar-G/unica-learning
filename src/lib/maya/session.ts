@@ -1227,6 +1227,10 @@ const meets = (requires: NonNullable<LineOffer["requires"]>, view: View) =>
     ? view.done.includes(requires.step)
     : view.checked.some((c) => c.problem === "target" && c.answer.step === requires.step && c.answer.verdict === "wrong");
 
+/** The first two words of each sentence of a text, in lower case, to keep two sentences of one turn from starting alike. */
+const openings = (text: string) =>
+  text.split(/(?<=[.?!])\s+/).map((x) => (x.toLowerCase().match(/[\p{L}']+/gu) ?? []).slice(0, 2).join(" ")).filter((x) => x.includes(" "));
+
 /** Lines that frame the question, not the work: a turn with only these may hold the model's own warm words (D-196 B). */
 const FRAMING: ReadonlySet<LineId> = new Set(["open.hello", "question.problem", "question.read", "assess.ask", "redirect.back"]);
 
@@ -1245,9 +1249,19 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
   let mathSaid = false;
   let named = false;
   let replaced = 0;
+  /**
+   * Picks a wording none of whose sentences starts with the same two words as a sentence already said in this turn
+   * ("Let's look" twice reads as robotic); when every wording does, any of them.
+   */
+  const pickFresh = (wordings: readonly string[], id: (i: number) => string) => {
+    const used = new Set(texts.flatMap(openings));
+    const fresh = wordings.map((w, i) => i).filter((i) => !openings(wordings[i]).some((o) => used.has(o)));
+    const pool = fresh.length > 0 ? fresh : wordings.map((_, i) => i);
+    return pool[chooseWording(s.variety, pool.map(id), s.now!)];
+  };
   const phrase = (group: PhraseGroup) => {
     const bank = PHRASES[group];
-    const text = bank[chooseWording(s.variety, bank.map((_, i) => `phrase:${group}.${i + 1}`), s.now!)];
+    const text = bank[pickFresh(bank, (i) => `phrase:${group}.${i + 1}`)];
     const name = text.includes("{name}") && !named && nameNow(s.variety, turn) ? s.variety.name : null;
     if (name !== null) {
       named = true;
@@ -1286,7 +1300,7 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
     if (p.act === "guide" && o.level !== undefined && o.level > (p.level ?? 0)) {
       return { code: "hint_too_high", reason: `"${o.line}" is H${o.level} help, above this guide's level H${p.level ?? 0}.` };
     }
-    const text = o.texts[chooseWording(s.variety, o.texts.map((_, k) => `${o.key}#${k}`), s.now!)];
+    const text = o.texts[pickFresh(o.texts, (k) => `${o.key}#${k}`)];
     if (!FRAMING.has(o.line)) mathSaid = true;
     texts.push(text);
     lines.push(text);

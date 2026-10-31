@@ -223,3 +223,19 @@ describe("speech cut off part-way (review note)", () => {
     expect(d.c.s.state).toBe("REPAIR_MAYA");
   });
 });
+
+describe("one turn does not start two parts alike", () => {
+  const opening = (text: string) => (text.toLowerCase().match(/[\p{L}']+/gu) ?? []).slice(0, 2).join(" ");
+
+  it.each([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])("never starts the \"not yet\" line and the hint with the same words (seed %i)", (random) => {
+    const c = call({ random });
+    c.child("Seven and nine is fifteen.");
+    const parts = [{ line: "check.not_yet", slots: { step: "ones" } }, { line: "step.point", slots: { step: "ones" } }];
+    const r = c.send({ type: "proposal", at: 50_000, proposal: { version: 2, act: "guide", step: "ones", level: 1, parts, reading: { answers: [{ value: num(15), step: "ones", verdict: "wrong" }] } } });
+    expect(r.refusal).toBeNull();
+    const said = r.effects.flatMap((e) => (e.kind === "say" ? [e.text] : []))[0];
+    // No two sentences of the turn start with the same two words.
+    const starts = said.split(/(?<=[.?!])\s+/).map(opening).filter((o) => o.includes(" "));
+    expect(new Set(starts).size, said).toBe(starts.length);
+  });
+});
