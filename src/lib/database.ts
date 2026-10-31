@@ -40,6 +40,7 @@ type ColumnTypes = KnownColumns<{
     understanding: Outcome["understanding"] | null; safety_severity: Outcome["safetySeverity"]; live: NonNullable<CallRecord["live"]> | null;
     trace: MayaTrace | null; board_history: BoardHistory | null;
   };
+  maya_demo_children: { made_by: "maya-demo-child" };
   parents: { source: Record<string, string> };
   reports: { model: ReportModel };
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };

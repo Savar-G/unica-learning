@@ -1312,6 +1312,42 @@ export type Database = {
           },
         ]
       }
+      maya_demo_children: {
+        Row: {
+          child_id: string
+          created_at: string
+          made_by: string
+          parent_id: string
+        }
+        Insert: {
+          child_id: string
+          created_at?: string
+          made_by?: string
+          parent_id: string
+        }
+        Update: {
+          child_id?: string
+          created_at?: string
+          made_by?: string
+          parent_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maya_demo_children_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "maya_demo_children_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       parent_pins: {
         Row: {
           created_at: string
