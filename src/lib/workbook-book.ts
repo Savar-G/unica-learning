@@ -19,6 +19,7 @@ import {
   stepText,
   valueText,
   workedSteps,
+  type AnswerValue,
   type Figure as ItemFigure,
   type Operation,
   type QuestionPackage,
@@ -155,6 +156,8 @@ export interface PageQuestion {
   /** The index of its slot in the layout's slots. */
   slot: number;
   package: QuestionPackage | null;
+  /** Why it failed, when it did. */
+  failed?: string;
 }
 
 /** An operation with a whole-number answer of two places or more, or any computed operation: the panel's sum. */
@@ -196,6 +199,98 @@ export function pageFigure(f: ItemFigure | null | undefined, op: Operation | nul
   }
 }
 
+// ---------- Sam's wrong work (Spot the error) ----------
+
+/** The mistakes code can show step by step on Sam's work: whole-number column addition and subtraction. */
+export const SAM_MISTAKES = ["forgot-carry", "smaller-from-larger", "regroup-not-taken"] as const;
+export type SamMistake = (typeof SAM_MISTAKES)[number];
+
+const PLACES = ["ones", "tens", "hundreds", "thousands", "ten thousands", "hundred thousands"] as const;
+const UNIT_OF: Record<string, string> = { ones: "one", tens: "ten", hundreds: "hundred", thousands: "thousand", "ten thousands": "ten thousand", "hundred thousands": "hundred thousand" };
+
+/** Sam's wrong work: the mistake, the worked lines (each column, then the sum with Sam's answer in blue), the step. */
+export interface SamWork {
+  mistake: SamMistake;
+  /**
+   * The worked step id where the mistake happens, as in workedSteps: the column whose digit Sam writes wrong ("tens"
+   * for a carry from the ones that was dropped).
+   */
+  step: string;
+  /** Sam's wrong answer. */
+  answer: number;
+  lines: string[];
+}
+
+const digitsOf = (n: number) => String(n).split("").reverse().map(Number);
+
+/** One mistake's wrong column work for a whole-number sum, or null when the mistake does not happen on it. */
+function samColumns(op: Operation, mistake: SamMistake): SamWork | null {
+  const [a, b] = op.operands as unknown[];
+  if (typeof a !== "number" || typeof b !== "number" || !Number.isSafeInteger(a) || !Number.isSafeInteger(b) || a < 0 || b < 0) return null;
+  const x = digitsOf(a);
+  const y = digitsOf(b);
+  const n = Math.max(x.length, y.length);
+  if (n > PLACES.length) return null;
+  const lines: string[] = [];
+  let step: string | null = null;
+  const written: string[] = [];
+  if (op.kind === "add" && mistake === "forgot-carry") {
+    for (let i = 0; i < n; i++) {
+      const total = (x[i] ?? 0) + (y[i] ?? 0);
+      const last = i === n - 1;
+      // Sam writes the ones digit of each column and drops the carry; the last column is written whole.
+      const write = last ? String(total) : String(total % 10);
+      // The mistake shows in the next column: its digit misses the carried 1.
+      if (!last && total >= 10 && step === null) step = PLACES[i + 1];
+      lines.push(`Add the ${PLACES[i]}: ${x[i] ?? 0} + ${y[i] ?? 0} = ${total}. Write ${write}.`);
+      written.unshift(write);
+    }
+  } else if (op.kind === "subtract" && a > b && (mistake === "smaller-from-larger" || mistake === "regroup-not-taken")) {
+    let owe = false;
+    for (let i = 0; i < n; i++) {
+      const top = x[i] ?? 0;
+      const bottom = y[i] ?? 0;
+      if (mistake === "smaller-from-larger") {
+        // Sam takes the smaller digit from the larger in every column, so never regroups.
+        if (top < bottom && step === null) step = PLACES[i];
+        lines.push(`Subtract the ${PLACES[i]}: ${Math.max(top, bottom)} − ${Math.min(top, bottom)} = ${Math.abs(top - bottom)}. Write ${Math.abs(top - bottom)}.`);
+        written.unshift(String(Math.abs(top - bottom)));
+      } else {
+        // Sam regroups 1 from the next column but does not take that 1 away from it.
+        if (owe && step === null) step = PLACES[i];
+        owe = false;
+        const from = top < bottom ? top + 10 : top;
+        if (top < bottom) owe = true;
+        const diff = from - bottom;
+        lines.push(top < bottom
+          ? `Regroup 1 ${UNIT_OF[PLACES[i + 1]] ?? "ten"} as 10 ${PLACES[i]}: ${from} − ${bottom} = ${diff}. Write ${diff}.`
+          : `Subtract the ${PLACES[i]}: ${top} − ${bottom} = ${diff}. Write ${diff}.`);
+        written.unshift(String(diff));
+      }
+    }
+  } else return null;
+  if (step === null) return null;
+  const answer = Number(written.join("").replace(/^0+(?=\d)/, ""));
+  const right = operationResult(op);
+  if (right.type !== "number" || right.value === answer) return null;
+  return { mistake, step, answer, lines: [...lines, `${operationText(op)} = [${answer}]`] };
+}
+
+/**
+ * Sam's wrong work for a question's shown wrong answer: the first mistake code can show step by step (SAM_MISTAKES)
+ * whose answer is that wrong answer. Null when none gives it, or the sum has no column where the mistake can happen:
+ * then the page cannot show Sam's steps, and the generator fails the question with the reason. The right answer is
+ * never Sam's: a mistake that gives it is not one.
+ */
+export function samWork(op: Operation | null, shown: AnswerValue | null | undefined): SamWork | null {
+  if (!op || !shown || shown.type !== "number") return null;
+  for (const mistake of SAM_MISTAKES) {
+    const work = samColumns(op, mistake);
+    if (work && work.answer === shown.value) return work;
+  }
+  return null;
+}
+
 /** Notes and labels of list slots, as the sample sheets show them. */
 const ROW_LABELS = ["Getting started", "A little harder", "Harder again"];
 
@@ -220,6 +315,9 @@ export function dayPageContent(o: {
   const blocks: Block[] = layout.slots.map((s, i): Block => {
     const mine = questions.filter((q) => q.slot === i && q.package);
     const items = mine.map((q) => q.number);
+    // A question with no package cannot print; its placeholder names it and why.
+    const lost = questions.filter((q) => q.slot === i && !q.package).map((q) => ({ number: q.number, reason: q.failed ?? "code could build no question" }));
+    const missing = lost.length ? { missing: lost } : {};
     const part = page.parts[s.part];
     const figures = mine.map((q) => pageFigure(q.package!.item?.figure, q.package!.operation));
     const withFigures = figures.some(Boolean) ? { figures } : {};
@@ -251,16 +349,17 @@ export function dayPageContent(o: {
         };
       }
       case "spot-the-error": {
+        // Sam's work step by step, built by code from the mistake; the right answer stays in the answer key only.
         const q = mine[0]?.package;
-        const shown = q?.item?.error?.answer;
-        return { slot: s.slot, items, who: "Sam", lines: q?.operation && shown ? [`${operationText(q.operation)} = [${valueText(shown)}]`] : [], ...withFigures };
+        const work = samWork(q?.operation ?? null, q?.item?.error?.answer);
+        return { slot: s.slot, items, who: "Sam", lines: work?.lines ?? [], ...withFigures, ...missing };
       }
       case "practice-row":
-        return { slot: s.slot, items, label: ROW_LABELS[Math.min(row++, ROW_LABELS.length - 1)], ...withFigures };
+        return { slot: s.slot, items, label: ROW_LABELS[Math.min(row++, ROW_LABELS.length - 1)], ...withFigures, ...missing };
       case "finish-these":
-        return { slot: s.slot, items, hints: items.map(() => null), ...withFigures };
+        return { slot: s.slot, items, hints: items.map(() => null), ...withFigures, ...missing };
       default:
-        return { slot: s.slot, items, ...withFigures };
+        return { slot: s.slot, items, ...withFigures, ...missing };
     }
   });
   const two = (n: number) => String(n).padStart(2, "0");

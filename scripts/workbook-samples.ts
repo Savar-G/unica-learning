@@ -156,11 +156,13 @@ async function testFamily(db: SupabaseClient<Database>): Promise<Family> {
     await must(db.from("children").update({ learning_note: NOTE("U1") }).eq("id", child), "first child note");
     parent = { id: created.data.user.id };
   }
+  // On every run: only the family this script made (its source says so) is used; any other family is refused, even
+  // one already marked as a test.
+  const { data: p, error: sourceError } = await db.from("parents").select("source").eq("id", parent.id).single();
+  if (sourceError) throw new Error(`test family source: ${sourceError.message}`);
+  if ((p?.source as { test?: string } | null)?.test !== "workbook-samples-363") throw new Error("the family with this email is not the sample family: refused");
   const { data: marked } = await db.from("test_accounts").select("parent_id").eq("parent_id", parent.id).maybeSingle();
   if (!marked) {
-    // Only a family this script made (its source says so) is marked here; any other family is refused.
-    const { data: p } = await db.from("parents").select("source").eq("id", parent.id).single();
-    if ((p?.source as { test?: string } | null)?.test !== "workbook-samples-363") throw new Error("the family with this email is not the sample family: refused");
     const { data: admin } = await db.from("admin_users" as never).select("user_id").limit(1).maybeSingle();
     const by = (admin as { user_id: string } | null)?.user_id;
     if (!by) throw new Error("no admin user to mark the test family");
@@ -278,8 +280,15 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
   const renderable = renderableDraft(draft);
   const fileKey = randomBytes(6).toString("base64url");
   const strict = await renderWorkbook({ draft: renderable, parentId, template, engine, fileKey });
-  const problems = strict.status === "failed" ? strict.problems : [];
-  const printed = strict.status === "rendered"
+  // Every failure shows on its page: the render's, each failed question's (one with no package also has a placeholder
+  // in its slot) and each page the fit check failed. The strict PDF is used only when there is none.
+  const problems: RenderProblem[] = [
+    ...(strict.status === "failed" ? strict.problems : []),
+    ...draft.pages.flatMap((p) => p.questions.flatMap((q) => (q.check.status === "failed"
+      ? [{ page: p.number, question: q.package ? q.number : null, reason: `question ${q.number} failed: ${q.check.reason}` }] : []))),
+    ...draft.pages.flatMap((p) => (p.fit.status === "failed" ? p.fit.problems.map((x) => ({ page: p.number, question: x.question, reason: `fit check: ${x.reason}` })) : [])),
+  ];
+  const printed = strict.status === "rendered" && problems.length === 0
     ? { pdf: strict.files[0].bytes, images: strict.files.slice(1).map((f) => f.bytes) }
     : await reviewPrint({ draft: renderable, template, engine, problems });
   const pdf = `${out}/${label}.pdf`;
@@ -296,7 +305,7 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
   }
   const c = costs.get(label);
   return {
-    label, level, kind, child, draftId: workbookId, stored: !!drafts, pdf, sheet, draft, renderProblems: problems,
+    label, level, kind, child, draftId: workbookId, stored: !!drafts, pdf, sheet, draft, renderProblems: strict.status === "failed" ? strict.problems : [],
     omissions: draft.pages.reduce((n, p) => n + (p.omissions?.length ?? 0), 0), usd: c?.usd ?? 0, calls: c?.calls ?? 0, minutes: (Date.now() - t0) / 60000,
   };
 }
@@ -335,7 +344,7 @@ for (const job of jobs) {
   try {
     const r = await oneBook(db, family, job.level, job.kind, ai, drafts);
     results.push(r);
-    console.log(`  ${r.label}: ${r.draft.counts.pages} pages, ${r.draft.counts.questions} questions, ${r.draft.counts.failed} failed, ${r.draft.counts.failedPages} pages do not fit, ${r.renderProblems.length} render problems, USD ${r.usd.toFixed(2)}, ${r.minutes.toFixed(1)} min`);
+    console.log(`  ${r.label}: ${r.draft.counts.pages} pages, ${r.draft.counts.questions} questions, ${r.draft.counts.failed} failed, ${r.draft.counts.failedPages} pages do not fit, ${r.renderProblems.length} render problems (strict), USD ${r.usd.toFixed(2)}, ${r.minutes.toFixed(1)} min`);
   } catch (e) {
     console.error(`  ${job.level} ${job.kind}: ERROR ${e instanceof Error ? e.message : String(e)}`);
     results.push({ label: `${job.level}-${job.kind}`, level: job.level, kind: job.kind, error: e instanceof Error ? e.message : String(e) } as BookResult);

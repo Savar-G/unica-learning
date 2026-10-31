@@ -3,7 +3,7 @@ import type { AiJsonRequest } from "@/lib/ai-client";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
 import type { Operation } from "@/lib/question-package";
-import { pageFigure } from "@/lib/workbook-book";
+import { pageFigure, samWork } from "@/lib/workbook-book";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { renderableDraft } from "@/lib/workbook-fit";
@@ -43,7 +43,7 @@ function item(s: Asked, format = s.formats?.[0] ?? "write-number") {
   };
 }
 
-async function generate(level: string, kind: "first" | "second" | "test", answer = (s: Asked) => item(s)) {
+async function generate(level: string, kind: "first" | "second" | "test", answer: (s: Asked) => unknown = (s) => item(s)) {
   const child = sampleChild(BC, level)!;
   const planned = planWorkbook(samplePlanInput(BC, child, kind));
   if (!planned.ok) throw new Error(planned.reason);
@@ -53,7 +53,7 @@ async function generate(level: string, kind: "first" | "second" | "test", answer
   const result = await generateWorkbook(
     { workbookId: WORKBOOK, childId: CHILD, number: kind === "first" ? 1 : 2, profileBuild: null, plan: planned.plan, curriculum: BC, book: { child: child.name } },
     {
-      ai: fakeAiClient({ answer: (r) => ({ items: read(r).slots.map(answer) }) }), fit, store: memoryDraftStore({ [CHILD]: PARENT }),
+      ai: fakeAiClient({ answer: (r) => ({ items: read(r).slots.map(answer).filter((x) => x !== undefined) }) }), fit, store: memoryDraftStore({ [CHILD]: PARENT }),
       qrToken: () => `token-${String(++n).padStart(12, "0")}`, concurrency: 4,
     },
   );
@@ -161,5 +161,66 @@ describe("pageFigure", () => {
 
   it("leaves out a hop off the line", () => {
     expect(pageFigure({ kind: "number-line", from: 0, to: 10, step: 1 }, { kind: "add", operands: [8, 5] })).toMatchObject({ hops: [] });
+  });
+});
+
+describe("Sam's wrong work", () => {
+  const n = (value: number) => ({ type: "number" as const, value });
+
+  it("shows a forgotten carry column by column, the mistake in the tens", () => {
+    const work = samWork({ kind: "add", operands: [268, 157] }, n(315))!;
+    expect(work).toMatchObject({ mistake: "forgot-carry", step: "tens", answer: 315 });
+    expect(work.lines).toEqual([
+      "Add the ones: 8 + 7 = 15. Write 5.",
+      "Add the tens: 6 + 5 = 11. Write 1.",
+      "Add the hundreds: 2 + 1 = 3. Write 3.",
+      "268 + 157 = [315]",
+    ]);
+  });
+
+  it("shows the smaller digit taken from the larger, the mistake in the ones", () => {
+    expect(samWork({ kind: "subtract", operands: [503, 178] }, n(475))).toMatchObject({ mistake: "smaller-from-larger", step: "ones", answer: 475 });
+  });
+
+  it("shows a regroup that does not take 1 from the next column, the mistake in the tens", () => {
+    const work = samWork({ kind: "subtract", operands: [62, 28] }, n(44))!;
+    expect(work).toMatchObject({ mistake: "regroup-not-taken", step: "tens", answer: 44 });
+    expect(work.lines[0]).toBe("Regroup 1 ten as 10 ones: 12 − 8 = 4. Write 4.");
+  });
+
+  it("never shows the right answer as Sam's, nor a wrong answer no mistake gives", () => {
+    expect(samWork({ kind: "add", operands: [268, 157] }, n(425))).toBeNull();
+    expect(samWork({ kind: "add", operands: [268, 157] }, n(111))).toBeNull();
+    expect(samWork({ kind: "add", operands: [12, 13] }, n(25))).toBeNull();
+    for (const [op, shown] of [[{ kind: "add", operands: [268, 157] }, 315], [{ kind: "subtract", operands: [52, 17] }, 45]] as const) {
+      const work = samWork(op as Operation, n(shown))!;
+      expect(work.lines.join(" ")).not.toContain(op.kind === "add" ? "[425]" : "[35]");
+    }
+  });
+
+  it("puts the steps on the page and fails a shown wrong answer code cannot show", async () => {
+    const good = await generate("U12", "first");
+    const spot = dayPages(good.draft).flatMap((p) => (p.content!.kind === "day" ? p.content!.blocks : [])).find((b) => b.slot === "spot-the-error")!;
+    expect(spot.lines![0]).toBe("Add the ones: 8 + 7 = 15. Write 5.");
+    expect(spot.lines!.join(" ")).not.toContain("[425]");
+
+    const bad = await generate("U12", "first", (s) => (s.place === "spot-the-error"
+      ? { ...item(s), wrongAnswers: [{ value: num(111), cause: "operation", description: "Takes away.", step: null }] }
+      : item(s)));
+    const q = bad.draft.pages.flatMap((p) => p.questions).filter((x) => x.place === "spot-the-error");
+    expect(q.length).toBeGreaterThan(0);
+    expect(q.every((x) => x.check.status === "failed" && x.check.reason.includes("Sam's steps"))).toBe(true);
+  });
+});
+
+describe("a failed question with nothing to print", () => {
+  it("shows a placeholder with its number and reason on the page", async () => {
+    const { draft } = await generate("U12", "first", (s) => (s.place === "now-you" ? undefined : item(s)));
+    const page = dayPages(draft).find((p) => p.questions.some((q) => q.place === "now-you" && !q.package))!;
+    const lost = page.questions.find((q) => q.place === "now-you" && !q.package)!;
+    expect(lost.check.status).toBe("failed");
+    const html = workbookTemplate().page(renderableDraft(draft).pages[page.number - 1], { qr: "", qrUrl: "" }, renderableDraft(draft))!;
+    expect(html).toContain(`data-failed-question="${lost.number}"`);
+    expect(html).toContain(`Question ${lost.number} failed: ${(lost.check as { reason: string }).reason}`);
   });
 });
