@@ -27,11 +27,15 @@ export type SlotName = (typeof SLOTS)[number];
 
 /** A picture drawn by code from data, never an image (DESIGN.md section 4, visual models). */
 export type Figure =
-  | { kind: "dots"; groups: number[] }
+  /** Dots in groups; the last `takenAway` dots are crossed out. */
+  | { kind: "dots"; groups: number[]; takenAway?: number }
+  /** One ten-frame, or two when more than 10 are filled. */
   | { kind: "ten-frame"; filled: number }
   | { kind: "number-line"; from: number; to: number; step: number; hops: [number, number][] }
-  | { kind: "blocks"; tens: number; ones: number }
-  | { kind: "array"; rows: number; columns: number };
+  | { kind: "blocks"; hundreds?: number; tens: number; ones: number }
+  | { kind: "array"; rows: number; columns: number }
+  /** A repeating pattern of `length` shapes; the shape at `blank` (from 0) is an empty box to fill. */
+  | { kind: "pattern"; core: string[]; length: number; blank: number };
 
 /**
  * A worked line: plain text, with the given or worked numbers the child reads in blue between [ and ]
@@ -64,6 +68,11 @@ export interface Block {
   info?: { label: string; value: string }[];
   /** Spot the error: whose work it is ("Sam"). */
   who?: string;
+  /**
+   * Questions of the slot that failed with no package to print (#363): the template prints a red placeholder with the
+   * number and the reason in their place, so a missing question is never silent. Only a draft for review has them.
+   */
+  missing?: { number: number; reason: string }[];
 }
 
 /** A day page's content: its header and its slots. */
