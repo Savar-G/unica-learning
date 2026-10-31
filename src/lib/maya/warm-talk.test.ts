@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { applyBatch, createScene } from "@/lib/board";
 import {
   createSession,
   freeTalkProblem,
@@ -508,7 +509,9 @@ describe("R374-4-1: with freeTalk off (the default), every word Maya says comes 
                     expect(cmd.value, `${act} put`).toBe("6");
                   } else {
                     expect(cmd.op, `${act} op`).toBe("write");
-                    expect(String(cmd.id), `${act} note id`).toMatch(/^note-\d+-[a-z._]+$/);
+                    expect(String(cmd.id), `${act} note id`).toMatch(/^note-\d+-\d+-[a-z_-]+$/);
+                    // The board core takes the note (#322: a dot in the id was refused), on its own in the main region.
+                    expect(applyBatch(createScene(), { transactionId: "t1", commands: [{ ...cmd, place: { region: "main" } }] }).ok, `${act} note accepted`).toBe(true);
                   }
                 }
                 for (const [key, v] of visible(e.batch.commands)) {

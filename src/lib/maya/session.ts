@@ -1488,11 +1488,13 @@ function boardOffersFor(s: Session, act: Act, view: View, spoken: Pick<Spoken, "
     }
   }
   // A line's expression or equation said this turn, as a note with a code-made id.
-  for (const o of spoken?.chosen ?? []) {
-    if (!o.board) continue;
+  // The board core takes ids of letters, digits, "_" and "-" only, so the line id's dot becomes "-"; the part's index
+  // keeps two notes of one line in one turn apart (#322).
+  (spoken?.chosen ?? []).forEach((o, i) => {
+    if (!o.board) return;
     const text = o.board;
-    out.push({ id: `line.${o.line}`, shows: `the note "${text}"`, commands: (place) => [{ op: "write", id: `note-${s.batches + 1}-${o.line}`, text, place } as unknown as Command] });
-  }
+    out.push({ id: `line.${o.line}`, shows: `the note "${text}"`, commands: (place) => [{ op: "write", id: `note-${s.batches + 1}-${i}-${o.line.replace(/\./g, "-")}`, text, place } as unknown as Command] });
+  });
   return out;
 }
 

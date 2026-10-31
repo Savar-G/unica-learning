@@ -1,0 +1,160 @@
+// The command line for Maya's text sessions (#322). Run it with `npm run maya:text -- [options]`; scripts/maya-text.mjs
+// bundles this file. A local tool: nothing in src imports it.
+//
+// Options:
+//   --question <id|file>     a sample id (default add-27-39; see --list) or a question package JSON file
+//   --model fake|openrouter  fake: the rule player, no AI (default). openrouter: AI_MODEL through OpenRouter; needs
+//                            OPENROUTER_API_KEY (read from the environment, or from .env.local when it is not set)
+//   --script <file>          child turns, one per line; without it, turns come from stdin (typed when it is a terminal)
+//   --runner livekit|plain   livekit: LiveKit Agents text mode, no room (default). plain: the text adapter alone
+//   --trace <file>           where to write the trace (default traces/maya/<call id>.json)
+//   --seed <n>               the wording seed (default 1)
+//   --name <child name>      the child's name, said now and then by code
+//   --list                   list the sample questions
+//
+// Script lines: a child turn, or "/wait <seconds>" (the clock moves on and the pause policy runs), "/write start",
+// "/write done", "/quit". "#" starts a comment. With --script or piped input the clock is simulated (4 seconds a
+// turn, plus each /wait); typed input uses the real clock.
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { createInterface } from "node:readline";
+import { aiClient } from "@/lib/ai-client";
+import { livekitTextSession } from "@/lib/maya-livekit-text";
+import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
+import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
+import { createTextSession, type TextOutput } from "@/lib/maya-text";
+
+interface Options {
+  question: string;
+  model: "fake" | "openrouter";
+  script: string | null;
+  runner: "livekit" | "plain";
+  trace: string | null;
+  seed: number;
+  name: string | null;
+  list: boolean;
+}
+
+function parse(argv: string[]): Options {
+  const o: Options = { question: "add-27-39", model: "fake", script: null, runner: "livekit", trace: null, seed: 1, name: null, list: false };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    const v = () => {
+      const x = argv[++i];
+      if (x === undefined) throw new Error(`${a} needs a value`);
+      return x;
+    };
+    if (a === "--question") o.question = v();
+    else if (a === "--model") {
+      const m = v();
+      if (m !== "fake" && m !== "openrouter") throw new Error("--model is fake or openrouter");
+      o.model = m;
+    } else if (a === "--script") o.script = v();
+    else if (a === "--runner") {
+      const r = v();
+      if (r !== "livekit" && r !== "plain") throw new Error("--runner is livekit or plain");
+      o.runner = r;
+    } else if (a === "--trace") o.trace = v();
+    else if (a === "--seed") o.seed = Number(v());
+    else if (a === "--name") o.name = v();
+    else if (a === "--list") o.list = true;
+    else throw new Error(`unknown option ${a}`);
+  }
+  return o;
+}
+
+/** KEY=value lines of an env file (vercel env pull writes .env.local). */
+function readEnvFile(path: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of readFileSync(path, "utf8").split("\n")) {
+    const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(line);
+    if (m) out[m[1]] = m[2].replace(/^"(.*)"$/, "$1").replace(/\\n/g, "\n");
+  }
+  return out;
+}
+
+function model(o: Options, root: string): MayaModel {
+  if (o.model === "fake") return ruleMayaModel();
+  const env: Record<string, string | undefined> = { ...process.env };
+  const file = join(root, ".env.local");
+  if (!env.OPENROUTER_API_KEY && existsSync(file)) {
+    const fromFile = readEnvFile(file);
+    env.OPENROUTER_API_KEY = fromFile.OPENROUTER_API_KEY;
+    env.AI_MODEL ??= fromFile.AI_MODEL;
+  }
+  const client = aiClient(env);
+  if (!client) throw new Error("--model openrouter needs OPENROUTER_API_KEY (in the environment or .env.local). The AI is off without it.");
+  return aiMayaModel(client);
+}
+
+function show(out: TextOutput) {
+  for (const s of out.say) console.log(`Maya: ${s}`);
+  for (const b of out.board) console.log(`  [board ${b.transactionId}] ${b.commands.map((c) => JSON.stringify(c)).join(" ")}`);
+  if (out.ended) {
+    console.log(`-- call ended: ${JSON.stringify(out.ended)}`);
+    if (out.safetyMessage) console.log(`-- on screen: ${out.safetyMessage}`);
+  }
+}
+
+async function main() {
+  const root = resolve(process.env.MAYA_ROOT ?? process.cwd());
+  const o = parse(process.argv.slice(2));
+  if (o.list) {
+    for (const [id, p] of Object.entries(SAMPLE_PACKAGES)) console.log(`${id}\t${p.text}`);
+    return;
+  }
+  const pkg = SAMPLE_PACKAGES[o.question] ?? (existsSync(o.question) ? JSON.parse(readFileSync(o.question, "utf8")) : undefined);
+  if (pkg === undefined) throw new Error(`no sample "${o.question}" and no such file (see --list)`);
+  const m = model(o, root);
+
+  const typed = !o.script && process.stdin.isTTY;
+  let simulated = Date.now();
+  const clock = typed ? () => Date.now() : () => simulated;
+  const callId = `text-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+  const text = createTextSession({ callId, package: pkg, model: m, clock, random: o.seed, childName: o.name, runner: o.runner === "livekit" ? "livekit-text" : "text" });
+  const lk = o.runner === "livekit" ? await livekitTextSession(text) : null;
+  console.log(`-- Maya text session ${callId}: ${typeof pkg.text === "string" ? pkg.text : o.question} (model ${m.id}, runner ${o.runner})`);
+
+  const lines: AsyncIterable<string> = o.script
+    ? (async function* () { yield* readFileSync(o.script!, "utf8").split("\n"); })()
+    : createInterface({ input: process.stdin, output: typed ? process.stdout : undefined, prompt: "" });
+  try {
+    show(lk ? (await lk.open()).output : await text.start());
+    for await (const raw of lines) {
+      if (text.ended) break;
+      const line = raw.replace(/#.*$/, "").trim();
+      if (!line) continue;
+      if (line === "/quit") break;
+      simulated += 4_000;
+      const wait = /^\/wait\s+(\d+)$/.exec(line);
+      const write = /^\/write\s+(start|done)$/.exec(line);
+      if (wait) {
+        simulated += Number(wait[1]) * 1000;
+        show(await text.tick());
+      } else if (write) {
+        show(await text.writing(write[1] === "start" ? "started" : "done"));
+      } else {
+        if (!typed) console.log(`Child: ${line}`);
+        show(lk ? (await lk.say(line)).output : await text.child(line));
+      }
+    }
+    if (!text.ended) show(await text.technical("the command line stopped before the call ended"));
+  } finally {
+    await lk?.close();
+    const trace = text.trace();
+    const path = resolve(o.trace ?? join(root, "traces/maya", `${callId}.json`));
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify(trace, null, 2)}\n`);
+    console.log(`-- trace: ${path}`);
+    console.log(`-- counts: ${JSON.stringify(trace.counts)}`);
+  }
+}
+
+main().then(
+  () => process.exit(0),
+  (e) => {
+    console.error(e instanceof Error ? e.message : e);
+    process.exit(1);
+  },
+);

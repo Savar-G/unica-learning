@@ -1,0 +1,493 @@
+{
+  "kind": "maya-trace",
+  "version": 1,
+  "callId": "text-2026-10-31T10-04-26-069Z",
+  "runner": "livekit-text",
+  "startedAt": "2026-10-31T10:04:26.069Z",
+  "endedAt": "2026-10-31T10:04:58.069Z",
+  "model": {
+    "id": "fake",
+    "promptVersion": "maya-text-1"
+  },
+  "versions": {
+    "proposal": 2,
+    "lines": 1,
+    "session": 4
+  },
+  "question": {
+    "id": "subtract-83-46",
+    "ref": {
+      "source": "workbook",
+      "workbookId": "sample",
+      "page": 1,
+      "question": 1
+    },
+    "text": "83 - 46 = ?",
+    "hash": "sha256:365bce32f7613283242d1e4508a7c58fa4e20abb2bca1240cb751237d7d8f08f"
+  },
+  "freeTalk": false,
+  "turns": [
+    {
+      "kind": "start",
+      "at": 1793441066069
+    },
+    {
+      "kind": "maya",
+      "at": 1793441066069,
+      "state": "OPEN",
+      "stateAfter": "OPEN",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": {
+            "version": 2,
+            "act": "open",
+            "parts": [
+              {
+                "warm": "opening",
+                "echo": null,
+                "pick": null
+              },
+              {
+                "line": "open.hello",
+                "slots": {
+                  "step": null,
+                  "sentence": null,
+                  "heard": null,
+                  "other": null
+                }
+              }
+            ],
+            "reading": null,
+            "step": null,
+            "level": null,
+            "understanding": null,
+            "draw": null,
+            "board": null
+          },
+          "refusal": null,
+          "ms": 0
+        }
+      ],
+      "output": {
+        "act": "open",
+        "say": [
+          "Shall we get going? Hi, I'm Maya, an AI helper."
+        ],
+        "board": []
+      }
+    },
+    {
+      "kind": "child",
+      "at": 1793441070069,
+      "text": "I got 56"
+    },
+    {
+      "kind": "maya",
+      "at": 1793441070069,
+      "state": "ASSESS",
+      "stateAfter": "MODEL_EXAMPLE",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": {
+            "version": 2,
+            "act": "example_step",
+            "parts": [
+              {
+                "warm": "encourage",
+                "echo": null,
+                "pick": null
+              },
+              {
+                "line": "example.intro",
+                "slots": {
+                  "step": null,
+                  "sentence": null,
+                  "heard": null,
+                  "other": null
+                }
+              },
+              {
+                "line": "example.step",
+                "slots": {
+                  "step": "ones",
+                  "sentence": null,
+                  "heard": null,
+                  "other": null
+                }
+              }
+            ],
+            "reading": {
+              "safety": null,
+              "stop": null,
+              "unclear": null,
+              "writing": null,
+              "offTopic": null,
+              "help": null,
+              "start": "has_work",
+              "answers": [
+                {
+                  "value": {
+                    "type": "number",
+                    "value": 56
+                  },
+                  "step": "result",
+                  "problem": "target",
+                  "verdict": "wrong"
+                }
+              ],
+              "paper": null,
+              "correctsHearing": null
+            },
+            "step": "ones",
+            "level": null,
+            "understanding": null,
+            "draw": [
+              {
+                "offer": "example.columns",
+                "place": null
+              }
+            ],
+            "board": null
+          },
+          "refusal": null,
+          "ms": 0
+        }
+      ],
+      "output": {
+        "act": "example_step",
+        "say": [
+          "Way to keep at it! I'll show you an easier one first: 42 − 7. Like this. Regroup 1 ten as 10 ones, so 2 ones become 12. Subtract the ones: 12 − 7 = 5. Write 5."
+        ],
+        "board": [
+          "text-2026-10-31T10-04-26-069Z-b1"
+        ]
+      }
+    },
+    {
+      "kind": "maya",
+      "at": 1793441070069,
+      "state": "MODEL_EXAMPLE",
+      "stateAfter": "MODEL_EXAMPLE",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": {
+            "version": 2,
+            "act": "example_step",
+            "parts": [
+              {
+                "warm": "encourage",
+                "echo": null,
+                "pick": null
+              },
+              {
+                "line": "example.step",
+                "slots": {
+                  "step": "tens",
+                  "sentence": null,
+                  "heard": null,
+                  "other": null
+                }
+              }
+            ],
+            "reading": null,
+            "step": "tens",
+            "level": null,
+            "understanding": null,
+            "draw": null,
+            "board": null
+          },
+          "refusal": null,
+          "ms": 0
+        }
+      ],
+      "output": {
+        "act": "example_step",
+        "say": [
+          "You've got this. Look. The tens are now 3. Write 3."
+        ],
+        "board": []
+      }
+    },
+    {
+      "kind": "maya",
+      "at": 1793441070069,
+      "state": "MODEL_EXAMPLE",
+      "stateAfter": "MODEL_EXAMPLE",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": {
+            "version": 2,
+            "act": "example_step",
+            "parts": [
+              {
+                "warm": "encourage",
+                "echo": null,
+                "pick": null
+              },
+              {
+                "line": "example.step",
+                "slots": {
+                  "step": "result",
+                  "sentence": null,
+                  "heard": null,
+                  "other": null
+                }
+              }
+            ],
+            "reading": null,
+            "step": "result",
+            "level": null,
+            "understanding": null,
+            "draw": [
+              {
+                "offer": "line.example.step",
+                "place": null
+              }
+            ],
+            "board": null
+          },
+          "refusal": null,
+          "ms": 0
+        }
+      ],
+      "output": {
+        "act": "example_step",
+        "say": [
+          "Your effort is awesome. There we go: 42 − 7 = 35."
+        ],
+        "board": [
+          "text-2026-10-31T10-04-26-069Z-b2"
+        ]
+      }
+    },
+    {
+      "kind": "tick",
+      "at": 1793441094069
+    },
+    {
+      "kind": "maya",
+      "at": 1793441094069,
+      "state": "MODEL_EXAMPLE",
+      "stateAfter": "MODEL_EXAMPLE",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": {
+            "version": 2,
+            "act": "check_in",
+            "parts": [
+              {
+                "warm": "checkin",
+                "echo": null,
+                "pick": null
+              }
+            ],
+            "reading": null,
+            "step": null,
+            "level": null,
+            "understanding": null,
+            "draw": null,
+            "board": null
+          },
+          "refusal": null,
+          "ms": 0
+        }
+      ],
+      "output": {
+        "act": "check_in",
+        "say": [
+          "Are you comfy and ready?"
+        ],
+        "board": []
+      }
+    },
+    {
+      "kind": "child",
+      "at": 1793441098069,
+      "text": "stop please"
+    },
+    {
+      "kind": "maya",
+      "at": 1793441098069,
+      "state": "MODEL_EXAMPLE",
+      "stateAfter": "CLOSE",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": {
+            "version": 2,
+            "act": "try_target",
+            "parts": [
+              {
+                "warm": "encourage",
+                "echo": null,
+                "pick": null
+              },
+              {
+                "line": "try.target",
+                "slots": {
+                  "step": null,
+                  "sentence": null,
+                  "heard": null,
+                  "other": null
+                }
+              }
+            ],
+            "reading": {
+              "safety": null,
+              "stop": true,
+              "unclear": null,
+              "writing": null,
+              "offTopic": null,
+              "help": null,
+              "start": null,
+              "answers": null,
+              "paper": null,
+              "correctsHearing": null
+            },
+            "step": null,
+            "level": null,
+            "understanding": null,
+            "draw": [
+              {
+                "offer": "question.columns",
+                "place": null
+              }
+            ],
+            "board": null
+          },
+          "refusal": {
+            "code": "stop_first",
+            "reason": "The child asked to stop: close kindly, with no more questions.",
+            "allowed": [
+              "close"
+            ]
+          },
+          "ms": 0
+        },
+        {
+          "source": "repair",
+          "proposal": {
+            "version": 2,
+            "act": "close",
+            "parts": [],
+            "reading": {
+              "safety": null,
+              "stop": true,
+              "unclear": null,
+              "writing": null,
+              "offTopic": null,
+              "help": null,
+              "start": null,
+              "answers": null,
+              "paper": null,
+              "correctsHearing": null
+            },
+            "step": null,
+            "level": null,
+            "understanding": null,
+            "draw": null,
+            "board": null
+          },
+          "refusal": {
+            "code": "invalid_proposal",
+            "reason": "Maya needs words for this act.",
+            "allowed": [
+              "close"
+            ]
+          },
+          "ms": 0
+        },
+        {
+          "source": "fallback",
+          "proposal": {
+            "version": 2,
+            "act": "close",
+            "parts": [
+              {
+                "warm": "empathy"
+              }
+            ]
+          },
+          "refusal": null
+        }
+      ],
+      "output": {
+        "act": "close",
+        "say": [
+          "I'm here to help."
+        ],
+        "board": []
+      }
+    }
+  ],
+  "board": [
+    {
+      "at": 1793441070069,
+      "turn": 3,
+      "transactionId": "text-2026-10-31T10-04-26-069Z-b1",
+      "commands": [
+        {
+          "op": "columns",
+          "id": "example",
+          "operation": "subtract",
+          "operands": [
+            {
+              "id": "top",
+              "value": "42"
+            },
+            {
+              "id": "bottom",
+              "value": "7"
+            }
+          ],
+          "place": {
+            "region": "main"
+          }
+        }
+      ]
+    },
+    {
+      "at": 1793441070069,
+      "turn": 5,
+      "transactionId": "text-2026-10-31T10-04-26-069Z-b2",
+      "commands": [
+        {
+          "op": "write",
+          "id": "note-2-0-example-step",
+          "text": "42 − 7 = 35",
+          "place": {
+            "region": "main"
+          }
+        }
+      ]
+    }
+  ],
+  "outcome": {
+    "reason": "child_stopped",
+    "assistance": "worked_example",
+    "paperStatus": "unknown",
+    "understanding": "uncertain",
+    "highestHint": null,
+    "safetyFlag": false,
+    "safetySeverity": null,
+    "mishearing": {
+      "confirmations": 0,
+      "corrections": 0
+    },
+    "seconds": 32
+  },
+  "counts": {
+    "mayaTurns": 6,
+    "refusals": 2,
+    "repairs": 1,
+    "repairedOk": 0,
+    "fallbacks": 1,
+    "modelErrors": 0,
+    "silent": 0
+  }
+}
