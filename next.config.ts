@@ -18,7 +18,7 @@ const nextConfig: NextConfig = {
   skipTrailingSlashRedirect: true,
   // The workbook renderer (#309; the render check and the workbook job, #312) runs the serverless Chromium build, whose compressed browser files the trace does not
   // find, embeds the template's fonts, and carries the licence notices of what it runs and embeds.
-  outputFileTracingIncludes: Object.fromEntries(["/api/workbook-render-check", "/api/admin/children/[id]/workbook-runs"].map((route) => [route, [
+  outputFileTracingIncludes: Object.fromEntries(["/api/workbook-render-check", "/api/admin/children/[id]/workbook-runs", "/api/workbook-runs/[id]/resume"].map((route) => [route, [
     "./node_modules/@sparticuz/chromium/bin/**", "./src/ds/fonts/Geist.woff2", "./src/ds/fonts/GeistMono.woff2",
     "./THIRD_PARTY_NOTICES.md", "./node_modules/@sparticuz/chromium/LICENSE", "./node_modules/qrcode/license",
     "./node_modules/jsqr/LICENSE", "./node_modules/sharp/LICENSE",

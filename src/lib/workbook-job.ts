@@ -1,44 +1,58 @@
 // "Prepare next workbook" (#312, spec #296): the background job that makes a child's next draft workbook, the same
 // pattern as the report job (src/lib/report-job.ts): the admin route starts a run and answers at once, and the job runs
-// after the response. Its state is stored on the run (public.workbook_runs, migration add_workbook_runs):
+// after the response. Its state is stored on the run (public.workbook_runs, migrations add_workbook_runs and
+// workbook_run_resume):
 //   1. plan: the child's grade, curriculum, profile and stored workbooks (the source seam), placed and planned
 //      (src/lib/workbook-placement.ts, the two-week plan #308).
-//   2. write: the generator (#311, src/lib/workbook-generator.ts) writes every day page with the AI and checks every
-//      answer; the run stores each page done ("12 of 80 day pages"). The draft is stored as one unit.
-//   3. render: the renderer on main (#309) makes one image per page and the PDF, into the workbook bucket at
-//      <parent id>/<draft id>/. A page that does not render (the template has no layout for its type yet, or a check
-//      fails) is left out of the images, with its problems; the other pages render.
+//   2. write: the generator (#311, src/lib/workbook-generator.ts) writes the day pages with the AI, `concurrency` pages
+//      at a time, and checks every answer and every page's fit against the real templates (#310). Each finished page
+//      is stored on the run (public.workbook_run_pages) as it is done; the run shows "12 of 80 day pages".
+//   3. render: the template makes one image per page and the PDF, into the workbook bucket at <parent id>/<draft id>/.
+//      A page that does not render gets a proof image (#310 proofPages) with its failure marked; the other pages render.
 //   4. save: the run ends as done, naming the draft, and the draft gets revision 1 with its rendering, in one step.
 //
+// The time limit (a function stops at 300 s): a job call works for at most `budgetMs`. Near it, the generator stops
+// starting pages, the job lets go of the run (yield) and calls `handOff`, which starts a new job call through the
+// protected resume route; that call takes the run up again (resume) with a new lease, loads the stored pages and
+// writes only the missing ones. If the hand-over never arrives (a crash), the run has no holder; the next "Prepare next
+// workbook" for the child takes it up the same way instead of starting over (start answers "stalled"). The draft id
+// is fixed on the run (draft_key), so every job call writes the same draft.
 // Retries: an error that throws (a database or Storage error, a print engine crash) is kept on the run and the job
-// tries again, up to RUN_ATTEMPTS attempts in all; a stored draft is not written again, only rendered again. A refusal
+// tries again, up to RUN_ATTEMPTS attempts in all; stored pages and a stored draft are not written again. A refusal
 // (no curriculum, the AI off, a plan or draft refused) fails the run at once: trying again gives the same answer.
-// Stale runs: each job call takes the run with a new lease, and every write names it; a run with no progress for
-// STALE_SECONDS is stopped by the next start for that child, which drops its lease. A stopped run's later writes change
-// nothing: its AI calls stop, its draft is not stored (the lease is checked first), and its finish is refused, so its
-// files are removed and a newer run's draft is never replaced. A draft stored just before the stop is never named by a
-// run, so no list shows it; it goes with the family.
-// Pure TypeScript: no Next.js, React, network, database or clock (the stores, the AI, the engine and ids are passed in).
+// Stale runs: every write names the lease. A job call whose run was taken up by another (it made no progress for
+// STALE_SECONDS) writes nothing more: its AI calls stop, its page saves and its draft save are refused, and its finish
+// is refused, so its files are removed. A late call never replaces what the newer holder wrote.
+// Pure TypeScript: no Next.js, React, network, database or clock (the stores, the AI, the engine, the clock and ids are
+// passed in).
 import type { Grade } from "@/lib/assessment";
 import type { AiClient } from "@/lib/ai-client";
 import type { ChildLearnerProfile } from "@/lib/child-profile";
 import type { PageImage, QuestionBox, WorkbookFiles } from "@/lib/workbook-content";
 import { curriculumFor } from "@/lib/workbook-curriculum";
-import { renderFitCheck } from "@/lib/workbook-fit";
 import {
   generateWorkbook,
   type FitCheck,
   type GeneratedPage,
   type GeneratedWorkbook,
+  type PageStore,
   type WorkbookDraftStore,
 } from "@/lib/workbook-generator";
 import { planNextWorkbook } from "@/lib/workbook-placement";
-import { pageUrl, qrSvg, renderWorkbook, type DraftPage, type PrintEngine, type RenderProblem, type WorkbookTemplate } from "@/lib/workbook-render";
+import { IMAGE_SCALE, PRINT_PAGE, proofPages, renderWorkbook, type DraftPage, type PrintEngine, type RenderProblem, type WorkbookTemplate } from "@/lib/workbook-render";
 
 /** Attempts of one run in all: the first and one retry. */
 export const RUN_ATTEMPTS = 2;
-/** A run with no progress for this long has stopped: past the 300 s function limit, with a margin. */
+/** A run whose holder made no progress for this long has stopped: past the 300 s function limit, with a margin. */
 export const STALE_SECONDS = 360;
+/** Day pages written at the same time when the caller does not say. */
+export const PAGE_CONCURRENCY = 4;
+/** How long one job call works before it hands the run on (the function stops at 300 s). */
+export const CALL_BUDGET_MS = 240_000;
+/** No new day page starts this close to the budget: a page in flight takes up to about this long. */
+const PAGE_MARGIN_MS = 150_000;
+/** The render starts only with at least this much of the budget left; else it runs in the next call. */
+const RENDER_MS = 150_000;
 
 export type RunStatus = "queued" | "running" | "done" | "failed" | "stale";
 export type RunStep = "plan" | "write" | "render" | "save";
@@ -69,18 +83,27 @@ export interface WorkbookRun {
   error: string | null;
   errors: RunError[];
   draftId: string | null;
+  /** The id of the draft the run writes, fixed when it starts. */
+  draftKey: string;
+  /** How many times a new job call took the run up again. */
+  resumes: number;
   startedBy: { id: string | null; email: string | null };
 }
 
-/** A draft revision's rendering: the PDF of the pages that rendered, and each such page's image and question boxes. */
+/**
+ * A draft revision's rendering: the PDF of the pages that rendered, and each page's image with its question boxes. A
+ * page that did not render has a proof image (`proof`): its failure marked on it, no boxes, never printed.
+ */
 export interface DraftRendering {
-  pdfPath: string;
-  pages: { number: number; image: PageImage; questions: { number: number; box: QuestionBox }[] }[];
+  pdfPath: string | null;
+  pages: { number: number; image: PageImage; questions: { number: number; box: QuestionBox }[]; proof?: boolean }[];
 }
 
 export type StartResult =
   | { status: "started"; runId: string }
   | { status: "busy"; runId: string }
+  /** The child's run stopped mid-way: take it up again (resume) instead of starting over. */
+  | { status: "stalled"; runId: string }
   | { status: "refused"; reason: string };
 
 /** Who starts a run: the admin. */
@@ -90,18 +113,26 @@ export interface RunActor {
 }
 
 /**
- * The runs' store. Adapters: Supabase (src/lib/workbook-job-store.ts, the functions of migration add_workbook_runs) and
- * in memory (src/lib/workbook-job-memory.ts). Every write after the start names the lease and changes nothing (false)
- * when the lease no longer holds the run. A database error throws.
+ * The runs' store. Adapters: Supabase (src/lib/workbook-job-store.ts, the functions of migrations add_workbook_runs and
+ * workbook_run_resume) and in memory (src/lib/workbook-job-memory.ts). Every write after the start names the lease and
+ * changes nothing (false) when the lease no longer holds the run. A database error throws.
  */
 export interface WorkbookRunStore {
-  /** Stops the child's stale runs, then adds a queued run, unless one is active. Writes the audit entries. */
+  /** Adds a queued run, unless one is active ("busy") or stopped mid-way ("stalled"). Writes the audit entry. */
   start(childId: string, by: RunActor, o: { maxAttempts: number; staleSeconds: number }): Promise<StartResult>;
   /** Takes a queued run: running, attempt 1. Null when it is not queued. */
   claim(runId: string, lease: string): Promise<WorkbookRun | null>;
+  /** Takes up a running run that no one holds, or whose holder made no progress for `staleSeconds`. Null otherwise. */
+  resume(runId: string, lease: string, staleSeconds: number): Promise<WorkbookRun | null>;
+  /** The holder lets go, to go on in a new job call. */
+  yield(runId: string, lease: string): Promise<boolean>;
   /** The step and progress, with a heartbeat. */
   progress(runId: string, lease: string, p: { step: RunStep; done?: number; total?: number }): Promise<boolean>;
   held(runId: string, lease: string): Promise<boolean>;
+  /** The run's finished day pages. */
+  pages(runId: string): Promise<GeneratedPage[]>;
+  /** Stores a finished day page (the first stored wins), with a heartbeat. */
+  savePage(runId: string, lease: string, page: GeneratedPage): Promise<boolean>;
   /** Keeps the attempt's error and starts the next attempt; false too when no attempt is left. */
   retry(runId: string, lease: string, error: string): Promise<boolean>;
   fail(runId: string, lease: string, error: string): Promise<boolean>;
@@ -113,6 +144,8 @@ export interface WorkbookRunStore {
 /** What the job reads about the child. */
 export interface ChildInputs {
   parentId: string;
+  /** The child's first name, as the cover prints it. */
+  name: string;
   grade: Grade;
   /** The child's curriculum, as signup stores it ("BC"). */
   province: string;
@@ -133,19 +166,30 @@ export interface WorkbookJobDeps {
   files: WorkbookFiles;
   /** Null: the AI is off, and the run fails with that reason. */
   ai: AiClient | null;
+  /** The page templates: the real ones (#310) in live use. */
   template: WorkbookTemplate;
+  /** The fit check of each written page: the templates' strict check through the renderer in live use. */
+  fit: (parentId: string) => FitCheck;
   engine: PrintEngine;
-  /** A new UUID: leases and draft ids. */
+  /** A new UUID: leases. */
   newId(): string;
   /** A new QR token for a page. */
   qrToken(): string;
   /** A new file key for a render's file names. */
   fileKey(): string;
+  /** The clock, in milliseconds. */
+  now(): number;
+  /** Day pages written at the same time; PAGE_CONCURRENCY when not given. */
+  concurrency?: number;
+  /** How long this call works before it hands the run on; CALL_BUDGET_MS when not given. */
+  budgetMs?: number;
+  /** Starts a new job call that takes the run up again (the resume route); none: the next start takes it up. */
+  handOff?(runId: string): Promise<void>;
   /** The time limit of one AI call; the generator's default when not given. */
   timeLimitMs?: number;
 }
 
-export type JobOutcome = "done" | "failed" | "stale" | "not-claimed";
+export type JobOutcome = "done" | "failed" | "stale" | "handed-on" | "not-claimed";
 
 /** Starts a run for the child with the job's limits. */
 export const startWorkbookRun = (runs: WorkbookRunStore, childId: string, by: RunActor) =>
@@ -166,7 +210,7 @@ export function runState(run: Pick<WorkbookRun, "status" | "heartbeatAt" | "crea
 /** A refusal: the run fails at once, with no retry. */
 class Refusal extends Error {}
 
-/** The lease was lost: the run was stopped, and this job call must write nothing more. */
+/** The lease was lost: the run was taken up by another call, and this one must write nothing more. */
 class Stopped extends Error {}
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -174,80 +218,75 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 /** The curriculum key of a signup curriculum: only BC has a map. */
 const CURRICULUM_KEYS: Record<string, string> = { BC: "bc" };
 
-/**
- * The fit check of the job: the renderer's own measure (src/lib/workbook-fit.ts) through the template. A page type the
- * template has no layout for is not measured here (it would fail the same way twice and cost a second AI call); the
- * render step then names it as a page that did not render, so the reviewer still sees it.
- */
-function fitCheck(template: WorkbookTemplate, engine: PrintEngine, parentId: string): FitCheck {
-  const measure = renderFitCheck({ template, engine, parentId });
-  return {
-    async fits(page, book) {
-      const probe = template.page(page, { qr: qrSvg(pageUrl(page.qrToken)), qrUrl: pageUrl(page.qrToken) }, { ...book, pages: [page] });
-      return probe === null ? { ok: true } : measure.fits(page, book);
-    },
-  };
-}
-
 const draftPage = (p: GeneratedPage): DraftPage => ({
   number: p.number,
   dayLabel: p.dayLabel,
   type: p.type,
   qrToken: p.qrToken,
   questions: p.questions.flatMap((q) => (q.package ? [{ number: q.number, package: q.package }] : [])),
+  content: p.content,
 });
 
 /** Render rounds: each leaves out the pages that failed the last. */
 const RENDER_ROUNDS = 3;
 
+/** The size of a proof image: the page at the image scale. */
+const PROOF_SIZE = { width: Math.round(PRINT_PAGE.width * IMAGE_SCALE), height: Math.round(PRINT_PAGE.height * IMAGE_SCALE) };
+
 /**
- * Renders the draft and stores the files. The pages that do not render are left out, with their problems. Returns the
- * paths stored, so a refused finish removes them.
+ * Renders the draft and stores the files: the pages that render, with their PDF, and a proof image of each page that
+ * does not, with its problems. Returns the paths stored, so a refused finish removes them.
  */
 async function renderDraft(draft: GeneratedWorkbook, parentId: string, deps: WorkbookJobDeps) {
   const problems: RenderProblem[] = [];
+  const book = { id: draft.id, childId: draft.childId, number: draft.number, levels: draft.levels, profileBuild: draft.profileBuild };
   let pages = draft.pages.map(draftPage);
   const key = deps.fileKey();
-  for (let round = 0; round < RENDER_ROUNDS && pages.length > 0; round++) {
-    const result = await renderWorkbook({
-      draft: { id: draft.id, childId: draft.childId, number: draft.number, levels: draft.levels, profileBuild: draft.profileBuild, pages },
-      parentId, template: deps.template, engine: deps.engine, fileKey: `${key}r${round}`,
-    });
-    if (result.status === "failed") {
-      problems.push(...result.problems);
-      const bad = new Set(result.problems.map((p) => p.page));
-      pages = pages.filter((p) => !bad.has(p.number));
-      continue;
-    }
-    const stored: string[] = [];
-    try {
-      for (const file of result.files) {
-        stored.push(file.path);
-        await deps.files.put(file);
+  const stored: string[] = [];
+  const put = async (file: Parameters<WorkbookFiles["put"]>[0]) => {
+    stored.push(file.path);
+    await deps.files.put(file);
+  };
+  const proofs: DraftRendering["pages"] = [];
+  try {
+    for (let round = 0; round < RENDER_ROUNDS && pages.length > 0; round++) {
+      const result = await renderWorkbook({ draft: { ...book, pages }, parentId, template: deps.template, engine: deps.engine, fileKey: `${key}r${round}` });
+      if (result.status === "failed") {
+        problems.push(...result.problems);
+        const bad = new Set(result.problems.map((p) => p.page));
+        const failing = pages.filter((p) => bad.has(p.number));
+        for (const proof of await proofPages({ draft: { ...book, pages: failing }, template: deps.template, engine: deps.engine, problems: result.problems })) {
+          const path = `${parentId}/${draft.id}/proof-${proof.page}-${key}r${round}.png`;
+          await put({ path, contentType: "image/png", bytes: proof.png });
+          proofs.push({ number: proof.page, image: { path, ...PROOF_SIZE }, questions: [], proof: true });
+        }
+        pages = pages.filter((p) => !bad.has(p.number));
+        continue;
       }
-    } catch (e) {
-      await deps.files.remove(stored).catch(() => undefined);
-      throw e;
+      for (const file of result.files) await put(file);
+      const rendered = result.workbook.pages.map((p) => ({ number: p.number, image: p.image!, questions: p.questions.map((q) => ({ number: q.number, box: q.box })) }));
+      return { rendering: { pdfPath: result.workbook.pdfPath!, pages: [...rendered, ...proofs].sort((a, b) => a.number - b.number) }, problems, paths: stored };
     }
-    const rendering: DraftRendering = {
-      pdfPath: result.workbook.pdfPath!,
-      pages: result.workbook.pages.map((p) => ({ number: p.number, image: p.image!, questions: p.questions.map((q) => ({ number: q.number, box: q.box })) })),
-    };
-    return { rendering, problems, paths: stored };
+  } catch (e) {
+    await deps.files.remove(stored).catch(() => undefined);
+    throw e;
   }
-  return { rendering: null, problems, paths: [] as string[] };
+  return { rendering: proofs.length ? { pdfPath: null, pages: proofs.sort((a, b) => a.number - b.number) } : null, problems, paths: stored };
 }
 
 /**
- * Runs one queued run to its end. Never throws: every failure is stored on the run. "not-claimed": the run was not
- * queued (another call took it, or it was stopped).
+ * Runs one run until it is done, fails, or hands on near the time budget. `resume`: take up a running run (a hand-over,
+ * or a run that stopped) instead of a queued one. Never throws: every failure is stored on the run. "not-claimed": the
+ * run was not there to take (another call took it, or it ended).
  */
-export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps): Promise<JobOutcome> {
+export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps, o: { resume?: boolean } = {}): Promise<JobOutcome> {
   const { runs } = deps;
   const lease = deps.newId();
+  const started = deps.now();
+  const budget = deps.budgetMs ?? CALL_BUDGET_MS;
   let run: WorkbookRun | null;
   try {
-    run = await runs.claim(runId, lease);
+    run = o.resume ? await runs.resume(runId, lease, STALE_SECONDS) : await runs.claim(runId, lease);
   } catch (e) {
     console.error("[workbook job] claim failed", runId, message(e));
     return "not-claimed";
@@ -255,7 +294,7 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps): Prom
   if (!run) return "not-claimed";
   const claimed = run;
 
-  // The lease, as the last progress write saw it. Progress writes go one after another, and never fail the job.
+  // The lease, as the last write saw it. Progress writes go one after another, and never fail the job.
   let lost = false;
   let pending: Promise<void> = Promise.resolve();
   const progress = (p: Parameters<WorkbookRunStore["progress"]>[2]) => {
@@ -271,13 +310,30 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps): Prom
   };
   const check = async () => {
     await pending;
-    if (lost) throw new Stopped("the run was stopped");
+    if (lost) throw new Stopped("the run was taken up by another call");
   };
+  const handOn = async (): Promise<JobOutcome> => {
+    await pending;
+    if (lost || !(await runs.yield(runId, lease))) return "stale";
+    try {
+      await deps.handOff?.(runId);
+    } catch (e) {
+      // The run has no holder now: the next "Prepare next workbook" takes it up.
+      console.error("[workbook job] hand-over failed", runId, message(e));
+    }
+    return "handed-on";
+  };
+  const left = () => budget - (deps.now() - started);
 
-  let draft: GeneratedWorkbook | null = null;
   for (;;) {
     try {
-      if (!draft) draft = await write(claimed, deps, lease, progress, check, () => lost, (v) => { lost = v; });
+      let draft = await deps.drafts.draft(claimed.draftKey);
+      if (!draft) {
+        const written = await write(claimed, deps, lease, progress, check, () => lost, (v) => { lost = v; }, () => left() < PAGE_MARGIN_MS);
+        if (written === "paused") return await handOn();
+        draft = written;
+      }
+      if (left() < RENDER_MS) return await handOn();
       await progress({ step: "render" });
       await check();
       const rendered = await renderDraft(draft, claimed.parentId, deps);
@@ -304,12 +360,12 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps): Prom
   }
 }
 
-/** Steps 1 and 2: the plan, then the draft, stored. */
+/** Steps 1 and 2: the plan, then the day pages (the stored ones kept), then the draft, stored. "paused": out of time. */
 async function write(
   run: WorkbookRun, deps: WorkbookJobDeps, lease: string,
   progress: (p: Parameters<WorkbookRunStore["progress"]>[2]) => Promise<void>, check: () => Promise<void>,
-  isLost: () => boolean, setLost: (v: boolean) => void,
-): Promise<GeneratedWorkbook> {
+  isLost: () => boolean, setLost: (v: boolean) => void, outOfTime: () => boolean,
+): Promise<GeneratedWorkbook | "paused"> {
   await progress({ step: "plan" });
   await check();
   const inputs = await deps.source.inputs(run.childId);
@@ -325,7 +381,7 @@ async function write(
   const guardedAi: AiClient = {
     model: ai.model,
     json: async (request, signal) => {
-      if (isLost()) throw new Stopped("the run was stopped");
+      if (isLost()) throw new Stopped("the run was taken up by another call");
       return ai.json(request, signal);
     },
   };
@@ -335,24 +391,34 @@ async function write(
       await check();
       if (!(await deps.runs.held(run.id, lease))) {
         setLost(true);
-        return { status: "refused", reason: "the run was stopped" };
+        return { status: "refused", reason: "the run was taken up by another call" };
       }
       return deps.drafts.save(d);
     },
   };
+  const pages: PageStore = {
+    load: () => deps.runs.pages(run.id),
+    async save(page) {
+      if (isLost() || !(await deps.runs.savePage(run.id, lease, page))) {
+        setLost(true);
+        throw new Stopped("the run was taken up by another call");
+      }
+    },
+  };
   const result = await generateWorkbook(
     {
-      workbookId: deps.newId(), childId: run.childId, number: run.number,
+      workbookId: run.draftKey, childId: run.childId, child: inputs.name, number: run.number,
       profileBuild: inputs.profile ? `child profile revision ${inputs.profile.revision}` : null,
       plan: planned.plan, curriculum,
     },
     {
-      ai: guardedAi, fit: fitCheck(deps.template, deps.engine, inputs.parentId), store: guardedDrafts, qrToken: deps.qrToken,
-      timeLimitMs: deps.timeLimitMs,
+      ai: guardedAi, fit: deps.fit(inputs.parentId), store: guardedDrafts, qrToken: deps.qrToken, pages,
+      concurrency: deps.concurrency ?? PAGE_CONCURRENCY, stop: () => isLost() || outOfTime(), timeLimitMs: deps.timeLimitMs,
       progress: (done, total) => { void progress({ step: "write", done, total }); },
     },
   );
-  if (isLost()) throw new Stopped("the run was stopped");
+  if (isLost()) throw new Stopped("the run was taken up by another call");
+  if (result.status === "paused") return "paused";
   if (result.status === "refused") throw new Refusal(`The draft was not stored: ${result.reason}.`);
   return result.draft;
 }

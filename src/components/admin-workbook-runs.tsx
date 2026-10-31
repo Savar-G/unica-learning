@@ -47,7 +47,7 @@ export function ChecksCell({ counts, notRendered }: { counts: DraftCounts | null
     {counts.failed > 0 ? <Chip tone="bad">{counts.failed} failed</Chip> : <Chip tone="ok">No failed questions</Chip>}
     {counts.failedPages > 0 && <Chip tone="bad">{counts.failedPages} {counts.failedPages === 1 ? "page does" : "pages do"} not fit</Chip>}
     {counts.notChecked > 0 && <Chip tone="warn">{counts.notChecked} not checked by code</Chip>}
-    {notRendered ? <Chip tone="warn">{notRendered} {notRendered === 1 ? "page" : "pages"} not rendered</Chip> : null}
+    {notRendered ? <Chip tone="bad">{notRendered} {notRendered === 1 ? "page did" : "pages did"} not render</Chip> : null}
     <span className="adm-sub">{checked} of {counts.questions} questions checked by code</span>
   </span>;
 }
@@ -164,10 +164,27 @@ function pageIssues(page: GeneratedPage, problems: RenderProblem[]) {
   const failed = page.questions.filter((q) => q.check.status === "failed");
   const notChecked = page.questions.filter((q) => q.check.status === "not-checked");
   const fit = page.fit.status === "failed" ? page.fit.problems : [];
-  return { failed, notChecked, fit, render: problems, bad: failed.length > 0 || fit.length > 0, warn: notChecked.length > 0 || problems.length > 0 };
+  // A draft made before the page layouts (shape version 1) has no omissions.
+  const omitted = (page.omissions ?? []).length > 0;
+  return { failed, notChecked, fit, render: problems, bad: failed.length > 0 || fit.length > 0 || problems.length > 0, warn: notChecked.length > 0 || omitted };
 }
 
 const NO_LAYOUT = /^the template has no layout for a .+ page$/;
+
+/** A problem as one line: "Question 3: ..." only when the reason does not name the question already. */
+const reasonText = (p: { question: number | null; reason: string }) =>
+  p.question && !p.reason.toLowerCase().includes(`question ${p.question}`) ? `Question ${p.question}: ${p.reason}` : p.reason;
+
+/** A page's problems, each once: the first few, then the rest behind "Show all". */
+function ProblemList({ reasons }: { reasons: string[] }) {
+  const unique = [...new Set(reasons)];
+  if (unique.length === 0) return null;
+  const SHOWN = 3;
+  return <div className="adm-wb-problems">
+    <ul>{unique.slice(0, SHOWN).map((r) => <li key={r}>{r}</li>)}</ul>
+    {unique.length > SHOWN && <details><summary>Show all {unique.length} problems</summary><ul>{unique.slice(SHOWN).map((r) => <li key={r}>{r}</li>)}</ul></details>}
+  </div>;
+}
 
 function QuestionCheckCell({ q }: { q: GeneratedQuestion }) {
   if (q.check.status === "checked") return <Chip tone="ok">Checked by code</Chip>;
@@ -194,10 +211,10 @@ function DraftPageImage({ page, image, url }: { page: GeneratedPage; image: Draf
   const pct = (n: number, of: number) => `${(n / of) * 100}%`;
   const failed = new Set(page.questions.filter((q) => q.check.status === "failed").map((q) => q.number));
   return (
-    <figure className="adm-wb-page" style={{ aspectRatio: `${width} / ${height}` }}>
+    <figure className={`adm-wb-page${image.proof ? " is-proof" : ""}`} style={{ aspectRatio: `${width} / ${height}` }}>
       {/* A private, short-lived URL: not for the image optimizer, which would cache it. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      {url ? <img src={url} alt={`${title}, as it would print`} loading="lazy" /> : <figcaption className="adm-empty">The page image did not load.</figcaption>}
+      {url ? <img src={url} alt={image.proof ? `${title}: proof with its failure marked` : `${title}, as it would print`} loading="lazy" /> : <figcaption className="adm-empty">The page image did not load.</figcaption>}
       {image.questions.map((q) => (
         <span key={q.number} className={`adm-wb-box${failed.has(q.number) ? " is-bad" : ""}`} aria-hidden="true"
           style={{ left: pct(q.box.x, width), top: pct(q.box.y, height), width: pct(q.box.width, width), height: pct(q.box.height, height) }}>
@@ -221,16 +238,21 @@ function DraftPageSection({ page, detail }: { page: GeneratedPage; detail: NonNu
         {page.fit.status === "fits" && !noLayout && <Chip tone="ok">Fits</Chip>}
         {issues.failed.length > 0 && <Chip tone="bad">{issues.failed.length} failed {issues.failed.length === 1 ? "question" : "questions"}</Chip>}
         {issues.notChecked.length > 0 && <Chip tone="warn">{issues.notChecked.length} not checked by code</Chip>}
-        {problems.length > 0 && <Chip tone="warn">{noLayout ? "No page layout yet" : "Not rendered"}</Chip>}
+        {problems.length > 0 && <Chip tone="bad">{noLayout ? "No page layout" : "Did not render"}</Chip>}
+        {(page.omissions ?? []).length > 0 && <Chip tone="warn">{(page.omissions ?? []).reduce((n, o) => n + o.requested - o.placed, 0)} planned items left out</Chip>}
         {page.attempts === 2 && <span className="adm-sub">Written again after the fit check</span>}
       </p>
-      {issues.fit.length > 0 && <ul className="adm-wb-problems">{issues.fit.map((p, i) => <li key={i}>{p.question ? `Question ${p.question}: ` : ""}{p.reason}</li>)}</ul>}
+      <ProblemList reasons={[...issues.fit, ...problems].map(reasonText)} />
+      {(page.omissions ?? []).length > 0 && <ul className="adm-wb-problems adm-sub">{(page.omissions ?? []).map((o, i) => <li key={`o${i}`}>{partText(o.kind)}: {o.placed} of {o.requested} placed ({o.reason})</li>)}</ul>}
       <div className={page.questions.length ? "adm-wb-grid" : "adm-wb-solo"}>
-        {image ? <DraftPageImage page={page} image={image} url={detail.images[image.image.path]} /> : (
+        {image ? (
+          <div className="adm-wb-figure">
+            <DraftPageImage page={page} image={image} url={detail.images[image.image.path]} />
+            {image.proof && <p className="adm-sub">Proof image: the page did not render. The red marks show why. It is never printed.</p>}
+          </div>
+        ) : (
           <div className="adm-wb-missing" role="note">
-            <b>{noLayout ? "This page type has no layout yet" : "This page did not render"}</b>
-            <ul>{problems.map((p, i) => <li key={i}>{p.question ? `Question ${p.question}: ` : ""}{p.reason}</li>)}</ul>
-            {noLayout && <span className="adm-sub">The real page templates (#310) add the layouts. The questions are still checked below.</span>}
+            <b>{noLayout ? "This page type has no layout" : "This page did not render"}</b>
             {!problems.length && <span className="adm-sub">No image is stored for this page.</span>}
           </div>
         )}
@@ -247,7 +269,7 @@ function DraftPageSection({ page, detail }: { page: GeneratedPage; detail: NonNu
 
 const ACTION: Record<string, string> = {
   "run-started": "Started preparing", "run-retried": "Tried again after an error", "run-failed": "Failed", "run-stopped": "Stopped a run with no progress",
-  "draft-stored": "Stored the draft",
+  "draft-stored": "Stored the draft", "run-resumed": "Took the run up again",
 };
 
 function AuditLog({ entries }: { entries: AuditEntry[] }) {
@@ -283,7 +305,7 @@ export function AdminWorkbookRun({ email, detail, now, only }: { email: string; 
         ["Status", <span key="state" className="adm-wb-state"><RunStateChip state={state} />{(state === "preparing" || state === "waiting") && <RunProgress run={run} />}</span>],
         ["Started (Pacific)", `${when(run.createdAt)} by ${run.startedBy.email ?? "unknown"}`],
         ["Finished (Pacific)", run.finishedAt ? when(run.finishedAt) : "Not yet"],
-        ["Attempts", `${run.attempts} of ${run.maxAttempts}`],
+        ["Attempts", `${run.attempts} of ${run.maxAttempts}${run.resumes > 0 ? ` · taken up again ${run.resumes} ${run.resumes === 1 ? "time" : "times"}` : ""}`],
         ...(draft ? [
           ["Levels", levelsText(draft.workbook.levels)] as [string, ReactNode],
           ["Pages", `${draft.workbook.pages.length} pages · revision ${draft.revision}`] as [string, ReactNode],
@@ -311,7 +333,7 @@ export function AdminWorkbookRun({ email, detail, now, only }: { email: string; 
             {only ? <Link href={adminWorkbookRunPath(run.id)}>Show every page</Link> : <Link href={`${adminWorkbookRunPath(run.id)}?only=attention`}>Show only the {attention.length} pages that need attention</Link>}
           </nav>
         </> : <p className="adm-note">Every question was checked by code, and every page fits and rendered.</p>}
-        {draft.rendering && <p className="adm-note adm-mono">PDF of the pages that rendered: {draft.rendering.pdfPath}</p>}
+        {draft.rendering?.pdfPath && <p className="adm-note adm-mono">PDF of the pages that rendered: {draft.rendering.pdfPath}</p>}
         {shown.map((p) => <DraftPageSection key={p.number} page={p} detail={{ ...draft, images: detail.images }} />)}
       </>}
 

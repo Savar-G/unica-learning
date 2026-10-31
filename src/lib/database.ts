@@ -9,7 +9,7 @@ import type { PlanId } from "@/lib/site";
 import type { TestDevice } from "@/lib/test-context";
 import type { StoredReview } from "@/lib/work-review";
 import type { WorkbookStatus } from "@/lib/workbook-content";
-import type { GeneratedWorkbook } from "@/lib/workbook-generator";
+import type { GeneratedPage, GeneratedWorkbook } from "@/lib/workbook-generator";
 import type { DraftRendering, RunError, RunStatus, RunStep } from "@/lib/workbook-job";
 import type { RenderProblem } from "@/lib/workbook-render";
 
@@ -40,6 +40,7 @@ type ColumnTypes = KnownColumns<{
   workbook_runs: { status: RunStatus; step: RunStep | null; errors: RunError[] };
   workbook_draft_revisions: { kind: "generated" | "edit" | "redo-page"; content: GeneratedWorkbook | null; rendering: DraftRendering | null; render_problems: RenderProblem[] };
   workbook_audit: { detail: Record<string, Json | undefined> };
+  workbook_run_pages: { page: GeneratedPage };
 }>;
 type Fits<T, Column> = Json extends Column ? T
   : (null extends T ? 1 : 0) extends (null extends Column ? 1 : 0) ? (NonNullable<T> extends NonNullable<Column> ? T : never) : never;

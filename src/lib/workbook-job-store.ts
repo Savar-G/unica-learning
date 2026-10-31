@@ -10,15 +10,15 @@ import type { WorkbookJobSource, WorkbookRun, WorkbookRunStore } from "@/lib/wor
 // hold the rules (one active run per child, stale runs stopped, every write held by the lease, the audit entries);
 // tests use src/lib/workbook-job-memory.ts, which keeps the same rules. No Next.js or React.
 
-export const RUN_COLUMNS = "id, created_at, parent_id, child_id, number, status, step, attempts, max_attempts, done_pages, total_pages, heartbeat_at, started_at, finished_at, error, errors, draft_id, started_by, started_by_email";
+export const RUN_COLUMNS = "id, created_at, parent_id, child_id, number, status, step, attempts, max_attempts, done_pages, total_pages, heartbeat_at, started_at, finished_at, error, errors, draft_id, draft_key, resumes, started_by, started_by_email";
 
 type RunRow = Pick<Tables<"workbook_runs">, "id" | "created_at" | "parent_id" | "child_id" | "number" | "status" | "step" | "attempts" | "max_attempts"
-  | "done_pages" | "total_pages" | "heartbeat_at" | "started_at" | "finished_at" | "error" | "errors" | "draft_id" | "started_by" | "started_by_email">;
+  | "done_pages" | "total_pages" | "heartbeat_at" | "started_at" | "finished_at" | "error" | "errors" | "draft_id" | "draft_key" | "resumes" | "started_by" | "started_by_email">;
 
 export const runFromRow = (r: RunRow): WorkbookRun => ({
   id: r.id, createdAt: r.created_at, parentId: r.parent_id, childId: r.child_id, number: r.number, status: r.status, step: r.step,
   attempts: r.attempts, maxAttempts: r.max_attempts, donePages: r.done_pages, totalPages: r.total_pages, heartbeatAt: r.heartbeat_at,
-  startedAt: r.started_at, finishedAt: r.finished_at, error: r.error, errors: r.errors, draftId: r.draft_id,
+  startedAt: r.started_at, finishedAt: r.finished_at, error: r.error, errors: r.errors, draftId: r.draft_id, draftKey: r.draft_key, resumes: r.resumes,
   startedBy: { id: r.started_by, email: r.started_by_email },
 });
 
@@ -39,12 +39,26 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
       });
       if (error?.code === "55000") return { status: "refused", reason: "the family is being deleted" };
       if (error) throw new Error(`workbook run start: ${error.message}`);
-      const answer = data as { status: "started" | "busy"; run: string } | { status: "refused"; reason: string };
+      const answer = data as { status: "started" | "busy" | "stalled"; run: string } | { status: "refused"; reason: string };
       return answer.status === "refused" ? answer : { status: answer.status, runId: answer.run };
     },
     async claim(id, lease) {
       const claimed = must(await admin.rpc("claim_workbook_run", { p_run: id, p_lease: lease }), "claim");
       return claimed ? run(id) : null;
+    },
+    async resume(id, lease, staleSeconds) {
+      const taken = must(await admin.rpc("resume_workbook_run", { p_run: id, p_lease: lease, p_stale_seconds: staleSeconds }), "resume") === true;
+      return taken ? run(id) : null;
+    },
+    async yield(id, lease) {
+      return must(await admin.rpc("yield_workbook_run", { p_run: id, p_lease: lease }), "yield") === true;
+    },
+    async pages(id) {
+      const rows = must(await admin.from("workbook_run_pages").select("page").eq("run_id", id).order("number"), "pages load") ?? [];
+      return rows.map((r) => r.page);
+    },
+    async savePage(id, lease, page) {
+      return must(await admin.rpc("save_workbook_run_page", { p_run: id, p_lease: lease, p_number: page.number, p_page: toJson(page) }), "page save") === true;
     },
     async progress(id, lease, p) {
       const patch: Database["public"]["Tables"]["workbook_runs"]["Update"] = { step: p.step, heartbeat_at: new Date().toISOString() };
@@ -76,7 +90,7 @@ export function workbookJobSource(admin: SupabaseClient<Database>): WorkbookJobS
   return {
     async inputs(childId) {
       const [child, books, profile] = await Promise.all([
-        admin.from("children").select("parent_id, grade, province").eq("id", childId).maybeSingle(),
+        admin.from("children").select("parent_id, first_name, grade, province").eq("id", childId).maybeSingle(),
         admin.from("workbooks").select("number, levels").eq("child_id", childId),
         readChildProfile(childProfileStore(admin), childId),
       ]);
@@ -84,7 +98,7 @@ export function workbookJobSource(admin: SupabaseClient<Database>): WorkbookJobS
       if (!row) return null;
       if (!isGrade(row.grade)) throw new Error(`workbook run child load: grade ${row.grade} is not K to 9`);
       return {
-        parentId: row.parent_id, grade: row.grade, province: row.province,
+        parentId: row.parent_id, name: row.first_name, grade: row.grade, province: row.province,
         profile: profile ? { revision: profile.revision, profile: profile.profile } : null,
         workbooks: must(books, "workbooks load") ?? [],
       };

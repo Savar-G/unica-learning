@@ -33,10 +33,14 @@
 .adm-wb-solo { max-width: 340px; }
 .adm-wb-missing { display: grid; gap: 6px; align-content: start; aspect-ratio: 816 / 1056; padding: 16px; border: 2px dashed var(--line); border-radius: 6px; background: var(--soft); font-size: 14px; }
 .adm-wb-missing ul, .adm-wb-problems { margin: 0; padding-left: 18px; font-size: 14px; }
-.adm-wb-problems { margin-bottom: 10px; color: var(--ink); }
+.adm-wb-problems { margin-bottom: 10px; color: var(--ink); font-size: 14px; }
+.adm-wb-problems ul { margin: 0; padding-left: 18px; }
+.adm-wb-problems summary { cursor: pointer; margin: 4px 0; color: var(--ink-2); }
 .adm-wb-box.is-bad { border-color: var(--tang); background: color-mix(in srgb, var(--tang) 14%, transparent); }
 .adm-table tr.is-bad td { background: var(--adm-bad); }
 .adm-table tr.is-warn td { background: color-mix(in srgb, var(--adm-warn) 55%, #fff); }
 .adm-wb-alert { margin: 18px 0; padding: 14px 16px; border-radius: 8px; background: var(--adm-bad); }
 .adm-wb-alert p { margin: 6px 0 0; }
 .adm-wb-bad-link { font-weight: 600; }
+.adm-wb-figure { display: grid; gap: 6px; align-content: start; }
+.adm-wb-page.is-proof { border: 2px solid var(--tang); }

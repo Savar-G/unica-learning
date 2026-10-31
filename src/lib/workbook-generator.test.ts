@@ -6,7 +6,7 @@ import { operationResult } from "@/lib/question-package";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { renderFitCheck } from "@/lib/workbook-fit";
 import { curriculumFor } from "@/lib/workbook-curriculum";
-import { generateWorkbook, type FitCheck, type GenerateDeps, type GeneratedWorkbook } from "@/lib/workbook-generator";
+import { generateWorkbook, type FitCheck, type GenerateDeps, type GeneratedPage, type GeneratedWorkbook } from "@/lib/workbook-generator";
 import { planLevel, planWorkbook, type WorkbookPlan } from "@/lib/workbook-plan";
 import { fixedTemplate } from "@/lib/workbook-template-fixed";
 
@@ -29,7 +29,7 @@ function plan(): WorkbookPlan {
 const PLAN = plan();
 const DAY_PAGES = PLAN.days.flatMap((d) => d.pages);
 
-const input = { workbookId: WORKBOOK, childId: CHILD, number: 1, profileBuild: null, plan: PLAN, curriculum: BC };
+const input = { workbookId: WORKBOOK, childId: CHILD, child: "Leah", number: 1, profileBuild: null, plan: PLAN, curriculum: BC };
 
 const num = (value: number) => ({
   type: "number", value, numerator: null, denominator: null, whole: null, unit: null, hours: null, minutes: null, period: null, parts: [], text: null,
@@ -71,7 +71,7 @@ function deps(over: Partial<GenerateDeps> = {}): GenerateDeps & { store: ReturnT
 
 async function generate(d = deps()): Promise<GeneratedWorkbook> {
   const result = await generateWorkbook(input, d);
-  if (result.status !== "stored") throw new Error(result.reason);
+  if (result.status !== "stored") throw new Error(result.status === "refused" ? result.reason : "paused");
   return result.draft;
 }
 
@@ -97,16 +97,27 @@ describe("a full draft", () => {
     expect(dayPages.map((p) => p.dayLabel)).toEqual(PLAN.days.flatMap((day) => day.pages.map(() => `Day ${day.day}`)));
     expect(new Set(draft.pages.map((p) => p.qrToken)).size).toBe(n);
 
-    for (const [i, page] of dayPages.entries()) {
-      const slots = DAY_PAGES[i].parts.reduce((s, part) => s + part.items, 0);
+    for (const page of dayPages) {
+      // The page's layout (the template's slots, pageSlots) decides how many questions it holds.
+      const content = page.content;
+      if (content.kind !== "day") throw new Error(`page ${page.number} has no day content`);
+      const slots = content.blocks.reduce((n, b) => n + b.items.length, 0);
+      expect(slots).toBeGreaterThan(0);
       expect(page.questions.map((q) => q.number)).toEqual(Array.from({ length: slots }, (_, j) => j + 1));
+      // Every question sits in one block, in order, and the header and page ID are code's.
+      expect(content.blocks.flatMap((b) => b.items)).toEqual(page.questions.map((q) => q.number));
+      expect(content.id).toBe(`UL·LEAH·W01·D${String(page.day).padStart(2, "0")}·P${page.pageOfDay}`);
+      expect(content.title.length).toBeGreaterThan(0);
       for (const q of page.questions) {
         expect(q.check).toEqual({ status: "checked" });
         expect(q.package!.ref).toEqual({ source: "workbook", workbookId: WORKBOOK, page: page.number, question: q.number });
       }
     }
     expect(draft.counts).toMatchObject({ pages: n, failed: 0, notChecked: 0, failedPages: 0 });
-    expect(draft.counts.questions).toBe(DAY_PAGES.reduce((s, p) => s + p.parts.reduce((t, part) => t + part.items, 0), 0));
+    expect(draft.counts.questions).toBe(draft.pages.reduce((s, p) => s + p.questions.length, 0));
+    // Planned items a page's layout leaves out are kept on the page with why, never dropped silently.
+    const planned = DAY_PAGES.reduce((s, p) => s + p.parts.reduce((t, part) => t + part.items, 0), 0);
+    expect(draft.pages.some((p) => p.omissions.length > 0) || draft.counts.questions >= planned).toBe(true);
     expect(draft.counts.questions).toBeGreaterThan(0);
   });
 
@@ -440,5 +451,59 @@ describe("answers code computes beyond addition", () => {
     const q = await question(op("percent-of", [num(20), num(50)]), [wrong(num(1000))], op("percent-of", [num(10), num(20)]));
     expect(q.check.status).toBe("failed");
     expect(q.package).toBeNull();
+  });
+});
+
+describe("pages in parallel (#312)", () => {
+  it("writes at most `concurrency` pages at a time and makes the same draft as one at a time", async () => {
+    let inFlight = 0;
+    let most = 0;
+    const ai = fakeAiClient({
+      answer: async (r) => {
+        inFlight++;
+        most = Math.max(most, inFlight);
+        await new Promise((done) => setTimeout(done, 1));
+        inFlight--;
+        return fill(r);
+      },
+    });
+    const parallel = await generate(deps({ ai, concurrency: 5 }));
+    expect(most).toBe(5);
+    const serial = await generate(deps());
+    expect(parallel.pages).toEqual(serial.pages);
+  });
+
+  it("keeps two AI attempts a question when pages run in parallel", async () => {
+    // Every first call fails slot 1.1; the redo fails it again: two attempts, never a third.
+    const bad = (s: SlotAsked) => goodItem(s, { wrongAnswers: [{ value: num(425), cause: "O3", description: "Right by mistake.", step: null }] });
+    const asked = new Map<string, number>();
+    const ai = fakeAiClient({
+      answer: (r) => fill(r, (s, req) => {
+        const key = `${req.day}:${req.pageType}:${s.slot}`;
+        asked.set(key, (asked.get(key) ?? 0) + 1);
+        return s.slot === "1.1" ? bad(s) : goodItem(s);
+      }),
+    });
+    const draft = await generate(deps({ ai, concurrency: 6 }));
+    const first = draft.pages.flatMap((p) => p.questions.filter((q) => q.slot === "1.1"));
+    expect(first.length).toBeGreaterThan(0);
+    expect(first.every((q) => q.check.status === "failed" && q.attempts === 2)).toBe(true);
+    // Each page: its first call, then one redo; the fit check passes, so no page retry.
+    expect(ai.requests.length).toBe(2 * draft.pages.filter((p) => p.questions.some((q) => q.slot === "1.1")).length
+      + draft.pages.filter((p) => p.questions.length > 0 && !p.questions.some((q) => q.slot === "1.1")).length);
+  });
+
+  it("resumes from its page store: a kept page is not written again", async () => {
+    const kept = new Map<number, GeneratedPage>();
+    const pages = { load: async () => [...kept.values()], save: async (p: GeneratedPage) => { kept.set(p.number, p); } };
+    let started = 0;
+    const paused = await generateWorkbook(input, deps({ pages, concurrency: 2, stop: () => started++ >= 6 }));
+    expect(paused).toEqual({ status: "paused", done: kept.size, total: DAY_PAGES.length });
+    expect(kept.size).toBeGreaterThan(0);
+    const ai = fakeAiClient({ answer: (r) => fill(r) });
+    const result = await generateWorkbook(input, deps({ ai, pages, concurrency: 2 }));
+    if (result.status !== "stored") throw new Error(result.status === "refused" ? result.reason : result.status);
+    expect(ai.requests.length).toBe(DAY_PAGES.length - (paused as { done: number }).done);
+    for (const p of kept.values()) expect(result.draft.pages[p.number - 1]).toEqual(p);
   });
 });

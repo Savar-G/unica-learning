@@ -10,19 +10,25 @@ const num = (value: number) => ({
 const addOp = (a: number, b: number) => ({ kind: "add", operands: [num(a), num(b)], expression: null, unit: null, denominator: null, values: [] });
 
 function items(r: AiJsonRequest) {
-  const asked = JSON.parse((r.content[0] as { text: string }).text) as { day: number; slots: { slot: string; skills: string[] }[] };
+  const asked = JSON.parse((r.content[0] as { text: string }).text) as { day: number; slots: { slot: string; place: string; skills: string[] }[] };
   return {
     items: asked.slots.map((s, i) => {
       const a = 120 + ((asked.day * 37 + i * 53) % 700);
       const b = 15 + ((asked.day * 11 + i * 29) % 180);
+      if (s.place === "how-do-you-know") {
+        return { slot: s.slot, skill: s.skills[0], difficulty: 1, text: "How do you know your answer to the last story is right?", format: "written-reason", operation: null, wrongAnswers: [], easier: null, shownWrong: null };
+      }
+      const story = ["word-problems", "picture-stories", "challenge", "math-in-the-world"].includes(s.place);
+      const format = story ? "show-work" : s.place === "solve-it-two-ways" ? "two-ways" : s.place === "mixed-set" ? "tick-and-number" : s.place === "spot-the-error" ? "spot-the-error" : "write-number";
+      const text = story ? `A shelf has ${a} books. Mom adds ${b} more. How many books are on the shelf now?` : format === "spot-the-error" ? "Find the wrong move. Write the fix." : `${a} + ${b} = ?`;
       return {
-        slot: s.slot, skill: s.skills[0], difficulty: 2, text: `${a} + ${b} = ?`, format: "write-number", operation: addOp(a, b),
+        slot: s.slot, skill: s.skills[0], difficulty: 2, text, format, operation: addOp(a, b),
         wrongAnswers: [
           { value: num(a + b - 10), cause: "O3", description: "Adds each column and forgets to carry.", step: "tens" },
           { value: num(Math.abs(a - b)), cause: "operation", description: "Takes away instead of adding.", step: null },
         ],
         easier: { text: "48 + 37 = ?", operation: addOp(48, 37) },
-        shownWrong: null,
+        shownWrong: format === "spot-the-error" ? 0 : null,
       };
     }),
   };

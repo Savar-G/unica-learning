@@ -1904,6 +1904,55 @@ export type Database = {
           },
         ]
       }
+      workbook_run_pages: {
+        Row: {
+          child_id: string
+          created_at: string
+          number: number
+          page: Json
+          parent_id: string
+          run_id: string
+        }
+        Insert: {
+          child_id: string
+          created_at?: string
+          number: number
+          page: Json
+          parent_id: string
+          run_id: string
+        }
+        Update: {
+          child_id?: string
+          created_at?: string
+          number?: number
+          page?: Json
+          parent_id?: string
+          run_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_run_pages_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_run_pages_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_run_pages_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_runs: {
         Row: {
           attempts: number
@@ -1911,6 +1960,7 @@ export type Database = {
           created_at: string
           done_pages: number | null
           draft_id: string | null
+          draft_key: string
           error: string | null
           errors: Json
           finished_at: string | null
@@ -1920,6 +1970,7 @@ export type Database = {
           max_attempts: number
           number: number
           parent_id: string
+          resumes: number
           started_at: string | null
           started_by: string | null
           started_by_email: string | null
@@ -1933,6 +1984,7 @@ export type Database = {
           created_at?: string
           done_pages?: number | null
           draft_id?: string | null
+          draft_key?: string
           error?: string | null
           errors?: Json
           finished_at?: string | null
@@ -1942,6 +1994,7 @@ export type Database = {
           max_attempts: number
           number: number
           parent_id: string
+          resumes?: number
           started_at?: string | null
           started_by?: string | null
           started_by_email?: string | null
@@ -1955,6 +2008,7 @@ export type Database = {
           created_at?: string
           done_pages?: number | null
           draft_id?: string | null
+          draft_key?: string
           error?: string | null
           errors?: Json
           finished_at?: string | null
@@ -1964,6 +2018,7 @@ export type Database = {
           max_attempts?: number
           number?: number
           parent_id?: string
+          resumes?: number
           started_at?: string | null
           started_by?: string | null
           started_by_email?: string | null
@@ -2536,6 +2591,10 @@ export type Database = {
         Args: { confirmation: string; p: string }
         Returns: string
       }
+      resume_workbook_run: {
+        Args: { p_lease: string; p_run: string; p_stale_seconds: number }
+        Returns: boolean
+      }
       retry_workbook_run: {
         Args: { p_error: string; p_lease: string; p_run: string }
         Returns: boolean
@@ -2556,6 +2615,10 @@ export type Database = {
         Returns: boolean
       }
       save_workbook_rendering: { Args: { p_rendering: Json }; Returns: Json }
+      save_workbook_run_page: {
+        Args: { p_lease: string; p_number: number; p_page: Json; p_run: string }
+        Returns: boolean
+      }
       start_workbook_run: {
         Args: {
           p_by: string
@@ -2573,6 +2636,10 @@ export type Database = {
       write_workbook: {
         Args: { p_schema_version: number; p_workbook: Json }
         Returns: Json
+      }
+      yield_workbook_run: {
+        Args: { p_lease: string; p_run: string }
+        Returns: boolean
       }
     }
     Enums: {
