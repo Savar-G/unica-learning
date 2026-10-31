@@ -35,7 +35,7 @@ import {
 import { talkMath } from "./claims";
 import { saidAsApproved } from "./speech";
 import { findOffer, normalSlots, packageLines, LINE_IDS, type LineOffer } from "./lines";
-import { freeTalkProblem, FALLBACK_GROUP, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
+import { freeTalkProblem, workProblem, FALLBACK_GROUP, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { committedText, offersChoice, readNumbers, takenBack, valuesIn } from "./numbers";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
@@ -216,6 +216,8 @@ export interface Session {
   callId: string;
   /** Which wording of each line and phrase to say: the call's random seed, what was heard, the child's name (variety.ts). */
   variety: Variety;
+  /** D-196: whether the model's own warm words may be said (guarded). Off by default. */
+  freeTalk: boolean;
   state: SessionState;
   /** The teaching state an interrupt returns to. */
   resume: Teaching | null;
@@ -279,7 +281,15 @@ export interface Session {
  * `history` is the child's wording history before this call (wording-history.ts), and `childName` the name code may say
  * now and then. The model never writes the name.
  */
-export function createSession(input: { callId: string; package: unknown; random?: number; history?: WordingHistory; childName?: string | null }): Session {
+export function createSession(input: {
+  callId: string;
+  package: unknown;
+  random?: number;
+  history?: WordingHistory;
+  childName?: string | null;
+  /** D-196: read the model's own warm words (guarded). Off by default: then every word Maya says comes from code. */
+  freeTalk?: boolean;
+}): Session {
   const check = checkQuestionPackage(input.package);
   // An item with no operation (a place-value or a drawing item) has no worked steps to teach from: it is held.
   const pkg = check.ok && hasOperation(check.package) ? structuredClone(check.package) : null;
@@ -288,6 +298,7 @@ export function createSession(input: { callId: string; package: unknown; random?
     version: 4,
     callId: input.callId,
     variety: newVariety({ random: input.random ?? hashOf(input.callId), history: input.history, name: input.childName }),
+    freeTalk: input.freeTalk === true,
     state: "READY",
     resume: null,
     package: teachable ? pkg : null,
@@ -438,7 +449,8 @@ function proposalProblem(p: unknown): string | null {
   for (const part of p.parts) {
     // Talk of any length is read: words that fail the guards are replaced, never a reason to fail the turn (D-196).
     const talk = isObject(part) && Object.keys(part).length === 1 && typeof part.talk === "string";
-    const warm = isObject(part) && Object.keys(part).length === 1 && (PHRASE_GROUPS as readonly unknown[]).includes(part.warm);
+    const warm = isObject(part) && (PHRASE_GROUPS as readonly unknown[]).includes(part.warm) &&
+      Object.keys(part).every((k) => k === "warm" || k === "echo") && (part.echo === undefined || typeof part.echo === "string");
     const line = isObject(part) && typeof part.line === "string" && (LINE_IDS as readonly string[]).includes(part.line) &&
       Object.keys(part).every((k) => k === "line" || k === "slots") && (part.slots === undefined || isObject(part.slots));
     if (!talk && !warm && !line) return `each part is { line, slots } with a line id, { warm } with a phrase group, or { talk }`;
@@ -1193,6 +1205,31 @@ export function warmGroups(session: Session): Partial<Record<Act, PhraseGroup[]>
   return Object.fromEntries(nextActs(session).acts.map((act) => [act, PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(act))]));
 }
 
+/** "{echo}" filled with the child's words, a capital first at the start of a sentence. */
+function withEcho(text: string, echoed: string | null): string {
+  if (echoed === null) return text;
+  const capital = `${echoed[0].toUpperCase()}${echoed.slice(1)}`;
+  return text.replace(/^\{echo\}/, capital).replace(/([.?!]\s+)\{echo\}/g, `$1${capital}`).replace(/\{echo\}/g, echoed);
+}
+
+/**
+ * The child's own words for an echo frame (D-196): 1 to 3 words in a row from the child's last turn, matched after
+ * case is set aside and copied as the child wrote them, with no math, no work word and not the child's name. Null
+ * when they fail, and code then picks a frame with no slot.
+ */
+function echoOf(s: Session, raw: string): string | null {
+  const last = s.turn?.text ?? [...s.turns].reverse().find((t) => t.speaker === "child")?.text ?? "";
+  const words = [...last.matchAll(/[\p{L}]+(?:['’][\p{L}]+)*/gu)].map((m) => m[0]);
+  const want = (raw.match(/[\p{L}]+(?:['’][\p{L}]+)*/gu) ?? []).map((w) => w.toLowerCase());
+  if (want.length < 1 || want.length > 3 || raw.replace(/[\p{L}'’\s]/gu, "") !== "") return null;
+  const at = words.findIndex((_, i) => want.every((w, k) => words[i + k]?.toLowerCase() === w));
+  if (at === -1) return null;
+  const echoed = words.slice(at, at + want.length).join(" ");
+  const name = s.variety.name?.toLowerCase();
+  if (talkMath(echoed) !== null || workProblem(echoed) !== null || (name && want.includes(name))) return null;
+  return echoed;
+}
+
 /** What the child has said in this call: free talk may start a sentence with a name the child used (D-196). */
 const childWords = (s: Session) => s.turns.filter((t) => t.speaker === "child").map((t) => t.text);
 
@@ -1300,9 +1337,13 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
     const pool = fresh.length > 0 ? fresh : wordings.map((_, i) => i);
     return pool[chooseWording(s.variety, pool.map(id), s.now!)];
   };
-  const phrase = (group: PhraseGroup) => {
+  const phrase = (group: PhraseGroup, echoed: string | null = null) => {
     const bank = PHRASES[group];
-    const text = bank[pickFresh(bank, (i) => `phrase:${group}.${i + 1}`)];
+    // A frame with the child's words when they check, else one with no slot (D-196 echo frames).
+    const slotted = bank.flatMap((b, i) => (b.includes("{echo}") ? [i] : []));
+    const pool = echoed !== null && slotted.length > 0 ? slotted : bank.flatMap((b, i) => (b.includes("{echo}") ? [] : [i]));
+    const k = pickFresh(pool.map((i) => bank[i]), (i) => `phrase:${group}.${pool[i] + 1}`);
+    const text = withEcho(bank[pool[k]], echoed);
     const name = text.includes("{name}") && !named && nameNow(s.variety, turn) ? s.variety.name : null;
     if (name !== null) {
       named = true;
@@ -1320,13 +1361,13 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
         const groups = PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(p.act));
         return { code: "line_not_offered", reason: `Warm talk "${part.warm}" does not fit ${p.act}. It fits: ${groups.join(", ") || "none"}.` };
       }
-      add("warm", phrase(part.warm));
+      add("warm", phrase(part.warm, part.echo === undefined ? null : echoOf(s, part.echo)));
       continue;
     }
     if ("talk" in part) {
       // The model's own words pass the guards or become a bank phrase; either way they stay the model's part, so a
       // turn with math refuses them (assembledProblem).
-      if (freeTalkProblem(part.talk, s.variety.name, childWords(s)) === null) {
+      if (s.freeTalk && freeTalkProblem(part.talk, s.variety.name, childWords(s)) === null) {
         add("talk", part.talk.trim());
       } else {
         replaced += 1;

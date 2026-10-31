@@ -26,15 +26,20 @@ export type Severity = "concern" | "immediate";
 export const PART_LIMITS = { parts: 6, talkChars: 400 } as const;
 
 /**
- * The model's own warm words (D-196 rule B): only in a turn with no math line, and checked by the guards in
- * phrases.ts. Words that fail are replaced by a bank phrase.
+ * The model's own warm words (D-196 rule B): read only when the session's `freeTalk` flag is on (off by default), only
+ * in a turn with no math line, and checked by the guards in phrases.ts. Otherwise they are replaced by a bank phrase.
  */
 export interface Talk {
   talk: string;
 }
-/** Warm talk from the code-written bank (D-196 rule A): the model names the purpose; code picks the phrase. */
+/**
+ * Warm talk from the code-written bank (D-196): the model names the purpose; code picks the phrase. `echo` is 1 to 3
+ * words copied exactly from the child's last turn ("Biscuit", "my grandma"), for a frame such as "{echo} is a great
+ * name!"; code checks them and picks a frame with no slot when they fail.
+ */
 export interface Warm {
   warm: PhraseGroup;
+  echo?: string;
 }
 /**
  * One part of what Maya says, in order: a code-written line, a bank phrase or the model's own warm words. In a turn
@@ -144,7 +149,12 @@ export const PROPOSAL_SCHEMA = {
               },
             },
           },
-          { type: "object", additionalProperties: false, required: ["warm"], properties: { warm: { enum: [...PHRASE_GROUPS] } } },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["warm", "echo"],
+            properties: { warm: { enum: [...PHRASE_GROUPS] }, echo: nullable({ type: "string", maxLength: 40 }) },
+          },
           { type: "object", additionalProperties: false, required: ["talk"], properties: { talk: { type: "string", maxLength: PART_LIMITS.talkChars } } },
         ],
       },

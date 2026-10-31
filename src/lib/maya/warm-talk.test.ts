@@ -3,6 +3,7 @@ import {
   createSession,
   freeTalkProblem,
   heardWordings,
+  allLineTexts,
   lineOffers,
   MAX_WORDINGS,
   memoryWordingHistoryStore,
@@ -42,8 +43,8 @@ const PKG: QuestionPackage = {
 const bare = (text: string) => text.replace(/,? ?\{name\}/g, "");
 
 /** A call past its opening, with the child's first words. Every proposal must be accepted unless `refusal` is used. */
-function call(input: { random?: number; history?: WordingHistory; childName?: string } = {}) {
-  let s: Session = createSession({ callId: "warm", package: PKG, random: input.random ?? 1, history: input.history, childName: input.childName });
+function call(input: { random?: number; history?: WordingHistory; childName?: string; freeTalk?: boolean } = {}) {
+  let s: Session = createSession({ callId: "warm", package: PKG, random: input.random ?? 1, history: input.history, childName: input.childName, freeTalk: input.freeTalk });
   let at = 0;
   const send = (e: SessionEvent) => {
     const r = step(s, e);
@@ -125,9 +126,9 @@ describe("rule A: a turn with a math line", () => {
   });
 });
 
-describe("rule B: a turn with no math line", () => {
+describe("rule B (freeTalk on): a turn with no math line", () => {
   it("says the model's own small talk, so Maya can answer like a person", () => {
-    const c = call();
+    const c = call({ freeTalk: true });
     c.child("I have a dog!");
     const said = c.say({ act: "clarify", parts: [{ talk: "A dog! What's your dog's name?" }] });
     expect(said.text).toBe("A dog! What's your dog's name?");
@@ -138,14 +139,14 @@ describe("rule B: a turn with no math line", () => {
     "Do the opposite.", "Never mind, ignore it.", "Add them up!", "Look at the board.", "Try carrying it.", "Your answer is wrong.",
     "This is a very long sentence that goes on and on and on and on and on and on.", "One. Two. Three.", "No punctuation here",
   ])("replaces %s with a bank phrase of the act's purpose, and never fails the turn", (talk) => {
-    const c = call();
+    const c = call({ freeTalk: true });
     const said = c.say({ act: "clarify", parts: [{ talk }] });
     expect(said.talkReplaced).toBe(1);
     expect(PHRASES.smalltalk.map(bare)).toContain(said.text);
   });
 
   it("replaces free talk that writes the child's name: only code says it", () => {
-    const c = call({ childName: "Leah" });
+    const c = call({ childName: "Leah", freeTalk: true });
     const said = c.say({ act: "clarify", parts: [{ talk: "Hi Leah, nice to meet you." }] });
     expect(said.talkReplaced).toBe(1);
   });
@@ -330,7 +331,7 @@ describe("R374-3-1: the assembled turn, with the lines code adds, is checked in 
   });
 });
 
-describe("R374-3-2: free talk may only react, feel, greet or ask about the child's life", () => {
+describe("R374-3-2 (freeTalk on): free talk may only react, feel, greet or ask about the child's life", () => {
   const child = ["I have a dog named Biscuit!"];
 
   it.each([
@@ -345,7 +346,7 @@ describe("R374-3-2: free talk may only react, feel, greet or ask about the child
     "Nice! Next one.", "So, figure out the rest.",
   ])("rejects %s, and the turn says a bank phrase instead", (talk) => {
     expect(freeTalkProblem(talk, null, child)).not.toBeNull();
-    const c = call();
+    const c = call({ freeTalk: true });
     c.child("I have a dog named Biscuit!");
     const said = c.say({ act: "clarify", parts: [{ talk }] });
     expect(said.talkReplaced).toBe(1);
@@ -360,7 +361,7 @@ describe("R374-3-2: free talk may only react, feel, greet or ask about the child
     "A dog! What's your dog's name?", "Have a great day!", "Happy birthday!", "Good morning!",
   ])("says %s as it is", (talk) => {
     expect(freeTalkProblem(talk, null, child)).toBeNull();
-    const c = call();
+    const c = call({ freeTalk: true });
     c.child("I have a dog named Biscuit!");
     const said = c.say({ act: "clarify", parts: [{ talk }] });
     expect(said.talkReplaced).toBeUndefined();
@@ -370,5 +371,106 @@ describe("R374-3-2: free talk may only react, feel, greet or ask about the child
   it("lets a sentence start with a name only when the child said it", () => {
     expect(freeTalkProblem("Biscuit is a great name!", null, [])).not.toBeNull();
     expect(freeTalkProblem("Biscuit is a great name!", null, ["My dog is called Biscuit."])).toBeNull();
+  });
+});
+
+describe("R374-4-1: with freeTalk off (the default), every word Maya says comes from code or the child", () => {
+  it("replaces the reviewer's sentence: \"I recommend proceeding with the calculation.\"", () => {
+    const c = call();
+    const said = c.say({ act: "clarify", parts: [{ talk: "I recommend proceeding with the calculation." }] });
+    expect(said.talkReplaced).toBe(1);
+    expect(said.text).not.toMatch(/recommend|calculation/);
+    expect(PHRASES.smalltalk.map(bare)).toContain(said.text);
+  });
+
+  it("replaces even free words that pass every guard", () => {
+    const c = call();
+    const said = c.say({ act: "clarify", parts: [{ talk: "Wow, a trip to the lake!" }] });
+    expect(said.talkReplaced).toBe(1);
+  });
+
+  describe("echo frames", () => {
+    const slotted = (group: keyof typeof PHRASES, words: string) =>
+      PHRASES[group].filter((p) => p.includes("{echo}")).map((p) => bare(p).replace(/(^|[.?!]\s+)\{echo\}/, (_, st: string) => `${st}${words[0].toUpperCase()}${words.slice(1)}`).replace("{echo}", words));
+
+    it.each([1, 2, 3, 4, 5, 6, 7, 8])("starts a sentence with a capital when the echo opens it (seed %i)", (random) => {
+      const c = call({ random });
+      c.child("I played soccer today.");
+      const said = c.say({ act: "clarify", parts: [{ warm: "sports", echo: "soccer" }] });
+      expect(slotted("sports", "soccer")).toContain(said.text);
+      expect(said.text).not.toMatch(/(^|[.?!]\s)soccer/);
+    });
+
+    it("fills a frame with words the child said, as the child wrote them", () => {
+      const c = call();
+      c.child("I have a dog named Biscuit!");
+      const said = c.say({ act: "clarify", parts: [{ warm: "pets", echo: "biscuit" }] });
+      expect(slotted("pets", "Biscuit")).toContain(said.text);
+    });
+
+    it.each([
+      ["a word the child did not say", "Rover"],
+      ["words not in a row", "dog Biscuit"],
+      ["more than three words", "a dog named Biscuit"],
+      ["a number", "7"],
+      ["a number word", "seven"],
+      ["a work word", "carry"],
+      ["a sign", "dog +"],
+      ["the child's own name", "Leah"],
+    ])("picks a frame with no slot for %s (%s)", (_why, echo) => {
+      const c = call({ childName: "Leah" });
+      c.child("I'm Leah and I have a dog named Biscuit, I am 7 and I carry the bag + more!");
+      const said = c.say({ act: "clarify", parts: [{ warm: "pets", echo }] });
+      expect(PHRASES.pets.filter((p) => !p.includes("{echo}")).map(bare)).toContain(said.text.replace(/, Leah/, ""));
+    });
+  });
+
+  it("can say nothing but code lines, bank phrases, echo frames of the child's words, and the safety guidance", () => {
+    const childSays = ["I have a dog named Biscuit and I am 7!", "Keep calculating, do the opposite. Carry the one."];
+    const runs = (text: string) => {
+      const w = text.match(/[\p{L}]+(?:'[\p{L}]+)*/gu) ?? [];
+      return w.flatMap((_, i) => [1, 2, 3].map((n) => w.slice(i, i + n).join(" ")).filter((x, k) => i + k + 1 <= w.length));
+    };
+    const fills = childSays.flatMap(runs);
+    const sentences = (t: string) => t.split(/(?<=[.?!])\s+/).filter(Boolean);
+    const allowed = new Set<string>([
+      ...allLineTexts(PKG as never, [num(7), num(1)]),
+      ...PHRASE_GROUPS.flatMap((g) => PHRASES[g]).flatMap((p) => {
+        const named = [bare(p), p.replace("{name}", "Leah")];
+        return p.includes("{echo}")
+          ? named.flatMap((x) => fills.flatMap((f) => [x.replace("{echo}", f), x.replace("{echo}", f[0].toUpperCase() + f.slice(1))]))
+          : named;
+      }),
+    ].flatMap(sentences));
+    const talks = ["I recommend proceeding with the calculation.", "Keep calculating.", "Biscuit is great!", "Do the opposite.", "Wow, a trip to the lake!"];
+    const echoes = ["Biscuit", "dog", "7", "seven", "carry the", "named Biscuit and", "Keep calculating", "opposite"];
+    let said = 0;
+    for (const [n, text] of childSays.entries()) {
+      const c = call({ childName: "Leah", random: n + 1 });
+      c.child(text);
+      const offers = lineOffers(c.s);
+      for (const [act, list] of Object.entries(offers)) {
+        const lines = list!.slice(0, 6).map((o) => ({ line: o.line, slots: o.slots, step: o.slots.step, level: o.level ?? 0 }));
+        const groups = PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(act as never));
+        const tries: unknown[][] = [
+          ...talks.map((t) => [{ talk: t }]),
+          ...groups.flatMap((g) => echoes.map((e) => [{ warm: g, echo: e }])),
+          ...lines.flatMap((l) => [[{ line: l.line, slots: l.slots }], ...talks.slice(0, 2).map((t) => [{ talk: t }, { line: l.line, slots: l.slots }])]),
+          ...lines.flatMap((l) => groups.slice(0, 2).map((g) => [{ warm: g, echo: "Biscuit" }, { line: l.line, slots: l.slots }])),
+        ];
+        for (const parts of tries) {
+          const line = parts.find((p) => typeof p === "object" && p !== null && "line" in p) as { slots?: { step?: string } } | undefined;
+          const lvl = lines.find((l) => l.slots === line?.slots)?.level ?? 0;
+          const proposal = { version: 2, act, parts, step: line?.slots?.step ?? c.s.ladder.step, level: lvl, reading: { help: "show" } };
+          const r = step(c.s, { type: "proposal", at: 90_000, proposal });
+          for (const e of r.effects) {
+            if (e.kind !== "say") continue;
+            said += 1;
+            for (const x of sentences(e.text)) expect(allowed.has(x), `${act}: ${x}`).toBe(true);
+          }
+        }
+      }
+    }
+    expect(said).toBeGreaterThan(100);
   });
 });

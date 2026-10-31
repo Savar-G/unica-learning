@@ -5,13 +5,16 @@
 //    comes before the math: the math line is the last thing said, so nothing can follow it and reverse it. A line is
 //    math when any filled wording holds a number or a work word (session.ts, isMathLine): every line but the hello, so
 //    a turn that restates the question or gets back to it follows this rule too (R374-2-1).
-// B. A turn with no math line (the hello and talk around it, small-talk replies, check-ins, waiting, closing) may use
-//    the model's own words, so Maya can answer "I have a dog!" like a person. Each sentence must start like a
-//    reaction, a feeling, a greeting or a question about the child's life (an allowlist of openers, R374-3-2), with no
-//    command or request, no math, no work word and no pointing back, in at most two short sentences. Words that fail
-//    are replaced by a bank phrase of the same purpose; the turn never fails. This is not airtight (free words can
-//    always say something unhelpful), but the risk is low: these turns hold no math to reverse, and the math line
-//    stays on the board. Which turn is which is decided once, on the assembled turn (session.ts, assembledProblem).
+// B. Only with the session's `freeTalk` flag on (off by default, R374-4-1): a turn with no math line may use the
+//    model's own words. Each sentence must start like a reaction, a feeling, a greeting or a question about the
+//    child's life (an allowlist of openers, R374-3-2), with no command or request, no math, no work word and no
+//    pointing back, in at most two short sentences. Words that fail, and all of them with the flag off, are replaced by
+//    a bank phrase of the same purpose; the turn never fails. Not airtight: any guard on open text has another gap.
+//
+// The default keeps Maya human without open text: echo frames. A phrase with "{echo}" holds 1 to 3 words copied in a
+// row from the child's last turn ("{echo} is a great name!" with "Biscuit"); code checks the words (session.ts,
+// echoOf) and picks a phrase with no slot when they fail. The reply groups (pets ... aboutmaya) answer what children
+// talk about. Which turn holds math is decided once, on the assembled turn (session.ts, assembledProblem).
 //
 // Every phrase praises effort, never correctness (only the checking lines say right or not yet), gives no instruction
 // about the work, and does not point back to an earlier sentence. ", {name}" is the child's name, which code fills from
@@ -19,7 +22,11 @@
 import { forms, talkMath } from "./claims";
 import type { Act } from "./proposal";
 
-export const PHRASE_GROUPS = ["encourage", "empathy", "checkin", "pacing", "thinkaloud", "hearing", "smalltalk", "opening", "closing"] as const;
+export const PHRASE_GROUPS = [
+  "encourage", "empathy", "checkin", "pacing", "thinkaloud", "hearing", "smalltalk", "opening", "closing",
+  // Replies to what children say between the math (D-196 echo frames): "{echo}" is 1 to 3 of the child's own words.
+  "pets", "family", "school", "games", "food", "sports", "trips", "tired", "happy", "bored", "frustrated", "aboutmaya",
+] as const;
 export type PhraseGroup = (typeof PHRASE_GROUPS)[number];
 
 /** The bank, by purpose. A phrase's id is `<group>.<index + 1>`; add phrases at the end so ids stay. */
@@ -75,9 +82,76 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
     "I hope you enjoyed this.", "Great work today, {name}.", "I had fun working with you.", "Take care, {name}!", "You should feel proud of your effort.",
     "Talk soon!", "Enjoy the rest of your day!", "Thanks for being such a good thinker.",
   ],
+  pets: [
+    "Ooh, {echo}!", "Aw, {echo}! I love it.", "{echo} is a great name!", "{echo} sounds so sweet.", "I'd love to hear about {echo} after we finish.",
+    "Pets make every day better.", "Aw, how sweet!", "Animals are the best.", "I love hearing about pets.", "Your pet sounds lovely.",
+    "What a lucky pet!", "I bet your pet is very cuddly.", "Pets are such good friends.",
+  ],
+  family: [
+    "Aw, {echo}! How lovely.", "{echo} sounds really nice.", "How nice to have {echo}.", "I'd love to hear about {echo} after we finish.",
+    "Families are special.", "It sounds like you have a lovely family.", "How nice!", "I love hearing about your family.",
+    "Thanks for telling me about them.", "Your family sounds fun.", "It's lovely to have people who care about you.", "Aw, how nice.",
+  ],
+  school: [
+    "Ooh, {echo}! How was it?", "{echo} sounds interesting.", "I'd love to hear about {echo} after we finish.", "Wow, {echo}!",
+    "School can be so busy.", "It sounds like you had a full day.", "How fun!", "Your teacher sounds nice.", "I love hearing about school.",
+    "What a day you've had!", "Learning new things is exciting.", "Recess is the best, isn't it?",
+  ],
+  games: [
+    "Ooh, {echo}! I love games.", "{echo} sounds so fun!", "Wow, {echo}!", "I'd love to hear about {echo} after we finish.",
+    "Games are the best.", "It sounds really fun.", "How cool!", "I love hearing about games.", "You must be good at it.",
+    "What a fun thing to play.", "Playing is a great way to learn.", "Ooh, how exciting!",
+  ],
+  food: [
+    "Mmm, {echo}!", "Ooh, {echo} sounds yummy.", "{echo}? Delicious!", "I'd love to hear about {echo} after we finish.",
+    "Yum!", "It sounds tasty.", "Food is the best.", "Now I'm hungry!", "What a yummy treat.", "Mmm, good choice.",
+    "Snacks help our brains.", "Ooh, delicious.",
+  ],
+  sports: [
+    "Wow, {echo}!", "{echo} sounds so fun!", "Ooh, {echo}! Go team!", "I'd love to hear about {echo} after we finish.",
+    "Sports are so much fun.", "You sound really active.", "How exciting!", "Being part of a team is great.", "You must be fast!",
+    "What a great way to play.", "I love hearing about sports.", "Cool! Go team!",
+  ],
+  trips: [
+    "Wow, {echo}!", "Ooh, {echo}! How exciting.", "{echo} sounds amazing.", "I'd love to hear about {echo} after we finish.",
+    "What an adventure!", "Trips are so exciting.", "How fun!", "Exploring is the best.", "It sounds like a great trip.",
+    "I love hearing about adventures.", "What a lucky trip!", "Ooh, how exciting.",
+  ],
+  tired: [
+    "Feeling {echo} is okay.", "Sorry you're feeling {echo}.", "Thanks for telling me you're {echo}.",
+    "It's okay to feel tired.", "Let's go gently today.", "You're doing well, even when you're tired.", "Thanks for telling me.",
+    "A deep breath can help.", "We'll take it easy.", "Being tired is normal.", "You can take a little break.", "I'll keep it short and sweet.",
+  ],
+  happy: [
+    "Yay, {echo}!", "I'm so glad you're {echo}!", "Feeling {echo} is great!",
+    "Yay!", "I love your happy mood.", "How wonderful!", "Your smile must be big!", "How great!", "Happy days are the best.",
+    "I'm happy too!", "What a great mood to learn in.", "Woohoo!",
+  ],
+  bored: [
+    "Feeling {echo} happens.", "Thanks for telling me you're {echo}.",
+    "Thanks for telling me.", "Let's make this fun.", "We'll be quick.", "I'll try to keep it interesting.", "It's okay to feel bored sometimes.",
+    "Let's see if we can make it exciting.", "You're doing well anyway.", "Let's get through it together.", "I get it.", "Hang in there!",
+  ],
+  frustrated: [
+    "Feeling {echo} is okay.", "Sorry you're feeling {echo}.", "Thanks for telling me you're {echo}.",
+    "It's okay to feel frustrated.", "Tricky things can feel annoying.", "Let's take a deep breath.", "We'll get through it together.",
+    "You're not alone in this.", "I'm here to help.", "It's fine to feel stuck.", "Let's slow down a little.", "You're working really hard.",
+  ],
+  aboutmaya: [
+    "Great question! I'm an AI helper, not a person.", "I'm an AI, so I don't have a life like yours, but I love hearing about it!",
+    "I'm an AI, so I live inside the computer.", "Good question! I'm an AI, here just to help you.", "I'm an AI, so I don't do things the way people do.",
+    "I'm not a person or a robot with arms. I'm an AI helper.", "I'm an AI, but I really enjoy talking with you.",
+    "I'm an AI, so I love hearing about you!", "Ha, I'm an AI, so I can't, but it sounds fun!",
+    "I'm an AI helper, so I'm a bit different from you.", "I'm an AI, and my favourite thing is helping you learn.",
+    "Fun question! I'm an AI, but I love hearing about you.",
+  ],
 };
 
 /** The acts each purpose fits. */
+/** The acts a reply to the child's own talk fits: around the math, never inside it. */
+const REPLY_ACTS: readonly Act[] = ["open", "clarify", "redirect", "close", "check_in", "wait", "confirm"];
+/** Feelings can come up in the middle of the work too: before a hint or a try, never after the math line. */
+const FEELING_ACTS: readonly Act[] = [...REPLY_ACTS, "guide", "try_target", "example_step", "give_answer"];
 export const PHRASE_ACTS: Record<PhraseGroup, readonly Act[]> = {
   encourage: ["guide", "try_target", "example_step", "accept_answer", "give_answer", "ask_write", "clarify", "repair", "check_in", "wait"],
   empathy: ["guide", "try_target", "example_step", "give_answer", "redirect", "close", "check_in", "repair", "confirm", "clarify"],
@@ -88,6 +162,8 @@ export const PHRASE_ACTS: Record<PhraseGroup, readonly Act[]> = {
   smalltalk: ["open", "redirect", "close", "clarify"],
   opening: ["open"],
   closing: ["close", "ask_write"],
+  pets: REPLY_ACTS, family: REPLY_ACTS, school: REPLY_ACTS, games: REPLY_ACTS, food: REPLY_ACTS, sports: REPLY_ACTS, trips: REPLY_ACTS,
+  tired: FEELING_ACTS, happy: FEELING_ACTS, bored: FEELING_ACTS, frustrated: FEELING_ACTS, aboutmaya: REPLY_ACTS,
 };
 
 /** The purpose of a bank phrase that replaces free words that fail the guards, by act. */

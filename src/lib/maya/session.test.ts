@@ -87,7 +87,9 @@ describe("READY, OPEN and CONTENT_HOLD", () => {
     const { effects } = c.maya(OPEN);
     const [hello] = said(effects);
     expect(said(effects)).toHaveLength(1);
-    expect(hello).toMatch(/^Hi Leah! .*\bAI\b.* Our team may review this call\. How are you today\?$/);
+    // The model's own words are off by default (D-196): they become bank phrases around the hello.
+    expect(hello).toMatch(/\bAI\b/);
+    expect(hello).not.toMatch(/Hi Leah|How are you today/);
     expect(c.next).toEqual({ expect: "child", acts: [] });
   });
 
