@@ -596,8 +596,19 @@ function sameNumber(a: AnswerValue, b: AnswerValue): boolean {
   return p !== null && q !== null && sameSize(p, q);
 }
 
-/** The same written value, or the same number in another form. */
-const equivalent = (a: AnswerValue, b: AnswerValue) => sameValue(a, b) || sameNumber(a, b);
+/** The same written value, or the same number in another form (85, 85.0 and 170/2; 14/16 and 7/8). */
+export const equivalent = (a: AnswerValue, b: AnswerValue) => sameValue(a, b) || sameNumber(a, b);
+
+/**
+ * A value that answers an operation by its kind's rules (the rules checkQuestionPackage holds an answer to): the answer
+ * or one of its accepted forms, or, where the kind takes any simplest form, the exact number in a simplest form (5/4 and
+ * 1 1/4 for 2/3 + 7/12). The operation must be valid.
+ */
+export function isRightAnswer(operation: Operation, answer: PackageAnswer, value: AnswerValue): boolean {
+  if ([answer.value, ...answer.accepted].some((r) => sameValue(r, value))) return true;
+  const rules = computation(operation);
+  return rules.answer === "simplest" && isSimplest(value) && sameNumber(value, rules.exact(operation));
+}
 
 /**
  * A simplest form: a whole number, a fraction in lowest terms with a denominator from 2, or a mixed number in lowest
