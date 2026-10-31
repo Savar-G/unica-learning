@@ -299,8 +299,12 @@ const isTimeSkill = (curriculum: Curriculum, skill: string) => {
   return /\b(time|clocks?)\b/i.test(`${s?.text ?? ""} ${curriculum.unit(s?.unit ?? "")?.text ?? ""}`);
 };
 
-/** A skill is about groups or skip-counting when its text says so ("equal groups", "making groups of 10", "skip-count"). */
-const isGroupingSkill = (curriculum: Curriculum, skill: string) => /\bgroup\w*|\bskip-count\w*/i.test(curriculum.skill(skill)?.text ?? "");
+/**
+ * A skill is about groups when its text names equal groups, skip-counting, groups of a number ("making groups of 10")
+ * or arrays; a skill that only mentions a group ("a scattered group") is not. A test pins the BC skills this gives.
+ */
+const GROUPING_SKILL = /\bequal groups\b|\bskip-count\w*|\bgroups of \d+|\barrays?\b/i;
+export const isGroupingSkill = (curriculum: Curriculum, skill: string) => GROUPING_SKILL.test(curriculum.skill(skill)?.text ?? "");
 
 /**
  * The range of an item on a skill: the range of the skill's own level (a review of an earlier skill keeps to that

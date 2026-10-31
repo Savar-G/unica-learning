@@ -3,7 +3,7 @@ import type { AiJsonRequest } from "@/lib/ai-client";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
 import type { AnswerValue, Item, ItemFormat, Operation, QuestionPackage } from "@/lib/question-package";
-import { conceptLevels, levelSigns, levelMistakes, pageFigure, printedNumbers, printedValues, rangeProblem, samProblem, samWork, skillRange } from "@/lib/workbook-book";
+import { conceptLevels, isGroupingSkill, levelSigns, levelMistakes, pageFigure, printedNumbers, printedValues, rangeProblem, samProblem, samWork, skillRange } from "@/lib/workbook-book";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { renderableDraft } from "@/lib/workbook-fit";
@@ -657,6 +657,15 @@ describe("multiplication written as x or in words (R380-8)", () => {
 
   it.each(["Draw 3 groups of 2.", "Make 3 lots of 2.", "Draw 3 rows of 4 dots.", "How many in rows of 4?"])("refuses multiplication words before U11: %s", (text) => {
     expect(at(7, "2.1-read-write-100", text)).toContain("is multiplication");
+  });
+
+  it("refuses multiplication words on a skill that only mentions a group (R380-9-1)", () => {
+    expect(at(1, "K1-count-scattered", "How many dots are in 3 rows of 2 dots?")).toContain("is multiplication");
+  });
+
+  it("pins the skills that may use groups of, lots of and rows of before multiplication", () => {
+    const ids = BC.levels.flatMap((l) => (BC.levelSkills(l.id) ?? []).filter((s) => isGroupingSkill(BC, s.id)).map((s) => s.id));
+    expect(ids).toEqual(["1.1-skip-count-2-5", "2.1-count-to-100", "2.1-count-tens-ones", "3.1-count-1000", "3.5-equal-groups", "3.5-grouping-division"]);
   });
 
   it("accepts groups of on a skill about groups or skip-counting, and from U11", () => {
