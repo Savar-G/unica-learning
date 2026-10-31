@@ -8,7 +8,8 @@
 //   marked failed with the reason (never dropped). A question code cannot check is kept, marked "not checked by code".
 // - The fit check (FitCheck, a seam: the renderer's measure on main, the real templates of #310 later) runs on every
 //   page with questions. A page that does not fit is written again once, with the problems; if it still does not fit,
-//   it stays in the draft, marked failed with the problems.
+//   it stays in the draft, marked failed with the problems. Each question has two AI attempts in all: the page retry
+//   writes again only questions with an attempt left, so a question that failed twice is never written a third time.
 // - The book (CONTEXT.md sections 1 and 7, D-187, D-191): the cover (page 1), the How + Plan page, the ten days' pages
 //   in plan order, the back cover, then blank pages to a multiple of 4. Page numbers run from the cover through the
 //   book; question numbers restart on each page. The page type, day and numbers come from the plan and code, never from
@@ -20,7 +21,7 @@ import { withTimeLimit, type AiClient } from "@/lib/ai-client";
 import type { QuestionPackage } from "@/lib/question-package";
 import { isQrToken, isUuid } from "@/lib/workbook-content";
 import type { Curriculum } from "@/lib/workbook-curriculum";
-import { buildQuestion, ITEMS_SCHEMA, type QuestionCheck } from "@/lib/workbook-generator-items";
+import { buildQuestion, ITEMS_SCHEMA, type BuiltQuestion, type QuestionCheck } from "@/lib/workbook-generator-items";
 import type { PageType, PlannedPage, PlannedPart, WorkbookPlan } from "@/lib/workbook-plan";
 import type { DraftPage } from "@/lib/workbook-render";
 
@@ -67,7 +68,7 @@ export interface GeneratedQuestion {
   /** The part of the day it fills. */
   part: PlannedPart["kind"];
   check: QuestionCheck;
-  /** 1, or 2 when it was written again. */
+  /** Its AI attempts: 1, or 2 when it was written again (after a failed check or for a page retry). Never more. */
   attempts: 1 | 2;
   /** Its package; null only when code could build none (the AI wrote nothing usable). */
   package: QuestionPackage | null;
@@ -87,7 +88,10 @@ export interface GeneratedPage {
   pageOfDay: number | null;
   qrToken: string;
   fit: PageFit;
-  /** 1, or 2 when the page was written again after a failed fit check; 0 for a page with no AI content. */
+  /**
+   * 1, or 2 when the page was written again after a failed fit check (some question had an attempt left); 0 for a page
+   * with no AI content.
+   */
   attempts: 0 | 1 | 2;
   questions: GeneratedQuestion[];
 }
@@ -262,37 +266,59 @@ interface PageWork {
   slots: Slot[];
 }
 
-/** One try at a page: the page call, then one redo call for its failed questions. */
-async function tryPage(input: GenerateInput, deps: GenerateDeps, w: PageWork, note: string | null): Promise<GeneratedQuestion[]> {
-  const place = (slot: Slot, n: number) => ({
-    id: `${input.workbookId}:d${w.day}p${w.page.number}s${slot.id}`,
-    workbookId: input.workbookId, page: w.number, question: n, level: input.plan.level, skills: slot.part.skills,
-  });
-  const first = await callAi(deps, "workbook_page", pageRequest(input, w.day, w.page, w.slots, note));
-  const built = w.slots.map((slot, i) => {
-    const b = buildQuestion(first.items.get(slot.id), place(slot, i + 1));
-    if (first.error && !first.items.has(slot.id)) b.check = { status: "failed", reason: `the AI gave no answer: ${first.error}` };
+/** Each question has at most this many AI attempts in all, across the question redo and the page retry. */
+const QUESTION_ATTEMPTS = 2;
+
+/** Writes the page's slots at `which` (indexes) in one AI call and builds each; never throws. */
+async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork, which: number[], note: string | null, name: string) {
+  const asked = which.map((i) => w.slots[i]);
+  const out = await callAi(deps, name, pageRequest(input, w.day, w.page, asked, note));
+  return which.map((i) => {
+    const slot = w.slots[i];
+    const b = buildQuestion(out.items.get(slot.id), {
+      id: `${input.workbookId}:d${w.day}p${w.page.number}s${slot.id}`,
+      workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: slot.part.skills,
+    });
+    if (out.error && !out.items.has(slot.id)) b.check = { status: "failed", reason: `the AI gave no answer: ${out.error}` };
     return b;
   });
+}
 
-  const failed = w.slots.flatMap((slot, i) => (built[i].check.status === "failed" ? [{ slot, i }] : []));
-  const attempts = built.map(() => 1 as 1 | 2);
-  if (failed.length > 0) {
-    const redoNote = failed.map(({ slot, i }) => {
-      const steps = built[i].stepIds.length ? ` Its operation's worked steps are named: ${built[i].stepIds.join(", ")}.` : "";
-      return `Slot ${slot.id} failed the check: ${(built[i].check as { reason: string }).reason}.${steps} Write it again.`;
-    }).join("\n");
-    const redo = await callAi(deps, "workbook_page_redo", pageRequest(input, w.day, w.page, failed.map((f) => f.slot), [note, redoNote].filter(Boolean).join("\n")));
-    for (const { slot, i } of failed) {
-      const b = buildQuestion(redo.items.get(slot.id), place(slot, i + 1));
-      if (redo.error && !redo.items.has(slot.id)) b.check = { status: "failed", reason: `the AI gave no answer: ${redo.error}` };
-      built[i] = b;
-      attempts[i] = 2;
-    }
-  }
-  return w.slots.map((slot, i) => ({
-    number: i + 1, slot: slot.id, part: slot.part.kind, check: built[i].check, attempts: attempts[i], package: built[i].package,
-  }));
+const generated = (w: PageWork, i: number, b: BuiltQuestion, attempts: 1 | 2): GeneratedQuestion => ({
+  number: i + 1, slot: w.slots[i].id, part: w.slots[i].part.kind, check: b.check, attempts, package: b.package,
+});
+
+/** The first pass at a page: the page call, then one redo call for its failed questions (their last attempt). */
+async function firstPass(input: GenerateInput, deps: GenerateDeps, w: PageWork): Promise<GeneratedQuestion[]> {
+  const all = w.slots.map((_, i) => i);
+  const built = await writeSlots(input, deps, w, all, null, "workbook_page");
+  const questions = all.map((i) => generated(w, i, built[i], 1));
+  const failed = all.filter((i) => built[i].check.status === "failed");
+  if (failed.length === 0) return questions;
+  const note = failed.map((i) => {
+    const steps = built[i].stepIds.length ? ` Its operation's worked steps are named: ${built[i].stepIds.join(", ")}.` : "";
+    return `Slot ${w.slots[i].id} failed the check: ${(built[i].check as { reason: string }).reason}.${steps} Write it again.`;
+  }).join("\n");
+  const redo = await writeSlots(input, deps, w, failed, note, "workbook_page_redo");
+  failed.forEach((i, k) => { questions[i] = generated(w, i, redo[k], 2); });
+  return questions;
+}
+
+/**
+ * The page retry after a failed fit check. Only questions with an attempt left are written again (their last attempt);
+ * a question that used both attempts stays as it is, failed or not. A sound question whose retry fails the check keeps
+ * its sound version: a retry never puts a failed question in place of a sound one. Null when no question has an
+ * attempt left, so there is nothing to write again.
+ */
+async function pageRetry(input: GenerateInput, deps: GenerateDeps, w: PageWork, previous: GeneratedQuestion[], note: string): Promise<GeneratedQuestion[] | null> {
+  const open = previous.flatMap((q, i) => (q.attempts < QUESTION_ATTEMPTS ? [i] : []));
+  if (open.length === 0) return null;
+  const built = await writeSlots(input, deps, w, open, note, "workbook_page");
+  const questions = [...previous];
+  open.forEach((i, k) => {
+    questions[i] = built[k].check.status === "failed" ? { ...previous[i], attempts: 2 } : generated(w, i, built[k], 2);
+  });
+  return questions;
 }
 
 const fitPage = (w: PageWork, qrToken: string, questions: GeneratedQuestion[]): DraftPage => ({
@@ -331,14 +357,17 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
     if (w.slots.length === 0) {
       pages.push({ ...page, fit: { status: "not-needed" }, attempts: 0, questions: [] });
     } else {
-      let questions = await tryPage(input, deps, w, null);
+      let questions = await firstPass(input, deps, w);
       let fit = await deps.fit.fits(fitPage(w, qrToken, questions), book);
       let attempts: 1 | 2 = 1;
       if (!fit.ok) {
         const note = `The last page did not fit its template: ${fit.problems.map((p) => (p.question ? `question ${p.question}: ` : "") + p.reason).join("; ")}. Write shorter text and smaller numbers so it fits.`;
-        questions = await tryPage(input, deps, w, note);
-        fit = await deps.fit.fits(fitPage(w, qrToken, questions), book);
-        attempts = 2;
+        const retried = await pageRetry(input, deps, w, questions, note);
+        if (retried) {
+          questions = retried;
+          fit = await deps.fit.fits(fitPage(w, qrToken, questions), book);
+          attempts = 2;
+        }
       }
       pages.push({ ...page, fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems }, attempts, questions });
     }

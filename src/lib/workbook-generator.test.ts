@@ -326,3 +326,119 @@ describe("the fit check on main (the renderer's measure)", () => {
     expect(await fit.fits({ ...page, type: "warm-up" }, book)).toEqual({ ok: false, problems: [{ question: null, reason: "the template has no layout for a warm-up page" }] });
   });
 });
+
+describe("the retry budget (review R376-1)", () => {
+  /** An item whose wrong answer is the right answer: the checker fails it. */
+  const bad = (s: SlotAsked) => goodItem(s, { wrongAnswers: [{ value: num(425), cause: "O3", description: "Right by mistake.", step: null }] });
+  const firstPageCalls = (ai: ReturnType<typeof fakeAiClient>) => ai.requests.filter((r) => read(r).day === 1 && read(r).pageType === DAY_PAGES[0].type);
+  const neverFits: FitCheck = { fits: async (page) => (page.number === 3 ? { ok: false, problems: [{ question: null, reason: "the content does not fit the page" }] } : { ok: true }) };
+
+  it("never writes a question that failed both attempts a third time when its page fails the fit check", async () => {
+    const ai = fakeAiClient({ answer: (r) => fill(r, (s) => (read(r).day === 1 && s.slot === "1.1" ? bad(s) : goodItem(s))) });
+    const draft = await generate(deps({ ai, fit: neverFits }));
+    const calls = firstPageCalls(ai);
+    expect(calls.map((r) => r.name)).toEqual(["workbook_page", "workbook_page_redo", "workbook_page"]);
+    expect(calls.filter((r) => read(r).slots.some((s) => s.slot === "1.1"))).toHaveLength(2);
+    const page = draft.pages[2];
+    expect(page).toMatchObject({ attempts: 2, fit: { status: "failed" } });
+    expect(page.questions[0]).toMatchObject({ slot: "1.1", attempts: 2, check: { status: "failed" } });
+    expect(page.questions.every((q) => q.attempts === 2)).toBe(true);
+  });
+
+  it("writes again for the page retry only the questions with an attempt left", async () => {
+    let calls = 0;
+    const ai = fakeAiClient({
+      answer: (r) => {
+        if (read(r).day === 1 && read(r).pageType === DAY_PAGES[0].type) calls++;
+        return fill(r, (s) => (calls === 1 && s.slot === "1.1" ? bad(s) : goodItem(s)));
+      },
+    });
+    const draft = await generate(deps({ ai, fit: neverFits }));
+    const retry = firstPageCalls(ai)[2];
+    expect(read(retry).slots.map((s) => s.slot)).not.toContain("1.1");
+    expect(read(retry).slots).toHaveLength(draft.pages[2].questions.length - 1);
+    expect(draft.pages[2].questions[0]).toMatchObject({ attempts: 2, check: { status: "checked" } });
+  });
+
+  it("keeps a sound question when its page retry version fails the check", async () => {
+    let calls = 0;
+    const ai = fakeAiClient({
+      answer: (r) => {
+        if (read(r).day === 1 && read(r).pageType === DAY_PAGES[0].type) calls++;
+        return fill(r, (s) => (calls === 2 && s.slot === "1.2" ? bad(s) : goodItem(s)));
+      },
+    });
+    const q = (await generate(deps({ ai, fit: neverFits }))).pages[2].questions[1];
+    expect(q).toMatchObject({ slot: "1.2", attempts: 2, check: { status: "checked" } });
+    expect(firstPageCalls(ai)).toHaveLength(2);
+  });
+
+  it("makes no page retry when every question has used both attempts", async () => {
+    const ai = fakeAiClient({ answer: (r) => fill(r, (s) => (read(r).day === 1 && read(r).pageType === DAY_PAGES[0].type ? bad(s) : goodItem(s))) });
+    const draft = await generate(deps({ ai, fit: neverFits }));
+    expect(firstPageCalls(ai).map((r) => r.name)).toEqual(["workbook_page", "workbook_page_redo"]);
+    expect(draft.pages[2]).toMatchObject({ attempts: 1, fit: { status: "failed" } });
+  });
+});
+
+describe("answers code computes beyond addition", () => {
+  const frac = (numerator: number, denominator: number) => ({ ...num(0), type: "fraction", value: null, numerator, denominator });
+  const op = (kind: string, operands: unknown[]) => ({ kind, operands, expression: null, unit: null, denominator: null, values: [] });
+  const wrong = (value: unknown, step: string | null = null) => ({ value, cause: "operation", description: "A mistake a child makes.", step });
+
+  /** The first page's question 1, from an AI item with this operation, wrong answers and easier example. */
+  async function question(operation: unknown, wrongAnswers: unknown[], easier: unknown) {
+    const ai = fakeAiClient({ answer: (r) => fill(r, (s) => (s.slot === "1.1" ? goodItem(s, { text: "Solve.", operation, wrongAnswers, easier: { text: "Try this first.", operation: easier } }) : goodItem(s))) });
+    return firstDayPage(await generate(deps({ ai }))).questions[0];
+  }
+  const writes = (q: Awaited<ReturnType<typeof question>>) => q.package!.steps.flatMap((s) => ("write" in s ? [s.write] : []));
+
+  it("subtracts with borrowing across a zero: 503 − 278 = 225", async () => {
+    const q = await question(op("subtract", [num(503), num(278)]), [wrong(num(375), "ones"), wrong(num(781))], op("subtract", [num(42), num(7)]));
+    expect(q.check).toEqual({ status: "checked" });
+    expect(q.package!.answer!.value).toEqual({ type: "number", value: 225 });
+    expect(writes(q)).toEqual([5, 2, 2]);
+    // The ones take a ten from the tens, which have none, so the tens take one from the hundreds first.
+    expect(q.package!.steps.find((s) => s.id === "tens")).toMatchObject({ top: 0, bottom: 7, lent: true, regrouped: true, write: 2 });
+    expect(q.package!.steps.find((s) => s.id === "hundreds")).toMatchObject({ top: 5, lent: true, regrouped: false, write: 2 });
+    expect(q.package!.easierExample!.answer).toEqual({ type: "number", value: 35 });
+  });
+
+  it("divides with a remainder: 47 ÷ 5 = 9 R 2", async () => {
+    const q = await question(op("divide", [num(47), num(5)]), [wrong(num(9)), wrong(num(42))], op("divide", [num(9), num(2)]));
+    expect(q.check).toEqual({ status: "checked" });
+    expect(q.package!.answer!.value).toEqual({ type: "remainder", quotient: 9, remainder: 2 });
+    expect(q.package!.steps.find((s) => s.id === "ones")).toMatchObject({ current: 47, quotient: 9, product: 45, remainder: 2 });
+    expect(q.package!.easierExample!.answer).toEqual({ type: "remainder", quotient: 4, remainder: 1 });
+  });
+
+  it("adds and subtracts decimals in columns: 3.75 + 1.5 = 5.25 and 5.2 − 1.75 = 3.45", async () => {
+    const add = await question(op("decimal-add", [num(3.75), num(1.5)]), [wrong(num(3.9)), wrong(num(2.25))], op("decimal-add", [num(1.2), num(0.3)]));
+    expect(add.check).toEqual({ status: "checked" });
+    expect(add.package!.answer!.value).toEqual({ type: "number", value: 5.25 });
+    expect(add.package!.steps.find((s) => s.id === "tenths")).toMatchObject({ digits: [7, 5], total: 12, write: 2, carryOut: 1 });
+    const sub = await question(op("decimal-subtract", [num(5.2), num(1.75)]), [wrong(num(4.55)), wrong(num(6.95))], op("decimal-subtract", [num(0.9), num(0.4)]));
+    expect(sub.check).toEqual({ status: "checked" });
+    expect(sub.package!.answer!.value).toEqual({ type: "number", value: 3.45 });
+    expect(sub.package!.steps.find((s) => s.id === "hundredths")).toMatchObject({ top: 0, bottom: 5, addedZero: true, write: 5 });
+  });
+
+  it("adds fractions over a common denominator: 1/2 + 1/3 = 5/6", async () => {
+    const q = await question(op("fraction-add", [frac(1, 2), frac(1, 3)]), [wrong(frac(2, 5)), wrong(frac(1, 6))], op("fraction-add", [frac(1, 5), frac(2, 5)]));
+    expect(q.check).toEqual({ status: "checked" });
+    expect(q.package!.answer!.value).toEqual({ type: "fraction", numerator: 5, denominator: 6 });
+    expect(q.package!.steps.find((s) => s.id === "common")).toMatchObject({ denominator: 6, to: [{ numerator: 3, denominator: 6 }, { numerator: 2, denominator: 6 }] });
+    expect(q.package!.easierExample!.answer).toEqual({ type: "fraction", numerator: 3, denominator: 5 });
+  });
+
+  it("fails a wrong answer that is really right, in any form (2.50 for 2.5), so a right answer is never marked wrong", async () => {
+    const q = await question(op("decimal-add", [num(1.25), num(1.25)]), [wrong(num(2.5))], op("decimal-add", [num(0.2), num(0.3)]));
+    expect(q.check.status).toBe("failed");
+  });
+
+  it("fails an operation code cannot compute, with no answer: never a guessed one", async () => {
+    const q = await question(op("percent-of", [num(20), num(50)]), [wrong(num(1000))], op("percent-of", [num(10), num(20)]));
+    expect(q.check.status).toBe("failed");
+    expect(q.package).toBeNull();
+  });
+});
