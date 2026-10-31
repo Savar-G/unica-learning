@@ -21,6 +21,10 @@ import type { ExportReader, ExportRow, PagedTable } from "@/lib/admin-export";
 import type { AnonymousTestRow } from "@/lib/anonymous-copy-export";
 import { WORKBOOK_FILES_BUCKET, type Workbook, type WorkbookSummary } from "@/lib/workbook-content";
 import { workbookStore } from "@/lib/workbook-store";
+import type { GeneratedWorkbook } from "@/lib/workbook-generator";
+import type { DraftRendering, WorkbookRun } from "@/lib/workbook-job";
+import { RUN_COLUMNS, runFromRow } from "@/lib/workbook-job-store";
+import type { RenderProblem } from "@/lib/workbook-render";
 
 // The admin area's data (#77). The gate and every read are here, so no admin page reads the database on its own; the
 // report view is read by the report-loading module with the admin's session (src/lib/report-loading-server.ts, #161).
@@ -540,6 +544,124 @@ export async function getWorkbook(a: AdminSession, id: string): Promise<Workbook
   const images: Record<string, string> = {};
   for (const item of signed.data ?? []) if (item.path && item.signedUrl && !item.error) images[item.path] = item.signedUrl;
   return { workbook, child: children[0] ?? null, images };
+}
+
+// Workbook runs and drafts (#312)
+
+/** A draft's check results, from the counts stored beside it. */
+export interface DraftCounts {
+  pages: number;
+  questions: number;
+  failed: number;
+  notChecked: number;
+  failedPages: number;
+}
+
+/** One run in a list, with its draft's check results and how many pages did not render. */
+export interface RunListRow {
+  run: WorkbookRun;
+  counts: DraftCounts | null;
+  notRendered: number | null;
+}
+
+const DRAFT_COUNT_COLUMNS = "id, pages, questions, failed, not_checked, failed_pages";
+type DraftCountRow = { id: string; pages: number; questions: number; failed: number; not_checked: number; failed_pages: number };
+const countsOf = (d: DraftCountRow): DraftCounts => ({ pages: d.pages, questions: d.questions, failed: d.failed, notChecked: d.not_checked, failedPages: d.failed_pages });
+
+async function runRows(a: AdminSession, runs: WorkbookRun[]): Promise<RunListRow[]> {
+  const drafts = runs.flatMap((r) => (r.draftId ? [r.draftId] : []));
+  const [counts, revisions] = await Promise.all([
+    byIds<DraftCountRow>(drafts, "workbook drafts", (chunk) => a.db.from("workbook_drafts").select(DRAFT_COUNT_COLUMNS).in("id", chunk)),
+    // Revision 1 of each draft: one row per draft, so each chunk is one short read (no `id` column to page by).
+    Promise.all(Array.from({ length: Math.ceil(drafts.length / CHUNK) }, (_, i) => drafts.slice(i * CHUNK, (i + 1) * CHUNK)).map((chunk) =>
+      a.db.from("workbook_draft_revisions").select("draft_id, render_problems").eq("revision", 1).in("draft_id", chunk)
+        .then((r) => must<{ draft_id: string; render_problems: RenderProblem[] }[]>(r, "draft revisions"))))
+      .then((parts) => parts.flat().map((r) => ({ id: r.draft_id, render_problems: r.render_problems }))),
+  ]);
+  const byDraft = index(counts);
+  const problems = index(revisions);
+  return runs.map((run) => {
+    const d = run.draftId ? byDraft.get(run.draftId) : undefined;
+    const p = run.draftId ? problems.get(run.draftId) : undefined;
+    return { run, counts: d ? countsOf(d) : null, notRendered: p ? new Set(p.render_problems.map((x) => x.page)).size : null };
+  });
+}
+
+/** Everything in the Workbooks list: the newest runs, the stored workbooks, and their children. */
+export async function listWorkbookArea(a: AdminSession): Promise<{ runs: Page<RunListRow>; workbooks: WorkbookSummary[]; children: Map<string, ChildRow> }> {
+  const [runs, books] = await Promise.all([
+    a.db.from("workbook_runs").select(RUN_COLUMNS).order("created_at", { ascending: false }).range(0, LIST_MAX)
+      .then((r) => must<Parameters<typeof runFromRow>[0][]>(r, "workbook runs")),
+    a.db.from("workbooks").select("id, parent_id, child_id, number, levels, status, pdf_path, profile_build, created_at, approved_at, printed_at, shipped_at")
+      .order("created_at", { ascending: false }).range(0, LIST_MAX)
+      .then((r) => must<{ id: string; parent_id: string; child_id: string; number: number; levels: number[]; status: WorkbookSummary["status"]; pdf_path: string | null; profile_build: string | null; created_at: string; approved_at: string | null; printed_at: string | null; shipped_at: string | null }[]>(r, "workbooks")),
+  ]);
+  const cut = page(runs.map(runFromRow));
+  const workbooks: WorkbookSummary[] = books.slice(0, LIST_MAX).map((w) => ({
+    id: w.id, parentId: w.parent_id, childId: w.child_id, number: w.number, levels: w.levels, status: w.status, pdfPath: w.pdf_path,
+    profileBuild: w.profile_build, createdAt: w.created_at, approvedAt: w.approved_at, printedAt: w.printed_at, shippedAt: w.shipped_at,
+  }));
+  const [rows, children] = await Promise.all([
+    runRows(a, cut.rows),
+    childrenById(a, [...cut.rows.map((r) => r.childId), ...workbooks.map((w) => w.childId)]),
+  ]);
+  return { runs: { rows, more: cut.more || books.length > LIST_MAX }, workbooks, children: index(children) };
+}
+
+/** A child's runs, newest first, with their check results. */
+export async function getChildRuns(a: AdminSession, childId: string): Promise<RunListRow[]> {
+  if (!isUuid(childId)) return [];
+  const runs = must<Parameters<typeof runFromRow>[0][]>(
+    await a.db.from("workbook_runs").select(RUN_COLUMNS).eq("child_id", childId).order("created_at", { ascending: false }).range(0, 49), "child runs");
+  return runRows(a, runs.map(runFromRow));
+}
+
+export interface AuditEntry {
+  id: number;
+  at: string;
+  actor_email: string | null;
+  action: string;
+  detail: Record<string, unknown>;
+}
+
+export interface RunDetail {
+  run: WorkbookRun;
+  child: ChildRow | null;
+  /** The draft the run stored, its revision 1's rendering and what did not render; null until the run is done. */
+  draft: { workbook: GeneratedWorkbook; rendering: DraftRendering | null; problems: RenderProblem[]; revision: number } | null;
+  /** Short-lived URLs of the page images, by path. */
+  images: Record<string, string>;
+  audit: AuditEntry[];
+}
+
+/** One run with its draft, page images and audit log, or null. */
+export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDetail | null> {
+  if (!isUuid(id)) return null;
+  const [row] = must<Parameters<typeof runFromRow>[0][]>(await a.db.from("workbook_runs").select(RUN_COLUMNS).eq("id", id).limit(1), "workbook run");
+  if (!row) return null;
+  const run = runFromRow(row);
+  const [children, draftRow, revision, audit] = await Promise.all([
+    childrenById(a, [run.childId]),
+    run.draftId
+      ? a.db.from("workbook_drafts").select("draft").eq("id", run.draftId).maybeSingle().then((r) => must<{ draft: GeneratedWorkbook } | null>(r, "workbook draft"))
+      : null,
+    run.draftId
+      ? a.db.from("workbook_draft_revisions").select("revision, rendering, render_problems").eq("draft_id", run.draftId).order("revision", { ascending: false }).limit(1).maybeSingle()
+        .then((r) => must<{ revision: number; rendering: DraftRendering | null; render_problems: RenderProblem[] } | null>(r, "draft revision"))
+      : null,
+    a.db.from("workbook_audit").select("id, at, actor_email, action, detail")
+      .or(run.draftId ? `run_id.eq.${run.id},draft_id.eq.${run.draftId}` : `run_id.eq.${run.id}`).order("at").order("id").range(0, 199)
+      .then((r) => must<AuditEntry[]>(r, "workbook audit")),
+  ]);
+  const paths = revision?.rendering?.pages.map((p) => p.image.path) ?? [];
+  const signed = paths.length ? await a.db.storage.from(WORKBOOK_FILES_BUCKET).createSignedUrls(paths, WORKBOOK_URL_SECONDS) : { data: [], error: null };
+  if (signed.error) console.error("[admin] draft images sign failed", signed.error.message);
+  const images: Record<string, string> = {};
+  for (const item of signed.data ?? []) if (item.path && item.signedUrl && !item.error) images[item.path] = item.signedUrl;
+  return {
+    run, child: children[0] ?? null, images, audit,
+    draft: draftRow ? { workbook: draftRow.draft, rendering: revision?.rendering ?? null, problems: revision?.render_problems ?? [], revision: revision?.revision ?? 1 } : null,
+  };
 }
 
 // AI reviews

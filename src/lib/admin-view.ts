@@ -35,6 +35,9 @@ export const adminTestPath = (id: string) => `${ADMIN_PATH}/assessments/${id}`;
 export const adminParentPath = (id: string) => `${ADMIN_PATH}/parents/${id}`;
 /** One workbook as data: its pages, page images and questions (#299). */
 export const adminWorkbookPath = (id: string) => `${ADMIN_PATH}/workbooks/${id}`;
+/** The Workbooks list (#312), and one run's page: its progress, then its draft for review. */
+export const ADMIN_WORKBOOKS_PATH = `${ADMIN_PATH}/workbooks`;
+export const adminWorkbookRunPath = (id: string) => `${ADMIN_PATH}/workbooks/runs/${id}`;
 /** The learner profile of one test (#196). */
 export const adminProfilePath = (id: string) => `${adminTestPath(id)}/profile`;
 /** The current profile of one child, from every source (#303). */

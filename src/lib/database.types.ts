@@ -1584,6 +1584,151 @@ export type Database = {
           },
         ]
       }
+      workbook_audit: {
+        Row: {
+          action: string
+          actor_email: string | null
+          actor_id: string | null
+          at: string
+          child_id: string
+          detail: Json
+          draft_id: string | null
+          id: number
+          parent_id: string
+          run_id: string | null
+          workbook_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_email?: string | null
+          actor_id?: string | null
+          at?: string
+          child_id: string
+          detail?: Json
+          draft_id?: string | null
+          id?: never
+          parent_id: string
+          run_id?: string | null
+          workbook_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_email?: string | null
+          actor_id?: string | null
+          at?: string
+          child_id?: string
+          detail?: Json
+          draft_id?: string | null
+          id?: never
+          parent_id?: string
+          run_id?: string | null
+          workbook_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_audit_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_audit_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_audit_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_audit_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_audit_workbook_id_fkey"
+            columns: ["workbook_id"]
+            isOneToOne: false
+            referencedRelation: "workbooks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workbook_draft_revisions: {
+        Row: {
+          by_email: string | null
+          by_user: string | null
+          child_id: string
+          content: Json | null
+          created_at: string
+          draft_id: string
+          kind: string
+          note: string | null
+          parent_id: string
+          render_problems: Json
+          rendering: Json | null
+          revision: number
+        }
+        Insert: {
+          by_email?: string | null
+          by_user?: string | null
+          child_id: string
+          content?: Json | null
+          created_at?: string
+          draft_id: string
+          kind: string
+          note?: string | null
+          parent_id: string
+          render_problems?: Json
+          rendering?: Json | null
+          revision: number
+        }
+        Update: {
+          by_email?: string | null
+          by_user?: string | null
+          child_id?: string
+          content?: Json | null
+          created_at?: string
+          draft_id?: string
+          kind?: string
+          note?: string | null
+          parent_id?: string
+          render_problems?: Json
+          rendering?: Json | null
+          revision?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_draft_revisions_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_draft_revisions_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_draft_revisions_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_drafts: {
         Row: {
           child_id: string
@@ -1756,6 +1901,97 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "workbook_pages"
             referencedColumns: ["id", "workbook_id", "parent_id"]
+          },
+        ]
+      }
+      workbook_runs: {
+        Row: {
+          attempts: number
+          child_id: string
+          created_at: string
+          done_pages: number | null
+          draft_id: string | null
+          error: string | null
+          errors: Json
+          finished_at: string | null
+          heartbeat_at: string | null
+          id: string
+          lease: string | null
+          max_attempts: number
+          number: number
+          parent_id: string
+          started_at: string | null
+          started_by: string | null
+          started_by_email: string | null
+          status: string
+          step: string | null
+          total_pages: number | null
+        }
+        Insert: {
+          attempts?: number
+          child_id: string
+          created_at?: string
+          done_pages?: number | null
+          draft_id?: string | null
+          error?: string | null
+          errors?: Json
+          finished_at?: string | null
+          heartbeat_at?: string | null
+          id?: string
+          lease?: string | null
+          max_attempts: number
+          number: number
+          parent_id: string
+          started_at?: string | null
+          started_by?: string | null
+          started_by_email?: string | null
+          status?: string
+          step?: string | null
+          total_pages?: number | null
+        }
+        Update: {
+          attempts?: number
+          child_id?: string
+          created_at?: string
+          done_pages?: number | null
+          draft_id?: string | null
+          error?: string | null
+          errors?: Json
+          finished_at?: string | null
+          heartbeat_at?: string | null
+          id?: string
+          lease?: string | null
+          max_attempts?: number
+          number?: number
+          parent_id?: string
+          started_at?: string | null
+          started_by?: string | null
+          started_by_email?: string | null
+          status?: string
+          step?: string | null
+          total_pages?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_runs_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_runs_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_runs_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -2155,6 +2391,10 @@ export type Database = {
           out_status: string
         }[]
       }
+      claim_workbook_run: {
+        Args: { p_lease: string; p_run: string }
+        Returns: boolean
+      }
       complete_family_deletion: {
         Args: { p: string; token: string }
         Returns: boolean
@@ -2191,6 +2431,10 @@ export type Database = {
         Returns: boolean
       }
       end_family_card_operation: { Args: { token: string }; Returns: undefined }
+      fail_workbook_run: {
+        Args: { p_error: string; p_lease: string; p_run: string }
+        Returns: boolean
+      }
       family_copy_sources: { Args: { p: string }; Returns: Json }
       family_deletion_candidates: {
         Args: { after_id: string; page_size?: number }
@@ -2224,6 +2468,16 @@ export type Database = {
           token: string
         }
         Returns: undefined
+      }
+      finish_workbook_run: {
+        Args: {
+          p_draft: string
+          p_lease: string
+          p_render_problems: Json
+          p_rendering: Json
+          p_run: string
+        }
+        Returns: boolean
       }
       is_admin: { Args: never; Returns: boolean }
       link_booking_family: {
@@ -2282,6 +2536,10 @@ export type Database = {
         Args: { confirmation: string; p: string }
         Returns: string
       }
+      retry_workbook_run: {
+        Args: { p_error: string; p_lease: string; p_run: string }
+        Returns: boolean
+      }
       save_family_payment_progress: {
         Args: {
           after_id: string
@@ -2298,6 +2556,20 @@ export type Database = {
         Returns: boolean
       }
       save_workbook_rendering: { Args: { p_rendering: Json }; Returns: Json }
+      start_workbook_run: {
+        Args: {
+          p_by: string
+          p_by_email: string
+          p_child: string
+          p_max_attempts: number
+          p_stale_seconds: number
+        }
+        Returns: Json
+      }
+      workbook_run_held: {
+        Args: { p_lease: string; p_run: string }
+        Returns: boolean
+      }
       write_workbook: {
         Args: { p_schema_version: number; p_workbook: Json }
         Returns: Json

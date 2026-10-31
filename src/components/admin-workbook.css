@@ -14,3 +14,29 @@
 .adm-wb-text { font-weight: 500; white-space: nowrap; }
 .adm-wb-steps, .adm-wb-list { margin: 0; padding-left: 18px; min-width: 18em; }
 .adm-wb-steps li, .adm-wb-list li { margin: 0 0 4px; }
+
+/* The Workbooks area (#312): runs, their progress and the draft review. */
+.adm-wb-progress { display: grid; gap: 4px; margin-top: 4px; min-width: 14em; }
+.adm-wb-progress progress { appearance: none; width: 100%; max-width: 260px; height: 8px; border: 0; border-radius: 999px; overflow: hidden; background: var(--soft); }
+.adm-wb-progress progress::-webkit-progress-bar { background: var(--soft); border-radius: 999px; }
+.adm-wb-progress progress::-webkit-progress-value { background: var(--leaf); border-radius: 999px; }
+.adm-wb-progress progress::-moz-progress-bar { background: var(--leaf); border-radius: 999px; }
+.adm-facts + .adm-note, .adm-facts + .adm-wb-alert { margin-top: 14px; }
+.adm-wb-state { display: grid; gap: 4px; justify-items: start; }
+.adm-wb-checks { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; min-width: 16em; }
+.adm-wb-checks .adm-sub { flex-basis: 100%; }
+.adm-wb-type { font-weight: 400; color: var(--ink-2); }
+.adm-wb-flags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0 10px; min-height: 1px; }
+.adm-wb-draft { padding-left: 12px; border-left: 4px solid transparent; }
+.adm-wb-draft.is-bad { border-left-color: var(--tang); }
+.adm-wb-draft.is-warn { border-left-color: var(--sun); }
+.adm-wb-solo { max-width: 340px; }
+.adm-wb-missing { display: grid; gap: 6px; align-content: start; aspect-ratio: 816 / 1056; padding: 16px; border: 2px dashed var(--line); border-radius: 6px; background: var(--soft); font-size: 14px; }
+.adm-wb-missing ul, .adm-wb-problems { margin: 0; padding-left: 18px; font-size: 14px; }
+.adm-wb-problems { margin-bottom: 10px; color: var(--ink); }
+.adm-wb-box.is-bad { border-color: var(--tang); background: color-mix(in srgb, var(--tang) 14%, transparent); }
+.adm-table tr.is-bad td { background: var(--adm-bad); }
+.adm-table tr.is-warn td { background: color-mix(in srgb, var(--adm-warn) 55%, #fff); }
+.adm-wb-alert { margin: 18px 0; padding: 14px 16px; border-radius: 8px; background: var(--adm-bad); }
+.adm-wb-alert p { margin: 6px 0 0; }
+.adm-wb-bad-link { font-weight: 600; }
