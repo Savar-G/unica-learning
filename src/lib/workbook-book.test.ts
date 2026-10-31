@@ -3,7 +3,7 @@ import type { AiJsonRequest } from "@/lib/ai-client";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
 import type { AnswerValue, Item, ItemFormat, Operation, QuestionPackage } from "@/lib/question-package";
-import { conceptLevels, levelMistakes, pageFigure, printedNumbers, printedValues, rangeProblem, samProblem, samWork, skillRange } from "@/lib/workbook-book";
+import { conceptLevels, levelSigns, levelMistakes, pageFigure, printedNumbers, printedValues, rangeProblem, samProblem, samWork, skillRange } from "@/lib/workbook-book";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { renderableDraft } from "@/lib/workbook-fit";
@@ -475,7 +475,7 @@ describe("every number the child sees fits the range (R380-3-1)", () => {
   it("reads digits exactly: a sign, a decimal point, a fraction slash, a percent and a clock time", () => {
     expect(printedValues(pkg({ text: "Is -3 or 0.5 or 1/2 or 50% or 3:30 bigger?" }))).toEqual([
       { value: -3, form: "whole" }, { value: 0.5, form: "decimal" }, { value: 1, form: "fraction" }, { value: 2, form: "fraction" },
-      { value: 50, form: "percent" }, { value: 3, form: "time" }, { value: 30, form: "time" },
+      { value: 50, form: "percent" }, { value: 3, form: "colon", clock: true }, { value: 30, form: "colon", clock: true },
     ]);
   });
 
@@ -514,7 +514,9 @@ describe("fractions, decimals, percents and negatives start where the curriculum
   }, BC, level);
 
   it("pins the first level of each idea the curriculum gives (a text change that breaks the detection fails here)", () => {
-    expect(conceptLevels(BC)).toEqual({ fractions: 12, decimals: 15, negatives: 22, percents: 21, ratios: 21 });
+    expect(conceptLevels(BC)).toEqual({
+      fractions: 12, decimals: 15, negatives: 22, percents: 21, ratios: 21, subtraction: 3, multiplication: 11, division: 11, comparison: 8,
+    });
   });
 
   it("fails a fraction before U12, in words, digits or values, and passes it on a fraction skill", () => {
@@ -572,5 +574,61 @@ describe("each allowed number form at its level (R380-6)", () => {
 
   it("refuses a ratio before its level", () => {
     expect(at(12, "3.2-name-fraction-region", "Write 3:4 another way.")).toContain("no ratios");
+  });
+});
+
+describe("operation signs and a:b by level (R380-7)", () => {
+  const n = (value: number): Extract<AnswerValue, { type: "number" }> => ({ type: "number", value });
+  const at = (level: number, skill: string, over: Partial<QuestionPackage>) => rangeProblem({
+    id: "q", ref: { source: "workbook", workbookId: WORKBOOK, page: 3, question: 1 }, templateId: null, text: "Find it.",
+    answer: null, operation: null, steps: [], skill: { standard: skill.split("-")[0], skills: [skill] }, level, difficulty: 2,
+    wrongAnswers: [], easierExample: null, ...over,
+  }, BC, level);
+  const U3 = "K3-part-part-whole";
+
+  it("refuses × and ÷ at U3, in the text or as the operation", () => {
+    expect(at(3, U3, { text: "Find 3 × 4." })).toContain("multiplication");
+    expect(at(3, U3, { text: "Find 6 ÷ 2." })).toContain("division");
+    expect(at(3, U3, { operation: { kind: "multiply", operands: [3, 2] }, answer: { value: n(6), accepted: [], unit: null } })).toContain("multiplication");
+    expect(at(3, U3, { operation: { kind: "divide", operands: [6, 2] }, answer: { value: n(3), accepted: [], unit: null } })).toContain("division");
+  });
+
+  it("refuses a minus between numbers before subtraction (U3), and < or > before U8", () => {
+    expect(at(2, "K2-compare-numbers", { text: "What is 5 - 2?" })).toContain("subtraction");
+    expect(at(2, "K2-compare-numbers", { operation: { kind: "subtract", operands: [5, 2] }, answer: { value: n(3), accepted: [], unit: null } })).toContain("subtraction");
+    expect(at(3, U3, { text: "What is 5 - 2?" })).toBeNull();
+    expect(at(7, "2.1-compare-order-100", { text: "Is 5 < 7?" })).toContain("comparison");
+    expect(at(7, "2.1-compare-order-100", {
+      item: { format: "tick-one", scorable: true, parentChecked: false, regions: [{ id: "sign", kind: "choice", mark: "tick", label: null, choices: ["<", ">", "="], answer: "<" }], checks: [{ kind: "compare", left: n(5), right: n(7), region: "sign" }], error: null },
+    })).toContain("comparison");
+  });
+
+  it("refuses × in an equation and in a Mixed set's choices before U11", () => {
+    expect(at(10, "3.3-add-within-1000", {
+      item: { format: "boxes", scorable: true, parentChecked: false, regions: [], error: null, checks: [{ kind: "equations", different: false, numbers: "whole", equations: [{ left: n(6), op: "×", right: { region: "a" }, result: n(54) }] }] },
+    })).toContain("multiplication");
+    expect(at(10, "3.3-add-within-1000", {
+      item: { format: "tick-and-number", scorable: true, parentChecked: false, error: null, checks: [], regions: [{ id: "op", kind: "choice", mark: "tick", label: "Tick the operation", choices: ["+", "−", "×", "÷"], answer: "+" }] },
+    })).toContain("multiplication");
+    expect(levelSigns(BC, 10)).toEqual(["+", "−"]);
+    expect(levelSigns(BC, 11)).toEqual(["+", "−", "×", "÷"]);
+  });
+
+  it.each([
+    ["subtraction", 3, U3, "What is 7 - 2?"],
+    ["comparison", 8, "2.7-greater-less-symbols", "Is 45 < 54?"],
+    ["multiplication", 11, "3.5-equal-groups", "Find 3 × 4."],
+    ["division", 11, "3.5-equal-sharing", "Find 12 ÷ 3."],
+  ] as const)("accepts %s at U%i", (_name, level, skill, text) => {
+    expect(at(level, skill, { text })).toBeNull();
+  });
+
+  it("reads a:b as a ratio off a time skill, and as a clock time on one", () => {
+    expect(at(7, "2.1-read-write-100", { text: "Use the ratio 3:10." })).toContain("no ratios");
+    expect(at(7, "2.1-read-write-100", { text: "At 3:30 Ava reads." })).toContain("no ratios");
+    expect(at(7, "2.1-read-write-100", { text: "At 3 o'clock Ava reads." })).toBeNull();
+    expect(at(14, "4.12-read-analog", { text: "What time is 3:30 on the clock?" })).toBeNull();
+    expect(at(14, "4.12-read-analog", { text: "Is it 3:75?" })).toContain("no ratios");
+    expect(at(21, "6.6-write-ratio", { text: "Write the ratio 3:10 another way." })).toBeNull();
   });
 });

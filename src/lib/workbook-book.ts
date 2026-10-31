@@ -30,7 +30,7 @@ import {
   type Operation,
   type QuestionPackage,
 } from "@/lib/question-package";
-import { aiTextProblem, isCoin, readNumbers, type ReadNumber } from "@/lib/number-words";
+import { aiTextProblem, isCoin, readNumbers, signOperation, textOperations, type ReadNumber, type SignOperation } from "@/lib/number-words";
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import {
   headerGrowth,
@@ -219,39 +219,46 @@ const LEVEL_MAX = [
 ];
 const levelMax = (level: number) => LEVEL_MAX[Math.min(30, Math.max(1, level)) - 1];
 
-export interface NumberRange {
+/**
+ * The ideas a child meets at a level, each from its first level in the curriculum (conceptLevels): fractions,
+ * decimals, negative numbers (integers), percents and ratios, and the operations whose signs are printed:
+ * subtraction, multiplication, division and comparison (< and >).
+ */
+export const CONCEPTS = ["fractions", "decimals", "negatives", "percents", "ratios", "subtraction", "multiplication", "division", "comparison"] as const;
+export type Concept = (typeof CONCEPTS)[number];
+
+/** A skill's number range: its largest number, the ideas it may show (true once the curriculum has met them), money and time. */
+export type NumberRange = {
   /** The largest number an item may print or ask for (printedNumbers). */
   max: number;
-  negatives: boolean;
-  fractions: boolean;
-  decimals: boolean;
-  percents: boolean;
-  ratios: boolean;
   /** The skill is about money: coin values always fit, and amounts of money may have cents ($4.75). */
   money: boolean;
-  /** The skill is about time: a clock time (3:30) fits as it is; elsewhere its numbers are checked like any other. */
+  /** The skill is about time: h:mm is a clock time and fits as it is; elsewhere every a:b is a ratio. */
   time: boolean;
-}
+} & Record<Concept, boolean>;
 
 /**
- * The first level of each idea, from the curriculum: the first level with a skill about fractions, about decimals,
- * about integers or negative numbers, about percents and about ratios (BC: U12, U15, U22, U21 and U21). Before it, an item never shows
- * one. A test pins the BC levels, so a curriculum text change that breaks the detection fails loudly.
+ * The first level of each idea, from the curriculum's skill texts (CONCEPT_WORDS). Before it, an item never shows the
+ * idea. A test pins the BC levels, so a curriculum text change that breaks the detection fails loudly.
  */
-export interface ConceptLevels { fractions: number; decimals: number; negatives: number; percents: number; ratios: number }
-const CONCEPT_WORDS: Record<keyof ConceptLevels, RegExp> = {
+export type ConceptLevels = Record<Concept, number>;
+const CONCEPT_WORDS: Record<Concept, RegExp> = {
   fractions: /\bfractions?\b/i,
   decimals: /\bdecimals?\b/i,
   negatives: /\bintegers?\b|\bnegative\b/i,
   percents: /\bpercents?\b/i,
   ratios: /\bratios?\b/i,
+  subtraction: /\bsubtract\w*|\btak(?:e|en|ing) away\b/i,
+  multiplication: /\bmultipl(?:y|ying|ied|ication)\b/i,
+  division: /\bdivi(?:de|des|ded|ding|sion)\b/i,
+  comparison: /[<>]/,
 };
 const conceptCache = new WeakMap<Curriculum, ConceptLevels>();
 export function conceptLevels(curriculum: Curriculum): ConceptLevels {
   const cached = conceptCache.get(curriculum);
   if (cached) return cached;
   const first = (re: RegExp) => curriculum.levels.find((l) => (curriculum.levelSkills(l.id) ?? []).some((s) => re.test(s.text)))?.number ?? Infinity;
-  const levels = { fractions: first(CONCEPT_WORDS.fractions), decimals: first(CONCEPT_WORDS.decimals), negatives: first(CONCEPT_WORDS.negatives), percents: first(CONCEPT_WORDS.percents), ratios: first(CONCEPT_WORDS.ratios) };
+  const levels = Object.fromEntries(CONCEPTS.map((c) => [c, first(CONCEPT_WORDS[c])])) as ConceptLevels;
   conceptCache.set(curriculum, levels);
   return levels;
 }
@@ -259,7 +266,13 @@ export function conceptLevels(curriculum: Curriculum): ConceptLevels {
 /** A level's number range, for an item with no skill. */
 export function levelRange(curriculum: Curriculum, level: number): NumberRange {
   const c = conceptLevels(curriculum);
-  return { max: levelMax(level), negatives: level >= c.negatives, fractions: level >= c.fractions, decimals: level >= c.decimals, percents: level >= c.percents, ratios: level >= c.ratios, money: false, time: false };
+  return { max: levelMax(level), money: false, time: false, ...(Object.fromEntries(CONCEPTS.map((k) => [k, level >= c[k]])) as Record<Concept, boolean>) };
+}
+
+/** The operation signs a Mixed set may offer at a level: + always, −, × and ÷ once the curriculum has met them. */
+export function levelSigns(curriculum: Curriculum, level: number): string[] {
+  const r = levelRange(curriculum, level);
+  return ["+", "−", "×", "÷"].filter((sign) => { const op = signOperation(sign); return !op || r[op]; });
 }
 
 /** The limit a skill's id names ("1.3-add-within-10", "3.4-recall-addition-20", "2.1-ten-more-less-100"), or null. */
@@ -438,14 +451,62 @@ export function printedValues(p: QuestionPackage): ReadNumber[] {
   ];
 }
 
+/** The operation of an operation kind, by its sign; none for adding and the kinds with no sign. */
+function kindOperation(op: Operation | null | undefined): SignOperation[] {
+  if (!op) return [];
+  switch (op.kind) {
+    case "add": case "decimal-add": case "fraction-add": case "quantity-add": case "time-add": case "clock-convert": case "convert":
+    case "money-round": case "fraction-simplify": case "fraction-equivalent":
+      return [];
+    case "subtract": case "decimal-subtract": case "fraction-subtract": case "quantity-subtract": case "elapsed-time":
+      return ["subtraction"];
+    case "multiply": case "decimal-multiply": case "fraction-multiply": case "quantity-multiply":
+      return ["multiplication"];
+    case "divide": case "fraction-divide":
+      return ["division"];
+    case "evaluate": case "solve":
+      return textOperations(op.operands[0]);
+    default: return unreachable(op);
+  }
+}
+
+function checkOperations(c: ItemCheck): SignOperation[] {
+  const eq = (e: Equation) => [signOperation(e.op)].filter((x): x is SignOperation => x !== null);
+  switch (c.kind) {
+    case "operation": case "operation-sign": case "count": case "pattern": case "places": case "order": case "sequence": return [];
+    case "equations": return c.equations.flatMap(eq);
+    case "compare": return ["comparison"];
+    case "yes-no": return c.statement.kind === "equation" ? eq(c.statement.equation) : [];
+    default: return unreachable(c);
+  }
+}
+
+/**
+ * Every operation whose sign the child sees or is asked for: in the AI's text, the operation and the easier example's,
+ * equations, sign choices (a Mixed set's "Tick the operation", a compare item's < > =) and compare checks.
+ */
+export function printedOperations(p: QuestionPackage): SignOperation[] {
+  const choices = (p.item?.regions ?? []).flatMap((r) => (r.kind === "choice" ? r.choices.map(signOperation).filter((x): x is SignOperation => x !== null) : []));
+  return [...new Set([
+    ...textOperations(p.text),
+    ...(p.easierExample ? textOperations(p.easierExample.text) : []),
+    ...kindOperation(p.operation),
+    ...kindOperation(p.easierExample?.operation),
+    ...(p.item?.checks ?? []).flatMap(checkOperations),
+    ...choices,
+  ])];
+}
+
 /** The values of printedValues. */
 export const printedNumbers = (p: QuestionPackage): number[] => printedValues(p).map((r) => r.value);
 
 /**
  * Why an item's numbers do not fit its skill's range at the level, or null (see skillRange): text the AI writes (the
- * question and the easier example) that fails the gate (aiTextProblem: characters, number forms, number words), a number past the range, or a negative
- * number, fraction, decimal or percent before the curriculum's first level of that idea. On a money skill, coin values
- * always fit and amounts of money may have cents; on a time skill, a clock time fits as it is.
+ * question and the easier example) that fails the gate (aiTextProblem: characters, number forms, number words), a
+ * number past the range, or an idea before the curriculum's first level of it (CONCEPTS: a negative number, fraction,
+ * decimal, percent or ratio, or a subtraction, multiplication, division or comparison sign anywhere it is printed). On
+ * a money skill, coin values always fit and amounts of money may have cents; on a time skill, h:mm is a clock time and
+ * fits as it is.
  */
 export function rangeProblem(p: QuestionPackage, curriculum: Curriculum, level: number): string | null {
   const skill = p.skill.skills[0];
@@ -453,7 +514,9 @@ export function rangeProblem(p: QuestionPackage, curriculum: Curriculum, level: 
   const context = { skill: skill ?? null, money: range.money };
   const text = aiTextProblem(p.text, context) ?? (p.easierExample ? aiTextProblem(p.easierExample.text, context) : null);
   if (text) return text;
-  const read = printedValues(p).filter((r) => !(r.coin && range.money) && !(r.form === "time" && range.time));
+  // a:b in text is a clock time only on a time skill and in the h:mm shape; anywhere else it is a ratio.
+  const read = printedValues(p)
+    .filter((r) => !(r.coin && range.money) && !(r.form === "time" && range.time) && !(r.form === "colon" && r.clock && range.time));
   const big = read.find((r) => Math.abs(r.value) > range.max);
   if (big) return `the number ${big.value} is too big for this question: its numbers are at most ${range.max}`;
   const negative = read.find((r) => r.value < 0);
@@ -464,7 +527,9 @@ export function rangeProblem(p: QuestionPackage, curriculum: Curriculum, level: 
   if (decimal && !range.decimals) return `the number ${decimal.value} is a decimal: this question uses no decimals (they start at U${c.decimals})`;
   const percent = read.find((r) => r.form === "percent");
   if (percent && !range.percents) return `${percent.value}% is a percent: this question uses no percents (they start at U${c.percents})`;
-  if (!range.ratios && read.some((r) => r.form === "ratio")) return `this question uses no ratios: they start at U${c.ratios}`;
+  if (!range.ratios && read.some((r) => r.form === "colon")) return `this question uses no ratios: they start at U${c.ratios}${range.time ? "" : " (write a time on a non-time question as 3 o'clock)"}`;
+  const op = printedOperations(p).find((o) => !range[o]);
+  if (op) return `this question uses no ${op} (${{ subtraction: "-", multiplication: "×", division: "÷", comparison: "< or >" }[op]}): it starts at U${c[op]}`;
   return null;
 }
 

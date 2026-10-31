@@ -13,7 +13,12 @@
 /** A number a text shows, with its form; money and coin values marked. */
 export interface ReadNumber {
   value: number;
-  form: "whole" | "decimal" | "fraction" | "percent" | "time" | "ratio";
+  /**
+   * "colon": a:b in text, a clock time or a ratio by the skill (the range check decides; `clock` marks an h:mm shape
+   * with minutes 00 to 59). "time": a clock time value of the package.
+   */
+  form: "whole" | "decimal" | "fraction" | "percent" | "time" | "colon";
+  clock?: true;
   money?: true;
   coin?: true;
 }
@@ -93,6 +98,36 @@ export function numberWordProblem(text: string, { skill, money }: WordContext): 
   return word ? `"${word[0]}" is a number in words: write every number in digits` : null;
 }
 
+// ---------- Operation signs ----------
+
+/** The operations whose signs a child meets at a level: subtraction (-), multiplication (×), division (÷), comparison (< >). */
+export type SignOperation = "subtraction" | "multiplication" | "division" | "comparison";
+
+/** The operation of a printed sign; + and = are not checked (adding is met from the first levels). */
+export function signOperation(sign: string): SignOperation | null {
+  switch (sign) {
+    case "-": case "−": return "subtraction";
+    case "×": case "*": return "multiplication";
+    case "÷": return "division";
+    case "<": case ">": case "≤": case "≥": return "comparison";
+    default: return null;
+  }
+}
+
+/**
+ * The operations a text's signs show: ×, ÷, < and >, and a minus between two numbers ("9 - 3", "(4) - 1", "n - 2"),
+ * not a negative sign ("-3") or a hyphen ("ten-frame").
+ */
+export function textOperations(text: string): SignOperation[] {
+  const out = new Set<SignOperation>();
+  for (const c of text) {
+    const op = c === "-" || c === "−" ? null : signOperation(c);
+    if (op) out.add(op);
+  }
+  if (/(\d|\))\s*[-−]\s*[\d(]|(^|[^A-Za-z])[A-Za-z]\s+[-−]\s+[\dA-Za-z(]/.test(text)) out.add("subtraction");
+  return [...out];
+}
+
 // ---------- The gate for AI-written text ----------
 
 /** Curly quotes and the en dash, written as ASCII before the check; nothing else is changed. */
@@ -109,8 +144,7 @@ export const NUMBER_FORMS: readonly { name: string; form: RegExp; example: strin
   { name: "decimal", form: /^\d+\.\d+$/, example: "0.5" },
   { name: "fraction", form: /^\d+\/\d+$/, example: "1/2" },
   { name: "percent", form: /^\d+(\.\d+)?%$/, example: "50%" },
-  { name: "clock time", form: /^\d{1,2}:\d{2}$/, example: "3:30" },
-  { name: "ratio", form: /^\d+:\d+$/, example: "3:4" },
+  { name: "clock time (on a time skill) or ratio", form: /^\d+:\d+$/, example: "3:30" },
   { name: "dollars", form: /^\$(\d+|\d{1,3}(,\d{3})+)(\.\d{2})?$/, example: "$4.75" },
   { name: "cents", form: /^\d+¢$/, example: "25¢" },
 ];
@@ -157,8 +191,8 @@ export function readNumbers(text: string): ReadNumber[] {
     const sign = minus && !/(\d|\)|(^|[^A-Za-z])[A-Za-z])$/.test(prior) ? -1 : 1;
     if (body.includes(":")) {
       const [h, min] = body.split(":").map(Number);
-      const form = /^\d{1,2}:\d{2}$/.test(body) ? "time" : "ratio";
-      out.push({ value: h, form }, { value: min, form });
+      const clock = /^\d{1,2}:\d{2}$/.test(body) && h <= 24 && min <= 59 ? { clock: true as const } : {};
+      out.push({ value: h, form: "colon", ...clock }, { value: min, form: "colon", ...clock });
       continue;
     }
     if (body.includes("/")) {

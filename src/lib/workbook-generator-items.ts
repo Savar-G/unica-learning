@@ -237,7 +237,7 @@ function signOf(kind: OperationKind): string | null {
 const SIGNS = ["+", "−", "×", "÷"];
 
 /** The item of an operation format, its answers computed by code from the operation's answer. */
-function itemFor(format: GeneratedFormat, op: Operation, answer: AnswerValue, shown: WrongAnswer | null): Item | string {
+function itemFor(format: GeneratedFormat, op: Operation, answer: AnswerValue, shown: WrongAnswer | null, signs: readonly string[]): Item | string {
   const box: AnswerRegion = { id: "answer", kind: "box", label: null, answer };
   const onAnswer: ItemCheck = { kind: "operation", region: "answer" };
   const base = { format, scorable: true, parentChecked: false, error: null };
@@ -261,7 +261,7 @@ function itemFor(format: GeneratedFormat, op: Operation, answer: AnswerValue, sh
       return {
         ...base, format,
         regions: [
-          { id: "operation", kind: "choice", mark: "tick", label: "Tick the operation", choices: SIGNS, answer: sign },
+          { id: "operation", kind: "choice", mark: "tick", label: "Tick the operation", choices: SIGNS.filter((x) => x === sign || signs.includes(x)), answer: sign },
           { ...box, label: "Write the answer" },
           { id: "work", kind: "work", label: "Show your work" },
         ],
@@ -551,6 +551,11 @@ export interface SlotPlace {
   level: number;
   /** The skill ids the plan aims the slot at. */
   skills: readonly string[];
+  /**
+   * The operation signs the level has met, which a Mixed set offers to tick (+ always; −, × and ÷ from their first
+   * levels). Absent: all four.
+   */
+  signs?: readonly string[];
 }
 
 const fail = (reason: string, pkg: QuestionPackage | null = null, stepIds: string[] = []): BuiltQuestion => ({ check: { status: "failed", reason }, package: pkg, stepIds });
@@ -621,7 +626,7 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
     }))
     : [];
   const shown = format === "spot-the-error" && typeof raw.shownWrong === "number" ? (wrongAnswers[raw.shownWrong] ?? null) : null;
-  const built = itemFor(format, op, answer, shown);
+  const built = itemFor(format, op, answer, shown, place.signs ?? SIGNS);
   if (typeof built === "string") return fail(built, null, stepIds);
   // A number line item always draws its line; another format draws the picture the AI named, if any.
   const figureKind = format === "number-line" ? "number-line" : kind;
