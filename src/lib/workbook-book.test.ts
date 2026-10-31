@@ -331,6 +331,7 @@ describe("numbers that fit the level", () => {
     expect(skillRange(BC, 22, "3.3-add-within-1000").negatives).toBe(false);
     expect(skillRange(BC, 12, "3.4-recall-addition-20").max).toBe(20);
     expect(skillRange(BC, 8, "2.3-bridge-10-subtract").max).toBe(100);
+    expect(skillRange(BC, 4, "1.1-skip-count-2-5").max).toBe(20);
   });
 });
 
@@ -630,5 +631,37 @@ describe("operation signs and a:b by level (R380-7)", () => {
     expect(at(14, "4.12-read-analog", { text: "What time is 3:30 on the clock?" })).toBeNull();
     expect(at(14, "4.12-read-analog", { text: "Is it 3:75?" })).toContain("no ratios");
     expect(at(21, "6.6-write-ratio", { text: "Write the ratio 3:10 another way." })).toBeNull();
+  });
+});
+
+describe("multiplication written as x or in words (R380-8)", () => {
+  const at = (level: number, skill: string, text: string) => rangeProblem({
+    id: "q", ref: { source: "workbook", workbookId: WORKBOOK, page: 3, question: 1 }, templateId: null, text,
+    answer: null, operation: null, steps: [], skill: { standard: skill.split("-")[0], skills: [skill] }, level, difficulty: 2,
+    wrongAnswers: [], easierExample: null,
+  }, BC, level);
+
+  it.each([
+    [3, "K3-part-part-whole", "Find 3 x 2."], [7, "2.1-read-write-100", "Draw dots to explain 3 x 2."],
+    [7, "2.1-read-write-100", "Find 3x2."], [7, "2.1-read-write-100", "Find 3 X 2."], [7, "2.1-read-write-100", "What is x 4?"],
+  ] as const)("refuses x as a times sign at U%i: %s", (level, skill, text) => {
+    expect(at(level, skill, text)).toContain("multiplication");
+  });
+
+  it("reads words with an x as words, and x as a variable at the algebra levels", () => {
+    expect(at(7, "2.1-read-write-100", "Ava has a box of 3 pens.")).toBeNull();
+    expect(at(7, "2.1-read-write-100", "Max has 3 xylophones.")).toBeNull();
+    expect(at(11, "3.5-equal-groups", "Find 3 x 2.")).toBeNull();
+    expect(at(24, "7.6-solve-two-step", "Solve 2x + 3 = 11.")).toBeNull();
+  });
+
+  it.each(["Draw 3 groups of 2.", "Make 3 lots of 2.", "Draw 3 rows of 4 dots.", "How many in rows of 4?"])("refuses multiplication words before U11: %s", (text) => {
+    expect(at(7, "2.1-read-write-100", text)).toContain("is multiplication");
+  });
+
+  it("accepts groups of on a skill about groups or skip-counting, and from U11", () => {
+    expect(at(7, "2.1-count-tens-ones", "Make 3 groups of 10.")).toBeNull();
+    expect(at(4, "1.1-skip-count-2-5", "Hop 3 groups of 2.")).toBeNull();
+    expect(at(11, "3.5-equal-groups", "Draw 3 rows of 4 dots.")).toBeNull();
   });
 });

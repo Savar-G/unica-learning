@@ -30,7 +30,7 @@ import {
   type Operation,
   type QuestionPackage,
 } from "@/lib/question-package";
-import { aiTextProblem, isCoin, readNumbers, signOperation, textOperations, type ReadNumber, type SignOperation } from "@/lib/number-words";
+import { aiTextProblem, groupingWords, isCoin, readNumbers, signOperation, textOperations, type ReadNumber, type SignOperation } from "@/lib/number-words";
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import {
   headerGrowth,
@@ -235,6 +235,8 @@ export type NumberRange = {
   money: boolean;
   /** The skill is about time: h:mm is a clock time and fits as it is; elsewhere every a:b is a ratio. */
   time: boolean;
+  /** The skill is about groups or skip-counting: "3 groups of 2" is its own language before multiplication. */
+  grouping: boolean;
 } & Record<Concept, boolean>;
 
 /**
@@ -266,7 +268,7 @@ export function conceptLevels(curriculum: Curriculum): ConceptLevels {
 /** A level's number range, for an item with no skill. */
 export function levelRange(curriculum: Curriculum, level: number): NumberRange {
   const c = conceptLevels(curriculum);
-  return { max: levelMax(level), money: false, time: false, ...(Object.fromEntries(CONCEPTS.map((k) => [k, level >= c[k]])) as Record<Concept, boolean>) };
+  return { max: levelMax(level), money: false, time: false, grouping: false, ...(Object.fromEntries(CONCEPTS.map((k) => [k, level >= c[k]])) as Record<Concept, boolean>) };
 }
 
 /** The operation signs a Mixed set may offer at a level: + always, −, × and ÷ once the curriculum has met them. */
@@ -275,8 +277,13 @@ export function levelSigns(curriculum: Curriculum, level: number): string[] {
   return ["+", "−", "×", "÷"].filter((sign) => { const op = signOperation(sign); return !op || r[op]; });
 }
 
-/** The limit a skill's id names ("1.3-add-within-10", "3.4-recall-addition-20", "2.1-ten-more-less-100"), or null. */
+/**
+ * The limit a skill's id names ("1.3-add-within-10", "3.4-recall-addition-20", "2.1-ten-more-less-100"), or null; none
+ * for an id ending in two numbers ("1.1-skip-count-2-5", "K3-benchmarks-5-10").
+ */
 function idLimit(skill: string): number | null {
+  // Two numbers at the end name what the skill is about, not a limit ("1.1-skip-count-2-5" is by 2s and 5s).
+  if (/-\d+-\d+$/.test(skill)) return null;
   const m = skill.match(/-(?:within-|to-)?(\d+)$/) ?? skill.match(/-(?:within|to)-(\d+)-/);
   const n = m ? Number(m[1]) : NaN;
   return [5, 10, 20, 100, 1000, 10_000].includes(n) ? n : null;
@@ -292,6 +299,9 @@ const isTimeSkill = (curriculum: Curriculum, skill: string) => {
   return /\b(time|clocks?)\b/i.test(`${s?.text ?? ""} ${curriculum.unit(s?.unit ?? "")?.text ?? ""}`);
 };
 
+/** A skill is about groups or skip-counting when its text says so ("equal groups", "making groups of 10", "skip-count"). */
+const isGroupingSkill = (curriculum: Curriculum, skill: string) => /\bgroup\w*|\bskip-count\w*/i.test(curriculum.skill(skill)?.text ?? "");
+
 /**
  * The range of an item on a skill: the range of the skill's own level (a review of an earlier skill keeps to that
  * skill's numbers and ideas), never above the page's level, and never above the limit the skill's id names ("facts to
@@ -299,7 +309,7 @@ const isTimeSkill = (curriculum: Curriculum, skill: string) => {
  */
 export function skillRange(curriculum: Curriculum, level: number, skill: string): NumberRange {
   const own = curriculum.levelOfSkill(skill)?.number ?? level;
-  const range = { ...levelRange(curriculum, Math.min(own, level)), money: isMoneySkill(curriculum, skill), time: isTimeSkill(curriculum, skill) };
+  const range = { ...levelRange(curriculum, Math.min(own, level)), money: isMoneySkill(curriculum, skill), time: isTimeSkill(curriculum, skill), grouping: isGroupingSkill(curriculum, skill) };
   const limit = idLimit(skill);
   return limit !== null && limit < range.max ? { ...range, max: limit } : range;
 }
@@ -528,6 +538,8 @@ export function rangeProblem(p: QuestionPackage, curriculum: Curriculum, level: 
   const percent = read.find((r) => r.form === "percent");
   if (percent && !range.percents) return `${percent.value}% is a percent: this question uses no percents (they start at U${c.percents})`;
   if (!range.ratios && read.some((r) => r.form === "colon")) return `this question uses no ratios: they start at U${c.ratios}${range.time ? "" : " (write a time on a non-time question as 3 o'clock)"}`;
+  const grouping = range.multiplication || range.grouping ? null : (groupingWords(p.text) ?? (p.easierExample ? groupingWords(p.easierExample.text) : null));
+  if (grouping) return `"${grouping}" is multiplication: this question uses none (it starts at U${c.multiplication})`;
   const op = printedOperations(p).find((o) => !range[o]);
   if (op) return `this question uses no ${op} (${{ subtraction: "-", multiplication: "×", division: "÷", comparison: "< or >" }[op]}): it starts at U${c[op]}`;
   return null;

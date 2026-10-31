@@ -115,8 +115,8 @@ export function signOperation(sign: string): SignOperation | null {
 }
 
 /**
- * The operations a text's signs show: ×, ÷, < and >, and a minus between two numbers ("9 - 3", "(4) - 1", "n - 2"),
- * not a negative sign ("-3") or a hyphen ("ten-frame").
+ * The operations a text's signs show: ×, ÷, < and >, a minus between two numbers ("9 - 3", "(4) - 1", "n - 2"; not a
+ * negative sign "-3" or a hyphen "ten-frame"), and an x next to a digit.
  */
 export function textOperations(text: string): SignOperation[] {
   const out = new Set<SignOperation>();
@@ -125,7 +125,18 @@ export function textOperations(text: string): SignOperation[] {
     if (op) out.add(op);
   }
   if (/(\d|\))\s*[-−]\s*[\d(]|(^|[^A-Za-z])[A-Za-z]\s+[-−]\s+[\dA-Za-z(]/.test(text)) out.add("subtraction");
+  // An x or X next to a digit is a times sign ("3 x 2", "3x2", "x 4") or an unknown times a number ("2x"): either way
+  // multiplication. "box 3", "Max 3" and "3 xylophones" are words.
+  if (/\d\s*[xX](?![A-Za-z])|(?<![A-Za-z])[xX]\s*\d/.test(text)) out.add("multiplication");
   return [...out];
+}
+
+/**
+ * Multiplication said in words ("3 groups of 2", "3 lots of 2", "3 rows of 4"), or null. The range check refuses it
+ * before multiplication, except on a skill about groups or skip-counting.
+ */
+export function groupingWords(text: string): string | null {
+  return text.match(/\b\d+\s+(?:groups|lots|rows)\s+of\s+\d+/i)?.[0] ?? text.match(/\b(?:lots|rows)\s+of\b/i)?.[0] ?? null;
 }
 
 // ---------- The gate for AI-written text ----------
