@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { checkQuestionPackage } from "@/lib/question-package";
-import { pageSlots, type PageLayout } from "@/lib/workbook-page";
+import { headerGrowth, pageSlots, type PageLayout } from "@/lib/workbook-page";
 import type { PlannedPage, PlannedPart } from "@/lib/workbook-plan";
 import { sampleBook } from "@/lib/workbook-sample-book";
 
@@ -97,7 +97,7 @@ describe("assembleBook", () => {
   it("passes every planned item a page leaves out to the book, and never leaves out a Fix it item (R371-1)", () => {
     const { omissions, draft } = book("U2");
     const fixPage = omissions.find((x) => x.day === 1 && x.dayPage === 1);
-    expect(fixPage).toMatchObject({ kind: "remember-these", page: 3, reason: "a parent-led page holds 6 cards" });
+    expect(fixPage).toMatchObject({ kind: "remember-these", page: 3, reason: expect.stringContaining("a parent-led page holds 6 cards") });
     expect(fixPage!.placed).toBeLessThan(fixPage!.requested);
     const day1 = draft.pages[2].content!;
     expect(day1.kind === "day" && day1.blocks.map((b) => b.slot)).toContain("fix-it");
@@ -159,6 +159,33 @@ describe("pageSlots", () => {
   it("reports nothing left out when the page holds the plan", () => {
     expect(pageSlots(page("practice", [part("practice", 8, { faded: { watch: 1, finish: 2 } })]), 12).omissions).toEqual([]);
     expect(pageSlots(page("word-problems", [part("word-problems", 3)]), 12).omissions).toEqual([]);
+  });
+
+  it("gives up item rows until they free the room a wrapped header takes, review rows first, and records it (R371-2-1)", () => {
+    const b = { unit: "B" as const };
+    const unitB = page("unit-b", [part("new-idea", 4, b), part("spot-the-error", 1, b), part("practice", 8, b)]);
+    expect(names(pageSlots(unitB, 12))).toEqual(["worked-example:0", "spot-the-error:1", "unit-b-practice:4"]);
+    const wrapped = pageSlots(unitB, 12, { headerGrowth: 38 });
+    expect(names(wrapped)).toEqual(["worked-example:0", "spot-the-error:1", "unit-b-practice:2"]);
+    expect(wrapped.omissions.find((x) => x.kind === "practice")).toMatchObject({ requested: 8, placed: 2, reason: "the Unit B page has room for 4 practice items; the page's header wraps, taking 38 px" });
+    // Two rows for two lines of title and one of day label.
+    expect(names(pageSlots(unitB, 12, { headerGrowth: 92 }))).toEqual(["worked-example:0", "spot-the-error:1"]);
+
+    const review = page("remember-these-mixed-set", [part("remember-these", 8), part("mixed-set", 4)]);
+    expect(names(pageSlots(review, 12, { headerGrowth: 38 }))).toEqual(["remember-these:6", "mixed-set:4"]);
+    // A parent-led page's card budget leaves 100 px spare, which a wrapped header uses before any card goes.
+    const parent = page("parent-led", [part("remember-these", 6)]);
+    expect(names(pageSlots(parent, 2, { headerGrowth: 67 }))).toEqual(["remember-these:6"]);
+    expect(names(pageSlots(parent, 2, { headerGrowth: 160 }))).toEqual(["remember-these:4"]);
+  });
+
+  it("measures how much a day page's header grows when it wraps", () => {
+    const h = { topic: "Equal or not equal", title: "Practice: Equal or not equal", subtitle: "Watch one. Finish two.", grownUp: null };
+    expect(headerGrowth(h, 12, 1, 3, 8)).toBe(0);
+    const long = "More practice: Mixed subtraction facts within 20, then check";
+    expect(headerGrowth({ ...h, title: long }, 12, 1, 3, 8)).toBe(38);
+    expect(headerGrowth({ ...h, title: long }, 6, 1, 3, 8)).toBe(45);
+    expect(headerGrowth({ ...h, title: "Match a net or a skeleton to its 3D object in stories" }, 12, 1, 5, 8)).toBe(0);
   });
 
   it("caps a slot at what the template takes, and says so", () => {

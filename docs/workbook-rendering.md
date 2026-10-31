@@ -94,7 +94,10 @@ questions by number. It is used to render and is not stored yet (the generator, 
   the look only.
 
 The day label, the title and the subtitle wrap to a second line at a word break; a third line, or a word wider than
-the column, fails the render as the slot's overflow, so nothing is cut. The type ramp is fixed per level band: U10 and up at the reference sizes, U4 to U9 at 18 px and up (facts 30 px),
+the column, fails the render as the slot's overflow, so nothing is cut. The book knows each page's header before it lays the page
+out (`BookInput.header`): `headerGrowth` estimates how much taller a wrapped header makes it, and `pageSlots` gives up
+item rows until they free that room (review rows first, never Fix it; on a parent-led page the 6-card budget's spare
+room goes first), recorded as an omission. The fit check still measures the real page. The type ramp is fixed per level band: U10 and up at the reference sizes, U4 to U9 at 18 px and up (facts 30 px),
 U1 to U3 at 20 px body with 56 px answer boxes. Nothing is shrunk to fit.
 
 The template's fit check (`fit`, run by the renderer after its own checks) fails a page, naming it, the slot and the

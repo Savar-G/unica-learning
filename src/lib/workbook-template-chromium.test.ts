@@ -18,8 +18,8 @@ const CHILD = "22222222-2222-4222-8222-222222222222";
 const chromium = await findChromium();
 const engine = chromiumPrintEngine();
 const template = chromium ? workbookTemplate(await fixedTemplateFonts()) : workbookTemplate();
-const book = (level: string, n: number, testWorkbook = false) =>
-  sampleBook({ level, workbookId: `55555555-5555-4555-8555-00000000001${n}`, childId: CHILD, child: "Mateo", number: 2, testWorkbook }).draft;
+const book = (level: string, n: number, testWorkbook = false, title?: string) =>
+  sampleBook({ level, workbookId: `55555555-5555-4555-8555-00000000001${n}`, childId: CHILD, child: "Mateo", number: 2, testWorkbook, title }).draft;
 
 /** One page of each type (a parent-led page per first slot), with the book's own page numbers. */
 function oneOfEach(draft: WorkbookDraft): WorkbookDraft {
@@ -69,17 +69,19 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
     const steps = bc.levels.flatMap((l) => (bc.levelSkills(l.id) ?? []).flatMap((k) => (bc.skillSteps(k.id) ?? []).map((x) => x.name)));
     const longest = steps.reduce((a, b) => (b.length > a.length ? b : a));
     const sentence = bc.levels.flatMap((l) => (bc.levelSkills(l.id) ?? []).map((k) => k.text)).reduce((a, b) => (b.length > a.length ? b : a));
-    const titled = (draft: WorkbookDraft, title: string): WorkbookDraft => ({
-      ...draft,
-      pages: oneOfEach(draft).pages.filter((p) => p.content?.kind === "day").map((p) => ({ ...p, content: { ...p.content!, title, topic: title } as typeof p.content })),
-    });
+    // The title goes in when the book is planned, as the generator's will, so the page's layout knows it wraps.
+    const titled = (level: string, n: number, title: string): WorkbookDraft => {
+      const draft = oneOfEach(book(level, n, false, title));
+      return { ...draft, pages: draft.pages.filter((p) => p.content?.kind === "day") };
+    };
     const headerProblems = (r: Awaited<ReturnType<typeof renderWorkbook>>) =>
       r.status === "failed" ? r.problems.filter((x) => x.slot === "title" || x.slot === "day-label") : [];
 
     for (const [level, n] of [["U2", 1], ["U6", 2], ["U12", 3], ["U22", 4]] as const) {
-      const fits = await renderWorkbook({ draft: titled(book(level, n), `More practice: ${longest}`), parentId: PARENT, template, engine });
-      expect(headerProblems(fits)).toEqual([]);
-      const long = titled(book(level, n), sentence);
+      const fits = await renderWorkbook({ draft: titled(level, n, `More practice: ${longest}`), parentId: PARENT, template, engine });
+      // The whole page must render, so a two-line header that pushes content out fails here too (review R371-2-1).
+      expect(fits.status === "failed" ? fits.problems : []).toEqual([]);
+      const long = titled(level, n, sentence);
       const fails = await renderWorkbook({ draft: long, parentId: PARENT, template, engine });
       expect(new Set(headerProblems(fails).filter((x) => x.slot === "title").map((x) => x.page))).toEqual(new Set(long.pages.map((p) => p.number)));
     }

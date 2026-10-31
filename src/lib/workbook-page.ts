@@ -233,6 +233,75 @@ function partSlots(part: PlannedPart, page: PlannedPage, level: number): { slots
 const PANELS: Partial<Record<SlotName, number>> = { "worked-example": 4, "watch-one": 2, reminder: 3 };
 /** A parent-led page (U1 to U3) holds 6 item cards (2 columns, 3 rows); each slot after the first takes 1 more for its chip. */
 const PARENT_CARDS = 6;
+/** The room the 6-card budget leaves spare on a parent-led page (laid out: about 120 to 180 px), which a wrapped header uses first. */
+const PARENT_SPARE = 100;
+
+/** Slots a wrapped header may take a row from: lists and grids of several items, never Fix it or a single card. */
+const TRIMMABLE = new Set<SlotName>([
+  "remember-these", "warm-up", "on-your-own", "practice-row", "unit-b-practice", "now-you", "word-problems", "mixed-set",
+  "picture-stories", "friday-5", "unit-check", "mini-test", "already-know-it", "show-what-you-know", "level-test",
+]);
+
+/** The items in one row of a slot as the template lays it out (the most, so a row's removal frees a row). */
+function rowOf(x: PlannedSlot, level: number): number {
+  if (level <= 3) return 2;
+  const mid = level >= 10;
+  switch (x.slot) {
+    case "warm-up": return mid ? 3 : 2;
+    case "practice-row": return 4;
+    case "on-your-own": return mid ? 4 : 2;
+    case "remember-these": case "unit-b-practice": case "picture-stories": return 2;
+    case "friday-5": case "unit-check": case "mini-test": case "already-know-it": case "show-what-you-know": case "level-test":
+      return x.items > 5 ? 2 : 1;
+    default: return 1;
+  }
+}
+
+/** A day page's header: its topic (in the day label), title, subtitle and the grown-up line. */
+export interface DayHeader {
+  topic: string;
+  title: string;
+  subtitle: string;
+  grownUp: string | null;
+}
+
+/** The height one row of a slot takes, with its gap, in CSS pixels: the least, so removing rows frees at least this. */
+function rowHeight(x: PlannedSlot, level: number): number {
+  if (level <= 3) return 130;
+  const big = level <= 9;
+  switch (x.slot) {
+    case "practice-row": case "on-your-own": return big ? 60 : 100;
+    case "mixed-set": return 110;
+    case "word-problems": case "picture-stories": return big ? 130 : 150;
+    case "warm-up": return big ? 60 : 50;
+    default: return big ? 54 : 46;
+  }
+}
+
+/**
+ * How much taller a day page's header is than with one line each for its day label, title and subtitle, in CSS
+ * pixels: a word wrap at the characters a line of each holds in its band (Geist and Geist Mono at DESIGN.md's sizes,
+ * for usual text), times the line height. A line of unusually wide letters can hold fewer, so the estimate can be
+ * short; the fit check still measures the real page, and a page it fails is redone (#311).
+ */
+export function headerGrowth(h: DayHeader, level: number, day: number, page: number, pages: number): number {
+  const big = level <= 9;
+  const lines = (text: string, perLine: number) => {
+    let n = 1;
+    let used = 0;
+    for (const word of text.split(/\s+/)) {
+      if (used > 0 && used + 1 + word.length > perLine) {
+        n++;
+        used = word.length;
+      } else used += (used > 0 ? 1 : 0) + word.length;
+    }
+    return n;
+  };
+  const label = lines(`Day ${day} · Page ${page} of ${pages} · ${h.topic}`, big ? 60 : 82) - 1;
+  const title = lines(h.title, big ? 42 : 54) - 1;
+  const subtitle = lines(h.subtitle, big ? 68 : 90) - 1;
+  return label * (big ? 22 : 16) + title * (big ? 45 : 38) + subtitle * (big ? 28 : 21);
+}
 
 /** Planned items a page leaves out: the part, how many it asked for, how many the page placed, and why. */
 export interface Omission {
@@ -261,7 +330,7 @@ const asked = (part: PlannedPart) => part.items - (part.kind === "practice" ? pa
  * sizes). Every part that places fewer items than it asked for is in `omissions`, with the reason, never dropped
  * silently: the generator (#311) and the admin review (#312) show them.
  */
-export function pageSlots(page: PlannedPage, level: number): PageLayout {
+export function pageSlots(page: PlannedPage, level: number, o: { headerGrowth?: number } = {}): PageLayout {
   const pages = level >= 19 ? 6 : 8;
   const why = new Map<number, string>();
   let slots: PlannedSlot[] = page.parts.flatMap((part, i) => {
@@ -299,6 +368,24 @@ export function pageSlots(page: PlannedPage, level: number): PageLayout {
     slots = slots.filter((x) => placed.has(x)).map((x) => ({ ...x, items: placed.get(x)! }));
   }
 
+  // A header that wraps takes room from the content area: rows go until they free that room (DESIGN.md row heights).
+  // Review rows go first, then the page's last list; a list keeps its last row while another list has rows to give.
+  // Never Fix it or a one-item slot.
+  slots = slots.map((x) => ({ ...x }));
+  const grow = Math.max(0, (o.headerGrowth ?? 0) - (level <= 3 ? PARENT_SPARE : 0));
+  const wrapped = `the page's header wraps, taking ${Math.ceil(grow)} px`;
+  for (let freed = 0; freed < grow;) {
+    const lists = slots.filter((x) => TRIMMABLE.has(x.slot) && x.items > 0);
+    const candidates = lists.filter((x) => x.items > rowOf(x, level));
+    const pool = candidates.length > 0 ? candidates : lists;
+    const x = pool.find((c) => c.slot === "remember-these") ?? pool.at(-1);
+    if (!x) break;
+    x.items = Math.max(0, x.items - rowOf(x, level));
+    freed += rowHeight(x, level);
+    why.set(x.part, why.has(x.part) ? `${why.get(x.part)}; ${wrapped}` : wrapped);
+  }
+  slots = slots.filter((x) => x.items > 0 || x.slot in PANELS);
+
   const omissions = page.parts.flatMap((part, i): Omission[] => {
     const placed = slots.filter((x) => x.part === i).reduce((n, x) => n + x.items, 0);
     // Stories add a How do you know? item of their own.
@@ -318,12 +405,8 @@ export interface FilledBlock extends Omit<Block, "items"> {
   items: QuestionPackage[];
 }
 
-/** A filled day page. */
+/** A filled day page: its slots' content. */
 export interface FilledDayPage {
-  topic: string;
-  title: string;
-  subtitle: string;
-  grownUp: string | null;
   blocks: FilledBlock[];
 }
 
@@ -338,6 +421,8 @@ export interface BookInput {
   profileBuild: string | null;
   plan: WorkbookPlan;
   cover: Pick<CoverContent, "title" | "sentence" | "bullets" | "parentLine">;
+  /** Each planned day page's header, known before its slots: a header that wraps leaves less room for them. */
+  header(day: number, page: PlannedPage): DayHeader;
   /** Each planned day page's content, for the slots pageSlots laid it into. */
   fill(day: number, page: PlannedPage, slots: PlannedSlot[]): FilledDayPage;
   /** Each day's row on the plan page: Unit A's topic and the line under it. */
@@ -403,7 +488,8 @@ export function assembleBook(o: BookInput): AssembledBook {
   for (const d of plan.days) {
     for (const planned of d.pages) {
       const n = pages.length + 1;
-      const layout = pageSlots(planned, level);
+      const header = o.header(d.day, planned);
+      const layout = pageSlots(planned, level, { headerGrowth: headerGrowth(header, level, d.day, planned.number, d.pages.length) });
       omissions.push(...layout.omissions.map((x) => ({ ...x, page: n, day: d.day, dayPage: planned.number })));
       const filled = o.fill(d.day, planned, layout.slots);
       const questions: DraftPage["questions"] = [];
@@ -417,7 +503,7 @@ export function assembleBook(o: BookInput): AssembledBook {
       }));
       add(planned.type, `Day ${d.day}`, {
         kind: "day", id: id(`D${two(d.day)}·P${planned.number}`), level, day: d.day, page: planned.number, pages: d.pages.length,
-        topic: filled.topic, title: filled.title, subtitle: filled.subtitle, grownUp: filled.grownUp, blocks,
+        ...header, blocks,
       }, questions);
     }
   }

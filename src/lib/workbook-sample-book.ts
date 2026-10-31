@@ -26,7 +26,7 @@ import {
   assembleBook,
   type BookOmission,
   type FilledBlock,
-  type FilledDayPage,
+  type DayHeader,
   type Figure,
   type PlannedSlot,
 } from "@/lib/workbook-page";
@@ -502,15 +502,16 @@ function fillSlot(s: PlannedSlot, index: number, ctx: FillCtx): FilledBlock {
 }
 
 /** The headline words of a day page. */
-function headerOf(page: PlannedPage, ctx: FillCtx, blocks: FilledBlock[]): Omit<FilledDayPage, "blocks"> {
-  const { level } = ctx;
+function headerOf(page: PlannedPage, level: number): DayHeader {
   const main = page.parts.find((p) => p.step) ?? page.parts[0];
   const topic = topicOf(main?.step?.skill ?? main?.skills[0], main?.step?.step);
   const early = level <= 9;
   const t = (title: string, subtitle: string) => ({ title, subtitle });
-  const has = (slot: string) => blocks.some((b) => b.slot === slot);
   let head: { title: string; subtitle: string };
-  const type = page.type === "parent-led" ? (blocks[0]?.slot === "worked-example" ? "new-idea" : blocks[0]?.slot ?? "practice") : page.type;
+  // A parent-led page is titled by its first part.
+  const first = page.parts[0]?.kind;
+  const type = page.type !== "parent-led" ? page.type
+    : first === "new-idea" ? "new-idea" : first === "picture-stories" ? "word-problems" : first === "remember-these" ? "remember-these" : first ?? "practice";
   switch (type) {
     case "warm-up": head = t("Warm-up", level >= 16 ? "Facts to 20. Beat your own count from last time." : "Facts to 20. Take your time: there is no timer."); break;
     case "new-idea": head = t(topic, level >= 19 ? "Try it first. Then see how it works." : "Watch how it works. Then try it."); break;
@@ -520,7 +521,7 @@ function headerOf(page: PlannedPage, ctx: FillCtx, blocks: FilledBlock[]): Omit<
     case "math-in-the-world": head = t("Math in the world", "One real task: a garden bed. Plan it, then work it out."); break;
     case "unit-b": head = t(topic, `Unit B: ${topic.toLowerCase()}.`); break;
     case "friday-5": head = t("Remember these? and Friday 5", "Things you learned before, then five with no hints."); break;
-    case "challenge": head = t("Challenge", has("challenge") && blocks.find((b) => b.slot === "challenge")!.items.length > 1 ? "Two to stretch you." : "One to stretch you."); break;
+    case "challenge": head = t("Challenge", (page.parts.find((x) => x.kind === "challenge")?.items ?? 1) > 1 ? "Two to stretch you." : "One to stretch you."); break;
     case "show-what-you-know": head = t("Show what you know", "Ten days of work. Show what you learned!"); break;
     case "level-test": head = t(`Level U${level} test`, "Do this on your own."); break;
     default: head = t("Remember these?", "Things you learned before, so they stay fresh.");
@@ -545,6 +546,8 @@ export interface SampleBookOptions {
   number?: number;
   /** The level's last book: every step passed, so the plan makes the test workbook (level test on Day 7). */
   testWorkbook?: boolean;
+  /** A title (and topic) for every day page, to check how a long one lays out; by default each page's own. */
+  title?: string;
   /** Page tokens; by default fixed ones made from the workbook id and page (16 to 64 URL-safe characters). */
   qrToken?: (n: number) => string;
 }
@@ -615,10 +618,13 @@ export function sampleBook(o: SampleBookOptions): SampleBook {
       const second = day === 10 ? "Show what you know" : day === 5 ? "Friday 5" : b ?? (d.kind === "mixed" ? "Mixed practice" : "Remember these?");
       return { topic: a ?? (d.kind === "mixed" ? "Mixed practice" : "Review"), second };
     },
+    header(_day, page) {
+      const h = headerOf(page, level.number);
+      return o.title ? { ...h, title: o.title, topic: o.title } : h;
+    },
     fill(day, page, slots) {
       const ctx: FillCtx = { plan, level: level.number, band, workbookId: o.workbookId, day, page, next: () => `${o.workbookId}:s${++key}` };
-      const blocks = slots.map((s, i) => fillSlot(s, i, ctx));
-      return { ...headerOf(page, ctx, blocks), blocks };
+      return { blocks: slots.map((s, i) => fillSlot(s, i, ctx)) };
     },
     // Fixed tokens from the whole workbook id and the page: unique per workbook and page, but guessable; a stored book
     // passes random ones (see BookInput.qrToken).
