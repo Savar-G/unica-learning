@@ -1584,6 +1584,75 @@ export type Database = {
           },
         ]
       }
+      workbook_drafts: {
+        Row: {
+          child_id: string
+          created_at: string
+          draft: Json
+          failed: number
+          failed_pages: number
+          id: string
+          levels: number[]
+          model: string
+          not_checked: number
+          number: number
+          pages: number
+          parent_id: string
+          profile_build: string | null
+          questions: number
+          schema_version: number
+        }
+        Insert: {
+          child_id: string
+          created_at?: string
+          draft: Json
+          failed: number
+          failed_pages: number
+          id: string
+          levels: number[]
+          model: string
+          not_checked: number
+          number: number
+          pages: number
+          parent_id: string
+          profile_build?: string | null
+          questions: number
+          schema_version: number
+        }
+        Update: {
+          child_id?: string
+          created_at?: string
+          draft?: Json
+          failed?: number
+          failed_pages?: number
+          id?: string
+          levels?: number[]
+          model?: string
+          not_checked?: number
+          number?: number
+          pages?: number
+          parent_id?: string
+          profile_build?: string | null
+          questions?: number
+          schema_version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_drafts_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_drafts_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_pages: {
         Row: {
           created_at: string
