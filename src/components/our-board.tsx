@@ -27,6 +27,7 @@ import {
   type BoardHistory,
   type Change,
   type DraftStore,
+  type InkStroke,
 } from "@/lib/board-history";
 import { addPoint, boardWidthOf, canvasViewBox, capturedPoints, eraserLine, inkLayers, inkOutline, parseViewBox, startCapture, toBoard, type Box, type Capture, type CapturePoint, type InkLayer, type ViewBox } from "@/lib/child-ink-svg";
 import { leaseLocks, openBoardTab, type BoardChannel, type BoardLocks, type BoardMessage, type BoardTab, type TabRole, type TabTimers } from "@/lib/board-tab";
@@ -51,6 +52,10 @@ const OTHER_TAB_NOTE = "This board changed in another tab. It shows the newest w
 const ELSEWHERE_NOTE = "This board is open in another tab.";
 /** What "Use it here" says when the other tab keeps the board. */
 const KEPT_NOTE = "The other tab is still using this board. Close it, then try again.";
+/** What a tab says when another tab took the board while this one had lines it had not saved (R370-3-1). */
+const MOVED_NOTE = "This board moved to another tab. Your newest lines stay here: tap “Use it here” to add them back.";
+/** What a tab says when lines it kept could not be added back after "Use it here". */
+const NOT_ADDED_NOTE = "Some of your lines could not be added back, because Maya has the pen.";
 /** What the board says when it cannot keep a stroke, so a line never disappears without a word. */
 const LOST_NOTE = "That line could not be kept. Please draw it again.";
 /** What the board says to a stroke while Maya holds the pen. */
@@ -89,13 +94,7 @@ const localDrafts: DraftStore = {
   },
 };
 
-const browserTimers: TabTimers = {
-  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-  every(ms, fn) {
-    const id = setInterval(fn, ms);
-    return () => clearInterval(id);
-  },
-};
+const browserTimers: TabTimers = { sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) };
 
 /** The browser's Web Locks: a lock is held until let go, or until its tab closes or crashes. */
 const webLocks = (locks: LockManager): BoardLocks => ({
@@ -104,7 +103,16 @@ const webLocks = (locks: LockManager): BoardLocks => ({
       locks
         .request(name, { ifAvailable: true }, (lock) => {
           if (!lock) return resolve(null);
-          return new Promise<void>((letGo) => resolve(() => letGo()));
+          return new Promise<void>((letGo) => {
+            let held = true;
+            resolve({
+              owned: () => held,
+              release() {
+                held = false;
+                letGo();
+              },
+            });
+          });
         })
         .catch(() => resolve(null));
     }),
@@ -184,6 +192,13 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
   /** This tab holds the board and writes it, or shows it read-only; "opening" until the lock answers. */
   const [role, setRole] = useState<TabRole | "opening">(store ? "opening" : "holder");
   const [moving, setMoving] = useState(false);
+  /** Counts the times the page came back from the back-forward cache: the board is opened again. */
+  const [opened, setOpened] = useState(0);
+  /** Lines this tab drew but could not save, because another tab took the board meanwhile (R370-3-1). */
+  const kept = useRef<InkStroke[]>([]);
+  /** What the tab does when it must let the board go, or finds it lost it: set after each render, with the latest state. */
+  const beforeRelease = useRef<() => void>(() => {});
+  const lostBoard = useRef<() => void>(() => {});
   /** Maya's question is written (or was before a reload): the pen may pass. */
   const [written, setWritten] = useState(restored !== null || !question);
   const [tabId] = useState(() => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${performance.now()}`));
@@ -240,16 +255,18 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
     if (!store) return;
     let gone = false;
     const channel = browserChannel();
-    const locks = typeof navigator !== "undefined" && navigator.locks ? webLocks(navigator.locks) : leaseLocks({ store, tabId, now: Date.now, timers: browserTimers });
+    const locks = typeof navigator !== "undefined" && navigator.locks ? webLocks(navigator.locks) : leaseLocks({ store, tabId, timers: browserTimers });
     void openBoardTab({
       key: draftKey, tabId, store, locks, channel, timers: browserTimers,
       onChange(r, h) {
         if (gone) return;
         setRole(r);
+        // Lines this tab could not save stay on its screen until "Use it here" adds them back.
+        if (r === "reader" && kept.current.length > 0) return;
         adopt(h);
       },
-      // The board goes to another tab: save what is on the screen first.
-      beforeRelease: () => tab.current?.save(latest.current, Date.now()),
+      // The board goes to another tab: end a stroke in progress, keep it and save, first.
+      beforeRelease: () => beforeRelease.current(),
     }).then((t) => {
       if (gone) return t.close();
       tab.current = t;
@@ -257,13 +274,24 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
       // What this tab read at its start may be older than the draft now.
       if (t.stored() && saved.current !== t.stored()) adopt(t.stored());
     });
-    return () => {
-      gone = true;
+    // Leaving the page lets the board go (a storage lease has no expiry, R370-3-1); coming back opens it again.
+    const hide = () => {
       tab.current?.close();
       tab.current = null;
+    };
+    const show = (e: PageTransitionEvent) => {
+      if (e.persisted) setOpened((n) => n + 1);
+    };
+    window.addEventListener("pagehide", hide);
+    window.addEventListener("pageshow", show);
+    return () => {
+      gone = true;
+      window.removeEventListener("pagehide", hide);
+      window.removeEventListener("pageshow", show);
+      hide();
       channel.close();
     };
-  }, [store, draftKey, tabId, adopt]);
+  }, [store, draftKey, tabId, adopt, opened]);
 
   // Keep the draft after every change, from the tab that holds the board. The board as it started needs none. On any
   // difference from what this tab last loaded or saved, nothing is written: the tab shows the stored board.
@@ -271,7 +299,8 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
     if (!store || role !== "holder" || history === saved.current || !tab.current) return;
     saved.current = history;
     const result = tab.current.save(history, Date.now());
-    if (result.status === "reload") {
+    if (result.status === "reader") lostBoard.current();
+    else if (result.status === "reload") {
       adopt(result.history);
       say(OTHER_TAB_NOTE);
     }
@@ -335,7 +364,29 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
     setMoving(true);
     const taken = await tab.current.takeOver();
     setMoving(false);
-    if (!taken) say(KEPT_NOTE);
+    if (!taken) return say(KEPT_NOTE);
+    // Lines this tab kept when the board moved away go back on, after the stored ones, as new strokes.
+    const lines = kept.current;
+    kept.current = [];
+    let h = latest.current;
+    let refusedLines = 0;
+    for (const line of lines) {
+      const at = now();
+      const first = line.pts[0][2];
+      const added = drawStroke(h, { ...line, pts: line.pts.map(([x, y, t]): TimedPoint => [x, y, at + t - first]) });
+      if (added.ok) h = added.history;
+      else refusedLines++;
+    }
+    if (h !== latest.current) setBoard(h);
+    if (refusedLines > 0) say(NOT_ADDED_NOTE);
+  };
+
+  /** True when this tab holds the board now: asked before every edit. A tab that lost it becomes read-only. */
+  const holds = () => {
+    if (role !== "holder") return false;
+    if (!tab.current || tab.current.owns()) return true;
+    lostBoard.current();
+    return false;
   };
 
   const apply = (change: Change) => {
@@ -351,6 +402,37 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
     apply(drawStroke(latest.current, { erase, w: erase ? ERASER_W : PEN_W, boardWidth: camera.boardWidth, page: 1, pts: capturedPoints(capture).map(([x, y, t]): TimedPoint => [x, y, t]) }));
   };
 
+  // The hooks the board tab calls, with this render's state (R370-3-1, R370-3-2).
+  useEffect(() => {
+    beforeRelease.current = () => {
+      // As if the pointer went up: the stroke in progress is kept, then everything is saved, then the board goes.
+      const s = stroke.current;
+      if (s) {
+        stroke.current = null;
+        setLive(null);
+        keep(s.erase, s.capture);
+      }
+      tab.current?.save(latest.current, Date.now());
+    };
+    lostBoard.current = () => {
+      stroke.current = null;
+      setLive(null);
+      setRole("reader");
+      const stored = tab.current?.stored() ?? null;
+      const known = new Set((stored ? childStrokes(stored) : []).map((x) => JSON.stringify(x)));
+      const unsaved = childStrokes(latest.current).filter((x) => !known.has(JSON.stringify(x)));
+      if (unsaved.length === 0) {
+        adopt(store ? loadDraft(store, draftKey) : null);
+        say(ELSEWHERE_NOTE);
+        return;
+      }
+      // Never drop ink without a word: it stays on this screen, and "Use it here" adds it back.
+      kept.current = unsaved;
+      saved.current = latest.current;
+      say(MOVED_NOTE);
+    };
+  });
+
   const pointAt = (e: { clientX: number; clientY: number }): CapturePoint | null => {
     if (!canvas.current || !camera) return null;
     const [x, y] = toBoard(camera.view, box(canvas.current.getBoundingClientRect()), e.clientX, e.clientY);
@@ -362,13 +444,15 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
     const [next, decision] = pointerDown(guard.current, { id: e.pointerId, kind: e.pointerType, time: e.timeStamp, width: e.width, height: e.height });
     guard.current = next;
     if (decision === "ignore") return;
-    if (role !== "holder" || pen !== "child") {
+    const mine = holds();
+    if (!mine || pen !== "child") {
       // Another tab holds the board, or Maya holds the pen: nothing is drawn. The pointer is let go, so a finger can
       // still scroll the page.
       guard.current = pointerUp(guard.current, { id: e.pointerId, kind: e.pointerType, time: e.timeStamp })[0];
       // A mouse drag would select the page's text instead.
       if (e.pointerType === "mouse") e.preventDefault();
-      if (role === "opening") return;
+      // Still opening, or the board has just moved away (lostBoard has said so).
+      if (role === "opening" || (!mine && role === "holder")) return;
       const text = role === "reader" ? ELSEWHERE_NOTE : PEN_NOTE;
       refused.current = { id: e.pointerId, note: text };
       say(text);
@@ -417,10 +501,12 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
   };
 
   const take = () => {
+    if (!holds()) return;
     setNote(null);
     apply(takePen(latest.current, now()));
   };
   const giveBack = () => {
+    if (!holds()) return;
     // A stroke in progress is dropped: the pen is Maya's now.
     stroke.current = null;
     setLive(null);
@@ -493,8 +579,8 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
           <div className="desk-tools" role="group" aria-label="Board tools">
             <button type="button" disabled={!childHas} aria-pressed={tool === "pen"} aria-label="Pen" onClick={() => setTool("pen")}><Icon name="pen" /></button>
             <button type="button" disabled={!childHas} aria-pressed={tool === "eraser"} aria-label="Eraser" onClick={() => setTool("eraser")}><Icon name="eraser" /></button>
-            <button type="button" disabled={!childHas || ink.length === 0} aria-label="Undo" onClick={() => apply(undo(latest.current, now()))}><Icon name="undo" /></button>
-            <button type="button" disabled={!childHas || ink.length === 0} className="desk-clear" onClick={() => apply(clear(latest.current, now()))}>Clear</button>
+            <button type="button" disabled={!childHas || ink.length === 0} aria-label="Undo" onClick={() => holds() && apply(undo(latest.current, now()))}><Icon name="undo" /></button>
+            <button type="button" disabled={!childHas || ink.length === 0} className="desk-clear" onClick={() => holds() && apply(clear(latest.current, now()))}>Clear</button>
             <span className="desk-ink maya"><i />Maya</span>
             <span className="desk-ink you"><i />You</span>
           </div>

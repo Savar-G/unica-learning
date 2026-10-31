@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createHistory, drawStroke, loadDraft, mayaWrites, takePen, childStrokes, type BoardHistory, type Change, type InkStroke } from "@/lib/board-history";
+import { childStrokes, createHistory, drawStroke, loadDraft, mayaWrites, takePen, type BoardHistory, type Change, type InkStroke } from "@/lib/board-history";
 import { createFakeTimers, createMemoryChannels, createMemoryDraftStore, createMemoryLocks } from "@/lib/board-history-memory";
-import { HAND_OVER_MS, LEASE_MS, OPEN_RETRY_MS, OPEN_TRIES, boardLockName, leaseLocks, openBoardTab, type TabRole } from "@/lib/board-tab";
+import { HAND_OVER_MS, LEASE_ROOT, OPEN_RETRY_MS, OPEN_TRIES, boardLockName, leaseLocks, openBoardTab, type BoardChannel, type TabRole } from "@/lib/board-tab";
+import { addPoint, capturedPoints, startCapture, type Capture } from "@/lib/child-ink-svg";
 
-// One tab writes a board (#320, R370-2-1, R370-2-2): the first tab holds it; another shows it read-only and can take it
-// over with "Use it here". Every stroke is written by one tab, exactly once.
+// One tab writes a board (#320, R370-2-1, R370-2-2, R370-3-1, R370-3-2): the first tab holds it; another shows it
+// read-only and can take it over with "Use it here". Every stroke is written by one tab, exactly once.
 
 const KEY = "unica-board:book-1:2:3";
 const QUESTION = {
@@ -21,22 +22,39 @@ const stroke = (x: number, t: number): InkStroke => ({ erase: false, w: 4, board
 const start = () => ok(takePen(ok(mayaWrites(createHistory(), QUESTION, 0)), 2000));
 const xs = (h: BoardHistory | null) => (h ? childStrokes(h).map((s) => s.pts[0][0]) : []);
 
-/** One browser: shared storage, locks and channel; each tab gets its own view of them and records what it is told. */
-function browser() {
+/** A tab that hears nothing (frozen in the background, or crashed without letting go). */
+const deaf: BoardChannel = { post: () => {}, listen: () => () => {} };
+
+/**
+ * One browser: shared storage, locks and channel. Each tab works as the desk does: it checks that it holds the board
+ * before every edit, saves after every finished stroke, and ends a stroke in progress before it lets the board go.
+ */
+function browser(options: { lease?: boolean } = {}) {
   const store = createMemoryDraftStore();
   const locks = createMemoryLocks();
   const channels = createMemoryChannels();
   const timers = createFakeTimers();
-  const open = async (tabId: string) => {
+  const open = async (tabId: string, tabOptions: { frozen?: boolean } = {}) => {
     const seen: { role: TabRole; history: BoardHistory | null }[] = [];
     let screen: BoardHistory | null = null;
+    let capture: Capture | null = null;
+    const commit = () => {
+      if (!capture) return;
+      const pts = capturedPoints(capture).map(([x, y, t]): [number, number, number] => [x, y, t]);
+      capture = null;
+      screen = ok(drawStroke(screen ?? start(), { erase: false, w: 4, boardWidth: 800, page: 1, pts }));
+    };
     const opening = openBoardTab({
-      key: KEY, tabId, store, locks: locks.tab(tabId), channel: channels.tab(tabId), timers,
+      key: KEY, tabId, store, timers,
+      locks: options.lease ? leaseLocks({ store, tabId, timers }) : locks.tab(tabId),
+      channel: tabOptions.frozen ? deaf : channels.tab(tabId),
       onChange: (role, history) => {
         seen.push({ role, history });
         screen = history;
       },
       beforeRelease: () => {
+        // As if the pointer went up: the stroke in progress is kept, then saved.
+        commit();
         if (screen) tab.save(screen, timers.now());
       },
     });
@@ -46,15 +64,18 @@ function browser() {
     return {
       tab,
       seen,
-      /** What the tab shows: the board as the child changed it, or as it was last read. */
+      /** What the tab shows. */
       screen: () => screen,
-      /** A stroke on the screen whose save has not run yet. */
-      change(x: number, t: number) {
+      /** A finished stroke: refused unless this tab holds the board now; saved after it is drawn. */
+      draw(x: number, t: number): string {
+        if (!tab.owns()) return "refused";
         screen = ok(drawStroke(screen ?? start(), stroke(x, t)));
+        return tab.save(screen, timers.now()).status;
       },
-      draw(x: number, t: number) {
-        screen = ok(drawStroke(screen ?? start(), stroke(x, t)));
-        return tab.save(screen, timers.now());
+      /** A stroke in progress: the pointer is still down. */
+      begin(x: number, t: number) {
+        capture = startCapture([x, 0.5, t]);
+        for (let i = 1; i <= 5; i++) capture = addPoint(capture, [x + i * 0.004, 0.5 + i * 0.002, t + i * 8], 0).capture;
       },
     };
   };
@@ -68,7 +89,8 @@ describe("one tab writes a board", () => {
     const c = await b.open("c");
     expect(a.tab.role()).toBe("holder");
     expect(c.tab.role()).toBe("reader");
-    expect(a.draw(0.1, 2100).status).toBe("saved");
+    expect(a.draw(0.1, 2100)).toBe("saved");
+    expect(c.draw(0.5, 2200)).toBe("refused");
     expect(c.tab.save(ok(drawStroke(start(), stroke(0.5, 2200))), 3_000)).toEqual({ status: "reader" });
     expect(xs(loadDraft(b.store, KEY))).toEqual([0.1]);
     // The reader is told the holder saved, and shows the stored board.
@@ -85,35 +107,33 @@ describe("one tab writes a board", () => {
     const taking = c.tab.takeOver();
     await b.timers.advance(1);
     expect(await taking).toBe(true);
-    expect(c.tab.role()).toBe("holder");
-    expect(a.tab.role()).toBe("reader");
-    expect(a.seen.at(-1)?.role).toBe("reader");
+    expect([c.tab.role(), a.tab.role()]).toEqual(["holder", "reader"]);
     expect(xs(c.screen())).toEqual([0.1, 0.2]);
-    // The new holder draws on from the stored board; the old one can no longer write.
-    expect(c.draw(0.3, 2300).status).toBe("saved");
-    expect(a.tab.save(ok(drawStroke(a.screen()!, stroke(0.9, 2400))), 4_000)).toEqual({ status: "reader" });
+    expect(c.draw(0.3, 2300)).toBe("saved");
+    expect(a.draw(0.9, 2400)).toBe("refused");
     await b.timers.advance(1);
     expect(xs(loadDraft(b.store, KEY))).toEqual([0.1, 0.2, 0.3]);
     expect(xs(a.screen())).toEqual([0.1, 0.2, 0.3]);
   });
 
-  it("the holder saves what is on its screen before it lets go", async () => {
+  it("a stroke in progress when \"Use it here\" arrives is ended, kept and stored once (R370-3-2)", async () => {
     const b = browser();
     const a = await b.open("a");
     const c = await b.open("c");
     a.draw(0.1, 2100);
-    a.change(0.2, 2200);
+    a.begin(0.4, 2300);
     const taking = c.tab.takeOver();
     await b.timers.advance(1);
     expect(await taking).toBe(true);
-    expect(xs(loadDraft(b.store, KEY))).toEqual([0.1, 0.2]);
-    expect(xs(c.screen())).toEqual([0.1, 0.2]);
+    expect(xs(loadDraft(b.store, KEY))).toEqual([0.1, 0.4]);
+    expect(childStrokes(loadDraft(b.store, KEY)!)[1].pts).toHaveLength(6);
+    expect(xs(c.screen())).toEqual([0.1, 0.4]);
   });
 
   it("a page that opens the board again just after letting it go still gets it (the lock frees a moment later)", async () => {
     const b = browser();
-    const release = await b.locks.tab("old").tryTake(boardLockName(KEY));
-    setTimeout(() => release!(), 0);
+    const old = await b.locks.tab("old").tryTake(boardLockName(KEY));
+    setTimeout(() => old!.release(), 0);
     const a = await b.open("a");
     expect(a.tab.role()).toBe("holder");
   });
@@ -129,21 +149,19 @@ describe("one tab writes a board", () => {
     expect(xs(c.tab.stored())).toEqual([0.1, 0.2]);
   });
 
-  it("a crashed holder that never answers: after the wait, the board is free and the asking tab takes it", async () => {
+  it("with Web Locks, a crashed holder's lock is freed by the browser, and the asking tab takes the board", async () => {
     const b = browser();
-    const a = await b.open("a");
+    const a = await b.open("a", { frozen: true });
     a.draw(0.1, 2100);
     const c = await b.open("c");
-    a.tab.close = () => {};
-    // The tab is gone: it hears nothing, and the browser frees its lock.
     b.locks.crash("a");
     const taking = c.tab.takeOver();
-    await b.timers.advance(HAND_OVER_MS + 10);
+    await b.timers.advance(HAND_OVER_MS + 1000);
     expect(await taking).toBe(true);
     expect(xs(c.screen())).toEqual([0.1]);
   });
 
-  it("a holder that is alive but does not let go keeps the board: the asking tab stays read-only", async () => {
+  it("with Web Locks, a holder that is alive but does not let go keeps the board: the asking tab stays read-only", async () => {
     const b = browser();
     await b.locks.tab("ghost").tryTake(boardLockName(KEY));
     const c = await b.open("c");
@@ -154,59 +172,70 @@ describe("one tab writes a board", () => {
   });
 });
 
-describe("storage leases where the browser has no Web Locks", () => {
-  const leases = () => {
-    const store = createMemoryDraftStore();
-    const timers = createFakeTimers(1_000_000);
-    const tab = (tabId: string) => leaseLocks({ store, tabId, now: timers.now, timers });
-    return { store, timers, tab };
-  };
+describe("storage leases where the browser has no Web Locks (R370-3-1)", () => {
+  it("never hand a board over because time passed: a background tab's timers may stop for long", async () => {
+    const b = browser({ lease: true });
+    const a = await b.open("a", { frozen: true });
+    a.draw(0.1, 2100);
+    await b.timers.advance(60 * 60_000);
+    const c = await b.open("c");
+    expect(c.tab.role()).toBe("reader");
+    expect(a.tab.owns()).toBe(true);
+    expect(a.draw(0.2, 2200)).toBe("saved");
+    expect(xs(loadDraft(b.store, KEY))).toEqual([0.1, 0.2]);
+  });
 
-  it("gives a lease to one tab at a time, renews it, and frees it when let go", async () => {
-    const l = leases();
-    const a = l.tab("a").tryTake("x");
-    await l.timers.advance(100);
-    const release = await a;
-    expect(release).not.toBeNull();
-    const second = l.tab("b").tryTake("x");
-    await l.timers.advance(100);
-    expect(await second).toBeNull();
-    // Renewed: still held long after LEASE_MS.
-    await l.timers.advance(LEASE_MS * 3);
-    const third = l.tab("b").tryTake("x");
-    await l.timers.advance(100);
-    expect(await third).toBeNull();
-    release!();
-    const fourth = l.tab("b").tryTake("x");
-    await l.timers.advance(100);
-    expect(await fourth).not.toBeNull();
+  it("a frozen holder and a forced \"Use it here\": after the wait the board moves, and no stroke is lost", async () => {
+    const b = browser({ lease: true });
+    const a = await b.open("a", { frozen: true });
+    a.draw(0.1, 2100);
+    a.draw(0.2, 2200);
+    const c = await b.open("c");
+    const taking = c.tab.takeOver();
+    await b.timers.advance(HAND_OVER_MS + 1000);
+    expect(await taking).toBe(true);
+    expect(c.tab.role()).toBe("holder");
+    expect(xs(c.screen())).toEqual([0.1, 0.2]);
+    expect(c.draw(0.3, 2300)).toBe("saved");
+    expect(xs(loadDraft(b.store, KEY))).toEqual([0.1, 0.2, 0.3]);
+  });
+
+  it("the old holder's edit after it lost the lease is refused, and its stored strokes stay as they are", async () => {
+    const b = browser({ lease: true });
+    const a = await b.open("a", { frozen: true });
+    a.draw(0.1, 2100);
+    const c = await b.open("c");
+    const taking = c.tab.takeOver();
+    await b.timers.advance(HAND_OVER_MS + 1000);
+    await taking;
+    // The frozen tab wakes up: it holds nothing now, so it neither draws nor saves.
+    expect(a.tab.owns()).toBe(false);
+    expect(a.tab.role()).toBe("reader");
+    expect(a.draw(0.9, 2400)).toBe("refused");
+    expect(a.tab.save(ok(drawStroke(a.screen()!, stroke(0.9, 2400))), 9_000)).toEqual({ status: "reader" });
+    expect(xs(loadDraft(b.store, KEY))).toEqual([0.1]);
+  });
+
+  it("a tab that answers hands the board over at once, and a closed tab's lease is free", async () => {
+    const b = browser({ lease: true });
+    const a = await b.open("a");
+    a.draw(0.1, 2100);
+    const c = await b.open("c");
+    const taking = c.tab.takeOver();
+    await b.timers.advance(1000);
+    expect(await taking).toBe(true);
+    c.tab.close();
+    expect(b.store.items.has(`${LEASE_ROOT}${boardLockName(KEY)}`)).toBe(false);
+    const d = await b.open("d");
+    expect(d.tab.role()).toBe("holder");
+    expect(xs(d.tab.stored())).toEqual([0.1]);
   });
 
   it("of two tabs that take a free lease at once, one gets it", async () => {
-    const l = leases();
-    const both = Promise.all([l.tab("a").tryTake("x"), l.tab("b").tryTake("x")]);
-    await l.timers.advance(100);
-    const got = (await both).filter(Boolean);
-    expect(got).toHaveLength(1);
-  });
-
-  it("frees the lease of a tab that stopped renewing it (closed or crashed)", async () => {
-    const l = leases();
-    l.store.write("unica-board-lease:x", JSON.stringify({ tab: "gone", at: l.timers.now() }));
-    await l.timers.advance(LEASE_MS + 1);
-    const take = l.tab("b").tryTake("x");
-    await l.timers.advance(100);
-    expect(await take).not.toBeNull();
-  });
-
-  it("a holder whose lease another tab took is told it lost the board", async () => {
-    const l = leases();
-    let lost = false;
-    const a = l.tab("a").tryTake("x", () => (lost = true));
-    await l.timers.advance(100);
-    expect(await a).not.toBeNull();
-    l.store.write("unica-board-lease:x", JSON.stringify({ tab: "b", at: l.timers.now() }));
-    await l.timers.advance(4_000);
-    expect(lost).toBe(true);
+    const store = createMemoryDraftStore();
+    const timers = createFakeTimers();
+    const both = Promise.all(["a", "b"].map((tabId) => leaseLocks({ store, tabId, timers }).tryTake("x")));
+    await timers.advance(1000);
+    expect((await both).filter(Boolean)).toHaveLength(1);
   });
 });

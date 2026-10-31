@@ -9,13 +9,22 @@
 // src/lib/board-history-memory.ts. No DOM, clock or randomness here: the caller passes the tab's id and the clock.
 import { loadDraft, saveDraft, type BoardHistory, type DraftStore, type SaveResult } from "@/lib/board-history";
 
+/** A lock this tab holds. */
+export interface HeldLock {
+  release(): void;
+  /** True while this tab still holds the lock: checked, synchronously, before every edit and every save. */
+  owned(): boolean;
+}
+
 /** The lock of one board: the tab that holds it writes the board. */
 export interface BoardLocks {
+  /** Takes the lock `name` if no tab holds it, or null. */
+  tryTake(name: string): Promise<HeldLock | null>;
   /**
-   * Takes the lock `name` if no tab holds it: resolves with the function that lets it go, or null. `onLost`: the lock was
-   * taken away (only a storage lease can be; a Web Lock is held until let go).
+   * Takes the lock from a holder that did not answer "Use it here" within HAND_OVER_MS (a frozen or crashed tab). Locks
+   * whose holder the browser frees when its tab crashes (Web Locks) have none.
    */
-  tryTake(name: string, onLost?: () => void): Promise<(() => void) | null>;
+  force?(name: string): Promise<HeldLock | null>;
 }
 
 /** What tabs say to each other about a board. */
@@ -36,14 +45,15 @@ export interface BoardChannel {
 export interface TabTimers {
   /** Resolves after `ms`. */
   sleep(ms: number): Promise<void>;
-  /** Calls `fn` every `ms`; returns the function that stops it. */
-  every(ms: number, fn: () => void): () => void;
 }
 
 /** The lock name of a board. */
 export const boardLockName = (key: string) => `unica-board-lock:${key}`;
 
-/** How long "Use it here" waits for the holder to let go before it tries the lock anyway (a crashed tab has none). */
+/**
+ * How long "Use it here" waits for the holder to let go. After that it takes the board anyway: a holder that does not
+ * answer is frozen or gone, and the board saves after every finished stroke, so such a tab has nothing unsaved.
+ */
 export const HAND_OVER_MS = 3000;
 
 export type TabRole = "holder" | "reader";
@@ -54,16 +64,21 @@ export const OPEN_RETRY_MS = 150;
 
 export interface BoardTab {
   role(): TabRole;
-  /** The stored draft, or null when there is none. */
+  /**
+   * True while this tab holds the board, checked now: the caller asks before every edit. A tab that lost its lock (its
+   * lease went to another tab) is a reader from then on.
+   */
+  owns(): boolean;
+  /** The stored draft as this tab last loaded or saved it, or null when there is none. */
   stored(): BoardHistory | null;
   /**
-   * Saves the board. Only the holder writes; a reader gets `reader`. On any difference from what this tab last loaded or
-   * saved, nothing is written and the stored board comes back (`reload`).
+   * Saves the board. Only the holder writes; a tab that does not hold the board now gets `reader` and writes nothing. On
+   * any difference from what this tab last loaded or saved, nothing is written and the stored board comes back (`reload`).
    */
   save(h: BoardHistory, now: number): SaveResult | { status: "reader" };
   /** "Use it here": asks the holder to let go, then takes the board. True when this tab holds it now. */
   takeOver(): Promise<boolean>;
-  /** Lets the board go (the tab closes or leaves the board). */
+  /** Lets the board go (the tab closes, hides or leaves the board). */
   close(): void;
 }
 
@@ -73,13 +88,16 @@ export interface OpenTabOptions {
   store: DraftStore;
   locks: BoardLocks;
   channel: BoardChannel;
-  timers: Pick<TabTimers, "sleep">;
+  timers: TabTimers;
   /**
    * The tab's role or the stored board changed: the board became this tab's, went to another tab, or the holder saved.
    * `history` is the stored draft to show (null when there is none).
    */
   onChange(role: TabRole, history: BoardHistory | null): void;
-  /** Called before the board goes to another tab: the holder's last chance to save what is on screen. */
+  /**
+   * Called before the board goes to another tab: the holder's last chance to end a stroke in progress and save what is
+   * on screen (with `save`, which still writes at that moment).
+   */
   beforeRelease?(): void;
 }
 
@@ -88,24 +106,23 @@ export async function openBoardTab(o: OpenTabOptions): Promise<BoardTab> {
   const name = boardLockName(o.key);
   let closed = false;
   let waiting: (() => void) | null = null;
-  let release: (() => void) | null = null;
-  let base: BoardHistory | null = null;
-  const lost = () => {
-    release = null;
-    base = loadDraft(o.store, o.key);
-    if (!closed) o.onChange("reader", base);
-  };
+  let held: HeldLock | null = null;
   // A lock let go a moment ago (the same page opening the board again) may not be free yet: try a few times.
-  for (let tries = 0; tries < OPEN_TRIES && !release; tries++) {
+  for (let tries = 0; tries < OPEN_TRIES && !held; tries++) {
     if (tries > 0) await o.timers.sleep(OPEN_RETRY_MS);
-    release = await o.locks.tryTake(name, lost);
+    held = await o.locks.tryTake(name);
   }
-  base = loadDraft(o.store, o.key);
+  let base = loadDraft(o.store, o.key);
+
+  const owns = () => {
+    if (held && !held.owned()) held = null;
+    return held !== null && !closed;
+  };
 
   const letGo = () => {
     o.beforeRelease?.();
-    release?.();
-    release = null;
+    held?.release();
+    held = null;
     base = loadDraft(o.store, o.key);
     o.channel.post({ kind: "released", key: o.key, from: o.tabId });
     o.onChange("reader", base);
@@ -113,37 +130,40 @@ export async function openBoardTab(o: OpenTabOptions): Promise<BoardTab> {
 
   const stop = o.channel.listen((m) => {
     if (m.key !== o.key || m.from === o.tabId || closed) return;
-    if (m.kind === "ask" && release) letGo();
+    if (m.kind === "ask" && owns()) letGo();
     else if (m.kind === "released") waiting?.();
-    else if (m.kind === "saved" && !release) {
+    else if (m.kind === "saved" && !owns()) {
       base = loadDraft(o.store, o.key);
       o.onChange("reader", base);
     }
   });
 
   return {
-    role: () => (release ? "holder" : "reader"),
+    role: () => (owns() ? "holder" : "reader"),
+    owns,
     stored: () => base,
     save(h, now) {
-      if (!release || closed) return { status: "reader" };
+      if (!owns()) return { status: "reader" };
       const result = saveDraft(o.store, o.key, h, base, now);
       if (result.status !== "failed") base = result.history;
       if (result.status === "saved") o.channel.post({ kind: "saved", key: o.key, from: o.tabId });
       return result;
     },
     async takeOver() {
-      if (release) return true;
+      if (owns()) return true;
       if (closed) return false;
       const answered = new Promise<void>((resolve) => (waiting = resolve));
       o.channel.post({ kind: "ask", key: o.key, from: o.tabId });
       await Promise.race([answered, o.timers.sleep(HAND_OVER_MS)]);
       waiting = null;
-      // The browser lets a closed or crashed tab's lock go; a lock just let go may take a moment to be free.
-      for (let tries = 0; tries < 5 && !release && !closed; tries++) {
-        release = await o.locks.tryTake(name, lost);
-        if (!release) await o.timers.sleep(100);
+      // A lock just let go may take a moment to be free; the browser frees a closed or crashed tab's Web Lock.
+      for (let tries = 0; tries < 5 && !held && !closed; tries++) {
+        held = await o.locks.tryTake(name);
+        if (!held) await o.timers.sleep(100);
       }
-      if (!release) return false;
+      // No answer and still held: the holder is frozen or gone. Take the board anyway where the lock allows it.
+      if (!held && !closed && o.locks.force) held = await o.locks.force(name);
+      if (!held || closed) return false;
       base = loadDraft(o.store, o.key);
       o.onChange("holder", base);
       return true;
@@ -151,62 +171,49 @@ export async function openBoardTab(o: OpenTabOptions): Promise<BoardTab> {
     close() {
       closed = true;
       stop();
-      release?.();
-      release = null;
+      held?.release();
+      held = null;
     },
   };
 }
 
 /** A lease kept in storage, where the browser has no Web Locks. */
 export const LEASE_ROOT = "unica-board-lease:";
-/** A lease not renewed for this long is free: its tab has closed or crashed. */
-export const LEASE_MS = 10_000;
-/** The holder renews its lease this often. */
-export const LEASE_EVERY_MS = 3_000;
 /** After writing a lease, a tab waits this long and reads it back: of two tabs that wrote at once, the last one wins. */
 export const LEASE_SETTLE_MS = 80;
 
 /**
- * Locks made of leases in storage, for browsers without Web Locks: `{ tab, at }` under LEASE_ROOT + name. A tab takes a
- * free or expired lease, waits LEASE_SETTLE_MS and reads it back, so two tabs taking it at once agree on one; the
- * holder renews it every LEASE_EVERY_MS and removes it when it lets go. A holder whose lease another tab took stops
- * renewing and loses the board (`onLost`), and the draft's compare-and-set check stops any late save.
+ * Locks made of leases in storage, for browsers without Web Locks: `{ tab }` under LEASE_ROOT + name. A lease never
+ * expires while its tab is open (R370-3-1: a background tab's timers can stop for long, so time alone never hands a
+ * board over). The tab removes it when it lets go, closes or hides (`pagehide`); only "Use it here" takes it from a tab
+ * that did not answer (`force`). A tab takes a free lease, waits LEASE_SETTLE_MS and reads it back, so two tabs taking
+ * it at once agree on one. `owned` reads the lease: a tab whose lease another tab took holds nothing from then on.
  */
-export function leaseLocks(o: { store: DraftStore; tabId: string; now: () => number; timers: TabTimers }): BoardLocks {
-  const read = (key: string): { tab: string; at: number } | null => {
+export function leaseLocks(o: { store: DraftStore; tabId: string; timers: TabTimers }): BoardLocks {
+  const read = (key: string): string | null => {
     try {
       const v = JSON.parse(o.store.read(key) ?? "null");
-      return v && typeof v.tab === "string" && Number.isFinite(v.at) ? v : null;
+      return v && typeof v.tab === "string" ? v.tab : null;
     } catch {
       return null;
     }
   };
-  return {
-    async tryTake(name, onLost) {
-      const key = `${LEASE_ROOT}${name}`;
-      const held = read(key);
-      if (held && held.tab !== o.tabId && o.now() - held.at < LEASE_MS) return null;
-      const write = () => o.store.write(key, JSON.stringify({ tab: o.tabId, at: o.now() }));
-      if (!write()) return null;
-      await o.timers.sleep(LEASE_SETTLE_MS);
-      if (read(key)?.tab !== o.tabId) return null;
-      let mine = true;
-      const stop = o.timers.every(LEASE_EVERY_MS, () => {
-        if (!mine) return;
-        if (read(key)?.tab !== o.tabId) {
-          mine = false;
-          stop();
-          onLost?.();
-          return;
-        }
-        write();
-      });
-      return () => {
-        if (!mine) return;
-        mine = false;
-        stop();
-        if (read(key)?.tab === o.tabId) o.store.remove(key);
-      };
-    },
+  const take = async (name: string, force: boolean): Promise<HeldLock | null> => {
+    const key = `${LEASE_ROOT}${name}`;
+    const holder = read(key);
+    if (!force && holder !== null && holder !== o.tabId) return null;
+    if (!o.store.write(key, JSON.stringify({ tab: o.tabId }))) return null;
+    await o.timers.sleep(LEASE_SETTLE_MS);
+    if (read(key) !== o.tabId) return null;
+    let gone = false;
+    return {
+      owned: () => !gone && read(key) === o.tabId,
+      release() {
+        if (gone) return;
+        gone = true;
+        if (read(key) === o.tabId) o.store.remove(key);
+      },
+    };
   };
+  return { tryTake: (name) => take(name, false), force: (name) => take(name, true) };
 }

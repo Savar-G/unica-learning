@@ -39,8 +39,13 @@ export function createMemoryLocks() {
         async tryTake(name) {
           if (held.has(name)) return null;
           held.set(name, tabId);
-          return () => {
-            if (held.get(name) === tabId) held.delete(name);
+          let gone = false;
+          return {
+            owned: () => !gone && held.get(name) === tabId,
+            release() {
+              gone = true;
+              if (held.get(name) === tabId) held.delete(name);
+            },
           };
         },
       };
@@ -74,38 +79,24 @@ export function createMemoryChannels() {
   };
 }
 
-/**
- * Timers on a clock the test moves: `sleep` resolves and `every` fires when `advance` passes their time. `now` reads
- * the clock.
- */
+/** Timers on a clock the test moves: `sleep` resolves when `advance` passes its time. `now` reads the clock. */
 export function createFakeTimers(start = 0): TabTimers & { now(): number; advance(ms: number): Promise<void> } {
   let clock = start;
   let waits: { at: number; done: () => void }[] = [];
-  let repeats: { every: number; next: number; fn: () => void; on: boolean }[] = [];
   const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
   return {
     now: () => clock,
     sleep: (ms) => new Promise<void>((done) => waits.push({ at: clock + ms, done })),
-    every(ms, fn) {
-      const r = { every: ms, next: clock + ms, fn, on: true };
-      repeats.push(r);
-      return () => void (r.on = false);
-    },
     async advance(ms) {
       const end = clock + ms;
       for (;;) {
         await flush();
-        const next = Math.min(end + 1, ...waits.map((w) => w.at), ...repeats.filter((r) => r.on).map((r) => r.next));
+        const next = Math.min(end + 1, ...waits.map((w) => w.at));
         if (next > end) break;
         clock = next;
         const due = waits.filter((w) => w.at <= clock);
         waits = waits.filter((w) => w.at > clock);
         for (const w of due) w.done();
-        for (const r of repeats) if (r.on && r.next <= clock) {
-          r.next += r.every;
-          r.fn();
-        }
-        repeats = repeats.filter((r) => r.on);
       }
       clock = end;
       await flush();
