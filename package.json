@@ -12,7 +12,8 @@
     "check:templates": "node scripts/check-templates.mjs",
     "db:types": "node scripts/db-types.mjs",
     "import:curriculum": "node scripts/import-curriculum.mjs",
-    "maya:text": "node scripts/maya-text.mjs"
+    "maya:text": "node scripts/maya-text.mjs",
+    "maya:practice": "node scripts/maya-practice.mjs"
   },
   "dependencies": {
     "@sparticuz/chromium": "^153.0.0",
