@@ -42,8 +42,8 @@ const wrong56 = { value: num(56), step: "result", verdict: "wrong" as const };
 const guide = (extra: Partial<Draft> = {}): Draft => ({ act: "guide", parts: [ln("step.invite", { step: "ones" })], step: "ones", level: 0, ...extra });
 
 /** A call past its opening at time 0 (ms). `send` returns the result without asserting. */
-function call(pkg: unknown = PKG) {
-  let s: Session = createSession({ callId: "review-call", package: pkg });
+function call(pkg: unknown = PKG, freeTalk = false) {
+  let s: Session = createSession({ callId: "review-call", package: pkg, freeTalk });
   const send = (e: SessionEvent) => {
     const r = step(s, e);
     s = r.session;
@@ -154,19 +154,20 @@ describe("F5: only the child's committed answer counts", () => {
   });
 });
 
-describe("F6: board objects keep their role", () => {
+// Raw board commands are read only with the freeTalk flag on (R374-6-1).
+describe("F6: board objects keep their role (freeTalk on)", () => {
   const columns = (id: string, a: number, b: number) => ({ op: "columns", id, operation: "add", operands: [{ id: "top", value: String(a) }, { id: "bottom", value: String(b) }], place: { region: "main" } });
   const put = (objectId: string, column: string) => ({ op: "put", target: { objectId, part: "cell", rowId: "answer", column }, value: "6" });
 
   it("refuses an example step that draws the child's question", () => {
-    const c = call();
+    const c = call(PKG, true);
     c.child("I can't start.");
     expect(c.propose({ act: "example_step", step: "ones", parts: [ln("example.intro")], reading: { start: "no_start" }, board: [columns("target", 27, 39), put("target", "tens")] }).refusal)
       .toMatchObject({ code: "board_wrong_problem" });
   });
 
   it("refuses an example step that writes on the question's board", () => {
-    const c = call();
+    const c = call(PKG, true);
     let scene = createScene();
     c.child("What is the question?");
     const a = c.propose({ act: "clarify", parts: [ln("question.problem")], board: [columns("target", 27, 39)] });

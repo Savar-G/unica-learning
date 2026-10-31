@@ -70,7 +70,8 @@ describe("N2-R3: no word reaches an inherited property of a lookup table", () =>
     const c = call();
     c.child("56");
     const put = { op: "put", target: { objectId: name, part: "cell", rowId: "answer", column: "ones" }, value: "6" };
-    expect(c.propose(guide({ board: [put] })).refusal).toMatchObject({ code: "board_wrong_problem", reason: `Maya has no board object "${name}".` });
+    // With freeTalk off, a command the model built is refused before it is read (R374-6-1).
+    expect(c.propose(guide({ board: [put] })).refusal).toMatchObject({ code: "board_not_code" });
     expect(valuesIn(name)).toEqual([]);
   });
 

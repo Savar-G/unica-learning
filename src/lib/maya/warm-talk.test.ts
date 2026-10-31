@@ -4,6 +4,7 @@ import {
   freeTalkProblem,
   heardWordings,
   allLineTexts,
+  drawOffers,
   lineOffers,
   MAX_WORDINGS,
   memoryWordingHistoryStore,
@@ -16,6 +17,7 @@ import {
   talkMath,
   TEMPLATES,
   warmGroups,
+  type Act,
   type Session,
   type SessionEvent,
   type WordingHistory,
@@ -477,15 +479,38 @@ describe("R374-4-1: with freeTalk off (the default), every word Maya says comes 
         for (const parts of tries) {
           const line = parts.find((p) => typeof p === "object" && p !== null && "line" in p) as { slots?: { step?: string } } | undefined;
           const lvl = lines.find((l) => l.slots === line?.slots)?.level ?? 0;
-          for (const board of boards) {
-            const proposal = { version: 2, act, parts, step: line?.slots?.step ?? c.s.ladder.step, level: lvl, reading: { help: "show" }, ...(board ? { board } : {}) };
+          const lineId = (parts.find((p) => typeof p === "object" && p !== null && "line" in p) as { line?: string } | undefined)?.line;
+          const draws: ({ offer: string; place?: string }[] | undefined)[] = [
+            undefined,
+            ...(drawOffers(c.s)[act as Act] ?? []).filter((d) => !d.id.startsWith("line.")).map((d) => [{ offer: d.id }]),
+            ...(lineId ? [[{ offer: `line.${lineId}` }], [{ offer: "question.columns" }, { offer: `line.${lineId}`, place: "below:question" }]] : []),
+            [{ offer: "question.columns", place: "nowhere" }],
+          ];
+          const variants = [...boards.map((board) => ({ board, draw: undefined })), ...draws.slice(1).map((draw) => ({ board: undefined, draw }))];
+          for (const { board, draw } of variants) {
+            const proposal = { version: 2, act, parts, step: line?.slots?.step ?? c.s.ladder.step, level: lvl, reading: { help: "show" }, ...(board ? { board } : {}), ...(draw ? { draw } : {}) };
             const r = step(c.s, { type: "proposal", at: 90_000, proposal });
+            // Every board command the model built is refused (R374-6-1).
+            if (board) expect(r.refusal, `${act} raw board`).not.toBeNull();
+            if (board) expect(r.effects.some((e) => e.kind === "board"), `${act} raw board drawn`).toBe(false);
             for (const e of r.effects) {
               if (e.kind === "say") {
                 said += 1;
                 for (const x of sentences(e.text)) expect(allowed.has(x), `${act}: ${x}`).toBe(true);
               }
               if (e.kind === "board") {
+                // Every representation is the worked step's own: the question's or example's numbers, a done digit, a line's note.
+                for (const cmd of e.batch.commands as unknown as Record<string, unknown>[]) {
+                  if (cmd.op === "columns") {
+                    const want = cmd.id === "question" ? ["27", "39"] : cmd.id === "example" ? ["18", "5"] : null;
+                    expect((cmd.operands as { value: string }[]).map((o) => o.value), `${act} columns`).toEqual(want);
+                  } else if (cmd.op === "put") {
+                    expect(cmd.value, `${act} put`).toBe("6");
+                  } else {
+                    expect(cmd.op, `${act} op`).toBe("write");
+                    expect(String(cmd.id), `${act} note id`).toMatch(/^note-\d+-[a-z._]+$/);
+                  }
+                }
                 for (const [key, v] of visible(e.batch.commands)) {
                   drawn += 1;
                   if (WORDS.has(key)) expect(boardForms.has(v) || sentences(v).every((x) => allowed.has(x)), `${act} board: ${v}`).toBe(true);
@@ -511,14 +536,21 @@ describe("R374-5: the board, echo breaks, phrase picks and the bank's own rules"
     expect(r).toMatchObject({ code: "board_not_code" });
   });
 
-  it("lets the board show a line's own expression said in the same turn, and checks every number field", () => {
+  it("draws a line's own expression only through code's board offer", () => {
     const c = call();
     c.child("I don't know.");
-    expect(c.refusal({ act: "guide", step: "ones", level: 2, reading: { help: "more" }, parts: [{ line: "step.point", slots: { step: "ones" } }, { line: "step.operation", slots: { step: "ones" } }], board: note("7 + 9") })).toBeNull();
-    expect(c.refusal({ act: "guide", step: "ones", level: 2, reading: { help: "more" }, parts: [{ line: "step.point", slots: { step: "ones" } }, { line: "step.operation", slots: { step: "ones" } }], board: note("7 + 8") })).toMatchObject({ code: "board_not_code" });
-    const line = [{ op: "number_line", id: "nl", min: "0", max: "500", tick: "50", place: { region: "main" } }];
-    expect(c.refusal({ act: "guide", step: "ones", level: 0, parts: [{ line: "step.invite", slots: { step: "ones" } }], board: line })).toMatchObject({ code: "wrong_math" });
+    const lines = [{ line: "step.point", slots: { step: "ones" } }, { line: "step.operation", slots: { step: "ones" } }];
+    const base = { act: "guide", step: "ones", level: 2, reading: { help: "more" }, parts: lines };
+    expect(c.refusal({ ...base, board: note("7 + 9") })).toMatchObject({ code: "board_not_code" });
+    const r = c.send({ type: "proposal", at: 70_000, proposal: { version: 2, ...base, draw: [{ offer: "question.columns" }, { offer: "line.step.operation", place: "below:question" }] } });
+    expect(r.refusal).toBeNull();
+    const batch = r.effects.find((e) => e.kind === "board");
+    expect(batch?.kind === "board" && batch.batch.commands).toEqual([
+      { op: "columns", id: "question", operation: "add", operands: [{ id: "top", value: "27" }, { id: "bottom", value: "39" }], place: { region: "main" } },
+      { op: "write", id: expect.stringMatching(/^note-/), text: "7 + 9", place: { below: "question" } },
+    ]);
   });
+
 
   it("does not cross a sentence break or a comma with an echo", () => {
     for (const [said, echo] of [["Biscuit. Soccer is fun.", "Biscuit Soccer"], ["My grandma, Rose, is here.", "grandma Rose"], ["Biscuit! Soccer!", "Biscuit Soccer"]]) {
@@ -540,10 +572,10 @@ describe("R374-5: the board, echo breaks, phrase picks and the bank's own rules"
   });
 
   it("keeps a picked frame only when its slot can be filled, and refuses a pick outside the group", () => {
-    const frame = PHRASES.pets.findIndex((p) => p.includes("{echo} is a great name")) + 1;
+    const frame = PHRASES.pets.findIndex((p) => p.startsWith("{echo}! Thanks")) + 1;
     const c = call();
     c.child("I have a dog named Biscuit!");
-    expect(c.say({ act: "clarify", parts: [{ warm: "pets", pick: frame, echo: "Biscuit" }] }).text).toBe("Biscuit is a great name!");
+    expect(c.say({ act: "clarify", parts: [{ warm: "pets", pick: frame, echo: "Biscuit" }] }).text).toBe("Biscuit! Thanks for telling me.");
     const d = call();
     d.child("I have a dog named Biscuit!");
     const plain = d.say({ act: "clarify", parts: [{ warm: "pets", pick: frame, echo: "7" }] }).text;
@@ -560,10 +592,79 @@ describe("R374-5: the board, echo breaks, phrase picks and the bank's own rules"
     }
   });
 
+  it("has no phrase that assumes something about what the child told", () => {
+    const assumes = /\b(must be|sounds (so |really )?(fun|nice|sweet|yummy|tasty|amazing|interesting|great|lovely)|your teacher|lucky|you sound|great name|cuddly|best part)\b/i;
+    for (const phrase of PHRASE_GROUPS.flatMap((g) => PHRASES[g])) expect(phrase, phrase).not.toMatch(assumes);
+  });
+
   it("asks for the child's thinking with a code line", () => {
     const c = call();
     c.child("It's 66.");
     const said = c.say({ act: "accept_answer", reading: { answers: [{ value: num(66), step: "result", verdict: "right" }] }, parts: [{ line: "check.thinking" }, { line: "answer.right" }] });
     expect(TEMPLATES["check.thinking"].some((t) => said.text.startsWith(t))).toBe(true);
+  });
+});
+
+describe("R374-6-1: with freeTalk off, Maya picks board offers; the model never builds a board command", () => {
+  it("refuses the reviewer's division of the question's own numbers", () => {
+    const c = call();
+    const r = c.refusal({ act: "clarify", parts: [{ warm: "smalltalk" }], board: [{ op: "division", id: "wrong", dividend: "39", divisor: "27", place: { region: "main" } }] });
+    expect(r).toMatchObject({ code: "board_not_code" });
+  });
+
+  const main = { region: "main" };
+  const target = { objectId: "question", part: "whole" };
+  it.each([
+    { op: "columns", id: "x", operation: "add", operands: [{ id: "top", value: "27" }, { id: "bottom", value: "39" }], place: main },
+    { op: "division", id: "x", dividend: "39", divisor: "27", place: main },
+    { op: "write", id: "x", text: "27 + 39", place: main },
+    { op: "model", id: "x", model: { kind: "base_ten", value: "27" }, place: main },
+    { op: "put", target: { objectId: "question", part: "cell", rowId: "answer", column: "ones" }, value: "6" },
+    { op: "regroup", id: "x", objectId: "question", rowId: "answer", from: "ones", to: "tens" },
+    { op: "mark", id: "x", target, style: "circle" },
+    { op: "arrow", id: "x", from: target, to: target },
+    { op: "remove", objectId: "question" },
+    { op: "undo", transactionId: "t" },
+    { op: "clear", scope: "all" },
+    { op: "focus", target },
+    { op: "fraction", id: "x", numerator: "27", denominator: "39", place: main },
+    { op: "number_line", id: "x", min: "27", max: "39", tick: "1", place: main },
+    { op: "jump", id: "x", lineId: "x", fromValue: "27", toValue: "39" },
+  ])("refuses a $op command the model built", (cmd) => {
+    const c = call();
+    expect(c.refusal({ act: "clarify", parts: [{ warm: "smalltalk" }], board: [cmd] })).toMatchObject({ code: "board_not_code" });
+  });
+
+  it("offers the board's representations with code-made ids, and only code's places", () => {
+    const c = call();
+    const ids = drawOffers(c.s).clarify!.map((o) => o.id);
+    expect(ids).toContain("question.columns");
+    expect(ids.every((id) => id === "question.columns" || id.startsWith("line."))).toBe(true);
+    expect(c.refusal({ act: "clarify", parts: [{ warm: "smalltalk" }], draw: [{ offer: "question.columns", place: "corner" }] })).toMatchObject({ code: "board_not_code" });
+    expect(c.refusal({ act: "clarify", parts: [{ warm: "smalltalk" }], draw: [{ offer: "wrong" }] })).toMatchObject({ code: "board_not_code" });
+    const r = c.send({ type: "proposal", at: 80_000, proposal: { version: 2, act: "clarify", parts: [{ warm: "smalltalk" }], draw: [{ offer: "question.columns" }] } });
+    expect(r.effects).toContainEqual({ kind: "board", batch: { transactionId: "warm-b1", commands: [
+      { op: "columns", id: "question", operation: "add", operands: [{ id: "top", value: "27" }, { id: "bottom", value: "39" }], place: main },
+    ] } });
+  });
+
+  it("writes a digit of the answer row only once its step is done, and never the answer's highest place early", () => {
+    const c = call();
+    c.send({ type: "proposal", at: c.s.now! + 1, proposal: { version: 2, act: "clarify", parts: [{ warm: "smalltalk" }], draw: [{ offer: "question.columns" }] } });
+    c.child("I don't know.");
+    expect(Object.values(drawOffers(c.s)).flat().map((o) => o!.id)).not.toContain("question.write.ones");
+    c.child("Sixteen for the ones.");
+    const r = c.send({ type: "proposal", at: c.s.now! + 100_000, proposal: { version: 2, act: "guide", step: "tens", level: 0,
+      reading: { answers: [{ value: num(16), step: "ones", verdict: "right" }] },
+      parts: [{ line: "check.right_step", slots: { step: "ones" } }, { line: "step.invite", slots: { step: "tens" } }], draw: [{ offer: "question.write.ones" }] } });
+    expect(r.refusal).toBeNull();
+    expect(r.effects).toContainEqual({ kind: "board", batch: { transactionId: "warm-b2", commands: [
+      { op: "put", target: { objectId: "question", part: "cell", rowId: "answer", column: "ones" }, value: "6" },
+    ] } });
+  });
+
+  it("still reads the model's own commands with freeTalk on (not airtight, documented in D-196)", () => {
+    const c = call({ freeTalk: true });
+    expect(c.refusal({ act: "clarify", parts: [{ warm: "smalltalk" }], board: [{ op: "columns", id: "q", operation: "add", operands: [{ id: "top", value: "27" }, { id: "bottom", value: "39" }], place: main }] })).toBeNull();
   });
 });

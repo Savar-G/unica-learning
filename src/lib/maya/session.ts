@@ -17,13 +17,14 @@
 // Everything in and out is plain serializable data (the text adapter #322 and the board protocol #328 drive it): a
 // Session value, events with the time they happened (the clock is passed in), effects to carry out, and a refusal.
 // Pure TypeScript: no React, DOM, network, clock or randomness.
-import { MAX_COMMANDS, PLACE_NAMES, type Batch, type Command, type Target } from "@/lib/board";
+import { MAX_COMMANDS, PLACE_NAMES, type Batch, type Command, type Place, type Target } from "@/lib/board";
 import { MAX_HINTS, MAX_TIME_MS, type NewLearningEvent } from "@/lib/learning-events";
 import {
   checkQuestionPackage,
   equivalent,
   hasOperation,
   isRightAnswer,
+  operationText,
   sameValue,
   valueText,
   type AnswerValue,
@@ -460,6 +461,10 @@ function proposalProblem(p: unknown): string | null {
   if (p.step !== undefined && typeof p.step !== "string") return "the step is a step id";
   if (p.level !== undefined && !HINTS.includes(p.level as number)) return "the level is 0 to 4";
   if (p.understanding !== undefined && p.understanding !== "evidence_observed" && p.understanding !== "uncertain") return "understanding is evidence_observed or uncertain";
+  if (p.draw !== undefined && (!Array.isArray(p.draw) || p.draw.length === 0 || p.draw.length > 4 ||
+    !p.draw.every((d) => isObject(d) && typeof d.offer === "string" && (d.place === undefined || typeof d.place === "string") && Object.keys(d).every((k) => k === "offer" || k === "place")))) {
+    return "draw is a list of 1 to 4 board offers: { offer, place? }";
+  }
   if (p.board !== undefined && (!Array.isArray(p.board) || p.board.length === 0 || p.board.length > MAX_COMMANDS || !p.board.every((c) => isObject(c) && typeof c.op === "string"))) {
     return `the board is a list of 1 to ${MAX_COMMANDS} commands, each with an op`;
   }
@@ -795,23 +800,33 @@ function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
 
   // 4. Maya's words and board: lines code writes for this act, step and level, and warm talk with no math in it.
   const view: View = { steps: [ladder.step], done, checked, rightResult };
-  const spoken: Spoken | { code: RefusalCode; reason: string } = p.act === "safety" ? { text: "", lines: [], boards: [], replaced: 0, segments: [] } : speak(s, p, view);
+  const spoken: Spoken | { code: RefusalCode; reason: string } = p.act === "safety" ? { text: "", lines: [], boards: [], replaced: 0, segments: [], chosen: [] } : speak(s, p, view);
   if ("code" in spoken) return no(spoken.code, spoken.reason, allowedNow);
   const say = spoken.text;
   if (say === "" && !["wait", "safety", "give_answer"].includes(p.act)) return no("invalid_proposal", "Maya needs words for this act.", allowedNow);
   const role: Problem = p.act === "example_step" ? "example" : "target";
+  // The board (R374-6-1): with the freeTalk flag off, Maya picks board offers by id (`draw`) and code builds every
+  // command from the checked worked step; a command the model built is refused. With the flag on, the model's own
+  // commands are read as before (not airtight: checks on free commands can miss a relation between their numbers).
+  if (p.board && !s.freeTalk) {
+    return no("board_not_code", "Maya does not build board commands: pick code's board offers with `draw` (see drawOffers).", allowedNow);
+  }
+  const drawn = p.draw ? drawBoard(s, p, view, spoken) : [];
+  if (typeof drawn === "string") return no("board_not_code", drawn, allowedNow);
+  const commands = [...(p.board ?? []), ...drawn];
+  const pb: Proposal = { ...p, board: commands.length > 0 ? commands : undefined };
   let roles: Record<string, Problem> = {};
-  if (p.board) {
+  if (pb.board) {
     if (!BOARD_ACTS.includes(p.act)) return no("board_not_allowed", `Maya does not draw during ${p.act}.`, allowedNow);
-    const board = boardRoles(s, role, p.board);
+    const board = boardRoles(s, role, pb.board);
     if (typeof board === "string") return no("board_wrong_problem", board, allowedNow);
     roles = board;
   }
   const released = s.solved !== null || s.assistance.includes("answer_given") || rightResult || p.act === "give_answer";
-  if (pkg !== null && !released && p.act !== "safety" && revealsAnswer(s, p, [say, ...boardTexts(p.board ?? [])])) {
+  if (pkg !== null && !released && p.act !== "safety" && revealsAnswer(s, pb, [say, ...boardTexts(pb.board ?? [])])) {
     return no("reveals_answer", "Maya may not give the answer yet.", allowedNow);
   }
-  const bad = p.board ? boardProblem(s, p.board, role, spoken, done) : null;
+  const bad = pb.board ? boardProblem(s, pb.board, role, spoken, done) : null;
   if (bad) return no(bad.code, bad.reason, allowedNow);
 
   // 5. The act.
@@ -954,9 +969,9 @@ function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
     effects.push({ kind: "say", act: p.act, text, ...(spoken.replaced > 0 ? { talkReplaced: spoken.replaced } : {}) });
     s.turns.push({ at: s.now!, speaker: "maya", text, state: p.act === "close" ? "CLOSE" : s.state, act: p.act });
   }
-  if (p.board) {
+  if (pb.board) {
     s.batches += 1;
-    effects.push({ kind: "board", batch: { transactionId: `${s.callId}-b${s.batches}`, commands: p.board } });
+    effects.push({ kind: "board", batch: { transactionId: `${s.callId}-b${s.batches}`, commands: pb.board } });
   }
 
   if (p.act === "close") {
@@ -1165,6 +1180,8 @@ interface Spoken {
   replaced: number;
   /** The turn's parts in order, with what each is; code adds its own lines here before the turn is checked. */
   segments: Segment[];
+  /** The line offers said this turn. */
+  chosen: LineOffer[];
 }
 
 /** One part of a turn as said: a math line, a line with no math (the hello), bank warm talk, or the model's own words. */
@@ -1414,7 +1431,103 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
   if (p.act === "guide" && level >= 1 && !chosen.some((o) => o.level === level)) {
     return { code: "invalid_proposal", reason: `A guide at H${p.level} says a step line of level H${level}.` };
   }
-  return { text: texts.join(" "), lines, boards: chosen.flatMap((o) => (o.board ? [o.board] : [])), replaced, segments };
+  return { text: texts.join(" "), lines, boards: chosen.flatMap((o) => (o.board ? [o.board] : [])), replaced, segments, chosen };
+}
+
+/** One board representation code offers: an id the model names, and the commands code writes for a place. */
+interface BoardOffer {
+  id: string;
+  /** What it draws, for the model. */
+  shows: string;
+  commands: (place: Place) => Command[];
+}
+
+/** The places Maya may put a new board object: code offers them; the model picks one by name. */
+function boardPlaces(s: Session, batch: readonly string[]): Record<string, Place> {
+  const out: Record<string, Place> = { main: { region: "main" } };
+  for (const id of ["question", "example"]) if (Object.hasOwn(s.boardRoles, id) || batch.includes(id)) out[`below:${id}`] = { below: id };
+  return out;
+}
+
+/** The columns of a problem as code lays them out, with a code-made id ("question" or "example"). */
+function columnsOf(s: Session, problem: Problem): Command | null {
+  const pkg = s.package!;
+  const { operation } = problemOf(pkg, problem);
+  const layout = BOARD_OPERATION[operation.kind];
+  if (!layout) return null;
+  const [a, b] = operandsOf(operation);
+  return { op: "columns", id: problem === "target" ? "question" : "example", operation: layout, operands: [{ id: "top", value: String(a) }, { id: "bottom", value: String(b) }], place: { region: "main" } } as unknown as Command;
+}
+
+/**
+ * The board representations code offers for an act now (R374-6-1), each from the checked package: the question's
+ * columns, the easier example's columns, a digit of the question's answer row once its step is done (or shown this
+ * turn), and the expression or equation of a line said this turn as a note. Ids and every shown word are code's.
+ */
+function boardOffersFor(s: Session, act: Act, view: View, spoken: Pick<Spoken, "chosen"> | null): BoardOffer[] {
+  const pkg = s.package;
+  if (!pkg || !BOARD_ACTS.includes(act)) return [];
+  const out: BoardOffer[] = [];
+  const at = (c: Command | null, place: Place) => (c ? [{ ...c, place } as Command] : []);
+  if (act === "example_step") {
+    const ex = columnsOf(s, "example");
+    if (ex && !Object.hasOwn(s.boardRoles, "example")) out.push({ id: "example.columns", shows: `the easier example in columns: ${operationText(pkg.easierExample.operation)}`, commands: (place) => at(ex, place) });
+  } else {
+    const q = columnsOf(s, "target");
+    if (q && !Object.hasOwn(s.boardRoles, "question")) out.push({ id: "question.columns", shows: `the question in columns: ${operationText(pkg.operation)}`, commands: (place) => at(q, place) });
+    // A written digit of a column step, once the child did the step or a line showed it this turn.
+    const shown = new Set((spoken?.chosen ?? []).filter((o) => o.line === "step.show").map((o) => o.slots.step));
+    if (q && (pkg.operation.kind === "add" || pkg.operation.kind === "subtract")) {
+      for (const st of workSteps(pkg.steps)) {
+        if ((st.kind !== "add-column" && st.kind !== "subtract-column") || st.write === null) continue;
+        if (!(PLACE_NAMES as readonly string[]).includes(st.place) || !(view.done.includes(st.id) || shown.has(st.id))) continue;
+        const write = st.write;
+        out.push({ id: `question.write.${st.id}`, shows: `write ${write} in the ${st.place} of the question's answer row`,
+          commands: () => [{ op: "put", target: { objectId: "question", part: "cell", rowId: "answer", column: st.place }, value: String(write) } as unknown as Command] });
+      }
+    }
+  }
+  // A line's expression or equation said this turn, as a note with a code-made id.
+  for (const o of spoken?.chosen ?? []) {
+    if (!o.board) continue;
+    const text = o.board;
+    out.push({ id: `line.${o.line}`, shows: `the note "${text}"`, commands: (place) => [{ op: "write", id: `note-${s.batches + 1}-${o.line}`, text, place } as unknown as Command] });
+  }
+  return out;
+}
+
+/** The commands of the board offers a proposal draws, or why one is not offered. */
+function drawBoard(s: Session, p: Proposal, view: View, spoken: Spoken): Command[] | string {
+  const offers = boardOffersFor(s, p.act, view, spoken);
+  const out: Command[] = [];
+  const ids: string[] = [];
+  for (const d of p.draw ?? []) {
+    const o = offers.find((x) => x.id === d.offer);
+    if (!o) return `"${d.offer}" is not a board offer for ${p.act} now. Offered: ${offers.map((x) => x.id).join(", ") || "none"}.`;
+    if (ids.includes(o.id)) return `"${o.id}" is drawn twice.`;
+    const places = boardPlaces(s, ids.map((id) => (id === "question.columns" ? "question" : id === "example.columns" ? "example" : id)));
+    const place = places[d.place ?? "main"];
+    if (!place) return `"${d.place}" is not a board place now. Places: ${Object.keys(places).join(", ")}.`;
+    ids.push(o.id);
+    out.push(...o.commands(place));
+  }
+  return out;
+}
+
+/**
+ * The board offers each act Maya may take now can draw (R374-6-1), for the text adapter beside lineOffers: an id and
+ * what it shows. `line.<line id>` offers appear in the turn a line with a board form is said.
+ */
+export function drawOffers(session: Session): Partial<Record<Act, { id: string; shows: string }[]>> {
+  const pkg = session.package;
+  const { acts } = nextActs(session);
+  if (!pkg) return Object.fromEntries(acts.map((a) => [a, []]));
+  const steps = workSteps(pkg.steps).map((st) => st.id).filter((id) => !session.done.includes(id));
+  const view: View = { steps, done: session.done, checked: [], rightResult: false };
+  return Object.fromEntries(acts.map((act) => [act, [
+    ...boardOffersFor(session, act, view, null).map(({ id, shows }) => ({ id, shows })),
+    ...offersFor(session, act, view).filter((o) => o.board).map((o) => ({ id: `line.${o.line}`, shows: `the note "${o.board}" (with that line)` })),
+  ]]));
 }
 
 /** The fields of a board command a child sees as words. */

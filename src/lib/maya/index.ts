@@ -6,6 +6,7 @@ export {
   createSession,
   heardWordings,
   learningEvent,
+  drawOffers,
   lineOffers,
   warmGroups,
   nextActs,

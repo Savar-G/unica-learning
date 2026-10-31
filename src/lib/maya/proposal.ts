@@ -103,7 +103,15 @@ export interface Proposal {
   level?: HintLevel;
   /** For ask_write from CHECK: what the check showed. */
   understanding?: "evidence_observed" | "uncertain";
-  /** Board commands (the board core's vocabulary); the board core checks each one when it applies the batch. */
+  /**
+   * Board offers to draw, by id (R374-6-1): code builds each command from the checked worked step. `place` is one of
+   * the places code offers ("main", "below:question" ...). The only way to draw with the freeTalk flag off.
+   */
+  draw?: { offer: string; place?: string }[];
+  /**
+   * Board commands the model built (the board core's vocabulary). Read only with the freeTalk flag on; refused
+   * (`board_not_code`) with it off.
+   */
   board?: unknown[];
 }
 
@@ -126,7 +134,7 @@ export const PROPOSAL_SCHEMA = {
   title: "Maya proposal",
   type: "object",
   additionalProperties: false,
-  required: ["version", "act", "parts", "reading", "step", "level", "understanding", "board"],
+  required: ["version", "act", "parts", "reading", "step", "level", "understanding", "draw", "board"],
   properties: {
     version: { const: PROPOSAL_VERSION },
     act: { enum: [...ACTS] },
@@ -192,6 +200,11 @@ export const PROPOSAL_SCHEMA = {
     step: nullable({ type: "string" }),
     level: nullable({ enum: [0, 1, 2, 3, 4] }),
     understanding: nullable({ enum: ["evidence_observed", "uncertain"] }),
+    draw: nullable({
+      type: "array",
+      maxItems: 4,
+      items: { type: "object", additionalProperties: false, required: ["offer", "place"], properties: { offer: { type: "string" }, place: nullable({ type: "string" }) } },
+    }),
     board: nullable({ type: "array", items: { type: "object", required: ["op"], properties: { op: { type: "string" } } } }),
   },
 } as const;

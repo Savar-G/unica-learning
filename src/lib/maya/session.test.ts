@@ -36,8 +36,8 @@ const v2 = (p: unknown) => (typeof p === "object" && p !== null && !Array.isArra
 const OPEN: Draft = { act: "open", parts: [t("Hi Leah!"), ln("open.hello"), t("Our team may review this call. How are you today?")] };
 
 /** One scripted call: every step must be accepted unless the test asks for a refusal. */
-function call(pkg: unknown = PACKAGE) {
-  let session = createSession({ callId: "call-1", package: pkg });
+function call(pkg: unknown = PACKAGE, freeTalk = false) {
+  let session = createSession({ callId: "call-1", package: pkg, freeTalk });
   let clock = T0;
   const send = (event: SessionEvent) => {
     const result = step(session, event);
@@ -66,8 +66,8 @@ function call(pkg: unknown = PACKAGE) {
 }
 
 /** A call past its opening, waiting for the child's first words. */
-function opened(pkg: unknown = PACKAGE) {
-  const c = call(pkg);
+function opened(pkg: unknown = PACKAGE, freeTalk = false) {
+  const c = call(pkg, freeTalk);
   c.start();
   c.maya(OPEN);
   return c;
@@ -220,8 +220,8 @@ describe("a wrong child answer is never accepted", () => {
 });
 
 /** A no-start call that has worked the whole easier example (18 + 5 = 23) and handed the question back. */
-function afterExample() {
-  const c = opened();
+function afterExample(freeTalk = false) {
+  const c = opened(PACKAGE, freeTalk);
   c.child("I don't know how to start.");
   c.maya({ act: "example_step", step: "ones", parts: [ln("example.intro"), ln("example.step", { step: "ones" })], reading: { start: "no_start" } });
   c.maya({ act: "example_step", step: "tens", parts: [ln("example.step", { step: "tens" })] });
@@ -661,35 +661,36 @@ describe("other events", () => {
   });
 });
 
-describe("board commands in a proposal", () => {
+// The model's own board commands are read only with the freeTalk flag on (R374-6-1); these tests cover that path.
+describe("board commands in a proposal (freeTalk on)", () => {
   const columns = (a: number, b: number) => ({ op: "columns", id: "sum", operation: "add", operands: [{ id: "top", value: String(a) }, { id: "bottom", value: String(b) }], place: { region: "main" } });
 
   it("sends the board batch of an allowed act, with a call-scoped transaction id", () => {
-    const c = opened();
+    const c = opened(PACKAGE, true);
     c.child("I can't start.");
     const { effects } = c.maya({ act: "example_step", step: "ones", parts: [ln("example.intro")], board: [columns(18, 5)] });
     expect(effects).toContainEqual({ kind: "board", batch: { transactionId: "call-1-b1", commands: [columns(18, 5)] } });
   });
 
   it("refuses the child's question on the board during the easier example, and the example after it", () => {
-    const c = opened();
+    const c = opened(PACKAGE, true);
     c.child("I can't start.");
     expect(c.refused({ act: "example_step", step: "ones", parts: [ln("example.intro")], board: [columns(27, 39)] })).toMatchObject({ code: "board_wrong_problem" });
-    const d = afterExample();
+    const d = afterExample(true);
     d.child("I got 56.");
     expect(d.refused({ act: "guide", step: "ones", level: 0, parts: [ln("step.invite", { step: "ones" })], reading: { answers: [{ value: num(56), step: "result", verdict: "wrong" }] }, board: [columns(18, 5)] }))
       .toMatchObject({ code: "board_wrong_problem" });
   });
 
   it("refuses the answer written on the board before Maya may say it", () => {
-    const c = opened();
+    const c = opened(PACKAGE, true);
     c.child("I don't know.");
     expect(c.refused({ act: "guide", step: "ones", level: 0, parts: [ln("step.invite", { step: "ones" })], board: [{ op: "write", id: "w", text: "66", place: { region: "main" } }] }))
       .toMatchObject({ code: "reveals_answer" });
   });
 
   it("refuses drawing during safety, confirmation or a close, and a board that is not a list of commands", () => {
-    const c = opened();
+    const c = opened(PACKAGE, true);
     c.child("fifteen", { uncertain: true });
     expect(c.refused({ act: "confirm", parts: [ln("confirm.which", { heard: "15", other: "50" })], board: [{ op: "write", id: "w", text: "15 or 50?", place: { region: "main" } }] }))
       .toMatchObject({ code: "board_not_allowed" });
@@ -801,7 +802,7 @@ describe("review follow-up", () => {
   });
 
   it("refuses filling the answer row's last digit before the answer may be given, but not the ones digit", () => {
-    const c = opened();
+    const c = opened(PACKAGE, true);
     c.child("I don't know.");
     const sum = { op: "columns", id: "sum", operation: "add", operands: [{ id: "top", value: "27" }, { id: "bottom", value: "39" }], place: { region: "main" } };
     const put = (column: string) => ({ op: "put", target: { objectId: "sum", part: "cell", rowId: "answer", column }, value: "6" });
