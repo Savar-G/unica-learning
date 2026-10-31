@@ -57,3 +57,5 @@ Nothing reaches the child unless the session's `step` accepts it (`src/lib/maya-
 **Saving and going on.** `saved()` gives what the session needs to go on later (the session, its turns and board batches, plain JSON), and `resume` starts a session from it; the board scene is built again from the batches. A session saved and resumed between inputs says and records the same as one that never stopped (a test checks it). The admin test calls (#323, `src/lib/maya-call.ts`) save it in the call row between requests and drop it once the call's learning event is written. It holds the child's words and name: never send it to a browser.
 
 Samples: `docs/maya-traces/`. A test checks each sample with `checkTrace`.
+
+The behaviour gate (`docs/maya-gate.md`, #324) runs the research's scripted children through this adapter in `npm test` and judges each saved trace.
