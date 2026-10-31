@@ -109,7 +109,8 @@ function costingFetch(): typeof fetch {
 
 /**
  * A fake AI for a layout dry run: every slot gets a sum in the format its place takes. A Spot the error slot takes the
- * offered mistakes in turn, with a sum that mistake fits and Sam's answer exactly what it makes.
+ * offered mistakes in turn, with a sum that mistake fits and Sam's answer exactly what it makes. Every number keeps to the
+ * slot's range (its numbers.max) and is written in digits, never as words, as the real AI is asked to.
  */
 function fakeAi(): AiClient {
   let n = 0;
@@ -117,19 +118,19 @@ function fakeAi(): AiClient {
   const num = (value: number) => ({ type: "number", value, numerator: null, denominator: null, whole: null, unit: null, hours: null, minutes: null, period: null, parts: [], text: null });
   const op = (kind: "add" | "subtract", a: number, b: number) => ({ kind, operands: [num(a), num(b)], expression: null, unit: null, denominator: null, values: [] });
   const SAM: Record<string, { kind: "add" | "subtract"; a: number; b: number; wrong: number; step: string | null }> = {
-    "forgot-carry": { kind: "add", a: 268, b: 157, wrong: 315, step: "tens" },
-    "smaller-from-larger": { kind: "subtract", a: 503, b: 178, wrong: 475, step: "ones" },
+    "forgot-carry": { kind: "add", a: 48, b: 37, wrong: 75, step: "tens" },
+    "smaller-from-larger": { kind: "subtract", a: 52, b: 17, wrong: 45, step: "ones" },
     "regroup-not-taken": { kind: "subtract", a: 62, b: 28, wrong: 44, step: "tens" },
-    "counted-one-extra": { kind: "add", a: 5, b: 3, wrong: 9, step: null },
-    "counted-one-short": { kind: "add", a: 5, b: 3, wrong: 7, step: null },
-    "wrong-start": { kind: "add", a: 6, b: 3, wrong: 8, step: null },
-    "wrong-operation": { kind: "add", a: 9, b: 4, wrong: 5, step: null },
+    "counted-one-extra": { kind: "add", a: 2, b: 2, wrong: 5, step: null },
+    "counted-one-short": { kind: "add", a: 3, b: 2, wrong: 4, step: null },
+    "wrong-start": { kind: "add", a: 3, b: 2, wrong: 4, step: null },
+    "wrong-operation": { kind: "add", a: 3, b: 2, wrong: 1, step: null },
     "swapped-digits": { kind: "add", a: 7, b: 5, wrong: 21, step: null },
   };
   return {
     model: "fake",
     async json(request) {
-      const body = JSON.parse((request.content[0] as { text: string }).text) as { slots: { slot: string; skills: string[]; formats?: string[] | null; mistakes?: { name: string }[] }[] };
+      const body = JSON.parse((request.content[0] as { text: string }).text) as { slots: { slot: string; skills: string[]; formats?: string[] | null; mistakes?: { name: string }[]; numbers?: Record<string, { max: number }> }[] };
       return {
         items: body.slots.map((s) => {
           const format = s.formats?.[0] ?? "write-number";
@@ -137,20 +138,26 @@ function fakeAi(): AiClient {
           if (format === "spot-the-error" && s.mistakes?.length) {
             const name = s.mistakes[m++ % s.mistakes.length].name;
             const x = SAM[name];
-            const sign = x.kind === "add" ? "+" : "−";
+            const sign = x.kind === "add" ? "+" : "-";
+            // The slot's skill with the widest range, so Sam's sum fits it.
+            const skill = [...s.skills].sort((p, q) => (s.numbers?.[q]?.max ?? 0) - (s.numbers?.[p]?.max ?? 0))[0];
             return {
-              ...base, text: `${x.a} ${sign} ${x.b} = ?`, operation: op(x.kind, x.a, x.b),
+              ...base, skill, text: `${x.a} ${sign} ${x.b} = ?`, operation: op(x.kind, x.a, x.b),
               wrongAnswers: [{ value: num(x.wrong), cause: name, description: `Sam's mistake: ${name}`, step: x.step }],
-              easier: { text: x.kind === "add" ? "2 + 1 = ?" : "5 − 2 = ?", operation: x.kind === "add" ? op("add", 2, 1) : op("subtract", 5, 2) }, shownWrong: 0,
+              easier: { text: x.kind === "add" ? "1 + 1 = ?" : "5 - 2 = ?", operation: x.kind === "add" ? op("add", 1, 1) : op("subtract", 5, 2) }, shownWrong: 0,
             };
           }
-          const a = 20 + (n++ % 50);
+          // a + b stays within the range of the item's skill: to 10 at U1, so 2 + 2 to 7 + 2; numbers stay below 100
+          // so a page of them fits as the real AI's would. The easier example 1 + 1 is smaller.
+          const max = Math.min(100, s.numbers?.[s.skills[0]]?.max ?? 100);
+          const b = max >= 20 ? Math.floor(max * 0.15) : 2;
+          const a = 2 + (n++ % (max - b - 2));
           const reason = format === "written-reason";
           return {
-            ...base, text: reason ? "How do you know your answer is right?" : format === "show-work" ? `Ava has ${a} beads. She gets 15 more. How many beads now?` : `${a} + 15 =`,
-            operation: reason ? null : op("add", a, 15),
-            wrongAnswers: reason ? [] : [{ value: num(a + 5), cause: "careless", description: "Adds 5 instead of 15", step: null }],
-            easier: reason ? null : { text: "3 + 4 = ?", operation: op("add", 3, 4) }, shownWrong: null,
+            ...base, text: reason ? "How do you know your answer is right?" : format === "show-work" ? `Ava has ${a} beads. She gets ${b} more. How many beads now?` : `${a} + ${b} =`,
+            operation: reason ? null : op("add", a, b),
+            wrongAnswers: reason ? [] : [{ value: num(a + b + 1), cause: "careless", description: "Counts 1 too many", step: null }],
+            easier: reason ? null : { text: "1 + 1 = ?", operation: op("add", 1, 1) }, shownWrong: null,
           };
         }),
       };
@@ -192,12 +199,15 @@ async function testFamily(db: SupabaseClient<Database>): Promise<Family> {
     if (!by) throw new Error("no admin user to mark the test family");
     await must(db.from("test_accounts").insert({ parent_id: parent.id, marked_by: by }), "mark test family");
   }
-  const { data: kids, error } = await db.from("children").select("id, learning_note").eq("parent_id", parent.id);
+  const { data: kids, error } = await db.from("children").select("id, first_name, learning_note").eq("parent_id", parent.id);
   if (error) throw new Error(`children: ${error.message}`);
   const children = new Map<string, { id: string; child: SampleChild }>();
   for (const level of allLevels) {
     const child = sampleChild(BC, level)!;
-    let id = kids.find((k) => k.learning_note === NOTE(level))?.id;
+    const kid = kids.find((k) => k.learning_note === NOTE(level));
+    let id = kid?.id;
+    // A renamed profile renames the test child (only this family's children are read above).
+    if (kid && kid.first_name !== child.name) await must(db.from("children").update({ first_name: child.name }).eq("id", kid.id).eq("parent_id", parent.id), `rename child ${level}`);
     if (!id) {
       const { data, error: e } = await db.from("children").insert({ parent_id: parent.id, first_name: child.name, grade: child.grade, province: "BC", learning_note: NOTE(level) }).select("id").single();
       if (e) throw new Error(`child ${level}: ${e.message}`);

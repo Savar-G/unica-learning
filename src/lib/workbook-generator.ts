@@ -23,7 +23,7 @@ import type { QuestionPackage } from "@/lib/question-package";
 import { isQrToken, isUuid } from "@/lib/workbook-content";
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import { buildQuestion, ITEMS_SCHEMA, type BuiltQuestion, type QuestionCheck } from "@/lib/workbook-generator-items";
-import { bookPageContent, dayPageContent, layoutDayPage, mistakesFor, samProblem, SLOT_FORMATS, STRICT_SLOTS, type DayLayout } from "@/lib/workbook-book";
+import { bookPageContent, dayPageContent, layoutDayPage, mistakesFor, levelSigns, rangeProblem, samProblem, slotRanges, SLOT_FORMATS, STRICT_SLOTS, type DayLayout } from "@/lib/workbook-book";
 import type { Omission, PageContent, SlotName } from "@/lib/workbook-page";
 import type { PageType, PlannedPage, PlannedPart, WorkbookPlan } from "@/lib/workbook-plan";
 import type { DraftPage } from "@/lib/workbook-render";
@@ -259,6 +259,9 @@ const SYSTEM = [
   "You write the questions of one page of a printed math workbook for a child in British Columbia, Canada.",
   "Fill every slot listed, one item per slot, with the slot's id. Use only the skills the slot names.",
   "A slot may name its place on the page (now-you, word-problems, mixed-set, ...) and the formats that place takes: use one of those formats.",
+  "A slot may give its numbers: for each skill, the range of that skill's own level. Every number of an item on that skill is at most its max: the numbers in its text, the operation's numbers, the answer, every wrong answer, the easier example's numbers and answer, and every number in its sequence, places, comparison, choices and picture. None is negative unless its negatives is true, none is a fraction (1/2) unless its fractions is true, none is a decimal unless its decimals is true, and none is a percent unless its percents is true; no subtraction sign (-) unless its subtraction is true, no × (nor x as a times sign, nor '3 groups of 2', 'lots of' or 'rows of' unless the skill is about groups or skip-counting) unless its multiplication is true, no ÷ unless its division is true, and no < or > unless its comparison is true; a:b is a clock time (3:30) only when its time is true, and anywhere else a ratio, so off a time skill write a time as 3 o'clock; coin values and amounts with cents only when its money is true. So a review of an earlier skill uses that skill's small numbers.",
+  "Write every number in digits. Never write numbers as words: 12, not twelve; -3, not minus three; 0.5, not zero point five; 1/2, not half; 50%, not fifty percent; 3:30, not half past three. The only number words allowed are order words (first, second, third), 'which one', 'each one', 'this one', 'that one', 'the one', place names (the tens digit, the ones place, 3 tens), ten-frame and five-frame, 'one more' and 'one less' on a skill about them, and the quarter coin on a money skill.",
+  "The question text and the easier example's text use only plain ASCII letters and digits, spaces, the punctuation . , ? ! ' \" - : ( ) $ ¢ % / and the signs + = × ÷ < >. Write minus as -, never as a special character; never use ½, ⅓, superscripts or other special characters, and only plain ASCII names. Each number takes one of these forms, with no space inside: 345, 12,500, 0.5, 1/2, 50%, 3:30 (a clock time, on a time skill), 3:4 (a ratio), $4.75, 25¢, and -3 for a negative number.",
   "On the spot-the-error place, pick one mistake from the slot's mistakes: write a sum it can happen on (its 'when'), give Sam's wrong answer as exactly what that mistake makes, put the mistake's name as that wrong answer's cause, and set its step as the mistake's 'step' says. Code writes Sam's steps.",
   "You write content only: the question text, the operation's numbers, expected wrong answers with their causes, an easier example of the same operation, and an item format from the list. The page's layout, fonts, sizes and positions are fixed by the template; never describe them.",
   "Never write the answer or the worked steps: code computes them from the operation. Give the operation as data: its kind and operands (numbers, fractions, amounts with units, clock times), or for evaluate and solve the expression.",
@@ -305,7 +308,7 @@ function pageRequest(input: GenerateInput, day: number, page: PlannedPage, slots
     day,
     pageType: page.type,
     parts,
-    slots: slots.map((s) => ({ slot: s.id, part: s.part.kind, skills: s.part.skills, ...(s.place ? { place: s.place, formats: SLOT_FORMATS[s.place] ?? null } : {}), ...(s.place === "spot-the-error" ? { mistakes: mistakesFor(plan.level) } : {}) })),
+    slots: slots.map((s) => ({ slot: s.id, part: s.part.kind, skills: s.part.skills, ...(s.place ? { place: s.place, formats: SLOT_FORMATS[s.place] ?? null } : {}), ...(s.place === "spot-the-error" ? { mistakes: mistakesFor(plan.level) } : {}), ...(s.place ? { numbers: slotRanges(curriculum, plan.level, s.part.skills) } : {}) })),
     note,
   };
 }
@@ -359,6 +362,7 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
     const b = buildQuestion(out.items.get(slot.id), {
       id: `${input.workbookId}:d${w.day}p${w.page.number}s${slot.id}`,
       workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: slot.part.skills,
+      signs: levelSigns(input.curriculum, input.plan.level),
     });
     if (out.error && !out.items.has(slot.id)) b.check = { status: "failed", reason: `the AI gave no answer: ${out.error}` };
     // A slot with a layout of its own takes only its format: another would not lay out there.
@@ -369,6 +373,11 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
     // Spot the error shows Sam's wrong steps, built by code: the shown wrong answer must be a mistake code can show.
     if (slot.place === "spot-the-error" && b.check.status !== "failed" && b.package) {
       const problem = samProblem(b.package, input.plan.level);
+      if (problem) b.check = { status: "failed", reason: problem };
+    }
+    // Every number fits the level and slot: the range of the item's skill (an earlier skill's under review).
+    if (slot.place && b.check.status !== "failed" && b.package) {
+      const problem = rangeProblem(b.package, input.curriculum, input.plan.level);
       if (problem) b.check = { status: "failed", reason: problem };
     }
     return b;

@@ -19,11 +19,18 @@ import {
   stepText,
   valueText,
   workedSteps,
+  type AnswerRegion,
   type AnswerValue,
+  type Equation,
   type Figure as ItemFigure,
+  type ItemCheck,
+  type NumberValue,
+  type Statement,
+  type Term,
   type Operation,
   type QuestionPackage,
 } from "@/lib/question-package";
+import { aiTextProblem, groupingWords, isCoin, readNumbers, signOperation, textOperations, type ReadNumber, type SignOperation } from "@/lib/number-words";
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import {
   headerGrowth,
@@ -199,6 +206,349 @@ export function pageFigure(f: ItemFigure | null | undefined, op: Operation | nul
   }
 }
 
+// ---------- Number ranges ----------
+
+/**
+ * The largest number a level's items use, from each level's title and topics (numbers to 10 in Kindergarten, to 20 in
+ * U4 to U6, to 100 in U7 to U9, to 1000 in U10 to U12, to 10 000 in U13 to U15, to a million in U16 to U18;
+ * no practical limit from U19).
+ */
+const LEVEL_MAX = [
+  10, 10, 10, 20, 20, 20, 100, 100, 100, 1000, 1000, 1000, 10_000, 10_000, 10_000, 1_000_000, 1_000_000, 1_000_000,
+  ...Array.from({ length: 12 }, () => 1_000_000_000),
+];
+const levelMax = (level: number) => LEVEL_MAX[Math.min(30, Math.max(1, level)) - 1];
+
+/**
+ * The ideas a child meets at a level, each from its first level in the curriculum (conceptLevels): fractions,
+ * decimals, negative numbers (integers), percents and ratios, and the operations whose signs are printed:
+ * subtraction, multiplication, division and comparison (< and >).
+ */
+export const CONCEPTS = ["fractions", "decimals", "negatives", "percents", "ratios", "subtraction", "multiplication", "division", "comparison"] as const;
+export type Concept = (typeof CONCEPTS)[number];
+
+/** A skill's number range: its largest number, the ideas it may show (true once the curriculum has met them), money and time. */
+export type NumberRange = {
+  /** The largest number an item may print or ask for (printedNumbers). */
+  max: number;
+  /** The skill is about money: coin values always fit, and amounts of money may have cents ($4.75). */
+  money: boolean;
+  /** The skill is about time: h:mm is a clock time and fits as it is; elsewhere every a:b is a ratio. */
+  time: boolean;
+  /** The skill is about groups or skip-counting: "3 groups of 2" is its own language before multiplication. */
+  grouping: boolean;
+} & Record<Concept, boolean>;
+
+/**
+ * The first level of each idea, from the curriculum's skill texts (CONCEPT_WORDS). Before it, an item never shows the
+ * idea. A test pins the BC levels, so a curriculum text change that breaks the detection fails loudly.
+ */
+export type ConceptLevels = Record<Concept, number>;
+const CONCEPT_WORDS: Record<Concept, RegExp> = {
+  fractions: /\bfractions?\b/i,
+  decimals: /\bdecimals?\b/i,
+  negatives: /\bintegers?\b|\bnegative\b/i,
+  percents: /\bpercents?\b/i,
+  ratios: /\bratios?\b/i,
+  subtraction: /\bsubtract\w*|\btak(?:e|en|ing) away\b/i,
+  multiplication: /\bmultipl(?:y|ying|ied|ication)\b/i,
+  division: /\bdivi(?:de|des|ded|ding|sion)\b/i,
+  comparison: /[<>]/,
+};
+const conceptCache = new WeakMap<Curriculum, ConceptLevels>();
+export function conceptLevels(curriculum: Curriculum): ConceptLevels {
+  const cached = conceptCache.get(curriculum);
+  if (cached) return cached;
+  const first = (re: RegExp) => curriculum.levels.find((l) => (curriculum.levelSkills(l.id) ?? []).some((s) => re.test(s.text)))?.number ?? Infinity;
+  const levels = Object.fromEntries(CONCEPTS.map((c) => [c, first(CONCEPT_WORDS[c])])) as ConceptLevels;
+  conceptCache.set(curriculum, levels);
+  return levels;
+}
+
+/** A level's number range, for an item with no skill. */
+export function levelRange(curriculum: Curriculum, level: number): NumberRange {
+  const c = conceptLevels(curriculum);
+  return { max: levelMax(level), money: false, time: false, grouping: false, ...(Object.fromEntries(CONCEPTS.map((k) => [k, level >= c[k]])) as Record<Concept, boolean>) };
+}
+
+/** The operation signs a Mixed set may offer at a level: + always, −, × and ÷ once the curriculum has met them. */
+export function levelSigns(curriculum: Curriculum, level: number): string[] {
+  const r = levelRange(curriculum, level);
+  return ["+", "−", "×", "÷"].filter((sign) => { const op = signOperation(sign); return !op || r[op]; });
+}
+
+/**
+ * The limit a skill's id names ("1.3-add-within-10", "3.4-recall-addition-20", "2.1-ten-more-less-100"), or null; none
+ * for an id ending in two numbers ("1.1-skip-count-2-5", "K3-benchmarks-5-10").
+ */
+function idLimit(skill: string): number | null {
+  // Two numbers at the end name what the skill is about, not a limit ("1.1-skip-count-2-5" is by 2s and 5s).
+  if (/-\d+-\d+$/.test(skill)) return null;
+  const m = skill.match(/-(?:within-|to-)?(\d+)$/) ?? skill.match(/-(?:within|to)-(\d+)-/);
+  const n = m ? Number(m[1]) : NaN;
+  return [5, 10, 20, 100, 1000, 10_000].includes(n) ? n : null;
+}
+
+/** A skill is about money when its unit is a financial literacy standard (BC: K11, 1.11, 2.12, 3.14, 4.18, ...). */
+const isMoneySkill = (curriculum: Curriculum, skill: string) =>
+  /^financial literacy\b/i.test(curriculum.unit(curriculum.skill(skill)?.unit ?? "")?.text ?? "");
+
+/** A skill is about time when it or its unit names time or clocks ("Read an analog clock", "units of time"). */
+const isTimeSkill = (curriculum: Curriculum, skill: string) => {
+  const s = curriculum.skill(skill);
+  return /\b(time|clocks?)\b/i.test(`${s?.text ?? ""} ${curriculum.unit(s?.unit ?? "")?.text ?? ""}`);
+};
+
+/**
+ * A skill is about groups when its text names equal groups, skip-counting, groups of a number ("making groups of 10")
+ * or arrays; a skill that only mentions a group ("a scattered group") is not. A test pins the BC skills this gives.
+ */
+const GROUPING_SKILL = /\bequal groups\b|\bskip-count\w*|\bgroups of \d+|\barrays?\b/i;
+export const isGroupingSkill = (curriculum: Curriculum, skill: string) => GROUPING_SKILL.test(curriculum.skill(skill)?.text ?? "");
+
+/**
+ * The range of an item on a skill: the range of the skill's own level (a review of an earlier skill keeps to that
+ * skill's numbers and ideas), never above the page's level, and never above the limit the skill's id names ("facts to
+ * 20").
+ */
+export function skillRange(curriculum: Curriculum, level: number, skill: string): NumberRange {
+  const own = curriculum.levelOfSkill(skill)?.number ?? level;
+  const range = { ...levelRange(curriculum, Math.min(own, level)), money: isMoneySkill(curriculum, skill), time: isTimeSkill(curriculum, skill), grouping: isGroupingSkill(curriculum, skill) };
+  const limit = idLimit(skill);
+  return limit !== null && limit < range.max ? { ...range, max: limit } : range;
+}
+
+/** A slot's ranges for the AI: each skill it may use, with that skill's range. */
+export function slotRanges(curriculum: Curriculum, level: number, skills: readonly string[]): Record<string, NumberRange> {
+  return Object.fromEntries(skills.map((s) => [s, skillRange(curriculum, level, s)]));
+}
+
+// Every number the child sees or is asked for (R380-3-1), walked by one collector over the whole package. Each switch
+// ends in `never`, so a new value type, region, check, statement, figure or operation kind does not build until it is
+// collected here. Text is read by readNumbers (src/lib/number-words.ts): numbers are digits; AI-written text with a
+// number word is refused (numberWordProblem).
+
+const unreachable = (x: never): never => {
+  throw new Error(`printedNumbers: unknown ${JSON.stringify(x)}`);
+};
+
+type Read = ReadNumber;
+const num = (value: number): Read => ({ value, form: Number.isInteger(value) ? "whole" : "decimal" });
+const frac = (value: number): Read => ({ value, form: "fraction" });
+const money = (value: number, unit: string): Read =>
+  unit === "$" || unit === "¢" ? { ...num(value), money: true, ...(isCoin(value, unit) ? { coin: true as const } : {}) } : num(value);
+/** The same numbers, as the parts of a fraction (a fraction operation's whole numbers too). */
+const asFraction = (rs: Read[]): Read[] => rs.map((r) => ({ ...r, form: "fraction" }));
+
+/** The numbers of a value. */
+function valueNumbers(v: AnswerValue | null | undefined): Read[] {
+  if (!v) return [];
+  switch (v.type) {
+    case "number": return [num(v.value)];
+    case "fraction": return [frac(v.numerator), frac(v.denominator)];
+    case "mixed": return [frac(v.whole), frac(v.numerator), frac(v.denominator)];
+    case "remainder": return [num(v.quotient), num(v.remainder)];
+    case "quantity": return [money(v.value, v.unit)];
+    case "compound": return v.parts.map((part) => money(part.value, part.unit));
+    case "time": return [{ value: v.hours, form: "time" }, { value: v.minutes, form: "time" }];
+    case "expression":
+    case "choice":
+    case "text": return readNumbers(v.value);
+    default: return unreachable(v);
+  }
+}
+
+/** The numbers of an operation's operands and its other numbers; a fraction or decimal operation is that idea. */
+function operationNumbers(op: Operation | null | undefined): Read[] {
+  if (!op) return [];
+  const operand = (o: number | string | AnswerValue): Read[] => (typeof o === "number" ? [num(o)] : typeof o === "string" ? readNumbers(o) : valueNumbers(o));
+  const operands = (op.operands as readonly (number | string | AnswerValue)[]).flatMap(operand);
+  switch (op.kind) {
+    case "add": case "subtract": case "multiply": case "divide":
+    case "convert": case "quantity-add": case "quantity-subtract": case "quantity-multiply":
+    case "money-round": case "elapsed-time": case "time-add": case "clock-convert": case "solve":
+      return operands;
+    case "decimal-add": case "decimal-subtract": case "decimal-multiply":
+      return operands.map((r) => ({ ...r, form: "decimal" }));
+    case "fraction-add": case "fraction-subtract": case "fraction-multiply": case "fraction-divide": case "fraction-simplify":
+      return asFraction(operands);
+    case "fraction-equivalent": return asFraction([...operands, num(op.denominator)]);
+    case "evaluate": return [...operands, ...Object.values(op.values ?? {}).map(num)];
+    default: return unreachable(op);
+  }
+}
+
+const termNumbers = (t: Term): Read[] => ("region" in t ? [] : valueNumbers(t));
+const equationNumbers = (e: Equation): Read[] => [e.left, e.right, e.result].flatMap(termNumbers);
+
+function statementNumbers(st: Statement): Read[] {
+  switch (st.kind) {
+    case "equation": return equationNumbers(st.equation);
+    case "factor": return [num(st.factor), num(st.of)];
+    case "shown-answer": return [];
+    default: return unreachable(st);
+  }
+}
+
+function regionNumbers(r: AnswerRegion): Read[] {
+  const label = readNumbers(r.label ?? "");
+  switch (r.kind) {
+    case "box": return [...label, ...valueNumbers(r.answer)];
+    case "choice": return [...label, ...r.choices.flatMap(readNumbers), ...readNumbers(r.answer ?? "")];
+    case "work": case "lines": case "picture": return label;
+    default: return unreachable(r);
+  }
+}
+
+function checkNumbers(c: ItemCheck): Read[] {
+  switch (c.kind) {
+    case "operation": case "operation-sign": case "count": case "pattern": return [];
+    case "places": return [num(c.number)];
+    case "order": return c.numbers.flatMap(valueNumbers);
+    case "equations": return c.equations.flatMap(equationNumbers);
+    case "sequence": {
+      // Every term printed or asked for: the given ones, and each blank as the term it holds (first given term plus
+      // the step for each place after it).
+      const at = c.terms.findIndex((t) => !("region" in t));
+      const given = at >= 0 ? (c.terms[at] as NumberValue) : null;
+      const blanks = given?.type !== "number" || c.step.type !== "number" ? []
+        : c.terms.flatMap((t, i) => ("region" in t ? [num(given.value + (i - at) * (c.step as { value: number }).value)] : []));
+      return [...c.terms.flatMap(termNumbers), ...blanks, ...valueNumbers(c.step)];
+    }
+    case "compare": return [...valueNumbers(c.left), ...valueNumbers(c.right)];
+    case "yes-no": return statementNumbers(c.statement);
+    default: return unreachable(c);
+  }
+}
+
+function figureNumbers(f: ItemFigure | null | undefined, op: Operation | null): Read[] {
+  if (!f) return [];
+  const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+  switch (f.kind) {
+    case "dots": return [...f.groups, f.takenAway, sum(f.groups)].map(num);
+    case "ten-frame": return [...f.counters, sum(f.counters)].map(num);
+    case "number-line": {
+      const drawn = pageFigure(f, op);
+      return [f.from, f.to, f.step, ...(drawn?.kind === "number-line" ? (drawn.hops ?? []).flat() : [])].map(num);
+    }
+    case "base-ten": return [f.hundreds, f.tens, f.ones, f.hundreds * 100 + f.tens * 10 + f.ones].map(num);
+    case "array": return [f.rows, f.columns, f.rows * f.columns].map(num);
+    case "pattern": return [];
+    default: return unreachable(f);
+  }
+}
+
+/**
+ * Every number a package prints or asks for, with its form (whole, fraction or decimal; money and coins marked), and
+ * any number text that does not read with confidence: the question text; the operation's numbers and the answer (with
+ * its other accepted forms); the wrong answers; Sam's answer and every number of Sam's steps; the easier example's
+ * text, operation and answer; and the item's regions (labels, box answers, choices), checks (places, order, equations,
+ * sequence terms and blanks, compare and yes-no numbers) and figure (with a number line's hops).
+ */
+export function printedValues(p: QuestionPackage): ReadNumber[] {
+  const item = p.item;
+  const error = item?.error ?? null;
+  const shown = error ? samWork(p.operation, error.answer, shownOf(p).cause) : null;
+  const easier = p.easierExample;
+  return [
+    ...readNumbers(p.text),
+    ...operationNumbers(p.operation),
+    ...valueNumbers(p.answer?.value),
+    ...(p.answer?.accepted ?? []).flatMap(valueNumbers),
+    ...p.wrongAnswers.flatMap((w) => valueNumbers(w.value)),
+    ...valueNumbers(error?.answer),
+    ...(shown?.lines ?? []).flatMap(readNumbers),
+    ...(easier ? [...readNumbers(easier.text), ...operationNumbers(easier.operation), ...valueNumbers(easier.answer)] : []),
+    ...(item?.regions ?? []).flatMap(regionNumbers),
+    ...(item?.checks ?? []).flatMap(checkNumbers),
+    ...figureNumbers(item?.figure, p.operation),
+  ];
+}
+
+/** The operation of an operation kind, by its sign; none for adding and the kinds with no sign. */
+function kindOperation(op: Operation | null | undefined): SignOperation[] {
+  if (!op) return [];
+  switch (op.kind) {
+    case "add": case "decimal-add": case "fraction-add": case "quantity-add": case "time-add": case "clock-convert": case "convert":
+    case "money-round": case "fraction-simplify": case "fraction-equivalent":
+      return [];
+    case "subtract": case "decimal-subtract": case "fraction-subtract": case "quantity-subtract": case "elapsed-time":
+      return ["subtraction"];
+    case "multiply": case "decimal-multiply": case "fraction-multiply": case "quantity-multiply":
+      return ["multiplication"];
+    case "divide": case "fraction-divide":
+      return ["division"];
+    case "evaluate": case "solve":
+      return textOperations(op.operands[0]);
+    default: return unreachable(op);
+  }
+}
+
+function checkOperations(c: ItemCheck): SignOperation[] {
+  const eq = (e: Equation) => [signOperation(e.op)].filter((x): x is SignOperation => x !== null);
+  switch (c.kind) {
+    case "operation": case "operation-sign": case "count": case "pattern": case "places": case "order": case "sequence": return [];
+    case "equations": return c.equations.flatMap(eq);
+    case "compare": return ["comparison"];
+    case "yes-no": return c.statement.kind === "equation" ? eq(c.statement.equation) : [];
+    default: return unreachable(c);
+  }
+}
+
+/**
+ * Every operation whose sign the child sees or is asked for: in the AI's text, the operation and the easier example's,
+ * equations, sign choices (a Mixed set's "Tick the operation", a compare item's < > =) and compare checks.
+ */
+export function printedOperations(p: QuestionPackage): SignOperation[] {
+  const choices = (p.item?.regions ?? []).flatMap((r) => (r.kind === "choice" ? r.choices.map(signOperation).filter((x): x is SignOperation => x !== null) : []));
+  return [...new Set([
+    ...textOperations(p.text),
+    ...(p.easierExample ? textOperations(p.easierExample.text) : []),
+    ...kindOperation(p.operation),
+    ...kindOperation(p.easierExample?.operation),
+    ...(p.item?.checks ?? []).flatMap(checkOperations),
+    ...choices,
+  ])];
+}
+
+/** The values of printedValues. */
+export const printedNumbers = (p: QuestionPackage): number[] => printedValues(p).map((r) => r.value);
+
+/**
+ * Why an item's numbers do not fit its skill's range at the level, or null (see skillRange): text the AI writes (the
+ * question and the easier example) that fails the gate (aiTextProblem: characters, number forms, number words), a
+ * number past the range, or an idea before the curriculum's first level of it (CONCEPTS: a negative number, fraction,
+ * decimal, percent or ratio, or a subtraction, multiplication, division or comparison sign anywhere it is printed). On
+ * a money skill, coin values always fit and amounts of money may have cents; on a time skill, h:mm is a clock time and
+ * fits as it is.
+ */
+export function rangeProblem(p: QuestionPackage, curriculum: Curriculum, level: number): string | null {
+  const skill = p.skill.skills[0];
+  const range = skill ? skillRange(curriculum, level, skill) : levelRange(curriculum, level);
+  const context = { skill: skill ?? null, money: range.money };
+  const text = aiTextProblem(p.text, context) ?? (p.easierExample ? aiTextProblem(p.easierExample.text, context) : null);
+  if (text) return text;
+  // a:b in text is a clock time only on a time skill and in the h:mm shape; anywhere else it is a ratio.
+  const read = printedValues(p)
+    .filter((r) => !(r.coin && range.money) && !(r.form === "time" && range.time) && !(r.form === "colon" && r.clock && range.time));
+  const big = read.find((r) => Math.abs(r.value) > range.max);
+  if (big) return `the number ${big.value} is too big for this question: its numbers are at most ${range.max}`;
+  const negative = read.find((r) => r.value < 0);
+  if (negative && !range.negatives) return `the number ${negative.value} is negative: this question uses no negative numbers`;
+  const c = conceptLevels(curriculum);
+  if (!range.fractions && read.some((r) => r.form === "fraction")) return `this question uses no fractions: they start at U${c.fractions}`;
+  const decimal = read.find((r) => r.form === "decimal" && !(r.money && range.money));
+  if (decimal && !range.decimals) return `the number ${decimal.value} is a decimal: this question uses no decimals (they start at U${c.decimals})`;
+  const percent = read.find((r) => r.form === "percent");
+  if (percent && !range.percents) return `${percent.value}% is a percent: this question uses no percents (they start at U${c.percents})`;
+  if (!range.ratios && read.some((r) => r.form === "colon")) return `this question uses no ratios: they start at U${c.ratios}${range.time ? "" : " (write a time on a non-time question as 3 o'clock)"}`;
+  const grouping = range.multiplication || range.grouping ? null : (groupingWords(p.text) ?? (p.easierExample ? groupingWords(p.easierExample.text) : null));
+  if (grouping) return `"${grouping}" is multiplication: this question uses none (it starts at U${c.multiplication})`;
+  const op = printedOperations(p).find((o) => !range[o]);
+  if (op) return `this question uses no ${op} (${{ subtraction: "-", multiplication: "×", division: "÷", comparison: "< or >" }[op]}): it starts at U${c[op]}`;
+  return null;
+}
+
 // ---------- Sam's wrong work (Spot the error) ----------
 
 /**
@@ -230,10 +580,12 @@ export const SAM_MISTAKE_RULES: Record<SamMistake, { what: string; when: string;
 
 /**
  * The mistakes a Spot the error item may use at a level: counting and answer mistakes up to U6 (before column
- * regrouping), all of them at U7 to U9, and from U10 the column mistakes with the wrong operation and swapped digits.
+ * regrouping; swapped digits only from U4, where numbers go past 10), all of them at U7 to U9, and from U10 the column
+ * mistakes with the wrong operation and swapped digits.
  */
 export function levelMistakes(level: number): SamMistake[] {
-  if (level <= 6) return ["counted-one-extra", "counted-one-short", "wrong-start", "wrong-operation", "swapped-digits"];
+  // Swapped digits needs a two-digit answer: not in the levels with numbers to 10.
+  if (level <= 6) return ["counted-one-extra", "counted-one-short", "wrong-start", "wrong-operation", ...(levelMax(level) >= 12 ? ["swapped-digits" as const] : [])];
   if (level <= 9) return [...SAM_MISTAKES];
   return ["forgot-carry", "smaller-from-larger", "regroup-not-taken", "wrong-operation", "swapped-digits"];
 }
