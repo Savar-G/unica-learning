@@ -304,6 +304,23 @@ export async function renderWorkbook(o: {
   };
 }
 
+/** A page's sheet with its failures drawn on it: a red banner with each reason and the named questions outlined. */
+function proofSheet(template: WorkbookTemplate, draft: WorkbookDraft, page: DraftPage, sheet: number, mine: RenderProblem[]): string {
+  const qrUrl = pageUrl(page.qrToken);
+  const html = template.page(page, { qr: qrElement(qrUrl), qrUrl }, draft) ?? "";
+  if (mine.length === 0) return html;
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const outlined = [...new Set(mine.flatMap((x) => (x.question ? [`[data-measure="question-${x.question}"]`] : [])))];
+  const style = outlined.length ? `<style>[data-sheet="${sheet}"] :is(${outlined.join(",")}){outline:3px solid #E5484D!important;outline-offset:2px}</style>` : "";
+  const banner = `<div style="position:absolute;left:0;right:0;top:0;z-index:99;background:#B42318;color:#fff;font:600 13px/1.4 Helvetica,Arial,sans-serif;padding:8px 14px">`
+    + `RENDER FAILED · page ${page.number}<br>${mine.map((x) => `${x.slot ? `[${esc(x.slot)}] ` : ""}${esc(x.reason)}`).join("<br>")}</div>`;
+  return html + style + banner;
+}
+
+/** The proof CSS: the content area's bottom edge as a dashed line, with what ran past it left visible. */
+const PROOF_CSS = `[data-measure="slot-content"]{overflow:visible!important;position:relative}`
+  + `[data-measure="slot-content"]::after{content:"";position:absolute;left:-12px;right:-12px;top:100%;border-top:3px dashed #E5484D}`;
+
 /**
  * The failing pages of a render, printed again with their failure shown on them: a red banner with each reason, the
  * named questions and slots outlined, and the content area's bottom edge as a dashed line with what ran past it left
@@ -314,20 +331,25 @@ export async function proofPages(o: {
 }): Promise<{ page: number; png: Uint8Array }[]> {
   const failing = o.draft.pages.filter((p) => o.problems.some((x) => x.page === p.number));
   if (failing.length === 0) return [];
-  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const sheets = failing.map((page) => {
-    const qrUrl = pageUrl(page.qrToken);
-    const mine = o.problems.filter((x) => x.page === page.number);
-    const outlined = [...new Set(mine.flatMap((x) => (x.question ? [`[data-measure="question-${x.question}"]`] : [])))];
-    const style = outlined.length ? `<style>[data-sheet="${failing.indexOf(page)}"] :is(${outlined.join(",")}){outline:3px solid #E5484D!important;outline-offset:2px}</style>` : "";
-    const banner = `<div style="position:absolute;left:0;right:0;top:0;z-index:99;background:#B42318;color:#fff;font:600 13px/1.4 Helvetica,Arial,sans-serif;padding:8px 14px">`
-      + `RENDER FAILED · page ${page.number}<br>${mine.map((x) => `${x.slot ? `[${esc(x.slot)}] ` : ""}${esc(x.reason)}`).join("<br>")}</div>`;
-    return (o.template.page(page, { qr: qrElement(qrUrl), qrUrl }, o.draft) ?? "") + style + banner;
-  });
-  const proof = `[data-measure="slot-content"]{overflow:visible!important;position:relative}`
-    + `[data-measure="slot-content"]::after{content:"";position:absolute;left:-12px;right:-12px;top:100%;border-top:3px dashed #E5484D}`;
-  const out = await o.engine.print({ html: documentHtml(o.template.css + proof, sheets), sheets: sheets.length, page: PRINT_PAGE, scale: IMAGE_SCALE });
+  const sheets = failing.map((page, i) => proofSheet(o.template, o.draft, page, i, o.problems.filter((x) => x.page === page.number)));
+  const out = await o.engine.print({ html: documentHtml(o.template.css + PROOF_CSS, sheets), sheets: sheets.length, page: PRINT_PAGE, scale: IMAGE_SCALE });
   return failing.map((page, i) => ({ page: page.number, png: out.images[i].png }));
+}
+
+/**
+ * The whole book printed for a reviewer (#363), whatever its checks say: every page as the template lays it out, a page
+ * the template has no layout for as an empty sheet, and each page in `problems` with its failure drawn on it (as in
+ * proofPages). For review only: never stored as the print file.
+ */
+export async function reviewPrint(o: {
+  draft: WorkbookDraft; template: WorkbookTemplate; engine: PrintEngine; problems: RenderProblem[];
+}): Promise<{ pdf: Uint8Array; images: Uint8Array[] }> {
+  const sheets = o.draft.pages.map((page, i) => proofSheet(o.template, o.draft, page, i, o.problems.filter((x) => x.page === page.number)));
+  // The proof lines only on the failing sheets.
+  const failing = o.draft.pages.flatMap((p, i) => (o.problems.some((x) => x.page === p.number) ? [i] : []));
+  const css = o.template.css + failing.map((i) => PROOF_CSS.replace(/\[data-measure="slot-content"\]/g, `[data-sheet="${i}"] [data-measure="slot-content"]`)).join("");
+  const out = await o.engine.print({ html: documentHtml(css, sheets), sheets: sheets.length, page: PRINT_PAGE, scale: IMAGE_SCALE });
+  return { pdf: out.pdf, images: out.images.map((x) => x.png) };
 }
 
 /**

@@ -23,6 +23,8 @@ import type { QuestionPackage } from "@/lib/question-package";
 import { isQrToken, isUuid } from "@/lib/workbook-content";
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import { buildQuestion, ITEMS_SCHEMA, type BuiltQuestion, type QuestionCheck } from "@/lib/workbook-generator-items";
+import { bookPageContent, dayPageContent, layoutDayPage, SLOT_FORMATS, STRICT_SLOTS, type DayLayout } from "@/lib/workbook-book";
+import type { Omission, PageContent, SlotName } from "@/lib/workbook-page";
 import type { PageType, PlannedPage, PlannedPart, WorkbookPlan } from "@/lib/workbook-plan";
 import type { DraftPage } from "@/lib/workbook-render";
 
@@ -68,6 +70,8 @@ export interface GeneratedQuestion {
   slot: string;
   /** The part of the day it fills. */
   part: PlannedPart["kind"];
+  /** The template slot it sits in ("now-you", "word-problems"), when the book is laid out for the templates (#363). */
+  place?: SlotName;
   check: QuestionCheck;
   /** Its AI attempts: 1, or 2 when it was written again (after a failed check or for a page retry). Never more. */
   attempts: 1 | 2;
@@ -95,6 +99,13 @@ export interface GeneratedPage {
    */
   attempts: 0 | 1 | 2;
   questions: GeneratedQuestion[];
+  /**
+   * What the template lays out (#363): the header, the slots with their question numbers, the panels and pictures.
+   * Set on every page when the book is laid out for the templates (GenerateInput.book); else absent.
+   */
+  content?: PageContent;
+  /** Planned items the page has no room for, with why (pageSlots); only on a laid-out day page that leaves some out. */
+  omissions?: Omission[];
 }
 
 export interface GeneratedWorkbook {
@@ -164,6 +175,13 @@ export interface GenerateInput {
   plan: WorkbookPlan;
   /** The child's curriculum: what the AI is told about each skill and step. */
   curriculum: Curriculum;
+  /**
+   * Lay the book out for the real templates (#310, #363): each day page's questions fill the template's slots
+   * (pageSlots, so a page asks the AI for no more than it holds), every page gets its content, and the fit check reads
+   * it. `child` is the child's first name, as printed on the cover and in each page ID. Absent: the plan's parts give
+   * the slots and no page has content.
+   */
+  book?: { child: string };
 }
 
 export interface GenerateDeps {
@@ -176,24 +194,39 @@ export interface GenerateDeps {
   timeLimitMs?: number;
   /** Called after each day page is done, with the pages done and the day pages in all. */
   progress?(done: number, total: number): void;
+  /** How many day pages are written at once; 1 when not given. The draft is the same in any order. */
+  concurrency?: number;
 }
 
 export type GenerateResult = { status: "stored"; draft: GeneratedWorkbook } | { status: "refused"; reason: string };
 
 const TIME_LIMIT_MS = 180_000;
 
-/** A question slot of a day page. */
+/** A question slot of a day page: in a laid-out book, also its template slot and that slot's index in the layout. */
 interface Slot {
   id: string;
   part: PlannedPart;
+  place: SlotName | null;
+  layoutSlot: number;
 }
 
 const slotsOf = (page: PlannedPage): Slot[] =>
-  page.parts.flatMap((part, i) => Array.from({ length: part.items }, (_, j) => ({ id: `${i + 1}.${j + 1}`, part })));
+  page.parts.flatMap((part, i) => Array.from({ length: part.items }, (_, j) => ({ id: `${i + 1}.${j + 1}`, part, place: null, layoutSlot: -1 })));
+
+/** The question slots of a laid-out page, in reading order: ids count each part's items across its template slots. */
+function layoutSlots(page: PlannedPage, layout: DayLayout): Slot[] {
+  const seen = new Map<number, number>();
+  return layout.slots.flatMap((x, k) => Array.from({ length: x.items }, () => {
+    const n = (seen.get(x.part) ?? 0) + 1;
+    seen.set(x.part, n);
+    return { id: `${x.part + 1}.${n}`, part: page.parts[x.part], place: x.slot, layoutSlot: k };
+  }));
+}
 
 const SYSTEM = [
   "You write the questions of one page of a printed math workbook for a child in British Columbia, Canada.",
   "Fill every slot listed, one item per slot, with the slot's id. Use only the skills the slot names.",
+  "A slot may name its place on the page (now-you, word-problems, mixed-set, ...) and the formats that place takes: use one of those formats.",
   "You write content only: the question text, the operation's numbers, expected wrong answers with their causes, an easier example of the same operation, and an item format from the list. The page's layout, fonts, sizes and positions are fixed by the template; never describe them.",
   "Never write the answer or the worked steps: code computes them from the operation. Give the operation as data: its kind and operands (numbers, fractions, amounts with units, clock times), or for evaluate and solve the expression.",
   "Each wrong answer is a mistake a child makes, with a short cause id (a misconception id such as O3 when the input names one, else a short word such as 'operation'), a plain description, and the worked step where it happens: a column's place ('ones', 'tens', 'hundreds') or null when it is not one step.",
@@ -239,7 +272,7 @@ function pageRequest(input: GenerateInput, day: number, page: PlannedPage, slots
     day,
     pageType: page.type,
     parts,
-    slots: slots.map((s) => ({ slot: s.id, part: s.part.kind, skills: s.part.skills })),
+    slots: slots.map((s) => ({ slot: s.id, part: s.part.kind, skills: s.part.skills, ...(s.place ? { place: s.place, formats: SLOT_FORMATS[s.place] ?? null } : {}) })),
     note,
   };
 }
@@ -268,6 +301,7 @@ interface PageWork {
   day: number;
   page: PlannedPage;
   slots: Slot[];
+  layout: DayLayout | null;
 }
 
 /** Each question has at most this many AI attempts in all, across the question redo and the page retry. */
@@ -284,12 +318,17 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
       workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: slot.part.skills,
     });
     if (out.error && !out.items.has(slot.id)) b.check = { status: "failed", reason: `the AI gave no answer: ${out.error}` };
+    // A slot with a layout of its own takes only its format: another would not lay out there.
+    const format = b.package?.item?.format;
+    if (slot.place && STRICT_SLOTS.includes(slot.place) && b.check.status !== "failed" && format && !SLOT_FORMATS[slot.place]?.includes(format)) {
+      b.check = { status: "failed", reason: `the ${slot.place} place takes the ${SLOT_FORMATS[slot.place]!.join(" or ")} format, not ${format}` };
+    }
     return b;
   });
 }
 
 const generated = (w: PageWork, i: number, b: BuiltQuestion, attempts: 1 | 2): GeneratedQuestion => ({
-  number: i + 1, slot: w.slots[i].id, part: w.slots[i].part.kind, check: b.check, attempts, package: b.package,
+  number: i + 1, slot: w.slots[i].id, part: w.slots[i].part.kind, ...(w.slots[i].place ? { place: w.slots[i].place! } : {}), check: b.check, attempts, package: b.package,
 });
 
 /** The first pass at a page: the page call, then one redo call for its failed questions (their last attempt). */
@@ -325,13 +364,37 @@ async function pageRetry(input: GenerateInput, deps: GenerateDeps, w: PageWork, 
   return questions;
 }
 
-const fitPage = (w: PageWork, qrToken: string, questions: GeneratedQuestion[]): DraftPage => ({
+/** A laid-out day page's content for its questions; null when the book is not laid out. */
+function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuestion[]): PageContent | null {
+  if (!input.book || !w.layout) return null;
+  return dayPageContent({
+    curriculum: input.curriculum, plan: input.plan, day: w.day, page: w.page, layout: w.layout, child: input.book.child, workbook: input.number,
+    questions: questions.map((q) => ({ number: q.number, slot: w.slots[q.number - 1].layoutSlot, package: q.package })),
+  });
+}
+
+const fitPage = (w: PageWork, qrToken: string, questions: GeneratedQuestion[], content: PageContent | null): DraftPage => ({
   number: w.number,
   dayLabel: `Day ${w.day}`,
   type: w.page.type,
   qrToken,
   questions: questions.filter((q) => q.package).map((q) => ({ number: q.number, package: q.package! })),
+  ...(content ? { content } : {}),
 });
+
+/** Runs `run` on every item, at most `limit` at once; the results keep the items' order. */
+async function pool<T, R>(items: T[], limit: number, run: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await run(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
+  return out;
+}
 
 /**
  * Generates a draft from a plan and stores it as one unit. Refused, with nothing stored and no AI call, when the input
@@ -345,7 +408,12 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
   // The book's pages and their numbers, before any AI call: the cover, How + Plan, the days, the back cover, blanks.
   const work: PageWork[] = [];
   let number = 2;
-  for (const day of input.plan.days) for (const page of day.pages) work.push({ number: ++number, day: day.day, page, slots: slotsOf(page) });
+  for (const day of input.plan.days) {
+    for (const page of day.pages) {
+      const layout = input.book ? layoutDayPage(input.curriculum, input.plan, day.day, page) : null;
+      work.push({ number: ++number, day: day.day, page, layout, slots: layout ? layoutSlots(page, layout) : slotsOf(page) });
+    }
+  }
   const backCover = number + 1;
   const total = Math.ceil(backCover / 4) * 4;
   const tokens = Array.from({ length: total }, () => deps.qrToken());
@@ -353,30 +421,38 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
 
   const plain = (n: number, type: BookPageType): GeneratedPage => ({
     number: n, type, dayLabel: null, day: null, pageOfDay: null, qrToken: tokens[n - 1], fit: { status: "not-needed" }, attempts: 0, questions: [],
+    ...(input.book ? { content: bookPageContent({ curriculum: input.curriculum, plan: input.plan, child: input.book.child, workbook: input.number, type, number: n }) } : {}),
   });
-  const pages: GeneratedPage[] = [plain(1, "cover"), plain(2, "how-plan")];
-  for (const [done, w] of work.entries()) {
+  let done = 0;
+  const dayPages = await pool(work, deps.concurrency ?? 1, async (w): Promise<GeneratedPage> => {
     const qrToken = tokens[w.number - 1];
     const page = { number: w.number, type: w.page.type, dayLabel: `Day ${w.day}`, day: w.day, pageOfDay: w.page.number, qrToken };
+    const laidOut = (questions: GeneratedQuestion[]) => {
+      const content = contentOf(input, w, questions);
+      return { ...(content ? { content } : {}), ...(w.layout?.omissions.length ? { omissions: w.layout.omissions } : {}) };
+    };
+    let result: GeneratedPage;
     if (w.slots.length === 0) {
-      pages.push({ ...page, fit: { status: "not-needed" }, attempts: 0, questions: [] });
+      result = { ...page, fit: { status: "not-needed" }, attempts: 0, questions: [], ...laidOut([]) };
     } else {
       let questions = await firstPass(input, deps, w);
-      let fit = await deps.fit.fits(fitPage(w, qrToken, questions), book);
+      let fit = await deps.fit.fits(fitPage(w, qrToken, questions, contentOf(input, w, questions)), book);
       let attempts: 1 | 2 = 1;
       if (!fit.ok) {
         const note = `The last page did not fit its template: ${fit.problems.map((p) => (p.question ? `question ${p.question}: ` : "") + p.reason).join("; ")}. Write shorter text and smaller numbers so it fits.`;
         const retried = await pageRetry(input, deps, w, questions, note);
         if (retried) {
           questions = retried;
-          fit = await deps.fit.fits(fitPage(w, qrToken, questions), book);
+          fit = await deps.fit.fits(fitPage(w, qrToken, questions, contentOf(input, w, questions)), book);
           attempts = 2;
         }
       }
-      pages.push({ ...page, fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems }, attempts, questions });
+      result = { ...page, fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems }, attempts, questions, ...laidOut(questions) };
     }
-    deps.progress?.(done + 1, work.length);
-  }
+    deps.progress?.(++done, work.length);
+    return result;
+  });
+  const pages: GeneratedPage[] = [plain(1, "cover"), plain(2, "how-plan"), ...dayPages];
   pages.push(plain(backCover, "back-cover"));
   for (let n = backCover + 1; n <= total; n++) pages.push(plain(n, "blank"));
 
