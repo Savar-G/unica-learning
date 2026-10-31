@@ -81,14 +81,20 @@ questions by number. It is used to render and is not stored yet (the generator, 
 
 - `pageSlots(page, level)` maps a planned page (`src/lib/workbook-plan.ts`) to its slots and the items each takes.
   Where the plan asks for more than the page holds in DESIGN.md, the slot takes the page's share (the rules are in the
-  function's comment); a parent-led page shares 6 cards among its slots.
+  function's comment); a parent-led page shares 6 cards among its slots, Fix it first, so review items are dropped
+  before Fix it items. Every planned part that places fewer items than it asked for is an omission (the part, the
+  count asked for and placed, and why); nothing is dropped silently.
 - `assembleBook` puts the book in order (cover, How + Plan, the days, back cover, blank pages to a multiple of 4, at
-  most 84), numbers the pages from the cover and the questions from 1 on each page, and sets each package's place.
+  most 84), numbers the pages from the cover and the questions from 1 on each page, and sets each package's place. It
+  returns the draft and the book's omissions with their book page, day and page of the day, for the generator (#311)
+  and the admin review (#312). Blank pages carry their book page in their ID (`…·BLANK·P83`). The caller gives each
+  page a QR token; a stored book needs random ones (the desk finds a page by its token alone).
 - `sampleBook` (`src/lib/workbook-sample-book.ts`) plans a book for any level with the real planner and fills every
   slot with sample questions that pass the package check, so every page type renders without AI. The numbers are for
   the look only.
 
-The type ramp is fixed per level band: U10 and up at the reference sizes, U4 to U9 at 18 px and up (facts 30 px),
+The day label, the title and the subtitle wrap to a second line at a word break; a third line, or a word wider than
+the column, fails the render as the slot's overflow, so nothing is cut. The type ramp is fixed per level band: U10 and up at the reference sizes, U4 to U9 at 18 px and up (facts 30 px),
 U1 to U3 at 20 px body with 56 px answer boxes. Nothing is shrunk to fit.
 
 The template's fit check (`fit`, run by the renderer after its own checks) fails a page, naming it, the slot and the
@@ -97,6 +103,7 @@ question, when:
 - a question (or a slot) runs past the bottom of the 688 by 720 content area, or past its width,
 - a slot holds more items than it takes (`slotMax`),
 - an answer box is under the band's height (40, 48 or 56 px) or under 40 px wide,
+- an answer box or choice strip covers its question's own text,
 - a work box is under 44 px, or writing lines are closer than 36 px under the prompt and 34 px apart.
 
 Every element that clips its content is a measured slot, so nothing is clipped silently. `proofPages` prints the

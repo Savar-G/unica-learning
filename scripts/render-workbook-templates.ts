@@ -5,6 +5,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { chromiumPrintEngine } from "../src/lib/print-engine-chromium";
 import { proofPages, renderWorkbook, type WorkbookDraft } from "../src/lib/workbook-render";
+import type { BookOmission } from "../src/lib/workbook-page";
 import { sampleBook } from "../src/lib/workbook-sample-book";
 import { workbookTemplate } from "../src/lib/workbook-template";
 import { fixedTemplateFonts } from "../src/lib/workbook-template-fonts";
@@ -22,11 +23,14 @@ await mkdir(out, { recursive: true });
 const template = workbookTemplate(await fixedTemplateFonts());
 const engine = chromiumPrintEngine();
 
-async function one(label: string, draft: WorkbookDraft, capped: string[]) {
+async function one(label: string, draft: WorkbookDraft, omissions: BookOmission[]) {
   const t0 = Date.now();
   const result = await renderWorkbook({ draft, parentId: PARENT, template, engine });
   console.log(`${label}: ${draft.pages.length} pages, ${result.status} in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
-  if (capped.length) console.log(`  capped: ${capped.join("; ")}`);
+  if (omissions.length) {
+    console.log(`  ${omissions.length} planned parts placed fewer items, for example:`);
+    for (const x of omissions.slice(0, 4)) console.log(`    page ${x.page} (day ${x.day} p${x.dayPage}) ${x.kind}: ${x.placed} of ${x.requested}: ${x.reason}`);
+  }
   if (result.status !== "rendered") {
     for (const p of result.problems.slice(0, 30)) console.log(`  page ${p.page}${p.question ? ` q${p.question}` : ""}${p.slot ? ` [${p.slot}]` : ""}: ${p.reason}`);
     const proofs = await proofPages({ draft, template, engine, problems: result.problems });
@@ -47,11 +51,11 @@ async function one(label: string, draft: WorkbookDraft, capped: string[]) {
 let n = 0;
 for (const level of levels) {
   const book = sampleBook({ level, workbookId: ids(++n), childId: CHILD, child: NAMES[level] ?? "Sam", number: 2 });
-  await one(level, book.draft, book.capped);
+  await one(level, book.draft, book.omissions);
 }
 for (const level of tests) {
   const book = sampleBook({ level, workbookId: ids(++n), childId: CHILD, child: NAMES[level] ?? "Sam", number: 4, testWorkbook: true });
-  await one(`${level}-test-book`, book.draft, book.capped);
+  await one(`${level}-test-book`, book.draft, book.omissions);
 }
 if (flags.has("--overflow")) {
   // A practice page given more questions than its On your own slot holds, past the content area.

@@ -5,11 +5,12 @@
 // wordmark) and four scan marks. Blank pages pad the book at the end.
 //
 // A page's content comes as data (src/lib/workbook-page.ts): its header and its named slots, each with its questions.
-// The template owns every position, size, colour and font. The type ramp is fixed per level band (U1 to U3, U4 to U9,
+// The template owns every position, size, colour and font. The day label, title and subtitle wrap to a second line at
+// a word break; a third line, or a word wider than the column, fails the render (never cut). The type ramp is fixed per level band (U1 to U3, U4 to U9,
 // U10 and up; DESIGN.md section 2); nothing is shrunk to fit. Its fit check (`fit`) fails a page whose content runs
 // past the content area (naming the slot and the first question pushed out), a slot holding more items than it takes,
-// an answer box smaller than the band allows, a work box under 44 px or writing lines closer than 36 px under their
-// prompt and 34 px apart.
+// an answer box smaller than the band allows, an answer box or choices over the question's own text, a work box under
+// 44 px or writing lines closer than 36 px under their prompt and 34 px apart.
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import { packageItem, valueText, type AnswerRegion, type AnswerValue, type QuestionPackage } from "@/lib/question-package";
 import type { Block, DayContent, Figure, PageContent, SlotName, WorkedLine } from "@/lib/workbook-page";
@@ -136,9 +137,9 @@ const CSS = `
 .nd{display:flex;align-items:flex-end;gap:8px;height:18px;font-size:13px;line-height:18px}
 .nd .r1{display:block;width:483px;border-bottom:1px solid #0C0C0E;height:14px}
 .nd .r2{display:block;flex:1;border-bottom:1px solid #0C0C0E;height:14px}
-.dl{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-weight:500;font-size:var(--small);line-height:1.2;letter-spacing:.04em;text-transform:uppercase;height:calc(var(--small)*1.2);overflow:hidden;white-space:nowrap}
-.tt{margin:2px 0 0;font-weight:300;font-size:var(--title);line-height:1.2;height:calc(var(--title)*1.2 + 2px);overflow:hidden;white-space:nowrap}
-.st{margin:0;font-size:var(--body);color:#44444C;height:calc(var(--body)*1.4);overflow:hidden}
+.dl{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-weight:500;font-size:var(--small);line-height:1.2;letter-spacing:.04em;text-transform:uppercase;max-height:calc(var(--small)*2.4);overflow:hidden}
+.tt{margin:2px 0 0;font-weight:300;font-size:var(--title);line-height:1.25;padding-bottom:2px;max-height:calc(var(--title)*2.5 + 3px);overflow:hidden}
+.st{margin:0;font-size:var(--body);color:#44444C;max-height:calc(var(--body)*2.8);overflow:hidden}
 .gu{margin:0;font-size:var(--body);color:#0C0C0E;background:#F4F4F5;border-radius:8px;padding:6px 12px;overflow:hidden}
 .gu b{font-weight:500}
 .ct{flex:1 1 auto;flex-shrink:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:12px}
@@ -202,7 +203,7 @@ const CSS = `
 .draw{display:block;width:100%;height:140px;border:1px dashed #CCCCD1;border-radius:8px}
 /* items */
 .q{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.q .qb{flex:1 1 0;min-width:0}
+.q .qb{flex:1 1 0;min-width:min-content}
 .q .rgs{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .q .full{flex-basis:100%;display:flex;gap:12px}
 .list{display:flex;flex-direction:column;gap:6px}
@@ -599,6 +600,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     case "warm-up":
       return chip() + list((q) => factItem(q, band), "facts");
     case "fix-it":
+      if (parent) return chip() + items();
       return chip() + `<div class="panel p-fx"><div class="inner">${qs.map((q) => cardItem(q, band, 60)).join("")}</div></div>`;
     case "in-your-head":
       return `<div class="panel p-hd"><div class="lab">${escape(b.label ?? "In your head")}</div><div class="list" style="margin-top:10px">${qs.map((q) => lineItem(q, band)).join("")}</div></div>`;
@@ -782,6 +784,9 @@ function blankPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, { 
 // ---------- The fit check ----------
 
 const bottomOf = (m: MeasuredElement) => m.y + m.height;
+/** The area two rects share, in square CSS pixels. */
+const overlap = (a: MeasuredElement, b: MeasuredElement) =>
+  Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
 const where = (page: DraftPage, c: DayContent) => `day ${c.day} page ${c.page} (${page.type})`;
 
 /** The template's fit check of a laid-out day page (see the header). */
@@ -811,12 +816,16 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
     });
   }
 
-  // Writing space: answer boxes by the band, work boxes, writing lines.
+  // Writing space: answer boxes by the band, work boxes, writing lines; and no box or choice over its own text.
   const slotOf = (n: number) => c.blocks.find((b) => b.items.includes(n))?.slot ?? null;
   for (const q of page.questions) {
+    const content = measured.get(`question-${q.number}-content`);
     for (const { region, name } of regionNames(q)) {
       const m = measured.get(name);
       if (!m) continue;
+      if (content && (region.kind === "box" || region.kind === "choice") && overlap(m, content) > 1) {
+        problems.push({ question: q.number, slot: slotOf(q.number), reason: `${at}: question ${q.number}'s ${region.kind === "box" ? "answer box covers" : "choices cover"} its own text` });
+      }
       const small = (what: string, size: number, min: number) =>
         problems.push({ question: q.number, slot: slotOf(q.number), reason: `${at}: question ${q.number}'s ${what} is ${Math.floor(size)} px; the design allows no less than ${min}` });
       if (region.kind === "box") {

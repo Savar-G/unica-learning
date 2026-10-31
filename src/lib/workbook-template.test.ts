@@ -98,7 +98,10 @@ describe("the fit check", () => {
   });
 
   it("fails an answer box smaller than the level band allows: 40 px from U10, 56 px at U1 to U3", async () => {
-    const at = (n: number) => ({ ...AREA, [`1 question-${n}-answer`]: { x: 100, y: 300, width: 64, height: 44 }, [`1 question-${n}`]: { x: 64, y: 290, width: 600, height: 80 } });
+    const at = (n: number) => ({
+      ...AREA, [`1 question-${n}`]: { x: 64, y: 290, width: 600, height: 80 },
+      [`1 question-${n}-content`]: { x: 64, y: 300, width: 30, height: 20 }, [`1 question-${n}-answer`]: { x: 100, y: 300, width: 64, height: 44 },
+    });
     const mid = first(draft, "warm-up");
     expect((await render(only(draft, mid), fakePrintEngine({ rects: at(1) }))).status).toBe("rendered");
 
@@ -109,6 +112,25 @@ describe("the fit check", () => {
     const result = await render(only(early, parent), fakePrintEngine({ rects: at(n) }));
     expect(result.status === "failed" && result.problems).toEqual([
       { page: parent.number, question: n, slot: expect.any(String), reason: expect.stringMatching(new RegExp(`question ${n}'s answer box height is 44 px; the design allows no less than 56$`)) },
+    ]);
+  });
+
+  it("fails an answer box that covers its own question's text (R371-4)", async () => {
+    const warm = first(draft, "warm-up");
+    const c = warm.content!;
+    if (c.kind !== "day") throw new Error("not a day page");
+    const fix = c.blocks.find((b) => b.slot === "fix-it")!.items[0];
+    const engine = fakePrintEngine({
+      rects: {
+        ...AREA,
+        [`1 question-${fix}`]: { x: 100, y: 300, width: 180, height: 60 },
+        [`1 question-${fix}-content`]: { x: 130, y: 310, width: 120, height: 22 },
+        [`1 question-${fix}-answer`]: { x: 210, y: 305, width: 64, height: 44 },
+      },
+    });
+    const result = await render(only(draft, warm), engine);
+    expect(result.status === "failed" && result.problems).toEqual([
+      { page: warm.number, question: fix, slot: "fix-it", reason: `day 1 page 1 (warm-up): question ${fix}'s answer box covers its own text` },
     ]);
   });
 

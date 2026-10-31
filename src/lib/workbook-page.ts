@@ -12,6 +12,7 @@
 import type { QuestionPackage } from "@/lib/question-package";
 import type { PartKind, PlannedPage, PlannedPart, WorkbookPlan } from "@/lib/workbook-plan";
 import type { DraftPage, WorkbookDraft } from "@/lib/workbook-render";
+import { slotMax } from "@/lib/workbook-template";
 
 // ---------- Slots ----------
 
@@ -164,61 +165,67 @@ export interface PlannedSlot {
  * U4 to U9 have bigger type and fewer items (DESIGN.md 7.3): page 2 has no Now you card beside Spot the error, Practice
  * 2 has one row, On your own takes 3, Unit B practice 2 fewer, stories 2, and a spare Remember these? block 2 items.
  */
-function partSlots(part: PlannedPart, page: PlannedPage, level: number): { slot: SlotName; items: number }[] {
+function partSlots(part: PlannedPart, page: PlannedPage, level: number): { slots: { slot: SlotName; items: number }[]; why: string } {
   const k: PartKind = part.kind;
   const early = level <= 9;
   const has = (kind: PartKind) => page.parts.some((p) => p.kind === kind);
   const reviewPage = page.parts[0]?.kind === "remember-these" || page.parts[0]?.kind === "warm-up";
   const unitBPage = page.parts.some((p) => p.kind === "practice" && p.unit === "B");
+  const laid = (slots: { slot: SlotName; items: number }[], why = "") => ({ slots, why });
   switch (k) {
     case "new-idea":
-      if (part.unit === "B" && unitBPage) return [{ slot: "worked-example", items: 0 }];
-      // Beside a Try this first card and a Spot the error card, the page has no room for a Now you card.
-      if (has("try-first") && has("spot-the-error")) return [{ slot: "worked-example", items: 0 }];
-      if (early && has("spot-the-error")) return [{ slot: "worked-example", items: 0 }];
-      return [{ slot: "worked-example", items: 0 }, { slot: "now-you", items: Math.min(part.items, has("spot-the-error") || early ? 2 : 4) }];
+      if (part.unit === "B" && unitBPage) return laid([{ slot: "worked-example", items: 0 }], "a new Unit B step shows only its worked example on the Unit B page");
+      if (has("try-first") && has("spot-the-error")) return laid([{ slot: "worked-example", items: 0 }], "no room for a Now you card beside Try this first and Spot the error");
+      if (early && has("spot-the-error")) return laid([{ slot: "worked-example", items: 0 }], "no room for a Now you card beside Spot the error at U1 to U9");
+      return laid(
+        [{ slot: "worked-example", items: 0 }, { slot: "now-you", items: Math.min(part.items, has("spot-the-error") || early ? 2 : 4) }],
+        has("spot-the-error") ? "the Now you card takes 2 items beside Spot the error" : early ? "the Now you card takes 2 items at U1 to U9" : "the Now you card takes at most 4 items",
+      );
     case "practice": {
       if (page.type === "practice-2") {
         // Rows getting harder, four to a row.
         const room = early ? 4 : 12 - (has("solve-it-two-ways") || has("spot-the-error") ? 4 : 0) - (has("remember-these") ? 4 : 0);
         const items = Math.min(part.items, room);
         const rows = Math.ceil(items / 4);
-        return Array.from({ length: rows }, (_, i) => ({ slot: "practice-row" as const, items: Math.min(4, items - i * 4) }));
+        return laid(Array.from({ length: rows }, (_, i) => ({ slot: "practice-row" as const, items: Math.min(4, items - i * 4) })), `Practice 2 has room for ${room} items beside its other blocks`);
       }
       if (part.unit === "B") {
         // Unit B: a reminder panel first when no New idea of B teaches on the page, then practice.
         const reminder = page.parts.some((p) => p.kind === "new-idea" && p.unit === "B") ? [] : [{ slot: "reminder" as const, items: 0 }];
         // Up to 8 items; 2 fewer beside a new step's worked example, 2 fewer beside a Spot the error card.
         const room = 8 - (reminder.length === 0 ? 2 : 0) - (has("spot-the-error") ? 2 : 0) - (early || level >= 19 ? 2 : 0);
-        return [...reminder, { slot: "unit-b-practice", items: Math.min(part.items, room) }];
+        return laid([...reminder, { slot: "unit-b-practice", items: Math.min(part.items, room) }], `the Unit B page has room for ${room} practice items`);
       }
       // Faded: one worked (Watch one), two partly done, the rest alone.
       const watch = part.faded?.watch ?? 0;
       const finish = part.faded?.finish ?? 0;
       // On your own: the rest, or 2 beside Solve it two ways and Spot the error (the 6-page practice page).
       const own = Math.max(0, part.items - watch - finish);
-      return [
+      const full = has("solve-it-two-ways") && has("spot-the-error");
+      return laid([
         ...(watch > 0 ? [{ slot: "watch-one" as const, items: 0 }] : []),
         ...(finish > 0 ? [{ slot: "finish-these" as const, items: finish }] : []),
-        { slot: "on-your-own", items: has("solve-it-two-ways") && has("spot-the-error") ? Math.min(own, 2) : early ? Math.min(own, 3) : own },
-      ];
+        { slot: "on-your-own", items: full ? Math.min(own, 2) : early ? Math.min(own, 3) : own },
+      ], full ? "On your own takes 2 items beside Solve it two ways and Spot the error" : "On your own takes 3 items at U1 to U9");
     }
     // The stories, then one "How do you know?" with two writing lines.
-    case "word-problems": return [{ slot: "word-problems", items: Math.min(part.items, has("remember-these") || early ? 2 : 3) }, { slot: "how-do-you-know", items: 1 }];
-    case "picture-stories": return [{ slot: "picture-stories", items: Math.min(part.items, has("remember-these") && early ? 2 : part.items) }];
+    case "word-problems":
+      return laid([{ slot: "word-problems", items: Math.min(part.items, has("remember-these") || early ? 2 : 3) }, { slot: "how-do-you-know", items: 1 }], "the stories page holds 2 stories beside a Remember these? block or at U1 to U9");
+    case "picture-stories":
+      return laid([{ slot: "picture-stories", items: Math.min(part.items, has("remember-these") && early ? 2 : part.items) }], "2 picture stories fit beside Remember these? at U1 to U9");
     // The plan (writing lines), the lettered parts, and the final answer with its work box.
-    case "math-in-the-world": return [{ slot: "math-in-the-world", items: 3 }];
+    case "math-in-the-world": return laid([{ slot: "math-in-the-world", items: 3 }]);
     // A spare Remember these? block on a page that is already full (the 6-page Practice page) gets no room.
     case "remember-these":
-      if (page.parts.some((p) => p.kind === "practice" && p.faded) && has("solve-it-two-ways") && has("spot-the-error")) return [];
-      return [{ slot: "remember-these", items: early && !reviewPage ? Math.min(part.items, 2) : part.items }];
+      if (page.parts.some((p) => p.kind === "practice" && p.faded) && has("solve-it-two-ways") && has("spot-the-error")) return laid([], "the 6-page Practice page has no room for a spare Remember these? block");
+      return laid([{ slot: "remember-these", items: early && !reviewPage ? Math.min(part.items, 2) : part.items }], "a spare Remember these? block takes 2 items at U1 to U9");
     // The 6-page review page: 2 Mixed set items beside the Challenge cards (DESIGN.md 7.2).
-    case "mixed-set": return [{ slot: "mixed-set", items: Math.min(part.items, has("challenge") ? 2 : 4) }];
+    case "mixed-set": return laid([{ slot: "mixed-set", items: Math.min(part.items, has("challenge") ? 2 : 4) }], "the Mixed set takes 2 items beside the Challenge cards");
     // Up to 30 facts; 27 (9 rows) beside the In your head box.
-    case "warm-up": return [{ slot: "warm-up", items: Math.min(part.items, has("in-your-head") ? 27 : 30) }];
+    case "warm-up": return laid([{ slot: "warm-up", items: Math.min(part.items, has("in-your-head") ? 27 : 30) }], "the warm-up takes 27 facts beside In your head");
     case "try-first": case "spot-the-error": case "solve-it-two-ways": case "in-your-head":
-      return [{ slot: k, items: 1 }];
-    default: return [{ slot: k, items: part.items }];
+      return laid([{ slot: k, items: 1 }]);
+    default: return laid([{ slot: k, items: part.items }]);
   }
 }
 
@@ -227,27 +234,81 @@ const PANELS: Partial<Record<SlotName, number>> = { "worked-example": 4, "watch-
 /** A parent-led page (U1 to U3) holds 6 item cards (2 columns, 3 rows); each slot after the first takes 1 more for its chip. */
 const PARENT_CARDS = 6;
 
+/** Planned items a page leaves out: the part, how many it asked for, how many the page placed, and why. */
+export interface Omission {
+  /** The part's index on the planned page, and its kind. */
+  part: number;
+  kind: PartKind;
+  requested: number;
+  placed: number;
+  reason: string;
+}
+
+/** A planned page laid into slots, with what it leaves out. */
+export interface PageLayout {
+  slots: PlannedSlot[];
+  omissions: Omission[];
+}
+
+/** The items a part asks for: a faded practice part's Watch one is worked, not an item. */
+const asked = (part: PlannedPart) => part.items - (part.kind === "practice" ? part.faded?.watch ?? 0 : 0);
+
 /**
- * A planned page's slots in order, with the items each takes: the contract between the planner and a filler. A slot
- * left with no items is left out (a panel stays). On a parent-led page (U1 to U3) the slots share the page's 8 cards in
- * order (6 items with one slot; the skeleton's 6 to 10 at these sizes does not fit 10); what does not fit is left out.
+ * A planned page laid into its slots, with the items each takes: the contract between the planner and a filler. A slot
+ * left with no items is left out (a panel stays). Each slot takes at most what the template's slot takes (slotMax).
+ * On a parent-led page (U1 to U3) the slots share the page's 6 cards; Fix it gets its cards first, then the other slots
+ * in order, so review items are dropped before a Fix it item (the skeleton's 6 to 10 a page does not fit 10 at these
+ * sizes). Every part that places fewer items than it asked for is in `omissions`, with the reason, never dropped
+ * silently: the generator (#311) and the admin review (#312) show them.
  */
-export function pageSlots(page: PlannedPage, level: number): PlannedSlot[] {
-  const slots = page.parts.flatMap((part, i) => partSlots(part, page, level).map((s) => ({ ...s, part: i })))
-    .filter((s) => s.items > 0 || s.slot in PANELS);
-  if (level > 3) return slots;
-  let room = PARENT_CARDS;
-  return slots.flatMap((s, i) => {
-    const cost = PANELS[s.slot];
-    if (cost !== undefined) {
-      if (room < cost + 1) return [];
-      room -= cost;
-      return [s];
+export function pageSlots(page: PlannedPage, level: number): PageLayout {
+  const pages = level >= 19 ? 6 : 8;
+  const why = new Map<number, string>();
+  let slots: PlannedSlot[] = page.parts.flatMap((part, i) => {
+    const laid = partSlots(part, page, level);
+    if (laid.why) why.set(i, laid.why);
+    return laid.slots.map((x) => {
+      const max = x.slot in PANELS ? 0 : slotMax(x.slot, { level, pages });
+      if (x.items > max && !(x.slot in PANELS)) why.set(i, `the ${x.slot} slot takes at most ${max} items`);
+      return { ...x, items: Math.min(x.items, max), part: i };
+    });
+  }).filter((x) => x.items > 0 || x.slot in PANELS);
+
+  if (level <= 3) {
+    // Fix it first, then the rest in order; a slot after the page's first takes one card more for its chip.
+    let room = PARENT_CARDS;
+    const placed = new Map<PlannedSlot, number>();
+    const order = [...slots.filter((x) => x.slot === "fix-it"), ...slots.filter((x) => x.slot !== "fix-it")];
+    for (const x of order) {
+      const chip = slots.indexOf(x) > 0 ? 1 : 0;
+      const cost = PANELS[x.slot];
+      if (cost !== undefined) {
+        if (room >= cost + 1) {
+          room -= cost;
+          placed.set(x, 0);
+        }
+        continue;
+      }
+      const items = Math.max(0, Math.min(x.items, room - chip));
+      if (items > 0) {
+        room -= items + chip;
+        placed.set(x, items);
+      }
+      if (items < x.items) why.set(x.part, `a parent-led page holds ${PARENT_CARDS} cards`);
     }
-    const items = Math.min(s.items, room - (i > 0 ? 1 : 0));
-    room -= items + (i > 0 ? 1 : 0);
-    return items > 0 ? [{ ...s, items }] : [];
+    slots = slots.filter((x) => placed.has(x)).map((x) => ({ ...x, items: placed.get(x)! }));
+  }
+
+  const omissions = page.parts.flatMap((part, i): Omission[] => {
+    const placed = slots.filter((x) => x.part === i).reduce((n, x) => n + x.items, 0);
+    // Stories add a How do you know? item of their own.
+    const extra = slots.filter((x) => x.part === i && x.slot === "how-do-you-know").reduce((n, x) => n + x.items, 0);
+    const placedOwn = placed - extra;
+    return placedOwn < asked(part)
+      ? [{ part: i, kind: part.kind, requested: asked(part), placed: placedOwn, reason: why.get(i) ?? "the page has no room for it" }]
+      : [];
   });
+  return { slots, omissions };
 }
 
 // ---------- The book ----------
@@ -277,26 +338,43 @@ export interface BookInput {
   profileBuild: string | null;
   plan: WorkbookPlan;
   cover: Pick<CoverContent, "title" | "sentence" | "bullets" | "parentLine">;
-  /** Each planned day page's content. */
-  fill(day: number, page: PlannedPage): FilledDayPage;
+  /** Each planned day page's content, for the slots pageSlots laid it into. */
+  fill(day: number, page: PlannedPage, slots: PlannedSlot[]): FilledDayPage;
   /** Each day's row on the plan page: Unit A's topic and the line under it. */
   planRow(day: number): { topic: string; second: string };
-  /** The QR token of book page `n` (from 1): unique across all workbooks (random in production, fixed in tests). */
+  /**
+   * The QR token of book page `n` (from 1). It must be unique across all workbooks: the desk finds a page by its token
+   * alone (`/tutor/p/<token>`, WorkbookStore.pageByToken). In production give each page 16 random bytes in base64url,
+   * as scripts/load-workbook-sample.ts does.
+   */
   qrToken(n: number): string;
+}
+
+/** Planned items the book leaves out, with their book page, day and page of the day. */
+export interface BookOmission extends Omission {
+  page: number;
+  day: number;
+  dayPage: number;
+}
+
+/** An assembled book: the draft to render, and every planned item it left out (see pageSlots). */
+export interface AssembledBook {
+  draft: WorkbookDraft;
+  omissions: BookOmission[];
 }
 
 /** The most pages a book may have (D-191: saddle stitch, at most 84). */
 export const BOOK_PAGES_MAX = 84;
 
 const two = (n: number) => String(n).padStart(2, "0");
-/** The printed page ID: `UL·LEAH·W03·D04·P1`, `UL·LEAH·W03·COVER`. */
+/** The printed page ID: `UL·LEAH·W03·D04·P1`, `UL·LEAH·W03·COVER`, `UL·LEAH·W03·BLANK·P83`. */
 export const pageId = (child: string, workbook: number, rest: string) => `UL·${child.toUpperCase()}·W${two(workbook)}·${rest}`;
 
 /**
  * The whole book as a draft to render: cover, How + Plan, the planned days, back cover, then blank pages to a multiple
- * of 4. Throws when the book would pass 84 pages.
+ * of 4, with every planned item the pages leave out. Throws when the book would pass 84 pages.
  */
-export function assembleBook(o: BookInput): WorkbookDraft {
+export function assembleBook(o: BookInput): AssembledBook {
   const { plan } = o;
   const level = plan.level;
   const pages: DraftPage[] = [];
@@ -321,10 +399,13 @@ export function assembleBook(o: BookInput): WorkbookDraft {
     kind: "how-plan", id: id("HOW+PLAN"), level, child: o.child, workbook: o.number, pagesADay, minutes: { ...plan.timeTarget },
     rows: plan.days.map((d, i) => ({ day: d.day, ...o.planRow(d.day), pages: ranges[i] })),
   });
+  const omissions: BookOmission[] = [];
   for (const d of plan.days) {
     for (const planned of d.pages) {
       const n = pages.length + 1;
-      const filled = o.fill(d.day, planned);
+      const layout = pageSlots(planned, level);
+      omissions.push(...layout.omissions.map((x) => ({ ...x, page: n, day: d.day, dayPage: planned.number })));
+      const filled = o.fill(d.day, planned, layout.slots);
       const questions: DraftPage["questions"] = [];
       const blocks: Block[] = filled.blocks.map((b) => ({
         ...b,
@@ -341,7 +422,8 @@ export function assembleBook(o: BookInput): WorkbookDraft {
     }
   }
   add("back-cover", null, { kind: "back-cover", id: id("BACK"), level });
-  while (pages.length % 4 !== 0) add("blank", null, { kind: "blank", id: id("BLANK"), level });
+  // Each blank page names its book page, so no two pages of a book share an ID.
+  while (pages.length % 4 !== 0) add("blank", null, { kind: "blank", id: id(`BLANK·P${pages.length + 1}`), level });
   if (pages.length > BOOK_PAGES_MAX) throw new Error(`the book has ${pages.length} pages; at most ${BOOK_PAGES_MAX} can be stitched`);
-  return { id: o.workbookId, childId: o.childId, number: o.number, levels: [level], profileBuild: o.profileBuild, pages };
+  return { draft: { id: o.workbookId, childId: o.childId, number: o.number, levels: [level], profileBuild: o.profileBuild, pages }, omissions };
 }

@@ -5,6 +5,7 @@ import { proofPages, renderWorkbook, type DraftPage, type WorkbookDraft } from "
 import { sampleBook } from "@/lib/workbook-sample-book";
 import { workbookTemplate } from "@/lib/workbook-template";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
+import { curriculumFor } from "@/lib/workbook-curriculum";
 
 // The workbook templates (#310) laid out in real Chromium: one page of each type from sample books at U2 (parent-led),
 // U6, U12, U22 and a level's last book fits its content area, prints its number and QR code, and stores a box for
@@ -50,6 +51,39 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
     },
     120_000,
   );
+
+  it("fails a box over its own text: the Fix it cards before R371-4 let the sum run under the box", async () => {
+    const draft = book("U12", 8);
+    const warm = draft.pages.find((p) => p.content?.kind === "day" && p.content.blocks.some((b) => b.slot === "fix-it"))!;
+    const before = { ...template, css: template.css + ".q .qb{min-width:0}" };
+    const result = await renderWorkbook({ draft: { ...draft, pages: [warm] }, parentId: PARENT, template: before, engine });
+    expect(result.status === "failed" && result.problems).toContainEqual(expect.objectContaining({
+      slot: "fix-it", reason: expect.stringMatching(/answer box covers its own text$/),
+    }));
+    // As laid out now, the box wraps under the sum.
+    expect((await renderWorkbook({ draft: { ...draft, pages: [warm] }, parentId: PARENT, template, engine })).status).toBe("rendered");
+  }, 60_000);
+
+  it("wraps the longest step name to a second line on every day page type, and fails a title too long for two (R371-5)", async () => {
+    const bc = curriculumFor("bc")!;
+    const steps = bc.levels.flatMap((l) => (bc.levelSkills(l.id) ?? []).flatMap((k) => (bc.skillSteps(k.id) ?? []).map((x) => x.name)));
+    const longest = steps.reduce((a, b) => (b.length > a.length ? b : a));
+    const sentence = bc.levels.flatMap((l) => (bc.levelSkills(l.id) ?? []).map((k) => k.text)).reduce((a, b) => (b.length > a.length ? b : a));
+    const titled = (draft: WorkbookDraft, title: string): WorkbookDraft => ({
+      ...draft,
+      pages: oneOfEach(draft).pages.filter((p) => p.content?.kind === "day").map((p) => ({ ...p, content: { ...p.content!, title, topic: title } as typeof p.content })),
+    });
+    const headerProblems = (r: Awaited<ReturnType<typeof renderWorkbook>>) =>
+      r.status === "failed" ? r.problems.filter((x) => x.slot === "title" || x.slot === "day-label") : [];
+
+    for (const [level, n] of [["U2", 1], ["U6", 2], ["U12", 3], ["U22", 4]] as const) {
+      const fits = await renderWorkbook({ draft: titled(book(level, n), `More practice: ${longest}`), parentId: PARENT, template, engine });
+      expect(headerProblems(fits)).toEqual([]);
+      const long = titled(book(level, n), sentence);
+      const fails = await renderWorkbook({ draft: long, parentId: PARENT, template, engine });
+      expect(new Set(headerProblems(fails).filter((x) => x.slot === "title").map((x) => x.page))).toEqual(new Set(long.pages.map((p) => p.number)));
+    }
+  }, 240_000);
 
   it("fails a cover whose title runs to a third line, naming the slot", async () => {
     const draft = book("U12", 7);

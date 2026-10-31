@@ -5,8 +5,8 @@
 // ways, Spot the error, written reasons, Math in the world parts, parent-led circle and picture items. The numbers are
 // placeholders for the look: they do not teach the planned skill (the generator writes those).
 //
-// A slot gets the items the plan asks for, up to what the slot takes (slotMax); `capped` lists each slot that had to
-// take fewer, so a plan that asks for more than a page holds shows up.
+// A slot gets the items pageSlots gives it; `omissions` lists every planned item the pages left out, and why, so a
+// plan that asks for more than a page holds shows up.
 // Pure TypeScript: no Next.js, React, network, database, clock or Math.random.
 import { BC_SKILL_MAP, type Grade } from "@/lib/assessment";
 import {
@@ -24,7 +24,7 @@ import {
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import {
   assembleBook,
-  pageSlots,
+  type BookOmission,
   type FilledBlock,
   type FilledDayPage,
   type Figure,
@@ -32,7 +32,6 @@ import {
 } from "@/lib/workbook-page";
 import { DEFAULT_STEPS, planLevel, planWorkbook, type PlanInput, type PlannedPage, type WorkbookPlan } from "@/lib/workbook-plan";
 import type { WorkbookDraft } from "@/lib/workbook-render";
-import { slotMax } from "@/lib/workbook-template";
 
 const BC = curriculumFor("bc")!;
 const SKILLS = new Map(BC_SKILL_MAP.standards.flatMap((s) => s.skills.map((k) => [k.id, s.code] as const)));
@@ -229,20 +228,19 @@ const opCheck = (region: string) => ({ kind: "operation" as const, region });
 
 // ---------- Topics ----------
 
-/** A short topic for a skill and step: the drafted step's name, else the skill's text up to its first clause. */
+/** The longest topic a sample page prints: the longest drafted step name is 45 characters. */
+const TOPIC_MAX = 45;
+
+/**
+ * A topic for a skill and step, never cut inside a phrase: the drafted step's name, else the skill's text up to its
+ * first clause when that is short enough, else the level's title.
+ */
 function topicOf(skill: string | undefined, step: number | undefined): string {
   if (!skill) return "Review";
   const named = step ? BC.skillSteps(skill)?.[step - 1]?.name : undefined;
   if (named) return named;
-  const text = BC.skill(skill)?.text ?? skill;
-  const clause = text.split(/,| \(| with | by | and | to tell | that /)[0];
-  const words = clause.split(" ");
-  let out = "";
-  for (const w of words) {
-    if ((out + " " + w).trim().length > 30) break;
-    out = (out + " " + w).trim();
-  }
-  return (out || text.slice(0, 30)).replace(/[:;,.]+$/, "");
+  const clause = (BC.skill(skill)?.text ?? skill).split(/,|;| \(/)[0].trim();
+  return clause.length <= TOPIC_MAX ? clause : BC.levelOfSkill(skill)?.title ?? "Review";
 }
 
 // ---------- Filling slots ----------
@@ -254,7 +252,6 @@ interface FillCtx {
   workbookId: string;
   day: number;
   page: PlannedPage;
-  capped: string[];
   next: () => string;
 }
 
@@ -265,8 +262,7 @@ function fillSlot(s: PlannedSlot, index: number, ctx: FillCtx): FilledBlock {
   const r = seeded(`${ctx.workbookId}:${day}:${page.number}:${index}:${s.slot}`);
   const part = page.parts[s.part];
   const at = (): At => ({ id: ctx.next(), skill: firstSkill(page, s.part), level });
-  const max = Math.max(0, Math.min(s.items, slotMax(s.slot, { level, pages: ctx.plan.days[day - 1].pages.length })));
-  if (max < s.items) ctx.capped.push(`day ${day} page ${page.number} ${s.slot}: ${s.items} planned, ${max} placed`);
+  const max = s.items;
   const times = <T,>(n: number, f: (k: number) => T) => Array.from({ length: n }, (_, k) => f(k));
   const line = () => {
     const op = practiceOp(band, r, level);
@@ -529,10 +525,7 @@ function headerOf(page: PlannedPage, ctx: FillCtx, blocks: FilledBlock[]): Omit<
     case "level-test": head = t(`Level U${level} test`, "Do this on your own."); break;
     default: head = t("Remember these?", "Things you learned before, so they stay fresh.");
   }
-  // A title is one line: a long topic keeps the plain title.
-  const room = level <= 9 ? 30 : 42;
-  const plain: Record<string, string> = { practice: "Practice", "practice-2": "More practice", "word-problems": "Stories" };
-  if (head.title.length > room) head = { ...head, title: plain[type] ?? topic.split(" ").slice(0, 3).join(" ") };
+
   const parentLed = page.type === "parent-led";
   const grownUp = parentLed
     ? "Read each line aloud. Your child circles, colours or writes one number."
@@ -559,8 +552,8 @@ export interface SampleBookOptions {
 export interface SampleBook {
   draft: WorkbookDraft;
   plan: WorkbookPlan;
-  /** Slots that took fewer items than the plan asked for (see the header). */
-  capped: string[];
+  /** Planned items the pages left out, with why (pageSlots). */
+  omissions: BookOmission[];
 }
 
 /** The BC school grade of a level (three levels a grade from Kindergarten); internal only. */
@@ -589,7 +582,6 @@ export function sampleBook(o: SampleBookOptions): SampleBook {
   const result = planWorkbook(input);
   if (!result.ok) throw new Error(`sample book: ${result.reason}`);
   const plan = result.plan;
-  const capped: string[] = [];
   let key = 0;
   const band = bandOf(level.number);
   const title = BC.level(o.level)!.title;
@@ -599,7 +591,7 @@ export function sampleBook(o: SampleBookOptions): SampleBook {
     const part = plan.days[day - 1].pages.flatMap((p) => p.parts).find((p) => p.unit === track && p.step);
     return part ? topicOf(part.step!.skill, part.step!.step) : null;
   };
-  const draft = assembleBook({
+  const { draft, omissions } = assembleBook({
     workbookId: o.workbookId, childId: o.childId, child: o.child, number, levelTitle: title, profileBuild: null, plan,
     cover: {
       title: [words.slice(0, split).join(" "), words.slice(split).join(" ")],
@@ -623,12 +615,14 @@ export function sampleBook(o: SampleBookOptions): SampleBook {
       const second = day === 10 ? "Show what you know" : day === 5 ? "Friday 5" : b ?? (d.kind === "mixed" ? "Mixed practice" : "Remember these?");
       return { topic: a ?? (d.kind === "mixed" ? "Mixed practice" : "Review"), second };
     },
-    fill(day, page) {
-      const ctx: FillCtx = { plan, level: level.number, band, workbookId: o.workbookId, day, page, capped, next: () => `${o.workbookId}:s${++key}` };
-      const blocks = pageSlots(page, level.number).map((s, i) => fillSlot(s, i, ctx));
+    fill(day, page, slots) {
+      const ctx: FillCtx = { plan, level: level.number, band, workbookId: o.workbookId, day, page, next: () => `${o.workbookId}:s${++key}` };
+      const blocks = slots.map((s, i) => fillSlot(s, i, ctx));
       return { ...headerOf(page, ctx, blocks), blocks };
     },
-    qrToken: o.qrToken ?? ((n) => `${o.workbookId.replace(/-/g, "").slice(0, 16)}p${String(n).padStart(3, "0")}`),
+    // Fixed tokens from the whole workbook id and the page: unique per workbook and page, but guessable; a stored book
+    // passes random ones (see BookInput.qrToken).
+    qrToken: o.qrToken ?? ((n) => `${o.workbookId.replace(/-/g, "")}p${String(n).padStart(3, "0")}`),
   });
-  return { draft, plan, capped };
+  return { draft, plan, omissions };
 }
