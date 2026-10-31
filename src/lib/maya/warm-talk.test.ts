@@ -3,6 +3,7 @@ import {
   createSession,
   freeTalkProblem,
   heardWordings,
+  lineOffers,
   MAX_WORDINGS,
   memoryWordingHistoryStore,
   mergeHistory,
@@ -124,8 +125,8 @@ describe("rule B: a turn with no math line", () => {
   it("says the model's own small talk, so Maya can answer like a person", () => {
     const c = call();
     c.child("I have a dog!");
-    const said = c.say({ act: "clarify", parts: [{ talk: "A dog! What's your dog's name?" }, { line: "question.problem" }] });
-    expect(said.text).toMatch(/^A dog! What's your dog's name\? .*27 \+ 39/);
+    const said = c.say({ act: "clarify", parts: [{ talk: "A dog! What's your dog's name?" }] });
+    expect(said.text).toBe("A dog! What's your dog's name?");
     expect(said.talkReplaced).toBeUndefined();
   });
 
@@ -237,5 +238,66 @@ describe("one turn does not start two parts alike", () => {
     // No two sentences of the turn start with the same two words.
     const starts = said.split(/(?<=[.?!])\s+/).map(opening).filter((o) => o.includes(" "));
     expect(new Set(starts).size, said).toBe(starts.length);
+  });
+});
+
+describe("R374-2-1: every line with math in it is a math line, and free words never follow it", () => {
+  it("refuses the reviewer's case: the question line, then \"Keep exchanging.\"", () => {
+    const c = call();
+    expect(c.refusal({ act: "clarify", parts: [{ line: "question.problem" }, { talk: "Keep exchanging." }] })).toMatchObject({ code: "math_line_not_last" });
+    expect(talkMath("Keep exchanging.")).toBe("exchanging");
+  });
+
+  const lines: [string, Record<string, unknown>, Record<string, unknown>][] = [
+    ["question.problem", { line: "question.problem" }, { act: "clarify" }],
+    ["question.read", { line: "question.read", slots: { sentence: 0 } }, { act: "clarify" }],
+    ["assess.ask", { line: "assess.ask" }, { act: "clarify" }],
+    ["redirect.back", { line: "redirect.back" }, { act: "redirect", reading: { offTopic: true } }],
+  ];
+
+  it.each(lines)("%s: free words after it or before it are refused; bank words before it are said, and the line is last", (_id, line, base) => {
+    const c = call();
+    expect(c.refusal({ ...base, parts: [line, { talk: "Good job." }] })).toMatchObject({ code: "math_line_not_last" });
+    expect(c.refusal({ ...base, parts: [{ talk: "Good job." }, line] })).toMatchObject({ code: "free_talk_in_math_turn" });
+    expect(c.refusal({ ...base, parts: [line, { warm: "smalltalk" }] })).toMatchObject({ code: "math_line_not_last" });
+    const said = c.say({ ...base, parts: [{ warm: "smalltalk" }, line] });
+    const last = said.text.split(/(?<=[.?!])\s+/).at(-1)!;
+    expect(last, said.text).toMatch(/27 \+ 39/);
+  });
+
+  it("treats every offered line with math in any wording as a math line, and only those", () => {
+    const c = call();
+    c.child("I can't start.");
+    const offers = lineOffers(c.s);
+    let math = 0;
+    for (const [act, list] of Object.entries(offers)) {
+      for (const o of list!) {
+        const hasMath = o.texts.some((t) => talkMath(t) !== null);
+        const base = { version: 2, act, step: o.slots.step, level: o.level ?? 0, reading: { help: "show" } };
+        // Only lines the act takes on their own: other refusals come before the words.
+        if (step(c.s, { type: "proposal", at: 60_000, proposal: { ...base, parts: [{ line: o.line, slots: o.slots }] } }).refusal) continue;
+        const r = step(c.s, { type: "proposal", at: 60_000, proposal: { ...base, parts: [{ line: o.line, slots: o.slots }, { talk: "Good job." }] } });
+        if (hasMath) {
+          math += 1;
+          expect(r.refusal?.code, `${act} ${o.line}`).toBe("math_line_not_last");
+        } else {
+          expect(r.refusal?.code, `${act} ${o.line}`).not.toBe("math_line_not_last");
+        }
+      }
+    }
+    expect(math).toBeGreaterThan(5);
+  });
+
+  it.each([
+    "exchange", "exchanges", "exchanged", "exchanging", "regroup", "regrouping", "trade", "trading", "carry", "carrying", "carried",
+    "borrow", "borrowing", "plus", "minus", "times", "divide", "dividing", "add", "adding", "added", "subtract", "subtracting",
+    "multiplying", "splitting", "sharing", "counting", "removing", "writing", "rounding", "doubling", "halving",
+  ])("refuses %s in every free word", (word) => {
+    expect(talkMath(`Keep ${word} it.`)).toBe(word);
+    expect(freeTalkProblem(`Keep ${word} it.`)).not.toBeNull();
+  });
+
+  it.each(["take away", "count on", "count back"])("refuses the pair %s", (pair) => {
+    expect(talkMath(`Now ${pair} slowly.`)).not.toBeNull();
   });
 });

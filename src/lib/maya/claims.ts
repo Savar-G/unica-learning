@@ -54,10 +54,31 @@ const WORDS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Word pairs on the list as a pair: "in all" is an operation word. A few everyday pairs are fine talk although a word in
- * them is on the list: "all right", "right now", "more time", "more help".
+ * Verbs of the math and the work, refused in every form (R374-2-1): "exchange", "exchanges", "exchanged",
+ * "exchanging", "carries", "splitting" ...
  */
-const PAIRS: ReadonlySet<string> = new Set(["in all"]);
+const VERBS = [
+  "add", "subtract", "multiply", "divide", "share", "split", "carry", "borrow", "regroup", "trade", "exchange", "count",
+  "remove", "combine", "increase", "decrease", "reduce", "halve", "double", "triple", "round", "estimate", "total",
+  "equal", "write", "rewrite", "put", "bring", "cross", "solve", "answer", "group", "square", "times",
+];
+/** Every form of a verb: -s, -es, -ed, -d, -ing, -er, with a final e dropped, y as i, and a doubled last consonant. */
+function forms(verb: string): string[] {
+  const out = [verb, `${verb}s`, `${verb}es`, `${verb}ed`, `${verb}d`, `${verb}ing`, `${verb}er`, `${verb}ers`];
+  if (verb.endsWith("e")) out.push(`${verb.slice(0, -1)}ing`, `${verb.slice(0, -1)}er`);
+  if (/[^aeiou]y$/.test(verb)) out.push(`${verb.slice(0, -1)}ies`, `${verb.slice(0, -1)}ied`, `${verb.slice(0, -1)}ier`);
+  const last = verb[verb.length - 1];
+  if (/[^aeiouwxy]/.test(last)) out.push(`${verb}${last}ing`, `${verb}${last}ed`, `${verb}${last}er`);
+  return out;
+}
+/** The word list with every form of each verb. */
+const ALL_WORDS: ReadonlySet<string> = new Set([...WORDS, ...VERBS.flatMap(forms), "wrote", "written", "brought"]);
+
+/**
+ * Word pairs on the list as a pair: "in all", "take away", "count on" and "count back" are operation words. A few
+ * everyday pairs are fine talk although a word in them is on the list: "all right", "right now", "more time", "more help".
+ */
+const PAIRS: ReadonlySet<string> = new Set(["in all", "take away", "count on", "count back", "line up"]);
 const ALLOWED_PAIRS: ReadonlySet<string> = new Set(["all right", "right now", "more time", "more help"]);
 
 /** A word made only of number words, with an ordinal or plural ending: "seventeen", "twentyseven", "sixths". */
@@ -89,7 +110,7 @@ export function talkMath(text: string): string | null {
     const before = `${words[i - 1] ?? ""} ${w}`;
     if (ALLOWED_PAIRS.has(pair) || ALLOWED_PAIRS.has(before)) continue;
     if (PAIRS.has(pair)) return pair;
-    if (WORDS.has(w) || NUMBER_WORD.test(w)) return w;
+    if (ALL_WORDS.has(w) || NUMBER_WORD.test(w)) return w;
   }
   return null;
 }

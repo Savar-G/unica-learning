@@ -34,7 +34,7 @@ import {
 } from "@/lib/question-package";
 import { talkMath } from "./claims";
 import { saidAsApproved } from "./speech";
-import { findOffer, normalSlots, packageLines, LINE_IDS, type LineId, type LineOffer } from "./lines";
+import { findOffer, normalSlots, packageLines, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, FALLBACK_GROUP, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { committedText, offersChoice, readNumbers, takenBack, valuesIn } from "./numbers";
@@ -1231,8 +1231,12 @@ const meets = (requires: NonNullable<LineOffer["requires"]>, view: View) =>
 const openings = (text: string) =>
   text.split(/(?<=[.?!])\s+/).map((x) => (x.toLowerCase().match(/[\p{L}']+/gu) ?? []).slice(0, 2).join(" ")).filter((x) => x.includes(" "));
 
-/** Lines that frame the question, not the work: a turn with only these may hold the model's own warm words (D-196 B). */
-const FRAMING: ReadonlySet<LineId> = new Set(["open.hello", "question.problem", "question.read", "assess.ask", "redirect.back"]);
+/**
+ * A line is math when any of its filled wordings holds what the no-math rule refuses in talk: a number, a sign, or an
+ * operation, place, carry, write, answer or judgement word (R374-2-1). Decided from the filled text, not a list of
+ * line ids, so a new line cannot be left out: only a line with no math in any wording (the hello) is not math.
+ */
+const isMathLine = (o: LineOffer) => o.texts.some((t) => talkMath(t) !== null);
 
 /**
  * Renders a proposal's parts. Each line must be offered now. Warm talk (D-196): in a turn with a math line it comes
@@ -1244,7 +1248,18 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
   const texts: string[] = [];
   const chosen: LineOffer[] = [];
   const lines: string[] = [];
-  const mathTurn = p.parts.some((part) => "line" in part && !FRAMING.has(part.line));
+  // Every line part is checked first, so the turn is known to carry math before any warm words are taken.
+  const found = new Map<number, LineOffer>();
+  for (const [i, part] of p.parts.entries()) {
+    if (!("line" in part)) continue;
+    const o = findOffer(offers, { line: part.line, slots: normalSlots(part.slots ?? {}) });
+    if (!o) {
+      const ids = [...new Set(offers.map((x) => x.line))];
+      return { code: "line_not_offered", reason: `"${part.line}" with these slots is not offered for ${p.act} now. Offered: ${ids.join(", ") || "no lines"}.` };
+    }
+    found.set(i, o);
+  }
+  const mathTurn = [...found.values()].some(isMathLine);
   const turn = s.turns.filter((t) => t.speaker === "maya").length;
   let mathSaid = false;
   let named = false;
@@ -1269,7 +1284,7 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
     }
     return withName(text, name);
   };
-  for (const part of p.parts) {
+  for (const [i, part] of p.parts.entries()) {
     if (!("line" in part)) {
       if (mathSaid) return { code: "math_line_not_last", reason: "Warm talk comes before the math line: the math line is the last thing Maya says in a turn." };
       if ("warm" in part) {
@@ -1289,11 +1304,7 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
       }
       continue;
     }
-    const o = findOffer(offers, { line: part.line, slots: normalSlots(part.slots ?? {}) });
-    if (!o) {
-      const ids = [...new Set(offers.map((x) => x.line))];
-      return { code: "line_not_offered", reason: `"${part.line}" with these slots is not offered for ${p.act} now. Offered: ${ids.join(", ") || "no lines"}.` };
-    }
+    const o = found.get(i)!;
     if (o.requires && !meets(o.requires, view)) {
       return { code: "line_not_offered", reason: `"${o.line}" needs an answer code checked ${o.requires.answer} for "${o.requires.step}".` };
     }
@@ -1301,7 +1312,7 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
       return { code: "hint_too_high", reason: `"${o.line}" is H${o.level} help, above this guide's level H${p.level ?? 0}.` };
     }
     const text = o.texts[pickFresh(o.texts, (k) => `${o.key}#${k}`)];
-    if (!FRAMING.has(o.line)) mathSaid = true;
+    if (isMathLine(o)) mathSaid = true;
     texts.push(text);
     lines.push(text);
     chosen.push(o);

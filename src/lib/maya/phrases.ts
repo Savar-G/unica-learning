@@ -1,11 +1,12 @@
 // Maya's warm talk (D-196, review R374-1). Warm talk could undo a correct line ("Add 7 + 9." then "Do the opposite."),
 // so it follows two rules:
 //
-// A. A turn that carries a math line (any line with a number, a step, a check or a work instruction) takes its warm talk
-//    only from this code-written phrase bank, and the warm talk comes before the math: the math line is the last thing
-//    said, so nothing can follow it and reverse it.
-// B. A turn with no math line (the opening after the hello, small talk, getting back to the question, check-ins,
-//    waiting, closing) may use the model's own words, so Maya can answer "I have a dog!" like a person. Those words pass
+// A. A turn that carries a math line takes its warm talk only from this code-written phrase bank, and the warm talk
+//    comes before the math: the math line is the last thing said, so nothing can follow it and reverse it. A line is
+//    math when any filled wording holds a number or a work word (session.ts, isMathLine): every line but the hello, so
+//    a turn that restates the question or gets back to it follows this rule too (R374-2-1).
+// B. A turn with no math line (the hello and talk around it, small-talk replies, check-ins, waiting, closing) may use
+//    the model's own words, so Maya can answer "I have a dog!" like a person. Those words pass
 //    the strict no-math rule (claims.ts), a ban on work instructions and on pointing back to an earlier sentence, and a
 //    length cap. Words that fail are replaced by a bank phrase of the same purpose; the turn never fails. This is not
 //    airtight (free words can always say something unhelpful), but the risk is low: these turns hold no math to
@@ -25,7 +26,7 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
   encourage: [
     "You're working hard on this, {name}.", "I like how you keep trying.", "Great effort!", "You're doing a good job sticking with it.",
     "Keep going, you've got this.", "I can see you're thinking carefully.", "Nice focus!", "You're getting the hang of this, {name}.",
-    "I love how you're not giving up.", "You're being really patient.", "Way to keep at it!", "You're thinking like a real problem solver.",
+    "I love how you're not giving up.", "You're being really patient.", "Way to keep at it!", "You're thinking like a real detective.",
     "Good thinking, {name}.", "You're doing great work today.", "I'm proud of how hard you're trying.", "You're on a roll!",
     "You're a brave learner.", "Nice and steady, {name}.",
   ],

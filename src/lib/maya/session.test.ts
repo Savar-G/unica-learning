@@ -500,7 +500,7 @@ describe("REDIRECT", () => {
     expect(c.session.state).toBe("REDIRECT");
     c.child("What about my dog?");
     expect(c.refused({ act: "guide", step: "ones", level: 0, parts: [t("Back to it.")], reading: { offTopic: true } })).toMatchObject({ allowed: ["redirect", "close"] });
-    c.maya({ act: "redirect", parts: [ln("redirect.back"), t("Or we can stop. What would you like?")], reading: { offTopic: true } });
+    c.maya({ act: "redirect", parts: [{ warm: "smalltalk" }, ln("redirect.back")], reading: { offTopic: true } });
     c.child("Okay, I got 56.");
     c.maya({ act: "guide", step: "ones", level: 0, parts: [ln("step.invite", { step: "ones" })], reading: { answers: [{ value: num(56), step: "result", verdict: "wrong" }] } });
     expect(c.session.state).toBe("GUIDE_TARGET");
