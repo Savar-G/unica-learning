@@ -366,48 +366,136 @@ export function newestHistory(copies: readonly (string | null)[]): BoardHistory 
 /**
  * Where the board's draft is kept: the seam. The desk keeps it in the browser's storage; tests use the in-memory store
  * (src/lib/board-history-memory.ts). `write` returns false when the store is full or off: the board is still on screen.
+ * `exclusive` runs `fn` while no other tab runs one for the same key (the browser's Web Locks); a store that cannot lock
+ * runs it at once, and a tab heals a lost write when it next saves (see `saveDraft`).
  */
 export interface DraftStore {
   read(key: string): string | null;
   write(key: string, value: string): boolean;
   remove(key: string): void;
   keys(): string[];
+  exclusive<T>(key: string, fn: () => T): Promise<T>;
 }
 
 /** Every board draft starts with this. */
 export const BOARD_DRAFT_ROOT = "unica-board:";
 /** The draft of the board for one question of one workbook page. */
 export const boardDraftKey = (book: string, page: number, question: number | null) => `${BOARD_DRAFT_ROOT}${book}:${page}:${question ?? "none"}`;
-/** The most board drafts kept on a device: the oldest go first. */
+/** A board open in a tab says so under this key, with the time it last said it (`markOpen`). */
+export const OPEN_ROOT = "unica-board-open:";
+/** The board drafts a device keeps: past this, drafts not touched in RECENT_MS and not open in a tab go, oldest first. */
 export const MAX_DRAFTS = 30;
+/** Past this, the oldest drafts go even when recent; a board open in a tab never goes. */
+export const HARD_MAX_DRAFTS = 60;
+export const RECENT_MS = 24 * 60 * 60_000;
+/** An open board says so every minute: one not heard from in this long is closed. */
+export const OPEN_MS = 5 * 60_000;
 
 const STAMP = "@";
 
-/** The board's draft, or null when there is none or it does not read back (then the board starts again). */
-export function loadDraft(store: DraftStore, key: string): BoardHistory | null {
-  const raw = store.read(key);
+const stampOf = (raw: string | null) => Number(raw?.split(STAMP, 1)[0]) || 0;
+
+function decodeDraft(raw: string | null): BoardHistory | null {
   if (!raw) return null;
   const cut = raw.indexOf(STAMP);
   return cut < 0 ? null : decodeHistory(raw.slice(cut + 1));
 }
 
-/**
- * Saves the board's draft, stamped with `now` (ms, any clock that only goes forward across visits: Date.now()), unless
- * the store holds a newer revision of it (another tab). Keeps at most MAX_DRAFTS board drafts: the oldest go. An empty
- * board removes its draft. Returns false when it was not saved.
- */
-export function saveDraft(store: DraftStore, key: string, h: BoardHistory, now: number): boolean {
-  const held = loadDraft(store, key);
-  if (held && held.revision > h.revision) return false;
-  if (h.events.length === 0) {
-    store.remove(key);
-    return true;
-  }
-  const others = store
-    .keys()
+/** The board's draft, or null when there is none or it does not read back (then the board starts again). */
+export const loadDraft = (store: DraftStore, key: string): BoardHistory | null => decodeDraft(store.read(key));
+
+/** The tab has this board open at `now` (ms, Date.now()): its draft is not evicted while it says so. */
+export function markOpen(store: DraftStore, key: string, now: number): void {
+  store.write(`${OPEN_ROOT}${key}`, String(Math.round(now)));
+}
+
+/** The tab closed this board. */
+export const markClosed = (store: DraftStore, key: string): void => store.remove(`${OPEN_ROOT}${key}`);
+
+/** Makes room for `key`: evicts old drafts that no tab has open, never past what the two caps ask. */
+function evict(store: DraftStore, key: string, now: number): void {
+  const keys = store.keys();
+  const open = (k: string) => now - (Number(store.read(`${OPEN_ROOT}${k}`)) || 0) < OPEN_MS;
+  const drafts = keys
     .filter((k) => k.startsWith(BOARD_DRAFT_ROOT) && k !== key)
-    .map((k) => ({ k, stamp: Number(store.read(k)?.split(STAMP, 1)[0]) || 0 }))
+    .map((k) => ({ k, stamp: stampOf(store.read(k)), open: open(k) }))
+    .filter((d) => !d.open)
     .sort((a, b) => a.stamp - b.stamp);
-  for (const { k } of others.slice(0, Math.max(0, others.length - (MAX_DRAFTS - 1)))) store.remove(k);
-  return store.write(key, `${Math.round(now)}${STAMP}${encodeHistory(h)}`);
+  let total = keys.filter((k) => k.startsWith(BOARD_DRAFT_ROOT) && k !== key).length + 1;
+  const drop = (k: string) => {
+    store.remove(k);
+    store.remove(`${OPEN_ROOT}${k}`);
+    total--;
+  };
+  for (const d of drafts.filter((d) => now - d.stamp >= RECENT_MS)) if (total > MAX_DRAFTS) drop(d.k);
+  for (const d of drafts) if (total > HARD_MAX_DRAFTS && store.read(d.k) !== null) drop(d.k);
+  // Open marks left by tabs that closed without saying so, for drafts that are gone.
+  for (const k of keys) if (k.startsWith(OPEN_ROOT) && !open(k.slice(OPEN_ROOT.length)) && store.read(k.slice(OPEN_ROOT.length)) === null) store.remove(k);
+}
+
+/**
+ * Two copies of one board, both grown from the same start: the stored one (another tab) and this tab's. When everything
+ * each added after the events they share is strokes of the child's, the result holds both: the stored strokes, then this
+ * tab's, moved later in time if needed so the log stays in order. Null when they cannot be put together without
+ * reordering (a pen move, an undo, a clear or Maya's writing on either side).
+ */
+function mergeHistories(stored: BoardHistory, ours: BoardHistory): BoardHistory | null {
+  const a = stored.events.map((e) => JSON.stringify(e));
+  const b = ours.events.map((e) => JSON.stringify(e));
+  let shared = 0;
+  while (shared < a.length && shared < b.length && a[shared] === b[shared]) shared++;
+  const theirs = stored.events.slice(shared);
+  const mine = ours.events.slice(shared);
+  if (mine.length === 0) return stored;
+  if (![...theirs, ...mine].every((e) => e.kind === "stroke")) return null;
+  const base = { v: 1 as const, revision: 0, events: stored.events };
+  const shift = Math.max(0, historyLength(base) - startOf(mine[0]));
+  const moved = mine.map((e) => (e.kind === "stroke" ? { ...e, pts: e.pts.map(([x, y, t]): TimedPoint => [x, y, t + shift]) } : e));
+  const merged: BoardHistory = { v: 1, revision: Math.max(stored.revision, ours.revision) + 1, events: [...stored.events, ...moved] };
+  return merged.events.length <= MAX_LOG && decodeHistory(encodeHistory(merged)) ? merged : null;
+}
+
+/**
+ * What a save did. `saved`: the store holds this tab's board. `merged`: another tab had added strokes; the store holds
+ * both tabs' strokes, and the tab shows `history`. `conflict`: another tab changed the board in a way that cannot be put
+ * together; nothing was written, and the tab shows the stored board (`history`). `failed`: the store is full or off.
+ */
+export type SaveResult = { status: "saved" | "merged" | "conflict"; history: BoardHistory } | { status: "failed" };
+
+/**
+ * Saves the board's draft, stamped with `now` (ms, Date.now()). `base` is the board this tab last loaded or saved (null
+ * when nothing was stored): the save writes only when the store still holds it, inside the store's lock, so two tabs
+ * never write over each other's strokes. Otherwise it merges (`mergeHistories`) or gives way. After writing, it reads
+ * the draft back; a store without locks that lost the write to another tab tries again. Makes room by evicting old
+ * drafts (`evict`). An empty board removes its draft.
+ */
+export function saveDraft(store: DraftStore, key: string, h: BoardHistory, base: BoardHistory | null, now: number): Promise<SaveResult> {
+  return store.exclusive(key, (): SaveResult => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const held = loadDraft(store, key);
+      let target = h;
+      let status: "saved" | "merged" = "saved";
+      const same = (x: BoardHistory | null, y: BoardHistory | null) => (x && y ? encodeHistory(x) === encodeHistory(y) : x === y);
+      // This tab's board holds everything stored and more (an earlier save of its own): write it.
+      const ahead = (x: BoardHistory, y: BoardHistory) => y.events.length >= x.events.length && x.events.every((e, i) => JSON.stringify(e) === JSON.stringify(y.events[i]));
+      if (held && !same(held, base) && !same(held, h) && !ahead(held, h)) {
+        const merged = mergeHistories(held, h);
+        if (!merged) return { status: "conflict", history: held };
+        [target, status] = [merged, "merged"];
+        if (merged === held) return { status: "merged", history: held };
+      }
+      if (target.events.length === 0) {
+        store.remove(key);
+        return { status, history: target };
+      }
+      evict(store, key, now);
+      const value = `${Math.round(now)}${STAMP}${encodeHistory(target)}`;
+      if (!store.write(key, value)) return { status: "failed" };
+      if (store.read(key) === value) return { status, history: target };
+      // Another tab wrote in between: read its board and try again.
+      base = held;
+    }
+    const held = loadDraft(store, key);
+    return held ? { status: "conflict", history: held } : { status: "failed" };
+  });
 }

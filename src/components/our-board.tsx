@@ -5,7 +5,7 @@
 // rules (who holds the pen, undo and clear, the draft, the replay) are the board history (src/lib/board-history.ts);
 // this component keeps the clock, measures the screen and paints. The board is kept as a draft in this browser, so a
 // reload brings it back as it was left.
-import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   boardDraftKey,
   childStrokes,
@@ -15,6 +15,8 @@ import {
   givePen,
   historyLength,
   loadDraft,
+  markClosed,
+  markOpen,
   mayaFinished,
   mayaWrites,
   mayaWritingEnds,
@@ -25,9 +27,8 @@ import {
   type BoardHistory,
   type Change,
   type DraftStore,
-  type InkStroke,
 } from "@/lib/board-history";
-import { boardWidthOf, canvasViewBox, eraserLine, inkLayers, inkOutline, parseViewBox, toBoard, type Box, type InkLayer, type ViewBox } from "@/lib/child-ink-svg";
+import { addPoint, boardWidthOf, canvasViewBox, capturedPoints, eraserLine, inkLayers, inkOutline, parseViewBox, startCapture, toBoard, type Box, type Capture, type CapturePoint, type InkLayer, type ViewBox } from "@/lib/child-ink-svg";
 import type { QuestionBoard } from "@/lib/desk-board";
 import { newPalmGuard, pointerDown, pointerUp, type PalmGuard } from "@/lib/whiteboard";
 import type { TimedPoint } from "@/lib/strokes";
@@ -39,6 +40,14 @@ const PEN_W = 5;
 const ERASER_W = 28;
 /** How long the note "Maya has the pen" stays. */
 const NOTE_MS = 2600;
+/** Points closer than this (CSS pixels) to the last one kept are dropped while drawing. */
+const MIN_GAP_PX = 0.6;
+/** How often an open board tells other tabs it is open, so its draft is never evicted (R370-3). */
+const OPEN_EVERY_MS = 60_000;
+/** What the board says when another tab changed this board in a way that cannot be put together with this one. */
+const OTHER_TAB_NOTE = "This board changed in another tab. It shows the newest work now.";
+/** What the board says when it cannot keep a stroke, so a line never disappears without a word. */
+const LOST_NOTE = "That line could not be kept. Please draw it again.";
 /** What the board says to a stroke while Maya holds the pen. */
 const PEN_NOTE = "Maya has the pen. Tap “Take the pen” to write.";
 
@@ -65,6 +74,11 @@ const localDrafts: DraftStore = {
     } catch {
       // Nothing to remove.
     }
+  },
+  exclusive(key, fn) {
+    // Web Locks take turns across every tab of this site; without them the save goes at once and heals later.
+    const locks = typeof navigator !== "undefined" ? navigator.locks : undefined;
+    return locks ? locks.request(key, () => fn()) : Promise.resolve().then(fn);
   },
   keys() {
     try {
@@ -103,6 +117,9 @@ const firstBoard = (question: QuestionBoard | null): BoardHistory => {
   return written.ok ? written.history : createHistory();
 };
 
+/** The outlines of the frozen chunks of a stroke in progress: each is made once. */
+const chunkPaths = new WeakMap<object, string>();
+
 const box = (r: DOMRect): Box => ({ left: r.left, top: r.top, width: r.width, height: r.height });
 
 function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoardProps & { draftKey: string; store: DraftStore | null }) {
@@ -111,10 +128,14 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
   const [tool, setTool] = useState<"pen" | "eraser">("pen");
   const [note, setNote] = useState<string | null>(null);
   const [camera, setCamera] = useState<{ view: ViewBox; boardWidth: number } | null>(null);
-  const [live, setLive] = useState<{ erase: boolean; pts: TimedPoint[] } | null>(null);
+  const [live, setLive] = useState<{ erase: boolean; capture: Capture } | null>(null);
   const canvas = useRef<HTMLDivElement>(null);
   const guard = useRef<PalmGuard>(newPalmGuard());
-  const stroke = useRef<{ id: number; erase: boolean; pts: TimedPoint[] } | null>(null);
+  const stroke = useRef<{ id: number; erase: boolean; capture: Capture } | null>(null);
+  /** The board as it is now, also between a change and the render it causes. */
+  const latest = useRef(history);
+  /** The board this tab last loaded or saved: a save writes only when the store still holds it (R370-1). */
+  const base = useRef<BoardHistory | null>(restored);
   /** A pointer pressed while Maya holds the pen: the note stays until a while after it lifts. */
   const refused = useRef<number | null>(null);
   const clock = useRef<{ origin: number; base: number } | null>(null);
@@ -123,7 +144,14 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
   const maskId = useId();
 
   const pen = penHolder(history);
-  const ink = childStrokes(history);
+  const ink = useMemo(() => childStrokes(history), [history]);
+  // Each kept stroke is outlined once per change of the board, never on a pointer move.
+  const inkPaths = useMemo(() => ink.map((s) => (s.erase ? eraserLine(s.pts) : inkOutline(s.pts, s.w / s.boardWidth, true))), [ink]);
+
+  const setBoard = useCallback((h: BoardHistory) => {
+    latest.current = h;
+    setHistory(h);
+  }, []);
 
   /** The board's clock: ms since the board started, going on from where a restored board was left. */
   const now = useCallback(() => {
@@ -132,12 +160,51 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
     return clock.current.base + (t - clock.current.origin);
   }, []);
 
+  const say = useCallback((text: string) => {
+    setNote(text);
+    clearTimeout(noteTimer.current);
+    noteTimer.current = setTimeout(() => setNote(null), NOTE_MS);
+  }, []);
+
+  /**
+   * Saves the board. Another tab may have saved this board too: its strokes are merged in, or, when that cannot be done,
+   * this tab shows the other tab's board and says so. Nothing is ever written over (R370-1).
+   */
+  const persist = useCallback(async (h: BoardHistory) => {
+    if (!store) return;
+    const result = await saveDraft(store, draftKey, h, base.current, Date.now());
+    if (result.status === "failed") return;
+    base.current = result.history;
+    // Adopt the stored board only when nothing changed meanwhile; otherwise the next save reconciles again.
+    if (result.status === "saved" || latest.current !== h) return;
+    saved.current = result.history;
+    setBoard(result.history);
+    if (result.status === "conflict") say(OTHER_TAB_NOTE);
+  }, [store, draftKey, setBoard, say]);
+
   // Keep the draft after every change. The board as it started (the question alone) needs none.
   useEffect(() => {
     if (!store || history === saved.current) return;
     saved.current = history;
-    saveDraft(store, draftKey, history, Date.now());
-  }, [history, store, draftKey]);
+    void persist(history);
+  }, [history, store, persist]);
+
+  // While the board is open, it says so every minute (so no tab evicts its draft), and it reconciles when another tab
+  // saves this board.
+  useEffect(() => {
+    if (!store) return;
+    markOpen(store, draftKey, Date.now());
+    const beat = setInterval(() => markOpen(store, draftKey, Date.now()), OPEN_EVERY_MS);
+    const changed = (e: StorageEvent) => {
+      if (e.key === draftKey) void persist(latest.current);
+    };
+    window.addEventListener("storage", changed);
+    return () => {
+      clearInterval(beat);
+      window.removeEventListener("storage", changed);
+      markClosed(store, draftKey);
+    };
+  }, [store, draftKey, persist]);
 
   // The child's layer sits exactly over Maya's board: measure both whenever either changes size.
   useEffect(() => {
@@ -165,11 +232,8 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
     // With less motion the question shows at once, as if her writing had just ended: the clock starts at its end.
     clock.current = { origin: performance.now(), base: still ? ends : 1 };
     const done = setTimeout(() => {
-      const t = now();
-      setHistory((h) => {
-        const passed = mayaFinished(h, t);
-        return passed.ok ? passed.history : h;
-      });
+      const passed = mayaFinished(latest.current, now());
+      if (passed.ok) setBoard(passed.history);
     }, still ? 0 : ends);
     return () => clearTimeout(done);
     // Only when the board starts: a later render never passes the pen again.
@@ -178,19 +242,20 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
 
   useEffect(() => () => clearTimeout(noteTimer.current), []);
 
-  const say = (text: string) => {
-    setNote(text);
-    clearTimeout(noteTimer.current);
-    noteTimer.current = setTimeout(() => setNote(null), NOTE_MS);
-  };
-
   const apply = (change: Change) => {
-    if (change.ok) setHistory(change.history);
+    if (change.ok) setBoard(change.history);
     else if (change.code === "pen_with_maya") say(PEN_NOTE);
     else if (change.code === "full") say(change.reason);
+    else if (change.code === "invalid_stroke") say(LOST_NOTE);
   };
 
-  const pointAt = (e: { clientX: number; clientY: number }): TimedPoint | null => {
+  /** Keeps a stroke the child drew: the whole stroke, or the part drawn so far when it is long (R370-2). */
+  const keep = (erase: boolean, capture: Capture) => {
+    if (!camera) return say(LOST_NOTE);
+    apply(drawStroke(latest.current, { erase, w: erase ? ERASER_W : PEN_W, boardWidth: camera.boardWidth, page: 1, pts: capturedPoints(capture).map(([x, y, t]): TimedPoint => [x, y, t]) }));
+  };
+
+  const pointAt = (e: { clientX: number; clientY: number }): CapturePoint | null => {
     if (!canvas.current || !camera) return null;
     const [x, y] = toBoard(camera.view, box(canvas.current.getBoundingClientRect()), e.clientX, e.clientY);
     return [x, y, now()];
@@ -214,19 +279,27 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
     if (!p) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
-    stroke.current = { id: e.pointerId, erase: tool === "eraser", pts: [p] };
-    setLive({ erase: tool === "eraser", pts: [p] });
+    stroke.current = { id: e.pointerId, erase: tool === "eraser", capture: startCapture(p) };
+    setLive({ erase: tool === "eraser", capture: stroke.current.capture });
   };
 
   const move = (e: ReactPointerEvent<SVGSVGElement>) => {
     const s = stroke.current;
     if (!s || s.id !== e.pointerId) return;
     const events = e.nativeEvent.getCoalescedEvents?.() ?? [e.nativeEvent];
+    const gap = camera ? MIN_GAP_PX / camera.boardWidth : 0;
     for (const ev of events.length ? events : [e.nativeEvent]) {
       const p = pointAt(ev);
-      if (p) s.pts.push(p);
+      if (!p) continue;
+      const added = addPoint(s.capture, p, gap);
+      s.capture = added.capture;
+      if (added.full) {
+        // A very long stroke: keep what is drawn, and go on with a new stroke from its last point.
+        keep(s.erase, s.capture);
+        s.capture = startCapture(p);
+      }
     }
-    setLive({ erase: s.erase, pts: [...s.pts] });
+    setLive({ erase: s.erase, capture: s.capture });
   };
 
   const up = (e: ReactPointerEvent<SVGSVGElement>) => {
@@ -240,42 +313,52 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
     if (!ended || !s || s.id !== e.pointerId) return;
     stroke.current = null;
     setLive(null);
-    if (e.type === "pointercancel" || !camera) return;
-    apply(drawStroke(history, { erase: s.erase, w: s.erase ? ERASER_W : PEN_W, boardWidth: camera.boardWidth, page: 1, pts: s.pts }));
+    if (e.type === "pointercancel") return;
+    keep(s.erase, s.capture);
   };
 
   const take = () => {
     setNote(null);
-    apply(takePen(history, now()));
+    apply(takePen(latest.current, now()));
   };
   const giveBack = () => {
     // A stroke in progress is dropped: the pen is Maya's now.
     stroke.current = null;
     setLive(null);
-    apply(givePen(history, now()));
+    apply(givePen(latest.current, now()));
   };
 
-  const paint = (s: Pick<InkStroke, "erase" | "w" | "boardWidth" | "pts">, key: string, finished = true) =>
-    s.erase ? null : <path key={key} d={inkOutline(s.pts, s.w / s.boardWidth, finished)} />;
+  type Piece = { key: string; erase: boolean; width: number; d: string };
+  const paint = (p: Piece) => (p.erase ? null : <path key={p.key} d={p.d} />);
 
-  const layer = (l: InkLayer<InkStroke & { key: string }>, depth: number): ReactNode => {
-    if (!("under" in l)) return l.ink.map((s) => paint(s, s.key));
+  const layer = (l: InkLayer<Piece>, depth: number): ReactNode => {
+    if (!("under" in l)) return l.ink.map(paint);
     const id = `${maskId}-erase-${depth}`;
     return (
       <>
         <mask id={id} maskUnits="userSpaceOnUse" x={-1e5} y={-1e5} width={2e5} height={2e5}>
           <rect x={-1e5} y={-1e5} width={2e5} height={2e5} fill="#fff" />
-          {l.erasers.map((s) => <path key={s.key} d={eraserLine(s.pts)} fill="none" stroke="#000" strokeWidth={(s.w / s.boardWidth) * 1000} strokeLinecap="round" strokeLinejoin="round" />)}
+          {l.erasers.map((p) => <path key={p.key} d={p.d} fill="none" stroke="#000" strokeWidth={p.width * 1000} strokeLinecap="round" strokeLinejoin="round" />)}
         </mask>
         <g mask={`url(#${id})`}>{layer(l.under, depth + 1)}</g>
-        {l.ink.map((s) => paint(s, s.key))}
+        {l.ink.map(paint)}
       </>
     );
   };
 
-  const liveStroke = live && camera ? { erase: live.erase, w: live.erase ? ERASER_W : PEN_W, boardWidth: camera.boardWidth, page: 1, pts: live.pts } : null;
-  const shown = liveStroke ? [...ink, liveStroke] : ink;
-  const layers = inkLayers(shown.map((s, i) => ({ ...s, key: `ink-${i}` })));
+  const pieces: Piece[] = ink.map((s, i) => ({ key: `ink-${i}`, erase: s.erase, width: s.w / s.boardWidth, d: inkPaths[i] }));
+  if (live && camera) {
+    // The stroke in progress: frozen chunks are outlined once (cached by object); only the short tail is new each move.
+    const width = (live.erase ? ERASER_W : PEN_W) / camera.boardWidth;
+    const outline = (pts: readonly CapturePoint[], finished: boolean) => (live.erase ? eraserLine(pts) : inkOutline(pts, width, finished));
+    live.capture.chunks.forEach((chunk, i) => {
+      let d = chunkPaths.get(chunk);
+      if (d === undefined) chunkPaths.set(chunk, (d = outline(chunk.pts, true)));
+      pieces.push({ key: `live-${i}`, erase: live.erase, width, d });
+    });
+    pieces.push({ key: "live-tail", erase: live.erase, width, d: outline(live.capture.tail, false) });
+  }
+  const layers = inkLayers(pieces);
   const childHas = pen === "child";
 
   return (
@@ -311,8 +394,8 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
           <div className="desk-tools" role="group" aria-label="Board tools">
             <button type="button" disabled={!childHas} aria-pressed={tool === "pen"} aria-label="Pen" onClick={() => setTool("pen")}><Icon name="pen" /></button>
             <button type="button" disabled={!childHas} aria-pressed={tool === "eraser"} aria-label="Eraser" onClick={() => setTool("eraser")}><Icon name="eraser" /></button>
-            <button type="button" disabled={!childHas || ink.length === 0} aria-label="Undo" onClick={() => apply(undo(history, now()))}><Icon name="undo" /></button>
-            <button type="button" disabled={!childHas || ink.length === 0} className="desk-clear" onClick={() => apply(clear(history, now()))}>Clear</button>
+            <button type="button" disabled={!childHas || ink.length === 0} aria-label="Undo" onClick={() => apply(undo(latest.current, now()))}><Icon name="undo" /></button>
+            <button type="button" disabled={!childHas || ink.length === 0} className="desk-clear" onClick={() => apply(clear(latest.current, now()))}>Clear</button>
             <span className="desk-ink maya"><i />Maya</span>
             <span className="desk-ink you"><i />You</span>
           </div>

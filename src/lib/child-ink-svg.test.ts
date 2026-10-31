@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boardWidthOf, canvasViewBox, eraserLine, inkLayers, inkOutline, parseViewBox, toBoard } from "@/lib/child-ink-svg";
+import { CAPTURE_MAX, CHUNK, addPoint, boardWidthOf, canvasViewBox, capturedPoints, eraserLine, inkLayers, inkOutline, parseViewBox, startCapture, toBoard } from "@/lib/child-ink-svg";
 
 // The child's ink on "Our board" (#320): perfect-freehand outlines, eraser groups, and the camera that puts the child's
 // layer exactly over Maya's board.
@@ -59,5 +59,34 @@ describe("the child's strokes", () => {
       ink: [s("d")],
     });
     expect(inkLayers([s("a")])).toEqual({ ink: [s("a")] });
+  });
+});
+
+describe("a stroke in progress (R370-2)", () => {
+  const walk = (n: number, step = 0.001) => Array.from({ length: n }, (_, i): [number, number, number] => [i * step, 0, i]);
+
+  it("keeps every point once, in order, across chunks, and paints only the tail again", () => {
+    let c = startCapture([0, 0, 0]);
+    for (const p of walk(200).slice(1)) c = addPoint(c, p, 0.0005).capture;
+    expect(capturedPoints(c)).toEqual(walk(200));
+    expect(c.count).toBe(200);
+    expect(c.tail.length).toBeLessThanOrEqual(CHUNK);
+    expect(c.chunks.length).toBeGreaterThan(3);
+    // A frozen chunk is the same object after later points: its outline is made once.
+    const first = c.chunks[0];
+    expect(addPoint(c, [1, 1, 999], 0.0005).capture.chunks[0]).toBe(first);
+  });
+
+  it("drops points closer than the gap to the last one kept", () => {
+    const c = addPoint(addPoint(startCapture([0, 0, 0]), [0.0001, 0, 1], 0.0005).capture, [0.001, 0, 2], 0.0005).capture;
+    expect(capturedPoints(c)).toEqual([[0, 0, 0], [0.001, 0, 2]]);
+  });
+
+  it(`says when the stroke reaches ${CAPTURE_MAX} points, so the caller keeps it and goes on with a new one`, () => {
+    let c = startCapture([0, 0, 0]);
+    let full = false;
+    for (const p of walk(CAPTURE_MAX).slice(1)) ({ capture: c, full } = addPoint(c, p, 0));
+    expect(full).toBe(true);
+    expect(capturedPoints(c)).toHaveLength(CAPTURE_MAX);
   });
 });

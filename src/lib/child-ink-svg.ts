@@ -97,3 +97,45 @@ export function inkLayers<T extends { erase: boolean }>(strokes: readonly T[]): 
   }
   return layer;
 }
+
+// ---------- capture ----------
+
+/** Points of a stroke in progress: [x, y, t], board widths and ms. */
+export type CapturePoint = readonly [number, number, number];
+
+/** Past this many points a stroke in progress is kept and a new one goes on from its last point (R370-2). */
+export const CAPTURE_MAX = 1000;
+/** The points painted again on each move: older ones are frozen in chunks, painted once. */
+export const CHUNK = 48;
+
+/**
+ * A stroke in progress: frozen chunks (each object never changes, so its outline is made once) and the tail the next
+ * points go on. A chunk ends with the point the next chunk or the tail starts with, so the pieces join.
+ */
+export interface Capture {
+  readonly chunks: readonly { readonly pts: readonly CapturePoint[] }[];
+  readonly tail: readonly CapturePoint[];
+  /** How many points the stroke holds. */
+  readonly count: number;
+}
+
+export const startCapture = (p: CapturePoint): Capture => ({ chunks: [], tail: [p], count: 1 });
+
+/**
+ * Adds a point, unless it is closer than `minGap` (board widths) to the last one kept. `full`: the stroke has reached
+ * CAPTURE_MAX points; the caller keeps it and goes on with `startCapture(last point)`.
+ */
+export function addPoint(c: Capture, p: CapturePoint, minGap: number): { capture: Capture; full: boolean } {
+  const last = c.tail[c.tail.length - 1];
+  if (Math.hypot(p[0] - last[0], p[1] - last[1]) < minGap) return { capture: c, full: false };
+  const tail = [...c.tail, p];
+  const capture = tail.length > CHUNK ? { chunks: [...c.chunks, { pts: tail }], tail: [p], count: c.count + 1 } : { chunks: c.chunks, tail, count: c.count + 1 };
+  return { capture, full: capture.count >= CAPTURE_MAX };
+}
+
+/** Every point of the stroke, in order, each once. */
+export function capturedPoints(c: Capture): CapturePoint[] {
+  const out: CapturePoint[] = [];
+  for (const part of [...c.chunks.map((k) => k.pts), c.tail]) out.push(...(out.length ? part.slice(1) : part));
+  return out;
+}
