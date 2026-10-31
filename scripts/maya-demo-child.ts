@@ -1,12 +1,15 @@
-// Gives a test family a child Maya can work with in admin (#323): a Grade 2 BC child named "Sam" with one closed
-// Grade 2 test whose first stage includes questions of the templates Maya supports (src/lib/question-package-assessment.ts). The test
-// is stored as expired, started 40 days ago, so no reminder email is ever due for it (the late reminder stops after 7
+// Gives a test family a child Maya can work with in admin (#323): a Grade 2 BC child named "Iris" with one closed
+// Grade 2 test whose first stage includes questions of the templates Maya supports
+// (src/lib/question-package-assessment.ts). The test is stored as expired, started 40 days ago, so no reminder email is ever due for it (the late reminder stops after 7
 // days) and nothing about it counts: the family is a test family (D-099), left out of the dashboard.
 //
 // Usage: npm run maya:demo-child -- --parent <test family's parent id>
-// It refuses a family that is not in public.test_accounts. Run it again and it reuses the child and its test. The child
-// was first named "Maya Demo", which reads as Maya, the AI: a run renames that child to "Sam" (in that family only).
-// It refuses a "Sam" that is not a Grade 2 BC child, so it never adds a test to another child of the family.
+// It refuses a family that is not in public.test_accounts. Run it again and it reuses the child and its test.
+// The name: not "Maya" (the AI), not a name the workbooks give their worked examples ("Sam's work" is Spot the error's
+// wrong one; also Leah, Kai, Priya, Asha and the sample book's story names), and not another child of the
+// workbook-samples family. The child was first named "Maya Demo", then "Sam": a run renames such a child to "Iris", in
+// that family only, and only when it is the one this script made (Grade 2 BC, with only closed tests that have no
+// answers). It refuses an "Iris" that is not a Grade 2 BC child, so it never adds a test to another child of the family.
 // The secret key comes from SUPABASE_SECRET_KEY, else from the Supabase Management API with the token in
 // SUPABASE_ACCESS_TOKEN or the macOS Keychain item "supabase-pagewise".
 import { execFileSync } from "node:child_process";
@@ -18,9 +21,9 @@ import type { Database } from "@/lib/database";
 import { SUPPORTED_ASSESSMENT_TEMPLATES } from "@/lib/question-package-assessment";
 
 const PROJECT = "cdjobwsyzndtltzfpyqa";
-const NAME = "Sam";
+const NAME = "Iris";
 /** Names this script gave the demo child before; a run renames such a child to NAME. */
-const OLD_NAMES = ["Maya Demo"];
+const OLD_NAMES = ["Sam", "Maya Demo"];
 const DAY = 86_400_000;
 
 async function secretKey(): Promise<string> {
@@ -46,7 +49,13 @@ if (!marked) throw new Error("the family is not a test family (public.test_accou
 let { data: child } = await db.from("children").select("id, grade, province").eq("parent_id", parent).eq("first_name", NAME).maybeSingle();
 if (child && (child.grade !== 2 || child.province !== "BC")) throw new Error(`the family's "${NAME}" is not a Grade 2 BC child: pick another family`);
 if (!child) {
-  const { data: old } = await db.from("children").select("id, grade, province").eq("parent_id", parent).in("first_name", OLD_NAMES).maybeSingle();
+  // Only the child this script made: Grade 2 BC, and every test it has is closed with no answer.
+  const { data: olds, error: oldError } = await db.from("children").select("id, grade, province, assessments(status, answers(count))")
+    .eq("parent_id", parent).in("first_name", OLD_NAMES).eq("grade", 2).eq("province", "BC");
+  if (oldError) throw new Error(`old names: ${oldError.message}`);
+  const made = (olds ?? []).filter((c) => c.assessments.every((a) => a.status === "expired" && (a.answers[0]?.count ?? 0) === 0));
+  if (made.length > 1) throw new Error(`more than one child could be the demo child (${made.map((c) => c.id).join(", ")}): rename one by hand`);
+  const old = made[0];
   if (old) {
     const renamed = await db.from("children").update({ first_name: NAME }).eq("id", old.id).eq("parent_id", parent).select("id, grade, province").single();
     if (renamed.error) throw new Error(`rename: ${renamed.error.message}`);
