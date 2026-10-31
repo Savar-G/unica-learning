@@ -333,6 +333,44 @@ describe("stale runs", () => {
     for (const p of s.runs.pageStore.get(id)!.values()) expect(draft.pages[p.number - 1]).toEqual(p);
   });
 
+  it("never gives a question a third AI attempt when its page save fails after the second, and the job retries (R379-2-1)", async () => {
+    // Slot 1.1 of every page fails the check, so each page uses its second attempt on it (the redo).
+    const bad = (sl: { slot: string; skills: string[] }) => ({ ...answer({ name: "x", system: "", content: [{ type: "text", text: JSON.stringify({ slots: [sl] }) }], schema: {} }).items[0], wrongAnswers: [{ value: num(425), cause: "O3", description: "Right by mistake.", step: null }] });
+    const ai = fakeAiClient({
+      answer: (r) => {
+        const asked = JSON.parse((r.content[0] as { text: string }).text) as { slots: { slot: string; skills: string[] }[] };
+        const good = answer(r).items;
+        return { items: asked.slots.map((sl, k) => (sl.slot === "1.1" ? bad(sl) : good[k])) };
+      },
+    });
+    const s = setup({ ai });
+    s.deps.concurrency = 1;
+    // The first page's save fails after both of its 1.1 attempts were used.
+    let saves = 0;
+    const save = s.runs.savePage;
+    s.deps.runs = { ...s.runs, savePage: async (runId, lease, page) => {
+      if (++saves === 1) throw new Error("the database is unavailable");
+      return save(runId, lease, page);
+    } };
+    const id = await started(s);
+    expect(await runWorkbookJob(id, s.deps)).toBe("done");
+    const run = (await s.runs.run(id))!;
+    expect(run).toMatchObject({ status: "done", attempts: 2 });
+
+    // AI calls that asked for slot 1.1, page by page (one page at a time, so each page's calls follow each other).
+    const asks = ai.requests.map((r) => (JSON.parse((r.content[0] as { text: string }).text) as { slots: { slot: string }[] }).slots.some((x) => x.slot === "1.1"));
+    const draft = (await s.drafts.draft(run.draftId!))!;
+    const withSlot = draft.pages.filter((p) => p.questions.some((q) => q.slot === "1.1"));
+    // Two calls a page for slot 1.1 (the first and the redo), and none more for the page whose save failed.
+    expect(asks.filter(Boolean).length).toBe(2 * withSlot.length);
+    const first = withSlot[0];
+    const q = first.questions.find((x) => x.slot === "1.1")!;
+    expect(q).toMatchObject({ attempts: 2, check: { status: "failed" } });
+    // The stored page and the draft show the true count.
+    expect(s.runs.pageStore.get(id)!.get(first.number)!.questions.find((x) => x.slot === "1.1")!.attempts).toBe(2);
+    expect(draft.pages[first.number - 1]).toEqual(s.runs.pageStore.get(id)!.get(first.number));
+  });
+
   it("reads as stopped when a running run has no progress for the stale time", () => {
     const now = new Date("2026-10-31T17:00:00.000Z");
     const ago = (s: number) => new Date(now.getTime() - s * 1000).toISOString();

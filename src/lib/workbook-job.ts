@@ -6,7 +6,9 @@
 //      (src/lib/workbook-placement.ts, the two-week plan #308).
 //   2. write: the generator (#311, src/lib/workbook-generator.ts) writes the day pages with the AI, `concurrency` pages
 //      at a time, and checks every answer and every page's fit against the real templates (#310). Each finished page
-//      is stored on the run (public.workbook_run_pages) as it is done; the run shows "12 of 80 day pages".
+//      is stored on the run (public.workbook_run_pages) as it is done; the run shows "12 of 80 day pages". Each AI
+//      attempt of a question is counted on the run before its call (public.workbook_run_attempts), so a retry or a
+//      resume never gives a question a third attempt, even when its page was never stored.
 //   3. render: the template makes one image per page and the PDF, into the workbook bucket at <parent id>/<draft id>/.
 //      A page that does not render gets a proof image (#310 proofPages) with its failure marked; the other pages render.
 //   4. save: the run ends as done, naming the draft, and the draft gets revision 1 with its rendering, in one step.
@@ -32,6 +34,7 @@ import type { PageImage, QuestionBox, WorkbookFiles } from "@/lib/workbook-conte
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import {
   generateWorkbook,
+  type AttemptLedger,
   type FitCheck,
   type GeneratedPage,
   type GeneratedWorkbook,
@@ -135,6 +138,10 @@ export interface WorkbookRunStore {
   saveDraft(runId: string, lease: string, draft: GeneratedWorkbook): Promise<"saved" | "lost" | "used" | { refused: string }>;
   /** The run's finished day pages. */
   pages(runId: string): Promise<GeneratedPage[]>;
+  /** The AI attempts each question slot of the run used, by "<book page>:<slot>". */
+  attempts(runId: string): Promise<Map<string, number>>;
+  /** Counts one AI attempt of each slot, before the call (R379-2-1); false (nothing counted) when the lease is lost. */
+  useAttempts(runId: string, lease: string, page: number, slots: string[]): Promise<boolean>;
   /** Stores a finished day page (the first stored wins), with a heartbeat. */
   savePage(runId: string, lease: string, page: GeneratedPage): Promise<boolean>;
   /** Keeps the attempt's error and starts the next attempt; false too when no attempt is left. */
@@ -404,6 +411,15 @@ async function write(
       return { status: "saved", draftId: d.id };
     },
   };
+  const attempts: AttemptLedger = {
+    load: () => deps.runs.attempts(run.id),
+    async use(page, slots) {
+      if (isLost() || !(await deps.runs.useAttempts(run.id, lease, page, slots))) {
+        setLost(true);
+        throw new Stopped("the run was taken up by another call");
+      }
+    },
+  };
   const pages: PageStore = {
     load: () => deps.runs.pages(run.id),
     async save(page) {
@@ -420,7 +436,7 @@ async function write(
       plan: planned.plan, curriculum,
     },
     {
-      ai: guardedAi, fit: deps.fit(inputs.parentId), store: guardedDrafts, qrToken: deps.qrToken, pages,
+      ai: guardedAi, fit: deps.fit(inputs.parentId), store: guardedDrafts, qrToken: deps.qrToken, pages, attempts,
       concurrency: deps.concurrency ?? PAGE_CONCURRENCY, stop: () => isLost() || outOfTime(), timeLimitMs: deps.timeLimitMs,
       progress: (done, total) => { void progress({ step: "write", done, total }); },
     },

@@ -27,6 +27,7 @@ export interface MemoryRevision {
 export function memoryRunStore(o: { children: Record<string, string>; workbooks?: Record<string, number[]>; now: () => Date; newId: () => string; drafts: WorkbookDraftStore }) {
   const runs = new Map<string, WorkbookRun & { lease: string | null }>();
   const pages = new Map<string, Map<number, GeneratedPage>>();
+  const attempts = new Map<string, Map<string, number>>();
   const audit: MemoryAudit[] = [];
   const revisions: MemoryRevision[] = [];
   const iso = () => o.now().toISOString();
@@ -82,6 +83,18 @@ export function memoryRunStore(o: { children: Record<string, string>; workbooks?
       const r = holding(id, lease);
       if (!r) return false;
       Object.assign(r, { lease: null, heartbeatAt: iso() });
+      return true;
+    },
+    async attempts(id) {
+      return new Map(attempts.get(id) ?? []);
+    },
+    async useAttempts(id, lease, page, slots) {
+      const r = holding(id, lease);
+      if (!r) return false;
+      if (!attempts.has(id)) attempts.set(id, new Map());
+      const counts = attempts.get(id)!;
+      for (const slot of slots) counts.set(`${page}:${slot}`, (counts.get(`${page}:${slot}`) ?? 0) + 1);
+      r.heartbeatAt = iso();
       return true;
     },
     async pages(id) {
@@ -152,5 +165,5 @@ export function memoryRunStore(o: { children: Record<string, string>; workbooks?
       return r ? view(r) : null;
     },
   };
-  return { ...store, runs, audit, revisions, pageStore: pages };
+  return { ...store, runs, audit, revisions, pageStore: pages, attemptStore: attempts };
 }

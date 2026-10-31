@@ -1904,6 +1904,58 @@ export type Database = {
           },
         ]
       }
+      workbook_run_attempts: {
+        Row: {
+          attempts: number
+          child_id: string
+          page: number
+          parent_id: string
+          run_id: string
+          slot: string
+          updated_at: string
+        }
+        Insert: {
+          attempts: number
+          child_id: string
+          page: number
+          parent_id: string
+          run_id: string
+          slot: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          child_id?: string
+          page?: number
+          parent_id?: string
+          run_id?: string
+          slot?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_run_attempts_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_run_attempts_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_run_attempts_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_run_pages: {
         Row: {
           child_id: string
@@ -2646,6 +2698,15 @@ export type Database = {
           p_stale_seconds: number
         }
         Returns: Json
+      }
+      use_workbook_run_attempts: {
+        Args: {
+          p_lease: string
+          p_page: number
+          p_run: string
+          p_slots: string[]
+        }
+        Returns: boolean
       }
       workbook_run_held: {
         Args: { p_lease: string; p_run: string }

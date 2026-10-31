@@ -54,6 +54,13 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
     async yield(id, lease) {
       return must(await admin.rpc("yield_workbook_run", { p_run: id, p_lease: lease }), "yield") === true;
     },
+    async attempts(id) {
+      const rows = must(await admin.from("workbook_run_attempts").select("page, slot, attempts").eq("run_id", id).range(0, 9999), "attempts load") ?? [];
+      return new Map(rows.map((r) => [`${r.page}:${r.slot}`, r.attempts]));
+    },
+    async useAttempts(id, lease, page, slots) {
+      return must(await admin.rpc("use_workbook_run_attempts", { p_run: id, p_lease: lease, p_page: page, p_slots: slots }), "attempts use") === true;
+    },
     async pages(id) {
       const rows = must(await admin.from("workbook_run_pages").select("page").eq("run_id", id).order("number"), "pages load") ?? [];
       return rows.map((r) => r.page);

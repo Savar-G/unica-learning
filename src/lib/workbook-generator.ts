@@ -185,6 +185,17 @@ export interface PageStore {
   save(page: GeneratedPage): Promise<void>;
 }
 
+/**
+ * The AI attempts each question slot has used, kept outside this call (R379-2-1): `use` records an attempt of each slot
+ * before the AI call that makes it, so a later call that goes on after an error or a crash never gives a slot a third
+ * attempt, even when its page was never stored. Keys are "<book page>:<slot>". `use` throws when the run may no
+ * longer write: the generation stops.
+ */
+export interface AttemptLedger {
+  load(): Promise<Map<string, number>>;
+  use(page: number, slots: string[]): Promise<void>;
+}
+
 export interface GenerateDeps {
   ai: AiClient;
   fit: FitCheck;
@@ -197,6 +208,8 @@ export interface GenerateDeps {
   concurrency?: number;
   /** Finished pages kept for a resume; none when not given. */
   pages?: PageStore;
+  /** The attempts used before this call; none when not given (every slot starts with two). */
+  attempts?: AttemptLedger;
   /** Asked before each day page starts: true stops starting pages (the time budget); the result is "paused". */
   stop?(): boolean;
   /** Called after each day page is done, with the pages done and the day pages in all. */
@@ -305,6 +318,8 @@ const QUESTION_ATTEMPTS = 2;
 /** Writes the page's slots at `which` (indexes) in one AI call and builds each; never throws. */
 async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork, which: number[], note: string | null, name: string) {
   const asked = which.map((i) => w.slots[i]);
+  // The attempt is counted before the call, so it stays counted whatever happens after (R379-2-1).
+  await deps.attempts?.use(w.number, asked.map((s) => s.id));
   const out = await callAi(deps, name, pageRequest(input, w.day, w.page, asked, note));
   return which.map((i) => {
     const slot = w.slots[i];
@@ -321,16 +336,29 @@ const generated = (w: PageWork, i: number, b: BuiltQuestion, attempts: 1 | 2): G
   number: i + 1, slot: w.slots[i].id, place: w.slots[i].place, part: w.slots[i].part.kind, check: b.check, attempts, package: b.package,
 });
 
-/** The first pass at a page: the page call, then one redo call for its failed questions (their last attempt). */
-async function firstPass(input: GenerateInput, deps: GenerateDeps, w: PageWork): Promise<GeneratedQuestion[]> {
+/** A question whose two attempts were used by an earlier call that stopped before its page was stored. */
+const exhausted = (w: PageWork, i: number): GeneratedQuestion => ({
+  number: i + 1, slot: w.slots[i].id, place: w.slots[i].place, part: w.slots[i].part.kind, attempts: 2, package: null,
+  check: { status: "failed", reason: "it used both AI attempts in an earlier try that stopped before its page was stored" },
+});
+
+/**
+ * The first pass at a page: the page call, then one redo call for its failed questions (their last attempt).
+ * `spent(i)`: the attempts slot i used in earlier calls; a slot with none left is not asked again.
+ */
+async function firstPass(input: GenerateInput, deps: GenerateDeps, w: PageWork, spent: (i: number) => number): Promise<GeneratedQuestion[]> {
   const all = w.slots.map((_, i) => i);
-  const built = await writeSlots(input, deps, w, all, null, "workbook_page");
-  const questions = all.map((i) => generated(w, i, built[i], 1));
-  const failed = all.filter((i) => built[i].check.status === "failed");
+  const open = all.filter((i) => spent(i) < QUESTION_ATTEMPTS);
+  const questions = all.map((i) => exhausted(w, i));
+  if (open.length === 0) return questions;
+  const built = await writeSlots(input, deps, w, open, null, "workbook_page");
+  open.forEach((i, k) => { questions[i] = generated(w, i, built[k], (spent(i) + 1) as 1 | 2); });
+  const failedAt = open.map((_, k) => k).filter((k) => built[k].check.status === "failed" && spent(open[k]) + 1 < QUESTION_ATTEMPTS);
+  const failed = failedAt.map((k) => open[k]);
   if (failed.length === 0) return questions;
-  const note = failed.map((i) => {
-    const steps = built[i].stepIds.length ? ` Its operation's worked steps are named: ${built[i].stepIds.join(", ")}.` : "";
-    return `Slot ${w.slots[i].id} failed the check: ${(built[i].check as { reason: string }).reason}.${steps} Write it again.`;
+  const note = failedAt.map((k) => {
+    const steps = built[k].stepIds.length ? ` Its operation's worked steps are named: ${built[k].stepIds.join(", ")}.` : "";
+    return `Slot ${w.slots[open[k]].id} failed the check: ${(built[k].check as { reason: string }).reason}.${steps} Write it again.`;
   }).join("\n");
   const redo = await writeSlots(input, deps, w, failed, note, "workbook_page_redo");
   failed.forEach((i, k) => { questions[i] = generated(w, i, redo[k], 2); });
@@ -385,10 +413,10 @@ const fitPage = (input: GenerateInput, w: PageWork, qrToken: string, questions: 
 });
 
 /** One day page, written, checked and fitted (see the header). Never throws but through the page store. */
-async function writePage(input: GenerateInput, deps: GenerateDeps, w: PageWork, qrToken: string, book: FitBook): Promise<GeneratedPage> {
+async function writePage(input: GenerateInput, deps: GenerateDeps, w: PageWork, qrToken: string, book: FitBook, spentBefore: Map<string, number>): Promise<GeneratedPage> {
   const page = { number: w.number, type: w.page.type, dayLabel: `Day ${w.day}`, day: w.day, pageOfDay: w.page.number, qrToken, omissions: w.layout.omissions };
   if (w.slots.length === 0) return { ...page, fit: { status: "not-needed" }, attempts: 0, questions: [], content: dayContent(input, w, []) };
-  let questions = await firstPass(input, deps, w);
+  let questions = await firstPass(input, deps, w, (i) => spentBefore.get(`${w.number}:${w.slots[i].id}`) ?? 0);
   let fit = await deps.fit.fits(fitPage(input, w, qrToken, questions), book);
   let attempts: 1 | 2 = 1;
   if (!fit.ok) {
@@ -454,6 +482,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
   const book: FitBook = { id: input.workbookId, childId: input.childId, number: input.number, levels: [level], profileBuild: input.profileBuild };
 
   const kept = new Map((await deps.pages?.load() ?? []).map((p) => [p.number, p]));
+  const spentBefore = await deps.attempts?.load() ?? new Map<string, number>();
   const used = new Set([...kept.values()].map((p) => p.qrToken));
   // A new token never repeats a kept page's token (a bounded number of tries; a maker that keeps repeating is caught by draftProblem).
   const token = (n: number) => kept.get(n)?.qrToken ?? (() => {
@@ -473,7 +502,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
   if (done.size > 0) deps.progress?.(done.size, work.length);
   const todo = work.filter((w) => !done.has(w.number));
   await pool(todo, deps.concurrency ?? 1, async (w) => {
-    const page = await writePage(input, deps, w, tokens[w.number - 1], book);
+    const page = await writePage(input, deps, w, tokens[w.number - 1], book, spentBefore);
     await deps.pages?.save(page);
     done.set(w.number, page);
     deps.progress?.(done.size, work.length);
