@@ -223,6 +223,8 @@ export interface VoiceCall {
   readonly session: TextSession["session"];
   readonly ended: boolean;
   readonly lost: boolean;
+  /** The store confirmed that this handle no longer owns its revision. A thrown save is only uncertain. */
+  readonly replaced: boolean;
   /** The revision of the last save. */
   readonly revision: number;
   /** Saved accepted final words when this handle restored a controller that had already ended. */
@@ -573,6 +575,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       } : null;
       const seen: ConnectionEvent[] = [];
       let lost = false;
+      let replaced = false;
       let queue: Promise<void> = Promise.resolve();
       const later = (work: () => Promise<void>) => {
         queue = queue.then(work).catch((e) => {
@@ -600,6 +603,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           const saved = await store.update(record.id, record.revision, change) ? { ...record, ...change, revision: record.revision + 1 } : null;
           if (!saved) {
             lost = true;
+            replaced = true;
             console.error("[maya voice] the call changed elsewhere; this worker stops writing", record.id);
             return;
           }
@@ -626,6 +630,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         get lost() {
           return lost;
         },
+        get replaced() {
+          return replaced;
+        },
         get revision() {
           return record.revision;
         },
@@ -643,7 +650,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             const final = textSession(record, pkg, idleModel(record), null, record.live.text);
             await final.tick();
             const ended = await end(record, pkg, final, {}, connected, record.startedAt === null);
-            if (!ended) lost = true;
+            if (!ended) { lost = true; replaced = true; }
             else record = ended;
           });
           await queue;
@@ -655,7 +662,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             try {
               // The store serializes ownership and append with replacement claims.
               const at = await log.append({ ...event, callId: record.id, parentId: record.parentId, childId: record.childId }, record.revision);
-              if (at === null) { lost = true; return; }
+              if (at === null) { lost = true; replaced = true; return; }
               record = { ...record, revision: record.revision + 1 };
               seen.push({ kind, at });
             } catch (e) {
@@ -673,7 +680,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
               // A fatal close or hang-up must not wait for an unfinished model turn.
               const final = textSession(record, pkg, idleModel(record), null, record.live!.text);
               const ended = await end(record, pkg, final, how, connected, record.startedAt === null);
-              if (!ended) lost = true;
+              if (!ended) { lost = true; replaced = true; }
               else record = ended;
             });
           } else if (!record.learningEventId || !record.profileRebuiltAt) {

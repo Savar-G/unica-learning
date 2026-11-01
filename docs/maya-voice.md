@@ -110,3 +110,5 @@ Open `/admin/maya` as an admin, choose **Speak**, and start a call on a test que
 - The AssemblyAI and Inworld plugins are written against their documented options (LiveKit Agents 1.9.5) and constructed in a test. No real audio has gone through them. Check one call on each after the keys exist.
 - The model's first-word delay, cold start, Safari autoplay and iPad audio are #327.
 - The board appears when a turn is saved, not in time with the words. Word timing (Inworld timestamps are requested) is #330.
+
+Worker replacement also fences client messages. A confirmed revision conflict stops the old worker without a fatal client update. A save exception still reports a technical failure. Each worker publishes its immutable claim revision as `maya.segment`, both in room attributes and in call updates. The panel selects the highest segment and accepts fatal updates only from that worker with a matching segment. A delayed packet cannot close the replacement call. An agent leaving without a validated terminal message leaves recovery controls available.

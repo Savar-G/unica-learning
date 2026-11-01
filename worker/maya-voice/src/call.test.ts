@@ -409,7 +409,8 @@ describe("R408 controlled probes through public interfaces", () => {
     expect(speech).toBeNull();
     await waitFor(() => r.closed.mock.calls.length === 1, "lost writer closed");
     expect(r.session.close).toHaveBeenCalled();
-    expect(r.updates.at(-1)).toMatchObject({ error: "technical_issue" });
+    if (failure === "exception") expect(r.updates.at(-1)).toMatchObject({ error: "technical_issue", segment: r.run.segment });
+    else expect(r.updates).toEqual([]);
   });
 
   it("R408-8 probe.ts: rejoin during the leave save cannot end a healthy call", async () => {
@@ -505,7 +506,7 @@ it("R408-12: closes while the model has a real unfinished child turn, and refuse
 
 it("R408-7: a save failure inside the real speech pipeline closes without waiting on its own speech", async () => {
   const c = await voiceCall();
-  c.seams.store.update = async () => false;
+  c.seams.store.update = async () => { throw new Error("synthetic persistence failure"); };
   await c.run.childJoined();
   await waitFor(() => c.call.lost, "lost writer");
   expect(c.run.done).not.toBeNull();

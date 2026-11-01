@@ -103,7 +103,7 @@ export default defineAgent({
 
     const local = ctx.room.localParticipant!;
     // What the child's screen shows: whether to offer the typed stand-in for speech.
-    await local.setAttributes({ "maya.speech": made.fakeSpeech ? "fake" : "live" }).catch(() => {});
+    await local.setAttributes({ "maya.speech": made.fakeSpeech ? "fake" : "live", "maya.segment": String(run.segment) });
     local.registerRpcMethod("maya.hang_up", async (data) => {
       if (data.callerIdentity !== child.identity) throw new RpcError(1403, "not this call's child");
       void run.hangUp();

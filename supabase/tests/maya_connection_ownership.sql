@@ -37,4 +37,3 @@ begin
 end $$;
 select 'current append, obsolete refusal, replacement append, receipt timestamps, revision count, family and grants passed' as probe;
 rollback;
-

@@ -102,6 +102,7 @@ export class MayaVoiceAgent extends voice.Agent {
 /** What the child's screen is told: the call changed (read it again), or it ended. */
 export interface CallUpdate {
   revision: number;
+  segment: number;
   ended: boolean;
   error?: "technical_issue";
 }
@@ -127,6 +128,8 @@ export class VoiceCallRun {
   private speech: voice.SpeechHandle | null = null;
   private replayingFinal = false;
   readonly agent: MayaVoiceAgent;
+  /** Immutable revision claimed when this worker opened the call. */
+  readonly segment: number;
 
   constructor(
     private readonly session: voice.AgentSession,
@@ -137,6 +140,7 @@ export class VoiceCallRun {
       closed?(): Promise<void>;
     },
   ) {
+    this.segment = call.revision;
     this.agent = new MayaVoiceAgent(call, turn => this.after(turn));
     session.on(voice.AgentSessionEventTypes.SpeechCreated, ev => { this.speech = ev.speechHandle; });
     session.on(voice.AgentSessionEventTypes.Close, () => { void this.finish({ detail: "the voice session closed unexpectedly" }); });
@@ -238,7 +242,7 @@ export class VoiceCallRun {
     await this.call.settled();
     if (this.call.lost) { void this.finish({ detail: "the call could not be saved" }); return false; }
     if (this.finishing) return false;
-    this.options.notify({ revision: this.call.revision, ended: false });
+    this.options.notify({ revision: this.call.revision, segment: this.segment, ended: false });
     this.scheduleLimit();
     if (turn.ended) {
       // Do not await inside llmNode: the speech handle needs its text before it can finish.
@@ -280,7 +284,7 @@ export class VoiceCallRun {
         else await this.call.end(how);
         failed ||= this.call.lost;
       } catch { failed = true; }
-      this.options.notify({ revision: this.call.revision, ended: !failed, ...(failed ? { error: "technical_issue" as const } : {}) });
+      if (!this.call.replaced) this.options.notify({ revision: this.call.revision, segment: this.segment, ended: !failed, ...(failed ? { error: "technical_issue" as const } : {}) });
       await closing;
       await this.options.closed?.();
     });

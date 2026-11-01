@@ -20,4 +20,3 @@ begin
 end $$;
 revoke all on function public.append_maya_call_connection(uuid, integer, text) from public, anon, authenticated;
 grant execute on function public.append_maya_call_connection(uuid, integer, text) to service_role;
-

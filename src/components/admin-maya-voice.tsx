@@ -152,16 +152,37 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
       const r = new Room({ adaptiveStream: false, dynacast: false });
       room.current = r;
       let terminal = false;
+      let newestSegment = -1;
+      let notified = false;
+      const refreshEnded = () => { if (!notified) { notified = true; void onEnded(); } };
       const isMaya = (p: { kind?: unknown } | undefined) => p?.kind === ParticipantKind.AGENT;
+      const segmentOf = (p: { attributes: Record<string, string> }) => {
+        const raw = p.attributes["maya.segment"];
+        const n = raw === undefined || raw === "" ? -1 : Number(raw);
+        return Number.isSafeInteger(n) && n >= 0 ? n : -1;
+      };
       const readMaya = () => {
-        const p = [...r.remoteParticipants.values()].find(isMaya);
+        if (room.current !== r || terminal) return;
+        const candidates = [...r.remoteParticipants.values()].filter((p) => isMaya(p) && segmentOf(p) >= newestSegment);
+        const p = candidates.sort((a, b) => segmentOf(b) - segmentOf(a) || Number(b.identity === agent.current) - Number(a.identity === agent.current))[0];
         agent.current = p?.identity ?? null;
-        if (!p) return;
+        if (!p) {
+          setMaya(null);
+          if (liveSince.current !== null) {
+            liveSince.current = null;
+            setError(ERROR_TEXT.disconnected);
+            setCall("failed");
+            void onUpdate();
+          }
+          return;
+        }
+        newestSegment = Math.max(newestSegment, segmentOf(p));
         setFakeSpeech(p.attributes["maya.speech"] === "fake");
         const s = p.attributes["lk.agent.state"];
         setMaya(s === "listening" || s === "thinking" || s === "speaking" ? s : null);
         if (liveSince.current === null) {
           liveSince.current = Date.now();
+          setError(null);
           setCall("live");
         }
       };
@@ -172,24 +193,27 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
       });
       r.on(RoomEvent.TrackUnsubscribed, (track) => track.detach().forEach((el) => el.remove()));
       r.on(RoomEvent.ParticipantConnected, readMaya);
+      r.on(RoomEvent.ParticipantDisconnected, readMaya);
       r.on(RoomEvent.ParticipantAttributesChanged, readMaya);
       r.on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
-        if (topic !== "maya.call" || !isMaya(participant)) return;
-        let update: { ended?: boolean; error?: string } = {};
+        if (room.current !== r || topic !== "maya.call" || !isMaya(participant) || !participant || participant.identity !== agent.current) return;
+        let update: { ended?: boolean; error?: string; segment?: number } = {};
         try {
           update = JSON.parse(new TextDecoder().decode(payload));
         } catch {}
+        // Fatal messages require the current worker's immutable claim, including messages delayed across replacement.
+        if (segmentOf(participant) < 0 || update.segment !== segmentOf(participant)) { void onUpdate(); return; }
         if (update.error === "technical_issue") {
           setError(ERROR_TEXT.technical_issue);
           setCall("failed");
           void r.disconnect();
-          void onEnded();
+          refreshEnded();
         } else if (update.ended) {
           terminal = true;
           setError(null);
           setCall("ended");
           void r.disconnect();
-          void onEnded();
+          refreshEnded();
         } else void onUpdate();
       });
       r.on(RoomEvent.Disconnected, () => {
@@ -202,7 +226,7 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
         // A room event cannot establish the saved call's outcome.
         setCall("failed");
         setError(current => current ?? ERROR_TEXT.disconnected);
-        void onEnded();
+        refreshEnded();
       });
       await r.connect(body.ticket.url, body.ticket.token);
       await r.localParticipant.setMicrophoneEnabled(true, { echoCancellation: true, noiseSuppression: true, autoGainControl: true });

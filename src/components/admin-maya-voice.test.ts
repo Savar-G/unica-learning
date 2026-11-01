@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { VoicePanel } from "./admin-maya-voice";
 
-const rooms = vi.hoisted(() => [] as Array<{ emit(event: string, ...args: unknown[]): void }>);
+const rooms = vi.hoisted(() => [] as Array<{ emit(event: string, ...args: unknown[]): void; remoteParticipants: Map<string, unknown> }>);
 vi.mock("livekit-client", () => {
   class Room {
     remoteParticipants = new Map();
@@ -48,7 +48,9 @@ it("R408-13: a room disconnect keeps recovery controls until the saved call ends
   expect(host.textContent).toContain("Cancel the call");
   expect(onEnded).toHaveBeenCalled();
   await click("Connect");
-  await act(async () => rooms[1].emit("DataReceived", new TextEncoder().encode(JSON.stringify({ ended: true })), { kind: 4 }, undefined, "maya.call"));
+  const agent = { identity: "current-worker", kind: 4, attributes: { "maya.segment": "9", "lk.agent.state": "listening" } };
+  await act(async () => { rooms[1].remoteParticipants.set(agent.identity, agent); rooms[1].emit("ParticipantConnected", agent); });
+  await act(async () => rooms[1].emit("DataReceived", new TextEncoder().encode(JSON.stringify({ ended: true, segment: 9 })), agent, undefined, "maya.call"));
   expect(host.textContent).toContain("The call has ended.");
   expect(host.textContent).not.toContain("The connection is closed.");
 });

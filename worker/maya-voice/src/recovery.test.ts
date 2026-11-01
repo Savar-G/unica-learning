@@ -118,3 +118,16 @@ describe('replacement worker recovery through public interfaces', () => {
     } finally { release.resolve(); await r.run.hangUp(); }
   });
 });
+
+it('R408-15 obsolete worker cleanup cannot issue a client disconnect for the live replacement',async()=>{
+  const f=await fixture();await f.call.start();const a=f.makeRun(f.call);
+  await a.run.agentJoined();await a.run.childJoined();
+  const b=f.makeRun(await f.open());await b.run.agentJoined();await b.run.childJoined();
+  const row=f.store.rows()[0];expect(row.status).toBe('live');expect(b.session.close).not.toHaveBeenCalled();
+  const from=a.updates.length;
+  await a.run.hangUp();
+  expect(f.store.rows()[0]).toEqual(row);expect(b.session.close).not.toHaveBeenCalled();
+  console.log('OLD_WORKER_AFTER_REPLACEMENT',JSON.stringify({old:a.updates.slice(from),replacementRevision:row.revision,status:row.status}));
+  try {expect(a.updates.slice(from).filter(u=>u.error==='technical_issue'||u.ended)).toEqual([]);}
+  finally {await b.run.hangUp();}
+});
