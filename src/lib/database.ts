@@ -14,6 +14,7 @@ import type { BoardHistory } from "@/lib/board-history";
 import type { Outcome, WordingHistory } from "@/lib/maya";
 import type { AlertStatus, CallKind, CallRecord, CallStatus, FlagLevel } from "@/lib/maya-call";
 import type { MayaTrace } from "@/lib/maya-trace";
+import type { WorkbookDelivery, WorkbookEmailKind, WorkbookEmailStatus } from "@/lib/workbook-email";
 
 export type { Json };
 
@@ -48,6 +49,7 @@ type ColumnTypes = KnownColumns<{
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };
   workbooks: { status: WorkbookStatus };
   workbook_drafts: { draft: GeneratedWorkbook };
+  workbook_emails: { kind: WorkbookEmailKind; status: WorkbookEmailStatus; delivery: WorkbookDelivery | Record<string, never> };
 }>;
 type Fits<T, Column> = Json extends Column ? T
   : (null extends T ? 1 : 0) extends (null extends Column ? 1 : 0) ? (NonNullable<T> extends NonNullable<Column> ? T : never) : never;
