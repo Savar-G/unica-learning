@@ -295,8 +295,8 @@ export const TEMPLATES = {
     "You can write your answer on the board instead.", "If it's easier, write your number on the board.", "Try writing it on the board for me.",
     "You can also write it on the board.", "Would you like to write it on the board instead?",
   ],
-  // The decline (#383, C29): for a request for sexual, violent or other harmful content. One planned wording, not
-  // approved yet: Savar approves it separately (D-197). No detail, no echo of the request.
+  // The decline (#383, C29): for a request for sexual, violent or other harmful content. One fixed wording,
+  // approved by Savar on 2026-11-01 (D-197). No detail, no echo of the request.
   "redirect.decline": ["I can't talk about this. I'm here to help with math."],
   "redirect.back": ["Let's get back to {expr}.", "Back to our question: {expr}.", "Let's keep going with {expr}.", "Now, back to {expr}.", "Let's return to {expr}.", "Okay, back to {expr}."],
   "close.solved": [

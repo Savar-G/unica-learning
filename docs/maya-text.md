@@ -71,7 +71,7 @@ The adapter steps the proposal once with no reviews, to learn which words the se
 
 The model ends a free-talk reply with a phrase from the `back` group ("Shall we get back to our question?"), code-written and with no math, so the reply also leads back to the question; the next turn restates it with a line. Maya confirms what she heard at most twice in a row, and never after the answer is accepted. An echo frame never repeats an insult ("dumb", "stupid" ...): code picks a frame with no slot. The easier example starts with its intro line (`example.intro`) in the turn of its first step; a first step without it is refused.
 
-A request for sexual, violent or other harmful content (`reading.unsafeRequest`) gets the decline line `redirect.decline` ("I can't talk about this. I'm here to help with math.", planned wording that Savar approves separately) and no free talk, then the question again.
+A request for sexual, violent or other harmful content (`reading.unsafeRequest`) gets the decline line `redirect.decline` ("I can't talk about this. I'm here to help with math.", one fixed wording, approved by Savar on 2026-11-01) and no free talk, then the question again.
 
 Board commands do not change with free talk: Maya draws only through code's board offers (`draw`). Only the board core's tests read the model's own commands (`modelBoard`).
 
