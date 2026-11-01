@@ -16,7 +16,11 @@
 //   that does not fit is written again once, every question shorter, with the problems and each text's length against
 //   its room; of the two versions of a question the page keeps the sound one, and of two sound ones the shorter. If the
 //   page still does not fit, it leaves out questions, one at a time, until it fits: the last question the fit check
-//   names, else the page's last. Nothing is shrunk. Each question left out is in the page's `leftOut` and its part's
+//   names, else the page's last (on a parent-led page, it first tries its tall cards paired in rows). Nothing is shrunk.
+// - The book plan (#380): before any AI call, code gives each slot its skill, kind of question, numbers and a person's
+//   name, in book order (planBook): a page never has two slots on one pair of numbers, and each kind takes the pairs
+//   the book has used least. A question that repeats one goes to the redo with the slot's spare numbers and next kind.
+//   A sound question whose text runs past its room joins the same redo, to be written shorter (kept only if it is). Each question left out is in the page's `leftOut` and its part's
 //   omission. A page keeps at least one question: if it does not fit with one, it keeps them all and is marked failed.
 // - The book (CONTEXT.md sections 1 and 7, D-187, D-191): the cover (page 1), the How + Plan page, the ten days' pages
 //   in plan order, the back cover, then blank pages to a multiple of 4. Page numbers run from the cover through the
@@ -31,7 +35,7 @@ import type { Curriculum } from "@/lib/workbook-curriculum";
 import { buildQuestion, ITEMS_SCHEMA, type BuiltQuestion, type QuestionCheck } from "@/lib/workbook-generator-items";
 import { isOneMoreLessSkill } from "@/lib/number-words";
 import {
-  bookPageContent, dayPageContent, layoutDayPage, mistakesFor, levelSigns, rangeProblem, samFix, samProblem, slotRanges, PANEL_SLOTS, SLOT_FORMATS, STRICT_SLOTS,
+  bookPageContent, dayPageContent, layoutDayPage, mistakesFor, levelSigns, rangeProblem, samFix, samProblem, skillRange, slotRanges, PANEL_SLOTS, SLOT_FORMATS, STRICT_SLOTS,
   type DayLayout, type NumberRange,
 } from "@/lib/workbook-book";
 import type { Omission, PageContent, SlotName } from "@/lib/workbook-page";
@@ -243,6 +247,12 @@ interface Slot {
   layoutSlot: number;
   /** The skill and the kind of question code chose for the slot (#380): the skill's kinds in turn through the book. */
   aim?: { skill: string; kind: QuestionKind; orElse: QuestionKind[] };
+  /**
+   * The numbers and the person code chose for the slot (#380, round 5), planned across the whole book: `use`, a pair no
+   * other slot of the page has and the book has not used for this kind, if it can; `spare`, another such pair for a redo
+   * after a repeat; `name`, a person's name (never Sam, the child of Spot the error).
+   */
+  planned?: { use: number[] | null; spare: number[] | null; name: string | null };
 }
 
 /** The kinds of question code turns through for a skill, so its questions differ (#380). */
@@ -273,7 +283,8 @@ export function kindsOf(text: string): QuestionKind[] {
   if (/\bequal\b|balance/.test(t)) return ["relation", "missing-part", "story", "relation", "picture"];
   if (/compare|which has more|greater|which group has more/.test(t)) return ["relation", "picture", "order", "story"];
   if (/\border\b/.test(t)) return ["order", "sequence", "relation"];
-  if (/1 more|2 more|more and \d|less than a quantity/.test(t)) return ["fact", "story", "picture", "sequence", "missing-part"];
+  // No missing part on 1 more and 1 less: its missing part is always the 1 the text names (round 5).
+  if (/1 more|2 more|more and \d|less than a quantity/.test(t)) return ["fact", "story", "picture", "sequence"];
   if (/before or just after|sequence|count forward|count on|count back|skip-count|count to/.test(t)) return ["sequence", "fact", "picture"];
   if (/make 5|make 10|part|decompose|ways to make|partners/.test(t)) return ["missing-part", "picture", "story", "fact"];
   if (/pattern/.test(t)) return ["pattern", "draw"];
@@ -298,6 +309,148 @@ function layoutSlots(page: PlannedPage, layout: DayLayout): Slot[] {
     seen.set(x.part, n);
     return { id: `${x.part + 1}.${n}`, part: page.parts[x.part], place: x.slot, layoutSlot: k };
   }));
+}
+
+// ---------- The book plan: kinds, numbers and names (#380) ----------
+
+/** People's names, a girl's and a boy's in turn, so a pronoun can follow. Never Sam: Sam is the child of Spot the error. */
+const GIRLS = ["Mia", "Ava", "Lia", "Ana", "Pia", "Ivy", "Nia", "Eva", "Rosa", "Tara", "Gia", "Amy", "Lily", "June"];
+const BOYS = ["Ben", "Leo", "Tom", "Raj", "Eli", "Gus", "Dan", "Kai", "Omar", "Max", "Ian", "Jon", "Ali", "Ned"];
+const PEOPLE = GIRLS.flatMap((g, i) => [g, BOYS[i]]);
+/** The most numbers a sequence has on a parent-led card (U1 to U3): more wrap to a second line, and the page overflows. */
+const PARENT_SEQUENCE_MOST = 5;
+/** The kinds of question code plans numbers for: each has an operation, or a relation of one or two numbers. */
+const NUMBERED_KINDS: ReadonlySet<QuestionKind> = new Set<QuestionKind>(["story", "picture", "fact", "missing-part", "relation"]);
+/** Planned numbers stop at this range: beyond it the book has enough sums not to repeat, and the vary number does. */
+const PLANNED_MAX = 20;
+
+/** A fixed order of the candidates for a skill (a hash, never Math.random), so a book does not start at 1 + 1. */
+const hashOf = (key: string) => {
+  let h = 2166136261;
+  for (const c of key) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+  return h;
+};
+
+/**
+ * The number pairs a slot may take for a kind on a skill, or null when code plans none (a range past PLANNED_MAX or not
+ * of whole numbers). A sum's parts a + b (each from 1, the total at most the max); on a skill about 1 (or 2) more and
+ * less, a and the 1 (or 2); a relation's two different numbers, never the halfway of a benchmark skill.
+ */
+function numberChoices(skill: string, text: string, kind: QuestionKind | "spot", r: NumberRange): number[][] | null {
+  if (r.max > PLANNED_MAX || r.max < 2 || r.fractions || r.decimals || r.negatives) return null;
+  const t = text.toLowerCase();
+  const pairs: number[][] = [];
+  if (kind === "relation") {
+    const benchmark = /less than \d|benchmark|close to/.test(t);
+    for (let a = 0; a <= r.max; a++) for (let b = 1; b <= r.max; b++) if (a !== b && !(benchmark && (a === 5 || 2 * a === r.max))) pairs.push([a, b]);
+  } else {
+    const step = /two-more-less|2 more/.test(`${skill} ${t}`) ? 2 : isOneMoreLessSkill(skill) || /1 more/.test(t) ? 1 : null;
+    if (step && kind !== "missing-part") for (let a = 1; a + step <= r.max; a++) pairs.push([a, step]);
+    else for (let a = 1; a < r.max; a++) for (let b = 1; a + b <= r.max; b++) pairs.push([a, b]);
+  }
+  return pairs.length ? pairs.sort((x, y) => hashOf(`${skill}:${x}`) - hashOf(`${skill}:${y}`)) : null;
+}
+
+/**
+ * Plans every slot of the book in book order (#380): its skill and kind of question (each skill's kinds in turn, and on
+ * a page a skill takes another kind before it takes one again), its numbers and a person's name. A page's slots never
+ * share a pair of numbers (in either order); across the book each kind takes the pair it has used least. Spot the
+ * error slots take numbers too: Sam's sum.
+ */
+function planBook(input: GenerateInput, work: PageWork[]) {
+  const { curriculum, plan } = input;
+  const child = input.book?.child.toLowerCase();
+  const people = PEOPLE.filter((n) => n.toLowerCase() !== child);
+  const turns = new Map<string, number>();
+  const used = new Map<string, number>();
+  let person = 0;
+  for (const w of work) {
+    const inPart = new Map<PlannedPart, number>();
+    const pageKinds = new Set<string>();
+    const pagePairs = new Set<string>();
+    for (const slot of w.slots) {
+      const k = inPart.get(slot.part) ?? 0;
+      inPart.set(slot.part, k + 1);
+      if (!slot.place || slot.part.skills.length === 0) continue;
+      let numbered: { skill: string; kind: QuestionKind | "spot" } | null = null;
+      if (slot.place === "spot-the-error") {
+        // Sam's sum: on the slot's skill with the widest range, so the sum fits each of its rules.
+        const skill = [...slot.part.skills].sort((a, b) => skillRange(curriculum, plan.level, b).max - skillRange(curriculum, plan.level, a).max)[0];
+        numbered = { skill, kind: "spot" };
+      } else if (!FIXED_KIND_PLACES.has(slot.place)) {
+        const skill = slot.part.skills[k % slot.part.skills.length];
+        const kinds = kindsOf(curriculum.skill(skill)?.text ?? skill).filter((x) => slot.place === "picture-stories" || slot.place === "word-problems" ? x === "story" || x === "picture" || x === "missing-part" : true);
+        if (kinds.length > 0) {
+          const n = turns.get(skill) ?? 0;
+          // The skill's next kind this page has not asked on it yet (all asked: the next in turn).
+          const step = kinds.findIndex((_, j) => !pageKinds.has(`${skill}|${kinds[(n + j) % kinds.length]}`));
+          const kind = kinds[(n + Math.max(0, step)) % kinds.length];
+          turns.set(skill, n + Math.max(0, step) + 1);
+          pageKinds.add(`${skill}|${kind}`);
+          slot.aim = { skill, kind, orElse: [...new Set(kinds)].filter((x) => x !== kind) };
+          if (NUMBERED_KINDS.has(kind)) numbered = { skill, kind };
+        }
+      }
+      let pair: number[] | null = null;
+      let spare: number[] | null = null;
+      if (numbered) {
+        const choices = numberChoices(numbered.skill, curriculum.skill(numbered.skill)?.text ?? numbered.skill, numbered.kind, skillRange(curriculum, plan.level, numbered.skill));
+        const bond = (p: number[]) => [...p].sort((a, b) => a - b).join(",");
+        const ranked = (choices ?? []).filter((p) => !pagePairs.has(bond(p)))
+          .map((p, j) => ({ p, j, n: used.get(`${numbered.kind}|${p}`) ?? 0 }))
+          .sort((a, b) => a.n - b.n || a.j - b.j);
+        pair = ranked[0]?.p ?? null;
+        spare = ranked.find((x) => pair && bond(x.p) !== bond(pair))?.p ?? null;
+        if (pair) {
+          used.set(`${numbered.kind}|${pair}`, (used.get(`${numbered.kind}|${pair}`) ?? 0) + 1);
+          pagePairs.add(bond(pair));
+          if (spare) pagePairs.add(bond(spare));
+        }
+      }
+      const name = slot.place === "spot-the-error" ? null : people[person++ % people.length];
+      slot.planned = { use: pair, spare, name };
+    }
+  }
+}
+
+/** A package with Sam (Spot the error's child) renamed: the slot's planned name, or one its pronouns fit, not in its text. */
+function withoutSam(p: QuestionPackage, planned: string | null): QuestionPackage {
+  const json = JSON.stringify(p);
+  if (!/\bSam\b/.test(json)) return p;
+  const text = `${p.text} ${p.easierExample?.text ?? ""}`;
+  const free = (names: string[]) => names.find((n) => !new RegExp(`\\b${n}\\b`).test(json));
+  const he = /\b(he|him|his)\b/i.test(text);
+  const she = /\b(she|her|hers)\b/i.test(text);
+  const fits = (n: string | null) => n && !new RegExp(`\\b${n}\\b`).test(json) && (he ? BOYS.includes(n) : she ? GIRLS.includes(n) : true);
+  const name = fits(planned) ? planned! : (he ? free(BOYS) : she ? free(GIRLS) : free(PEOPLE)) ?? "Ben";
+  return JSON.parse(json.replace(/\bSam\b/g, name)) as QuestionPackage;
+}
+
+/**
+ * The AI's item with a sequence short enough for a parent-led card (U1 to U3): at most PARENT_SEQUENCE_MOST numbers, the
+ * window with the most blanks (and one number printed). Only when the text names no number, which a window would change.
+ */
+function shortSequence(raw: unknown, level: number): unknown {
+  if (level > 3 || typeof raw !== "object" || raw === null) return raw;
+  const r = raw as { text?: unknown; sequence?: { start?: { type?: string; value?: number }; step?: { type?: string; value?: number }; terms?: unknown; blanks?: unknown } | null };
+  const s = r.sequence;
+  if (!s || typeof r.text !== "string" || /\d/.test(r.text) || typeof s.terms !== "number" || s.terms <= PARENT_SEQUENCE_MOST || !Array.isArray(s.blanks)) return raw;
+  if (s.start?.type !== "number" || s.step?.type !== "number" || typeof s.start.value !== "number" || typeof s.step.value !== "number") return raw;
+  const blanks = s.blanks.filter((b): b is number => Number.isInteger(b));
+  let best: { at: number; n: number } | null = null;
+  for (let at = 0; at + PARENT_SEQUENCE_MOST <= s.terms; at++) {
+    const n = blanks.filter((b) => b >= at && b < at + PARENT_SEQUENCE_MOST).length;
+    if (n >= 1 && n < PARENT_SEQUENCE_MOST && (!best || n > best.n)) best = { at, n };
+  }
+  if (!best) return raw;
+  const { at } = best;
+  return {
+    ...r,
+    sequence: {
+      ...s, start: { ...s.start, value: s.start.value + at * s.step.value }, terms: PARENT_SEQUENCE_MOST,
+      blanks: blanks.filter((b) => b >= at && b < at + PARENT_SEQUENCE_MOST).map((b) => b - at),
+    },
+  };
 }
 
 const SYSTEM = [
@@ -325,13 +478,14 @@ const SYSTEM = [
   "Relation format: give numbers (one number, or two) and relation: kind less-than (to: [the benchmark], as 'Is 7 less than 5?'), closer (to: [two benchmarks], as 'Is 8 close to 0 or 10?', never halfway), equal (two numbers: 'Equal or not?'), more or fewer (two numbers and labels: one short word for each, as cats and dogs: 'Who has more?'). Code writes the choices the child circles and the answer; the text never says the answer. No < or > signs.",
   "A picture of a missing part shows the part given or the total: say which in figureShows ('Mia has 3. How many more make 8?' shows the part, 3; 'Ten-frame: 8 dots. 5 and how many more?' shows the total, 8). Any number the text says the picture shows ('8 dots', 'Ten-frame: 8') is what code draws.",
   "One question per item: the text never holds a worked fact or a second task ('5 and 0 more is 5. Show 6.' is not a question). A draw item says what to draw and never asks how many, which number or who; ask which has more with a relation item.",
-  "Used up: the request may list usedUp, questions whose kind the book already asks 3 times. Outside practice, write none of the page's questions in the shape of one of them (the same words with other numbers or names).",
+  "Used up: the request may list usedUp, shapes of question the book already asks 3 times: each an example and its words (the question's lowercase words in order, without numbers, names or other capitalised words). Outside practice, write no question whose lowercase words are exactly one of them: use other words or another kind of question, not only other numbers or names.",
+  "Planned: a slot may give planned numbers and a name, chosen by code across the whole book so its questions differ. Build the item on the numbers [a, b]: a sum is a + b; a take-away starts at a + b and takes b away; a missing part has the part a and the total a + b; a picture shows a and b (or a + b in all); 1 more than a is a + 1; a relation uses a (and b); Sam's sum in Spot the error is a + b (or a + b take away b). Keep to them unless a rule of the slot forbids it; then change as little as you can. A person in the question is the planned name. Never name anyone Sam outside Spot the error: Sam is the child whose work Spot the error shows.",
   "Asked: a slot may list asked, the questions the book already asks on its skills. Never repeat one of them. On this page, no two questions may be the same, work the same sum, or differ only by one number when another kind of question is possible: change the kind (a story, a picture to count, a missing part, a sequence), not only a number.",
   "Examples: the request may list examples. Each is the worked example a panel (worked-example, watch-one, reminder) shows for its own skill: fill it like a slot, with its id and on that skill only, of the kind its aim gives. Give a small sum of the skill (write-number with an operation), or a count, sequence, order or relation item code can show done. It is not printed as a question, so it has no room limit.",
   "A count from one number to another ('Count from 2 to 7', 'Count back from 10 to 1') is the sequence format, starting and ending at those numbers; if the text says 'start at 2', the sequence starts at 2.",
   "On a skill about 1 more and 1 less (or 2 more and 2 less), each item asks one of them: 'What is 1 more than 7?' in one slot, 'What is 1 less than 7?' in another, each with its operation (7 + 1, 7 - 1).",
   "A missing-addend's only worked step is named count: a wrong answer's step is count or null. Every item with an operation has at least one wrong answer and an easier example. Fill every slot and every example you are asked for, each with its own id.",
-  "Never give the answer in the text: 'Red 6, blue 4. How many red?' is not a question, and adding or taking away 0 only hands back a number the text gives. At U1 to U3 an order item has 2 to 4 numbers.",
+  "Never give the answer in the text: 'Red 6, blue 4. How many red?' is not a question, and adding or taking away 0 only hands back a number the text gives. At U1 to U3 an order item has 2 to 4 numbers, and a sequence at most 5 (more do not fit a card's line).",
   "A missing number in a list (4, 5, ?, 7) is the sequence format, with the blanks as data: never write _ or a gap in the text.",
   "Rules: a slot may give the rules of each of its skills in plain words: the largest number, the signs and ideas not taught yet, and the formats to leave out. Follow them exactly; they are checked by code, and an item that breaks one is thrown away.",
   "The operation's answer is exactly the number the child writes in the box. A missing part is the missing-addend kind, operands [the part given, the total]: '2 and what make 5?', '3 + ? = 5', 'Mia has 3. How many more make 5?' and 'How far is 7 from 10?' are missing-addend [2, 5], [3, 5], [3, 5] and [7, 10]; code's answer is the missing part (3, 2, 2, 3). Never write them as 2 + 3 (code would print 5 as the answer). It is a number bond, not subtraction, so it is allowed before subtraction is taught; its totals go to 20.",
@@ -407,14 +561,15 @@ function pageRequest(input: GenerateInput, w: PageWork, slots: Slot[], note: str
         numbers,
         rules: Object.fromEntries(Object.entries(numbers).map(([skill, r]) => [skill, rangeRules(skill, r)])),
         ...(room ? { room: { characters: room.characters, perLine: room.perLine, lines: room.lines } } : {}),
-        vary: varyNumber(`${day}:${page.number}:${s.id}`, max),
+        ...(s.planned?.use ? {} : { vary: varyNumber(`${day}:${page.number}:${s.id}`, max) }),
         ...(memory ? { asked: asked(s.part.skills) } : {}),
         ...(s.aim ? { aim: { skill: s.aim.skill, kind: s.aim.kind, means: KIND_WORDS[s.aim.kind], orElse: s.aim.orElse } } : {}),
+        ...(s.planned?.use || s.planned?.name ? { planned: { ...(s.planned.use ? { numbers: s.planned.use } : {}), ...(s.planned.name ? { name: s.planned.name } : {}) } } : {}),
       };
     }),
     // Shapes of question the book has used up: none of the page's questions (outside practice) may take one again.
     ...(memory && [...memory.shapes.values()].some((x) => x.length >= SHAPE_MOST)
-      ? { usedUp: [...memory.shapes].filter(([, x]) => x.length >= SHAPE_MOST).map(([k]) => memory.shapeText.get(k)!) }
+      ? { usedUp: [...memory.shapes].filter(([, x]) => x.length >= SHAPE_MOST).map(([k]) => ({ example: memory.shapeText.get(k)!, words: k })) }
       : {}),
     ...(panels.length ? {
       examples: panels.map((x) => {
@@ -565,11 +720,12 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
   const missing = (id: string) => (out.items.size ? ` (it answered slots ${[...out.items.keys()].join(", ")}, not ${id})` : " (its answer held no items)");
   // Each panel's worked example: of its own skill, one code can show worked out, in the level's numbers.
   const examples = panels.map((x) => {
-    const b = buildQuestion(out.items.get(x.id), {
+    const b = buildQuestion(shortSequence(out.items.get(x.id), input.plan.level), {
       id: `${input.workbookId}:d${w.day}p${w.page.number}${x.id}`, workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [x.skill],
       signs: levelSigns(input.curriculum, input.plan.level),
     });
     if (out.error && !out.items.has(x.id)) b.check = { status: "failed", reason: `the AI gave no answer: ${out.error}` };
+    if (b.package) b.package = withoutSam(b.package, null);
     const pkg = b.package;
     if (b.check.status !== "failed" && pkg && !pkg.operation && !pkg.item?.checks.some((c) => c.kind === "count" || c.kind === "sequence" || c.kind === "order" || c.kind === "relation")) {
       b.check = { status: "failed", reason: "a panel's worked example is a sum, a count, a sequence, an order or a relation code can work out" };
@@ -582,11 +738,13 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
   });
   const built = which.map((i) => {
     const slot = w.slots[i];
-    const b = buildQuestion(out.items.get(slot.id), {
+    const b = buildQuestion(shortSequence(out.items.get(slot.id), input.plan.level), {
       id: `${input.workbookId}:d${w.day}p${w.page.number}s${slot.id}`,
       workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: slot.part.skills,
       signs: levelSigns(input.curriculum, input.plan.level),
     });
+    // Sam is only Spot the error's child: anyone else named Sam takes the slot's planned name.
+    if (b.package && slot.place && slot.place !== "spot-the-error") b.package = withoutSam(b.package, slot.planned?.name ?? null);
     if (out.error && !out.items.has(slot.id)) b.check = { status: "failed", reason: `the AI gave no answer: ${out.error}` };
     else if (!out.items.has(slot.id) && b.check.status === "failed") b.check = { status: "failed", reason: `${b.check.reason}${missing(slot.id)}` };
     // A slot with a layout of its own takes only its format: another would not lay out there.
@@ -638,15 +796,52 @@ function hintFor(reason: string): string | null {
   return null;
 }
 
+/** A reason that the question repeats one of the book or of its page, or gives its own answer: its redo takes new numbers. */
+const NEEDS_NEW = /repeats a question|same as question|same sum as question|only by one number|same kind of question|this kind of question|gives its own answer/;
+
 /** The redo's words for a failed question or worked example. */
 function failNote(id: string, b: BuiltQuestion, slot?: Slot): string {
   const reason = (b.check as { reason: string }).reason;
   const steps = b.stepIds.length ? ` Its operation's worked steps are named: ${b.stepIds.join(", ")}.` : "";
   const hint = hintFor(reason);
-  // A repeat: the slot's next kind of question, so the redo asks it another way.
-  const next = slot?.aim && /repeats a question|same as question|same sum as question|only by one number|same kind of question|this kind of question/.test(reason) ? slot.aim.orElse[0] : undefined;
+  // A repeat: the slot's next kind of question and its spare numbers (as its planned numbers), so the redo asks it
+  // another way.
+  const again = slot && NEEDS_NEW.test(reason);
+  const next = again && slot.aim && !/gives its own answer/.test(reason) ? slot.aim.orElse[0] : undefined;
   const kind = next ? ` Write it as a ${next} question: ${KIND_WORDS[next]}.` : "";
-  return `Slot ${id} failed the check: ${reason}.${steps}${hint ? ` ${hint}` : ""}${kind} Write it again.`;
+  const numbers = again && slot.planned?.spare ? ` Use the numbers ${slot.planned.spare.join(" and ")} (its planned numbers now).` : "";
+  return `Slot ${id} failed the check: ${reason}.${steps}${hint ? ` ${hint}` : ""}${kind}${numbers} Write it again.`;
+}
+
+/** The slot as its redo asks it after `reason`: a repeat takes the slot's next kind and its spare numbers. */
+function redoSlot(slot: Slot, reason: string): Slot {
+  if (!NEEDS_NEW.test(reason)) return slot;
+  const next = slot.aim && !/gives its own answer/.test(reason) ? slot.aim.orElse[0] : undefined;
+  return {
+    ...slot,
+    ...(slot.aim && next ? { aim: { ...slot.aim, kind: next, orElse: slot.aim.orElse.filter((k) => k !== next) } } : {}),
+    ...(slot.planned?.spare ? { planned: { ...slot.planned, use: slot.planned.spare, spare: null } } : {}),
+  };
+}
+
+/**
+ * Why a sound question is too long for its place, for the redo, or null: its text runs past its slot's room, or (on a
+ * parent-led card) its sequence has more numbers than a line holds. `length` is what a shorter redo must beat.
+ */
+function overRoom(input: GenerateInput, w: PageWork, i: number, b: BuiltQuestion): { length: number; note: string } | null {
+  const place = w.slots[i].place;
+  const room = place ? roomOf(input, place, w.day) : null;
+  if (!room || b.check.status === "failed" || !b.package) return null;
+  const id = w.slots[i].id;
+  const n = b.package.text.length;
+  if (n > room.characters) {
+    return { length: n, note: `Slot ${id} is sound but too long for its place: its text has ${n} characters and its room is ${room.characters}. Write the same kind of question again, on the same skill, in at most ${room.characters} characters (a short sentence or two: '5 cars. 3 more come. How many now?').` };
+  }
+  const terms = (b.package.item?.checks ?? []).flatMap((c) => (c.kind === "sequence" ? [c.terms.length] : []))[0] ?? 0;
+  if (input.plan.level <= 3 && terms > PARENT_SEQUENCE_MOST) {
+    return { length: n, note: `Slot ${id} is sound but too long for its card: its sequence has ${terms} numbers and a card's line holds ${PARENT_SEQUENCE_MOST}. Write it again with at most ${PARENT_SEQUENCE_MOST} numbers (count from 3 to 7, not from 1 to 10).` };
+  }
+  return null;
 }
 
 /** Fails a sound question that repeats one of the book or of `others` on this page. */
@@ -663,7 +858,9 @@ const siblingsOf = (built: BuiltQuestion[], upTo: number, except = -1) =>
 /**
  * The first pass at a page: the page call (with its panels' worked examples), then one redo call for its failed
  * questions and examples (their one try for a failed check). A question that repeats one the book already asked, or
- * another on its page, fails the check with the reason (round 3).
+ * another on its page, fails the check with the reason (round 3); its redo takes the slot's next kind and spare numbers.
+ * A sound question whose text runs past its room goes to the same redo to be written shorter (round 5): the page keeps
+ * the redo only when it is sound and shorter, so a long question is never marked failed for its length.
  */
 async function firstPass(input: GenerateInput, deps: GenerateDeps, w: PageWork, memory: BookMemory | null): Promise<{ questions: GeneratedQuestion[]; examples: (QuestionPackage | null)[] }> {
   const all = w.slots.map((_, i) => i);
@@ -673,14 +870,32 @@ async function firstPass(input: GenerateInput, deps: GenerateDeps, w: PageWork, 
   const examples = first.examples;
   const questions = all.map((i) => generated(w, i, built[i], 1));
   const failed = all.filter((i) => built[i].check.status === "failed");
+  const long = input.book ? all.flatMap((i) => {
+    const over = overRoom(input, w, i, built[i]);
+    return over ? [{ i, ...over }] : [];
+  }) : [];
   const failedPanels = w.panels.flatMap((_, k) => (examples[k].check.status === "failed" ? [k] : []));
-  if (failed.length > 0 || failedPanels.length > 0) {
-    const note = [...failed.map((i) => failNote(w.slots[i].id, built[i], w.slots[i])), ...failedPanels.map((k) => failNote(w.panels[k].id, examples[k]))].join("\n");
+  if (failed.length > 0 || failedPanels.length > 0 || long.length > 0) {
+    const note = [
+      ...failed.map((i) => failNote(w.slots[i].id, built[i], w.slots[i])),
+      ...long.map((x) => x.note),
+      ...failedPanels.map((k) => failNote(w.panels[k].id, examples[k])),
+    ].join("\n");
+    const which = [...failed, ...long.map((x) => x.i)].sort((a, b) => a - b);
     const kept = built.flatMap((b) => (b.check.status !== "failed" && b.package ? [b.package.text] : []));
-    const redo = await writeSlots(input, deps, w, failed, note, "workbook_page_redo", failedPanels.map((k) => w.panels[k]), memory, memory ? kept : []);
-    failed.forEach((i, k) => {
-      built[i] = redo.built[k];
-      markRepeat(built[i], w.slots[i].place, memory, siblingsOf(built, built.length, i));
+    // A repeat's redo asks the slot its next kind with its spare numbers.
+    const redoWork: PageWork = { ...w, slots: w.slots.map((x, i) => (failed.includes(i) ? redoSlot(x, (built[i].check as { reason: string }).reason) : x)) };
+    const redo = await writeSlots(input, deps, redoWork, which, note, "workbook_page_redo", failedPanels.map((k) => w.panels[k]), memory, memory ? kept : []);
+    which.forEach((i, k) => {
+      const fresh = redo.built[k];
+      markRepeat(fresh, w.slots[i].place, memory, siblingsOf(built, built.length, i));
+      const wasLong = long.find((x) => x.i === i);
+      // A long question keeps its first version unless the redo is sound and shorter.
+      if (wasLong && (fresh.check.status === "failed" || !fresh.package || !!overRoom(input, w, i, fresh) && fresh.package.text.length >= wasLong.length)) {
+        questions[i] = generated(w, i, built[i], 2);
+        return;
+      }
+      built[i] = fresh;
       questions[i] = generated(w, i, built[i], 2);
     });
     failedPanels.forEach((k, j) => { examples[k] = redo.examples[j]; });
@@ -740,6 +955,37 @@ async function shorterRewrite(input: GenerateInput, deps: GenerateDeps, w: PageW
 const renumbered = (questions: GeneratedQuestion[]): GeneratedQuestion[] => questions.map((q, k) => ({
   ...q, number: k + 1, package: q.package ? { ...q.package, ref: { ...q.package.ref, question: k + 1 } } : null,
 }));
+
+/**
+ * How tall a question's card is, roughly, for pairing: a picture and a format drawn under the text (a sequence, order,
+ * relation or pattern, a drawing) each add to it, and so does each line of text past the first.
+ */
+function tallness(input: GenerateInput, w: PageWork, q: GeneratedQuestion): number {
+  const p = q.package;
+  if (!p) return 0;
+  const place = w.slots.find((x) => x.id === q.slot)?.place;
+  const perLine = (place ? roomOf(input, place, w.day)?.perLine : null) ?? 23;
+  const drawn = p.item?.format === "draw" || (p.item?.checks ?? []).some((c) => c.kind === "sequence" || c.kind === "order" || c.kind === "relation" || c.kind === "pattern");
+  return (p.item?.figure ? 2 : 0) + (drawn ? 2 : 0) + Math.max(0, Math.ceil(p.text.length / perLine) - 1);
+}
+
+/**
+ * A parent-led page's questions with its tall cards paired in rows (#380, round 5): a row of 2 cards is as tall as its
+ * taller card, so in each slot of 3 or more cards the tallest go first, side by side. Null when the order is the same.
+ */
+function pairedTall(input: GenerateInput, w: PageWork, questions: GeneratedQuestion[]): GeneratedQuestion[] | null {
+  if (input.plan.level > 3) return null;
+  const layoutSlot = (q: GeneratedQuestion) => w.slots.find((x) => x.id === q.slot)?.layoutSlot ?? -1;
+  const out: GeneratedQuestion[] = [];
+  for (let i = 0; i < questions.length;) {
+    let j = i;
+    while (j < questions.length && layoutSlot(questions[j]) === layoutSlot(questions[i])) j++;
+    const block = questions.slice(i, j);
+    out.push(...(block.length >= 3 ? block.map((q, k) => ({ q, k, t: tallness(input, w, q) })).sort((a, b) => b.t - a.t || a.k - b.k).map((x) => x.q) : block));
+    i = j;
+  }
+  return out.every((q, k) => q === questions[k]) ? null : renumbered(out);
+}
 
 /** The question to leave out of a page that does not fit: the last one its problems name, else the page's last. */
 function toLeaveOut(questions: GeneratedQuestion[], problems: FitProblem[]): { index: number; reason: string } {
@@ -832,25 +1078,9 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
       work.push({ number: ++number, day: day.day, page, layout, slots: layout ? layoutSlots(page, layout) : slotsOf(page), panels });
     }
   }
-  // Each slot's skill and kind of question, in book order: a part's skills in turn, and each skill's kinds in turn
-  // through the book, so the same skill is not asked the same way page after page (#380).
-  if (input.book) {
-    const turns = new Map<string, number>();
-    for (const w of work) {
-      const inPart = new Map<PlannedPart, number>();
-      for (const slot of w.slots) {
-        const k = inPart.get(slot.part) ?? 0;
-        inPart.set(slot.part, k + 1);
-        if (!slot.place || FIXED_KIND_PLACES.has(slot.place) || slot.part.skills.length === 0) continue;
-        const skill = slot.part.skills[k % slot.part.skills.length];
-        const kinds = kindsOf(input.curriculum.skill(skill)?.text ?? skill).filter((x) => slot.place === "picture-stories" || slot.place === "word-problems" ? x === "story" || x === "picture" || x === "missing-part" : true);
-        if (kinds.length === 0) continue;
-        const n = turns.get(skill) ?? 0;
-        turns.set(skill, n + 1);
-        slot.aim = { skill, kind: kinds[n % kinds.length], orElse: [...new Set(kinds)].filter((x) => x !== kinds[n % kinds.length]) };
-      }
-    }
-  }
+  // Each slot's skill, kind of question, numbers and person, planned in book order (#380), so the same skill is not
+  // asked the same way page after page and no two questions of a page work one sum.
+  if (input.book) planBook(input, work);
   const backCover = number + 1;
   const total = Math.ceil(backCover / 4) * 4;
   const tokens = Array.from({ length: total }, () => deps.qrToken());
@@ -883,7 +1113,16 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
         fit = await check(questions);
         attempts = 2;
       }
-      // Still no room: leave out questions one at a time until the page fits; if it never does, keep them all.
+      // Still no room: first pair the tall cards in rows (parent-led pages), then leave out questions one at a time
+      // until the page fits; if it never does, keep them all.
+      if (!fit.ok) {
+        const paired = pairedTall(input, w, questions);
+        const pairedFit = paired ? await check(paired) : null;
+        if (paired && pairedFit?.ok) {
+          questions = paired;
+          fit = pairedFit;
+        }
+      }
       const leftOut: { question: GeneratedQuestion; slot: Slot; reason: string }[] = [];
       let kept = questions;
       let left = fit;

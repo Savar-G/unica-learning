@@ -705,10 +705,13 @@ describe("the vary number", () => {
     const run = async () => {
       const ai = fakeAiClient({ answer: (r) => fill(r) });
       await generateWorkbook({ ...input, plan: U3.plan, book: { child: "Zoe" } }, deps({ ai }));
-      return ai.requests.filter((r) => r.name === "workbook_page").flatMap((r) => (JSON.parse((r.content[0] as { text: string }).text) as { slots: { vary: number; numbers: Record<string, { max: number }> }[] }).slots);
+      return ai.requests.filter((r) => r.name === "workbook_page").flatMap((r) => (JSON.parse((r.content[0] as { text: string }).text) as { slots: { vary?: number; planned?: { numbers?: number[] }; numbers: Record<string, { max: number }> }[] }).slots)
+        // A slot with planned numbers (round 5) takes them instead.
+        .filter((s) => !s.planned?.numbers);
     };
     const slots = await run();
-    expect(slots.every((s) => s.vary >= 1 && s.vary <= Math.min(...Object.values(s.numbers).map((n) => n.max)))).toBe(true);
+    expect(slots.length).toBeGreaterThan(10);
+    expect(slots.every((s) => s.vary! >= 1 && s.vary! <= Math.min(...Object.values(s.numbers).map((n) => n.max)))).toBe(true);
     expect(new Set(slots.map((s) => s.vary)).size).toBeGreaterThan(3);
     expect((await run()).map((s) => s.vary)).toEqual(slots.map((s) => s.vary));
   });
@@ -740,7 +743,8 @@ describe("round 3 (#380): repeats, panel examples, items that do not match their
       const [a, b] = pairs[k % pairs.length];
       const n = c++;
       return goodItem(s, {
-        text: `${NAMES[n % 20]} and ${NAMES[Math.floor(n / 20) % 20]} ${tag(n)} have ${a}. ${b} more come. How many now?`, operation: addOp(a, b),
+        // Within a card's room (41 characters): a longer text goes to the redo to be written shorter (round 5).
+        text: `${NAMES[n % 20]} ${tag(n)} has ${a}. ${b} more come. How many?`, operation: addOp(a, b),
         wrongAnswers: [{ value: num(a + b + 1), cause: "count", description: "Counts one too many.", step: null }],
         easier: { text: "Try a smaller sum.", operation: addOp(0, Math.min(a, b)) }, ...over,
       });
@@ -839,14 +843,14 @@ describe("round 3 (#380): repeats, panel examples, items that do not match their
       answer: (r) => fill(r, (s, q) => {
         const item = write(s, q as Req) as { text: string };
         // On day 1 page 1, question 2 is question 1 again, word for word.
-        return r.name === "workbook_page" && req(r).day === 1 && req(r).page === 1 && s.slot === "1.2" ? { ...item, text: "Ava and Ava qa have 1. 1 more come. How many now?", operation: addOp(1, 1) } : item;
+        return r.name === "workbook_page" && req(r).day === 1 && req(r).page === 1 && s.slot === "1.2" ? { ...item, text: "Ava qa has 1. 1 more come. How many?", operation: addOp(1, 1) } : item;
       }),
     });
     await book(ai);
     const redo = ai.requests.find((r) => r.name === "workbook_page_redo" && req(r).day === 1 && req(r).page === 1)!;
-    expect(req(redo).note).toContain(`it is the same as question 1 on this page ("Ava and Ava qa have 1. 1 more come. How many now?")`);
+    expect(req(redo).note).toContain(`it is the same as question 1 on this page ("Ava qa has 1. 1 more come. How many?")`);
     const asked = (JSON.parse((redo.content[0] as { text: string }).text) as { slots: { asked: string[] }[] }).slots[0].asked;
-    expect(asked).toContain("Ava and Ava qa have 1. 1 more come. How many now?");
+    expect(asked).toContain("Ava qa has 1. 1 more come. How many?");
   });
 
   it("names the slots the AI answered when it leaves one out", async () => {
@@ -1063,8 +1067,8 @@ describe("round 4 (#380): relations, explicit pictures, kinds in turn, question 
     expect(notes.some((x) => /the book already asks this kind of question 3 times \(pages /.test(x))).toBe(true);
     // A repeat's redo is told the slot's next kind, and later pages are told the shapes used up.
     expect(notes.some((x) => /Write it as an? [a-z-]+ question: /.test(x))).toBe(true);
-    const usedUp = ai.requests.flatMap((r) => (JSON.parse((r.content[0] as { text: string }).text) as { usedUp?: string[] }).usedUp ?? []);
-    expect(usedUp.some((t) => /^Kid[A-Z]+ has 2\. How many more make \d+\?$/.test(t))).toBe(true);
+    const usedUp = ai.requests.flatMap((r) => (JSON.parse((r.content[0] as { text: string }).text) as { usedUp?: { example: string; words: string }[] }).usedUp ?? []);
+    expect(usedUp.some((t) => /^Kid[A-Z]+ has 2\. How many more make \d+\?$/.test(t.example) && t.words === "has many more make")).toBe(true);
   });
 });
 
@@ -1095,5 +1099,211 @@ describe("a panel of a relation skill (round 4)", () => {
       ?? result.draft.pages.find((p) => p.content?.kind === "day" && p.content.blocks.some((x) => x.slot === "watch-one" && (x.lines ?? []).some((l) => l.includes("less than 5"))));
     const watch = page!.content!.kind === "day" ? page!.content!.blocks.find((x) => x.slot === "watch-one")! : null;
     expect(watch).toMatchObject({ label: "Less than 5?", lines: ["Is 7 less than 5?", "7 comes after 5: [not less than 5]."] });
+  });
+});
+
+describe("round 5 (#380): code plans the book's numbers and names, rooms and rows", () => {
+  const U3 = (() => {
+    const result = planWorkbook({
+      profile: { standards: [] }, grade: 0, level: planLevel(BC, "U3")!, passed: {}, workbook: { number: 1, inLevel: 0 },
+      reviews: [], missedReviews: [], misses: [], pausedWeeks: 0, support: null, unassessedUnits: [],
+    });
+    if (!result.ok) throw new Error(result.reason);
+    return result.plan;
+  })();
+  const laid = { ...input, plan: U3, book: { child: "Zoe" } };
+  type Planned = SlotAsked & { place: string; aim?: { skill: string; kind: string }; planned?: { numbers?: number[]; name?: string } };
+  const body = (r: AiJsonRequest) => JSON.parse((r.content[0] as { text: string }).text) as { day: number; page: number; slots: Planned[]; note: string | null; examples?: SlotAsked[] };
+  const empty = { difficulty: 1, operation: null, wrongAnswers: [], easier: null, shownWrong: null, figure: null, numbers: [], places: null, direction: null, sequence: null, pattern: null, relation: null, figureShows: null };
+  /** A new short sum each call (within a card's room), tagged so each question has a shape of its own. */
+  function short() {
+    let c = 0;
+    return (s: SlotAsked, over: Record<string, unknown> = {}) => {
+      const n = c++;
+      const [a, b] = [1 + (n % 4), 1 + (Math.floor(n / 4) % 4)];
+      return goodItem(s, {
+        text: `Ava ${tag(n)} has ${a}. ${b} more. How many?`, operation: addOp(a, b),
+        wrongAnswers: [{ value: num(a + b + 1), cause: "count", description: "Counts one too many.", step: null }],
+        easier: { text: "Try a smaller sum.", operation: addOp(0, Math.min(a, b)) }, ...over,
+      });
+    };
+  }
+  async function book(ai: ReturnType<typeof fakeAiClient>, over: Partial<GenerateDeps> = {}) {
+    const result = await generateWorkbook(laid, deps({ ai, ...over }));
+    if (result.status !== "stored") throw new Error(result.reason);
+    return result.draft;
+  }
+
+  it("plans each slot's numbers and person: no pair twice on a page, never Sam or the child's name, the same every run", async () => {
+    const run = async () => {
+      const ai = fakeAiClient({ answer: () => ({ items: [] }) });
+      await generateWorkbook(laid, deps({ ai }));
+      // A page with no items is asked once more: one request per page.
+      const seen = new Set<string>();
+      return ai.requests.filter((r) => r.name === "workbook_page").map(body).filter((b) => !seen.has(`${b.day}.${b.page}`) && !!seen.add(`${b.day}.${b.page}`));
+    };
+    const pages = await run();
+    const bond = (p: number[]) => [...p].sort((a, b) => a - b).join(",");
+    let planned = 0;
+    for (const p of pages) {
+      const pairs = p.slots.flatMap((s) => (s.planned?.numbers ? [bond(s.planned.numbers)] : []));
+      planned += pairs.length;
+      expect(new Set(pairs).size, `day ${p.day} page ${p.page}`).toBe(pairs.length);
+      const names = p.slots.flatMap((s) => (s.planned?.name ? [s.planned.name] : []));
+      expect(new Set(names).size).toBe(names.length);
+      expect(names.some((n) => n === "Sam" || n === "Zoe")).toBe(false);
+      for (const s of p.slots) {
+        if (s.place === "spot-the-error") expect(s.planned?.name).toBeUndefined();
+        const use = s.planned?.numbers;
+        if (!use || s.aim?.kind === "relation") continue;
+        const max = Math.max(...Object.values(s.numbers ?? {}).map((n) => n.max));
+        expect(use[0] + use[1], `${use}`).toBeLessThanOrEqual(max);
+        // On 1 more and 1 less, the pair is a number and 1.
+        if (s.aim?.skill === "K5-one-more-less") expect(use[1]).toBe(1);
+      }
+    }
+    expect(planned).toBeGreaterThan(100);
+    // Spot the error's sums differ through the book.
+    const spots = pages.flatMap((p) => p.slots.filter((s) => s.place === "spot-the-error").map((s) => `${s.planned!.numbers}`));
+    expect(spots.length).toBeGreaterThan(3);
+    expect(new Set(spots).size).toBe(spots.length);
+    expect(await run()).toEqual(pages);
+  });
+
+  it("never plans a missing part on 1 more and 1 less (its missing part is the 1 the text names)", () => {
+    expect(kindsOf(BC.skill("K5-one-more-less")!.text)).not.toContain("missing-part");
+    expect(kindsOf(BC.skill("K3-make-10")?.text ?? "make 10")).toContain("missing-part");
+  });
+
+  it("gives a page's skill another kind before the same kind again", async () => {
+    const ai = fakeAiClient({ answer: () => ({ items: [] }) });
+    await generateWorkbook(laid, deps({ ai }));
+    for (const p of ai.requests.filter((r) => r.name === "workbook_page").map(body)) {
+      const aimed = p.slots.filter((s) => s.aim);
+      for (const skill of new Set(aimed.map((s) => s.aim!.skill))) {
+        const kinds = aimed.filter((s) => s.aim!.skill === skill).map((s) => s.aim!.kind);
+        const all = new Set(kindsOf(BC.skill(skill)?.text ?? skill).filter((k) => !["picture-stories", "word-problems"].includes(aimed[0].place) || ["story", "picture", "missing-part"].includes(k)));
+        if (kinds.length <= all.size) expect(new Set(kinds).size, `${skill} on day ${p.day} page ${p.page}: ${kinds}`).toBe(kinds.length);
+      }
+    }
+  });
+
+  it("sends a repeat's redo the slot's spare numbers and its next kind", async () => {
+    const write = short();
+    let first: string | null = null;
+    const ai = fakeAiClient({
+      answer: (r) => fill(r, (s) => {
+        const item = write(s) as { text: string };
+        if (r.name !== "workbook_page" || s.slot !== "1.1" || !("place" in s)) return item;
+        if (first === null) { first = item.text; return item; }
+        return { ...item, text: first };
+      }),
+    });
+    await book(ai);
+    const redo = ai.requests.find((r) => r.name === "workbook_page_redo" && /repeats a question already asked/.test(body(r).note ?? ""))!;
+    const page = ai.requests.find((r) => r.name === "workbook_page" && body(r).day === body(redo).day && body(r).page === body(redo).page)!;
+    const before = body(page).slots.find((s) => s.slot === "1.1")!;
+    const after = body(redo).slots.find((s) => s.slot === "1.1")!;
+    expect(before.planned?.numbers).toBeDefined();
+    expect(after.planned?.numbers).toBeDefined();
+    expect(after.planned!.numbers).not.toEqual(before.planned!.numbers);
+    expect(body(redo).note).toContain(`Use the numbers ${after.planned!.numbers!.join(" and ")}`);
+    if (before.aim) expect(after.aim!.kind).not.toBe(before.aim.kind);
+  });
+
+  it("renames anyone called Sam outside Spot the error, keeping a he a boy's name", async () => {
+    let n = 0;
+    const ai = fakeAiClient({
+      answer: (r) => fill(r, (s) => goodItem(s, {
+        text: `Sam ${tag(n++)} has 2. He gets 1. How many?`, operation: addOp(2, 1),
+        wrongAnswers: [{ value: num(4), cause: "count", description: "Counts one too many.", step: null }], easier: { text: "Try a smaller sum.", operation: addOp(1, 1) },
+      })),
+    });
+    const draft = await book(ai);
+    const others = draft.pages.flatMap((p) => p.questions).filter((q) => q.package && q.place !== "spot-the-error");
+    expect(others.length).toBeGreaterThan(50);
+    expect(others.some((q) => /\bSam\b/.test(JSON.stringify(q.package)))).toBe(false);
+    const names = new Set(others.map((q) => q.package!.text.split(" ")[0]));
+    expect([...names].every((x) => ["Ben", "Leo", "Tom", "Raj", "Eli", "Gus", "Dan", "Kai", "Omar", "Max", "Ian", "Jon", "Ali", "Ned"].includes(x)), [...names].join(",")).toBe(true);
+  });
+
+  it("writes a text past its room again, shorter; keeps the first version when the redo is not shorter, never failed for length", async () => {
+    const write = short();
+    const long = (k: number) => `Ava ${tag(9000 + k)} has ${k + 2} red cars and 1 blue car in a box. How many cars are in the box?`;
+    const longItem = (k: number) => ({ text: long(k), operation: addOp(k + 2, 1), wrongAnswers: [{ value: num(k + 4), cause: "count", description: "x", step: null }] });
+    const ai = fakeAiClient({
+      answer: (r) => fill(r, (s) => {
+        const b = body(r);
+        if (b.day !== 1 || b.page !== 1) return write(s);
+        if (r.name === "workbook_page" && (s.slot === "1.1" || s.slot === "1.2")) return write(s, longItem(Number(s.slot.split(".")[1]) + 4));
+        // The redo: 1.1 comes back short, 1.2 as long again.
+        if (r.name === "workbook_page_redo" && s.slot === "1.2") return write(s, longItem(6));
+        return write(s);
+      }),
+    });
+    const draft = await book(ai);
+    const note = body(ai.requests.find((r) => r.name === "workbook_page_redo" && body(r).day === 1 && body(r).page === 1)!).note!;
+    expect(note).toMatch(/Slot 1\.1 is sound but too long for its place: its text has \d+ characters and its room is 41/);
+    const [q1, q2] = firstDayPage(draft).questions;
+    expect(q1).toMatchObject({ attempts: 2, check: { status: "checked" } });
+    expect(q1.package!.text.length).toBeLessThanOrEqual(41);
+    expect(q2).toMatchObject({ attempts: 2, check: { status: "checked" } });
+    expect(q2.package!.text).toBe(long(6));
+  });
+
+  it("cuts a long sequence on a parent-led card to 5 numbers, keeping its blanks; one whose text names numbers is written again", async () => {
+    const seq = (text: string) => ({ ...empty, format: "sequence", text, sequence: { start: num(1), step: num(1), terms: 8, blanks: [2, 6] } });
+    const write = short();
+    const ai = fakeAiClient({
+      answer: (r) => fill(r, (s) => {
+        const b = body(r);
+        if (r.name === "workbook_page" && b.day === 1 && b.page === 1 && s.slot === "1.1") return { ...seq("Fill in the missing numbers."), slot: s.slot, skill: s.skills[0] };
+        if (r.name === "workbook_page" && b.day === 1 && b.page === 1 && s.slot === "1.2") return { ...seq("Count from 1 to 8."), slot: s.slot, skill: s.skills[0] };
+        return write(s);
+      }),
+    });
+    const draft = await book(ai);
+    const [q1, q2] = firstDayPage(draft).questions;
+    const terms = (q: typeof q1) => (q.package!.item!.checks[0] as { terms: unknown[] }).terms;
+    expect(terms(q1)).toHaveLength(5);
+    expect(terms(q1).filter((t) => (t as { region?: string }).region).length).toBeGreaterThanOrEqual(1);
+    // "Count from 1 to 8" cannot be cut: it goes to the redo, which here writes a sum.
+    const note = body(ai.requests.find((r) => r.name === "workbook_page_redo" && body(r).day === 1 && body(r).page === 1)!).note!;
+    expect(note).toContain("Slot 1.2 is sound but too long for its card: its sequence has 8 numbers and a card's line holds 5");
+    expect(note).not.toContain("Slot 1.1 is sound");
+    expect(q2.package!.operation).not.toBeNull();
+  });
+
+  it("pairs a parent-led page's tall cards in rows before it leaves a question out", async () => {
+    // A fake fit check: a row of 2 cards with a picture is tall; a slot of cards fits 2 tall rows at most.
+    const fit: FitCheck = {
+      fits: async (page) => {
+        const blocks = page.content?.kind === "day" ? page.content.blocks : [];
+        for (const b of blocks) {
+          const figures = (b as { figures?: unknown[] }).figures ?? [];
+          let tall = 0;
+          for (let k = 0; k < figures.length; k += 2) if (figures[k] || figures[k + 1]) tall++;
+          if (tall > 2) return { ok: false, problems: [{ question: b.items.at(-1) ?? null, reason: "the last row runs past the bottom" }] };
+        }
+        return { ok: true };
+      },
+    };
+    let n = 0;
+    const write = short();
+    // On picture stories, every other card counts dots: the cards in reading order are picture, story, picture, ...
+    const ai = fakeAiClient({
+      answer: (r) => fill(r, (s) => ((s as Planned).place === "picture-stories" && Number(s.slot.split(".")[1]) % 2 === 1
+        ? goodItem(s, { text: `How many dots ${tag(n)}?`, format: "count", operation: null, easier: null, wrongAnswers: [], figure: "dots", numbers: [num(1 + (n++ % 9))] })
+        : write(s))),
+    });
+    const draft = await book(ai, { fit });
+    const stories = draft.pages.filter((p) => p.questions.filter((q) => q.place === "picture-stories").length >= 5);
+    expect(stories.length).toBeGreaterThan(0);
+    for (const p of stories) {
+      expect(p.leftOut, `page ${p.number}`).toBeUndefined();
+      const figures = (p.content!.kind === "day" ? p.content!.blocks.find((b) => b.slot === "picture-stories")! : null) as { figures: unknown[] };
+      expect(figures.figures.slice(0, 2).every(Boolean)).toBe(true);
+      expect(p.questions.map((q) => q.number)).toEqual(p.questions.map((_, k) => k + 1));
+    }
   });
 });
