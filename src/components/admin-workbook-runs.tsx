@@ -7,7 +7,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { AuditEntry, ChildRow, DraftCounts, RunDetail, RunListRow } from "@/lib/admin-store";
-import { ADMIN_WORKBOOKS_PATH, adminWorkbookPath, adminWorkbookRunPath, when } from "@/lib/admin-view";
+import { ADMIN_WORKBOOKS_PATH, adminWorkbookPath, adminWorkbookRunPath, draftPdfPath, when } from "@/lib/admin-view";
 import type { WorkbookStatus, WorkbookSummary } from "@/lib/workbook-content";
 import type { GeneratedPage, GeneratedQuestion } from "@/lib/workbook-generator";
 import { isCodeWorded } from "@/lib/workbook-generator-items";
@@ -36,22 +36,23 @@ export function RunProgress({ run }: { run: WorkbookRun }) {
   const done = run.donePages ?? 0;
   const total = run.totalPages ?? 0;
   return <span className="adm-wb-progress">
-    <span className="adm-sub">{run.step ? STEP[run.step] : "Starting"}{total > 0 && ` · ${done} of ${total} day pages`}{run.attempts > 1 && ` · attempt ${run.attempts} of ${run.maxAttempts}`}</span>
+    <span className="adm-sub">{run.step ? STEP[run.step] : "Starting"}{total > 0 && ` · ${done} of ${total} day pages`}{run.attempts > 1 && ` · try ${run.attempts} of ${run.maxAttempts}`}</span>
     {total > 0 && <progress max={total} value={done} aria-label={`${done} of ${total} day pages written`} />}
   </span>;
 }
 
-/** The check results of a draft: what code checked, what it could not, and what failed. */
+/** The check results of a draft, in plain words: what failed, what a person must check by hand, and how many answers
+ * passed the math check (code worked the answer out again and got the same). */
 export function ChecksCell({ counts, notRendered, oldFormat = false }: { counts: DraftCounts | null; notRendered: number | null; oldFormat?: boolean }): ReactNode {
   if (!counts) return <span className="adm-sub">No draft yet</span>;
   if (oldFormat) return <span className="adm-wb-checks"><Chip tone="muted">Old draft format</Chip><span className="adm-sub">Made before the page layouts. Prepare a new draft to review it.</span></span>;
   const checked = counts.questions - counts.failed - counts.notChecked;
   return <span className="adm-wb-checks">
-    {counts.failed > 0 ? <Chip tone="bad">{counts.failed} failed</Chip> : <Chip tone="ok">No failed questions</Chip>}
+    {counts.failed > 0 ? <Chip tone="bad">{counts.failed} {counts.failed === 1 ? "question failed" : "questions failed"}</Chip> : <Chip tone="ok">No failed questions</Chip>}
     {counts.failedPages > 0 && <Chip tone="bad">{counts.failedPages} {counts.failedPages === 1 ? "page does" : "pages do"} not fit</Chip>}
-    {counts.notChecked > 0 && <Chip tone="warn">{counts.notChecked} not checked by code</Chip>}
-    {notRendered ? <Chip tone="bad">{notRendered} {notRendered === 1 ? "page did" : "pages did"} not render</Chip> : null}
-    <span className="adm-sub">{checked} of {counts.questions} questions checked by code</span>
+    {counts.notChecked > 0 && <Chip tone="warn">{counts.notChecked} to check by hand</Chip>}
+    {notRendered ? <Chip tone="bad">{notRendered} {notRendered === 1 ? "page" : "pages"} missing from the PDF</Chip> : null}
+    <span className="adm-sub">Math check passed for {checked} of {counts.questions} questions</span>
   </span>;
 }
 
@@ -112,7 +113,7 @@ export function AdminWorkbookList({ email, runs, more, workbooks, childNames: ch
         <button type="submit" className="btn adm-btn">Show</button>
       </form>
       {preparing && <RunRefresh />}
-      <Table label="Workbooks" head={["Child", "Workbook", "Status", "Check results", "Started (Pacific)", "By"]} empty={filter === "all" ? "No workbooks yet. Open a child and press Prepare next workbook." : "No workbooks with this status."}>
+      <Table label="Workbooks" head={["Child", "Workbook", "Status", "Checks", "Started (Pacific)", "By"]} empty={filter === "all" ? "No workbooks yet. Open a child and press Prepare next workbook." : "No workbooks with this status."}>
         {rows.map((r) => r.kind === "run" ? (
           <tr key={r.row.run.id}>
             <td><Link href={childPath(r.childId)}>{childName(children, r.childId)}</Link></td>
@@ -140,7 +141,7 @@ export function AdminWorkbookList({ email, runs, more, workbooks, childNames: ch
 
 /** The child page's list of runs. */
 export function ChildRunsTable({ runs, now }: { runs: RunListRow[]; now: Date }) {
-  return <Table label="Workbook drafts" head={["Draft", "Status", "Check results", "Started (Pacific)", "By"]} empty="No drafts yet.">
+  return <Table label="Workbook drafts" head={["Draft", "Status", "Checks", "Started (Pacific)", "By"]} empty="No drafts yet.">
     {runs.map((r) => <tr key={r.run.id}>
       <td className="adm-nowrap"><Link href={adminWorkbookRunPath(r.run.id)}>Draft of workbook {r.run.number}</Link></td>
       <td><StateCell run={r.run} now={now} /></td>
@@ -224,16 +225,17 @@ function solveAnswers(x: RunSolve): { reader: string[]; key: string[] } {
   };
 }
 
-/** The run's solve checks in one line: how many, by which reader, how many disagreed or failed, and their cost. */
-function solveFact(solves: RunSolve[]): string {
-  if (solves.length === 0) return "No checks stored: code wrote every printed text, or the run has not checked any yet";
+/** The checking AI's work in one line: how many checks, by which model, how many answers differed or erred, and the
+ * cost. A question rewritten after a different answer is checked again, so this counts checks, not questions. */
+function solveFact(solves: RunSolve[], left: number | null): string {
+  if (solves.length === 0) return "No checks yet";
   const models = [...new Set(solves.map((x) => x.model))].join(", ");
   const disagreed = solves.filter((x) => x.verdict === "disagreed").length;
   const failed = solves.filter((x) => x.verdict === "failed").length;
   const costed = solves.filter((x) => x.usd !== null);
   const usd = costed.reduce((n, x) => n + x.usd!, 0);
-  const cost = costed.length === 0 ? "cost not given" : `USD ${usd.toFixed(4)}${costed.length < solves.length ? ` (${solves.length - costed.length} with no cost given)` : ""}`;
-  return `${solves.length} ${solves.length === 1 ? "check" : "checks"} by ${models} · ${disagreed} read another way · ${failed} failed or late · ${cost}`;
+  const cost = costed.length === 0 ? "cost unknown" : `USD ${usd.toFixed(4)}${costed.length < solves.length ? ` (${solves.length - costed.length} with cost unknown)` : ""}`;
+  return `${solves.length} ${solves.length === 1 ? "check" : "checks"} by ${models} · ${disagreed} different ${disagreed === 1 ? "answer" : "answers"}${left !== null && disagreed > 0 ? ` (${left} left after rewrites)` : ""} · ${failed} ${failed === 1 ? "error" : "errors"} · ${cost}`;
 }
 
 /** The questions of the draft that failed the solve check, with what the reader answered and the key. */
@@ -241,9 +243,9 @@ function SolveFailures({ pages, solves }: { pages: GeneratedPage[]; solves: Map<
   const rows = pages.flatMap((p) => p.questions.filter(failedSolve).map((q) => ({ p, q, x: solveOf(q, solves) })));
   if (rows.length === 0) return null;
   return <>
-    <h3>Failed the solve check</h3>
-    <p className="adm-note">A separate reader saw only the printed words and picture of each question the AI worded, and answered it. These {rows.length === 1 ? "question was" : `${rows.length} questions were`} read otherwise than the answer key after the redo.</p>
-    <Table label="Questions that failed the solve check" head={["Page", "#", "Printed question", "Reader answered", "Key", "Reader"]} empty="None.">
+    <h3>The checking AI got a different answer</h3>
+    <p className="adm-note">A second AI answered each question the AI wrote, from the printed words and picture only. For {rows.length === 1 ? "this question" : `these ${rows.length} questions`}, its answer was still different from the correct answer after the AI rewrote {rows.length === 1 ? "it" : "them"}.</p>
+    <Table label="Questions where the checking AI got a different answer" head={["Page", "#", "Question", "Checking AI's answer", "Correct answer", "Checked by"]} empty="None.">
       {rows.map(({ p, q, x }) => {
         const answers = x ? solveAnswers(x) : null;
         return <tr key={`${p.number}-${q.number}`} className="is-bad">
@@ -252,7 +254,7 @@ function SolveFailures({ pages, solves }: { pages: GeneratedPage[]; solves: Map<
           <td><span className="adm-wb-text">{q.package?.text ?? "No question"}</span>{(x?.log.questions.length ?? 0) > 1 && <span className="adm-sub">Easier example: {x!.log.questions[1].text}</span>}</td>
           <td>{x?.verdict === "failed" ? <span className="adm-sub">{x.log.verdict.status === "agreed" ? "" : x.log.verdict.reason}</span> : <ul className="adm-wb-list">{answers?.reader.map((l) => <li key={l}>{l}</li>)}</ul>}</td>
           <td><ul className="adm-wb-list">{answers?.key.map((l) => <li key={l}>{l}</li>)}</ul></td>
-          <td className="adm-nowrap"><span className="adm-sub">{x ? `${x.model} · ${(x.ms / 1000).toFixed(1)} s${x.usd !== null ? ` · USD ${x.usd.toFixed(4)}` : ""}` : "No check stored"}</span></td>
+          <td className="adm-nowrap"><span className="adm-sub">{x ? `${x.model} · ${(x.ms / 1000).toFixed(1)} s${x.usd !== null ? ` · USD ${x.usd.toFixed(4)}` : ""}` : "No check saved"}</span></td>
         </tr>;
       })}
     </Table>
@@ -260,10 +262,10 @@ function SolveFailures({ pages, solves }: { pages: GeneratedPage[]; solves: Map<
 }
 
 function QuestionCheckCell({ q, solve }: { q: GeneratedQuestion; solve?: RunSolve }) {
-  const read = solve && !failedSolve(q) && <span className="adm-sub">{solve.verdict === "agreed" ? "Solve check agreed with the key" : `Solve check before the last version: ${solve.log.verdict.status === "agreed" ? "agreed" : solve.log.verdict.reason}`}</span>;
-  if (q.check.status === "checked") return <><Chip tone="ok">Checked by code</Chip>{read}</>;
+  const read = solve && !failedSolve(q) && <span className="adm-sub">{solve.verdict === "agreed" ? "Checking AI agreed" : `Checking AI, on an earlier wording: ${solve.log.verdict.status === "agreed" ? "agreed" : solve.log.verdict.reason}`}</span>;
+  if (q.check.status === "checked") return <><Chip tone="ok">Math check passed</Chip>{read}</>;
   return <>
-    <Chip tone={q.check.status === "failed" ? "bad" : "warn"}>{q.check.status === "failed" ? failedSolve(q) ? "Failed the solve check" : "Failed" : "Not checked by code"}</Chip>
+    <Chip tone={q.check.status === "failed" ? "bad" : "warn"}>{q.check.status === "failed" ? failedSolve(q) ? "Checking AI disagreed" : "Failed" : "Check by hand"}</Chip>
     <span className="adm-sub">{q.check.reason}</span>
     {read}
   </>;
@@ -274,7 +276,7 @@ function DraftQuestionRow({ q, box, solve }: { q: GeneratedQuestion; box: boolea
   const words = wordedBy(q);
   return <tr className={cls}>
     <td className="adm-num">{q.number}{box && <span className="adm-sub">on image</span>}</td>
-    <td className="adm-nowrap">{partText(q.part)}<span className="adm-sub adm-mono">slot {q.slot} · {q.attempts} {q.attempts === 1 ? "try" : "tries"}</span>{words && <span className="adm-sub">Words by {words}</span>}</td>
+    <td className="adm-nowrap">{partText(q.part)}<span className="adm-sub adm-mono">slot {q.slot} · {q.attempts} {q.attempts === 1 ? "try" : "tries"}</span>{words && <span className="adm-sub">{words === "AI" ? "Written by the AI" : "Made from a fixed pattern"}</span>}</td>
     {q.package
       ? <PackageCells p={q.package} check={<QuestionCheckCell q={q} solve={solve} />} />
       : <td colSpan={8}><QuestionCheckCell q={q} /> <span className="adm-sub">The AI wrote nothing usable for this slot, so the page has no question here.</span></td>}
@@ -313,8 +315,8 @@ function DraftPageSection({ page, detail, solves }: { page: GeneratedPage; detai
         {page.fit.status === "failed" && <Chip tone="bad">Does not fit the template</Chip>}
         {page.fit.status === "fits" && !noLayout && <Chip tone="ok">Fits</Chip>}
         {issues.failed.length > 0 && <Chip tone="bad">{issues.failed.length} failed {issues.failed.length === 1 ? "question" : "questions"}</Chip>}
-        {issues.notChecked.length > 0 && <Chip tone="warn">{issues.notChecked.length} not checked by code</Chip>}
-        {problems.length > 0 && <Chip tone="bad">{noLayout ? "No page layout" : "Did not render"}</Chip>}
+        {issues.notChecked.length > 0 && <Chip tone="warn">{issues.notChecked.length} to check by hand</Chip>}
+        {problems.length > 0 && <Chip tone="bad">{noLayout ? "No page layout" : "Not in the PDF"}</Chip>}
         {(page.omissions ?? []).length > 0 && <Chip tone="warn">{(page.omissions ?? []).reduce((n, o) => n + o.requested - o.placed, 0)} planned items left out</Chip>}
         {page.attempts === 2 && <span className="adm-sub">Written again after the fit check</span>}
       </p>
@@ -324,11 +326,11 @@ function DraftPageSection({ page, detail, solves }: { page: GeneratedPage; detai
         {image ? (
           <div className="adm-wb-figure">
             <DraftPageImage page={page} image={image} url={detail.images[image.image.path]} />
-            {image.proof && <p className="adm-sub">Proof image: the page did not render. The red marks show why. It is never printed.</p>}
+            {image.proof && <p className="adm-sub">Proof image: this page is not in the PDF. The red marks show why. It is never printed.</p>}
           </div>
         ) : (
           <div className="adm-wb-missing" role="note">
-            <b>{noLayout ? "This page type has no layout" : "This page did not render"}</b>
+            <b>{noLayout ? "This page type has no layout" : "This page could not be drawn"}</b>
             {!problems.length && <span className="adm-sub">No image is stored for this page.</span>}
           </div>
         )}
@@ -343,9 +345,18 @@ function DraftPageSection({ page, detail, solves }: { page: GeneratedPage; detai
   );
 }
 
+/** "Open workbook PDF", or with the page count when some pages are not in it; plain text when there is no PDF. */
+function DraftPdfLink({ runId, draft, rendering, pages }: { runId: string; draft: boolean; rendering: DraftRendering | null; pages: number }) {
+  if (!rendering?.pdfPath) return <p className="adm-note">{draft ? "No PDF: no page could be drawn." : "No PDF yet."}</p>;
+  const inPdf = rendering.pages.filter((p) => !p.proof).length;
+  return <p className="adm-row adm-wb-pdf">
+    <a className="btn adm-btn" href={draftPdfPath(runId)} target="_blank" rel="noopener">{inPdf < pages ? `Open PDF (${inPdf} of ${pages} pages)` : "Open workbook PDF"}</a>
+  </p>;
+}
+
 const ACTION: Record<string, string> = {
   "run-started": "Started preparing", "run-retried": "Tried again after an error", "run-failed": "Failed", "run-stopped": "Stopped a run with no progress",
-  "draft-stored": "Stored the draft", "run-resumed": "Took the run up again",
+  "draft-stored": "Saved the draft", "run-resumed": "Picked up again after a stop",
 };
 
 function AuditLog({ entries }: { entries: AuditEntry[] }) {
@@ -387,21 +398,21 @@ export function AdminWorkbookRun({ email, detail, now, only }: { email: string; 
         ["Status", <span key="state" className="adm-wb-state"><RunStateChip state={state} />{(state === "preparing" || state === "waiting") && <RunProgress run={run} />}</span>],
         ["Started (Pacific)", `${when(run.createdAt)} by ${run.startedBy.email ?? "unknown"}`],
         ["Finished (Pacific)", run.finishedAt ? when(run.finishedAt) : "Not yet"],
-        ["Attempts", `${run.attempts} of ${run.maxAttempts}${run.resumes > 0 ? ` · taken up again ${run.resumes} ${run.resumes === 1 ? "time" : "times"}` : ""}`],
-        ["Solve check", solveFact(detail.solves)],
+        ["Tries", `${run.attempts} of ${run.maxAttempts} allowed${run.resumes > 0 ? ` · picked up again ${run.resumes} ${run.resumes === 1 ? "time" : "times"}` : ""}`],
+        ["Checking AI", solveFact(detail.solves, draft ? questions.filter((q) => failedSolve(q) && solveOf(q, solves)?.verdict === "disagreed").length : null)],
         ...(draft ? [
           ["Levels", levelsText(draft.workbook.levels)] as [string, ReactNode],
-          ["Pages", `${draft.workbook.pages.length} pages · revision ${draft.revision}`] as [string, ReactNode],
-          ["AI model", draft.workbook.model] as [string, ReactNode],
-          ["Profile build", draft.workbook.profileBuild ?? "None"] as [string, ReactNode],
+          ["Pages", `${draft.workbook.pages.length} pages${draft.revision > 1 ? ` · version ${draft.revision}` : ""}`] as [string, ReactNode],
+          ["Writing AI", draft.workbook.model] as [string, ReactNode],
         ] : []),
       ]} />
+      {detail.oldFormat === null && <DraftPdfLink runId={run.id} draft={!!draft} rendering={draft?.rendering ?? null} pages={pages.length} />}
 
       {(state === "failed" || state === "stopped") && (
         <div className="adm-wb-alert" role="alert">
           <b>{state === "failed" ? "This run failed." : "This run stopped without finishing."}</b>
           <p>{run.error ?? "It made no progress for 6 minutes, so it stopped. Its writes are no longer used."}</p>
-          {run.errors.length > 0 && <ol className="adm-wb-list">{run.errors.map((e, i) => <li key={i}><span className="adm-sub">Attempt {e.attempt}, {when(e.at)}</span> {e.error}</li>)}</ol>}
+          {run.errors.length > 0 && <ol className="adm-wb-list">{run.errors.map((e, i) => <li key={i}><span className="adm-sub">Try {e.attempt}, {when(e.at)}</span> {e.error}</li>)}</ol>}
           <p className="adm-sub">To try again, press Prepare next workbook on <Link href={childPath(run.childId)}>{name}&apos;s page</Link>.</p>
         </div>
       )}
@@ -414,8 +425,8 @@ export function AdminWorkbookRun({ email, detail, now, only }: { email: string; 
         <h2>Check results</h2>
         <p><ChecksCell counts={{ pages: counts.pages, questions: counts.questions, failed: counts.failed, notChecked: counts.notChecked, failedPages: counts.failedPages }} notRendered={notRendered} /></p>
         <p className="adm-wb-checks">
-          {solveFailed > 0 ? <Chip tone="bad">{solveFailed} failed the solve check</Chip> : <Chip tone="ok">None failed the solve check</Chip>}
-          <span className="adm-sub">Printed words: {byCode} by code, {byAi} by the AI (the solve check reads the AI&apos;s)</span>
+          {solveFailed > 0 ? <Chip tone="bad">{solveFailed} answered differently by the checking AI</Chip> : <Chip tone="ok">The checking AI agreed on every question</Chip>}
+          <span className="adm-sub">{[byAi > 0 && `${byAi} questions written by the AI`, byCode > 0 && `${byCode} made from a fixed pattern`].filter(Boolean).join(", ")}</span>
         </p>
         <SolveFailures pages={pages} solves={solves} />
         {attention.length > 0 ? <>
@@ -423,8 +434,7 @@ export function AdminWorkbookRun({ email, detail, now, only }: { email: string; 
           <nav className="adm-row" aria-label="Pages shown">
             {only ? <Link href={adminWorkbookRunPath(run.id)}>Show every page</Link> : <Link href={`${adminWorkbookRunPath(run.id)}?only=attention`}>Show only the {attention.length} pages that need attention</Link>}
           </nav>
-        </> : <p className="adm-note">Every question was checked by code, and every page fits and rendered.</p>}
-        {draft.rendering?.pdfPath && <p className="adm-note adm-mono">PDF of the pages that rendered: {draft.rendering.pdfPath}</p>}
+        </> : <p className="adm-note">Every question passed its checks, and every page fits and is in the PDF.</p>}
         {shown.map((p) => <DraftPageSection key={p.number} page={p} detail={{ ...draft, images: detail.images }} solves={solves} />)}
       </>}
 

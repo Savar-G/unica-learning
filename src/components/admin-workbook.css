@@ -44,3 +44,4 @@
 .adm-wb-bad-link { font-weight: 600; }
 .adm-wb-figure { display: grid; gap: 6px; align-content: start; }
 .adm-wb-page.is-proof { border: 2px solid var(--tang); }
+.adm-main .adm-wb-pdf { margin-top: 16px; }
