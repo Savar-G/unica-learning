@@ -81,4 +81,6 @@
 .mc-record .adm-facts { margin-bottom: 8px; }
 [data-look="warm"] .adm-main .mc-record h2 { margin-top: 12px; }
 .mc-sub { margin: 18px 0 8px; }
+.mc-tech { margin-top: 18px; }
+.mc-tech summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
 .mc-retry { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }

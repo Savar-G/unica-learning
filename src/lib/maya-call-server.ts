@@ -15,7 +15,7 @@ import { wordingHistoryStore } from "@/lib/maya-wording-history-store";
 import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import type { Outcome } from "@/lib/maya";
-import { lookupStoredQuestion, SUPPORTED_ASSESSMENT_TEMPLATES } from "@/lib/question-package-assessment";
+import { lookupStoredQuestion, SUPPORTED_ASSESSMENT_TEMPLATES, templateSkillName } from "@/lib/question-package-assessment";
 import { valueText } from "@/lib/question-package";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
@@ -95,6 +95,8 @@ export interface DemoQuestion {
   text: string;
   answer: string;
   templateId: string;
+  /** The skill the question tests, in plain words; null when the template has no skill tag. */
+  skill: string | null;
 }
 
 export interface DemoChild {
@@ -132,7 +134,7 @@ export async function demoChildren(a: AdminSession): Promise<DemoChild[]> {
             if (!supported.has(q.templateId)) return [];
             const found = lookupStoredQuestion({ source: "assessment", assessmentId: t.id, questionId: q.id }, { test: t.test, route: t.route });
             return found.status === "found"
-              ? [{ assessmentId: t.id, questionId: q.id, number: i + 1, text: found.package.text, answer: found.package.answer ? valueText(found.package.answer.value) : "", templateId: q.templateId }]
+              ? [{ assessmentId: t.id, questionId: q.id, number: i + 1, text: found.package.text, answer: found.package.answer ? valueText(found.package.answer.value) : "", templateId: q.templateId, skill: templateSkillName(q.templateId) }]
               : [];
           });
           return { assessmentId: t.id, startedAt: t.started_at, status: t.status, questions };
@@ -149,7 +151,7 @@ export interface CallListRow {
   childName: string | null;
   questionText: string | null;
   status: CallStatus;
-  model: string;
+  model: { id: string; fake: boolean };
   outcome: Outcome["reason"] | null;
   assistance: Outcome["assistance"] | null;
   seconds: number | null;
@@ -172,7 +174,7 @@ export async function listCalls(a: AdminSession, limit = 50): Promise<CallListRo
     childName: names.find((n) => n.id === r.child_id)?.first_name ?? null,
     questionText: r.question_text,
     status: r.status,
-    model: r.model,
+    model: { id: r.model, fake: r.model === FAKE_MODEL_ID },
     outcome: r.outcome_reason,
     assistance: r.assistance,
     seconds: r.call_seconds,

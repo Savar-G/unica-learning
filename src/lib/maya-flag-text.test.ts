@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ALERT_TEXT, FLAG_TEXT, alertNote, noAlertNote } from "@/lib/maya-flag-text";
+import { ALERT_TEXT, FLAG_TEXT, alertNote, modelName, noAlertNote } from "@/lib/maya-flag-text";
 
 describe("the admin call page's flag text (#333)", () => {
   it("names each flag in plain words, the harmful request apart from a safety concern", () => {
@@ -21,5 +21,14 @@ describe("the admin call page's flag text (#333)", () => {
     expect(alertNote("sending", true)).toBeNull();
     const shown = [...Object.values(FLAG_TEXT), ...Object.values(ALERT_TEXT), alertNote("refused", false), alertNote("unknown", true), noAlertNote(true), noAlertNote(false)];
     for (const text of shown) expect(text).not.toMatch(/resend|answered|\d{3}|signup_notify/i);
+  });
+});
+
+describe("the admin Maya pages' model name", () => {
+  it("says Scripted for the rule player and AI with a plain name for a model id", () => {
+    expect(modelName({ id: "fake", fake: true })).toBe("Scripted");
+    expect(modelName({ id: "anthropic/claude-sonnet-5.5", fake: false })).toBe("AI (Claude Sonnet 5.5)");
+    expect(modelName({ id: "openai/gpt-6", fake: false })).toBe("AI (GPT 6)");
+    expect(modelName({ id: "", fake: false })).toBe("AI");
   });
 });
