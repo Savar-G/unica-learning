@@ -20,8 +20,15 @@
 // Test calls never touch a real family: `start` refuses a family the seam does not call a test family, the database
 // refuses it again (migration add_maya_calls), and a test call never counts minutes.
 //
+// The safety flag (#333): when the controller's SAFETY interrupt fires, the call is flagged in the same write that saves
+// the input, and then the internal alert goes through the alerts seam (src/lib/maya-call-alert.ts): one email per call
+// and flag level, sent once. A request for harmful content (#383 C29) raises the flag UNSAFE_REQUEST_FLAG names. A flag
+// only rises. Each later request on a flagged call sends its alert again if it was refused or never claimed, so a
+// failed alert is retried by the next input, or by "end" on an ended call; an unknown one is never sent again.
+//
 // Seams: the call store (Supabase: src/lib/maya-call-store.ts; memory: src/lib/maya-call-memory.ts), the wording
-// history (Supabase: src/lib/maya-wording-history-store.ts; memory: memoryWordingHistoryStore), the learning events, the profile rebuild, the model by id, the clock, ids and the seed. Pure otherwise: no Next.js, React,
+// history (Supabase: src/lib/maya-wording-history-store.ts; memory: memoryWordingHistoryStore), the learning events, the
+// profile rebuild, the alerts, the model by id, the clock, ids and the seed. Pure otherwise: no Next.js, React,
 // network or database; node:crypto through the trace's package hash.
 import { applyBatch, boardView, createScene, type Batch } from "@/lib/board";
 import { createHistory, mayaWrites, type BoardHistory } from "@/lib/board-history";
@@ -38,6 +45,68 @@ export const CALL_RECORD_VERSION = 1;
 
 export type CallKind = "admin_test";
 export type CallStatus = "live" | "ended";
+
+/**
+ * A call's flag levels, lowest first (#333). "unsafe_request": the child asked for content Maya does not give (#383
+ * C29); "safety_concern" and "safety_immediate": the controller's SAFETY interrupt, by its severity.
+ */
+export const FLAG_LEVELS = ["unsafe_request", "safety_concern", "safety_immediate"] as const;
+export type FlagLevel = (typeof FLAG_LEVELS)[number];
+
+/** The call's highest flag so far, and when the call first reached it. */
+export interface CallFlag {
+  level: FlagLevel;
+  at: string;
+}
+
+/**
+ * What a request for harmful content raises (#383 C29: the model's reading `unsafeRequest`, answered with the decline
+ * line "I can't talk about this. I'm here to help with math."). Savar approved "unsafe_request" on 2026-11-01 (D-203): a
+ * lower flag with its own alert. The other options: "safety_concern" raises the same flag and alert as the SAFETY
+ * interrupt; null no flag and no alert.
+ */
+export const UNSAFE_REQUEST_FLAG: FlagLevel | null = "unsafe_request";
+
+/** Where an internal alert is: "sending" while a run holds its claim; "refused" did not go; "unknown" may have gone. */
+export type AlertStatus = "sending" | "sent" | "refused" | "unknown";
+
+/** A "sending" claim older than this was left by a run that stopped or an outcome write that failed. */
+export const STALE_ALERT_MS = 10 * 60_000;
+
+/**
+ * An alert as the admin page shows it: a claim left "sending" past STALE_ALERT_MS is unknown, because its email may have
+ * gone, and it is never sent again (R393-1-1, #143). Check the inbox, or the Resend log, for it.
+ */
+export function shownAlert(a: AlertState, now: number): AlertState {
+  if (a.status !== "sending" || now - Date.parse(a.claimedAt) <= STALE_ALERT_MS) return a;
+  return { ...a, status: "unknown", error: "The send did not finish, so the email may have gone. It is not sent again: check the inbox." };
+}
+
+/** One internal alert of a call, for the admin call page. */
+export interface AlertState {
+  level: FlagLevel;
+  status: AlertStatus;
+  /** When the latest send attempt claimed it. */
+  claimedAt: string;
+  /** Why it was refused, or why its delivery is unknown. */
+  error: string | null;
+}
+
+/** What an alert says about its call: which call, its kind, and the flag. Never the child's words. */
+export interface AlertCall {
+  id: string;
+  kind: CallKind;
+  parentId: string;
+  flag: CallFlag;
+}
+
+/** The alerts seam: the internal alert email through the email delivery module (src/lib/maya-call-alert.ts). */
+export interface CallAlerts {
+  /** Sends the alert of the call's flag at most once per call and flag level. Never throws. */
+  send(call: AlertCall): Promise<void>;
+  /** The call's alerts, oldest first. Throws when they cannot be read. */
+  list(callId: string): Promise<AlertState[]>;
+}
 
 /** One call as stored. */
 export interface CallRecord {
@@ -68,10 +137,12 @@ export interface CallRecord {
   boardHistory: BoardHistory | null;
   learningEventId: string | null;
   profileRebuiltAt: string | null;
+  /** The call's highest flag so far (#333), or null. */
+  flag: CallFlag | null;
 }
 
 /** The fields an update may change. */
-export type CallChange = Partial<Pick<CallRecord, "status" | "startedAt" | "endedAt" | "outcome" | "counts" | "live" | "trace" | "boardHistory" | "learningEventId" | "profileRebuiltAt">>;
+export type CallChange = Partial<Pick<CallRecord, "status" | "startedAt" | "endedAt" | "outcome" | "counts" | "live" | "trace" | "boardHistory" | "learningEventId" | "profileRebuiltAt" | "flag">>;
 
 /** The store seam. */
 export interface CallStore {
@@ -95,6 +166,10 @@ export interface CallSeams {
   model(id: string | null): MayaModel | null;
   /** True when the family is marked as a test family (public.test_accounts). */
   isTestFamily(parentId: string): Promise<boolean>;
+  /** The internal safety alerts (#333). */
+  alerts: CallAlerts;
+  /** What a request for harmful content raises; default UNSAFE_REQUEST_FLAG. */
+  unsafeRequestFlag?: FlagLevel | null;
   clock(): number;
   newId(): string;
   /** A random 32-bit seed for the wording. */
@@ -141,6 +216,9 @@ export interface CallView {
   counts: CallRecord["counts"];
   learningEventId: string | null;
   profileRebuiltAt: string | null;
+  /** The call's highest flag so far (#333), and its internal alerts. */
+  flag: CallFlag | null;
+  alerts: AlertState[];
 }
 
 export type CallResult =
@@ -200,7 +278,7 @@ export function boardPlayback(batches: readonly Batch[]): { steps: PlayStep[]; v
   return { steps, viewBox: fitView(steps.flatMap((s) => s.drawn), 0.03) };
 }
 
-export function callView(record: CallRecord, trace: MayaTrace): CallView {
+export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertState[] = []): CallView {
   return {
     id: record.id,
     kind: record.kind,
@@ -222,7 +300,39 @@ export function callView(record: CallRecord, trace: MayaTrace): CallView {
     counts: record.counts,
     learningEventId: record.learningEventId,
     profileRebuiltAt: record.profileRebuiltAt,
+    flag: record.flag,
+    alerts,
   };
+}
+
+const rank = (flag: CallFlag | null) => (flag ? FLAG_LEVELS.indexOf(flag.level) : -1);
+
+/**
+ * The call's highest flag from its session: the SAFETY interrupt by its severity, and a request for harmful content
+ * (any model reading with `unsafeRequest`, as with the safety reading, accepted or not) at the level `unsafe` names.
+ */
+function flagOf(session: TextSession, unsafe: FlagLevel | null): CallFlag | null {
+  const safety = session.session.safety;
+  const flags: CallFlag[] = [];
+  if (safety.flagged && safety.severity && safety.at !== null) {
+    flags.push({ level: safety.severity === "immediate" ? "safety_immediate" : "safety_concern", at: iso(safety.at) });
+  }
+  if (unsafe) {
+    const asked = session.trace().turns.find((t) => t.kind === "maya" && t.attempts.some((a) => readsUnsafe(a.proposal)));
+    if (asked) flags.push({ level: unsafe, at: iso(asked.at) });
+  }
+  return flags.reduce<CallFlag | null>((top, f) => (rank(f) > rank(top) ? f : top), null);
+}
+
+/** A model reading that names a request for harmful content (#383 C29). */
+const readsUnsafe = (proposal: unknown): boolean => {
+  const reading = typeof proposal === "object" && proposal !== null ? (proposal as { reading?: unknown }).reading : null;
+  return typeof reading === "object" && reading !== null && (reading as { unsafeRequest?: unknown }).unsafeRequest === true;
+};
+
+/** The flag to store when the session's flag is higher than the stored one, else undefined (no change). */
+function risen(stored: CallFlag | null, now: CallFlag | null): CallFlag | undefined {
+  return now && rank(now) > rank(stored) ? now : undefined;
 }
 
 const countsOf = (trace: MayaTrace): NonNullable<CallRecord["counts"]> => ({
@@ -238,11 +348,11 @@ function checkInput(input: CallInput): boolean {
 }
 
 /** What the admin screens show of a stored call: an ended call from its trace, a live one from its saved session. */
-export function recordView(record: CallRecord): CallView | null {
-  if (record.trace) return callView(record, record.trace);
+export function recordView(record: CallRecord, alerts: AlertState[] = []): CallView | null {
+  if (record.trace) return callView(record, record.trace, alerts);
   if (!record.live) return null;
   const session = createTextSession({ callId: record.id, package: record.live.package, model: idleModel(record), clock: () => 0, runner: "text", resume: record.live.text });
-  return callView(record, session.trace());
+  return callView(record, session.trace(), alerts);
 }
 
 /** A stand-in for a call's model where no model is asked: reading a saved call, or ending it. */
@@ -256,6 +366,23 @@ const idleModel = (record: CallRecord): MayaModel => ({
 
 export function mayaCalls(seams: CallSeams): MayaCalls {
   const { store } = seams;
+  const unsafe = seams.unsafeRequestFlag === undefined ? UNSAFE_REQUEST_FLAG : seams.unsafeRequestFlag;
+
+  /** Sends the alert of a flagged call's flag when it has not gone (the seam sends each call and level once). */
+  async function alert(record: CallRecord) {
+    if (record.flag) await seams.alerts.send({ id: record.id, kind: record.kind, parentId: record.parentId, flag: record.flag });
+  }
+
+  /** A flagged call's alerts for the screen; none when they cannot be read (the call page reads them again). */
+  async function alertsOf(record: CallRecord): Promise<AlertState[]> {
+    if (!record.flag) return [];
+    try {
+      return await seams.alerts.list(record.id);
+    } catch (e) {
+      console.error("[maya call] alerts not read", record.id, e instanceof Error ? e.message : String(e));
+      return [];
+    }
+  }
 
   function textSession(record: Pick<CallRecord, "id">, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory): TextSession {
     return createTextSession({ callId: record.id, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved });
@@ -323,7 +450,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   /** Stores the outcome of a call that has just ended, then writes its event and rebuilds the profile. Null on a conflict. */
   async function end(record: CallRecord, pkg: QuestionPackage, session: TextSession, how: FinishOptions = {}): Promise<CallRecord | null> {
     const trace = await session.finish(how);
+    const flag = risen(record.flag, flagOf(session, unsafe));
     const change: CallChange = {
+      ...(flag && { flag }),
       status: "ended",
       // Kept until the learning event is written (afterEnd).
       live: { package: pkg, text: await session.saved() },
@@ -335,20 +464,26 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       endedAt: trace.endedAt ?? iso(seams.clock()),
     };
     if (!(await store.update(record.id, record.revision, change))) return null;
-    return afterEnd({ ...record, ...change, revision: record.revision + 1 }, session);
+    const ended = { ...record, ...change, revision: record.revision + 1 };
+    // Safety first: the alert goes before the learning record.
+    await alert(ended);
+    return afterEnd(ended, session);
   }
 
   /** Saves a live call after an input, or ends it when the call has ended. Null on a conflict. */
   async function save(record: CallRecord, pkg: QuestionPackage, session: TextSession): Promise<CallRecord | null> {
     if (session.ended) return end(record, pkg, session);
-    const change: CallChange = { live: { package: pkg, text: await session.saved() }, startedAt: session.trace().startedAt };
+    const flag = risen(record.flag, flagOf(session, unsafe));
+    const change: CallChange = { live: { package: pkg, text: await session.saved() }, startedAt: session.trace().startedAt, ...(flag && { flag }) };
     if (!(await store.update(record.id, record.revision, change))) return null;
-    return { ...record, ...change, revision: record.revision + 1 };
+    const saved = { ...record, ...change, revision: record.revision + 1 };
+    await alert(saved);
+    return saved;
   }
 
-  const result = (record: CallRecord, trace: MayaTrace, out: TextOutput | null): CallResult => ({
+  const result = async (record: CallRecord, trace: MayaTrace, out: TextOutput | null): Promise<CallResult> => ({
     ok: true,
-    view: callView(record, trace),
+    view: callView(record, trace, await alertsOf(record)),
     output: { say: out?.say ?? [], newBatches: out?.board.length ?? 0, safetyMessage: out?.safetyMessage ?? null },
   });
 
@@ -390,6 +525,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         boardHistory: null,
         learningEventId: null,
         profileRebuiltAt: null,
+        flag: null,
       };
       await store.insert(record);
       let out: TextOutput | null = null;
@@ -409,7 +545,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       if (record.revision !== revision) return { ok: false, error: "conflict" };
       if (record.status === "ended") {
         if (input.type !== "end" || !record.trace) return { ok: false, error: "conflict" };
-        // An ended call: write the event and rebuild the profile when an earlier try did not.
+        // An ended call: send the alert, write the event and rebuild the profile when an earlier try did not.
+        await alert(record);
         const final = record.live ? textSession(record, record.live.package, idleModel(record), childName, record.live.text) : null;
         const done = await afterEnd(record, final);
         return result(done, done.trace!, null);

@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   const assessmentId = typeof body?.assessmentId === "string" && isUuid(body.assessmentId) ? body.assessmentId.toLowerCase() : null;
   const questionId = typeof body?.questionId === "string" && body.questionId.length <= 40 ? body.questionId : null;
   if (!assessmentId || !questionId) return Response.json({ ok: false, error: "invalid_input" }, { status: 400 });
-  const calls = serverMayaCalls();
+  const calls = serverMayaCalls(new URL(request.url).origin);
   if (!calls) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
   try {
     const question = await testQuestion(assessmentId, questionId);
