@@ -23,7 +23,7 @@
 //                            ANTHROPIC_API_KEY or the macOS Keychain item anthropic-unica-tools. Defaults: Maya
 //                            claude-sonnet-5-5, the child and the validity judge claude-haiku-5-5, the judge
 //                            claude-opus-5-5, the review claude-haiku-5-5. A local tool: the live site stays on OpenRouter.
-//   --review-check           run only the review over every NEVER_SAY example (each must fail) and every OK_TALK
+//   --review-check           run only the review over every NEVER_SAY and NOT_OK_TALK example (each must fail) and every OK_TALK
 //                            line (each must pass), and save review-check.md and .json
 //
 // The key: OPENROUTER_API_KEY in the environment, or OPENROUTER_API_KEY_FILE (a file that holds only the key), or
@@ -34,7 +34,7 @@ import { dirname, join, resolve } from "node:path";
 import { AI_DEFAULT_MODEL, type AiClient } from "@/lib/ai-client";
 import { anthropicClient } from "@/lib/ai-anthropic";
 import { openRouterClient } from "@/lib/ai-openrouter";
-import { freeTalkProblem, NEVER_SAY, OK_TALK, TALK_REVIEW_PROMPT_VERSION } from "@/lib/maya";
+import { freeTalkProblem, NEVER_SAY, NOT_OK_TALK, OK_TALK, TALK_REVIEW_PROMPT_VERSION } from "@/lib/maya";
 import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { aiTalkReviewer, fakeTalkReviewer, REVIEW_DEFAULT_MODEL, runReview, type TalkReviewer } from "@/lib/maya-talk-review";
@@ -187,6 +187,7 @@ async function reviewCheck(reviewer: TalkReviewer, dir: string, concurrency: num
   const lines = [
     ...NEVER_SAY.flatMap((e) => e.examples.map((line) => ({ line, childTurn: null as string | null, want: "fail" as const, rule: e.id as string }))),
     ...OK_TALK.map((x) => ({ line: x.line, childTurn: x.childTurn || null, want: "pass" as const, rule: null as string | null })),
+    ...NOT_OK_TALK.map((x) => ({ line: x.line, childTurn: x.childTurn as string | null, want: "fail" as const, rule: x.rule as string })),
   ];
   // A few at a time: the Claude API limits concurrent requests per organization.
   let next = 0;

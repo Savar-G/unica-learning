@@ -9,7 +9,7 @@ import { ruleMayaModel } from "@/lib/maya-model-fake";
 import {
   aiChildSimulator, aiJudge, buildReport, cappedClient, estimateCost, fakeJudge, fileHash, judgeFile, JUDGE_PROMPT_VERSION, judgeSchema,
   meteredFetch, memoryPracticeStore, PLAN_FILE, planSuite, PRACTICE_CASES, readJudgement, recordFile, reportMarkdown, runSuite, scriptedSimulator, simFile,
-  SIMULATOR_PROMPT_VERSION, Spending, traceFile, fakeValidityJudge, validityFile, VALIDITY_PROMPT_VERSION, type ValidityJudge, type AiJudge, type ChildSimulator, type PracticeCase, type PracticeDeps, type PracticeStore, type RunRecord,
+  SIMULATOR_PROMPT_VERSION, SIMULATOR_SYSTEM, Spending, traceFile, fakeValidityJudge, validityFile, VALIDITY_PROMPT_VERSION, type ValidityJudge, type AiJudge, type ChildSimulator, type PracticeCase, type PracticeDeps, type PracticeStore, type RunRecord,
 } from "./index";
 
 // The practice suite (#325) through its public interface, with fake models only: no network. A real run is the same
@@ -506,5 +506,15 @@ describe("the docs", () => {
     expect(md).toContain("PASS");
     expect(md).toContain("### C07-r1: pass");
     expect(md).toContain("Counted from the saved files.");
+  });
+});
+
+describe("the practice child speaks like a child (practice run 5: too_long and turn_cap)", () => {
+  it("asks for one short thing per turn, and each persona request once, so the call can end", () => {
+    expect(SIMULATOR_PROMPT_VERSION).toBe("practice-child-2");
+    expect(SIMULATOR_SYSTEM).toContain("Say one thing per turn");
+    expect(SIMULATOR_SYSTEM).toContain("not every step of your working");
+    expect(SIMULATOR_SYSTEM).toContain("ask again at most once");
+    expect(SIMULATOR_SYSTEM).toContain("let the call end");
   });
 });

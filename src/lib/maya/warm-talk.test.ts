@@ -3,6 +3,8 @@ import { applyBatch, createScene } from "@/lib/board";
 import {
   createSession,
   freeTalkProblem,
+  FEELING_SMALLTALK,
+  hardFeeling,
   NEUTRAL_SMALLTALK,
   heardWordings,
   allLineTexts,
@@ -187,15 +189,19 @@ describe("rule B (freeTalk on): a turn with no math line", () => {
     expect(PHRASES.smalltalk.map(bare)).toContain(said.text);
   });
 
-  it("replaces refused free talk only with a reply that fits any child turn (D-197, practice run 4: not \"I love hearing about it!\" to a sad child)", () => {
-    for (const n of NEUTRAL_SMALLTALK) expect(PHRASES.smalltalk).toContain(n);
-    for (const act of ["clarify", "redirect"] as const) {
-      for (let random = 1; random <= 12; random++) {
-        const c = call({ freeTalk: true, random });
-        c.child("I'm sad today. My grandma is sick.");
-        const said = c.say({ act, ...(act === "redirect" ? { reading: { offTopic: true } } : {}), parts: [{ talk: "I'm sorry your grandma is sick." }] }, [{ text: "I'm sorry your grandma is sick.", result: { verdict: "fail", rules: ["private_detail"], reason: "names an illness" } }]);
-        expect(said.talkReplaced, `${act} ${random}`).toBe(1);
-        expect(NEUTRAL_SMALLTALK, `${act} ${random}`).toContain(said.text);
+  it("replaces refused free talk with a warm reply to a hard feeling that names no detail (D-197, practice runs 4 and 5: not \"I love hearing about it!\" or a cold \"I hear you.\" to a sad child)", () => {
+    for (const n of [...NEUTRAL_SMALLTALK, ...FEELING_SMALLTALK]) expect(PHRASES.smalltalk).toContain(n);
+    for (const [child, want] of [["I'm sad today. My grandma is sick.", FEELING_SMALLTALK], ["This is dumb and you're dumb.", FEELING_SMALLTALK], ["I'm worried about my test.", FEELING_SMALLTALK], ["Can you tell me a secret?", NEUTRAL_SMALLTALK], ["Do you have a dog?", NEUTRAL_SMALLTALK]] as const) {
+      expect(hardFeeling(child), child).toBe(want === FEELING_SMALLTALK);
+      for (const act of ["clarify", "redirect"] as const) {
+        for (let random = 1; random <= 12; random++) {
+          const c = call({ freeTalk: true, random });
+          c.child(child);
+          const talk = "Oh, I'm a real person!";
+          const said = c.say({ act, ...(act === "redirect" ? { reading: { offTopic: true } } : {}), parts: [{ talk }] }, [{ text: talk, result: { verdict: "fail", rules: ["untrue_self"], reason: "untrue" } }]);
+          expect(said.talkReplaced, `${act} ${random}`).toBe(1);
+          expect(want, `${child} ${act} ${random}`).toContain(said.text);
+        }
       }
     }
   });
@@ -434,6 +440,25 @@ describe("R374-3-2 (freeTalk on): free talk may only react, feel, greet or ask a
       expect(freeTalkProblem(talk, null, child)).toBeNull();
     });
 
+  // Practice run 5: 11 of 28 code-guard refusals were everyday phrases about the conversation, not the work.
+  it.each([
+    "Aw, thanks for asking me. I can't make promises or keep secrets, because I'm an AI helper. I'm happy to listen to you, though.",
+    "Thanks for telling me. I can't promise secrets, but I'm glad you shared a little.",
+    "Aw, I'm sorry your grandma is sick. That sounds hard, and it's okay to feel sad. I'm glad you told me.",
+    "I can't promise to keep secrets, sorry. I'm an AI helper, and I don't want to say something untrue.",
+    "Oh, I hear you. I'm right here with you.", "Thanks for sharing!", "I can't keep it secret, because I'm an AI helper.",
+  ])("passes the code guards with %s (practice run 5: a false catch)", (talk) => {
+    expect(freeTalkProblem(talk, null, child)).toBeNull();
+  });
+
+  it.each([
+    "Keep going.", "Oh, keep at it!", "I told you.", "Like I told you, it's fine.", "Share them out.", "You shared them fairly.", "That's right!",
+    "You're right!", "Want to keep going?", "You want to finish?", "Oh, you can tell me your secret.", "I'm right about it.",
+    "Thanks for writing it down.", "I'm glad you wrote it down.", "Your sixty-six is great.",
+  ])("still refuses %s: only the exact everyday phrases are let through", (talk) => {
+    expect(freeTalkProblem(talk, null, child)).not.toBeNull();
+  });
+
   it("lets a sentence start with a name only when the child said it", () => {
     expect(freeTalkProblem("Biscuit is a great name!", null, [])).not.toBeNull();
     expect(freeTalkProblem("Biscuit is a great name!", null, ["My dog is called Biscuit."])).toBeNull();
@@ -488,6 +513,16 @@ describe("R374-4-1: with freeTalk off (the default), every word Maya says comes 
       c.child("I'm Leah and I have a dog named Biscuit, I am 7 and I carry the bag + more!");
       const said = c.say({ act: "clarify", parts: [{ warm: "pets", echo }] });
       expect(PHRASES.pets.filter((p) => !p.includes("{echo}")).map(bare)).toContain(said.text.replace(/, Leah/, ""));
+    });
+
+    it("never echoes an insult back (practice run 5, F06: \"Feeling dumb is okay.\")", () => {
+      for (const echo of ["dumb", "stupid", "so dumb"]) {
+        const c = call();
+        c.child("This is so dumb and you're stupid.");
+        const said = c.say({ act: "clarify", parts: [{ warm: "frustrated", echo }] });
+        expect(said.text, echo).not.toMatch(/dumb|stupid/i);
+        expect(PHRASES.frustrated.filter((p) => !p.includes("{echo}")).map(bare)).toContain(said.text);
+      }
     });
   });
 

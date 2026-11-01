@@ -236,6 +236,8 @@ describe("the easier example and the child's own question", () => {
     const c = opened();
     c.child("I don't know how to start.");
     expect(c.refused({ act: "example_step", step: "tens", parts: [ln("example.step", { step: "tens" })] })).toMatchObject({ code: "wrong_step" });
+    // Practice run 5 (F06): the child must hear that a new problem starts, so the first step needs the intro line.
+    expect(c.refused({ act: "example_step", step: "ones", parts: [ln("example.step", { step: "ones" })] })).toMatchObject({ code: "line_not_offered" });
     c.maya({ act: "example_step", step: "ones", parts: [ln("example.intro"), ln("example.step", { step: "ones" })], reading: { start: "no_start" } });
     expect(c.session.state).toBe("MODEL_EXAMPLE");
     expect(c.next).toEqual({ expect: "maya", acts: ["accept_answer", "example_step"] });

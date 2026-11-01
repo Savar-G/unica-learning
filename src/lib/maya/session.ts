@@ -36,7 +36,7 @@ import {
 import { talkMath } from "./claims";
 import { saidAsApproved } from "./speech";
 import { findOffer, normalSlots, packageLines, LINE_IDS, type LineOffer } from "./lines";
-import { freeTalkProblem, workProblem, FALLBACK_GROUP, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
+import { freeTalkProblem, hardFeeling, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { committedText, offersChoice, readNumbers, takenBack, valuesIn } from "./numbers";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
@@ -910,6 +910,11 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       const index = main === "ASSESS" ? 0 : s.exampleShown;
       const next = pkg!.easierExample.steps[index];
       if (p.step !== next.id) return no("wrong_step", `The next example step is "${next.id}".`, allowedNow);
+      // The child must hear that a new, easier problem starts (practice run 5, F06: "Like this. Add the ones: 8 + 5 = 13."
+      // with no word that 18 + 15 is another problem).
+      if (index === 0 && !spoken.chosen.some((o) => o.line === "example.intro")) {
+        return no("line_not_offered", "The easier example starts with its intro line (example.intro), before its first step.", allowedNow);
+      }
       s.exampleShown = index + 1;
       s.assistance.push("worked_example");
       moveTo(s, "MODEL_EXAMPLE");
@@ -1311,6 +1316,16 @@ function withEcho(text: string, echoed: string | null): string {
  * punctuation between them, matched after case is set aside and copied as the child wrote them, with no math, no work word and not the child's name. Null
  * when they fail, and code then picks a frame with no slot.
  */
+/**
+ * Words an echo never repeats: insults and rude words (practice run 5, F06: "This is dumb and you're dumb." gave
+ * "Feeling dumb is okay.", which puts the insult on the child). A frame with no slot is said instead.
+ */
+const UNKIND_ECHO: ReadonlySet<string> = new Set([
+  "dumb", "stupid", "idiot", "idiots", "idiotic", "silly", "hate", "hated", "ugly", "fat", "loser", "losers", "lame", "boring", "useless",
+  "worst", "suck", "sucks", "sucky", "shut", "dummy", "moron", "crap", "crappy", "trash", "garbage", "annoying", "weird", "freak", "jerk",
+  "mean", "bad", "terrible", "awful", "pathetic", "kill", "die", "dead",
+]);
+
 function echoOf(s: Session, raw: string): string | null {
   const last = s.turn?.text ?? [...s.turns].reverse().find((t) => t.speaker === "child")?.text ?? "";
   const want = (raw.match(/[\p{L}]+(?:['’][\p{L}]+)*/gu) ?? []).map((w) => w.toLowerCase());
@@ -1328,7 +1343,7 @@ function echoOf(s: Session, raw: string): string | null {
   }
   if (echoed === null) return null;
   const name = s.variety.name?.toLowerCase();
-  if (talkMath(echoed) !== null || workProblem(echoed) !== null || (name && want.includes(name))) return null;
+  if (talkMath(echoed) !== null || workProblem(echoed) !== null || (name && want.includes(name)) || want.some((w) => UNKIND_ECHO.has(w))) return null;
   return echoed;
 }
 
@@ -1490,7 +1505,8 @@ function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview
       } else {
         replaced += 1;
         const group = FALLBACK_GROUP[p.act] ?? "encourage";
-        const shown = phrase(group, null, undefined, group === "smalltalk" ? NEUTRAL_SMALLTALK : undefined);
+        const neutral = hardFeeling(s.turn?.text ?? [...s.turns].reverse().find((t) => t.speaker === "child")?.text) ? FEELING_SMALLTALK : NEUTRAL_SMALLTALK;
+        const shown = phrase(group, null, undefined, group === "smalltalk" ? neutral : undefined);
         add("talk", shown);
         talk.push({
           proposed, code, review: review?.verdict ?? "not_run",

@@ -4,6 +4,7 @@ import {
   freeTalkProblem,
   NEVER_SAY,
   NEVER_SAY_IDS,
+  NOT_OK_TALK,
   OK_TALK,
   PHRASES,
   readTalkReview,
@@ -57,6 +58,28 @@ describe("the never-say list", () => {
 
   it("puts every OK line through the code guards, so the paid check measures the review alone", () => {
     for (const ok of OK_TALK) expect(freeTalkProblem(ok.line, null, [ok.childTurn]), ok.line).toBeNull();
+    for (const bad of NOT_OK_TALK) expect(freeTalkProblem(bad.line, null, [bad.childTurn]), bad.line).toBeNull();
+  });
+
+  it("allows brief empathy that names what the child told, and refuses asking more about it (practice run 5)", () => {
+    const privacy = NEVER_SAY.find((e) => e.id === "private_detail")!;
+    expect(privacy.rule).toContain("I'm sorry your grandma is sick.");
+    expect(privacy.examples).toContain("Your grandma has cancer? What kind?");
+    expect(OK_TALK.map((x) => x.line)).toContain("Aw, I'm sorry your grandma is sick. That sounds really hard. Thanks for telling me how you feel.");
+  });
+
+  it("allows \"a grown-up you trust\" only for a child who is sad, worried, scared or unsafe, naming no person, in one place", () => {
+    const advice = NEVER_SAY.find((e) => e.id === "advice")!;
+    const outside = NEVER_SAY.find((e) => e.id === "outside")!;
+    expect(advice.rule).toMatch(/sad, worried, scared or unsafe.*a grown-up they trust can help, naming no person/);
+    expect(outside.rule).toContain("only to a child who says they are sad, worried, scared or unsafe");
+    expect(TALK_REVIEW_SYSTEM).toContain(advice.rule);
+    const ok = OK_TALK.filter((x) => /grown-up/.test(x.line));
+    expect(ok.length).toBeGreaterThan(0);
+    for (const x of ok) expect(x.childTurn).toMatch(/sad|worried|scared|unsafe/i);
+    // The same words to a child who is not upset, or a named person to one who is, must fail.
+    expect(NOT_OK_TALK.some((x) => /grown-up you trust/.test(x.line) && !/sad|worried|scared|unsafe/i.test(x.childTurn))).toBe(true);
+    expect(NOT_OK_TALK.some((x) => /mom|dad|teacher/i.test(x.line) && /worried/i.test(x.childTurn))).toBe(true);
   });
 
   // One test per entry: the rule and its examples are in the review's instructions and schema, and each example the

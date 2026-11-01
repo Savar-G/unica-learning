@@ -131,7 +131,7 @@ describe("F9-R2: a child who cannot start after a confirmation still gets the ex
     expect(c.propose(guide({ level: 2, reading: { start: "no_start" } })).refusal).toMatchObject({ code: "act_not_allowed" });
     expect(c.s.noStart).toBe(true);
     expect(c.propose({ act: "try_target", parts: [t("Try your question.")] }).refusal).toMatchObject({ code: "act_not_allowed" });
-    expect(c.propose({ act: "example_step", step: "ones", parts: [ln("example.step", { step: "ones" })] }).refusal).toBeNull();
+    expect(c.propose({ act: "example_step", step: "ones", parts: [ln("example.intro"), ln("example.step", { step: "ones" })] }).refusal).toBeNull();
   });
 });
 

@@ -57,10 +57,11 @@ export {
 export { allLineTexts, LINE_IDS, LINES_VERSION, TEMPLATES, type LineChoice, type LineId, type LineOffer, type Slots, type TemplateKey } from "./lines";
 export { talkMath } from "./claims";
 export { speechKey } from "./speech";
-export { FREE_TALK_LIMITS, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, freeTalkProblem, workProblem, type PhraseGroup } from "./phrases";
+export { FEELING_SMALLTALK, FREE_TALK_LIMITS, hardFeeling, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, freeTalkProblem, workProblem, type PhraseGroup } from "./phrases";
 export {
   NEVER_SAY,
   NEVER_SAY_IDS,
+  NOT_OK_TALK,
   OK_TALK,
   readTalkReview,
   TALK_REVIEW_PROMPT_VERSION,
