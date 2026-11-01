@@ -8,6 +8,7 @@ import { rebuildChildProfileNow } from "@/lib/child-profile-server";
 import { learningEvents } from "@/lib/learning-events";
 import { learningEventStore } from "@/lib/learning-events-store";
 import { mayaCalls, recordView, FAKE_MODEL_ID, type CallStatus, type CallView, type MayaCalls } from "@/lib/maya-call";
+import { writeNoteAfterCall } from "@/lib/maya-call-note-server";
 import { fromCallRow, mayaCallStore } from "@/lib/maya-call-store";
 import { wordingHistoryStore } from "@/lib/maya-wording-history-store";
 import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
@@ -68,6 +69,7 @@ export function serverMayaCalls(): MayaCalls | null {
     model: callModel,
     reviewer: callReviewer,
     isTestFamily: (parentId) => isTestFamily(db, parentId),
+    note: writeNoteAfterCall(db),
     clock: () => Date.now(),
     newId: () => randomUUID(),
     seed: () => randomInt(0, 2 ** 32),

@@ -21,12 +21,12 @@
 // refuses it again (migration add_maya_calls), and a test call never counts minutes.
 //
 // Seams: the call store (Supabase: src/lib/maya-call-store.ts; memory: src/lib/maya-call-memory.ts), the wording
-// history (Supabase: src/lib/maya-wording-history-store.ts; memory: memoryWordingHistoryStore), the learning events, the profile rebuild, the model by id, the clock, ids and the seed. Pure otherwise: no Next.js, React,
+// history (Supabase: src/lib/maya-wording-history-store.ts; memory: memoryWordingHistoryStore), the learning events, the profile rebuild, the parent's note (#331), the model by id, the clock, ids and the seed. Pure otherwise: no Next.js, React,
 // network or database; node:crypto through the trace's package hash.
 import { applyBatch, boardView, createScene, type Batch } from "@/lib/board";
 import { createHistory, mayaWrites, type BoardHistory } from "@/lib/board-history";
 import { fitView, type PlayStep } from "@/lib/board-svg";
-import type { LearningEvents } from "@/lib/learning-events";
+import type { LearningEvents, NewLearningEvent } from "@/lib/learning-events";
 import { heardWordings, learningEvent, type Outcome, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
 import { freeTalkFor } from "@/lib/maya-free-talk";
 import type { MayaModel } from "@/lib/maya-model";
@@ -102,6 +102,11 @@ export interface CallSeams {
   reviewer?(modelId: string): TalkReviewer | null;
   /** True when the family is marked as a test family (public.test_accounts). */
   isTestFamily(parentId: string): Promise<boolean>;
+  /**
+   * The parent's note of an ended call (#331, src/lib/maya-call-note.ts), run once the call has its outcome. Optional.
+   * The note module refuses test calls and test families itself; a failure never changes the call.
+   */
+  note?(ended: { call: CallRecord; package: QuestionPackage; event: NewLearningEvent | null }): Promise<unknown>;
   clock(): number;
   newId(): string;
   /** A random 32-bit seed for the wording. */
@@ -334,6 +339,14 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   async function afterEnd(record: CallRecord, ended: TextSession | null): Promise<CallRecord> {
     let current = record;
     if (ended) await recordHeard(current, ended);
+    if (ended && current.live && seams.note) {
+      // The parent's note (#331): written once per call; a retried "end" finds it stored and asks nothing.
+      try {
+        await seams.note({ call: current, package: current.live.package, event: learningEvent(ended.session, { parentId: current.parentId, childId: current.childId }) });
+      } catch (e) {
+        console.error("[maya call] note failed", current.id, e instanceof Error ? e.message : String(e));
+      }
+    }
     if (!current.learningEventId && ended) {
       const event = learningEvent(ended.session, { parentId: current.parentId, childId: current.childId });
       let eventId: string | null = null;
