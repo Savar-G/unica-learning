@@ -30,7 +30,7 @@ The weekly routine (`docs/blog-automation.md`) takes the first `todo` row from t
 | 9 | todo | is tutoring tax deductible canada | Is tutoring tax deductible in Canada? What counts for a math program | Comparing options | Dec, Jan, Feb, Mar, Apr | tutor-cost-bc, kumon-cost-bc |
 | 10 | todo | grade 3 math workbook canada | Math workbooks for BC kids, grade by grade: how to choose one | Math at home | any | grade guides |
 | 11 | todo | oxford learning vs kumon | Oxford Learning vs Kumon: how they differ and what each costs in BC | Comparing options | any | kumon-cost-bc, is-kumon-worth-it |
-| 12 | todo | free math assessment to determine grade level | How to find out what grade level your child is working at in math | Math at home | any | bc-proficiency-scale, /sample-report |
+| 12 | done 2026-11-01 `/math-assessment` (public assessment guide; do not duplicate this query) | free math assessment to determine grade level | Free online math assessment for K to Grade 9 | Math at home | any | bc-proficiency-scale, /sample-report |
 | 13 | todo | sylvan learning vs mathnasium | Mathnasium vs Sylvan: math-only centre or full tutoring centre? | Comparing options | any | /blog/mathnasium-cost-bc, /blog/sylvan-vs-kumon |
 | 14 | todo | mathnasium alternatives | Mathnasium alternatives in BC | Comparing options | any | kumon-alternatives, /compare |
 | 15 | todo | how to help my child learn math facts | When should my child know their times tables? What BC expects | Math at home | Jan, Feb, Mar, Aug, Sep, Oct | bc-grade-3-, bc-grade-4- guides |

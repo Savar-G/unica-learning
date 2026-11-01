@@ -24,6 +24,7 @@ export default function ResourcesHub() {
           <Eyebrow>Resources</Eyebrow>
           <h1>Guides for BC parents</h1>
           <p className="res-lead">What your child learns in each grade, what school reports mean, and how the options for extra help compare.</p>
+          <p><Link href="/resources/tutor-cost-bc#calculator">Calculate the cost of a tutoring quote</Link>, or <Link href="/math-assessment">learn about the free math assessment</Link>.</p>
         </header>
 
         {resourcesByCategory().filter((g) => g.items.length).map((g) => (

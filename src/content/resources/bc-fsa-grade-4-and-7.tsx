@@ -5,11 +5,11 @@ import { AssessmentCta, Callout, Cite, DataTable, KeyFacts, Section } from "@/co
 
 export const meta: ResourceMeta = {
   slug: "bc-fsa-grade-4-and-7",
-  title: "BC FSA for Grade 4 and 7: sample tests, what it measures and what to expect",
+  title: "BC FSA Grade 4 and 7: free sample tests and answers",
   description: "BC FSA Grade 4 and 7: what the Foundation Skills Assessment covers, when it runs, how results are reported, and where the official sample tests are.",
   category: "BC school guides",
   lead: "The Foundation Skills Assessment (FSA) is a provincial check of literacy and numeracy that every BC student takes in Grade 4 and Grade 7.",
-  updated: "2026-10-09",
+  updated: "2026-11-01",
   faqs: [
     {
       q: "What is the FSA in BC?",
@@ -34,7 +34,7 @@ export const meta: ResourceMeta = {
   ],
   sources: [
     { label: "BC Ministry of Education and Child Care: Foundation Skills Assessment (FSA)", url: "https://www2.gov.bc.ca/gov/content/education-training/k-12/administration/program-management/assessment/foundation-skills-assessment", accessed: "2026-10-09" },
-    { label: "BC Ministry of Education and Child Care: Foundation Skills Assessment Samples", url: "https://www2.gov.bc.ca/gov/content/education-training/k-12/administration/program-management/assessment/foundation-skills-assessment/fsa-samples", accessed: "2026-10-09" },
+    { label: "BC Ministry of Education and Child Care: Foundation Skills Assessment Samples", url: "https://www2.gov.bc.ca/gov/content/education-training/k-12/administration/program-management/assessment/foundation-skills-assessment/fsa-samples", accessed: "2026-11-01" },
     { label: "BC Ministry of Education and Child Care: Foundation Skills Assessment Specifications (PDF)", url: "https://www2.gov.bc.ca/assets/gov/education/administration/kindergarten-to-grade-12/assessment/fsa_description_and_specs.pdf", accessed: "2026-10-09" },
     { label: "BC Ministry of Education and Child Care: Foundation Skills Assessment Specifications page", url: "https://www2.gov.bc.ca/gov/content/education-training/k-12/administration/program-management/assessment/foundation-skills-assessment/specifications", accessed: "2026-10-09" },
     { label: "BC Ministry of Education and Child Care: All about the Foundation Skills Assessment, information for parents and caregivers (PDF)", url: "https://curriculum.gov.bc.ca/sites/curriculum.gov.bc.ca/files/pdf/assessment/fsa/en-foundation-skills-assessment-for-parents-and-caregivers.pdf", accessed: "2026-10-09" },
@@ -45,6 +45,7 @@ export const meta: ResourceMeta = {
 export default function Body() {
   return (
     <>
+      <p>Looking for an FSA practice test? <Link href="#sample-tests">Open the official Grade 4 or Grade 7 samples and possible solutions below</Link>. They are free from the BC Ministry of Education and Child Care.<Cite n={2} /></p>
       <KeyFacts
         items={[
           <>All BC students take the FSA in Grade 4 and Grade 7.<Cite n={1} /></>,
@@ -116,17 +117,15 @@ export default function Body() {
         </p>
       </Section>
 
-      <Section title="FSA Grade 4 practice test and sample test">
+      <Section title="FSA Grade 4 and Grade 7 practice tests and answers" id="sample-tests">
         <p>
           The official sample tests are free on the ministry&apos;s <a href="https://www2.gov.bc.ca/gov/content/education-training/k-12/administration/program-management/assessment/foundation-skills-assessment/fsa-samples" rel="noopener" target="_blank">FSA samples page</a>. They show the format of the assessment and the balance of questions.<Cite n={4} /> For each grade, the page lists:
         </p>
-        <ul>
-          <li>a sample collaboration activity,</li>
-          <li>online sample questions,</li>
-          <li>printable literacy questions and printable numeracy questions,</li>
-          <li>a sample student response booklet, and</li>
-          <li>possible solutions.<Cite n={2} /></li>
-        </ul>
+        <DataTable caption="Official English FSA samples, checked November 1, 2026" columns={["Grade", "Online sample", "Paper booklet and answers"]} rows={[4, 7].map((grade) => [
+          `Grade ${grade}`,
+          <a key={`online-${grade}`} href={`https://bced.vretta.com/#/en/bced-landing/fsa/sample/grade-${grade}`}>Grade {grade} online questions</a>,
+          <span key={`paper-${grade}`}><a href={`https://www2.gov.bc.ca/assets/gov/education/administration/kindergarten-to-grade-12/assessment/gr${grade}-fsa-sample-response-booklet.pdf`}>Grade {grade} response booklet (PDF)</a>{" · "}<a href={`https://www2.gov.bc.ca/assets/gov/education/administration/kindergarten-to-grade-12/assessment/gr${grade}-fsa-student-sample-response.pdf`}>Grade {grade} possible solutions (PDF)</a></span>,
+        ])} note={<>The ministry&apos;s samples page also has collaboration activities and printable versions of the online literacy and numeracy questions.<Cite n={2} /></>} />
         <p>
           We do not copy test items here. Use the ministry&apos;s page so you get the real samples. The ministry also posts a specifications document that explains how each grade is assessed.<Cite n={4} />
         </p>
