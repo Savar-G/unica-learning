@@ -159,6 +159,18 @@ describe("reading spoken and typed fractions in a fraction call (#407)", () => {
     expect(readNumbers("1 3/8").values).toEqual(before);
     expect(valuesIn("1 3/8", READ)).toEqual([mixed(1, 3, 8)]);
   });
+
+  it.each([
+    "4/12, I mean 7/8", "four twelfths, I mean seven eighths", "1 3/8, I mean 7/8",
+    "4/12, actually 7/8", "4/12, oops 7/8", "4/12, no wait, 7/8",
+    ...["because", "since", "cause", "cuz", "coz"].map((word) => `7/8 ${word} 6 plus 1 is 7`),
+  ])("preserves the supported correction or explanation in %j", (said) => {
+    expect(readAnswer(said, READ)).toMatchObject({ final: frac(7, 8), sure: true });
+    const c = call(C38, said);
+    const r = c.propose({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(frac(7, 8), "result", "right")] } });
+    expect(r.refusal).toBeNull();
+    expect(c.s.solved).toBe("child");
+  });
 });
 
 describe("right answers follow the question's wording (#407, research C38)", () => {

@@ -81,6 +81,8 @@ Each fraction must be one complete expression. The operands must be next to the 
 
 For a mixed answer such as `1 2/8`, this help uses the fractional part (`2/8`) and keeps the whole part (`1`). A form listed as wrong does not enable `check.equal` unless the question asks for simplest form. These checks do not change which fraction questions Maya teaches. The fraction lines still need Savar's approval.
 
+Expression grouping uses the existing correction and explanation grammar. It preserves multiword corrections such as "I mean" and every supported explanation word, including "cuz" and "coz". Ordinary connecting words do not become expression boundaries.
+
 An equal-form final answer must be committed before it completes any work step or receives `check.equal`. A doubtful answer such as "Maybe 14/16?" is confirmed first. This check also applies to code fallbacks. An ordinary wrong answer still follows the wrong-answer path.
 
 **Steps.** The package's steps: the common denominator (`3/4 = 6/8`; the child says 6/8 or 6, never 3/4), the numerators (`6 + 1 = 7`), and the simplest form only when the question asks for it (`teachSteps`). The mixed number is never a step. No help line, judged step or shown step says the final fraction: the child puts it together on the final step. Saying back an equal form the child said is not giving the answer away; the answer's own written form is.

@@ -311,8 +311,12 @@ export function writtenFractions(text: string): string {
   const numeric = (i: number) => i >= 0 && i < words.length && (/^(?:\d|\.\d)/.test(words[i].t) || kindOf(words[i].t) !== null);
   // These tokens separate number expressions. Other words cannot join a separate
   // whole-number fragment to a fraction unless the mixed-number grammar consumes it.
-  const expressionBoundary = (token: string) => /^[.!?;:\n]$/.test(token) || RESULT.test(token) || OPERATION.test(token) ||
-    /^(?:because|cause|since|so|then|no|wait|actually|oops)$/.test(token);
+  const corrections = correctionRuns(low).filter((run) => run.clean);
+  const expressionBoundary = (at: number) => {
+    const word = words[at];
+    return /^[.!?;:\n]$/.test(word.t) || RESULT.test(word.t) || OPERATION.test(word.t) || EXPLANATION.test(word.t) ||
+      /^(?:so|then)$/.test(word.t) || corrections.some((run) => word.at >= run.index && word.end <= run.end);
+  };
   /** One complete nonnegative integer, without "and". A run such as "six sixty" has no reading. */
   const integer = (at: number, direction: -1 | 1) => {
     if (at < 0 || at >= words.length) return null;
@@ -379,8 +383,8 @@ export function writtenFractions(text: string): string {
     const signed = words.slice(left, right + 1).some((w) => /^(?:minus|negative|dash|[+\-])$/.test(w.t));
     let expressionFrom = from;
     let expressionTo = to;
-    while (expressionFrom > 0 && !expressionBoundary(words[expressionFrom - 1].t)) expressionFrom -= 1;
-    while (expressionTo + 1 < words.length && !expressionBoundary(words[expressionTo + 1].t)) expressionTo += 1;
+    while (expressionFrom > 0 && !expressionBoundary(expressionFrom - 1)) expressionFrom -= 1;
+    while (expressionTo + 1 < words.length && !expressionBoundary(expressionTo + 1)) expressionTo += 1;
     // Every numeric fragment in this expression must belong to the recognized
     // integer/fraction/mixed form. Never retain only the fraction of an unsupported mixed form.
     const unconsumedNumber = words.slice(expressionFrom, expressionTo + 1)
