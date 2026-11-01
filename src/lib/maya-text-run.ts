@@ -42,6 +42,8 @@ export async function runTextSession(run: TextRun): Promise<{ trace: MayaTrace; 
   let lk: LivekitTextSession | null = null;
   let error: unknown = null;
   let detail = "the input ended before the call ended";
+  /** "/quit" hangs up on purpose (child_stopped); an input that runs out or fails is a technical issue. */
+  let quit = false;
   try {
     lk = run.livekit ? await run.livekit(text) : null;
     show(lk ? (await lk.open()).output : await text.start());
@@ -49,7 +51,10 @@ export async function runTextSession(run: TextRun): Promise<{ trace: MayaTrace; 
       if (text.ended) break;
       const line = raw.replace(/#.*$/, "").trim();
       if (!line) continue;
-      if (line === "/quit") break;
+      if (line === "/quit") {
+        quit = true;
+        break;
+      }
       run.advance(LINE_MS);
       const wait = /^\/wait\s+(\d+)$/.exec(line);
       const write = /^\/write\s+(start|done)$/.exec(line);
@@ -77,7 +82,7 @@ export async function runTextSession(run: TextRun): Promise<{ trace: MayaTrace; 
     log("-- LiveKit did not close (details in the error output)");
     run.debug(`LiveKit did not close: ${raw(e)}`);
   }
-  const trace = await text.finish(detail, error !== null);
+  const trace = await text.finish(quit && error === null ? { reason: "child_stopped" } : { detail, failed: error !== null });
   if (!error && trace.outcome?.reason === "technical_issue") log("-- call ended: the input ended first (technical_issue)");
   try {
     run.writeTrace(trace);
