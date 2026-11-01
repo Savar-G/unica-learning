@@ -146,67 +146,65 @@ export function toSolve(p: QuestionPackage): SolveRequest {
 }
 
 // ---------- Comparing ----------
+//
+// The solver's answer is never parsed. Code writes every form the key may be written in (the key is code's own
+// canonical text: "1250", "−5", "3/2", "1 1/2", "9 R 2", "2.5 km", "$4.75", "75¢", "1 h 30 min", "3:30 p.m.", "15:30"),
+// and the answer must be one of them, character for character, after only spaces at the ends and in runs, the minus
+// sign and one closing full stop are evened out. Any other answer fails the question closed, so no reading of a unit,
+// a case, a digit group or a decimal can make two different values look the same.
 
-/** A choice or a word answer, compared as printed: case, the minus sign, runs of spaces and a closing dot aside. Spaces
- * between words are kept, so "1 2" is never "12". */
-const clean = (s: string) => s.toLowerCase().replace(/[−–]/g, "-").replace(/\s+/g, " ").trim().replace(/[.]+$/, "").replace(/^x$/, "×");
+/** Evens out what any writer varies without changing a value: spaces, the minus sign, a closing full stop. */
+const even = (s: string) => s.replace(/[−–]/g, "-").replace(/\s+/g, " ").trim().replace(/(?<![ap]\.m)\.$/i, "");
 
-/**
- * Drops the thousands commas of a well-formed number ("1,250", "1,234,567": every group after a comma exactly three
- * digits). A comma anywhere else stays, so "1,2345" reads as two numbers and fails.
- */
-const noGrouping = (s: string) => s.replace(/(?<![\d.,])\d{1,3}(?:,\d{3})+(?![\d,])/g, (n) => n.replace(/,/g, ""));
+/** A whole number with thousands commas: "1250" is "1,250". */
+const grouped = (digits: string) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
-/** The numbers in an answer, in order, each a fraction [numerator, denominator]: "1 1/2" is 3/2, "9 R 2" is 9 and 2. */
-function numbersOf(s: string): [number, number][] {
-  const out: [number, number][] = [];
-  const t = noGrouping(s).replace(/[−–]/g, "-");
-  const re = /(-?(?:\d+(?:\.\d+)?|\.\d+))(?:\s+(\d+)\/(\d+)|\/(\d+))?/g;
-  for (const m of t.matchAll(re)) {
-    if (m[2] !== undefined) {
-      const negative = m[1].startsWith("-");
-      const w = Math.abs(Number(m[1]));
-      const d = Number(m[3]);
-      out.push([(negative ? -1 : 1) * (w * d + Number(m[2])), d]);
-    } else if (m[4] !== undefined) out.push([Number(m[1]), Number(m[4])]);
-    else {
-      const places = (m[1].split(".")[1] ?? "").length;
-      out.push([Math.round(Number(m[1]) * 10 ** places), 10 ** places]);
+/** The forms of one key text: each rule adds forms of the forms so far. */
+const FORMS: ((k: string) => string[])[] = [
+  // An improper fraction as a mixed number and back: "3/2" and "1 1/2".
+  (k) => {
+    const f = /^(-?)(\d+)\/(\d+)$/.exec(k);
+    if (f && BigInt(f[3]) > BigInt(0) && BigInt(f[2]) > BigInt(f[3])) {
+      const [n, d] = [BigInt(f[2]), BigInt(f[3])];
+      return n % d === BigInt(0) ? [] : [`${f[1]}${n / d} ${n % d}/${d}`];
     }
-  }
-  return out;
+    const m = /^(-?)(\d+) (\d+)\/(\d+)$/.exec(k);
+    if (m && BigInt(m[4]) > BigInt(0)) return [`${m[1]}${BigInt(m[2]) * BigInt(m[4]) + BigInt(m[3])}/${m[4]}`];
+    return [];
+  },
+  // Thousands commas in every whole part of four digits or more: "1250 m" and "1,250 m".
+  (k) => (/(?<![\d.])\d{4,}/.test(k) ? [k.replace(/(?<![\d.])\d{4,}/g, grouped)] : []),
+  // A remainder written close: "9 R 2", "9R2", "9 r 2", "9r2".
+  (k) => (/^-?\d+ R \d+$/.test(k) ? [k.replace(/ R /, "R"), k.replace(/ R /, " r "), k.replace(/ R /, "r")] : []),
+  // A unit written close to its number, its case kept: "2.5 km" and "2.5km", "1 h 30 min" and "1h 30min".
+  (k) => (/\d [A-Za-zµ]/.test(k) && !/ R \d/.test(k) && !/[ap]\.m\.$/.test(k) ? [k.replace(/(\d) (?=[A-Za-zµ])/g, "$1")] : []),
+  // A twelve-hour time: "3:30 p.m.", "3:30 pm", "3:30 PM", "3:30 P.M.", "3:30pm", "3:30PM".
+  (k) => {
+    const t = /^(\d{1,2}:\d{2}) ([ap])\.m\.$/.exec(k);
+    if (!t) return [];
+    const [time, h] = [t[1], t[2]];
+    return [`${time} ${h}m`, `${time} ${h.toUpperCase()}M`, `${time} ${h.toUpperCase()}.M.`, `${time}${h}m`, `${time}${h.toUpperCase()}M`];
+  },
+];
+
+/** Every form code accepts for one key text, evened out. */
+export function keyForms(key: string): Set<string> {
+  let forms = [even(key)];
+  for (const rule of FORMS) forms = [...forms, ...forms.flatMap((f) => rule(f).map(even))];
+  return new Set(forms);
 }
 
-const sameNumbers = (a: [number, number][], b: [number, number][]) => a.length > 0 && a.length === b.length && a.every(([n, d], i) => n * b[i][1] === b[i][0] * d);
-
 /**
- * Everything in an answer but its numbers: the units, signs and labels around them, so "5 cm" and "5 m", "3:30 a.m." and
- * "3:30 p.m.", or "5" and "5 km" never count as the same answer. Spaces and dots are dropped ("a.m." is "am"); every
- * number becomes "#".
- */
-const wordsOf = (s: string) => s
-  .replace(/[\s\S]*/, noGrouping)
-  .replace(/[−–]/g, "-")
-  .replace(/-?(?:\d+(?:\.\d+)?|\.\d+)(?:\s+\d+\/\d+|\/\d+)?/g, "#")
-  .toLowerCase()
-  .replace(/[\s.]+/g, "");
-
-/**
- * Whether the solver's answer is one the key counts as right: the same choice, or the same numbers in the same order
- * with the same words around them (units, a.m. or p.m., "R" for a remainder) and nothing added. A different, missing
- * or added unit or word fails, which fails the question closed: a unit is never converted or assumed.
+ * Whether the solver's answer is one the key counts as right. A choice must be the right option as printed (case kept, so "1 ML" is never "1 mL");
+ * a box answer must be one of the forms code writes for the key or an accepted alternative (keyForms). A word-only key
+ * ("even") is compared without case. Nothing else passes: no unit is converted, assumed or added, and no number is read
+ * from the answer.
  */
 export function sameAnswer(given: string, right: string[], choice: boolean): boolean {
-  if (choice) return right.some((r) => clean(r) === clean(given));
-  return right.some((r) => (/\d/.test(r) || /\d/.test(given) ? sameNumbers(numbersOf(r), numbersOf(given)) && sameWords(r, given) : clean(r) === clean(given)));
+  const g = even(given);
+  if (choice) return right.some((r) => even(r) === g);
+  return right.some((r) => (/^[a-z ]+$/i.test(even(r)) ? even(r).toLowerCase() === g.toLowerCase() : keyForms(r).has(g)));
 }
-
-/**
- * Whether the words around the numbers match: the same units, signs, a.m. or p.m. and "R", and nothing added. A
- * counted name ("12 shells" for 12) fails too, because no list can tell a counted thing from a unit ("5 inches"); the
- * solver is told to write a count as the number only, and a mismatch fails the question closed.
- */
-const sameWords = (right: string, given: string) => wordsOf(right) === wordsOf(given);
 
 /** The output schema: an answer for each box of each question, and a problem when a question cannot be answered. */
 export const SOLVE_SCHEMA = {
@@ -222,7 +220,7 @@ export const SOLVE_SCHEMA = {
 
 const SYSTEM = [
   "You check printed math questions from a workbook for a child aged 6 to 12. Each question is given as the child sees it: its text, the picture in words, what the card prints beside the text, and its answer boxes and choices.",
-  "Answer every box and choice of every question, as a careful child who reads the question exactly as printed would. Write a box's answer as the child writes it: a count or a plain number as the number only, in digits, with no word after it (12, not 12 shells; 0.5, 3/4, 1 1/2, 9 R 2), an amount with its unit, written as the question writes it (5 cm, $4.75), or a time with a.m. or p.m. when the question uses them (3:30 p.m.). Never convert a unit. For a choice, give one of its options exactly as printed.",
+  "Answer every box and choice of every question, as a careful child who reads the question exactly as printed would. Write a box's answer exactly in one of these forms: a count or a plain number as the number only, in digits, with no word after it and no extra zeros (12, not 12 shells; 1250 or 1,250; 0.5; -3), a fraction as 3/4 or 1 1/2, a remainder as 9 R 2, money as $4.75 or 75¢, an amount with its unit symbol as the question writes it (2.5 km, 1 h 30 min), a time as 3:30 p.m. or 15:30. Never convert a unit. For a choice, give one of its options exactly as printed.",
   "Use only what is printed. Do not guess what the writer meant. If a question cannot be answered as printed (it is unclear, it leaves out a number, or its boxes do not take what it asks), say which and why in problem; else problem is null.",
 ].join("\n");
 

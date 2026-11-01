@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { buildQuestion } from "@/lib/workbook-generator-items";
-import { aiSolver, keySolver, sameAnswer, solveCheck, toSolve, type Solver } from "@/lib/workbook-solve-check";
+import { aiSolver, keySolver, keyForms, sameAnswer, solveCheck, toSolve, type Solver } from "@/lib/workbook-solve-check";
 
 // The solve check (round 7, R380-12-1) through its public interface: the printed question it sends, the fake that
 // answers from the key, the live adapter over the AI client seam (a fake client here), and its verdicts.
@@ -100,7 +100,7 @@ describe("the solve check", () => {
     expect(sameAnswer("12", ["12"], false)).toBe(true);
     expect(sameAnswer("1,250", ["1250"], false)).toBe(true);
     expect(sameAnswer("3/2", ["1 1/2"], false)).toBe(true);
-    expect(sameAnswer("0.50", ["0.5"], false)).toBe(true);
+    expect(sameAnswer("0.50", ["0.5"], false)).toBe(false);
     expect(sameAnswer("9 R 2", ["9 R 2"], false)).toBe(true);
     expect(sameAnswer("9 R 3", ["9 R 2"], false)).toBe(false);
     expect(sameAnswer("2", ["12"], false)).toBe(false);
@@ -122,7 +122,7 @@ describe("the solve check", () => {
     expect(sameAnswer("9 R 2", ["9 2"], false)).toBe(false);
     expect(sameAnswer("5 cm", ["5 cm"], false)).toBe(true);
     expect(sameAnswer("5cm", ["5 cm"], false)).toBe(true);
-    expect(sameAnswer("3:30 p.m.", ["3:30 pm"], false)).toBe(true);
+    expect(sameAnswer("3:30 pm", ["3:30 p.m."], false)).toBe(true);
     expect(sameAnswer("$4.75", ["$4.75"], false)).toBe(true);
     expect(sameAnswer("7 apples", ["7"], false)).toBe(false);
     expect(sameAnswer("12 shells", ["12"], false)).toBe(false);
@@ -138,12 +138,13 @@ describe("the solve check", () => {
     expect(sameAnswer(".5", ["5"], false)).toBe(false);
     expect(sameAnswer("$.50", ["$50"], false)).toBe(false);
     expect(sameAnswer(".5%", ["5%"], false)).toBe(false);
-    expect(sameAnswer(".5", ["0.5"], false)).toBe(true);
+    expect(sameAnswer(".5", ["0.5"], false)).toBe(false);
     expect(sameAnswer("1 2", ["12"], false)).toBe(false);
     expect(sameAnswer("12", ["1 2"], false)).toBe(false);
     expect(sameAnswer("1 2", ["10", "12"], false)).toBe(false);
     expect(sameAnswer("1 2", ["12"], true)).toBe(false);
-    expect(sameAnswer("less  than 5", ["Less than 5"], true)).toBe(true);
+    expect(sameAnswer("Less  than 5", ["Less than 5"], true)).toBe(true);
+    expect(sameAnswer("less than 5", ["Less than 5"], true)).toBe(false);
     expect(sameAnswer("lessthan 5", ["less than 5"], true)).toBe(false);
   });
 
@@ -158,10 +159,33 @@ describe("the solve check", () => {
     expect(sameAnswer("12345,678", ["12345678"], false)).toBe(false);
   });
 
+  it("passes only a form code writes for the key, never a read of the answer (R380-17-1 to R380-17-4)", () => {
+    expect(sameAnswer("0/0", ["5"], false)).toBe(false);
+    expect(sameAnswer("1/0", ["2/0"], false)).toBe(false);
+    expect(sameAnswer("1.0000000000000001", ["1"], false)).toBe(false);
+    expect(sameAnswer("9007199254740992", ["9007199254740993"], false)).toBe(false);
+    expect(sameAnswer("1 mL", ["1 ML"], false)).toBe(false);
+    expect(sameAnswer("1 ML", ["1 mL"], false)).toBe(false);
+    expect(sameAnswer("1 m s", ["1 ms"], false)).toBe(false);
+    expect(sameAnswer("1 m.s", ["1 ms"], false)).toBe(false);
+    expect(sameAnswer("1 ms", ["1 m s"], false)).toBe(false);
+    expect([...keyForms("3/2")]).toEqual(["3/2", "1 1/2"]);
+    expect(keyForms("1 1/2").has("3/2")).toBe(true);
+    expect(keyForms("1250 m")).toEqual(new Set(["1250 m", "1,250 m", "1250m", "1,250m"]));
+    expect(keyForms("9 R 2").has("9R2")).toBe(true);
+    expect(keyForms("3:30 p.m.").has("3:30 PM")).toBe(true);
+    expect(sameAnswer("−12", ["−12"], false)).toBe(true);
+    expect(sameAnswer("-12.", ["−12"], false)).toBe(true);
+    expect(sameAnswer("Even", ["even"], false)).toBe(true);
+    expect(sameAnswer("1 h 30 min", ["1 h 30 min"], false)).toBe(true);
+    expect(sameAnswer("1h 30min", ["1 h 30 min"], false)).toBe(true);
+    expect(sameAnswer("90 min", ["1 h 30 min"], false)).toBe(false);
+  });
+
   it("keeps the sign of a mixed number whose whole part is zero (R380-14-2)", () => {
     expect(sameAnswer("-0 1/2 m", ["0 1/2 m"], false)).toBe(false);
     expect(sameAnswer("0 1/2", ["-0 1/2"], false)).toBe(false);
-    expect(sameAnswer("-0 1/2", ["-1/2"], false)).toBe(true);
+    expect(sameAnswer("-0 1/2", ["-1/2"], false)).toBe(false);
     expect(sameAnswer("-1 1/2", ["-3/2"], false)).toBe(true);
     expect(sameAnswer("-1 1/2", ["-1/2"], false)).toBe(false);
   });
