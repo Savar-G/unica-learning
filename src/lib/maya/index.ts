@@ -33,6 +33,8 @@ export {
   type SessionEvent,
   type SessionState,
   type StepResult,
+  type TalkCheck,
+  type TalkReview,
   type TranscriptTurn,
   type Understanding,
 } from "./session";
@@ -56,6 +58,19 @@ export { allLineTexts, LINE_IDS, LINES_VERSION, TEMPLATES, type LineChoice, type
 export { talkMath } from "./claims";
 export { speechKey } from "./speech";
 export { FREE_TALK_LIMITS, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, freeTalkProblem, workProblem, type PhraseGroup } from "./phrases";
+export {
+  NEVER_SAY,
+  NEVER_SAY_IDS,
+  OK_TALK,
+  readTalkReview,
+  TALK_REVIEW_PROMPT_VERSION,
+  TALK_REVIEW_SCHEMA,
+  TALK_REVIEW_SYSTEM,
+  type NeverSay,
+  type NeverSayId,
+  type TalkReviewInput,
+  type TalkReviewResult,
+} from "./talk-review";
 export { NAME_GAP, type WordingHistory, type WordingId } from "./variety";
 export { MAX_WORDINGS, memoryWordingHistoryStore, mergeHistory, type WordingHistoryStore } from "./wording-history";
 export { readNumbers, valuesIn, type NumbersRead } from "./numbers";

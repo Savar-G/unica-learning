@@ -298,6 +298,39 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
   );
 }
 
+/** What each check made of Maya's own words (D-197): the code guards, the review, and what the child heard. */
+const REVIEW_TEXT = { pass: "Passed", fail: "Failed", error: "Failed (no answer)", not_run: "Not asked" } as const;
+
+function FreeTalkChecks({ freeTalk }: { freeTalk: CallView["freeTalk"] }) {
+  if (!freeTalk.on) return <p className="mc-note">Free talk was off: every word came from code.</p>;
+  if (freeTalk.lines.length === 0) return <p className="mc-note">On, review {freeTalk.reviewer ?? "none"}. Maya used no words of her own in this call.</p>;
+  return (
+    <>
+      <p className="mc-note">On, review <span className="adm-mono">{freeTalk.reviewer ?? "none"}</span>. Maya&apos;s own words are said only when the code guards and the review pass; otherwise a bank phrase.</p>
+      <div className="mc-talk">
+        <table className="adm-table">
+          <thead><tr><th>Time</th><th>Maya proposed</th><th>Code guards</th><th>Review</th><th>The child heard</th></tr></thead>
+          <tbody>
+            {freeTalk.lines.map((l, i) => (
+              <tr key={i} className={l.said ? undefined : "is-wrong"}>
+                <td className="adm-mono">{clock(l.second)}</td>
+                <td>{l.proposed}</td>
+                <td>{l.code === null ? <span className="adm-chip is-ok">Passed</span> : <><span className="adm-chip is-warn">Failed</span> {l.code}</>}</td>
+                <td>
+                  <span className={`adm-chip ${l.review === "pass" ? "is-ok" : l.review === "not_run" ? "is-muted" : "is-bad"}`}>{REVIEW_TEXT[l.review]}</span>
+                  {l.rules.length > 0 && <> <span className="adm-mono">{l.rules.join(", ")}</span></>}
+                  {l.reason && <div className="mc-talk-why">{l.reason}</div>}
+                </td>
+                <td>{l.shown}{l.said ? "" : " (bank phrase)"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
 function CallRecordFacts({ view, childName, onRetry, busy, error }: { view: CallView; childName: string | null; onRetry: () => void; busy: boolean; error: string | null }) {
   const o = view.outcome;
   const question = view.question;
@@ -332,6 +365,9 @@ function CallRecordFacts({ view, childName, onRetry, busy, error }: { view: Call
           {error && <span className="mc-error" role="alert">{error}</span>}
         </p>
       )}
+
+      <h3 className="mc-sub">Free talk</h3>
+      <FreeTalkChecks freeTalk={view.freeTalk} />
 
       <h3 className="mc-sub">Versions</h3>
       <dl className="adm-facts">

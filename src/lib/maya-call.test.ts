@@ -6,7 +6,8 @@ import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { mayaCalls, boardPlayback, type CallInput, type CallResult, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore } from "@/lib/maya-call-memory";
 import type { MayaModel } from "@/lib/maya-model";
-import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { fakeMayaModel, ruleMayaModel } from "@/lib/maya-model-fake";
+import { fakeTalkReviewer, type TalkReviewer } from "@/lib/maya-talk-review";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace, TRACE_VERSION } from "@/lib/maya-trace";
 import type { QuestionPackage } from "@/lib/question-package";
@@ -33,7 +34,7 @@ const PKG: QuestionPackage = {
 /** scripts/maya-text/no-start.txt: the easier example first, then the child's own question with hints, solved. */
 const NO_START = ["I don't know how to start.", "Okay.", "Is it 56?", "Can you help me?", "16", "66", "Because the ones made a ten, so I carried it.", "I wrote it."];
 
-function setup(options: { events?: LearningEventStore; model?: (id: string | null) => MayaModel | null } = {}) {
+function setup(options: { events?: LearningEventStore; model?: (id: string | null) => MayaModel | null; reviewer?: (modelId: string) => TalkReviewer | null } = {}) {
   let now = T0;
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -45,6 +46,7 @@ function setup(options: { events?: LearningEventStore; model?: (id: string | nul
     rebuild,
     model: options.model ?? ((id) => (id === null || id === "fake" ? ruleMayaModel() : null)),
     isTestFamily: async (parentId) => parentId === PARENT,
+    ...(options.reviewer ? { reviewer: options.reviewer } : {}),
     clock: () => now,
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,
     seed: () => 42,
@@ -198,5 +200,44 @@ describe("an admin test call", () => {
     expect(board.steps.flatMap((x) => x.drawn).length).toBeGreaterThan(0);
     expect(board.viewBox.split(" ")).toHaveLength(4);
     expect(await s.calls.view("00000000-0000-4000-8000-999999999999")).toBeNull();
+  });
+});
+
+describe("free talk in admin test calls (D-197)", () => {
+  /** A model that opens, answers the child's first turn with its own words, then closes on the rule player's lines. */
+  const talker = (talk: string) => {
+    const rule = ruleMayaModel();
+    return fakeMayaModel({
+      id: "talker",
+      answer: (input, n) => (n === 1 ? { version: 2, act: "clarify", parts: [{ talk }] } : rule.propose(input, new AbortController().signal)),
+    });
+  };
+
+  it("runs with free talk on and the call's review, and shows each piece with both checks in the saved call", async () => {
+    const reviewer = fakeTalkReviewer((input) => (input.line.includes("promise") ? { verdict: "fail", rules: ["promise"], reason: "A promise." } : { verdict: "pass" }));
+    const model = talker("Oh no, I'm sorry you feel sad.");
+    const s = setup({ model: () => model, reviewer: () => reviewer });
+    let r = ok(await s.calls.start({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: "admin-1" }));
+    s.advance(5);
+    r = ok(await s.calls.input(r.view.id, r.view.revision, { type: "child", text: "I'm sad today." }, "Leah"));
+    expect(r.output.say.join(" ")).toBe("Oh no, I'm sorry you feel sad.");
+    expect(r.view.freeTalk).toEqual({
+      on: true, reviewer: "fake-review",
+      lines: [{ second: 5, proposed: "Oh no, I'm sorry you feel sad.", code: null, review: "pass", rules: [], reason: null, shown: "Oh no, I'm sorry you feel sad.", said: true }],
+    });
+    s.advance(5);
+    r = ok(await s.calls.input(r.view.id, r.view.revision, { type: "end" }, "Leah"));
+    expect(r.view.status).toBe("ended");
+    expect((await s.calls.view(r.view.id))!.freeTalk.lines).toHaveLength(1);
+  });
+
+  it("says a bank phrase in a call with no review, and the view says why", async () => {
+    const model = talker("I promise I'll be here tomorrow.");
+    const s = setup({ model: () => model });
+    let r = ok(await s.calls.start({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: "admin-1" }));
+    s.advance(5);
+    r = ok(await s.calls.input(r.view.id, r.view.revision, { type: "child", text: "Promise you'll come back?" }, "Leah"));
+    expect(r.output.say.join(" ")).not.toContain("promise");
+    expect(r.view.freeTalk).toMatchObject({ on: true, reviewer: null, lines: [{ proposed: "I promise I'll be here tomorrow.", code: null, review: "not_run", said: false }] });
   });
 });

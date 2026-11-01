@@ -17,8 +17,8 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 
-/** The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. */
-export const LINES_VERSION = 1;
+/** The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. Version 2: redirect.decline. */
+export const LINES_VERSION = 2;
 
 export const LINE_IDS = [
   "open.hello",
@@ -45,6 +45,7 @@ export const LINE_IDS = [
   "confirm.which",
   "input.other",
   "redirect.back",
+  "redirect.decline",
   "close.solved",
   "close.together",
   "repair.sorry",
@@ -275,6 +276,9 @@ export const TEMPLATES = {
     "You can write your answer on the board instead.", "If it's easier, write your number on the board.", "Try writing it on the board for me.",
     "You can also write it on the board.", "Would you like to write it on the board instead?",
   ],
+  // The decline (#383, C29): for a request for sexual, violent or other harmful content. One planned wording, not
+  // approved yet: Savar approves it separately (D-197). No detail, no echo of the request.
+  "redirect.decline": ["I can't talk about this. I'm here to help with math."],
   "redirect.back": ["Let's get back to {expr}.", "Back to our question: {expr}.", "Let's keep going with {expr}.", "Now, back to {expr}.", "Let's return to {expr}.", "Okay, back to {expr}."],
   "close.solved": [
     "You worked out {expr} today!", "Great job on {expr} today!", "You solved {expr}. Well done!", "Nice work finishing {expr}!",
@@ -516,6 +520,7 @@ export function packageLines(pkg: OperationPackage) {
     ],
     otherInput: (): LineOffer[] => [offer("input.other", "input.other", {})],
     redirect: (): LineOffer[] => [offer("redirect.back", "redirect.back", { expr })],
+    decline: (): LineOffer[] => [offer("redirect.decline", "redirect.decline", {})],
     closeSolved: (by: "child" | "maya"): LineOffer[] => [by === "child" ? offer("close.solved", "close.solved", { expr }) : offer("close.together", "close.together", { expr })],
     repair: (): LineOffer[] => [offer("repair.sorry", "repair.sorry", {})],
     /** The ids of the child's question's work steps, in order. */
@@ -555,7 +560,7 @@ export function allLineTexts(pkg: OperationPackage, heardValues: readonly Answer
     ...l.hello(), ...l.question(), ...l.assess(), ...l.exampleIntro(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id)),
     ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
-    ...l.otherInput(), ...l.redirect(), ...l.closeSolved("child"), ...l.closeSolved("maya"), ...l.repair(),
+    ...l.otherInput(), ...l.redirect(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("maya"), ...l.repair(),
   ];
   return [...new Set(offers.flatMap((o) => o.texts.map(sentence)))];
 }

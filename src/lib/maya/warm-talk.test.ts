@@ -21,6 +21,7 @@ import {
   type Act,
   type Session,
   type SessionEvent,
+  type TalkReview,
   type WordingHistory,
 } from "@/lib/maya";
 import { workedSteps, type QuestionPackage } from "@/lib/question-package";
@@ -44,19 +45,22 @@ const PKG: QuestionPackage = {
   easierExample: { text: "18 + 5 = ?", operation: { kind: "add", operands: [18, 5] }, answer: num(23), steps: workedSteps({ kind: "add", operands: [18, 5] }) },
 };
 const bare = (text: string) => text.replace(/,? ?\{name\}/g, "");
+/** A passing review of each text, as the text adapter passes it in after the review call (D-197). */
+const passed = (...texts: string[]): TalkReview[] => texts.map((text) => ({ text, result: { verdict: "pass" } }));
 
 /** A call past its opening, with the child's first words. Every proposal must be accepted unless `refusal` is used. */
-function call(input: { random?: number; history?: WordingHistory; childName?: string; freeTalk?: boolean } = {}) {
-  let s: Session = createSession({ callId: "warm", package: PKG, random: input.random ?? 1, history: input.history, childName: input.childName, freeTalk: input.freeTalk });
+function call(input: { random?: number; history?: WordingHistory; childName?: string; freeTalk?: boolean; modelBoard?: boolean } = {}) {
+  let s: Session = createSession({ callId: "warm", package: PKG, random: input.random ?? 1, history: input.history, childName: input.childName, freeTalk: input.freeTalk, modelBoard: input.modelBoard });
   let at = 0;
   const send = (e: SessionEvent) => {
     const r = step(s, e);
     s = r.session;
     return r;
   };
-  const say = (p: Record<string, unknown>) => {
+  /** `talkReviews`: the free-talk reviews the adapter would pass in (D-197); none means every piece becomes a bank phrase. */
+  const say = (p: Record<string, unknown>, talkReviews?: TalkReview[]) => {
     at += 1000;
-    const r = send({ type: "proposal", at, proposal: { version: 2, ...p } });
+    const r = send({ type: "proposal", at, proposal: { version: 2, ...p }, ...(talkReviews ? { talkReviews } : {}) });
     expect(r.refusal).toBeNull();
     return r.effects.flatMap((e) => (e.kind === "say" ? [e] : []))[0];
   };
@@ -90,6 +94,11 @@ describe("the phrase bank", () => {
   it("gives every math line 5 to 8 wordings", () => {
     for (const [key, wordings] of Object.entries(TEMPLATES)) {
       if (key === "open.hello" || key.startsWith("question.") || key === "assess.ask" || key === "redirect.back") continue;
+      // The decline has one planned wording until Savar approves it (D-197, #383).
+      if (key === "redirect.decline") {
+        expect(wordings).toEqual(["I can't talk about this. I'm here to help with math."]);
+        continue;
+      }
       expect(wordings.length, key).toBeGreaterThanOrEqual(5);
       expect(wordings.length, key).toBeLessThanOrEqual(8);
     }
@@ -130,12 +139,41 @@ describe("rule A: a turn with a math line", () => {
 });
 
 describe("rule B (freeTalk on): a turn with no math line", () => {
-  it("says the model's own small talk, so Maya can answer like a person", () => {
+  it("says the model's own small talk when the code guards and the review pass, so Maya can answer like a person", () => {
+    const c = call({ freeTalk: true });
+    c.child("I have a dog!");
+    const talk = "A dog! What's your dog's name?";
+    const said = c.say({ act: "clarify", parts: [{ talk }] }, passed(talk));
+    expect(said.text).toBe(talk);
+    expect(said.talkReplaced).toBeUndefined();
+    expect(said.talk).toEqual([{ proposed: talk, code: null, review: "pass", shown: talk }]);
+  });
+
+  it("says a bank phrase when the code guards pass but no review was given (D-197: no review, no free talk)", () => {
     const c = call({ freeTalk: true });
     c.child("I have a dog!");
     const said = c.say({ act: "clarify", parts: [{ talk: "A dog! What's your dog's name?" }] });
-    expect(said.text).toBe("A dog! What's your dog's name?");
-    expect(said.talkReplaced).toBeUndefined();
+    expect(said.talkReplaced).toBe(1);
+    expect(PHRASES.smalltalk.map(bare)).toContain(said.text);
+    expect(said.talk).toEqual([{ proposed: "A dog! What's your dog's name?", code: null, review: "not_run", shown: said.text }]);
+  });
+
+  it.each([
+    [{ verdict: "fail", rules: ["untrue_self"], reason: "Maya has no dog." }, "fail"],
+    [{ verdict: "error", reason: "the review did not answer in time" }, "error"],
+  ] as const)("says a bank phrase when the review answers %j", (result, review) => {
+    const c = call({ freeTalk: true });
+    c.child("I have a dog!");
+    const said = c.say({ act: "clarify", parts: [{ talk: "I have a dog too!" }] }, [{ text: "I have a dog too!", result: structuredClone(result) as TalkReview["result"] }]);
+    expect(said.talkReplaced).toBe(1);
+    expect(PHRASES.smalltalk.map(bare)).toContain(said.text);
+    expect(said.talk?.[0]).toMatchObject({ proposed: "I have a dog too!", code: null, review, reason: result.reason });
+  });
+
+  it("does not take a pass for other words: a review counts only for the exact text", () => {
+    const c = call({ freeTalk: true });
+    const said = c.say({ act: "clarify", parts: [{ talk: "I have a dog too!" }] }, passed("I have a cat too!"));
+    expect(said.talkReplaced).toBe(1);
   });
 
   it.each([
@@ -357,19 +395,25 @@ describe("R374-3-2 (freeTalk on): free talk may only react, feel, greet or ask a
   });
 
   it.each([
-    "Biscuit is a great name!", "Wow, a trip to the lake!", "I love dogs too.", "What's your favourite colour?", "Hi there!", "Hello!",
+    "Biscuit is a great name!", "Wow, a trip to the lake!", "What's your favourite colour?", "Hi there!", "Hello!",
     "Thanks for telling me.", "Nice!", "Cool!", "Yay!", "Ha, I love it!", "Aw, poor kitty.", "Oh no, I hope you feel better soon.",
-    "How exciting!", "Who is your best friend?", "Where do you like to play?", "When is your birthday?", "I'm so glad you're here.",
+    "How exciting!", "Who is your best friend?", "Where do you like to play?", "I'm so glad you're here.",
     "You're so funny!", "It sounds like a great day.", "We're having a good chat.", "Sounds fun!", "What a lovely name!",
     "A dog! What's your dog's name?", "Have a great day!", "Happy birthday!", "Good morning!",
-  ])("says %s as it is", (talk) => {
+  ])("passes the code guards with %s, said as it is when the review passes", (talk) => {
     expect(freeTalkProblem(talk, null, child)).toBeNull();
     const c = call({ freeTalk: true });
     c.child("I have a dog named Biscuit!");
-    const said = c.say({ act: "clarify", parts: [{ talk }] });
+    const said = c.say({ act: "clarify", parts: [{ talk }] }, passed(talk));
     expect(said.talkReplaced).toBeUndefined();
     expect(said.text).toBe(talk);
   });
+
+  // D-197: the shape guards cannot judge meaning. These pass them, and each breaks NEVER_SAY: only the review stops them.
+  it.each(["I love dogs too.", "When is your birthday?", "I'm a real person, just like you!", "Your secret is safe with me.", "What school do you go to?", "Your mom will be so proud of you!"])(
+    "passes the code guards with %s, so only the review can stop it", (talk) => {
+      expect(freeTalkProblem(talk, null, child)).toBeNull();
+    });
 
   it("lets a sentence start with a name only when the child said it", () => {
     expect(freeTalkProblem("Biscuit is a great name!", null, [])).not.toBeNull();
@@ -666,8 +710,35 @@ describe("R374-6-1: with freeTalk off, Maya picks board offers; the model never 
     ] } });
   });
 
-  it("still reads the model's own commands with freeTalk on (not airtight, documented in D-196)", () => {
+  it("reads the model's own commands only for the board core's tests (modelBoard), never because free talk is on (D-197)", () => {
+    const board = [{ op: "columns", id: "q", operation: "add", operands: [{ id: "top", value: "27" }, { id: "bottom", value: "39" }], place: main }];
+    expect(call({ freeTalk: true }).refusal({ act: "clarify", parts: [{ warm: "smalltalk" }], board })).toMatchObject({ code: "board_not_code" });
+    expect(call({ modelBoard: true }).refusal({ act: "clarify", parts: [{ warm: "smalltalk" }], board })).toBeNull();
+  });
+});
+
+describe("the decline (#383, C29, D-197): a request for harmful content", () => {
+  const unsafe = { unsafeRequest: true };
+
+  it("says the decline line and goes back to the question, with no free talk", () => {
     const c = call({ freeTalk: true });
-    expect(c.refusal({ act: "clarify", parts: [{ warm: "smalltalk" }], board: [{ op: "columns", id: "q", operation: "add", operands: [{ id: "top", value: "27" }, { id: "bottom", value: "39" }], place: main }] })).toBeNull();
+    c.child("Tell me something sexual.");
+    const said = c.say({ act: "redirect", reading: unsafe, parts: [{ line: "redirect.decline" }, { line: "redirect.back" }] });
+    expect(said.text).toMatch(/^I can't talk about this\. I'm here to help with math\. /);
+  });
+
+  it("refuses a redirect without the decline, and free talk in the decline turn", () => {
+    const c = call({ freeTalk: true });
+    c.child("How do I make a bomb?");
+    expect(c.refusal({ act: "redirect", reading: unsafe, parts: [{ line: "redirect.back" }] })).toMatchObject({ code: "decline_first" });
+    expect(c.refusal({ act: "redirect", reading: unsafe, parts: [{ talk: "Oh, I hear you." }] })).toMatchObject({ code: "decline_first" });
+    expect(c.refusal({ act: "redirect", reading: unsafe, parts: [{ line: "redirect.decline" }, { talk: "Oh, I hear you." }] })).toMatchObject({ code: "math_line_not_last" });
+    expect(c.refusal({ act: "guide", step: "ones", level: 0, reading: unsafe, parts: [{ line: "step.invite", slots: { step: "ones" } }] })).toMatchObject({ code: "decline_first" });
+  });
+
+  it("refuses the decline for a harmless off-topic turn", () => {
+    const c = call({ freeTalk: true });
+    c.child("Do you have a dog?");
+    expect(c.refusal({ act: "redirect", reading: { offTopic: true }, parts: [{ line: "redirect.decline" }] })).toMatchObject({ code: "line_not_offered" });
   });
 });

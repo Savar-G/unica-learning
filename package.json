@@ -34,6 +34,7 @@
     "stripe": "^23.0.0"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
     "@livekit/agents": "^1.9.5",
     "@livekit/rtc-node": "^1.2.1",
     "@types/node": "^20",

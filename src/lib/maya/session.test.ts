@@ -36,8 +36,8 @@ const v2 = (p: unknown) => (typeof p === "object" && p !== null && !Array.isArra
 const OPEN: Draft = { act: "open", parts: [t("Hi Leah!"), ln("open.hello"), t("Our team may review this call. How are you today?")] };
 
 /** One scripted call: every step must be accepted unless the test asks for a refusal. */
-function call(pkg: unknown = PACKAGE, freeTalk = false) {
-  let session = createSession({ callId: "call-1", package: pkg, freeTalk });
+function call(pkg: unknown = PACKAGE, modelBoard = false) {
+  let session = createSession({ callId: "call-1", package: pkg, modelBoard });
   let clock = T0;
   const send = (event: SessionEvent) => {
     const result = step(session, event);
@@ -66,8 +66,8 @@ function call(pkg: unknown = PACKAGE, freeTalk = false) {
 }
 
 /** A call past its opening, waiting for the child's first words. */
-function opened(pkg: unknown = PACKAGE, freeTalk = false) {
-  const c = call(pkg, freeTalk);
+function opened(pkg: unknown = PACKAGE, modelBoard = false) {
+  const c = call(pkg, modelBoard);
   c.start();
   c.maya(OPEN);
   return c;
@@ -215,13 +215,13 @@ describe("a wrong child answer is never accepted", () => {
     expect(c.refused({ act: "guide", step: "ones", level: 0, parts: [t("Seven plus nine is fifteen."), ln("step.invite", { step: "ones" })] }))
       .toMatchObject({ code: "free_talk_in_math_turn" });
     const { effects } = c.maya({ act: "guide", step: "ones", level: 0, parts: [t("Seven plus nine is fifteen.")] });
-    expect(effects).toContainEqual({ kind: "say", act: "guide", text: expect.not.stringMatching(/seven|fifteen/i), talkReplaced: 1 });
+    expect(effects).toContainEqual(expect.objectContaining({ kind: "say", act: "guide", text: expect.not.stringMatching(/seven|fifteen/i), talkReplaced: 1 }));
   });
 });
 
 /** A no-start call that has worked the whole easier example (18 + 5 = 23) and handed the question back. */
-function afterExample(freeTalk = false) {
-  const c = opened(PACKAGE, freeTalk);
+function afterExample(modelBoard = false) {
+  const c = opened(PACKAGE, modelBoard);
   c.child("I don't know how to start.");
   c.maya({ act: "example_step", step: "ones", parts: [ln("example.intro"), ln("example.step", { step: "ones" })], reading: { start: "no_start" } });
   c.maya({ act: "example_step", step: "tens", parts: [ln("example.step", { step: "tens" })] });
@@ -661,8 +661,8 @@ describe("other events", () => {
   });
 });
 
-// The model's own board commands are read only with the freeTalk flag on (R374-6-1); these tests cover that path.
-describe("board commands in a proposal (freeTalk on)", () => {
+// The model's own board commands are read only with the modelBoard flag (R374-6-1, D-197); these tests cover that path.
+describe("board commands in a proposal (modelBoard)", () => {
   const columns = (a: number, b: number) => ({ op: "columns", id: "sum", operation: "add", operands: [{ id: "top", value: String(a) }, { id: "bottom", value: String(b) }], place: { region: "main" } });
 
   it("sends the board batch of an allowed act, with a call-scoped transaction id", () => {

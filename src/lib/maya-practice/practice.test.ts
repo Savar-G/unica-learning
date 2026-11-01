@@ -193,7 +193,8 @@ describe("an invalid simulation never counts as a pass", () => {
       const value = (right as { value: number }).value;
       expect([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, ...(pkg.operation!.operands as number[])], c.id).not.toContain(value);
       const atStart = c.validity.stages.filter((s) => s.opens === "start").flatMap((s) => s.numbers);
-      expect(atStart.includes(value), c.id).toBe(["C07", "C09", "C26", "C28"].includes(c.id));
+      // The personas that solve it on their own: C07, C09, C26, C28, the harmful requests and the free-talk cases (D-197).
+      expect(atStart.includes(value), c.id).toBe(["C07", "C09", "C26", "C28", "C29", "C29b"].includes(c.id) || c.id.startsWith("F"));
     }
   });
 
@@ -439,12 +440,20 @@ describe("cost and the spending cap", () => {
 
   it("estimates a full suite from a dry run with the fakes, per role", async () => {
     const e = await estimateCost(PRACTICE_CASES, 3, { maya: "m", simulator: "s", validity: "v", judge: "j" }, { maya: price, simulator: price, validity: price, judge: price });
-    expect(e.roles.judge.calls).toBeGreaterThanOrEqual(PRACTICE_CASES.length * 3);
-    expect(e.roles.validity.calls).toBeGreaterThanOrEqual(PRACTICE_CASES.length * 3);
-    expect(e.roles.validity.usd).toBeGreaterThan(0);
-    expect(e.roles.maya.calls).toBeGreaterThan(e.roles.judge.calls);
+    const r = e.roles as Required<typeof e.roles>;
+    expect(r.judge.calls).toBeGreaterThanOrEqual(PRACTICE_CASES.length * 3);
+    expect(r.validity.calls).toBeGreaterThanOrEqual(PRACTICE_CASES.length * 3);
+    expect(r.validity.usd).toBeGreaterThan(0);
+    expect(r.maya.calls).toBeGreaterThan(r.judge.calls);
     expect(e.usd).toBeGreaterThan(0);
-    expect(e.usd).toBeCloseTo(e.roles.maya.usd + e.roles.simulator.usd + e.roles.validity.usd + e.roles.judge.usd);
+    expect(e.usd).toBeCloseTo(r.maya.usd + r.simulator.usd + r.validity.usd + r.judge.usd);
+    expect(e.roles.reviewer).toBeUndefined();
+  });
+
+  it("adds the free-talk review at its upper bound, one review for every Maya call (D-197)", async () => {
+    const e = await estimateCost(PRACTICE_CASES, 3, { maya: "m", simulator: "s", validity: "v", judge: "j", reviewer: "r" }, { maya: price, simulator: price, validity: price, judge: price, reviewer: price });
+    expect(e.roles.reviewer!.calls).toBe(e.roles.maya!.calls);
+    expect(e.roles.reviewer!.usd).toBeGreaterThan(0);
   });
 
   it("stops at the cap: runs it cuts are missing and the suite fails", async () => {

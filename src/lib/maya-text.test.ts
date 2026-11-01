@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeAiClient } from "@/lib/ai-client-fake";
-import { allLineTexts, PHRASES, SAFETY_GUIDANCE, type Proposal } from "@/lib/maya";
+import { allLineTexts, LINES_VERSION, PHRASES, SAFETY_GUIDANCE, type Proposal } from "@/lib/maya";
 import { aiMayaModel, PROMPT_VERSION, SYSTEM_PROMPT, type ModelInput } from "@/lib/maya-model";
 import { fakeMayaModel, ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
@@ -70,7 +70,7 @@ describe("a text session with the fake model", () => {
       callId: "call-1",
       runner: "text",
       model: { id: "fake", promptVersion: PROMPT_VERSION },
-      versions: { proposal: 2, lines: 1 },
+      versions: { proposal: 2, lines: LINES_VERSION },
       question: { id: "add-27-39", text: "27 + 39 = ?", hash: packageHash(PKG) },
       freeTalk: false,
       outcome: { reason: "solved" },
@@ -281,6 +281,8 @@ async function validTrace() {
   expect(checkTrace(trace)).toMatchObject({ ok: true });
   return trace;
 }
+/** A bank phrase with no slot: what a free-talk piece that failed a check becomes. */
+const BANK0 = Object.values(PHRASES).flat().find((p) => !p.includes("{"))!;
 const mayaAt = (t: { turns: Record<string, unknown>[] }) => t.turns.findIndex((x) => x.kind === "maya" && Array.isArray((x.output as { board?: unknown[] } | null)?.board) && (x.output as { board: unknown[] }).board.length > 0);
 
 describe("checkTrace refuses a trace that is not this version's shape", () => {
@@ -326,8 +328,15 @@ describe("checkTrace refuses a trace that is not this version's shape", () => {
     ["an error status the code does not allow", (t) => { t.turns.find((x) => x.kind === "maya")!.attempts = [{ source: "model", proposal: null, refusal: null, error: { code: "http_401", message: ERROR_MESSAGES.http_401, status: 500 } }, { source: "fallback", proposal: OPEN, refusal: null }]; }, /error\.status/],
     ["a technical turn whose error is text", (t) => { t.turns.push({ kind: "technical", at: Number(t.turns.at(-1)!.at), detail: "x", error: "ENOENT /home/key" }); }, /error/],
     ["a hang-up that is not the last turn", (t) => { const at = Number(t.turns.at(-1)!.at); t.turns[t.turns.length - 1] = { kind: "hang_up", at }; t.turns.push({ kind: "tick", at }); (t.outcome as Record<string, unknown>).reason = "child_stopped"; }, /hang-up only as the last turn/],
-    ["a hang-up in a version 1 trace", (t) => { t.version = 1; t.turns[t.turns.length - 1] = { kind: "hang_up", at: Number(t.turns.at(-1)!.at) }; (t.outcome as Record<string, unknown>).reason = "child_stopped"; }, /version 1/],
+    ["a hang-up in a version 1 trace", (t) => { t.version = 1; delete t.reviewer; t.turns[t.turns.length - 1] = { kind: "hang_up", at: Number(t.turns.at(-1)!.at) }; (t.outcome as Record<string, unknown>).reason = "child_stopped"; }, /version 1/],
     ["a hang-up that ended as a technical issue", (t) => { t.turns[t.turns.length - 1] = { kind: "hang_up", at: Number(t.turns.at(-1)!.at) }; }, /outcome\.reason/],
+    ["a reviewer in a version 2 trace", (t) => { t.version = 2; t.reviewer = { id: "x", promptVersion: "y" }; }, /reviewer/],
+    ["a reviewer with another field", (t) => { t.reviewer = { id: "x", promptVersion: "y", key: "sk-1" }; }, /reviewer/],
+    ["free talk on a refused attempt", (t) => { (t.turns[mayaAt(t)].attempts as Record<string, unknown>[])[0].talk = [{ proposed: "Hi!", code: null, review: "pass", shown: "Hi!" }]; (t.turns[mayaAt(t)].attempts as Record<string, unknown>[]).unshift({ source: "model", proposal: {}, refusal: { code: "x", reason: "y", allowed: [] }, talk: [{ proposed: "Hi!", code: null, review: "pass", shown: "Hi!" }] }); }, /talk|attempts/],
+    ["free talk shown after a failed review", (t) => { (t.turns[mayaAt(t)].attempts as Record<string, unknown>[])[0].talk = [{ proposed: "I have a dog!", code: null, review: "fail", rules: ["untrue_self"], reason: "no dog", shown: "I have a dog!" }]; }, /shown/],
+    ["free talk reviewed after the code guards failed", (t) => { (t.turns[mayaAt(t)].attempts as Record<string, unknown>[])[0].talk = [{ proposed: "Keep going.", code: "keep", review: "pass", shown: BANK0 }]; }, /review/],
+    ["a failed review with an unknown rule", (t) => { (t.turns[mayaAt(t)].attempts as Record<string, unknown>[])[0].talk = [{ proposed: "Hi!", code: null, review: "fail", rules: ["rude"], reason: "x", shown: BANK0 }]; }, /rules/],
+    ["free talk in a version 2 trace", (t) => { t.version = 2; delete t.reviewer; (t.turns[mayaAt(t)].attempts as Record<string, unknown>[])[0].talk = [{ proposed: "Hi!", code: null, review: "pass", shown: "Hi!" }]; }, /version 3/],
     ["no output after an accepted last attempt", (t) => { const m = t.turns.find((x) => x.kind === "maya" && x.output !== null && (x.output as { board: unknown[] }).board.length === 0)!; m.output = null; }, /output/],
   ];
   for (const [name, breakIt, path] of cases) {
@@ -342,7 +351,10 @@ describe("checkTrace refuses a trace that is not this version's shape", () => {
 
   it("reads a version 1 trace and a version 2 hang-up", async () => {
     const t = await validTrace();
-    expect(checkTrace({ ...t, version: 1 })).toMatchObject({ ok: true });
+    const { reviewer: _reviewer, ...old } = t;
+    void _reviewer;
+    expect(checkTrace({ ...old, version: 1 })).toMatchObject({ ok: true });
+    expect(checkTrace({ ...old, version: 2 })).toMatchObject({ ok: true });
     t.turns[t.turns.length - 1] = { kind: "hang_up", at: Number(t.turns.at(-1)!.at) };
     (t.outcome as Record<string, unknown>).reason = "child_stopped";
     expect(checkTrace(t)).toMatchObject({ ok: true });

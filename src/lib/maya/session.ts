@@ -40,6 +40,7 @@ import { freeTalkProblem, workProblem, FALLBACK_GROUP, PHRASE_ACTS, PHRASE_GROUP
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { committedText, offersChoice, readNumbers, takenBack, valuesIn } from "./numbers";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
+import type { TalkReviewResult } from "./talk-review";
 
 /** Closing starts 9 minutes into the call; the call ends at 10 minutes. */
 export const TIME_LIMITS = { closingAtMs: 9 * 60_000, endAtMs: 10 * 60_000 } as const;
@@ -93,7 +94,12 @@ export type SessionEvent =
   | { type: "start"; at: number }
   /** A child turn as text. `final: false` is a partial transcript: Maya stops talking and nothing is judged. */
   | { type: "child_turn"; at: number; text: string; final?: boolean; uncertain?: boolean; alternatives?: string[] }
-  | { type: "proposal"; at: number; proposal: unknown }
+  /**
+   * A model proposal. `talkReviews` (D-197): the review of each free-talk line the adapter had reviewed, by its text. A
+   * free-talk line is said only when it passes the code guards and its review here passes; without a review it is
+   * replaced by a bank phrase.
+   */
+  | { type: "proposal"; at: number; proposal: unknown; talkReviews?: TalkReview[] }
   | { type: "tick"; at: number }
   /** The child starts or stops writing on the board. */
   | { type: "writing"; at: number; status: "started" | "done" }
@@ -133,9 +139,34 @@ export interface Outcome {
   seconds: number;
 }
 
+/** The review of one free-talk line (D-197): the text as the model wrote it (trimmed), and the review's answer. */
+export interface TalkReview {
+  text: string;
+  result: TalkReviewResult;
+}
+
+/** What happened to one piece of the model's own words (D-196 rule B, D-197), in order. Kept in the trace. */
+export interface TalkCheck {
+  /** The model's words, trimmed. */
+  proposed: string;
+  /** The code guards: null when they passed, else why not ("free talk is off" with the flag off). */
+  code: string | null;
+  /** The review: "not_run" when the code guards failed or no review was given for the text. */
+  review: TalkReviewResult["verdict"] | "not_run";
+  /** For a failed review: the rules it named (talk-review.ts, NEVER_SAY). */
+  rules?: string[];
+  /** For a failed or broken review: why. */
+  reason?: string;
+  /** What Maya said for it: the model's words when both checks passed, else the bank phrase. */
+  shown: string;
+}
+
 export type Effect =
-  /** `talkReplaced`: how many pieces of the model's own warm words failed the guards and were replaced (D-196 rule B). */
-  | { kind: "say"; act: Act; text: string; talkReplaced?: number }
+  /**
+   * `talkReplaced`: how many pieces of the model's own warm words failed a check and were replaced (D-196 rule B).
+   * `talk`: each piece, with both checks and what was said (D-197).
+   */
+  | { kind: "say"; act: Act; text: string; talkReplaced?: number; talk?: TalkCheck[] }
   | { kind: "board"; batch: Batch }
   /** Stop speaking and drop board batches not yet shown. */
   | { kind: "cancel_output" }
@@ -168,6 +199,7 @@ export type RefusalCode =
   | "free_talk_in_math_turn"
   | "math_line_not_last"
   | "board_not_code"
+  | "decline_first"
   | "reveals_answer"
   | "missing_disclosure"
   | "board_not_allowed"
@@ -223,8 +255,13 @@ export interface Session {
   callId: string;
   /** Which wording of each line and phrase to say: the call's random seed, what was heard, the child's name (variety.ts). */
   variety: Variety;
-  /** D-196: whether the model's own warm words may be said (guarded). Off by default. */
+  /** D-196, D-197: whether the model's own warm words may be said, after the code guards and the review. */
   freeTalk: boolean;
+  /**
+   * Whether the model's own board commands are read (R374-6-1). Only the board core's tests set it: Maya draws through
+   * code's board offers (`draw`), with free talk on or off (D-197). A saved session from before has no field (off).
+   */
+  modelBoard?: boolean;
   state: SessionState;
   /** The teaching state an interrupt returns to. */
   resume: Teaching | null;
@@ -294,8 +331,13 @@ export function createSession(input: {
   random?: number;
   history?: WordingHistory;
   childName?: string | null;
-  /** D-196: read the model's own warm words (guarded). Off by default: then every word Maya says comes from code. */
+  /**
+   * D-196, D-197: read the model's own warm words in turns with no math line, said only when the code guards and the
+   * review pass. Off by default: then every word Maya says comes from code.
+   */
   freeTalk?: boolean;
+  /** Read the model's own board commands (tests of the board core only; off by default). */
+  modelBoard?: boolean;
 }): Session {
   const check = checkQuestionPackage(input.package);
   // An item with no operation (a place-value or a drawing item) has no worked steps to teach from: it is held.
@@ -306,6 +348,7 @@ export function createSession(input: {
     callId: input.callId,
     variety: newVariety({ random: input.random ?? hashOf(input.callId), history: input.history, name: input.childName }),
     freeTalk: input.freeTalk === true,
+    ...(input.modelBoard === true ? { modelBoard: true } : {}),
     state: "READY",
     resume: null,
     package: teachable ? pkg : null,
@@ -477,7 +520,7 @@ function proposalProblem(p: unknown): string | null {
   if (r === undefined) return null;
   if (!isObject(r)) return "the reading is an object";
   if (r.safety !== undefined && !SEVERITIES.includes(r.safety as Severity)) return "the reading's safety is concern or immediate";
-  for (const flag of ["stop", "unclear", "writing", "offTopic", "correctsHearing"] as const) {
+  for (const flag of ["stop", "unclear", "writing", "offTopic", "unsafeRequest", "correctsHearing"] as const) {
     if (r[flag] !== undefined && typeof r[flag] !== "boolean") return `the reading's ${flag} is true or false`;
   }
   if (r.help !== undefined && r.help !== "more" && r.help !== "show") return "the reading's help is more or show";
@@ -567,6 +610,13 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean): Allow
     return { acts: [...acts, ...confirm], code: "act_not_allowed", reason: "Time is almost up: finish the question and close." };
   }
   if (reading.writing) return { acts: ["wait"], code: "act_not_allowed", reason: "The child is writing: wait." };
+  if (reading.unsafeRequest) {
+    return {
+      acts: s.redirects > 0 ? ["redirect", "close"] : ["redirect"],
+      code: "decline_first",
+      reason: "The child asked for content Maya never gives: say the decline line (redirect.decline), with no free talk, then go back to the question.",
+    };
+  }
   if (reading.offTopic) {
     return { acts: s.redirects > 0 ? ["redirect", "close"] : ["redirect"], code: "act_not_allowed", reason: "Off topic: bring the child back to this question." };
   }
@@ -739,15 +789,23 @@ export function step(session: Session, event: SessionEvent): StepResult {
       break;
     case "proposal":
       if (shape) return { session: s, effects, refusal: { code: "invalid_proposal", reason: shape, allowed: (gate(s, {}) ?? teachingActs(s, {}, false)).acts } };
-      return propose(s, raw as Proposal, effects);
+      return propose(s, raw as Proposal, effects, reviewsOf(event.talkReviews));
     default:
       return refuse(session, "invalid_event", "Unknown event type.");
   }
   return { session: s, effects, refusal: null };
 }
 
+/** The well-formed free-talk reviews of a proposal event: a text and a review answer. Anything else is left out (no pass). */
+function reviewsOf(raw: unknown): TalkReview[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((r): r is TalkReview => isObject(r) && typeof r.text === "string" && isObject(r.result) &&
+    (r.result.verdict === "pass" || (r.result.verdict === "fail" && Array.isArray(r.result.rules) && typeof r.result.reason === "string") ||
+      (r.result.verdict === "error" && typeof r.result.reason === "string")));
+}
+
 /** A proposal on `base` (the session with the event's own input taken). A refusal returns `base` and its effects. */
-function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
+function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonly TalkReview[] = []): StepResult {
   const no = (code: RefusalCode, reason: string, allowed: Act[]): StepResult => ({ session: base, effects, refusal: { code, reason, allowed } });
   const s = structuredClone(base);
   const reading = p.reading ?? {};
@@ -808,15 +866,15 @@ function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
 
   // 4. Maya's words and board: lines code writes for this act, step and level, and warm talk with no math in it.
   const view: View = { steps: [ladder.step], done, checked, rightResult };
-  const spoken: Spoken | { code: RefusalCode; reason: string } = p.act === "safety" ? { text: "", lines: [], boards: [], replaced: 0, segments: [], chosen: [] } : speak(s, p, view);
+  const spoken: Spoken | { code: RefusalCode; reason: string } = p.act === "safety" ? { text: "", lines: [], boards: [], replaced: 0, talk: [], segments: [], chosen: [] } : speak(s, p, view, reviews);
   if ("code" in spoken) return no(spoken.code, spoken.reason, allowedNow);
   const say = spoken.text;
   if (say === "" && !["wait", "safety", "give_answer"].includes(p.act)) return no("invalid_proposal", "Maya needs words for this act.", allowedNow);
   const role: Problem = p.act === "example_step" ? "example" : "target";
-  // The board (R374-6-1): with the freeTalk flag off, Maya picks board offers by id (`draw`) and code builds every
-  // command from the checked worked step; a command the model built is refused. With the flag on, the model's own
-  // commands are read as before (not airtight: checks on free commands can miss a relation between their numbers).
-  if (p.board && !s.freeTalk) {
+  // The board (R374-6-1, D-197): Maya picks board offers by id (`draw`) and code builds every command from the checked
+  // worked step; a command the model built is refused, with free talk on or off. Only the board core's tests read the
+  // model's own commands (`modelBoard`).
+  if (p.board && !s.modelBoard) {
     return no("board_not_code", "Maya does not build board commands: pick code's board offers with `draw` (see drawOffers).", allowedNow);
   }
   const drawn = p.draw ? drawBoard(s, p, view, spoken) : [];
@@ -938,6 +996,13 @@ function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
     case "check_in":
       break;
     case "redirect":
+      // A request for harmful content gets the decline line (#383, C29); the decline is only for that.
+      if (reading.unsafeRequest && !spoken.chosen.some((o) => o.line === "redirect.decline")) {
+        return no("decline_first", "The child asked for content Maya never gives: say the decline line (redirect.decline).", allowedNow);
+      }
+      if (!reading.unsafeRequest && spoken.chosen.some((o) => o.line === "redirect.decline")) {
+        return no("line_not_offered", "The decline line is only for a request for sexual, violent or other harmful content (reading.unsafeRequest).", allowedNow);
+      }
       s.redirects += 1;
       enterInterrupt(s, "REDIRECT");
       break;
@@ -974,7 +1039,7 @@ function propose(base: Session, p: Proposal, effects: Effect[]): StepResult {
   if (p.act !== "repair") s.turn = null;
 
   if (text !== "") {
-    effects.push({ kind: "say", act: p.act, text, ...(spoken.replaced > 0 ? { talkReplaced: spoken.replaced } : {}) });
+    effects.push({ kind: "say", act: p.act, text, ...(spoken.replaced > 0 ? { talkReplaced: spoken.replaced } : {}), ...(spoken.talk.length > 0 ? { talk: spoken.talk } : {}) });
     s.turns.push({ at: s.now!, speaker: "maya", text, state: p.act === "close" ? "CLOSE" : s.state, act: p.act });
   }
   if (pb.board) {
@@ -1186,6 +1251,8 @@ interface Spoken {
   boards: string[];
   /** Pieces of the model's own warm words replaced by a bank phrase. */
   replaced: number;
+  /** Each piece of the model's own warm words, with both checks (D-197). */
+  talk: TalkCheck[];
   /** The turn's parts in order, with what each is; code adds its own lines here before the turn is checked. */
   segments: Segment[];
   /** The line offers said this turn. */
@@ -1323,7 +1390,7 @@ function offersFor(s: Session, act: Act, view: View): LineOffer[] {
     case "offer_other_input":
       return l.otherInput();
     case "redirect":
-      return [...l.redirect(), ...l.question()];
+      return [...l.decline(), ...l.redirect(), ...l.question()];
     case "repair":
       return [...l.repair(), ...l.question(), ...view.steps.flatMap(l.help).filter((o) => (o.level ?? 0) <= Math.max(0, s.ladder.hint))];
     default:
@@ -1353,7 +1420,7 @@ const isMathLine = (o: LineOffer) => o.texts.some((t) => talkMath(t) !== null);
  * the guards or are replaced by a bank phrase of the act's purpose. Which turns may hold them is checked once, on the
  * assembled turn (assembledProblem). Wordings are picked by variety.ts.
  */
-function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCode; reason: string } {
+function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview[]): Spoken | { code: RefusalCode; reason: string } {
   const offers = offersFor(s, p.act, view);
   const texts: string[] = [];
   const segments: Segment[] = [];
@@ -1362,6 +1429,7 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
   const turn = s.turns.filter((t) => t.speaker === "maya").length;
   let named = false;
   let replaced = 0;
+  const talk: TalkCheck[] = [];
   /**
    * Picks a wording none of whose sentences starts with the same two words as a sentence already said in this turn
    * ("Let's look" twice reads as robotic); when every wording does, any of them.
@@ -1409,13 +1477,24 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
       continue;
     }
     if ("talk" in part) {
-      // The model's own words pass the guards or become a bank phrase; either way they stay the model's part, so a
-      // turn with math refuses them (assembledProblem).
-      if (s.freeTalk && freeTalkProblem(part.talk, s.variety.name, childWords(s)) === null) {
-        add("talk", part.talk.trim());
+      // The model's own words are said only when they pass the code guards and the review (D-197); else a bank phrase
+      // of the act's purpose. Either way they stay the model's part, so a turn with math refuses them
+      // (assembledProblem).
+      const proposed = part.talk.trim();
+      const code = s.freeTalk ? freeTalkProblem(part.talk, s.variety.name, childWords(s)) : "free talk is off";
+      const review = code === null ? reviews.find((r) => r.text === proposed)?.result ?? null : null;
+      if (code === null && review?.verdict === "pass") {
+        add("talk", proposed);
+        talk.push({ proposed, code, review: "pass", shown: proposed });
       } else {
         replaced += 1;
-        add("talk", phrase(FALLBACK_GROUP[p.act] ?? "encourage"));
+        const shown = phrase(FALLBACK_GROUP[p.act] ?? "encourage");
+        add("talk", shown);
+        talk.push({
+          proposed, code, review: review?.verdict ?? "not_run",
+          ...(review?.verdict === "fail" ? { rules: [...review.rules], reason: review.reason } : review?.verdict === "error" ? { reason: review.reason } : {}),
+          shown,
+        });
       }
       continue;
     }
@@ -1431,7 +1510,8 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
       return { code: "hint_too_high", reason: `"${o.line}" is H${o.level} help, above this guide's level H${p.level ?? 0}.` };
     }
     const text = o.texts[pickFresh(o.texts, (k) => `${o.key}#${k}`)];
-    add(isMathLine(o) ? "math" : "plain", text);
+    // The decline counts as math (D-197): a turn that declines holds no free talk, and nothing follows it but code.
+    add(isMathLine(o) || o.line === "redirect.decline" ? "math" : "plain", text);
     lines.push(text);
     chosen.push(o);
   }
@@ -1439,7 +1519,7 @@ function speak(s: Session, p: Proposal, view: View): Spoken | { code: RefusalCod
   if (p.act === "guide" && level >= 1 && !chosen.some((o) => o.level === level)) {
     return { code: "invalid_proposal", reason: `A guide at H${p.level} says a step line of level H${level}.` };
   }
-  return { text: texts.join(" "), lines, boards: chosen.flatMap((o) => (o.board ? [o.board] : [])), replaced, segments, chosen };
+  return { text: texts.join(" "), lines, boards: chosen.flatMap((o) => (o.board ? [o.board] : [])), replaced, talk, segments, chosen };
 }
 
 /** One board representation code offers: an id the model names, and the commands code writes for a place. */
@@ -1554,8 +1634,8 @@ function boardVisible(v: unknown, key = ""): [string, string][] {
 
 /**
  * Everything a child sees on the board, checked on every command (R374-5-1). Words are the expression, equation or
- * text of a line said this turn; with the `freeTalk` flag off nothing else, so every word on the board comes from
- * code (with it on, a note with no math passes the free-talk guards). Numbers are in a line said this turn, in the
+ * text of a line said this turn and nothing else, so every word on the board comes from code (D-197: free talk never
+ * reaches the board). Only the board core's tests (`modelBoard`) let a note with no math pass the free-talk guards. Numbers are in a line said this turn, in the
  * problem's own numbers, or a digit of a done step.
  */
 function boardProblem(s: Session, board: unknown[], role: Problem, spoken: Spoken, done: string[]): { code: RefusalCode; reason: string } | null {
@@ -1573,7 +1653,7 @@ function boardProblem(s: Session, board: unknown[], role: Problem, spoken: Spoke
     if (t === "") continue;
     if (BOARD_WORDS.has(key)) {
       if (fromCode.has(t)) continue;
-      if (!s.freeTalk) return { code: "board_not_code", reason: `With free talk off, the board shows only a line's words said this turn, not "${t}".` };
+      if (!s.modelBoard) return { code: "board_not_code", reason: `The board shows only a line's words said this turn, not "${t}".` };
       if (talkMath(t) !== null) return { code: "math_in_talk", reason: `The board writes math only as a line's expression or equation said this turn, not "${t}".` };
       // A note with no math passes the free-talk guards (D-196): nothing on the board points back or instructs the work.
       if (freeTalkProblem(/[.?!]$/.test(t) ? t : `${t}.`, s.variety.name, childWords(s)) !== null) {

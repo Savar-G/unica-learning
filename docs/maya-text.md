@@ -9,12 +9,15 @@ npm run maya:text -- --list
 npm run maya:text -- --question add-27-39 --script scripts/maya-text/no-start.txt
 npm run maya:text -- --question subtract-83-46            # type the child's turns
 npm run maya:text -- --question my-package.json --model openrouter
+npm run maya:text -- --anthropic --script scripts/maya-text/no-start.txt   # Claude API, local key
 ```
 
 | Option | Meaning |
 |---|---|
 | `--question <id\|file>` | A sample id (`--list`) or a question package JSON file. Default `add-27-39`. |
 | `--model fake\|openrouter` | `fake` (default): a rule player, no AI. `openrouter`: `AI_MODEL` through OpenRouter. It needs `OPENROUTER_API_KEY` in the environment or in `.env.local`. Without the key the AI is off and the command stops. |
+| `--model anthropic`, `--anthropic` | Maya on `claude-sonnet-5-5` and the free-talk review on `claude-haiku-5-5`, through the Claude API (`src/lib/ai-anthropic.ts`). The key is `ANTHROPIC_API_KEY` or the macOS Keychain item `anthropic-unica-tools`. A local tool only. |
+| `--no-free-talk` | Every word Maya says from code. Free talk is on by default here, as in the admin demo (D-197). |
 | `--script <file>` | Child turns, one per line. Without it, turns come from stdin. |
 | `--runner livekit\|plain` | `livekit` (default): LiveKit Agents for Node in text mode, with no room. `plain`: the text adapter alone. |
 | `--trace <file>` | The trace path. Default `traces/maya/<call id>.json` (not committed). |
@@ -34,11 +37,24 @@ Nothing reaches the child unless the session's `step` accepts it (`src/lib/maya-
 4. If the second proposal is refused too, or the model fails, code replaces it with a fallback. A fallback is a code line or a bank phrase from the session's own offers, with no reading and no board, and `step` checks it.
 5. If no fallback is accepted, the call ends as a technical issue and Maya says nothing.
 
-`freeTalk` stays off.
+## Free talk (D-197)
+
+With `freeTalk` on (the admin demo, the practice suite, this command line), the model may write its own words (`{ "talk": ... }`) in a turn with no math line. Math, answers, hints and steps never come from them. Each piece is said only when both checks pass:
+
+1. The code guards (`freeTalkProblem`, `src/lib/maya/phrases.ts`): an allowed opener, no request, no math, no work word, no pointing back, two short sentences, not the child's name.
+2. The review (`src/lib/maya-talk-review.ts`): a separate small AI call (`MAYA_REVIEW_MODEL`, default Claude Haiku 5.5) that judges the line against `NEVER_SAY` (`src/lib/maya/talk-review.ts`): what Maya must never say to a child. It reads the line, the child's last turn and the last turns of the call. A failed call, a time-out (8 seconds) or an answer outside its schema counts as a fail.
+
+The adapter steps the proposal once with no reviews, to learn which words the session would say. It reviews those (in parallel), then steps the proposal again with the reviews. A piece that fails a check, or has no review, is replaced by a bank phrase of the same purpose; the turn never fails for it. A refused proposal (free talk beside a math line, for example) is never reviewed.
+
+A request for sexual, violent or other harmful content (`reading.unsafeRequest`) gets the decline line `redirect.decline` ("I can't talk about this. I'm here to help with math.", planned wording that Savar approves separately) and no free talk, then the question again.
+
+Board commands do not change with free talk: Maya draws only through code's board offers (`draw`). Only the board core's tests read the model's own commands (`modelBoard`).
+
+For children's calls, free talk follows one setting: `MAYA_FREE_TALK` (`src/lib/maya-free-talk.ts`, on unless it is `off`).
 
 ## The trace
 
-`src/lib/maya-trace.ts`, `TRACE_VERSION` 2. Read a saved trace with `checkTrace`; it reads versions 1 and 2. Version 2 (#323) adds the `hang_up` turn: the child hung up on purpose. It is always the last turn, and the call's outcome is `child_stopped` (or safety, a content issue or solved, which come first), never `technical_issue`. A trace holds:
+`src/lib/maya-trace.ts`, `TRACE_VERSION` 3. Read a saved trace with `checkTrace`; it reads versions 1 to 3. Version 3 (D-197) adds free talk: `reviewer` (the review's model and prompt version, or null), and on the accepted attempt `talk` (each piece of the model's own words: `proposed`, `code` (null when the code guards passed, else why not), `review` (`pass`, `fail`, `error` or `not_run`), the `rules` and `reason` of a failed review, and `shown`, what was said) and `reviewMs`. `checkTrace` refuses a piece shown as proposed unless both checks passed, a piece not shown as proposed unless it became a bank phrase, a review after failed code guards, and an unknown rule. The admin demo shows these pieces under "Free talk" in a saved call. Version 2 (#323) adds the `hang_up` turn: the child hung up on purpose. It is always the last turn, and the call's outcome is `child_stopped` (or safety, a content issue or solved, which come first), never `technical_issue`. A trace holds:
 
 - `model`: the model id and the prompt version. `versions`: the proposal, line set and session versions.
 - `question`: the package id, ref, text and `hash` (`sha256:` of its canonical JSON).

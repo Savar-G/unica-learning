@@ -11,6 +11,7 @@ import { mayaCalls, recordView, FAKE_MODEL_ID, type CallStatus, type CallView, t
 import { fromCallRow, mayaCallStore } from "@/lib/maya-call-store";
 import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { aiTalkReviewer, REVIEW_DEFAULT_MODEL, type TalkReviewer } from "@/lib/maya-talk-review";
 import type { Outcome } from "@/lib/maya";
 import { lookupStoredQuestion, SUPPORTED_ASSESSMENT_TEMPLATES } from "@/lib/question-package-assessment";
 import { valueText } from "@/lib/question-package";
@@ -21,7 +22,8 @@ import { adminClient } from "@/lib/supabase-auth";
 // Maya's admin test calls on the server (#323): the call module (src/lib/maya-call.ts) with its seams. Writes use the
 // secret key; the admin pages read with the admin's own session (row-level security: admins read public.maya_calls).
 // The model: Maya's model through OpenRouter when the server has OPENROUTER_API_KEY, else the fake rule player
-// (src/lib/maya-model-fake.ts). A call keeps the model it started with.
+// (src/lib/maya-model-fake.ts). A call keeps the model it started with. Free talk is on (D-197), with its review
+// (callReviewer).
 
 /** The model a call uses: null asks for the one a new call uses now. */
 export function callModel(id: string | null): MayaModel | null {
@@ -29,6 +31,16 @@ export function callModel(id: string | null): MayaModel | null {
   if (id === null) return client ? aiMayaModel(client) : ruleMayaModel();
   if (id === FAKE_MODEL_ID) return ruleMayaModel();
   return client && client.model === id ? aiMayaModel(client) : null;
+}
+
+/**
+ * The free-talk review of a call (D-197): MAYA_REVIEW_MODEL (default Claude Haiku 5.5) through OpenRouter, a second
+ * model beside Maya's. Null for the fake rule player (it says no free talk) and without OPENROUTER_API_KEY.
+ */
+export function callReviewer(modelId: string): TalkReviewer | null {
+  if (modelId === FAKE_MODEL_ID) return null;
+  const client = aiClient(process.env, process.env.MAYA_REVIEW_MODEL?.trim() || REVIEW_DEFAULT_MODEL);
+  return client ? aiTalkReviewer(client) : null;
 }
 
 /** The model a new call would use now, for the admin screen. */
@@ -52,6 +64,7 @@ export function serverMayaCalls(): MayaCalls | null {
     events: learningEvents(learningEventStore(db)),
     rebuild: async (childId) => (await rebuildChildProfileNow(childId))?.built === true,
     model: callModel,
+    reviewer: callReviewer,
     isTestFamily: (parentId) => isTestFamily(db, parentId),
     clock: () => Date.now(),
     newId: () => randomUUID(),

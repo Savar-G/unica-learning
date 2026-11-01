@@ -5,8 +5,8 @@ export { aiChildSimulator, maxWords, scriptedSimulator, SIMULATOR_PROMPT_VERSION
 export { aiJudge, fakeJudge, judgeSchema, readJudgement, JUDGE_PROMPT_VERSION, type AiJudge, type DimensionResult, type JudgeInput } from "./judge";
 export {
   buildReport, BudgetReached, fileHash, INVALID, requiredRuns, validityFile, validityInput, judgeFile, PRACTICE_FAILURES, recordFile, judgeRun, MAX_CHILD_TURNS, memoryPracticeStore, PLAN_FILE, planSuite, reportMarkdown, runPractice,
-  runSuite, simFile, traceFile, PRACTICE_VERSION,
+  runSuite, simFile, traceFile, PRACTICE_VERSION, freeTalkMarkdown, freeTalkReport, type FreeTalkPiece, type FreeTalkReport,
   type InvalidCode, type RunRecord, type ValidityLog, type PracticeDeps, type PracticePlan, type PracticeReport, type PracticeStore, type PracticeVersions, type RunStatus, type RunVerdict,
 } from "./practice";
-export { cappedClient, estimateCost, meteredFetch, MARGIN, OUTPUT_TOKENS, ROLES, Spending, type CostEstimate, type Price, type Role } from "./cost";
+export { cappedClient, estimateCost, meteredFetch, MARGIN, OUTPUT_TOKENS, ROLES, Spending, type ByRole, type CostEstimate, type Price, type Role } from "./cost";
 export { aiValidityJudge, fakeValidityJudge, readValidity, VALIDITY_PROMPT_VERSION, type ValidityInput, type ValidityJudge } from "./validity-judge";

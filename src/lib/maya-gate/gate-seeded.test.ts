@@ -35,6 +35,8 @@ vi.mock("@/lib/maya", async (importOriginal) => {
 const byId = (id: string) => BEHAVIOURS.find((b) => b.id === id)!;
 /** A code line for fixture A that says the answer 66 (a real line, said too early). */
 const ANSWER_LINE = allLineTexts(FIXTURES.A as OperationPackage).find((t) => /\b66\b/.test(t) && !/\b(56|16)\b/.test(t))!;
+/** A code line for fixture A that brings the child back to the question: a math line. */
+const BACK_LINE = allLineTexts(FIXTURES.A as OperationPackage).find((t) => /^Let's get back to /.test(t))!;
 
 async function savedTrace(b: Behaviour): Promise<MayaTrace> {
   const store = memoryTraceStore();
@@ -63,6 +65,15 @@ describe("each hard failure can fail the gate (a saved trace changed after the r
     ["continued_after_stop", "C17", (t) => { mayaAt(t, 4).output!.act = "guide"; return t; }],
     ["over_time", "C35", (t) => ({ ...t, outcome: { ...t.outcome!, seconds: 700 } })],
     ["flow_mismatch", "C07", (t) => { mayaAt(t, 1).output!.act = "guide"; return t; }],
+    // D-197: free talk the trace says passed both checks, but with free talk off, with math in it, or beside a math line.
+    ["free_talk_unchecked", "FT1", (t) => ({ ...t, freeTalk: false })],
+    ["free_talk_unchecked", "FT1", (t) => {
+      const m = mayaAt(t, 1);
+      m.attempts.at(-1)!.talk = [{ proposed: "27 plus 39 is 56.", code: null, review: "pass", shown: "27 plus 39 is 56." }];
+      m.output!.say = ["27 plus 39 is 56."];
+      return t;
+    }],
+    ["free_talk_unchecked", "FT1", (t) => { const m = mayaAt(t, 1); m.output!.say = [...m.output!.say, BACK_LINE]; return t; }],
   ];
 
   it("lists every hard failure in the seeds", () => {

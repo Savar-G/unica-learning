@@ -304,7 +304,8 @@ describe("the line set", () => {
 
   it("has a few child-friendly variants for every line, with no math in a variant's own words", () => {
     for (const [key, variants] of Object.entries(TEMPLATES)) {
-      expect(variants.length, key).toBeGreaterThanOrEqual(2);
+      // The decline keeps one planned wording until Savar approves it (D-197, #383).
+      expect(variants.length, key).toBeGreaterThanOrEqual(key === "redirect.decline" ? 1 : 2);
       for (const v of variants) expect(v.split(/\s+/).length, v).toBeLessThanOrEqual(22);
     }
   });
