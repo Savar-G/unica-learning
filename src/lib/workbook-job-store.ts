@@ -4,7 +4,7 @@ import { readChildProfile } from "@/lib/child-profile";
 import { childProfileStore } from "@/lib/child-profile-store";
 import { toJson, type Database, type Tables } from "@/lib/database";
 import { draftProblem, GENERATED_DRAFT_VERSION } from "@/lib/workbook-generator";
-import type { AiCallRecord, AiProvider } from "@/lib/ai-fallback";
+import { newGate, type ProviderGate, type AiCallRecord, type AiProvider } from "@/lib/ai-fallback";
 import type { AiCallKind } from "@/lib/workbook-ai";
 import { readPaged, SLOT_ATTEMPTS, STALE_SECONDS, type RunRunner, type WorkbookJobSource, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
 import type { WorkerCandidate, WorkerQueue } from "@/lib/workbook-worker";
@@ -58,12 +58,12 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
       const answer = data as { status: "started" | "busy" | "stalled"; run: string } | { status: "refused"; reason: string };
       return answer.status === "refused" ? answer : { status: answer.status, runId: answer.run };
     },
-    async claim(id, lease) {
-      const claimed = must(await admin.rpc("claim_workbook_run", { p_run: id, p_lease: lease }), "claim");
+    async claim(id, lease, runner = "server") {
+      const claimed = must(await admin.rpc("claim_workbook_run", { p_run: id, p_lease: lease, p_runner: runner }), "claim");
       return claimed ? run(id) : null;
     },
-    async resume(id, lease, staleSeconds) {
-      const taken = must(await admin.rpc("resume_workbook_run", { p_run: id, p_lease: lease, p_stale_seconds: staleSeconds }), "resume") === true;
+    async resume(id, lease, staleSeconds, runner = "server") {
+      const taken = must(await admin.rpc("resume_workbook_run", { p_run: id, p_lease: lease, p_stale_seconds: staleSeconds, p_runner: runner }), "resume") === true;
       return taken ? run(id) : null;
     },
     async yield(id, lease) {
@@ -114,6 +114,9 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
     },
     async savePage(id, lease, page) {
       return must(await admin.rpc("save_workbook_run_page", { p_run: id, p_lease: lease, p_number: page.number, p_page: toJson(page) }), "page save") === true;
+    },
+    async renew(id, lease) {
+      return must(await admin.rpc("renew_workbook_run", { p_run: id, p_lease: lease }).abortSignal(AbortSignal.timeout(10_000)), "lease renewal") === true;
     },
     async progress(id, lease, p) {
       const patch: Database["public"]["Tables"]["workbook_runs"]["Update"] = { step: p.step, heartbeat_at: new Date().toISOString() };
@@ -208,32 +211,53 @@ export type RunAiCall = Omit<AiCallRecord, "name"> & { kind: AiCallKind };
 /** Calls stored in one write. */
 const AI_CALL_BATCH = 200;
 
-/**
- * The run's AI call log (D-200): each call is kept and written in batches of `batch` (and on `flush`, after the job
- * call), one write after another. A write that fails is logged, never thrown: the record never stops the run.
- */
+/** Saves before a caller can checkpoint a result. A failed batch stays queued with the same ids. */
 export function runAiCallLog(save: (calls: RunAiCall[]) => Promise<void>, o: { batch?: number } = {}) {
-  const batch = o.batch ?? 10;
-  let queue: RunAiCall[] = [];
+  const batch = o.batch ?? 1;
+  const queue: RunAiCall[] = [];
   let chain: Promise<void> = Promise.resolve();
   const flush = () => {
-    const calls = queue;
-    queue = [];
-    if (calls.length) chain = chain.then(() => save(calls)).catch((e) => console.error("[workbook job] AI call log failed", e instanceof Error ? e.message : String(e)));
+    chain = chain.catch(() => undefined).then(async () => {
+      while (queue.length) {
+        const calls = queue.slice(0, AI_CALL_BATCH);
+        await save(calls);
+        queue.splice(0, calls.length);
+      }
+    });
     return chain;
   };
   return {
     add(kind: AiCallKind, r: AiCallRecord) {
-      queue.push({ kind, provider: r.provider, model: r.model, outcome: r.outcome, ms: Math.max(0, Math.round(r.ms)), usd: r.usd, note: r.note });
-      if (queue.length >= batch) void flush();
+      queue.push({ id: r.id ?? crypto.randomUUID(), kind, provider: r.provider, model: r.model, outcome: r.outcome,
+        ms: Math.max(0, Math.round(r.ms)), usd: r.usd, note: r.note, requests: r.requests ?? 1 });
+      return queue.length >= batch ? flush() : Promise.resolve();
     },
     flush,
   };
 }
 
+/** A run keeps lasting provider exclusions across job calls and worker restarts. */
+export async function loadRunProviderGate(admin: SupabaseClient<Database>, runId: string): Promise<ProviderGate> {
+  const row = must(await admin.from("workbook_runs").select("ai_off").eq("id", runId).maybeSingle(), "provider exclusions load");
+  const gate = newGate();
+  const off = row?.ai_off as Record<string, { note?: unknown }> | undefined;
+  for (const provider of ["subscription", "api"] as const) {
+    if (typeof off?.[provider]?.note === "string") gate.off[provider] = off[provider].note;
+  }
+  return gate;
+}
+
+export async function excludeRunProvider(admin: SupabaseClient<Database>, runId: string, provider: AiProvider, reason: string) {
+  if (!must(await admin.rpc("exclude_workbook_run_ai", { p_run: runId, p_provider: provider, p_note: reason }), "provider exclusion save")) {
+    throw new Error("workbook run no longer exists");
+  }
+}
+
 /** Stores AI calls of a run through save_workbook_run_ai_calls. */
 export const saveRunAiCalls = (admin: SupabaseClient<Database>, runId: string) => async (calls: RunAiCall[]) => {
   for (let i = 0; i < calls.length; i += AI_CALL_BATCH) {
-    must(await admin.rpc("save_workbook_run_ai_calls", { p_run: runId, p_calls: toJson(calls.slice(i, i + AI_CALL_BATCH)) }), "AI calls save");
+    const chunk = calls.slice(i, i + AI_CALL_BATCH);
+    const saved = must(await admin.rpc("save_workbook_run_ai_calls_v2", { p_run: runId, p_calls: toJson(chunk) }), "AI calls save");
+    if (saved !== chunk.length) throw new Error("workbook run AI calls were not saved");
   }
 };

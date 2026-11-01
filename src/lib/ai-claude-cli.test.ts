@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { claudeCliClient, claudeCliEnv, SubscriptionUnavailable, type SpawnResult, type Spawner } from "@/lib/ai-claude-cli";
+import { fallbackAiClient } from "@/lib/ai-fallback";
 import type { AiJsonRequest } from "@/lib/ai-client";
 
 const request: AiJsonRequest = {
@@ -101,5 +102,35 @@ describe("claudeCliClient", () => {
     const e = await fail(claudeCliClient({ spawn }).json(request, c.signal));
     expect(e.message).toBe("time is up");
     expect(e).not.toBeInstanceOf(SubscriptionUnavailable);
+  });
+});
+
+
+describe("R404-3 CLI error results", () => {
+  it.each([
+    ["error_during_execution", ["usage limit reached"], "limit"],
+    ["error_during_execution", ["not logged in, please run /login"], "logged-out"],
+    ["error_during_execution", ["execution worker crashed"], "crash"],
+    ["error_during_execution", ["x".repeat(500), "usage limit reached"], "limit"],
+  ])("falls back for %s with errors %j", async (subtype, errors, reason) => {
+    const sub = claudeCliClient({ spawn: fakeSpawn(() => ({ code: 1, stdout: envelope({ subtype, is_error: true, errors }) })).spawn });
+    const e = await fail(sub.json(request, signal()));
+    expect(e).toBeInstanceOf(SubscriptionUnavailable);
+    expect((e as SubscriptionUnavailable).reason).toBe(reason);
+    let apiCalls = 0;
+    const client = fallbackAiClient({ model: "m", primary: "subscription", subscription: sub, api: () => ({ model: "api", json: async () => { apiCalls++; return { items: [] }; } }) });
+    expect(await client.json(request, signal())).toEqual({ items: [] });
+    expect(apiCalls).toBe(1);
+  });
+
+  it.each([
+    { subtype: "error_max_structured_output_retries", errors: ["schema mismatch"] },
+    { subtype: "error_during_execution", stop_reason: "refusal", errors: ["refused"] },
+  ])("keeps schema errors and refusals out of fallback: %j", async (error) => {
+    const sub = claudeCliClient({ spawn: fakeSpawn(() => ({ code: 1, stdout: envelope({ ...error, is_error: true }) })).spawn });
+    let calls = 0;
+    const client = fallbackAiClient({ model: "m", primary: "subscription", subscription: sub, api: () => ({ model: "api", json: async () => { calls++; return {}; } }) });
+    await expect(client.json(request, signal())).rejects.toThrow();
+    expect(calls).toBe(0);
   });
 });

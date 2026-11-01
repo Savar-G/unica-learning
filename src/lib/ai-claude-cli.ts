@@ -107,6 +107,8 @@ interface Envelope {
   api_error_status?: number | null;
   stop_reason?: string | null;
   result?: unknown;
+  errors?: string[];
+  startup_failure_reason?: string;
   structured_output?: unknown;
 }
 
@@ -188,10 +190,12 @@ export function claudeCliClient({
         throw unavailable(words, null) ?? new SubscriptionUnavailable("crash", `claude -p ${out ? "answered with something that is not JSON" : "returned no output"} (exit ${run.code ?? "by signal"}): ${short(words)}`);
       }
       if (envelope.is_error || (envelope.subtype && envelope.subtype !== "success")) {
-        const words = `${short(envelope.result)} ${short(run.stderr)}`;
+        const words = [envelope.result, ...(Array.isArray(envelope.errors) ? envelope.errors : []), envelope.startup_failure_reason, run.stderr].join(" ");
+        if (envelope.stop_reason === "refusal") throw new Error("the model refused");
+        if (envelope.subtype === "error_max_structured_output_retries") throw new Error("the output did not match the schema");
         const lost = unavailable(words, envelope.api_error_status);
         if (lost) throw lost;
-        if (envelope.subtype === "error_max_structured_output_retries") throw new Error("the output did not match the schema");
+        if (envelope.subtype === "error_during_execution") throw new SubscriptionUnavailable("crash", `claude -p could not execute: ${short(words)}`);
         const status = envelope.api_error_status ?? 0;
         if (status >= 500) throw new SubscriptionUnavailable("crash", `the Claude service answered ${status}: ${short(envelope.result)}`);
         throw new Error(`claude -p failed (${short(envelope.subtype) || "error"}${status ? `, ${status}` : ""}): ${short(envelope.result)}`);

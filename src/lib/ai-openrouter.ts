@@ -96,6 +96,7 @@ export function openRouterClient({
   fetch = globalThis.fetch,
   maxRetries = 1,
   timeout = AI_REQUEST_TIMEOUT_MS,
+  onRequest,
 }: {
   apiKey: string;
   model: string;
@@ -103,6 +104,7 @@ export function openRouterClient({
   fetch?: typeof globalThis.fetch;
   maxRetries?: number;
   timeout?: number;
+  onRequest?: () => Promise<void>;
 }): AiClient {
   return {
     model,
@@ -113,6 +115,8 @@ export function openRouterClient({
         body: JSON.stringify(body(model, request)),
       };
       for (let attempt = 0; ; attempt++) {
+        if (signal.aborted) throw new Error("time is up");
+        await onRequest?.();
         try {
           return await once(fetch, init, signal, timeout);
         } catch (e) {

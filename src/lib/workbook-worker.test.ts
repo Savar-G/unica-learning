@@ -1,3 +1,4 @@
+import { getEventListeners } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import { workbookWorker, workerOnline, type WorkerCandidate } from "@/lib/workbook-worker";
 import type { JobOutcome } from "@/lib/workbook-job";
@@ -74,5 +75,34 @@ describe("workerOnline", () => {
     expect(workerOnline("2026-11-01T11:58:00Z", now)).toBe(false);
     expect(workerOnline(null, now)).toBe(false);
     vi.useRealTimers();
+  });
+});
+
+
+describe("R404 worker regressions", () => {
+  it("R404-5 checks for updates before taking another run from a busy queue", async () => {
+    const runJob = vi.fn(async () => "done" as const);
+    const candidates = vi.fn(async () => [{ id: "r1", resume: false }]);
+    const shouldExit = vi.fn(async () => true);
+    const worker = workbookWorker({ queue: { candidates, beat: async () => undefined }, runJob, shouldExit, keepAwake: () => () => undefined });
+    expect(await worker.tick()).toEqual({ ran: "r1", outcome: "done" });
+    expect(await worker.tick()).toBe("exit");
+    expect(runJob).toHaveBeenCalledTimes(1);
+    expect(candidates).toHaveBeenCalledTimes(1);
+    expect(shouldExit).toHaveBeenCalledTimes(1);
+  });
+
+  it("R404-9 releases the idle abort listener after every normal timer completion", async () => {
+    vi.useFakeTimers();
+    try {
+      const stop = new AbortController();
+      const worker = setup({}).worker;
+      const running = worker.run({ stop: stop.signal, pollMs: 10, heartbeatMs: 60_000 });
+      for (let i = 0; i < 30; i++) await vi.advanceTimersByTimeAsync(10);
+      expect(getEventListeners(stop.signal, "abort")).toHaveLength(1);
+      stop.abort();
+      expect(await running).toBe("stopped");
+      expect(getEventListeners(stop.signal, "abort")).toHaveLength(0);
+    } finally { vi.useRealTimers(); }
   });
 });

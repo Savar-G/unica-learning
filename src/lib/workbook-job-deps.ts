@@ -13,7 +13,7 @@ import { workbookFakeAi, workbookFakeSolver } from "@/lib/workbook-ai-fake";
 import { workbookDraftStore } from "@/lib/workbook-draft-store";
 import { renderFitCheck } from "@/lib/workbook-fit";
 import { runWorkbookJob, type JobOutcome, type WorkbookJobDeps } from "@/lib/workbook-job";
-import { runAiCallLog, saveRunAiCalls, workbookJobSource, workbookRunStore } from "@/lib/workbook-job-store";
+import { excludeRunProvider, loadRunProviderGate, runAiCallLog, saveRunAiCalls, workbookJobSource, workbookRunStore } from "@/lib/workbook-job-store";
 import { workbookFiles } from "@/lib/workbook-store";
 import { workbookTemplate } from "@/lib/workbook-template";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
@@ -43,10 +43,13 @@ export async function runWorkbookJobWith(admin: SupabaseClient<Database>, runId:
   const engine = chromiumPrintEngine();
   const fake = workbookFakeAi();
   const log = runAiCallLog(saveRunAiCalls(admin, runId));
-  const live = fake ? null : workbookAi(env, { subscription: place.subscription, primary: place.primary, onCall: log.add });
+  const live = fake ? null : workbookAi(env, { subscription: place.subscription, primary: place.primary, onCall: log.add, onStart: log.add,
+    gate: await loadRunProviderGate(admin, runId),
+    onExclude: (provider, reason) => excludeRunProvider(admin, runId, provider, reason) });
   try {
     return await runWorkbookJob(runId, {
       runs: workbookRunStore(admin),
+      runner: place.subscription ? "mac" : "server",
       source: workbookJobSource(admin),
       drafts: workbookDraftStore(admin),
       files: workbookFiles(admin),

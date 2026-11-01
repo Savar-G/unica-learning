@@ -64,7 +64,10 @@ export interface WorkbookAiOptions {
   /** For tests: the fetch under the API client. */
   fetch?: typeof globalThis.fetch;
   /** Each AI call, with what made it. */
-  onCall?: (kind: AiCallKind, record: AiCallRecord) => void;
+  onCall?: (kind: AiCallKind, record: AiCallRecord) => unknown | Promise<unknown>;
+  onStart?: (kind: AiCallKind, record: AiCallRecord) => unknown | Promise<unknown>;
+  onExclude?: (provider: AiProvider, reason: string) => unknown | Promise<unknown>;
+  gate?: ProviderGate;
   now?: () => number;
 }
 
@@ -78,7 +81,7 @@ const API_SOLVE_TIMEOUT_MS = 60_000;
  */
 export function workbookAi(env: Env, o: WorkbookAiOptions): WorkbookAi {
   const models = workbookModels(env);
-  const gate = newGate();
+  const gate = o.gate ?? newGate();
   const primary = o.primary ?? workbookAiPrimary(env);
   const apiKey = env.OPENROUTER_API_KEY?.trim();
   const base = o.fetch ?? globalThis.fetch;
@@ -87,7 +90,7 @@ export function workbookAi(env: Env, o: WorkbookAiOptions): WorkbookAi {
     ? claudeCliClient({ model, command: env.WORKBOOK_CLAUDE_COMMAND?.trim() || "claude", spawn: o.spawn, env, configDir: env.WORKBOOK_CLAUDE_CONFIG_DIR, timeout })
     : null;
   const api = (model: string, ms: number) => apiKey
-    ? (onCost: (usd: number) => void) => openRouterClient({ apiKey, model, fetch: costingFetch(onCost, base), timeout: ms })
+    ? (onCost: (usd: number) => void, onRequest: () => Promise<void>) => openRouterClient({ apiKey, model, fetch: costingFetch(onCost, base), timeout: ms, onRequest })
     : null;
   const writeCli = cli(models.cli);
   const writeApi = api(models.api, API_TIMEOUT_MS);
@@ -95,6 +98,8 @@ export function workbookAi(env: Env, o: WorkbookAiOptions): WorkbookAi {
   const ai = fallbackAiClient({
     primary, subscription: writeCli, api: writeApi, model: models.write, gate, now: o.now,
     onCall: (r) => o.onCall?.("write", r),
+    ...(o.onStart ? { onStart: (r: AiCallRecord) => o.onStart!("write", r) } : {}),
+    onExclude: o.onExclude,
   });
   const solveCli = cli(models.cliSolve);
   const solveApi = api(models.apiSolve, API_SOLVE_TIMEOUT_MS);
@@ -108,9 +113,11 @@ export function workbookAi(env: Env, o: WorkbookAiOptions): WorkbookAi {
       let usd: number | null = null;
       const client = fallbackAiClient({
         primary, subscription: solveCli, api: solveApi, model: models.solve, gate, now: o.now,
-        onCall: (r) => {
+        ...(o.onStart ? { onStart: (r: AiCallRecord) => o.onStart!("solve", r) } : {}),
+        onExclude: o.onExclude,
+        onCall: async (r) => {
           if (r.usd !== null) usd = (usd ?? 0) + r.usd;
-          o.onCall?.("solve", r);
+          await o.onCall?.("solve", r);
         },
       });
       try {
@@ -142,14 +149,22 @@ export function workbookAi(env: Env, o: WorkbookAiOptions): WorkbookAi {
 /** A run's AI calls by provider (the admin run page): calls that reached it, how many failed, and the API's cost. */
 export interface AiCallSummary {
   subscription: { calls: number; failed: number };
+  incomplete: number;
+  retries: number;
   api: { calls: number; failed: number; usd: number; noCost: number };
   /** Calls a provider could not take (then sent to the other), with the last reason. */
   unavailable: { subscription: number; api: number; last: string | null };
 }
 
-export function summarizeAiCalls(rows: { provider: AiProvider; outcome: AiCallRecord["outcome"]; usd: number | null; note: string | null }[]): AiCallSummary {
-  const s: AiCallSummary = { subscription: { calls: 0, failed: 0 }, api: { calls: 0, failed: 0, usd: 0, noCost: 0 }, unavailable: { subscription: 0, api: 0, last: null } };
+export function summarizeAiCalls(rows: { provider: AiProvider; outcome: AiCallRecord["outcome"]; usd: number | null; note: string | null; requests?: number | null }[]): AiCallSummary {
+  const s: AiCallSummary = { incomplete: 0, retries: 0, subscription: { calls: 0, failed: 0 }, api: { calls: 0, failed: 0, usd: 0, noCost: 0 }, unavailable: { subscription: 0, api: 0, last: null } };
   for (const r of rows) {
+    s.retries += Math.max(0, (r.requests ?? 1) - 1);
+    if (r.provider === "api") {
+      if (r.usd === null) s.api.noCost++;
+      else s.api.usd += r.usd;
+    }
+    if (r.outcome === "started") { s.incomplete++; continue; }
     if (r.outcome === "unavailable") {
       s.unavailable[r.provider]++;
       s.unavailable.last = r.note;
@@ -158,10 +173,6 @@ export function summarizeAiCalls(rows: { provider: AiProvider; outcome: AiCallRe
     const p = s[r.provider];
     p.calls++;
     if (r.outcome === "failed") p.failed++;
-    if (r.provider === "api") {
-      if (r.usd === null) s.api.noCost++;
-      else s.api.usd += r.usd;
-    }
   }
   return s;
 }

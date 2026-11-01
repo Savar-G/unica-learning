@@ -46,6 +46,7 @@ export function workbookWorker(deps: WorkerDeps) {
   let current: string | null = null;
   let started = true;
   let note: string | null = null;
+  let checkUpdate = false;
 
   const beat = async () => {
     try {
@@ -58,6 +59,12 @@ export function workbookWorker(deps: WorkerDeps) {
 
   /** One turn: make the first run it can take; else, idle, ask whether to exit. */
   async function tick(): Promise<TickResult> {
+    try {
+      if (checkUpdate && await deps.shouldExit?.()) return "exit";
+    } catch (e) {
+      log(`update check failed: ${message(e)}`);
+    }
+    checkUpdate = false;
     let candidates: WorkerCandidate[];
     try {
       candidates = await deps.queue.candidates(STALE_SECONDS);
@@ -82,7 +89,10 @@ export function workbookWorker(deps: WorkerDeps) {
         current = null;
         await beat();
       }
-      if (outcome !== "not-claimed") return { ran: c.id, outcome };
+      if (outcome !== "not-claimed") {
+        checkUpdate = true;
+        return { ran: c.id, outcome };
+      }
     }
     try {
       if (await deps.shouldExit?.()) return "exit";
@@ -98,8 +108,14 @@ export function workbookWorker(deps: WorkerDeps) {
    */
   async function run(o: { stop: AbortSignal; pollMs: number; heartbeatMs: number; sleep?: (ms: number, signal: AbortSignal) => Promise<void> }): Promise<"stopped" | "exit"> {
     const sleep = o.sleep ?? ((ms, signal) => new Promise<void>((resolve) => {
-      const t = setTimeout(resolve, ms);
-      signal.addEventListener("abort", () => { clearTimeout(t); resolve(); }, { once: true });
+      const done = () => {
+        clearTimeout(t);
+        signal.removeEventListener("abort", done);
+        resolve();
+      };
+      const t = setTimeout(done, ms);
+      signal.addEventListener("abort", done, { once: true });
+      if (signal.aborted) done();
     }));
     await beat();
     const timer = setInterval(() => { void beat(); }, o.heartbeatMs);

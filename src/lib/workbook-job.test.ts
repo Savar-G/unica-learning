@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { fakeWorkbookItems } from "@/lib/workbook-ai-fake";
@@ -781,5 +781,59 @@ describe("placement", () => {
     const place = placeChild({ curriculum: BC, grade: 3, profile: profile(["2.4"]), workbooks: [{ number: 1, levels: [10] }, { number: 2, levels: [11] }] });
     expect(place).toMatchObject({ first: false, inLevel: 1 });
     expect(place.level.id).toBe("U11");
+  });
+});
+
+
+describe("R404 lease and runner regressions", () => {
+  it("R404-1 renews during a call longer than the stale interval and aborts work when renewal fails", async () => {
+    vi.useFakeTimers();
+    try {
+      let entered!: () => void;
+      const startedCall = new Promise<void>((resolve) => { entered = resolve; });
+      let requests = 0;
+      const s = setup({ concurrency: 1, ai: { model: "slow", json: async (_request, signal) => {
+        requests++;
+        entered();
+        return await new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new Error("lease lost")), { once: true });
+        });
+      } } });
+      const id = await started(s);
+      const running = runWorkbookJob(id, { ...s.deps, timeLimitMs: 10 * 60_000 });
+      await startedCall;
+      for (let i = 0; i < 14; i++) {
+        s.tick(30);
+        await vi.advanceTimersByTimeAsync(30_000);
+      }
+      expect(await s.runs.resume(id, "competing-lease", STALE_SECONDS)).toBeNull();
+      expect((await s.runs.run(id))!.heartbeatAt).toBe(s.now().toISOString());
+      s.deps.runs.renew = async () => false;
+      s.tick(30);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(await running).toBe("stale");
+      expect(requests).toBe(1);
+      expect(await s.runs.pages(id)).toEqual([]);
+      expect(await s.drafts.draft((await s.runs.run(id))!.draftKey)).toBeNull();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("R404-1 makes no request when lease renewal throws", async () => {
+    const s = setup({ concurrency: 1 });
+    const id = await started(s);
+    s.deps.runs.renew = async () => { throw new Error("offline"); };
+    expect(await runWorkbookJob(id, s.deps)).toBe("stale");
+    expect(pageCalls((s.ai as ReturnType<typeof fakeAiClient>).requests)).toBe(0);
+  });
+
+  it("R404-2 refuses a Mac claim or resume after the run is routed to the server", async () => {
+    const s = setup();
+    const id = await started(s);
+    // The worker cached this candidate before the route selected server.
+    expect(await runWorkbookJob(id, { ...s.deps, runner: "mac" })).toBe("not-claimed");
+    expect(await s.runs.claim(id, "server", "server")).not.toBeNull();
+    await s.runs.yield(id, "server");
+    expect(await runWorkbookJob(id, { ...s.deps, runner: "mac" }, { resume: true })).toBe("not-claimed");
+    expect(await s.runs.resume(id, "server-resume", STALE_SECONDS, "server")).not.toBeNull();
   });
 });

@@ -170,11 +170,13 @@ const usd = (n: number) => `USD ${n.toFixed(n > 0 && n < 0.01 ? 4 : 2)}`;
 /** The run's AI calls by provider: on the Claude subscription (free), on the API (with its cost). */
 export function aiCallsFact(s: AiCallSummary): ReactNode {
   const total = s.subscription.calls + s.api.calls;
-  if (total === 0 && s.unavailable.subscription + s.unavailable.api === 0) return "No AI calls logged yet";
+  if (total === 0 && s.incomplete === 0 && s.unavailable.subscription + s.unavailable.api === 0) return "No AI calls logged yet";
   const failed = (n: number) => (n > 0 ? ` (${n} failed)` : "");
   return <span className="adm-wb-calls">
-    <span><b>{s.subscription.calls}</b> on the Claude subscription{failed(s.subscription.failed)} · USD 0</span>
-    <span><b>{s.api.calls}</b> on the API{failed(s.api.failed)} · {usd(s.api.usd)}{s.api.noCost > 0 ? ` (${s.api.noCost} with no cost given)` : ""}</span>
+    <span><b>{s.subscription.calls}</b> calls on the Claude subscription{failed(s.subscription.failed)} · USD 0</span>
+    <span><b>{s.api.calls}</b> calls on the API{failed(s.api.failed)} · {usd(s.api.usd)}{s.api.noCost > 0 ? ` (${s.api.noCost} with no cost given)` : ""}</span>
+    <span className="adm-sub">Counts are logical calls. API retries: {s.retries}.</span>
+    {s.incomplete > 0 && <span className="adm-sub">{s.incomplete} calls have no saved result. Their costs are unknown.</span>}
     {s.unavailable.subscription > 0 && <span className="adm-sub">The subscription could not take {s.unavailable.subscription} {s.unavailable.subscription === 1 ? "call" : "calls"}, so they went to the API. Last reason: {s.unavailable.last ?? "not given"}</span>}
     {s.unavailable.api > 0 && <span className="adm-sub">The API could not take {s.unavailable.api} {s.unavailable.api === 1 ? "call" : "calls"}.</span>}
   </span>;

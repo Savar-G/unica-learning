@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+vi.mock("server-only", () => ({}));
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database";
+import { excludeRunProvider, loadRunProviderGate } from "@/lib/workbook-job-store";
 import type { Spawner } from "@/lib/ai-claude-cli";
 import type { AiCallRecord } from "@/lib/ai-fallback";
 import { runModelName, summarizeAiCalls, workbookAi, workbookAiPrimary, workbookModels, workbookRunner, type AiCallKind } from "@/lib/workbook-ai";
@@ -108,7 +112,49 @@ describe("summarizeAiCalls", () => {
       { provider: "api", outcome: "answered", usd: null, note: null },
     ]);
     expect(s).toEqual({
-      subscription: { calls: 2, failed: 1 }, api: { calls: 2, failed: 0, usd: 0.25, noCost: 1 }, unavailable: { subscription: 1, api: 0, last: "usage limit" },
+      incomplete: 0, retries: 0, subscription: { calls: 2, failed: 1 }, api: { calls: 2, failed: 0, usd: 0.25, noCost: 1 }, unavailable: { subscription: 1, api: 0, last: "usage limit" },
     });
+  });
+});
+
+
+describe("R404 provider persistence and request counts", () => {
+  it("R404-4 restores a saved exclusion before a fresh job instance writes or solves", async () => {
+    const off: Record<string, { note: string }> = {};
+    const db = createClient<Database>("https://example.supabase.co", "test", { global: { fetch: async (url, init) => {
+      if (String(url).includes("/rpc/exclude_workbook_run_ai")) {
+        const args = JSON.parse(String(init?.body));
+        off[args.p_provider] = { note: args.p_note };
+        return new Response("true");
+      }
+      return new Response(JSON.stringify({ ai_off: off }), { headers: { "content-type": "application/json" } });
+    } } });
+    const c = cli(() => "limit");
+    const api = openRouter((model) => model.includes("haiku") ? solveAnswer : { items: [1] });
+    const options = { subscription: true, spawn: c.spawn, fetch: api.fetch, onExclude: (p: "api" | "subscription", reason: string) => excludeRunProvider(db, "run", p, reason) };
+    const first = workbookAi({ OPENROUTER_API_KEY: "key" }, { ...options, gate: await loadRunProviderGate(db, "run") });
+    await first.ai!.json(page, signal());
+    expect(off.subscription.note).toMatch(/usage limit/);
+    const resumed = workbookAi({ OPENROUTER_API_KEY: "key" }, { ...options, gate: await loadRunProviderGate(db, "run") });
+    expect(await resumed.ai!.json(page, signal())).toEqual({ items: [1] });
+    expect(await resumed.solve!.solver.solve(solveRequest, signal())).toEqual(solveAnswer);
+    expect(c.models).toHaveLength(1);
+    expect(api.models).toHaveLength(3);
+  });
+
+  it("R404-8 reports both API requests and their costs when one logical call retries", async () => {
+    let requests = 0;
+    const rows: AiCallRecord[] = [];
+    const live = workbookAi({ OPENROUTER_API_KEY: "key" }, { subscription: false, onCall: (_kind, r) => rows.push(r), fetch: async () => {
+      requests++;
+      return new Response(JSON.stringify(requests === 1
+        ? { error: { message: "overloaded" }, usage: { cost: 0.02 } }
+        : { choices: [{ finish_reason: "stop", message: { content: "{}" } }], usage: { cost: 0.03 } }), { status: requests === 1 ? 500 : 200 });
+    } });
+    await live.ai!.json(page, signal());
+    expect(requests).toBe(2);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ requests: 2, usd: 0.05 });
+    expect(summarizeAiCalls(rows)).toMatchObject({ api: { calls: 1, usd: 0.05 }, retries: 1 });
   });
 });

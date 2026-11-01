@@ -18,6 +18,33 @@ claude_bin=$(command -v claude) || { echo "claude (Claude Code) is not on PATH: 
 git_bin=$(command -v git)
 PATH_FOR_AGENT="$(dirname "$node_bin"):$(dirname "$claude_bin"):$(dirname "$git_bin"):/usr/bin:/bin:/usr/sbin:/sbin"
 
+# Stop the loaded service before changing its checkout, packages or plist. bootout can return while
+# descendants still exit, so capture the tree first and wait for every process. Fail closed on timeout.
+worker_pids=()
+collect_pids() {
+  local worker_pid=$1 worker_child
+  worker_pids+=("$worker_pid")
+  for worker_child in $(pgrep -P "$worker_pid" || true); do collect_pids "$worker_child"; done
+}
+if worker_info=$(launchctl print "gui/$(id -u)/$LABEL" 2>/dev/null); then
+  worker_pid=$(printf '%s\n' "$worker_info" | awk '$1 == "pid" && $2 == "=" { print $3; exit }')
+  if [[ "$worker_pid" =~ ^[0-9]+$ ]]; then collect_pids "$worker_pid"; fi
+  launchctl bootout "gui/$(id -u)/$LABEL"
+  worker_deadline=$((SECONDS + 60))
+  while true; do
+    worker_alive=false
+    for worker_pid in "${worker_pids[@]}"; do
+      if kill -0 "$worker_pid" 2>/dev/null; then worker_alive=true; fi
+    done
+    if [ "$worker_alive" = false ]; then break; fi
+    if [ "$SECONDS" -ge "$worker_deadline" ]; then
+      echo "The old worker has not stopped. The checkout is unchanged."
+      exit 1
+    fi
+    sleep 0.25
+  done
+fi
+
 if [ ! -d "$WORKER_DIR/.git" ]; then
   echo "Cloning into $WORKER_DIR"
   gh repo clone Savar-G/unica-learning "$WORKER_DIR" -- --quiet
@@ -68,6 +95,5 @@ cat > "$PLIST" <<PLIST
 </plist>
 PLIST
 
-launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
 echo "Installed $LABEL. Logs: tail -f $LOG"

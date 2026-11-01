@@ -1193,6 +1193,128 @@ export type Database = {
           },
         ]
       }
+      maya_call_connections: {
+        Row: {
+          at: string
+          call_id: string
+          child_id: string
+          id: number
+          kind: string
+          parent_id: string
+          recorded_at: string
+        }
+        Insert: {
+          at: string
+          call_id: string
+          child_id: string
+          id?: never
+          kind: string
+          parent_id: string
+          recorded_at?: string
+        }
+        Update: {
+          at?: string
+          call_id?: string
+          child_id?: string
+          id?: never
+          kind?: string
+          parent_id?: string
+          recorded_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maya_call_connections_call_fkey"
+            columns: ["call_id", "parent_id", "child_id"]
+            isOneToOne: false
+            referencedRelation: "maya_calls"
+            referencedColumns: ["id", "parent_id", "child_id"]
+          },
+          {
+            foreignKeyName: "maya_call_connections_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "maya_call_connections_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      maya_call_notes: {
+        Row: {
+          call_ended_at: string
+          call_id: string
+          child_id: string
+          created_at: string
+          facts: Json
+          model: string | null
+          note_version: number
+          parent_id: string
+          prompt_version: string | null
+          sentences: Json
+          transcript: Json
+          warm: string | null
+          writer: string
+        }
+        Insert: {
+          call_ended_at: string
+          call_id: string
+          child_id: string
+          created_at?: string
+          facts: Json
+          model?: string | null
+          note_version?: number
+          parent_id: string
+          prompt_version?: string | null
+          sentences: Json
+          transcript: Json
+          warm?: string | null
+          writer: string
+        }
+        Update: {
+          call_ended_at?: string
+          call_id?: string
+          child_id?: string
+          created_at?: string
+          facts?: Json
+          model?: string | null
+          note_version?: number
+          parent_id?: string
+          prompt_version?: string | null
+          sentences?: Json
+          transcript?: Json
+          warm?: string | null
+          writer?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maya_call_notes_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: true
+            referencedRelation: "maya_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maya_call_notes_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "maya_call_notes_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       maya_calls: {
         Row: {
           assessment_id: string | null
@@ -1219,6 +1341,7 @@ export type Database = {
           mishearing_corrections: number | null
           mode: string
           model: string
+          note_pending: Json | null
           outcome_reason: string | null
           package_hash: string
           package_id: string
@@ -1270,6 +1393,7 @@ export type Database = {
           mishearing_corrections?: number | null
           mode?: string
           model: string
+          note_pending?: Json | null
           outcome_reason?: string | null
           package_hash: string
           package_id: string
@@ -1321,6 +1445,7 @@ export type Database = {
           mishearing_corrections?: number | null
           mode?: string
           model?: string
+          note_pending?: Json | null
           outcome_reason?: string | null
           package_hash?: string
           package_id?: string
@@ -2223,6 +2348,7 @@ export type Database = {
       }
       workbook_run_ai_calls: {
         Row: {
+          call_id: string | null
           child_id: string
           created_at: string
           id: number
@@ -2233,10 +2359,12 @@ export type Database = {
           outcome: string
           parent_id: string
           provider: string
+          requests: number | null
           run_id: string
           usd: number | null
         }
         Insert: {
+          call_id?: string | null
           child_id: string
           created_at?: string
           id?: never
@@ -2247,10 +2375,12 @@ export type Database = {
           outcome: string
           parent_id: string
           provider: string
+          requests?: number | null
           run_id: string
           usd?: number | null
         }
         Update: {
+          call_id?: string | null
           child_id?: string
           created_at?: string
           id?: never
@@ -2261,6 +2391,7 @@ export type Database = {
           outcome?: string
           parent_id?: string
           provider?: string
+          requests?: number | null
           run_id?: string
           usd?: number | null
         }
@@ -2556,6 +2687,7 @@ export type Database = {
       }
       workbook_runs: {
         Row: {
+          ai_off: Json
           attempts: number
           child_id: string
           created_at: string
@@ -2581,6 +2713,7 @@ export type Database = {
           total_pages: number | null
         }
         Insert: {
+          ai_off?: Json
           attempts?: number
           child_id: string
           created_at?: string
@@ -2606,6 +2739,7 @@ export type Database = {
           total_pages?: number | null
         }
         Update: {
+          ai_off?: Json
           attempts?: number
           child_id?: string
           created_at?: string
@@ -3099,10 +3233,12 @@ export type Database = {
           out_status: string
         }[]
       }
-      claim_workbook_run: {
-        Args: { p_lease: string; p_run: string }
-        Returns: boolean
-      }
+      claim_workbook_run:
+        | { Args: { p_lease: string; p_run: string }; Returns: boolean }
+        | {
+            Args: { p_lease: string; p_run: string; p_runner: string }
+            Returns: boolean
+          }
       complete_family_deletion: {
         Args: { p: string; token: string }
         Returns: boolean
@@ -3149,6 +3285,10 @@ export type Database = {
         Returns: boolean
       }
       end_family_card_operation: { Args: { token: string }; Returns: undefined }
+      exclude_workbook_run_ai: {
+        Args: { p_note: string; p_provider: string; p_run: string }
+        Returns: boolean
+      }
       fail_workbook_run: {
         Args: { p_error: string; p_lease: string; p_run: string }
         Returns: boolean
@@ -3254,14 +3394,28 @@ export type Database = {
         Args: { p: string; token: string }
         Returns: boolean
       }
+      renew_workbook_run: {
+        Args: { p_lease: string; p_run: string }
+        Returns: boolean
+      }
       request_family_deletion: {
         Args: { confirmation: string; p: string }
         Returns: string
       }
-      resume_workbook_run: {
-        Args: { p_lease: string; p_run: string; p_stale_seconds: number }
-        Returns: boolean
-      }
+      resume_workbook_run:
+        | {
+            Args: { p_lease: string; p_run: string; p_stale_seconds: number }
+            Returns: boolean
+          }
+        | {
+            Args: {
+              p_lease: string
+              p_run: string
+              p_runner: string
+              p_stale_seconds: number
+            }
+            Returns: boolean
+          }
       retry_workbook_run: {
         Args: { p_error: string; p_lease: string; p_run: string }
         Returns: boolean
@@ -3287,6 +3441,10 @@ export type Database = {
       }
       save_workbook_rendering: { Args: { p_rendering: Json }; Returns: Json }
       save_workbook_run_ai_calls: {
+        Args: { p_calls: Json; p_run: string }
+        Returns: number
+      }
+      save_workbook_run_ai_calls_v2: {
         Args: { p_calls: Json; p_run: string }
         Returns: number
       }

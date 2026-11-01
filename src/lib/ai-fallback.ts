@@ -20,12 +20,15 @@ export const AI_PROVIDERS: readonly AiProvider[] = ["subscription", "api"];
 
 /** One AI call as a run records it (public.workbook_run_ai_calls). */
 export interface AiCallRecord {
+  id?: string;
+  /** Physical requests for this logical provider call, including retries. */
+  requests?: number;
   /** The request's name ("workbook_page", "solve_check"). */
   name: string;
   provider: AiProvider;
   model: string;
   /** answered: JSON came back; failed: the provider took the call but gave no usable output; unavailable: it could not take it. */
-  outcome: "answered" | "failed" | "unavailable";
+  outcome: "started" | "answered" | "failed" | "unavailable";
   ms: number;
   /** US dollars: 0 on the subscription; null when the API did not say. */
   usd: number | null;
@@ -56,11 +59,14 @@ export interface FallbackOptions {
   /** The subscription client; null where there is none (the server). */
   subscription: AiClient | null;
   /** Makes the API client for one call, reporting that call's cost; null with no API key. */
-  api: ((onCost: (usd: number) => void) => AiClient) | null;
+  api: ((onCost: (usd: number) => void, onRequest: () => Promise<void>) => AiClient) | null;
   /** The model name the run stores (the frame's model check, the draft's model): the same whichever provider answers. */
   model: string;
   gate?: ProviderGate;
-  onCall?: (record: AiCallRecord) => void;
+  onCall?: (record: AiCallRecord) => unknown | Promise<unknown>;
+  /** Durable intent, before the provider or each API retry. */
+  onStart?: (record: AiCallRecord) => unknown | Promise<unknown>;
+  onExclude?: (provider: AiProvider, reason: string) => unknown | Promise<unknown>;
   /** The clock, for each call's time. */
   now?: () => number;
 }
@@ -69,13 +75,6 @@ export function fallbackAiClient(o: FallbackOptions): AiClient {
   const gate = o.gate ?? newGate();
   const now = o.now ?? (() => Date.now());
   const order: AiProvider[] = o.primary === "subscription" ? ["subscription", "api"] : ["api", "subscription"];
-  const record = (r: AiCallRecord) => {
-    try {
-      o.onCall?.(r);
-    } catch {
-      // A record that cannot be kept never fails the call.
-    }
-  };
   const subscriptionModel = o.subscription?.model ?? o.model;
   return {
     model: o.model,
@@ -87,38 +86,53 @@ export function fallbackAiClient(o: FallbackOptions): AiClient {
       }
       for (let i = 0; i < usable.length; i++) {
         const provider = usable[i];
+        if (gate.off[provider]) continue;
         const last = i === usable.length - 1;
+        if (signal.aborted) throw new Error("time is up");
         const started = now();
+        const id = o.onStart ? crypto.randomUUID() : undefined;
         let usd: number | null = provider === "subscription" ? 0 : null;
         let model = subscriptionModel;
+        let requests: number | undefined = o.onStart ? (provider === "api" ? 0 : 1) : undefined;
+        const entry = (outcome: AiCallRecord["outcome"], detail: string | null): AiCallRecord => ({
+          ...(id ? { id } : {}), ...(requests === undefined ? {} : { requests }),
+          name: request.name, provider, model, outcome, ms: now() - started, usd, note: detail,
+        });
+        // Persistence errors must stop the call, rather than appear to be a provider failure.
+        const beforeRequest = async () => {
+          if (signal.aborted) throw new Error("time is up");
+          requests = (requests ?? 0) + 1;
+          await o.onStart?.(entry("started", null));
+        };
+        const client = provider === "subscription" ? o.subscription! : o.api!((c) => { usd = (usd ?? 0) + c; }, beforeRequest);
+        model = client.model;
+        await o.onStart?.(entry("started", null));
+        if (signal.aborted) throw new Error("time is up");
+        if (gate.off[provider]) continue;
+        let out: unknown;
+        let error: unknown;
+        let failed = false;
         try {
-          let out: unknown;
-          if (provider === "subscription") out = await o.subscription!.json(request, signal);
-          else {
-            const client = o.api!((c) => { usd = (usd ?? 0) + c; });
-            model = client.model;
-            out = await client.json(request, signal);
-          }
-          record({ name: request.name, provider, model, outcome: "answered", ms: now() - started, usd, note: null });
-          return out;
+          out = await client.json(request, signal);
         } catch (e) {
-          const ms = now() - started;
-          if (signal.aborted) {
-            record({ name: request.name, provider, model, outcome: "failed", ms, usd, note: "time is up" });
-            throw e;
-          }
-          const down = provider === "subscription" ? e instanceof SubscriptionUnavailable : API_DOWN.test(message(e));
-          if (!down) {
-            record({ name: request.name, provider, model, outcome: "failed", ms, usd, note: note(e) });
-            throw e;
-          }
-          record({ name: request.name, provider, model, outcome: "unavailable", ms, usd: provider === "subscription" ? 0 : usd, note: note(e) });
-          const lasting = provider === "subscription" ? (e as SubscriptionUnavailable).lasting : API_LASTING.test(message(e));
-          if (lasting) gate.off[provider] = note(e);
-          if (last) {
-            const other = provider === "subscription" ? "the API (no API key, or it is off for this run)" : "the subscription (none here, or it is off for this run)";
-            throw new Error(`${message(e)}; no fallback: ${other}`);
-          }
+          failed = true;
+          error = e;
+        }
+        if (!failed) {
+          await o.onCall?.(entry("answered", null));
+          return out;
+        }
+        const down = !signal.aborted && (provider === "subscription" ? error instanceof SubscriptionUnavailable : API_DOWN.test(message(error)));
+        const lasting = down && (provider === "subscription" ? (error as SubscriptionUnavailable).lasting : API_LASTING.test(message(error)));
+        if (lasting) {
+          gate.off[provider] = note(error);
+          await o.onExclude?.(provider, note(error));
+        }
+        await o.onCall?.(entry(down ? "unavailable" : "failed", signal.aborted ? "time is up" : note(error)));
+        if (!down) throw error;
+        if (last) {
+          const other = provider === "subscription" ? "the API (no API key, or it is off for this run)" : "the subscription (none here, or it is off for this run)";
+          throw new Error(`${message(error)}; no fallback: ${other}`);
         }
       }
       throw new Error("No AI provider answered.");
