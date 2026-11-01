@@ -35,11 +35,11 @@ export type PhraseGroup = (typeof PHRASE_GROUPS)[number];
 /** The bank, by purpose. A phrase's id is `<group>.<index + 1>`; add phrases at the end so ids stay. */
 export const PHRASES: Record<PhraseGroup, readonly string[]> = {
   encourage: [
-    "You're working hard on this, {name}.", "I like how you keep trying.", "Great effort!", "You're doing a good job sticking with it.",
+    "You're working hard on this, {name}.", "I like how you keep trying.", "Great effort!", "You're doing a good job. You keep trying.",
     "You've got this.", "I can see you're thinking carefully.", "Nice focus!", "I love how you're not giving up, {name}.",
-    "You're being really patient.", "Way to keep at it!", "I'm proud of how hard you're trying.", "You're a brave learner.",
-    "Nice and steady, {name}.", "Your effort is awesome.", "Thanks for trying so hard.", "I love your patience.", "You're showing real grit.",
-    "You keep showing up, {name}.",
+    "You're being really patient.", "Good for you for trying!", "I'm proud of how hard you're trying.", "You're a brave learner.",
+    "Nice and steady, {name}.", "Your effort is awesome.", "Thanks for trying so hard.", "I love your patience.", "You don't give up.",
+    "You keep trying, {name}.",
   ],
   empathy: [
     "This part can feel tricky.", "It's okay to find this hard.", "Lots of kids find this tricky.", "Trying again is how we learn.",
@@ -60,8 +60,8 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
   ],
   hearing: [
     "Sorry, I didn't catch it.", "Can you say it again, a bit slower?", "Could you say it again?", "I want to make sure I heard you.",
-    "Thanks for your patience.", "Let me listen again.", "My ears missed it, sorry.", "Could you say it a little louder?",
-    "I didn't quite hear you, {name}.", "Can you tell me again?", "Just a moment, I want to hear you properly.", "Sorry, it was hard to hear.",
+    "Thanks for your patience.", "Let me listen again.", "Sorry, I missed it.", "Could you say it a little louder?",
+    "I didn't quite hear you, {name}.", "Can you tell me again?", "Just a moment. I want to hear you properly.", "Sorry, it was hard to hear.",
   ],
   smalltalk: [
     "Hi! It's nice to meet you.", "Thanks for telling me.", "Maybe we can talk about it another time.",
@@ -86,32 +86,32 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
   ],
   family: [
     "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "I'd love to hear about {echo} after we finish.",
-    "Thanks for telling me about your family.", "How nice of you to tell me.", "I love hearing about the people in your life.", "Thanks for telling me!", "Every family is special.", "I like hearing about your world.", "Aw, thanks for telling me.", "It means a lot to me when you tell me things.", "Ooh, tell me later if you like.",
+    "Thanks for telling me about your family.", "How nice of you to tell me.", "I love hearing about the people in your life.", "Thanks for telling me!", "Every family is special.", "I like hearing about your world.", "Aw, thanks for telling me.", "I like it when you tell me things.", "Ooh, tell me later if you like.",
   ],
   school: [
     "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "I'd love to hear about {echo} after we finish.",
-    "Thanks for telling me about school.", "School has so many parts to it.", "Thanks for telling me!", "I like hearing about your day.", "How nice of you to tell me.", "Ooh, school news!", "Every school day is different.", "I love hearing about your world.", "Thanks for filling me in.",
+    "Thanks for telling me about school.", "School has so many parts to it.", "Thanks for telling me!", "I like hearing about your day.", "How nice of you to tell me.", "Ooh, school news!", "Every school day is different.", "I love hearing about your world.", "Thanks for telling me all about it.",
   ],
   games: [
     "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "I'd love to hear about {echo} after we finish.",
-    "Thanks for telling me about your game.", "Ooh, a game!", "Games come in so many kinds.", "Thanks for telling me!", "I love hearing what you like to play.", "How nice of you to tell me.", "I like hearing about your world.", "Ooh, how interesting.", "Thanks for filling me in.",
+    "Thanks for telling me about your game.", "Ooh, a game!", "Games come in so many kinds.", "Thanks for telling me!", "I love hearing what you like to play.", "How nice of you to tell me.", "I like hearing about your world.", "Ooh, how interesting.", "Thanks for telling me all about it.",
   ],
   food: [
     "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "I'd love to hear about {echo} after we finish.",
-    "Thanks for telling me about your food.", "Ooh, food talk!", "Thanks for telling me!", "I love hearing what you eat.", "How nice of you to tell me.", "Food is so interesting.", "I like hearing about your day.", "Ooh, how interesting.", "Thanks for filling me in.",
+    "Thanks for telling me about your food.", "Ooh, food talk!", "Thanks for telling me!", "I love hearing what you eat.", "How nice of you to tell me.", "Food is so interesting.", "I like hearing about your day.", "Ooh, how interesting.", "Thanks for telling me all about it.",
   ],
   sports: [
     "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "I'd love to hear about {echo} after we finish.",
-    "Thanks for telling me about your sport.", "Ooh, sports!", "Thanks for telling me!", "I love hearing what you play.", "How nice of you to tell me.", "Sports come in so many kinds.", "I like hearing about your world.", "Ooh, how interesting.", "Thanks for filling me in.",
+    "Thanks for telling me about your sport.", "Ooh, sports!", "Thanks for telling me!", "I love hearing what you play.", "How nice of you to tell me.", "Sports come in so many kinds.", "I like hearing about your world.", "Ooh, how interesting.", "Thanks for telling me all about it.",
   ],
   trips: [
     "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "I'd love to hear about {echo} after we finish.",
-    "Thanks for telling me about your trip.", "Ooh, a trip!", "Thanks for telling me!", "I love hearing about new spots.", "How nice of you to tell me.", "Every trip is different.", "I like hearing about your world.", "Ooh, how interesting.", "Thanks for filling me in.",
+    "Thanks for telling me about your trip.", "Ooh, a trip!", "Thanks for telling me!", "I love hearing about new spots.", "How nice of you to tell me.", "Every trip is different.", "I like hearing about your world.", "Ooh, how interesting.", "Thanks for telling me all about it.",
   ],
   tired: [
     "Feeling {echo} is okay.", "Sorry you're feeling {echo}.", "Thanks for telling me you're {echo}.",
-    "It's okay to feel tired.", "Let's go gently today.", "Thanks for keeping at it, even when tired.", "Thanks for telling me.",
-    "A deep breath can help.", "We'll take it easy.", "Being tired is normal.", "You can take a little break.", "I'll keep it short and sweet.",
+    "It's okay to feel tired.", "Let's go gently today.", "Thanks for trying, even when you're tired.", "Thanks for telling me.",
+    "A deep breath can help.", "We'll take it easy.", "Being tired is normal.", "You can take a little break.", "I'll keep it short.",
   ],
   happy: [
     "Yay, {echo}!", "I'm so glad you're {echo}!", "Feeling {echo} is great!",
@@ -121,7 +121,7 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
   bored: [
     "Feeling {echo} happens.", "Thanks for telling me you're {echo}.",
     "Thanks for telling me.", "Let's make this fun.", "We'll be quick.", "I'll try to keep it interesting.", "It's okay to feel bored sometimes.",
-    "Let's see if we can make it exciting.", "Thanks for sticking with it.", "Let's get through it together.", "I get it.", "Hang in there!",
+    "Let's see if we can make it exciting.", "Thanks for sticking with it.", "Let's get through it together.", "I get it.", "You're doing fine!",
   ],
   frustrated: [
     "Feeling {echo} is okay.", "Sorry you're feeling {echo}.", "Thanks for telling me you're {echo}.",
@@ -129,16 +129,16 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
     "You're not alone in this.", "I'm here to help.", "It's fine to feel stuck.", "Let's slow down a little.", "You're working really hard.",
   ],
   aboutmaya: [
-    "Great question! I'm an AI helper, not a person.", "I'm an AI, so I don't have a life like yours, but I love hearing about it!",
-    "I'm an AI, so I live inside the computer.", "Good question! I'm an AI, here just to help you.", "I'm an AI, so I don't do things the way people do.",
+    "Great question! I'm an AI helper, not a person.", "I'm an AI, so I don't have a life like yours. I love hearing about yours!",
+    "I'm an AI, so I'm not a person.", "Good question! I'm an AI, here just to help you.", "I'm an AI, so I don't do things the way people do.",
     "I'm not a person or a robot with arms. I'm an AI helper.", "I'm an AI, but I really enjoy talking with you.",
-    "I'm an AI, so I love hearing about you!", "Ha, I'm an AI, so I can't, but thanks for asking!",
+    "I'm an AI, so I love hearing about you!", "Ha, I'm an AI, so I can't. Thanks for asking!",
     "I'm an AI helper, so I'm a bit different from you.", "I'm an AI, and my favourite thing is helping you learn.",
     "Fun question! I'm an AI, but I love hearing about you.",
   ],
   back: [
     "Whenever you're ready, we'll get back to our question.", "When you're ready, we can go back to our question.",
-    "Our question is waiting for us when you're ready.", "We can go back to our question whenever you like.", "Shall we get back to our question?",
+    "Our question is still here when you're ready.", "We can go back to our question whenever you like.", "Shall we get back to our question?",
     "Shall we go back to our question together?", "Let's get back to our question when you're ready.", "Let's go back to our question together.",
     "Our question is still here for us.", "Back to our question whenever you're ready.", "Let's head back to our question.",
     "When you feel ready, we'll go back to our question.",
