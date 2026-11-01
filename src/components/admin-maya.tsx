@@ -10,7 +10,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } fro
 import { MayaBoard } from "@/components/maya-board";
 import type { PlayStep } from "@/lib/board-svg";
 import type { Outcome } from "@/lib/maya";
-import type { CallInput, CallView } from "@/lib/maya-call";
+import type { AlertStatus, CallInput, CallView, FlagLevel } from "@/lib/maya-call";
 import type { CallListRow, DemoChild } from "@/lib/maya-call-server";
 import { ADMIN_PATH, adminChildProfilePath, adminTestPath } from "@/lib/admin-view";
 import "./admin-maya.css";
@@ -43,6 +43,17 @@ export const ASSISTANCE_TEXT: Record<Outcome["assistance"], string> = {
   worked_example: "Easier example",
   guided: "Guided step by step",
   answer_given: "Maya gave the answer",
+};
+export const FLAG_TEXT: Record<FlagLevel, string> = {
+  safety_immediate: "Safety flag: immediate danger",
+  safety_concern: "Safety flag",
+  unsafe_request: "Harmful request",
+};
+const ALERT_TEXT: Record<AlertStatus, string> = {
+  sent: "Alert email sent",
+  sending: "Alert email sending",
+  refused: "Alert email not sent",
+  unknown: "Alert email may not have gone",
 };
 const PAPER_TEXT: Record<Outcome["paperStatus"], string> = { child_confirmed: "Child wrote it", declined: "Child said no", unknown: "Not known" };
 const UNDERSTANDING_TEXT: Record<Outcome["understanding"], string> = { evidence_observed: "Showed understanding", uncertain: "Not sure" };
@@ -144,7 +155,10 @@ export function MayaCallList({ calls }: { calls: CallListRow[] }) {
               <td className="adm-nowrap"><Link href={`${ADMIN_PATH}/maya/${c.id}`}>{when(c.createdAt)}</Link></td>
               <td>{c.childName ?? "Child"}</td>
               <td>{c.questionText}</td>
-              <td>{c.status === "live" ? <span className="adm-chip is-info">Live</span> : c.outcome ? <span className={`adm-chip ${c.outcome === "solved" ? "is-ok" : "is-muted"}`}>{REASON_TEXT[c.outcome]}</span> : "-"}</td>
+              <td>
+                {c.status === "live" ? <span className="adm-chip is-info">Live</span> : c.outcome ? <span className={`adm-chip ${c.outcome === "solved" ? "is-ok" : "is-muted"}`}>{REASON_TEXT[c.outcome]}</span> : "-"}
+                {c.flag && <> <span className="adm-chip is-bad">{FLAG_TEXT[c.flag]}</span></>}
+              </td>
               <td>{c.assistance ? ASSISTANCE_TEXT[c.assistance] : "-"}</td>
               <td className="adm-num">{c.seconds === null ? "-" : clock(c.seconds)}</td>
               <td className="adm-mono">{c.model}</td>
@@ -220,9 +234,11 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
         <div className="mc-chips">
           {live ? <span className="adm-chip is-info">Live</span> : <span className="adm-chip is-muted">Finished</span>}
           <ModelChip model={view.model} />
-          <span className="adm-chip is-muted">Test family · no minutes, no emails</span>
+          <span className="adm-chip is-muted">Test family · no minutes, no parent emails</span>
         </div>
       </header>
+
+      {view.flag && <FlagStrip view={view} live={live} onRetry={() => send({ type: "end" })} busy={busy} />}
 
       <div className="mc-grid">
         <section className="mc-maya" aria-label="The call">
@@ -295,6 +311,33 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
 
       {!live && <CallRecordFacts view={view} childName={childName} onRetry={() => send({ type: "end" })} busy={busy} error={error} />}
     </div>
+  );
+}
+
+/**
+ * The call's flag (#333) and its internal alert emails: sent, not sent (with why), or unknown. A live call sends a
+ * missing or refused alert again with its next turn; an ended call with the button.
+ */
+function FlagStrip({ view, live, onRetry, busy }: { view: CallView; live: boolean; onRetry: () => void; busy: boolean }) {
+  const flag = view.flag!;
+  const current = view.alerts.find((a) => a.level === flag.level);
+  const retry = !live && (!current || current.status === "refused");
+  return (
+    <section className="mc-flag" aria-label="Flag">
+      <p className="mc-flag-head"><span className="adm-chip is-bad">{FLAG_TEXT[flag.level]}</span> <span>Raised {when(flag.at)} · Read the conversation below</span></p>
+      <ul className="mc-flag-alerts">
+        {!current && <li><span className="adm-chip is-warn">No alert email yet</span> {live ? "The next turn sends it." : ""}</li>}
+        {view.alerts.map((a) => (
+          <li key={a.level}>
+            <span className={`adm-chip ${a.status === "sent" ? "is-ok" : a.status === "sending" ? "is-info" : "is-warn"}`}>{ALERT_TEXT[a.status]}</span>{" "}
+            {FLAG_TEXT[a.level]} · {when(a.claimedAt)}
+            {a.status === "unknown" && <span className="mc-flag-why"> Check the inbox before you send it by hand.</span>}
+            {a.error && <span className="mc-flag-why adm-mono"> {a.error}</span>}
+          </li>
+        ))}
+      </ul>
+      {retry && <p className="mc-retry"><button type="button" className="btn sm ghost adm-btn" onClick={onRetry} disabled={busy}>{busy ? "Sending…" : "Send the alert email again"}</button></p>}
+    </section>
   );
 }
 
