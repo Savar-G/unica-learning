@@ -8,6 +8,7 @@ import {
   nextActs,
   plainLanguageProblem,
   readAnswer,
+  readNumbers,
   readOptionsFor,
   rightForQuestion,
   step,
@@ -76,6 +77,9 @@ describe("reading spoken and typed fractions in a fraction call (#407)", () => {
     ["3 over 4", frac(3, 4)],
     ["three over four", frac(3, 4)],
     ["3/4", frac(3, 4)],
+    ["3 / 4", frac(3, 4)],
+    ["one hundred fourteen over sixteen", frac(114, 16)],
+    ["one hundred fourteen sixteenths", frac(114, 16)],
     ["a half", frac(1, 2)],
     ["one eighth", frac(1, 8)],
     ["one and three eighths", mixed(1, 3, 8)],
@@ -110,6 +114,47 @@ describe("reading spoken and typed fractions in a fraction call (#407)", () => {
     expect(readAnswer("three quarters").final).toBeNull();
     expect(readOptionsFor(C38)).toEqual({ fractions: true });
   });
+
+  it.each([
+    "I have seven over here. Eight.", "7 over here 8", "3 over\n4", "3. / 4",
+    "one third of it", "a half of them", "of it, three quarters",
+    "-1 3/8", "negative one and three eighths", "+1 3/8", "3/-4",
+    "1 5/4", "1 0/4", "0 3/4", "1 and five quarters",
+    "one hundred and fourteen sixteenths", "two thousand and three quarters",
+    "3 over", "/4", "3/4/5", "3 over 0", "3/0", "3 over four over five",
+    "3 over 4.5", "1.5 3/4", "three quarters/5",
+    "minus, uh, 1 3/8", "negative I think one and three eighths", "3 over one hundred and fourteen",
+    "three. quarters", "three\nquarters", "three over four and five", "1 and 0/4",
+  ])("confirms the complete unsupported expression %j without scoring its parts", (said) => {
+    expect(readAnswer(said, READ)).toMatchObject({ kept: [], final: null, sure: false });
+    expect(valuesIn(said, READ)).toEqual([]);
+    const c = call(C38, said);
+    expect(nextActs(c.s).acts).toEqual(["confirm"]);
+  });
+
+  it.each([
+    ["I got 66", [66]], ["sixty-six", [66]], ["sixty six", [66]],
+    ["sixty... no, sixty-six", [60, 66]], ["fifteen or fifty", [15, 50]],
+    ["seven plus nine is sixteen", [7, 9, 16]], ["two hundred and five", [205]],
+    ["one thousand two hundred", [1200]], ["1,234 and 7", [1234, 7]],
+    ["0.85", [0.85]], ["zero point six", [0.6]], ["no numbers here", []],
+    ["point eight five", [0.85]], ["negative point eight five", [-0.85]],
+    ["27. -66.", [27, -66]], ["65, no, 66", [65, 66]],
+    ["-172", [-172]], ["minus 172", [-172]], ["negative sixty six", [-66]],
+    ["300 minus 128", [300, 128]], ["300-128", [300, 128]], ["three hundred minus one hundred", [300, 100]],
+  ] as const)("keeps the whole-number reading of %j", (said, numbers) => {
+    const expected = numbers.map((value) => ({ type: "number", value }));
+    expect(readNumbers(said).values).toEqual(expected);
+    expect(valuesIn(said)).toEqual(expected);
+    expect(valuesIn(said, { fractions: false })).toEqual(expected);
+  });
+
+  it("limits the new mixed-number reading to fraction calls", () => {
+    const before = [{ type: "number", value: 1 }, frac(3, 8)];
+    expect(valuesIn("1 3/8")).toEqual(before);
+    expect(readNumbers("1 3/8").values).toEqual(before);
+    expect(valuesIn("1 3/8", READ)).toEqual([mixed(1, 3, 8)]);
+  });
 });
 
 describe("right answers follow the question's wording (#407, research C38)", () => {
@@ -130,6 +175,9 @@ describe("right answers follow the question's wording (#407, research C38)", () 
   it("never takes a form the package lists as wrong", () => {
     const listed = pkgOf("3/4 + 1/8 = ?", add(frac(3, 4), frac(1, 8)), EASY, [frac(14, 16)]);
     expect(rightForQuestion(listed, frac(14, 16))).toBe(false);
+    expect(isEqualForm(listed, frac(14, 16))).toBe(false);
+    const c = call(listed, "14/16");
+    expect(c.propose({ act: "guide", step: "result", level: 0, parts: [{ line: "check.equal", slots: { step: "result", heard: "14/16" } }], reading: { answers: [answer(frac(14, 16), "result", "wrong")] } }).refusal).not.toBeNull();
   });
 });
 
@@ -211,6 +259,26 @@ describe("the controller teaches fractions (#407)", () => {
   it("confirms a fraction form code does not read", () => {
     const c = call(C38, "three quarter");
     expect(nextActs(c.s).acts).toEqual(["confirm"]);
+  });
+
+  it("helps simplify the fractional part of a mixed answer and keeps its whole part", () => {
+    const pkg = pkgOf("3/4 + 1/2 = ? Write your answer in simplest form.", add(frac(3, 4), frac(1, 2)), EASY);
+    const c = call(pkg, "1 2/8");
+    const r = c.propose({ act: "guide", step: "result", level: 0, parts: [{ line: "check.equal", slots: { step: "result", heard: "1 2/8" } }], reading: { answers: [answer(mixed(1, 2, 8), "result", "wrong")] } });
+    expect(r.refusal).toBeNull();
+    expect(c.said(r)).toContain("1 2/8");
+    c.child("Help me.");
+    const h1 = c.propose({ act: "guide", step: "result", level: 1, parts: [{ line: "step.point", slots: { step: "result" } }], reading: { help: "more" } });
+    expect(h1.refusal).toBeNull();
+    expect(c.said(h1)).toMatch(/2.*8/);
+    c.child("More help.");
+    const h2 = c.propose({ act: "guide", step: "result", level: 2, parts: [{ line: "step.operation", slots: { step: "result" } }], reading: { help: "more" } });
+    expect(h2.refusal).toBeNull();
+    expect(c.said(h2)).toMatch(/by 2|Use 2/);
+    expect(c.s.equalForm).toEqual(mixed(1, 2, 8));
+    expect(c.said(h1) + c.said(h2)).not.toContain("1 1/4");
+    c.child("1 1/4");
+    expect(c.propose({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(mixed(1, 1, 4), "result", "right")] } }).refusal).toBeNull();
   });
 
   it("draws the fractions as strips, and the common denominator once that step is done", () => {

@@ -66,4 +66,4 @@ export function rightForQuestion(pkg: OperationPackage, value: AnswerValue): boo
  * question asks for the simplest form. It is not a wrong answer: the child did the adding, and simplifies next.
  */
 export const isEqualForm = (pkg: OperationPackage, value: AnswerValue): boolean =>
-  EQUAL_FORM_KINDS.includes(pkg.operation.kind) && isFractionForm(value) && equivalent(value, pkg.answer.value) && !rightForQuestion(pkg, value);
+  asksSimplest(pkg) && EQUAL_FORM_KINDS.includes(pkg.operation.kind) && isFractionForm(value) && equivalent(value, pkg.answer.value) && !rightForQuestion(pkg, value);

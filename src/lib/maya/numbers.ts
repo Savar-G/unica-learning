@@ -65,6 +65,8 @@ const ORDINAL = /\d(?:st|nd|rd|th)s?\b/i;
  */
 const MIXED = /(?<![\d.,/])(\d+) (\d+) ?\/ ?(\d+)(?!\d|\.\d|\s*\/)/g;
 const MIX_MARK = "\u2064";
+/** An unsupported fraction expression. None of its number parts may be scored. */
+const UNREAD_MARK = "\u2063";
 
 /** Every minus sign as "-": the true minus and the dashes speech-to-text may write. */
 const plainMinus = (text: string) => text.replace(/[\u2212\u2012\u2013\u2014\uFE63\uFF0D]/g, "-");
@@ -84,8 +86,9 @@ export interface NumbersRead {
  * A sentence end or a new line (between two turns) ends a number, so "27. -66." is 27 and -66.
  */
 export function readNumbers(text: string): NumbersRead {
+  if (text.includes(UNREAD_MARK)) return { values: [], unreadable: true, lastInOperation: false };
   // A hyphen between words joins a number ("sixty-six"); elsewhere it is a minus sign.
-  const tokens = plainMinus(text).toLowerCase().replace(/([a-z])-(?=[a-z])/g, "$1 ").replace(MIXED, `$1${MIX_MARK}$2/$3`).match(TOKEN) ?? [];
+  const tokens = plainMinus(text).toLowerCase().replace(/([a-z])-(?=[a-z])/g, "$1 ").match(TOKEN) ?? [];
   // First the numbers, with a fraction bar, a remainder mark or a mixed-number mark where one was said; then each "number
   // bar number" becomes a fraction, each "number mix number bar number" a mixed number and each "number R number" a
   // remainder answer.
@@ -264,7 +267,7 @@ export interface ReadOptions {
 }
 
 /** The text as the readers take it: in a fraction call, with its spoken fractions written (writtenFractions). */
-const prepared = (text: string, options?: ReadOptions) => (options?.fractions ? writtenFractions(text) : text);
+const prepared = (text: string, options?: ReadOptions) => (options?.fractions ? writtenFractions(text).replace(MIXED, `$1${MIX_MARK}$2/$3`) : text);
 
 /** The denominator words code reads, one word each, singular and plural: "half" and "halves" are 2. */
 const DENOMINATORS = new Map<string, { value: number; plural: boolean }>();
@@ -297,70 +300,91 @@ const AFTER_ONE = /^(?:[.,!?;:\n+=×÷-]|of|and|or|is|plus|minus|because|cause|s
  */
 export function writtenFractions(text: string): string {
   const low = plainMinus(text).toLowerCase().replace(/([a-z])-(?=[a-z])/g, "$1 ");
-  // The positions below are the text's own: a text whose lower case changes length is left as said (Maya confirms).
-  if (low.length !== text.length) return text;
-  const words = [...low.matchAll(/[a-z]+|\d+|\S|\n/g)].map((m) => ({ t: m[0], at: m.index ?? 0, end: (m.index ?? 0) + m[0].length }));
-  const spans: { from: number; to: number; text: string }[] = [];
-  /** The whole number that ends at word `end` (digits, or a run of number words read as one number), or null. */
-  const numberBefore = (end: number): { value: number; start: number } | null => {
-    if (end < 0) return null;
-    if (/^\d+$/.test(words[end].t)) {
-      // Not part of a decimal, a fraction or a longer written number ("0.5 halves", "1/2 thirds").
-      if (end > 0 && /^[.,/]$/.test(words[end - 1].t) && words[end - 1].end === words[end].at) return null;
-      return { value: Number(words[end].t), start: end };
-    }
-    let start = end;
-    while (start >= 0 && kindOf(words[start].t) !== null) start -= 1;
-    start += 1;
-    if (start > end || (start > 0 && words[start - 1].t === "point")) return null;
-    const r = readNumbers(words.slice(start, end + 1).map((w) => w.t).join(" "));
-    return r.values.length === 1 && r.values[0].type === "number" && Number.isSafeInteger(r.values[0].value) && !r.unreadable
-      ? { value: r.values[0].value, start } : null;
+  // A lower-case conversion that changes offsets cannot be parsed safely.
+  if (low.length !== text.length) return UNREAD_MARK;
+  const words = [...low.matchAll(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+|[a-z]+|\S|\n/g)]
+    .map((m) => ({ t: m[0], at: m.index, end: m.index + m[0].length }));
+  type Span = { from: number; to: number; text: string };
+  const spans: Span[] = [];
+  // An operand must touch the bar, or have only horizontal space between it and the bar. Never cross a sentence.
+  const adjacent = (a: number, b: number) => a >= 0 && b < words.length && /^[ \t]*$/.test(low.slice(words[a].end, words[b].at));
+  const numeric = (i: number) => i >= 0 && i < words.length && (/^(?:\d|\.\d)/.test(words[i].t) || kindOf(words[i].t) !== null);
+  /** One complete nonnegative integer, without "and". A run such as "six sixty" has no reading. */
+  const integer = (at: number, direction: -1 | 1) => {
+    if (at < 0 || at >= words.length) return null;
+    let from = at;
+    let to = at;
+    if (kindOf(words[at].t) !== null) {
+      while (direction < 0 && from > 0 && kindOf(words[from - 1].t) !== null && adjacent(from - 1, from)) from -= 1;
+      while (direction > 0 && to + 1 < words.length && kindOf(words[to + 1].t) !== null && adjacent(to, to + 1)) to += 1;
+    } else if (!/^\d+$/.test(words[at].t)) return null;
+    const read = readNumbers(low.slice(words[from].at, words[to].end));
+    const v = read.values[0];
+    return !read.unreadable && read.values.length === 1 && v.type === "number" && Number.isSafeInteger(v.value) && v.value >= 0
+      ? { from, to, value: v.value } : null;
   };
-  const opAfter = (k: number) => {
-    // "three quarters of 8", "half of the 12": an operation, not a fraction the child gives.
-    if (words[k + 1]?.t !== "of") return false;
-    let j = k + 2;
-    while (LINK.test(words[j]?.t ?? "")) j += 1;
-    return /^\d/.test(words[j]?.t ?? "") || kindOf(words[j]?.t ?? "") !== null;
-  };
+  const invalid = (at: number) => spans.push({ from: at, to: at, text: UNREAD_MARK });
   for (let k = 0; k < words.length; k++) {
-    const den = DENOMINATORS.get(words[k].t);
-    if (!den || opAfter(k)) continue;
-    let numerator: { value: number; start: number } | null = null;
-    if (!den.plural && (words[k - 1]?.t === "a" || words[k - 1]?.t === "an")) numerator = { value: 1, start: k - 1 };
-    else numerator = numberBefore(k - 1);
-    if (!numerator || (numerator.value === 1) === den.plural) continue;
-    if (!den.plural && !(k + 1 >= words.length || AFTER_ONE.test(words[k + 1].t))) continue;
-    // A number left of the numerator that joins it ("sixty six sixteenths" read as "sixty" and "six") is no exact form.
-    if (numerator.start > 0 && /^\d+$/.test(words[numerator.start - 1].t) && words[numerator.start - 1].end === words[numerator.start].at) continue;
-    spans.push({ from: numerator.start, to: k, text: `${numerator.value}/${den.value}` });
-  }
-  // A whole number, "and", then a proper fraction, written or read above: a mixed number.
-  const fractionAt = (i: number): { to: number; n: number; d: number } | null => {
-    const spoken = spans.find((x) => x.from === i);
-    if (spoken) {
-      const [n, d] = spoken.text.split("/").map(Number);
-      return { to: spoken.to, n, d };
+    const token = words[k].t;
+    const bar = token === "/" || token === "over";
+    const den = DENOMINATORS.get(token);
+    if (!bar && !den) continue;
+    const article = den && !den.plural && /^(?:a|an)$/.test(words[k - 1]?.t ?? "");
+    const n = article ? { from: k - 1, to: k - 1, value: 1 } : integer(k - 1, -1);
+    const d = bar ? integer(k + 1, 1) : { from: k, to: k, value: den!.value };
+    // Ordinals and clock wording stay ordinary words: "a third time", "a quarter past 3".
+    if (!bar && !n) {
+      if (den!.plural) invalid(k);
+      continue;
     }
-    const [a, bar, b] = [words[i], words[i + 1], words[i + 2]];
-    if (a && bar && b && /^\d+$/.test(a.t) && (bar.t === "/" || bar.t === "over") && /^\d+$/.test(b.t)) return { to: i + 2, n: Number(a.t), d: Number(b.t) };
-    return null;
-  };
-  const mixed: { from: number; to: number; text: string }[] = [];
-  for (let i = 1; i < words.length; i++) {
-    if (words[i].t !== "and") continue;
-    const f = fractionAt(i + 1);
-    const w = numberBefore(i - 1);
-    if (!f || !w || w.value < 1 || f.n < 1 || f.n >= f.d) continue;
-    mixed.push({ from: w.start, to: f.to, text: `${w.value} ${f.n}/${f.d}` });
+    if (den && !den.plural && !(k + 1 >= words.length || AFTER_ONE.test(words[k + 1].t))) continue;
+    if (!n || !d || !adjacent(n.to, k) || (bar && !adjacent(k, d.from)) || d.value === 0 ||
+        (den && (n.value === 1) === den.plural)) {
+      invalid(k);
+      continue;
+    }
+    let from = n.from;
+    const to = d.to;
+    let value = `${n.value}/${d.value}`;
+    const and = words[from - 1]?.t === "and" && adjacent(from - 1, from);
+    const typedMixed = bar && token === "/" && /^\d+$/.test(words[n.from].t) &&
+      /^\d+$/.test(words[from - 1]?.t ?? "") && low.slice(words[from - 1].end, words[from].at) === " ";
+    if (and || typedMixed) {
+      const w = integer(from - (and ? 2 : 1), -1);
+      // "one hundred and fourteen sixteenths" is ambiguous, not 100 14/16.
+      if (!w || !adjacent(w.to, from - (and ? 1 : 0)) || w.value < 1 || n.value < 1 || n.value >= d.value ||
+          /^(?:hundred|thousand)$/.test(words[w.to].t)) {
+        invalid(k);
+        continue;
+      }
+      from = w.from;
+      value = `${w.value} ${value}`;
+    }
+    // No leftover number, decimal point, sign, "and", or extra fraction bar may attach to this expression.
+    const joins = (i: number) => /^(?:and|point|minus|negative|dash|over|\/|[+\-])$/.test(words[i]?.t ?? "") || numeric(i);
+    const before = from - 1;
+    const after = to + 1;
+    const attachedBefore = before >= 0 && adjacent(before, from) && joins(before);
+    const attachedAfter = after < words.length && adjacent(to, after) && (numeric(after) || /^(?:and|over|\/)$/.test(words[after].t) || DENOMINATORS.has(words[after].t));
+    // A fraction of anything, including a pronoun, is an operation. Never drop "of it" to keep the fraction.
+    let left = from;
+    let right = to;
+    while (left > 0 && !/^[.!?;:\n]$/.test(words[left - 1].t)) left -= 1;
+    while (right + 1 < words.length && !/^[.!?;:\n]$/.test(words[right + 1].t)) right += 1;
+    const ofPhrase = words.slice(left, right + 1).some((w) => w.t === "of");
+    const signed = words.slice(left, right + 1).some((w) => /^(?:minus|negative|dash|[+\-])$/.test(w.t));
+    if (attachedBefore || attachedAfter || ofPhrase || signed) invalid(k);
+    else spans.push({ from, to, text: value });
   }
-  const all = [...mixed, ...spans.filter((x) => !mixed.some((m) => x.from >= m.from && x.to <= m.to))].sort((a, b) => a.from - b.from);
+  // Overlapping expressions ("3/4/5") are unsupported as a whole, never separate fractions.
+  spans.sort((a, b) => a.from - b.from);
   let out = "";
   let from = 0;
-  for (const x of all) {
-    out += text.slice(from, words[x.from].at) + x.text;
-    from = words[x.to].end;
+  for (const span of spans) {
+    const start = words[span.from].at;
+    if (start < from) { out += UNREAD_MARK; continue; }
+    out += text.slice(from, start) + span.text;
+    from = words[span.to].end;
   }
   return out + text.slice(from);
 }
@@ -624,7 +648,7 @@ export function readAnswer(said: string, options?: ReadOptions): AnswerRead {
   const kept = unsure ? [] : all.unreadable ? answer.values : all.values;
   // Sure: no doubt anywhere from the first number on, and the final answer stands only among plain answer words.
   // The explanation is read too, so nothing can hide behind "because" (R391-8-2).
-  const sure = !unsure && !doubtNearAnswer(text) && committedFinal(withoutExplanations(committed)) && plainExplanations(committed);
+  const sure = !unsure && (!options?.fractions || !answer.unreadable) && !doubtNearAnswer(text) && committedFinal(withoutExplanations(committed)) && plainExplanations(committed);
   return { kept, final, choice: false, sure };
 }
 

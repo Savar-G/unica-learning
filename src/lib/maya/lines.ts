@@ -721,7 +721,8 @@ export function packageLines(pkg: OperationPackage) {
     equal: (form: AnswerValue, words: string): LineOffer[] =>
       [offer("check.equal", "check.equal", { heard: valueText(form), form: words }, { slots: { step: "result", heard: valueText(form) }, requires: { answer: "equal", step: "result", heard: valueText(form) } })],
     /** The H1 and H2 help to simplify the child's own equal fraction, on the final step (#407). */
-    simplifyOwn: (form: AnswerValue): LineOffer[] => (form.type === "fraction" ? simplifyLines(form, { step: "result" }) : []),
+    simplifyOwn: (form: AnswerValue): LineOffer[] =>
+      (form.type === "fraction" || form.type === "mixed" ? simplifyLines(form, { step: "result" }) : []),
     writeYours: (): LineOffer[] => [offer("write.yours", "write.yours", {})],
     /** "Did you say 15?" for each number Maya may have heard, and "15 or 50?" for each pair that sound alike. */
     heard: (values: readonly AnswerValue[], pairs: readonly [AnswerValue, AnswerValue][]): LineOffer[] => [

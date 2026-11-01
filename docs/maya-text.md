@@ -70,12 +70,16 @@ Maya teaches adding and subtracting two fractions (`fraction-add`, `fraction-sub
 |---|---|
 | three quarters, three fourths, 3 over 4, 3/4 | 3/4 |
 | fourteen sixteenths, 7 eighths | 14/16, 7/8 |
-| a half, one eighth (at the end of a clause, or before "of", "and", "is", "plus", "because") | 1/2, 1/8 |
+| a half, one eighth (at the end of a clause, or before "is", "plus", "because") | 1/2, 1/8 |
 | one and three eighths, 2 and a half, 1 and 3/4, 1 3/8 | 1 3/8, 2 1/2, 1 3/4, 1 3/8 |
 | three quarter, one quarters, 7 8ths, five twenty-fourths, three quarters of 8, six sixty sixteenths | unread: confirmed |
 | a third time, a quarter past 3 | not a fraction |
 
+Each fraction must be one complete expression. The operands must be next to the slash or "over". A sentence end or a new line cannot join them. Maya confirms incomplete or repeated fractions, zero denominators, signed fractions, and mixed forms with an improper fractional part. No number part of these forms is scored. Maya also confirms a fraction with an "of" phrase, including "of it", or an "and" inside its number words. Only a fraction call reads a mixed answer as one value.
+
 **Right answers.** `rightForQuestion` (`src/lib/maya/fractions.ts`): the package's rules (`isRightAnswer`: the answer or any simplest form, so 11/8 and 1 3/8 are both right), and an equal fraction in another form (14/16 for 7/8) unless the question asks for the simplest form or lowest terms, or the package lists that form as wrong. Maya says an accepted equal form back as the child said it ("Yes! 3/4 + 1/8 = 14/16.", "Please write 14/16 on your paper.") and does not bring up simplest form. When the question asks for it, an equal fraction is the right amount (`isEqualForm`): not a wrong final answer and not a failed attempt; every work step counts as done; Maya says `check.equal` in the question's own words, and the final step's help adds H1 and H2 lines to simplify the child's own fraction.
+
+For a mixed answer such as `1 2/8`, this help uses the fractional part (`2/8`) and keeps the whole part (`1`). A form listed as wrong does not enable `check.equal` unless the question asks for simplest form. These checks do not change which fraction questions Maya teaches. The fraction lines still need Savar's approval.
 
 **Steps.** The package's steps: the common denominator (`3/4 = 6/8`; the child says 6/8 or 6, never 3/4), the numerators (`6 + 1 = 7`), and the simplest form only when the question asks for it (`teachSteps`). The mixed number is never a step. No help line, judged step or shown step says the final fraction: the child puts it together on the final step. Saying back an equal form the child said is not giving the answer away; the answer's own written form is.
 
