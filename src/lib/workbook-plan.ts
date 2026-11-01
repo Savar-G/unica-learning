@@ -764,9 +764,10 @@ export function planWorkbook(input: PlanInput): PlanResult {
           case "spot-the-error": return unitPart(k, t, 1);
           case "practice": {
             if (shape.role === "practice-2") return unitPart(k, t, 12);
-            // A parent-led page shared with a New idea or with picture stories keeps the page within 6 to 10 items.
+            // A parent-led page shared with a New idea or with picture stories keeps the page within 6 to 10 items. Beside
+            // picture stories, practice takes the page's 6 cards: Watch one, two to finish and two on your own (#380).
             const items = parentLed && shape.role === "slot" && shape.parts.length > 1 ? 3
-              : parentLed && shape.parts.some((x) => x.kind === "picture-stories") ? 4 : 8;
+              : parentLed && shape.parts.some((x) => x.kind === "picture-stories") ? 5 : 8;
             return unitPart(k, t, items, { faded: { watch: 1, finish: 2 } });
           }
           case "solve-it-two-ways": return unitPart(k, "A", 1, { methods: ["Method 1", "Method 2"] });

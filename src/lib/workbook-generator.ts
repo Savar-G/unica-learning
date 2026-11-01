@@ -241,7 +241,51 @@ interface Slot {
   part: PlannedPart;
   place: SlotName | null;
   layoutSlot: number;
+  /** The skill and the kind of question code chose for the slot (#380): the skill's kinds in turn through the book. */
+  aim?: { skill: string; kind: QuestionKind; orElse: QuestionKind[] };
 }
+
+/** The kinds of question code turns through for a skill, so its questions differ (#380). */
+export const QUESTION_KINDS = ["story", "picture", "fact", "missing-part", "sequence", "order", "relation", "pattern", "draw"] as const;
+export type QuestionKind = (typeof QUESTION_KINDS)[number];
+
+/** What each kind asks, for the AI. */
+const KIND_WORDS: Record<QuestionKind, string> = {
+  story: "a short story with a person and things, asking for a number (write-number with an operation)",
+  picture: "the child reads a picture (figure dots or ten-frame): a count, or a sum the picture shows",
+  fact: "a bare fact with no story: '6 + 3 = ?', 'What is 1 more than 6?'",
+  "missing-part": "a missing part (missing-addend): '4 and what make 9?', 'How far is 7 from 10?'",
+  sequence: "the sequence format: missing numbers in a count",
+  order: "the order format: 2 to 4 numbers to put in order",
+  relation: "the relation format: the child circles one of two choices code writes (less than 5 or not; close to 0 or 10; equal or not; which has more)",
+  pattern: "the pattern format",
+  draw: "the draw format: the child draws, a parent checks",
+};
+
+/**
+ * The kinds of question a skill takes, from its words, in the order code turns through them. A relation comes first
+ * for a skill about less than, close to, equal or more; a count for a skill about how many; a story for adding and
+ * taking away.
+ */
+export function kindsOf(text: string): QuestionKind[] {
+  const t = text.toLowerCase();
+  if (/less than \d|benchmark|close to/.test(t)) return ["relation", "picture", "missing-part", "relation", "story"];
+  if (/\bequal\b|balance/.test(t)) return ["relation", "missing-part", "story", "relation", "picture"];
+  if (/compare|which has more|greater|which group has more/.test(t)) return ["relation", "picture", "order", "story"];
+  if (/\border\b/.test(t)) return ["order", "sequence", "relation"];
+  if (/1 more|2 more|more and \d|less than a quantity/.test(t)) return ["fact", "story", "picture", "sequence", "missing-part"];
+  if (/before or just after|sequence|count forward|count on|count back|skip-count|count to/.test(t)) return ["sequence", "fact", "picture"];
+  if (/make 5|make 10|part|decompose|ways to make|partners/.test(t)) return ["missing-part", "picture", "story", "fact"];
+  if (/pattern/.test(t)) return ["pattern", "draw"];
+  if (/how many|count|subitize|frame|numeral|graph/.test(t)) return ["picture", "story", "draw", "fact"];
+  if (/add|take|subtract|change|purchase|total|sum|double|fact/.test(t)) return ["story", "picture", "fact", "missing-part"];
+  return ["draw", "story"];
+}
+
+/** Places whose format is fixed by their layout: code chooses no kind there. */
+const FIXED_KIND_PLACES: ReadonlySet<SlotName> = new Set<SlotName>([
+  "warm-up", "spot-the-error", "solve-it-two-ways", "mixed-set", "how-do-you-know", "fix-it", "challenge", "math-in-the-world", "in-your-head", "try-first",
+]);
 
 const slotsOf = (page: PlannedPage): Slot[] =>
   page.parts.flatMap((part, i) => Array.from({ length: part.items }, (_, j) => ({ id: `${i + 1}.${j + 1}`, part, place: null, layoutSlot: -1 })));
@@ -277,8 +321,12 @@ const SYSTEM = [
   "Room: a slot may give its room: the most characters its question text has room for on the printed page (characters), in lines of about perLine characters. Count the characters of the text, spaces included, and stay within it: the page has no room for more, and nothing is shrunk to fit. Say it short: '3 cars. 2 more come. How many now?', not a long story. On a card (lines 2), writing lines (written-reason) or a tall picture (number-line, base-ten) take the place of a line: then write one line at most. A ten-frame on a card is taller than its answer box: with a ten-frame, write one line. A written-reason card's lines take as much room as 2 lines of text, so a page of cards has at most 2 written-reason items. For another question with no number answer (Equal? Which has more?), use draw ('Draw 3 dots and 3 dots. Circle the bigger group.'): a parent checks it and it takes the room of an answer box. A write-number item always needs an operation.",
   "Vary: every page is written alone, and other days practise the same skills. So no two questions of a page are the same, and each slot gives a vary number: make it one of the item's numbers (its first number, its total or its count) when the rules allow, so the pages of different days differ.",
   "Pictures must show what the text says. A dots picture of a subtraction crosses out the dots taken away: use it only for take-away, never to compare two groups (how many more red than blue? has no picture). A missing part's picture shows only the part given. There is no five-frame picture: a five-frame question has no picture.",
+  "Aim: a slot may give its aim: a skill and a kind of question code chose for it (what the kind means is in means). Write that kind of question on that skill. Only when that kind cannot ask that skill, use the first kind of orElse that can, or another of the slot's skills.",
+  "Relation format: give numbers (one number, or two) and relation: kind less-than (to: [the benchmark], as 'Is 7 less than 5?'), closer (to: [two benchmarks], as 'Is 8 close to 0 or 10?', never halfway), equal (two numbers: 'Equal or not?'), more or fewer (two numbers and labels: one short word for each, as cats and dogs: 'Who has more?'). Code writes the choices the child circles and the answer; the text never says the answer. No < or > signs.",
+  "A picture of a missing part shows the part given or the total: say which in figureShows ('Mia has 3. How many more make 8?' shows the part, 3; 'Ten-frame: 8 dots. 5 and how many more?' shows the total, 8). Any number the text says the picture shows ('8 dots', 'Ten-frame: 8') is what code draws.",
+  "One question per item: the text never holds a worked fact or a second task ('5 and 0 more is 5. Show 6.' is not a question). A draw item says what to draw and never asks how many, which number or who; ask which has more with a relation item.",
   "Asked: a slot may list asked, the questions the book already asks on its skills. Never repeat one of them. On this page, no two questions may be the same, work the same sum, or differ only by one number when another kind of question is possible: change the kind (a story, a picture to count, a missing part, a sequence), not only a number.",
-  "Examples: the request may list examples. Each is the worked example a panel (worked-example, watch-one, reminder) shows for its own skill: fill it like a slot, with its id and on that skill only. Give a small sum of the skill (write-number with an operation), or a count, sequence or order item code can show done. It is not printed as a question, so it has no room limit.",
+  "Examples: the request may list examples. Each is the worked example a panel (worked-example, watch-one, reminder) shows for its own skill: fill it like a slot, with its id and on that skill only, of the kind its aim gives. Give a small sum of the skill (write-number with an operation), or a count, sequence, order or relation item code can show done. It is not printed as a question, so it has no room limit.",
   "A count from one number to another ('Count from 2 to 7', 'Count back from 10 to 1') is the sequence format, starting and ending at those numbers; if the text says 'start at 2', the sequence starts at 2.",
   "On a skill about 1 more and 1 less (or 2 more and 2 less), each item asks one of them: 'What is 1 more than 7?' in one slot, 'What is 1 less than 7?' in another, each with its operation (7 + 1, 7 - 1).",
   "A missing-addend's only worked step is named count: a wrong answer's step is count or null. Every item with an operation has at least one wrong answer and an easier example. Fill every slot and every example you are asked for, each with its own id.",
@@ -360,12 +408,14 @@ function pageRequest(input: GenerateInput, w: PageWork, slots: Slot[], note: str
         ...(room ? { room: { characters: room.characters, perLine: room.perLine, lines: room.lines } } : {}),
         vary: varyNumber(`${day}:${page.number}:${s.id}`, max),
         ...(memory ? { asked: asked(s.part.skills) } : {}),
+        ...(s.aim ? { aim: { skill: s.aim.skill, kind: s.aim.kind, means: KIND_WORDS[s.aim.kind], orElse: s.aim.orElse } } : {}),
       };
     }),
     ...(panels.length ? {
       examples: panels.map((x) => {
         const numbers = slotRanges(curriculum, plan.level, [x.skill]);
-        return { slot: x.id, panel: x.place, skills: [x.skill], numbers, rules: { [x.skill]: rangeRules(x.skill, numbers[x.skill]) } };
+        const kind = kindsOf(curriculum.skill(x.skill)?.text ?? x.skill).find((k) => k !== "draw" && k !== "story") ?? "fact";
+        return { slot: x.id, panel: x.place, skills: [x.skill], numbers, rules: { [x.skill]: rangeRules(x.skill, numbers[x.skill]) }, aim: { skill: x.skill, kind, means: KIND_WORDS[kind] } };
       }),
     } : {}),
     note,
@@ -424,11 +474,25 @@ interface Panel {
   skill: string;
 }
 
-/** What the book has asked so far (#380, round 3): each skill's question texts, and each question's key with its page. */
+/**
+ * What the book has asked so far (#380): each skill's question texts, each question's key with its page, and each
+ * question shape (outside practice) with the pages it is on.
+ */
 interface BookMemory {
   texts: Map<string, string[]>;
   keys: Map<string, number>;
+  shapes: Map<string, number[]>;
 }
+
+/**
+ * A question's shape: its words without numbers, names or other capitalised words, and punctuation ("Mia has 3. How many
+ * more make 10?" and "Ben has 6. How many more make 9?" are one shape: "has many more make").
+ */
+export const shapeOf = (text: string) => text.split(/\s+/).map((w) => w.replace(/[^A-Za-z]/g, "")).filter((w) => w && !/^[A-Z]/.test(w)).join(" ").toLowerCase();
+/** Practice places ask one step again and again on purpose: no shape limit there. */
+const PRACTICE_PLACES: ReadonlySet<SlotName> = new Set<SlotName>(["warm-up", "finish-these", "on-your-own", "practice-row", "unit-b-practice", "now-you"]);
+/** How many questions of one shape a book may have outside practice. */
+const SHAPE_MOST = 3;
 
 const plainText = (t: string) => t.toLowerCase().replace(/[^a-z0-9+=?×÷−-]+/g, " ").trim();
 /** A question's key: its words and numbers, and for an item with no operation its data too ("How many dots?" twice with other dots is not a repeat). */
@@ -448,6 +512,9 @@ function duplicateProblem(p: QuestionPackage, place: SlotName | null, memory: Bo
   // Warm-up facts come back day after day on purpose (fluency): only a repeat on the same page counts there.
   const at = place === "warm-up" ? undefined : memory?.keys.get(key);
   if (at !== undefined) return `it repeats a question already asked on page ${at} ("${p.text}"): write a different question`;
+  const shape = shapeOf(p.text);
+  const onPages = place && !PRACTICE_PLACES.has(place) && shape ? memory?.shapes.get(shape) ?? [] : [];
+  if (onPages.length >= SHAPE_MOST) return `the book already asks this kind of question ${onPages.length} times (pages ${[...new Set(onPages)].join(", ")}): ask another kind of question`;
   for (const s of siblings) {
     if (dupKey(s.package) === key) return `it is the same as question ${s.number} on this page ("${s.package.text}")`;
     const op = opKey(p);
@@ -455,6 +522,7 @@ function duplicateProblem(p: QuestionPackage, place: SlotName | null, memory: Bo
     const [a, b] = [numbersIn(p.text), numbersIn(s.package.text)];
     if (place && REVIEW_PLACES.has(place) && a.length > 0 && a.length === b.length && plainText(p.text).replace(/\d+/g, "#") === plainText(s.package.text).replace(/\d+/g, "#")
       && a.filter((x, i) => x !== b[i]).length <= 1) return `it differs from question ${s.number} on this page ("${s.package.text}") only by one number: ask another kind of question`;
+    if (place && !PRACTICE_PLACES.has(place) && shape && shape === shapeOf(s.package.text)) return `it asks the same kind of question as question ${s.number} on this page ("${s.package.text}") with other numbers or names: ask another kind of question`;
   }
   return null;
 }
@@ -464,6 +532,8 @@ function remember(memory: BookMemory, page: number, questions: GeneratedQuestion
   for (const q of questions) {
     if (!q.package) continue;
     if (!memory.keys.has(dupKey(q.package))) memory.keys.set(dupKey(q.package), page);
+    const shape = shapeOf(q.package.text);
+    if (shape && q.place && !PRACTICE_PLACES.has(q.place) && q.check.status !== "failed") memory.shapes.set(shape, [...(memory.shapes.get(shape) ?? []), page]);
     for (const k of q.package.skill.skills) memory.texts.set(k, [...(memory.texts.get(k) ?? []), q.package.text]);
   }
 }
@@ -491,8 +561,8 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
     });
     if (out.error && !out.items.has(x.id)) b.check = { status: "failed", reason: `the AI gave no answer: ${out.error}` };
     const pkg = b.package;
-    if (b.check.status !== "failed" && pkg && !pkg.operation && !pkg.item?.checks.some((c) => c.kind === "count" || c.kind === "sequence" || c.kind === "order")) {
-      b.check = { status: "failed", reason: "a panel's worked example is a sum, a count, a sequence or an order code can work out" };
+    if (b.check.status !== "failed" && pkg && !pkg.operation && !pkg.item?.checks.some((c) => c.kind === "count" || c.kind === "sequence" || c.kind === "order" || c.kind === "relation")) {
+      b.check = { status: "failed", reason: "a panel's worked example is a sum, a count, a sequence, an order or a relation code can work out" };
     }
     if (b.check.status !== "failed" && pkg) {
       const problem = rangeProblem(pkg, input.curriculum, input.plan.level);
@@ -552,7 +622,7 @@ function hintFor(reason: string): string | null {
   if (/needs an operation code can compute/.test(reason)) return "A question with no number answer is a draw item (a parent checks it); else give the operation.";
   if (/has no easier example/.test(reason)) return "Give an easier example of the same kind: a smaller missing part (3 + ? = 4 for 3 + ? = 5), or smaller numbers (1 + 1 for 2 + 1).";
   if (/but its answer is the operation's number/.test(reason)) return "Ask for the number the operation gives, or make it a draw item.";
-  if (/repeats a question|same as question|same sum as question|only by one number/.test(reason)) return "Write a different question: another kind (a story, a picture to count, a missing part, a sequence) or other numbers, never one in the slot's asked list.";
+  if (/repeats a question|same as question|same sum as question|only by one number|same kind of question|this kind of question/.test(reason)) return "Write a different question: another kind (a story, a picture to count, a missing part, a sequence) or other numbers, never one in the slot's asked list.";
   if (/is a count: write it as the sequence format|the sequence goes from|the sequence starts at/.test(reason)) return "Make it a sequence item whose first and last numbers are the ones the text says.";
   if (/gives its own answer|adding or taking away 0/.test(reason)) return "Ask for a number the child works out; the text gives only what the child needs.";
   return null;
@@ -749,6 +819,25 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
       work.push({ number: ++number, day: day.day, page, layout, slots: layout ? layoutSlots(page, layout) : slotsOf(page), panels });
     }
   }
+  // Each slot's skill and kind of question, in book order: a part's skills in turn, and each skill's kinds in turn
+  // through the book, so the same skill is not asked the same way page after page (#380).
+  if (input.book) {
+    const turns = new Map<string, number>();
+    for (const w of work) {
+      const inPart = new Map<PlannedPart, number>();
+      for (const slot of w.slots) {
+        const k = inPart.get(slot.part) ?? 0;
+        inPart.set(slot.part, k + 1);
+        if (!slot.place || FIXED_KIND_PLACES.has(slot.place) || slot.part.skills.length === 0) continue;
+        const skill = slot.part.skills[k % slot.part.skills.length];
+        const kinds = kindsOf(input.curriculum.skill(skill)?.text ?? skill).filter((x) => slot.place === "picture-stories" || slot.place === "word-problems" ? x === "story" || x === "picture" || x === "missing-part" : true);
+        if (kinds.length === 0) continue;
+        const n = turns.get(skill) ?? 0;
+        turns.set(skill, n + 1);
+        slot.aim = { skill, kind: kinds[n % kinds.length], orElse: [...new Set(kinds)].filter((x) => x !== kinds[n % kinds.length]) };
+      }
+    }
+  }
   const backCover = number + 1;
   const total = Math.ceil(backCover / 4) * 4;
   const tokens = Array.from({ length: total }, () => deps.qrToken());
@@ -760,7 +849,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
   });
   let done = 0;
   // What the book has asked so far, for a laid-out book: each page is told it, and a repeat goes to the redo.
-  const memory: BookMemory | null = input.book ? { texts: new Map(), keys: new Map() } : null;
+  const memory: BookMemory | null = input.book ? { texts: new Map(), keys: new Map(), shapes: new Map() } : null;
   const writePage = async (w: PageWork): Promise<GeneratedPage> => {
     const qrToken = tokens[w.number - 1];
     const page = { number: w.number, type: w.page.type, dayLabel: `Day ${w.day}`, day: w.day, pageOfDay: w.page.number, qrToken };

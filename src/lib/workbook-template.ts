@@ -284,6 +284,8 @@ const CSS = `
 .t1 i{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border:1.5px solid #0C0C0E;border-radius:2px;font-style:normal;font-size:12px;color:#0C0C0E;line-height:1}
 .circ{display:inline-flex;align-items:center;gap:36px;min-height:56px;padding:6px 18px;flex:none}
 .circ .co{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-size:var(--fact)}
+.circ.words{flex-direction:column;align-items:flex-start;gap:4px;min-height:0;padding:2px 8px}
+.circ.words .co{font-family:"Unica Sans",Helvetica,Arial,sans-serif;font-size:var(--body);line-height:1.3;white-space:nowrap}
 .wb{display:block;border:1px solid #D4D4DA;border-radius:8px;padding:10px 12px;background:#fff;flex:1 1 auto;min-width:120px}
 .wb .lab{font-weight:400;color:#44444C}
 .ln{display:block;width:100%}
@@ -657,7 +659,10 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
         // for a card, and a child circles the shape).
         const shapes = r.choices.every((c) => (PATTERN_SHAPES as readonly string[]).includes(c));
         const choice = (c: string) => (shapes ? `<svg class="pic" width="30" height="30" viewBox="0 0 32 32" aria-label="${escape(c)}">${shapeSvg(c, 16, 16, "#44444C")}</svg>` : escape(c));
-        return `<span class="circ" ${at}>${r.choices.map((c) => `<span class="co">${choice(c)}</span>`).join("")}</span>`;
+        // Choices in words ("less than 5", "not equal", "cats") stack in the body type: a card has no room for them in
+        // a row at the size of a fact.
+        const words = !shapes && r.choices.some((c) => /[a-z]{2}/i.test(c));
+        return `<span class="circ${words ? " words" : ""}" ${at}>${r.choices.map((c) => `<span class="co">${choice(c)}</span>`).join("")}</span>`;
       }
       const choices = r.choices.map((c) => `<span class="ch"><i class="tb"></i><span>${escape(c)}</span></span>`).join("");
       return `<span class="rg">${r.label ? `<span class="rl">${escape(r.label)}</span>` : ""}<span class="strip" ${at}>${choices}</span>${o.noTick ? "" : `<span class="t1"><span>Tick one</span><i>✓</i></span>`}</span>`;

@@ -481,6 +481,11 @@ export type Statement =
  * - sequence: the terms go up (or down) by `step` each time; each box holds its term (missing numbers).
  * - compare: the choice is <, > or = between `left` and `right`.
  * - yes-no: the choice is `yes` when the statement is true, else `no`.
+ * - relation (#380): the choice is the relation of whole numbers, in words, before the < and > signs are taught:
+ *   less-than (one number, one benchmark: "less than 5" or "not less than 5"), closer (one number, two benchmarks:
+ *   "close to 0" or "close to 10", never halfway), equal (two numbers: "equal" or "not equal"), more and fewer (two
+ *   numbers, each with its label: the label of the larger or the smaller, never a tie). Code writes the choices
+ *   (relationChoices) and the answer.
  * - count: the box holds the number the item's figure shows (dots, a ten-frame, base-ten blocks or an array).
  * - pattern: the choice is the shape in the blank of the item's pattern figure.
  */
@@ -493,8 +498,57 @@ export type ItemCheck =
   | { kind: "sequence"; terms: Term[]; step: NumberValue }
   | { kind: "compare"; left: NumberValue; right: NumberValue; region: string }
   | { kind: "yes-no"; statement: Statement; region: string; yes: string; no: string }
+  | { kind: "relation"; relation: Relation; numbers: number[]; to: number[]; labels: string[]; region: string }
   | { kind: "count"; region: string }
   | { kind: "pattern"; region: string };
+
+/** A relation a relation check asks, in words. */
+export const RELATIONS = ["less-than", "closer", "equal", "more", "fewer"] as const;
+export type Relation = (typeof RELATIONS)[number];
+
+/**
+ * A relation check's choices and its answer, or why there are none: the numbers and benchmarks a relation takes
+ * (whole numbers to 1000; one number and one benchmark for less-than, one number and two benchmarks for closer, two
+ * numbers for equal, two numbers with two different labels of letters, at most 16 characters, for more and fewer), and
+ * no tie where one answer is asked (halfway, or two equal numbers for more and fewer).
+ */
+export function relationChoices(r: { relation: string; numbers: unknown; to: unknown; labels: unknown }): { choices: string[]; answer: string } | string {
+  const whole = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0 && (v as number) <= 1000;
+  const ns = Array.isArray(r.numbers) && r.numbers.every(whole) ? (r.numbers as number[]) : null;
+  const to = Array.isArray(r.to) && r.to.every(whole) ? (r.to as number[]) : null;
+  if (!ns || !to) return "a relation check needs whole numbers from 0 to 1000";
+  switch (r.relation) {
+    case "less-than": {
+      if (ns.length !== 1 || to.length !== 1) return "a less-than relation needs one number and one benchmark";
+      const choices = [`less than ${to[0]}`, `not less than ${to[0]}`];
+      return { choices, answer: choices[ns[0] < to[0] ? 0 : 1] };
+    }
+    case "closer": {
+      if (ns.length !== 1 || to.length !== 2 || to[0] === to[1]) return "a closer relation needs one number and two different benchmarks";
+      const [a, b] = to;
+      const [da, db] = [Math.abs(ns[0] - a), Math.abs(ns[0] - b)];
+      if (da === db) return `${ns[0]} is halfway between ${a} and ${b}: it is close to neither`;
+      const choices = [`close to ${a}`, `close to ${b}`];
+      return { choices, answer: choices[da < db ? 0 : 1] };
+    }
+    case "equal": {
+      if (ns.length !== 2 || to.length !== 0) return "an equal relation needs two numbers";
+      return { choices: ["equal", "not equal"], answer: ns[0] === ns[1] ? "equal" : "not equal" };
+    }
+    case "more": case "fewer": {
+      const labels = Array.isArray(r.labels) ? r.labels : [];
+      if (ns.length !== 2 || to.length !== 0 || labels.length !== 2) return `a ${r.relation} relation needs two numbers, each with a label`;
+      if (!labels.every((l) => typeof l === "string" && /^[A-Za-z][A-Za-z ]{0,15}$/.test(l)) || labels[0] === labels[1]) {
+        return `a ${r.relation} relation's labels are two different words of letters, at most 16 characters`;
+      }
+      if (ns[0] === ns[1]) return `the two numbers are the same: neither has ${r.relation}`;
+      const bigger = ns[0] > ns[1] ? 0 : 1;
+      return { choices: labels as string[], answer: (labels as string[])[r.relation === "more" ? bigger : 1 - bigger] };
+    }
+    default:
+      return "the relation is not one code checks";
+  }
+}
 
 /** The shapes a pattern figure draws. */
 export const PATTERN_SHAPES = ["circle", "square", "triangle", "star", "heart", "diamond"] as const;

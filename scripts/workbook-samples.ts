@@ -153,7 +153,7 @@ function fakeAi(): AiClient {
   return {
     model: "fake",
     async json(request) {
-      type Asked = { slot: string; skills: string[]; formats?: string[] | null; mistakes?: { name: string }[]; numbers?: Record<string, { max: number }> };
+      type Asked = { slot: string; skills: string[]; formats?: string[] | null; mistakes?: { name: string }[]; numbers?: Record<string, { max: number }>; aim?: { skill: string; kind: string } };
       const body = JSON.parse((request.content[0] as { text: string }).text) as { day: number; page: number; slots: Asked[]; examples?: Asked[] };
       return {
         items: [...body.slots, ...(body.examples ?? [])].map((s) => {
@@ -182,8 +182,15 @@ function fakeAi(): AiClient {
           onPage.set(key, k + 1);
           const pairs = Array.from({ length: Math.min(max, 12) }, (_, x) => Array.from({ length: Math.min(max, 12) }, (_, y) => [x + 1, y + 1] as const)).flat().filter(([x, y]) => x + y + 1 <= max);
           const [a, b] = pairs[k % pairs.length];
-          const who = `${NAMES[n % NAMES.length]} and ${NAMES[Math.floor(n++ / NAMES.length) % NAMES.length]}`;
+          // Two names and a made-up word of its own ("qab"): each question has a shape of its own, as the real AI's
+          // must (the shape check, #380).
+          const word = `q${n.toString(26).split("").map((d) => String.fromCharCode(97 + parseInt(d, 26))).join("")}`;
+          const who = `${NAMES[n % NAMES.length]} and ${NAMES[Math.floor(n++ / NAMES.length) % NAMES.length]} ${word}`;
           const reason = format === "written-reason";
+          // A relation aim on a skill about less than 5: "Is 7 less than 5?", circled.
+          if (s.aim?.kind === "relation" && /benchmark/.test(s.aim.skill) && !reason) {
+            return { ...base, skill: s.aim.skill, format: "relation", text: `${who}: is ${a + b} less than 5?`, numbers: [num(a + b)], relation: { kind: "less-than", to: [5], labels: [] }, figureShows: null, operation: null, wrongAnswers: [], easier: null, shownWrong: null };
+          }
           return {
             ...base, text: reason ? `How do you know, ${who}?` : `${who} have ${a}. ${b} more. How many now?`,
             operation: reason ? null : op("add", a, b),

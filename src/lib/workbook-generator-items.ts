@@ -21,6 +21,8 @@ import { PLACE_ORDER, written } from "@/lib/question-package-columns";
 import {
   checkQuestionPackage,
   PATTERN_SHAPES,
+  RELATIONS,
+  relationChoices,
   operationProblem,
   operationResult,
   workedSteps,
@@ -34,6 +36,7 @@ import {
   type OperationKind,
   type PatternShape,
   type Place,
+  type Relation,
   type QuestionPackage,
   type WrongAnswer,
 } from "@/lib/question-package";
@@ -43,7 +46,7 @@ import {
 /** The item formats the generator builds. */
 export const GENERATED_FORMATS = [
   "write-number", "show-work", "two-ways", "tick-and-number", "spot-the-error", "number-line",
-  "places", "order", "compare", "sequence", "count", "pattern",
+  "places", "order", "compare", "sequence", "count", "pattern", "relation",
   "written-reason", "draw",
 ] as const;
 export type GeneratedFormat = (typeof GENERATED_FORMATS)[number];
@@ -131,6 +134,13 @@ export interface AiItem {
   sequence: { start: AiValue; step: AiValue; terms: number; blanks: number[] } | null;
   /** Pattern: the core that repeats, how many shapes are shown, and which one (from 0) is the blank; else null. */
   pattern: { core: PatternShape[]; shapes: number; blank: number } | null;
+  /**
+   * Relation (#380): which relation in words the child circles, its benchmarks and, for more and fewer, a label for each
+   * of the two numbers (in `numbers`); code writes the choices and the answer. Else null.
+   */
+  relation: { kind: Relation; to: number[]; labels: string[] } | null;
+  /** A picture of a missing part shows the part given or the total (#380); null for any other picture. */
+  figureShows: "part" | "total" | null;
 }
 
 const nullable = (schema: Record<string, unknown>) => ({ anyOf: [schema, { type: "null" }] });
@@ -178,6 +188,8 @@ const ITEM_SCHEMA = object({
   direction: nullable({ type: "string", enum: ["up", "down"] }),
   sequence: nullable(object({ start: VALUE_SCHEMA, step: VALUE_SCHEMA, terms: { type: "integer" }, blanks: { type: "array", items: { type: "integer" } } })),
   pattern: nullable(object({ core: { type: "array", items: { type: "string", enum: [...PATTERN_SHAPES] } }, shapes: { type: "integer" }, blank: { type: "integer" } })),
+  relation: nullable(object({ kind: { type: "string", enum: [...RELATIONS] }, to: { type: "array", items: { type: "integer" } }, labels: { type: "array", items: { type: "string" } } })),
+  figureShows: nullable({ type: "string", enum: ["part", "total"] }),
 });
 
 /** The output schema of one page or redo call: the filled slots. Content only: no field sets a layout. */
@@ -313,13 +325,16 @@ function lineThrough(values: number[]): Figure | string {
 }
 
 /** The figure of an operation question: the operation's numbers drawn as the kind the AI named. */
-function operationFigure(kind: FigureKind, op: Operation, answer: AnswerValue): Figure | string {
+function operationFigure(kind: FigureKind, op: Operation, answer: AnswerValue, shows: unknown = null): Figure | string {
   if (op.kind === "missing-addend") {
-    // The part the child has, to count on from to the total.
     const [part, total] = op.operands;
-    if (kind === "dots") return { kind: "dots", groups: [part], takenAway: 0 };
-    if (kind === "ten-frame") return { kind: "ten-frame", counters: [part] };
     if (kind === "number-line") return lineThrough([part, total]);
+    // The item says what its picture shows (#380): the part given ("Mia has 3. How many more make 8?") or the total
+    // ("Ten-frame: 8 dots. 5 and how many more?"). Never guessed.
+    if (shows !== "part" && shows !== "total") return "say what the picture of a missing part shows: figureShows part (the part given) or total";
+    const n = shows === "part" ? part : total;
+    if (kind === "dots") return { kind: "dots", groups: [n], takenAway: 0 };
+    if (kind === "ten-frame") return { kind: "ten-frame", counters: [n] };
     return `a missing part draws dots, a ten-frame or a number line, not ${kind}`;
   }
   if (op.kind !== "add" && op.kind !== "subtract" && op.kind !== "multiply") return `code draws a picture only for +, − and × of whole numbers, not ${op.kind}`;
@@ -517,6 +532,22 @@ function numberItem(format: GeneratedFormat, raw: Record<string, unknown>, level
       if (shown === null) return "a count item needs a picture code can count";
       return { ...boxesItem([{ id: "answer", kind: "box", label: null, answer: { type: "number", value: shown } }], [{ kind: "count", region: "answer" }]), figure };
     }
+    case "relation": {
+      // "Is 7 less than 5?", "Is 8 close to 0 or to 10?", "Equal or not?", "Who has more?": the child circles one of
+      // two choices code writes; the answer is computed from the numbers.
+      const rel = isObject(raw.relation) ? raw.relation : null;
+      const values = numbers.map((v) => (v?.type === "number" ? v.value : Number.NaN));
+      if (!rel) return "a relation item needs its relation";
+      const r = { relation: String(rel.kind), numbers: values, to: rel.to, labels: Array.isArray(rel.labels) ? rel.labels : [] };
+      const decided = relationChoices(r);
+      if (typeof decided === "string") return decided;
+      const check: ItemCheck = { kind: "relation", relation: r.relation as Relation, numbers: values, to: rel.to as number[], labels: r.labels as string[], region: "answer" };
+      const item = choiceItem(level, "answer", decided.choices, decided.answer, check);
+      if (!kind) return item;
+      if (values.length === 1) return withFigure(item, numberFigure(kind, values[0]));
+      if (kind === "dots") return withFigure(item, { kind: "dots", groups: values, takenAway: 0 });
+      return "a relation of two numbers draws dots";
+    }
     case "pattern": {
       const pattern = isObject(raw.pattern) ? raw.pattern : null;
       const core = pattern && Array.isArray(pattern.core) ? (pattern.core as PatternShape[]) : [];
@@ -591,7 +622,8 @@ export function buildQuestion(raw: unknown, place: SlotPlace): BuiltQuestion {
 
 function build(raw: unknown, place: SlotPlace): BuiltQuestion {
   if (!isObject(raw)) return fail("the AI wrote nothing for this question");
-  const format = raw.format as GeneratedFormat;
+  // A parent-led card (U1 to U3) has no work box: a show-work item there is a write-number item (#380).
+  const format = (place.level <= 3 && raw.format === "show-work" ? "write-number" : raw.format) as GeneratedFormat;
   if (!GENERATED_FORMATS.includes(format)) return fail("the item format is not one the generator builds");
   if (typeof raw.skill !== "string" || !place.skills.includes(raw.skill)) return fail(`the skill ${String(raw.skill)} is not one the plan asks for here (${place.skills.join(", ")})`);
   const standard = standardOf(raw.skill);
@@ -637,9 +669,11 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
   const answer = operationResult(op);
   const stepIds = workedSteps(op).map((s) => s.id);
 
+  // A missing part has one worked step (the count): a wrong answer that names another is not one step (null, #380).
+  const stepOf = (step: unknown) => (op.kind === "missing-addend" && step !== null && !stepIds.includes(step as string) ? null : (step ?? null) as string | null);
   const wrongAnswers: WrongAnswer[] = Array.isArray(raw.wrongAnswers)
     ? raw.wrongAnswers.filter(isObject).map((w) => ({
-      value: valueFrom(w.value) as AnswerValue, cause: w.cause as string, description: w.description as string, step: (w.step ?? null) as string | null,
+      value: valueFrom(w.value) as AnswerValue, cause: w.cause as string, description: w.description as string, step: stepOf(w.step),
     }))
     : [];
   const shown = format === "spot-the-error" && typeof raw.shownWrong === "number" ? (wrongAnswers[raw.shownWrong] ?? null) : null;
@@ -647,12 +681,20 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
   if (typeof built === "string") return fail(built, null, stepIds);
   // A number line item always draws its line; another format draws the picture the AI named, if any.
   const figureKind = format === "number-line" ? "number-line" : kind;
-  const figure = figureKind ? operationFigure(figureKind, op, answer) : null;
+  const figure = figureKind ? operationFigure(figureKind, op, answer, raw.figureShows) : null;
   if (typeof figure === "string") return fail(figure, null, stepIds);
   const item = figure ? { ...built, figure } : built;
 
   const easier = isObject(raw.easier) ? raw.easier : null;
-  if (!easier) return fail("the question has no easier example", null, stepIds);
+  if (!easier && op.kind !== "missing-addend") return fail("the question has no easier example", null, stepIds);
+  // A missing part's easier example has one less to count on, to a total one less (3 + ? = 4 for 3 + ? = 5): code
+  // writes it when the AI's is missing or is not easier (#380).
+  const [part, total] = op.kind === "missing-addend" ? op.operands : [0, 0];
+  const ownEasier = op.kind === "missing-addend" && total > part ? { text: `${part} + ? = ${total - 1}`, operation: { kind: "missing-addend", operands: [part, total - 1] } } : null;
+  if (!easier) {
+    if (!ownEasier) return fail("the question has no easier example", null, stepIds);
+    return checked(pkg(item, op, wrongAnswers, { ...ownEasier, operation: ownEasier.operation as Operation, answer: operationResult(ownEasier.operation as Operation), steps: workedSteps(ownEasier.operation as Operation) }), stepIds);
+  }
   const easierOp = operationFrom(easier.operation);
   const easierProblem = operationProblem(easierOp);
   if (easierProblem) return fail(`the easier example's operation: ${easierProblem}`, null, stepIds);
@@ -662,7 +704,12 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
     answer: operationResult(easierOp as Operation),
     steps: workedSteps(easierOp as Operation),
   };
-  return checked(pkg(item, op, wrongAnswers, easierExample), stepIds);
+  const result = checked(pkg(item, op, wrongAnswers, easierExample), stepIds);
+  if (ownEasier && result.check.status === "failed" && /the easier example/.test(result.check.reason)) {
+    const fixed = checked(pkg(item, op, wrongAnswers, { ...ownEasier, operation: ownEasier.operation as Operation, answer: operationResult(ownEasier.operation as Operation), steps: workedSteps(ownEasier.operation as Operation) }), stepIds);
+    if (fixed.check.status !== "failed") return fixed;
+  }
+  return result;
 }
 
 /**
@@ -677,6 +724,22 @@ export function choiceAsked(text: string): string | null {
   if (/^(is|are|am|was|were|does|do|did|can|could|will|would|should|has|have)\b/i.test(last)) return "yes or no";
   if (/\bor\b/i.test(last)) return "for a choice";
   return null;
+}
+
+/**
+ * Why the text and the picture disagree, or null (#380): a number the text says the picture shows ("8 dots",
+ * "Ten-frame: 8", "a ten-frame shows 8", "5 filled") must be one of its groups or all of it.
+ */
+export function pictureProblem(text: string, f: Figure | null): string | null {
+  if (!f || (f.kind !== "dots" && f.kind !== "ten-frame")) return null;
+  const groups = f.kind === "dots" ? f.groups : f.counters;
+  const shown = new Set([...groups, groups.reduce((a, b) => a + b, 0)]);
+  const said = [
+    ...[...text.matchAll(/\b(\d+)\s+(?:dots?|counters?|filled)\b/gi)].map((m) => Number(m[1])),
+    ...[...text.matchAll(/\b(?:ten|five)-frame(?:\s+(?:has|shows|with))?:?\s+(\d+)\b/gi)].map((m) => Number(m[1])),
+  ];
+  const wrong = said.find((n) => !shown.has(n));
+  return wrong === undefined ? null : `the text says the picture shows ${wrong}, but it shows ${[...new Set(groups)].join(" and ")}: make the picture show what the text says (for a missing part, figureShows total or part)`;
 }
 
 /** "Count from 1 to 10", "count back from 10 to 1": the start and the end the text states. */
@@ -711,6 +774,13 @@ export function kindProblem(p: QuestionPackage, raw: Record<string, unknown>): s
       if (at && Number(at[1]) !== start) return `the text starts at ${at[1]}, but the sequence starts at ${start}: make them the same`;
     }
     return null;
+  }
+  const pictured = pictureProblem(text, p.item?.figure ?? null);
+  if (pictured) return pictured;
+  // A draw item asks the child to draw (a parent checks it), never for a number or a name.
+  if (p.item?.format === "draw") {
+    if (!/\b(draw|colour|color|circle|show|make|put|line up|trace)\b/i.test(text)) return "a draw item asks the child to draw: say what to draw, or use another format (a relation for 'who has more?')";
+    if (/\bhow many\b|\bwho\b|\bwhich number\b|\bwhat number\b/i.test(text)) return "a draw item asks for no number or name: ask for the number in a write-number item, or for which has more in a relation item";
   }
   if (p.item?.checks.some((c) => c.kind === "order") && !/\border\b|\bleast\b|\bgreatest\b|\bsmallest\b|\bbiggest\b|\blargest\b/i.test(text)) {
     return "an order item asks to put the numbers in order (least first, or greatest first): ask that, or use another format";

@@ -32,6 +32,7 @@ import {
 } from "@/lib/question-package";
 import { aiTextProblem, groupingWords, isCoin, readNumbers, signOperation, textOperations, type ReadNumber, type SignOperation } from "@/lib/number-words";
 import { figureCount } from "@/lib/question-package-items";
+import { relationChoices } from "@/lib/question-package";
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import {
   headerGrowth,
@@ -198,6 +199,17 @@ function exampleOf(p: QuestionPackage, level: number): PanelExample | null {
     if (c.kind === "sequence") {
       const line = c.terms.map((t) => ("region" in t ? `[${boxAnswer(t.region)}]` : valueText(t))).join(", ");
       return { label: "Fill the gaps", lines: [line], answered: line };
+    }
+    if (c.kind === "relation") {
+      const r = relationChoices(c);
+      if (typeof r === "string") continue;
+      const [n, m] = c.numbers;
+      const b = c.to[0];
+      const lines = c.relation === "less-than" ? [`Is ${n} less than ${b}?`, `${n} ${n < b ? `comes before ${b}` : n === b ? `is ${b}` : `comes after ${b}`}: [${r.answer}].`]
+        : c.relation === "closer" ? [`Is ${n} close to ${c.to[0]} or ${c.to[1]}?`, `${n} is ${Math.abs(n - c.to[0])} from ${c.to[0]} and ${Math.abs(n - c.to[1])} from ${c.to[1]}: [${r.answer}].`]
+        : c.relation === "equal" ? [`${n} and ${m}: equal or not?`, `[${r.answer}].`]
+        : [`${c.labels[0]} ${n}, ${c.labels[1]} ${m}. Which has ${c.relation}?`, `[${r.answer}].`];
+      return { label: c.numbers.join(" and "), lines, answered: lines[1] };
     }
     if (c.kind === "order") {
       const line = c.regions.map((id) => `[${boxAnswer(id)}]`).join(", ");
@@ -490,6 +502,7 @@ function checkNumbers(c: ItemCheck): Read[] {
       return [...c.terms.flatMap(termNumbers), ...blanks, ...step];
     }
     case "compare": return [...valueNumbers(c.left), ...valueNumbers(c.right)];
+    case "relation": return [...c.numbers, ...c.to].map(num);
     case "yes-no": return statementNumbers(c.statement);
     default: return unreachable(c);
   }
@@ -566,6 +579,8 @@ function checkOperations(c: ItemCheck): SignOperation[] {
     case "operation": case "operation-sign": case "count": case "pattern": case "places": case "order": case "sequence": return [];
     case "equations": return c.equations.flatMap(eq);
     case "compare": return ["comparison"];
+    // In words ("less than 5", "close to 10", "more"): no < or > sign is printed.
+    case "relation": return [];
     case "yes-no": return c.statement.kind === "equation" ? eq(c.statement.equation) : [];
     default: return unreachable(c);
   }
