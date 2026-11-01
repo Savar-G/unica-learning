@@ -309,6 +309,10 @@ export function writtenFractions(text: string): string {
   // An operand must touch the bar, or have only horizontal space between it and the bar. Never cross a sentence.
   const adjacent = (a: number, b: number) => a >= 0 && b < words.length && /^[ \t]*$/.test(low.slice(words[a].end, words[b].at));
   const numeric = (i: number) => i >= 0 && i < words.length && (/^(?:\d|\.\d)/.test(words[i].t) || kindOf(words[i].t) !== null);
+  // These tokens separate number expressions. Other words cannot join a separate
+  // whole-number fragment to a fraction unless the mixed-number grammar consumes it.
+  const expressionBoundary = (token: string) => /^[.!?;:\n]$/.test(token) || RESULT.test(token) || OPERATION.test(token) ||
+    /^(?:because|cause|since|so|then|no|wait|actually|oops)$/.test(token);
   /** One complete nonnegative integer, without "and". A run such as "six sixty" has no reading. */
   const integer = (at: number, direction: -1 | 1) => {
     if (at < 0 || at >= words.length) return null;
@@ -373,7 +377,15 @@ export function writtenFractions(text: string): string {
     while (right + 1 < words.length && !/^[.!?;:\n]$/.test(words[right + 1].t)) right += 1;
     const ofPhrase = words.slice(left, right + 1).some((w) => w.t === "of");
     const signed = words.slice(left, right + 1).some((w) => /^(?:minus|negative|dash|[+\-])$/.test(w.t));
-    if (attachedBefore || attachedAfter || ofPhrase || signed) invalid(k);
+    let expressionFrom = from;
+    let expressionTo = to;
+    while (expressionFrom > 0 && !expressionBoundary(words[expressionFrom - 1].t)) expressionFrom -= 1;
+    while (expressionTo + 1 < words.length && !expressionBoundary(words[expressionTo + 1].t)) expressionTo += 1;
+    // Every numeric fragment in this expression must belong to the recognized
+    // integer/fraction/mixed form. Never retain only the fraction of an unsupported mixed form.
+    const unconsumedNumber = words.slice(expressionFrom, expressionTo + 1)
+      .some((_word, i) => { const at = expressionFrom + i; return (at < from || at > to) && numeric(at); });
+    if (attachedBefore || attachedAfter || ofPhrase || signed || unconsumedNumber) invalid(k);
     else spans.push({ from, to, text: value });
   }
   // Overlapping expressions ("3/4/5") are unsupported as a whole, never separate fractions.

@@ -3,6 +3,7 @@ import {
   allLineTexts,
   createSession,
   drawOffers,
+  fallbacks,
   isEqualForm,
   lineOffers,
   nextActs,
@@ -125,6 +126,9 @@ describe("reading spoken and typed fractions in a fraction call (#407)", () => {
     "3 over 4.5", "1.5 3/4", "three quarters/5",
     "minus, uh, 1 3/8", "negative I think one and three eighths", "3 over one hundred and fourteen",
     "three. quarters", "three\nquarters", "three over four and five", "1 and 0/4",
+    "one whole three eighths", "1 whole 3/8", "one whole three over eight",
+    "two full three eighths", "one entire three over eight", "2 unknown 3/8",
+    "three eighths whole one", "three over eight full two",
   ])("confirms the complete unsupported expression %j without scoring its parts", (said) => {
     expect(readAnswer(said, READ)).toMatchObject({ kept: [], final: null, sure: false });
     expect(valuesIn(said, READ)).toEqual([]);
@@ -254,6 +258,37 @@ describe("the controller teaches fractions (#407)", () => {
     expect(c.said(h1)).toMatch(/14.*16/);
     c.child("It's 7/8.");
     expect(c.propose({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(frac(7, 8), "result", "right")] } }).refusal).toBeNull();
+  });
+
+  it.each(["Maybe 14/16?", "14/16?", "I would say 14/16."])("confirms %j before equal-form progress, including code fallbacks", (said) => {
+    const equal = { act: "guide", step: "result", level: 0, parts: [{ line: "check.equal", slots: { step: "result", heard: "14/16" } }], reading: { answers: [answer(frac(14, 16), "result", "wrong")] } };
+    expect(readAnswer(said, READ).sure).toBe(false);
+    const c = call(SIMPLEST, said);
+    expect(c.propose(equal).refusal).toMatchObject({ code: "answer_not_committed" });
+    expect(c.s.equalForm ?? null).toBeNull();
+    expect(c.s.done).toEqual([]);
+    expect(c.s.ladder.step).toBe("common");
+    expect(c.s.finalMisses ?? 0).toBe(0);
+
+    const f = call(SIMPLEST, said);
+    const offers = fallbacks(f.s, [{ version: 2, ...equal }, { version: 2, ...equal }]);
+    expect(offers.length).toBeGreaterThan(0);
+    for (const offer of offers) {
+      expect(offer.reading?.answers ?? []).toEqual([]);
+      expect(offer.parts.some((part) => "line" in part && part.line === "check.equal")).toBe(false);
+    }
+    const code = f.send({ type: "proposal", at: 2, proposal: offers[0] });
+    expect(code.refusal).toBeNull();
+    expect(f.s.equalForm ?? null).toBeNull();
+    expect(f.s.done).toEqual([]);
+
+    expect(c.propose({ act: "confirm", parts: [{ line: "confirm.heard", slots: { heard: "14/16" } }] }).refusal).toBeNull();
+    c.child("14/16.");
+    expect(c.propose(equal).refusal).toBeNull();
+    expect(c.s.equalForm).toEqual(frac(14, 16));
+    expect(c.s.ladder).toMatchObject({ step: "result", failures: 0 });
+    expect(c.s.finalMisses ?? 0).toBe(0);
+    expect(c.s.done).toEqual(expect.arrayContaining(["common", "combine"]));
   });
 
   it("confirms a fraction form code does not read", () => {
