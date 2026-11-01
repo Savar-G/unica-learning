@@ -19,7 +19,10 @@ interface AlertClaim {
 }
 
 /** An alert row as the admin call page shows it. */
-export const alertState = (r: Pick<Row, "level" | "status" | "claimed_at" | "error">, now = Date.now()): AlertState =>
+export const alertState = (r: Pick<Row, "level" | "status" | "claimed_at" | "error">): AlertState => alertStateAt(r, Date.now());
+
+/** An alert row as the admin call page shows it at a given time (a stale "sending" claim shows as unknown, R393-1-1). */
+export const alertStateAt = (r: Pick<Row, "level" | "status" | "claimed_at" | "error">, now: number): AlertState =>
   shownAlert({ level: r.level, status: r.status, claimedAt: r.claimed_at, error: r.error }, now);
 
 export function mayaAlertLedger(admin: SupabaseClient<Database>): AlertLedger<AlertClaim> {
