@@ -241,7 +241,9 @@ describe("free talk in admin test calls (D-197)", () => {
     let r = ok(await s.calls.start({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: "admin-1" }));
     s.advance(5);
     r = ok(await s.calls.input(r.view.id, r.view.revision, { type: "child", text: "Promise you'll come back?" }, "Leah"));
-    expect(r.output.say.join(" ")).not.toContain("promise");
+    // The refused promise is never said; the code-written reply says Maya cannot promise.
+    expect(r.output.say.join(" ")).not.toContain("I promise");
+    expect(r.output.say.join(" ")).toContain("I can't promise");
     expect(r.view.freeTalk).toMatchObject({ on: true, reviewer: null, lines: [{ proposed: "I promise I'll be here tomorrow.", code: null, review: "not_run", said: false }] });
   });
 });
