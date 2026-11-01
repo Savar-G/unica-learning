@@ -470,7 +470,10 @@ export function judge(b: Behaviour, saved: string | undefined): Verdict {
     const free = new Set<string>();
     for (const x of last?.talk ?? []) {
       if (x.shown !== x.proposed) continue;
-      if (!t.freeTalk || x.code !== null || x.review !== "pass") fail("free_talk_unchecked", `Maya turn ${i} said "${x.shown}" (code ${x.code ?? "passed"}, review ${x.review}, free talk ${t.freeTalk ? "on" : "off"})`);
+      const both = t.freeTalk && x.code === null && x.review === "pass";
+      // A refused piece whose bank phrase happens to equal the proposed words is a bank phrase, not free talk.
+      if (!both && sentences(x.shown).every(fromBank)) continue;
+      if (!both) fail("free_talk_unchecked", `Maya turn ${i} said "${x.shown}" (code ${x.code ?? "passed"}, review ${x.review}, free talk ${t.freeTalk ? "on" : "off"})`);
       else sentences(x.shown).forEach((s) => free.add(s));
     }
     const said = m.output.say.flatMap(sentences);
