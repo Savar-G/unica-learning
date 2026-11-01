@@ -252,7 +252,7 @@ interface Slot {
    * other slot of the page has and the book has not used for this kind, if it can; `spare`, another such pair for a redo
    * after a repeat; `name`, a person's name (never Sam, the child of Spot the error).
    */
-  planned?: { use: number[] | null; spare: number[] | null; name: string | null };
+  planned?: { use: number[] | null; spare: number[] | null; name: string | null; say?: string | null; spareSay?: string | null };
 }
 
 /** The kinds of question code turns through for a skill, so its questions differ (#380). */
@@ -351,6 +351,86 @@ function numberChoices(skill: string, text: string, kind: QuestionKind | "spot",
   return pairs.length ? pairs.sort((x, y) => hashOf(`${skill}:${x}`) - hashOf(`${skill}:${y}`)) : null;
 }
 
+/** Spot the error's sum is a bare sum, as a fact is: they share the book's pairs, so "5 + 1 = ?" is not asked twice. */
+const group = (kind: QuestionKind | "spot") => (kind === "spot" ? "fact" : kind);
+
+/** Things a story counts, in turn through the book (a page never has one twice). */
+const THINGS = ["shells", "apples", "cars", "stickers", "hats", "cups", "bugs", "kites", "rocks", "plums", "ducks", "boats", "socks", "books", "leaves", "eggs", "balls", "buttons", "beads", "shoes", "bells", "pens"];
+
+/**
+ * The wordings code plans for each kind of question (round 5): {a} and {b} are the planned numbers, {t} their total,
+ * {name} the planned person, {They} the pronoun for them, {thing} the planned thing. A take-away only where the skill
+ * has met subtraction; on 1 more and 1 less (step), wordings about the step.
+ */
+function framesFor(kind: QuestionKind, step: boolean, subtraction: boolean): string[] {
+  switch (kind) {
+    case "story":
+      return [
+        "{name} has {a} {thing}. {b} more come. How many?",
+        "{name} has {a} {thing}, gets {b} more. How many?",
+        "{a} {thing} on a mat. {name} adds {b}. How many?",
+        "{name} sees {a} {thing}, then {b} more. How many?",
+        "{name} finds {a} {thing}, then {b} more. In all?",
+        "{a} {thing} here, {b} there. How many in all?",
+        "{name} picks {a} {thing}, then {b}. How many?",
+        ...(subtraction ? [
+          "{name} has {t} {thing}. {b} go. How many left?",
+          "{t} {thing}. {name} takes {b}. How many left?",
+          "{t} {thing}. {name} loses {b}. How many left?",
+        ] : []),
+      ];
+    case "picture":
+      return [
+        "Ten-frame: {a} and {b}. How many dots?",
+        "Dots: {a} and {b} more. How many in all?",
+        "{a} red dots, {b} blue dots. How many?",
+        "The ten-frame has {a} and {b}. Total?",
+        "{name} puts {a} dots and {b} more. How many?",
+        "Count the dots: {a} and {b}. How many?",
+        "{a} dots, then {b} more. How many now?",
+        "Ten-frame: {a}, then {b} more. How many?",
+        "Look: {a} dots and {b} dots. In all?",
+        "{a} and {b} on the ten-frame. How many?",
+        "Add the dots: {a} and {b}. How many?",
+        "{name} sees {a} dots and {b} more. In all?",
+      ];
+    case "fact":
+      return step
+        ? ["What is {b} more than {a}?", "{a} and {b} more is what?", "What number is {b} more than {a}?", ...(subtraction ? ["What is {b} less than {t}?", "{t} take away {b} is what?", "What number is {b} less than {t}?"] : [])]
+        : ["{a} + {b} = ?", "What is {a} + {b}?", "{a} and {b} make what?", "Add {a} and {b}. What do you get?"];
+    case "missing-part":
+      return [
+        "{name} has {a} {thing}. How many more make {t}?",
+        "{a} and what make {t}?",
+        "{a} + ? = {t}",
+        "{name} needs {t} {thing}, has {a}. How many more?",
+        "{t} {thing}: {a} are red. How many are not?",
+        "What do you add to {a} to make {t}?",
+        "{a} {thing} in a box. How many more make {t}?",
+        "How far is {a} from {t}?",
+        "{name} has {a}. How many more to get {t}?",
+      ];
+    default:
+      return [];
+  }
+}
+
+/** A thing (or dots) counted after the number 1, which takes its singular. */
+const PLURAL_AFTER_1 = new RegExp(`\\b1 ((?:red |blue )?)(dots|${THINGS.join("|")})\\b`, "g");
+/** One of each thing: after the number 1 a story counts one shell, not 1 shells. */
+const ONE: Record<string, string> = { leaves: "leaf", shoes: "shoe", boxes: "box" };
+const singular = (w: string) => ONE[w] ?? w.replace(/s$/, "");
+
+/** A wording filled in: the numbers, the name, the pronoun it takes and the thing (one thing after 1). */
+function fillFrame(frame: string, pair: number[], name: string, thing: string): string {
+  const [a, b] = pair;
+  const they = BOYS.includes(name) ? "He" : "She";
+  return frame.replaceAll("{a}", String(a)).replaceAll("{b}", String(b)).replaceAll("{t}", String(a + b))
+    .replaceAll("{name}", name).replaceAll("{They}", they).replaceAll("{thing}", thing)
+    .replace(PLURAL_AFTER_1, (_, colour: string, w: string) => `1 ${colour}${singular(w)}`)
+    .replace(/\b1 more come\b/, "1 more comes").replace(/\b1 go\b/, "1 goes").replace(/\b1 are red\b/, "1 is red");
+}
+
 /**
  * Plans every slot of the book in book order (#380): its skill and kind of question (each skill's kinds in turn, and on
  * a page a skill takes another kind before it takes one again), its numbers and a person's name. A page's slots never
@@ -363,11 +443,16 @@ function planBook(input: GenerateInput, work: PageWork[]) {
   const people = PEOPLE.filter((n) => n.toLowerCase() !== child);
   const turns = new Map<string, number>();
   const used = new Map<string, number>();
+  const frameUse = new Map<string, number>();
+  const said = new Set<string>();
+  const things = THINGS;
   let person = 0;
+  let thing = 0;
   for (const w of work) {
     const inPart = new Map<PlannedPart, number>();
     const pageKinds = new Set<string>();
     const pagePairs = new Set<string>();
+    const pageFrames = new Set<string>();
     for (const slot of w.slots) {
       const k = inPart.get(slot.part) ?? 0;
       inPart.set(slot.part, k + 1);
@@ -397,18 +482,47 @@ function planBook(input: GenerateInput, work: PageWork[]) {
         const choices = numberChoices(numbered.skill, curriculum.skill(numbered.skill)?.text ?? numbered.skill, numbered.kind, skillRange(curriculum, plan.level, numbered.skill));
         const bond = (p: number[]) => [...p].sort((a, b) => a - b).join(",");
         const ranked = (choices ?? []).filter((p) => !pagePairs.has(bond(p)))
-          .map((p, j) => ({ p, j, n: used.get(`${numbered.kind}|${p}`) ?? 0 }))
+          .map((p, j) => ({ p, j, n: used.get(`${group(numbered.kind)}|${p}`) ?? 0 }))
           .sort((a, b) => a.n - b.n || a.j - b.j);
         pair = ranked[0]?.p ?? null;
         spare = ranked.find((x) => pair && bond(x.p) !== bond(pair))?.p ?? null;
         if (pair) {
-          used.set(`${numbered.kind}|${pair}`, (used.get(`${numbered.kind}|${pair}`) ?? 0) + 1);
+          used.set(`${group(numbered.kind)}|${pair}`, (used.get(`${group(numbered.kind)}|${pair}`) ?? 0) + 1);
           pagePairs.add(bond(pair));
           if (spare) pagePairs.add(bond(spare));
         }
       }
       const name = slot.place === "spot-the-error" ? null : people[person++ % people.length];
-      slot.planned = { use: pair, spare, name };
+      // The wording: a frame of the kind, filled with the numbers, the name and a thing, within the slot's room.
+      let say: string | null = null;
+      let spareSay: string | null = null;
+      if (numbered && numbered.kind !== "spot" && numbered.kind !== "relation" && name) {
+        const range = skillRange(curriculum, plan.level, numbered.skill);
+        const room = roomOf(input, slot.place, w.day)?.characters ?? Infinity;
+        const text = curriculum.skill(numbered.skill)?.text ?? numbered.skill;
+        const step = /two-more-less|2 more/.test(`${numbered.skill} ${text}`) || isOneMoreLessSkill(numbered.skill) || /1 more/.test(text.toLowerCase());
+        const pick = (pairNow: number[] | null) => {
+          if (!pairNow) return null;
+          const fills = framesFor(numbered.kind as QuestionKind, step, range.subtraction).map((f, j) => ({ f, j, n: frameUse.get(f) ?? 0 }))
+            .filter((x) => !pageFrames.has(x.f))
+            .sort((a, b) => a.n - b.n || hashOf(`${slot.id}:${w.number}:${a.j}`) - hashOf(`${slot.id}:${w.number}:${b.j}`))
+            .map((x) => ({ f: x.f, said: fillFrame(x.f, pairNow, name, things[thing % things.length]) }))
+            .filter((x) => x.said.length <= room && !said.has(x.said));
+          return fills[0] ?? null;
+        };
+        const chosen = pick(pair);
+        if (chosen) {
+          say = chosen.said;
+          frameUse.set(chosen.f, (frameUse.get(chosen.f) ?? 0) + 1);
+          pageFrames.add(chosen.f);
+          said.add(chosen.said);
+          thing++;
+        }
+        // The spare's wording is for a redo only: it takes no frame from the page's other slots.
+        const other = pick(spare);
+        if (other) spareSay = fillFrame(other.f, spare!, name, things[(thing + 7) % things.length]);
+      }
+      slot.planned = { use: pair, spare, name, say, spareSay };
     }
   }
 }
@@ -479,7 +593,7 @@ const SYSTEM = [
   "A picture of a missing part shows the part given or the total: say which in figureShows ('Mia has 3. How many more make 8?' shows the part, 3; 'Ten-frame: 8 dots. 5 and how many more?' shows the total, 8). Any number the text says the picture shows ('8 dots', 'Ten-frame: 8') is what code draws.",
   "One question per item: the text never holds a worked fact or a second task ('5 and 0 more is 5. Show 6.' is not a question). A draw item says what to draw and never asks how many, which number or who; ask which has more with a relation item.",
   "Used up: the request may list usedUp, shapes of question the book already asks 3 times: each an example and its words (the question's lowercase words in order, without numbers, names or other capitalised words). Outside practice, write no question whose lowercase words are exactly one of them: use other words or another kind of question, not only other numbers or names.",
-  "Planned: a slot may give planned numbers and a name, chosen by code across the whole book so its questions differ. Build the item on the numbers [a, b]: a sum is a + b; a take-away starts at a + b and takes b away; a missing part has the part a and the total a + b; a picture shows a and b (or a + b in all); 1 more than a is a + 1; a relation uses a (and b); Sam's sum in Spot the error is a + b (or a + b take away b). Keep to them unless a rule of the slot forbids it; then change as little as you can. A person in the question is the planned name. Never name anyone Sam outside Spot the error: Sam is the child whose work Spot the error shows.",
+  "Planned: a slot may give planned numbers and a name, chosen by code across the whole book so its questions differ. Build the item on the numbers [a, b]: a sum is a + b; a take-away starts at a + b and takes b away; a missing part has the part a and the total a + b; a picture shows a and b (or a + b in all); 1 more than a is a + 1; a relation uses a (and b); Sam's sum in Spot the error is a + b (or a + b take away b). Keep to them unless a rule of the slot forbids it; then change as little as you can. A person in the question is the planned name. Never name anyone Sam outside Spot the error: Sam is the child whose work Spot the error shows. Planned say is the wording code chose for the slot, with those numbers, that name and a thing to count, so the book's questions do not all sound alike: write the question text as say, word for word, unless a rule of the slot forbids it (then change as few words as you can). Its operation, picture, wrong answers and easier example are of that text: 'Mia has 3 shells. How many more make 8?' is missing-addend [3, 8]; 'Ten-frame: 3 and 4. How many dots?' is add 3 + 4 with a ten-frame.",
   "Asked: a slot may list asked, the questions the book already asks on its skills. Never repeat one of them. On this page, no two questions may be the same, work the same sum, or differ only by one number when another kind of question is possible: change the kind (a story, a picture to count, a missing part, a sequence), not only a number.",
   "Examples: the request may list examples. Each is the worked example a panel (worked-example, watch-one, reminder) shows for its own skill: fill it like a slot, with its id and on that skill only, of the kind its aim gives. Give a small sum of the skill (write-number with an operation), or a count, sequence, order or relation item code can show done. It is not printed as a question, so it has no room limit.",
   "A count from one number to another ('Count from 2 to 7', 'Count back from 10 to 1') is the sequence format, starting and ending at those numbers; if the text says 'start at 2', the sequence starts at 2.",
@@ -564,7 +678,7 @@ function pageRequest(input: GenerateInput, w: PageWork, slots: Slot[], note: str
         ...(s.planned?.use ? {} : { vary: varyNumber(`${day}:${page.number}:${s.id}`, max) }),
         ...(memory ? { asked: asked(s.part.skills) } : {}),
         ...(s.aim ? { aim: { skill: s.aim.skill, kind: s.aim.kind, means: KIND_WORDS[s.aim.kind], orElse: s.aim.orElse } } : {}),
-        ...(s.planned?.use || s.planned?.name ? { planned: { ...(s.planned.use ? { numbers: s.planned.use } : {}), ...(s.planned.name ? { name: s.planned.name } : {}) } } : {}),
+        ...(s.planned?.use || s.planned?.name ? { planned: { ...(s.planned.use ? { numbers: s.planned.use } : {}), ...(s.planned.name ? { name: s.planned.name } : {}), ...(s.planned.say ? { say: s.planned.say } : {}) } } : {}),
       };
     }),
     // Shapes of question the book has used up: none of the page's questions (outside practice) may take one again.
@@ -809,7 +923,8 @@ function failNote(id: string, b: BuiltQuestion, slot?: Slot): string {
   const again = slot && NEEDS_NEW.test(reason);
   const next = again && slot.aim && !/gives its own answer/.test(reason) ? slot.aim.orElse[0] : undefined;
   const kind = next ? ` Write it as a ${next} question: ${KIND_WORDS[next]}.` : "";
-  const numbers = again && slot.planned?.spare ? ` Use the numbers ${slot.planned.spare.join(" and ")} (its planned numbers now).` : "";
+  const numbers = again && slot.planned?.spare
+    ? ` Use the numbers ${slot.planned.spare.join(" and ")} (its planned numbers now)${slot.planned.spareSay ? `, worded as "${slot.planned.spareSay}"` : ""}.` : "";
   return `Slot ${id} failed the check: ${reason}.${steps}${hint ? ` ${hint}` : ""}${kind}${numbers} Write it again.`;
 }
 
@@ -820,7 +935,7 @@ function redoSlot(slot: Slot, reason: string): Slot {
   return {
     ...slot,
     ...(slot.aim && next ? { aim: { ...slot.aim, kind: next, orElse: slot.aim.orElse.filter((k) => k !== next) } } : {}),
-    ...(slot.planned?.spare ? { planned: { ...slot.planned, use: slot.planned.spare, spare: null } } : {}),
+    ...(slot.planned?.spare ? { planned: { ...slot.planned, use: slot.planned.spare, spare: null, say: slot.planned.spareSay ?? null, spareSay: null } } : {}),
   };
 }
 

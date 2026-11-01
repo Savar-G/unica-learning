@@ -1112,7 +1112,7 @@ describe("round 5 (#380): code plans the book's numbers and names, rooms and row
     return result.plan;
   })();
   const laid = { ...input, plan: U3, book: { child: "Zoe" } };
-  type Planned = SlotAsked & { place: string; aim?: { skill: string; kind: string }; planned?: { numbers?: number[]; name?: string } };
+  type Planned = SlotAsked & { place: string; aim?: { skill: string; kind: string }; planned?: { numbers?: number[]; name?: string; say?: string } };
   const body = (r: AiJsonRequest) => JSON.parse((r.content[0] as { text: string }).text) as { day: number; page: number; slots: Planned[]; note: string | null; examples?: SlotAsked[] };
   const empty = { difficulty: 1, operation: null, wrongAnswers: [], easier: null, shownWrong: null, figure: null, numbers: [], places: null, direction: null, sequence: null, pattern: null, relation: null, figureShows: null };
   /** A new short sum each call (within a card's room), tagged so each question has a shape of its own. */
@@ -1168,6 +1168,33 @@ describe("round 5 (#380): code plans the book's numbers and names, rooms and row
     expect(spots.length).toBeGreaterThan(3);
     expect(new Set(spots).size).toBe(spots.length);
     expect(await run()).toEqual(pages);
+  });
+
+  it("plans each slot's wording: never one twice in the book, within its room, with its numbers and name, no take-away before subtraction", async () => {
+    const ai = fakeAiClient({ answer: () => ({ items: [] }) });
+    await generateWorkbook(laid, deps({ ai }));
+    const seen = new Set<string>();
+    const slots = ai.requests.filter((r) => r.name === "workbook_page").map(body)
+      .filter((b) => !seen.has(`${b.day}.${b.page}`) && !!seen.add(`${b.day}.${b.page}`))
+      .flatMap((b) => b.slots) as (Planned & { room?: { characters: number }; planned?: { say?: string } })[];
+    const says = slots.flatMap((s) => (s.planned?.say ? [s] : []));
+    expect(says.length).toBeGreaterThan(80);
+    expect(new Set(says.map((s) => s.planned!.say)).size).toBe(says.length);
+    for (const s of says) {
+      const say = s.planned!.say!;
+      if (s.room) expect(say.length, say).toBeLessThanOrEqual(s.room.characters);
+      expect(say, say).not.toMatch(/[{}]/);
+      expect(say).not.toMatch(/\bSam\b/);
+      const [a, b] = s.planned!.numbers!;
+      expect(say.includes(String(a)) || say.includes(String(a + b)), say).toBe(true);
+      if (!skillRange(BC, 3, s.aim!.skill).subtraction) expect(say, say).not.toMatch(/left|away|take|less/);
+    }
+    // The page's shapes differ: no two planned wordings of a page share their words without numbers and names.
+    const pages = ai.requests.filter((r) => r.name === "workbook_page").map(body);
+    for (const p of pages) {
+      const shapes = p.slots.flatMap((s) => (s.planned?.say ? [shapeOf(s.planned.say)] : [])).filter(Boolean);
+      expect(new Set(shapes).size, `day ${p.day} page ${p.page}`).toBe(shapes.length);
+    }
   });
 
   it("never plans a missing part on 1 more and 1 less (its missing part is the 1 the text names)", () => {
