@@ -6,7 +6,7 @@
 // "Prepare next workbook" button are the only client parts.
 import Link from "next/link";
 import type { ReactNode } from "react";
-import type { AuditEntry, ChildRow, DraftCounts, RunDetail, RunListRow } from "@/lib/admin-store";
+import type { AuditEntry, ChildRow, DraftCounts, RunDetail, RunListRow, WorkerStatus } from "@/lib/admin-store";
 import { ADMIN_WORKBOOKS_PATH, adminWorkbookPath, adminWorkbookRunPath, when } from "@/lib/admin-view";
 import type { WorkbookStatus, WorkbookSummary } from "@/lib/workbook-content";
 import type { GeneratedPage, GeneratedQuestion } from "@/lib/workbook-generator";
@@ -17,6 +17,8 @@ import { AdminFrame, Chip, Table, type Tone } from "@/components/admin";
 import { RecordFacts, childPath } from "@/components/admin-records";
 import { PackageCells, WorkbookStatusChip } from "@/components/admin-workbook";
 import { RunRefresh } from "@/components/admin-run-refresh";
+import { RunOnServer } from "@/components/run-on-server";
+import type { AiCallSummary } from "@/lib/workbook-ai";
 import "./admin-workbook.css";
 
 const STATE: Record<RunState, [string, Tone]> = {
@@ -60,6 +62,7 @@ const childName = (children: Map<string, ChildRow>, id: string) => children.get(
 /** The run's state cell: the chip, and the progress or the error. */
 function StateCell({ run, now }: { run: WorkbookRun; now: Date }) {
   const state = runState(run, now);
+  if (state === "waiting" && run.runner === "mac") return <><RunStateChip state={state} /><span className="adm-sub">Waiting for the Mac</span></>;
   return <>
     <RunStateChip state={state} />
     {(state === "preparing" || state === "waiting") && <RunProgress run={run} />}
@@ -149,6 +152,48 @@ export function ChildRunsTable({ runs, now }: { runs: RunListRow[]; now: Date })
       <td className="adm-sub">{r.run.startedBy.email ?? "Unknown"}</td>
     </tr>)}
   </Table>;
+}
+
+// ---------- Where runs are made (D-200) ----------
+
+/** The workbook worker on Savar's Mac: online, or when it was last seen. */
+export function WorkerLine({ worker }: { worker: WorkerStatus | null }) {
+  if (!worker) return <span className="adm-wb-worker"><Chip tone="warn">Mac worker offline</Chip><span className="adm-sub">It has never run. See docs/workbook-worker.md to start it.</span></span>;
+  return worker.online
+    ? <span className="adm-wb-worker"><Chip tone="ok">Mac worker online</Chip><span className="adm-sub">Seen {when(worker.seenAt)}{worker.runId ? " · making a workbook" : " · ready"} · {worker.primaryAi === "api" ? "API first" : "Claude subscription first"}</span></span>
+    : <span className="adm-wb-worker"><Chip tone="warn">Mac worker offline</Chip><span className="adm-sub">Not seen since {when(worker.seenAt)}</span></span>;
+}
+
+const usd = (n: number) => `USD ${n.toFixed(n > 0 && n < 0.01 ? 4 : 2)}`;
+
+/** The run's AI calls by provider: on the Claude subscription (free), on the API (with its cost). */
+export function aiCallsFact(s: AiCallSummary): ReactNode {
+  const total = s.subscription.calls + s.api.calls;
+  if (total === 0 && s.unavailable.subscription + s.unavailable.api === 0) return "No AI calls logged yet";
+  const failed = (n: number) => (n > 0 ? ` (${n} failed)` : "");
+  return <span className="adm-wb-calls">
+    <span><b>{s.subscription.calls}</b> on the Claude subscription{failed(s.subscription.failed)} · USD 0</span>
+    <span><b>{s.api.calls}</b> on the API{failed(s.api.failed)} · {usd(s.api.usd)}{s.api.noCost > 0 ? ` (${s.api.noCost} with no cost given)` : ""}</span>
+    {s.unavailable.subscription > 0 && <span className="adm-sub">The subscription could not take {s.unavailable.subscription} {s.unavailable.subscription === 1 ? "call" : "calls"}, so they went to the API. Last reason: {s.unavailable.last ?? "not given"}</span>}
+    {s.unavailable.api > 0 && <span className="adm-sub">The API could not take {s.unavailable.api} {s.unavailable.api === 1 ? "call" : "calls"}.</span>}
+  </span>;
+}
+
+/** Where the run is made. */
+const runnerText = (run: WorkbookRun) => (run.runner === "mac" ? "Savar's Mac (the workbook worker)" : "The server (the API)");
+
+/** A run for the Mac that no one is making: it waits for the worker, or the admin runs it on the server. */
+function MacWait({ run, state, worker }: { run: WorkbookRun; state: RunState; worker: WorkerStatus | null }) {
+  const stalled = state === "stopped" && run.status === "running";
+  if (run.runner !== "mac" || (state !== "waiting" && !stalled)) return null;
+  if (worker?.online) {
+    return <p className="adm-note" role="status">{stalled ? "The Mac worker is online and takes this run up again where it stopped." : "The Mac worker is online. It starts this run in a few seconds."}</p>;
+  }
+  return <div className="adm-wb-wait" role="status">
+    <b>{stalled ? "This run stopped, and the Mac is offline." : "Waiting for the Mac."}</b>
+    <p>The workbook worker on Savar&apos;s Mac {worker ? `was last seen ${when(worker.seenAt)}` : "has never run"}. The run starts when the Mac is back, on the Claude subscription. To make it now instead, run it on the server with the paid API.</p>
+    <RunOnServer runId={run.id} />
+  </div>;
 }
 
 // ---------- One run ----------
@@ -345,7 +390,7 @@ function DraftPageSection({ page, detail, solves }: { page: GeneratedPage; detai
 
 const ACTION: Record<string, string> = {
   "run-started": "Started preparing", "run-retried": "Tried again after an error", "run-failed": "Failed", "run-stopped": "Stopped a run with no progress",
-  "draft-stored": "Stored the draft", "run-resumed": "Took the run up again",
+  "draft-stored": "Stored the draft", "run-resumed": "Took the run up again", "run-routed": "Set where the run is made",
 };
 
 function AuditLog({ entries }: { entries: AuditEntry[] }) {
@@ -360,7 +405,7 @@ function AuditLog({ entries }: { entries: AuditEntry[] }) {
 }
 
 /** One run: its state, then its draft page by page, then the audit log. `only`: only the pages that need attention. */
-export function AdminWorkbookRun({ email, detail, now, only }: { email: string; detail: RunDetail; now: Date; only: boolean }) {
+export function AdminWorkbookRun({ email, detail, now, only, worker }: { email: string; detail: RunDetail; now: Date; only: boolean; worker: WorkerStatus | null }) {
   const { run, child, draft } = detail;
   const state = runState(run, now);
   const name = child?.first_name ?? "Child";
@@ -388,6 +433,8 @@ export function AdminWorkbookRun({ email, detail, now, only }: { email: string; 
         ["Started (Pacific)", `${when(run.createdAt)} by ${run.startedBy.email ?? "unknown"}`],
         ["Finished (Pacific)", run.finishedAt ? when(run.finishedAt) : "Not yet"],
         ["Attempts", `${run.attempts} of ${run.maxAttempts}${run.resumes > 0 ? ` · taken up again ${run.resumes} ${run.resumes === 1 ? "time" : "times"}` : ""}`],
+        ["Made on", run.runner === "mac" ? <span key="runner" className="adm-wb-state">{runnerText(run)}<WorkerLine worker={worker} /></span> : runnerText(run)],
+        ["AI calls", aiCallsFact(detail.aiCalls)],
         ["Solve check", solveFact(detail.solves)],
         ...(draft ? [
           ["Levels", levelsText(draft.workbook.levels)] as [string, ReactNode],
@@ -405,6 +452,7 @@ export function AdminWorkbookRun({ email, detail, now, only }: { email: string; 
           <p className="adm-sub">To try again, press Prepare next workbook on <Link href={childPath(run.childId)}>{name}&apos;s page</Link>.</p>
         </div>
       )}
+      <MacWait run={run} state={state} worker={worker} />
       {(state === "preparing" || state === "waiting") && <p className="adm-note">This page updates every few seconds. You can leave it: the draft is made in the background.</p>}
 
       {detail.oldFormat !== null && (

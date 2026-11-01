@@ -4,7 +4,10 @@ import { readChildProfile } from "@/lib/child-profile";
 import { childProfileStore } from "@/lib/child-profile-store";
 import { toJson, type Database, type Tables } from "@/lib/database";
 import { draftProblem, GENERATED_DRAFT_VERSION } from "@/lib/workbook-generator";
-import { readPaged, SLOT_ATTEMPTS, type WorkbookJobSource, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
+import type { AiCallRecord, AiProvider } from "@/lib/ai-fallback";
+import type { AiCallKind } from "@/lib/workbook-ai";
+import { readPaged, SLOT_ATTEMPTS, STALE_SECONDS, type RunRunner, type WorkbookJobSource, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
+import type { WorkerCandidate, WorkerQueue } from "@/lib/workbook-worker";
 import type { SolveVerdict } from "@/lib/workbook-solve-check";
 
 // The runs' store (#312) in Supabase (migration add_workbook_runs), and the job's read of the child. Pass a client with
@@ -15,16 +18,16 @@ import type { SolveVerdict } from "@/lib/workbook-solve-check";
 // hold the rules (one active run per child, stale runs stopped, every write held by the lease, the audit entries);
 // tests use src/lib/workbook-job-memory.ts, which keeps the same rules. No Next.js or React.
 
-export const RUN_COLUMNS = "id, created_at, parent_id, child_id, number, status, step, attempts, max_attempts, done_pages, total_pages, heartbeat_at, started_at, finished_at, error, errors, draft_id, draft_key, resumes, started_by, started_by_email";
+export const RUN_COLUMNS = "id, created_at, parent_id, child_id, number, status, step, attempts, max_attempts, done_pages, total_pages, heartbeat_at, started_at, finished_at, error, errors, draft_id, draft_key, resumes, started_by, started_by_email, runner";
 
 type RunRow = Pick<Tables<"workbook_runs">, "id" | "created_at" | "parent_id" | "child_id" | "number" | "status" | "step" | "attempts" | "max_attempts"
-  | "done_pages" | "total_pages" | "heartbeat_at" | "started_at" | "finished_at" | "error" | "errors" | "draft_id" | "draft_key" | "resumes" | "started_by" | "started_by_email">;
+  | "done_pages" | "total_pages" | "heartbeat_at" | "started_at" | "finished_at" | "error" | "errors" | "draft_id" | "draft_key" | "resumes" | "started_by" | "started_by_email" | "runner">;
 
 export const runFromRow = (r: RunRow): WorkbookRun => ({
   id: r.id, createdAt: r.created_at, parentId: r.parent_id, childId: r.child_id, number: r.number, status: r.status, step: r.step,
   attempts: r.attempts, maxAttempts: r.max_attempts, donePages: r.done_pages, totalPages: r.total_pages, heartbeatAt: r.heartbeat_at,
   startedAt: r.started_at, finishedAt: r.finished_at, error: r.error, errors: r.errors, draftId: r.draft_id, draftKey: r.draft_key, resumes: r.resumes,
-  startedBy: { id: r.started_by, email: r.started_by_email },
+  startedBy: { id: r.started_by, email: r.started_by_email }, runner: r.runner,
 });
 
 /** A stored verdict as the generator reads it, or null when it is of another shape. */
@@ -168,3 +171,69 @@ export function workbookJobSource(admin: SupabaseClient<Database>): WorkbookJobS
     },
   };
 }
+
+/**
+ * Moves a run no one is working on to a runner (D-200, route_workbook_run): "queued", "stalled" (a running run with no
+ * holder or no progress for STALE_SECONDS: the runner takes it up with resume) or null (done, failed, or being worked on).
+ */
+export async function routeWorkbookRun(admin: SupabaseClient<Database>, runId: string, runner: RunRunner): Promise<"queued" | "stalled" | null> {
+  const answer = must(await admin.rpc("route_workbook_run", { p_run: runId, p_runner: runner, p_stale_seconds: STALE_SECONDS }), "route");
+  return answer === "queued" || answer === "stalled" ? answer : null;
+}
+
+/** The Mac worker's queue (src/lib/workbook-worker.ts): its runs, and its heartbeat row (public.workbook_workers). */
+export function workbookWorkerQueue(admin: SupabaseClient<Database>, worker: { id: string; build: string | null; primary: AiProvider }): WorkerQueue {
+  return {
+    async candidates(staleSeconds) {
+      const rows = must(await admin.from("workbook_runs").select("id, status, lease, heartbeat_at, created_at").eq("runner", "mac")
+        .in("status", ["queued", "running"]).order("created_at").limit(50), "worker queue") ?? [];
+      const cutoff = Date.now() - staleSeconds * 1000;
+      return rows.flatMap((r): WorkerCandidate[] => {
+        if (r.status === "queued") return [{ id: r.id, resume: false }];
+        const quiet = r.lease === null || !r.heartbeat_at || Date.parse(r.heartbeat_at) < cutoff;
+        return quiet ? [{ id: r.id, resume: true }] : [];
+      });
+    },
+    async beat({ runId, started, note }) {
+      must(await admin.rpc("beat_workbook_worker", {
+        p_id: worker.id, p_build: worker.build, p_run: runId, p_primary_ai: worker.primary, p_note: note, p_started: started,
+      }), "worker heartbeat");
+    },
+  };
+}
+
+/** One AI call of a run as stored (public.workbook_run_ai_calls). */
+export type RunAiCall = Omit<AiCallRecord, "name"> & { kind: AiCallKind };
+
+/** Calls stored in one write. */
+const AI_CALL_BATCH = 200;
+
+/**
+ * The run's AI call log (D-200): each call is kept and written in batches of `batch` (and on `flush`, after the job
+ * call), one write after another. A write that fails is logged, never thrown: the record never stops the run.
+ */
+export function runAiCallLog(save: (calls: RunAiCall[]) => Promise<void>, o: { batch?: number } = {}) {
+  const batch = o.batch ?? 10;
+  let queue: RunAiCall[] = [];
+  let chain: Promise<void> = Promise.resolve();
+  const flush = () => {
+    const calls = queue;
+    queue = [];
+    if (calls.length) chain = chain.then(() => save(calls)).catch((e) => console.error("[workbook job] AI call log failed", e instanceof Error ? e.message : String(e)));
+    return chain;
+  };
+  return {
+    add(kind: AiCallKind, r: AiCallRecord) {
+      queue.push({ kind, provider: r.provider, model: r.model, outcome: r.outcome, ms: Math.max(0, Math.round(r.ms)), usd: r.usd, note: r.note });
+      if (queue.length >= batch) void flush();
+    },
+    flush,
+  };
+}
+
+/** Stores AI calls of a run through save_workbook_run_ai_calls. */
+export const saveRunAiCalls = (admin: SupabaseClient<Database>, runId: string) => async (calls: RunAiCall[]) => {
+  for (let i = 0; i < calls.length; i += AI_CALL_BATCH) {
+    must(await admin.rpc("save_workbook_run_ai_calls", { p_run: runId, p_calls: toJson(calls.slice(i, i + AI_CALL_BATCH)) }), "AI calls save");
+  }
+};

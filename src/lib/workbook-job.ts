@@ -109,7 +109,12 @@ export interface WorkbookRun {
   /** How many times a new job call took the run up again. */
   resumes: number;
   startedBy: { id: string | null; email: string | null };
+  /** Where the run is made (D-200): on the server (Vercel, the API) or by the workbook worker on Savar's Mac. */
+  runner: RunRunner;
 }
+
+/** Where a run is made: "server" (the site, on Vercel) or "mac" (the workbook worker, src/lib/workbook-worker.ts). */
+export type RunRunner = "server" | "mac";
 
 /**
  * A draft revision's rendering: the PDF of the pages that rendered, and each page's image with its question boxes. A
@@ -324,13 +329,17 @@ export async function readPaged<T>(page: (from: number, to: number) => Promise<T
 export const startWorkbookRun = (runs: WorkbookRunStore, childId: string, by: RunActor) =>
   runs.start(childId, by, { maxAttempts: RUN_ATTEMPTS, staleSeconds: STALE_SECONDS });
 
-/** What a run looks like now: a running run with no progress for STALE_SECONDS has stopped, even before a start marks it. */
+/**
+ * What a run looks like now: a running run with no progress for STALE_SECONDS has stopped, even before a start marks it.
+ * A queued run for the Mac (D-200) waits for the workbook worker however long that takes: it has not stopped.
+ */
 export type RunState = "waiting" | "preparing" | "stopped" | "failed" | "done";
 
-export function runState(run: Pick<WorkbookRun, "status" | "heartbeatAt" | "createdAt">, now: Date): RunState {
+export function runState(run: Pick<WorkbookRun, "status" | "heartbeatAt" | "createdAt"> & { runner?: RunRunner }, now: Date): RunState {
   if (run.status === "done") return "done";
   if (run.status === "failed") return "failed";
   if (run.status === "stale") return "stopped";
+  if (run.status === "queued" && run.runner === "mac") return "waiting";
   const last = Date.parse(run.heartbeatAt ?? run.createdAt);
   if (now.getTime() - last > STALE_SECONDS * 1000) return "stopped";
   return run.status === "queued" ? "waiting" : "preparing";
@@ -573,8 +582,8 @@ async function write(
 ): Promise<GeneratedWorkbook | "paused"> {
   await progress({ step: "plan" });
   await check();
-  if (!deps.ai) throw new Refusal("The AI is off: OPENROUTER_API_KEY is not set.");
-  if (!deps.solver) throw new Refusal("The solve check is off: OPENROUTER_API_KEY is not set.");
+  if (!deps.ai) throw new Refusal("The AI is off: no Claude subscription here and no OPENROUTER_API_KEY.");
+  if (!deps.solver) throw new Refusal("The solve check is off: no Claude subscription here and no OPENROUTER_API_KEY.");
   // The child is read for the name the pages print, and (on the first call only) for the plan.
   const inputs = await deps.source.inputs(run.childId);
   if (!inputs) throw new Refusal("The child is not known.");

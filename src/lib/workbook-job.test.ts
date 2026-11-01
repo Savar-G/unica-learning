@@ -156,14 +156,14 @@ describe("a run", () => {
     const s = setup({ ai: null });
     const id = await started(s);
     expect(await runWorkbookJob(id, s.deps)).toBe("failed");
-    expect((await s.runs.run(id))!.error).toBe("The AI is off: OPENROUTER_API_KEY is not set.");
+    expect((await s.runs.run(id))!.error).toBe("The AI is off: no Claude subscription here and no OPENROUTER_API_KEY.");
   });
 
   it("fails when the solve check is off, before any AI call", async () => {
     const s = setup({ solver: null });
     const id = await started(s);
     expect(await runWorkbookJob(id, s.deps)).toBe("failed");
-    expect((await s.runs.run(id))!.error).toBe("The solve check is off: OPENROUTER_API_KEY is not set.");
+    expect((await s.runs.run(id))!.error).toBe("The solve check is off: no Claude subscription here and no OPENROUTER_API_KEY.");
     expect((s.ai as ReturnType<typeof fakeAiClient>).requests).toHaveLength(0);
   });
 
@@ -585,6 +585,10 @@ describe("stale runs", () => {
     expect(runState({ status: "queued", heartbeatAt: null, createdAt: ago(5) }, now)).toBe("waiting");
     expect(runState({ status: "stale", heartbeatAt: ago(5), createdAt: ago(5) }, now)).toBe("stopped");
     expect(runState({ status: "failed", heartbeatAt: ago(900), createdAt: ago(900) }, now)).toBe("failed");
+    // D-200: a run queued for the Mac waits for the worker however long it takes; a server run does not.
+    expect(runState({ status: "queued", heartbeatAt: null, createdAt: ago(STALE_SECONDS * 10), runner: "mac" }, now)).toBe("waiting");
+    expect(runState({ status: "queued", heartbeatAt: null, createdAt: ago(STALE_SECONDS * 10), runner: "server" }, now)).toBe("stopped");
+    expect(runState({ status: "running", heartbeatAt: ago(STALE_SECONDS + 1), createdAt: ago(900), runner: "mac" }, now)).toBe("stopped");
   });
 });
 

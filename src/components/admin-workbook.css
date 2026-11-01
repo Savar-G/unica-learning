@@ -44,3 +44,9 @@
 .adm-wb-bad-link { font-weight: 600; }
 .adm-wb-figure { display: grid; gap: 6px; align-content: start; }
 .adm-wb-page.is-proof { border: 2px solid var(--tang); }
+
+/* D-200: where runs are made. */
+.adm-wb-worker { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.adm-wb-calls { display: grid; gap: 2px; }
+.adm-wb-wait { margin: 18px 0; padding: 14px 16px; border-radius: 8px; background: var(--adm-info); }
+.adm-wb-wait p { margin: 6px 0 10px; }

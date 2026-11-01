@@ -1,0 +1,110 @@
+# The workbook worker (D-200)
+
+Workbooks are made on Savar's Mac, on his Claude subscription, by default. The paid API (OpenRouter) is the fallback.
+
+When you press **Prepare next workbook** on the live site, the site only queues the run (`workbook_runs.runner = 'mac'`). The workbook worker on the Mac takes the run, makes it with `claude -p`, and stores the draft. The admin pages show whether the worker is online.
+
+## How it works
+
+| Part | File |
+|---|---|
+| The worker process | `scripts/workbook-worker.ts` (`npm run workbooks:worker`) |
+| Its loop: heartbeat, take a run, keep the Mac awake | `src/lib/workbook-worker.ts` |
+| The `claude -p` adapter | `src/lib/ai-claude-cli.ts` |
+| The subscription first, then the API | `src/lib/ai-fallback.ts` |
+| All settings | `src/lib/workbook-ai.ts` |
+| The job, shared with the server | `src/lib/workbook-job.ts`, `src/lib/workbook-job-deps.ts` |
+| The launcher (pulls `origin/main`, then starts the worker) | `scripts/workbook-worker.sh` |
+| The installer (checkout, settings file, LaunchAgent) | `scripts/install-workbook-worker.sh` |
+
+Each turn, the worker:
+
+1. Writes its heartbeat to `public.workbook_workers` (every 30 seconds, also while it makes a run).
+2. Takes the oldest run for the Mac: a queued run, or a running run with no holder or no progress for 6 minutes. The claim is atomic. If another process took the run first, the worker goes to the next run.
+3. Makes the whole run in one job call. There is no Vercel time limit. `caffeinate -i -s` keeps the Mac awake until the run ends.
+4. When it has nothing to do, it checks `origin/main` every 5 minutes. When `origin/main` has moved, the worker exits between runs. launchd then starts the launcher again, and the launcher pulls the new code.
+
+A run continues only on the code it started on (R379-8-2). The worker's build is its commit when the checkout is clean, else a value of its own. A run that started on other code fails with "the site's code changed". Start a new run when this occurs.
+
+### The AI
+
+- Each AI call goes to the subscription first: `claude -p --output-format json --json-schema <schema> --safe-mode --tools "" --no-session-persistence`. Claude Code checks the output against the schema. The generator then checks the output again, as it does on the API path.
+- The child process gets no API key. It gets only `PATH`, `HOME` and a few other variables. `WORKBOOK_CLAUDE_CONFIG_DIR` is passed as `CLAUDE_CONFIG_DIR`, so you can choose which Claude account runs it.
+- The subscription can be unable to take a call. These are the causes: a usage limit, no `claude` on `PATH`, `claude` not logged in, a crash, or an image in the request (`claude -p` reads only text). Then that call goes to the API.
+- After a usage limit, a missing CLI or a lost login, the worker uses the API for the rest of that run. It does not try the subscription on every call.
+- A bad answer (not JSON, or not to the schema) is not sent to the API. The generator's own retry handles it, as before.
+- The generator and the solve check send text only today. No call goes to the API because of images.
+- Each call is logged in `public.workbook_run_ai_calls`, with the provider, the model, the outcome, the time and the cost (USD 0 on the subscription). The admin run page shows the calls on each provider and the API cost.
+
+## Install (once)
+
+Before you install, make sure these are true:
+
+- `node` (22 or later), `git`, `gh` (logged in as `Savar-G`) and `claude` are on `PATH`.
+- You are logged in to `claude` with the account that must do the work. Run `claude` once and use `/login`.
+- Google Chrome is installed, or `CHROMIUM_PATH` is set in the settings file.
+- The Keychain item `supabase-pagewise` holds a Supabase access token (as for `npm run db:types`), or `SUPABASE_SECRET_KEY` is in the settings file.
+
+Then run, from any checkout of the repo:
+
+```sh
+bash scripts/install-workbook-worker.sh
+```
+
+The script does these steps:
+
+1. It clones the repo to `~/.unica-workbook-worker` (set `WORKER_DIR` to change it) and moves the clone to `origin/main`.
+2. It writes the settings file `~/.config/unica/workbook-worker.env` (chmod 600), if there is none.
+3. It writes the LaunchAgent `~/Library/LaunchAgents/com.unicalearning.workbook-worker.plist` and loads it. The LaunchAgent has `RunAtLoad`, `KeepAlive` (it starts the worker again when the worker exits or crashes), `ProcessType Interactive`, and the log at `~/Library/Logs/unica-workbook-worker.log`.
+
+Add `OPENROUTER_API_KEY` to the settings file to turn on the API fallback. Without it, a call that the subscription cannot take fails. The generator then marks that question as failed.
+
+Do not change files in `~/.unica-workbook-worker`. The launcher moves it to `origin/main` at each start.
+
+## Settings
+
+Put these in `~/.config/unica/workbook-worker.env`. The worker reads the file at start. To use another file, set `WORKBOOK_WORKER_ENV`.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `WORKBOOK_AI_PRIMARY` | `subscription` | Set `api` to put the API first, for example when there are many more customers. |
+| `OPENROUTER_API_KEY` | none | The API fallback. |
+| `AI_MODEL`, `AI_SOLVE_MODEL` | `anthropic/claude-sonnet-5.5`, `anthropic/claude-haiku-5.5` | The API models. |
+| `WORKBOOK_CLAUDE_MODEL`, `WORKBOOK_CLAUDE_SOLVE_MODEL` | `claude-sonnet-5-5`, `claude-haiku-5-5` | The subscription models. Keep them the same as the API models, so a run that changes provider keeps the same model name. |
+| `WORKBOOK_CLAUDE_CONFIG_DIR` | the normal `~/.claude` login | Which Claude account runs `claude -p`. |
+| `WORKBOOK_CLAUDE_TIMEOUT_MS` | `300000` | The time limit of one `claude -p` call. |
+| `WORKBOOK_CLAUDE_COMMAND` | `claude` | The `claude` command, as a full path if it is not on the LaunchAgent's `PATH`. |
+| `WORKBOOK_WORKER_ID` | the Mac's host name | The worker's name in the heartbeat. |
+| `SUPABASE_SECRET_KEY` | through the Keychain | The Supabase secret key. |
+| `CHROMIUM_PATH` | Google Chrome | The Chromium that prints the pages. |
+
+On Vercel, `WORKBOOK_RUNNER` sets where runs are made. With `mac` (the default), the site only queues the run. With `server`, the site makes the run itself with the API, as before D-200.
+
+## Daily use
+
+- **See the log:** `tail -f ~/Library/Logs/unica-workbook-worker.log`. The log does not rotate. Clear it with `: > ~/Library/Logs/unica-workbook-worker.log` when it is too large.
+- **Restart:** `launchctl kickstart -k gui/$(id -u)/com.unicalearning.workbook-worker`.
+- **Stop until the next login:** `launchctl bootout gui/$(id -u)/com.unicalearning.workbook-worker`. To start it again: `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.unicalearning.workbook-worker.plist`.
+- **After you edit the plist** (or after you run the installer again): `bootout`, then `bootstrap`. `kickstart -k` keeps the old configuration.
+- **One turn by hand,** from any checkout: `npm run workbooks:worker -- --once`. It makes the oldest waiting run, if there is one, and stops.
+
+## When the Mac is off
+
+When the Mac is asleep, off or offline, a run waits ("Waiting for the Mac"). The run page and the child page show "Mac worker offline" and the time the worker was last seen. When the Mac comes back, the worker makes the run.
+
+To make the run now, press **Run on the server with the API** on the run page. The run moves to the server (`runner = 'server'`), so the Mac does not take it. The server then makes it with the API, within Vercel's time limit, with hand-overs to the resume route. This costs API money.
+
+A run that stopped part-way on the Mac (for example, the Mac went to sleep with the lid closed) continues where it stopped. The worker takes it up again after 6 minutes with no progress. You can also run it on the server, but only if the server runs the same commit (the build rule above).
+
+`caffeinate` cannot keep a MacBook awake with the lid closed, except with power, an external display and a keyboard connected. Leave the lid open while the worker makes a run.
+
+## Switch back to the API
+
+When there are many more customers, the API becomes the default again (D-200):
+
+1. In `~/.config/unica/workbook-worker.env`, set `WORKBOOK_AI_PRIMARY=api`. Then restart the worker. This keeps the Mac worker, with the API first.
+2. Or, to make every run on the server: set `WORKBOOK_RUNNER=server` in Vercel (Production) and redeploy. Then stop the worker.
+
+## What stays on the API
+
+The work review, the report text, the learner and child profiles and Maya run live for parents and children. They always use the API (`src/lib/ai-client.ts`). Only workbook generation uses the subscription.

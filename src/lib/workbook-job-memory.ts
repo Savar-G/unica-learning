@@ -71,7 +71,7 @@ export function memoryRunStore(o: {
       runs.set(id, {
         id, createdAt: iso(), parentId, childId, number, status: "queued", step: null, attempts: 0, maxAttempts: limits.maxAttempts,
         donePages: null, totalPages: null, heartbeatAt: null, startedAt: null, finishedAt: null, error: null, errors: [], draftId: null,
-        draftKey: o.newId(), resumes: 0, startedBy: { id: by.id, email: by.email }, lease: null,
+        draftKey: o.newId(), resumes: 0, startedBy: { id: by.id, email: by.email }, runner: "server", lease: null,
       });
       log(id, "run-started", { number }, by.email);
       return { status: "started", runId: id };

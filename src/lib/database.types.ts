@@ -1133,6 +1133,66 @@ export type Database = {
           },
         ]
       }
+      maya_call_alerts: {
+        Row: {
+          call_id: string
+          claimed_at: string
+          created_at: string
+          email_id: string | null
+          error: string | null
+          id: string
+          level: string
+          parent_id: string
+          status: string
+          subject: string | null
+          text_body: string | null
+          updated_at: string
+        }
+        Insert: {
+          call_id: string
+          claimed_at: string
+          created_at?: string
+          email_id?: string | null
+          error?: string | null
+          id?: string
+          level: string
+          parent_id: string
+          status: string
+          subject?: string | null
+          text_body?: string | null
+          updated_at?: string
+        }
+        Update: {
+          call_id?: string
+          claimed_at?: string
+          created_at?: string
+          email_id?: string | null
+          error?: string | null
+          id?: string
+          level?: string
+          parent_id?: string
+          status?: string
+          subject?: string | null
+          text_body?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maya_call_alerts_call_fkey"
+            columns: ["call_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "maya_calls"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "maya_call_alerts_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       maya_calls: {
         Row: {
           assessment_id: string | null
@@ -1147,6 +1207,8 @@ export type Database = {
           created_at: string
           ended_at: string | null
           fallbacks: number | null
+          flag: string | null
+          flagged_at: string | null
           highest_hint: number | null
           id: string
           kind: string
@@ -1196,6 +1258,8 @@ export type Database = {
           created_at?: string
           ended_at?: string | null
           fallbacks?: number | null
+          flag?: string | null
+          flagged_at?: string | null
           highest_hint?: number | null
           id: string
           kind: string
@@ -1245,6 +1309,8 @@ export type Database = {
           created_at?: string
           ended_at?: string | null
           fallbacks?: number | null
+          flag?: string | null
+          flagged_at?: string | null
           highest_hint?: number | null
           id?: string
           kind?: string
@@ -2155,6 +2221,73 @@ export type Database = {
           },
         ]
       }
+      workbook_run_ai_calls: {
+        Row: {
+          child_id: string
+          created_at: string
+          id: number
+          kind: string
+          model: string
+          ms: number
+          note: string | null
+          outcome: string
+          parent_id: string
+          provider: string
+          run_id: string
+          usd: number | null
+        }
+        Insert: {
+          child_id: string
+          created_at?: string
+          id?: never
+          kind: string
+          model: string
+          ms: number
+          note?: string | null
+          outcome: string
+          parent_id: string
+          provider: string
+          run_id: string
+          usd?: number | null
+        }
+        Update: {
+          child_id?: string
+          created_at?: string
+          id?: never
+          kind?: string
+          model?: string
+          ms?: number
+          note?: string | null
+          outcome?: string
+          parent_id?: string
+          provider?: string
+          run_id?: string
+          usd?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_run_ai_calls_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_run_ai_calls_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_run_ai_calls_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_run_attempts: {
         Row: {
           attempts: number
@@ -2439,6 +2572,7 @@ export type Database = {
           number: number
           parent_id: string
           resumes: number
+          runner: string
           started_at: string | null
           started_by: string | null
           started_by_email: string | null
@@ -2463,6 +2597,7 @@ export type Database = {
           number: number
           parent_id: string
           resumes?: number
+          runner?: string
           started_at?: string | null
           started_by?: string | null
           started_by_email?: string | null
@@ -2487,6 +2622,7 @@ export type Database = {
           number?: number
           parent_id?: string
           resumes?: number
+          runner?: string
           started_at?: string | null
           started_by?: string | null
           started_by_email?: string | null
@@ -2514,6 +2650,44 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workbook_workers: {
+        Row: {
+          build: string | null
+          id: string
+          note: string | null
+          primary_ai: string
+          run_id: string | null
+          seen_at: string
+          started_at: string
+        }
+        Insert: {
+          build?: string | null
+          id: string
+          note?: string | null
+          primary_ai?: string
+          run_id?: string | null
+          seen_at?: string
+          started_at?: string
+        }
+        Update: {
+          build?: string | null
+          id?: string
+          note?: string | null
+          primary_ai?: string
+          run_id?: string | null
+          seen_at?: string
+          started_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_workers_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
             referencedColumns: ["id"]
           },
         ]
@@ -2817,6 +2991,17 @@ export type Database = {
         Returns: undefined
       }
       assert_family_writable: { Args: { p: string }; Returns: undefined }
+      beat_workbook_worker: {
+        Args: {
+          p_build: string
+          p_id: string
+          p_note: string
+          p_primary_ai: string
+          p_run: string
+          p_started: boolean
+        }
+        Returns: undefined
+      }
       begin_booking_signup: { Args: { payload: Json }; Returns: boolean }
       begin_family_card_operation: {
         Args: { p: string; token: string }
@@ -3081,6 +3266,10 @@ export type Database = {
         Args: { p_error: string; p_lease: string; p_run: string }
         Returns: boolean
       }
+      route_workbook_run: {
+        Args: { p_run: string; p_runner: string; p_stale_seconds: number }
+        Returns: string
+      }
       save_family_payment_progress: {
         Args: {
           after_id: string
@@ -3097,6 +3286,10 @@ export type Database = {
         Returns: boolean
       }
       save_workbook_rendering: { Args: { p_rendering: Json }; Returns: Json }
+      save_workbook_run_ai_calls: {
+        Args: { p_calls: Json; p_run: string }
+        Returns: number
+      }
       save_workbook_run_call: {
         Args: {
           p_call: Json
