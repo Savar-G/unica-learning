@@ -30,9 +30,9 @@ Fonts: **Geist** (words) and **Geist Mono** (numbers, maths, labels, IDs). Line 
 | Role | Font | Size / line height | Colour | Notes |
 |---|---|---|---|---|
 | Cover title | Geist Light | 66 / 118%, letter-spacing −3% | `#0C0C0E` | Two lines; the second sits on a `#FFD23F` highlight block |
-| Page title | Geist Light | 30 / 118% | `#0C0C0E` | "Warm-up", "Factor pairs" |
+| Page title | Geist Light | 30 / 118% | `#0C0C0E` | "Warm-up", "Factor pairs". One line of at most 4 words that names what every card on the page practises, written by code (D-201) |
 | Page subtitle | Geist Regular | 15 | `#44444C` | One line under the title ("Watch one. Finish two. Then do the rest on your own.") |
-| Day label | Geist Mono Medium | 13 / 120%, upper case, letter-spacing 4% | page-type colour (section 3) | "DAY 1 · PAGE 2 OF 8 · FACTOR PAIRS" |
+| Day label | Geist Mono Medium | 13 / 120%, upper case, letter-spacing 4% | page-type colour (section 3) | "DAY 1 · PAGE 2 OF 8" (D-201: the skill is not repeated here) |
 | Name and Date | Geist Regular | 13 | `#0C0C0E` | With 1 px `#0C0C0E` writing rules |
 | Chip label | Geist Mono Medium | 13 / 120%, upper case, letter-spacing 4% | chip text colour | |
 | Chip side note | Geist Regular | 13 | `#44444C` | "Do as many as you can." beside a chip |
@@ -225,12 +225,12 @@ the Try this first card from U19. On Days 5 and 10 the Friday 5 replaces the Mix
 | Page | Title, subtitle | Blocks (slots) |
 |---|---|---|
 | 1 Warm-up | "Warm-up"; "Facts to 20. Take your time: there is no timer." (from U16 "Beat your own count") | WARM-UP chip + "Do as many as you can."; fact grid, 3 columns of 213 (gap 24), up to 30 facts (10 rows) or 15 facts plus Fix it; Fix it box (workbook 2 on, Days 1 to 5, up to 3 items); spare room: In your head box |
-| 2 New idea | the step's name; "Before you ..." or "Try it first. Then see how it works." (U19 on) | NEW IDEA chip (+ "Unit A · new step"); Try this first card (U19 on); worked example panel, two ways or figure + "What's going on"; Spot the error card or Now you card (2 to 4 items) |
-| 3 Practice | "Practice: <step>"; "Watch one. Finish two. Then do the rest on your own." | PRACTICE chip + one-line rule; Watch one panel (1 worked item, answer in blue); "FINISH THESE" (2 items, partly filled in blue); "ON YOUR OWN" (3 to 8 items) |
-| 4 Practice 2 | "More practice: <step>" or "On your own"; "Each row is a little harder than the one before." | PRACTICE chip; rows of items getting harder (up to 12 column problems in a 4-column grid, labelled rows such as "TWO DIGITS", "HARDER: THREE DIGITS", "LOOK FIRST: SOME DON'T NEED A TRADE"); one Solve it two ways item (heading "Solve it two ways"; METHOD 1 and METHOD 2 work boxes + Answer box); one Spot the error card |
-| 5 Word problems | "<Step> in stories"; "Read it. Work it out in the box. Write the answer." | 3 stories, each: number, story (up to 3 lines), optional picture (dots, blocks), work box, ANSWER box with unit word; one "How do you know?" or "Did you need to ...? How do you know?" with 2 writing lines. Story number in Geist Light 26; stories separated by full-width 1.5 px `#FF6A3D` rules; answer boxes 80 to 96 by 40 |
-| 6 Unit B | the Unit B topic; "Unit B: <topic>. <one-line rule>." | NEW IDEA or REMEMBER chip + "Unit B · new step" or "From yesterday"; reminder panel (figure + "What's going on"); PRACTICE chip; up to 8 items, "HARDER: TWO MORE EACH" rows last |
-| 7 Remember these + Mixed set | "Remember these?"; "Things you learned before, so they stay fresh." | 8 review items in 2 columns (answer boxes at the right of each column); MIXED SET chip + "Tick + or −, then write the answer."; 3 to 4 Mixed set items |
+| 2 New idea | the unit's short title (D-201); "Before you ..." or "Try it first. Then see how it works." (U19 on) | NEW IDEA chip (+ "Unit A · new step"); Try this first card (U19 on); worked example panel, two ways or figure + "What's going on"; Spot the error card or Now you card (2 to 4 items) |
+| 3 Practice | the unit's short title (D-201); "Watch one. Finish two. Then do the rest on your own." | PRACTICE chip + one-line rule; Watch one panel (1 worked item, answer in blue); "FINISH THESE" (2 items, partly filled in blue); "ON YOUR OWN" (3 to 8 items) |
+| 4 Practice 2 | the unit's short title (D-201); "Each row is a little harder than the one before." | PRACTICE chip; rows of items getting harder (up to 12 column problems in a 4-column grid, labelled rows such as "TWO DIGITS", "HARDER: THREE DIGITS", "LOOK FIRST: SOME DON'T NEED A TRADE"); one Solve it two ways item (heading "Solve it two ways"; METHOD 1 and METHOD 2 work boxes + Answer box); one Spot the error card |
+| 5 Word problems | "Number stories to <n>" up to U12, "Word problems" from U13 (D-201); "Read it. Work it out in the box. Write the answer." | 3 stories, each: number, story (up to 3 lines), optional picture (dots, blocks), work box, ANSWER box with unit word; one "How do you know?" or "Did you need to ...? How do you know?" with 2 writing lines. Story number in Geist Light 26; stories separated by full-width 1.5 px `#FF6A3D` rules; answer boxes 80 to 96 by 40 |
+| 6 Unit B | the Unit B unit's short title (D-201); "Unit B: <topic>. <one-line rule>." | NEW IDEA or REMEMBER chip + "Unit B · new step" or "From yesterday"; reminder panel (figure + "What's going on"); PRACTICE chip; up to 8 items, "HARDER: TWO MORE EACH" rows last |
+| 7 Remember these + Mixed set | "Remember these?" ("Review and Friday 5" with the Friday 5); "Things you learned before, so they stay fresh." | 8 review items in 2 columns (answer boxes at the right of each column); MIXED SET chip + "Tick + or −, then write the answer."; 3 to 4 Mixed set items |
 | 8 Challenge | "Challenge"; "One to stretch you." or "Two to stretch you." | CHALLENGE chip; 1 or 2 Challenge cards (skeleton: 1 to 2 a day), full width and stacked, each with a large work box; spare room goes to spaced review. The samples' four cards in a 2 by 2 grid were sample-only |
 
 ### 7.2 Other page counts
@@ -241,7 +241,8 @@ the Try this first card from U19. On Days 5 and 10 the Friday 5 replaces the Mix
   problems; 5 Unit B (reminder + practice); 6 Remember these? (6 items) + Mixed set (2
   items) + 2 Challenge cards side by side.
 - **4 to 6-page parent-led day (U1 to U3):** not in the samples yet. Skeleton rules: the parent reads every instruction
-  aloud; instructions are an icon plus a short line; the child answers by circling, matching, colouring, drawing a line
+  aloud; instructions are a short line, up to 3 lines on a card (D-201: no read-aloud mark; the grown-up line already
+  says to read each line aloud), with a pencil only where the child circles; the child answers by circling, matching, colouring, drawing a line
   or writing one numeral; 6 to 10 items a page; large boxes (at least 56 px). Until Cedric's sample exists, the
   generator does not build these levels (CONTEXT.md, open question 3).
 - **Friday 5 (Days 5 and 10):** replaces the Mixed set block on page 7: a FRIDAY 5 chip (Mixed set colours) with "5
@@ -303,3 +304,20 @@ From the FigJam stickies beside the Mateo sample:
 - "Tick one what?": every choice strip's instruction names the choices, and Mixed set items show both steps clearly.
 - In a Remember these list, the big box for items 9 to 12 was unclear (each item keeps its own answer box beside it).
 - Spacing issue around one diagram label.
+
+## 9. Plain story language (D-201)
+
+Every story question at every level (word problems, picture stories, the Mixed set) uses linguistic modification:
+everyday words simplified, the math kept.
+
+1. A person with a first name and real things: "Gus has 2 plums.", never bare counts such as "2 plums" or "9 dots".
+2. One action per sentence: "He finds 5 more."
+3. The question names the counted thing again and says "now" or asks plainly: "How many plums does Gus have now?".
+   Never "in all", "altogether", "total" or "left over".
+4. Things only do what they really can: "9 frogs. 7 hop away." is fine; "9 dots. 7 hop off." is wrong.
+5. The math words the curriculum teaches stay ("ten-frame", "take away"); only everyday words are simplified.
+
+At U1 to U9 code writes every story (`src/lib/workbook-wording.ts`). From U10 the AI writes them under these rules, and
+code refuses a story with a banned phrase, with no person, or (when code planned it) whose question does not name the
+counted thing again: the question is written again, never printed.
+

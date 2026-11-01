@@ -28,7 +28,7 @@
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { readNumbers } from "@/lib/number-words";
 import { defaultItem, figureCount } from "@/lib/question-package-items";
-import { codeWordings, isWorded, operationQuestion, type WordingKind } from "@/lib/workbook-wording";
+import { codeWordings, isWorded, operationQuestion, storyProblem, type WordingKind } from "@/lib/workbook-wording";
 import { PLACE_ORDER, written } from "@/lib/question-package-columns";
 import {
   checkQuestionPackage,
@@ -645,6 +645,8 @@ export interface SlotPlace {
   variant?: number;
   /** What code words a whole-number question with at U1 to U9 (round 7); absent: code's defaults. */
   wording?: SlotWording;
+  /** A place whose questions are stories (word problems, picture stories, the Mixed set): checked by storyProblem (D-201). */
+  story?: boolean;
 }
 
 /** What the plan gives code to word a slot's whole-number question with (round 7). */
@@ -685,13 +687,15 @@ export function buildQuestion(raw: unknown, place: SlotPlace): BuiltQuestion {
     const built = build(raw, place);
     if (built.check.status === "failed" || !built.package || !isObject(raw)) return built;
     const pkg = built.package;
+    // A story place's question (D-201): plain story language, with the planned thing named again in a code-planned story.
+    const story = (text: string) => (place.story ? storyProblem(text, { thing: built.wordings ? place.wording?.thing ?? null : null }) : null);
     if (built.wordings) {
-      // Code's wordings that pass every text check, the first printed (one always does: the bare sum).
-      const sound = built.wordings.filter((w) => !kindProblem({ ...pkg, text: w }, raw));
-      if (sound.length === 0) return fail(kindProblem(pkg, raw)!, pkg, built.stepIds);
+      // Code's wordings that pass every text check, the first printed (one always does off a story place: the bare sum).
+      const sound = built.wordings.filter((w) => !kindProblem({ ...pkg, text: w }, raw) && !story(w));
+      if (sound.length === 0) return fail(kindProblem(pkg, raw) ?? story(pkg.text) ?? "no wording of code's fits this story place", pkg, built.stepIds);
       return { ...built, package: { ...pkg, text: sound[0] }, wordings: sound };
     }
-    const problem = kindProblem(pkg, raw);
+    const problem = kindProblem(pkg, raw) ?? story(pkg.text);
     return problem ? fail(problem, pkg, built.stepIds) : built;
   } catch (e) {
     return fail(`code could not build the question: ${e instanceof Error ? e.message : String(e)}`);

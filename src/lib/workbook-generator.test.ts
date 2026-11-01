@@ -12,7 +12,7 @@ import { planLevel, planWorkbook, type WorkbookPlan } from "@/lib/workbook-plan"
 import { skillRange } from "@/lib/workbook-book";
 import { buildQuestion, choiceAsked, type SlotWording } from "@/lib/workbook-generator-items";
 import { aiTextProblem } from "@/lib/number-words";
-import { FRAMES } from "@/lib/workbook-wording";
+import { FRAMES, storyProblem } from "@/lib/workbook-wording";
 import { textRoom } from "@/lib/workbook-template";
 import { fixedTemplate } from "@/lib/workbook-template-fixed";
 import type { SlotName } from "@/lib/workbook-page";
@@ -583,8 +583,9 @@ describe("a book laid out for the templates: room, rules and the content left", 
       expect(s.room).toEqual({ characters: room!.characters, perLine: room!.perLine, lines: room!.lines });
       expect(Object.keys(s.rules)).toEqual(s.skills);
     }
-    // A parent-led card holds 2 lines of about 23 letters; Spot the error, the sum only.
-    expect(slots.find((s) => s.place === "already-know-it")!.room).toEqual({ characters: 41, perLine: 23, lines: 2 });
+    // A parent-led card holds 3 lines of about 26 letters (D-201: no read-aloud mark, a story in full sentences);
+    // Spot the error, the sum only.
+    expect(slots.find((s) => s.place === "already-know-it")!.room).toEqual({ characters: 70, perLine: 26, lines: 3 });
     expect(textRoom("spot-the-error", 3)!.characters).toBe(10);
     const rule = Object.values(slots.find((s) => s.place === "already-know-it")!.rules)[0];
     expect(rule).toContain("a whole number from 0 to 10");
@@ -1340,10 +1341,10 @@ describe("round 5 (#380): code plans the book's numbers and names, rooms and row
     });
     const draft = await book(ai);
     const note = body(ai.requests.find((r) => r.name === "workbook_page_redo" && body(r).day === 1 && body(r).page === 1)!).note!;
-    expect(note).toMatch(/Slot 1\.1 is sound but too long for its place: its text has \d+ characters and its room is 41/);
+    expect(note).toMatch(/Slot 1\.1 is sound but too long for its place: its text has \d+ characters and its room is 70/);
     const [q1, q2] = firstDayPage(draft).questions;
     expect(q1).toMatchObject({ attempts: 2, check: { status: "checked" } });
-    expect(q1.package!.text.length).toBeLessThanOrEqual(41);
+    expect(q1.package!.text.length).toBeLessThanOrEqual(70);
     expect(q2).toMatchObject({ attempts: 2, check: { status: "checked" } });
     expect(q2.package!.text).toBe(long(6));
   });
@@ -1390,7 +1391,7 @@ describe("round 5 (#380): code plans the book's numbers and names, rooms and row
     // On picture stories, every other card counts dots: the cards in reading order are picture, story, picture, ...
     const ai = fakeAiClient({
       answer: (r) => fill(r, (s) => ((s as Planned).place === "picture-stories" && Number(s.slot.split(".")[1]) % 2 === 1
-        ? goodItem(s, { text: `How many dots ${tag(n)}?`, format: "count", operation: null, easier: null, wrongAnswers: [], figure: "dots", numbers: [num(1 + (n++ % 9))] })
+        ? goodItem(s, { text: `Mia draws dots ${tag(n)}. How many dots does she draw?`, format: "count", operation: null, easier: null, wrongAnswers: [], figure: "dots", numbers: [num(1 + (n++ % 9))] })
         : write(s))),
     });
     const draft = await book(ai, { fit });
@@ -1548,7 +1549,7 @@ describe("round 6 (#380): what a parent sees on a page of stories", () => {
     const p = s.planned!;
     if (p.operation!.kind === "add") return "join";
     if (p.operation!.kind === "subtract") return "separate";
-    if (/How many more (dogs|blue|small|has \w+)\?$/.test(p.say!)) return "compare";
+    if (/How many more .*(does (Ben|Leo) have|than cats does \w+ see|are there)\?$/.test(p.say!)) return "compare";
     if (p.figure === "ten-frame" && p.operation!.operands[1] === 10) return "frame";
     return "part";
   };
@@ -1570,15 +1571,20 @@ describe("round 6 (#380): what a parent sees on a page of stories", () => {
     expect(slots).toBeGreaterThan(0);
   });
 
-  it("plans whole short questions a parent reads aloud, never 'Total?' or 'In all?' on their own", async () => {
-    const says = (await plannedPages()).flatMap((p) => p.slots.flatMap((s) => (s.planned?.say ? [s.planned.say] : [])));
+  it("plans whole questions a parent reads aloud in plain story language: never 'in all', 'altogether', 'total' or 'left over' (D-201)", async () => {
+    const pages = await plannedPages();
+    const says = pages.flatMap((p) => p.slots.flatMap((s) => (s.planned?.say ? [s.planned.say] : [])));
     expect(says.length).toBeGreaterThan(80);
     for (const say of says) {
       const last = say.match(/[^.?!]*[?.!]$/)?.[0].trim() ?? say;
       expect(last.split(/\s+/).length, say).toBeGreaterThanOrEqual(3);
+      expect(say, say).not.toMatch(/\b(in all|altogether|total|left over)\b/i);
     }
-    expect(says.some((x) => /How many are left\?$/.test(x))).toBe(true);
-    expect(says.some((x) => /How many in all\?$/.test(x))).toBe(true);
+    // Every story card: a person, and the question names the planned thing again ("How many plums does Gus have now?").
+    const stories = pages.flatMap((p) => p.slots.filter((s) => s.place === "picture-stories" && s.planned?.say));
+    expect(stories.length).toBeGreaterThan(10);
+    for (const s of stories) expect(storyProblem(s.planned!.say!, { thing: (s.planned as { thing?: string }).thing ?? null }), s.planned!.say!).toBeNull();
+    expect(says.some((x) => /have now\?$/.test(x))).toBe(true);
   });
 
   it("plans each wording with the operation and picture it works: each builds a checked question", async () => {
@@ -1658,6 +1664,31 @@ describe("a ten-frame of two parts (round 6)", () => {
   });
 });
 
+describe("plain story language on a story place (D-201)", () => {
+  const empty = { difficulty: 1, shownWrong: null, figure: null, numbers: [], places: null, direction: null, sequence: null, pattern: null, relation: null, figureShows: null };
+  const wording: SlotWording = { name: "Gus", thing: "plums", names: ["Gus", "Mia", "Ben"], things: ["plums", "cars", "hats"], kinds: ["story", "picture", "missing-part"], step: false, subtraction: true };
+  const story = (text: string, level: number, place: Record<string, unknown> = { story: true }) => buildQuestion({
+    ...empty, slot: "1.1", skill: "K5-add-on-change", text, format: "show-work", operation: addOp(3, 4),
+    wrongAnswers: [{ value: num(6), cause: "count", description: "x", step: null }], easier: { text: "2 + 4 = ?", operation: addOp(2, 4) },
+  }, { id: "q1", workbookId: WORKBOOK, page: 3, question: 1, level, skills: ["K5-add-on-change"], ...(level <= 9 ? { wording } : {}), ...place });
+
+  it("sends an AI story with a banned phrase or no person to be written again (U10 and up: the AI's words print)", () => {
+    expect(story("Raj has 3 apples and finds 4 more. How many apples in all?", 12).check).toEqual({ status: "failed", reason: expect.stringMatching(/never says "in all"/) });
+    expect(story("3 apples. 4 more. How many apples are there now?", 12).check).toEqual({ status: "failed", reason: expect.stringMatching(/a person with a first name/) });
+    expect(story("Raj has 3 apples. He finds 4 more. How many apples does Raj have now?", 12).check).toEqual({ status: "checked" });
+    // Off a story place, the same words are not checked for story language.
+    expect(story("3 apples. 4 more. How many apples are there now?", 12, {}).check).toEqual({ status: "checked" });
+  });
+
+  it("prints only a code wording with a person and the planned thing named again at U1 to U9", () => {
+    const b = story("anything", 3);
+    expect(b.check).toEqual({ status: "checked" });
+    expect(b.wordings!.length).toBeGreaterThan(2);
+    for (const w of b.wordings!) expect(storyProblem(w, { thing: "plums" }), w).toBeNull();
+    expect(b.package!.text).toMatch(/^(Gus|Mia|Ben) /);
+  });
+});
+
 describe("round 7 (#380, R380-12-1): code writes the text where it can, a solve check reads the rest", () => {
   const empty = { difficulty: 1, shownWrong: null, figure: null, numbers: [], places: null, direction: null, sequence: null, pattern: null, relation: null, figureShows: null };
   const missing = (part: number, total: number) => ({ kind: "missing-addend", operands: [num(part), num(total)], expression: null, unit: null, denominator: null, values: [] });
@@ -1705,7 +1736,7 @@ describe("round 7 (#380, R380-12-1): code writes the text where it can, a solve 
       const away = built(text, subOp(7, 5), 3);
       expect(away.package!.text, text).toMatch(/\b7\b/);
       expect(away.package!.answer!.value).toEqual({ type: "number", value: 2 });
-      for (const w of away.wordings!) expect(w, w).toMatch(/left|away|take|-|less|back|crossed|hides|uses|lost|fell|gives|hop/i);
+      for (const w of away.wordings!) expect(w, w).toMatch(/left|away|take|-|less|back|crossed|hides|uses|lost|loses|fell|gives|hop/i);
     }
   });
 
@@ -1715,7 +1746,8 @@ describe("round 7 (#380, R380-12-1): code writes the text where it can, a solve 
   });
 
   it("prints code's words only: the AI may choose the person and the thing from the lists code offers, nothing else", () => {
-    const vocabulary = new Set([...FRAMES.flatMap((f) => f.f.split(/[^A-Za-z]+/)), "Leo", "Ben"].filter(Boolean).map((w) => w.toLowerCase()));
+    // The pronouns code fills in for {He}, {he} and {him} (D-201), and the second person {other}.
+    const vocabulary = new Set([...FRAMES.flatMap((f) => f.f.split(/[^A-Za-z]+/)), "Leo", "Ben", "she", "her", "him"].filter(Boolean).map((w) => w.toLowerCase()));
     const ops = [addOp(7, 5), subOp(9, 4), missing(3, 8), missing(4, 10), op("multiply", 3, 4), op("divide", 12, 3), op("divide", 13, 3)];
     let worded = 0;
     for (const operation of ops) {

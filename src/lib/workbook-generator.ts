@@ -44,7 +44,7 @@ import type { Curriculum } from "@/lib/workbook-curriculum";
 import { buildQuestion, isCodeWorded, ITEMS_SCHEMA, kindProblem, relationWordings, type BuiltQuestion, type QuestionCheck, type SlotWording } from "@/lib/workbook-generator-items";
 import { isOneMoreLessSkill } from "@/lib/number-words";
 import { solveCheck, solveReason, type SolveLog, type Solver } from "@/lib/workbook-solve-check";
-import { fillFrame, frameDoes, framePair, framesFor, THINGS, type Action, type WordingKind } from "@/lib/workbook-wording";
+import { BOYS, fillFrame, frameDoes, framePair, framesFor, GIRLS, PEOPLE, THINGS, type Action, type WordingKind } from "@/lib/workbook-wording";
 import {
   bookPageContent, dayPageContent, layoutDayPage, mistakesFor, levelSigns, rangeProblem, samFix, samProblem, skillRange, slotRanges, PANEL_SLOTS, SLOT_FORMATS, STRICT_SLOTS,
   type DayLayout, type NumberRange,
@@ -349,10 +349,6 @@ function layoutSlots(page: PlannedPage, layout: DayLayout): Slot[] {
 
 // ---------- The book plan: kinds, numbers and names (#380) ----------
 
-/** People's names, a girl's and a boy's in turn, so a pronoun can follow. Never Sam: Sam is the child of Spot the error. */
-const GIRLS = ["Mia", "Ava", "Lia", "Ana", "Pia", "Ivy", "Nia", "Eva", "Rosa", "Tara", "Gia", "Amy", "Lily", "June"];
-const BOYS = ["Ben", "Leo", "Tom", "Raj", "Eli", "Gus", "Dan", "Kai", "Omar", "Max", "Ian", "Jon", "Ali", "Ned"];
-const PEOPLE = GIRLS.flatMap((g, i) => [g, BOYS[i]]);
 /** The most numbers a sequence has on a parent-led card (U1 to U3): more wrap to a second line, and the page overflows. */
 const PARENT_SEQUENCE_MOST = 5;
 /** The kinds of question code plans numbers for: each has an operation, or a relation of one or two numbers. */
@@ -461,6 +457,8 @@ function planBook(input: GenerateInput, work: PageWork[]) {
           .sort((a, b) => a.s - b.s || a.n - b.n || a.j - b.j);
         // Spot the error prints its bare sum (round 7): a sum no Spot the error of the book has had, while there is one.
         if (numbered.kind === "spot" && ranked.some((x) => !spotPairs.has(`${x.p}`))) ranked.splice(0, ranked.length, ...ranked.filter((x) => !spotPairs.has(`${x.p}`)));
+        // And one no bare fact of the book has printed yet, while there is one ("5 + 4 = ?" is a fact's wording too).
+        if (numbered.kind === "spot" && ranked.some((x) => x.n === 0)) ranked.splice(0, ranked.length, ...ranked.filter((x) => x.n === 0));
         pair = ranked[0]?.p ?? null;
         if (pair && numbered.kind === "spot") spotPairs.add(`${pair}`);
         spare = ranked.find((x) => pair && bond(x.p) !== bond(pair))?.p ?? null;
@@ -501,9 +499,9 @@ function planBook(input: GenerateInput, work: PageWork[]) {
         const kindsHere = [own, ...(storyPlace ? (slot.aim?.orElse ?? []).filter((k) => k === "story" || k === "picture" || k === "missing-part") : [])];
         const pick = (pairNow: number[] | null, thingNow: string, not: number[] | null = null, limit = true) => {
           if (!pairNow) return null;
-          // A page of stories takes stories and pictures only, never a bare "9 + ? = 10".
+          // A page of stories takes stories only (D-201: a person and real things), never a bare "9 + ? = 10".
           const frames = kindsHere.flatMap((k, o) => framesFor(k, step, range.subtraction).map((f) => ({ f, k, o })))
-            .filter((x) => !storyPlace || /\{thing\}|\{name\}|dots|cats|[Tt]en-frame/.test(x.f.f));
+            .filter((x) => !storyPlace || x.f.f.includes("{name}"));
           const fills = frames.map((x, j) => ({ ...x, j, n: frameUse.get(x.f.f) ?? 0, a: acts.get(x.f.act) ?? 0 }))
             .filter((x) => !pageFrames.has(x.f.f))
             .sort((a, b) => Number(a.a >= cap) - Number(b.a >= cap) || a.o - b.o || a.a - b.a || (bookActs.get(a.f.act) ?? 0) - (bookActs.get(b.f.act) ?? 0)
@@ -628,8 +626,9 @@ const SYSTEM = [
   "Formats a parent checks: written-reason (How do you know?); draw (Draw 6 dots; make a set). No operation, no figure.",
   "Pictures: figure names a picture kind (dots, ten-frame, number-line, base-ten, array) or null. Code draws it from the operation (dots for 3 + 4 are 3 and 4 dots; an array for 3 × 4) or from numbers (count: dots take each group, a ten-frame each part, base-ten the hundreds, tens and ones, an array the rows and columns); you never draw, size or place it. Picture stories below U10 should have dots or a ten-frame with small whole numbers.",
   "Keep to the part's kind: practice builds from easy to harder in small changes; Fix it uses new numbers on the skills listed, never a question named in 'avoid'; Friday 5, mini-tests and the level test have no hints.",
+  "Stories (every question on the word-problems, picture-stories and mixed-set places, at every level) use plain story language; code checks it and a story that breaks a rule is written again: (1) every story has a person, the slot's planned name, and real things: 'Gus has 2 plums.', never bare counts such as '2 plums' or '9 dots'; (2) one action per sentence: 'He finds 5 more.'; (3) the question names the counted thing again and says 'now' or asks plainly: 'How many plums does Gus have now?', never 'in all', 'altogether', 'total' or 'left over'; (4) things only do what they really can: '9 frogs. 7 hop away.' is fine, '9 dots. 7 hop off.' is wrong; (5) keep the math words the curriculum teaches (ten-frame, take away, equal groups, and so on): simplify only the everyday words.",
   "Copy: short plain sentences a child can read; Canadian English (Mom, metre, litre, colour); money in Canadian dollars and cents; never a school grade, a brand name, or a prompt to scan or call anyone; no last names.",
-  "Room: a slot may give its room: the most characters its question text has room for on the printed page (characters), in lines of about perLine characters. Count the characters of the text, spaces included, and stay within it: the page has no room for more, and nothing is shrunk to fit. Say it short: '3 cars. 2 more come. How many now?', not a long story. On a card (lines 2), writing lines (written-reason) or a tall picture (number-line, base-ten) take the place of a line: then write one line at most. A ten-frame on a card is taller than its answer box: with a ten-frame, write one line. A written-reason card's lines take as much room as 2 lines of text, so a page of cards has at most 2 written-reason items. For another question with no number answer (Equal? Which has more?), use draw ('Draw 3 dots and 3 dots. Circle the bigger group.'): a parent checks it and it takes the room of an answer box. A write-number item always needs an operation.",
+  "Room: a slot may give its room: the most characters its question text has room for on the printed page (characters), in lines of about perLine characters. Count the characters of the text, spaces included, and stay within it: the page has no room for more, and nothing is shrunk to fit. Say it in short sentences: 'Gus has 2 plums. He finds 5 more. How many plums does Gus have now?', not a long story. On a card (lines 2 or 3), writing lines (written-reason) or a tall picture (number-line, base-ten) take the place of a line: then write one line at most. A ten-frame on a card is taller than its answer box: with a ten-frame, write one line. A written-reason card's lines take as much room as 2 lines of text, so a page of cards has at most 2 written-reason items. For another question with no number answer (Equal? Which has more?), use draw ('Draw 3 dots and 3 dots. Circle the bigger group.'): a parent checks it and it takes the room of an answer box. A write-number item always needs an operation.",
   "Vary: every page is written alone, and other days practise the same skills. So no two questions of a page are the same, and each slot gives a vary number: make it one of the item's numbers (its first number, its total or its count) when the rules allow, so the pages of different days differ.",
   "Pictures must show what the text says. A dots picture of a subtraction crosses out the dots taken away: use it only for take-away, never to compare two groups (how many more red than blue? has no picture). A missing part's picture shows only the part given. There is no five-frame picture: a five-frame question has no picture.",
   "Aim: a slot may give its aim: a skill and a kind of question code chose for it (what the kind means is in means). Write that kind of question on that skill. Only when that kind cannot ask that skill, use the first kind of orElse that can, or another of the slot's skills.",
@@ -891,6 +890,9 @@ interface PageWork {
 }
 
 /** Writes the page's slots at `which` (indexes) in one AI call and builds each; never throws. */
+/** A slot's room for code's wordings: two thirds of it on a shorter rewrite. */
+const shorterRoom = (room: number | undefined, shorter: boolean) => (room !== undefined && shorter ? Math.floor((room * 2) / 3) : room);
+
 async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork, which: number[], note: string | null, name: string, panels: Panel[] = [], memory: BookMemory | null = null, pageTexts: string[] = []) {
   const asked = which.map((i) => w.slots[i]);
   const out = await callAi(deps, name, pageRequest(input, w, asked, note, panels, memory, pageTexts), [...asked.map((x) => x.id), ...panels.map((x) => x.id)]);
@@ -919,8 +921,10 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
       id: `${input.workbookId}:d${w.day}p${w.page.number}s${slot.id}`,
       workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: slot.part.skills,
       signs: levelSigns(input.curriculum, input.plan.level),
-      ...(slot.place ? { room: roomOf(input, slot.place, w.day)?.characters } : {}), variant: w.number + i,
+      // A shorter rewrite (the page did not fit) gives code's wordings two thirds of the room: a shorter one prints.
+      ...(slot.place ? { room: shorterRoom(roomOf(input, slot.place, w.day)?.characters, name === "workbook_page_shorter") } : {}), variant: w.number + i,
       ...(slotWording(input, slot) ? { wording: slotWording(input, slot) } : {}),
+      ...(slot.place && STORY_CHECK_PLACES.has(slot.place) ? { story: true } : {}),
     });
     // Sam is only Spot the error's child: anyone else named Sam takes the slot's planned name.
     if (b.package && slot.place && slot.place !== "spot-the-error") b.package = withoutSam(b.package, slot.planned?.name ?? null);
@@ -928,7 +932,8 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
     else if (!out.items.has(slot.id) && b.check.status === "failed") b.check = { status: "failed", reason: `${b.check.reason}${missing(slot.id)}` };
     // A slot with a layout of its own takes only its format: another would not lay out there.
     const format = b.package?.item?.format;
-    if (slot.place && STRICT_SLOTS.includes(slot.place) && b.check.status !== "failed" && format && !SLOT_FORMATS[slot.place]?.includes(format)) {
+    // Before any other reason: a question of another format is never written into this place, whatever else it fails.
+    if (slot.place && STRICT_SLOTS.includes(slot.place) && format && !SLOT_FORMATS[slot.place]?.includes(format)) {
       b.check = { status: "failed", reason: `the ${slot.place} place takes the ${SLOT_FORMATS[slot.place]!.join(" or ")} format, not ${format}` };
     }
     // Spot the error shows Sam's wrong steps, built by code: the shown wrong answer must be a mistake code can show.
@@ -999,6 +1004,8 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
 const BARE_PLACES: ReadonlySet<SlotName> = new Set<SlotName>(["warm-up", "in-your-head", "practice-row", "finish-these", "on-your-own", "unit-b-practice", "solve-it-two-ways"]);
 const STORY_PLACES: ReadonlySet<SlotName> = new Set<SlotName>(["word-problems", "picture-stories", "challenge", "math-in-the-world", "mixed-set"]);
 const WORDING_KINDS: readonly string[] = ["story", "picture", "fact", "missing-part"];
+/** Places whose every question is a story, checked for plain story language (D-201, storyProblem). */
+const STORY_CHECK_PLACES: ReadonlySet<SlotName> = new Set<SlotName>(["word-problems", "picture-stories", "mixed-set"]);
 
 /**
  * What code words a slot's whole-number question with at U1 to U9 (round 7): the planned person and thing (and the

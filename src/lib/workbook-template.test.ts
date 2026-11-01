@@ -50,6 +50,19 @@ describe("the workbook templates", () => {
     }
   });
 
+  it("prints no read-aloud mark on a card, and a day label with no skill: 'Day 4 · Page 4 of 6' (D-201)", () => {
+    const early = book("U2");
+    const template = workbookTemplate();
+    const ear = "M5 6a3 3 0 1 1 6 0";
+    for (const p of early.pages.filter((x) => x.content?.kind === "day")) {
+      const c = p.content!;
+      if (c.kind !== "day") continue;
+      const html = template.page(p, { qr: `<div data-measure="qr"></div>`, qrUrl: "https://unicalearning.com/tutor/p/x" }, early)!;
+      expect(html).not.toContain(ear);
+      expect(html).toContain(`data-measure="slot-day-label">Day ${c.day} · Page ${c.page} of ${c.pages}</div>`);
+    }
+  });
+
   it("has no layout for a page with no slot content", async () => {
     const draft = book("U12");
     const bare: DraftPage = { ...draft.pages[2], content: undefined };
@@ -132,6 +145,30 @@ describe("the fit check", () => {
     expect(result.status === "failed" && result.problems).toEqual([
       { page: warm.number, question: fix, slot: "fix-it", reason: `day 1 page 1 (warm-up): question ${fix}'s answer box covers its own text` },
     ]);
+  });
+
+  it("fails a title of more than 4 words, and one that does not fit on one line (D-201)", async () => {
+    const warm = first(draft, "warm-up");
+    const c = warm.content!;
+    if (c.kind !== "day") throw new Error("not a day page");
+    const wordy: DraftPage = { ...warm, content: { ...c, title: "Show and read a number on a ten-frame" } };
+    const result = await render(only(draft, wordy));
+    expect(result.status === "failed" && result.problems.filter((x) => x.slot === "title").map((x) => x.reason)).toEqual([
+      expect.stringMatching(/the page title "Show and read a number on a ten-frame" has 8 words; a title has at most 4$/),
+    ]);
+    const wide = await render(only(draft, warm), fakePrintEngine({ overflow: ["1 slot-title"] }));
+    expect(wide.status === "failed" && wide.problems.some((x) => x.slot === "title" && /does not fit on one line/.test(x.reason))).toBe(true);
+  });
+
+  it("fails a card whose question text takes more than 3 lines (D-201)", async () => {
+    const early = book("U2");
+    const parent = early.pages.find((p) => p.type === "parent-led" && p.questions.length > 0)!;
+    const n = parent.questions[0].number;
+    const lines = (k: number) => fakePrintEngine({ rects: { ...AREA, [`1 question-${n}`]: { x: 64, y: 290, width: 330, height: 200 }, [`1 question-${n}-content`]: { x: 110, y: 300, width: 260, height: 28 * k }, [`1 question-${n}-answer`]: { x: 110, y: 420, width: 64, height: 56 } } });
+    const three = await render(only(early, parent), lines(3));
+    expect(three.status === "failed" ? three.problems.filter((x) => /lines on its card/.test(x.reason)) : []).toEqual([]);
+    const four = await render(only(early, parent), lines(4));
+    expect(four.status === "failed" && four.problems.filter((x) => /lines on its card/.test(x.reason)).map((x) => x.question)).toEqual([n]);
   });
 
   it("fails writing lines closer than 36 px under their prompt and 34 px apart, and a work box under 44 px", async () => {

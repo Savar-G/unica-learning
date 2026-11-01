@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import { chromiumPrintEngine, findChromium } from "@/lib/print-engine-chromium";
 import { proofPages, renderWorkbook, type DraftPage, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleBook } from "@/lib/workbook-sample-book";
+import { titleProblem, UNIT_TITLES } from "@/lib/workbook-titles";
 import { workbookTemplate } from "@/lib/workbook-template";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
-import { curriculumFor } from "@/lib/workbook-curriculum";
 
 // The workbook templates (#310) laid out in real Chromium: one page of each type from sample books at U2 (parent-led),
 // U6, U12, U22 and a level's last book fits its content area, prints its number and QR code, and stores a box for
@@ -64,26 +64,26 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
     expect((await renderWorkbook({ draft: { ...draft, pages: [warm] }, parentId: PARENT, template, engine })).status).toBe("rendered");
   }, 60_000);
 
-  it("wraps the longest step name to a second line on every day page type, and fails a title too long for two (R371-5)", async () => {
-    const bc = curriculumFor("bc")!;
-    const steps = bc.levels.flatMap((l) => (bc.levelSkills(l.id) ?? []).flatMap((k) => (bc.skillSteps(k.id) ?? []).map((x) => x.name)));
-    const longest = steps.reduce((a, b) => (b.length > a.length ? b : a));
-    const sentence = bc.levels.flatMap((l) => (bc.levelSkills(l.id) ?? []).map((k) => k.text)).reduce((a, b) => (b.length > a.length ? b : a));
-    // The title goes in when the book is planned, as the generator's will, so the page's layout knows it wraps.
+  it("fits the longest title code writes on one line on every day page type, and fails a title too long for one (D-201)", async () => {
+    // Every title code writes: each unit's, each strand's, the stories' and the fixed pages' (src/lib/workbook-titles.ts).
+    const titles = [...Object.values(UNIT_TITLES), "Patterns and equations", "Fractions and decimals", "Shapes and measuring", "Number stories to 1000", "Review and Friday 5", "Show what you know", "Level U30 test"];
+    const longest = titles.reduce((a, b) => (b.length > a.length ? b : a));
+    expect(titleProblem(longest)).toBeNull();
+    // The title goes in when the book is planned, as the generator's will.
     const titled = (level: string, n: number, title: string): WorkbookDraft => {
       const draft = oneOfEach(book(level, n, false, title));
       return { ...draft, pages: draft.pages.filter((p) => p.content?.kind === "day") };
     };
-    const headerProblems = (r: Awaited<ReturnType<typeof renderWorkbook>>) =>
-      r.status === "failed" ? r.problems.filter((x) => x.slot === "title" || x.slot === "day-label") : [];
+    const titleProblems = (r: Awaited<ReturnType<typeof renderWorkbook>>) => (r.status === "failed" ? r.problems.filter((x) => x.slot === "title") : []);
 
     for (const [level, n] of [["U2", 1], ["U6", 2], ["U12", 3], ["U22", 4]] as const) {
-      const fits = await renderWorkbook({ draft: titled(level, n, `More practice: ${longest}`), parentId: PARENT, template, engine });
-      // The whole page must render, so a two-line header that pushes content out fails here too (review R371-2-1).
+      const fits = await renderWorkbook({ draft: titled(level, n, longest), parentId: PARENT, template, engine });
+      // The whole page must render (review R371-2-1).
       expect(fits.status === "failed" ? fits.problems : []).toEqual([]);
-      const long = titled(level, n, sentence);
+      // Four long words run past one line: the page fails, so the title is never printed.
+      const long = titled(level, n, "Multiplications Subtractions Measurements Probabilities");
       const fails = await renderWorkbook({ draft: long, parentId: PARENT, template, engine });
-      expect(new Set(headerProblems(fails).filter((x) => x.slot === "title").map((x) => x.page))).toEqual(new Set(long.pages.map((p) => p.number)));
+      expect(new Set(titleProblems(fails).map((x) => x.page))).toEqual(new Set(long.pages.map((p) => p.number)));
     }
   }, 240_000);
 
