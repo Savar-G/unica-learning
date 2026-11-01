@@ -903,3 +903,39 @@ describe("a count back (round 3)", () => {
     expect(rangeProblem(built.package!, BC, 3)).toBeNull();
   });
 });
+
+describe("the shorter rewrite and repeats (round 3)", () => {
+  it("never keeps two shorter versions that are copies of each other on a review place", async () => {
+    const U3 = planWorkbook({
+      profile: { standards: [] }, grade: 0, level: planLevel(BC, "U3")!, passed: {}, workbook: { number: 1, inLevel: 0 },
+      reviews: [], missedReviews: [], misses: [], pausedWeeks: 0, support: null, unassessedUnits: [],
+    });
+    if (!U3.ok) throw new Error(U3.reason);
+    const NAMES = ["Ava", "Ben", "Cal", "Dot", "Eli", "Fay", "Gus", "Hal", "Ivy", "Jo", "Kai", "Liv"];
+    let n = 0;
+    let first = true;
+    const ai = fakeAiClient({
+      answer: (r) => fill(r, (s) => {
+        const k = n++;
+        // The shorter rewrite of day 1 page 1 writes "Ten-frame: 5 and N more. Add." on every card: one number apart.
+        if (r.name === "workbook_page_shorter") { const b = Number(s.slot.split(".")[1]); return goodItem(s, { text: `Ten-frame: 5 and ${b} more. Add.`, operation: addOp(5, b - 1 > 4 ? 4 : b - 1 || 1), easier: { text: "Try a smaller sum.", operation: addOp(0, 1) }, wrongAnswers: [{ value: num(9), cause: "count", description: "x", step: null }] }); }
+        return goodItem(s, { text: `${NAMES[k % 12]} and ${NAMES[Math.floor(k / 12) % 12]} have 2. 1 more come. How many now?`, operation: addOp(2, 1), easier: { text: "Try a smaller sum.", operation: addOp(0, 1) }, wrongAnswers: [{ value: num(4), cause: "count", description: "x", step: null }] });
+      }),
+    });
+    const fit: FitCheck = { fits: async (p) => (p.number === 3 && first ? ((first = false), { ok: false, problems: [{ question: null, reason: "too long" }] }) : { ok: true }) };
+    const result = await generateWorkbook({ ...input, plan: U3.plan, book: { child: "Zoe" } }, deps({ ai, fit }));
+    if (result.status !== "stored") throw new Error(result.reason);
+    const page = result.draft.pages[2];
+    const kept = page.questions.filter((q) => q.check.status !== "failed").map((q) => q.package!.text);
+    expect(kept.filter((t) => t.startsWith("Ten-frame: 5 and")).length).toBeLessThanOrEqual(1);
+    // No two sound questions of the page are the same words with one number changed.
+    const shape = (t: string) => t.replace(/\d+/g, "#");
+    const sound = page.questions.filter((q) => q.check.status !== "failed").map((q) => q.package!.text);
+    for (const [i, t] of sound.entries()) {
+      for (const u of sound.slice(i + 1)) {
+        const [a, b] = [t.match(/\d+/g) ?? [], u.match(/\d+/g) ?? []];
+        expect(shape(t) === shape(u) && a.filter((x, k) => x !== b[k]).length <= 1, `${t} / ${u}`).toBe(false);
+      }
+    }
+  });
+});

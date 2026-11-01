@@ -630,16 +630,27 @@ function shorterNote(input: GenerateInput, w: PageWork, questions: GeneratedQues
 async function shorterRewrite(input: GenerateInput, deps: GenerateDeps, w: PageWork, previous: GeneratedQuestion[], note: string, memory: BookMemory | null): Promise<GeneratedQuestion[]> {
   const all = previous.map((_, i) => i);
   const { built } = await writeSlots(input, deps, w, all, note, "workbook_page_shorter", [], memory);
-  const olds = previous.flatMap((q, j) => (q.package && q.check.status !== "failed" ? [{ number: j + 1, package: q.package }] : []));
-  return all.map((i) => {
+  // Each question is compared with the ones the page keeps before it (whichever version they keep), so two shorter
+  // versions never come back as copies of each other.
+  const chosen: GeneratedQuestion[] = [];
+  for (const i of all) {
     const old = previous[i];
     const attempts = (old.attempts + 1) as GeneratedQuestion["attempts"];
-    // A shorter version that repeats a question of the book or of this page counts as failed.
-    markRepeat(built[i], w.slots[i].place, memory, olds.filter((x) => x.number !== i + 1));
+    const before = chosen.flatMap((q, j) => (q.package && q.check.status !== "failed" ? [{ number: j + 1, package: q.package }] : []));
+    markRepeat(built[i], w.slots[i].place, memory, before);
     const fresh = generated(w, i, built[i], attempts);
     const keepOld = sound(old) !== sound(fresh) ? sound(old) : textLength(fresh) > textLength(old);
-    return keepOld ? { ...old, attempts } : fresh;
-  });
+    let pick: GeneratedQuestion = keepOld ? { ...old, attempts } : fresh;
+    // The old version may repeat one kept before it too (written before those changed): then it fails with the reason.
+    if (pick === fresh || !pick.package || pick.check.status === "failed" || !memory) {
+      chosen.push(pick);
+      continue;
+    }
+    const problem = duplicateProblem(pick.package, w.slots[i].place, null, before);
+    if (problem) pick = { ...pick, check: { status: "failed", reason: problem } };
+    chosen.push(pick);
+  }
+  return chosen;
 }
 
 /** The questions numbered again from 1 in their order, each package's place with its new number. */
