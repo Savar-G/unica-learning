@@ -10,7 +10,7 @@ import type { MayaTrace } from "@/lib/maya-trace";
 import { DIMENSION_IDS, DIMENSIONS, type Dimension, type PracticeCase } from "./cases";
 
 /** The version of the judge prompt and input. Raise it when either changes; every run records it. */
-export const JUDGE_PROMPT_VERSION = "practice-judge-3";
+export const JUDGE_PROMPT_VERSION = "practice-judge-4";
 
 /** One numbered turn of the call, as the judge reads it. */
 export interface JudgeTurn {
@@ -67,7 +67,8 @@ export function judgeInput(c: PracticeCase, pkg: QuestionPackage, trace: MayaTra
     child: { age: c.persona.age },
     expected: c.expected,
     rubric: DIMENSION_IDS.filter((id) => c.dimensions.includes(id)).map((id) => ({ id, name: DIMENSIONS[id].name, levels: DIMENSIONS[id].levels })),
-    turns: judgeTurns(trace),
+    // The trace writes the child's name as {name}; the child heard their name, so the judge reads it (not a placeholder).
+    turns: judgeTurns(trace).map((t) => ({ ...t, text: t.text.replace(/\{name\}/g, c.persona.name) })),
     outcome: trace.outcome,
   };
 }
