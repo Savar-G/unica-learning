@@ -1043,7 +1043,13 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       if (s.state !== "TIME_CLOSE") moveTo(s, "WRITE_CLOSE");
       break;
     }
-    case "ask_write":
+    case "ask_write": {
+      // Once the answer stands, the act asks: for the answer on paper, or (in the check) about the work. "That's right"
+      // alone asks nothing
+      // (practice: "That's right: 27 + 39 = 66." after "I'm done", with no request to write).
+      const writeOffered = offersFor(s, "ask_write", view).some((o) => o.line === "write.answer" || o.line === "write.yours");
+      const asks = spoken.chosen.some((o) => ["write.answer", "write.yours", "check.explain", "check.thinking"].includes(o.line));
+      if ((s.solved !== null || rightResult) && writeOffered && !asks) return no("invalid_proposal", "Ask the child to write the answer on paper (write.answer), or ask about their work: saying it is right again asks nothing.", allowedNow);
       if (main === "CHECK") {
         if (p.understanding === undefined) return no("invalid_proposal", "Say what the check showed: evidence_observed or uncertain.", allowedNow);
         if (p.understanding === "evidence_observed" && (s.answerGivenFirst || s.solved !== "child")) {
@@ -1055,6 +1061,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       s.writeAsked = true;
       if (s.state !== "TIME_CLOSE") moveTo(s, "WRITE_CLOSE");
       break;
+    }
     case "close":
       break;
     case "safety":

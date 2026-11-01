@@ -172,6 +172,15 @@ describe("steps the child already did are never asked again", () => {
     expect(c.session.solved).toBe("child");
   });
 
+  it("asks for the answer on paper once it stands: 'That's right' alone is no request", () => {
+    const c = call();
+    c.child("I got 66.");
+    c.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [ans(66, "result", "right")] } });
+    c.child("Yay, I'm done. Thanks, Maya!");
+    expect(c.propose({ act: "ask_write", parts: [ln("answer.right")], understanding: "uncertain" }).refusal).toMatchObject({ code: "invalid_proposal" });
+    expect(c.propose({ act: "ask_write", parts: [ln("write.answer")], understanding: "uncertain" }).refusal).toBeNull();
+  });
+
   it("does not ask how the child did a step they worked out aloud", () => {
     const c = call();
     c.child("7 plus 9 is 16, carry the ten, 2 plus 3 plus 1 is 6. I got 66.");
