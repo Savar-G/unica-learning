@@ -1008,7 +1008,7 @@ describe("the child's final answer, with an explanation after it (D-199)", () =>
       expect(["answer_not_committed", "answer_not_heard"], said).toContain(negative.refused(accept)?.code);
     }
     // Doubt or an uncommitted form is never accepted as right: Maya confirms it first (R391-5).
-    for (const said of ["Maybe 66.", "Is it 66?", "66 or something.", "66, I am unsure.", "66, scratch that.", "66 is incorrect.", "I reject 66.", "66. I withdraw it.", "66, I doubt it.", "66, that is false.", "I reject this answer:\n66", "Maybe\n66", "I would say 66.", "Suppose: 66.", "66\nI changed my mind.", "66 because I changed my mind.", "Maybe\n\n66", "I reject this answer:\n\n66", "66, I take this back."]) {
+    for (const said of ["Maybe 66.", "Is it 66?", "66 or something.", "66, I am unsure.", "66, scratch that.", "66 is incorrect.", "I reject 66.", "66. I withdraw it.", "66, I doubt it.", "66, that is false.", "I reject this answer:\n66", "Maybe\n66", "I would say 66.", "Suppose: 66.", "66\nI changed my mind.", "66 because I changed my mind.", "Maybe\n\n66", "I reject this answer:\n\n66", "66, I take this back.", "66\nI am taking it back.", "66\nErase that.", "66 because I want to change my answer."]) {
       const doubt = opened();
       doubt.child(said);
       expect(["answer_not_committed", "answer_not_heard"], said).toContain(doubt.refused(accept)?.code);

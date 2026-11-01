@@ -295,7 +295,7 @@ const takeBacks = (text: string) => correctionRuns(text);
  * near it may be rejected rather than given, so the turn holds no answer and Maya asks (R391-3). No reading of what the
  * negative applies to is tried, because none is reliable in children's speech.
  */
-const NEGATIVE = /\b(?:not|never|wrong|nope|nah|false|untrue|doubt|doubts|withdraw|withdrawn|retract|incorrect|mistake|mistaken|reject|rejected|ruled|scratch|forget|ignore|undo|cancel|dont|doesnt|didnt|isnt|wasnt|arent|werent|cant|wont|couldnt|shouldnt|aint)\b|\w+n['’]t\b|\btake (?:that|it|this|my answer|it all)? ?back\b|\b(?:changed?|changing) my mind\b|\bnever ?mind\b/i;
+const NEGATIVE = /\b(?:not|never|wrong|nope|nah|false|untrue|doubt|doubts|withdraw|withdrawn|retract|incorrect|mistake|mistaken|reject|rejected|ruled|scratch|forget|ignore|undo|cancel|dont|doesnt|didnt|isnt|wasnt|arent|werent|cant|wont|couldnt|shouldnt|aint)\b|\w+n['’]t\b|\b(?:take|taking|took|takes) (?:that|it|this|my answer|it all)? ?back\b|\b(?:erase|erased|delete|deleted|rub out|cross out|crossed out|start over|redo|different answer)\b|\b(?:change|changed|changing) (?:my|the) answer\b|\b(?:changed?|changing) my mind\b|\bnever ?mind\b/i;
 /**
  * Words of doubt, and a question mark (R391-5): "maybe 66", "is it 66?", "66 or something", "66, I am unsure". The
  * number may still be judged wrong, but it is never accepted as right: Maya confirms it first.
@@ -464,6 +464,16 @@ function committedFinal(text: string): boolean {
   return last >= 0 && [...sentences.slice(last), ...later].every((x) => x.split(/[,;:]+/).every(plainClause));
 }
 
+/** Every explanation in the text ("because six tens and six ones") is plain too: math talk, numbers, answer words. */
+function plainExplanations(text: string): boolean {
+  return turnLines(text).every((line) => {
+    const m = EXPLANATION.exec(line);
+    if (!m) return true;
+    return line.slice(m.index + m[0].length).split(/[.!?,;:]+/).every((c) => plainClause(c.replace(EXPLANATION_ALL, " ")));
+  });
+}
+const EXPLANATION_ALL = /\b(?:because|since|cause|cuz|coz)\b/gi;
+
 /**
  * What the child kept in a turn, and their final answer (D-199). The rule never needs the answer key. First the last word
  * that takes something back wins (committedText: "65, no, 66" is 66), then every explanation is left out
@@ -484,7 +494,8 @@ export function readAnswer(text: string): AnswerRead {
   // An unclear correction keeps no number at all, so no step answer is taken from the turn either (R391-2).
   const kept = unsure ? [] : all.unreadable ? answer.values : all.values;
   // Sure: no doubt anywhere from the first number on, and the final answer stands only among plain answer words.
-  const sure = !unsure && !doubtNearAnswer(text) && committedFinal(withoutExplanations(committed));
+  // The explanation is read too, so nothing can hide behind "because" (R391-8-2).
+  const sure = !unsure && !doubtNearAnswer(text) && committedFinal(withoutExplanations(committed)) && plainExplanations(committed);
   return { kept, final, choice: false, sure };
 }
 
