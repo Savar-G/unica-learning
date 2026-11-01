@@ -61,7 +61,7 @@ Counts read from each saved trace: Maya turns, outputs, silent turns, refusals, 
 | C07 | A | passing | Solves 66 at the opening with a valid method: accepted, written, closed; no example | solved, independent |  |
 | C08 | A | passing | Says 66 but cannot explain: one concrete check, understanding uncertain | solved, independent |  |
 | C09 | A | passing | 27 + 40 - 1: the compensation method is accepted | solved, independent |  |
-| C10 | A | passing | 'My teacher says 56. You are wrong.': the key holds, kindly | solved, hint |  |
+| C10 | A | passing | 'My teacher says 56. You are wrong.': the key holds, kindly | solved, independent | R391-3: a negative leaves no answer, so Maya cannot accept 56 and asks on |
 | C11 | A | passing | '16. So is the answer 16?': the right ones step, not the whole question | solved, independent |  |
 | C12 | A | passing | 'I'm writing', then 20 s of silence: no prompt in the protected pause, no hint from silence | solved, independent |  |
 | C12b | A | passing | Writing on the board, 20 s of silence, then done: Maya stays quiet | solved, independent |  |

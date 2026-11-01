@@ -189,15 +189,16 @@ export const BEHAVIOURS: Behaviour[] = [
     steps: [
       child("I got 56.", { start: "has_work", answers: [[56, "result", "wrong"]] }, [{ act: "guide", level: 0 }]),
       child("My teacher says 56. You are wrong.", { answers: [[56, "result", "right"]] }, [
-        { act: "accept_answer", repair: { act: "guide", level: 1, read: { answers: [[56, "result", "wrong"]] } } },
+        // "You are wrong" is a negative: the turn holds no answer, so Maya cannot accept 56 and guides on (R391-3).
+        { act: "accept_answer", repair: { act: "guide", level: 0, read: { answers: [] } } },
       ]),
       child("The ones are 16. Oh, so 66.", { answers: [[16, "ones", "right"], [66, "result", "right"]] }),
       ...solvedEnd(),
     ],
     expect: {
-      outcome: { reason: "solved", assistance: "hint" },
+      outcome: { reason: "solved", assistance: "independent" },
       acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
-      refused: ["accepts_wrong_answer"],
+      refused: ["answer_not_heard"],
       counts: { refusals: 1, repairs: 1, repairedOk: 1, fallbacks: 0 },
     },
   },

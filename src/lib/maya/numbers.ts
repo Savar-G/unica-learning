@@ -287,6 +287,23 @@ function correctionRuns(text: string): CorrectionRun[] {
 const takeBacks = (text: string) => correctionRuns(text);
 
 /**
+ * A negative anywhere in the turn ("It is not 66", "66 isn't right", "that's wrong", "I don't think it's 66"): a number
+ * near it may be rejected rather than given, so the turn holds no answer and Maya asks (R391-3). No reading of what the
+ * negative applies to is tried, because none is reliable in children's speech.
+ */
+const NEGATIVE = /\b(?:not|never|wrong|nope|nah|dont|doesnt|didnt|isnt|wasnt|arent|werent|cant|wont|couldnt|shouldnt|aint)\b|\w+n['’]t\b/i;
+
+/**
+ * A negative in the child's last line that holds a number (a line is one child turn: "I don't know." then "Sixteen for
+ * the ones." keeps 16, but "It is not 66." keeps nothing).
+ */
+const negativeNearAnswer = (text: string) => {
+  const withNumber = text.split("\n").filter((line) => { const r = readNumbers(line); return r.values.length > 0 || r.unreadable; });
+  const last = withNumber[withNumber.length - 1];
+  return last !== undefined && NEGATIVE.test(last);
+};
+
+/**
  * The turn has a correction word in an unclear shape after a number it could take back: it holds no final answer
  * (correctionRuns). An unclear word before any number ("I am software with no body. I got 66.") takes nothing back.
  */
@@ -373,10 +390,12 @@ export function readAnswer(text: string): AnswerRead {
   if (offersChoice(committed)) return { kept: [], final: null, choice: true };
   const all = readNumbers(committed);
   const answer = readNumbers(withoutExplanations(committed));
-  // A correction word in an unclear shape anywhere in the turn leaves no final answer: Maya asks (R391-2).
-  const final = unclearCorrection(text) || answer.unreadable || answer.lastInOperation ? null : answer.values[answer.values.length - 1] ?? null;
+  // A correction word in an unclear shape after a number, or a negative anywhere, leaves no final answer: Maya asks
+  // (R391-2, R391-3).
+  const unsure = unclearCorrection(text) || negativeNearAnswer(committed);
+  const final = unsure || answer.unreadable || answer.lastInOperation ? null : answer.values[answer.values.length - 1] ?? null;
   // An unclear correction keeps no number at all, so no step answer is taken from the turn either (R391-2).
-  const kept = unclearCorrection(text) ? [] : all.unreadable ? answer.values : all.values;
+  const kept = unsure ? [] : all.unreadable ? answer.values : all.values;
   return { kept, final, choice: false };
 }
 
@@ -400,7 +419,7 @@ export function takenBack(text: string): { kept: AnswerValue | null } | null {
   });
   if (!before && after.values.length === 0 && !after.unreadable) return null;
   // An unclear correction anywhere puts nothing in place: what was said is taken back, and Maya asks (R391-2).
-  return { kept: unclearCorrection(text) ? null : readAnswer(last).final };
+  return { kept: unclearCorrection(text) || negativeNearAnswer(text) ? null : readAnswer(last).final };
 }
 
 /** The text offers numbers as a choice ("is it 66 or 56?"): none of them is the child's answer yet. */
