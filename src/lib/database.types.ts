@@ -1348,6 +1348,42 @@ export type Database = {
           },
         ]
       }
+      maya_wording_history: {
+        Row: {
+          child_id: string
+          heard: Json
+          parent_id: string
+          updated_at: string
+        }
+        Insert: {
+          child_id: string
+          heard?: Json
+          parent_id: string
+          updated_at?: string
+        }
+        Update: {
+          child_id?: string
+          heard?: Json
+          parent_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maya_wording_history_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "maya_wording_history_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       parent_pins: {
         Row: {
           created_at: string
@@ -3003,6 +3039,10 @@ export type Database = {
       read_family_payment_progress: {
         Args: { customer: string; p: string; token: string }
         Returns: Json
+      }
+      record_maya_wordings: {
+        Args: { p_child: string; p_heard: Json; p_max: number }
+        Returns: number
       }
       record_reminder_click: {
         Args: {

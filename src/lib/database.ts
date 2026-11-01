@@ -13,7 +13,7 @@ import type { GeneratedPage, GeneratedWorkbook, StoredCall } from "@/lib/workboo
 import type { DraftRendering, RunError, RunFrame, RunSolve, RunStatus, RunStep } from "@/lib/workbook-job";
 import type { RenderProblem } from "@/lib/workbook-render";
 import type { BoardHistory } from "@/lib/board-history";
-import type { Outcome } from "@/lib/maya";
+import type { Outcome, WordingHistory } from "@/lib/maya";
 import type { CallKind, CallRecord, CallStatus } from "@/lib/maya-call";
 import type { MayaTrace } from "@/lib/maya-trace";
 
@@ -43,6 +43,7 @@ type ColumnTypes = KnownColumns<{
     trace: MayaTrace | null; board_history: BoardHistory | null;
   };
   maya_demo_children: { made_by: "maya-demo-child" };
+  maya_wording_history: { heard: WordingHistory };
   parents: { source: Record<string, string> };
   reports: { model: ReportModel };
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };
