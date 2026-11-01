@@ -11,6 +11,7 @@ import { mayaCalls, recordView, FAKE_MODEL_ID, type CallStatus, type CallView, t
 import { callAlerts } from "@/lib/maya-call-alert";
 import { alertState, mayaAlertLedger } from "@/lib/maya-call-alert-store";
 import { fromCallRow, mayaCallStore } from "@/lib/maya-call-store";
+import { wordingHistoryStore } from "@/lib/maya-wording-history-store";
 import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import type { Outcome } from "@/lib/maya";
@@ -53,6 +54,7 @@ export function serverMayaCalls(origin: string): MayaCalls | null {
   return mayaCalls({
     alerts: callAlerts({ ledger: mayaAlertLedger(db), to: process.env.SIGNUP_NOTIFY_EMAIL || null, origin }),
     store: mayaCallStore(db),
+    history: wordingHistoryStore(db),
     events: learningEvents(learningEventStore(db)),
     rebuild: async (childId) => (await rebuildChildProfileNow(childId))?.built === true,
     model: callModel,

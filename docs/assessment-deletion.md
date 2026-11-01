@@ -235,3 +235,25 @@ Checked on the live database (29 October 2026), in one transaction that was roll
 Migration `add_maya_call_flags` (#333) adds the call's safety flag (`maya_calls.flag`, `flagged_at`) and `public.maya_call_alerts`, one row per internal alert email of a flagged call (the send claim, its status and error, and the email's subject and text, which hold no child words). `call_id` with `parent_id` references `public.maya_calls (id, parent_id)` and `parent_id` references `public.parents`, both `on delete cascade`. There are no files. The existing family deletion removes the alerts with the calls (checked on 2026-11-01 in a rolled-back transaction with the family's deletion requested: 0 calls and 0 alerts left; the family write fence refused a new alert while the deletion was requested). Admins read the alerts; parents and anon read nothing. The worker and the retention rules need no change.
 
 `public.maya_demo_children` (migration `add_maya_demo_children`, #323) marks the demo child that `npm run maya:demo-child` made in a test family: `child_id` with `parent_id` references `public.children (id, parent_id)` and `parent_id` references `public.parents`, both `on delete cascade`. There are no files. The existing family deletion removes the row (checked on 2026-10-31 in a rolled-back transaction with the family's deletion requested); the worker and the retention rules need no change.
+
+`public.maya_wording_history` (migration `add_maya_wording_history`, #375, D-196) holds one row per child: which of Maya's wordings the child heard and when (a jsonb object from wording id to milliseconds, at most `MAX_WORDINGS` entries), so a later call prefers the wordings the child has not heard lately (`src/lib/maya-wording-history-store.ts`). It holds no words the child said and no name. `parent_id` references `public.parents`, and `child_id` with `parent_id` references `public.children (id, parent_id)`, both `on delete cascade`. There are no files. The existing family deletion removes the row when it deletes the parent's Auth user, and deleting a child removes that child's row. The worker needs no code change and no table list. The retention rules need no change: the history is written only when a call ends, so it adds no activity of its own; today only admin test calls write it, and those name only test families.
+
+The service role may only read the table and call `record_maya_wordings`, which merges a call's wordings into the row under the row's lock (each wording keeps its newest time, then only the newest are kept), so two calls of the same child that end together both keep theirs. It has no direct insert, update or delete grant. The table has the family write fence trigger. Row-level security is on; the one policy lets admins read. A signed-in parent and anon read nothing.
+
+Checked on the live database (1 November 2026), in one transaction that was rolled back, for a test family's child (one child in the family) and a child of a second test family:
+
+| Check | Result |
+|---|---|
+| Server (service role) records 2 wordings | 2 kept |
+| Server records an older time for one, a newer time for another and a new wording, keeping at most 2 | 2 kept: the newer time and the new wording |
+| A child that does not exist | nothing written (null) |
+| A time that is not a number | refused (22023) |
+| Server direct insert, update, delete | refused (42501) each |
+| A signed-in parent reads; calls `record_maya_wordings` | 0 rows; refused (42501) |
+| An admin reads | 1 row |
+| Anon reads; calls `record_maya_wordings` | refused (42501) both |
+| The second family's child is deleted | 0 rows left for that child |
+| A write after the family's deletion request | refused (55000, `family_unavailable`) |
+| The Auth user is deleted (the deletion's last step) | 0 rows left for the family |
+
+Two writes for the same child sent together on the live database (1 November 2026, a test family's child; the row was removed afterwards): the second waited about 2.5 seconds for the first's lock, and the row kept both wordings.

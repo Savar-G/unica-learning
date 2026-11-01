@@ -11,6 +11,12 @@
 // (`learningEvent` of the session, key `call:<id>`, so a retry stores it once) and rebuilds the child's profile.
 // "end" on an ended call whose event or rebuild failed runs those two again.
 //
+// The child's wording history (D-196, #375): `start` reads it before the session is made, so Maya prefers the wordings
+// the child has not heard lately; the session keeps it in its saved state for the call's later requests. When the call
+// ends, the wordings it said are added to it (before the learning event; again on a retried "end" while the call keeps
+// its state, which changes nothing, since each wording keeps its newest time). A history that cannot be read or written
+// never stops a call: the call goes on with an empty history, or keeps its outcome without the record.
+//
 // Test calls never touch a real family: `start` refuses a family the seam does not call a test family, the database
 // refuses it again (migration add_maya_calls), and a test call never counts minutes.
 //
@@ -20,14 +26,15 @@
 // only rises. Each later request on a flagged call sends its alert again if it was refused or never claimed, so a
 // failed alert is retried by the next input, or by "end" on an ended call; an unknown one is never sent again.
 //
-// Seams: the call store (Supabase: src/lib/maya-call-store.ts; memory: src/lib/maya-call-memory.ts), the learning
-// events, the profile rebuild, the alerts, the model by id, the clock, ids and the seed. Pure otherwise: no Next.js, React,
+// Seams: the call store (Supabase: src/lib/maya-call-store.ts; memory: src/lib/maya-call-memory.ts), the wording
+// history (Supabase: src/lib/maya-wording-history-store.ts; memory: memoryWordingHistoryStore), the learning events, the
+// profile rebuild, the alerts, the model by id, the clock, ids and the seed. Pure otherwise: no Next.js, React,
 // network or database; node:crypto through the trace's package hash.
 import { applyBatch, boardView, createScene, type Batch } from "@/lib/board";
 import { createHistory, mayaWrites, type BoardHistory } from "@/lib/board-history";
 import { fitView, type PlayStep } from "@/lib/board-svg";
 import type { LearningEvents } from "@/lib/learning-events";
-import { learningEvent, type Outcome } from "@/lib/maya";
+import { heardWordings, learningEvent, type Outcome, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
 import type { MayaModel } from "@/lib/maya-model";
 import { createTextSession, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession } from "@/lib/maya-text";
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
@@ -146,6 +153,8 @@ export interface CallStore {
 
 export interface CallSeams {
   store: CallStore;
+  /** The children's wording history: read before a call, added to when it ends. */
+  history: WordingHistoryStore;
   events: LearningEvents;
   /** Rebuilds the child's profile; true when it was built. Never throws. */
   rebuild(childId: string): Promise<boolean>;
@@ -374,16 +383,39 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     }
   }
 
-  function textSession(record: Pick<CallRecord, "id">, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number): TextSession {
-    return createTextSession({ callId: record.id, package: pkg, model, clock: seams.clock, random: seed, childName, runner: "text", resume: saved });
+  function textSession(record: Pick<CallRecord, "id">, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory): TextSession {
+    return createTextSession({ callId: record.id, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved });
+  }
+
+  /** The child's wording history before a new call; an empty one when it cannot be read. */
+  async function readHistory(childId: string): Promise<WordingHistory> {
+    try {
+      return await seams.history.read(childId);
+    } catch (e) {
+      console.error("[maya call] wording history read failed", childId, e instanceof Error ? e.message : String(e));
+      return {};
+    }
+  }
+
+  /** Adds the wordings an ended call said to the child's history. Never throws. */
+  async function recordHeard(record: CallRecord, ended: TextSession) {
+    const heard = heardWordings(ended.session);
+    if (Object.keys(heard).length === 0) return;
+    try {
+      await seams.history.record(record.childId, heard);
+    } catch (e) {
+      console.error("[maya call] wording history record failed", record.id, e instanceof Error ? e.message : String(e));
+    }
   }
 
   /**
-   * The learning event and the profile rebuild of an ended call; each runs until it has worked once. `ended` is the
-   * call's final session; the record keeps it in `live` until the event is written, so a later "end" can try again.
+   * The wording history, the learning event and the profile rebuild of an ended call; the event and the rebuild run
+   * until each has worked once. `ended` is the call's final session; the record keeps it in `live` until the event is
+   * written, so a later "end" can try again (and adds the same wordings again, which changes nothing).
    */
   async function afterEnd(record: CallRecord, ended: TextSession | null): Promise<CallRecord> {
     let current = record;
+    if (ended) await recordHeard(current, ended);
     if (!current.learningEventId && ended) {
       const event = learningEvent(ended.session, { parentId: current.parentId, childId: current.childId });
       let eventId: string | null = null;
@@ -463,7 +495,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const model = seams.model(null);
       if (!model) return { ok: false, error: "model_unavailable" };
       const id = seams.newId();
-      const session = textSession({ id }, pkg, model, input.childName, undefined, seams.seed());
+      const session = textSession({ id }, pkg, model, input.childName, undefined, seams.seed(), await readHistory(input.childId));
       const empty = session.trace();
       let record: CallRecord = {
         id,

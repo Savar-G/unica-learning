@@ -1,3 +1,4 @@
+import { memoryWordingHistoryStore } from "@/lib/maya";
 import { describe, expect, it, vi } from "vitest";
 import { templateSkills } from "@/lib/assessment";
 import { memoryTransport } from "@/lib/email-delivery-memory";
@@ -72,6 +73,7 @@ function setup(options: { to?: string | null; unsafeRequestFlag?: FlagLevel | nu
   const model = readingModel();
   const calls = mayaCalls({
     store,
+    history: memoryWordingHistoryStore(),
     events: learningEvents(memoryLearningEventStore({ children: [{ id: CHILD, parentId: PARENT }], tests: [{ id: TEST, childId: CHILD }] })),
     rebuild: async () => true,
     model: (id) => (id === null || id === model.id ? model : null),

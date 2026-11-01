@@ -3,6 +3,7 @@ import { templateSkills } from "@/lib/assessment";
 import { penHolder, replayOf } from "@/lib/board-history";
 import { learningEvents, type LearningEventStore } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
+import { memoryWordingHistoryStore, type WordingHistoryStore } from "@/lib/maya";
 import { mayaCalls, boardPlayback, type CallInput, type CallResult, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore } from "@/lib/maya-call-memory";
 import type { MayaModel } from "@/lib/maya-model";
@@ -11,14 +12,15 @@ import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace, TRACE_VERSION } from "@/lib/maya-trace";
 import type { QuestionPackage } from "@/lib/question-package";
 
-// Maya's calls (#323) through the module's public interface, on the in-memory seams: the call store, the learning
-// events, a profile rebuild that counts its calls, the rule model, a passed-in clock, ids and seed.
+// Maya's calls (#323) through the module's public interface, on the in-memory seams: the call store, the wording
+// history, the learning events, a profile rebuild that counts its calls, the rule model, a passed-in clock, ids and seed.
 
 const PARENT = "11111111-1111-4111-8111-111111111111";
 const CHILD = "22222222-2222-4222-8222-222222222222";
 const TEST = "33333333-3333-4333-8333-333333333333";
 const REAL_PARENT = "44444444-4444-4444-8444-444444444444";
 const REAL_CHILD = "55555555-5555-4555-8555-555555555555";
+const SIBLING = "66666666-6666-4666-8666-666666666666";
 const T0 = Date.UTC(2026, 9, 31, 16, 0, 0);
 
 /** 27 + 39 as an assessment question of the test family's child. */
@@ -33,14 +35,16 @@ const PKG: QuestionPackage = {
 /** scripts/maya-text/no-start.txt: the easier example first, then the child's own question with hints, solved. */
 const NO_START = ["I don't know how to start.", "Okay.", "Is it 56?", "Can you help me?", "16", "66", "Because the ones made a ten, so I carried it.", "I wrote it."];
 
-function setup(options: { events?: LearningEventStore; model?: (id: string | null) => MayaModel | null } = {}) {
+function setup(options: { events?: LearningEventStore; model?: (id: string | null) => MayaModel | null; history?: WordingHistoryStore } = {}) {
   let now = T0;
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
   const eventStore = options.events ?? memoryLearningEventStore({ children: [{ id: CHILD, parentId: PARENT }, { id: REAL_CHILD, parentId: REAL_PARENT }], tests: [{ id: TEST, childId: CHILD }] });
   const rebuild = vi.fn(async () => true);
+  const history = options.history ?? memoryWordingHistoryStore();
   const seams: CallSeams = {
     store,
+    history,
     events: learningEvents(eventStore),
     rebuild,
     model: options.model ?? ((id) => (id === null || id === "fake" ? ruleMayaModel() : null)),
@@ -54,7 +58,7 @@ function setup(options: { events?: LearningEventStore; model?: (id: string | nul
   const calls = mayaCalls(seams);
   const events = learningEvents(eventStore);
   const readEvents = (childId = CHILD) => events.read(childId, { from: "2026-01-01T00:00:00Z", to: "2027-01-01T00:00:00Z" });
-  return { calls, store, rebuild, readEvents, advance: (s: number) => (now += s * 1000) };
+  return { calls, store, history, rebuild, readEvents, advance: (s: number) => (now += s * 1000) };
 }
 
 const ok = (r: CallResult) => {
@@ -62,8 +66,8 @@ const ok = (r: CallResult) => {
   return r;
 };
 
-async function talk(s: ReturnType<typeof setup>, turns: string[]) {
-  let r = ok(await s.calls.start({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: "admin-1" }));
+async function talk(s: ReturnType<typeof setup>, turns: string[], childId = CHILD) {
+  let r = ok(await s.calls.start({ kind: "admin_test", parentId: PARENT, childId, childName: "Leah", package: PKG, startedBy: "admin-1" }));
   for (const text of turns) {
     if (r.view.status === "ended") break;
     s.advance(5);
@@ -200,5 +204,55 @@ describe("an admin test call", () => {
     expect(board.steps.flatMap((x) => x.drawn).length).toBeGreaterThan(0);
     expect(board.viewBox.split(" ")).toHaveLength(4);
     expect(await s.calls.view("00000000-0000-4000-8000-999999999999")).toBeNull();
+  });
+});
+
+describe("the child's wording history (D-196, #375)", () => {
+  /** Maya's sentences in a call, in order. */
+  const mayaSaid = (r: CallResult & { ok: true }) => r.view.transcript.filter((l) => l.speaker === "maya").map((l) => l.text);
+  /** How many of `said` the earlier call also said. */
+  const repeats = (said: string[], earlier: string[]) => said.filter((t) => earlier.includes(t)).length;
+
+  it("makes a second call for the same child prefer the wordings the first call did not say", async () => {
+    const s = setup();
+    const first = await talk(s, NO_START);
+    expect(first.view.status).toBe("ended");
+    expect(Object.keys(await s.history.read(CHILD)).length).toBeGreaterThan(0);
+
+    // The same seed and the same turns: a child with no history hears the first call word for word...
+    const control = await talk(s, NO_START, SIBLING);
+    expect(mayaSaid(control)).toEqual(mayaSaid(first));
+    // ...and the child who heard the first call hears other wordings, from the opening on, across saved requests.
+    const second = await talk(s, NO_START);
+    expect(second.view.status).toBe("ended");
+    expect(second.view.outcome?.reason).toBe(first.view.outcome?.reason);
+    expect(mayaSaid(second)[0]).not.toBe(mayaSaid(first)[0]);
+    expect(repeats(mayaSaid(second), mayaSaid(first))).toBeLessThan(mayaSaid(first).length / 2);
+  });
+
+  it("adds a call's wordings only when it ends, with the times Maya said them", async () => {
+    const s = setup();
+    const live = await talk(s, ["I don't know how to start."]);
+    expect(live.view.status).toBe("live");
+    expect(await s.history.read(CHILD)).toEqual({});
+    s.advance(5);
+    ok(await s.calls.input(live.view.id, live.view.revision, { type: "end" }, null));
+    const heard = Object.values(await s.history.read(CHILD));
+    expect(heard.length).toBeGreaterThan(0);
+    for (const at of heard) expect(at).toBeGreaterThanOrEqual(T0);
+    expect(await s.history.read(SIBLING)).toEqual({});
+  });
+
+  it("never stops a call when the history cannot be read or written", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const broken: WordingHistoryStore = { read: () => Promise.reject(new Error("network")), record: () => Promise.reject(new Error("network")) };
+    const s = setup({ history: broken });
+    const end = await talk(s, NO_START);
+    expect(end.view.status).toBe("ended");
+    expect(end.view.outcome?.reason).toBe("solved");
+    expect(end.view.learningEventId).not.toBeNull();
+    expect(spy).toHaveBeenCalledWith("[maya call] wording history read failed", CHILD, "network");
+    expect(spy).toHaveBeenCalledWith("[maya call] wording history record failed", end.view.id, "network");
+    spy.mockRestore();
   });
 });
