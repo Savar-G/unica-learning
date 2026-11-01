@@ -9,13 +9,20 @@
 // board commands, outcome and versions, src/lib/maya-trace.ts), the board history (src/lib/board-history.ts), the
 // outcome fields and counts, and drops `live`. Then it writes the call's one learning event for the target question
 // (`learningEvent` of the session, key `call:<id>`, so a retry stores it once) and rebuilds the child's profile.
-// "end" on an ended call whose event or rebuild failed runs those two again.
+// "end" on an ended call whose event, rebuild or parent note failed runs those again.
 //
 // The child's wording history (D-196, #375): `start` reads it before the session is made, so Maya prefers the wordings
 // the child has not heard lately; the session keeps it in its saved state for the call's later requests. When the call
 // ends, the wordings it said are added to it (before the learning event; again on a retried "end" while the call keeps
 // its state, which changes nothing, since each wording keeps its newest time). A history that cannot be read or written
 // never stops a call: the call goes on with an empty history, or keeps its outcome without the record.
+//
+// The parent's note (#331, src/lib/maya-call-note.ts): when a call ends, the same write that stores its outcome keeps
+// the note's inputs in `notePending` (the question package and the learning event as code built it). After the event
+// and the rebuild, the `note` seam writes the note within NOTE_STEP_MS; once it says "done" (stored, or refused for
+// good), `notePending` is cleared. A failed, refused-for-now or slow note leaves it, so a retried "end" of the call, or
+// the end of a later call of the same child, writes it from those inputs (R403-3, R403-4). The note never holds up the
+// learning event, and the call's answer waits for it at most NOTE_STEP_MS.
 //
 // Test calls never touch a real family: `start` refuses a family the seam does not call a test family, the database
 // refuses it again (migration add_maya_calls), and a test call never counts minutes.
@@ -27,6 +34,7 @@ import { applyBatch, boardView, createScene, type Batch } from "@/lib/board";
 import { createHistory, mayaWrites, type BoardHistory } from "@/lib/board-history";
 import { fitView, type PlayStep } from "@/lib/board-svg";
 import type { LearningEvents, NewLearningEvent } from "@/lib/learning-events";
+import type { NoteStep } from "@/lib/maya-call-note";
 import { heardWordings, learningEvent, type Outcome, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
 import { freeTalkFor } from "@/lib/maya-free-talk";
 import type { MayaModel } from "@/lib/maya-model";
@@ -34,6 +42,11 @@ import type { TalkReviewer } from "@/lib/maya-talk-review";
 import { createTextSession, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession } from "@/lib/maya-text";
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
 import { checkQuestionPackage, type QuestionPackage, type QuestionRef } from "@/lib/question-package";
+
+/** The longest the note step of an ended call may take; after it the note stays pending. */
+export const NOTE_STEP_MS = 20_000;
+/** The most earlier calls of the child whose pending note a call's end picks up. */
+export const NOTE_SWEEP = 3;
 
 /** The version of the call record's shape (record_version). */
 export const CALL_RECORD_VERSION = 1;
@@ -70,10 +83,12 @@ export interface CallRecord {
   boardHistory: BoardHistory | null;
   learningEventId: string | null;
   profileRebuiltAt: string | null;
+  /** An ended call whose parent note is not written yet: the note's inputs, kept for a retry. Null once done. */
+  notePending: { package: QuestionPackage; event: NewLearningEvent | null } | null;
 }
 
 /** The fields an update may change. */
-export type CallChange = Partial<Pick<CallRecord, "status" | "startedAt" | "endedAt" | "outcome" | "counts" | "live" | "trace" | "boardHistory" | "learningEventId" | "profileRebuiltAt">>;
+export type CallChange = Partial<Pick<CallRecord, "status" | "startedAt" | "endedAt" | "outcome" | "counts" | "live" | "trace" | "boardHistory" | "learningEventId" | "profileRebuiltAt" | "notePending">>;
 
 /** The store seam. */
 export interface CallStore {
@@ -81,6 +96,8 @@ export interface CallStore {
   get(id: string): Promise<CallRecord | null>;
   /** Writes the change and raises the revision by one, only when the stored revision is `revision`. False otherwise. */
   update(id: string, revision: number, change: CallChange): Promise<boolean>;
+  /** The child's ended calls whose note is pending, oldest end first, at most `limit`. */
+  pendingNotes(childId: string, limit: number): Promise<CallRecord[]>;
 }
 
 export interface CallSeams {
@@ -103,10 +120,14 @@ export interface CallSeams {
   /** True when the family is marked as a test family (public.test_accounts). */
   isTestFamily(parentId: string): Promise<boolean>;
   /**
-   * The parent's note of an ended call (#331, src/lib/maya-call-note.ts), run once the call has its outcome. Optional.
-   * The note module refuses test calls and test families itself; a failure never changes the call.
+   * The parent's note of an ended call (#331, src/lib/maya-call-note.ts), run after the learning event. Optional.
+   * "done" when the note is stored or refused for good (the note module refuses test calls and test families itself);
+   * "pending", a throw or no answer within NOTE_STEP_MS keeps the call's `notePending` for a retry. Never changes the call
+   * otherwise.
    */
-  note?(ended: { call: CallRecord; package: QuestionPackage; event: NewLearningEvent | null }): Promise<unknown>;
+  note?(ended: { call: CallRecord; package: QuestionPackage; event: NewLearningEvent | null }): Promise<NoteStep>;
+  /** The note step's time limit in milliseconds; NOTE_STEP_MS when not set. */
+  noteMs?: number;
   clock(): number;
   newId(): string;
   /** A random 32-bit seed for the wording. */
@@ -169,6 +190,8 @@ export interface CallView {
   counts: CallRecord["counts"];
   learningEventId: string | null;
   profileRebuiltAt: string | null;
+  /** The call's parent note is not written yet. */
+  notePending: boolean;
 }
 
 export type CallResult =
@@ -267,6 +290,7 @@ export function callView(record: CallRecord, trace: MayaTrace): CallView {
     counts: record.counts,
     learningEventId: record.learningEventId,
     profileRebuiltAt: record.profileRebuiltAt,
+    notePending: record.notePending !== null,
   };
 }
 
@@ -336,17 +360,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
    * until each has worked once. `ended` is the call's final session; the record keeps it in `live` until the event is
    * written, so a later "end" can try again (and adds the same wordings again, which changes nothing).
    */
-  async function afterEnd(record: CallRecord, ended: TextSession | null): Promise<CallRecord> {
+  async function afterEnd(record: CallRecord, ended: TextSession | null, sweep = false): Promise<CallRecord> {
     let current = record;
     if (ended) await recordHeard(current, ended);
-    if (ended && current.live && seams.note) {
-      // The parent's note (#331): written once per call; a retried "end" finds it stored and asks nothing.
-      try {
-        await seams.note({ call: current, package: current.live.package, event: learningEvent(ended.session, { parentId: current.parentId, childId: current.childId }) });
-      } catch (e) {
-        console.error("[maya call] note failed", current.id, e instanceof Error ? e.message : String(e));
-      }
-    }
     if (!current.learningEventId && ended) {
       const event = learningEvent(ended.session, { parentId: current.parentId, childId: current.childId });
       let eventId: string | null = null;
@@ -374,6 +390,54 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const at = iso(seams.clock());
       if (await store.update(current.id, current.revision, { profileRebuiltAt: at })) current = { ...current, profileRebuiltAt: at, revision: current.revision + 1 };
     }
+    return notes(current, sweep);
+  }
+
+  /**
+   * The parent's notes after the event and the rebuild: this call's pending note, then (`sweep`, at a call's first end)
+   * up to NOTE_SWEEP earlier calls of the child whose note is still pending. All of it within the note time limit: once
+   * it is up the call answers, and no late result changes a stored call (a written note is found on the next try).
+   */
+  async function notes(record: CallRecord, sweep: boolean): Promise<CallRecord> {
+    const note = seams.note;
+    if (!note || (!record.notePending && !sweep)) return record;
+    let current = record;
+    let late = false;
+    const one = async (r: CallRecord): Promise<CallRecord> => {
+      if (!r.notePending) return r;
+      let step: NoteStep = "pending";
+      try {
+        step = await note({ call: r, package: r.notePending.package, event: r.notePending.event });
+      } catch (e) {
+        console.error("[maya call] note failed", r.id, e instanceof Error ? e.message : String(e));
+      }
+      if (step !== "done" || late || !(await store.update(r.id, r.revision, { notePending: null }))) return r;
+      return { ...r, notePending: null, revision: r.revision + 1 };
+    };
+    const work = (async () => {
+      const done = await one(current);
+      if (!late) current = done;
+      if (!sweep) return;
+      for (const other of await store.pendingNotes(record.childId, NOTE_SWEEP + 1)) {
+        if (late) return;
+        if (other.id !== record.id && other.status === "ended") await one(other);
+      }
+    })();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeUp = new Promise<"late">((resolve) => {
+      timer = setTimeout(() => resolve("late"), seams.noteMs ?? NOTE_STEP_MS);
+    });
+    try {
+      if ((await Promise.race([work.then(() => "done" as const), timeUp])) === "late") {
+        late = true;
+        console.error("[maya call] note step ran out of time", record.id);
+      }
+    } catch (e) {
+      console.error("[maya call] note step failed", record.id, e instanceof Error ? e.message : String(e));
+    } finally {
+      clearTimeout(timer);
+    }
+    work.catch(() => {});
     return current;
   }
 
@@ -384,6 +448,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       status: "ended",
       // Kept until the learning event is written (afterEnd).
       live: { package: pkg, text: await session.saved() },
+      // Kept until the parent's note is written (notes).
+      notePending: seams.note ? { package: pkg, event: learningEvent(session.session, { parentId: record.parentId, childId: record.childId }) } : null,
       trace,
       boardHistory: boardHistoryOf(trace),
       outcome: trace.outcome,
@@ -392,7 +458,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       endedAt: trace.endedAt ?? iso(seams.clock()),
     };
     if (!(await store.update(record.id, record.revision, change))) return null;
-    return afterEnd({ ...record, ...change, revision: record.revision + 1 }, session);
+    return afterEnd({ ...record, ...change, revision: record.revision + 1 }, session, true);
   }
 
   /** Saves a live call after an input, or ends it when the call has ended. Null on a conflict. */
@@ -447,6 +513,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         boardHistory: null,
         learningEventId: null,
         profileRebuiltAt: null,
+        notePending: null,
       };
       await store.insert(record);
       let out: TextOutput | null = null;

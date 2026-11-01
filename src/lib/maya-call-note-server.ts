@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { callNotes, noteAiClient, type CallNote, type CallNotes } from "@/lib/maya-call-note";
+import { callNotes, noteAiClient, noteStep, type CallNote, type CallNotes, type NoteStep } from "@/lib/maya-call-note";
 import { mayaCallNoteStore } from "@/lib/maya-call-note-store";
 import type { CallRecord } from "@/lib/maya-call";
 import type { NewLearningEvent } from "@/lib/learning-events";
@@ -19,19 +19,33 @@ async function isTestFamily(db: SupabaseClient<Database>, parentId: string): Pro
   return data !== null;
 }
 
-/** The note module with the secret key. */
-export function serverCallNotes(admin: SupabaseClient<Database>): CallNotes {
-  return callNotes({ store: mayaCallNoteStore(admin), ai: noteAiClient(), isTestFamily: (p) => isTestFamily(admin, p), clock: () => Date.now() });
+/** The child's first name; null when it cannot be read (then the note module asks nothing and writes nothing). */
+async function childName(db: SupabaseClient<Database>, childId: string): Promise<string | null> {
+  const { data, error } = await db.from("children").select("first_name").eq("id", childId).maybeSingle();
+  if (error) console.error("[call note] child name lookup failed", error.message);
+  return error ? null : (data?.first_name ?? null);
 }
 
-/** The `note` seam of the call module: writes the note of an ended call (refused for test calls and test families). */
+/** The note module with the secret key. */
+export function serverCallNotes(admin: SupabaseClient<Database>): CallNotes {
+  return callNotes({
+    store: mayaCallNoteStore(admin),
+    ai: noteAiClient(),
+    isTestFamily: (p) => isTestFamily(admin, p),
+    childName: (id) => childName(admin, id),
+    clock: () => Date.now(),
+  });
+}
+
+/**
+ * The `note` seam of the call module: writes the note of an ended call. "done" when the note is stored or refused for
+ * good (a test call or a test family); "pending" otherwise, so the call keeps the note's inputs for a retry.
+ */
 export function writeNoteAfterCall(admin: SupabaseClient<Database>) {
   const notes = serverCallNotes(admin);
-  return async ({ call, package: pkg, event }: { call: CallRecord; package: QuestionPackage; event: NewLearningEvent | null }) => {
-    const { data } = await admin.from("children").select("first_name").eq("id", call.childId).maybeSingle();
-    const result = await notes.write({ call, package: pkg, event, childName: data?.first_name ?? null });
-    if (!result.ok && result.error === "not_ended") console.error("[call note] the call has no outcome", call.id);
-    return result;
+  return async ({ call, package: pkg, event }: { call: CallRecord; package: QuestionPackage; event: NewLearningEvent | null }): Promise<NoteStep> => {
+    const result = await notes.write({ call, package: pkg, event });
+    return noteStep(result, call.id);
   };
 }
 

@@ -1193,6 +1193,58 @@ export type Database = {
           },
         ]
       }
+      maya_call_connections: {
+        Row: {
+          at: string
+          call_id: string
+          child_id: string
+          id: number
+          kind: string
+          parent_id: string
+          recorded_at: string
+        }
+        Insert: {
+          at: string
+          call_id: string
+          child_id: string
+          id?: never
+          kind: string
+          parent_id: string
+          recorded_at?: string
+        }
+        Update: {
+          at?: string
+          call_id?: string
+          child_id?: string
+          id?: never
+          kind?: string
+          parent_id?: string
+          recorded_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maya_call_connections_call_fkey"
+            columns: ["call_id", "parent_id", "child_id"]
+            isOneToOne: false
+            referencedRelation: "maya_calls"
+            referencedColumns: ["id", "parent_id", "child_id"]
+          },
+          {
+            foreignKeyName: "maya_call_connections_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "maya_call_connections_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       maya_call_notes: {
         Row: {
           call_ended_at: string
@@ -1289,6 +1341,7 @@ export type Database = {
           mishearing_corrections: number | null
           mode: string
           model: string
+          note_pending: Json | null
           outcome_reason: string | null
           package_hash: string
           package_id: string
@@ -1340,6 +1393,7 @@ export type Database = {
           mishearing_corrections?: number | null
           mode?: string
           model: string
+          note_pending?: Json | null
           outcome_reason?: string | null
           package_hash: string
           package_id: string
@@ -1391,6 +1445,7 @@ export type Database = {
           mishearing_corrections?: number | null
           mode?: string
           model?: string
+          note_pending?: Json | null
           outcome_reason?: string | null
           package_hash?: string
           package_id?: string

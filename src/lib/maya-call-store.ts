@@ -30,6 +30,7 @@ function changeColumns(c: CallChange): Update {
   if (c.boardHistory !== undefined) u.board_history = c.boardHistory;
   if (c.learningEventId !== undefined) u.learning_event_id = c.learningEventId;
   if (c.profileRebuiltAt !== undefined) u.profile_rebuilt_at = c.profileRebuiltAt;
+  if (c.notePending !== undefined) u.note_pending = c.notePending;
   if (c.counts !== undefined) {
     u.maya_turns = c.counts?.mayaTurns ?? null;
     u.child_turns = c.counts?.childTurns ?? null;
@@ -87,6 +88,7 @@ export function fromCallRow(r: Row): CallRecord {
     boardHistory: r.board_history,
     learningEventId: r.learning_event_id,
     profileRebuiltAt: r.profile_rebuilt_at,
+    notePending: r.note_pending,
   };
 }
 
@@ -130,6 +132,19 @@ export function mayaCallStore(admin: SupabaseClient<Database>): CallStore {
         .select("id");
       if (error) throw new Error(`maya call update: ${error.message}`);
       return (data ?? []).length === 1;
+    },
+    async pendingNotes(childId, limit) {
+      if (!UUID.test(childId)) return [];
+      const { data, error } = await admin
+        .from("maya_calls")
+        .select("*")
+        .eq("child_id", childId.toLowerCase())
+        .eq("status", "ended")
+        .not("note_pending", "is", null)
+        .order("ended_at", { ascending: true })
+        .limit(Math.max(1, Math.min(limit, 20)));
+      if (error) throw new Error(`maya call pending notes: ${error.message}`);
+      return (data ?? []).map(fromCallRow);
     },
   };
 }
