@@ -98,6 +98,98 @@ export function slotMax(slot: SlotName, c: Pick<DayContent, "level" | "pages">):
   }
 }
 
+// ---------- Text room (what the generator tells the AI, #380) ----------
+
+/**
+ * The room a question's text has in a slot: the most characters, in at most `lines` lines of `perLine` characters.
+ * The generator gives it to the AI for each item, so the AI writes text the page has room for; the fit check still
+ * measures the real page. On a card, writing lines (a written reason) or a tall picture (a number line, base-ten
+ * blocks) take the place of a line of text.
+ */
+export interface TextRoom {
+  characters: number;
+  lines: number;
+  perLine: number;
+}
+
+/** The content area's width (.frame). */
+const CONTENT_W = 688;
+/** Geist's average letter is about half its size wide; Geist Mono's 0.6. */
+const SANS_EM = 0.5;
+const MONO_EM = 0.6;
+/** A word that does not fit at a line's end starts the next one: count 90% of the letters a line holds. */
+const WRAP = 0.9;
+
+const textRoomOf = (width: number, font: number, lines: number, em = SANS_EM): TextRoom => {
+  const perLine = Math.floor(width / (font * em));
+  return { characters: Math.floor(perLine * lines * WRAP), lines, perLine };
+};
+
+/**
+ * A slot's text room at a level, from the template's own widths and type sizes (the CSS below):
+ * - a card of two (.pcard, every item of a parent-led page, picture stories at every level): half the content width
+ *   less the card's border and padding, its number badge and icon: 230 px, for 2 lines;
+ * - a line in a list (.list): the full width less the number, the gaps and an answer box: 1 line;
+ * - a line in a grid of two (.two): half of that: 1 line;
+ * - Spot the error at U1 to U9: the Is it right? strip, Tick one and the Fix it box take the row, so the text is
+ *   about 50 px wide: the sum only (5 + 3 = ?), 2 lines; at U10 and up about 150 px;
+ * - a warm-up fact (.facts, Geist Mono, one line that never wraps);
+ * - stories, How do you know?, the Mixed set, Challenge, Math in the world, Solve it two ways and test cards by their
+ *   own blocks. Null for a panel (no question).
+ */
+export function textRoom(slot: SlotName, level: number, pages = 8): TextRoom | null {
+  const band = bandOf(level);
+  const six = pages <= 6 && band.name === "mid";
+  const parent = band.name === "parent";
+  const badge = band.name === "mid" ? 24 : 30;
+  const box = Math.max(64, band.box);
+  // .pcard: (688 - 12) / 2, less its border (2) and padding (28), badge, icon (28) and two 10 px gaps.
+  const card = textRoomOf((CONTENT_W - 12) / 2 - 2 - 28 - badge - 28 - 20, band.body, 2);
+  // .list: the number (22) and three 12 px gaps around the text and the box.
+  const full = textRoomOf(CONTENT_W - 22 - 36 - box, band.body, 1);
+  // .two: (688 - 32) / 2, the same.
+  const half = textRoomOf((CONTENT_W - 32) / 2 - 22 - 36 - box, band.body, 1);
+  const list = (many: boolean) => (parent ? card : many ? half : full);
+  switch (slot) {
+    case "worked-example": case "watch-one": case "reminder": return null;
+    case "warm-up": {
+      // A fact grid of 3 (2 at U1 to U9) in Geist Mono: the grey number (22), the box and two gaps of 10.
+      const cols = band.name === "mid" ? 3 : 2;
+      const gap = band.name === "mid" ? 24 : 48;
+      return textRoomOf((CONTENT_W - gap * (cols - 1)) / cols - 22 - 20 - band.box, band.fact, 1, MONO_EM);
+    }
+    case "spot-the-error":
+      return band.name === "mid" ? textRoomOf(150, band.body, 2) : { characters: 10, lines: 2, perLine: 5 };
+    case "fix-it":
+      // Three cards in a panel (U4 and up): (688 - 44 - 24) / 3 less padding, badge and gap; the box wraps under.
+      return parent ? card : textRoomOf((CONTENT_W - 44 - 24) / 3 - 28 - badge - 12, band.body, 2);
+    case "in-your-head": case "try-first": case "now-you": case "how-do-you-know":
+      // A panel or outlined box around a full-width line: 40 px of padding less. How do you know? has one line.
+      return parent && slot === "now-you" ? card : textRoomOf(CONTENT_W - 40 - 22 - 36 - box, band.body, 1);
+    case "remember-these": return list(true);
+    case "finish-these": case "on-your-own": return list(six);
+    case "practice-row": return list(true);
+    case "unit-b-practice": return list(true);
+    case "friday-5": case "unit-check": case "mini-test": case "already-know-it": return list(true);
+    case "picture-stories": return card;
+    case "show-what-you-know": case "level-test":
+      // Test cards, two to a row: half the width less padding, badge, gaps and the box; the work area grows.
+      return parent ? card : textRoomOf((CONTENT_W - 16) / 2 - 28 - badge - 24 - box, band.body, 2);
+    case "solve-it-two-ways":
+      // Beside the number and the "Solve it two ways" label (17 letters of Geist Mono).
+      return textRoomOf(CONTENT_W - 22 - 24 - 17 * band.small * MONO_EM, band.body, 2);
+    case "word-problems":
+      // A story's full line beside its number (26 + 12) and a picture.
+      return textRoomOf(CONTENT_W - 38 - 160, band.story, 3);
+    case "mixed-set":
+      return textRoomOf(CONTENT_W - 22 - 12, band.name === "mid" ? 14 : band.story, 2);
+    case "challenge":
+      return textRoomOf(CONTENT_W - 35 - badge - 32 - box, band.body, 4);
+    case "math-in-the-world":
+      return textRoomOf(CONTENT_W - 22 - 36 - box, band.body, 2);
+  }
+}
+
 // ---------- Colours ----------
 
 type Family = "wu" | "pr" | "ni" | "wp" | "rv" | "ch" | "lt";

@@ -8,7 +8,9 @@ import { renderFitCheck } from "@/lib/workbook-fit";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import { generateWorkbook, type FitCheck, type GenerateDeps, type GeneratedWorkbook } from "@/lib/workbook-generator";
 import { planLevel, planWorkbook, type WorkbookPlan } from "@/lib/workbook-plan";
+import { textRoom } from "@/lib/workbook-template";
 import { fixedTemplate } from "@/lib/workbook-template-fixed";
+import type { SlotName } from "@/lib/workbook-page";
 
 // The workbook generator (#311, spec #296) through its public interface: a real two-week plan (#308) on the BC
 // curriculum, the fake AI client with fixed JSON, a fake fit check, and the in-memory draft store.
@@ -185,6 +187,9 @@ describe("a failed question", () => {
     const ai = fakeAiClient({ answer: () => { throw new Error("time is up"); } });
     const d = deps({ ai });
     const draft = await generate(d);
+    // Each call is sent twice: the page call, then the redo of every question.
+    expect(ai.requests.filter((r) => read(r).day === 1 && read(r).pageType === DAY_PAGES[0].type).map((r) => r.name))
+      .toEqual(["workbook_page", "workbook_page", "workbook_page_redo", "workbook_page_redo"]);
     const all = draft.pages.flatMap((p) => p.questions);
     expect(all.every((q) => q.check.status === "failed" && q.check.reason === "the AI gave no answer: time is up" && q.attempts === 2)).toBe(true);
     expect(draft.counts.failed).toBe(all.length);
@@ -234,7 +239,9 @@ describe("item formats", () => {
 });
 
 describe("a page that does not fit", () => {
-  it("is written again once with the problems, then kept and marked failed", async () => {
+  const onPage = (ai: ReturnType<typeof fakeAiClient>, day = 1) => ai.requests.filter((r) => read(r).day === day && read(r).pageType === DAY_PAGES[0].type);
+
+  it("is written again once, shorter, with the problems; when no question left out makes it fit, it keeps them all, marked failed", async () => {
     const target = 3;
     const fit: FitCheck = { fits: async (page) => (page.number === target ? { ok: false, problems: [{ question: 2, reason: "question 2 does not fit its space" }] } : { ok: true }) };
     const ai = fakeAiClient({ answer: (r) => fill(r) });
@@ -242,10 +249,13 @@ describe("a page that does not fit", () => {
     const page = draft.pages[target - 1];
     expect(page.fit).toEqual({ status: "failed", problems: [{ question: 2, reason: "question 2 does not fit its space" }] });
     expect(page.attempts).toBe(2);
-    expect(page.questions.length).toBeGreaterThan(0);
-    const calls = ai.requests.filter((r) => r.name === "workbook_page" && read(r).day === 1 && read(r).pageType === DAY_PAGES[0].type);
-    expect(calls).toHaveLength(2);
+    expect(page.questions).toHaveLength(DAY_PAGES[0].parts.reduce((n, p) => n + p.items, 0));
+    expect(page.leftOut).toBeUndefined();
+    const calls = onPage(ai);
+    expect(calls.map((r) => r.name)).toEqual(["workbook_page", "workbook_page_shorter"]);
+    expect(read(calls[1]).slots).toHaveLength(page.questions.length);
     expect(read(calls[1]).note).toContain("question 2: question 2 does not fit its space");
+    expect(read(calls[1]).note).toContain("slot 1.1: 13 characters");
     expect(draft.counts.failedPages).toBe(1);
     expect(draft.pages.filter((p) => p.number !== target && p.questions.length > 0).every((p) => p.fit.status === "fits" && p.attempts === 1)).toBe(true);
   });
@@ -255,6 +265,47 @@ describe("a page that does not fit", () => {
     const fit: FitCheck = { fits: async (page) => (page.number === 3 && ++tries === 1 ? { ok: false, problems: [{ question: null, reason: "the content does not fit the page" }] } : { ok: true }) };
     const page = (await generate(deps({ fit }))).pages[2];
     expect(page).toMatchObject({ fit: { status: "fits" }, attempts: 2 });
+    expect(page.leftOut).toBeUndefined();
+  });
+
+  it("leaves out questions one at a time until it fits, the last one the fit check names first, and numbers the rest again", async () => {
+    const total = DAY_PAGES[0].parts.reduce((n, p) => n + p.items, 0);
+    const checked: number[] = [];
+    const fit: FitCheck = {
+      fits: async (page) => {
+        if (page.number !== 3) return { ok: true };
+        checked.push(page.questions.length);
+        return page.questions.length > total - 2
+          ? { ok: false, problems: [{ question: 1, reason: "question 1 is fine" }, { question: 2, reason: "question 2 runs 40 px past the bottom" }, { question: null, reason: "the content does not fit its space" }] }
+          : { ok: true };
+      },
+    };
+    const d = deps({ fit });
+    const draft = await generate(d);
+    const page = draft.pages[2];
+    expect(checked).toEqual([total, total, total - 1, total - 2]);
+    expect(page.fit).toEqual({ status: "fits" });
+    expect(page.questions.map((q) => q.number)).toEqual(Array.from({ length: total - 2 }, (_, i) => i + 1));
+    expect(page.questions.map((q) => q.slot).slice(0, 2)).toEqual(["1.1", "1.4"]);
+    for (const q of page.questions) expect(q.package!.ref).toEqual({ source: "workbook", workbookId: WORKBOOK, page: 3, question: q.number });
+    expect(page.leftOut).toEqual([
+      { slot: "1.2", part: DAY_PAGES[0].parts[0].kind, text: "268 + 157 = ?", reason: "question 2 runs 40 px past the bottom" },
+      { slot: "1.3", part: DAY_PAGES[0].parts[0].kind, text: "268 + 157 = ?", reason: "question 2 runs 40 px past the bottom" },
+    ]);
+    expect(page.omissions).toContainEqual(expect.objectContaining({ part: 0, reason: expect.stringContaining("2 questions left out: the page had no room for their text") }));
+    expect(draft.counts.questions).toBe(DAY_PAGES.reduce((s, p) => s + p.parts.reduce((t, part) => t + part.items, 0), 0) - 2);
+    expect(await d.store.draft(WORKBOOK)).toEqual(draft);
+  });
+
+  it("leaves out the page's last question when the fit check names none", async () => {
+    const total = DAY_PAGES[0].parts.reduce((n, p) => n + p.items, 0);
+    const fit: FitCheck = { fits: async (page) => (page.number === 3 && page.questions.length === total ? { ok: false, problems: [{ question: null, reason: "the slot runs past" }] } : { ok: true }) };
+    const page = (await generate(deps({ fit }))).pages[2];
+    expect(page.questions).toHaveLength(total - 1);
+    const parts = DAY_PAGES[0].parts.filter((p) => p.items > 0);
+    const lastSlot = `${DAY_PAGES[0].parts.indexOf(parts.at(-1)!) + 1}.${parts.at(-1)!.items}`;
+    expect(page.leftOut).toEqual([expect.objectContaining({ slot: lastSlot, reason: "the slot runs past" })]);
+    expect(page.questions.map((q) => q.slot)).not.toContain(lastSlot);
   });
 
   it("is checked with the page's content and numbers, not the failed questions with no package", async () => {
@@ -327,57 +378,64 @@ describe("the fit check on main (the renderer's measure)", () => {
   });
 });
 
-describe("the retry budget (review R376-1)", () => {
+describe("the retry budget: one more try for each reason", () => {
   /** An item whose wrong answer is the right answer: the checker fails it. */
   const bad = (s: SlotAsked) => goodItem(s, { wrongAnswers: [{ value: num(425), cause: "O3", description: "Right by mistake.", step: null }] });
   const firstPageCalls = (ai: ReturnType<typeof fakeAiClient>) => ai.requests.filter((r) => read(r).day === 1 && read(r).pageType === DAY_PAGES[0].type);
   const neverFits: FitCheck = { fits: async (page) => (page.number === 3 ? { ok: false, problems: [{ question: null, reason: "the content does not fit the page" }] } : { ok: true }) };
+  /** The first page's calls by name, so a test can answer each try differently. */
+  const byCall = (make: (call: string, s: SlotAsked) => unknown) => fakeAiClient({
+    answer: (r) => fill(r, (s) => (read(r).day === 1 && read(r).pageType === DAY_PAGES[0].type ? make(r.name, s) : goodItem(s))),
+  });
 
-  it("never writes a question that failed both attempts a third time when its page fails the fit check", async () => {
-    const ai = fakeAiClient({ answer: (r) => fill(r, (s) => (read(r).day === 1 && s.slot === "1.1" ? bad(s) : goodItem(s))) });
+  it("writes a question that failed its check twice once more for a page that does not fit, and never a fourth time", async () => {
+    const ai = byCall((_, s) => (s.slot === "1.1" ? bad(s) : goodItem(s)));
     const draft = await generate(deps({ ai, fit: neverFits }));
     const calls = firstPageCalls(ai);
-    expect(calls.map((r) => r.name)).toEqual(["workbook_page", "workbook_page_redo", "workbook_page"]);
-    expect(calls.filter((r) => read(r).slots.some((s) => s.slot === "1.1"))).toHaveLength(2);
+    expect(calls.map((r) => r.name)).toEqual(["workbook_page", "workbook_page_redo", "workbook_page_shorter"]);
+    expect(calls.filter((r) => read(r).slots.some((s) => s.slot === "1.1"))).toHaveLength(3);
     const page = draft.pages[2];
     expect(page).toMatchObject({ attempts: 2, fit: { status: "failed" } });
-    expect(page.questions[0]).toMatchObject({ slot: "1.1", attempts: 2, check: { status: "failed" } });
-    expect(page.questions.every((q) => q.attempts === 2)).toBe(true);
+    expect(page.questions[0]).toMatchObject({ slot: "1.1", attempts: 3, check: { status: "failed" } });
+    expect(page.questions.slice(1).every((q) => q.attempts === 2)).toBe(true);
   });
 
-  it("writes again for the page retry only the questions with an attempt left", async () => {
-    let calls = 0;
-    const ai = fakeAiClient({
-      answer: (r) => {
-        if (read(r).day === 1 && read(r).pageType === DAY_PAGES[0].type) calls++;
-        return fill(r, (s) => (calls === 1 && s.slot === "1.1" ? bad(s) : goodItem(s)));
-      },
-    });
-    const draft = await generate(deps({ ai, fit: neverFits }));
-    const retry = firstPageCalls(ai)[2];
-    expect(read(retry).slots.map((s) => s.slot)).not.toContain("1.1");
-    expect(read(retry).slots).toHaveLength(draft.pages[2].questions.length - 1);
-    expect(draft.pages[2].questions[0]).toMatchObject({ attempts: 2, check: { status: "checked" } });
+  it("takes the shorter rewrite of a failed question when it is sound", async () => {
+    const ai = byCall((call, s) => (s.slot === "1.1" && call !== "workbook_page_shorter" ? bad(s) : goodItem(s)));
+    let tries = 0;
+    const fit: FitCheck = { fits: async (page) => (page.number === 3 && ++tries === 1 ? { ok: false, problems: [{ question: null, reason: "the content does not fit the page" }] } : { ok: true }) };
+    const page = (await generate(deps({ ai, fit }))).pages[2];
+    expect(page.questions[0]).toMatchObject({ attempts: 3, check: { status: "checked" } });
+    expect(page.fit).toEqual({ status: "fits" });
   });
 
-  it("keeps a sound question when its page retry version fails the check", async () => {
-    let calls = 0;
-    const ai = fakeAiClient({
-      answer: (r) => {
-        if (read(r).day === 1 && read(r).pageType === DAY_PAGES[0].type) calls++;
-        return fill(r, (s) => (calls === 2 && s.slot === "1.2" ? bad(s) : goodItem(s)));
-      },
+  it("keeps a sound question when its shorter version fails the check, and the shorter of two sound versions", async () => {
+    const ai = byCall((call, s) => {
+      if (call !== "workbook_page_shorter") return goodItem(s);
+      if (s.slot === "1.2") return bad(s);
+      if (s.slot === "1.3") return goodItem(s, { text: "268 + 157 is what number in all?" });
+      if (s.slot === "1.4") return goodItem(s, { text: "268 + 157" });
+      return goodItem(s);
     });
-    const q = (await generate(deps({ ai, fit: neverFits }))).pages[2].questions[1];
-    expect(q).toMatchObject({ slot: "1.2", attempts: 2, check: { status: "checked" } });
+    const qs = (await generate(deps({ ai, fit: neverFits }))).pages[2].questions;
+    expect(qs[1]).toMatchObject({ slot: "1.2", attempts: 2, check: { status: "checked" } });
+    expect(qs[2].package!.text).toBe("268 + 157 = ?");
+    expect(qs[3].package!.text).toBe("268 + 157");
     expect(firstPageCalls(ai)).toHaveLength(2);
   });
 
-  it("makes no page retry when every question has used both attempts", async () => {
-    const ai = fakeAiClient({ answer: (r) => fill(r, (s) => (read(r).day === 1 && read(r).pageType === DAY_PAGES[0].type ? bad(s) : goodItem(s))) });
-    const draft = await generate(deps({ ai, fit: neverFits }));
-    expect(firstPageCalls(ai).map((r) => r.name)).toEqual(["workbook_page", "workbook_page_redo"]);
-    expect(draft.pages[2]).toMatchObject({ attempts: 1, fit: { status: "failed" } });
+  it("sends an AI call that throws once more, and fails its questions only when the second throws too", async () => {
+    let calls = 0;
+    const ai = fakeAiClient({
+      answer: (r) => {
+        if (read(r).day === 1 && read(r).pageType === DAY_PAGES[0].type && ++calls === 1) throw new Error("the output is not valid JSON");
+        return fill(r);
+      },
+    });
+    const draft = await generate(deps({ ai }));
+    expect(firstPageCalls(ai).map((r) => r.name)).toEqual(["workbook_page", "workbook_page"]);
+    expect(draft.pages[2].questions.every((q) => q.check.status === "checked" && q.attempts === 1)).toBe(true);
+    expect(draft.counts.failed).toBe(0);
   });
 });
 
@@ -440,5 +498,84 @@ describe("answers code computes beyond addition", () => {
     const q = await question(op("percent-of", [num(20), num(50)]), [wrong(num(1000))], op("percent-of", [num(10), num(20)]));
     expect(q.check.status).toBe("failed");
     expect(q.package).toBeNull();
+  });
+});
+
+describe("a book laid out for the templates: room, rules and the content left", () => {
+  const U3 = (() => {
+    const result = planWorkbook({
+      profile: { standards: [] }, grade: 0, level: planLevel(BC, "U3")!, passed: {}, workbook: { number: 1, inLevel: 0 },
+      reviews: [], missedReviews: [], misses: [], pausedWeeks: 0, support: null, unassessedUnits: [],
+    });
+    if (!result.ok) throw new Error(result.reason);
+    return result.plan;
+  })();
+  const laid = { ...input, plan: U3, book: { child: "Zoe" } };
+  interface LaidSlot extends SlotAsked { place: string; room?: { characters: number; perLine: number; lines: number }; rules: Record<string, string> }
+  const slotsOf = (r: AiJsonRequest) => (JSON.parse((r.content[0] as { text: string }).text) as { slots: LaidSlot[] }).slots;
+  /** A small sound sum for any U3 slot: 2 + 1 with a wrong answer of 4 and the easier example 1 + 1. */
+  const small = (s: SlotAsked, over: Record<string, unknown> = {}) => goodItem(s, {
+    text: "2 + 1 = ?", operation: addOp(2, 1), wrongAnswers: [{ value: num(4), cause: "count", description: "Counts one too many.", step: null }],
+    easier: { text: "1 + 1 = ?", operation: addOp(1, 1) }, ...over,
+  });
+
+  async function laidOut(d: GenerateDeps) {
+    const result = await generateWorkbook(laid, d);
+    if (result.status !== "stored") throw new Error(result.reason);
+    return result.draft;
+  }
+
+  it("gives every slot its text room from the template, and its skills' rules in plain words", async () => {
+    const ai = fakeAiClient({ answer: (r) => fill(r, (s) => small(s)) });
+    await laidOut(deps({ ai }));
+    const slots = ai.requests.flatMap(slotsOf);
+    expect(slots.length).toBeGreaterThan(0);
+    for (const s of slots) {
+      const room = textRoom(s.place as SlotName, 3);
+      expect(s.room).toEqual({ characters: room!.characters, perLine: room!.perLine, lines: room!.lines });
+      expect(Object.keys(s.rules)).toEqual(s.skills);
+    }
+    // A parent-led card holds 2 lines of about 23 letters; Spot the error, the sum only.
+    expect(slots.find((s) => s.place === "already-know-it")!.room).toEqual({ characters: 41, perLine: 23, lines: 2 });
+    expect(textRoom("spot-the-error", 3)!.characters).toBe(10);
+    const rule = Object.values(slots.find((s) => s.place === "already-know-it")!.rules)[0];
+    expect(rule).toContain("a whole number from 0 to 10");
+    expect(rule).toContain("every wrong answer");
+    expect(rule).toMatch(/never use: .*division \(no divide operation, no ÷ sign/);
+    expect(rule).toContain("never the compare format");
+    expect(rule).toContain('Never write the word "one"');
+  });
+
+  it("tells the check redo what to change: a wrong answer past the limit counts", async () => {
+    const ai = fakeAiClient({
+      answer: (r) => fill(r, (s) => (r.name === "workbook_page" && s.slot === "1.1" ? small(s, { wrongAnswers: [{ value: num(12), cause: "operation", description: "Adds.", step: null }] }) : small(s))),
+    });
+    const draft = await laidOut(deps({ ai }));
+    const note = read(ai.requests.find((r) => r.name === "workbook_page_redo")!).note!;
+    expect(note).toContain("the number 12 is too big for this question: its numbers are at most");
+    expect(note).toContain("Leave out a wrong answer past the limit.");
+    expect(firstDayPage(draft).questions[0]).toMatchObject({ slot: "1.1", attempts: 2, check: { status: "checked" } });
+  });
+
+  it("drops a slot from the page's content when every question of it is left out, and keeps the others' numbers in step", async () => {
+    const fit: FitCheck = {
+      fits: async (p) => {
+        const c = p.content;
+        if (c?.kind !== "day") return { ok: true };
+        // The page fits once its last block is gone.
+        const last = c.blocks.filter((b) => b.items.length > 0).at(-1)!;
+        return c.blocks.filter((b) => b.items.length > 0).length > 1 ? { ok: false, problems: [{ question: last.items[0], reason: `question ${last.items[0]} runs past the bottom` }] } : { ok: true };
+      },
+    };
+    const draft = await laidOut(deps({ ai: fakeAiClient({ answer: (r) => fill(r, (s) => small(s)) }), fit }));
+    const p = draft.pages.find((x) => x.leftOut)!;
+    expect(p.fit).toEqual({ status: "fits" });
+    expect(p.leftOut!.length).toBeGreaterThan(0);
+    const c = p.content!;
+    if (c.kind !== "day") throw new Error("not a day page");
+    const items = c.blocks.flatMap((b) => b.items);
+    expect(items).toEqual(p.questions.map((q) => q.number));
+    expect(c.blocks.every((b) => b.items.length > 0 || ["worked-example", "watch-one", "reminder"].includes(b.slot))).toBe(true);
+    expect(p.omissions!.some((o) => /left out: the page had no room/.test(o.reason))).toBe(true);
   });
 });

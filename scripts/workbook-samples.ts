@@ -412,7 +412,7 @@ for (const job of jobs) {
   try {
     const r = await oneBook(db, family, job.level, job.kind, ai, drafts);
     results.push(r);
-    console.log(`  ${r.label}: ${r.draft.counts.pages} pages, ${r.draft.counts.questions} questions, ${r.draft.counts.failed} failed, ${r.draft.counts.failedPages} pages do not fit, ${r.renderProblems.length} render problems (strict), USD ${r.usd.toFixed(2)}, ${r.minutes.toFixed(1)} min`);
+    console.log(`  ${r.label}: ${r.draft.counts.pages} pages, ${r.draft.counts.questions} questions, ${r.draft.counts.failed} failed, ${r.draft.counts.failedPages} pages do not fit, ${r.draft.pages.reduce((n, p) => n + (p.leftOut?.length ?? 0), 0)} left out for room, ${r.renderProblems.length} render problems (strict), USD ${r.usd.toFixed(2)}, ${r.minutes.toFixed(1)} min`);
   } catch (e) {
     console.error(`  ${job.level} ${job.kind}: ERROR ${e instanceof Error ? e.message : String(e)}`);
     results.push({ label: `${job.level}-${job.kind}`, level: job.level, kind: job.kind, error: e instanceof Error ? e.message : String(e) } as BookResult);
@@ -424,12 +424,13 @@ async function writeIndex() {
   const ok = results.filter((r) => !r.error);
   const total = ok.reduce((n, r) => n + r.usd, 0);
   const rows = results.map((r) => r.error
-    ? `| ${r.label} | | | | | | | | ERROR: ${r.error.replace(/\|/g, "/")} |`
-    : `| [${r.label}](${r.label}.pdf) | ${r.child.name} | ${r.draft.counts.pages} | ${r.draft.counts.questions} | ${r.draft.counts.failed} | ${new Set([...r.renderProblems.map((p) => p.page), ...r.draft.pages.filter((p) => p.fit.status === "failed").map((p) => p.number)]).size} | ${r.draft.counts.notChecked} | ${values.fake ? "FAKE AI" : `USD ${r.usd.toFixed(2)}`} | [sheet](${r.label}-contact.png) |`);
+    ? `| ${r.label} | | | | | | | | | ERROR: ${r.error.replace(/\|/g, "/")} |`
+    : `| [${r.label}](${r.label}.pdf) | ${r.child.name} | ${r.draft.counts.pages} | ${r.draft.counts.questions} | ${r.draft.counts.failed} | ${new Set([...r.renderProblems.map((p) => p.page), ...r.draft.pages.filter((p) => p.fit.status === "failed").map((p) => p.number)]).size} | ${r.draft.counts.notChecked} | ${r.draft.pages.reduce((n, p) => n + (p.leftOut?.length ?? 0), 0)} | ${values.fake ? "FAKE AI" : `USD ${r.usd.toFixed(2)}`} | [sheet](${r.label}-contact.png) |`);
   const failures = ok.flatMap((r) => [
     ...r.draft.pages.flatMap((p) => p.questions.filter((q) => q.check.status === "failed").map((q) => `- ${r.label} p${p.number} q${q.number} (${q.place ?? q.part}): ${(q.check as { reason: string }).reason}`)),
     ...r.renderProblems.map((p) => `- ${r.label} p${p.page}${p.question ? ` q${p.question}` : ""}${p.slot ? ` [${p.slot}]` : ""}: ${p.reason}`),
   ]);
+  const leftOut = ok.flatMap((r) => r.draft.pages.flatMap((p) => (p.leftOut ?? []).map((x) => `- ${r.label} p${p.number} slot ${x.slot} (${x.part}): "${x.text ?? ""}" (${x.text?.length ?? 0} characters): ${x.reason}`)));
   const notChecked = ok.flatMap((r) => r.draft.pages.flatMap((p) => p.questions.filter((q) => q.check.status === "not-checked").map((q) => `- ${r.label} p${p.number} q${q.number}: ${(q.check as { reason: string }).reason}`)));
   const profiles = ok.filter((r) => r.kind === "first").map((r) => `- ${r.level} ${r.child.name}: unit A ${r.child.mainUnit}, Unit B gap ${r.child.unitB ?? "none"}, weak skills ${r.child.weakSkills.join(", ")}`);
   const md = [
@@ -438,8 +439,8 @@ async function writeIndex() {
     `Model: ${ai.model}. Books: ${ok.length}. Total AI cost: USD ${total.toFixed(2)}. Draft rows: public.workbook_drafts${store ? "" : " (not stored)"}.`,
     "Nothing is sent to print or shipped. Failed pages are drawn with a red banner in the PDF and the page images.",
     "",
-    "| Book | Child | Pages | Questions | Failed questions | Failed pages | Not checked by code | AI cost | Contact sheet |",
-    "|---|---|---|---|---|---|---|---|---|",
+    "| Book | Child | Pages | Questions | Failed questions | Failed pages | Not checked by code | Left out for room | AI cost | Contact sheet |",
+    "|---|---|---|---|---|---|---|---|---|---|",
     ...rows,
     "",
     "## Profiles (made up)",
@@ -447,6 +448,10 @@ async function writeIndex() {
     "",
     `## Failures (${failures.length})`,
     ...failures,
+    "",
+    `## Left out for room (${leftOut.length})`,
+    "Questions the page left out after its shorter rewrite still did not fit (the page has fewer questions).",
+    ...leftOut,
     "",
     `## Not checked by code (${notChecked.length})`,
     ...notChecked.slice(0, 400),

@@ -4,18 +4,24 @@
 // computes every answer and worked step, and the answer checker (#306, #307, #362) runs on every question. The formats
 // with no operation (places, order, compare, sequence, count, pattern) and the pictures are #377.
 //
-// - One AI call per day page fills its slots. A question that fails the check (or that the AI left out) is written
-//   again once, in one call for the page's failed slots, with the reason; if it fails again it stays in the draft,
-//   marked failed with the reason (never dropped). A question code cannot check is kept, marked "not checked by code".
-// - The fit check (FitCheck, a seam: the renderer's measure on main, the real templates of #310 later) runs on every
-//   page with questions. A page that does not fit is written again once, with the problems; if it still does not fit,
-//   it stays in the draft, marked failed with the problems. Each question has two AI attempts in all: the page retry
-//   writes again only questions with an attempt left, so a question that failed twice is never written a third time.
+// - One AI call per day page fills its slots. Each slot comes with its room (textRoom, src/lib/workbook-template.ts:
+//   the most characters its text has room for on the page) and its rules in plain words (the numbers, signs and ideas
+//   its skills allow, digits only, an easier example with another answer). An AI call that throws (a time-out, a
+//   refusal, output that is not JSON) is sent once more; if it throws again, its questions fail for that try.
+// - Each question has one AI attempt, then at most one more for each reason: a failed check, and a page that does not
+//   fit. A question that fails the check (or that the AI left out) is written again once, in one call for the page's
+//   failed slots, with the reason; if it fails again it stays in the draft, marked failed with the reason. A question
+//   code cannot check is kept, marked "not checked by code".
+// - The fit check (FitCheck, a seam: the real templates' strict check, #310) runs on every page with questions. A page
+//   that does not fit is written again once, every question shorter, with the problems and each text's length against
+//   its room; of the two versions of a question the page keeps the sound one, and of two sound ones the shorter. If the
+//   page still does not fit, it leaves out questions, one at a time, until it fits: the last question the fit check
+//   names, else the page's last. Nothing is shrunk. Each question left out is in the page's `leftOut` and its part's
+//   omission. If the page does not fit with no question, it keeps its questions and is marked failed.
 // - The book (CONTEXT.md sections 1 and 7, D-187, D-191): the cover (page 1), the How + Plan page, the ten days' pages
 //   in plan order, the back cover, then blank pages to a multiple of 4. Page numbers run from the cover through the
 //   book; question numbers restart on each page. The page type, day and numbers come from the plan and code, never from
 //   the AI: the AI writes no layout, font, size or position.
-// - An AI call that throws (a time-out, a refusal, output that is not JSON) counts as a try whose questions failed.
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness (the caller passes the QR token maker).
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { withTimeLimit, type AiClient } from "@/lib/ai-client";
@@ -23,10 +29,15 @@ import type { QuestionPackage } from "@/lib/question-package";
 import { isQrToken, isUuid } from "@/lib/workbook-content";
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import { buildQuestion, ITEMS_SCHEMA, type BuiltQuestion, type QuestionCheck } from "@/lib/workbook-generator-items";
-import { bookPageContent, dayPageContent, layoutDayPage, mistakesFor, levelSigns, rangeProblem, samProblem, slotRanges, SLOT_FORMATS, STRICT_SLOTS, type DayLayout } from "@/lib/workbook-book";
+import { isOneMoreLessSkill } from "@/lib/number-words";
+import {
+  bookPageContent, dayPageContent, layoutDayPage, mistakesFor, levelSigns, rangeProblem, samProblem, slotRanges, PANEL_SLOTS, SLOT_FORMATS, STRICT_SLOTS,
+  type DayLayout, type NumberRange,
+} from "@/lib/workbook-book";
 import type { Omission, PageContent, SlotName } from "@/lib/workbook-page";
 import type { PageType, PlannedPage, PlannedPart, WorkbookPlan } from "@/lib/workbook-plan";
 import type { DraftPage } from "@/lib/workbook-render";
+import { textRoom } from "@/lib/workbook-template";
 
 export type { QuestionCheck } from "@/lib/workbook-generator-items";
 
@@ -73,8 +84,11 @@ export interface GeneratedQuestion {
   /** The template slot it sits in ("now-you", "word-problems"), when the book is laid out for the templates (#363). */
   place?: SlotName;
   check: QuestionCheck;
-  /** Its AI attempts: 1, or 2 when it was written again (after a failed check or for a page retry). Never more. */
-  attempts: 1 | 2;
+  /**
+   * Its AI attempts: 1, then one more for each reason it was written again: a failed check, and a page that did not
+   * fit. Never more than 3.
+   */
+  attempts: 1 | 2 | 3;
   /** Its package; null only when code could build none (the AI wrote nothing usable). */
   package: QuestionPackage | null;
 }
@@ -104,8 +118,21 @@ export interface GeneratedPage {
    * Set on every page when the book is laid out for the templates (GenerateInput.book); else absent.
    */
   content?: PageContent;
-  /** Planned items the page has no room for, with why (pageSlots); only on a laid-out day page that leaves some out. */
+  /**
+   * Planned items the page has no room for, with why: from the layout (pageSlots), and the questions the fit check left
+   * out (`leftOut`); only on a day page that leaves some out.
+   */
   omissions?: Omission[];
+  /** Questions left out because the page had no room for them after its shorter rewrite, in the order they went. */
+  leftOut?: LeftOut[];
+}
+
+/** A question the page left out to fit: its slot, part, text and the fit problem that named it. */
+export interface LeftOut {
+  slot: string;
+  part: PlannedPart["kind"];
+  text: string | null;
+  reason: string;
 }
 
 export interface GeneratedWorkbook {
@@ -241,7 +268,32 @@ const SYSTEM = [
   "Pictures: figure names a picture kind (dots, ten-frame, number-line, base-ten, array) or null. Code draws it from the operation (dots for 3 + 4 are 3 and 4 dots; an array for 3 × 4) or from numbers (count: dots take each group, a ten-frame each part, base-ten the hundreds, tens and ones, an array the rows and columns); you never draw, size or place it. Picture stories below U10 should have dots or a ten-frame with small whole numbers.",
   "Keep to the part's kind: practice builds from easy to harder in small changes; Fix it uses new numbers on the skills listed, never a question named in 'avoid'; Friday 5, mini-tests and the level test have no hints.",
   "Copy: short plain sentences a child can read; Canadian English (Mom, metre, litre, colour); money in Canadian dollars and cents; never a school grade, a brand name, or a prompt to scan or call anyone; no last names.",
+  "Room: a slot may give its room: the most characters its question text has room for on the printed page (characters), in lines of about perLine characters. Count the characters of the text, spaces included, and stay within it: the page has no room for more, and nothing is shrunk to fit. Say it short: '3 cars. 2 more come. How many now?', not a long story. On a card (lines 2), writing lines (written-reason) or a tall picture (number-line, base-ten) take the place of a line: then write one line at most. A written-reason card's lines take as much room as 2 lines of text, so a page of cards has at most 2 written-reason items; give the others a box, a circle or a drawing.",
+  "A missing number in a list (4, 5, ?, 7) is the sequence format, with the blanks as data: never write _ or a gap in the text.",
+  "Rules: a slot may give the rules of each of its skills in plain words: the largest number, the signs and ideas not taught yet, and the formats to leave out. Follow them exactly; they are checked by code, and an item that breaks one is thrown away.",
+  "The operation's answer is exactly the number the child writes in the box: 'Mia has 3. How many more make 5?' is 5 - 3 = 2, never 3 + 2 (code would print 5 as the answer). When a skill's rules forbid subtraction, do not ask how many more: ask for the total (3 and 2 more make how many?).",
+  "Before you write an easier example, work out both answers: the easier example's answer is a different number from the question's answer. When every question of a skill has the same answer (make 5, make 10), the easier example makes a smaller total (make 4).",
 ].join("\n");
+
+/** A skill's rules in plain words for the AI, from its number range (skillRange): the checks rangeProblem makes. */
+function rangeRules(skill: string, r: NumberRange): string {
+  const whole = !r.fractions && !r.decimals && !r.negatives;
+  const rules = [
+    `Every number is ${whole ? `a whole number from 0 to ${r.max}` : `at most ${r.max}`}: the numbers in the text, the operation's numbers and its answer, every wrong answer, and the easier example's numbers and answer. Leave out a wrong answer that would be bigger (adding by mistake on a take-away often is).`,
+  ];
+  const no: string[] = [];
+  if (!r.subtraction) no.push("subtraction (no subtract operation, no - sign)");
+  if (!r.multiplication) no.push(r.grouping ? "multiplication (no multiply operation, no × sign)" : "multiplication (no multiply operation, no × sign, no 'groups of')");
+  if (!r.division) no.push("division (no divide operation, no ÷ sign, no sharing into equal groups as an operation)");
+  if (!r.comparison) no.push("comparison (no < or > anywhere, so never the compare format; to compare two numbers use the order format or ask which is more in words)");
+  const ideas = ([["fractions", "fractions"], ["decimals", "decimals"], ["negatives", "negative numbers"], ["percents", "percents"], ["ratios", "ratios"]] as const)
+    .filter(([k]) => !r[k]).map(([, name]) => name);
+  if (ideas.length) no.push(`${ideas.slice(0, -1).join(", ")}${ideas.length > 1 ? " or " : ""}${ideas.at(-1)}`);
+  if (!r.time && !r.ratios) no.push("clock times written with a colon (write 3 o'clock)");
+  if (no.length) rules.push(`Not taught yet, so never use: ${no.join("; ")}.`);
+  rules.push(`Numbers in digits only. Never write the word "one" (not "one by one", "one side", "one way"; write "a" or reword), except in "which one", "each one", "this one", "that one" and "the one"${isOneMoreLessSkill(skill) ? ", and \"one more\" and \"one less\"" : ""}.`);
+  return rules.join(" ");
+}
 
 /** What the AI reads about a skill: its text and, where drafted, the step the part teaches. */
 function skillFacts(curriculum: Curriculum, id: string, step: number | null) {
@@ -276,16 +328,36 @@ function pageRequest(input: GenerateInput, day: number, page: PlannedPage, slots
     day,
     pageType: page.type,
     parts,
-    slots: slots.map((s) => ({ slot: s.id, part: s.part.kind, skills: s.part.skills, ...(s.place ? { place: s.place, formats: SLOT_FORMATS[s.place] ?? null } : {}), ...(s.place === "spot-the-error" ? { mistakes: mistakesFor(plan.level) } : {}), ...(s.place ? { numbers: slotRanges(curriculum, plan.level, s.part.skills) } : {}) })),
+    slots: slots.map((s) => {
+      if (!s.place) return { slot: s.id, part: s.part.kind, skills: s.part.skills };
+      const numbers = slotRanges(curriculum, plan.level, s.part.skills);
+      const room = roomOf(input, s.place, day);
+      return {
+        slot: s.id, part: s.part.kind, skills: s.part.skills, place: s.place, formats: SLOT_FORMATS[s.place] ?? null,
+        ...(s.place === "spot-the-error" ? { mistakes: mistakesFor(plan.level) } : {}),
+        numbers,
+        rules: Object.fromEntries(Object.entries(numbers).map(([skill, r]) => [skill, rangeRules(skill, r)])),
+        ...(room ? { room: { characters: room.characters, perLine: room.perLine, lines: room.lines } } : {}),
+      };
+    }),
     note,
   };
 }
 
-/** The AI's items by slot id; an answer of another shape gives none. */
+/** A slot's text room on a day's page (textRoom), for the plan's level and the day's page count. */
+function roomOf(input: GenerateInput, place: SlotName, day: number) {
+  return textRoom(place, input.plan.level, input.plan.days.find((d) => d.day === day)?.pages.length ?? 8);
+}
+
+/**
+ * The AI's items by slot id; an answer of another shape gives none. A call that throws (a time-out, a refusal, output
+ * that is not JSON) is sent once more, the same; the second error is the one returned.
+ */
 async function callAi(deps: GenerateDeps, name: string, request: unknown): Promise<{ items: Map<string, unknown>; error: string | null }> {
+  const ask = () => withTimeLimit(deps.timeLimitMs ?? TIME_LIMIT_MS, (signal) =>
+    deps.ai.json({ name, system: SYSTEM, content: [{ type: "text", text: JSON.stringify(request) }], schema: ITEMS_SCHEMA, effort: "medium" }, signal));
   try {
-    const out = await withTimeLimit(deps.timeLimitMs ?? TIME_LIMIT_MS, (signal) =>
-      deps.ai.json({ name, system: SYSTEM, content: [{ type: "text", text: JSON.stringify(request) }], schema: ITEMS_SCHEMA, effort: "medium" }, signal));
+    const out = await ask().catch(() => ask());
     const items = new Map<string, unknown>();
     const list = (out as { items?: unknown } | null)?.items;
     if (Array.isArray(list)) {
@@ -307,9 +379,6 @@ interface PageWork {
   slots: Slot[];
   layout: DayLayout | null;
 }
-
-/** Each question has at most this many AI attempts in all, across the question redo and the page retry. */
-const QUESTION_ATTEMPTS = 2;
 
 /** Writes the page's slots at `which` (indexes) in one AI call and builds each; never throws. */
 async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork, which: number[], note: string | null, name: string) {
@@ -342,11 +411,20 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
   });
 }
 
-const generated = (w: PageWork, i: number, b: BuiltQuestion, attempts: 1 | 2): GeneratedQuestion => ({
+const generated = (w: PageWork, i: number, b: BuiltQuestion, attempts: GeneratedQuestion["attempts"]): GeneratedQuestion => ({
   number: i + 1, slot: w.slots[i].id, part: w.slots[i].part.kind, ...(w.slots[i].place ? { place: w.slots[i].place! } : {}), check: b.check, attempts, package: b.package,
 });
 
-/** The first pass at a page: the page call, then one redo call for its failed questions (their last attempt). */
+/** What to do about a failed check, said plainly for the redo; null when the reason says it all. */
+function hintFor(reason: string): string | null {
+  if (/is too big for this question/.test(reason)) return "Every number counts: the text, the operation and its answer, each wrong answer and the easier example. Leave out a wrong answer past the limit.";
+  if (/easier example has the question's answer/.test(reason)) return "Work out both answers first: the easier example's answer must be a different number (on a make-5 question, make 4).";
+  if (/is a number in words/.test(reason)) return "Write numbers in digits, and do not use the word \"one\": write \"a\" or reword.";
+  if (/this question uses no /.test(reason)) return "Keep to the slot's rules: only an operation kind and a format they allow.";
+  return null;
+}
+
+/** The first pass at a page: the page call, then one redo call for its failed questions (their one try for a failed check). */
 async function firstPass(input: GenerateInput, deps: GenerateDeps, w: PageWork): Promise<GeneratedQuestion[]> {
   const all = w.slots.map((_, i) => i);
   const built = await writeSlots(input, deps, w, all, null, "workbook_page");
@@ -354,38 +432,95 @@ async function firstPass(input: GenerateInput, deps: GenerateDeps, w: PageWork):
   const failed = all.filter((i) => built[i].check.status === "failed");
   if (failed.length === 0) return questions;
   const note = failed.map((i) => {
+    const reason = (built[i].check as { reason: string }).reason;
     const steps = built[i].stepIds.length ? ` Its operation's worked steps are named: ${built[i].stepIds.join(", ")}.` : "";
-    return `Slot ${w.slots[i].id} failed the check: ${(built[i].check as { reason: string }).reason}.${steps} Write it again.`;
+    const hint = hintFor(reason);
+    return `Slot ${w.slots[i].id} failed the check: ${reason}.${steps}${hint ? ` ${hint}` : ""} Write it again.`;
   }).join("\n");
   const redo = await writeSlots(input, deps, w, failed, note, "workbook_page_redo");
   failed.forEach((i, k) => { questions[i] = generated(w, i, redo[k], 2); });
   return questions;
 }
 
-/**
- * The page retry after a failed fit check. Only questions with an attempt left are written again (their last attempt);
- * a question that used both attempts stays as it is, failed or not. A sound question whose retry fails the check keeps
- * its sound version: a retry never puts a failed question in place of a sound one. Null when no question has an
- * attempt left, so there is nothing to write again.
- */
-async function pageRetry(input: GenerateInput, deps: GenerateDeps, w: PageWork, previous: GeneratedQuestion[], note: string): Promise<GeneratedQuestion[] | null> {
-  const open = previous.flatMap((q, i) => (q.attempts < QUESTION_ATTEMPTS ? [i] : []));
-  if (open.length === 0) return null;
-  const built = await writeSlots(input, deps, w, open, note, "workbook_page");
-  const questions = [...previous];
-  open.forEach((i, k) => {
-    questions[i] = built[k].check.status === "failed" ? { ...previous[i], attempts: 2 } : generated(w, i, built[k], 2);
+const sound = (q: GeneratedQuestion) => q.check.status !== "failed";
+const textLength = (q: GeneratedQuestion) => q.package?.text.length ?? Infinity;
+
+/** What the shorter rewrite is told: the fit problems, and each question's text length against its room. */
+function shorterNote(input: GenerateInput, w: PageWork, questions: GeneratedQuestion[], problems: FitProblem[]): string {
+  const lengths = questions.flatMap((q, i) => {
+    const place = w.slots[i].place;
+    const room = place ? roomOf(input, place, w.day) : null;
+    return q.package ? [`slot ${q.slot}: ${q.package.text.length} characters${room ? ` (room ${room.characters})` : ""}${q.package.item?.format === "written-reason" ? ", with writing lines" : ""}`] : [];
   });
-  return questions;
+  return [
+    `The page did not fit its template: ${problems.map((p) => (p.question ? `question ${p.question}: ` : "") + p.reason).join("; ")}.`,
+    "Write every slot again, shorter, so the page fits: keep each question's text well within its room (fewer characters than its room if you can), with no writing lines (written-reason) or tall picture on a card, and the same skill and rules.",
+    `Now: ${lengths.join("; ")}.`,
+  ].join(" ");
 }
 
-/** A laid-out day page's content for its questions; null when the book is not laid out. */
+/**
+ * The shorter rewrite after a failed fit check: every question is written once more (its one try for a page that does
+ * not fit). Of the two versions the page keeps the sound one, and of two sound (or two failed) ones the shorter text: a
+ * rewrite never puts a failed question in place of a sound one, nor a longer one in place of a shorter.
+ */
+async function shorterRewrite(input: GenerateInput, deps: GenerateDeps, w: PageWork, previous: GeneratedQuestion[], note: string): Promise<GeneratedQuestion[]> {
+  const all = previous.map((_, i) => i);
+  const built = await writeSlots(input, deps, w, all, note, "workbook_page_shorter");
+  return all.map((i) => {
+    const old = previous[i];
+    const attempts = (old.attempts + 1) as GeneratedQuestion["attempts"];
+    const fresh = generated(w, i, built[i], attempts);
+    const keepOld = sound(old) !== sound(fresh) ? sound(old) : textLength(fresh) > textLength(old);
+    return keepOld ? { ...old, attempts } : fresh;
+  });
+}
+
+/** The questions numbered again from 1 in their order, each package's place with its new number. */
+const renumbered = (questions: GeneratedQuestion[]): GeneratedQuestion[] => questions.map((q, k) => ({
+  ...q, number: k + 1, package: q.package ? { ...q.package, ref: { ...q.package.ref, question: k + 1 } } : null,
+}));
+
+/** The question to leave out of a page that does not fit: the last one its problems name, else the page's last. */
+function toLeaveOut(questions: GeneratedQuestion[], problems: FitProblem[]): { index: number; reason: string } {
+  const named = problems.filter((p) => p.question !== null && questions.some((q) => q.number === p.question));
+  const last = named.reduce<FitProblem | null>((a, p) => (!a || p.question! > a.question! ? p : a), null);
+  if (last) return { index: questions.findIndex((q) => q.number === last.question), reason: last.reason };
+  return { index: questions.length - 1, reason: problems[0]?.reason ?? "the page does not fit" };
+}
+
+/** The layout's omissions with the questions left out added to their parts' (the page placed fewer of them). */
+function omissionsWith(w: PageWork, leftOut: { slot: Slot }[]): Omission[] {
+  const omissions = (w.layout?.omissions ?? []).map((o) => ({ ...o }));
+  const why = (n: number) => `${n} question${n === 1 ? "" : "s"} left out: the page had no room for ${n === 1 ? "its" : "their"} text`;
+  w.page.parts.forEach((part, index) => {
+    const n = leftOut.filter((x) => x.slot.part === part).length;
+    if (n === 0) return;
+    const had = omissions.find((o) => o.part === index);
+    if (had) {
+      had.placed = Math.max(0, had.placed - n);
+      had.reason = `${had.reason}; ${why(n)}`;
+    } else {
+      const placed = w.slots.filter((x) => x.part === part && x.place !== "how-do-you-know").length;
+      omissions.push({ part: index, kind: part.kind, requested: placed, placed: Math.max(0, placed - n), reason: why(n) });
+    }
+  });
+  return omissions.sort((a, b) => a.part - b.part);
+}
+
+/**
+ * A laid-out day page's content for its questions; null when the book is not laid out. A slot left with no question
+ * (every one left out to fit) is not on the page; a panel stays.
+ */
 function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuestion[]): PageContent | null {
   if (!input.book || !w.layout) return null;
+  const layoutSlot = (q: GeneratedQuestion) => w.slots.find((x) => x.id === q.slot)!.layoutSlot;
+  const keep = w.layout.slots.flatMap((x, k) => (PANEL_SLOTS.includes(x.slot) || questions.some((q) => layoutSlot(q) === k) ? [k] : []));
   return dayPageContent({
-    curriculum: input.curriculum, plan: input.plan, day: w.day, page: w.page, layout: w.layout, child: input.book.child, workbook: input.number,
+    curriculum: input.curriculum, plan: input.plan, day: w.day, page: w.page, layout: { ...w.layout, slots: keep.map((k) => w.layout!.slots[k]) },
+    child: input.book.child, workbook: input.number,
     questions: questions.map((q) => ({
-      number: q.number, slot: w.slots[q.number - 1].layoutSlot, package: q.package, ...(q.check.status === "failed" ? { failed: q.check.reason } : {}),
+      number: q.number, slot: keep.indexOf(layoutSlot(q)), package: q.package, ...(q.check.status === "failed" ? { failed: q.check.reason } : {}),
     })),
   });
 }
@@ -444,27 +579,41 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
   const dayPages = await pool(work, deps.concurrency ?? 1, async (w): Promise<GeneratedPage> => {
     const qrToken = tokens[w.number - 1];
     const page = { number: w.number, type: w.page.type, dayLabel: `Day ${w.day}`, day: w.day, pageOfDay: w.page.number, qrToken };
-    const laidOut = (questions: GeneratedQuestion[]) => {
-      const content = contentOf(input, w, questions);
-      return { ...(content ? { content } : {}), ...(w.layout?.omissions.length ? { omissions: w.layout.omissions } : {}) };
-    };
+    const check = (questions: GeneratedQuestion[]) => deps.fit.fits(fitPage(w, qrToken, questions, contentOf(input, w, questions)), book);
     let result: GeneratedPage;
     if (w.slots.length === 0) {
-      result = { ...page, fit: { status: "not-needed" }, attempts: 0, questions: [], ...laidOut([]) };
+      const content = contentOf(input, w, []);
+      result = { ...page, fit: { status: "not-needed" }, attempts: 0, questions: [], ...(content ? { content } : {}), ...(w.layout?.omissions.length ? { omissions: w.layout.omissions } : {}) };
     } else {
       let questions = await firstPass(input, deps, w);
-      let fit = await deps.fit.fits(fitPage(w, qrToken, questions, contentOf(input, w, questions)), book);
+      let fit = await check(questions);
       let attempts: 1 | 2 = 1;
       if (!fit.ok) {
-        const note = `The last page did not fit its template: ${fit.problems.map((p) => (p.question ? `question ${p.question}: ` : "") + p.reason).join("; ")}. Write shorter text and smaller numbers so it fits.`;
-        const retried = await pageRetry(input, deps, w, questions, note);
-        if (retried) {
-          questions = retried;
-          fit = await deps.fit.fits(fitPage(w, qrToken, questions, contentOf(input, w, questions)), book);
-          attempts = 2;
-        }
+        questions = await shorterRewrite(input, deps, w, questions, shorterNote(input, w, questions, fit.problems));
+        fit = await check(questions);
+        attempts = 2;
       }
-      result = { ...page, fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems }, attempts, questions, ...laidOut(questions) };
+      // Still no room: leave out questions one at a time until the page fits; if it never does, keep them all.
+      const leftOut: { question: GeneratedQuestion; slot: Slot; reason: string }[] = [];
+      let kept = questions;
+      let left = fit;
+      while (!left.ok && kept.length > 0) {
+        const out = toLeaveOut(kept, left.problems);
+        leftOut.push({ question: kept[out.index], slot: w.slots.find((x) => x.id === kept[out.index].slot)!, reason: out.reason });
+        kept = renumbered(kept.filter((_, k) => k !== out.index));
+        left = await check(kept);
+      }
+      if (left.ok && leftOut.length > 0) {
+        questions = kept;
+        fit = left;
+      } else leftOut.length = 0;
+      const content = contentOf(input, w, questions);
+      const omissions = omissionsWith(w, leftOut);
+      result = {
+        ...page, fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems }, attempts, questions,
+        ...(content ? { content } : {}), ...(omissions.length ? { omissions } : {}),
+        ...(leftOut.length ? { leftOut: leftOut.map((x) => ({ slot: x.question.slot, part: x.question.part, text: x.question.package?.text ?? null, reason: x.reason })) } : {}),
+      };
     }
     deps.progress?.(++done, work.length);
     return result;
