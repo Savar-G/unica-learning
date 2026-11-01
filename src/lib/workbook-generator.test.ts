@@ -2074,6 +2074,13 @@ describe("a page's AI calls kept for a resume (R379-7-1)", () => {
     // A try stopped at its third page save: two pages are kept, and the first day's later pages have kept calls.
     s.failAt(3);
     await expect(generateWorkbook(laid, deps({ ai: a, concurrency: 4, ...s.deps }))).rejects.toThrow("the function stopped");
+    // Pages still in flight when the try stopped may keep their calls a moment later: let them settle first (R379-9-2).
+    for (let quiet = 0, seen = ""; quiet < 3; ) {
+      await new Promise((done) => setTimeout(done, 20));
+      const now = `${s.calls.size}:${s.solves.size}:${a.requests.length}`;
+      quiet = now === seen ? quiet + 1 : 0;
+      seen = now;
+    }
     expect(s.pages.size).toBe(2);
     const asked = a.requests.length;
     const U4 = planWorkbook({
@@ -2086,7 +2093,8 @@ describe("a page's AI calls kept for a resume (R379-7-1)", () => {
     // The same plan for another name: the kept pages print the name they were made for.
     await expect(generateWorkbook({ ...laid, book: { child: "Ava" } }, deps({ ai: a, ...s.deps }))).rejects.toThrow(/kept page \d+ was made for another name/);
     // A kept call that asked other slots than the plan's page asks.
-    const c = [...s.calls.values()].find((x) => !s.pages.has(x.page) && x.seq === 0)!;
+    const c = [...s.calls.values()].find((x) => !s.pages.has(x.page) && x.seq === 0 && new Set(x.call.ask.slots).size >= 2)!;
+    expect(c).toBeDefined();
     const ask = c.call.ask;
     c.call.ask = { ...ask, slots: [...ask.slots].reverse() };
     await expect(generateWorkbook(laid, deps({ ai: a, ...s.deps }))).rejects.toThrow(`page ${c.page}: its kept call 0 is workbook_page of`);

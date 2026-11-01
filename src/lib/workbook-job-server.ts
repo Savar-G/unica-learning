@@ -8,6 +8,13 @@ import { workbookDraftStore } from "@/lib/workbook-draft-store";
 import { renderFitCheck } from "@/lib/workbook-fit";
 import { runWorkbookJob, type JobOutcome } from "@/lib/workbook-job";
 import { workbookJobSource, workbookRunStore } from "@/lib/workbook-job-store";
+
+/**
+ * This server's code, where no deploy commit names it (development): a new value each time this module loads, so a
+ * restart or a reload after a code change (prompts, wordings, checks) gives another, and a run started on other code
+ * is refused rather than resumed with results from two code versions (R379-9-1).
+ */
+const CODE_LOAD = `load-${randomUUID()}`;
 import { workbookFiles } from "@/lib/workbook-store";
 import { costedSolver } from "@/lib/workbook-solve-cost";
 import { workbookTemplate } from "@/lib/workbook-template";
@@ -67,8 +74,9 @@ export async function runWorkbookJobNow(runId: string, o: { origin: string; resu
       // One AI call stops after 60 s (the OpenRouter adapter's own limit), so a page in flight ends inside the budget.
       timeLimitMs: 60_000,
       handOff: (id) => handOff(o.origin, id),
-      // A run goes on only on the code it started on (R379-8-2): the deploy's commit (none in development).
-      build: process.env.VERCEL_GIT_COMMIT_SHA || null,
+      // A run goes on only on the code it started on (R379-8-2, R379-9-1): the deploy's commit, else this server's own
+      // code load (CODE_LOAD), so a run never resumes across a restart or a code reload in development.
+      build: process.env.VERCEL_GIT_COMMIT_SHA || CODE_LOAD,
       // Development only: WORKBOOK_CALL_BUDGET_MS shortens a call's budget, to watch the hand-over work.
       budgetMs: process.env.NODE_ENV !== "production" && Number(process.env.WORKBOOK_CALL_BUDGET_MS) > 0 ? Number(process.env.WORKBOOK_CALL_BUDGET_MS) : undefined,
     }, { resume: o.resume });
