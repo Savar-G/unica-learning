@@ -2,14 +2,13 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import type { AlertKey, AlertLedger } from "@/lib/maya-call-alert";
-import type { AlertState } from "@/lib/maya-call";
+import { shownAlert, type AlertState } from "@/lib/maya-call";
 
 // The alert ledger of Maya's call alerts (src/lib/maya-call-alert.ts, #333) in Supabase: public.maya_call_alerts with
 // the secret key (only the server writes; admins read with their own session). The row is the claim: one per call and
-// flag level (a unique key). It is claimed again only when its send was refused, or when a claim was left "sending"
-// for longer than 10 minutes by a run that stopped. Tests use src/lib/maya-call-alert-memory.ts.
-
-const STALE_ALERT_MS = 10 * 60_000;
+// flag level (a unique key). It is claimed again only when its send was refused. A claim left "sending" (a run that
+// stopped, or a failed outcome write) is never claimed again, because its email may have gone (R393-1-1, #143); after
+// 10 minutes it is shown as unknown (shownAlert). Tests use src/lib/maya-call-alert-memory.ts.
 type Row = Database["public"]["Tables"]["maya_call_alerts"]["Row"];
 type Update = Database["public"]["Tables"]["maya_call_alerts"]["Update"];
 
@@ -20,7 +19,8 @@ interface AlertClaim {
 }
 
 /** An alert row as the admin call page shows it. */
-export const alertState = (r: Pick<Row, "level" | "status" | "claimed_at" | "error">): AlertState => ({ level: r.level, status: r.status, claimedAt: r.claimed_at, error: r.error });
+export const alertState = (r: Pick<Row, "level" | "status" | "claimed_at" | "error">, now = Date.now()): AlertState =>
+  shownAlert({ level: r.level, status: r.status, claimedAt: r.claimed_at, error: r.error }, now);
 
 export function mayaAlertLedger(admin: SupabaseClient<Database>): AlertLedger<AlertClaim> {
   /** Writes an outcome while this claim still holds the row. Never throws: the email already went or failed. */
@@ -43,15 +43,14 @@ export function mayaAlertLedger(admin: SupabaseClient<Database>): AlertLedger<Al
         .select("id")
         .maybeSingle();
       if (!inserted.error && inserted.data) return { id: inserted.data.id, claimedAt };
-      // 23505: the call already has this alert. Take it again only when it was refused, or its claim is stale.
+      // 23505: the call already has this alert. Take it again only when it was refused (R393-1-1).
       if (inserted.error?.code !== "23505") throw new Error(`maya alert claim: ${inserted.error?.message ?? "no row"}`);
-      const stale = new Date(Date.parse(claimedAt) - STALE_ALERT_MS).toISOString();
       const { data, error } = await admin
         .from("maya_call_alerts")
         .update({ status: "sending", claimed_at: claimedAt, updated_at: claimedAt })
         .eq("call_id", key.callId)
         .eq("level", key.level)
-        .or(`status.eq.refused,and(status.eq.sending,claimed_at.lt."${stale}")`)
+        .eq("status", "refused")
         .select("id");
       if (error) throw new Error(`maya alert claim: ${error.message}`);
       return data?.length ? { id: data[0].id, claimedAt } : null;
@@ -72,7 +71,7 @@ export function mayaAlertLedger(admin: SupabaseClient<Database>): AlertLedger<Al
     async list(callId) {
       const { data, error } = await admin.from("maya_call_alerts").select("level, status, claimed_at, error").eq("call_id", callId).order("created_at");
       if (error) throw new Error(`maya alerts load: ${error.message}`);
-      return (data ?? []).map(alertState);
+      return (data ?? []).map((r) => alertState(r));
     },
   };
 }

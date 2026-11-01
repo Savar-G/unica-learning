@@ -1,12 +1,10 @@
 import type { AlertKey, AlertLedger } from "@/lib/maya-call-alert";
-import type { AlertState, FlagLevel } from "@/lib/maya-call";
+import { shownAlert, type AlertState, type FlagLevel } from "@/lib/maya-call";
 
 // The alert ledger of Maya's call alerts (src/lib/maya-call-alert.ts, #333) in memory, for tests. It keeps the
 // database's rules (migration add_maya_call_flags): one row per call and flag level, claimed again only when its send
-// was refused or a claim was left "sending" for longer than STALE_ALERT_MS.
-
-/** A "sending" claim older than this was left by a run that stopped, and may be claimed again. */
-export const STALE_ALERT_MS = 10 * 60_000;
+// was refused. A claim left "sending" is never claimed again (R393-1-1): its email may have gone, so after
+// STALE_ALERT_MS it is shown as unknown (shownAlert), the same as an unknown send (#143).
 
 export interface MemoryAlertRow extends AlertState {
   callId: string;
@@ -26,7 +24,7 @@ export function memoryAlertLedger({ now = Date.now }: { now?: () => number } = {
       await tick();
       const held = rows.get(id(key));
       const at = now();
-      const free = !held || held.status === "refused" || (held.status === "sending" && at - Date.parse(held.claimedAt) > STALE_ALERT_MS);
+      const free = !held || held.status === "refused";
       if (!free) return null;
       rows.set(id(key), {
         callId: key.callId, parentId: key.parentId, level: key.level, status: "sending", claimedAt: new Date(at).toISOString(),
@@ -52,7 +50,7 @@ export function memoryAlertLedger({ now = Date.now }: { now?: () => number } = {
     },
     async list(callId) {
       await tick();
-      return [...rows.values()].filter((r) => r.callId === callId).map(({ level, status, claimedAt, error }) => ({ level, status, claimedAt, error }));
+      return [...rows.values()].filter((r) => r.callId === callId).map(({ level, status, claimedAt, error }) => shownAlert({ level, status, claimedAt, error }, now()));
     },
     rows: () => [...rows.values()].map(copy),
   };

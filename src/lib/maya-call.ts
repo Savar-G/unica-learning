@@ -62,6 +62,18 @@ export const UNSAFE_REQUEST_FLAG: FlagLevel | null = "unsafe_request";
 /** Where an internal alert is: "sending" while a run holds its claim; "refused" did not go; "unknown" may have gone. */
 export type AlertStatus = "sending" | "sent" | "refused" | "unknown";
 
+/** A "sending" claim older than this was left by a run that stopped or an outcome write that failed. */
+export const STALE_ALERT_MS = 10 * 60_000;
+
+/**
+ * An alert as the admin page shows it: a claim left "sending" past STALE_ALERT_MS is unknown, because its email may have
+ * gone, and it is never sent again (R393-1-1, #143). Check the inbox, or the Resend log, for it.
+ */
+export function shownAlert(a: AlertState, now: number): AlertState {
+  if (a.status !== "sending" || now - Date.parse(a.claimedAt) <= STALE_ALERT_MS) return a;
+  return { ...a, status: "unknown", error: "The send did not finish, so the email may have gone. It is not sent again: check the inbox." };
+}
+
 /** One internal alert of a call, for the admin call page. */
 export interface AlertState {
   level: FlagLevel;

@@ -61,11 +61,13 @@ function readingModel(): MayaModel {
   };
 }
 
-function setup(options: { to?: string | null; unsafeRequestFlag?: FlagLevel | null } = {}) {
+function setup(options: { to?: string | null; unsafeRequestFlag?: FlagLevel | null; failOutcomeWrites?: boolean } = {}) {
   let now = T0;
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
-  const ledger = memoryAlertLedger({ now: () => now });
+  const memory = memoryAlertLedger({ now: () => now });
+  // A ledger whose outcome writes fail (R393-1-1): the row stays "sending" after the email went or was lost.
+  const ledger = options.failOutcomeWrites ? { ...memory, sent: async () => {}, unknown: async () => {} } : memory;
   const mail = memoryTransport();
   const model = readingModel();
   const calls = mayaCalls({
@@ -87,8 +89,9 @@ function setup(options: { to?: string | null; unsafeRequestFlag?: FlagLevel | nu
   let last: Extract<CallResult, { ok: true }> | null = null;
   return {
     store,
-    ledger,
+    ledger: memory,
     mail,
+    wait(ms: number) { now += ms; },
     async start() {
       last = ok(await calls.start({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: "admin-1" }));
       return last;
@@ -178,6 +181,22 @@ describe("the safety flag of a saved text call", () => {
     await s.end();
     expect(s.mail.delivered).toHaveLength(1);
     expect(s.ledger.rows()).toMatchObject([{ status: "unknown" }]);
+  });
+
+  it("never sends an alert again when its outcome was not written, and shows it as unknown after 10 minutes (R393-1-1)", async () => {
+    for (const answer of ["deliver", "lose_answer"] as const) {
+      const s = setup({ failOutcomeWrites: true });
+      await s.start();
+      if (answer === "lose_answer") s.mail.answerNext("lose_answer");
+      await s.say(HURT);
+      expect(s.mail.delivered, answer).toHaveLength(1);
+      expect(s.ledger.rows(), answer).toMatchObject([{ status: "sending" }]);
+      s.wait(11 * 60_000);
+      const next = await s.end();
+      await s.end();
+      expect(s.mail.delivered, answer).toHaveLength(1);
+      expect(next.view.alerts, answer).toMatchObject([{ level: "safety_concern", status: "unknown", error: expect.stringContaining("not sent again") }]);
+    }
   });
 
   it("stores the alert as not sent when the team's address is not set", async () => {
