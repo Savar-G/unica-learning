@@ -212,18 +212,18 @@ export interface ReplyPick {
 export function replyFor(childTurn: string | null | undefined): ReplyPick | null {
   const t = (childTurn ?? "").toLowerCase().replace(/[’]/g, "'");
   const picks: ReplyPick[] = [];
-  if (/promise/.test(t)) {
-    picks.push({ group: "promises", pick: /(tomorrow|again|next time|later)/.test(t) ? 3 : /(grade|test|mark|score|report card|an a)/.test(t) ? 2 : 1 });
+  if (/\bpromise/.test(t)) {
+    picks.push({ group: "promises", pick: /\b(tomorrow|again|next time|later)\b/.test(t) ? 3 : /\b(grade|test|mark|score|report card|an a)\b/.test(t) ? 2 : 1 });
   }
-  if (/(smartest|cleverest|genius|best teacher|better than|you're the best|you are the best)/.test(t)) {
-    picks.push({ group: "praise", pick: /(smartest|cleverest|genius)/.test(t) ? 8 : 1 });
+  if (/\b(smartest|cleverest|genius|best teacher|better than|you're the best|you are the best)\b/.test(t)) {
+    picks.push({ group: "praise", pick: /\b(smartest|cleverest|genius)\b/.test(t) ? 8 : 1 });
   }
   // A question to Maya about herself: "you" or "your" with what children ask about.
-  if (/(are you|do you|did you|can you|where do you|what's your|what is your|your)/.test(t)) {
+  if (/\b(are you|do you|did you|can you|where do you|what's your|what is your|your)\b/.test(t)) {
     const facts: [RegExp, number][] = [
-      [/where (do|did) you live|your (house|home)/, 2], [/(real|person|human|people)/, 1], [/(eat|food|hungry|lunch|dinner)/, 3],
-      [/(dog|cat|pet|pets)/, 4], [/(mom|mum|dad|family|brother|sister|parents)/, 5], [/birthday|how old/, 9],
-      [/(sleep|bed|tired)/, 10], [/school/, 8], [/favou?rite/, 7],
+      [/\bwhere (do|did) you live\b|\byour (house|home)\b/, 2], [/\b(real|person|human|people)\b/, 1], [/\b(eat|food|hungry|lunch|dinner)\b/, 3],
+      [/\b(dog|cat|pet|pets)\b/, 4], [/\b(mom|mum|dad|family|brother|sister|parents)\b/, 5], [/\bbirthday|how old\b/, 9],
+      [/\b(sleep|bed|tired)\b/, 10], [/\bschool\b/, 8], [/\bfavou?rite\b/, 7],
     ];
     const fact = facts.find(([re]) => re.test(t));
     if (fact) picks.push({ group: "mayafacts", pick: fact[1] });

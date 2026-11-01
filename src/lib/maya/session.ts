@@ -1995,7 +1995,10 @@ export function drawOffers(session: Session): Partial<Record<Act, { id: string; 
   const pkg = session.package;
   const { acts } = nextActs(session);
   if (!pkg) return Object.fromEntries(acts.map((a) => [a, []]));
-  const view: View = { steps: openSteps(pkg, session.done), done: session.done, checked: [], rightResult: false };
+  // The regroup due now, with what the child's words show before any reading (a denial, a write plan).
+  const done = [...session.done];
+  const regroup = pendingRegroup(regroupAfter(session, [], done));
+  const view: View = { steps: openSteps(pkg, done), done, checked: [], rightResult: false, regroup };
   return Object.fromEntries(acts.map((act) => [act, [
     ...boardOffersFor(session, act, view, null).map(({ id, shows }) => ({ id, shows })),
     ...offersFor(session, act, view).filter((o) => o.board).map((o) => ({ id: `line.${o.line}`, shows: `the note "${o.board}" (with that line)` })),
@@ -2066,7 +2069,10 @@ export function lineOffers(session: Session): Partial<Record<Act, LineOffer[]>> 
   const { acts } = nextActs(session);
   const pkg = session.package;
   if (!pkg) return Object.fromEntries(acts.map((a) => [a, []]));
-  const view: View = { steps: openSteps(pkg, session.done), done: session.done, checked: [], rightResult: false };
+  // The regroup due now, with what the child's words show before any reading (a denial, a write plan).
+  const done = [...session.done];
+  const regroup = pendingRegroup(regroupAfter(session, [], done));
+  const view: View = { steps: openSteps(pkg, done), done, checked: [], rightResult: false, regroup };
   return Object.fromEntries(acts.map((act) => [act, offersFor(session, act, act === "accept_answer" ? { ...view, rightResult: true } : view)]));
 }
 
