@@ -175,7 +175,8 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
       }
       let raw: unknown;
       try {
-        raw = await deps.simulator.next({ promptVersion: SIMULATOR_PROMPT_VERSION, persona: c.persona, maxWords: maxWords(c.persona.age), transcript: structuredClone(transcript) }, new AbortController().signal);
+        // A case's opener is the child's exact first words, said by code (C29: the simulator will not say them).
+        raw = i === 0 && c.opener ? { action: "say", text: c.opener, seconds: null, stop: false } : await deps.simulator.next({ promptVersion: SIMULATOR_PROMPT_VERSION, persona: c.persona, maxWords: maxWords(c.persona.age), transcript: structuredClone(transcript) }, new AbortController().signal);
       } catch (e) {
         if (e instanceof BudgetReached) {
           budget = true;

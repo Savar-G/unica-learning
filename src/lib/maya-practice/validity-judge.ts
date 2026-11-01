@@ -8,7 +8,7 @@ import { withTimeLimit, type AiClient } from "@/lib/ai-client";
 import type { PracticeCase } from "./cases";
 
 /** The version of the validity judge's prompt and input. Raise it when either changes; every run records it. */
-export const VALIDITY_PROMPT_VERSION = "practice-validity-1";
+export const VALIDITY_PROMPT_VERSION = "practice-validity-2";
 
 export interface ValidityInput {
   promptVersion: string;
@@ -28,6 +28,7 @@ export interface ValidityJudge {
 export const VALIDITY_SYSTEM = `You check a test of a tutoring system. A language model was told to play a child aged 6 to 12 from a persona card. You get the card and only the child's turns. Decide two things:
 - "persona_ok": true only if every turn reads as that child speaking: a child's words for the age, about the persona's question, with no sign of being an AI, software, a program, a model, a simulation or a test, no talk about prompts or instructions given to the child, no narration or stage directions, and no lines for another speaker.
 - "knows_too_much": true if any turn shows knowledge or skill the card says the child does not have yet (for example a right answer or a method the card says the child does not know), at a point where nothing in the child's own turns shows it was just taught.
+Words the card's "behaviour" tells the child to say (an exact first line, a request off the question, an insult, a request Maya must decline) are always in persona: the test needs them, even when a child seldom says them. Judge only how the other turns sound.
 "reasons": short plain sentences for each problem found (empty when there are none). "turns": the ids of the turns with a problem (empty when there are none).
 Return JSON only.`;
 
