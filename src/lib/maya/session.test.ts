@@ -999,7 +999,7 @@ describe("the child's final answer, with an explanation after it (D-199)", () =>
       expect(["answer_not_committed", "answer_not_heard"], said).toContain(unclear.refused(accept)?.code);
     }
     // A negative near the number rejects it rather than gives it (R391-3).
-    for (const said of ["No, it is not 66.", "66, no. It is not 66.", "66 isn't right.", "I don't think it's 66."]) {
+    for (const said of ["No, it is not 66.", "66, no. It is not 66.", "66 isn't right.", "I don't think it's 66.", "No 66.", "66\nThat is wrong."]) {
       const negative = opened();
       negative.child(said);
       expect(["answer_not_committed", "answer_not_heard"], said).toContain(negative.refused(accept)?.code);

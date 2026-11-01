@@ -246,7 +246,7 @@ const TAKE_BACK_FILLER = /^(?:[\s,.!?…:;-]|\b(?:no|wait|i mean|actually|oops|u
 const NUMBER_LEAD = /^(?:point|minus|negative|a|an|one|half)$/i;
 
 /** One run of correction words ("no wait", "no, I mean"), and whether it is a clean correction or only unclear. */
-interface CorrectionRun { index: number; end: number; clean: boolean }
+interface CorrectionRun { index: number; end: number; clean: boolean; numberNext?: boolean }
 
 /**
  * Every run of correction words in a turn (R391-1-1, R391-2). A run is clean only in one of two shapes: it starts a
@@ -278,7 +278,11 @@ function correctionRuns(text: string): CorrectionRun[] {
     // The start of the turn or a punctuation mark before it, maybe with an interjection ("Oh wait, 28", "Hmm, no, 66").
     const clauseStart = /(?:^|[,.!?…;:-])\s*(?:(?:oh|ah|oops|um+|uh+|hmm+|okay|ok)[\s,.!?…]*)?$/i.test(text.slice(0, r.index));
     const alone = /^\s*(?:[,.!?…;:-]|$)/.test(after);
-    r.clean = clauseStart && (numberFollows || alone);
+    // A bare "no" straight before a number ("No 66") may answer "no" to Maya and then give 66, or take something back:
+    // unclear (R391-4-2). "No, 66" and "no wait, 66" are clean.
+    const bareNo = /^no$/i.test(text.slice(r.index, r.end).trim()) && !/^\s*[,.!?…;:-]/.test(after);
+    r.clean = clauseStart && (alone || (numberFollows && !bareNo));
+    r.numberNext = numberFollows;
   }
   return runs;
 }
@@ -294,13 +298,14 @@ const takeBacks = (text: string) => correctionRuns(text);
 const NEGATIVE = /\b(?:not|never|wrong|nope|nah|dont|doesnt|didnt|isnt|wasnt|arent|werent|cant|wont|couldnt|shouldnt|aint)\b|\w+n['’]t\b/i;
 
 /**
- * A negative in the child's last line that holds a number (a line is one child turn: "I don't know." then "Sixteen for
- * the ones." keeps 16, but "It is not 66." keeps nothing).
+ * A negative in the child's first turn that holds a number or any turn after it (a line is one child turn: "I don't
+ * know." then "Sixteen for the ones." keeps 16, but "It is not 66.", or "66" then "That is wrong", keeps nothing:
+ * R391-3, R391-4-1).
  */
 const negativeNearAnswer = (text: string) => {
-  const withNumber = text.split("\n").filter((line) => { const r = readNumbers(line); return r.values.length > 0 || r.unreadable; });
-  const last = withNumber[withNumber.length - 1];
-  return last !== undefined && NEGATIVE.test(last);
+  const lines = text.split("\n");
+  const first = lines.findIndex((line) => { const r = readNumbers(line); return r.values.length > 0 || r.unreadable; });
+  return first >= 0 && lines.slice(first).some((line) => NEGATIVE.test(line));
 };
 
 /**
@@ -309,6 +314,7 @@ const negativeNearAnswer = (text: string) => {
  */
 const unclearCorrection = (text: string) => correctionRuns(text).some((r) => {
   if (r.clean) return false;
+  if (r.numberNext) return true;
   const before = readNumbers(text.slice(0, r.index));
   return before.values.length > 0 || before.unreadable;
 });
@@ -392,7 +398,7 @@ export function readAnswer(text: string): AnswerRead {
   const answer = readNumbers(withoutExplanations(committed));
   // A correction word in an unclear shape after a number, or a negative anywhere, leaves no final answer: Maya asks
   // (R391-2, R391-3).
-  const unsure = unclearCorrection(text) || negativeNearAnswer(committed);
+  const unsure = unclearCorrection(text) || negativeNearAnswer(text);
   const final = unsure || answer.unreadable || answer.lastInOperation ? null : answer.values[answer.values.length - 1] ?? null;
   // An unclear correction keeps no number at all, so no step answer is taken from the turn either (R391-2).
   const kept = unsure ? [] : all.unreadable ? answer.values : all.values;
