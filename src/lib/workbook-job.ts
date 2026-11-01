@@ -8,7 +8,9 @@
 //      at a time, and checks every answer and every page's fit against the real templates (#310). Each finished page
 //      is stored on the run (public.workbook_run_pages) as it is done; the run shows "12 of 80 day pages". Each AI
 //      attempt of a question is counted on the run before its call (public.workbook_run_attempts), so a retry or a
-//      resume never gives a question a third attempt, even when its page was never stored.
+//      resume never gives a question a third attempt, even when its page was never stored. The solve check (#380,
+//      src/lib/workbook-solve-check.ts) reads each printed question the AI worded; each check is stored on the run with
+//      its cost (public.workbook_run_solves), a page's checks before the page itself, for the admin to read.
 //   3. render: the template makes one image per page and the PDF, into the workbook bucket at <parent id>/<draft id>/.
 //      A page that does not render gets a proof image (#310 proofPages) with its failure marked; the other pages render.
 //   4. save: the run ends as done, naming the draft, and the draft gets revision 1 with its rendering, in one step.
@@ -42,6 +44,7 @@ import {
   type WorkbookDraftStore,
 } from "@/lib/workbook-generator";
 import { planNextWorkbook } from "@/lib/workbook-placement";
+import type { SolveLog, Solver, SolveVerdict } from "@/lib/workbook-solve-check";
 import { IMAGE_SCALE, PRINT_PAGE, proofPages, renderWorkbook, type DraftPage, type PrintEngine, type RenderProblem, type WorkbookTemplate } from "@/lib/workbook-render";
 
 /** Attempts of one run in all: the first and one retry. */
@@ -145,6 +148,8 @@ export interface WorkbookRunStore {
    * refused slots, or null (nothing counted) when the lease is lost.
    */
   useAttempts(runId: string, lease: string, page: number, slots: string[]): Promise<{ refused: string[] } | null>;
+  /** Stores solve checks of the run (at most SOLVE_BATCH at a time), with a heartbeat; false when the lease is lost. */
+  saveSolves(runId: string, lease: string, solves: RunSolve[]): Promise<boolean>;
   /** Stores a finished day page (the first stored wins), with a heartbeat. */
   savePage(runId: string, lease: string, page: GeneratedPage): Promise<boolean>;
   /** Keeps the attempt's error and starts the next attempt; false too when no attempt is left. */
@@ -173,6 +178,26 @@ export interface WorkbookJobSource {
   inputs(childId: string): Promise<ChildInputs | null>;
 }
 
+/**
+ * One solve check as the run stores it: the question's package id, the reader's model, the verdict, its time, its cost
+ * in US dollars (null when the provider did not say) and what the reader saw, answered and was compared with.
+ */
+export interface RunSolve {
+  questionId: string;
+  model: string;
+  verdict: SolveVerdict["status"];
+  ms: number;
+  usd: number | null;
+  /** `answers`: what the reader answered, as JSON text (at most SOLVE_ANSWERS_MOST characters; "null" for nothing). */
+  log: Pick<SolveLog, "questions" | "key" | "verdict"> & { answers: string };
+}
+
+/** The most characters of a reader's answer kept in the log. */
+export const SOLVE_ANSWERS_MOST = 4000;
+
+/** Solve checks stored in one write. */
+export const SOLVE_BATCH = 500;
+
 export interface WorkbookJobDeps {
   runs: WorkbookRunStore;
   source: WorkbookJobSource;
@@ -180,6 +205,10 @@ export interface WorkbookJobDeps {
   files: WorkbookFiles;
   /** Null: the AI is off, and the run fails with that reason. */
   ai: AiClient | null;
+  /** The solve check's reader (#380), from the same switch as `ai`: null when the AI is off. */
+  solver: Solver | null;
+  /** The cost of one solve check in US dollars, when the reader's provider said it; none: not known. */
+  solveCost?(log: SolveLog): number | null;
   /** The page templates: the real ones (#310) in live use. */
   template: WorkbookTemplate;
   /** The fit check of each written page: the templates' strict check through the renderer in live use. */
@@ -427,6 +456,7 @@ async function write(
   const curriculum = key ? curriculumFor(key) : null;
   if (!curriculum) throw new Refusal(`There is no workbook curriculum for ${inputs.province} yet. Only BC has one.`);
   if (!deps.ai) throw new Refusal("The AI is off: OPENROUTER_API_KEY is not set.");
+  if (!deps.solver) throw new Refusal("The solve check is off: OPENROUTER_API_KEY is not set.");
   const planned = planNextWorkbook({ curriculum, grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number });
   if (!planned.ok) throw new Refusal(`The plan could not be made: ${planned.reason}.`);
 
@@ -452,7 +482,34 @@ async function write(
       return { status: "saved", draftId: d.id };
     },
   };
+  const solver = deps.solver;
+  const guardedSolver: Solver = {
+    model: solver.model,
+    solve: async (request, signal) => {
+      if (isLost()) throw new Stopped("the run was taken up by another call");
+      return solver.solve(request, signal);
+    },
+  };
+  // The solve checks wait here until the next page is stored, then go first (a check of a page that is never stored
+  // is kept too: it was paid for).
+  const solves: RunSolve[] = [];
+  const flushSolves = async () => {
+    while (solves.length > 0) {
+      const batch = solves.splice(0, SOLVE_BATCH);
+      if (isLost() || !(await deps.runs.saveSolves(run.id, lease, batch))) {
+        setLost(true);
+        throw new Stopped("the run was taken up by another call");
+      }
+    }
+  };
+  const onSolve = (log: SolveLog) => {
+    solves.push({
+      questionId: log.id, model: log.model, verdict: log.verdict.status, ms: Math.max(0, Math.round(log.ms)), usd: deps.solveCost?.(log) ?? null,
+      log: { questions: log.questions, answers: (JSON.stringify(log.answers ?? null) ?? "null").slice(0, SOLVE_ANSWERS_MOST), key: log.key, verdict: log.verdict },
+    });
+  };
   const attempts: AttemptLedger = {
+    max: SLOT_ATTEMPTS,
     load: () => deps.runs.attempts(run.id),
     async use(page, slots) {
       const counted = isLost() ? null : await deps.runs.useAttempts(run.id, lease, page, slots);
@@ -466,13 +523,14 @@ async function write(
   const pages: PageStore = {
     load: () => deps.runs.pages(run.id),
     async save(page) {
+      await flushSolves();
       if (isLost() || !(await deps.runs.savePage(run.id, lease, page))) {
         setLost(true);
         throw new Stopped("the run was taken up by another call");
       }
     },
   };
-  const result = await generateWorkbook(
+  const generating = generateWorkbook(
     {
       workbookId: run.draftKey, childId: run.childId, book: { child: inputs.name }, number: run.number,
       profileBuild: inputs.profile ? `child profile revision ${inputs.profile.revision}` : null,
@@ -482,8 +540,16 @@ async function write(
       ai: guardedAi, fit: deps.fit(inputs.parentId), store: guardedDrafts, qrToken: deps.qrToken, pages, attempts,
       concurrency: deps.concurrency ?? PAGE_CONCURRENCY, stop: () => isLost() || outOfTime(), timeLimitMs: deps.timeLimitMs,
       progress: (done, total) => { void progress({ step: "write", done, total }); },
+      solver: guardedSolver, onSolve, now: deps.now,
     },
   );
+  let result: Awaited<typeof generating>;
+  try {
+    result = await generating;
+  } finally {
+    // The checks of the pages not stored (an error, a pause) are stored too, when the run is still this call's.
+    await flushSolves().catch(() => undefined);
+  }
   if (isLost()) throw new Stopped("the run was taken up by another call");
   if (result.status === "paused") return "paused";
   if (result.status === "refused") throw new Refusal(`The draft was not stored: ${result.reason}.`);

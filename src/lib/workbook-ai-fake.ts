@@ -1,70 +1,96 @@
 // A fake AI client for the workbook generator (#312): no network. In development (never in a production build),
 // WORKBOOK_AI_FAKE=on fills every slot with a sound whole-number addition, so "Prepare next workbook" makes a draft
-// without an OpenRouter key; WORKBOOK_AI_FAKE=slow waits 1.5 s a page, to watch the progress.
+// without an OpenRouter key; WORKBOOK_AI_FAKE=slow waits 1.5 s a page, to watch the progress. Its solve check
+// (workbookFakeSolver) answers from the key and reads a few questions another way.
 import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
 import { fakeAiClient } from "@/lib/ai-client-fake";
+import type { SolveRequest, Solver } from "@/lib/workbook-solve-check";
 
 const num = (value: number) => ({
   type: "number", value, numerator: null, denominator: null, whole: null, unit: null, hours: null, minutes: null, period: null, parts: [], text: null,
 });
 const op = (kind: "add" | "subtract", a: number, b: number) => ({ kind, operands: [num(a), num(b)], expression: null, unit: null, denominator: null, values: [] });
 
-/**
- * Sam's sum for each mistake a Spot the error slot may offer (#380): a sum that mistake fits, small enough for the
- * early levels, and Sam's answer exactly what it makes.
- */
-const SAM: Record<string, { kind: "add" | "subtract"; a: number; b: number; wrong: number; step: string | null }> = {
-  "forgot-carry": { kind: "add", a: 48, b: 37, wrong: 75, step: "tens" },
-  "smaller-from-larger": { kind: "subtract", a: 52, b: 17, wrong: 45, step: "ones" },
-  "regroup-not-taken": { kind: "subtract", a: 62, b: 28, wrong: 44, step: "tens" },
-  "counted-one-extra": { kind: "add", a: 2, b: 2, wrong: 5, step: null },
-  "counted-one-short": { kind: "add", a: 3, b: 2, wrong: 4, step: null },
-  "wrong-start": { kind: "add", a: 3, b: 2, wrong: 4, step: null },
-  "wrong-operation": { kind: "add", a: 3, b: 2, wrong: 1, step: null },
-  "swapped-digits": { kind: "add", a: 7, b: 5, wrong: 21, step: null },
-};
+interface Planned {
+  numbers?: number[]; name?: string; say?: string;
+  operation?: { kind: "add" | "subtract" | "missing-addend"; operands: [number, number] }; figure?: string | null; figureShows?: string | null;
+}
+interface AskedSlot {
+  slot: string; place?: string; skills: string[]; formats?: string[] | null; mistakes?: { name: string }[]; numbers?: Record<string, { max: number }>;
+  aim?: { skill: string; kind: string }; planned?: Planned; room?: { characters: number };
+}
 
-interface AskedSlot { slot: string; place?: string; skills: string[]; mistakes?: { name: string }[]; numbers?: Record<string, { max: number }> }
+const NAMES = ["Ava", "Ben", "Cal", "Dot", "Eli", "Fay", "Gus", "Hal", "Ivy", "Jo", "Kai", "Liv", "Max", "Ned", "Oli", "Pia", "Quin", "Rex", "Tia", "Uma"];
+const hash = (t: string) => [...t].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
+/** A made-up lowercase word ("qab"), so each fake question has a shape of its own, as the real AI's must (#380). */
+const word = (n: number) => `q${(n % 17576).toString(26).split("").map((d) => String.fromCharCode(97 + parseInt(d, 26))).join("")}`;
 
 /**
- * Sound items for every slot a page request asks, in the format its place takes. Every number keeps to the range the
- * slot gives for its skill and is written in digits, as the real AI is asked to (#380).
+ * Sound items for every slot and worked example a page request asks, in the format its place takes (#380's dry-run fake,
+ * scripts/workbook-samples.ts): the slot's planned numbers and wording when code planned them, else numbers within the
+ * slot's range, a name and a made-up word of its own, a bare sum where a story would pass the slot's room. Every answer
+ * depends only on what is asked (never on the order of calls), so a draft is the same at any concurrency; a redo (with
+ * its note) answers otherwise than the first call.
  */
 export function fakeWorkbookItems(r: AiJsonRequest) {
-  const asked = JSON.parse((r.content[0] as { text: string }).text) as { day?: number; slots: AskedSlot[] };
+  const text = (r.content[0] as { text: string }).text;
+  const asked = JSON.parse(text) as { day?: number; page?: number; slots: AskedSlot[]; examples?: AskedSlot[]; note?: string | null };
   const day = asked.day ?? 1;
   return {
-    items: asked.slots.map((s, i) => {
-      if (s.place === "how-do-you-know") {
-        return { slot: s.slot, skill: s.skills[0], difficulty: 1, text: "How do you know your answer to the last story is right?", format: "written-reason", operation: null, wrongAnswers: [], easier: null, shownWrong: null };
-      }
-      if (s.place === "spot-the-error" && s.mistakes?.length) {
-        // The offered mistakes in turn by day; the slot's skill with the widest range, so Sam's sum fits it.
-        const name = s.mistakes[day % s.mistakes.length].name;
-        const x = SAM[name] ?? SAM["counted-one-extra"];
+    items: [...asked.slots, ...(asked.examples ?? [])].map((s, k) => {
+      const seed = hash(`${r.name}|${day}|${asked.page ?? 0}|${s.slot}|${asked.note ?? ""}`);
+      const format = s.formats?.[0] ?? "write-number";
+      const base = { slot: s.slot, skill: s.skills[0], difficulty: 2, format, numbers: [], places: null, direction: null, sequence: null, pattern: null, figure: null, figureShows: null, relation: null };
+      if (format === "spot-the-error" && s.mistakes?.length) {
+        // A sum of its own (the first number the larger, Sam counts one too many); when that mistake is not one of the
+        // level's, code shows one the sum allows (samFix). The slot's skill with the widest range, so the sum fits it.
         const skill = [...s.skills].sort((p, q) => (s.numbers?.[q]?.max ?? 0) - (s.numbers?.[p]?.max ?? 0))[0];
+        const top = Math.min(99, s.numbers?.[skill]?.max ?? 99);
+        const sums = Array.from({ length: Math.min(top, 30) }, (_, x) => Array.from({ length: Math.min(top, 12) }, (_, y) => [x + 2, y + 2] as const)).flat()
+          .filter(([x, y]) => x >= y && x + y + 1 <= top);
+        const [a, b] = sums[seed % sums.length];
         return {
-          slot: s.slot, skill, difficulty: 2, text: `${x.a} ${x.kind === "add" ? "+" : "-"} ${x.b} = ?`, format: "spot-the-error", operation: op(x.kind, x.a, x.b),
-          wrongAnswers: [{ value: num(x.wrong), cause: SAM[name] ? name : "counted-one-extra", description: `Sam's mistake: ${name}`, step: x.step }],
-          easier: { text: x.kind === "add" ? "1 + 1 = ?" : "5 - 2 = ?", operation: x.kind === "add" ? op("add", 1, 1) : op("subtract", 5, 2) },
-          shownWrong: 0,
+          ...base, skill, text: `${a} + ${b} = ?`, operation: op("add", a, b),
+          wrongAnswers: [{ value: num(a + b + 1), cause: "counted-one-extra", description: "Counts one too many", step: null }],
+          easier: { text: "1 + 1 = ?", operation: op("add", 1, 1) }, shownWrong: 0,
         };
       }
-      // a + b + 1 stays within the skill's range (to 10 at the first level), below 100 so a page of them fits.
-      const max = Math.min(100, s.numbers?.[s.skills[0]]?.max ?? 100);
-      const b = max >= 20 ? Math.floor(max * 0.15) : 2;
-      const a = 2 + ((day * 7 + i * 3) % Math.max(1, max - b - 2));
-      const story = ["word-problems", "picture-stories", "challenge", "math-in-the-world"].includes(s.place ?? "");
-      const format = story ? "show-work" : s.place === "solve-it-two-ways" ? "two-ways" : s.place === "mixed-set" ? "tick-and-number" : "write-number";
-      const text = story ? `A shelf has ${a} books. Mom adds ${b} more. How many books are on the shelf now?` : `${a} + ${b} = ?`;
+      const max = Math.min(99, s.numbers?.[s.skills[0]]?.max ?? 99);
+      const who = `${s.planned?.name ?? NAMES[seed % NAMES.length]} ${word(seed)}`;
+      const reason = format === "written-reason";
+      if (reason) return { ...base, text: `How do you know, ${who}?`, operation: null, wrongAnswers: [], easier: null, shownWrong: null };
+      // The slot's planned wording with its operation and picture (#380 round 6), word for word, as the real AI is asked.
+      const plan = s.planned;
+      if (plan?.say && plan.operation && (format === "write-number" || format === "show-work")) {
+        const [x, y] = plan.operation.operands;
+        const right = plan.operation.kind === "add" ? x + y : plan.operation.kind === "subtract" ? x - y : y - x;
+        return {
+          ...base, skill: s.aim?.skill ?? base.skill, text: plan.say, operation: { ...op("add", x, y), kind: plan.operation.kind },
+          figure: plan.figure ?? null, figureShows: plan.figureShows ?? null,
+          wrongAnswers: [{ value: num(x === right ? y : x), cause: "careless", description: "Writes a number from the question", step: null }],
+          easier: null, shownWrong: null,
+        };
+      }
+      if (plan?.say && s.aim?.kind === "sequence") {
+        const start = 1 + (seed % 4);
+        return { ...base, skill: s.aim.skill, format: "sequence", text: plan.say, sequence: { start: num(start), step: num(1), terms: 5, blanks: [1, 3] }, operation: null, wrongAnswers: [], easier: null, shownWrong: null };
+      }
+      // a + b within the range of the item's skill (a + b + 1 at most its max), the slot's planned numbers when code
+      // planned some (#380 round 5), else a pair of its own: on one page each slot's two numbers both differ from the
+      // others' (the k-th slot), and a bare sum takes another form after every `span` slots and in each later call.
+      const planned = plan?.numbers && plan.numbers[0] >= 1 && plan.numbers[0] + plan.numbers[1] + 1 <= max ? plan.numbers : null;
+      const span = Math.max(1, max > 40 ? 19 : Math.min(9, max - 3));
+      const b = planned?.[1] ?? 1 + ((seed + k) % span);
+      const a = planned?.[0] ?? 1 + ((Math.floor(seed / 9) + 7 * k) % Math.max(1, max - span - 1));
+      const story = `${who} has ${a}. ${b} more come. How many now?`;
+      const bare = story.length > (s.room?.characters ?? Infinity);
+      // A redo or a shorter rewrite writes its bare sums in a form of its own, so they never read like the first call's.
+      const call = r.name === "workbook_page_redo" ? 1 : r.name === "workbook_page_shorter" ? 2 : 0;
+      const form = (call + Math.floor(k / span)) % 3;
       return {
-        slot: s.slot, skill: s.skills[0], difficulty: 2, text, format, operation: op("add", a, b),
-        wrongAnswers: [
-          { value: num(a + b + 1), cause: "careless", description: "Counts 1 too many.", step: null },
-          { value: num(Math.abs(a - b)), cause: "operation", description: "Takes away instead of adding.", step: null },
-        ],
-        easier: { text: "1 + 1 = ?", operation: op("add", 1, 1) },
-        shownWrong: null,
+        ...base, text: bare ? [`${a} + ${b} = ?`, `? = ${a} + ${b}`, `${a} + ${b} =`][form] : story, operation: op("add", a, b),
+        wrongAnswers: [{ value: num(a + b + 1), cause: "careless", description: "Counts 1 too many.", step: null }],
+        easier: { text: "Try a smaller sum.", operation: op("add", 0, Math.min(a, b)) }, shownWrong: null,
       };
     }),
   };
@@ -81,4 +107,27 @@ export function workbookFakeAi(env: Record<string, string | undefined> = process
       return fakeWorkbookItems(r);
     },
   });
+}
+
+/** The printed answers of a check, one per box, from the key; `wrong`: the first box answered one more than its key. */
+const fromKey = (request: SolveRequest, wrong: boolean) => ({
+  answers: request.key.map((k, i) => {
+    const n = Number(k.right[0]);
+    return { question: k.question, box: k.box, answer: wrong && i === 0 && Number.isFinite(n) ? String(n + 1) : k.right[0] };
+  }),
+  problem: null,
+});
+
+/**
+ * The fake solve check (#312 round 3), on when the fake AI is: it answers from the key, so it costs nothing, but reads
+ * about 1 question in 12 another way (the first box one more), always the same ones, so the admin screens show
+ * questions that failed the solve check. Null when WORKBOOK_AI_FAKE is not on (or in production).
+ */
+export function workbookFakeSolver(env: Record<string, string | undefined> = process.env): Solver | null {
+  if (!workbookFakeAi(env)) return null;
+  const hash = (t: string) => [...t].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
+  return {
+    model: "fake",
+    solve: async (request) => fromKey(request, hash(request.questions.map((q) => q.text).join("|")) % 12 === 0),
+  };
 }

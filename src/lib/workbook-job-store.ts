@@ -7,7 +7,8 @@ import { draftProblem, GENERATED_DRAFT_VERSION } from "@/lib/workbook-generator"
 import { readPaged, SLOT_ATTEMPTS, type WorkbookJobSource, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
 
 // The runs' store (#312) in Supabase (migration add_workbook_runs), and the job's read of the child. Pass a client with
-// the secret key: the service role runs the run functions and the progress update; admins only read. The functions
+// the secret key: the service role runs the run functions and the progress update; admins only read. The solve checks
+// (migration workbook_run_solves) are stored through save_workbook_run_solves. The functions
 // hold the rules (one active run per child, stale runs stopped, every write held by the lease, the audit entries);
 // tests use src/lib/workbook-job-memory.ts, which keeps the same rules. No Next.js or React.
 
@@ -67,6 +68,9 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
     async pages(id) {
       const rows = must(await admin.from("workbook_run_pages").select("page").eq("run_id", id).order("number"), "pages load") ?? [];
       return rows.map((r) => r.page);
+    },
+    async saveSolves(id, lease, solves) {
+      return must(await admin.rpc("save_workbook_run_solves", { p_run: id, p_lease: lease, p_logs: toJson(solves) }), "solve checks save") === true;
     },
     async savePage(id, lease, page) {
       return must(await admin.rpc("save_workbook_run_page", { p_run: id, p_lease: lease, p_number: page.number, p_page: toJson(page) }), "page save") === true;

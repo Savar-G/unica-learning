@@ -12,6 +12,7 @@ import { generateWorkbook, type FitCheck, type GeneratedWorkbook } from "@/lib/w
 import { placeChild, planNextWorkbook } from "@/lib/workbook-placement";
 import { memoryWorkbookFiles } from "@/lib/workbook-store-memory";
 import { workbookTemplate } from "@/lib/workbook-template";
+import { keySolver, type Solver } from "@/lib/workbook-solve-check";
 
 // "Prepare next workbook" (#312) through its public interface: the in-memory runs, drafts and files, the fake AI client
 // with fixed JSON, the fake print engine and the real page templates (#310). The clock is fake: each AI call takes
@@ -33,7 +34,10 @@ const fits: FitCheck = { fits: async () => ({ ok: true }) };
 /** The number of a page request: its day and the slots it asks (a page's first call asks every slot). */
 const pageCalls = (requests: AiJsonRequest[]) => requests.filter((r) => r.name === "workbook_page").length;
 
-function setup(o: { inputs?: ChildInputs; ai?: WorkbookJobDeps["ai"]; files?: WorkbookJobDeps["files"]; budgetMs?: number; handOff?: WorkbookJobDeps["handOff"] } = {}) {
+function setup(o: {
+  inputs?: ChildInputs; ai?: WorkbookJobDeps["ai"]; files?: WorkbookJobDeps["files"]; budgetMs?: number; handOff?: WorkbookJobDeps["handOff"];
+  solver?: WorkbookJobDeps["solver"]; solveCost?: WorkbookJobDeps["solveCost"]; concurrency?: number;
+} = {}) {
   let clock = new Date("2026-10-31T17:00:00.000Z");
   let ids = 0;
   const newId = () => `00000000-0000-4000-8000-${String(++ids).padStart(12, "0")}`;
@@ -45,9 +49,10 @@ function setup(o: { inputs?: ChildInputs; ai?: WorkbookJobDeps["ai"]; files?: Wo
   const ai = o.ai === undefined ? fakeAiClient({ answer: (r) => { tick(AI_SECONDS); return answer(r); } }) : o.ai;
   const deps: WorkbookJobDeps = {
     runs, drafts, files: o.files ?? files, ai, template: workbookTemplate(), fit: () => fits, engine: fakePrintEngine(),
+    solver: o.solver === undefined ? keySolver() : o.solver, ...(o.solveCost ? { solveCost: o.solveCost } : {}),
     source: { inputs: async (id) => (id === CHILD ? (o.inputs ?? child()) : null) },
     newId, qrToken: () => `token-${String(++tokens).padStart(12, "0")}`, fileKey: () => `k${ids}`,
-    now: () => clock.getTime(), concurrency: 4, budgetMs: o.budgetMs ?? 1e9, handOff: o.handOff,
+    now: () => clock.getTime(), concurrency: o.concurrency ?? 4, budgetMs: o.budgetMs ?? 1e9, handOff: o.handOff,
   };
   return { runs, drafts, files, deps, ai, tick, now: () => clock };
 }
@@ -60,7 +65,7 @@ async function buildDraft(s: ReturnType<typeof setup>, key: string): Promise<Gen
   let n = 0;
   await generateWorkbook(
     { workbookId: key, childId: CHILD, book: { child: "Leah" }, number: 1, profileBuild: null, plan: plan.plan, curriculum: curriculumFor("bc")! },
-    { ai: fakeAiClient({ answer }), fit: fits, qrToken: () => `local-token-${String(++n).padStart(8, "0")}`, store: { draft: async () => null, save: async (d) => { made = d; return { status: "saved", draftId: d.id }; } } },
+    { ai: fakeAiClient({ answer }), solver: keySolver(), fit: fits, qrToken: () => `local-token-${String(++n).padStart(8, "0")}`, store: { draft: async () => null, save: async (d) => { made = d; return { status: "saved", draftId: d.id }; } } },
   );
   return made!;
 }
@@ -82,7 +87,10 @@ describe("a run", () => {
     expect(run.donePages).toBe(run.totalPages);
     expect(run.totalPages).toBeGreaterThan(0);
     const draft = (await s.drafts.draft(run.draftId!))!;
-    expect(draft.pages.flatMap((p) => p.questions.filter((q) => q.check.status === "failed").map((q) => `${q.place}: ${(q.check as { reason: string }).reason}`))).toEqual([]);
+    // The dev fake picks its numbers from what it is asked, so a few of its sums repeat by chance: only those fail.
+    const failed = draft.pages.flatMap((p) => p.questions.filter((q) => q.check.status === "failed").map((q) => `${q.place}: ${(q.check as { reason: string }).reason}`));
+    expect(failed.filter((r) => !/repeats a question|same sum|same as question|only by one number/.test(r))).toEqual([]);
+    expect(failed.length).toBeLessThan(draft.counts.questions * 0.03);
     expect(draft.counts.questions).toBeGreaterThan(0);
     // The page content the real templates read: the cover prints the child's name.
     expect(draft.pages[0].content).toMatchObject({ kind: "cover", child: "Leah", workbook: 1 });
@@ -149,6 +157,52 @@ describe("a run", () => {
     const id = await started(s);
     expect(await runWorkbookJob(id, s.deps)).toBe("failed");
     expect((await s.runs.run(id))!.error).toBe("The AI is off: OPENROUTER_API_KEY is not set.");
+  });
+
+  it("fails when the solve check is off, before any AI call", async () => {
+    const s = setup({ solver: null });
+    const id = await started(s);
+    expect(await runWorkbookJob(id, s.deps)).toBe("failed");
+    expect((await s.runs.run(id))!.error).toBe("The solve check is off: OPENROUTER_API_KEY is not set.");
+    expect((s.ai as ReturnType<typeof fakeAiClient>).requests).toHaveLength(0);
+  });
+
+  it("stores every solve check with its cost and verdict; a question the reader answers another way fails with both answers (#380)", async () => {
+    // The reader answers one more than the key for every printed question with "now" in it (the stories).
+    const misreads: Solver = {
+      model: "reader",
+      solve: async (request) => ({
+        answers: request.key.map((k) => ({ question: k.question, box: k.box, answer: /now/.test(request.questions[0].text) && k.question === "question" ? String(Number(k.right[0]) + 1) : k.right[0] })),
+        problem: null,
+      }),
+    };
+    const s = setup({ solver: misreads, solveCost: () => 0.0005 });
+    const id = await started(s);
+    expect(await runWorkbookJob(id, s.deps)).toBe("done");
+    const solves = s.runs.solveStore.get(id)!;
+    expect(solves.length).toBeGreaterThan(50);
+    expect(solves.every((x) => x.model === "reader" && x.usd === 0.0005 && x.ms >= 0)).toBe(true);
+    const disagreed = solves.filter((x) => x.verdict === "disagreed");
+    expect(disagreed.length).toBeGreaterThan(0);
+    expect(disagreed[0].log.verdict).toMatchObject({ status: "disagreed", reason: expect.stringContaining("the key says") });
+    expect(JSON.parse(disagreed[0].log.answers)).toMatchObject({ answers: expect.any(Array) });
+    // A story the reader still answers another way after its redo fails, with what the reader answered and the key.
+    const draft = (await s.drafts.draft((await s.runs.run(id))!.draftId!))!;
+    const failed = draft.pages.flatMap((p) => p.questions).filter((q) => q.check.status === "failed" && /the solve check/.test(q.check.reason));
+    expect(failed.length).toBeGreaterThan(0);
+    expect((failed[0].check as { reason: string }).reason).toMatch(/a reader of the printed text answers "\d+", the key says "\d+"/);
+    // Each failed question's checks are stored under its package id.
+    expect(solves.some((x) => x.questionId === failed[0].package!.id && x.verdict === "disagreed")).toBe(true);
+  });
+
+  it("makes the same draft one page at a time and five at a time (#312, the book memory of #380)", async () => {
+    const draftAt = async (concurrency: number) => {
+      const s = setup({ concurrency });
+      const id = await started(s);
+      expect(await runWorkbookJob(id, s.deps)).toBe("done");
+      return (await s.drafts.draft((await s.runs.run(id))!.draftId!))!;
+    };
+    expect((await draftAt(5)).pages).toEqual((await draftAt(1)).pages);
   });
 
   it("retries an error once and renders again without writing the draft again", async () => {
@@ -306,11 +360,13 @@ describe("stale runs", () => {
     let saves = 0;
     let inFlight = 0;
     let inFlightAtFailure = -1;
+    let atRetry: { inFlight: number; calls: number; stored: number } | null = null;
     const slow = fakeAiClient({
       answer: async (r) => {
         inFlight++;
-        // Pages finish at different times, so others are in flight when one save fails.
-        await new Promise((done) => setTimeout(done, 1 + (slow.requests.length % 4) * 3));
+        // The first calls of the later pages are slow, so they are in flight when the third page's save fails.
+        const page = (JSON.parse((r.content[0] as { text: string }).text) as { page?: number; day?: number });
+        await new Promise((done) => setTimeout(done, r.name === "workbook_page" && slow.requests.length > 3 ? 25 : 1 + (page.page ?? 0) % 3));
         inFlight--;
         return answer(r);
       },
@@ -326,15 +382,21 @@ describe("stale runs", () => {
         }
         return save(runId, lease, page);
       },
+      retry: async (runId, lease, error) => {
+        atRetry = { inFlight, calls: pageCalls(slow.requests), stored: s.runs.pageStore.get(runId)?.size ?? 0 };
+        return s.runs.retry(runId, lease, error);
+      },
     };
     const id = await started(s);
     expect(await runWorkbookJob(id, s.deps)).toBe("done");
     expect(inFlightAtFailure).toBeGreaterThan(0);
+    // Nothing of the first attempt is still running when it tries again.
+    expect(atRetry).toMatchObject({ inFlight: 0, stored: 2 });
     const run = (await s.runs.run(id))!;
     expect(run).toMatchObject({ status: "done", attempts: 2 });
-    // Every day page was written by one attempt only: one page call each (the page that failed to save is written
-    // once more by the second attempt, as it was never stored).
-    expect(pageCalls(slow.requests)).toBe(run.totalPages! + 1);
+    // The second attempt writes each page that was not stored once: one page call each. (The first attempt's calls of
+    // the pages after the one that failed are lost: their pages wait for it, in page order, #312 round 3.)
+    expect(pageCalls(slow.requests) - atRetry!.calls).toBe(run.totalPages! - atRetry!.stored);
     // The draft's day pages are the stored pages.
     const draft = (await s.drafts.draft(run.draftId!))!;
     for (const p of s.runs.pageStore.get(id)!.values()) expect(draft.pages[p.number - 1]).toEqual(p);
@@ -345,11 +407,8 @@ describe("stale runs", () => {
     // An operation with no operands: code cannot build it, so the check fails.
     const bad = (sl: { slot: string; skills: string[] }) => ({ slot: sl.slot, skill: sl.skills[0], difficulty: 2, text: "? + ? = ?", format: "write-number", operation: { kind: "add", operands: [], expression: null, unit: null, denominator: null, values: [] }, wrongAnswers: [], easier: null, shownWrong: null });
     const ai = fakeAiClient({
-      answer: (r) => {
-        const asked = JSON.parse((r.content[0] as { text: string }).text) as { slots: { slot: string; skills: string[] }[] };
-        const good = answer(r).items;
-        return { items: asked.slots.map((sl, k) => (sl.slot === "1.1" ? bad(sl) : good[k])) };
-      },
+      // Every slot and worked example asked (the dev fake's items), slot 1.1 bad.
+      answer: (r) => ({ items: answer(r).items.map((it) => (it.slot === "1.1" ? bad({ slot: it.slot, skills: [it.skill] }) : it)) }),
     });
     const s = setup({ ai });
     s.deps.concurrency = 1;

@@ -1,7 +1,8 @@
 // The admin Workbooks area (#312): the list of workbooks by child and status with their check results, and one run's
 // page: its progress or its error, then its draft for review, page by page, the page image beside each question's
 // data. Failed questions, pages that failed the fit check, pages that did not render and questions code could not
-// check are marked on the page and listed at the top. Server components; the refresh while a run works and the
+// check are marked on the page and listed at the top, with the solve check's results (#380 round 7: the questions a
+// separate reader answered otherwise than the key, with both answers, and who wrote each printed text). Server components; the refresh while a run works and the
 // "Prepare next workbook" button are the only client parts.
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -9,7 +10,8 @@ import type { AuditEntry, ChildRow, DraftCounts, RunDetail, RunListRow } from "@
 import { ADMIN_WORKBOOKS_PATH, adminWorkbookPath, adminWorkbookRunPath, when } from "@/lib/admin-view";
 import type { WorkbookStatus, WorkbookSummary } from "@/lib/workbook-content";
 import type { GeneratedPage, GeneratedQuestion } from "@/lib/workbook-generator";
-import { runState, type DraftRendering, type RunState, type RunStep, type WorkbookRun } from "@/lib/workbook-job";
+import { isCodeWorded } from "@/lib/workbook-generator-items";
+import { runState, type DraftRendering, type RunSolve, type RunState, type RunStep, type WorkbookRun } from "@/lib/workbook-job";
 import type { RenderProblem } from "@/lib/workbook-render";
 import { AdminFrame, Chip, Table, type Tone } from "@/components/admin";
 import { RecordFacts, childPath } from "@/components/admin-records";
@@ -187,21 +189,93 @@ function ProblemList({ reasons }: { reasons: string[] }) {
   </div>;
 }
 
-function QuestionCheckCell({ q }: { q: GeneratedQuestion }) {
-  if (q.check.status === "checked") return <Chip tone="ok">Checked by code</Chip>;
+// ---------- The solve check (#380 round 7) ----------
+
+/** Who wrote a question's printed words: code (a relation, or a whole-number operation at U1 to U9) or the AI. */
+export const wordedBy = (q: GeneratedQuestion): "code" | "AI" | null =>
+  !q.package ? null : isCodeWorded(q.package) || (q.package.item?.checks ?? []).some((c) => c.kind === "relation") ? "code" : "AI";
+
+/** A question that failed because the solve check read it otherwise than the key, or could not confirm it. */
+const failedSolve = (q: GeneratedQuestion) => q.check.status === "failed" && q.check.reason.startsWith("the solve check");
+
+/** The check of the question as the draft prints it: the last one of its text, else its last one. */
+function solveOf(q: GeneratedQuestion, solves: Map<string, RunSolve[]>): RunSolve | undefined {
+  const all = q.package ? solves.get(q.package.id) ?? [] : [];
+  return all.findLast((x) => x.log.questions[0]?.text === q.package!.text) ?? all.at(-1);
+}
+
+/** What the reader wrote in each box, and what the key says, as short lines ("Box a: 13"). */
+function solveAnswers(x: RunSolve): { reader: string[]; key: string[] } {
+  let given: { question?: string; box?: string; answer?: unknown }[] = [];
+  try {
+    const parsed = JSON.parse(x.log.answers) as { answers?: unknown };
+    if (Array.isArray(parsed?.answers)) given = parsed.answers as typeof given;
+  } catch {
+    given = [];
+  }
+  const label = (k: { question: string; box: string }) => `${k.question === "easier" ? "Easier example" : "Box"} ${k.box}`;
+  return {
+    reader: x.log.key.map((k) => {
+      const a = given.find((g) => g.question === k.question && g.box === k.box)?.answer;
+      return `${label(k)}: ${typeof a === "string" ? a : "no answer"}`;
+    }),
+    key: x.log.key.map((k) => `${label(k)}: ${k.right[0]}`),
+  };
+}
+
+/** The run's solve checks in one line: how many, by which reader, how many disagreed or failed, and their cost. */
+function solveFact(solves: RunSolve[]): string {
+  if (solves.length === 0) return "No checks stored: code wrote every printed text, or the run has not checked any yet";
+  const models = [...new Set(solves.map((x) => x.model))].join(", ");
+  const disagreed = solves.filter((x) => x.verdict === "disagreed").length;
+  const failed = solves.filter((x) => x.verdict === "failed").length;
+  const costed = solves.filter((x) => x.usd !== null);
+  const usd = costed.reduce((n, x) => n + x.usd!, 0);
+  const cost = costed.length === 0 ? "cost not given" : `USD ${usd.toFixed(4)}${costed.length < solves.length ? ` (${solves.length - costed.length} with no cost given)` : ""}`;
+  return `${solves.length} ${solves.length === 1 ? "check" : "checks"} by ${models} · ${disagreed} read another way · ${failed} failed or late · ${cost}`;
+}
+
+/** The questions of the draft that failed the solve check, with what the reader answered and the key. */
+function SolveFailures({ pages, solves }: { pages: GeneratedPage[]; solves: Map<string, RunSolve[]> }) {
+  const rows = pages.flatMap((p) => p.questions.filter(failedSolve).map((q) => ({ p, q, x: solveOf(q, solves) })));
+  if (rows.length === 0) return null;
   return <>
-    <Chip tone={q.check.status === "failed" ? "bad" : "warn"}>{q.check.status === "failed" ? "Failed" : "Not checked by code"}</Chip>
-    <span className="adm-sub">{q.check.reason}</span>
+    <h3>Failed the solve check</h3>
+    <p className="adm-note">A separate reader saw only the printed words and picture of each question the AI worded, and answered it. These {rows.length === 1 ? "question was" : `${rows.length} questions were`} read otherwise than the answer key after the redo.</p>
+    <Table label="Questions that failed the solve check" head={["Page", "#", "Printed question", "Reader answered", "Key", "Reader"]} empty="None.">
+      {rows.map(({ p, q, x }) => {
+        const answers = x ? solveAnswers(x) : null;
+        return <tr key={`${p.number}-${q.number}`} className="is-bad">
+          <td className="adm-num"><a href={`#page-${p.number}`}>{p.number}</a></td>
+          <td className="adm-num">{q.number}</td>
+          <td><span className="adm-wb-text">{q.package?.text ?? "No question"}</span>{(x?.log.questions.length ?? 0) > 1 && <span className="adm-sub">Easier example: {x!.log.questions[1].text}</span>}</td>
+          <td>{x?.verdict === "failed" ? <span className="adm-sub">{x.log.verdict.status === "agreed" ? "" : x.log.verdict.reason}</span> : <ul className="adm-wb-list">{answers?.reader.map((l) => <li key={l}>{l}</li>)}</ul>}</td>
+          <td><ul className="adm-wb-list">{answers?.key.map((l) => <li key={l}>{l}</li>)}</ul></td>
+          <td className="adm-sub adm-nowrap">{x ? `${x.model} · ${(x.ms / 1000).toFixed(1)} s${x.usd !== null ? ` · USD ${x.usd.toFixed(4)}` : ""}` : "No check stored"}</td>
+        </tr>;
+      })}
+    </Table>
   </>;
 }
 
-function DraftQuestionRow({ q, box }: { q: GeneratedQuestion; box: boolean }) {
+function QuestionCheckCell({ q, solve }: { q: GeneratedQuestion; solve?: RunSolve }) {
+  const read = solve && !failedSolve(q) && <span className="adm-sub">{solve.verdict === "agreed" ? "Solve check agreed with the key" : `Solve check before the last version: ${solve.log.verdict.status === "agreed" ? "agreed" : solve.log.verdict.reason}`}</span>;
+  if (q.check.status === "checked") return <><Chip tone="ok">Checked by code</Chip>{read}</>;
+  return <>
+    <Chip tone={q.check.status === "failed" ? "bad" : "warn"}>{q.check.status === "failed" ? failedSolve(q) ? "Failed the solve check" : "Failed" : "Not checked by code"}</Chip>
+    <span className="adm-sub">{q.check.reason}</span>
+    {read}
+  </>;
+}
+
+function DraftQuestionRow({ q, box, solve }: { q: GeneratedQuestion; box: boolean; solve?: RunSolve }) {
   const cls = q.check.status === "failed" ? "is-bad" : q.check.status === "not-checked" ? "is-warn" : undefined;
+  const words = wordedBy(q);
   return <tr className={cls}>
     <td className="adm-num">{q.number}{box && <span className="adm-sub">on image</span>}</td>
-    <td className="adm-nowrap">{partText(q.part)}<span className="adm-sub adm-mono">slot {q.slot} · {q.attempts === 1 ? "1 try" : "2 tries"}</span></td>
+    <td className="adm-nowrap">{partText(q.part)}<span className="adm-sub adm-mono">slot {q.slot} · {q.attempts} {q.attempts === 1 ? "try" : "tries"}</span>{words && <span className="adm-sub">Words by {words}</span>}</td>
     {q.package
-      ? <PackageCells p={q.package} check={<QuestionCheckCell q={q} />} />
+      ? <PackageCells p={q.package} check={<QuestionCheckCell q={q} solve={solve} />} />
       : <td colSpan={8}><QuestionCheckCell q={q} /> <span className="adm-sub">The AI wrote nothing usable for this slot, so the page has no question here.</span></td>}
   </tr>;
 }
@@ -226,7 +300,7 @@ function DraftPageImage({ page, image, url }: { page: GeneratedPage; image: Draf
   );
 }
 
-function DraftPageSection({ page, detail }: { page: GeneratedPage; detail: NonNullable<RunDetail["draft"]> & { images: Record<string, string> } }) {
+function DraftPageSection({ page, detail, solves }: { page: GeneratedPage; detail: NonNullable<RunDetail["draft"]> & { images: Record<string, string> }; solves: Map<string, RunSolve[]> }) {
   const image = detail.rendering?.pages.find((p) => p.number === page.number);
   const problems = detail.problems.filter((p) => p.page === page.number);
   const issues = pageIssues(page, problems);
@@ -260,7 +334,7 @@ function DraftPageSection({ page, detail }: { page: GeneratedPage; detail: NonNu
         {page.questions.length > 0 && (
           <Table label={`Questions on page ${page.number}`} empty="No questions on this page."
             head={["#", "Part", "Question", "Answer", "Check", "Worked steps", "Skill", "Level · difficulty", "Wrong answers", "Easier example"]}>
-            {page.questions.map((q) => <DraftQuestionRow key={q.number} q={q} box={!!image?.questions.some((b) => b.number === q.number)} />)}
+            {page.questions.map((q) => <DraftQuestionRow key={q.number} q={q} box={!!image?.questions.some((b) => b.number === q.number)} solve={solveOf(q, solves)} />)}
           </Table>
         )}
       </div>
@@ -298,6 +372,12 @@ export function AdminWorkbookRun({ email, detail, now, only }: { email: string; 
   const shown = only ? attention : pages;
   const counts = draft && { ...draft.workbook.counts };
   const notRendered = draft ? new Set(draft.problems.map((p) => p.page)).size : null;
+  const solves = new Map<string, RunSolve[]>();
+  for (const x of detail.solves) solves.set(x.questionId, [...(solves.get(x.questionId) ?? []), x]);
+  const questions = pages.flatMap((p) => p.questions);
+  const solveFailed = questions.filter(failedSolve).length;
+  const byCode = questions.filter((q) => wordedBy(q) === "code").length;
+  const byAi = questions.filter((q) => wordedBy(q) === "AI").length;
   return (
     <AdminFrame email={email} section="workbooks" title={`${name}: draft of workbook ${run.number}`}>
       {(state === "preparing" || state === "waiting") && <RunRefresh />}
@@ -307,6 +387,7 @@ export function AdminWorkbookRun({ email, detail, now, only }: { email: string; 
         ["Started (Pacific)", `${when(run.createdAt)} by ${run.startedBy.email ?? "unknown"}`],
         ["Finished (Pacific)", run.finishedAt ? when(run.finishedAt) : "Not yet"],
         ["Attempts", `${run.attempts} of ${run.maxAttempts}${run.resumes > 0 ? ` · taken up again ${run.resumes} ${run.resumes === 1 ? "time" : "times"}` : ""}`],
+        ["Solve check", solveFact(detail.solves)],
         ...(draft ? [
           ["Levels", levelsText(draft.workbook.levels)] as [string, ReactNode],
           ["Pages", `${draft.workbook.pages.length} pages · revision ${draft.revision}`] as [string, ReactNode],
@@ -331,6 +412,11 @@ export function AdminWorkbookRun({ email, detail, now, only }: { email: string; 
       {draft && counts && <>
         <h2>Check results</h2>
         <p><ChecksCell counts={{ pages: counts.pages, questions: counts.questions, failed: counts.failed, notChecked: counts.notChecked, failedPages: counts.failedPages }} notRendered={notRendered} /></p>
+        <p className="adm-wb-checks">
+          {solveFailed > 0 ? <Chip tone="bad">{solveFailed} failed the solve check</Chip> : <Chip tone="ok">None failed the solve check</Chip>}
+          <span className="adm-sub">Printed words: {byCode} by code, {byAi} by the AI (the solve check reads the AI&apos;s)</span>
+        </p>
+        <SolveFailures pages={pages} solves={solves} />
         {attention.length > 0 ? <>
           <p className="adm-note">Pages that need attention: {attention.map((p, i) => <span key={p.number}>{i > 0 && ", "}<a href={`#page-${p.number}`} className={failedPages.includes(p) ? "adm-wb-bad-link" : undefined}>{p.number}</a></span>)}</p>
           <nav className="adm-row" aria-label="Pages shown">
@@ -338,7 +424,7 @@ export function AdminWorkbookRun({ email, detail, now, only }: { email: string; 
           </nav>
         </> : <p className="adm-note">Every question was checked by code, and every page fits and rendered.</p>}
         {draft.rendering?.pdfPath && <p className="adm-note adm-mono">PDF of the pages that rendered: {draft.rendering.pdfPath}</p>}
-        {shown.map((p) => <DraftPageSection key={p.number} page={p} detail={{ ...draft, images: detail.images }} />)}
+        {shown.map((p) => <DraftPageSection key={p.number} page={p} detail={{ ...draft, images: detail.images }} solves={solves} />)}
       </>}
 
       <h2>Audit log</h2>

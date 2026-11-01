@@ -2220,6 +2220,70 @@ export type Database = {
           },
         ]
       }
+      workbook_run_solves: {
+        Row: {
+          child_id: string
+          created_at: string
+          id: number
+          log: Json
+          model: string
+          ms: number
+          parent_id: string
+          question_id: string
+          run_id: string
+          usd: number | null
+          verdict: string
+        }
+        Insert: {
+          child_id: string
+          created_at?: string
+          id?: never
+          log: Json
+          model: string
+          ms: number
+          parent_id: string
+          question_id: string
+          run_id: string
+          usd?: number | null
+          verdict: string
+        }
+        Update: {
+          child_id?: string
+          created_at?: string
+          id?: never
+          log?: Json
+          model?: string
+          ms?: number
+          parent_id?: string
+          question_id?: string
+          run_id?: string
+          usd?: number | null
+          verdict?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_run_solves_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_run_solves_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_run_solves_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_runs: {
         Row: {
           attempts: number
@@ -2912,6 +2976,10 @@ export type Database = {
       }
       save_workbook_run_page: {
         Args: { p_lease: string; p_number: number; p_page: Json; p_run: string }
+        Returns: boolean
+      }
+      save_workbook_run_solves: {
+        Args: { p_lease: string; p_logs: Json; p_run: string }
         Returns: boolean
       }
       start_workbook_run: {

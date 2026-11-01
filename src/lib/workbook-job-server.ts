@@ -1,19 +1,21 @@
 import "server-only";
 import { randomBytes, randomUUID } from "node:crypto";
-import { aiClient } from "@/lib/ai-client";
+import { aiClient, aiSolveClient } from "@/lib/ai-client";
 import { chromiumPrintEngine } from "@/lib/print-engine-chromium";
 import { adminClient } from "@/lib/supabase-auth";
-import { workbookFakeAi } from "@/lib/workbook-ai-fake";
+import { workbookFakeAi, workbookFakeSolver } from "@/lib/workbook-ai-fake";
 import { workbookDraftStore } from "@/lib/workbook-draft-store";
 import { renderFitCheck } from "@/lib/workbook-fit";
 import { runWorkbookJob, type JobOutcome } from "@/lib/workbook-job";
 import { workbookJobSource, workbookRunStore } from "@/lib/workbook-job-store";
 import { workbookFiles } from "@/lib/workbook-store";
+import { costedSolver } from "@/lib/workbook-solve-cost";
 import { workbookTemplate } from "@/lib/workbook-template";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
 
 // "Prepare next workbook" (#312) on the server: the job (src/lib/workbook-job.ts) with the secret key's stores, the AI
-// client (OpenRouter; in development WORKBOOK_AI_FAKE gives the fake), headless Chromium, the real page templates (#310)
+// client and the solve check's (OpenRouter, both off with no OPENROUTER_API_KEY; the solve check on AI_SOLVE_MODEL with
+// each answer's cost; in development WORKBOOK_AI_FAKE gives the fakes, which cost nothing), headless Chromium, the real page templates (#310)
 // and their strict fit check through the renderer. The admin route runs it with after(), the report job's pattern;
 // near the time limit the job hands the run on to the resume route (src/app/api/workbook-runs/[id]/resume), which runs
 // the next call the same way.
@@ -45,12 +47,16 @@ export async function runWorkbookJobNow(runId: string, o: { origin: string; resu
   try {
     const template = workbookTemplate(await fixedTemplateFonts());
     const engine = chromiumPrintEngine();
+    const fake = workbookFakeAi();
+    const solve = fake ? null : costedSolver((fetch) => aiSolveClient(process.env, { fetch }));
     return await runWorkbookJob(runId, {
       runs: workbookRunStore(admin),
       source: workbookJobSource(admin),
       drafts: workbookDraftStore(admin),
       files: workbookFiles(admin),
-      ai: workbookFakeAi() ?? aiClient(),
+      ai: fake ?? aiClient(),
+      solver: fake ? workbookFakeSolver() : solve?.solver ?? null,
+      ...(solve ? { solveCost: solve.cost } : {}),
       template,
       fit: (parentId) => renderFitCheck({ template, engine, parentId }),
       engine,

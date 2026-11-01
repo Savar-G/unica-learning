@@ -53,11 +53,14 @@ export function aiClient(env: Record<string, string | undefined> = process.env):
   return openRouterClient({ apiKey, model: env.AI_MODEL?.trim() || AI_DEFAULT_MODEL });
 }
 
-/** The solve check's client, or null when the AI is off. The model comes from AI_SOLVE_MODEL. */
-export function aiSolveClient(env: Record<string, string | undefined> = process.env): AiClient | null {
+/**
+ * The solve check's client, or null when the AI is off. The model comes from AI_SOLVE_MODEL. `fetch`: to keep each
+ * answer's cost (costingFetch in src/lib/ai-openrouter.ts).
+ */
+export function aiSolveClient(env: Record<string, string | undefined> = process.env, o: { fetch?: typeof globalThis.fetch } = {}): AiClient | null {
   const apiKey = env.OPENROUTER_API_KEY?.trim();
   if (!apiKey) return null;
-  return openRouterClient({ apiKey, model: env.AI_SOLVE_MODEL?.trim() || AI_SOLVE_DEFAULT_MODEL });
+  return openRouterClient({ apiKey, model: env.AI_SOLVE_MODEL?.trim() || AI_SOLVE_DEFAULT_MODEL, ...(o.fetch ? { fetch: o.fetch } : {}) });
 }
 
 /**

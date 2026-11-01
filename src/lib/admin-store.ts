@@ -21,8 +21,8 @@ import type { ExportReader, ExportRow, PagedTable } from "@/lib/admin-export";
 import type { AnonymousTestRow } from "@/lib/anonymous-copy-export";
 import { WORKBOOK_FILES_BUCKET, type Workbook, type WorkbookSummary } from "@/lib/workbook-content";
 import { workbookStore } from "@/lib/workbook-store";
-import { GENERATED_DRAFT_VERSION, type GeneratedWorkbook } from "@/lib/workbook-generator";
-import type { DraftRendering, WorkbookRun } from "@/lib/workbook-job";
+import { READABLE_DRAFT_VERSIONS, type GeneratedWorkbook } from "@/lib/workbook-generator";
+import { readPaged, type DraftRendering, type RunSolve, type WorkbookRun } from "@/lib/workbook-job";
 import { RUN_COLUMNS, runFromRow } from "@/lib/workbook-job-store";
 import type { RenderProblem } from "@/lib/workbook-render";
 
@@ -570,10 +570,10 @@ const DRAFT_COUNT_COLUMNS = "id, schema_version, pages, questions, failed, not_c
 type DraftCountRow = { id: string; schema_version: number; pages: number; questions: number; failed: number; not_checked: number; failed_pages: number; cover: unknown };
 
 /**
- * A draft this area cannot show: another shape version, or one made before the books were laid out for the templates
- * (its pages have no content).
+ * A draft this area cannot show: a shape version this code does not read, or one made before the books were laid out
+ * for the templates (its pages have no content). A version 1 draft with content is a version 2 draft (#380): shown.
  */
-const oldDraft = (version: number, cover: unknown) => version !== GENERATED_DRAFT_VERSION || cover === null || cover === undefined;
+const oldDraft = (version: number, cover: unknown) => !READABLE_DRAFT_VERSIONS.includes(version) || cover === null || cover === undefined;
 const countsOf = (d: DraftCountRow): DraftCounts => ({ pages: d.pages, questions: d.questions, failed: d.failed, notChecked: d.not_checked, failedPages: d.failed_pages });
 
 async function runRows(a: AdminSession, runs: WorkbookRun[]): Promise<RunListRow[]> {
@@ -645,6 +645,8 @@ export interface RunDetail {
   /** Short-lived URLs of the page images, by path. */
   images: Record<string, string>;
   audit: AuditEntry[];
+  /** The run's solve checks (#380 round 7), oldest first: each printed question the AI worded, read by a separate model. */
+  solves: RunSolve[];
 }
 
 /** One run with its draft, page images and audit log, or null. */
@@ -653,7 +655,7 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
   const [row] = must<Parameters<typeof runFromRow>[0][]>(await a.db.from("workbook_runs").select(RUN_COLUMNS).eq("id", id).limit(1), "workbook run");
   if (!row) return null;
   const run = runFromRow(row);
-  const [children, draftRow, revision, audit] = await Promise.all([
+  const [children, draftRow, revision, audit, solveRows] = await Promise.all([
     childrenById(a, [run.childId]),
     run.draftId
       ? a.db.from("workbook_drafts").select("schema_version, draft").eq("id", run.draftId).maybeSingle().then((r) => must<{ schema_version: number; draft: GeneratedWorkbook } | null>(r, "workbook draft"))
@@ -665,6 +667,9 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
     a.db.from("workbook_audit").select("id, at, actor_email, action, detail")
       .or(run.draftId ? `run_id.eq.${run.id},draft_id.eq.${run.draftId}` : `run_id.eq.${run.id}`).order("at").order("id").range(0, 199)
       .then((r) => must<AuditEntry[]>(r, "workbook audit")),
+    // Every check of the run, in pages of the database's row limit (a book has a few hundred to a few thousand).
+    readPaged(async (from, to) => must<{ question_id: string; model: string; verdict: RunSolve["verdict"]; ms: number; usd: number | null; log: RunSolve["log"] }[]>(
+      await a.db.from("workbook_run_solves").select("question_id, model, verdict, ms, usd, log").eq("run_id", run.id).order("id").range(from, to), "workbook solve checks")),
   ]);
   // A draft of an older shape (before the page layouts) is shown as "old draft format", not read as this shape.
   const oldFormat = draftRow && oldDraft(draftRow.schema_version, draftRow.draft.pages[0]?.content) ? draftRow.schema_version : null;
@@ -676,6 +681,7 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
   for (const item of signed.data ?? []) if (item.path && item.signedUrl && !item.error) images[item.path] = item.signedUrl;
   return {
     run, child: children[0] ?? null, images, audit, oldFormat,
+    solves: solveRows.map((r) => ({ questionId: r.question_id, model: r.model, verdict: r.verdict, ms: r.ms, usd: r.usd === null ? null : Number(r.usd), log: r.log })),
     draft: current ? { workbook: current.draft, rendering: revision?.rendering ?? null, problems: revision?.render_problems ?? [], revision: revision?.revision ?? 1 } : null,
   };
 }

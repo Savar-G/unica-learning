@@ -1,11 +1,11 @@
 // The runs' store (#312) in memory, for tests: the same rules as the Supabase functions (migrations add_workbook_runs
 // and workbook_run_resume, src/lib/workbook-job-store.ts): one active run per child, a run stopped mid-way answered as
 // "stalled" by the next start and taken up again by resume, every write after the start held by the lease, the
-// finished pages, and the audit entries. `children` maps each known child to its parent; `workbooks` gives
+// finished pages, the solve checks, and the audit entries. `children` maps each known child to its parent; `workbooks` gives
 // each child's stored workbook numbers; `now` is the clock.
 import type { RenderProblem } from "@/lib/workbook-render";
 import { draftProblem, type GeneratedPage, type WorkbookDraftStore } from "@/lib/workbook-generator";
-import { READ_PAGE, readPaged, SLOT_ATTEMPTS, type DraftRendering, type RunActor, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
+import { READ_PAGE, readPaged, SLOT_ATTEMPTS, SOLVE_BATCH, type DraftRendering, type RunActor, type RunSolve, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
 
 export interface MemoryAudit {
   at: string;
@@ -32,6 +32,7 @@ export function memoryRunStore(o: {
   const runs = new Map<string, WorkbookRun & { lease: string | null }>();
   const pages = new Map<string, Map<number, GeneratedPage>>();
   const attempts = new Map<string, Map<string, number>>();
+  const solves = new Map<string, RunSolve[]>();
   const audit: MemoryAudit[] = [];
   const revisions: MemoryRevision[] = [];
   const iso = () => o.now().toISOString();
@@ -108,6 +109,14 @@ export function memoryRunStore(o: {
     async pages(id) {
       return [...(pages.get(id)?.values() ?? [])].map((p) => structuredClone(p));
     },
+    async saveSolves(id, lease, batch) {
+      if (batch.length > SOLVE_BATCH) throw new Error(`workbook run solve checks save: ${batch.length} checks in one write`);
+      const r = holding(id, lease);
+      if (!r) return false;
+      r.heartbeatAt = iso();
+      solves.set(id, [...(solves.get(id) ?? []), ...structuredClone(batch)]);
+      return true;
+    },
     async savePage(id, lease, page) {
       const r = holding(id, lease);
       if (!r) return false;
@@ -173,5 +182,5 @@ export function memoryRunStore(o: {
       return r ? view(r) : null;
     },
   };
-  return { ...store, runs, audit, revisions, pageStore: pages, attemptStore: attempts };
+  return { ...store, runs, audit, revisions, pageStore: pages, attemptStore: attempts, solveStore: solves };
 }
