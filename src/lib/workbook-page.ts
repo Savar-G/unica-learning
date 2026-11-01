@@ -239,7 +239,8 @@ function partSlots(part: PlannedPart, page: PlannedPage, level: number): { slots
 }
 
 /** Slots that are panels with no items of their own, and the room of cards each takes on a parent-led page. */
-const PANELS: Partial<Record<SlotName, number>> = { "worked-example": 4, "watch-one": 2, reminder: 3 };
+/** The reminder prints one row (its sum beside What's going on), as Watch one does: 2 cards. */
+const PANELS: Partial<Record<SlotName, number>> = { "worked-example": 4, "watch-one": 2, reminder: 2 };
 /**
  * A parent-led page (U1 to U3) holds 6 item cards (2 columns, 3 rows); each slot after the first takes 1 more for its
  * chip, except a slot headed by a small label (Finish these, and On your own after it).

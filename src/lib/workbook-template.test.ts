@@ -199,3 +199,22 @@ describe("an order item and a written reason on a parent-led card", () => {
     expect(html.match(/How do you know\?/g)).toHaveLength(1);
   });
 });
+
+describe("a pattern item's choices", () => {
+  it("are drawn as the shapes, not written as words (#380)", async () => {
+    const { buildQuestion } = await import("@/lib/workbook-generator-items");
+    const draft = book("U2");
+    const page = draft.pages.find((p) => p.content?.kind === "day" && p.questions.length > 0)!;
+    const q = page.questions[0];
+    const built = buildQuestion({
+      slot: "1.1", skill: "K4-extend-repeating", difficulty: 1, text: "What comes next?", format: "pattern", operation: null, wrongAnswers: [], easier: null,
+      shownWrong: null, figure: null, numbers: [], places: null, direction: null, sequence: null, pattern: { core: ["circle", "triangle"], shapes: 6, blank: 5 },
+    }, { id: q.package.id, workbookId: draft.id, page: page.number, question: q.number, level: 2, skills: ["K4-extend-repeating"] });
+    expect(built.check.status).toBe("checked");
+    const html = workbookTemplate().page({ ...page, questions: [{ number: q.number, package: { ...built.package!, ref: q.package.ref } }, ...page.questions.slice(1)] }, { qr: "", qrUrl: "" }, draft)!;
+    const circ = html.match(/<span class="circ"[^>]*>(.*?)<\/span><\/span>/)?.[1] ?? "";
+    expect(circ).toContain(`aria-label="circle"`);
+    expect(circ).toContain(`aria-label="triangle"`);
+    expect(circ).not.toMatch(/<span class="co">(circle|triangle)<\/span>/);
+  });
+});

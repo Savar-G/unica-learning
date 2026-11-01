@@ -156,18 +156,18 @@ describe("sample profiles", () => {
 
 describe("pageFigure", () => {
   it("maps each item picture to the template's", () => {
-    const add: Operation = { kind: "add", operands: [3, 4] };
-    expect(pageFigure({ kind: "dots", groups: [3, 4], takenAway: 1 }, add)).toEqual({ kind: "dots", groups: [3, 4], takenAway: 1 });
-    expect(pageFigure({ kind: "ten-frame", counters: [6, 3] }, null)).toEqual({ kind: "ten-frame", filled: 9 });
-    expect(pageFigure({ kind: "number-line", from: 0, to: 10, step: 1 }, add)).toEqual({ kind: "number-line", from: 0, to: 10, step: 1, hops: [[3, 7]] });
-    expect(pageFigure({ kind: "number-line", from: 0, to: 10, step: 1 }, { kind: "subtract", operands: [9, 4] })).toMatchObject({ hops: [[9, 5]] });
-    expect(pageFigure({ kind: "base-ten", hundreds: 1, tens: 2, ones: 3 }, null)).toEqual({ kind: "blocks", hundreds: 1, tens: 2, ones: 3 });
-    expect(pageFigure({ kind: "pattern", core: ["circle", "star"], length: 6, blank: 5 }, null)).toEqual({ kind: "pattern", core: ["circle", "star"], length: 6, blank: 5 });
-    expect(pageFigure(null, add)).toBeNull();
+    expect(pageFigure({ kind: "dots", groups: [3, 4], takenAway: 1 })).toEqual({ kind: "dots", groups: [3, 4], takenAway: 1 });
+    expect(pageFigure({ kind: "ten-frame", counters: [6, 3] })).toEqual({ kind: "ten-frame", filled: 9 });
+    // A question's number line has no hop: the hop would land on the answer (#380); the child draws it.
+    expect(pageFigure({ kind: "number-line", from: 0, to: 10, step: 1 })).toEqual({ kind: "number-line", from: 0, to: 10, step: 1, hops: [] });
+    expect(pageFigure({ kind: "number-line", from: 0, to: 10, step: 1 })).toMatchObject({ hops: [] });
+    expect(pageFigure({ kind: "base-ten", hundreds: 1, tens: 2, ones: 3 })).toEqual({ kind: "blocks", hundreds: 1, tens: 2, ones: 3 });
+    expect(pageFigure({ kind: "pattern", core: ["circle", "star"], length: 6, blank: 5 })).toEqual({ kind: "pattern", core: ["circle", "star"], length: 6, blank: 5 });
+    expect(pageFigure(null)).toBeNull();
   });
 
   it("leaves out a hop off the line", () => {
-    expect(pageFigure({ kind: "number-line", from: 0, to: 10, step: 1 }, { kind: "add", operands: [8, 5] })).toMatchObject({ hops: [] });
+    expect(pageFigure({ kind: "number-line", from: 0, to: 10, step: 1 })).toMatchObject({ hops: [] });
   });
 });
 
@@ -416,7 +416,7 @@ describe("every number the child sees fits the range (R380-3-1)", () => {
     expect(problem(pkg({ item: item({ regions: [{ id: "w", kind: "work", label: "Make 15" }] }) }))).toContain("15");
   });
 
-  it("fails each figure past the range: dots, a ten-frame's counters in all, base-ten, a number line and its hops, an array", () => {
+  it("fails each figure past the range: dots, a ten-frame's counters in all, base-ten, a number line, an array", () => {
     const fig = (figure: Item["figure"], over: Partial<QuestionPackage> = {}) => pkg({ ...over, item: item({ figure }) });
     expect(problem(fig({ kind: "dots", groups: [6, 6], takenAway: 0 }))).toContain("12");
     expect(problem(fig({ kind: "ten-frame", counters: [7, 5] }))).toContain("12");
@@ -424,7 +424,7 @@ describe("every number the child sees fits the range (R380-3-1)", () => {
     expect(problem(fig({ kind: "number-line", from: 0, to: 20, step: 1 }))).toContain("20");
     expect(problem(fig({ kind: "array", rows: 3, columns: 4 }))).toContain("12");
     expect(problem(fig({ kind: "number-line", from: 0, to: 10, step: 1 }, { operation: { kind: "add", operands: [4, 3] }, answer: { value: n(7), accepted: [], unit: null } }))).toBeNull();
-    expect(printedNumbers(fig({ kind: "number-line", from: 0, to: 10, step: 1 }, { operation: { kind: "add", operands: [4, 3] } }))).toEqual(expect.arrayContaining([0, 10, 4, 7]));
+    expect(printedNumbers(fig({ kind: "number-line", from: 0, to: 10, step: 1 }, { operation: { kind: "add", operands: [4, 3] } }))).toEqual(expect.arrayContaining([0, 10, 4, 3]));
   });
 
   it("fails Sam's answer and reads every number of Sam's steps", () => {

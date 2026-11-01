@@ -12,7 +12,7 @@
 // an answer box smaller than the band allows, an answer box or choices over the question's own text, a work box under
 // 44 px or writing lines closer than 36 px under their prompt and 34 px apart.
 // Pure TypeScript: no Next.js, React, network, database or clock.
-import { packageItem, valueText, type AnswerRegion, type AnswerValue, type QuestionPackage } from "@/lib/question-package";
+import { packageItem, PATTERN_SHAPES, valueText, type AnswerRegion, type AnswerValue, type QuestionPackage } from "@/lib/question-package";
 import type { Block, DayContent, Figure, PageContent, SlotName, WorkedLine } from "@/lib/workbook-page";
 import {
   mark,
@@ -651,7 +651,13 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
       return `<span class="rg">${label}${money}<span class="ab" ${at} style="width:${boxWidth(r.answer, o.band)}px"></span>${unit ? `<span class="unit">${escape(unit)}</span>` : ""}</span>`;
     }
     case "choice": {
-      if (r.mark === "circle") return `<span class="circ" ${at}>${r.choices.map((c) => `<span class="co">${escape(c)}</span>`).join("")}</span>`;
+      if (r.mark === "circle") {
+        // A pattern's choices are its shapes: drawn, not written (a word such as "triangle" at the fact size is too wide
+        // for a card, and a child circles the shape).
+        const shapes = r.choices.every((c) => (PATTERN_SHAPES as readonly string[]).includes(c));
+        const choice = (c: string) => (shapes ? `<svg class="pic" width="30" height="30" viewBox="0 0 32 32" aria-label="${escape(c)}">${shapeSvg(c, 16, 16, "#44444C")}</svg>` : escape(c));
+        return `<span class="circ" ${at}>${r.choices.map((c) => `<span class="co">${choice(c)}</span>`).join("")}</span>`;
+      }
       const choices = r.choices.map((c) => `<span class="ch"><i class="tb"></i><span>${escape(c)}</span></span>`).join("");
       return `<span class="rg">${r.label ? `<span class="rl">${escape(r.label)}</span>` : ""}<span class="strip" ${at}>${choices}</span>${o.noTick ? "" : `<span class="t1"><span>Tick one</span><i>✓</i></span>`}</span>`;
     }

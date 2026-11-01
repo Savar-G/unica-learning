@@ -8,8 +8,8 @@
 //
 // Pictures: a question package's item figure (#377, src/lib/question-package.ts) is drawn by the template from the
 // block's `figures` (src/lib/workbook-page.ts). `pageFigure` maps one to the other: dots keep their groups and the
-// crossed-out count, a ten-frame shows its counters in all (`filled`), a number line gets its hops from the operation
-// (a + b hops from a to a + b), base-ten blocks keep hundreds, tens and ones, and a pattern keeps its shapes.
+// crossed-out count, a ten-frame shows its counters in all (`filled`), a number line has no hop (it would land on the
+// answer: the child draws it), base-ten blocks keep hundreds, tens and ones, and a pattern keeps its shapes.
 //
 // The words here are code's, never the AI's: headers, panel labels and explanations come from the plan and the
 // curriculum. Pure TypeScript: no Next.js, React, network, database, clock or randomness.
@@ -262,22 +262,16 @@ function workedLines(op: Operation, most: number, level: number): string[] {
 }
 
 /**
- * A picture for the template from an item's figure: the same numbers, in the template's terms. A number line's hops
- * come from the operation: a + b hops from a to a + b, a − b from a back to a − b. Null for no figure.
+ * A picture for the template from an item's figure: the same numbers, in the template's terms. A number line has no
+ * hop: it would land on the answer. Null for no figure.
  */
-export function pageFigure(f: ItemFigure | null | undefined, op: Operation | null): Figure | null {
+export function pageFigure(f: ItemFigure | null | undefined): Figure | null {
   if (!f) return null;
   switch (f.kind) {
     case "dots": return { kind: "dots", groups: [...f.groups], takenAway: f.takenAway };
     case "ten-frame": return { kind: "ten-frame", filled: f.counters.reduce((a, b) => a + b, 0) };
-    case "number-line": {
-      const [a, b] = (op?.operands ?? []) as unknown[];
-      // A missing part hops from the part to the total.
-      const hops: [number, number][] = typeof a === "number" && typeof b === "number" && (op?.kind === "add" || op?.kind === "subtract" || op?.kind === "missing-addend")
-        ? [[a, op.kind === "add" ? a + b : op.kind === "subtract" ? a - b : b]]
-        : [];
-      return { kind: "number-line", from: f.from, to: f.to, step: f.step, hops: hops.filter(([x, y]) => [x, y].every((v) => v >= Math.min(f.from, f.to) && v <= Math.max(f.from, f.to))) };
-    }
+    // A question's number line has no hop drawn: the hop lands on the answer, so the child draws it (#380).
+    case "number-line": return { kind: "number-line", from: f.from, to: f.to, step: f.step, hops: [] };
     case "base-ten": return { kind: "blocks", hundreds: f.hundreds, tens: f.tens, ones: f.ones };
     case "array": return { kind: "array", rows: f.rows, columns: f.columns };
     case "pattern": return { kind: "pattern", core: [...f.core], length: f.length, blank: f.blank };
@@ -499,14 +493,14 @@ function checkNumbers(c: ItemCheck): Read[] {
   }
 }
 
-function figureNumbers(f: ItemFigure | null | undefined, op: Operation | null): Read[] {
+function figureNumbers(f: ItemFigure | null | undefined): Read[] {
   if (!f) return [];
   const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
   switch (f.kind) {
     case "dots": return [...f.groups, f.takenAway, sum(f.groups)].map(num);
     case "ten-frame": return [...f.counters, sum(f.counters)].map(num);
     case "number-line": {
-      const drawn = pageFigure(f, op);
+      const drawn = pageFigure(f);
       return [f.from, f.to, f.step, ...(drawn?.kind === "number-line" ? (drawn.hops ?? []).flat() : [])].map(num);
     }
     case "base-ten": return [f.hundreds, f.tens, f.ones, f.hundreds * 100 + f.tens * 10 + f.ones].map(num);
@@ -539,7 +533,7 @@ export function printedValues(p: QuestionPackage): ReadNumber[] {
     ...(easier ? [...readNumbers(easier.text), ...operationNumbers(easier.operation), ...valueNumbers(easier.answer)] : []),
     ...(item?.regions ?? []).flatMap(regionNumbers),
     ...(item?.checks ?? []).flatMap(checkNumbers),
-    ...figureNumbers(item?.figure, p.operation),
+    ...figureNumbers(item?.figure),
   ];
 }
 
@@ -875,7 +869,7 @@ export function dayPageContent(o: {
     const lost = questions.filter((q) => q.slot === i && !q.package).map((q) => ({ number: q.number, reason: q.failed ?? "code could build no question" }));
     const missing = lost.length ? { missing: lost } : {};
     const part = page.parts[s.part];
-    const figures = mine.map((q) => pageFigure(q.package!.item?.figure, q.package!.operation));
+    const figures = mine.map((q) => pageFigure(q.package!.item?.figure));
     const withFigures = figures.some(Boolean) ? { figures } : {};
     // A panel's example: of the panel's own skill only, from its own worked example or the same part's questions.
     const sameP = layout.slots.flatMap((x, k) => (x.part === s.part && k !== i ? [k] : []));

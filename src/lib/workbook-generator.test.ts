@@ -816,6 +816,36 @@ describe("round 3 (#380): repeats, panel examples, items that do not match their
     for (const b of panels) expect([...(b.lines ?? []), ...(b.methods ?? []).flatMap((m) => m.lines)]).toEqual(["Count them: 1, 2, 3, 4.", "There are [4]."]);
   });
 
+  it("sends an answer that leaves out a slot once more, and keeps what both gave", async () => {
+    const write = newEach();
+    let calls = 0;
+    const ai = fakeAiClient({
+      answer: (r) => {
+        const first = req(r).day === 1 && req(r).page === 1 && r.name === "workbook_page" && ++calls === 1;
+        return fill(r, (s, q) => (first && s.slot === "1.2" ? undefined : write(s, q as Req)));
+      },
+    });
+    const draft = await book(ai);
+    expect(ai.requests.filter((r) => r.name === "workbook_page" && req(r).day === 1 && req(r).page === 1)).toHaveLength(2);
+    expect(firstDayPage(draft).questions[1]).toMatchObject({ slot: "1.2", attempts: 1, check: { status: "checked" } });
+  });
+
+  it("shows the redo the questions its page keeps, and quotes the one a question repeats", async () => {
+    const write = newEach();
+    const ai = fakeAiClient({
+      answer: (r) => fill(r, (s, q) => {
+        const item = write(s, q as Req) as { text: string };
+        // On day 1 page 1, question 2 is question 1 again, word for word.
+        return r.name === "workbook_page" && req(r).day === 1 && req(r).page === 1 && s.slot === "1.2" ? { ...item, text: "Ava and Ava have 1. 1 more come. How many now?", operation: addOp(1, 1) } : item;
+      }),
+    });
+    await book(ai);
+    const redo = ai.requests.find((r) => r.name === "workbook_page_redo" && req(r).day === 1 && req(r).page === 1)!;
+    expect(req(redo).note).toContain(`it is the same as question 1 on this page ("Ava and Ava have 1. 1 more come. How many now?")`);
+    const asked = (JSON.parse((redo.content[0] as { text: string }).text) as { slots: { asked: string[] }[] }).slots[0].asked;
+    expect(asked).toContain("Ava and Ava have 1. 1 more come. How many now?");
+  });
+
   it("names the slots the AI answered when it leaves one out", async () => {
     const write = newEach();
     const ai = fakeAiClient({ answer: (r) => fill(r, (s, q) => (s.slot === "1.1" ? undefined : write(s, q as Req))) });
@@ -849,8 +879,14 @@ describe("items whose kind does not match their text (round 3)", () => {
     expect(sum("3 cats and 4 dogs. How many pets?", 3, 4).check.status).toBe("checked");
   });
 
+  it("fails an order item whose text does not ask for an order", () => {
+    const order = (text: string) => buildQuestion({ ...base, skill: "K1-order-numerals", text, format: "order", numbers: [num(4), num(7)], direction: "up" }, { ...place, skills: ["K1-order-numerals"] });
+    expect(order("Which is more: 4 or 7?").check).toMatchObject({ status: "failed", reason: expect.stringContaining("an order item asks to put the numbers in order") });
+    expect(order("Put 4 and 7 in order, least first.").check.status).toBe("checked");
+  });
+
   it("keeps an order item at U1 to U3 to 4 numbers, the boxes its card has room for", () => {
-    const order = (n: number) => buildQuestion({ ...base, skill: "K1-order-numerals", text: "Put in order.", format: "order", numbers: Array.from({ length: n }, (_, i) => num(i + 2)), direction: "up" }, { ...place, skills: ["K1-order-numerals"] });
+    const order = (n: number) => buildQuestion({ ...base, skill: "K1-order-numerals", text: "Put in order, least first.", format: "order", numbers: Array.from({ length: n }, (_, i) => num(i + 2)), direction: "up" }, { ...place, skills: ["K1-order-numerals"] });
     expect(order(4).check.status).toBe("checked");
     expect(order(5).check).toMatchObject({ status: "failed", reason: expect.stringContaining("2 to 4 numbers") });
   });

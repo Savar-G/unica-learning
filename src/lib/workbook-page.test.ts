@@ -162,6 +162,10 @@ describe("pageSlots", () => {
     expect(layout.omissions).toEqual([expect.objectContaining({ kind: "practice", requested: 7, placed: 4 })]);
   });
 
+  it("fills a parent-led Unit B page: the reminder takes a row, as Watch one does, and three items follow (#380)", () => {
+    expect(names(pageSlots(page("parent-led", [part("practice", 8, { unit: "B" })]), 3))).toEqual(["reminder:0", "unit-b-practice:3"]);
+  });
+
   it("reports nothing left out when the page holds the plan", () => {
     expect(pageSlots(page("practice", [part("practice", 8, { faded: { watch: 1, finish: 2 } })]), 12).omissions).toEqual([]);
     expect(pageSlots(page("word-problems", [part("word-problems", 3)]), 12).omissions).toEqual([]);

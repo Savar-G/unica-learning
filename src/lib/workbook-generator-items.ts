@@ -712,6 +712,9 @@ export function kindProblem(p: QuestionPackage, raw: Record<string, unknown>): s
     }
     return null;
   }
+  if (p.item?.checks.some((c) => c.kind === "order") && !/\border\b|\bleast\b|\bgreatest\b|\bsmallest\b|\bbiggest\b|\blargest\b/i.test(text)) {
+    return "an order item asks to put the numbers in order (least first, or greatest first): ask that, or use another format";
+  }
   const op = p.operation;
   if (op && (op.kind === "add" || op.kind === "subtract") && op.operands.includes(0) && !/\bzero\b|\b0\b/.test(text)) {
     return "adding or taking away 0 gives back a number the question already says: ask for a number the child works out";

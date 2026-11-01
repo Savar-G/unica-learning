@@ -280,6 +280,7 @@ const SYSTEM = [
   "Asked: a slot may list asked, the questions the book already asks on its skills. Never repeat one of them. On this page, no two questions may be the same, work the same sum, or differ only by one number when another kind of question is possible: change the kind (a story, a picture to count, a missing part, a sequence), not only a number.",
   "Examples: the request may list examples. Each is the worked example a panel (worked-example, watch-one, reminder) shows for its own skill: fill it like a slot, with its id and on that skill only. Give a small sum of the skill (write-number with an operation), or a count, sequence or order item code can show done. It is not printed as a question, so it has no room limit.",
   "A count from one number to another ('Count from 2 to 7', 'Count back from 10 to 1') is the sequence format, starting and ending at those numbers; if the text says 'start at 2', the sequence starts at 2.",
+  "A missing-addend's only worked step is named count: a wrong answer's step is count or null. Every item with an operation has at least one wrong answer and an easier example. Fill every slot and every example you are asked for, each with its own id.",
   "Never give the answer in the text: 'Red 6, blue 4. How many red?' is not a question, and adding or taking away 0 only hands back a number the text gives. At U1 to U3 an order item has 2 to 4 numbers.",
   "A missing number in a list (4, 5, ?, 7) is the sequence format, with the blanks as data: never write _ or a gap in the text.",
   "Rules: a slot may give the rules of each of its skills in plain words: the largest number, the signs and ideas not taught yet, and the formats to leave out. Follow them exactly; they are checked by code, and an item that breaks one is thrown away.",
@@ -320,10 +321,11 @@ function skillFacts(curriculum: Curriculum, id: string, step: number | null) {
   };
 }
 
-function pageRequest(input: GenerateInput, w: PageWork, slots: Slot[], note: string | null, panels: Panel[] = [], memory: BookMemory | null = null) {
+function pageRequest(input: GenerateInput, w: PageWork, slots: Slot[], note: string | null, panels: Panel[] = [], memory: BookMemory | null = null, pageTexts: string[] = []) {
   const { plan, curriculum } = input;
   const { day, page } = w;
-  const asked = (skills: readonly string[]) => [...new Set(skills.flatMap((k) => memory?.texts.get(k) ?? []))].slice(-40);
+  // What the book asked on the skills, and (on a redo) the questions this page keeps.
+  const asked = (skills: readonly string[]) => [...new Set([...skills.flatMap((k) => memory?.texts.get(k) ?? []).slice(-40), ...pageTexts])];
   const parts = page.parts.map((part, i) => ({
     part: i + 1,
     kind: part.kind,
@@ -388,19 +390,25 @@ function roomOf(input: GenerateInput, place: SlotName, day: number) {
  * The AI's items by slot id; an answer of another shape gives none. A call that throws (a time-out, a refusal, output
  * that is not JSON) is sent once more, the same; the second error is the one returned.
  */
-async function callAi(deps: GenerateDeps, name: string, request: unknown): Promise<{ items: Map<string, unknown>; error: string | null }> {
+async function callAi(deps: GenerateDeps, name: string, request: unknown, ids: string[] = []): Promise<{ items: Map<string, unknown>; error: string | null }> {
   const ask = () => withTimeLimit(deps.timeLimitMs ?? TIME_LIMIT_MS, (signal) =>
     deps.ai.json({ name, system: SYSTEM, content: [{ type: "text", text: JSON.stringify(request) }], schema: ITEMS_SCHEMA, effort: "medium" }, signal));
-  try {
-    const out = await ask().catch(() => ask());
-    const items = new Map<string, unknown>();
+  const read = (out: unknown, into: Map<string, unknown>) => {
     const list = (out as { items?: unknown } | null)?.items;
-    if (Array.isArray(list)) {
-      for (const item of list) {
-        const slot = (item as { slot?: unknown } | null)?.slot;
-        if (typeof slot === "string" && !items.has(slot)) items.set(slot, item);
-      }
+    if (!Array.isArray(list)) return;
+    for (const item of list) {
+      const slot = (item as { slot?: unknown } | null)?.slot;
+      if (typeof slot === "string" && !into.has(slot)) into.set(slot, item);
     }
+  };
+  try {
+    let resent = false;
+    const out = await ask().catch(() => { resent = true; return ask(); });
+    const items = new Map<string, unknown>();
+    read(out, items);
+    // An answer that leaves out slots it was asked for is incomplete, like one that is not JSON: sent once more (if it
+    // was not already), and the slots it gave are kept.
+    if (!resent && ids.some((id) => !items.has(id))) read(await ask().catch(() => null), items);
     return { items, error: null };
   } catch (e) {
     return { items: new Map(), error: e instanceof Error ? e.message : String(e) };
@@ -440,12 +448,12 @@ function duplicateProblem(p: QuestionPackage, place: SlotName | null, memory: Bo
   const at = place === "warm-up" ? undefined : memory?.keys.get(key);
   if (at !== undefined) return `it repeats a question already asked on page ${at} ("${p.text}"): write a different question`;
   for (const s of siblings) {
-    if (dupKey(s.package) === key) return `it is the same as question ${s.number} on this page`;
+    if (dupKey(s.package) === key) return `it is the same as question ${s.number} on this page ("${s.package.text}")`;
     const op = opKey(p);
-    if (op && op === opKey(s.package)) return `it works the same sum as question ${s.number} on this page`;
+    if (op && op === opKey(s.package)) return `it works the same sum as question ${s.number} on this page ("${s.package.text}")`;
     const [a, b] = [numbersIn(p.text), numbersIn(s.package.text)];
     if (place && REVIEW_PLACES.has(place) && a.length > 0 && a.length === b.length && plainText(p.text).replace(/\d+/g, "#") === plainText(s.package.text).replace(/\d+/g, "#")
-      && a.filter((x, i) => x !== b[i]).length <= 1) return `it differs from question ${s.number} on this page only by one number: ask another kind of question`;
+      && a.filter((x, i) => x !== b[i]).length <= 1) return `it differs from question ${s.number} on this page ("${s.package.text}") only by one number: ask another kind of question`;
   }
   return null;
 }
@@ -470,9 +478,9 @@ interface PageWork {
 }
 
 /** Writes the page's slots at `which` (indexes) in one AI call and builds each; never throws. */
-async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork, which: number[], note: string | null, name: string, panels: Panel[] = [], memory: BookMemory | null = null) {
+async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork, which: number[], note: string | null, name: string, panels: Panel[] = [], memory: BookMemory | null = null, pageTexts: string[] = []) {
   const asked = which.map((i) => w.slots[i]);
-  const out = await callAi(deps, name, pageRequest(input, w, asked, note, panels, memory));
+  const out = await callAi(deps, name, pageRequest(input, w, asked, note, panels, memory, pageTexts), [...asked.map((x) => x.id), ...panels.map((x) => x.id)]);
   const missing = (id: string) => (out.items.size ? ` (it answered slots ${[...out.items.keys()].join(", ")}, not ${id})` : " (its answer held no items)");
   // Each panel's worked example: of its own skill, one code can show worked out, in the level's numbers.
   const examples = panels.map((x) => {
@@ -584,7 +592,8 @@ async function firstPass(input: GenerateInput, deps: GenerateDeps, w: PageWork, 
   const failedPanels = w.panels.flatMap((_, k) => (examples[k].check.status === "failed" ? [k] : []));
   if (failed.length > 0 || failedPanels.length > 0) {
     const note = [...failed.map((i) => failNote(w.slots[i].id, built[i])), ...failedPanels.map((k) => failNote(w.panels[k].id, examples[k]))].join("\n");
-    const redo = await writeSlots(input, deps, w, failed, note, "workbook_page_redo", failedPanels.map((k) => w.panels[k]), memory);
+    const kept = built.flatMap((b) => (b.check.status !== "failed" && b.package ? [b.package.text] : []));
+    const redo = await writeSlots(input, deps, w, failed, note, "workbook_page_redo", failedPanels.map((k) => w.panels[k]), memory, memory ? kept : []);
     failed.forEach((i, k) => {
       built[i] = redo.built[k];
       markRepeat(built[i], w.slots[i].place, memory, siblingsOf(built, built.length, i));
