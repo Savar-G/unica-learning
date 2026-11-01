@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
 import { packageItem } from "@/lib/question-package";
 import { workbookProblem } from "@/lib/workbook-content";
-import { renderWorkbook, type DraftPage, type WorkbookDraft } from "@/lib/workbook-render";
+import { renderWorkbook, type DraftPage, type PrintEngine, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleBook } from "@/lib/workbook-sample-book";
 import { bandOf, workbookTemplate } from "@/lib/workbook-template";
 
@@ -17,7 +17,7 @@ const CHILD = "22222222-2222-4222-8222-222222222222";
 const WORKBOOK = "55555555-5555-4555-8555-000000000002";
 const book = (level: string, testWorkbook = false) =>
   sampleBook({ level, workbookId: WORKBOOK, childId: CHILD, child: "Mateo", number: 2, testWorkbook }).draft;
-const render = (draft: WorkbookDraft, engine = fakePrintEngine()) => renderWorkbook({ draft, parentId: PARENT, template: workbookTemplate(), engine });
+const render = (draft: WorkbookDraft, engine: PrintEngine = fakePrintEngine()) => renderWorkbook({ draft, parentId: PARENT, template: workbookTemplate(), engine });
 /** A book of one page. */
 const only = (draft: WorkbookDraft, p: DraftPage): WorkbookDraft => ({ ...draft, pages: [p] });
 const first = (draft: WorkbookDraft, type: string) => draft.pages.find((p) => p.type === type)!;
@@ -158,6 +158,25 @@ describe("the fit check", () => {
     ]);
     const wide = await render(only(draft, warm), fakePrintEngine({ overflow: ["1 slot-title"] }));
     expect(wide.status === "failed" && wide.problems.some((x) => x.slot === "title" && /does not fit on one line/.test(x.reason))).toBe(true);
+  });
+
+  it("refuses a banned title or a title that is missing, hidden or blank in the print measurement", async () => {
+    const warm = first(draft, "warm-up");
+    const c = warm.content!;
+    if (c.kind !== "day") throw new Error("not a day page");
+    const banned = await render(only(draft, { ...warm, content: { ...c, title: "Find the total" } }));
+    expect(banned.status === "failed" && banned.problems.some((p) => p.slot === "title" && /banned phrase/.test(p.reason))).toBe(true);
+    const missing = fakePrintEngine();
+    const engines = [fakePrintEngine({ hidden: ["1 slot-title"] }), fakePrintEngine({ blank: ["1 slot-title"] }), {
+      async print(job: Parameters<typeof missing.print>[0]) {
+        const out = await missing.print(job);
+        return { ...out, measured: out.measured.filter((m) => m.name !== "slot-title") };
+      },
+    }];
+    for (const engine of engines) {
+      const result = await render(only(draft, warm), engine);
+      expect(result.status === "failed" && result.problems.some((p) => p.slot === "title" && /not printed or measured/.test(p.reason))).toBe(true);
+    }
   });
 
   it.each(Array.from({ length: 30 }, (_, i) => i + 1))("enforces 3 lines on a card at U%i (D-201)", async (level) => {

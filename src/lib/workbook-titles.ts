@@ -5,8 +5,8 @@
 // - A page of one review kind keeps that kind's name ("Warm-up", "Remember these?", "Challenge", "Level U3 test").
 // - A page of stories is "Number stories to 10" (to the largest number its skills reach) up to U12, "Word problems"
 //   from U13 or when its skills have no number range.
-// - A page that teaches or practises takes the short title of the BC unit (standard) all its skills belong to
-//   (UNIT_TITLES); skills of two units of one strand take the strand's title; anything else is
+// - A page with one skill takes that skill's short title (SKILL_TITLES). A page mixing skills of one BC unit takes
+//   the unit title (UNIT_TITLES); skills of two units of one strand take the strand's title; anything else is
 //   "Mixed practice".
 // - A page that mixes review with stories or a challenge is "Mixed review".
 //
@@ -15,20 +15,13 @@
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness.
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import type { PartKind, PlannedPage } from "@/lib/workbook-plan";
+import { SKILL_TITLES } from "@/lib/workbook-skill-titles";
+import { skillTitleProblems } from "@/lib/workbook-skill-title-check";
+export { TITLE_WORDS_MAX, titleWords, titleProblem } from "@/lib/workbook-title-rules";
 
-/** The most words a page title has. */
-export const TITLE_WORDS_MAX = 4;
-
-/** A title's words: runs of letters or digits ("Warm-up" and "U3" are one word each; "·" and ":" are not words). */
-export const titleWords = (title: string) => title.split(/\s+/).filter((w) => /[A-Za-z0-9]/.test(w));
-
-/** Why a title may not print, or null: empty, or more than TITLE_WORDS_MAX words. The one-line fit is measured. */
-export function titleProblem(title: string): string | null {
-  const n = titleWords(title).length;
-  if (n === 0) return "the page title is empty";
-  if (n > TITLE_WORDS_MAX) return `the page title "${title}" has ${n} words; a title has at most ${TITLE_WORDS_MAX}`;
-  return null;
-}
+// A missing, stale or invalid data set stops the book before a title can be printed.
+const skillProblems = skillTitleProblems(SKILL_TITLES);
+if (skillProblems.length) throw new Error(`Invalid workbook skill titles:\n${skillProblems.join("\n")}`);
 
 /** Each BC unit's short title: what its skills practise, in at most 4 words (a test checks every unit has one). */
 export const UNIT_TITLES: Readonly<Record<string, string>> = {
@@ -108,9 +101,17 @@ export interface TitleSkills {
   max(skill: string): number | null;
 }
 
-/** The title of a unit's skills, or of a strand's, or "Mixed practice". */
+/** One skill's title, else the title shared by the page's units or strands. */
 function skillsTitle(skills: string[], s: TitleSkills): string {
-  const units = [...new Set(skills.map((x) => s.unit(x)).filter((u): u is string => !!u))];
+  if (skills.length === 1) {
+    const title = SKILL_TITLES[skills[0]];
+    if (!title) throw new Error(`Missing workbook skill title: ${skills[0]}`);
+    return title;
+  }
+  const mapped = skills.map((x) => s.unit(x));
+  // An unknown skill cannot be dropped to make the remaining skills appear to share a unit.
+  if (mapped.some((u) => u === null)) throw new Error("A workbook page has a skill with no unit");
+  const units = [...new Set(mapped.filter((u): u is string => !!u))];
   if (units.length === 1 && UNIT_TITLES[units[0]]) return UNIT_TITLES[units[0]];
   const strands = [...new Set(units.map((u) => s.strand(u)))];
   if (units.length > 1 && strands.length === 1 && strands[0] && STRAND_TITLES[strands[0]]) return STRAND_TITLES[strands[0]];

@@ -1062,7 +1062,9 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
   if (wordy) problems.push({ question: null, slot: "title", reason: `${at}: ${wordy}` });
   // It never wraps (white-space: nowrap), so a title too long for one line runs past the column's width.
   const title = measured.get("slot-title");
-  if (title && (title.scrollWidth > title.clientWidth + 1 || title.scrollHeight > title.clientHeight + 1)) {
+  if (!title || !title.visible || !title.textPrinted || title.clientWidth <= 0 || title.clientHeight <= 0) {
+    problems.push({ question: null, slot: "title", reason: `${at}: the page title was not printed or measured` });
+  } else if (title.scrollWidth > title.clientWidth + 1 || title.scrollHeight > title.clientHeight + 1) {
     problems.push({ question: null, slot: "title", reason: `${at}: the page title "${c.title}" does not fit on one line` });
   }
 

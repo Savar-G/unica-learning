@@ -225,11 +225,11 @@ the Try this first card from U19. On Days 5 and 10 the Friday 5 replaces the Mix
 | Page | Title, subtitle | Blocks (slots) |
 |---|---|---|
 | 1 Warm-up | "Warm-up"; "Facts to 20. Take your time: there is no timer." (from U16 "Beat your own count") | WARM-UP chip + "Do as many as you can."; fact grid, 3 columns of 213 (gap 24), up to 30 facts (10 rows) or 15 facts plus Fix it; Fix it box (workbook 2 on, Days 1 to 5, up to 3 items); spare room: In your head box |
-| 2 New idea | the unit's short title (D-201); "Before you ..." or "Try it first. Then see how it works." (U19 on) | NEW IDEA chip (+ "Unit A · new step"); Try this first card (U19 on); worked example panel, two ways or figure + "What's going on"; Spot the error card or Now you card (2 to 4 items) |
-| 3 Practice | the unit's short title (D-201); "Watch one. Finish two. Then do the rest on your own." | PRACTICE chip + one-line rule; Watch one panel (1 worked item, answer in blue); "FINISH THESE" (2 items, partly filled in blue); "ON YOUR OWN" (3 to 8 items) |
-| 4 Practice 2 | the unit's short title (D-201); "Each row is a little harder than the one before." | PRACTICE chip; rows of items getting harder (up to 12 column problems in a 4-column grid, labelled rows such as "TWO DIGITS", "HARDER: THREE DIGITS", "LOOK FIRST: SOME DON'T NEED A TRADE"); one Solve it two ways item (heading "Solve it two ways"; METHOD 1 and METHOD 2 work boxes + Answer box); one Spot the error card |
+| 2 New idea | the skill's short title, or the unit title when skills mix (D-201); "Before you ..." or "Try it first. Then see how it works." (U19 on) | NEW IDEA chip (+ "Unit A · new step"); Try this first card (U19 on); worked example panel, two ways or figure + "What's going on"; Spot the error card or Now you card (2 to 4 items) |
+| 3 Practice | the skill's short title, or the unit title when skills mix (D-201); "Watch one. Finish two. Then do the rest on your own." | PRACTICE chip + one-line rule; Watch one panel (1 worked item, answer in blue); "FINISH THESE" (2 items, partly filled in blue); "ON YOUR OWN" (3 to 8 items) |
+| 4 Practice 2 | the skill's short title, or the unit title when skills mix (D-201); "Each row is a little harder than the one before." | PRACTICE chip; rows of items getting harder (up to 12 column problems in a 4-column grid, labelled rows such as "TWO DIGITS", "HARDER: THREE DIGITS", "LOOK FIRST: SOME DON'T NEED A TRADE"); one Solve it two ways item (heading "Solve it two ways"; METHOD 1 and METHOD 2 work boxes + Answer box); one Spot the error card |
 | 5 Word problems | "Number stories to <n>" up to U12, "Word problems" from U13 (D-201); "Read it. Work it out in the box. Write the answer." | 3 stories, each: number, story (up to 3 lines), optional picture (dots, blocks), work box, ANSWER box with unit word; one "How do you know?" or "Did you need to ...? How do you know?" with 2 writing lines. Story number in Geist Light 26; stories separated by full-width 1.5 px `#FF6A3D` rules; answer boxes 80 to 96 by 40 |
-| 6 Unit B | the Unit B unit's short title (D-201); "Unit B: <topic>. <one-line rule>." | NEW IDEA or REMEMBER chip + "Unit B · new step" or "From yesterday"; reminder panel (figure + "What's going on"); PRACTICE chip; up to 8 items, "HARDER: TWO MORE EACH" rows last |
+| 6 Unit B | the skill's short title, or the Unit B unit title when skills mix (D-201); "Unit B: <topic>. <one-line rule>." | NEW IDEA or REMEMBER chip + "Unit B · new step" or "From yesterday"; reminder panel (figure + "What's going on"); PRACTICE chip; up to 8 items, "HARDER: TWO MORE EACH" rows last |
 | 7 Remember these + Mixed set | "Remember these?" ("Review and Friday 5" with the Friday 5); "Things you learned before, so they stay fresh." | 8 review items in 2 columns (answer boxes at the right of each column); MIXED SET chip + "Tick + or −, then write the answer."; 3 to 4 Mixed set items |
 | 8 Challenge | "Challenge"; "One to stretch you." or "Two to stretch you." | CHALLENGE chip; 1 or 2 Challenge cards (skeleton: 1 to 2 a day), full width and stacked, each with a large work box; spare room goes to spaced review. The samples' four cards in a 2 by 2 grid were sample-only |
 
@@ -306,6 +306,11 @@ From the FigJam stickies beside the Mateo sample:
 - Spacing issue around one diagram label.
 
 ## 9. Plain story language (D-201)
+
+Page titles use the same plain language. A page with one skill uses that skill's short title. A page with several
+skills from one unit uses the unit title. Story and review pages keep their title rules. Each skill title has at most
+4 words, uses sentence case, and differs from the other skill titles in its unit. Code rejects missing titles and
+banned phrases. The print check uses the real font and title size and rejects a title that cannot print on one line.
 
 Every story question at every level uses plain language. This includes picture cards on practice and review pages,
 word problems, picture stories and the Mixed set. Bare number sentences and pure equation cards stay as equations.

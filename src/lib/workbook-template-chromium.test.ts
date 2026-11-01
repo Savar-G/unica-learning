@@ -4,6 +4,7 @@ import { chromiumPrintEngine, findChromium } from "@/lib/print-engine-chromium";
 import { proofPages, renderWorkbook, type DraftPage, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleBook } from "@/lib/workbook-sample-book";
 import { titleProblem, UNIT_TITLES } from "@/lib/workbook-titles";
+import { SKILL_TITLES } from "@/lib/workbook-skill-titles";
 import { workbookTemplate } from "@/lib/workbook-template";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
 
@@ -65,8 +66,8 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
   }, 60_000);
 
   it("fits the longest title code writes on one line on every day page type, and fails a title too long for one (D-201)", async () => {
-    // Every title code writes: each unit's, each strand's, the stories' and the fixed pages' (src/lib/workbook-titles.ts).
-    const titles = [...Object.values(UNIT_TITLES), "Patterns and equations", "Fractions and decimals", "Shapes and measuring", "Number stories to 1000", "Review and Friday 5", "Show what you know", "Level U30 test"];
+    // The separate catalogue print checks every skill and unit title. Here the longest string also visits every page type.
+    const titles = [...Object.values(SKILL_TITLES), ...Object.values(UNIT_TITLES), "Patterns and equations", "Fractions and decimals", "Shapes and measuring", "Number stories to 1000", "Review and Friday 5", "Show what you know", "Level U30 test"];
     const longest = titles.reduce((a, b) => (b.length > a.length ? b : a));
     expect(titleProblem(longest)).toBeNull();
     // The title goes in when the book is planned, as the generator's will.

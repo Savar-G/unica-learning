@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+vi.mock("server-only", () => ({}));
+import { BC_SKILL_MAP } from "@/lib/assessment/skill-map";
+import { SKILL_TITLES } from "@/lib/workbook-skill-titles";
+import { skillTitleProblems } from "@/lib/workbook-skill-title-check";
 import { dayHeader } from "@/lib/workbook-book";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import { planWorkbook, type PlannedPage, type PlannedPart } from "@/lib/workbook-plan";
@@ -19,6 +23,32 @@ const skills: TitleSkills = {
 };
 
 describe("page titles", () => {
+  it("has exactly one valid, distinct title per BC skill, in both the map and the curriculum", () => {
+    expect(skillTitleProblems(SKILL_TITLES)).toEqual([]);
+    const ids = BC_SKILL_MAP.standards.flatMap((u) => u.skills.map((s) => s.id)).sort();
+    expect(Object.keys(SKILL_TITLES).sort()).toEqual(ids);
+    expect(BC.levels.flatMap((l) => BC.levelSkills(l.id)!.map((s) => s.id)).sort()).toEqual(ids);
+  });
+
+  it("refuses missing, stale, duplicate and invalid skill title data", () => {
+    const titles = { ...SKILL_TITLES };
+    delete titles["K3-ten-frame"];
+    expect(skillTitleProblems(titles)).toContain("K3-ten-frame: missing title");
+    expect(skillTitleProblems({ ...SKILL_TITLES, unknown: "Unknown skill" })).toContain("unknown: not a skill in the BC map");
+    expect(skillTitleProblems({ ...SKILL_TITLES, "K3-make-10": SKILL_TITLES["K3-ten-frame"] }).join("\n")).toMatch(/repeats .* within unit K3/);
+    expect(skillTitleProblems({ ...SKILL_TITLES, "K3-ten-frame": "The total" }).join("\n")).toMatch(/banned phrase/);
+  });
+
+  it("uses the skill title when all parts share one skill, including worked examples with zero items", () => {
+    for (const id of ["K3-ten-frame", "K3-benchmarks-5-10"]) {
+      expect(pageTitle(page([part("new-idea", [id], 0), part("practice", [id]), part("spot-the-error", [id], 1)]), 3, {
+        ...skills, unit: (s) => BC.skill(s)!.unit,
+      })).toBe(SKILL_TITLES[id]);
+    }
+    expect(SKILL_TITLES["K3-ten-frame"]).not.toBe(SKILL_TITLES["K3-benchmarks-5-10"]);
+    expect(() => pageTitle(page([part("practice", ["unknown"])]), 3, skills)).toThrow(/Missing workbook skill title/);
+  });
+
   it("gives every BC unit a short title of at most 4 words", () => {
     const units = BC.levels.flatMap((l) => l.units);
     expect(units.length).toBeGreaterThan(100);
@@ -58,6 +88,9 @@ describe("page titles", () => {
     expect(titleProblem("Number stories to 10")).toBeNull();
     expect(titleProblem("Show and read a number to 10 on a ten-frame in stories")).toMatch(/12 words; a title has at most 4/);
     expect(titleProblem("")).toMatch(/empty/);
+    for (const title of ["In all", "Altogether", "The total", "Left over", "Left-over pieces"]) expect(titleProblem(title)).toMatch(/banned phrase/);
+    expect(titleProblem("less than 5")).toMatch(/capital letter/);
+    expect(titleProblem("Less\nthan 5")).toMatch(/one line/);
   });
 
   it("writes a title of at most 4 words, and a day label with no skill, on every day page of a book at every level", () => {
