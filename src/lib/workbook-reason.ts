@@ -79,6 +79,7 @@ const RULES: Rule[] = [
   [/reference/, "Missing where the question belongs"],
   [/^the package (is not an object|has no id)|^the template id|^the question has no text/, "Question is missing its words or id"],
   // The kind of question and its picture.
+  [/^code cannot tell whether /, "Code can't check the picture"],
   [/^the item format is not one the generator builds|^the item's format is not one code knows/, "A question type the generator can't make"],
   [/^a panel's worked example/, "Worked example code can't work out"],
   [/^a pattern item|^a pattern (check|figure)|^a pattern's (core|blank)|^a pattern (needs|shows)/, "Shape pattern is missing a part"],

@@ -6,6 +6,8 @@ import type { RunSolve } from "@/lib/workbook-job";
 import { workedSteps, type QuestionPackage } from "@/lib/question-package";
 import { solveReason, toSolve } from "@/lib/workbook-solve-check";
 import { AdminWorkbookRun } from "@/components/admin-workbook-runs";
+import { buildQuestion } from "@/lib/workbook-generator-items";
+import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 
 // Navigation feedback is outside this server component's check and cost labels.
 vi.mock("server-only", () => ({}));
@@ -95,6 +97,30 @@ describe("admin workbook check labels (R379-1)", () => {
     const text = visible(markup(d));
     expect(text).not.toContain("All questions agree");
     expect(text).toContain("Checking AI didn't check 1 question");
+  });
+
+  it("includes a missing generated question in the saved draft's check summary", async () => {
+    const d = runDetail("agreed");
+    const w = d.draft!.workbook;
+    const page = w.pages[0];
+    const failed = buildQuestion(null, { id: "missing-question", workbookId: w.id, page: 1, question: 2, level: 10, skills: ["3.4-recall-addition-20"] });
+    expect(failed.package).toBeNull();
+    expect(failed.check.status).toBe("failed");
+    page.questions.push({ ...page.questions[0], number: 2, slot: "1.8", package: failed.package, check: failed.check });
+    w.counts.questions = 2;
+    w.counts.failed = 1;
+    w.id = "00000000-0000-4000-8000-0000000000a1";
+    w.childId = "00000000-0000-4000-8000-0000000000c1";
+    page.questions[0].package!.ref = { source: "workbook", workbookId: w.id, page: 1, question: 1 };
+    page.qrToken = "token-000000000001";
+    for (let number = 2; number <= 4; number++) w.pages.push({ ...page, number, qrToken: `token-${String(number).padStart(12, "0")}`, questions: [] });
+    const store = memoryDraftStore({ [w.childId]: "00000000-0000-4000-8000-0000000000f1" });
+    expect(await store.save(w)).toMatchObject({ status: "saved" });
+    d.draft!.workbook = (await store.draft(w.id))!;
+    const text = visible(markup(d));
+    expect(text).not.toContain("All questions agree");
+    expect(text.split("Checking AI didn't check 1 question")).toHaveLength(3);
+    expect(text).toContain("The AI wrote nothing usable");
   });
 
   it.each(["failed", "disagreed"] as const)("keeps a current %s solve result when the math check passed", (state) => {

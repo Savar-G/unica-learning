@@ -58,6 +58,7 @@ export function solveSummary(states: SolveState[], ran: boolean): SolveSummary {
   const errored = states.filter((s) => s === "errored").length;
   const unchecked = states.filter((s) => s === "not-checked").length;
   if (!ran && disagreed === 0 && errored === 0) return { state: "not-checked", disagreed, errored, line: "Checking AI didn't run", tone: "muted" };
+  if (states.length === 0) return { state: "not-checked", disagreed, errored, line: "Checking AI didn't check any current questions", tone: "muted" };
   const parts = [
     disagreed > 0 && `${questions(disagreed)} still ${disagreed === 1 ? "disagrees" : "disagree"}`,
     errored > 0 && `Checking AI couldn't check ${questions(errored)}`,

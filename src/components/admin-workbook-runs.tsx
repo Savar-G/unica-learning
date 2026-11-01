@@ -241,7 +241,7 @@ const solveStateOf = (q: GeneratedQuestion, solves: Map<string, RunSolve[]>): So
 
 /** The draft's solve check result, the one state the top box, the chip, the table and the rows share (R379-1). */
 function draftSolveSummary(questions: GeneratedQuestion[], solves: Map<string, RunSolve[]>): SolveSummary {
-  const states = questions.filter((q) => failedSolve(q) || (q.package && toSolve(q.package).questions.length > 0)).map((q) => solveStateOf(q, solves));
+  const states = questions.filter((q) => !q.package || failedSolve(q) || toSolve(q.package).questions.length > 0).map((q) => solveStateOf(q, solves));
   return solveSummary(states, solves.size > 0);
 }
 

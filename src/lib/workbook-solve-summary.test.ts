@@ -38,6 +38,10 @@ describe("solveSummary (R379-1)", () => {
     expect(solveSummary(["agreed", "agreed"], true)).toMatchObject({ state: "agreed", line: "All questions agree", tone: "ok" });
   });
 
+  it("does not use historical checks to confirm an empty current list", () => {
+    expect(solveSummary([], true)).toMatchObject({ state: "not-checked", line: "Checking AI didn't check any current questions", tone: "muted" });
+  });
+
   it("does not claim agreement when a printed question has no check", () => {
     expect(solveSummary(["agreed", "not-checked"], true)).toMatchObject({ state: "not-checked", line: "Checking AI didn't check 1 question", tone: "warn" });
   });

@@ -1,7 +1,32 @@
 import { describe, expect, it } from "vitest";
 import { NEEDS_A_LOOK, plainProblem, plainReason } from "@/lib/workbook-reason";
+import { checkQuestionPackage, workedSteps, type QuestionPackage } from "@/lib/question-package";
 
 describe("plainReason", () => {
+  it("describes a dots-picture limit reported by the package checker", () => {
+    const operation = { kind: "divide" as const, operands: [8, 2] as [number, number] };
+    const easier = { kind: "divide" as const, operands: [4, 2] as [number, number] };
+    const pkg: QuestionPackage = {
+      id: "dots-question", templateId: null,
+      ref: { source: "workbook", workbookId: "draft", page: 1, question: 1 },
+      skill: { standard: "3.4", skills: ["3.4-recall-addition-20"] }, level: 10, difficulty: 1,
+      text: "8 ÷ 2 = ?", operation,
+      answer: { value: { type: "number", value: 4 }, accepted: [], unit: null },
+      steps: workedSteps(operation),
+      item: { format: "write-number", scorable: true, parentChecked: false, error: null,
+        figure: { kind: "dots", groups: [8], takenAway: 0 },
+        regions: [{ id: "answer", kind: "box", label: null, answer: { type: "number", value: 4 } }],
+        checks: [{ kind: "operation", region: "answer" }] },
+      wrongAnswers: [{ value: { type: "number", value: 3 }, cause: "count", description: "Counts one too few.", step: null }],
+      easierExample: { text: "4 ÷ 2 = ?", operation: easier, answer: { type: "number", value: 2 }, steps: workedSteps(easier) },
+    };
+    const result = checkQuestionPackage(pkg);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("Expected an unsupported picture");
+    expect(result.reason).toBe("code cannot tell whether dots 8 shows the question");
+    expect(plainReason(result.reason)).toBe("Code can't check the picture");
+  });
+
   it.each([
     ['it works the same sum as question 23 on this page ("? = 1 + 3")', "Same sum as question 23"],
     ['it is the same as question 4 on this page ("2 + 2 = ?")', "Same as question 4"],
