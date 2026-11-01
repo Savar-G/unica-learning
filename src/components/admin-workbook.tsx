@@ -7,6 +7,7 @@ import type { WorkbookDetail } from "@/lib/admin-store";
 import { when, workbookPdfPath } from "@/lib/admin-view";
 import { checkQuestionPackage, hasOperation, packageItem, stepText, valueText, type AnswerRegion, type QuestionPackage } from "@/lib/question-package";
 import type { WorkbookPage, WorkbookQuestion, WorkbookStatus } from "@/lib/workbook-content";
+import { curriculumFor } from "@/lib/workbook-curriculum";
 import { AdminFrame, Chip, Table, type Tone } from "@/components/admin";
 import { RecordFacts, childPath } from "@/components/admin-records";
 import "./admin-workbook.css";
@@ -56,13 +57,34 @@ function regionKey(r: AnswerRegion): string {
   return "not scored";
 }
 
+/** A region's plain name: its printed label, else what it is ("Answer box", "Box a", "Choice"); never a bare id. */
+function regionName(r: AnswerRegion): string {
+  if (r.label) return r.label;
+  if (r.kind === "box") return r.id === "answer" ? "Answer box" : `Box ${r.id}`;
+  if (r.kind === "choice") return "Choice";
+  return r.kind === "picture" ? "Drawing space" : "Writing space";
+}
+
+const BC = curriculumFor("bc");
+
+/** A package's skills by their plain names from the BC skill map ("Recall addition facts to 20"), else the standard's
+ * text; the codes go in the tooltip only. */
+function SkillCell({ skill }: { skill: QuestionPackage["skill"] }): ReactNode {
+  const names = skill.skills.map((id) => BC?.skill(id)?.text).filter((t): t is string => !!t);
+  const unit = BC?.unit(skill.standard)?.text;
+  const name = names.length ? names.join("; ") : unit ? unit[0].toUpperCase() + unit.slice(1) : "Skill not in the skill map";
+  return <span title={[skill.standard, ...skill.skills].join(" · ")}>{name}</span>;
+}
+
+const formatText = (f: string) => f.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
+
 /** The answer key: each region of the item, or for a package with no item, its answer and accepted forms. */
 function AnswerCell({ p }: { p: QuestionPackage }): ReactNode {
   const accepted = p.answer && p.answer.accepted.length > 0 && <span className="adm-sub">also {p.answer.accepted.map(valueText).join(", ")}</span>;
   if (!p.item) return <>{p.answer && valueText(p.answer.value)}{accepted}</>;
   return <>
     <ul className="adm-wb-list">{p.item.regions.map((r) => (
-      <li key={r.id}><span className="adm-mono">{r.label ?? r.id}</span> {regionKey(r)}</li>
+      <li key={r.id} title={`Region ${r.id}`}>{regionName(r)}: {regionKey(r)}</li>
     ))}</ul>
     {accepted}
   </>;
@@ -73,11 +95,11 @@ export function PackageCells({ p, check }: { p: QuestionPackage; check?: ReactNo
   const item = packageItem(p);
   const marking = item.scorable ? "scorable" : item.parentChecked ? "a parent checks it" : "not scored";
   return <>
-    <td><span className="adm-wb-text">{p.text}</span><span className="adm-sub adm-mono">{p.id}</span><span className="adm-sub">{item.format} · {marking}</span></td>
+    <td title={`Question id ${p.id}`}><span className="adm-wb-text">{p.text}</span><span className="adm-sub">{formatText(item.format)} · {marking}</span></td>
     <td><AnswerCell p={p} /></td>
     <td>{check ?? <CheckCell p={p} />}</td>
     <td><ol className="adm-wb-steps">{hasOperation(p) && p.steps.map((s) => <li key={s.id}>{stepText(s, p.operation)}</li>)}</ol></td>
-    <td className="adm-nowrap">{p.skill.standard}<span className="adm-sub adm-mono">{p.skill.skills.join(", ")}</span></td>
+    <td><SkillCell skill={p.skill} /></td>
     <td className="adm-nowrap">U{p.level} · {p.difficulty}</td>
     <td><ul className="adm-wb-list">{p.wrongAnswers.map((w, i) => (
       <li key={i}><b>{valueText(w.value)}</b> {w.cause}: {w.description}{w.step && <span className="adm-sub">at the {w.step} step</span>}</li>
