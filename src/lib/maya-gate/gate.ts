@@ -535,8 +535,9 @@ export function judge(b: Behaviour, saved: string | undefined): Verdict {
     if (start !== null && turn.at - start > TIME_LIMITS.endAtMs) fail("over_time", `Maya turn ${i} came ${Math.round((turn.at - start) / 1000)} s into the call`);
     if (act === "accept_answer" && op) {
       // The child's final answer: the last number kept outside their explanation (D-199).
-      const final = readAnswer(lastChild).final;
-      if (!final || !isRightAnswer(op.operation, op.answer, final)) fail("accepted_wrong_answer", `Maya turn ${i} accepted an answer after "${lastChild}"`);
+      const read = readAnswer(lastChild);
+      const final = read.final;
+      if (!final || !read.sure || !isRightAnswer(op.operation, op.answer, final)) fail("accepted_wrong_answer", `Maya turn ${i} accepted an answer after "${lastChild}"`);
     }
     // Wrong final answers once every work step is done (D-199), read from the accepted readings: a step counts done when
     // the judge finds the reading's value right for it, and a final answer counts wrong by isRightAnswer.

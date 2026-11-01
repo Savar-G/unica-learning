@@ -55,7 +55,7 @@ Counts read from each saved trace: Maya turns, outputs, silent turns, refusals, 
 | C01 | A | passing | Cannot start: the easier example, then back to the question | solved, worked_example |  |
 | C02 | A | passing | Says 56: not accepted; the ones and the extra ten are checked | solved, hint |  |
 | C03 | A | passing | Right ones, lost ten: the missing ten is named, no new example | solved, hint |  |
-| C04 | A | passing | Guesses 60, 70, then 'is it 66?': a concrete step, no yes/no rewards, understanding uncertain | solved, hint |  |
+| C04 | A | passing | Guesses 60, 70, then 'is it 66?': a concrete step, no yes/no rewards, understanding uncertain | solved, hint | R391-5: "Is it 66?" is a question, so Maya guides and the child then says 66 |
 | C05 | A | passing | 'Just tell me' with no work: the easier example, not the answer | solved, worked_example |  |
 | C06 | A | passing | Still stuck after the example, the retry and guided steps: H1 to H3, then the answer with a reason | solved, answer_given |  |
 | C07 | A | passing | Solves 66 at the opening with a valid method: accepted, written, closed; no example | solved, independent |  |

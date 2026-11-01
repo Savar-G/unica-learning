@@ -295,7 +295,12 @@ const takeBacks = (text: string) => correctionRuns(text);
  * near it may be rejected rather than given, so the turn holds no answer and Maya asks (R391-3). No reading of what the
  * negative applies to is tried, because none is reliable in children's speech.
  */
-const NEGATIVE = /\b(?:not|never|wrong|nope|nah|dont|doesnt|didnt|isnt|wasnt|arent|werent|cant|wont|couldnt|shouldnt|aint)\b|\w+n['’]t\b/i;
+const NEGATIVE = /\b(?:not|never|wrong|nope|nah|incorrect|mistake|mistaken|reject|rejected|ruled|scratch|forget|ignore|undo|cancel|dont|doesnt|didnt|isnt|wasnt|arent|werent|cant|wont|couldnt|shouldnt|aint)\b|\w+n['’]t\b|\btake (?:that|it) back\b/i;
+/**
+ * Words of doubt, and a question mark (R391-5): "maybe 66", "is it 66?", "66 or something", "66, I am unsure". The
+ * number may still be judged wrong, but it is never accepted as right: Maya confirms it first.
+ */
+const DOUBT = /\b(?:maybe|perhaps|probably|possibly|guess|guessing|unsure|sure|or something|or so|ish|dunno|idk|kinda|sorta)\b|\?/i;
 
 /**
  * A negative in the child's first turn that holds a number or any turn after it (a line is one child turn: "I don't
@@ -306,6 +311,13 @@ const negativeNearAnswer = (text: string) => {
   const lines = text.split("\n");
   const first = lines.findIndex((line) => { const r = readNumbers(line); return r.values.length > 0 || r.unreadable; });
   return first >= 0 && lines.slice(first).some((line) => NEGATIVE.test(line));
+};
+
+/** A word of doubt or a question mark in the child's first turn with a number or any turn after it (DOUBT). */
+const doubtNearAnswer = (text: string) => {
+  const lines = text.split("\n");
+  const first = lines.findIndex((line) => { const r = readNumbers(line); return r.values.length > 0 || r.unreadable; });
+  return first >= 0 && lines.slice(first).some((line) => DOUBT.test(line));
 };
 
 /**
@@ -381,6 +393,48 @@ export interface AnswerRead {
   final: AnswerValue | null;
   /** The turn offers numbers as a choice ("is it 66 or 56?"): none of them is the child's answer yet. */
   choice: boolean;
+  /**
+   * The child committed (R391-5): no doubt ("maybe", "?", "or something") and the final answer stands among plain answer
+   * words (committedFinal). A number the child was not sure of may be judged wrong, never accepted as right.
+   */
+  sure: boolean;
+}
+
+/**
+ * The plain words a committed answer may stand among (R391-5): "I got 66", "It's 66", "So, all together, 66", "66
+ * centimetres", "The answer is sixty-six". A final answer is sure only when its own clause holds nothing else, so any
+ * other word beside it ("maybe 66", "66 or something", "I reject 66") makes Maya confirm it before it is accepted. An allow-list, because no list of doubting or rejecting words is ever complete.
+ */
+const ANSWER_WORDS = new Set([
+  "i", "i'm", "im", "got", "get", "gets", "it", "it's", "its", "is", "was", "the", "answer", "my", "so", "then", "and",
+  "that's", "thats", "that", "makes", "make", "equals", "equal", "to", "gives", "oh", "ok", "okay", "well", "yes", "yeah",
+  "yep", "now", "think", "all", "together", "total", "in", "for", "final", "sum", "should", "be", "would", "have", "has",
+  "are", "there", "here", "wrote", "write", "down", "done", "a", "an", "of", "on", "one", "mean", "meant", "groups", "group",
+  "rows", "row", "lots", "sets", "set", "each", "left", "over", "remainder", "r", "whole", "number", "altogether", "but",
+  "said", "say", "says", "just", "really", "actually", "wait", "no", "point", "zero",
+]);
+const UNIT_WORD = /^(?:mm|cm|dm|m|km|g|kg|mg|ml|l|(?:milli|centi|deci|kilo)?(?:metre|meter|gram|litre|liter)s?|metres?|meters?|grams?|litres?|liters?|dollars?|cents?|seconds?|minutes?|hours?|days?|weeks?|months?|years?|o'clock|am|pm|a\.m\.|p\.m\.|degrees?|percent|\$|¢|%)$/i;
+
+/** Every word of a clause is a plain answer word, a number word, a place, an operation, a filler or a unit. */
+function plainClause(clause: string): boolean {
+  const words = clause.toLowerCase().replace(/[’]/g, "'").replace(/[^\w'$¢%.+×÷=\/-]+/g, " ").trim().split(/\s+/).filter(Boolean);
+  return words.every((w) => {
+    const bare = w.replace(/^[.'-]+|[.'-]+$/g, "");
+    if (!bare) return true;
+    if (ANSWER_WORDS.has(bare) || UNIT_WORD.test(bare) || PLACE.test(bare) || OPERATION.test(bare) || RESULT.test(bare) || FILLER.test(bare) || LINK.test(bare) || CHANGES.test(bare)) return true;
+    const read = readNumbers(bare);
+    return read.values.length > 0 || read.unreadable;
+  });
+}
+
+/**
+ * The final number's own clause is plain (plainClause): the child committed to it. Later clauses ("I added the ones
+ * first") need only be free of doubt and rejection (DOUBT, NEGATIVE).
+ */
+function committedFinal(text: string): boolean {
+  const clauses = text.split(/[.!;,:\n]+/);
+  const last = clauses.map((c) => readNumbers(c)).map((r) => r.values.length > 0 || r.unreadable).lastIndexOf(true);
+  return last >= 0 && plainClause(clauses[last]);
 }
 
 /**
@@ -393,7 +447,7 @@ export interface AnswerRead {
  */
 export function readAnswer(text: string): AnswerRead {
   const committed = committedText(text);
-  if (offersChoice(committed)) return { kept: [], final: null, choice: true };
+  if (offersChoice(committed)) return { kept: [], final: null, choice: true, sure: false };
   const all = readNumbers(committed);
   const answer = readNumbers(withoutExplanations(committed));
   // A correction word in an unclear shape after a number, or a negative anywhere, leaves no final answer: Maya asks
@@ -402,7 +456,9 @@ export function readAnswer(text: string): AnswerRead {
   const final = unsure || answer.unreadable || answer.lastInOperation ? null : answer.values[answer.values.length - 1] ?? null;
   // An unclear correction keeps no number at all, so no step answer is taken from the turn either (R391-2).
   const kept = unsure ? [] : all.unreadable ? answer.values : all.values;
-  return { kept, final, choice: false };
+  // Sure: no doubt anywhere from the first number on, and the final answer stands only among plain answer words.
+  const sure = !unsure && !doubtNearAnswer(text) && committedFinal(withoutExplanations(committed));
+  return { kept, final, choice: false, sure };
 }
 
 /** The text has a number form code cannot read outside the child's explanations: confirm it before judging (D-199). */
@@ -425,7 +481,8 @@ export function takenBack(text: string): { kept: AnswerValue | null } | null {
   });
   if (!before && after.values.length === 0 && !after.unreadable) return null;
   // An unclear correction anywhere puts nothing in place: what was said is taken back, and Maya asks (R391-2).
-  return { kept: unclearCorrection(text) || negativeNearAnswer(text) ? null : readAnswer(last).final };
+  const read = readAnswer(last);
+  return { kept: unclearCorrection(text) || negativeNearAnswer(text) || !read.sure ? null : read.final };
 }
 
 /** The text offers numbers as a choice ("is it 66 or 56?"): none of them is the child's answer yet. */

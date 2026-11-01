@@ -86,13 +86,16 @@ export const BEHAVIOURS: Behaviour[] = [
     steps: [
       child("60?", { start: "has_work", answers: [[60, "result", "wrong"]] }, [{ act: "guide", level: 0 }]),
       child("70?", { answers: [[70, "result", "wrong"]] }, [{ act: "guide", level: 1 }]),
-      child("Is it 66?", { answers: [[66, "result", "right"]] }),
+      // "Is it 66?" is a question, not a committed answer: Maya does not reward it with a yes, she asks for the answer
+      // (R391-5); the child then says it.
+      child("Is it 66?", undefined, [{ act: "guide", level: 1 }]),
+      child("66.", { answers: [[66, "result", "right"]] }),
       child("I just guessed.", undefined, [{ act: "ask_write", understanding: "uncertain" }]),
       wroteIt,
     ],
     expect: {
       outcome: { reason: "solved", assistance: "hint", understanding: "uncertain" },
-      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      acts: [OPEN, "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
     },
   },
   {
@@ -217,7 +220,7 @@ export const BEHAVIOURS: Behaviour[] = [
     expect: {
       outcome: { reason: "solved", assistance: "independent" },
       acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
-      refused: ["accepts_wrong_answer"],
+      refused: ["answer_not_committed"],
     },
   },
   {

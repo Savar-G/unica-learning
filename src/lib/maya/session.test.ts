@@ -213,8 +213,9 @@ describe("a wrong child answer is never accepted", () => {
   it("tells a right step apart from the whole answer: 16 is the ones, not the answer", () => {
     const c = opened();
     c.child("Seven plus nine is 16. So is the answer 16?");
+    // A question is not a committed answer, so it is refused before its math is judged (R391-5).
     expect(c.refused({ act: "accept_answer", parts: [t("Yes!")], reading: { answers: [{ value: num(16), step: "result", verdict: "right" }] } }))
-      .toMatchObject({ code: "accepts_wrong_answer" });
+      .toMatchObject({ code: "answer_not_committed" });
     c.maya({
       act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })],
       reading: { answers: [{ value: num(16), step: "ones", verdict: "right" }, { value: num(16), step: "result", verdict: "wrong" }] },
@@ -1003,6 +1004,12 @@ describe("the child's final answer, with an explanation after it (D-199)", () =>
       const negative = opened();
       negative.child(said);
       expect(["answer_not_committed", "answer_not_heard"], said).toContain(negative.refused(accept)?.code);
+    }
+    // Doubt or an uncommitted form is never accepted as right: Maya confirms it first (R391-5).
+    for (const said of ["Maybe 66.", "Is it 66?", "66 or something.", "66, I am unsure.", "66, scratch that.", "66 is incorrect.", "I reject 66."]) {
+      const doubt = opened();
+      doubt.child(said);
+      expect(["answer_not_committed", "answer_not_heard"], said).toContain(doubt.refused(accept)?.code);
     }
     // One before any number takes nothing back.
     const before = opened();
