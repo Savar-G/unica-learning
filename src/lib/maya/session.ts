@@ -1189,6 +1189,11 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     if (a.verdict === "right" && a.step === "result" && !read.sure) return { code: "answer_not_committed", reason: `The child was not sure of ${valueText(a.value)}: confirm it before saying it is right.` };
     if (a.verdict === "right" && !right) return { code: "accepts_wrong_answer", reason: `${valueText(a.value)} is not right for ${a.step}: the checked math says otherwise.` };
     if (a.verdict === "wrong" && right) return { code: "rejects_right_answer", reason: `${valueText(a.value)} is right for ${a.step}.` };
+    // The child's sure final answer is right: never "not yet" for it as a step (practice: "I think the tens make 66."
+    // got "Not yet" for the tens).
+    if (a.verdict === "wrong" && a.step !== "result" && problem === "target" && read.sure && read.final && saidAs(read.final, a.value) && isRightAnswer(pkg.operation, pkg.answer, a.value)) {
+      return { code: "rejects_right_answer", reason: `${valueText(a.value)} is the child's final answer, and it is right: accept it (step "result").` };
+    }
     checked.push({ answer: a, problem });
   }
   return null;

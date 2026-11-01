@@ -181,6 +181,16 @@ describe("steps the child already did are never asked again", () => {
     expect(c.propose({ act: "ask_write", parts: [ln("write.answer")], understanding: "uncertain" }).refusal).toBeNull();
   });
 
+  it("never says 'not yet' to the child's sure, right final answer read as a step", () => {
+    const c = call();
+    c.child("7 plus 9 is 16.");
+    c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right")] } });
+    c.child("I think the tens make 66.");
+    expect(c.propose({ act: "guide", step: "tens", level: 1, parts: [ln("check.not_yet", { step: "tens" }), ln("step.point", { step: "tens" })], reading: { answers: [ans(66, "tens", "wrong")] } }).refusal)
+      .toMatchObject({ code: "rejects_right_answer" });
+    expect(c.propose({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [ans(66, "result", "right")] } }).refusal).toBeNull();
+  });
+
   it("does not ask how the child did a step they worked out aloud", () => {
     const c = call();
     c.child("7 plus 9 is 16, carry the ten, 2 plus 3 plus 1 is 6. I got 66.");
