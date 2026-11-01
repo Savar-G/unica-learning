@@ -13,8 +13,8 @@
 //   --list                   list the sample questions
 //
 // Script lines: a child turn, or "/wait <seconds>" (the clock moves on and the pause policy runs), "/write start",
-// "/write done", "/quit". "#" starts a comment. With --script or piped input the clock is simulated (4 seconds a
-// turn, plus each /wait); typed input uses the real clock.
+// "/write done", "/quit" (the child hangs up: child_stopped). "#" starts a comment. With --script or piped input the
+// clock is simulated (4 seconds a turn, plus each /wait); typed input uses the real clock.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";

@@ -50,6 +50,32 @@ export interface TextSessionOptions {
    * fixed wording (R382-3-1); the command line prints these to stderr. Never write them to a stored record.
    */
   onError?: (error: unknown, where: { turn: number; source: "model" | "repair" } | "session") => void;
+  /**
+   * Goes on with a call saved by `saved()` on an earlier request (the admin demo, #323, runs one request per child
+   * turn). The saved state must come from this adapter with the same package; it is the server's own record, never
+   * input from a browser. The callId, package, model and options above must be the call's own.
+   */
+  resume?: SavedTextSession;
+}
+
+/**
+ * What a text session needs to go on later: the session (plain data), its turns and board batches so far, and when it
+ * ended. Plain JSON. The board scene is built again from the batches. It holds the child's words as said and the
+ * child's name: keep it on the server, and drop it once the call has ended (the trace is the record).
+ */
+export interface SavedTextSession {
+  v: 1;
+  session: Session;
+  endedAt: number | null;
+  turns: TraceTurn[];
+  board: TraceBoardBatch[];
+}
+
+/** How a call that has not ended yet ends when it is finished. */
+export interface FinishOptions {
+  reason?: "technical_issue" | "child_stopped";
+  detail?: string;
+  failed?: boolean;
 }
 
 /** What reached the child after one input: Maya's sentences and board batches, all accepted by the session. */
@@ -74,17 +100,22 @@ export interface TextSession {
   /** The connection or a service failed: the call ends. */
   technical(detail: string): Promise<TextOutput>;
   /**
-   * Ends the call as a technical issue if it has not ended (starting it first when it never started), and returns the
-   * finished trace. Call it in a `finally`: every caller gets a trace with an outcome, whatever failed. Safe to call
-   * more than once. `detail` is wording the caller writes, never an error's text; `failed` marks that a local step
-   * failed (the trace records the code "local").
+   * Ends the call if it has not ended (starting it first when it never started), and returns the finished trace. Call
+   * it in a `finally`: every caller gets a trace with an outcome, whatever failed. Safe to call more than once.
+   * `reason`: "child_stopped" when the child hung up on purpose (a `hang_up` turn; the outcome's priority still puts
+   * safety, a content issue and a solved question first); "technical_issue" (the default) for everything else, with
+   * `detail`, wording the caller writes, never an error's text, and `failed` when a local step failed (the trace
+   * records the code "local"). The older form `finish(detail, failed)` still works and ends as a technical issue, so
+   * callers written against trace version 1 (the behaviour gate, #384) need no change.
    */
-  finish(detail?: string, failed?: boolean): Promise<MayaTrace>;
+  finish(end?: FinishOptions | string, failed?: boolean): Promise<MayaTrace>;
   /** The session now (plain data). */
   readonly session: Session;
   readonly ended: boolean;
   /** The trace so far, with the child's name as {name} and secrets removed: complete once the call has ended. */
   trace(): MayaTrace;
+  /** The state to go on with later (`resume`), after the inputs so far have finished. */
+  saved(): Promise<SavedTextSession>;
 }
 
 /** Safe acts first; then the gentlest teaching; giving or accepting the answer and closing come last. */
@@ -118,12 +149,21 @@ function fallbacks(session: Session): unknown[] {
 const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
 
 export function createTextSession(options: TextSessionOptions): TextSession {
-  const { model, clock } = options;
-  let session = createSession({ callId: options.callId, package: options.package, random: options.random, history: options.history, childName: options.childName, freeTalk: false });
+  const { model, clock, resume } = options;
+  if (resume && (resume.v !== 1 || resume.session.callId !== options.callId)) throw new Error("maya text: the saved session is not this call's");
+  let session = resume
+    ? structuredClone(resume.session)
+    : createSession({ callId: options.callId, package: options.package, random: options.random, history: options.history, childName: options.childName, freeTalk: false });
   let scene: Scene = createScene();
-  let endedAt: number | null = null;
-  const turns: TraceTurn[] = [];
-  const board: TraceBoardBatch[] = [];
+  let endedAt: number | null = resume?.endedAt ?? null;
+  const turns: TraceTurn[] = resume ? structuredClone(resume.turns) : [];
+  const board: TraceBoardBatch[] = resume ? structuredClone(resume.board) : [];
+  // The board scene again, from the batches the board core accepted before.
+  for (const b of board) {
+    const applied = applyBatch(scene, { transactionId: b.transactionId, commands: b.commands });
+    if (!applied.ok) throw new Error(`maya text: the saved board batch ${b.transactionId} does not apply again`);
+    scene = applied.scene;
+  }
   const hash = packageHash(options.package);
   const raw = typeof options.package === "object" && options.package !== null ? (options.package as Record<string, unknown>) : {};
   let queue: Promise<unknown> = Promise.resolve();
@@ -259,8 +299,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     return Math.max(Number.isFinite(t) ? t : 0, session.now ?? 0, turns.at(-1)?.at ?? 0);
   }
 
-  /** Ends the call as a technical issue now, if it has not ended. */
-  function endNow(detail: string, error?: TraceError) {
+  /** Ends the call now, if it has not ended: a hang-up, or else a technical issue. */
+  function endNow(detail: string, error?: TraceError, reason: FinishOptions["reason"] = "technical_issue") {
     // A Maya turn cut off before its first attempt has nothing to record.
     for (let i = turns.length - 1; i >= 0; i--) {
       const t = turns[i];
@@ -270,6 +310,11 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const at = safeNow();
     const out = newOutput();
     if (session.startedAt === null && event({ type: "start", at }, out)) turns.push({ kind: "start", at });
+    if (reason === "child_stopped" && event({ type: "hang_up", at }, out)) {
+      turns.push({ kind: "hang_up", at });
+      return;
+    }
+    if (session.outcome) return;
     if (event({ type: "technical", at, detail }, out)) turns.push({ kind: "technical", at, detail, ...(error ? { error } : {}) });
   }
 
@@ -357,11 +402,17 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     get ended() {
       return session.outcome !== null;
     },
-    finish: async (detail = "the session was closed before the call ended", failed = false) => {
+    finish: async (end = {}, oldFailed) => {
+      const { reason = "technical_issue", detail = "the session was closed before the call ended", failed = false }: FinishOptions =
+        typeof end === "string" ? { detail: end, failed: oldFailed ?? false } : end;
       await queue;
-      endNow(redactText(detail), failed ? classifyError(null, "local") : undefined);
+      endNow(redactText(detail), failed ? classifyError(null, "local") : undefined, reason);
       return trace();
     },
     trace,
+    saved: async () => {
+      await queue;
+      return structuredClone({ v: 1 as const, session, endedAt, turns, board });
+    },
   };
 }
