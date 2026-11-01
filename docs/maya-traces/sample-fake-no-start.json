@@ -1,0 +1,841 @@
+{
+  "kind": "maya-trace",
+  "version": 1,
+  "callId": "text-2026-10-31T10-31-51-855Z",
+  "runner": "livekit-text",
+  "startedAt": "2026-10-31T10:31:51.855Z",
+  "endedAt": "2026-10-31T10:32:23.855Z",
+  "model": {
+    "id": "fake",
+    "promptVersion": "maya-text-1"
+  },
+  "versions": {
+    "proposal": 2,
+    "lines": 1,
+    "session": 4
+  },
+  "question": {
+    "id": "add-27-39",
+    "ref": {
+      "source": "workbook",
+      "workbookId": "sample",
+      "page": 1,
+      "question": 1
+    },
+    "text": "27 + 39 = ?",
+    "hash": "sha256:41220a52685bca2cc5b4b83a5dc0745c7dc8219095706f507634d31084ac1b4e"
+  },
+  "freeTalk": false,
+  "turns": [
+    {
+      "kind": "start",
+      "at": 1793442711855
+    },
+    {
+      "kind": "maya",
+      "at": 1793442711855,
+      "state": "OPEN",
+      "stateAfter": "OPEN",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": {
+            "version": 2,
+            "act": "open",
+            "parts": [
+              {
+                "warm": "opening",
+                "echo": null,
+                "pick": null
+              },
+              {
+                "line": "open.hello",
+                "slots": {
+                  "step": null,
+                  "sentence": null,
+                  "heard": null,
+                  "other": null
+                }
+              }
+            ],
+            "reading": null,
+            "step": null,
+            "level": null,
+            "understanding": null,
+            "draw": null,
+            "board": null
+          },
+          "refusal": null,
+          "ms": 0
+        }
+      ],
+      "output": {
+        "act": "open",
+        "say": [
+          "Shall we get going? Hi, I'm Maya, an AI helper."
+        ],
+        "board": []
+      }
+    },
+    {
+      "kind": "child",
+      "at": 1793442715855,
+      "text": "I don't know how to start."
+    },
+    {
+      "kind": "maya",
+      "at": 1793442715855,
+      "state": "ASSESS",
+      "stateAfter": "MODEL_EXAMPLE",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": {
+            "version": 2,
+            "act": "example_step",
+            "parts": [
+              {
+                "warm": "encourage",
+                "echo": null,
+                "pick": null
+              },
+              {
+                "line": "example.intro",
+                "slots": {
+                  "step": null,
+                  "sentence": null,
+                  "heard": null,
+                  "other": null
+                }
+              },
+              {
+                "line": "example.step",
+                "slots": {
+                  "step": "ones",
+                  "sentence": null,
+                  "heard": null,
+                  "other": null
+                }
+              }
+            ],
+            "reading": {
+              "safety": null,
+              "stop": null,
+              "unclear": null,
+              "writing": null,
+              "offTopic": null,
+              "help": null,
+              "start": "no_start",
+              "answers": null,
+              "paper": null,
+              "correctsHearing": null
+            },
+            "step": "ones",
+            "level": null,
+            "understanding": null,
+            "draw": [
+              {
+                "offer": "example.columns",
+                "place": null
+              }
+            ],
+            "board": null
+          },
+          "refusal": null,
+          "ms": 0
+        }
+      ],
+      "output": {
+        "act": "example_step",
+        "say": [
+          "Way to keep at it! I'll show you an easier one first: 18 + 5. Like this. Add the ones: 8 + 5 = 13. Write 3 and carry 1 ten."
+        ],
+        "board": [
+          "text-2026-10-31T10-31-51-855Z-b1"
+        ]
+      }
+    },
+    {
+      "kind": "maya",
+      "at": 1793442715855,
+      "state": "MODEL_EXAMPLE",
+      "stateAfter": "MODEL_EXAMPLE",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": {
+            "version": 2,
+            "act": "example_step",
+            "parts": [
+              {
+                "warm": "encourage",
+                "echo": null,
+                "pick": null
+              },
+              {
+                "line": "example.step",
+                "slots": {
+                  "step": "tens",
+                  "sentence": null,
+                  "heard": null,
+                  "other": null
+                }
+              }
+            ],
+            "reading": null,
+            "step": "tens",
+            "level": null,
+            "understanding": null,
+            "draw": [
+              {
+                "offer": "line.example.step",
+                "place": null
+              }
+            ],
+            "board": null
+          },
+          "refusal": null,
+          "ms": 0
+        }
+      ],
+      "output": {
+        "act": "example_step",
+        "say": [
+          "You've got this. Look. Add the tens: 1 + 1 = 2. Write 2."
+        ],
+        "board": [
+          "text-2026-10-31T10-31-51-855Z-b2"
+        ]
+      }
+    },
+    {
+      "kind": "maya",
+      "at": 1793442715855,
+      "state": "MODEL_EXAMPLE",
+      "stateAfter": "MODEL_EXAMPLE",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": {
+            "version": 2,
+            "act": "example_step",
+            "parts": [
+              {
+                "warm": "encourage",
+                "echo": null,
+                "pick": null
+              },
+              {
+                "line": "example.step",
+                "slots": {
+                  "step": "result",
+                  "sentence": null,
+                  "heard": null,
+                  "other": null
+                }
+              }
+            ],
+            "reading": null,
+            "step": "result",
+            "level": null,
+            "understanding": null,
+            "draw": [
+              {
+                "offer": "line.example.step",
+                "place": null
+              }
+            ],
+            "board": null
+          },
+          "refusal": null,
+          "ms": 0
+        }
+      ],
+      "output": {
+        "act": "example_step",
+        "say": [
+          "Your effort is awesome. There we go: 18 + 5 = 23."
+        ],
+        "board": [
+          "text-2026-10-31T10-31-51-855Z-b3"
+        ]
+      }
+    },
+    {
+      "kind": "child",
+      "at": 1793442719855,
+      "text": "Okay."
+    },
+    {
+      "kind": "maya",
+      "at": 1793442719855,
+      "state": "MODEL_EXAMPLE",
+      "stateAfter": "TRY_TARGET",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": {
+            "version": 2,
+            "act": "try_target",
+            "parts": [
+              {
+                "warm": "encourage",
+                "echo": null,
+                "pick": null
+              },
+              {
+                "line": "try.target",
+                "slots": {
+                  "step": null,
+                  "sentence": null,
+                  "heard": null,
+                  "other": null
+                }
+              }
+            ],
+            "reading": {
+              "safety": null,
+              "stop": null,
+              "unclear": null,
+              "writing": null,
+              "offTopic": null,
+              "help": null,
+              "start": null,
+              "answers": null,
+              "paper": null,
+              "correctsHearing": null
+            },
+            "step": null,
+            "level": null,
+            "understanding": null,
+            "draw": [
+              {
+                "offer": "question.columns",
+                "place": null
+              }
+            ],
+            "board": null
+          },
+          "refusal": null,
+          "ms": 0
+        }
+      ],
+      "output": {
+        "act": "try_target",
+        "say": [
+          "You keep showing up. Can you try 27 + 39 the same way?"
+        ],
+        "board": [
+          "text-2026-10-31T10-31-51-855Z-b4"
+        ]
+      }
+    },
+    {
+      "kind": "child",
+      "at": 1793442723855,
+      "text": "Is it 56?"
+    },
+    {
+      "kind": "maya",
+      "at": 1793442723855,
+      "state": "TRY_TARGET",
+      "stateAfter": "GUIDE_TARGET",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": {
+            "version": 2,
+            "act": "guide",
+            "parts": [
+              {
+                "warm": "encourage",
+                "echo": null,
+                "pick": null
+              },
+              {
+                "line": "step.invite",
+                "slots": {
+                  "step": "ones",
+                  "sentence": null,
+                  "heard": null,
+                  "other": null
+                }
+              }
+            ],
+            "reading": {
+              "safety": null,
+              "stop": null,
+              "unclear": null,
+              "writing": null,
+              "offTopic": null,
+              "help": null,
+              "start": "has_work",
+              "answers": [
+                {
+                  "value": {
+                    "type": "number",
+                    "value": 56
+                  },
+                  "step": "result",
+                  "problem": "target",
+                  "verdict": "wrong"
+                }
+              ],
+              "paper": null,
+              "correctsHearing": null
+            },
+            "step": "ones",
+            "level": 0,
+            "understanding": null,
+            "draw": null,
+            "board": null
+          },
+          "refusal": null,
+          "ms": 0
+        }
+      ],
+      "output": {
+        "act": "guide",
+        "say": [
+          "I love how you're not giving up. Let's look at the ones. What can you do there?"
+        ],
+        "board": []
+      }
+    },
+    {
+      "kind": "child",
+      "at": 1793442727855,
+      "text": "Can you help me?"
+    },
+    {
+      "kind": "maya",
+      "at": 1793442727855,
+      "state": "GUIDE_TARGET",
+      "stateAfter": "GUIDE_TARGET",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": {
+            "version": 2,
+            "act": "guide",
+            "parts": [
+              {
+                "warm": "encourage",
+                "echo": null,
+                "pick": null
+              },
+              {
+                "line": "step.invite",
+                "slots": {
+                  "step": "ones",
+                  "sentence": null,
+                  "heard": null,
+                  "other": null
+                }
+              }
+            ],
+            "reading": {
+              "safety": null,
+              "stop": null,
+              "unclear": null,
+              "writing": null,
+              "offTopic": null,
+              "help": "more",
+              "start": null,
+              "answers": null,
+              "paper": null,
+              "correctsHearing": null
+            },
+            "step": "ones",
+            "level": 0,
+            "understanding": null,
+            "draw": null,
+            "board": null
+          },
+          "refusal": null,
+          "ms": 0
+        }
+      ],
+      "output": {
+        "act": "guide",
+        "say": [
+          "Nice focus! What could you try for the ones?"
+        ],
+        "board": []
+      }
+    },
+    {
+      "kind": "child",
+      "at": 1793442731855,
+      "text": "16"
+    },
+    {
+      "kind": "maya",
+      "at": 1793442731855,
+      "state": "GUIDE_TARGET",
+      "stateAfter": "GUIDE_TARGET",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": {
+            "version": 2,
+            "act": "guide",
+            "parts": [
+              {
+                "warm": "encourage",
+                "echo": null,
+                "pick": null
+              },
+              {
+                "line": "step.invite",
+                "slots": {
+                  "step": "ones",
+                  "sentence": null,
+                  "heard": null,
+                  "other": null
+                }
+              }
+            ],
+            "reading": {
+              "safety": null,
+              "stop": null,
+              "unclear": null,
+              "writing": null,
+              "offTopic": null,
+              "help": null,
+              "start": "has_work",
+              "answers": [
+                {
+                  "value": {
+                    "type": "number",
+                    "value": 16
+                  },
+                  "step": "result",
+                  "problem": "target",
+                  "verdict": "wrong"
+                }
+              ],
+              "paper": null,
+              "correctsHearing": null
+            },
+            "step": "ones",
+            "level": 0,
+            "understanding": null,
+            "draw": null,
+            "board": null
+          },
+          "refusal": null,
+          "ms": 0
+        }
+      ],
+      "output": {
+        "act": "guide",
+        "say": [
+          "I like how you keep trying. Let's go to the ones. What do you think?"
+        ],
+        "board": []
+      }
+    },
+    {
+      "kind": "child",
+      "at": 1793442735855,
+      "text": "66"
+    },
+    {
+      "kind": "maya",
+      "at": 1793442735855,
+      "state": "GUIDE_TARGET",
+      "stateAfter": "CHECK",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": {
+            "version": 2,
+            "act": "accept_answer",
+            "parts": [
+              {
+                "warm": "encourage",
+                "echo": null,
+                "pick": null
+              },
+              {
+                "line": "check.explain",
+                "slots": {
+                  "step": "ones",
+                  "sentence": null,
+                  "heard": null,
+                  "other": null
+                }
+              }
+            ],
+            "reading": {
+              "safety": null,
+              "stop": null,
+              "unclear": null,
+              "writing": null,
+              "offTopic": null,
+              "help": null,
+              "start": "has_work",
+              "answers": [
+                {
+                  "value": {
+                    "type": "number",
+                    "value": 66
+                  },
+                  "step": "result",
+                  "problem": "target",
+                  "verdict": "right"
+                }
+              ],
+              "paper": null,
+              "correctsHearing": null
+            },
+            "step": "ones",
+            "level": null,
+            "understanding": null,
+            "draw": null,
+            "board": null
+          },
+          "refusal": null,
+          "ms": 0
+        }
+      ],
+      "output": {
+        "act": "accept_answer",
+        "say": [
+          "You're working hard on this. Show me how you worked out the ones."
+        ],
+        "board": []
+      }
+    },
+    {
+      "kind": "child",
+      "at": 1793442739855,
+      "text": "Because the ones made a ten, so I carried it."
+    },
+    {
+      "kind": "maya",
+      "at": 1793442739855,
+      "state": "CHECK",
+      "stateAfter": "WRITE_CLOSE",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": {
+            "version": 2,
+            "act": "ask_write",
+            "parts": [
+              {
+                "warm": "encourage",
+                "echo": null,
+                "pick": null
+              },
+              {
+                "line": "check.explain",
+                "slots": {
+                  "step": "ones",
+                  "sentence": null,
+                  "heard": null,
+                  "other": null
+                }
+              }
+            ],
+            "reading": {
+              "safety": null,
+              "stop": null,
+              "unclear": null,
+              "writing": null,
+              "offTopic": null,
+              "help": null,
+              "start": "has_work",
+              "answers": null,
+              "paper": null,
+              "correctsHearing": null
+            },
+            "step": "ones",
+            "level": null,
+            "understanding": "evidence_observed",
+            "draw": null,
+            "board": null
+          },
+          "refusal": null,
+          "ms": 0
+        }
+      ],
+      "output": {
+        "act": "ask_write",
+        "say": [
+          "Thanks for trying so hard. Can you tell me how you did the ones?"
+        ],
+        "board": []
+      }
+    },
+    {
+      "kind": "child",
+      "at": 1793442743855,
+      "text": "I wrote it."
+    },
+    {
+      "kind": "maya",
+      "at": 1793442743855,
+      "state": "WRITE_CLOSE",
+      "stateAfter": "CLOSE",
+      "attempts": [
+        {
+          "source": "model",
+          "proposal": {
+            "version": 2,
+            "act": "close",
+            "parts": [
+              {
+                "warm": "closing",
+                "echo": null,
+                "pick": null
+              },
+              {
+                "line": "close.solved",
+                "slots": {
+                  "step": null,
+                  "sentence": null,
+                  "heard": null,
+                  "other": null
+                }
+              }
+            ],
+            "reading": {
+              "safety": null,
+              "stop": null,
+              "unclear": null,
+              "writing": null,
+              "offTopic": null,
+              "help": null,
+              "start": null,
+              "answers": null,
+              "paper": "written",
+              "correctsHearing": null
+            },
+            "step": null,
+            "level": null,
+            "understanding": null,
+            "draw": null,
+            "board": null
+          },
+          "refusal": null,
+          "ms": 0
+        }
+      ],
+      "output": {
+        "act": "close",
+        "say": [
+          "See you next time! You worked out 27 + 39 today!"
+        ],
+        "board": []
+      }
+    }
+  ],
+  "board": [
+    {
+      "at": 1793442715855,
+      "turn": 3,
+      "transactionId": "text-2026-10-31T10-31-51-855Z-b1",
+      "commands": [
+        {
+          "op": "columns",
+          "id": "example",
+          "operation": "add",
+          "operands": [
+            {
+              "id": "top",
+              "value": "18"
+            },
+            {
+              "id": "bottom",
+              "value": "5"
+            }
+          ],
+          "place": {
+            "region": "main"
+          }
+        }
+      ]
+    },
+    {
+      "at": 1793442715855,
+      "turn": 4,
+      "transactionId": "text-2026-10-31T10-31-51-855Z-b2",
+      "commands": [
+        {
+          "op": "write",
+          "id": "note-2-0-example-step",
+          "text": "1 + 1 = 2",
+          "place": {
+            "region": "main"
+          }
+        }
+      ]
+    },
+    {
+      "at": 1793442715855,
+      "turn": 5,
+      "transactionId": "text-2026-10-31T10-31-51-855Z-b3",
+      "commands": [
+        {
+          "op": "write",
+          "id": "note-3-0-example-step",
+          "text": "18 + 5 = 23",
+          "place": {
+            "region": "main"
+          }
+        }
+      ]
+    },
+    {
+      "at": 1793442719855,
+      "turn": 7,
+      "transactionId": "text-2026-10-31T10-31-51-855Z-b4",
+      "commands": [
+        {
+          "op": "columns",
+          "id": "question",
+          "operation": "add",
+          "operands": [
+            {
+              "id": "top",
+              "value": "27"
+            },
+            {
+              "id": "bottom",
+              "value": "39"
+            }
+          ],
+          "place": {
+            "region": "main"
+          }
+        }
+      ]
+    }
+  ],
+  "outcome": {
+    "reason": "solved",
+    "assistance": "worked_example",
+    "paperStatus": "child_confirmed",
+    "understanding": "evidence_observed",
+    "highestHint": 0,
+    "safetyFlag": false,
+    "safetySeverity": null,
+    "mishearing": {
+      "confirmations": 0,
+      "corrections": 0
+    },
+    "seconds": 32
+  },
+  "counts": {
+    "mayaTurns": 11,
+    "refusals": 0,
+    "repairs": 0,
+    "repairedOk": 0,
+    "fallbacks": 0,
+    "modelErrors": 0,
+    "silent": 0
+  }
+}

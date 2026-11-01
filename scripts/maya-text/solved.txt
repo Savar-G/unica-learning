@@ -1,0 +1,4 @@
+# A child who solves 27 + 39 on their own and explains the carry.
+I got 66. I added the ones first.
+Seven plus nine is sixteen, so I wrote 6 and carried a ten.
+I wrote it on my paper.
