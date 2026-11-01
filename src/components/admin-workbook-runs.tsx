@@ -13,6 +13,7 @@ import type { GeneratedPage, GeneratedQuestion } from "@/lib/workbook-generator"
 import { isCodeWorded } from "@/lib/workbook-generator-items";
 import { runState, type DraftRendering, type RunSolve, type RunState, type RunStep, type WorkbookRun } from "@/lib/workbook-job";
 import type { RenderProblem } from "@/lib/workbook-render";
+import { plainProblem, plainReason } from "@/lib/workbook-reason";
 import { AdminFrame, Chip, Table, type Tone } from "@/components/admin";
 import { RecordFacts, childPath } from "@/components/admin-records";
 import { PackageCells, WorkbookStatusChip } from "@/components/admin-workbook";
@@ -50,7 +51,7 @@ export function ChecksCell({ counts, notRendered, oldFormat = false }: { counts:
   if (oldFormat) return <span className="adm-wb-checks"><Chip tone="muted">Old draft format</Chip><span className="adm-sub">Made before the page layouts. Prepare a new draft to review it.</span></span>;
   const checked = counts.questions - counts.failed - counts.notChecked;
   return <span className="adm-wb-checks">
-    {counts.failed > 0 ? <Chip tone="bad">{counts.failed} {counts.failed === 1 ? "question failed" : "questions failed"}</Chip> : <Chip tone="ok">No failed questions</Chip>}
+    {counts.failed > 0 ? <Chip tone="bad">{counts.failed} {counts.failed === 1 ? "question needs" : "questions need"} fixing</Chip> : <Chip tone="ok">No questions need fixing</Chip>}
     {counts.failedPages > 0 && <Chip tone="bad">{counts.failedPages} {counts.failedPages === 1 ? "page does" : "pages do"} not fit</Chip>}
     {counts.notChecked > 0 && <Chip tone="warn">{counts.notChecked} to check by hand</Chip>}
     {notRendered ? <Chip tone="bad">{notRendered} {notRendered === 1 ? "page" : "pages"} missing from the PDF</Chip> : null}
@@ -222,18 +223,21 @@ function pageIssues(page: GeneratedPage, problems: RenderProblem[]) {
 
 const NO_LAYOUT = /^the template has no layout for a .+ page$/;
 
-/** A problem as one line: "Question 3: ..." only when the reason does not name the question already. */
-const reasonText = (p: { question: number | null; reason: string }) =>
-  p.question && !p.reason.toLowerCase().includes(`question ${p.question}`) ? `Question ${p.question}: ${p.reason}` : p.reason;
-
-/** A page's problems, each once: the first few, then the rest behind "Show all". */
-function ProblemList({ reasons }: { reasons: string[] }) {
-  const unique = [...new Set(reasons)];
+/** A page's problems, each once in plain words (the technical text in the tooltip): the first few, then the rest
+ * behind "Show all". */
+function ProblemList({ problems }: { problems: { question: number | null; reason: string }[] }) {
+  const lines = new Map<string, string[]>();
+  for (const p of problems) {
+    const line = plainProblem(p);
+    lines.set(line, [...(lines.get(line) ?? []), p.reason]);
+  }
+  const unique = [...lines];
   if (unique.length === 0) return null;
   const SHOWN = 3;
+  const item = ([line, raw]: [string, string[]]) => <li key={line} title={[...new Set(raw)].join("\n")}>{line}</li>;
   return <div className="adm-wb-problems">
-    <ul>{unique.slice(0, SHOWN).map((r) => <li key={r}>{r}</li>)}</ul>
-    {unique.length > SHOWN && <details><summary>Show all {unique.length} problems</summary><ul>{unique.slice(SHOWN).map((r) => <li key={r}>{r}</li>)}</ul></details>}
+    <ul>{unique.slice(0, SHOWN).map(item)}</ul>
+    {unique.length > SHOWN && <details><summary>Show all {unique.length} problems</summary><ul>{unique.slice(SHOWN).map(item)}</ul></details>}
   </div>;
 }
 
@@ -272,17 +276,32 @@ function solveAnswers(x: RunSolve): { reader: string[]; key: string[] } {
   };
 }
 
-/** The checking AI's work in one line: how many checks, by which model, how many answers differed or erred, and the
- * cost. A question rewritten after a different answer is checked again, so this counts checks, not questions. */
-function solveFact(solves: RunSolve[], left: number | null): string {
-  if (solves.length === 0) return "No checks yet";
-  const models = [...new Set(solves.map((x) => x.model))].join(", ");
+/** The checking AI's result in one plain line: how many questions still disagree, or that all agree, or that it did
+ * not run; with the API cost when it is known. The counts of checks (a rewritten question is checked again), models
+ * and errors are in the tooltip. `result`: the draft's questions that failed the check, null while there is no draft. */
+function SolveFact({ solves, result }: { solves: RunSolve[]; result: { disagreed: number; errored: number } | null }) {
+  const errors = solves.filter((x) => x.verdict === "failed").length;
   const disagreed = solves.filter((x) => x.verdict === "disagreed").length;
-  const failed = solves.filter((x) => x.verdict === "failed").length;
   const costed = solves.filter((x) => x.usd !== null);
   const usd = costed.reduce((n, x) => n + x.usd!, 0);
-  const cost = costed.length === 0 ? "cost unknown" : `USD ${usd.toFixed(4)}${costed.length < solves.length ? ` (${solves.length - costed.length} with cost unknown)` : ""}`;
-  return `${solves.length} ${solves.length === 1 ? "check" : "checks"} by ${models} · ${disagreed} different ${disagreed === 1 ? "answer" : "answers"}${left !== null && disagreed > 0 ? ` (${left} left after rewrites)` : ""} · ${failed} ${failed === 1 ? "error" : "errors"} · ${cost}`;
+  const models = [...new Set(solves.map((x) => x.model))].join(", ");
+  const detail = solves.length === 0 ? undefined : [
+    `${solves.length} ${solves.length === 1 ? "check" : "checks"} by ${models}`,
+    `${disagreed} different ${disagreed === 1 ? "answer" : "answers"} before rewrites`,
+    `${errors} ${errors === 1 ? "error" : "errors"}`,
+    costed.length === 0 ? "cost unknown" : `USD ${usd.toFixed(4)}${costed.length < solves.length ? ` (${solves.length - costed.length} with cost unknown)` : ""}`,
+  ].join(" · ");
+  const questionsText = (n: number) => `${n} ${n === 1 ? "question" : "questions"}`;
+  const lines = solves.length === 0 || errors === solves.length
+    ? [result ? "Checking AI didn't run" : "No checks yet"]
+    : !result
+      ? [`${questionsText(new Set(solves.map((x) => x.questionId)).size)} checked so far`]
+      : [
+        result.disagreed > 0 ? `${questionsText(result.disagreed)} still ${result.disagreed === 1 ? "disagrees" : "disagree"}` : result.errored === 0 ? "All questions agree" : null,
+        result.errored > 0 ? `Checking AI couldn't check ${questionsText(result.errored)}` : null,
+      ];
+  if (usd > 0) lines.push(`API cost USD ${usd.toFixed(2)}`);
+  return <span title={detail}>{lines.filter(Boolean).join(" · ")}</span>;
 }
 
 /** The questions of the draft that failed the solve check, with what the reader answered and the key. */
@@ -299,7 +318,7 @@ function SolveFailures({ pages, solves }: { pages: GeneratedPage[]; solves: Map<
           <td className="adm-num"><a href={`#page-${p.number}`}>{p.number}</a></td>
           <td className="adm-num">{q.number}</td>
           <td><span className="adm-wb-text">{q.package?.text ?? "No question"}</span>{(x?.log.questions.length ?? 0) > 1 && <span className="adm-sub">Easier example: {x!.log.questions[1].text}</span>}</td>
-          <td>{x?.verdict === "failed" ? <span className="adm-sub">{x.log.verdict.status === "agreed" ? "" : x.log.verdict.reason}</span> : <ul className="adm-wb-list">{answers?.reader.map((l) => <li key={l}>{l}</li>)}</ul>}</td>
+          <td>{x?.verdict === "failed" ? <span className="adm-sub" title={x.log.verdict.status === "agreed" ? undefined : x.log.verdict.reason}>The checking AI couldn&apos;t check it</span> : <ul className="adm-wb-list">{answers?.reader.map((l) => <li key={l}>{l}</li>)}</ul>}</td>
           <td><ul className="adm-wb-list">{answers?.key.map((l) => <li key={l}>{l}</li>)}</ul></td>
           <td className="adm-nowrap"><span className="adm-sub">{x ? `${x.model} · ${(x.ms / 1000).toFixed(1)} s${x.usd !== null ? ` · USD ${x.usd.toFixed(4)}` : ""}` : "No check saved"}</span></td>
         </tr>;
@@ -309,11 +328,17 @@ function SolveFailures({ pages, solves }: { pages: GeneratedPage[]; solves: Map<
 }
 
 function QuestionCheckCell({ q, solve }: { q: GeneratedQuestion; solve?: RunSolve }) {
-  const read = solve && !failedSolve(q) && <span className="adm-sub">{solve.verdict === "agreed" ? "Checking AI agreed" : `Checking AI, on an earlier wording: ${solve.log.verdict.status === "agreed" ? "agreed" : solve.log.verdict.reason}`}</span>;
+  const read = solve && !failedSolve(q) && (solve.verdict === "agreed"
+    ? <span className="adm-sub">Checking AI agreed</span>
+    : <span className="adm-sub" title={solve.log.verdict.status === "agreed" ? undefined : solve.log.verdict.reason}>{solve.verdict === "failed" ? "Checking AI couldn't check an earlier wording" : "Checking AI disagreed with an earlier wording"}</span>);
   if (q.check.status === "checked") return <><Chip tone="ok">Math check passed</Chip>{read}</>;
   return <>
-    <Chip tone={q.check.status === "failed" ? "bad" : "warn"}>{q.check.status === "failed" ? failedSolve(q) ? "Checking AI disagreed" : "Failed" : "Check by hand"}</Chip>
-    <span className="adm-sub">{q.check.reason}</span>
+    {failedSolve(q)
+      ? <span title={q.check.reason}><Chip tone="bad">Checking AI disagreed</Chip></span>
+      : <Chip tone={q.check.status === "failed" ? "bad" : "warn"}>{q.check.status === "failed" ? "Needs fixing" : "Check by hand"}</Chip>}
+    {q.check.status === "failed"
+      ? !failedSolve(q) && <span className="adm-sub" title={q.check.reason}>{plainReason(q.check.reason)}</span>
+      : <span className="adm-sub">{q.check.reason}</span>}
     {read}
   </>;
 }
@@ -361,13 +386,13 @@ function DraftPageSection({ page, detail, solves }: { page: GeneratedPage; detai
       <p className="adm-wb-flags">
         {page.fit.status === "failed" && <Chip tone="bad">Does not fit the template</Chip>}
         {page.fit.status === "fits" && !noLayout && <Chip tone="ok">Fits</Chip>}
-        {issues.failed.length > 0 && <Chip tone="bad">{issues.failed.length} failed {issues.failed.length === 1 ? "question" : "questions"}</Chip>}
+        {issues.failed.length > 0 && <Chip tone="bad">{issues.failed.length} {issues.failed.length === 1 ? "question needs" : "questions need"} fixing</Chip>}
         {issues.notChecked.length > 0 && <Chip tone="warn">{issues.notChecked.length} to check by hand</Chip>}
         {problems.length > 0 && <Chip tone="bad">{noLayout ? "No page layout" : "Not in the PDF"}</Chip>}
         {(page.omissions ?? []).length > 0 && <Chip tone="warn">{(page.omissions ?? []).reduce((n, o) => n + o.requested - o.placed, 0)} planned items left out</Chip>}
         {page.attempts === 2 && <span className="adm-sub">Written again after the fit check</span>}
       </p>
-      <ProblemList reasons={[...issues.fit, ...problems].map(reasonText)} />
+      <ProblemList problems={[...issues.fit.map((p) => ({ question: p.question, reason: `fit check: ${p.reason}` })), ...problems]} />
       {(page.omissions ?? []).length > 0 && <ul className="adm-wb-problems adm-sub">{(page.omissions ?? []).map((o, i) => <li key={`o${i}`}>{partText(o.kind)}: {o.placed} of {o.requested} placed ({o.reason})</li>)}</ul>}
       <div className={page.questions.length ? "adm-wb-grid" : "adm-wb-solo"}>
         {image ? (
@@ -445,10 +470,10 @@ export function AdminWorkbookRun({ email, detail, now, only, worker }: { email: 
         ["Status", <span key="state" className="adm-wb-state"><RunStateChip state={state} />{(state === "preparing" || state === "waiting") && <RunProgress run={run} />}</span>],
         ["Started (Pacific)", `${when(run.createdAt)} by ${run.startedBy.email ?? "unknown"}`],
         ["Finished (Pacific)", run.finishedAt ? when(run.finishedAt) : "Not yet"],
-        ["Tries", `${run.attempts} of ${run.maxAttempts}${run.resumes > 0 ? ` · taken up again ${run.resumes} ${run.resumes === 1 ? "time" : "times"}` : ""}`],
+        ["Tries", `${run.attempts} of ${run.maxAttempts} allowed${run.resumes > 0 ? ` · taken up again ${run.resumes} ${run.resumes === 1 ? "time" : "times"}` : ""}`],
         ["Made on", run.runner === "mac" ? <span key="runner" className="adm-wb-state">{runnerText(run)}<WorkerLine worker={worker} /></span> : runnerText(run)],
         ["AI calls", aiCallsFact(detail.aiCalls)],
-        ["Checking AI", solveFact(detail.solves, draft ? questions.filter((q) => failedSolve(q) && solveOf(q, solves)?.verdict === "disagreed").length : null)],
+        ["Checking AI", <SolveFact key="solve" solves={detail.solves} result={draft ? { disagreed: questions.filter((q) => failedSolve(q) && solveOf(q, solves)?.verdict === "disagreed").length, errored: questions.filter((q) => failedSolve(q) && solveOf(q, solves)?.verdict === "failed").length } : null} />],
         ...(draft ? [
           ["Levels", levelsText(draft.workbook.levels)] as [string, ReactNode],
           ["Pages", `${draft.workbook.pages.length} pages${draft.revision > 1 ? ` · version ${draft.revision}` : ""}`] as [string, ReactNode],
