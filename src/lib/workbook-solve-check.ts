@@ -195,21 +195,15 @@ export function keyForms(key: string): Set<string> {
 }
 
 /**
- * The word answers whose case never matters ("Even" is "even"). Every other key keeps its case, because a unit can look
- * like a word: "ML" is not "mL", "Mg" is not "mg", "Pa" is not "pA".
- */
-const WORD_ANSWERS = new Set(["yes", "no", "true", "false", "even", "odd", "more", "less", "fewer", "same", "equal", "different", "greater", "smaller", "bigger", "longer", "shorter", "heavier", "lighter", "taller", "both", "neither", "none", "all", "right", "wrong", "correct", "incorrect", "possible", "impossible", "likely", "unlikely", "certain"]);
-
-/**
  * Whether the solver's answer is one the key counts as right. A choice must be the right option as printed (case kept, so "1 ML" is never "1 mL");
- * a box answer must be one of the forms code writes for the key or an accepted alternative (keyForms). Only a listed
- * word answer (WORD_ANSWERS: "even") is compared without case. Nothing else passes: no unit is converted, assumed or added, and no number is read
+ * a box answer must be one of the forms code writes for the key or an accepted alternative (keyForms). Case always
+ * counts, for words too, because a unit or symbol can look like a word ("ML" and "mL", "No" and "NO"). Nothing else passes: no unit is converted, assumed or added, and no number is read
  * from the answer.
  */
 export function sameAnswer(given: string, right: string[], choice: boolean): boolean {
   const g = even(given);
   if (choice) return right.some((r) => even(r) === g);
-  return right.some((r) => keyForms(r).has(g) || (WORD_ANSWERS.has(even(r).toLowerCase()) && even(r).toLowerCase() === g.toLowerCase()));
+  return right.some((r) => keyForms(r).has(g));
 }
 
 /** The output schema: an answer for each box of each question, and a problem when a question cannot be answered. */
@@ -226,7 +220,7 @@ export const SOLVE_SCHEMA = {
 
 const SYSTEM = [
   "You check printed math questions from a workbook for a child aged 6 to 12. Each question is given as the child sees it: its text, the picture in words, what the card prints beside the text, and its answer boxes and choices.",
-  "Answer every box and choice of every question, as a careful child who reads the question exactly as printed would. Write a box's answer exactly in one of these forms: a count or a plain number as the number only, in digits, with no word after it and no extra zeros (12, not 12 shells; 1250 or 1,250; 0.5; -3), a fraction as 3/4 or 1 1/2, a remainder as 9 R 2, money as $4.75 or 75¢, an amount with its unit symbol as the question writes it (2.5 km, 1 h 30 min), a time as 3:30 p.m. or 15:30. Never convert a unit. For a choice, give one of its options exactly as printed.",
+  "Answer every box and choice of every question, as a careful child who reads the question exactly as printed would. Write a box's answer exactly in one of these forms: a count or a plain number as the number only, in digits, with no word after it and no extra zeros (12, not 12 shells; 1250 or 1,250; 0.5; -3), a fraction as 3/4 or 1 1/2, a remainder as 9 R 2, money as $4.75 or 75¢, an amount with its unit symbol as the question writes it (2.5 km, 1 h 30 min), a time as 3:30 p.m. or 15:30, a word in lower case (even, yes). Never convert a unit. For a choice, give one of its options exactly as printed.",
   "Use only what is printed. Do not guess what the writer meant. If a question cannot be answered as printed (it is unclear, it leaves out a number, or its boxes do not take what it asks), say which and why in problem; else problem is null.",
 ].join("\n");
 
