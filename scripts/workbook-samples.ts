@@ -15,9 +15,11 @@
 //    key pages, failures first) and index.md with every count and the AI cost.
 //
 // Usage: npm run workbooks:samples -- [--levels U1,U2,...|all] [--second U5,U12] [--test U12] [--out <folder>]
-//          [--concurrency 6] [--fake] [--no-store] [--family-only]
+//          [--concurrency 6] [--fake] [--anthropic] [--no-store] [--family-only]
 // --family-only makes (or finds) the test family and its children, prints them, and stops: no AI, no books.
-// The AI: OPENROUTER_API_KEY (or OPENROUTER_API_KEY_FILE) and AI_MODEL. --fake uses a fake AI for a dry run of the
+// The AI: OPENROUTER_API_KEY (or OPENROUTER_API_KEY_FILE) and AI_MODEL. --anthropic uses the Claude API directly
+// (src/lib/ai-anthropic.ts) with ANTHROPIC_API_KEY, ANTHROPIC_API_KEY_FILE or the Keychain item "anthropic-unica-tools"
+// (the key on Savar's Max plan API credits), and ANTHROPIC_MODEL (default claude-sonnet-5-5). --fake uses a fake AI for a dry run of the
 // layout: its books are marked FAKE in index.md and are never stored. The secret key: SUPABASE_SECRET_KEY, else the
 // Supabase Management API with SUPABASE_ACCESS_TOKEN or the Keychain item "supabase-pagewise". No key is printed.
 import { execFileSync } from "node:child_process";
@@ -27,6 +29,7 @@ import { parseArgs } from "node:util";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import sharp from "sharp";
 import { AI_DEFAULT_MODEL, type AiClient } from "@/lib/ai-client";
+import { ANTHROPIC_DEFAULT_MODEL, anthropicClient, type AnthropicUsage } from "@/lib/ai-anthropic";
 import { openRouterClient } from "@/lib/ai-openrouter";
 import type { Database } from "@/lib/database";
 import { chromiumPrintEngine } from "@/lib/print-engine-chromium";
@@ -50,7 +53,7 @@ const { values } = parseArgs({
   options: {
     levels: { type: "string", default: "all" }, second: { type: "string", default: "" }, test: { type: "string", default: "" },
     out: { type: "string", default: "/tmp/ui-review/samples" }, concurrency: { type: "string", default: "6" },
-    fake: { type: "boolean", default: false }, "family-only": { type: "boolean", default: false }, "no-store": { type: "boolean", default: false },
+    fake: { type: "boolean", default: false }, anthropic: { type: "boolean", default: false }, "family-only": { type: "boolean", default: false }, "no-store": { type: "boolean", default: false },
   },
 });
 const BC = curriculumFor("bc")!;
@@ -80,7 +83,34 @@ async function openRouterKey(): Promise<string | null> {
   return null;
 }
 
+async function anthropicKey(): Promise<string | null> {
+  if (process.env.ANTHROPIC_API_KEY) return process.env.ANTHROPIC_API_KEY.trim();
+  if (process.env.ANTHROPIC_API_KEY_FILE) return (await readFile(process.env.ANTHROPIC_API_KEY_FILE, "utf8")).trim();
+  try {
+    return execFileSync("security", ["find-generic-password", "-s", "anthropic-unica-tools", "-w"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 // ---------- The AI, with its cost ----------
+
+/** Claude API prices in US dollars per million tokens (platform.claude.com pricing, read 2026-10-31). */
+const ANTHROPIC_PRICES: Record<string, { input: number; output: number; cacheRead: number }> = {
+  "claude-sonnet-5-5": { input: 2, output: 10, cacheRead: 0.2 },
+  "claude-opus-5-5": { input: 4, output: 20, cacheRead: 0.2 },
+};
+
+/** Adds one Claude API answer to the book's cost. A model with no price (a fallback model) is counted at Opus prices. */
+function countAnthropic(u: AnthropicUsage) {
+  const p = ANTHROPIC_PRICES[u.model] ?? ANTHROPIC_PRICES["claude-opus-5-5"];
+  const c = costs.get(costKey) ?? { usd: 0, calls: 0, failed: 0, inTokens: 0, outTokens: 0 };
+  c.calls++;
+  c.usd += (u.inputTokens * p.input + u.cacheWriteTokens * p.input * 1.25 + u.cacheReadTokens * p.cacheRead + u.outputTokens * p.output) / 1e6;
+  c.inTokens += u.inputTokens + u.cacheWriteTokens + u.cacheReadTokens;
+  c.outTokens += u.outputTokens;
+  costs.set(costKey, c);
+}
 
 /** The cost of every AI call, in US dollars, by book: OpenRouter's usage.cost on each answer. */
 const costs = new Map<string, { usd: number; calls: number; failed: number; inTokens: number; outTokens: number }>();
@@ -356,7 +386,11 @@ if (values["family-only"]) {
 
 let ai: AiClient;
 if (values.fake) ai = fakeAi();
-else {
+else if (values.anthropic) {
+  const key = await anthropicKey();
+  if (!key) throw new Error("no Anthropic key: set ANTHROPIC_API_KEY or ANTHROPIC_API_KEY_FILE, or add the Keychain item anthropic-unica-tools");
+  ai = anthropicClient({ apiKey: key, model: process.env.ANTHROPIC_MODEL || ANTHROPIC_DEFAULT_MODEL, timeout: 200_000, onUsage: countAnthropic });
+} else {
   const key = await openRouterKey();
   if (!key) throw new Error("no OpenRouter key: set OPENROUTER_API_KEY or OPENROUTER_API_KEY_FILE (or pass --fake for a layout dry run)");
   ai = openRouterClient({ apiKey: key, model: process.env.AI_MODEL || AI_DEFAULT_MODEL, fetch: costingFetch(), timeout: 200_000 });
