@@ -67,7 +67,8 @@ const ERROR_TEXT: Record<string, string> = {
   failed: "Something went wrong. Try again.",
 };
 
-const when = (iso: string) => new Date(iso).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" });
+// Pacific time on the server and in the browser alike, so the server render and hydration agree (Vercel runs in UTC).
+const when = (iso: string) => new Date(iso).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Vancouver" });
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 const named = (text: string, name: string | null) => text.replaceAll("{name}", name ?? "the child");
 
