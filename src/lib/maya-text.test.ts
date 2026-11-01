@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeAiClient } from "@/lib/ai-client-fake";
-import { allLineTexts, LINES_VERSION, PHRASES, SAFETY_GUIDANCE, type Proposal } from "@/lib/maya";
+import { allLineTexts, LINE_IDS, LINES_VERSION, PHRASE_GROUPS, PHRASES, SAFETY_GUIDANCE, type Proposal } from "@/lib/maya";
 import { aiMayaModel, PROMPT_VERSION, SYSTEM_PROMPT, type ModelInput } from "@/lib/maya-model";
 import { fakeMayaModel, ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
@@ -579,5 +579,17 @@ describe("a text session saved and resumed between inputs (#323)", () => {
     await first.start();
     const saved = await first.saved();
     expect(() => createTextSession({ callId: "call-b", package: PKG, model: ruleMayaModel(), clock: () => T0, resume: saved })).toThrow(/not this call's/);
+  });
+});
+
+describe("the prompt names only real lines and groups (practice runs 6 and 7)", () => {
+  it("tells the model the act for a right step, the easier example's intro and the back phrase, by ids that exist", () => {
+    const lineIds = [...SYSTEM_PROMPT.matchAll(/"([a-z]+\.[a-z_]+)"/g)].map((m) => m[1]).filter((id) => !id.startsWith("reading."));
+    expect(lineIds).toEqual(expect.arrayContaining(["check.right_step", "example.intro", "redirect.decline"]));
+    for (const id of lineIds) expect(LINE_IDS as readonly string[], id).toContain(id);
+    expect(SYSTEM_PROMPT).toContain('{"warm": "back", "echo": null, "pick": null}');
+    expect(PHRASE_GROUPS).toContain("back");
+    expect(SYSTEM_PROMPT).toMatch(/"accept_answer" is only for a right final answer/);
+    expect(SYSTEM_PROMPT).toMatch(/Never guide a step the child has just done/);
   });
 });

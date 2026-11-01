@@ -20,7 +20,7 @@ import { stepText, valueText } from "@/lib/question-package";
 import type { TraceRefusal } from "@/lib/maya-trace";
 
 /** The version of the prompt and of the model input below. Raise it when either changes; every trace records it. */
-export const PROMPT_VERSION = "maya-text-6";
+export const PROMPT_VERSION = "maya-text-7";
 
 /** One act the model may propose now, with everything code offers for it. */
 export interface ActOffer {
@@ -127,6 +127,7 @@ Rules:
 - Give the gentlest help first: invite before point, point before operation, operation before show. Raise the level only after the child tries and fails, or asks for help.
 - "reading" is what you understood from the child's latest turn ("childTurn"); null when there is none. Put each number the child gave as their answer in "answers", with the step it answers ("result" for the whole question, or a step id) and your verdict ("right" or "wrong") by the checked answer and steps in "question". Never mark a wrong answer right.
 - A line with "requires" needs an answer for that step with that verdict in "reading.answers".
+- "accept_answer" is only for a right final answer (step "result"). When the child gets a step right (or several) without the final answer, record each in "reading.answers" and use act "guide" with "step" set to the first step still not done after them and "level" 0: parts are the "check.right_step" line for the step they got right, then the gentlest line for that next step. Never guide a step the child has just done.
 - Set "reading.safety" when the child says something about harm or danger ("concern"; "immediate" if they are in danger now). Set "reading.stop" when the child wants to stop. Set "reading.unclear" when you are not sure what number the child said. Set "reading.start" to "no_start" when the child cannot start, "has_work" when they show work.
 - "draw" lists board offer ids to draw this turn (from the act's "draw" offers), or null. "board" is always null.
 - "understanding" is set only for "ask_write" after a check: "evidence_observed" when the child explained the step, else "uncertain".
