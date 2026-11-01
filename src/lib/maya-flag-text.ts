@@ -22,9 +22,26 @@ export const ALERT_TEXT: Record<AlertStatus, string> = {
  * The plain line after an alert's state: what the admin does next, or null when nothing is needed. A live call sends a
  * refused alert again with its next turn; an ended call with the button. An unknown send is never sent again.
  */
-export function alertNote(status: AlertStatus, live: boolean): string | null {
+export function alertNote(status: AlertStatus, live: boolean, current = true): string | null {
+  // An alert for an earlier, lower flag is never sent again: the alert for the call's current flag replaced it (R393-L2).
+  if (!current) {
+    if (status === "refused") return "The email didn't send. The newer alert for this call replaced it.";
+    if (status === "unknown") return "We're not sure the email went. Check the inbox.";
+    return null;
+  }
   if (status === "refused") return live ? "The email didn't send. The next turn tries again." : "The email didn't send. Try again.";
   if (status === "unknown") return "We're not sure the email went. Check the inbox before sending again.";
+  return null;
+}
+
+/**
+ * The call's safety in plain words: its flag when it has one, else the outcome's own severity, so a call saved before
+ * flags existed (a severity and no flag) still names immediate danger (R393-L1). Null: no concern.
+ */
+export function safetyText(flag: FlagLevel | null, severity: "concern" | "immediate" | null, safetyFlag = false): string | null {
+  if (flag) return FLAG_TEXT[flag];
+  if (severity === "immediate") return FLAG_TEXT.safety_immediate;
+  if (severity === "concern" || safetyFlag) return FLAG_TEXT.safety_concern;
   return null;
 }
 

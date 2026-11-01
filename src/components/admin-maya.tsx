@@ -11,7 +11,7 @@ import { MayaBoard } from "@/components/maya-board";
 import type { PlayStep } from "@/lib/board-svg";
 import type { Outcome } from "@/lib/maya";
 import type { CallInput, CallView } from "@/lib/maya-call";
-import { ALERT_TEXT, FLAG_TEXT, alertNote, modelName, noAlertNote } from "@/lib/maya-flag-text";
+import { ALERT_TEXT, FLAG_TEXT, alertNote, modelName, noAlertNote, safetyText } from "@/lib/maya-flag-text";
 import type { CallListRow, DemoChild } from "@/lib/maya-call-server";
 import { ADMIN_PATH, adminChildProfilePath, adminTestPath } from "@/lib/admin-view";
 import "./admin-maya.css";
@@ -328,7 +328,7 @@ function FlagStrip({ view, live, onRetry, busy }: { view: CallView; live: boolea
       <ul className="mc-flag-alerts">
         {!current && <li><span className="adm-chip is-warn">No alert email yet</span> <span className="mc-flag-why">{noAlertNote(live)}</span></li>}
         {view.alerts.map((a) => {
-          const note = alertNote(a.status, live);
+          const note = alertNote(a.status, live, a.level === flag.level);
           return (
             <li key={a.level}>
               <span className={`adm-chip ${a.status === "sent" ? "is-ok" : a.status === "sending" ? "is-info" : "is-warn"}`}>{ALERT_TEXT[a.status]}</span>{" "}
@@ -359,7 +359,7 @@ function CallRecordFacts({ view, childName, onRetry, busy, error }: { view: Call
           <div><dt>Call time</dt><dd>{clock(Math.round(o.seconds))}</dd></div>
           <div><dt>Turns</dt><dd>{view.counts ? `${view.counts.childTurns} from ${childName ?? "the child"}, ${view.counts.mayaTurns} from Maya` : "-"}</dd></div>
           <div><dt>Backup lines used</dt><dd title="Times the AI's answer could not be used, so Maya said a line from the backup script">{view.counts?.fallbacks ?? "-"}</dd></div>
-          <div><dt>Safety</dt><dd>{view.flag ? <span className="adm-chip is-bad">{FLAG_TEXT[view.flag.level]}</span> : o.safetyFlag ? <span className="adm-chip is-bad">Safety concern</span> : "No concern"}</dd></div>
+          <div><dt>Safety</dt><dd>{(() => { const t = safetyText(view.flag?.level ?? null, o.safetySeverity, o.safetyFlag); return t ? <span className="adm-chip is-bad">{t}</span> : "No concern"; })()}</dd></div>
           <div><dt>Numbers Maya checked</dt><dd>{o.mishearing.confirmations} checked, {o.mishearing.corrections} fixed</dd></div>
         </dl>
       )}
