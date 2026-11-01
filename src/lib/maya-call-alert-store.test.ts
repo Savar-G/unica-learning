@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("server-only", () => ({}));
+
 import { alertState, alertStateAt } from "@/lib/maya-call-alert-store";
 
 // The admin call page's view of an alert row (R393-2-1): a claim left "sending" past 10 minutes shows as unknown, also
