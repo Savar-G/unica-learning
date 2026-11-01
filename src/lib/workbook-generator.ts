@@ -325,6 +325,7 @@ const SYSTEM = [
   "Relation format: give numbers (one number, or two) and relation: kind less-than (to: [the benchmark], as 'Is 7 less than 5?'), closer (to: [two benchmarks], as 'Is 8 close to 0 or 10?', never halfway), equal (two numbers: 'Equal or not?'), more or fewer (two numbers and labels: one short word for each, as cats and dogs: 'Who has more?'). Code writes the choices the child circles and the answer; the text never says the answer. No < or > signs.",
   "A picture of a missing part shows the part given or the total: say which in figureShows ('Mia has 3. How many more make 8?' shows the part, 3; 'Ten-frame: 8 dots. 5 and how many more?' shows the total, 8). Any number the text says the picture shows ('8 dots', 'Ten-frame: 8') is what code draws.",
   "One question per item: the text never holds a worked fact or a second task ('5 and 0 more is 5. Show 6.' is not a question). A draw item says what to draw and never asks how many, which number or who; ask which has more with a relation item.",
+  "Used up: the request may list usedUp, questions whose kind the book already asks 3 times. Outside practice, write none of the page's questions in the shape of one of them (the same words with other numbers or names).",
   "Asked: a slot may list asked, the questions the book already asks on its skills. Never repeat one of them. On this page, no two questions may be the same, work the same sum, or differ only by one number when another kind of question is possible: change the kind (a story, a picture to count, a missing part, a sequence), not only a number.",
   "Examples: the request may list examples. Each is the worked example a panel (worked-example, watch-one, reminder) shows for its own skill: fill it like a slot, with its id and on that skill only, of the kind its aim gives. Give a small sum of the skill (write-number with an operation), or a count, sequence, order or relation item code can show done. It is not printed as a question, so it has no room limit.",
   "A count from one number to another ('Count from 2 to 7', 'Count back from 10 to 1') is the sequence format, starting and ending at those numbers; if the text says 'start at 2', the sequence starts at 2.",
@@ -411,6 +412,10 @@ function pageRequest(input: GenerateInput, w: PageWork, slots: Slot[], note: str
         ...(s.aim ? { aim: { skill: s.aim.skill, kind: s.aim.kind, means: KIND_WORDS[s.aim.kind], orElse: s.aim.orElse } } : {}),
       };
     }),
+    // Shapes of question the book has used up: none of the page's questions (outside practice) may take one again.
+    ...(memory && [...memory.shapes.values()].some((x) => x.length >= SHAPE_MOST)
+      ? { usedUp: [...memory.shapes].filter(([, x]) => x.length >= SHAPE_MOST).map(([k]) => memory.shapeText.get(k)!) }
+      : {}),
     ...(panels.length ? {
       examples: panels.map((x) => {
         const numbers = slotRanges(curriculum, plan.level, [x.skill]);
@@ -482,6 +487,8 @@ interface BookMemory {
   texts: Map<string, string[]>;
   keys: Map<string, number>;
   shapes: Map<string, number[]>;
+  /** The first question of each shape, to show the AI which shapes are used up. */
+  shapeText: Map<string, string>;
 }
 
 /**
@@ -533,7 +540,10 @@ function remember(memory: BookMemory, page: number, questions: GeneratedQuestion
     if (!q.package) continue;
     if (!memory.keys.has(dupKey(q.package))) memory.keys.set(dupKey(q.package), page);
     const shape = shapeOf(q.package.text);
-    if (shape && q.place && !PRACTICE_PLACES.has(q.place) && q.check.status !== "failed") memory.shapes.set(shape, [...(memory.shapes.get(shape) ?? []), page]);
+    if (shape && q.place && !PRACTICE_PLACES.has(q.place) && q.check.status !== "failed") {
+      memory.shapes.set(shape, [...(memory.shapes.get(shape) ?? []), page]);
+      if (!memory.shapeText.has(shape)) memory.shapeText.set(shape, q.package.text);
+    }
     for (const k of q.package.skill.skills) memory.texts.set(k, [...(memory.texts.get(k) ?? []), q.package.text]);
   }
 }
@@ -629,11 +639,14 @@ function hintFor(reason: string): string | null {
 }
 
 /** The redo's words for a failed question or worked example. */
-function failNote(id: string, b: BuiltQuestion): string {
+function failNote(id: string, b: BuiltQuestion, slot?: Slot): string {
   const reason = (b.check as { reason: string }).reason;
   const steps = b.stepIds.length ? ` Its operation's worked steps are named: ${b.stepIds.join(", ")}.` : "";
   const hint = hintFor(reason);
-  return `Slot ${id} failed the check: ${reason}.${steps}${hint ? ` ${hint}` : ""} Write it again.`;
+  // A repeat: the slot's next kind of question, so the redo asks it another way.
+  const next = slot?.aim && /repeats a question|same as question|same sum as question|only by one number|same kind of question|this kind of question/.test(reason) ? slot.aim.orElse[0] : undefined;
+  const kind = next ? ` Write it as a ${next} question: ${KIND_WORDS[next]}.` : "";
+  return `Slot ${id} failed the check: ${reason}.${steps}${hint ? ` ${hint}` : ""}${kind} Write it again.`;
 }
 
 /** Fails a sound question that repeats one of the book or of `others` on this page. */
@@ -662,7 +675,7 @@ async function firstPass(input: GenerateInput, deps: GenerateDeps, w: PageWork, 
   const failed = all.filter((i) => built[i].check.status === "failed");
   const failedPanels = w.panels.flatMap((_, k) => (examples[k].check.status === "failed" ? [k] : []));
   if (failed.length > 0 || failedPanels.length > 0) {
-    const note = [...failed.map((i) => failNote(w.slots[i].id, built[i])), ...failedPanels.map((k) => failNote(w.panels[k].id, examples[k]))].join("\n");
+    const note = [...failed.map((i) => failNote(w.slots[i].id, built[i], w.slots[i])), ...failedPanels.map((k) => failNote(w.panels[k].id, examples[k]))].join("\n");
     const kept = built.flatMap((b) => (b.check.status !== "failed" && b.package ? [b.package.text] : []));
     const redo = await writeSlots(input, deps, w, failed, note, "workbook_page_redo", failedPanels.map((k) => w.panels[k]), memory, memory ? kept : []);
     failed.forEach((i, k) => {
@@ -849,7 +862,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
   });
   let done = 0;
   // What the book has asked so far, for a laid-out book: each page is told it, and a repeat goes to the redo.
-  const memory: BookMemory | null = input.book ? { texts: new Map(), keys: new Map(), shapes: new Map() } : null;
+  const memory: BookMemory | null = input.book ? { texts: new Map(), keys: new Map(), shapes: new Map(), shapeText: new Map() } : null;
   const writePage = async (w: PageWork): Promise<GeneratedPage> => {
     const qrToken = tokens[w.number - 1];
     const page = { number: w.number, type: w.page.type, dayLabel: `Day ${w.day}`, day: w.day, pageOfDay: w.page.number, qrToken };

@@ -974,7 +974,7 @@ describe("round 4 (#380): relations, explicit pictures, kinds in turn, question 
     expect(checkQuestionPackage(wrong)).toMatchObject({ status: "failed", reason: `the region "answer" holds less than 5, but the answer is not less than 5` });
   });
 
-  it("draws a missing part's picture as the item says (the part given or the total), and fails one that is not said or that the text contradicts", () => {
+  it("draws a missing part's picture as the item says (the text's number first, else figureShows), and fails one that is not said", () => {
     const missing = (part: number, total: number) => ({ kind: "missing-addend", operands: [num(part), num(total)], expression: null, unit: null, denominator: null, values: [] });
     const item = (text: string, shows: unknown) => buildQuestion({
       ...empty, slot: "1.1", skill: "K3-ten-frame", text, format: "write-number", operation: missing(5, 8), figure: "ten-frame", figureShows: shows,
@@ -982,8 +982,17 @@ describe("round 4 (#380): relations, explicit pictures, kinds in turn, question 
     }, at("K3-ten-frame"));
     expect(item("Ten-frame: 8 dots. 5 and how many more?", "total").package!.item!.figure).toEqual({ kind: "ten-frame", counters: [8] });
     expect(item("Mia has 5. How many more make 8?", "part").package!.item!.figure).toEqual({ kind: "ten-frame", counters: [5] });
-    expect(item("Ten-frame: 8 dots. 5 and how many more?", "part").check).toMatchObject({ status: "failed", reason: expect.stringContaining("the text says the picture shows 8, but it shows 5") });
+    // The text says 8 dots: the picture shows 8, whatever figureShows says.
+    expect(item("Ten-frame: 8 dots. 5 and how many more?", "part").package!.item!.figure).toEqual({ kind: "ten-frame", counters: [8] });
+    expect(item("Ten-frame: 5 dots. How many more make 8?", "total").package!.item!.figure).toEqual({ kind: "ten-frame", counters: [5] });
     expect(item("Mia has 5. How many more make 8?", null).check).toMatchObject({ status: "failed", reason: expect.stringContaining("say what the picture of a missing part shows") });
+    // Another sum: a number the text says the picture shows must be what it shows.
+    const sum = (text: string) => buildQuestion({
+      ...empty, slot: "1.1", skill: "K3-ten-frame", text, format: "write-number", operation: addOp(5, 2), figure: "ten-frame",
+      wrongAnswers: [{ value: num(8), cause: "count", description: "x", step: null }], easier: { text: "Try a smaller sum.", operation: addOp(1, 1) },
+    }, at("K3-ten-frame"));
+    expect(sum("Ten-frame: 5 dots and 2 more. How many?").check.status).toBe("checked");
+    expect(sum("Ten-frame: 9 dots. How many?").check).toMatchObject({ status: "failed", reason: expect.stringContaining("the text says the picture shows 9, but it shows 5 and 2") });
   });
 
   it("repairs what code can: a missing part's step and its easier example; a parent card's show-work is write-number", () => {
@@ -1052,6 +1061,10 @@ describe("round 4 (#380): relations, explicit pictures, kinds in turn, question 
     const notes = ai.requests.filter((r) => r.name === "workbook_page_redo").map((r) => read(r).note ?? "");
     expect(notes.some((x) => /asks the same kind of question as question \d+ on this page/.test(x))).toBe(true);
     expect(notes.some((x) => /the book already asks this kind of question 3 times \(pages /.test(x))).toBe(true);
+    // A repeat's redo is told the slot's next kind, and later pages are told the shapes used up.
+    expect(notes.some((x) => /Write it as an? [a-z-]+ question: /.test(x))).toBe(true);
+    const usedUp = ai.requests.flatMap((r) => (JSON.parse((r.content[0] as { text: string }).text) as { usedUp?: string[] }).usedUp ?? []);
+    expect(usedUp.some((t) => /^Kid[A-Z]+ has 2\. How many more make \d+\?$/.test(t))).toBe(true);
   });
 });
 

@@ -324,6 +324,23 @@ function lineThrough(values: number[]): Figure | string {
   return "the numbers are too far apart for one number line";
 }
 
+/**
+ * What a missing part's picture shows when the text says it ("Ten-frame: 7 dots. How many more make 10?" shows the part,
+ * 7; "8 dots. 5 and how many more?" the total, 8): the text is explicit, so it decides over the AI's figureShows. Null
+ * when the text says no number of the picture, or for another operation.
+ */
+function shownBy(text: unknown, op: Operation): "part" | "total" | null {
+  if (op.kind !== "missing-addend" || typeof text !== "string") return null;
+  const said = [
+    ...[...text.matchAll(/\b(\d+)\s+(?:dots?|counters?|filled)\b/gi)].map((m) => Number(m[1])),
+    ...[...text.matchAll(/\b(?:ten|five)-frame(?:\s+(?:has|shows|with))?:?\s+(\d+)\b/gi)].map((m) => Number(m[1])),
+  ];
+  const [part, total] = op.operands;
+  if (said.includes(part) && !said.includes(total)) return "part";
+  if (said.includes(total) && !said.includes(part)) return "total";
+  return null;
+}
+
 /** The figure of an operation question: the operation's numbers drawn as the kind the AI named. */
 function operationFigure(kind: FigureKind, op: Operation, answer: AnswerValue, shows: unknown = null): Figure | string {
   if (op.kind === "missing-addend") {
@@ -670,7 +687,8 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
   const stepIds = workedSteps(op).map((s) => s.id);
 
   // A missing part has one worked step (the count): a wrong answer that names another is not one step (null, #380).
-  const stepOf = (step: unknown) => (op.kind === "missing-addend" && step !== null && !stepIds.includes(step as string) ? null : (step ?? null) as string | null);
+  // Up to U6 sums are counted on and back, not worked in columns: a step the sum does not have is not one step either.
+  const stepOf = (step: unknown) => ((op.kind === "missing-addend" || place.level <= 6) && step !== null && !stepIds.includes(step as string) ? null : (step ?? null) as string | null);
   const wrongAnswers: WrongAnswer[] = Array.isArray(raw.wrongAnswers)
     ? raw.wrongAnswers.filter(isObject).map((w) => ({
       value: valueFrom(w.value) as AnswerValue, cause: w.cause as string, description: w.description as string, step: stepOf(w.step),
@@ -681,7 +699,7 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
   if (typeof built === "string") return fail(built, null, stepIds);
   // A number line item always draws its line; another format draws the picture the AI named, if any.
   const figureKind = format === "number-line" ? "number-line" : kind;
-  const figure = figureKind ? operationFigure(figureKind, op, answer, raw.figureShows) : null;
+  const figure = figureKind ? operationFigure(figureKind, op, answer, shownBy(raw.text, op) ?? raw.figureShows) : null;
   if (typeof figure === "string") return fail(figure, null, stepIds);
   const item = figure ? { ...built, figure } : built;
 
