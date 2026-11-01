@@ -1209,8 +1209,6 @@ interface Regroup {
 
 /** The columns whose regroup is due and not explained yet. */
 const pendingRegroup = (r: Regroup) => r.due.filter((id) => !r.said.includes(id));
-/** The session's columns whose regroup is due and not explained yet. */
-const pendingOf = (s: Session) => pendingRegroup({ due: s.regroupDue ?? [], said: s.regroupSaid ?? [] });
 
 /**
  * Each carry of an addition, as a pair of columns: the one whose sum makes the carry (`out`, "7 + 9 = 16" in the ones)

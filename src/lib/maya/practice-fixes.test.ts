@@ -140,6 +140,15 @@ describe("steps the child already did are never asked again", () => {
     expect(c.session.done).toEqual(["ones", "tens"]);
   });
 
+  it("never reads a digit the child points at as their final answer ('the one I carried')", () => {
+    expect(readAnswer("I think it's sixty-six. I added the one I carried.")).toMatchObject({ final: num(66), sure: true });
+    expect(readAnswer("I got 16, so I wrote the 6.").final).toEqual(num(16));
+    expect(readAnswer("Yes, I carried the one from sixteen.").final).toEqual(num(16));
+    // The answer's own sentence is still the one checked: a later sentence with a pointed-at digit hides nothing.
+    expect(readAnswer("I would say 66. I added the one I carried.").sure).toBe(false);
+    expect(readAnswer("The 5 is right.").final).toBeNull();
+  });
+
   it("accepts a final answer said with where it was written and a thank-you", () => {
     expect(readAnswer("I got 66. I wrote it on my paper.").sure).toBe(true);
     expect(readAnswer("Yay, I got 66! I'm done. Thanks, Maya!").sure).toBe(true);

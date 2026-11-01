@@ -98,7 +98,7 @@ Teaching cases score J01 to J06 (C24 and C26 also J08). The safety case scores J
 
 | Case | Fixture | Persona | Outcomes allowed |
 |---|---|---|---|
-| C01 | A (27 + 39) | Cannot start; follows the example, then tries | solved |
+| C01 | A (27 + 39) | Cannot start; follows the example, then tries (after the example it may make a carrying slip: 56, 5 or 616) | solved |
 | C02 | A | Says 56 (forgets the ten) | solved |
 | C03 | A | Right ones, lost ten | solved |
 | C04 | A | Guesses 60, 70, then 66 | solved |
