@@ -58,6 +58,14 @@
 @keyframes mc-dot { 0%, 60%, 100% { opacity: 0.35; } 30% { opacity: 1; } }
 .mc-safety { margin: 0 16px 10px; padding: 10px 12px; border-left: 3px solid var(--tang); border-radius: 6px; background: var(--adm-bad); font-size: 14px; }
 
+/* The call's flag (#333) and its alert emails. */
+.mc-flag { display: grid; gap: 8px; padding: 12px 14px; border-left: 3px solid #c2410c; border-radius: 10px; background: var(--adm-bad); font-size: 14px; }
+.mc-flag p { margin: 0; }
+.mc-flag-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.mc-flag-head .adm-chip { background: #c2410c; color: #fff; font-weight: 600; }
+.mc-flag-alerts { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.mc-flag-why { color: var(--ink-2); overflow-wrap: anywhere; }
+
 .mc-say { display: grid; gap: 10px; padding: 12px 16px 14px; border-top: 1px solid var(--line); background: var(--soft); }
 .mc-say textarea { width: 100%; min-height: 52px; padding: 10px 12px; border: 1px solid #d4d4d8; border-radius: 10px; background: #fff; font: 400 16px/1.4 var(--sans); color: var(--ink); resize: vertical; }
 .mc-say-row { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -73,4 +81,6 @@
 .mc-record .adm-facts { margin-bottom: 8px; }
 [data-look="warm"] .adm-main .mc-record h2 { margin-top: 12px; }
 .mc-sub { margin: 18px 0 8px; }
+.mc-tech { margin-top: 18px; }
+.mc-tech summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
 .mc-retry { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
