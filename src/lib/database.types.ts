@@ -1348,6 +1348,42 @@ export type Database = {
           },
         ]
       }
+      maya_wording_history: {
+        Row: {
+          child_id: string
+          heard: Json
+          parent_id: string
+          updated_at: string
+        }
+        Insert: {
+          child_id: string
+          heard?: Json
+          parent_id: string
+          updated_at?: string
+        }
+        Update: {
+          child_id?: string
+          heard?: Json
+          parent_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maya_wording_history_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "maya_wording_history_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       parent_pins: {
         Row: {
           created_at: string
@@ -2171,6 +2207,104 @@ export type Database = {
           },
         ]
       }
+      workbook_run_calls: {
+        Row: {
+          call: Json
+          child_id: string
+          created_at: string
+          page: number
+          parent_id: string
+          run_id: string
+          seq: number
+        }
+        Insert: {
+          call: Json
+          child_id: string
+          created_at?: string
+          page: number
+          parent_id: string
+          run_id: string
+          seq: number
+        }
+        Update: {
+          call?: Json
+          child_id?: string
+          created_at?: string
+          page?: number
+          parent_id?: string
+          run_id?: string
+          seq?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_run_calls_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_run_calls_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_run_calls_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workbook_run_frames: {
+        Row: {
+          child_id: string
+          created_at: string
+          frame: Json
+          parent_id: string
+          run_id: string
+        }
+        Insert: {
+          child_id: string
+          created_at?: string
+          frame: Json
+          parent_id: string
+          run_id: string
+        }
+        Update: {
+          child_id?: string
+          created_at?: string
+          frame?: Json
+          parent_id?: string
+          run_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_run_frames_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_run_frames_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_run_frames_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: true
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_run_pages: {
         Row: {
           child_id: string
@@ -2213,6 +2347,73 @@ export type Database = {
           },
           {
             foreignKeyName: "workbook_run_pages_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workbook_run_solves: {
+        Row: {
+          call_key: string | null
+          child_id: string
+          created_at: string
+          id: number
+          log: Json
+          model: string
+          ms: number
+          parent_id: string
+          question_id: string
+          run_id: string
+          usd: number | null
+          verdict: string
+        }
+        Insert: {
+          call_key?: string | null
+          child_id: string
+          created_at?: string
+          id?: never
+          log: Json
+          model: string
+          ms: number
+          parent_id: string
+          question_id: string
+          run_id: string
+          usd?: number | null
+          verdict: string
+        }
+        Update: {
+          call_key?: string | null
+          child_id?: string
+          created_at?: string
+          id?: never
+          log?: Json
+          model?: string
+          ms?: number
+          parent_id?: string
+          question_id?: string
+          run_id?: string
+          usd?: number | null
+          verdict?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_run_solves_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_run_solves_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_run_solves_run_id_fkey"
             columns: ["run_id"]
             isOneToOne: false
             referencedRelation: "workbook_runs"
@@ -2839,6 +3040,10 @@ export type Database = {
         Args: { customer: string; p: string; token: string }
         Returns: Json
       }
+      record_maya_wordings: {
+        Args: { p_child: string; p_heard: Json; p_max: number }
+        Returns: number
+      }
       record_reminder_click: {
         Args: {
           p_assessment: string
@@ -2892,6 +3097,16 @@ export type Database = {
         Returns: boolean
       }
       save_workbook_rendering: { Args: { p_rendering: Json }; Returns: Json }
+      save_workbook_run_call: {
+        Args: {
+          p_call: Json
+          p_lease: string
+          p_page: number
+          p_run: string
+          p_seq: number
+        }
+        Returns: boolean
+      }
       save_workbook_run_draft: {
         Args: {
           p_draft: Json
@@ -2910,8 +3125,16 @@ export type Database = {
         }
         Returns: string
       }
+      save_workbook_run_frame: {
+        Args: { p_frame: Json; p_lease: string; p_run: string }
+        Returns: boolean
+      }
       save_workbook_run_page: {
         Args: { p_lease: string; p_number: number; p_page: Json; p_run: string }
+        Returns: boolean
+      }
+      save_workbook_run_solves: {
+        Args: { p_lease: string; p_logs: Json; p_run: string }
         Returns: boolean
       }
       start_workbook_run: {
