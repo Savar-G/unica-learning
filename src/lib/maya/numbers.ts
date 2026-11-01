@@ -574,7 +574,14 @@ export function takenBack(text: string): { kept: AnswerValue | null } | null {
   // An explicit rejection also withdraws an answer accepted in an earlier turn. It needs no correction word or number.
   // "I don't know" after a request to explain is not a withdrawal of the accepted answer.
   const withdrawal = /\b(?:withdraw|withdrawn|retract|wrong|incorrect|mistake|mistaken|reject|rejected|scratch|forget|undo|cancel)\b|\b(?:take|taking|took|takes) (?:that|it|this|my answer|it all)? ?back\b|\b(?:change|changed|changing) (?:my|the) answer\b|\b(?:changed?|changing) my mind\b|\bnever ?mind\b/i;
-  if (withdrawal.test(text) || negativeNearAnswer(text)) return { kept: null };
+  const plain = text.replace(/’/g, "'");
+  const target = "(?:(?:my|the|this|that) answer|that|this|it)";
+  const erased = new RegExp(`\\b(?:eras(?:e|ed)|delet(?:e|ed)|cross(?:ed)?|rub(?:bed)?|rul(?:e|ed))\\s+(?:out\\s+)?${target}(?:\\s+out)?\\b`, "i");
+  const denied = new RegExp(`\\b${target}(?:'s| is| was)?\\s+(?:not|never)\\s+(?:right|correct|true)\\b|\\b(?:don't|do not|dont)\\s+(?:think|believe)\\s+${target}(?:'s| is)?\\s+(?:right|correct|true)\\b`, "i");
+  const erasure = erased.exec(plain);
+  const beforeErasure = erasure ? plain.slice(0, erasure.index).split(/[,.!?;\n]|\bbut\b/i).at(-1) ?? "" : "";
+  const erasedAnswer = erasure !== null && !NEGATIVE.test(beforeErasure);
+  if (withdrawal.test(plain) || erasedAnswer || denied.test(plain) || negativeNearAnswer(text)) return { kept: null };
   const parts = splitTakeBacks(text);
   if (parts.length === 1) return null;
   const last = parts[parts.length - 1];

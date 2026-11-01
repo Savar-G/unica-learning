@@ -310,6 +310,8 @@ export interface Session {
    * write it again. A saved session from before has no field (not written).
    */
   wrote?: boolean;
+  /** Distinct child turns with at least one checked attempt. Incorrect attempts also count as observed work. */
+  workAttempts?: number;
   /**
    * The child's checked wrong final answers once every work step is done (D-199). After the second one, the final step
    * has no more help to give: Maya gives the answer, with how the parts make it. A saved session from before has no
@@ -324,6 +326,9 @@ export interface Session {
   regroupDue?: string[];
   /** Columns whose regroup Maya explained (step.regroup). A saved session from before has no field (none). */
   regroupSaid?: string[];
+  /** Carry requirements and explanations with separate source and destination ownership. Legacy column lists above
+   * are retained for older trace readers, but never prove that a carry was explained. */
+  regroup?: Regroup;
   writeAsked: boolean;
   confirmTries: number;
   offeredOtherInput: boolean;
@@ -780,6 +785,8 @@ export function step(session: Session, event: SessionEvent): StepResult {
       if (back && !(back.kept && (isRightAnswer(s.package!.operation, s.package!.answer, back.kept) || answersAStep(s.package!, back.kept)))) {
         s.lastResult = null;
         if (s.solved === "child") s.solved = null;
+        s.wrote = false;
+        s.writeAsked = false;
       }
       if (s.state === "OPEN" && s.opened) s.state = "ASSESS";
       s.expect = "maya";
@@ -900,7 +907,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   const ladder = { ...s.ladder };
   const done = [...s.done];
   let failed = false;
-  let regroup: Regroup = { due: [...(s.regroupDue ?? [])], said: [...(s.regroupSaid ?? [])] };
+  let regroup = regroupOf(s);
   if (pkg && scoring) {
     for (const { answer: a, problem } of checked) {
       if (problem !== "target") continue;
@@ -917,7 +924,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     if (reading.help === "more") ladder.unlocked = Math.max(ladder.unlocked, Math.min(4, ladder.hint + 1));
     if (reading.help === "show") ladder.unlocked = Math.max(ladder.unlocked, 3);
     // A lost carry is a located error: its regroup line (H1) is allowed at once.
-    if (pendingRegroup(regroup).includes(ladder.step)) ladder.unlocked = Math.max(ladder.unlocked, 1);
+    if (pendingRegroup(regroup).some((c) => c.at === ladder.step)) ladder.unlocked = Math.max(ladder.unlocked, 1);
   }
 
   const main = isTeaching(s.state) ? s.state : s.resume;
@@ -926,7 +933,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     const next = pkg!.easierExample.steps[main === "ASSESS" ? 0 : s.exampleShown];
     if (p.step !== next.id) return no("wrong_step", `The next example step is "${next.id}".`, allowedNow);
   }
-  const regroupNote = pendingRegroup(regroup).includes(ladder.step) ? ` The child has not regrouped there: say "step.regroup" for "${ladder.step}" before any line about a carried digit.` : "";
+  const regroupNote = pendingRegroup(regroup).some((c) => c.at === ladder.step) ? ` The child has not regrouped there: say "step.regroup" for "${ladder.step}" before any line about a carried digit.` : "";
   if (p.act === "guide" && p.step !== ladder.step) return no("wrong_step", `Guide the first step the child has not done: "${ladder.step}".${regroupNote}`, allowedNow);
   if (p.act === "accept_answer" && !rightResult) return no("accepts_wrong_answer", "Only a right final answer the child said and kept can be accepted.", allowedNow);
 
@@ -1110,6 +1117,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
 
   // 7. Committed: the reading counts now (its answers only when they were judged).
   if (reading.correctsHearing) s.mishearing.corrections += 1;
+  if (s.turn && checked.length > 0) s.workAttempts = (s.workAttempts ?? 0) + 1;
   if (reading.paper) s.paper = reading.paper === "written" ? "child_confirmed" : "declined";
   for (const { answer: a, problem } of checked) {
     if (problem === "target" && a.step === "result") s.lastResult = a.verdict;
@@ -1119,11 +1127,12 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     s.done = done;
     s.ladder = ladder;
     s.finalMisses = misses;
-    s.regroupDue = regroup.due;
   }
-  // A regroup said for a column explains its pair too: the column the carry comes from and the one it goes to.
+  // Each explanation belongs to exactly one carry, not to either adjacent column's other carry.
   const explained = spoken.chosen.filter((o) => o.line === "step.regroup" && o.slots.step).flatMap((o) => pkg ? pairOf(pkg, o.slots.step!, o.slots.other === "carry") : []);
-  s.regroupSaid = [...new Set([...regroup.said, ...explained])];
+  s.regroup = { due: regroup.due, said: [...regroup.said, ...explained.filter((c) => !regroup.said.some((v) => sameCarry(c, v)))] };
+  s.regroupDue = [...new Set(regroup.due.map((c) => c.at))];
+  s.regroupSaid = [...new Set(s.regroup.said.map((c) => c.in))];
   if (p.act !== "confirm" && p.act !== "offer_other_input") {
     s.confirmTries = 0;
     s.offeredOtherInput = false;
@@ -1214,13 +1223,21 @@ function finalMisses(s: Session, checked: readonly Checked[]): number {
 // ---------- Regrouping in addition ----------
 
 /** The regroup state of a call: the columns that need it explained, and those where Maya explained it. */
-interface Regroup {
-  due: string[];
-  said: string[];
-}
+interface CarryRef { out: string; in: string }
+interface RegroupNeed extends CarryRef { at: string }
+interface Regroup { due: RegroupNeed[]; said: CarryRef[] }
+
+const sameCarry = (a: CarryRef, b: CarryRef) => a.out === b.out && a.in === b.in;
 
 /** The columns whose regroup is due and not explained yet. */
-const pendingRegroup = (r: Regroup) => r.due.filter((id) => !r.said.includes(id));
+const pendingRegroup = (r: Regroup) => r.due.filter((c) => !r.said.some((v) => sameCarry(c, v)));
+
+/** Old column-only explanation lists cannot distinguish adjacent carries. Restore their requirements conservatively. */
+function regroupOf(s: Session): Regroup {
+  if (s.regroup) return { due: s.regroup.due.map((c) => ({ ...c })), said: s.regroup.said.map((c) => ({ ...c })) };
+  const pairs = s.package ? carryPairs(s.package) : [];
+  return { due: (s.regroupDue ?? []).flatMap((at) => pairs.filter((c) => c.out.id === at || c.in.id === at).map((c) => ({ out: c.out.id, in: c.in.id, at }))), said: [] };
+}
 
 /**
  * Each carry of an addition, as a pair of columns: the one whose sum makes the carry (`out`, "7 + 9 = 16" in the ones)
@@ -1232,9 +1249,8 @@ function carryPairs(pkg: OperationPackage): { out: Extract<WorkedStep, { kind: "
 }
 
 /** Both columns of the carry the line explains, without marking an adjacent carry as explained. */
-function pairOf(pkg: OperationPackage, id: string, source: boolean): string[] {
-  const ids = carryPairs(pkg).filter((c) => source ? c.out.id === id : c.in.id === id).flatMap((c) => [c.out.id, c.in.id]);
-  return ids.length > 0 ? [...new Set(ids)] : [id];
+function pairOf(pkg: OperationPackage, id: string, source: boolean): CarryRef[] {
+  return carryPairs(pkg).filter((c) => source ? c.out.id === id : c.in.id === id).map((c) => ({ out: c.out.id, in: c.in.id }));
 }
 
 /**
@@ -1260,11 +1276,21 @@ const CARRY_DENIAL = /\b(?:didn'?t|did not|don'?t|do not|never|not)\b[^.!?\n]{0,
 const WRITE_VERB = /\b(?:write|writes|wrote|writing|put|puts|putting)\b((?:\s+(?:down|the|a|number|it|as))*)\s+([^\s.,!?;]+(?:[\s-]+[^\s.,!?;]+)?)/gi;
 
 /** The child plans to write (or wrote) a column's two-digit sum as one number ("I write 16 under the ones"). */
-function writesTotal(text: string, total: number): boolean {
+function writesTotal(text: string, column: Extract<WorkedStep, { kind: "add-column" }>): boolean {
+  const { total, place } = column;
   if (total < 10) return false;
-  for (const m of committedText(text).matchAll(WRITE_VERB)) {
+  const committed = committedText(text).replace(/’/g, "'");
+  for (const m of committed.matchAll(WRITE_VERB)) {
     const first = valuesIn(m[2])[0];
-    if (first?.type === "number" && first.value === total) return true;
+    if (first?.type !== "number" || first.value !== total) continue;
+    const before = committed.slice(0, m.index).split(/[.!?;\n]|\bbut\b/i).at(-1) ?? "";
+    if (/\b(?:not|never|no|don't|dont|didn't|didnt|won't|wont|wouldn't|shouldn't|can't|cannot)\b/i.test(before)) continue;
+    if (/\b(?:should|shall|can|could|would|may|might)\s+(?:i|we)\s*$/i.test(before) || /^[^.!;\n]*\?/.test(committed.slice(m.index))) continue;
+    const word = m[2].split(/\s+/)[0];
+    const one = valuesIn(word)[0];
+    const length = one?.type === "number" && one.value === total ? word.length : m[2].length;
+    const after = committed.slice(m.index + m[0].length - m[2].length + length);
+    if (new RegExp(`^\\s+(?:right\\s+)?(?:in|into|under|at)\\s+(?:the\\s+)?${place}\\b`, "i").test(after)) return true;
   }
   return false;
 }
@@ -1278,34 +1304,38 @@ function writesTotal(text: string, total: number): boolean {
  */
 function regroupAfter(s: Session, checked: readonly Checked[], done: string[]): Regroup {
   const pkg = s.package;
-  const due = new Set(s.regroupDue ?? []);
-  let said = [...(s.regroupSaid ?? [])];
+  const previous = regroupOf(s);
+  const due = [...previous.due];
+  let said = previous.said;
   const pairs = pkg ? carryPairs(pkg) : [];
-  if (!pkg || pairs.length === 0) return { due: [...due], said };
+  if (!pkg || pairs.length === 0) return { due, said };
+  const requireCarry = (pair: (typeof pairs)[number], at: string, repeat = false) => {
+    const ref = { out: pair.out.id, in: pair.in.id };
+    if (!due.some((c) => sameCarry(c, ref) && c.at === at)) due.push({ ...ref, at });
+    if (repeat) said = said.filter((c) => !sameCarry(c, ref));
+  };
   const text = s.turn?.text ?? "";
   const wrong = checked.filter((c) => c.problem === "target" && c.answer.verdict === "wrong" && c.answer.value.type === "number");
   for (const c of wrong) {
     const v = (c.answer.value as { value: number }).value;
     const pair = pairs.find((x) => x.in.id === c.answer.step);
     const sum = pair ? pair.in.digits.reduce((a, b) => a + b, 0) : null;
-    if (pair && sum !== null && (v === sum || v === sum % 10)) due.add(pair.in.id);
-    if (c.answer.step === "result" && v === noCarryAnswer(pkg)) for (const x of pairs) if (!done.includes(x.in.id)) due.add(x.in.id);
+    if (pair && sum !== null && (v === sum || v === sum % 10)) requireCarry(pair, pair.in.id);
+    if (c.answer.step === "result" && v === noCarryAnswer(pkg)) for (const x of pairs) if (!done.includes(x.in.id)) requireCarry(x, x.in.id);
   }
   if (CARRY_DENIAL.test(committedText(text))) {
     const first = pairs.find((x) => !done.includes(x.in.id));
     if (first) {
-      due.add(first.in.id);
-      said = said.filter((id) => id !== first.in.id);
+      requireCarry(first, first.in.id, true);
     }
   }
   for (const x of pairs) {
-    if (!writesTotal(text, x.out.total)) continue;
-    due.add(x.out.id);
-    said = said.filter((id) => id !== x.out.id);
+    if (!writesTotal(text, x.out)) continue;
+    requireCarry(x, x.out.id, true);
     const at = done.indexOf(x.out.id);
     if (at >= 0) done.splice(at, 1);
   }
-  return { due: [...due], said };
+  return { due, said };
 }
 
 /**
@@ -1411,7 +1441,7 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
         const judge = offers.find((o) => o.line === "check.right_step" && o.slots.step === fresh) ??
           offers.find((o) => o.line === "check.not_yet" && o.slots.step === ladderStep);
         // A due regroup is said before any other help on its column.
-        const due = (view.regroup ?? []).includes(ladderStep);
+        const due = (view.regroup ?? []).some((c) => c.at === ladderStep);
         const help = byLevel(free).sort((a, b) => (due ? Number(b.line === "step.regroup") - Number(a.line === "step.regroup") : 0));
         lineSets = [...(judge ? help.map((h) => [judge, h]) : []), ...help.map((h) => [h])]
           .map((set) => make(act, set, { step: ladderStep, level: (set.at(-1)!.level ?? 0) as HintLevel }));
@@ -1597,7 +1627,7 @@ interface View {
   checked: Checked[];
   rightResult: boolean;
   /** Columns whose regroup must be explained before any line about a carried digit (pendingRegroup). */
-  regroup?: string[];
+  regroup?: RegroupNeed[];
 }
 
 /** The words a proposal gives: the text Maya says, the lines in it, and the board texts those lines allow. */
@@ -1649,6 +1679,13 @@ function hashOf(text: string): number {
 
 /** The wordings this call has said, with their times: add them to the child's wording history (wording-history.ts). */
 export const heardWordings = (session: Session): WordingHistory => heardInCall(session.variety);
+
+/** Bank choices keep their original pick ids when a state condition removes a wording. Repeated checked attempts,
+ * right or wrong, support the new effort praise. A fresh or old uncounted session gets readiness and thank-you lines. */
+export function phraseOffers(session: Session, group: PhraseGroup): { pick: number; text: string }[] {
+  const ready = new Set([1, 2, 3, 4, 8, 12]);
+  return PHRASES[group].flatMap((text, i) => group !== "praise" || ready.has(i + 1) || (session.workAttempts ?? 0) >= 2 ? [{ pick: i + 1, text }] : []);
+}
 
 /** The warm-talk purposes each act Maya may take now can use (D-196), for the text adapter beside lineOffers. */
 export function warmGroups(session: Session): Partial<Record<Act, PhraseGroup[]>> {
@@ -1779,10 +1816,11 @@ function offersFor(s: Session, act: Act, view: View): LineOffer[] {
  * of the column a carry comes from is offered only then (it says that column's sum).
  */
 function regroupHelp(l: ReturnType<typeof packageLines>, id: string, view: View): LineOffer[] {
-  const pending = (view.regroup ?? []).includes(id);
+  const pending = (view.regroup ?? []).filter((c) => c.at === id);
   const own = l.help(id);
-  if (!pending) return own;
-  const regroup = [...own.filter((o) => o.line === "step.regroup"), ...l.regroupOut(id)];
+  if (pending.length === 0) return own;
+  // Explain an incoming carry before any outgoing explanation that uses it.
+  const regroup = pending.some((c) => c.in === id) ? own.filter((o) => o.line === "step.regroup") : l.regroupOut(id);
   return [...own.filter((o) => (o.level ?? 0) === 0), ...regroup];
 }
 
@@ -1831,9 +1869,10 @@ function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview
   };
   const phrase = (group: PhraseGroup, echoed: string | null = null, pick?: number, only?: readonly string[]) => {
     const bank = PHRASES[group];
+    const eligible = new Set(phraseOffers(s, group).map((o) => o.pick - 1));
     // A frame with the child's words when they check, else one with no slot (D-196 echo frames).
-    const slotted = bank.flatMap((b, i) => (b.includes("{echo}") ? [i] : []));
-    const unslotted = bank.flatMap((b, i) => (b.includes("{echo}") || (only && !only.includes(b)) ? [] : [i]));
+    const slotted = bank.flatMap((b, i) => (eligible.has(i) && b.includes("{echo}") ? [i] : []));
+    const unslotted = bank.flatMap((b, i) => (!eligible.has(i) || b.includes("{echo}") || (only && !only.includes(b)) ? [] : [i]));
     const pool = echoed !== null && slotted.length > 0 ? slotted : unslotted;
     // The model may name the phrase that fits (R374-5): code keeps it when its slot can be filled, and records it.
     const chosen = pick !== undefined && pool.includes(pick - 1) ? pick - 1 : null;
@@ -1862,6 +1901,9 @@ function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview
       if (!PHRASE_ACTS[part.warm].includes(p.act)) {
         const groups = PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(p.act));
         return { code: "line_not_offered", reason: `Warm talk "${part.warm}" does not fit ${p.act}. It fits: ${groups.join(", ") || "none"}.` };
+      }
+      if (part.pick !== undefined && !phraseOffers(s, part.warm).some((o) => o.pick === part.pick)) {
+        return { code: "line_not_offered", reason: "This praise needs observed work in the call. Pick a currently offered phrase." };
       }
       add("warm", phrase(part.warm, part.echo === undefined ? null : echoOf(s, part.echo), part.pick));
       continue;

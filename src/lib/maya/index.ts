@@ -10,6 +10,7 @@ export {
   drawOffers,
   lineOffers,
   warmGroups,
+  phraseOffers,
   nextActs,
   step,
   ASSISTANCE,

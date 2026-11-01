@@ -10,7 +10,7 @@ import {
   lineOffers,
   nextActs,
   warmGroups,
-  PHRASES,
+  phraseOffers,
   PROPOSAL_SCHEMA,
   PROPOSAL_VERSION,
   type Act,
@@ -20,7 +20,7 @@ import { stepText, valueText } from "@/lib/question-package";
 import type { TraceRefusal } from "@/lib/maya-trace";
 
 /** The version of the prompt and of the model input below. Raise it when either changes; every trace records it. */
-export const PROMPT_VERSION = "maya-text-12";
+export const PROMPT_VERSION = "maya-text-13";
 
 /** One act the model may propose now, with everything code offers for it. */
 export interface ActOffer {
@@ -28,7 +28,7 @@ export interface ActOffer {
   /** Code-written lines: copy `line` and `slots` exactly. `says` is one wording; code picks the wording said. */
   lines: { line: string; slots: Record<string, unknown>; level?: number; requires?: { answer: "right" | "wrong"; step: string }; says: string }[];
   /** Warm-talk groups for this act, each with its phrases numbered from 1 (`pick`). */
-  warm: { group: string; phrases: string[] }[];
+  warm: { group: string; phrases: string[]; picks: number[] }[];
   /** Board offers to draw, by id. */
   draw: { id: string; shows: string }[];
 }
@@ -97,7 +97,10 @@ export function modelInput(session: Session, repair: ModelInput["repair"] = null
         ...(o.requires ? { requires: o.requires } : {}),
         says: o.texts[0] ?? "",
       })),
-      warm: (warm[act] ?? []).map((group) => ({ group, phrases: [...PHRASES[group]] })),
+      warm: (warm[act] ?? []).map((group) => {
+        const choices = phraseOffers(session, group);
+        return { group, phrases: choices.map((o) => o.text), picks: choices.map((o) => o.pick) };
+      }),
       draw: draw[act] ?? [],
     })),
     repair,
@@ -126,7 +129,7 @@ Rules:
 - Regrouping: when the child lost a carry, says they did not carry or asks what the carried digit is ("What 1?"), or plans to write a two-digit sum in one column ("I write 16 under the ones"), say the "step.regroup" line for that column first (it says where the carry comes from). Never a line about a carried digit before it, and never accept the two-digit plan as a done step.
 - If the child asks for sexual, violent or other harmful content, set "reading.unsafeRequest" and use the act "redirect" with the line "redirect.decline", then "redirect.back". No own words in that turn.
 - "echo" may hold 1 to 3 words copied exactly from the child's last turn (a pet's name, a game) for reply groups such as pets or games; else null.
-- "pick" is the number of the phrase in the group that fits best (1 = first), or null.
+- "pick" is the original id in the group's "picks" array, at the same position as the phrase in "phrases", or null. Use only an offered id. The ids can have gaps when a phrase needs observed work.
 - For "guide" and "example_step", set "step" to the step id of the line, and for "guide" set "level" to the line's level.
 - Give the gentlest help first: invite before point, point before operation, operation before show. Raise the level only after the child tries and fails, or asks for help.
 - "reading" is what you understood from the child's latest turn ("childTurn"); null when there is none. Put each number the child gave as their answer in "answers", with the step it answers ("result" for the whole question, or a step id) and your verdict ("right" or "wrong") by the checked answer and steps in "question". Never mark a wrong answer right.
