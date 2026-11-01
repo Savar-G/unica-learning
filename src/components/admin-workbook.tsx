@@ -4,7 +4,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { WorkbookDetail } from "@/lib/admin-store";
-import { when } from "@/lib/admin-view";
+import { when, workbookPdfPath } from "@/lib/admin-view";
 import { checkQuestionPackage, hasOperation, packageItem, stepText, valueText, type AnswerRegion, type QuestionPackage } from "@/lib/question-package";
 import type { WorkbookPage, WorkbookQuestion, WorkbookStatus } from "@/lib/workbook-content";
 import { AdminFrame, Chip, Table, type Tone } from "@/components/admin";
@@ -110,7 +110,7 @@ export function AdminWorkbook({ email, detail }: { email: string; detail: Workbo
         ["Levels", w.levels.map((l) => `U${l}`).join(", ")],
         ["Pages and questions", `${w.pages.length} pages · ${questions.length} questions`],
         ["Made (Pacific)", when(w.createdAt)],
-        ["PDF", w.pdfPath ?? "None yet"],
+        ["PDF", w.pdfPath ? <a key="pdf" href={workbookPdfPath(w.id)} target="_blank" rel="noopener">Open workbook PDF</a> : "No PDF yet"],
         ["Profile build", w.profileBuild ?? "None"],
         ["Workbook id", <span key="id" className="adm-mono">{w.id}</span>],
       ]} />

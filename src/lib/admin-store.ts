@@ -548,6 +548,30 @@ export async function getWorkbook(a: AdminSession, id: string): Promise<Workbook
   return { workbook, child: children[0] ?? null, images };
 }
 
+/** A fresh short-lived URL of a stored workbook PDF, signed with the admin's session, or null when there is none. */
+async function signPdf(a: AdminSession, path: string | null | undefined): Promise<string | null> {
+  if (!path) return null;
+  const { data, error } = await a.db.storage.from(WORKBOOK_FILES_BUCKET).createSignedUrl(path, WORKBOOK_URL_SECONDS);
+  if (error) console.error("[admin] workbook pdf sign failed", error.message);
+  return data?.signedUrl ?? null;
+}
+
+/** The PDF of a stored workbook, as a fresh signed URL, or null. */
+export async function workbookPdfUrl(a: AdminSession, id: string): Promise<string | null> {
+  if (!isUuid(id)) return null;
+  return signPdf(a, (await workbookStore(a.db).workbook(id))?.pdfPath);
+}
+
+/** The PDF of a run's draft (its latest revision), as a fresh signed URL, or null. */
+export async function draftPdfUrl(a: AdminSession, runId: string): Promise<string | null> {
+  if (!isUuid(runId)) return null;
+  const [run] = must<{ draft_id: string | null }[]>(await a.db.from("workbook_runs").select("draft_id").eq("id", runId).limit(1), "workbook run");
+  if (!run?.draft_id) return null;
+  const revision = await a.db.from("workbook_draft_revisions").select("revision, rendering, render_problems").eq("draft_id", run.draft_id).order("revision", { ascending: false }).limit(1).maybeSingle()
+    .then((r) => must<{ revision: number; rendering: DraftRendering | null; render_problems: RenderProblem[] } | null>(r, "draft revision"));
+  return signPdf(a, revision?.rendering?.pdfPath);
+}
+
 // Workbook runs and drafts (#312)
 
 /** A draft's check results, from the counts stored beside it. */
