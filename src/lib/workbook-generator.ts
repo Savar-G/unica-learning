@@ -417,6 +417,11 @@ function framesFor(kind: QuestionKind, step: boolean, subtraction: boolean): str
 
 /** A thing (or dots) counted after the number 1, which takes its singular. */
 const PLURAL_AFTER_1 = new RegExp(`\\b1 ((?:red |blue )?)(dots|${THINGS.join("|")})\\b`, "g");
+/** The wordings of a sequence (missing numbers), with no number in them. */
+const SEQUENCE_FRAMES = [
+  "Fill in the missing numbers.", "What numbers are missing?", "Count up. Fill in the boxes.", "Write the numbers that go in the gaps.",
+  "Count on. Which numbers are missing?", "Find the missing numbers in the count.", "Count on. Write the numbers you skip.",
+];
 /** One of each thing: after the number 1 a story counts one shell, not 1 shells. */
 const ONE: Record<string, string> = { leaves: "leaf", shoes: "shoe", boxes: "box" };
 const singular = (w: string) => ONE[w] ?? w.replace(/s$/, "");
@@ -521,6 +526,16 @@ function planBook(input: GenerateInput, work: PageWork[]) {
         // The spare's wording is for a redo only: it takes no frame from the page's other slots.
         const other = pick(spare);
         if (other) spareSay = fillFrame(other.f, spare!, name, things[(thing + 7) % things.length]);
+      }
+      // A sequence names no number in its text (code can then fit it to a card): only its wording is planned.
+      if (slot.aim?.kind === "sequence") {
+        const room = roomOf(input, slot.place, w.day)?.characters ?? Infinity;
+        const frame = SEQUENCE_FRAMES.map((f, j) => ({ f, j, n: frameUse.get(f) ?? 0 })).filter((x) => !pageFrames.has(x.f) && x.f.length <= room).sort((a, b) => a.n - b.n || a.j - b.j)[0]?.f;
+        if (frame) {
+          say = frame;
+          frameUse.set(frame, (frameUse.get(frame) ?? 0) + 1);
+          pageFrames.add(frame);
+        }
       }
       slot.planned = { use: pair, spare, name, say, spareSay };
     }

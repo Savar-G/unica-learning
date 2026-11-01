@@ -704,18 +704,16 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
   const item = figure ? { ...built, figure } : built;
 
   const easier = isObject(raw.easier) ? raw.easier : null;
-  if (!easier && op.kind !== "missing-addend") return fail("the question has no easier example", null, stepIds);
   // A missing part's easier example has one less to count on, to a total one less (3 + ? = 4 for 3 + ? = 5): code
-  // writes it when the AI's is missing or is not easier (#380).
-  const [part, total] = op.kind === "missing-addend" ? op.operands : [0, 0];
-  const ownEasier = op.kind === "missing-addend" && total > part ? { text: `${part} + ? = ${total - 1}`, operation: { kind: "missing-addend", operands: [part, total - 1] } } : null;
-  if (!easier) {
-    if (!ownEasier) return fail("the question has no easier example", null, stepIds);
-    return checked(pkg(item, op, wrongAnswers, { ...ownEasier, operation: ownEasier.operation as Operation, answer: operationResult(ownEasier.operation as Operation), steps: workedSteps(ownEasier.operation as Operation) }), stepIds);
-  }
+  // writes it when the AI's is missing or is not easier (#380). So does a sum or a take-away of two whole numbers
+  // (round 5): one number smaller, so the answer differs (8 - 4: 7 - 4, then 8 - 3; never 6 - 2, which is 4 again).
+  const ownEasiers = codeEasiers(op);
+  const own = (e: { text: string; operation: Operation }) => checked(pkg(item, op, wrongAnswers, { ...e, answer: operationResult(e.operation), steps: workedSteps(e.operation) }), stepIds);
+  const firstOwn = () => ownEasiers.map(own).find((x) => x.check.status !== "failed") ?? null;
+  if (!easier) return firstOwn() ?? fail("the question has no easier example", null, stepIds);
   const easierOp = operationFrom(easier.operation);
   const easierProblem = operationProblem(easierOp);
-  if (easierProblem) return fail(`the easier example's operation: ${easierProblem}`, null, stepIds);
+  if (easierProblem) return firstOwn() ?? fail(`the easier example's operation: ${easierProblem}`, null, stepIds);
   const easierExample = {
     text: easier.text as string,
     operation: easierOp as Operation,
@@ -723,11 +721,27 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
     steps: workedSteps(easierOp as Operation),
   };
   const result = checked(pkg(item, op, wrongAnswers, easierExample), stepIds);
-  if (ownEasier && result.check.status === "failed" && /the easier example/.test(result.check.reason)) {
-    const fixed = checked(pkg(item, op, wrongAnswers, { ...ownEasier, operation: ownEasier.operation as Operation, answer: operationResult(ownEasier.operation as Operation), steps: workedSteps(ownEasier.operation as Operation) }), stepIds);
-    if (fixed.check.status !== "failed") return fixed;
-  }
+  if (result.check.status === "failed" && /the easier example/.test(result.check.reason)) return firstOwn() ?? result;
   return result;
+}
+
+/**
+ * The easier examples code can write for an operation, best first: a missing part with one less to count on; a sum or
+ * take-away of two whole numbers with one number smaller (the first, then the second), whose answer differs.
+ */
+function codeEasiers(op: Operation): { text: string; operation: Operation }[] {
+  const [a, b] = op.operands as unknown[];
+  if (op.operands.length !== 2 || !Number.isInteger(a) || !Number.isInteger(b)) return [];
+  const [x, y] = [a as number, b as number];
+  const make = (kind: "add" | "subtract" | "missing-addend", p: number, q: number) => ({
+    text: kind === "missing-addend" ? `${p} + ? = ${q}` : `${p} ${kind === "add" ? "+" : "-"} ${q} = ?`,
+    operation: { ...op, kind, operands: [p, q] } as Operation,
+  });
+  if (op.kind === "missing-addend") return y > x ? [make("missing-addend", x, y - 1)] : [];
+  if (op.kind === "add") return [[x - 1, y], [x, y - 1]].filter(([p, q]) => p >= 0 && q >= 0 && p + q > 0).map(([p, q]) => make("add", p, q));
+  // A take-away of nothing left (7 - 7) goes last.
+  if (op.kind === "subtract") return [[x - 1, y], [x, y - 1]].filter(([p, q]) => q >= 0 && p >= q && p - q !== x - y).sort((m, n) => Number(m[0] === m[1]) - Number(n[0] === n[1])).map(([p, q]) => make("subtract", p, q));
+  return [];
 }
 
 /**

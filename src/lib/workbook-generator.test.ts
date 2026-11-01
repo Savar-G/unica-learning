@@ -1179,12 +1179,20 @@ describe("round 5 (#380): code plans the book's numbers and names, rooms and row
       .flatMap((b) => b.slots) as (Planned & { room?: { characters: number }; planned?: { say?: string } })[];
     const says = slots.flatMap((s) => (s.planned?.say ? [s] : []));
     expect(says.length).toBeGreaterThan(80);
-    expect(new Set(says.map((s) => s.planned!.say)).size).toBe(says.length);
+    expect(says.some((s) => s.aim?.kind === "sequence")).toBe(true);
+    // A numbered wording is never planned twice (a sequence's has no numbers: it repeats only with other numbers).
+    const numbered = says.filter((s) => s.aim?.kind !== "sequence");
+    expect(new Set(numbered.map((s) => s.planned!.say)).size).toBe(numbered.length);
     for (const s of says) {
       const say = s.planned!.say!;
       if (s.room) expect(say.length, say).toBeLessThanOrEqual(s.room.characters);
       expect(say, say).not.toMatch(/[{}]/);
       expect(say).not.toMatch(/\bSam\b/);
+      // A sequence's wording names no number (code fits its numbers to the card).
+      if (s.aim?.kind === "sequence") {
+        expect(say).not.toMatch(/\d/);
+        continue;
+      }
       const [a, b] = s.planned!.numbers!;
       expect(say.includes(String(a)) || say.includes(String(a + b)), say).toBe(true);
       if (!skillRange(BC, 3, s.aim!.skill).subtraction) expect(say, say).not.toMatch(/left|away|take|less/);
@@ -1195,6 +1203,24 @@ describe("round 5 (#380): code plans the book's numbers and names, rooms and row
       const shapes = p.slots.flatMap((s) => (s.planned?.say ? [shapeOf(s.planned.say)] : [])).filter(Boolean);
       expect(new Set(shapes).size, `day ${p.day} page ${p.page}`).toBe(shapes.length);
     }
+  });
+
+  it("writes a take-away's or a sum's easier example itself when the AI's has the question's answer or is missing", () => {
+    const at = { id: "q1", workbookId: WORKBOOK, page: 3, question: 1, level: 3, skills: ["K3-benchmarks-5-10"] };
+    const item = (op: unknown, easier: unknown) => buildQuestion({
+      slot: "1.1", skill: "K3-benchmarks-5-10", difficulty: 1, text: "8 boats. Ivy loses 4. How many left?", format: "write-number", operation: op,
+      wrongAnswers: [{ value: num(9), cause: "operation", description: "Adds.", step: null }], easier, shownWrong: null, figure: null,
+      numbers: [], places: null, direction: null, sequence: null, pattern: null, relation: null, figureShows: null,
+    }, at);
+    // 6 - 2 is 4 again (run 11): code takes one fewer boat, 7 - 4.
+    const same = item(subOp(8, 4), { text: "6 boats. Ivy loses 2. How many left?", operation: subOp(6, 2) });
+    expect(same.check.status).toBe("checked");
+    expect(same.package!.easierExample).toMatchObject({ text: "7 - 4 = ?", operation: { kind: "subtract", operands: [7, 4] } });
+    // 8 - 7: 7 - 7 leaves nothing, so 8 - 6.
+    expect(item(subOp(8, 7), { text: "4 - 3 = ?", operation: subOp(4, 3) }).package!.easierExample).toMatchObject({ operation: { operands: [8, 6] } });
+    expect(item(addOp(4, 3), null).package!.easierExample).toMatchObject({ text: "3 + 3 = ?" });
+    // A sound easier example of the AI's stays.
+    expect(item(subOp(8, 4), { text: "7 - 4 = ?", operation: subOp(5, 4) }).package!.easierExample!.operation).toMatchObject({ operands: [5, 4] });
   });
 
   it("never plans a missing part on 1 more and 1 less (its missing part is the 1 the text names)", () => {
