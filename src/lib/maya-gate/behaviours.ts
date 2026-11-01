@@ -1,6 +1,6 @@
 // The 40 simulated-child behaviours of the teaching research (`.design/research/ta-pedagogy-2026-10/maya-teaching.md`,
 // section 7, C01 to C40), scripted for the behaviour gate (#324), with the separate branches the research asks for
-// (a letter after the id), and the model and adapter branches (M1 to M11). PENDING lists what the controller or the
+// (a letter after the id), and the model and adapter branches (M1 to M15). PENDING lists what the controller or the
 // text adapter cannot run yet, with the reason; docs/maya-gate.md has the same table.
 import type { Behaviour, Pending, Plan, Read, Step } from "./gate";
 
@@ -1017,6 +1017,77 @@ export const BEHAVIOURS: Behaviour[] = [
       outcome: { reason: "solved", assistance: "independent" },
       acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
       counts: { refusals: 0, fallbacks: 0 },
+    },
+  },
+  {
+    id: "M12",
+    title: "A right final answer, then its explanation: 'So I got 66, because six tens and six ones' is accepted with no confirmation",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("So I got 66, because six tens and six ones.", { start: "has_work", answers: [[66, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, confirmations: 0 },
+    },
+  },
+  {
+    id: "M13",
+    title: "A number in an explanation is never the answer, and a self-correction inside an explanation still wins",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("Because seven and nine make sixteen.", { start: "has_work", answers: [[16, "result", "wrong"]] }, [
+        { act: "guide", level: 0, repair: { act: "guide", level: 0, read: { start: "has_work", answers: [[16, "ones", "right"]] } } },
+      ]),
+      child("Sixty-five because five and six. No wait, sixty-six because six tens and six ones.", { answers: [[66, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      refused: ["answer_not_committed"],
+      counts: { refusals: 1, confirmations: 0, fallbacks: 0 },
+    },
+  },
+  {
+    id: "M14",
+    title: "Two wrong final answers once every column is done: Maya says how the parts make the answer, then the answer, then closes",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("Seven plus nine is sixteen.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("Two plus three plus one is six.", { answers: [[6, "tens", "right"]] }, [{ act: "guide", step: "result", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("56?", { answers: [[56, "result", "wrong"]] }, [{ act: "guide", step: "result", level: 0, lines: ["step.invite"] }]),
+      child("Is it 65?", { answers: [[65, "result", "wrong"]] }, [{ act: "give_answer", warm: "empathy" }]),
+      okay,
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "answer_given", understanding: "uncertain", highestHint: 4 },
+      acts: [OPEN, "guide", "guide", "guide", "give_answer", "close"],
+      counts: { refusals: 0, hints: 1 },
+    },
+  },
+  {
+    id: "M15",
+    title: "One wrong final answer once every column is done: no answer yet, the final question again, then the right answer is accepted",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("Seven plus nine is sixteen.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("Two plus three plus one is six.", { answers: [[6, "tens", "right"]] }, [{ act: "guide", step: "result", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("56?", { answers: [[56, "result", "wrong"]] }, [{ act: "give_answer", repair: { act: "guide", step: "result", level: 0, lines: ["step.invite"] } }]),
+      child("Oh, 66!", { answers: [[66, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
+      refused: ["hint_too_high"],
+      never: ["give_answer"],
     },
   },
 ];

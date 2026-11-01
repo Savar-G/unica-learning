@@ -75,4 +75,4 @@ export {
 } from "./talk-review";
 export { NAME_GAP, type WordingHistory, type WordingId } from "./variety";
 export { MAX_WORDINGS, memoryWordingHistoryStore, mergeHistory, type WordingHistoryStore } from "./wording-history";
-export { readNumbers, valuesIn, type NumbersRead } from "./numbers";
+export { readAnswer, readNumbers, valuesIn, type AnswerRead, type NumbersRead } from "./numbers";

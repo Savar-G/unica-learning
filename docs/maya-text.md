@@ -37,9 +37,28 @@ Nothing reaches the child unless the session's `step` accepts it (`src/lib/maya-
 4. If the second proposal is refused too, or the model fails, code replaces it with a fallback (`fallbacks` in `src/lib/maya/session.ts`). A fallback is code lines or a bank phrase from the session's own offers, with no free talk and no board, and `step` checks it like any proposal.
 5. If no fallback is accepted, the call ends as a technical issue and Maya says nothing.
 
-**The fallback keeps what code can check (#389).** Only the model's words are replaced. The fallback carries each answer of the refused proposals' readings that code checks alone, as it checks the answers of an accepted proposal: the child said the number in this turn and kept it, the step is a worked step, a final answer is the last number the child kept, and the model's verdict is the one the answer key and the worked steps give. An answer whose verdict code does not confirm is dropped, never turned round. So a right step is recorded and said ("Yes! 7 + 9 = 16."), and the help goes on from the first step still not done; a right final answer is accepted. No other field of a refused reading is kept: `paper`, `help`, `writing`, `offTopic`, `unsafeRequest` and `correctsHearing` are the model's word only, and would change the outcome or the help allowed. As before, `step` keeps a refused reading's safety, stop, unclear and no-start fields, which only make Maya more careful (the safety guidance, a close, a confirmation, the easier example).
+**The fallback keeps what code can check (#389).** Only the model's words are replaced. The fallback carries each answer of the refused proposals' readings that code checks alone, as it checks the answers of an accepted proposal: the child said the number in this turn and kept it, the step is a worked step, a final answer is the last number the child kept outside their explanation (D-199), and the model's verdict is the one the answer key and the worked steps give. An answer whose verdict code does not confirm is dropped, never turned round. So a right step is recorded and said ("Yes! 7 + 9 = 16."), and the help goes on from the first step still not done; a right final answer is accepted. No other field of a refused reading is kept: `paper`, `help`, `writing`, `offTopic`, `unsafeRequest` and `correctsHearing` are the model's word only, and would change the outcome or the help allowed. As before, `step` keeps a refused reading's safety, stop, unclear and no-start fields, which only make Maya more careful (the safety guidance, a close, a confirmation, the easier example).
 
 Three rules of the controller go with it. A checked right answer on the child's question shows they have started: a no-start no longer holds, and the easier example does not start after it. Writing that ends after the answer is solved is the child writing it (`wrote`): the request to write is no longer offered, and neither is it after the reading `paper` was accepted. The final step after the last column ("result") has its own help line, an H0 invite to put the whole answer together (`step.invite` with the step `result`).
+
+## The child's final answer and the final step (D-199)
+
+**Reading the final answer.** Code reads the child's final answer without the answer key (`readAnswer`, `src/lib/maya/numbers.ts`). First the last word that takes something back wins ("no", "wait", "I mean", "actually", "oops"): "65, no, 66" is 66. Then the child's explanation is left out: it runs from "because", "since", "cause" ("'cause"), "cuz" or "coz" to the end of that turn, or to a word that takes something back. The final answer is the last number left, unless it is inside an operation ("27 plus 39") or offered as a choice ("66 or 56?").
+
+| The child says | Final answer |
+|---|---|
+| So I got 66, because six tens and six ones. | 66 |
+| I think it's sixty-six because seven and nine make sixteen. | 66 |
+| 65, no, 66. | 66 |
+| 66 because six tens and six ones. No wait, 65. | 65 |
+| I got 56 because 27 and 39 make 66. | 56 |
+| I got 66 because I added them. | 66 |
+| Because seven and nine make sixteen. | none |
+| Because 7 + 9 is 16, it's 66. | none: Maya asks again |
+
+A number in an explanation is never the final answer, so an explanation that comes first leaves no answer, and Maya asks rather than guess. A step answer may still come from the explanation ("seven and nine make sixteen" is the ones). A number form code cannot read ("six tens") holds the turn for a confirmation only when it is outside the explanation. The behaviour gate judges an accepted answer by the same rule.
+
+**The final step.** Once every work step is done, the final step has one help line, the H0 invite (`step.invite` for "result"). Each checked wrong final answer after that counts (`finalMisses`). After the second, Maya may only give the answer (`give_answer`, or a confirmation): the gentlest help again is refused. Code says two lines: how the parts make the answer (`answer.parts`, filled from the checked answer's digits by place: "6 tens and 6 ones make 66."), then the answer and the request to write it (`answer.give`). Neither comes from the model, and the model may add only a warm phrase before them. The call then goes on as after any given answer: the answer is solved by Maya, the assistance is answer_given, the highest hint is H4, understanding stays uncertain, and the next turn closes. A right final answer is still accepted after one wrong one. Code's fallback gives the answer first on this step. Wrong final answers before every column is done do not count.
 
 ## Free talk (D-197)
 

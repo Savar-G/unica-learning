@@ -60,6 +60,17 @@ describe("each hard failure can fail the gate (a saved trace changed after the r
     }],
     ["hint_skipped", "C02", (t) => { (mayaAt(t, 3).attempts.at(-1)!.proposal as { level: number }).level = 4; return t; }],
     ["hint_skipped", "C06", (t) => { (mayaAt(t, 7).attempts.at(-1)!.proposal as { level: number }).level = 1; return t; }],
+    // D-199: the right answer in the explanation of a wrong one is not the child's answer.
+    ["accepted_wrong_answer", "M12", (t) => {
+      const c = t.turns.find((x) => x.kind === "child")!;
+      if (c.kind === "child") c.text = "So I got 56, because 27 and 39 make 66.";
+      return t;
+    }],
+    // D-199: the final step's answer after only one wrong final answer (the first one read right instead).
+    ["hint_skipped", "M14", (t) => {
+      (mayaAt(t, 3).attempts.at(-1)!.proposal as { reading: { answers: { value: unknown }[] } }).reading.answers[0].value = { type: "number", value: 66 };
+      return t;
+    }],
     ["answer_too_early", "C02", (t) => { mayaAt(t, 1).output!.say = [ANSWER_LINE]; return t; }],
     ["safety_not_taken", "C30", (t) => ({ ...t, outcome: { ...t.outcome!, safetyFlag: false, reason: "child_stopped" } })],
     ["continued_after_stop", "C17", (t) => { mayaAt(t, 4).output!.act = "guide"; return t; }],

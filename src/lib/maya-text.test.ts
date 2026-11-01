@@ -319,6 +319,54 @@ describe("a twice-refused proposal keeps what code can check of its reading (#38
   });
 });
 
+describe("the final answer and the final step (D-199)", () => {
+  const answer = (value: number, step: string, verdict: "right" | "wrong") => ({ value: num(value), step, verdict });
+  const lastMaya = (session: ReturnType<typeof scripted>["session"]) => {
+    const turn = session.trace().turns.filter((t) => t.kind === "maya").at(-1);
+    if (!turn || turn.kind !== "maya") throw new Error("no Maya turn");
+    return turn;
+  };
+
+  it("accepts a right final answer followed by its explanation, with no confirmation (practice runs 9 and 10, F02, F06)", async () => {
+    const accept = v2({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { start: "has_work", answers: [answer(66, "result", "right")] } });
+    const { session, model } = scripted([OPEN, accept]);
+    await session.start();
+    const out = await session.child("So I got 66, because six tens and six ones.");
+    // The model was offered the acceptance (the turn is not held for a confirmation), and it was not refused.
+    expect(model.requests[1].offers.map((o) => o.act)).toContain("accept_answer");
+    expect(lastMaya(session).attempts.map((a) => a.source)).toEqual(["model"]);
+    expect(said(out)).toMatch(/27 \+ 39 = 66/);
+    expect(session.session.lastResult).toBe("right");
+  });
+
+  it("gives the answer through code's fallback after two wrong final answers, when the model keeps asking the final question", async () => {
+    const final = (value: number) => v2({ act: "guide", step: "result", level: 0, parts: [{ line: "step.invite", slots: { step: "result" } }], reading: { answers: [answer(value, "result", "wrong")] } });
+    const { session } = scripted([
+      OPEN,
+      v2({ act: "guide", step: "tens", level: 0, parts: [{ line: "check.right_step", slots: { step: "ones" } }, { line: "step.invite", slots: { step: "tens" } }], reading: { answers: [answer(16, "ones", "right")] } }),
+      v2({ act: "guide", step: "result", level: 0, parts: [{ line: "check.right_step", slots: { step: "tens" } }, { line: "step.invite", slots: { step: "result" } }], reading: { answers: [answer(6, "tens", "right")] } }),
+      final(56),
+      final(65),
+      final(65),
+      v2({ act: "close", parts: [{ line: "close.together" }] }),
+    ]);
+    await session.start();
+    await session.child("Seven plus nine is sixteen.");
+    await session.child("Two plus three plus one is six.");
+    const once = await session.child("56?");
+    expect(said(once)).not.toMatch(/\b66\b/);
+    const out = await session.child("65?");
+    expect(lastMaya(session).attempts.map((a) => [a.source, a.refusal?.code ?? null])).toEqual([["model", "act_not_allowed"], ["repair", "act_not_allowed"], ["fallback", null]]);
+    expect(lastMaya(session).output?.act).toBe("give_answer");
+    expect(said(out)).toMatch(/6 tens and 6 ones make 66\./);
+    expect(said(out)).toMatch(/write 66 on your (paper|page)/i);
+    expect(out.say.flatMap(sentences).every((x) => SAFE.has(x))).toBe(true);
+    const end = await session.child("Okay.");
+    expect(end.ended).toMatchObject({ reason: "solved", assistance: "answer_given", understanding: "uncertain", highestHint: 4 });
+    expect(checkTrace(JSON.parse(JSON.stringify(session.trace()))).ok).toBe(true);
+  });
+});
+
 describe("the clock and the end", () => {
   it("closes the call at its 10 minutes by the passed-in clock, and the trace has the outcome", async () => {
     const { session, advance } = scripted([OPEN, v2({ act: "guide", step: "ones", level: 0, parts: [{ line: "step.invite", slots: { step: "ones" } }] })]);
@@ -721,5 +769,7 @@ describe("the prompt names only real lines and groups (practice runs 6 and 7)", 
     // The final step has its own help line (#389): the prompt no longer works around it with the question line.
     expect(SYSTEM_PROMPT).toMatch(/then the "step\.invite" line for "result"/);
     expect(SYSTEM_PROMPT).not.toMatch(/then a "question" line/);
+    // D-199: after two wrong final answers, the model gives the answer and leaves its words to code.
+    expect(SYSTEM_PROMPT).toMatch(/wrong a second time, code offers only "give_answer": use it with no line/);
   });
 });

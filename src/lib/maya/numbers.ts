@@ -250,22 +250,85 @@ export function committedText(text: string): string {
 }
 
 /**
+ * Words that start the child's explanation of an answer (D-199): "because", "since", "cause" (also "'cause"), "cuz" and
+ * "coz". "So I got 66, because six tens and six ones": the numbers after "because" explain 66, they are not the answer.
+ */
+const EXPLANATION = /\b(?:because|since|cause|cuz|coz)\b/i;
+
+/**
+ * The text with the child's explanations left out (D-199). An explanation runs from an explanation word to the end of
+ * its turn (a new line), or to a word that takes something back, whichever comes first: "66 because six tens, no wait,
+ * 65" keeps "66 no wait, 65", so the correction still wins. A sentence end does not end it, because speech-to-text puts
+ * full stops anywhere ("66 because 7 + 9 is 16. And 2 + 3 + 1 is 6.").
+ */
+export function withoutExplanations(text: string): string {
+  return text.split("\n").map((line) => {
+    let out = "";
+    let rest = line;
+    for (let m = EXPLANATION.exec(rest); m; m = EXPLANATION.exec(rest)) {
+      out += rest.slice(0, m.index);
+      rest = rest.slice(m.index + m[0].length);
+      const correction = CORRECTION.exec(rest);
+      if (!correction) return out;
+      rest = rest.slice(correction.index);
+    }
+    return out + rest;
+  }).join("\n");
+}
+
+export interface AnswerRead {
+  /**
+   * The numbers the child kept, in order, after the last word that takes something back: a step answer is one of them.
+   * When an explanation holds a number form code cannot read ("six tens"), only the numbers outside the explanations.
+   */
+  kept: AnswerValue[];
+  /**
+   * The child's final answer: the last number kept outside any explanation, or null when there is none, it is the second
+   * number of an operation ("27 plus 39"), the part outside the explanations has a form code cannot read, or the turn
+   * offers numbers as a choice.
+   */
+  final: AnswerValue | null;
+  /** The turn offers numbers as a choice ("is it 66 or 56?"): none of them is the child's answer yet. */
+  choice: boolean;
+}
+
+/**
+ * What the child kept in a turn, and their final answer (D-199). The rule never needs the answer key. First the last word
+ * that takes something back wins (committedText: "65, no, 66" is 66), then every explanation is left out
+ * (withoutExplanations), and the final answer is the last number left: "So I got 66, because six tens and six ones" is
+ * 66, "I think it's sixty-six because seven and nine make sixteen" is 66. A number in an explanation is never the final
+ * answer: "Because seven and nine make sixteen" has none, and "Because 7 + 9 is 16, it's 66" has none either (the
+ * explanation runs to the end of the turn), so Maya asks again rather than guess.
+ */
+export function readAnswer(text: string): AnswerRead {
+  const committed = committedText(text);
+  if (offersChoice(committed)) return { kept: [], final: null, choice: true };
+  const all = readNumbers(committed);
+  const answer = readNumbers(withoutExplanations(committed));
+  const final = answer.unreadable || answer.lastInOperation ? null : answer.values[answer.values.length - 1] ?? null;
+  return { kept: all.unreadable ? answer.values : all.values, final, choice: false };
+}
+
+/** The text has a number form code cannot read outside the child's explanations: confirm it before judging (D-199). */
+export const unreadableAnswer = (text: string) => readNumbers(withoutExplanations(text)).unreadable;
+
+/**
  * What a turn takes back to, or null when it takes nothing back. A correction word takes back a number said before it
  * ("66, no, 56"), and it puts a new answer in place when a number, or a form code cannot read, comes after it
- * ("actually 56", "actually point sixty-six"). "No, I just knew it" takes nothing back. `kept` is the last number kept,
- * or null when no number is kept or code cannot read it.
+ * ("actually 56", "actually point sixty-six"). "No, I just knew it" takes nothing back. `kept` is the final answer kept
+ * (readAnswer: "actually 66 because six tens" keeps 66), or null when no number is kept or code cannot read it.
  */
 export function takenBack(text: string): { kept: AnswerValue | null } | null {
   const parts = text.split(CORRECTION);
   if (parts.length === 1) return null;
-  const after = readNumbers(parts[parts.length - 1]);
+  const last = parts[parts.length - 1];
+  const after = readNumbers(last);
   const before = parts.slice(0, -1).some((p) => {
     const read = readNumbers(p);
     return read.values.length > 0 || read.unreadable;
   });
   if (!before && after.values.length === 0 && !after.unreadable) return null;
-  const readable = !after.unreadable && !after.lastInOperation && !offersChoice(parts[parts.length - 1]);
-  return { kept: readable ? after.values[after.values.length - 1] ?? null : null };
+  return { kept: readAnswer(last).final };
 }
 
 /** The text offers numbers as a choice ("is it 66 or 56?"): none of them is the child's answer yet. */

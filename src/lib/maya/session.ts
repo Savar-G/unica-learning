@@ -38,7 +38,7 @@ import { saidAsApproved } from "./speech";
 import { findOffer, normalSlots, packageLines, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
-import { committedText, offersChoice, readNumbers, takenBack, valuesIn } from "./numbers";
+import { readAnswer, takenBack, unreadableAnswer, valuesIn } from "./numbers";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
 
@@ -310,6 +310,12 @@ export interface Session {
    * write it again. A saved session from before has no field (not written).
    */
   wrote?: boolean;
+  /**
+   * The child's checked wrong final answers once every work step is done (D-199). After the second one, the final step
+   * has no more help to give: Maya gives the answer, with how the parts make it. A saved session from before has no
+   * field (none).
+   */
+  finalMisses?: number;
   writeAsked: boolean;
   confirmTries: number;
   offeredOtherInput: boolean;
@@ -381,6 +387,7 @@ export function createSession(input: {
     understanding: "uncertain",
     paper: "unknown",
     wrote: false,
+    finalMisses: 0,
     writeAsked: false,
     confirmTries: 0,
     offeredOtherInput: false,
@@ -596,6 +603,9 @@ function gate(s: Session, reading: Reading): Allowed | null {
   return null;
 }
 
+/** The teaching states where the final step's given answer replaces more help (D-199): not after the answer stands. */
+const FINAL_GIVE_STATES: readonly Teaching[] = ["ASSESS", "MODEL_EXAMPLE", "TRY_TARGET", "GUIDE_TARGET"];
+
 const MAIN_ACTS: Record<Teaching, Act[]> = {
   OPEN: ["open"],
   ASSESS: ["accept_answer", "clarify", "example_step", "try_target", "guide"],
@@ -609,9 +619,10 @@ const MAIN_ACTS: Record<Teaching, Act[]> = {
 /**
  * The teaching acts allowed now. `rightResult`: the child's turn holds a checked right final answer. `progress`: the
  * child has done a step of their question, before or in this turn (a checked right answer): then they have started,
- * so no easier example starts and a no-start no longer holds (#389).
+ * so no easier example starts and a no-start no longer holds (#389). `misses`: the child's checked wrong final answers
+ * once every work step is done, with this turn's (D-199).
  */
-function teachingActs(s: Session, reading: Reading, rightResult: boolean, progress = s.done.length > 0): Allowed {
+function teachingActs(s: Session, reading: Reading, rightResult: boolean, progress = s.done.length > 0, misses = s.finalMisses ?? 0): Allowed {
   // Maya may check what she heard before she goes on, but not a third time in a row (practice run 6, F06: "16 or
   // 60?" eleven times after the child said 16 each time), and not once the answer is accepted (run 5, F05: "Just
   // checking, was that 66?" after "You got it!"). An unclear turn still gets its two confirmations (gate).
@@ -661,6 +672,14 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
     }
   });
   if (rightResult && s.solved === null && acts.includes("accept_answer")) acts = ["accept_answer"];
+  // Two wrong final answers once every column is done: the final step has only its gentlest help, already given, so
+  // Maya gives the answer, and code says how the parts make it (D-199). Never sooner, and never over a right answer.
+  if (misses >= 2 && !rightResult && s.solved === null && FINAL_GIVE_STATES.includes(main)) {
+    return {
+      acts: ["give_answer", ...confirm], code: "act_not_allowed",
+      reason: "Every step is done and the child gave two wrong final answers: give the answer (give_answer). Code shows how the parts make it and says it.",
+    };
+  }
   acts = [...acts, ...confirm.filter((a) => !acts.includes(a))];
   const why = noStart && !s.retried ? " The child could not start: show the whole easier example, then hand the question back." : "";
   return { acts, code: "act_not_allowed", reason: `In ${s.state} Maya may: ${acts.join(", ") || "nothing yet"}.${why}` };
@@ -729,8 +748,9 @@ export function step(session: Session, event: SessionEvent): StepResult {
       }
       const alternatives = Array.isArray(event.alternatives) ? event.alternatives.filter((a) => typeof a === "string") : [];
       s.turns.push({ at: event.at, speaker: "child", text: event.text, state: s.state, ...(alternatives.length > 0 ? { alternatives } : {}) });
-      // A number form code cannot read is confirmed, never guessed.
-      const uncertain = event.uncertain === true || readNumbers(event.text).unreadable;
+      // A number form code cannot read is confirmed, never guessed; one inside the child's explanation is never their
+      // answer ("66, because six tens and six ones"), so it needs no confirmation (D-199).
+      const uncertain = event.uncertain === true || unreadableAnswer(event.text);
       // A new line keeps the turns apart, so a sign in the second turn is not read as a subtraction from the first.
       s.turn = s.turn
         ? { at: event.at, text: `${s.turn.text}\n${event.text}`, uncertain: s.turn.uncertain || uncertain }
@@ -848,9 +868,10 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   // A checked right answer on the child's question shows they have started: a no-start no longer holds (#389).
   const progress = s.done.length > 0 || checked.some((c) => c.problem === "target" && c.answer.verdict === "right");
   if (progress) s.noStart = false;
-  const allowedNow = blocked ? blocked.acts : teachingActs(s, reading, rightResult, progress).acts;
+  const misses = finalMisses(s, checked);
+  const allowedNow = blocked ? blocked.acts : teachingActs(s, reading, rightResult, progress, misses).acts;
   if (!blocked && !allowedNow.includes(p.act)) {
-    const allowed = teachingActs(s, reading, rightResult, progress);
+    const allowed = teachingActs(s, reading, rightResult, progress, misses);
     return no(allowed.code, allowed.reason, allowed.acts);
   }
 
@@ -969,11 +990,20 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       if (s.state !== "TIME_CLOSE") moveTo(s, "CHECK");
       break;
     case "give_answer": {
-      if (s.state !== "TIME_CLOSE" && ladder.unlocked < 4) return no("hint_too_high", `The answer comes after help up to H3 and another failed attempt or request (now H${ladder.unlocked}).`, allowedNow);
-      // Code says the answer and asks for it on paper, so both are true.
-      const [give] = packageLines(pkg!).answerGive();
-      // Code adds a math line, so this turn is a math turn whatever the parts are (CODE_MATH_ACTS).
-      spoken.segments.push({ kind: "math", text: give.texts[chooseWording(s.variety, give.texts.map((_, i) => `${give.key}#${i}`), s.now!)] });
+      // The final step (every work step done) has only its H0 help line: two wrong final answers there release the
+      // answer (D-199); any other step needs help up to H3 and another failed attempt or request.
+      const final = ladder.step === "result";
+      if (s.state !== "TIME_CLOSE" && ladder.unlocked < 4 && !(final && misses >= 2)) {
+        return no("hint_too_high", final ? "On the final step the answer comes after two wrong final answers."
+          : `The answer comes after help up to H3 and another failed attempt or request (now H${ladder.unlocked}).`, allowedNow);
+      }
+      // Code says the answer and asks for it on paper, so both are true. On the final step it first says how the parts
+      // the child did make the answer, from the checked answer (D-199, D-195).
+      const l = packageLines(pkg!);
+      // Code adds math lines, so this turn is a math turn whatever the parts are (CODE_MATH_ACTS).
+      for (const line of [...(final ? l.answerParts() : []), ...l.answerGive()]) {
+        spoken.segments.push({ kind: "math", text: line.texts[chooseWording(s.variety, line.texts.map((_, i) => `${line.key}#${i}`), s.now!)] });
+      }
       if (s.solved === null) {
         s.solved = "maya";
         s.answerGivenFirst = true;
@@ -1054,6 +1084,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     if (failed) s.stuckStep ??= ladder.step;
     s.done = done;
     s.ladder = ladder;
+    s.finalMisses = misses;
   }
   if (p.act !== "confirm" && p.act !== "offer_other_input") {
     s.confirmTries = 0;
@@ -1092,24 +1123,23 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
 
 /**
  * Checks the child's answers: each was said and kept in this turn (after anything taken back, not offered as a choice;
- * a final answer is the last number kept), and each verdict is what code computes. Fills `checked`; returns the first
- * problem.
+ * a final answer is the last number kept outside the child's explanations, readAnswer, D-199), and each verdict is what
+ * code computes. Fills `checked`; returns the first problem.
  */
 function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): { code: RefusalCode; reason: string } | null {
   const pkg = s.package!;
   if (!s.turn) return { code: "answer_not_heard", reason: "There is no child turn to read an answer from." };
-  const committed = committedText(s.turn.text);
-  if (offersChoice(committed)) return { code: "answer_not_committed", reason: "The child offered more than one answer: ask which one they mean." };
-  const read = readNumbers(committed);
-  const heard = read.values;
+  const read = readAnswer(s.turn.text);
+  if (read.choice) return { code: "answer_not_committed", reason: "The child offered more than one answer: ask which one they mean." };
+  const heard = read.kept;
   for (const a of answers) {
     const problem = a.problem ?? "target";
     const { operation, steps, answer } = problemOf(pkg, problem);
     const at = steps.find((x) => x.id === a.step);
     if (!at) return { code: "wrong_step", reason: `The ${problem} has no step "${a.step}".` };
     if (!heard.some((v) => saidAs(v, a.value))) return { code: "answer_not_heard", reason: `The child did not say ${valueText(a.value)}, or took it back.` };
-    if (a.step === "result" && (!saidAs(heard[heard.length - 1], a.value) || read.lastInOperation)) {
-      return { code: "answer_not_committed", reason: `${valueText(a.value)} is not the last answer the child kept: ask which one they mean.` };
+    if (a.step === "result" && !saidAs(read.final ?? undefined, a.value)) {
+      return { code: "answer_not_committed", reason: `${valueText(a.value)} is not the last answer the child kept (a number in their explanation is not their answer): ask which one they mean.` };
     }
     const right = a.step === "result" ? isRightAnswer(operation, answer, a.value) : stepAnswers(at).some((v) => equivalent(v, a.value));
     if (a.verdict === "right" && !right) return { code: "accepts_wrong_answer", reason: `${valueText(a.value)} is not right for ${a.step}: the checked math says otherwise.` };
@@ -1117,6 +1147,18 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     checked.push({ answer: a, problem });
   }
   return null;
+}
+
+/**
+ * The child's checked wrong final answers once every work step is done, with this reading's (D-199): a wrong final
+ * answer counts when the steps done, with the ones this reading checked right, are every work step.
+ */
+function finalMisses(s: Session, checked: readonly Checked[]): number {
+  const before = s.finalMisses ?? 0;
+  const pkg = s.package;
+  if (!pkg || !checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "wrong")) return before;
+  const done = [...s.done, ...checked.filter((c) => c.problem === "target" && c.answer.verdict === "right").map((c) => c.answer.step)];
+  return currentStep(pkg, done) === "result" ? before + 1 : before;
 }
 
 // ---------- Code's fallback (#389) ----------
@@ -1142,7 +1184,7 @@ function answersOf(raw: unknown): ChildAnswer[] {
 /**
  * What code keeps of the readings of refused proposals (#389): each answer code checks alone, as `step` checks the
  * answers of an accepted proposal. The child said it in this turn and kept it (not taken back, not offered as a
- * choice), the step is a worked step of that problem, a final answer is the last number the child kept, and the
+ * choice), the step is a worked step of that problem, a final answer is the child's final answer (readAnswer), and the
  * model's verdict is the one the answer key and the worked steps give. An answer whose verdict code does not confirm is
  * dropped, never turned round. Nothing else of a reading is kept here: it is the model's word only (`step` already took
  * the safety, stop, unclear and no-start fields, which only make Maya more careful).
@@ -1181,10 +1223,13 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
     .filter((id) => session.done.includes(id) || checked.some((c) => c.problem === "target" && c.answer.step === id && c.answer.verdict === "right")) : [];
   const ladderStep = pkg ? currentStep(pkg, done) : "result";
   const view: View = { steps: [ladderStep], done, checked, rightResult };
-  const acts = (gate(s, {}) ?? teachingActs(s, {}, rightResult, done.length > 0)).acts;
-  // Once the answer stands, the request to write it (or the close) comes before more help on a step.
+  const misses = finalMisses(s, checked);
+  const acts = (gate(s, {}) ?? teachingActs(s, {}, rightResult, done.length > 0, misses)).acts;
+  // Once the answer stands, the request to write it (or the close) comes before more help on a step. After two wrong
+  // final answers on the final step, the given answer takes the place of more help (D-199).
   const solved = s.solved !== null || rightResult;
-  const rank = (a: Act) => (solved && a === "ask_write" ? FALLBACK_ORDER.indexOf("guide") - 0.5 : FALLBACK_ORDER.indexOf(a));
+  const finalGive = ladderStep === "result" && misses >= 2 && !rightResult;
+  const rank = (a: Act) => ((solved && a === "ask_write") || (finalGive && a === "give_answer") ? FALLBACK_ORDER.indexOf("guide") - 0.5 : FALLBACK_ORDER.indexOf(a));
   const order = [...acts].sort((a, b) => rank(a) - rank(b)).filter((a) => a !== "accept_answer" || rightResult);
   const make = (act: Act, offers: LineOffer[], extra: Partial<Proposal> = {}): Proposal => ({
     version: PROPOSAL_VERSION, act, parts: offers.map((o) => ({ line: o.line, slots: o.slots })), ...extra, ...(reading ? { reading } : {}),
@@ -1532,7 +1577,8 @@ function offersFor(s: Session, act: Act, view: View): LineOffer[] {
     case "accept_answer":
       return [...l.thinking(), ...l.answerRight(), ...l.explain(), ...right];
     case "give_answer":
-      return [...view.steps.flatMap(l.help), ...right];
+      // Never the final step's question before code gives its answer (D-199).
+      return [...view.steps.filter((id) => id !== "result").flatMap(l.help), ...right];
     case "ask_write": {
       // Never a request to write what the child already wrote, or said they wrote or would not write (#389).
       const written = s.wrote === true || s.paper !== "unknown";

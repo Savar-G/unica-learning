@@ -925,3 +925,166 @@ describe("valuesIn signs", () => {
     expect(valuesIn(text)).toEqual(numbers.map(num));
   });
 });
+
+describe("the child's final answer, with an explanation after it (D-199)", () => {
+  const answer = (value: number, at: string, verdict: "right" | "wrong") => ({ answers: [{ value: num(value), step: at, verdict }] });
+  const accept: Draft = { act: "accept_answer", parts: [ln("answer.right")], reading: answer(66, "result", "right") };
+
+  it.each([
+    "So I got 66, because six tens and six ones.",
+    "So I got sixty-six, because six tens and six ones.",
+    "I think it's 66 because seven and nine make sixteen.",
+    "I think it's sixty-six, because 7 plus 9 is 16 and I carried the 1.",
+    "66 'cause I carried the one.",
+    "66 cause the ones made 16.",
+    "Sixty-six cuz the ones made a ten.",
+    "It's 66, since 20 and 30 and 16 make 66.",
+    "I got 66 because I added them.",
+  ])("takes the last number before the explanation as the answer: %s", (text) => {
+    const c = opened();
+    c.child(text);
+    // A number form inside the explanation ("six tens") needs no confirmation: it is not the answer.
+    expect(c.next.acts).toContain("accept_answer");
+    expect(c.next.acts).not.toEqual(["confirm"]);
+    c.maya(accept);
+    expect(c.session).toMatchObject({ lastResult: "right", solved: "child", state: "CHECK" });
+  });
+
+  it("lets a self-correction win, before or inside the explanation", () => {
+    const corrected = opened();
+    corrected.child("65, no, 66.");
+    expect(corrected.refused({ act: "guide", step: "ones", level: 0, parts: [ln("step.invite", { step: "ones" })], reading: answer(65, "result", "wrong") })).toMatchObject({ code: "answer_not_heard" });
+    corrected.maya(accept);
+    expect(corrected.session.lastResult).toBe("right");
+
+    const inside = opened();
+    inside.child("66 because six tens and six ones. No wait, 65.");
+    expect(inside.refused(accept)).toMatchObject({ code: "answer_not_heard" });
+    inside.maya({ act: "guide", step: "ones", level: 0, parts: [ln("step.invite", { step: "ones" })], reading: answer(65, "result", "wrong") });
+    expect(inside.session.lastResult).toBe("wrong");
+
+    const both = opened();
+    both.child("Sixty-five because six tens and five ones, no, sixty-six because six tens and six ones.");
+    expect(both.next.acts).toContain("accept_answer");
+    both.maya(accept);
+    expect(both.session.lastResult).toBe("right");
+  });
+
+  it("never reads a number from the explanation as the answer", () => {
+    // The right number in the explanation of a wrong answer is not accepted.
+    const wrongFirst = opened();
+    wrongFirst.child("I got 56 because 27 and 39 make 66.");
+    expect(wrongFirst.refused(accept)).toMatchObject({ code: "answer_not_committed" });
+    wrongFirst.maya({ act: "guide", step: "ones", level: 0, parts: [ln("step.invite", { step: "ones" })], reading: answer(56, "result", "wrong") });
+    expect(wrongFirst.session.lastResult).toBe("wrong");
+
+    // An explanation on its own holds no answer, and neither does one that comes first: Maya asks rather than guess.
+    const only = opened();
+    only.child("Because seven and nine make sixteen.");
+    expect(only.refused({ act: "guide", step: "ones", level: 0, parts: [ln("step.invite", { step: "ones" })], reading: answer(16, "result", "wrong") })).toMatchObject({ code: "answer_not_committed" });
+    const first = opened();
+    first.child("Because 7 + 9 is 16, it's 66.");
+    expect(first.refused(accept)).toMatchObject({ code: "answer_not_committed" });
+
+    // A step answer inside the explanation still counts as that step.
+    const step16 = opened();
+    step16.child("I got 66 because seven and nine make sixteen.");
+    step16.maya({ ...accept, reading: { answers: [{ value: num(16), step: "ones", verdict: "right" }, right66] } });
+    expect(step16.session.lastResult).toBe("right");
+  });
+
+  it("still confirms a number form it cannot read when it is the answer, not the explanation", () => {
+    const c = opened();
+    c.child("Six tens because I added them.");
+    expect(c.next.acts).toEqual(["confirm"]);
+  });
+});
+
+describe("the final step after two wrong final answers (D-199)", () => {
+  const wrongFinal = (value: number) => ({ answers: [{ value: num(value), step: "result", verdict: "wrong" as const }] });
+  const finalHelp: Draft = { act: "guide", step: "result", level: 0, parts: [ln("step.invite", { step: "result" })] };
+  const PARTS = TEMPLATES["answer.parts"].map((w) => w.replaceAll("{parts}", "6 tens and 6 ones").replaceAll("{total}", "66"));
+  const GIVES = TEMPLATES["answer.give"].map((w) => w.replaceAll("{answer}", "66"));
+
+  /** A call where the child has done every column: the final step is next, with its help line said once. */
+  function columnsDone() {
+    const c = opened();
+    c.child("Seven plus nine is sixteen.");
+    c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { answers: [{ value: num(16), step: "ones", verdict: "right" }] } });
+    c.child("Two plus three plus one is six.");
+    c.maya({ ...finalHelp, parts: [ln("check.right_step", { step: "tens" }), ...finalHelp.parts], reading: { answers: [{ value: num(6), step: "tens", verdict: "right" }] } });
+    expect(c.session.ladder.step).toBe("result");
+    return c;
+  }
+
+  it("gives the answer after the second wrong final answer: how the parts make it, then the answer, in code's words", () => {
+    const c = columnsDone();
+    c.child("56?");
+    c.maya({ ...finalHelp, reading: wrongFinal(56) });
+    c.child("Is it 65?");
+    // The gentlest help again is not enough, and the model may not add the final question before the answer.
+    expect(c.refused({ ...finalHelp, reading: wrongFinal(65) })).toMatchObject({ code: "act_not_allowed", allowed: ["give_answer", "confirm"] });
+    expect(c.refused({ act: "give_answer", parts: [ln("step.invite", { step: "result" })], reading: wrongFinal(65) })).toMatchObject({ code: "line_not_offered" });
+    const given = c.maya({ act: "give_answer", parts: [{ warm: "empathy" }], reading: wrongFinal(65) });
+    const [text] = said(given.effects);
+    const parts = PARTS.find((p) => text.includes(p));
+    expect(parts, text).toBeDefined();
+    expect(GIVES.some((g) => text.endsWith(`${parts} ${g}`)), text).toBe(true);
+    // Then the call goes on as after any given answer: a close, with the answer given and understanding uncertain.
+    expect(c.session).toMatchObject({ state: "WRITE_CLOSE", solved: "maya", writeAsked: true, finalMisses: 2 });
+    c.child("Okay.");
+    expect(c.next.acts).toEqual(["close"]);
+    const { effects } = c.maya({ act: "close", parts: [ln("close.together")] });
+    expect(ended(effects)).toMatchObject({ outcome: { reason: "solved", assistance: "answer_given", understanding: "uncertain", highestHint: 4 } });
+    expect(learningEvent(c.session, FAMILY)).toMatchObject({ result: "blank", stuckStep: "result" });
+  });
+
+  it("never gives the answer sooner: not after one wrong final answer, nor before every column is done", () => {
+    const one = columnsDone();
+    one.child("56?");
+    expect(one.refused({ act: "give_answer", parts: [], reading: wrongFinal(56) })).toMatchObject({ code: "hint_too_high", reason: expect.stringMatching(/two wrong final answers/) });
+    one.maya({ ...finalHelp, reading: wrongFinal(56) });
+    expect(one.session.finalMisses).toBe(1);
+    expect(one.next.acts).not.toEqual(["give_answer"]);
+
+    // Two wrong final answers before the columns are done do not count: the help stays on the ones.
+    const early = opened();
+    early.child("56.");
+    early.maya({ act: "guide", step: "ones", level: 0, parts: [ln("step.invite", { step: "ones" })], reading: wrongFinal(56) });
+    early.child("65.");
+    expect(early.refused({ act: "give_answer", parts: [], reading: wrongFinal(65) })).toMatchObject({ code: "hint_too_high" });
+    early.maya({ act: "guide", step: "ones", level: 1, parts: [ln("step.point", { step: "ones" })], reading: wrongFinal(65) });
+    expect(early.session.finalMisses).toBe(0);
+  });
+
+  it("still accepts a right final answer after one wrong one, and after the second wrong one if the child corrects it", () => {
+    const c = columnsDone();
+    c.child("56?");
+    c.maya({ ...finalHelp, reading: wrongFinal(56) });
+    c.child("Oh! 66.");
+    expect(c.next.acts).toContain("accept_answer");
+    c.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [right66] } });
+    expect(c.session).toMatchObject({ solved: "child", lastResult: "right", state: "CHECK" });
+    expect(c.session.assistance).not.toContain("answer_given");
+
+    const late = columnsDone();
+    late.child("56?");
+    late.maya({ ...finalHelp, reading: wrongFinal(56) });
+    late.child("65, no wait, 66!");
+    late.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [right66] } });
+    expect(late.session).toMatchObject({ solved: "child", finalMisses: 1 });
+  });
+
+  it("puts code's given answer first among the fallbacks once two final answers were wrong", () => {
+    const c = columnsDone();
+    c.child("56?");
+    c.maya({ ...finalHelp, reading: wrongFinal(56) });
+    c.child("65.");
+    const refused = { version: 2, ...finalHelp, reading: wrongFinal(65) };
+    const [first] = fallbacks(c.session, [refused, refused]);
+    expect(first).toMatchObject({ act: "give_answer", reading: wrongFinal(65) });
+    const text = said(c.send({ type: "proposal", at: T0, proposal: first }).effects).join(" ");
+    expect(PARTS.some((p) => text.includes(p)), text).toBe(true);
+    expect(c.session.solved).toBe("maya");
+  });
+});
