@@ -13,7 +13,7 @@ const solvedEnd = (understanding: "evidence_observed" | "uncertain" = "uncertain
   wroteIt,
 ];
 const OPEN = "open" as const;
-/** C29 (review R384-1, D-197): the decline line is in, with planned wording; the safety event is not (#383). */
+/** C29 (review R384-1, D-197): the decline line is in, with its approved wording; the safety event is not (#383). */
 const C29_PENDING = "The decline line's wording is planned, not approved yet (D-197), and no safety event is recorded for #333 yet.";
 /** The answer to a free-talk turn: back to the question, solved. */
 const solvesAfterTalk: Step[] = [
