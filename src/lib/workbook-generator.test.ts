@@ -601,6 +601,19 @@ describe("a book laid out for the templates: room, rules and the content left", 
     }
   });
 
+  it("works a panel's example from a count item's picture when no question has an operation, never an empty panel", async () => {
+    const ai = fakeAiClient({
+      answer: (r) => fill(r, (s) => small(s, { text: "How many dots?", format: "count", operation: null, easier: null, wrongAnswers: [], figure: "dots", numbers: [num(3), num(4)] })),
+    });
+    const draft = await laidOut(deps({ ai }));
+    const panels = draft.pages.flatMap((p) => (p.content?.kind === "day" ? p.content.blocks : [])).filter((b) => b.slot === "watch-one" || b.slot === "worked-example");
+    expect(panels.length).toBeGreaterThan(0);
+    for (const b of panels) {
+      expect([...(b.lines ?? []), ...(b.methods ?? []).flatMap((m) => m.lines)]).toEqual(["Count them: 1, 2, 3, 4, 5, 6, 7.", "There are [7]."]);
+      expect(b.label).toBe("Count");
+    }
+  });
+
   it("refuses a yes-or-no or either-or question stored with an operation, and tells the redo", async () => {
     const ai = fakeAiClient({
       answer: (r) => fill(r, (s) => (r.name === "workbook_page" && s.slot === "1.1" ? small(s, { text: "Is 3 close to 5 or less than 2?" }) : small(s))),

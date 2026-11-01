@@ -31,6 +31,7 @@ import {
   type QuestionPackage,
 } from "@/lib/question-package";
 import { aiTextProblem, groupingWords, isCoin, readNumbers, signOperation, textOperations, type ReadNumber, type SignOperation } from "@/lib/number-words";
+import { figureCount } from "@/lib/question-package-items";
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import {
   headerGrowth,
@@ -187,6 +188,21 @@ function answeredLine(op: Operation): string {
 
 /** The levels that add and take away by counting on and back, before the written column method (Sam's early mistakes too). */
 const COUNTING_LEVELS = 6;
+
+/**
+ * A panel's lines when no question of the page has an operation (every item counts a picture): one count worked out,
+ * from the first count item with a picture of at most 20 things. Null when there is none.
+ */
+function countPanel(questions: PageQuestion[]): { label: string; lines: string[] } | null {
+  for (const q of questions) {
+    const item = q.package?.item;
+    if (!item?.figure || !item.checks.some((c) => c.kind === "count")) continue;
+    const n = figureCount(item.figure);
+    if (n === null || n < 1 || n > 20) continue;
+    return { label: "Count", lines: [`Count them: ${Array.from({ length: n }, (_, k) => k + 1).join(", ")}.`, `There are [${n}].`] };
+  }
+  return null;
+}
 
 /**
  * The worked lines of an operation: its steps in words (at most `most`), then the sum with its answer in blue. Up to
@@ -803,24 +819,26 @@ export function dayPageContent(o: {
       case "worked-example": {
         const step = part?.step ? curriculum.skillSteps(part.step.skill)?.[part.step.step - 1] : undefined;
         const op = panelOperation(questions, sameP);
-        const lines = op ? workedLines(op, 3, plan.level) : [];
+        const counted = op ? null : countPanel(questions);
+        const lines = op ? workedLines(op, 3, plan.level) : counted?.lines ?? [];
         return {
-          slot: s.slot, items: [], label: op ? operationText(op) : undefined,
+          slot: s.slot, items: [], label: op ? operationText(op) : counted?.label,
           note: part?.unit === "B" ? "Unit B · new step" : "Unit A · new step",
-          methods: op ? [{ label: "Step by step", lines }] : [],
+          methods: lines.length ? [{ label: "Step by step", lines }] : [],
           explain: step?.change ?? "Work one step at a time. Then check your answer.",
         };
       }
       case "watch-one": {
         const op = panelOperation(questions, sameP);
-        return { slot: s.slot, items: [], label: op ? operationText(op) : undefined, note: "Watch one worked out. Then finish two.", lines: op ? workedLines(op, 3, plan.level) : [] };
+        const counted = op ? null : countPanel(questions);
+        return { slot: s.slot, items: [], label: op ? operationText(op) : counted?.label, note: "Watch one worked out. Then finish two.", lines: op ? workedLines(op, 3, plan.level) : counted?.lines ?? [] };
       }
       case "reminder": {
         const op = panelOperation(questions, sameP);
         const step = part?.step ? curriculum.skillSteps(part.step.skill)?.[part.step.step - 1] : undefined;
         return {
           slot: s.slot, items: [], label: "Remember", note: "From before",
-          lines: op ? [answeredLine(op)] : [],
+          lines: op ? [answeredLine(op)] : countPanel(questions)?.lines.slice(-1) ?? [],
           explain: step?.change ?? "Do it the same way as before. Check each answer.",
         };
       }
