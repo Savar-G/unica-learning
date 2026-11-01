@@ -130,4 +130,6 @@ Samples: `docs/maya-traces/`. A test checks each sample with `checkTrace`.
 
 The behaviour gate (`docs/maya-gate.md`, #324) runs the research's scripted children through this adapter in `npm test` and judges each saved trace.
 
-An explicit answer withdrawal can omit the number. Erasure, deletion, crossing out, and rejection such as "I don't think that's right" clear the accepted solution and its writing status. A statement that the child cannot explain the answer keeps the accepted solution. A later checked answer can resume the work.
+An explicit answer withdrawal can omit the number. Erasure, deletion, crossing out, and rejection such as "I don't think that's right" clear the accepted solution and its writing status. They also clear an earlier paper confirmation or refusal. A check or writing close returns to guided teaching, including the saved teaching state of an interrupt. The completed steps and help history stay. A statement that the child cannot explain the answer keeps the accepted solution. A later checked answer can resume the work.
+
+A carry denial that names a source or destination selects that carry before the current-step default. Its explanation is available even when its destination column is complete. The explanation does not remove the completed column. After the explanation, guidance returns to the next unfinished column. An incoming carry also has its existing regroup explanation when it is the only term in the highest column.

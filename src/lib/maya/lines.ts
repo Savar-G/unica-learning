@@ -418,14 +418,14 @@ function stepLines(pkg: OperationPackage, step: WorkedStep): LineOffer[] {
     case "add-column": {
       const { place, digits, carryIn } = step;
       const terms = [...digits, ...(carryIn > 0 ? [carryIn] : [])];
+      const from = carryIn > 0 ? carrySource(pkg, step) : null;
+      if (from) out.push(regroupOffer(pkg, from, { step: step.id }));
       if (terms.length === 1) {
         add("step.point", "point.add.single", { place, term: terms[0] }, 1);
         add("step.operation", "operation.add.single", { place, term: terms[0] }, 2);
       } else {
         const list = listOf(digits);
         add("step.point", carryIn > 0 ? "point.add.carry" : "point.add", { place, list, carry: carryIn }, 1);
-        const from = carryIn > 0 ? carrySource(pkg, step) : null;
-        if (from) out.push(regroupOffer(pkg, from, { step: step.id }));
         add("step.operation", "operation.add", { place, sum: terms.join(" + ") }, 2, terms.join(" + "));
       }
       break;

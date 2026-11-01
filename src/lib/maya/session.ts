@@ -787,6 +787,9 @@ export function step(session: Session, event: SessionEvent): StepResult {
         if (s.solved === "child") s.solved = null;
         s.wrote = false;
         s.writeAsked = false;
+        s.paper = "unknown";
+        if (s.state === "CHECK" || s.state === "WRITE_CLOSE") moveTo(s, "GUIDE_TARGET");
+        if (s.resume === "CHECK" || s.resume === "WRITE_CLOSE") s.resume = "GUIDE_TARGET";
       }
       if (s.state === "OPEN" && s.opened) s.state = "ASSESS";
       s.expect = "maya";
@@ -915,7 +918,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       if (a.verdict === "wrong") failed = true;
     }
     regroup = regroupAfter(s, checked, done);
-    const next = currentStep(pkg, done);
+    const next = guideStep(pkg, done, regroup);
     if (next !== ladder.step) Object.assign(ladder, { step: next, hint: -1, unlocked: Math.max(0, ladder.hint - 1), failures: 0 });
     if (failed) {
       ladder.failures += 1;
@@ -934,7 +937,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     if (p.step !== next.id) return no("wrong_step", `The next example step is "${next.id}".`, allowedNow);
   }
   const regroupNote = pendingRegroup(regroup).some((c) => c.at === ladder.step) ? ` The child has not regrouped there: say "step.regroup" for "${ladder.step}" before any line about a carried digit.` : "";
-  if (p.act === "guide" && p.step !== ladder.step) return no("wrong_step", `Guide the first step the child has not done: "${ladder.step}".${regroupNote}`, allowedNow);
+  if (p.act === "guide" && p.step !== ladder.step) return no("wrong_step", `Guide the next step or required carry explanation: "${ladder.step}".${regroupNote}`, allowedNow);
   if (p.act === "accept_answer" && !rightResult) return no("accepts_wrong_answer", "Only a right final answer the child said and kept can be accepted.", allowedNow);
 
   // 4. Maya's words and board: lines code writes for this act, step and level, and warm talk with no math in it.
@@ -1232,6 +1235,12 @@ const sameCarry = (a: CarryRef, b: CarryRef) => a.out === b.out && a.in === b.in
 /** The columns whose regroup is due and not explained yet. */
 const pendingRegroup = (r: Regroup) => r.due.filter((c) => !r.said.some((v) => sameCarry(c, v)));
 
+/** A carry may need explaining again after its destination column is complete. Keep completed work intact. */
+function guideStep(pkg: OperationPackage, done: readonly string[], regroup: Regroup): string {
+  const pending = pendingRegroup(regroup);
+  return workSteps(pkg.steps).find((st) => !done.includes(st.id) || pending.some((c) => c.at === st.id))?.id ?? "result";
+}
+
 /** Old column-only explanation lists cannot distinguish adjacent carries. Restore their requirements conservatively. */
 function regroupOf(s: Session): Regroup {
   if (s.regroup) return { due: s.regroup.due.map((c) => ({ ...c })), said: s.regroup.said.map((c) => ({ ...c })) };
@@ -1323,8 +1332,13 @@ function regroupAfter(s: Session, checked: readonly Checked[], done: string[]): 
     if (pair && sum !== null && (v === sum || v === sum % 10)) requireCarry(pair, pair.in.id);
     if (c.answer.step === "result" && v === noCarryAnswer(pkg)) for (const x of pairs) if (!done.includes(x.in.id)) requireCarry(x, x.in.id);
   }
-  if (CARRY_DENIAL.test(committedText(text))) {
-    const first = pairs.find((x) => !done.includes(x.in.id));
+  const committed = committedText(text).replace(/’/g, "'");
+  if (CARRY_DENIAL.test(committed)) {
+    const from = /\bfrom\s+(?:the\s+)?([a-z]+)\b/i.exec(committed)?.[1].toLowerCase();
+    const to = /\b(?:to|into)\s+(?:the\s+)?([a-z]+)\b/i.exec(committed)?.[1].toLowerCase();
+    const first = from || to
+      ? pairs.find((x) => (!from || x.out.place === from) && (!to || x.in.place === to))
+      : pairs.find((x) => !done.includes(x.in.id));
     if (first) {
       requireCarry(first, first.in.id, true);
     }
@@ -1416,7 +1430,7 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
     .filter((id) => session.done.includes(id) || checked.some((c) => c.problem === "target" && c.answer.step === id && c.answer.verdict === "right")) : [];
   // As `step` will see it: a write plan takes its column out of `done`, and a lost carry makes the regroup due.
   const regroup = pkg ? regroupAfter(s, checked, done) : { due: [], said: [] };
-  const ladderStep = pkg ? currentStep(pkg, done) : "result";
+  const ladderStep = pkg ? guideStep(pkg, done, regroup) : "result";
   const view: View = { steps: [ladderStep], done, checked, rightResult, regroup: pendingRegroup(regroup) };
   const misses = finalMisses(s, checked);
   const acts = (gate(s, {}) ?? teachingActs(s, {}, rightResult, done.length > 0, misses)).acts;
@@ -2054,7 +2068,7 @@ export function drawOffers(session: Session): Partial<Record<Act, { id: string; 
   // The regroup due now, with what the child's words show before any reading (a denial, a write plan).
   const done = [...session.done];
   const regroup = pendingRegroup(regroupAfter(session, [], done));
-  const view: View = { steps: openSteps(pkg, done), done, checked: [], rightResult: false, regroup };
+  const view: View = { steps: openSteps(pkg, done, regroup), done, checked: [], rightResult: false, regroup };
   return Object.fromEntries(acts.map((act) => [act, [
     ...boardOffersFor(session, act, view, null).map(({ id, shows }) => ({ id, shows })),
     ...offersFor(session, act, view).filter((o) => o.board).map((o) => ({ id: `line.${o.line}`, shows: `the note "${o.board}" (with that line)` })),
@@ -2114,7 +2128,9 @@ function boardProblem(s: Session, board: unknown[], role: Problem, spoken: Spoke
  * The steps whose help lines are offered: every work step not done yet and the final step ("result", #389), as the
  * model's reading of the child's turn may finish steps.
  */
-const openSteps = (pkg: OperationPackage, done: readonly string[]) => [...workSteps(pkg.steps).map((st) => st.id).filter((id) => !done.includes(id)), "result"];
+const openSteps = (pkg: OperationPackage, done: readonly string[], regroup: readonly RegroupNeed[]) => [
+  ...workSteps(pkg.steps).map((st) => st.id).filter((id) => !done.includes(id) || regroup.some((c) => c.at === id)), "result",
+];
 
 /**
  * The lines Maya may say now, by act: what the text adapter (#322) offers the model. Help lines are offered for every
@@ -2128,7 +2144,7 @@ export function lineOffers(session: Session): Partial<Record<Act, LineOffer[]>> 
   // The regroup due now, with what the child's words show before any reading (a denial, a write plan).
   const done = [...session.done];
   const regroup = pendingRegroup(regroupAfter(session, [], done));
-  const view: View = { steps: openSteps(pkg, done), done, checked: [], rightResult: false, regroup };
+  const view: View = { steps: openSteps(pkg, done, regroup), done, checked: [], rightResult: false, regroup };
   return Object.fromEntries(acts.map((act) => [act, offersFor(session, act, act === "accept_answer" ? { ...view, rightResult: true } : view)]));
 }
 
