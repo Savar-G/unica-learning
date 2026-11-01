@@ -14,6 +14,7 @@ import type { BoardHistory } from "@/lib/board-history";
 import type { Outcome, WordingHistory } from "@/lib/maya";
 import type { CallKind, CallRecord, CallStatus } from "@/lib/maya-call";
 import type { MayaTrace } from "@/lib/maya-trace";
+import type { ConnectionKind } from "@/lib/maya-voice";
 
 export type { Json };
 
@@ -40,6 +41,7 @@ type ColumnTypes = KnownColumns<{
     understanding: Outcome["understanding"] | null; safety_severity: Outcome["safetySeverity"]; live: NonNullable<CallRecord["live"]> | null;
     trace: MayaTrace | null; board_history: BoardHistory | null;
   };
+  maya_call_connections: { kind: ConnectionKind };
   maya_demo_children: { made_by: "maya-demo-child" };
   maya_wording_history: { heard: WordingHistory };
   parents: { source: Record<string, string> };

@@ -6,7 +6,8 @@
 // a board replay. Admins only; nothing here reaches a family.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
+import { VoicePanel } from "@/components/admin-maya-voice";
 import { MayaBoard } from "@/components/maya-board";
 import type { PlayStep } from "@/lib/board-svg";
 import type { Outcome } from "@/lib/maya";
@@ -53,6 +54,8 @@ const ERROR_TEXT: Record<string, string> = {
   not_test_family: "Only test families can have test calls.",
   model_unavailable: "The model is not available.",
   unavailable: "The server is missing its database key.",
+  voice_unavailable: "Voice calls are not set up on this server yet.",
+  voice_call: "Maya's voice helper is running this call. Hang up from the call first.",
   failed: "Something went wrong. Try again.",
 };
 
@@ -68,9 +71,10 @@ function ModelChip({ model }: { model: { id: string; fake: boolean } }) {
 
 // ---------- the picker ----------
 
-export function MayaPicker({ children, model }: { children: DemoChild[]; model: { id: string; fake: boolean } }) {
+export function MayaPicker({ children, model, voice }: { children: DemoChild[]; model: { id: string; fake: boolean }; voice: boolean }) {
   const router = useRouter();
   const [childId, setChildId] = useState(children[0]?.childId ?? "");
+  const [mode, setMode] = useState<"text" | "voice">("text");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const child = children.find((c) => c.childId === childId) ?? null;
@@ -79,10 +83,10 @@ export function MayaPicker({ children, model }: { children: DemoChild[]; model: 
     setBusy(`${assessmentId}:${questionId}`);
     setError(null);
     try {
-      const res = await fetch("/api/admin/maya/calls", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ assessmentId, questionId }) });
+      const res = await fetch(mode === "voice" ? "/api/admin/maya/voice" : "/api/admin/maya/calls", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ assessmentId, questionId }) });
       const body = await res.json().catch(() => null);
       if (!body?.ok) throw new Error(body?.error ?? "failed");
-      router.push(`${ADMIN_PATH}/maya/${body.view.id}`);
+      router.push(`${ADMIN_PATH}/maya/${mode === "voice" ? body.callId : body.view.id}`);
     } catch (e) {
       setError(ERROR_TEXT[e instanceof Error ? e.message : "failed"] ?? ERROR_TEXT.failed);
       setBusy(null);
@@ -98,6 +102,24 @@ export function MayaPicker({ children, model }: { children: DemoChild[]; model: 
         <h2 id="mc-pick-title">Start a test call</h2>
         <p className="adm-note">Model for a new call: <ModelChip model={model} /></p>
       </div>
+      <fieldset className="mc-mode">
+        <legend>How you talk to Maya</legend>
+        <div className="mc-mode-options">
+          <label className={mode === "text" ? "is-on" : undefined}>
+            <input type="radio" name="mc-mode" value="text" checked={mode === "text"} onChange={() => setMode("text")} />
+            <span>Type</span>
+          </label>
+          <label className={mode === "voice" ? "is-on" : undefined} aria-disabled={!voice || undefined}>
+            <input type="radio" name="mc-mode" value="voice" checked={mode === "voice"} disabled={!voice} onChange={() => setMode("voice")} />
+            <span>Speak</span>
+          </label>
+        </div>
+        <p className="adm-note">
+          {voice
+            ? mode === "voice" ? "You speak as the child into the microphone, and Maya answers out loud. The call page checks the microphone first." : "You type what the child says, and read Maya's answers."
+            : "Speaking needs the voice setup, which this server does not have yet. Typing works."}
+        </p>
+      </fieldset>
       <label className="mc-field">
         <span>Test child</span>
         <select value={childId} onChange={(e) => setChildId(e.target.value)}>
@@ -117,7 +139,7 @@ export function MayaPicker({ children, model }: { children: DemoChild[]; model: 
                     <p className="adm-sub">Question {q.number} · answer {q.answer} · {q.templateId}</p>
                   </div>
                   <button type="button" className="btn sm adm-btn" disabled={busy !== null} onClick={() => start(q.assessmentId, q.questionId)}>
-                    {busy === key ? "Starting…" : "Call Maya"}
+                    {busy === key ? "Starting…" : mode === "voice" ? "Talk to Maya" : "Call Maya"}
                   </button>
                 </li>
               );
@@ -136,7 +158,7 @@ export function MayaCallList({ calls }: { calls: CallListRow[] }) {
     <div className="adm-scroll">
       <table className="adm-table">
         <thead>
-          <tr><th>Started</th><th>Child</th><th>Question</th><th>Outcome</th><th>Help</th><th className="adm-num">Time</th><th>Model</th><th>Event</th></tr>
+          <tr><th>Started</th><th>Child</th><th>Question</th><th>How</th><th>Outcome</th><th>Help</th><th className="adm-num">Time</th><th>Number checks</th><th>Model</th><th>Event</th></tr>
         </thead>
         <tbody>
           {calls.map((c) => (
@@ -144,9 +166,11 @@ export function MayaCallList({ calls }: { calls: CallListRow[] }) {
               <td className="adm-nowrap"><Link href={`${ADMIN_PATH}/maya/${c.id}`}>{when(c.createdAt)}</Link></td>
               <td>{c.childName ?? "Child"}</td>
               <td>{c.questionText}</td>
+              <td>{c.mode === "voice" ? "Spoken" : "Typed"}</td>
               <td>{c.status === "live" ? <span className="adm-chip is-info">Live</span> : c.outcome ? <span className={`adm-chip ${c.outcome === "solved" ? "is-ok" : "is-muted"}`}>{REASON_TEXT[c.outcome]}</span> : "-"}</td>
               <td>{c.assistance ? ASSISTANCE_TEXT[c.assistance] : "-"}</td>
               <td className="adm-num">{c.seconds === null ? "-" : clock(c.seconds)}</td>
+              <td className="adm-nowrap" title="Numbers Maya asked to confirm, and times the child said she heard wrong">{c.mishearing ? `${c.mishearing.confirmations} asked, ${c.mishearing.corrections} corrected` : "-"}</td>
               <td className="adm-mono">{c.model}</td>
               <td>{c.status === "live" ? "-" : c.learningEvent ? "Written" : "None"}</td>
             </tr>
@@ -174,6 +198,18 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
   const talk = useRef<HTMLOListElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const live = view.status === "live";
+  const voice = view.mode === "voice";
+
+  /** Reads the saved call again (a voice call changes in Maya's voice helper, not here). */
+  const drawn = board.steps.length;
+  const refresh = useCallback(async () => {
+    const res = await fetch(`/api/admin/maya/calls/${view.id}`, { cache: "no-store" }).catch(() => null);
+    const body = await res?.json().catch(() => null);
+    if (!body?.ok) return;
+    setShown(drawn);
+    setBoard(body.board);
+    setView(body.view);
+  }, [view.id, drawn]);
 
   useEffect(() => {
     // The list scrolls, not the page: the newest line in view.
@@ -219,6 +255,7 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
         </div>
         <div className="mc-chips">
           {live ? <span className="adm-chip is-info">Live</span> : <span className="adm-chip is-muted">Finished</span>}
+          {voice && <span className="adm-chip is-muted">Spoken call</span>}
           <ModelChip model={view.model} />
           <span className="adm-chip is-muted">Test family · no minutes, no emails</span>
         </div>
@@ -232,7 +269,7 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
             <img className="mc-avatar" src="/desk/maya.webp" alt="" width={40} height={40} />
             <div>
               <h2>Maya</h2>
-              <p>{live ? (busy ? "Maya is thinking…" : `You type as ${childName ?? "the child"}.`) : "The call has ended."}</p>
+              <p>{live ? (voice ? `You speak as ${childName ?? "the child"}.` : busy ? "Maya is thinking…" : `You type as ${childName ?? "the child"}.`) : "The call has ended."}</p>
             </div>
           </header>
 
@@ -247,7 +284,23 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
           </ol>
           {safety && <p className="mc-safety" role="status">{safety}</p>}
 
-          {live ? (
+          {live && voice ? (
+            <VoicePanel
+              callId={view.id}
+              childName={childName}
+              started={view.startedAt !== null}
+              onUpdate={refresh}
+              onEnded={async () => {
+                // The worker stores the end a moment after the room closes.
+                for (const wait of [300, 1200, 3000]) {
+                  await new Promise((r) => setTimeout(r, wait));
+                  await refresh();
+                }
+              }}
+              onCancel={() => void send({ type: "end" })}
+              busy={busy}
+            />
+          ) : live ? (
             <form className="mc-say" onSubmit={submit}>
               <label className="mc-say-box">
                 <span className="sr-only">What {childName ?? "the child"} says</span>
@@ -275,6 +328,7 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
               {error && <p className="mc-error" role="alert">{error}</p>}
             </form>
           ) : null}
+          {live && voice && error && <p className="mc-error mc-error-pad" role="alert">{error}</p>}
         </section>
 
         <section className="mc-board" aria-label="Our board">
@@ -350,6 +404,17 @@ function CallRecordFacts({ view, childName, onRetry, busy, error }: { view: Call
           <div><dt>Safety</dt><dd>{o.safetyFlag ? <span className="adm-chip is-bad">Flagged{o.safetySeverity ? ` (${o.safetySeverity})` : ""}</span> : "No flag"}</dd></div>
           <div><dt>Number checks</dt><dd>{o.mishearing.confirmations} asked, {o.mishearing.corrections} corrected</dd></div>
         </dl>
+      )}
+
+      {view.voice && (
+        <>
+          <h3 className="mc-sub">Spoken call</h3>
+          <dl className="adm-facts">
+            <div><dt>Connected</dt><dd>{view.voice.connectedSeconds === null ? "-" : clock(view.voice.connectedSeconds)}</dd></div>
+            <div><dt>Speech to text</dt><dd>{view.voice.speechToText === "fake" ? "Typed test speech (no account)" : view.voice.speechToText ? <span className="adm-mono">{view.voice.speechToText}</span> : "Maya never joined"}</dd></div>
+            <div><dt>Voice</dt><dd>{view.voice.voice === "fake" ? "Silent test voice (no account)" : view.voice.voice ? <span className="adm-mono">{view.voice.voice}</span> : "Maya never joined"}</dd></div>
+          </dl>
+        </>
       )}
 
       <h3 className="mc-sub">Learning record</h3>

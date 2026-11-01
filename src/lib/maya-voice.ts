@@ -1,0 +1,241 @@
+// Maya's voice calls (#326, spec #297): the rules a voice call shares between the web server (which starts a call and
+// mints its LiveKit token) and the voice worker (worker/maya-voice, which joins the call's room and runs Maya there).
+// Pure: no network, no clock, no LiveKit packages.
+//
+// - Providers by configuration only (D-163): speech-to-text, the voice and the model each come from environment
+//   variables. `fake` speech-to-text and voice need no account (local runs and tests); the real ones are AssemblyAI and
+//   Inworld through their LiveKit plugins. The model is Maya's model through OpenRouter (`AI_MODEL`), or the fake rule
+//   player when the worker has no OPENROUTER_API_KEY (src/lib/maya-call-seams.ts).
+// - One call, one room: the room's name holds the call id, and a token admits one participant, the child, to that room
+//   only (src/lib/maya-voice-token.ts). The worker checks the joiner again against the call before it listens.
+// - Connected time: the worker records when the child and Maya join and leave; the call's connected seconds are the
+//   time both were in the room, counted on the server's clock.
+// - When the worker gives the session a tick (`nextTickAt`): only when the session can act on it (the pause policy or
+//   the time limits), never while Maya is still speaking.
+import { PAUSES, TIME_LIMITS, type Session } from "@/lib/maya";
+
+/** The worker's agent name: LiveKit sends a job to this worker only when the token's room asks for it. */
+export const VOICE_AGENT_NAME = "maya-voice";
+/** How long a token admits its holder to the room (seconds). A connected call goes on past it. */
+export const VOICE_TOKEN_TTL_SECONDS = 5 * 60;
+/** How long the worker waits for the child to come back after the connection drops (ms). */
+export const RECONNECT_GRACE_MS = 30_000;
+/** How long the worker waits for the child to join a new room before it gives up (ms). */
+export const JOIN_WAIT_MS = 2 * 60_000;
+/** A transcript the speech-to-text is less sure of than this is uncertain: Maya confirms a number in it. */
+export const UNSURE_CONFIDENCE = 0.6;
+/** A started voice call cannot still be running after this long (ms): the admin may end it by hand. */
+export const VOICE_CALL_STALE_MS = TIME_LIMITS.endAtMs + 60_000;
+
+// ---------- rooms and participants ----------
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+export const voiceRoom = (callId: string) => `maya-call-${callId}`;
+export const childIdentity = (childId: string) => `child-${childId}`;
+
+/** The call id of a voice room's name, or null for any other name. */
+export function callOfRoom(room: string): string | null {
+  const m = /^maya-call-(.+)$/.exec(room);
+  return m && UUID.test(m[1]) ? m[1] : null;
+}
+
+/** The attributes a token gives the child's participant. The participant cannot change them (no metadata grant). */
+export const ATTR = { call: "maya.call", parent: "maya.parent", child: "maya.child" } as const;
+
+/** The token's grant: join this one room, send the microphone and data, receive Maya. Nothing else. */
+export function childGrant(callId: string) {
+  return {
+    room: voiceRoom(callId),
+    roomJoin: true,
+    roomCreate: false,
+    roomList: false,
+    roomRecord: false,
+    roomAdmin: false,
+    ingressAdmin: false,
+    canPublish: true,
+    canPublishSources: ["microphone"] as const,
+    canSubscribe: true,
+    canPublishData: true,
+    canUpdateOwnMetadata: false,
+    hidden: false,
+    recorder: false,
+    agent: false,
+  };
+}
+
+/** What the child's screen gets to join a call: the LiveKit URL, the token, the room and who it admits. */
+export interface VoiceTicket {
+  url: string;
+  token: string;
+  room: string;
+  identity: string;
+  /** When the token stops admitting a new join (ISO). */
+  expiresAt: string;
+}
+
+/** What the worker knows of a call when a participant joins. */
+export interface VoiceCallFacts {
+  id: string;
+  parentId: string;
+  childId: string;
+  mode: "text" | "voice";
+  status: "live" | "ended";
+}
+
+/**
+ * Whether the worker may listen to this participant for this call: the room is the call's, and the participant is the
+ * call's child with the call's family on the attributes its token gave it. Any other joiner is ignored.
+ */
+export function checkJoiner(input: { room: string; call: VoiceCallFacts; identity: string; attributes: Readonly<Record<string, string>> }):
+  | { ok: true }
+  | { ok: false; reason: "wrong_room" | "not_voice" | "ended" | "wrong_child" | "wrong_family" } {
+  const { call } = input;
+  if (callOfRoom(input.room) !== call.id) return { ok: false, reason: "wrong_room" };
+  if (call.mode !== "voice") return { ok: false, reason: "not_voice" };
+  if (call.status !== "live") return { ok: false, reason: "ended" };
+  if (input.identity !== childIdentity(call.childId) || input.attributes[ATTR.child] !== call.childId) return { ok: false, reason: "wrong_child" };
+  if (input.attributes[ATTR.parent] !== call.parentId || input.attributes[ATTR.call] !== call.id) return { ok: false, reason: "wrong_family" };
+  return { ok: true };
+}
+
+// ---------- providers by configuration ----------
+
+export type SpeechToTextConfig = { provider: "fake" } | { provider: "assemblyai"; model: string; apiKey: string };
+export type VoiceConfig = { provider: "fake" } | { provider: "inworld"; model: string; voice: string; apiKey: string };
+
+export const STT_DEFAULT_MODEL = "universal-3-6-pro";
+export const TTS_DEFAULT_MODEL = "inworld-tts-2";
+
+export type ProvidersResult =
+  | { ok: true; speechToText: SpeechToTextConfig; voice: VoiceConfig; ids: { speechToText: string; voice: string } }
+  | { ok: false; problems: string[] };
+
+const value = (env: Readonly<Record<string, string | undefined>>, name: string) => env[name]?.trim() || "";
+
+/**
+ * The speech-to-text and the voice from the worker's environment. `MAYA_STT`: `fake` (default) or `assemblyai`
+ * (`ASSEMBLYAI_API_KEY`, model `MAYA_STT_MODEL`, default universal-3-6-pro). `MAYA_TTS`: `fake` (default) or `inworld`
+ * (`INWORLD_API_KEY`, voice `MAYA_VOICE`, model `MAYA_TTS_MODEL`, default inworld-tts-2). A missing key or voice is a
+ * problem, never a silent fallback to the fake. The ids are what the call row stores; they hold no key.
+ */
+export function voiceProviders(env: Readonly<Record<string, string | undefined>>): ProvidersResult {
+  const problems: string[] = [];
+  let speechToText: SpeechToTextConfig = { provider: "fake" };
+  let voice: VoiceConfig = { provider: "fake" };
+  const stt = value(env, "MAYA_STT").toLowerCase() || "fake";
+  if (stt === "assemblyai") {
+    const apiKey = value(env, "ASSEMBLYAI_API_KEY");
+    if (!apiKey) problems.push("MAYA_STT is assemblyai, but ASSEMBLYAI_API_KEY is not set");
+    speechToText = { provider: "assemblyai", model: value(env, "MAYA_STT_MODEL") || STT_DEFAULT_MODEL, apiKey };
+  } else if (stt !== "fake") problems.push(`MAYA_STT must be fake or assemblyai, not "${stt}"`);
+  const tts = value(env, "MAYA_TTS").toLowerCase() || "fake";
+  if (tts === "inworld") {
+    const apiKey = value(env, "INWORLD_API_KEY");
+    const id = value(env, "MAYA_VOICE");
+    if (!apiKey) problems.push("MAYA_TTS is inworld, but INWORLD_API_KEY is not set");
+    if (!id) problems.push("MAYA_TTS is inworld, but MAYA_VOICE (the Inworld voice id) is not set");
+    voice = { provider: "inworld", model: value(env, "MAYA_TTS_MODEL") || TTS_DEFAULT_MODEL, voice: id, apiKey };
+  } else if (tts !== "fake") problems.push(`MAYA_TTS must be fake or inworld, not "${tts}"`);
+  if (problems.length) return { ok: false, problems };
+  return { ok: true, speechToText, voice, ids: { speechToText: providerId(speechToText), voice: providerId(voice) } };
+}
+
+/** The stored id of a provider: what it is, never its key. */
+export function providerId(p: SpeechToTextConfig | VoiceConfig): string {
+  if (p.provider === "fake") return "fake";
+  if (p.provider === "assemblyai") return `assemblyai/${p.model}`;
+  return `inworld/${p.model}/${p.voice}`;
+}
+
+/** The LiveKit project the web server mints tokens for, or null when voice is not set up there. */
+export function livekitProject(env: Readonly<Record<string, string | undefined>>): { url: string; apiKey: string; apiSecret: string } | null {
+  const url = value(env, "LIVEKIT_URL");
+  const apiKey = value(env, "LIVEKIT_API_KEY");
+  const apiSecret = value(env, "LIVEKIT_API_SECRET");
+  if (!url || !apiKey || !apiSecret || !/^wss?:\/\//.test(url)) return null;
+  return { url, apiKey, apiSecret };
+}
+
+// ---------- what the child said ----------
+
+/** One recognised alternative of a final transcript. */
+export interface Heard {
+  text: string;
+  /** 0 to 1; a provider that gives none counts as sure. */
+  confidence?: number;
+}
+
+/**
+ * A child turn from the final transcripts of one turn: the words joined, uncertain when any part was below
+ * UNSURE_CONFIDENCE, with the other alternatives of the unsure parts (so the session can confirm what it heard).
+ */
+export function childTurnFrom(finals: readonly (readonly Heard[])[]): { text: string; uncertain: boolean; alternatives: string[] } | null {
+  const best = finals.map((alts) => alts[0]).filter((h): h is Heard => !!h && h.text.trim().length > 0);
+  if (best.length === 0) return null;
+  const unsure = finals.filter((alts) => alts[0] && alts[0].text.trim() && typeof alts[0].confidence === "number" && alts[0].confidence < UNSURE_CONFIDENCE);
+  const alternatives = [...new Set(unsure.flatMap((alts) => alts.slice(1).map((h) => h.text.trim()).filter(Boolean)))].slice(0, 4);
+  return { text: best.map((h) => h.text.trim()).join(" "), uncertain: unsure.length > 0, alternatives };
+}
+
+// ---------- connected time ----------
+
+export type ConnectionKind = "agent_joined" | "agent_left" | "child_joined" | "child_left";
+export interface ConnectionEvent {
+  kind: ConnectionKind;
+  /** Milliseconds since 1970, from the server's clock. */
+  at: number;
+}
+
+/**
+ * The seconds the child and Maya were both in the room, from the connection events, up to `endAt` (the call's end) for
+ * anyone still there. A leave with no join before it, and a second join without a leave, change nothing.
+ */
+export function connectedSeconds(events: readonly ConnectionEvent[], endAt: number): number {
+  const sorted = [...events].sort((a, b) => a.at - b.at);
+  let child: number | null = null;
+  let agent: number | null = null;
+  let both: number | null = null;
+  let total = 0;
+  const update = (at: number) => {
+    const now = child !== null && agent !== null;
+    if (now && both === null) both = at;
+    if (!now && both !== null) {
+      total += Math.max(0, at - both);
+      both = null;
+    }
+  };
+  for (const e of sorted) {
+    if (e.at > endAt) break;
+    if (e.kind === "child_joined" && child === null) child = e.at;
+    else if (e.kind === "child_left" && child !== null) child = null;
+    else if (e.kind === "agent_joined" && agent === null) agent = e.at;
+    else if (e.kind === "agent_left" && agent !== null) agent = null;
+    update(e.at);
+  }
+  if (both !== null) total += Math.max(0, endAt - both);
+  return Math.round(total / 1000);
+}
+
+// ---------- ticks ----------
+
+/**
+ * When the worker should next give the session a tick (ms since 1970), or null when no tick can change anything. The
+ * pause policy counts the child's silence from when Maya started waiting; in a voice call, Maya may still be speaking
+ * then, so the silence counts from the end of her speech (`speechEndedAt`) when that is later. The time limits come at
+ * their fixed times from the start. A time at or before the last tick (`lastTickAt`) is left out: that tick covered it.
+ */
+export function nextTickAt(
+  session: Pick<Session, "outcome" | "startedAt" | "expect" | "waitingSince" | "silence" | "state">,
+  at: { speechEndedAt: number | null; lastTickAt: number | null },
+): number | null {
+  if (session.outcome || session.startedAt === null) return null;
+  const times: number[] = [session.startedAt + TIME_LIMITS.closingAtMs, session.startedAt + TIME_LIMITS.endAtMs];
+  if (session.expect === "child" && session.waitingSince !== null) {
+    const quietFrom = Math.max(session.waitingSince, at.speechEndedAt ?? 0);
+    if (session.silence === "none") times.push(quietFrom + (session.state === "WAIT_WRITE" ? PAUSES.writeCheckMs : PAUSES.thinkCheckMs));
+    else if (session.silence === "checked") times.push(quietFrom + PAUSES.noResponseMs);
+  }
+  const ahead = times.filter((t) => at.lastTickAt === null || t > at.lastTickAt);
+  return ahead.length ? Math.min(...ahead) : null;
+}

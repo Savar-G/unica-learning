@@ -1,4 +1,4 @@
-import type { CallChange, CallRecord, CallStore } from "@/lib/maya-call";
+import type { CallChange, CallConnection, CallRecord, CallStore, ConnectionLog } from "@/lib/maya-call";
 
 // The call store of Maya's calls (src/lib/maya-call.ts, #323) in memory, for tests. It keeps the database's rules: an
 // admin test call names a test family (the trigger of migration add_maya_calls), an update writes only at the revision
@@ -29,5 +29,19 @@ export function memoryCallStore(options: { testFamilies: readonly string[] }): C
       return true;
     },
     rows: () => [...rows.values()].map(copy),
+  };
+}
+
+/** The connection events of voice calls in memory, append only, as public.maya_call_connections keeps them. */
+export function memoryConnectionLog(): ConnectionLog & { rows(): CallConnection[] } {
+  const rows: CallConnection[] = [];
+  return {
+    async append(e) {
+      rows.push({ ...e });
+    },
+    async read(callId) {
+      return rows.filter((r) => r.callId === callId).map(({ kind, at }) => ({ kind, at })).sort((a, b) => a.at - b.at);
+    },
+    rows: () => rows.map((r) => ({ ...r })),
   };
 }
