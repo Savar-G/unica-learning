@@ -986,6 +986,21 @@ describe("the child's final answer, with an explanation after it (D-199)", () =>
     first.child("Because 7 + 9 is 16, it's 66.");
     expect(first.refused(accept)).toMatchObject({ code: "answer_not_committed" });
 
+    // An ordinary "no" in the explanation takes nothing back (R391-1-1): the 66 after it is not the answer.
+    for (const said of ["65 because I have no idea how 66 works.", "56 because no clue, 66 is too big.", "I got 56 since I have no way to check 66."]) {
+      const noIdea = opened();
+      noIdea.child(said);
+      expect(["answer_not_committed", "answer_not_heard"], said).toContain(noIdea.refused(accept)?.code);
+    }
+    // A correction still wins when a number follows it, or when it stands alone.
+    const fixed = opened();
+    fixed.child("65 because six tens, no wait, 66.");
+    fixed.maya(accept);
+    expect(fixed.session.lastResult).toBe("right");
+    const dropped = opened();
+    dropped.child("66... no, I don't know.");
+    expect(["answer_not_committed", "answer_not_heard"]).toContain(dropped.refused(accept)?.code);
+
     // A step answer inside the explanation still counts as that step.
     const step16 = opened();
     step16.child("I got 66 because seven and nine make sixteen.");

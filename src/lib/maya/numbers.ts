@@ -238,14 +238,54 @@ export function readNumbers(text: string): NumbersRead {
 export const valuesIn = (text: string): AnswerValue[] => readNumbers(text).values;
 
 /** Words a child uses to take back what they just said: "sixty-six... no, sixty", "66... no, I don't know". */
-const CORRECTION = /\b(?:no|wait|i mean|actually|oops)\b/i;
+const CORRECTION = /\b(?:no|wait|i mean|actually|oops)\b/gi;
+/** Words that may sit between a correction word and the number it puts in place ("no wait, 65", "no, I mean 65"). */
+const TAKE_BACK_FILLER = /^(?:[\s,.!?…:;-]|\b(?:no|wait|i mean|actually|oops|um+|uh+|it's|its|it is)\b)*/i;
+
+/** Words a spoken number may start with before its digits or number words ("point sixty-six", "minus 3"). */
+const NUMBER_LEAD = /^(?:point|minus|negative|a|an|one|half)$/i;
+
+/**
+ * Where the child takes something back (R391-1-1). A correction word counts only when a number is the next word after it (after
+ * fillers: "65, no wait, 66", "actually sixty-six") or when it stands alone as its own clause ("66... no, I don't know":
+ * the start of the turn or a punctuation mark before it, and a punctuation mark or the end after it). An ordinary "no"
+ * ("I have no idea how 66 works", "no clue") takes nothing back, so the numbers after it are never made the answer.
+ */
+function takeBacks(text: string): { index: number; end: number }[] {
+  const out: { index: number; end: number }[] = [];
+  for (const m of text.matchAll(CORRECTION)) {
+    const index = m.index ?? 0;
+    const end = index + m[0].length;
+    const after = text.slice(end);
+    const words = after.slice((TAKE_BACK_FILLER.exec(after)?.[0] ?? "").length).split(/\s+/);
+    // The next word is a number, or starts a spoken number form ("point sixty-six", "minus 3", "a half").
+    const lead = NUMBER_LEAD.test(words[0] ?? "") ? words.slice(0, 3).join(" ") : words[0] ?? "";
+    const read = readNumbers(lead);
+    const numberFollows = read.values.length > 0 || read.unreadable;
+    const alone = /(?:^|[,.!?…;:-])\s*$/.test(text.slice(0, index)) && /^\s*(?:[,.!?…;:-]|$)/.test(after);
+    if (numberFollows || alone) out.push({ index, end });
+  }
+  return out;
+}
+
+/** The text split at every word that takes something back (takeBacks). */
+function splitTakeBacks(text: string): string[] {
+  const parts: string[] = [];
+  let from = 0;
+  for (const t of takeBacks(text)) {
+    parts.push(text.slice(from, t.index));
+    from = t.end;
+  }
+  parts.push(text.slice(from));
+  return parts;
+}
 
 /**
  * The child's committed words: what follows the last word that takes something back ("sixty... no, sixty-six" commits
  * to "sixty-six"; "66... no, I don't know" commits to no number). The whole text when nothing was taken back.
  */
 export function committedText(text: string): string {
-  const parts = text.split(CORRECTION);
+  const parts = splitTakeBacks(text);
   return parts[parts.length - 1];
 }
 
@@ -268,7 +308,7 @@ export function withoutExplanations(text: string): string {
     for (let m = EXPLANATION.exec(rest); m; m = EXPLANATION.exec(rest)) {
       out += rest.slice(0, m.index);
       rest = rest.slice(m.index + m[0].length);
-      const correction = CORRECTION.exec(rest);
+      const correction = takeBacks(rest)[0];
       if (!correction) return out;
       rest = rest.slice(correction.index);
     }
@@ -319,7 +359,7 @@ export const unreadableAnswer = (text: string) => readNumbers(withoutExplanation
  * (readAnswer: "actually 66 because six tens" keeps 66), or null when no number is kept or code cannot read it.
  */
 export function takenBack(text: string): { kept: AnswerValue | null } | null {
-  const parts = text.split(CORRECTION);
+  const parts = splitTakeBacks(text);
   if (parts.length === 1) return null;
   const last = parts[parts.length - 1];
   const after = readNumbers(last);

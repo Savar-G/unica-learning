@@ -66,6 +66,12 @@ describe("each hard failure can fail the gate (a saved trace changed after the r
       if (c.kind === "child") c.text = "So I got 56, because 27 and 39 make 66.";
       return t;
     }],
+    // R391-1-1: an ordinary "no" in the explanation of a wrong answer takes nothing back, so the 66 after it is not the answer.
+    ["accepted_wrong_answer", "M12", (t) => {
+      const c = t.turns.find((x) => x.kind === "child")!;
+      if (c.kind === "child") c.text = "65 because I have no idea how 66 works.";
+      return t;
+    }],
     // D-199: the final step's answer after only one wrong final answer (the first one read right instead).
     ["hint_skipped", "M14", (t) => {
       (mayaAt(t, 3).attempts.at(-1)!.proposal as { reading: { answers: { value: unknown }[] } }).reading.answers[0].value = { type: "number", value: 66 };
