@@ -61,7 +61,7 @@ export interface CallFlag {
 
 /**
  * What a request for harmful content raises (#383 C29: the model's reading `unsafeRequest`, answered with the decline
- * line "I can't talk about this. I'm here to help with math."). Savar approved "unsafe_request" on 2026-11-01 (D-197): a
+ * line "I can't talk about this. I'm here to help with math."). Savar approved "unsafe_request" on 2026-11-01 (D-203): a
  * lower flag with its own alert. The other options: "safety_concern" raises the same flag and alert as the SAFETY
  * interrupt; null no flag and no alert.
  */
