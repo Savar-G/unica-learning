@@ -183,17 +183,27 @@ function anthropicRole(key: string, model: string, spending: Spending, price: Pr
  * must pass), with the code guards' result beside it. Saves review-check.json and .md; true when every line came out
  * as it must.
  */
-async function reviewCheck(reviewer: TalkReviewer, dir: string): Promise<boolean> {
+async function reviewCheck(reviewer: TalkReviewer, dir: string, concurrency: number): Promise<boolean> {
   const lines = [
     ...NEVER_SAY.flatMap((e) => e.examples.map((line) => ({ line, childTurn: null as string | null, want: "fail" as const, rule: e.id as string }))),
     ...OK_TALK.map((x) => ({ line: x.line, childTurn: x.childTurn || null, want: "pass" as const, rule: null as string | null })),
   ];
-  const results = await Promise.all(lines.map(async (x) => {
+  // A few at a time: the Claude API limits concurrent requests per organization.
+  let next = 0;
+  const results: ({ code: string | null; result: Awaited<ReturnType<typeof runReview>>; ok: boolean } & (typeof lines)[number])[] = new Array(lines.length);
+  const one = async (x: (typeof lines)[number]) => {
     const result = await runReview(reviewer, { promptVersion: TALK_REVIEW_PROMPT_VERSION, line: x.line, childTurn: x.childTurn, transcript: x.childTurn ? [{ speaker: "child" as const, text: x.childTurn }] : [] }, 30_000,
       (e) => console.error(`[review-check] ${redactText(e instanceof Error ? e.message : String(e))}`));
     const code = freeTalkProblem(x.line, null, x.childTurn ? [x.childTurn] : []);
-    const ok = x.want === "fail" ? result.verdict !== "pass" : result.verdict === "pass";
+    // An error is not a judgement: it fails a line in a call, but here it makes the check incomplete.
+    const ok = x.want === "fail" ? result.verdict === "fail" : result.verdict === "pass";
     return { ...x, code, result, ok };
+  };
+  await Promise.all(Array.from({ length: Math.max(1, concurrency) }, async () => {
+    while (next < lines.length) {
+      const i = next++;
+      results[i] = await one(lines[i]);
+    }
   }));
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "review-check.json"), `${JSON.stringify({ reviewer: { model: reviewer.id, promptVersion: reviewer.promptVersion }, results }, null, 2)}\n`);
@@ -202,7 +212,7 @@ async function reviewCheck(reviewer: TalkReviewer, dir: string): Promise<boolean
   const cell = (t: string) => t.replace(/\|/g, "\\|");
   const md = [
     `# Free-talk review check (D-197)`, "", `Review: ${reviewer.id}, ${reviewer.promptVersion}.`, "",
-    `- Never-say examples failed by the review: ${bad.filter((r) => r.ok).length}/${bad.length} (an error counts as a fail).`,
+    `- Never-say examples failed by the review: ${bad.filter((r) => r.ok).length}/${bad.length}. Review errors (no judgement): ${results.filter((r) => r.result.verdict === "error").length}.`,
     `- Never-say examples the code guards pass, so only the review stops them: ${bad.filter((r) => r.code === null).length}/${bad.length}; the review failed ${bad.filter((r) => r.code === null && r.ok).length} of them.`,
     `- OK lines passed by the review: ${good.filter((r) => r.ok).length}/${good.length}.`, "",
     "| Line | Want | Rule | Code guards | Review | Rules named | OK |", "|---|---|---|---|---|---|---|",
@@ -346,7 +356,7 @@ async function main() {
 
   if (o.reviewCheck) {
     const dir = resolve(o.out ?? join(root, "traces/maya-practice", `review-check-${new Date().toISOString().replace(/[:.]/g, "-")}`));
-    const ok = await reviewCheck(reviewer!, dir);
+    const ok = await reviewCheck(reviewer!, dir, o.concurrency);
     console.log(`-- spent about ${usd(spending.spent)}`);
     process.exit(ok ? 0 : 1);
   }
