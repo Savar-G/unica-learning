@@ -22,4 +22,3 @@ begin
 end $$;
 revoke all on function public.route_workbook_run(uuid, text, int) from public, anon, authenticated;
 grant execute on function public.route_workbook_run(uuid, text, int) to service_role;
-

@@ -179,8 +179,12 @@ describe("the OpenRouter AI client: no output is an error, never a result (#183)
 
   it("stops at once, with no second try, when the caller's time is up", async () => {
     const { fetch, sent } = fakeFetch("hang");
+    let entered!: () => void;
+    const dispatch = new Promise<void>((resolve) => { entered = resolve; });
+    const startedFetch: typeof fetch = (...args) => { entered(); return fetch(...args); };
     const controller = new AbortController();
-    const pending = client(fetch).json(request(), controller.signal);
+    const pending = client(startedFetch).json(request(), controller.signal);
+    await dispatch;
     controller.abort();
     await expect(pending).rejects.toThrow();
     expect(sent).toHaveLength(1);

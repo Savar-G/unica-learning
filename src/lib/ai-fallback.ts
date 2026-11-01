@@ -21,7 +21,7 @@ export const AI_PROVIDERS: readonly AiProvider[] = ["subscription", "api"];
 /** One AI call as a run records it (public.workbook_run_ai_calls). */
 export interface AiCallRecord {
   id?: string;
-  /** Physical requests for this logical provider call, including retries. */
+  /** Dispatch attempts for this logical provider call, including retries. A queued API intent does not count. */
   requests?: number;
   /** The request's name ("workbook_page", "solve_check"). */
   name: string;
@@ -59,7 +59,7 @@ export interface FallbackOptions {
   /** The subscription client; null where there is none (the server). */
   subscription: AiClient | null;
   /** Makes the API client for one call, reporting that call's cost; null with no API key. */
-  api: ((onCost: (usd: number) => void, onRequest: () => Promise<void>) => AiClient) | null;
+  api: ((onCost: (usd: number) => void, onRequest: () => Promise<void>, onDispatch: () => void) => AiClient) | null;
   /** The model name the run stores (the frame's model check, the draft's model): the same whichever provider answers. */
   model: string;
   gate?: ProviderGate;
@@ -101,10 +101,10 @@ export function fallbackAiClient(o: FallbackOptions): AiClient {
         // Persistence errors must stop the call, rather than appear to be a provider failure.
         const beforeRequest = async () => {
           if (signal.aborted) throw new Error("time is up");
-          requests = (requests ?? 0) + 1;
           await o.onStart?.(entry("started", null));
+          if (signal.aborted) throw new Error("time is up");
         };
-        const client = provider === "subscription" ? o.subscription! : o.api!((c) => { usd = (usd ?? 0) + c; }, beforeRequest);
+        const client = provider === "subscription" ? o.subscription! : o.api!((c) => { usd = (usd ?? 0) + c; }, beforeRequest, () => { requests = (requests ?? 0) + 1; });
         model = client.model;
         await o.onStart?.(entry("started", null));
         if (signal.aborted) throw new Error("time is up");

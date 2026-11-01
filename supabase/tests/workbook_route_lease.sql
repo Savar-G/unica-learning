@@ -47,4 +47,3 @@ begin
 end $$;
 select 'queued, live and stale routing; both runners; old writes refused; new claims accepted; audit and grants passed' as probe;
 rollback;
-

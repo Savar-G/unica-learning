@@ -176,7 +176,7 @@ export function aiCallsFact(s: AiCallSummary): ReactNode {
   return <span className="adm-wb-calls">
     <span><b>{s.subscription.calls}</b> calls on the Claude subscription{failed(s.subscription.failed)} · USD 0</span>
     <span><b>{s.api.calls}</b> calls on the API{failed(s.api.failed)} · {usd(s.api.usd)}{s.api.noCost > 0 ? ` (${s.api.noCost} with no cost given)` : ""}</span>
-    <span className="adm-sub">Counts are logical calls. API retries: {s.retries}.</span>
+    <span className="adm-sub">Counts are logical calls. Recorded API retries: {s.retries}.</span>
     {s.incomplete > 0 && <span className="adm-sub">{s.incomplete} {s.incomplete === 1 ? "call has" : "calls have"} no saved result. Their costs are unknown.</span>}
     {s.unavailable.subscription > 0 && <span className="adm-sub">The subscription could not take {s.unavailable.subscription} {s.unavailable.subscription === 1 ? "call" : "calls"}. Last reason: {s.unavailable.last ?? "not given"}</span>}
     {s.unavailable.api > 0 && <span className="adm-sub">The API could not take {s.unavailable.api} {s.unavailable.api === 1 ? "call" : "calls"}.</span>}

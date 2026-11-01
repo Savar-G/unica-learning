@@ -90,7 +90,7 @@ export function workbookAi(env: Env, o: WorkbookAiOptions): WorkbookAi {
     ? claudeCliClient({ model, command: env.WORKBOOK_CLAUDE_COMMAND?.trim() || "claude", spawn: o.spawn, env, configDir: env.WORKBOOK_CLAUDE_CONFIG_DIR, timeout })
     : null;
   const api = (model: string, ms: number) => apiKey
-    ? (onCost: (usd: number) => void, onRequest: () => Promise<void>) => openRouterClient({ apiKey, model, fetch: costingFetch(onCost, base), timeout: ms, onRequest })
+    ? (onCost: (usd: number) => void, onRequest: () => Promise<void>, onDispatch: () => void) => openRouterClient({ apiKey, model, fetch: costingFetch(onCost, base), timeout: ms, onRequest, onDispatch })
     : null;
   const writeCli = cli(models.cli);
   const writeApi = api(models.api, API_TIMEOUT_MS);
