@@ -1122,8 +1122,8 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     s.regroupDue = regroup.due;
   }
   // A regroup said for a column explains its pair too: the column the carry comes from and the one it goes to.
-  const explained = spoken.chosen.filter((o) => o.line === "step.regroup" && o.slots.step).flatMap((o) => pkg ? pairOf(pkg, o.slots.step!) : []);
-  if (explained.length > 0 || regroup.said.length > 0) s.regroupSaid = [...new Set([...regroup.said, ...explained])];
+  const explained = spoken.chosen.filter((o) => o.line === "step.regroup" && o.slots.step).flatMap((o) => pkg ? pairOf(pkg, o.slots.step!, o.slots.other === "carry") : []);
+  s.regroupSaid = [...new Set([...regroup.said, ...explained])];
   if (p.act !== "confirm" && p.act !== "offer_other_input") {
     s.confirmTries = 0;
     s.offeredOtherInput = false;
@@ -1231,9 +1231,9 @@ function carryPairs(pkg: OperationPackage): { out: Extract<WorkedStep, { kind: "
   return columns.slice(0, -1).flatMap((out, i) => (out.carryOut > 0 && columns[i + 1].carryIn === out.carryOut ? [{ out, in: columns[i + 1] }] : []));
 }
 
-/** Both columns of the carry a column belongs to (the column alone when it has no carry). */
-function pairOf(pkg: OperationPackage, id: string): string[] {
-  const ids = carryPairs(pkg).filter((c) => c.out.id === id || c.in.id === id).flatMap((c) => [c.out.id, c.in.id]);
+/** Both columns of the carry the line explains, without marking an adjacent carry as explained. */
+function pairOf(pkg: OperationPackage, id: string, source: boolean): string[] {
+  const ids = carryPairs(pkg).filter((c) => source ? c.out.id === id : c.in.id === id).flatMap((c) => [c.out.id, c.in.id]);
   return ids.length > 0 ? [...new Set(ids)] : [id];
 }
 
@@ -1279,7 +1279,7 @@ function writesTotal(text: string, total: number): boolean {
 function regroupAfter(s: Session, checked: readonly Checked[], done: string[]): Regroup {
   const pkg = s.package;
   const due = new Set(s.regroupDue ?? []);
-  const said = [...(s.regroupSaid ?? [])];
+  let said = [...(s.regroupSaid ?? [])];
   const pairs = pkg ? carryPairs(pkg) : [];
   if (!pkg || pairs.length === 0) return { due: [...due], said };
   const text = s.turn?.text ?? "";
@@ -1293,11 +1293,15 @@ function regroupAfter(s: Session, checked: readonly Checked[], done: string[]): 
   }
   if (CARRY_DENIAL.test(committedText(text))) {
     const first = pairs.find((x) => !done.includes(x.in.id));
-    if (first) due.add(first.in.id);
+    if (first) {
+      due.add(first.in.id);
+      said = said.filter((id) => id !== first.in.id);
+    }
   }
   for (const x of pairs) {
     if (!writesTotal(text, x.out.total)) continue;
     due.add(x.out.id);
+    said = said.filter((id) => id !== x.out.id);
     const at = done.indexOf(x.out.id);
     if (at >= 0) done.splice(at, 1);
   }

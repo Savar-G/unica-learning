@@ -571,6 +571,10 @@ export const unreadableAnswer = (text: string) => readNumbers(withoutExplanation
  * (readAnswer: "actually 66 because six tens" keeps 66), or null when no number is kept or code cannot read it.
  */
 export function takenBack(text: string): { kept: AnswerValue | null } | null {
+  // An explicit rejection also withdraws an answer accepted in an earlier turn. It needs no correction word or number.
+  // "I don't know" after a request to explain is not a withdrawal of the accepted answer.
+  const withdrawal = /\b(?:withdraw|withdrawn|retract|wrong|incorrect|mistake|mistaken|reject|rejected|scratch|forget|undo|cancel)\b|\b(?:take|taking|took|takes) (?:that|it|this|my answer|it all)? ?back\b|\b(?:change|changed|changing) (?:my|the) answer\b|\b(?:changed?|changing) my mind\b|\bnever ?mind\b/i;
+  if (withdrawal.test(text) || negativeNearAnswer(text)) return { kept: null };
   const parts = splitTakeBacks(text);
   if (parts.length === 1) return null;
   const last = parts[parts.length - 1];

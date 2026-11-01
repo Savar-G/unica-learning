@@ -160,7 +160,7 @@ export const TEMPLATES = {
   // not carry, or plans to write the two-digit sum in one column. Pending Savar's approval (D-202).
   "regroup.add": [
     "{eq}. {total} is {carry} {big} and {write} {small}. Write {write} in the {from}. Carry {carry} {big} to the {to}.",
-    "{eq}. Only one digit fits in the {from}. Write {write} there. Carry {carry} {big} to the {to}.",
+    "{eq}. {total} is {carry} {big} and {write} {small}. Write just {write} in the {from}. Move {carry} {big} to the {to}.",
     "{total} is {carry} {big} and {write} {small}. Only the {write} goes in the {from}. The {carry} {big} goes to the {to}.",
     "{eq}. Split {total} into {carry} {big} and {write} {small}. Write {write} in the {from}. Carry {carry} {big} to the {to}.",
     "{eq}. {total} has {carry} {big} and {write} {small}. The {write} stays in the {from}. The {carry} {big} goes to the {to}.",

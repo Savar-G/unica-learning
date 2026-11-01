@@ -205,7 +205,7 @@ export interface ReplyPick {
 
 /**
  * The reply that answers a common request when the model's own words for it failed the guards or the review: a question
- * about Maya, a request for a promise, or praise and flattery. Code picks among approved phrases only; a turn that fits
+ * about Maya, a request for a promise, or praise and flattery. Code picks among code-written phrases only; a turn that fits
  * none (or more than one kind) gets null, and the refused words become a neutral bank phrase as before. Fail-closed: a
  * miss costs warmth, never safety, since every phrase here is code-written.
  */

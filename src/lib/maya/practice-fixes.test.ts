@@ -3,7 +3,7 @@ import {
   createSession, fallbacks, lineOffers, nextActs, PHRASES, readAnswer, replyFor, step, unreadableAnswer,
   type Effect, type LineId, type Proposal, type SessionEvent, type Slots, type TalkReview,
 } from "@/lib/maya";
-import { workedSteps, type QuestionPackage } from "@/lib/question-package";
+import { workedSteps, type Operation, type QuestionPackage } from "@/lib/question-package";
 
 // The faults of the practice runs on the Claude subscription (2026-11-01, PR #401's table), through the session's public
 // interface: empty replies to common requests, asking again for steps the child did, and talk about a carried 1 the child
@@ -36,8 +36,8 @@ type Draft = Omit<Proposal, "version">;
 const ln = (line: LineId, slots: Slots = {}) => ({ line, slots });
 const said = (effects: Effect[]) => effects.flatMap((e) => (e.kind === "say" ? [e.text] : [])).join(" ");
 
-function call(freeTalk = false) {
-  let session = createSession({ callId: "fix-1", package: PACKAGE, freeTalk });
+function call(freeTalk = false, pkg = PACKAGE) {
+  let session = createSession({ callId: "fix-1", package: pkg, freeTalk });
   let clock = T0;
   const send = (event: SessionEvent) => {
     const result = step(session, event);
@@ -160,6 +160,26 @@ describe("steps the child already did are never asked again", () => {
     expect(c.propose({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [ans(66, "result", "right")] } }).refusal).toBeNull();
   });
 
+  it.each([
+    "Maybe 66. I wrote it on my paper.", "I got 66 or 56.", "I got 66. I withdraw it.",
+    "66 isn't right.", "No 66.", "I would say 66. I added the one I carried.",
+    "I got 66. I take that back.", "Because six tens and six ones make 66.",
+  ])("never accepts an uncertain or withdrawn answer: %s", (text) => {
+    const c = call();
+    c.child(text);
+    expect(c.propose({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [ans(66, "result", "right")] } }).refusal).not.toBeNull();
+    expect(c.session.solved).toBeNull();
+  });
+
+  it.each(["I take that back. I got 56.", "I withdraw it.", "That is wrong.", "66 isn't right."])("keeps an explicit withdrawal after acceptance: %s", (text) => {
+    const c = call();
+    c.child("I got 66.");
+    c.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [ans(66, "result", "right")] } });
+    c.child(text);
+    expect(c.session.solved).toBeNull();
+    expect(c.propose({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [ans(66, "result", "right")] } }).refusal).not.toBeNull();
+  });
+
   it("never confirms or judges again a right answer that stands", () => {
     const c = call();
     c.child("7 plus 9 is 16, carry the ten, 2 plus 3 plus 1 is 6. I got 66.");
@@ -223,6 +243,40 @@ describe("steps the child already did are never asked again", () => {
 
 describe("where a carried 1 comes from, before any line names it", () => {
   const regroupTexts = (c: ReturnType<typeof call>) => (lineOffers(c.session).guide ?? []).filter((o) => o.line === "step.regroup").flatMap((o) => o.texts);
+
+  it("explains the ten and the ones in every wording without saying the final answer", () => {
+    const c = call();
+    c.child("7 plus 9 is 16. I write 16 under the ones.");
+    const texts = [...new Set(regroupTexts(c))];
+    expect(texts).toHaveLength(5);
+    for (const text of texts) {
+      expect(text).toMatch(/16 (?:is|into|has) 1 ten and 6 ones/);
+      expect(text).not.toMatch(/\b66\b/);
+    }
+  });
+
+  it("explains again when the child still denies carrying after an explanation", () => {
+    const c = call();
+    c.child("7 plus 9 is 16.");
+    c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right")] } });
+    c.child("What 1? I didn't carry anything.");
+    c.maya({ act: "guide", step: "tens", level: 1, parts: [ln("step.regroup", { step: "tens" })] });
+    c.child("I still didn't write a one.");
+    expect(c.propose({ act: "guide", step: "tens", level: 1, parts: [ln("step.point", { step: "tens" })] }).refusal).toMatchObject({ code: "line_not_offered" });
+    expect(c.propose({ act: "guide", step: "tens", level: 1, parts: [ln("step.regroup", { step: "tens" })] }).refusal).toBeNull();
+  });
+
+  it("does not mark the next carry as explained when one column receives and makes a carry", () => {
+    const operation: Operation = { kind: "add", operands: [67, 58] };
+    const c = call(false, { ...PACKAGE, text: "67 + 58 = ?", operation, steps: workedSteps(operation), answer: { value: num(125), accepted: [], unit: null }, wrongAnswers: [{ value: num(115), cause: "O3", description: "Forgets the ten from the ones", step: "tens" }] });
+    c.child("I got 15 for 7 plus 8.");
+    c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { start: "has_work", answers: [ans(15, "ones", "right")] } });
+    c.child("I got 115.");
+    c.maya({ act: "guide", step: "tens", level: 1, parts: [ln("step.regroup", { step: "tens" })], reading: { answers: [ans(115, "result", "wrong")] } });
+    // This line explained 15 as one ten and five ones, not the new carry from the tens to the hundreds.
+    expect(c.session.regroupSaid).not.toContain("hundreds");
+    expect(c.session.regroupDue).toContain("hundreds");
+  });
 
   it("says the regroup line after a lost carry, before 'the 1 you carried'", () => {
     const c = call();
