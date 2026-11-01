@@ -639,3 +639,22 @@ describe("a book laid out for the templates: room, rules and the content left", 
     expect(p.omissions!.some((o) => /left out: the page had no room/.test(o.reason))).toBe(true);
   });
 });
+
+describe("the vary number", () => {
+  it("gives each laid-out slot a number in its range, fixed by day, page and slot, so pages written apart differ", async () => {
+    const U3 = planWorkbook({
+      profile: { standards: [] }, grade: 0, level: planLevel(BC, "U3")!, passed: {}, workbook: { number: 1, inLevel: 0 },
+      reviews: [], missedReviews: [], misses: [], pausedWeeks: 0, support: null, unassessedUnits: [],
+    });
+    if (!U3.ok) throw new Error(U3.reason);
+    const run = async () => {
+      const ai = fakeAiClient({ answer: (r) => fill(r) });
+      await generateWorkbook({ ...input, plan: U3.plan, book: { child: "Zoe" } }, deps({ ai }));
+      return ai.requests.filter((r) => r.name === "workbook_page").flatMap((r) => (JSON.parse((r.content[0] as { text: string }).text) as { slots: { vary: number; numbers: Record<string, { max: number }> }[] }).slots);
+    };
+    const slots = await run();
+    expect(slots.every((s) => s.vary >= 1 && s.vary <= Math.min(...Object.values(s.numbers).map((n) => n.max)))).toBe(true);
+    expect(new Set(slots.map((s) => s.vary)).size).toBeGreaterThan(3);
+    expect((await run()).map((s) => s.vary)).toEqual(slots.map((s) => s.vary));
+  });
+});

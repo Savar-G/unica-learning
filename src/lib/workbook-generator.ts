@@ -275,11 +275,13 @@ const SYSTEM = [
   "Keep to the part's kind: practice builds from easy to harder in small changes; Fix it uses new numbers on the skills listed, never a question named in 'avoid'; Friday 5, mini-tests and the level test have no hints.",
   "Copy: short plain sentences a child can read; Canadian English (Mom, metre, litre, colour); money in Canadian dollars and cents; never a school grade, a brand name, or a prompt to scan or call anyone; no last names.",
   "Room: a slot may give its room: the most characters its question text has room for on the printed page (characters), in lines of about perLine characters. Count the characters of the text, spaces included, and stay within it: the page has no room for more, and nothing is shrunk to fit. Say it short: '3 cars. 2 more come. How many now?', not a long story. On a card (lines 2), writing lines (written-reason) or a tall picture (number-line, base-ten) take the place of a line: then write one line at most. A ten-frame on a card is taller than its answer box: with a ten-frame, write one line. A written-reason card's lines take as much room as 2 lines of text, so a page of cards has at most 2 written-reason items. For another question with no number answer (Equal? Which has more?), use draw ('Draw 3 dots and 3 dots. Circle the bigger group.'): a parent checks it and it takes the room of an answer box. A write-number item always needs an operation.",
+  "Vary: every page is written alone, and other days practise the same skills. So no two questions of a page are the same, and each slot gives a vary number: make it one of the item's numbers (its first number, its total or its count) when the rules allow, so the pages of different days differ.",
+  "Pictures must show what the text says. A dots picture of a subtraction crosses out the dots taken away: use it only for take-away, never to compare two groups (how many more red than blue? has no picture). A missing part's picture shows only the part given. There is no five-frame picture: a five-frame question has no picture.",
   "A missing number in a list (4, 5, ?, 7) is the sequence format, with the blanks as data: never write _ or a gap in the text.",
   "Rules: a slot may give the rules of each of its skills in plain words: the largest number, the signs and ideas not taught yet, and the formats to leave out. Follow them exactly; they are checked by code, and an item that breaks one is thrown away.",
   "The operation's answer is exactly the number the child writes in the box. A missing part is the missing-addend kind, operands [the part given, the total]: '2 and what make 5?', '3 + ? = 5', 'Mia has 3. How many more make 5?' and 'How far is 7 from 10?' are missing-addend [2, 5], [3, 5], [3, 5] and [7, 10]; code's answer is the missing part (3, 2, 2, 3). Never write them as 2 + 3 (code would print 5 as the answer). It is a number bond, not subtraction, so it is allowed before subtraction is taught; its totals go to 20.",
   "The box takes the operation's number, so a question with an operation asks for that number: never a yes-or-no question (Is 8 close to 10? Are they equal?) or a choice (close to 10 or less than 5?). Ask 'How far is 8 from 10?' instead, or use the draw format.",
-  "Before you write an easier example, work out both answers: the easier example's answer is a different number from the question's answer. When every question of a skill has the same answer (make 5, make 10), the easier example makes a smaller total: for 3 + ? = 5 it is 2 + ? = 4. For a missing part, easier means fewer to count on, with a total no larger: for 'How far is 7 from 10?' (7 + ? = 10, count 3) it is 'How far is 9 from 10?' (9 + ? = 10, count 1). Every item with an operation has an easier example; for the smallest sums take a smaller number: 1 + 1 for 2 + 1, 1 + 0 for 1 + 1.",
+  "Before you write an easier example, work out both answers: the easier example's answer is a different number from the question's answer. For a missing part, easier means a smaller missing part (fewer to count on) with a total no larger, so its answer differs: for 3 + ? = 5 (answer 2) it is 3 + ? = 4 (answer 1), never 2 + ? = 4 (answer 2 again); for 'How far is 7 from 10?' (answer 3) it is 'How far is 9 from 10?' (answer 1). So ask a missing part of 2 or more: a missing part of 1 has no easier example. Every item with an operation has an easier example; for the smallest sums take a smaller number: 1 + 1 for 2 + 1, 1 + 0 for 1 + 1.",
 ].join("\n");
 
 /** A skill's rules in plain words for the AI, from its number range (skillRange): the checks rangeProblem makes. */
@@ -339,16 +341,28 @@ function pageRequest(input: GenerateInput, day: number, page: PlannedPage, slots
       if (!s.place) return { slot: s.id, part: s.part.kind, skills: s.part.skills };
       const numbers = slotRanges(curriculum, plan.level, s.part.skills);
       const room = roomOf(input, s.place, day);
+      const max = Math.min(...Object.values(numbers).map((r) => r.max));
       return {
         slot: s.id, part: s.part.kind, skills: s.part.skills, place: s.place, formats: SLOT_FORMATS[s.place] ?? null,
         ...(s.place === "spot-the-error" ? { mistakes: mistakesFor(plan.level) } : {}),
         numbers,
         rules: Object.fromEntries(Object.entries(numbers).map(([skill, r]) => [skill, rangeRules(skill, r)])),
         ...(room ? { room: { characters: room.characters, perLine: room.perLine, lines: room.lines } } : {}),
+        vary: varyNumber(`${day}:${page.number}:${s.id}`, max),
       };
     }),
     note,
   };
+}
+
+/**
+ * A number from 1 to `max` for a slot, fixed by its day, page and slot: the AI builds the item around it, so pages
+ * written apart (each call sees one page) do not all ask "What is 1 more than 6?". The same plan always gives the same.
+ */
+function varyNumber(key: string, max: number): number {
+  let h = 2166136261;
+  for (const c of key) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+  return 1 + (h % Math.max(1, Math.min(max, 1000)));
 }
 
 /** A slot's text room on a day's page (textRoom), for the plan's level and the day's page count. */
@@ -425,12 +439,12 @@ const generated = (w: PageWork, i: number, b: BuiltQuestion, attempts: Generated
 /** What to do about a failed check, said plainly for the redo; null when the reason says it all. */
 function hintFor(reason: string): string | null {
   if (/is too big for this question/.test(reason)) return "Every number counts: the text, the operation and its answer, each wrong answer and the easier example. Leave out a wrong answer past the limit.";
-  if (/easier example has the question's answer/.test(reason)) return "Work out both answers first: the easier example's answer must be a different number (on a make-5 question, make 4).";
+  if (/easier example has the question's answer/.test(reason)) return "Work out both answers first: the easier example's answer must be a different number. For a missing part, make it 1 smaller (3 + ? = 4 for 3 + ? = 5), and ask a missing part of 2 or more.";
   if (/is a number in words/.test(reason)) return "Write numbers in digits, and do not use the word \"one\": write \"a\" or reword.";
   if (/this question uses no /.test(reason)) return "Keep to the slot's rules: only an operation kind and a format they allow.";
   if (/easier example is not smaller/.test(reason)) return "Sort both sets of numbers from least to greatest: each easier number is no larger than the question's at its place, and one is smaller (for 4 + 3: 1 + 2 or 2 + 3).";
   if (/needs an operation code can compute/.test(reason)) return "A question with no number answer is a draw item (a parent checks it); else give the operation.";
-  if (/has no easier example/.test(reason)) return "Give an easier example of the same kind: a smaller total (2 + ? = 4 for 3 + ? = 5), or smaller numbers (1 + 1 for 2 + 1).";
+  if (/has no easier example/.test(reason)) return "Give an easier example of the same kind: a smaller missing part (3 + ? = 4 for 3 + ? = 5), or smaller numbers (1 + 1 for 2 + 1).";
   if (/but its answer is the operation's number/.test(reason)) return "Ask for the number the operation gives, or make it a draw item.";
   return null;
 }

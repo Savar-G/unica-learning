@@ -179,3 +179,23 @@ describe("a sequence item", () => {
     }
   });
 });
+
+describe("an order item and a written reason on a parent-led card", () => {
+  it("prints the numbers to put in order before the boxes, and the lines' label only when the question does not ask it (#380)", async () => {
+    const { buildQuestion } = await import("@/lib/workbook-generator-items");
+    const num = (value: number) => ({ type: "number", value, numerator: null, denominator: null, whole: null, unit: null, hours: null, minutes: null, period: null, parts: [], text: null });
+    const draft = book("U2");
+    const page = draft.pages.find((p) => p.content?.kind === "day" && p.questions.length > 1)!;
+    const [a, b] = page.questions;
+    const base = { slot: "1.1", skill: "K1-order-numerals", difficulty: 1, operation: null, wrongAnswers: [], easier: null, shownWrong: null, figure: null, places: null, sequence: null, pattern: null };
+    const place = (q: typeof a) => ({ id: q.package.id, workbookId: draft.id, page: page.number, question: q.number, level: 2, skills: ["K1-order-numerals"] });
+    const order = buildQuestion({ ...base, text: "Put in order, least first.", format: "order", numbers: [num(4), num(9), num(2)], direction: "up" }, place(a));
+    const reason = buildQuestion({ ...base, text: "Is 3 more than 2? How do you know?", format: "written-reason", numbers: [], direction: null }, place(b));
+    expect([order.check.status, reason.check.status]).toEqual(["checked", "not-checked"]);
+    const html = workbookTemplate().page({
+      ...page, questions: [{ number: a.number, package: { ...order.package!, ref: a.package.ref } }, { number: b.number, package: { ...reason.package!, ref: b.package.ref } }, ...page.questions.slice(2)],
+    }, { qr: "", qrUrl: "" }, draft)!;
+    expect(html).toContain(`<span class="seq"><span class="qm">4, 9, 2</span><span class="qm">→</span></span>`);
+    expect(html.match(/How do you know\?/g)).toHaveLength(1);
+  });
+});

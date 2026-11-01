@@ -95,7 +95,7 @@ describe("anthropicClient", () => {
     await expect(ai.json(request, signal())).rejects.toThrow(/^the output is not valid JSON \(.*\): "not json"$/);
     const long = `{"items": [{"text": "a \\"quoted\\" word"}, ${"x".repeat(400)}`;
     const { ai: cut } = client(() => answer(message({ content: [{ type: "text", text: long }] })));
-    const error = await cut.json(request, signal()).catch((e: Error) => e.message);
+    const error = String(await cut.json(request, signal()).catch((e: Error) => e.message));
     expect(error).toMatch(/^the output is not valid JSON \(an object that never closes\): "\{\\"items/);
     expect(error.length).toBeLessThan(400);
   });

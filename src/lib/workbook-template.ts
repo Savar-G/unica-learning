@@ -655,9 +655,12 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
       const h = o.work === "fill" ? "" : `height:${o.work ?? 80}px`;
       return `<div class="wb" ${at} style="${h}"><span class="lab">${escape(r.label)}</span></div>`;
     }
-    case "lines":
-      // A written-reason item's prompt is its question text; the lines need no label of their own.
-      return `<div class="ln" ${at}>${o.bare ? "" : `<div class="lp">${escape(r.label)}</div>`}${"<i></i>".repeat(LINES)}</div>`;
+    case "lines": {
+      // A written-reason item's prompt is its question text; the lines need no label of their own, nor a label the
+      // question already asks ("... How do you know?").
+      const bare = o.bare || q.package.text.toLowerCase().includes(r.label.toLowerCase());
+      return `<div class="ln" ${at}>${bare ? "" : `<div class="lp">${escape(r.label)}</div>`}${"<i></i>".repeat(LINES)}</div>`;
+    }
     case "picture":
       return o.figure ? `<div class="picr" ${at}>${figureSvg(o.figure)}</div>` : `<div class="draw" ${at}></div>`;
   }
@@ -665,7 +668,8 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
 
 /**
  * The regions of a question that sit in a row (boxes, choices) and those that take the full width (work, lines,
- * pictures). A sequence prints its terms in order, its boxes in the blanks: "3, 4, [ ], 6".
+ * pictures). A sequence prints its terms in order, its boxes in the blanks: "3, 4, [ ], 6". An order item prints the
+ * numbers to put in order before its boxes: "4, 9, 2 → [ ] [ ] [ ]".
  */
 function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: string } {
   let inline = "";
@@ -683,6 +687,8 @@ function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: 
     });
     inline += `<span class="seq">${terms.join(`<span class="qm">,</span>`)}</span>`;
   }
+  const order = packageItem(q.package).checks.find((c) => c.kind === "order");
+  if (order) inline += `<span class="seq"><span class="qm">${escape(order.numbers.map(valueText).join(", "))}</span><span class="qm">→</span></span>`;
   for (const { region, name } of names) {
     if (inSequence.has(region.id)) continue;
     const html = regionHtml(q, region, name, o);
