@@ -254,19 +254,16 @@ export const FREE_TALK_LIMITS = { sentences: 3, words: 20, chars: 220 } as const
 /**
  * Everyday phrases free talk may hold although a word in them is on a list (practice run 5: 11 of the 28 code-guard
  * refusals were these). Each says something about the conversation, never about the work: "I can't keep secrets"
- * ("keep" as in "keep going"), "I'm glad you told me" ("told" as in "like I told you"), "thanks for sharing" ("share"
- * as division), "I'm right here" ("right" as a judgement). Only these exact phrases are taken out before the work
- * check; the word alone stays refused ("Keep going.", "I told you.", "Share them.", "That's right!").
+ * ("keep" as in "keep going"), "I'm glad you told me" ("told" as in "like I told you"), "it's okay to feel that way"
+ * ("that way" as pointing back). Only these exact phrases are taken out before the work check; the word alone stays
+ * refused ("Keep going.", "I told you.", "Do it that way."). Words of the strict no-math rule (claims.ts: "share",
+ * "right") are never taken out here: the behaviour gate checks every said sentence with that rule alone ("right here"
+ * is one of its allowed pairs).
  */
 const SAFE_PHRASES: readonly RegExp[] = [
   /\bkeep(s|ing)?( a| any| your| my| the| it| this| that)? secrets?\b/giu,
   /\byou told me\b/giu,
-  /\b(you )?shared (it|that|this|with me|a little|so much)\b/giu,
-  /\byou shared(?=[.?!,])/giu,
-  /\bfor sharing\b/giu,
-  /\bsecrets? to share\b/giu,
   /\b(feel|feels|feeling|felt) that way\b/giu,
-  /\bright (here|there|beside you|with you)\b/giu,
 ];
 /** The text with SAFE_PHRASES taken out, for the work check of free talk. */
 const withoutSafePhrases = (text: string) => SAFE_PHRASES.reduce((t, re) => t.replace(re, "okay"), text);

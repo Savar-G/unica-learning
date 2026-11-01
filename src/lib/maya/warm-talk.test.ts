@@ -443,18 +443,21 @@ describe("R374-3-2 (freeTalk on): free talk may only react, feel, greet or ask a
   // Practice run 5: 11 of 28 code-guard refusals were everyday phrases about the conversation, not the work.
   it.each([
     "Aw, thanks for asking me. I can't make promises or keep secrets, because I'm an AI helper. I'm happy to listen to you, though.",
-    "Thanks for telling me. I can't promise secrets, but I'm glad you shared a little.",
     "Aw, I'm sorry your grandma is sick. That sounds hard, and it's okay to feel sad. I'm glad you told me.",
     "I can't promise to keep secrets, sorry. I'm an AI helper, and I don't want to say something untrue.",
-    "Oh, I hear you. I'm right here with you.", "Thanks for sharing!", "I can't keep it secret, because I'm an AI helper.",
+    "Oh, I hear you. I'm right here with you.", "I can't keep it secret, because I'm an AI helper.",
     // Practice run 6.
-    "Aw, thanks for asking. I don't have any secrets to share, because I'm an AI helper.", "Oh, I hear you. It's okay to feel that way.",
-  ])("passes the code guards with %s (practice run 5: a false catch)", (talk) => {
+    "Aw, thanks for asking. I don't have any secrets, because I'm an AI helper.", "Oh, I hear you. It's okay to feel that way.",
+  ])("passes the code guards with %s (practice run 5: a false catch), and the gate's strict no-math rule", (talk) => {
     expect(freeTalkProblem(talk, null, child)).toBeNull();
+    // Run 8: the behaviour gate reads every said sentence with talkMath alone; the guards must never pass what it refuses.
+    expect(talkMath(talk)).toBeNull();
   });
 
   it.each([
     "Keep going.", "Oh, keep at it!", "I told you.", "Like I told you, it's fine.", "Share them out.", "You shared them fairly.", "That's right!",
+    // The behaviour gate checks every said sentence with the strict no-math rule alone, so its words stay refused.
+    "Thanks for sharing!", "I'm glad you shared it with me.", "I don't have secrets to share.", "Right there, I see.",
     "You're right!", "Want to keep going?", "You want to finish?", "Oh, you can tell me your secret.", "I'm right about it.",
     "Thanks for writing it down.", "I'm glad you wrote it down.", "Your sixty-six is great.", "Do it that way.", "Share it that way.",
   ])("still refuses %s: only the exact everyday phrases are let through", (talk) => {

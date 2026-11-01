@@ -147,6 +147,20 @@ describe("the main path", () => {
     expect(r).toMatchObject({ code: "act_not_allowed", allowed: ["accept_answer", "confirm"] });
   });
 
+  it("guides the result after every column is right, with the right-step line and the question (practice run 8)", () => {
+    const c = opened();
+    c.child("7 plus 9 is 16.");
+    c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { answers: [{ value: num(16), step: "ones", verdict: "right" }] } });
+    c.child("2 plus 3 plus 1 is 6.");
+    const tens = { answers: [{ value: num(6), step: "tens", verdict: "right" as const }] };
+    expect(c.refused({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "tens" })], reading: tens })).toMatchObject({ code: "wrong_step" });
+    expect(c.refused({ act: "accept_answer", parts: [ln("answer.right")], reading: tens })).toMatchObject({ code: "accepts_wrong_answer" });
+    c.maya({ act: "guide", step: "result", level: 0, parts: [ln("check.right_step", { step: "tens" }), ln("question.problem")], reading: tens });
+    c.child("66!");
+    c.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [right66] } });
+    expect(c.session.state).toBe("CHECK");
+  });
+
   it("does not close before asking the child to write the answer on paper", () => {
     const c = opened();
     c.child("66");

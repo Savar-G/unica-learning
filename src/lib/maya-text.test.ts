@@ -591,5 +591,6 @@ describe("the prompt names only real lines and groups (practice runs 6 and 7)", 
     expect(PHRASE_GROUPS).toContain("back");
     expect(SYSTEM_PROMPT).toMatch(/"accept_answer" is only for a right final answer/);
     expect(SYSTEM_PROMPT).toMatch(/Never guide a step the child has just done/);
+    expect(SYSTEM_PROMPT).toMatch(/the next step is "result": guide "result" at level 0/);
   });
 });
