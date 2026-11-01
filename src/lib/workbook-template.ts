@@ -375,6 +375,7 @@ const CSS = `
 .pcard .pb{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
 .pcard .pb>.pic{max-width:60%;height:auto}
 .pcard .draw{height:56px;width:150px}
+.pcard .ln{min-width:160px}
 .pcard .head{display:flex;gap:10px;align-items:center}
 .pcard .ico{width:28px;height:28px;flex:none}
 /* cover */

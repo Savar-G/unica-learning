@@ -891,3 +891,15 @@ describe("items whose kind does not match their text (round 3)", () => {
     expect(order(5).check).toMatchObject({ status: "failed", reason: expect.stringContaining("2 to 4 numbers") });
   });
 });
+
+describe("a count back (round 3)", () => {
+  it("is a sequence from 10 down to 1 whose step of -1 is never printed, so no negative number fails it", async () => {
+    const { rangeProblem } = await import("@/lib/workbook-book");
+    const built = buildQuestion({
+      slot: "1.1", skill: "K1-number-sequence", difficulty: 1, text: "Count back from 10 to 1.", format: "sequence", operation: null, wrongAnswers: [], easier: null,
+      shownWrong: null, figure: null, numbers: [], places: null, direction: null, pattern: null, sequence: { start: num(10), step: num(-1), terms: 10, blanks: [3, 7] },
+    }, { id: "q1", workbookId: WORKBOOK, page: 3, question: 1, level: 3, skills: ["K1-number-sequence"] });
+    expect(built.check.status).toBe("checked");
+    expect(rangeProblem(built.package!, BC, 3)).toBeNull();
+  });
+});

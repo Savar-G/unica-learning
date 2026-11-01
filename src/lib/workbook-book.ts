@@ -485,7 +485,9 @@ function checkNumbers(c: ItemCheck): Read[] {
       const given = at >= 0 ? (c.terms[at] as NumberValue) : null;
       const blanks = given?.type !== "number" || c.step.type !== "number" ? []
         : c.terms.flatMap((t, i) => ("region" in t ? [num(given.value + (i - at) * (c.step as { value: number }).value)] : []));
-      return [...c.terms.flatMap(termNumbers), ...blanks, ...valueNumbers(c.step)];
+      // The step is never printed, only its terms: its size counts, not its sign (a count back steps by -1, #380).
+      const step = c.step.type === "number" ? [num(Math.abs(c.step.value))] : valueNumbers(c.step);
+      return [...c.terms.flatMap(termNumbers), ...blanks, ...step];
     }
     case "compare": return [...valueNumbers(c.left), ...valueNumbers(c.right)];
     case "yes-no": return statementNumbers(c.statement);
