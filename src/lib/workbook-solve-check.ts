@@ -147,13 +147,15 @@ export function toSolve(p: QuestionPackage): SolveRequest {
 
 // ---------- Comparing ----------
 
-const clean = (s: string) => s.toLowerCase().replace(/[−–]/g, "-").replace(/\s+/g, "").replace(/[.]+$/, "").replace(/^x$/, "×");
+/** A choice or a word answer, compared as printed: case, the minus sign, runs of spaces and a closing dot aside. Spaces
+ * between words are kept, so "1 2" is never "12". */
+const clean = (s: string) => s.toLowerCase().replace(/[−–]/g, "-").replace(/\s+/g, " ").trim().replace(/[.]+$/, "").replace(/^x$/, "×");
 
 /** The numbers in an answer, in order, each a fraction [numerator, denominator]: "1 1/2" is 3/2, "9 R 2" is 9 and 2. */
 function numbersOf(s: string): [number, number][] {
   const out: [number, number][] = [];
   const t = s.replace(/(\d),(\d{3})/g, "$1$2").replace(/[−–]/g, "-");
-  const re = /(-?\d+(?:\.\d+)?)(?:\s+(\d+)\/(\d+)|\/(\d+))?/g;
+  const re = /(-?(?:\d+(?:\.\d+)?|\.\d+))(?:\s+(\d+)\/(\d+)|\/(\d+))?/g;
   for (const m of t.matchAll(re)) {
     if (m[2] !== undefined) {
       const negative = m[1].startsWith("-");
@@ -179,7 +181,7 @@ const sameNumbers = (a: [number, number][], b: [number, number][]) => a.length >
 const wordsOf = (s: string) => s
   .replace(/(\d),(\d{3})/g, "$1$2")
   .replace(/[−–]/g, "-")
-  .replace(/-?\d+(?:\.\d+)?(?:\s+\d+\/\d+|\/\d+)?/g, "#")
+  .replace(/-?(?:\d+(?:\.\d+)?|\.\d+)(?:\s+\d+\/\d+|\/\d+)?/g, "#")
   .toLowerCase()
   .replace(/[\s.]+/g, "");
 
@@ -190,7 +192,7 @@ const wordsOf = (s: string) => s
  */
 export function sameAnswer(given: string, right: string[], choice: boolean): boolean {
   if (choice) return right.some((r) => clean(r) === clean(given));
-  return right.some((r) => clean(r) === clean(given) || (/\d/.test(r) && sameNumbers(numbersOf(r), numbersOf(given)) && sameWords(r, given)));
+  return right.some((r) => (/\d/.test(r) || /\d/.test(given) ? sameNumbers(numbersOf(r), numbersOf(given)) && sameWords(r, given) : clean(r) === clean(given)));
 }
 
 /**

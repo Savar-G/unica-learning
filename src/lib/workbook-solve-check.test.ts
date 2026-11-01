@@ -134,6 +134,19 @@ describe("the solve check", () => {
     expect(sameAnswer("5 furlongs", ["5"], false)).toBe(false);
   });
 
+  it("reads a leading decimal point and keeps numbers apart (R380-15-1, R380-15-2)", () => {
+    expect(sameAnswer(".5", ["5"], false)).toBe(false);
+    expect(sameAnswer("$.50", ["$50"], false)).toBe(false);
+    expect(sameAnswer(".5%", ["5%"], false)).toBe(false);
+    expect(sameAnswer(".5", ["0.5"], false)).toBe(true);
+    expect(sameAnswer("1 2", ["12"], false)).toBe(false);
+    expect(sameAnswer("12", ["1 2"], false)).toBe(false);
+    expect(sameAnswer("1 2", ["10", "12"], false)).toBe(false);
+    expect(sameAnswer("1 2", ["12"], true)).toBe(false);
+    expect(sameAnswer("less  than 5", ["Less than 5"], true)).toBe(true);
+    expect(sameAnswer("lessthan 5", ["less than 5"], true)).toBe(false);
+  });
+
   it("keeps the sign of a mixed number whose whole part is zero (R380-14-2)", () => {
     expect(sameAnswer("-0 1/2 m", ["0 1/2 m"], false)).toBe(false);
     expect(sameAnswer("0 1/2", ["-0 1/2"], false)).toBe(false);
