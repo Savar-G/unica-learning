@@ -206,21 +206,34 @@ export function sameAnswer(given: string, right: string[], choice: boolean): boo
   return right.some((r) => keyForms(r).has(g));
 }
 
-/** The output schema: an answer for each box of each question, and a problem when a question cannot be answered. */
-export const SOLVE_SCHEMA = {
-  type: "object", additionalProperties: false, required: ["answers", "problem"],
-  properties: {
-    answers: {
-      type: "array",
-      items: { type: "object", additionalProperties: false, required: ["question", "box", "answer"], properties: { question: { type: "string" }, box: { type: "string" }, answer: { type: "string" } } },
+/**
+ * The output schema for one request: an answer for each box of each question, and a problem when a question cannot be
+ * answered. The question and box are the request's own ids (an enum), so the reader cannot name a question by its text.
+ */
+export function solveSchema(request?: Pick<SolveRequest, "questions">) {
+  const ids = request?.questions.map((q) => q.id) ?? [];
+  const boxes = [...new Set(request?.questions.flatMap((q) => q.boxes.map((b) => b.id)) ?? [])];
+  return {
+    type: "object", additionalProperties: false, required: ["answers", "problem"],
+    properties: {
+      answers: {
+        type: "array",
+        items: {
+          type: "object", additionalProperties: false, required: ["question", "box", "answer"],
+          properties: { question: ids.length ? { enum: ids } : { type: "string" }, box: boxes.length ? { enum: boxes } : { type: "string" }, answer: { type: "string" } },
+        },
+      },
+      problem: { anyOf: [{ type: "string" }, { type: "null" }] },
     },
-    problem: { anyOf: [{ type: "string" }, { type: "null" }] },
-  },
-};
+  };
+}
+
+/** The schema's shape with no request (any ids). */
+export const SOLVE_SCHEMA = solveSchema();
 
 const SYSTEM = [
   "You check printed math questions from a workbook for a child aged 6 to 12. Each question is given as the child sees it: its text, the picture in words, what the card prints beside the text, and its answer boxes and choices.",
-  "Answer every box and choice of every question, as a careful child who reads the question exactly as printed would. Write a box's answer exactly in one of these forms: a count or a plain number as the number only, in digits, with no word after it and no extra zeros (12, not 12 shells; 1250 or 1,250; 0.5; -3), a fraction as 3/4 or 1 1/2, a remainder as 9 R 2, money as $4.75 or 75¢, an amount with its unit symbol as the question writes it (2.5 km, 1 h 30 min), a time as 3:30 p.m. or 15:30, a word in lower case (even, yes). Never convert a unit. For a choice, give one of its options exactly as printed.",
+  "Name each question by its id (\"question\" or \"easier\") and each box by its id, exactly as given; never by its text. Answer every box and choice of every question, as a careful child who reads the question exactly as printed would. Write a box's answer exactly in one of these forms: a count or a plain number as the number only, in digits, with no word after it and no extra zeros (12, not 12 shells; 1250 or 1,250; 0.5; -3), a fraction as 3/4 or 1 1/2, a remainder as 9 R 2, money as $4.75 or 75¢, an amount with its unit symbol as the question writes it (2.5 km, 1 h 30 min), a time as 3:30 p.m. or 15:30, a word in lower case (even, yes). Never convert a unit. For a choice, give one of its options exactly as printed.",
   "Use only what is printed. Do not guess what the writer meant. If a question cannot be answered as printed (it is unclear, it leaves out a number, or its boxes do not take what it asks), say which and why in problem; else problem is null.",
 ].join("\n");
 
@@ -232,7 +245,7 @@ export function aiSolver(ai: AiClient): Solver {
       name: "solve_check",
       system: SYSTEM,
       content: [{ type: "text", text: JSON.stringify({ questions: request.questions }) }],
-      schema: SOLVE_SCHEMA,
+      schema: solveSchema(request),
       effort: "low",
       maxTokens: 4000,
     }, signal),
@@ -249,6 +262,17 @@ export function keySolver(): Solver {
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
+/**
+ * The question an answer names: its id, or the question whose printed text it quotes when exactly one question has that
+ * text (a reader sometimes names "Fill in the missing numbers." for "question"). Anything else names none.
+ */
+function questionOf(named: unknown, request: SolveRequest): string | null {
+  if (typeof named !== "string") return null;
+  if (request.questions.some((q) => q.id === named)) return named;
+  const byText = request.questions.filter((q) => q.text.trim() === named.trim());
+  return byText.length === 1 ? byText[0].id : null;
+}
+
 /** The verdict on the solver's output: every box answered as the key says, or why not. */
 export function judge(output: unknown, request: SolveRequest): SolveVerdict {
   if (!isObject(output) || !Array.isArray(output.answers) || !(output.problem === null || typeof output.problem === "string")) {
@@ -258,7 +282,7 @@ export function judge(output: unknown, request: SolveRequest): SolveVerdict {
   const answers = output.answers.filter(isObject);
   const wrong: string[] = [];
   for (const k of request.key) {
-    const a = answers.find((x) => x.question === k.question && x.box === k.box);
+    const a = answers.find((x) => questionOf(x.question, request) === k.question && x.box === k.box);
     if (!a || typeof a.answer !== "string") return { status: "failed", reason: `the solve check's answer was malformed: no answer for ${k.question === "easier" ? "the easier example" : `box ${k.box}`}` };
     if (!sameAnswer(a.answer, k.right, k.choice)) wrong.push(`${k.question === "easier" ? "the easier example" : `box ${k.box}`}: a reader of the printed text answers ${JSON.stringify(a.answer.slice(0, 60))}, the key says ${JSON.stringify(k.right[0])}`);
   }

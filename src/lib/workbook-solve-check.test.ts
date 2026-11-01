@@ -83,6 +83,18 @@ describe("the solve check", () => {
     expect((await check(() => ({ answers: [], problem: "it does not say how many she gets" })))!.verdict).toMatchObject({ status: "disagreed" });
   });
 
+  it("asks for the request's own question and box ids, and reads a question named by its unique printed text (real run 2026-11-01)", async () => {
+    const p = story("Mia has 7 shells. She finds 5 more. How many now?");
+    const byText = fakeAiClient({ answer: () => ({ answers: [{ question: "Mia has 7 shells. She finds 5 more. How many now?", box: "answer", answer: "12" }, { question: "6 + 5 = ?", box: "answer", answer: "11" }], problem: null }) });
+    expect((await solveCheck(aiSolver(byText), p, 1000))!.verdict).toEqual({ status: "agreed" });
+    const schema = byText.requests[0].schema as { properties: { answers: { items: { properties: { question: unknown; box: unknown } } } } };
+    expect(schema.properties.answers.items.properties.question).toEqual({ enum: ["question", "easier"] });
+    expect(schema.properties.answers.items.properties.box).toEqual({ enum: ["answer"] });
+    // A name that is neither an id nor one question's text names no question: the check fails closed.
+    const other = fakeAiClient({ answer: () => ({ answers: [{ question: "q1", box: "answer", answer: "12" }, { question: "easier", box: "answer", answer: "11" }], problem: null }) });
+    expect((await solveCheck(aiSolver(other), p, 1000))!.verdict.status).toBe("failed");
+  });
+
   it("answers from the key in the fake, so a dry run agrees and costs nothing", async () => {
     const log = await solveCheck(keySolver(), story("Mia has 7 shells. She gives away 5. How many does she have now?"), 1000);
     expect(log).toMatchObject({ model: "fake", verdict: { status: "agreed" } });
