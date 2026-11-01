@@ -295,12 +295,15 @@ const takeBacks = (text: string) => correctionRuns(text);
  * near it may be rejected rather than given, so the turn holds no answer and Maya asks (R391-3). No reading of what the
  * negative applies to is tried, because none is reliable in children's speech.
  */
-const NEGATIVE = /\b(?:not|never|wrong|nope|nah|false|untrue|doubt|doubts|withdraw|withdrawn|retract|incorrect|mistake|mistaken|reject|rejected|ruled|scratch|forget|ignore|undo|cancel|dont|doesnt|didnt|isnt|wasnt|arent|werent|cant|wont|couldnt|shouldnt|aint)\b|\w+n['’]t\b|\btake (?:that|it) back\b/i;
+const NEGATIVE = /\b(?:not|never|wrong|nope|nah|false|untrue|doubt|doubts|withdraw|withdrawn|retract|incorrect|mistake|mistaken|reject|rejected|ruled|scratch|forget|ignore|undo|cancel|dont|doesnt|didnt|isnt|wasnt|arent|werent|cant|wont|couldnt|shouldnt|aint)\b|\w+n['’]t\b|\btake (?:that|it|this|my answer|it all)? ?back\b|\b(?:changed?|changing) my mind\b|\bnever ?mind\b/i;
 /**
  * Words of doubt, and a question mark (R391-5): "maybe 66", "is it 66?", "66 or something", "66, I am unsure". The
  * number may still be judged wrong, but it is never accepted as right: Maya confirms it first.
  */
 const DOUBT = /\b(?:maybe|perhaps|probably|possibly|guess|guessing|unsure|sure|or something|or so|ish|dunno|idk|kinda|sorta)\b|\?/i;
+
+/** The child's turn lines, blank lines left out ("Maybe", "", "66" reads as "Maybe" then "66", R391-7-3). */
+const turnLines = (text: string) => text.split("\n").filter((line) => line.trim() !== "");
 
 /** The first line to read from: the line before `first` when it runs on into it (no sentence end: "Maybe" then "66"). */
 const runsOn = (lines: string[], first: number) => (first > 0 && !/[.!?]\s*$/.test(lines[first - 1]) ? first - 1 : first);
@@ -312,14 +315,14 @@ const runsOn = (lines: string[], first: number) => (first > 0 && !/[.!?]\s*$/.te
  * R391-3, R391-4-1).
  */
 const negativeNearAnswer = (text: string) => {
-  const lines = text.split("\n");
+  const lines = turnLines(text);
   const first = lines.findIndex((line) => { const r = readNumbers(line); return r.values.length > 0 || r.unreadable; });
   return first >= 0 && lines.slice(runsOn(lines, first)).some((line) => NEGATIVE.test(line));
 };
 
 /** A word of doubt or a question mark in the child's first turn with a number or any turn after it (DOUBT). */
 const doubtNearAnswer = (text: string) => {
-  const lines = text.split("\n");
+  const lines = turnLines(text);
   const first = lines.findIndex((line) => { const r = readNumbers(line); return r.values.length > 0 || r.unreadable; });
   return first >= 0 && lines.slice(runsOn(lines, first)).some((line) => DOUBT.test(line));
 };
@@ -446,7 +449,7 @@ function plainClause(clause: string): boolean {
  * "66", "I would say 66", "Suppose: 66") means Maya confirms the answer before she accepts it.
  */
 function committedFinal(text: string): boolean {
-  const lines = text.split("\n");
+  const lines = turnLines(text);
   const at = lines.map((l) => { const r = readNumbers(l); return r.values.length > 0 || r.unreadable; }).lastIndexOf(true);
   if (at < 0) return false;
   // The line before counts when it runs on into the answer ("Maybe" then "66", "I reject this answer:" then "66"); one
@@ -456,7 +459,9 @@ function committedFinal(text: string): boolean {
   const last = sentences.map((x) => { const r = readNumbers(x); return r.values.length > 0 || r.unreadable; }).lastIndexOf(true);
   // The final number's sentence, with whatever introduces it in that sentence ("Suppose: 66", "I would say 66"), and
   // every sentence after it.
-  return last >= 0 && sentences.slice(last).every((x) => x.split(/[,;:]+/).every(plainClause));
+  // Every later line too ("66" then "I changed my mind", R391-7-1).
+  const later = lines.slice(at + 1).join(". ").split(/[.!?]+/);
+  return last >= 0 && [...sentences.slice(last), ...later].every((x) => x.split(/[,;:]+/).every(plainClause));
 }
 
 /**
