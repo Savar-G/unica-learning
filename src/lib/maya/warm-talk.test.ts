@@ -3,6 +3,7 @@ import { applyBatch, createScene } from "@/lib/board";
 import {
   createSession,
   freeTalkProblem,
+  NEUTRAL_SMALLTALK,
   heardWordings,
   allLineTexts,
   drawOffers,
@@ -184,6 +185,19 @@ describe("rule B (freeTalk on): a turn with no math line", () => {
     const said = c.say({ act: "clarify", parts: [{ talk }] });
     expect(said.talkReplaced).toBe(1);
     expect(PHRASES.smalltalk.map(bare)).toContain(said.text);
+  });
+
+  it("replaces refused free talk only with a reply that fits any child turn (D-197, practice run 4: not \"I love hearing about it!\" to a sad child)", () => {
+    for (const n of NEUTRAL_SMALLTALK) expect(PHRASES.smalltalk).toContain(n);
+    for (const act of ["clarify", "redirect"] as const) {
+      for (let random = 1; random <= 12; random++) {
+        const c = call({ freeTalk: true, random });
+        c.child("I'm sad today. My grandma is sick.");
+        const said = c.say({ act, ...(act === "redirect" ? { reading: { offTopic: true } } : {}), parts: [{ talk: "I'm sorry your grandma is sick." }] }, [{ text: "I'm sorry your grandma is sick.", result: { verdict: "fail", rules: ["private_detail"], reason: "names an illness" } }]);
+        expect(said.talkReplaced, `${act} ${random}`).toBe(1);
+        expect(NEUTRAL_SMALLTALK, `${act} ${random}`).toContain(said.text);
+      }
+    }
   });
 
   it("replaces free talk that writes the child's name: only code says it", () => {

@@ -36,7 +36,7 @@ import {
 import { talkMath } from "./claims";
 import { saidAsApproved } from "./speech";
 import { findOffer, normalSlots, packageLines, LINE_IDS, type LineOffer } from "./lines";
-import { freeTalkProblem, workProblem, FALLBACK_GROUP, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
+import { freeTalkProblem, workProblem, FALLBACK_GROUP, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { committedText, offersChoice, readNumbers, takenBack, valuesIn } from "./numbers";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
@@ -1440,11 +1440,12 @@ function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview
     const pool = fresh.length > 0 ? fresh : wordings.map((_, i) => i);
     return pool[chooseWording(s.variety, pool.map(id), s.now!)];
   };
-  const phrase = (group: PhraseGroup, echoed: string | null = null, pick?: number) => {
+  const phrase = (group: PhraseGroup, echoed: string | null = null, pick?: number, only?: readonly string[]) => {
     const bank = PHRASES[group];
     // A frame with the child's words when they check, else one with no slot (D-196 echo frames).
     const slotted = bank.flatMap((b, i) => (b.includes("{echo}") ? [i] : []));
-    const pool = echoed !== null && slotted.length > 0 ? slotted : bank.flatMap((b, i) => (b.includes("{echo}") ? [] : [i]));
+    const unslotted = bank.flatMap((b, i) => (b.includes("{echo}") || (only && !only.includes(b)) ? [] : [i]));
+    const pool = echoed !== null && slotted.length > 0 ? slotted : unslotted;
     // The model may name the phrase that fits (R374-5): code keeps it when its slot can be filled, and records it.
     const chosen = pick !== undefined && pool.includes(pick - 1) ? pick - 1 : null;
     let index: number;
@@ -1488,7 +1489,8 @@ function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview
         talk.push({ proposed, code, review: "pass", shown: proposed });
       } else {
         replaced += 1;
-        const shown = phrase(FALLBACK_GROUP[p.act] ?? "encourage");
+        const group = FALLBACK_GROUP[p.act] ?? "encourage";
+        const shown = phrase(group, null, undefined, group === "smalltalk" ? NEUTRAL_SMALLTALK : undefined);
         add("talk", shown);
         talk.push({
           proposed, code, review: review?.verdict ?? "not_run",

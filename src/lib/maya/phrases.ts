@@ -64,7 +64,7 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
     "Hi! It's nice to meet you.", "Thanks for telling me.", "Maybe we can talk about it another time.",
     "I'm only able to help with your workbook today.", "Oh, thanks for telling me!", "I'd love to hear about it later.", "I love hearing about it, {name}!",
     "What a nice thing to tell me.", "Let's save the stories for later.", "Ha, I like it!", "Good to know, {name}.", "Oh, cool!",
-    "How interesting!",
+    "How interesting!", "I hear you.", "Thank you for telling me.", "Okay, I hear you.",
   ],
   opening: [
     "Our team may review this call to make me better.", "Ready to get started?", "I'm happy to help you today.", "Let's do this together.",
@@ -151,6 +151,14 @@ export const PHRASE_ACTS: Record<PhraseGroup, readonly Act[]> = {
   pets: REPLY_ACTS, family: REPLY_ACTS, school: REPLY_ACTS, games: REPLY_ACTS, food: REPLY_ACTS, sports: REPLY_ACTS, trips: REPLY_ACTS,
   tired: FEELING_ACTS, happy: FEELING_ACTS, bored: FEELING_ACTS, frustrated: FEELING_ACTS, aboutmaya: REPLY_ACTS,
 };
+
+/**
+ * The smalltalk phrases that may replace refused free talk (D-197). Free talk answers whatever the child said, and the
+ * practice runs showed the rest of the group can be worse than the refused line: "I love hearing about it!" to a child
+ * whose grandma is sick, "Hi! It's nice to meet you." after a secret, "I'd love to hear about it later." (a later chat
+ * that will not happen). These fit any child turn: sad, rude, a question or news.
+ */
+export const NEUTRAL_SMALLTALK: readonly string[] = ["Thanks for telling me.", "Oh, thanks for telling me!", "I hear you.", "Thank you for telling me.", "Okay, I hear you."];
 
 /** The purpose of a bank phrase that replaces free words that fail the guards, by act. */
 export const FALLBACK_GROUP: Partial<Record<Act, PhraseGroup>> = {
