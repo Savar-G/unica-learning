@@ -60,6 +60,27 @@ A number in an explanation is never the final answer, so an explanation that com
 
 **The final step.** Once every work step is done, the final step has one help line, the H0 invite (`step.invite` for "result"). Each checked wrong final answer after that counts (`finalMisses`). After the second, Maya may only give the answer (`give_answer`, or a confirmation): the gentlest help again is refused. Code says two lines: how the parts make the answer (`answer.parts`, filled from the checked answer's digits by place: "6 tens and 6 ones make 66."), then the answer and the request to write it (`answer.give`). Neither comes from the model, and the model may add only a warm phrase before them. The call then goes on as after any given answer: the answer is solved by Maya, the assistance is answer_given, the highest hint is H4, understanding stays uncertain, and the next turn closes. A right final answer is still accepted after one wrong one. Code's fallback gives the answer first on this step. Wrong final answers before every column is done do not count.
 
+## Fractions (D-204, #407)
+
+Maya teaches adding and subtracting two fractions (`fraction-add`, `fraction-subtract`), with like or unlike denominators. A question with a step Maya has no lines for stays held (`content_issue`): a mixed or whole number to add, multiplying, dividing, simplifying alone and equivalent fractions (`TEACHABLE_KINDS`, `TAUGHT_STEP_KINDS`).
+
+**Reading fractions.** In a fraction call only, `readAnswer` and the other readers take `{ fractions: true }` (`readOptionsFor`), which first writes the exact spoken forms code reads (`writtenFractions`, `src/lib/maya/numbers.ts`). Anything else stays unread, so Maya confirms it. In a whole-number call nothing changes: "three quarters" is still confirmed.
+
+| The child says | Read as |
+|---|---|
+| three quarters, three fourths, 3 over 4, 3/4 | 3/4 |
+| fourteen sixteenths, 7 eighths | 14/16, 7/8 |
+| a half, one eighth (at the end of a clause, or before "of", "and", "is", "plus", "because") | 1/2, 1/8 |
+| one and three eighths, 2 and a half, 1 and 3/4, 1 3/8 | 1 3/8, 2 1/2, 1 3/4, 1 3/8 |
+| three quarter, one quarters, 7 8ths, five twenty-fourths, three quarters of 8, six sixty sixteenths | unread: confirmed |
+| a third time, a quarter past 3 | not a fraction |
+
+**Right answers.** `rightForQuestion` (`src/lib/maya/fractions.ts`): the package's rules (`isRightAnswer`: the answer or any simplest form, so 11/8 and 1 3/8 are both right), and an equal fraction in another form (14/16 for 7/8) unless the question asks for the simplest form or lowest terms, or the package lists that form as wrong. Maya says an accepted equal form back as the child said it ("Yes! 3/4 + 1/8 = 14/16.", "Please write 14/16 on your paper.") and does not bring up simplest form. When the question asks for it, an equal fraction is the right amount (`isEqualForm`): not a wrong final answer and not a failed attempt; every work step counts as done; Maya says `check.equal` in the question's own words, and the final step's help adds H1 and H2 lines to simplify the child's own fraction.
+
+**Steps.** The package's steps: the common denominator (`3/4 = 6/8`; the child says 6/8 or 6, never 3/4), the numerators (`6 + 1 = 7`), and the simplest form only when the question asks for it (`teachSteps`). The mixed number is never a step. No help line, judged step or shown step says the final fraction: the child puts it together on the final step. Saying back an equal form the child said is not giving the answer away; the answer's own written form is.
+
+**Board.** `question.strips` draws each fraction as a strip (denominators up to 12), the second below the first; `question.common` draws them in the common denominator once that step is done or shown; `example.strips` draws the easier example.
+
 ## Free talk (D-197)
 
 With `freeTalk` on (the admin demo, the practice suite, this command line), the model may write its own words (`{ "talk": ... }`) in a turn with no math line. Math, answers, hints and steps never come from them. Each piece is said only when both checks pass:

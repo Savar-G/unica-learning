@@ -10,21 +10,27 @@
 // words. A wording is changed in place, never moved, so its id (`key#index`) in a child's wording history stays. Code picks the wording the child has heard least lately (variety.ts), so calls do not sound the
 // same. Pure TypeScript: no clock, network or randomness.
 import {
+  equivalent,
   operationText,
+  sameValue,
   stepText,
   valueText,
   type AnswerValue,
+  type FractionParts,
   type OperationPackage,
   type Place,
   type WorkedStep,
 } from "@/lib/question-package";
+import { simplestWords, teachSteps } from "./fractions";
 
 /**
  * The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. Version 2:
  * redirect.decline. Version 3 (#389): step.invite for the final step ("result"), after the last column. Version 4 (D-199):
- * answer.parts, how the parts make the answer, said before answer.give on the final step.
+ * answer.parts, how the parts make the answer, said before answer.give on the final step. Version 5 (#407): fraction
+ * steps (common denominator, numerators, simplest form) and check.equal, an equal fraction when the
+ * question asks for the simplest form.
  */
-export const LINES_VERSION = 4;
+export const LINES_VERSION = 5;
 
 export const LINE_IDS = [
   "open.hello",
@@ -41,6 +47,7 @@ export const LINE_IDS = [
   "step.show",
   "check.right_step",
   "check.not_yet",
+  "check.equal",
   "check.explain",
   "check.thinking",
   "answer.right",
@@ -86,7 +93,7 @@ export interface LineOffer {
    * The line judges the child's answer for a step: it is allowed only when the proposal's reading has an answer for
    * that step that code checked and found right (or wrong).
    */
-  requires?: { answer: "right" | "wrong"; step: string };
+  requires?: { answer: "right" | "wrong" | "equal"; step: string; heard?: string };
   /** Every variant of the line, filled in. Code picks one (`key#index` is the wording's id, see variety.ts). */
   texts: string[];
   /** The template the variants come from. */
@@ -247,6 +254,53 @@ export const TEMPLATES = {
     "What do you get for {current} ÷ {by}?", "Can you work out {current} ÷ {by}?",
   ],
 
+  // Fractions (#407): adding and subtracting fractions, then the simplest form when the question asks for it. Every number is filled
+  // from the checked step; no line says the final fraction before the child does. Math words of the curriculum stay:
+  // numerator, denominator and common denominator (BC 5.3, 8.5), simplest form and lowest terms (BC 7.4).
+  "point.common": [
+    "Look at the denominators: {a} and {b}. They are not the same.", "The denominators are {a} and {b}. They are different.",
+    "Check the denominators first. One is {a}. The other is {b}.", "The parts are not the same size. The denominators are {a} and {b}.",
+    "Find the denominators. They are {a} and {b}. They don't match.", "We need parts of the same size. Right now the denominators are {a} and {b}.",
+  ],
+  "operation.common": [
+    "Use {d} as the common denominator. Multiply the numerator and the denominator of {from} by {factor}.",
+    "Make both denominators {d}. Multiply the top and the bottom of {from} by {factor}.",
+    "The common denominator is {d}. Multiply {from} by {factor} on the top and the bottom.",
+    "Let's use {d} as the denominator. Multiply the numerator and the denominator of {from} by {factor}.",
+    "We want {d} as the denominator. Multiply both numbers in {from} by {factor}.",
+    "Change {from} so its denominator is {d}. Multiply the numerator and the denominator by {factor}.",
+  ],
+  "operation.common.both": [
+    "Use {d} as the common denominator. Multiply the top and bottom of {from} by {factor}. Multiply {from2} by {factor2} the same way.",
+    "Make both denominators {d}. Multiply the top and bottom of {from} by {factor}. Multiply the top and bottom of {from2} by {factor2}.",
+    "The common denominator is {d}. Multiply {from} by {factor} on the top and bottom. Multiply {from2} by {factor2} the same way.",
+    "Let's use {d} as the denominator. For {from}, multiply the top and bottom by {factor}. For {from2}, multiply them by {factor2}.",
+    "We want {d} as the denominator. Multiply both numbers in {from} by {factor}. Multiply both numbers in {from2} by {factor2}.",
+  ],
+  "point.combine": [
+    "Both denominators are {d}. Look at the numerators: {a} and {b}.", "The denominators match. The numerators are {a} and {b}.",
+    "Look at the numerators: {a} and {b}. The denominator is {d} for both.", "The parts are the same size. Look at the numerators, {a} and {b}.",
+    "The denominators are both {d}. Find the numerators. They are {a} and {b}.", "Both fractions have {d} as the denominator. Now look at {a} and {b} on top.",
+  ],
+  "operation.combine.add": [
+    "Add the numerators: {a} + {b}. Keep the denominator {d}.", "What is {a} + {b}? The denominator stays {d}.",
+    "Add {a} + {b} for the new numerator. Keep {d} as the denominator.", "Add the tops: {a} + {b}. The bottom stays {d}.",
+    "Work out {a} + {b}. That is the new numerator. The denominator stays {d}.", "Add the numerators, {a} + {b}. The denominator does not change. It stays {d}.",
+  ],
+  "operation.combine.subtract": [
+    "Subtract the numerators: {a} − {b}. Keep the denominator {d}.", "What is {a} − {b}? The denominator stays {d}.",
+    "Work out {a} − {b} for the new numerator. Keep {d} as the denominator.", "Subtract the tops: {a} − {b}. The bottom stays {d}.",
+    "Work out {a} − {b}. That is the new numerator. The denominator stays {d}.", "Take {b} away from {a} in the numerators. The denominator stays {d}.",
+  ],
+  "point.simplify": [
+    "Find a number that divides both {n} and {d}.", "Can {n} and {d} both be divided by the same number?", "Look for a number that goes into {n} and into {d}.",
+    "Which number divides both {n} and {d} evenly?", "Is there a number that divides {n} and also {d}?", "Think of a number that {n} and {d} can both be divided by.",
+  ],
+  "operation.simplify": [
+    "Divide the numerator and the denominator by {g}.", "Divide {n} and {d} by {g}.", "Both {n} and {d} can be divided by {g}. Divide them both.",
+    "What is {n} ÷ {g}? And what is {d} ÷ {g}?", "Divide the top and the bottom by {g}.", "Use {g}. Divide {n} by {g}. Then divide {d} by {g}.",
+  ],
+
   "step.show": ["{show}", "Watch me. {show}", "Here's how it goes. {show}", "Let me show you. {show}", "Follow along. {show}", "Like this. {show}", "I'll do this part. {show}"],
 
   "check.right_step": ["Yes! {eq}.", "That's right: {eq}.", "You got it, {eq}.", "Yes, {eq}.", "Exactly! {eq}.", "Nice, {eq}.", "That's it: {eq}."],
@@ -254,6 +308,14 @@ export const TEMPLATES = {
   "check.not_yet": [
     "Not quite. Let's look at {where} again.", "Almost! Let's check {where} together.", "Hmm, not yet. Let's try {where} again.",
     "Close! Let's look at {where} once more.", "Not yet. Let's go back to {where}.", "Good try. Let's check {where} again together.",
+  ],
+  // An equal fraction when the question asks for the simplest form (#407): the right amount, not yet in the form asked.
+  // {form} is the question's own words: "simplest form" or "lowest terms".
+  "check.equal": [
+    "{heard} is the right amount. The question asks for {form}. Can you simplify it?", "{heard} is equal to the answer. Now write it in {form}.",
+    "Good, {heard} is the same amount. The question wants {form}. Can you simplify {heard}?",
+    "You found the right amount: {heard}. Now simplify it. The question asks for {form}.", "{heard} has the right value. What is {heard} in {form}?",
+    "{heard} is the right amount. Let's write it in {form}.",
   ],
   "check.explain": [
     "How did you get {where}?", "Can you tell me how you did {where}?", "Show me how you worked out {where}.", "How did you work out {where}?",
@@ -354,6 +416,12 @@ function whereOf(step: WorkedStep): string {
       return `the ${step.row} row`;
     case "place-point":
       return "the decimal point";
+    case "common-denominator":
+      return "the denominators";
+    case "combine-numerators":
+      return "the numerators";
+    case "simplify":
+      return "the simplest form";
     default:
       return "this step";
   }
@@ -382,10 +450,57 @@ function equationOf(step: WorkedStep, pkg: OperationPackage, problem: "target" |
     }
     case "result":
       return `${operationText(op)} = ${valueText(step.value)}`;
+    // Fraction steps (#407): never the final fraction, so a judged step never gives the answer away.
+    case "common-denominator": {
+      const changed = changedFractions(step);
+      return changed.length > 0 ? changed.map(([from, to]) => `${parts(from)} = ${parts(to)}`).join(" and ") : null;
+    }
+    case "combine-numerators":
+      return `${step.numerators[0]} ${step.op === "add" ? "+" : "−"} ${step.numerators[1]} = ${step.numerator}`;
+    case "simplify":
+      return `${step.from.numerator} ÷ ${step.divisor} = ${step.to.numerator} and ${step.from.denominator} ÷ ${step.divisor} = ${step.to.denominator}`;
     default:
       return null;
   }
 }
+
+/** A fraction as written: "3/4". */
+const parts = ({ numerator, denominator }: FractionParts) => `${numerator}/${denominator}`;
+
+/** The fractions a common-denominator step changes, each with what it becomes and the factor ("3/4" to "6/8", by 2). */
+function changedFractions(step: Extract<WorkedStep, { kind: "common-denominator" }>): [FractionParts, FractionParts, number][] {
+  return step.from.flatMap((from, i): [FractionParts, FractionParts, number][] => (step.factors[i] > 1 ? [[from, step.to[i], step.factors[i]]] : []));
+}
+
+/**
+ * A fraction step shown in words (#407), one idea a sentence (D-202), for H3 and the easier example: "Multiply the
+ * numerator and the denominator of 3/4 by 2. 3/4 = 6/8." Never the final fraction: the child puts it together. Null for a
+ * step that is not a fraction step.
+ */
+function fractionShow(step: WorkedStep): string | null {
+  switch (step.kind) {
+    case "common-denominator":
+      return changedFractions(step).map(([from, to, factor], i) => (i === 0
+        ? `Multiply the numerator and the denominator of ${parts(from)} by ${factor}. ${parts(from)} = ${parts(to)}.`
+        : `Multiply ${parts(from)} by ${factor} the same way. ${parts(from)} = ${parts(to)}.`)).join(" ");
+    case "combine-numerators": {
+      const [a, b] = step.numerators;
+      return step.op === "add"
+        ? `Add the numerators: ${a} + ${b} = ${step.numerator}. The denominator stays ${step.denominator}.`
+        : `Subtract the numerators: ${a} − ${b} = ${step.numerator}. The denominator stays ${step.denominator}.`;
+    }
+    case "simplify": {
+      const { from, divisor: g, to } = step;
+      return `Divide the numerator and the denominator by ${g}. ${from.numerator} ÷ ${g} = ${to.numerator}. ${from.denominator} ÷ ${g} = ${to.denominator}.`;
+    }
+    default:
+      return null;
+  }
+}
+
+/** A worked step in words: a fraction step as fractionShow says it, any other as the shared step text. */
+const showOf = (step: WorkedStep, pkg: OperationPackage, problem: "target" | "example") =>
+  fractionShow(step) ?? stepText(step, problem === "target" ? pkg.operation : pkg.easierExample.operation);
 
 /** The top number of a long multiplication as its rows work it: without its point (2.5 × 1.3 works 25 × 13). */
 function rowTop(pkg: OperationPackage, problem: "target" | "example"): number {
@@ -464,16 +579,48 @@ function stepLines(pkg: OperationPackage, step: WorkedStep): LineOffer[] {
       add("step.operation", "operation.divide", { current: step.current, by }, 2, `${step.current} ÷ ${by}`);
       break;
     }
+    case "common-denominator": {
+      const [x, y] = step.from;
+      const changed = changedFractions(step);
+      add("step.point", "point.common", { a: x.denominator, b: y.denominator }, 1);
+      const [first, second] = changed.map(([from, , factor]) => ({ from: parts(from), factor }));
+      if (first && second) add("step.operation", "operation.common.both", { d: step.denominator, from: first.from, factor: first.factor, from2: second.from, factor2: second.factor }, 2);
+      else if (first) add("step.operation", "operation.common", { d: step.denominator, ...first }, 2);
+      break;
+    }
+    case "combine-numerators": {
+      const [a, b] = step.numerators;
+      const sign = step.op === "add" ? "+" : "−";
+      add("step.point", "point.combine", { a, b, d: step.denominator }, 1);
+      add("step.operation", step.op === "add" ? "operation.combine.add" : "operation.combine.subtract", { a, b, d: step.denominator }, 2, `${a} ${sign} ${b}`);
+      break;
+    }
+    case "simplify":
+      out.push(...simplifyLines(step.from, slots));
+      break;
     default:
       break;
   }
   const eq = equationOf(step, pkg, "target");
-  out.push(offer("step.show", "step.show", { show: stepText(step, pkg.operation) }, { slots, level: 3, ...(eq ? { board: eq } : {}) }));
+  out.push(offer("step.show", "step.show", { show: showOf(step, pkg, "target") }, { slots, level: 3, ...(eq ? { board: eq } : {}) }));
   return out;
 }
 
-/** The worked steps a child does, without the result. */
-const workSteps = (steps: WorkedStep[]) => steps.filter((s) => s.kind !== "result");
+/**
+ * The H1 and H2 lines to simplify a fraction (#407): "Find a number that divides both 14 and 16." and "Divide the
+ * numerator and the denominator by 2.", by the greatest number that divides both. None for a fraction already in lowest
+ * terms.
+ */
+function simplifyLines(from: FractionParts, slots: Slots): LineOffer[] {
+  const g = gcd(from.numerator, from.denominator);
+  if (g <= 1) return [];
+  const vars = { n: from.numerator, d: from.denominator, g };
+  return [offer("step.point", "point.simplify", vars, { slots, level: 1 }), offer("step.operation", "operation.simplify", vars, { slots, level: 2 })];
+}
+
+const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b));
+
+
 
 /**
  * The answer's digits by place, highest first, and the number they make (D-199): "6 tens and 6 ones" make 66, "3 ones,
@@ -510,7 +657,7 @@ export function packageLines(pkg: OperationPackage) {
   const expr = operationText(pkg.operation);
   const exampleExpr = operationText(pkg.easierExample.operation);
   const answer = valueText(pkg.answer.value);
-  const steps = workSteps(pkg.steps);
+  const steps = teachSteps(pkg);
   const find = (id: string) => steps.find((s) => s.id === id);
   return {
     hello: (): LineOffer[] => [offer("open.hello", "open.hello", {})],
@@ -524,7 +671,7 @@ export function packageLines(pkg: OperationPackage) {
     exampleStep: (id: string): LineOffer[] => {
       const step = pkg.easierExample.steps.find((s) => s.id === id);
       if (!step) return [];
-      const show = stepText(step, pkg.easierExample.operation);
+      const show = showOf(step, pkg, "example");
       const eq = equationOf(step, pkg, "example");
       return [offer("example.step", step.kind === "result" ? "example.result" : "example.step", { show }, { slots: { step: id }, ...(eq ? { board: eq } : {}) })];
     },
@@ -555,14 +702,26 @@ export function packageLines(pkg: OperationPackage) {
     },
     explain: (): LineOffer[] => steps.map((s) => offer("check.explain", "check.explain", { where: whereOf(s) }, { slots: { step: s.id } })),
     thinking: (): LineOffer[] => [offer("check.thinking", "check.thinking", {})],
-    answerRight: (): LineOffer[] => [offer("answer.right", "answer.right", { expr, answer }, { slots: {}, board: `${expr} = ${answer}` })],
+    /** "Yes! 3/4 + 1/8 = 7/8.", in the form the child gave when it is an equal form code accepted ("= 14/16", #407). */
+    answerRight: (form: AnswerValue = pkg.answer.value): LineOffer[] => {
+      const said = valueText(form);
+      return [offer("answer.right", "answer.right", { expr, answer: said }, { slots: {}, board: `${expr} = ${said}` })];
+    },
     answerGive: (): LineOffer[] => [offer("answer.give", "answer.give", { answer })],
     /** How the parts make the answer ("6 tens and 6 ones make 66."), said before answer.give on the final step (D-199). */
     answerParts: (): LineOffer[] => {
       const parts = placeParts(pkg.answer.value);
       return parts ? [offer("answer.parts", "answer.parts", parts)] : [];
     },
-    writeAnswer: (): LineOffer[] => [offer("write.answer", "write.answer", { answer })],
+    writeAnswer: (form: AnswerValue = pkg.answer.value): LineOffer[] => [offer("write.answer", "write.answer", { answer: valueText(form) })],
+    /**
+     * An equal fraction when the question asks for the simplest form (#407): "14/16 is the right amount. The question
+     * asks for simplest form. Can you simplify it?", only after code checked the child's final answer as that equal form.
+     */
+    equal: (form: AnswerValue, words: string): LineOffer[] =>
+      [offer("check.equal", "check.equal", { heard: valueText(form), form: words }, { slots: { step: "result", heard: valueText(form) }, requires: { answer: "equal", step: "result", heard: valueText(form) } })],
+    /** The H1 and H2 help to simplify the child's own equal fraction, on the final step (#407). */
+    simplifyOwn: (form: AnswerValue): LineOffer[] => (form.type === "fraction" ? simplifyLines(form, { step: "result" }) : []),
     writeYours: (): LineOffer[] => [offer("write.yours", "write.yours", {})],
     /** "Did you say 15?" for each number Maya may have heard, and "15 or 50?" for each pair that sound alike. */
     heard: (values: readonly AnswerValue[], pairs: readonly [AnswerValue, AnswerValue][]): LineOffer[] => [
@@ -610,7 +769,10 @@ export function normalSlots(raw: Slots | Record<string, unknown>): Slots {
 export function allLineTexts(pkg: OperationPackage, heardValues: readonly AnswerValue[] = []): string[] {
   const l = packageLines(pkg);
   const heard = [...new Map(heardValues.map((v) => [valueText(v), v])).values()];
+  // An equal fraction the child said (14/16 for 7/8, #407): said back as accepted, or as an equal form to simplify.
+  const equalForms = heard.filter((v) => (v.type === "fraction" || v.type === "mixed") && equivalent(v, pkg.answer.value) && !sameValue(v, pkg.answer.value));
   const offers = [
+    ...equalForms.flatMap((v) => [...l.answerRight(v), ...l.writeAnswer(v), ...l.equal(v, simplestWords(pkg)), ...l.simplifyOwn(v)]),
     ...l.hello(), ...l.question(), ...l.assess(), ...l.exampleIntro(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id)),
     ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),

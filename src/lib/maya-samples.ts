@@ -29,7 +29,30 @@ function sample(id: string, kind: "add" | "subtract", a: number, b: number, easi
   };
 }
 
+const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
+
+/** 3/4 + 1/8, the research's fraction question (C38, D-204): fractions with unlike denominators. */
+function fractionSample(): QuestionPackage {
+  const operation = { kind: "fraction-add" as const, operands: [frac(3, 4), frac(1, 8)] as [ReturnType<typeof frac>, ReturnType<typeof frac>] };
+  const easier = { kind: "fraction-add" as const, operands: [frac(1, 5), frac(2, 5)] as [ReturnType<typeof frac>, ReturnType<typeof frac>] };
+  return {
+    id: "add-fractions-3-4-1-8",
+    ref: { source: "workbook", workbookId: "sample", page: 1, question: 1 },
+    templateId: null,
+    text: "3/4 + 1/8 = ?",
+    answer: { value: frac(7, 8), accepted: [], unit: null },
+    operation,
+    steps: workedSteps(operation),
+    skill: { standard: "8.5", skills: ["8.5-add-subtract-unlike"] },
+    level: 26,
+    difficulty: 2,
+    wrongAnswers: [{ value: frac(4, 12), cause: "F2", description: "Adds the numerators and the denominators", step: null }],
+    easierExample: { text: "1/5 + 2/5 = ?", operation: easier, answer: frac(3, 5), steps: workedSteps(easier) },
+  };
+}
+
 export const SAMPLE_PACKAGES: Record<string, QuestionPackage> = {
+  "add-fractions-3-4-1-8": fractionSample(),
   "add-27-39": sample("add-27-39", "add", 27, 39, [18, 5], [
     { value: num(56), cause: "O3", description: "Forgets to carry when adding", step: "tens" },
   ]),

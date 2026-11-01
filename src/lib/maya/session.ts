@@ -18,6 +18,7 @@
 // Session value, events with the time they happened (the clock is passed in), effects to carry out, and a refusal.
 // Pure TypeScript: no React, DOM, network, clock or randomness.
 import { MAX_COMMANDS, PLACE_NAMES, type Batch, type Command, type Place, type Target } from "@/lib/board";
+import { FRACTION_STRIP_LIMITS } from "@/lib/board/model-fraction-strip";
 import { MAX_HINTS, MAX_TIME_MS, type NewLearningEvent } from "@/lib/learning-events";
 import {
   checkQuestionPackage,
@@ -39,6 +40,7 @@ import { findOffer, normalSlots, packageLines, LINE_IDS, type LineOffer } from "
 import { freeTalkProblem, hardFeeling, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { readAnswer, takenBack, unreadableAnswer, valuesIn } from "./numbers";
+import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
 
@@ -61,10 +63,13 @@ export const SAFETY_GUIDANCE = {
 } as const;
 
 /**
- * The operation kinds Maya teaches: whole numbers and decimals, whose steps and answers code checks and children say as
- * numbers. A fraction question is held until spoken fraction forms are read.
+ * The operation kinds Maya teaches: whole numbers and decimals, and adding and subtracting fractions (#407), whose steps
+ * and answers code checks and whose spoken forms code reads. A question with a worked step Maya has no lines for is held
+ * too (fractions.ts: a mixed or whole operand). Multiplying, dividing, simplifying and equivalent fractions are held.
  */
-export const TEACHABLE_KINDS: readonly OperationKind[] = ["add", "subtract", "multiply", "divide", "decimal-add", "decimal-subtract", "decimal-multiply"];
+export const TEACHABLE_KINDS: readonly OperationKind[] = [
+  "add", "subtract", "multiply", "divide", "decimal-add", "decimal-subtract", "decimal-multiply", "fraction-add", "fraction-subtract",
+];
 
 export const MAIN_STATES = ["READY", "OPEN", "ASSESS", "MODEL_EXAMPLE", "TRY_TARGET", "GUIDE_TARGET", "CHECK", "WRITE_CLOSE", "CLOSE", "CONTENT_HOLD"] as const;
 export const INTERRUPTS = ["SAFETY", "CONFIRM_HEARD", "WAIT_WRITE", "REDIRECT", "REPAIR_MAYA", "TIME_CLOSE"] as const;
@@ -316,6 +321,16 @@ export interface Session {
    * field (none).
    */
   finalMisses?: number;
+  /**
+   * The child's right final answer in the form they gave it, when it is an equal fraction code accepted (14/16 for 7/8,
+   * #407): Maya says it back and asks for it on paper in that form. Null or missing: the package's answer.
+   */
+  answerForm?: AnswerValue | null;
+  /**
+   * The child's equal fraction when the question asks for the simplest form (#407): the final step's help simplifies it.
+   * Null or missing: none.
+   */
+  equalForm?: AnswerValue | null;
   writeAsked: boolean;
   confirmTries: number;
   offeredOtherInput: boolean;
@@ -353,7 +368,8 @@ export function createSession(input: {
   const check = checkQuestionPackage(input.package);
   // An item with no operation (a place-value or a drawing item) has no worked steps to teach from: it is held.
   const pkg = check.ok && hasOperation(check.package) ? structuredClone(check.package) : null;
-  const teachable = pkg !== null && TEACHABLE_KINDS.includes(pkg.operation.kind);
+  const untaught = pkg ? untaughtSteps(pkg) : [];
+  const teachable = pkg !== null && TEACHABLE_KINDS.includes(pkg.operation.kind) && TEACHABLE_KINDS.includes(pkg.easierExample.operation.kind) && untaught.length === 0;
   return {
     version: 4,
     callId: input.callId,
@@ -363,7 +379,8 @@ export function createSession(input: {
     state: "READY",
     resume: null,
     package: teachable ? pkg : null,
-    contentProblem: !check.ok ? check.reason : teachable ? null : `Maya cannot teach ${pkg ? `${pkg.operation.kind} questions` : "items with no operation"} yet`,
+    contentProblem: !check.ok ? check.reason : teachable ? null
+      : `Maya cannot teach ${!pkg ? "items with no operation" : untaught.length > 0 ? `the ${untaught.join(", ")} step of ${pkg.operation.kind} questions` : `${pkg.operation.kind} questions`} yet`,
     startedAt: null,
     now: null,
     expect: "nothing",
@@ -377,7 +394,7 @@ export function createSession(input: {
     exampleShown: 0,
     retried: false,
     done: [],
-    ladder: { step: teachable ? workSteps(pkg!.steps)[0]?.id ?? "result" : "result", hint: -1, unlocked: 0, failures: 0 },
+    ladder: { step: teachable ? workSteps(pkg!)[0]?.id ?? "result" : "result", hint: -1, unlocked: 0, failures: 0 },
     highestHint: null,
     hints: 0,
     assistance: [],
@@ -421,7 +438,7 @@ export function learningEvent(session: Session, family: { parentId: string; chil
   if (!outcome || !pkg || session.startedAt === null) return null;
   const right = session.lastResult === "right";
   const result = right ? (outcome.assistance === "independent" ? "right" : "right_with_help") : "blank";
-  const first = workSteps(pkg.steps)[0]?.id ?? null;
+  const first = workSteps(pkg)[0]?.id ?? null;
   return {
     key: `call:${session.callId}`,
     parentId: family.parentId,
@@ -441,8 +458,8 @@ export function learningEvent(session: Session, family: { parentId: string; chil
 
 // ---------- Steps and math ----------
 
-/** The worked steps a child does, without the result. */
-const workSteps = (steps: WorkedStep[]) => steps.filter((s) => s.kind !== "result");
+/** The worked steps a child does, without the result (fractions.ts: the steps Maya teaches for this question). */
+const workSteps = (pkg: OperationPackage) => teachSteps(pkg);
 const rank = (a: Assistance) => ASSISTANCE.indexOf(a);
 const number = (value: number): AnswerValue => ({ type: "number", value });
 
@@ -460,15 +477,29 @@ function stepAnswers(step: WorkedStep): AnswerValue[] {
       return [number(step.value)];
     case "divide-digit":
       return [number(step.quotient)];
+    // Fraction steps (#407), each in its exact written form: 6/8 answers the common denominator of 3/4 + 1/8, 3/4 does not.
+    case "common-denominator": {
+      const changed = step.to.filter((_, i) => step.factors[i] > 1);
+      // With one fraction changed, its new numerator alone answers it too ("six" for 6/8).
+      return [...changed.map(fraction), ...(changed.length === 1 ? [number(changed[0].numerator)] : [])];
+    }
+    case "combine-numerators":
+      return [number(step.numerator), fraction({ numerator: step.numerator, denominator: step.denominator })];
+    case "simplify":
+      return [fraction(step.to)];
     default:
-      // Fraction steps: their kinds are held (TEACHABLE_KINDS); the result is checked by isRightAnswer.
       return [];
   }
 }
+const fraction = ({ numerator, denominator }: { numerator: number; denominator: number }): AnswerValue => ({ type: "fraction", numerator, denominator });
+
+/** The value answers a worked step: the same number, or for a fraction or mixed number the same written form. */
+const answersStep = (st: WorkedStep, value: AnswerValue) =>
+  stepAnswers(st).some((v) => (v.type === "number" && value.type === "number" ? equivalent(v, value) : sameValue(v, value)));
 
 /** The value is the number a worked step of the child's question makes, and no known wrong final answer. */
 const answersAStep = (pkg: OperationPackage, value: AnswerValue) =>
-  workSteps(pkg.steps).some((st) => stepAnswers(st).some((v) => equivalent(v, value))) && !pkg.wrongAnswers.some((w) => equivalent(w.value, value));
+  workSteps(pkg).some((st) => answersStep(st, value)) && !pkg.wrongAnswers.some((w) => equivalent(w.value, value));
 
 /** The number speech-to-text may mistake a teen or a ten for, to confirm what the child said ("fifteen or fifty?"). */
 const soundsLike = (n: number): number[] => (n >= 13 && n <= 19 ? [(n - 10) * 10] : n >= 30 && n <= 90 && n % 10 === 0 ? [n / 10 + 10] : []);
@@ -479,7 +510,7 @@ const problemOf = (pkg: OperationPackage, problem: Problem) =>
     : { operation: pkg.easierExample.operation, steps: pkg.easierExample.steps, answer: { value: pkg.easierExample.answer, accepted: [], unit: null } };
 
 /** The first target step the child has not done ("result" when every step is done). */
-const currentStep = (pkg: OperationPackage, done: readonly string[]) => workSteps(pkg.steps).find((s) => !done.includes(s.id))?.id ?? "result";
+const currentStep = (pkg: OperationPackage, done: readonly string[]) => workSteps(pkg).find((s) => !done.includes(s.id))?.id ?? "result";
 
 /** The operation symbol of a kind, as equations write it. */
 const SYMBOL: Partial<Record<OperationKind, string>> = {
@@ -492,6 +523,9 @@ const BOARD_OPERATION: Partial<Record<OperationKind, string>> = {
 
 /** The two numbers of a whole-number or decimal operation. */
 const operandsOf = (op: Operation): number[] => (op.operands as unknown[]).filter((n): n is number => typeof n === "number");
+/** Every number of an operation as a value: whole numbers, decimals, fractions and mixed numbers (#407). */
+const operandValues = (op: Operation): AnswerValue[] =>
+  (op.operands as unknown[]).flatMap((o): AnswerValue[] => (typeof o === "number" ? [number(o)] : isAnswerValue(o) ? [o] : []));
 
 // ---------- Validation of untrusted input ----------
 
@@ -500,6 +534,7 @@ const isWholeAt = (v: unknown, min: number) => Number.isSafeInteger(v) && (v as 
 const isAnswerValue = (v: unknown): v is AnswerValue =>
   isObject(v) && ((v.type === "number" && Number.isFinite(v.value)) ||
     (v.type === "fraction" && Number.isSafeInteger(v.numerator) && isWholeAt(v.denominator, 1)) ||
+    (v.type === "mixed" && isWholeAt(v.whole, 1) && isWholeAt(v.numerator, 0) && isWholeAt(v.denominator, 1)) ||
     (v.type === "remainder" && isWholeAt(v.quotient, 0) && isWholeAt(v.remainder, 0)));
 const HINTS = [0, 1, 2, 3, 4];
 const SEVERITIES: Severity[] = ["concern", "immediate"];
@@ -544,7 +579,7 @@ function proposalProblem(p: unknown): string | null {
     for (const a of r.answers) {
       if (!isObject(a) || !isAnswerValue(a.value) || typeof a.step !== "string" || (a.verdict !== "right" && a.verdict !== "wrong") ||
         (a.problem !== undefined && a.problem !== "target" && a.problem !== "example")) {
-        return "each answer needs a number, fraction or remainder value, a step and a verdict";
+        return "each answer needs a number, fraction, mixed number or remainder value, a step and a verdict";
       }
     }
   }
@@ -750,7 +785,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
       s.turns.push({ at: event.at, speaker: "child", text: event.text, state: s.state, ...(alternatives.length > 0 ? { alternatives } : {}) });
       // A number form code cannot read is confirmed, never guessed; one inside the child's explanation is never their
       // answer ("66, because six tens and six ones"), so it needs no confirmation (D-199).
-      const uncertain = event.uncertain === true || unreadableAnswer(event.text);
+      const uncertain = event.uncertain === true || unreadableAnswer(event.text, readOptionsFor(s.package));
       // A new line keeps the turns apart, so a sign in the second turn is not read as a subtraction from the first.
       s.turn = s.turn
         ? { at: event.at, text: `${s.turn.text}\n${event.text}`, uncertain: s.turn.uncertain || uncertain }
@@ -759,8 +794,8 @@ export function step(session: Session, event: SessionEvent): StepResult {
       // whatever a later reading names: the result waits for a new checked final answer. The help history stays. A
       // corrected number of a worked step ("15, no wait, 16" for the ones) answers that step, unless it is a known
       // wrong final answer.
-      const back = s.package && s.lastResult === "right" ? takenBack(event.text) : null;
-      if (back && !(back.kept && (isRightAnswer(s.package!.operation, s.package!.answer, back.kept) || answersAStep(s.package!, back.kept)))) {
+      const back = s.package && s.lastResult === "right" ? takenBack(event.text, readOptionsFor(s.package)) : null;
+      if (back && !(back.kept && (rightForQuestion(s.package!, back.kept) || answersAStep(s.package!, back.kept)))) {
         s.lastResult = null;
         if (s.solved === "child") s.solved = null;
       }
@@ -865,8 +900,10 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   const rightResult = checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "right");
   // A checked wrong final answer takes back the solution that stood: the outcome follows the current result.
   if (checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "wrong")) s.solved = null;
+  // An equal fraction when the question asks for the simplest form (#407): the adding is done, not the form.
+  const equal = equalIn(pkg, checked);
   // A checked right answer on the child's question shows they have started: a no-start no longer holds (#389).
-  const progress = s.done.length > 0 || checked.some((c) => c.problem === "target" && c.answer.verdict === "right");
+  const progress = s.done.length > 0 || equal !== null || checked.some((c) => c.problem === "target" && c.answer.verdict === "right");
   if (progress) s.noStart = false;
   const misses = finalMisses(s, checked);
   const allowedNow = blocked ? blocked.acts : teachingActs(s, reading, rightResult, progress, misses).acts;
@@ -884,8 +921,11 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     for (const { answer: a, problem } of checked) {
       if (problem !== "target") continue;
       if (a.verdict === "right" && a.step !== "result" && !done.includes(a.step)) done.push(a.step);
-      if (a.verdict === "wrong") failed = true;
+      // An equal fraction is not a failed attempt (#407).
+      if (a.verdict === "wrong" && !(a.step === "result" && isEqualForm(pkg, a.value))) failed = true;
     }
+    // An equal fraction shows every work step done: the final step simplifies the child's own fraction (#407).
+    if (equal) for (const st of workSteps(pkg)) if (!done.includes(st.id)) done.push(st.id);
     const next = currentStep(pkg, done);
     if (next !== ladder.step) Object.assign(ladder, { step: next, hint: -1, unlocked: Math.max(0, ladder.hint - 1), failures: 0 });
     if (failed) {
@@ -906,7 +946,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   if (p.act === "accept_answer" && !rightResult) return no("accepts_wrong_answer", "Only a right final answer the child said and kept can be accepted.", allowedNow);
 
   // 4. Maya's words and board: lines code writes for this act, step and level, and warm talk with no math in it.
-  const view: View = { steps: [ladder.step], done, checked, rightResult };
+  const view: View = { steps: [ladder.step], done, checked, rightResult, equal };
   const spoken: Spoken | { code: RefusalCode; reason: string } = p.act === "safety" ? { text: "", lines: [], boards: [], replaced: 0, talk: [], segments: [], chosen: [] } : speak(s, p, view, reviews);
   if ("code" in spoken) return no(spoken.code, spoken.reason, allowedNow);
   const say = spoken.text;
@@ -1079,7 +1119,11 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   if (reading.paper) s.paper = reading.paper === "written" ? "child_confirmed" : "declined";
   for (const { answer: a, problem } of checked) {
     if (problem === "target" && a.step === "result") s.lastResult = a.verdict;
+    // The child's own form of a right answer (#407): Maya says it back and asks for it on paper in that form.
+    if (problem === "target" && a.step === "result" && a.verdict === "right" && pkg) s.answerForm = sameValue(a.value, pkg.answer.value) ? null : a.value;
   }
+  if (equal) s.equalForm = equal;
+  if (p.act === "give_answer") s.answerForm = null;
   if (scoring) {
     if (failed) s.stuckStep ??= ladder.step;
     s.done = done;
@@ -1129,7 +1173,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
 function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): { code: RefusalCode; reason: string } | null {
   const pkg = s.package!;
   if (!s.turn) return { code: "answer_not_heard", reason: "There is no child turn to read an answer from." };
-  const read = readAnswer(s.turn.text);
+  const read = readAnswer(s.turn.text, readOptionsFor(pkg));
   if (read.choice) return { code: "answer_not_committed", reason: "The child offered more than one answer: ask which one they mean." };
   const heard = read.kept;
   for (const a of answers) {
@@ -1141,7 +1185,8 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     if (a.step === "result" && !saidAs(read.final ?? undefined, a.value)) {
       return { code: "answer_not_committed", reason: `${valueText(a.value)} is not the last answer the child kept (a number in their explanation is not their answer): ask which one they mean.` };
     }
-    const right = a.step === "result" ? isRightAnswer(operation, answer, a.value) : stepAnswers(at).some((v) => equivalent(v, a.value));
+    // The final answer by the question's wording (#407: an equal fraction may be right); a step by its own values.
+    const right = a.step === "result" ? (problem === "target" ? rightForQuestion(pkg, a.value) : isRightAnswer(operation, answer, a.value)) : answersStep(at, a.value);
     // A final answer said with doubt ("maybe 66", "is it 66?") is never accepted as right: confirm it first (R391-5).
     if (a.verdict === "right" && a.step === "result" && !read.sure) return { code: "answer_not_committed", reason: `The child was not sure of ${valueText(a.value)}: confirm it before saying it is right.` };
     if (a.verdict === "right" && !right) return { code: "accepts_wrong_answer", reason: `${valueText(a.value)} is not right for ${a.step}: the checked math says otherwise.` };
@@ -1158,7 +1203,8 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
 function finalMisses(s: Session, checked: readonly Checked[]): number {
   const before = s.finalMisses ?? 0;
   const pkg = s.package;
-  if (!pkg || !checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "wrong")) return before;
+  // An equal fraction is not a wrong final answer (#407).
+  if (!pkg || !checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "wrong" && !isEqualForm(pkg, c.answer.value))) return before;
   const done = [...s.done, ...checked.filter((c) => c.problem === "target" && c.answer.verdict === "right").map((c) => c.answer.step)];
   return currentStep(pkg, done) === "result" ? before + 1 : before;
 }
@@ -1221,10 +1267,11 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
   // stood, and right steps are done; the ladder is on the first step still not done.
   const wrongResult = checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "wrong");
   const s: Session = wrongResult ? { ...session, solved: null } : session;
-  const done = pkg ? workSteps(pkg.steps).map((st) => st.id)
-    .filter((id) => session.done.includes(id) || checked.some((c) => c.problem === "target" && c.answer.step === id && c.answer.verdict === "right")) : [];
+  const equal = equalIn(pkg, checked);
+  const done = pkg ? workSteps(pkg).map((st) => st.id)
+    .filter((id) => equal !== null || session.done.includes(id) || checked.some((c) => c.problem === "target" && c.answer.step === id && c.answer.verdict === "right")) : [];
   const ladderStep = pkg ? currentStep(pkg, done) : "result";
-  const view: View = { steps: [ladderStep], done, checked, rightResult };
+  const view: View = { steps: [ladderStep], done, checked, rightResult, equal };
   const misses = finalMisses(s, checked);
   const acts = (gate(s, {}) ?? teachingActs(s, {}, rightResult, done.length > 0, misses)).acts;
   // Once the answer stands, the request to write it (or the close) comes before more help on a step. After two wrong
@@ -1245,7 +1292,7 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
       case "guide": {
         // A step the child just did right is said first ("Yes! 7 + 9 = 16."), else a checked wrong answer on this step.
         const fresh = done.filter((id) => !session.done.includes(id)).at(-1);
-        const judge = offers.find((o) => o.line === "check.right_step" && o.slots.step === fresh) ??
+        const judge = offers.find((o) => o.line === "check.equal") ?? offers.find((o) => o.line === "check.right_step" && o.slots.step === fresh) ??
           offers.find((o) => o.line === "check.not_yet" && o.slots.step === ladderStep);
         const help = byLevel(free);
         lineSets = [...(judge ? help.map((h) => [judge, h]) : []), ...help.map((h) => [h])]
@@ -1375,9 +1422,12 @@ const boardTexts = (board: unknown[], only?: "text" | "value") =>
 function revealsAnswer(s: Session, p: Proposal, texts: string[]): boolean {
   const pkg = s.package!;
   const answer = pkg.answer.value;
-  const operands = operandsOf(pkg.operation);
-  const ownNumber = operands.some((n) => equivalent(number(n), answer));
-  if (!ownNumber && texts.some((t) => valuesIn(t).some((v) => equivalent(v, answer)))) return true;
+  const ownNumber = operandValues(pkg.operation).some((v) => equivalent(v, answer));
+  // An equal form the child said (14/16 for 7/8, #407) gives nothing away when Maya says it back; the answer's own
+  // written form still does.
+  const said = childValues(s);
+  const reveals = (v: AnswerValue) => equivalent(v, answer) && (sameValue(v, answer) || !said.some((c) => sameValue(c, v)));
+  if (!ownNumber && texts.some((t) => valuesIn(t).some(reveals))) return true;
   const highest = answer.type === "number" ? PLACE_NAMES[String(Math.trunc(Math.abs(answer.value))).length - 1] : undefined;
   return (p.board ?? []).some((raw) => {
     const c = raw as Partial<Command>;
@@ -1402,7 +1452,7 @@ function boardRoles(s: Session, role: Problem, board: unknown[]): Record<string,
   const created: Record<string, Problem> = {};
   for (const raw of board) {
     const c = raw as Record<string, unknown>;
-    if ((c.op === "columns" || c.op === "write") && typeof c.id === "string") {
+    if ((c.op === "columns" || c.op === "write" || c.op === "model") && typeof c.id === "string") {
       if (c.op === "columns") {
         const operands = Array.isArray(c.operands) ? c.operands.map((o) => (isObject(o) ? Number(o.value) : NaN)) : [];
         const want = operandsOf(operation);
@@ -1431,6 +1481,14 @@ interface View {
   done: string[];
   checked: Checked[];
   rightResult: boolean;
+  /** The child's equal fraction checked in this reading, when the question asks for the simplest form (#407). */
+  equal?: AnswerValue | null;
+}
+
+/** The equal fraction (#407) among a reading's checked final answers, or null. */
+function equalIn(pkg: OperationPackage | null, checked: readonly Checked[]): AnswerValue | null {
+  if (!pkg) return null;
+  return checked.find((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "wrong" && isEqualForm(pkg, c.answer.value))?.answer.value ?? null;
 }
 
 /** The words a proposal gives: the text Maya says, the lines in it, and the board texts those lines allow. */
@@ -1533,6 +1591,8 @@ function echoOf(s: Session, raw: string): string | null {
 
 /** What the child has said in this call: free talk may start a sentence with a name the child used (D-196). */
 const childWords = (s: Session) => s.turns.filter((t) => t.speaker === "child").map((t) => t.text);
+/** Every number the child said in the call, read as their turns are read. */
+const childValues = (s: Session) => childWords(s).flatMap((t) => valuesIn(t, readOptionsFor(s.package)));
 
 /** The approved text of Maya's last turn, or "" before she has said anything. */
 const lastSaid = (s: Session) => [...s.turns].reverse().find((t) => t.speaker === "maya")?.text ?? "";
@@ -1542,8 +1602,8 @@ function heardIn(s: Session): [AnswerValue[], [AnswerValue, AnswerValue][]] {
   if (!s.turn) return [[], []];
   const last = s.turns.map((t) => t.speaker).lastIndexOf("maya");
   const since = s.turns.slice(last + 1).flatMap((t) => (t.speaker === "child" ? t.alternatives ?? [] : []));
-  const heard = valuesIn(s.turn.text);
-  const alternatives = since.flatMap((t) => valuesIn(t));
+  const heard = valuesIn(s.turn.text, readOptionsFor(s.package));
+  const alternatives = since.flatMap((t) => valuesIn(t, readOptionsFor(s.package)));
   const pairs: [AnswerValue, AnswerValue][] = [
     ...heard.flatMap((v) => (v.type === "number" ? soundsLike(v.value).map((w) => [v, number(w)] as [AnswerValue, AnswerValue]) : [])),
     ...heard.flatMap((v) => alternatives.filter((a) => !equivalent(a, v)).map((a) => [v, a] as [AnswerValue, AnswerValue])),
@@ -1574,18 +1634,29 @@ function offersFor(s: Session, act: Act, view: View): LineOffer[] {
     }
     case "try_target":
       return [...l.tryTarget(), ...l.question()];
-    case "guide":
-      return [...view.steps.flatMap(l.help), ...right, ...view.steps.flatMap(l.notYet), ...l.question(), ...l.thinking()];
-    case "accept_answer":
-      return [...l.thinking(), ...l.answerRight(), ...l.explain(), ...right];
+    case "guide": {
+      // An equal fraction when the question asks for the simplest form (#407): the equal-form check for each equal
+      // fraction in the child's turn (it needs code to check that one), and the final step's help to simplify it.
+      const opts = readOptionsFor(pkg);
+      const candidates = view.equal ? [view.equal] : valuesIn(s.turn?.text ?? "", opts).filter((v) => isEqualForm(pkg, v));
+      const simplify = view.steps.includes("result") ? view.equal ?? s.equalForm ?? null : null;
+      const own = [...candidates.flatMap((v) => l.equal(v, simplestWords(pkg))), ...(simplify ? l.simplifyOwn(simplify) : [])];
+      return [...view.steps.flatMap(l.help), ...own, ...right, ...view.steps.flatMap(l.notYet), ...l.question(), ...l.thinking()];
+    }
+    case "accept_answer": {
+      const form = view.checked.find((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "right")?.answer.value ?? s.answerForm ?? undefined;
+      return [...l.thinking(), ...l.answerRight(form), ...l.explain(), ...right];
+    }
     case "give_answer":
       // Never the final step's question before code gives its answer (D-199).
       return [...view.steps.filter((id) => id !== "result").flatMap(l.help), ...right];
     case "ask_write": {
       // Never a request to write what the child already wrote, or said they wrote or would not write (#389).
       const written = s.wrote === true || s.paper !== "unknown";
-      const write = written ? [] : solved ? l.writeAnswer() : l.writeYours();
-      return [...write, ...(solved ? l.answerRight() : []), ...(main === "CHECK" ? [...l.thinking(), ...l.explain()] : [])];
+      // The child's own form of the answer when code accepted it (#407): "Please write 14/16 on your paper."
+      const form = solved === "child" ? s.answerForm ?? undefined : undefined;
+      const write = written ? [] : solved ? l.writeAnswer(form) : l.writeYours();
+      return [...write, ...(solved ? l.answerRight(form) : []), ...(main === "CHECK" ? [...l.thinking(), ...l.explain()] : [])];
     }
     case "close":
       return solved ? l.closeSolved(solved) : [];
@@ -1606,7 +1677,9 @@ function offersFor(s: Session, act: Act, view: View): LineOffer[] {
 const meets = (requires: NonNullable<LineOffer["requires"]>, view: View) =>
   requires.answer === "right"
     ? view.done.includes(requires.step)
-    : view.checked.some((c) => c.problem === "target" && c.answer.step === requires.step && c.answer.verdict === "wrong");
+    : requires.answer === "equal"
+      ? !!view.equal && (requires.heard === undefined || valueText(view.equal) === requires.heard)
+      : view.checked.some((c) => c.problem === "target" && c.answer.step === requires.step && c.answer.verdict === "wrong");
 
 /** The first two words of each sentence of a text, in lower case, to keep two sentences of one turn from starting alike. */
 const openings = (text: string) =>
@@ -1764,16 +1837,35 @@ function boardOffersFor(s: Session, act: Act, view: View, spoken: Pick<Spoken, "
   if (!pkg || !BOARD_ACTS.includes(act)) return [];
   const out: BoardOffer[] = [];
   const at = (c: Command | null, place: Place) => (c ? [{ ...c, place } as Command] : []);
+  // Fraction strips (#407): each fraction of the problem as a strip of equal parts, the second below the first, so the
+  // parts line up; for the child's question also the strips in the common denominator, once that step is done or shown.
+  const strips = (id: string, of: readonly { numerator: number; denominator: number }[], shows: string) => {
+    const ids = [`${id}-a`, `${id}-b`];
+    if (of.length !== 2 || ids.some((x) => Object.hasOwn(s.boardRoles, x)) || !of.every((f) => f.denominator >= 1 && f.denominator <= FRACTION_STRIP_LIMITS.parts && f.numerator >= 0 && f.numerator <= f.denominator)) return;
+    out.push({
+      id: id.replace("-", "."), shows,
+      commands: (place) => of.map((f, i) => ({ op: "model", id: ids[i], model: { kind: "fraction_strip", parts: f.denominator, shaded: f.numerator }, place: i === 0 ? place : { below: ids[0] } } as unknown as Command)),
+    });
+  };
+  const fractionsOf = (op: Operation) => (op.kind === "fraction-add" || op.kind === "fraction-subtract") && op.operands.every((o) => o.type === "fraction")
+    ? op.operands.map((o) => o as { numerator: number; denominator: number }) : [];
   if (act === "example_step") {
     const ex = columnsOf(s, "example");
     if (ex && !Object.hasOwn(s.boardRoles, "example")) out.push({ id: "example.columns", shows: `the easier example in columns: ${operationText(pkg.easierExample.operation)}`, commands: (place) => at(ex, place) });
+    strips("example-strips", fractionsOf(pkg.easierExample.operation), `the easier example's fractions as strips: ${operationText(pkg.easierExample.operation)}`);
   } else {
+    strips("question-strips", fractionsOf(pkg.operation), `the question's fractions as strips: ${operationText(pkg.operation)}`);
+    const common = workSteps(pkg).find((st) => st.kind === "common-denominator");
+    const shownNow = (spoken?.chosen ?? []).some((o) => o.line === "step.show" && o.slots.step === common?.id);
+    if (common?.kind === "common-denominator" && (view.done.includes(common.id) || shownNow)) {
+      strips("question-common", common.to, `the fractions with the common denominator as strips: ${common.to.map((f) => `${f.numerator}/${f.denominator}`).join(" and ")}`);
+    }
     const q = columnsOf(s, "target");
     if (q && !Object.hasOwn(s.boardRoles, "question")) out.push({ id: "question.columns", shows: `the question in columns: ${operationText(pkg.operation)}`, commands: (place) => at(q, place) });
     // A written digit of a column step, once the child did the step or a line showed it this turn.
     const shown = new Set((spoken?.chosen ?? []).filter((o) => o.line === "step.show").map((o) => o.slots.step));
     if (q && (pkg.operation.kind === "add" || pkg.operation.kind === "subtract")) {
-      for (const st of workSteps(pkg.steps)) {
+      for (const st of workSteps(pkg)) {
         if ((st.kind !== "add-column" && st.kind !== "subtract-column") || st.write === null) continue;
         if (!(PLACE_NAMES as readonly string[]).includes(st.place) || !(view.done.includes(st.id) || shown.has(st.id))) continue;
         const write = st.write;
@@ -1879,7 +1971,7 @@ function boardProblem(s: Session, board: unknown[], role: Problem, spoken: Spoke
  * The steps whose help lines are offered: every work step not done yet and the final step ("result", #389), as the
  * model's reading of the child's turn may finish steps.
  */
-const openSteps = (pkg: OperationPackage, done: readonly string[]) => [...workSteps(pkg.steps).map((st) => st.id).filter((id) => !done.includes(id)), "result"];
+const openSteps = (pkg: OperationPackage, done: readonly string[]) => [...workSteps(pkg).map((st) => st.id).filter((id) => !done.includes(id)), "result"];
 
 /**
  * The lines Maya may say now, by act: what the text adapter (#322) offers the model. Help lines are offered for every

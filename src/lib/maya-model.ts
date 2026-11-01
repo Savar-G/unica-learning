@@ -20,13 +20,13 @@ import { stepText, valueText } from "@/lib/question-package";
 import type { TraceRefusal } from "@/lib/maya-trace";
 
 /** The version of the prompt and of the model input below. Raise it when either changes; every trace records it. */
-export const PROMPT_VERSION = "maya-text-11";
+export const PROMPT_VERSION = "maya-text-12";
 
 /** One act the model may propose now, with everything code offers for it. */
 export interface ActOffer {
   act: Act;
   /** Code-written lines: copy `line` and `slots` exactly. `says` is one wording; code picks the wording said. */
-  lines: { line: string; slots: Record<string, unknown>; level?: number; requires?: { answer: "right" | "wrong"; step: string }; says: string }[];
+  lines: { line: string; slots: Record<string, unknown>; level?: number; requires?: { answer: "right" | "wrong" | "equal"; step: string }; says: string }[];
   /** Warm-talk groups for this act, each with its phrases numbered from 1 (`pick`). */
   warm: { group: string; phrases: string[] }[];
   /** Board offers to draw, by id. */
@@ -127,7 +127,8 @@ Rules:
 - For "guide" and "example_step", set "step" to the step id of the line, and for "guide" set "level" to the line's level.
 - Give the gentlest help first: invite before point, point before operation, operation before show. Raise the level only after the child tries and fails, or asks for help.
 - "reading" is what you understood from the child's latest turn ("childTurn"); null when there is none. Put each number the child gave as their answer in "answers", with the step it answers ("result" for the whole question, or a step id) and your verdict ("right" or "wrong") by the checked answer and steps in "question". Never mark a wrong answer right.
-- A line with "requires" needs an answer for that step with that verdict in "reading.answers".
+- A line with "requires" needs an answer for that step with that verdict in "reading.answers". "equal" (the line "check.equal") needs the child's final answer read with the verdict "wrong" when it is an equal fraction in a question that asks for the simplest form.
+- Fractions: read a fraction the child says as {"type": "fraction"} ("three quarters" is 3/4, "fourteen sixteenths" is 14/16), and a mixed number as {"type": "mixed", "whole", "numerator", "denominator"} ("one and three eighths"). An equal fraction in another form (14/16 for 7/8) is "right" unless the question asks for the simplest form or lowest terms; then it is "wrong", and you guide the final step ("result") with "check.equal". A step answer is right only in the step's own form: for "3/4 = 6/8" the child says 6/8 or 6, not 3/4.
 - "accept_answer" is only for a right final answer (step "result"). When the child gets a step right (or several) without the final answer, record each in "reading.answers" and use act "guide" with "step" set to the first step still not done after them and "level" 0: parts are the "check.right_step" line for the step they got right, then the gentlest line for that next step. Never guide a step the child has just done. When every step is done but the child has not said the final answer, the next step is "result": guide "result" at level 0 with the "check.right_step" line for the step they just got right, then the "step.invite" line for "result", so the child says the whole answer.
 - When every step is done and the child gets the final answer wrong a second time, code offers only "give_answer": use it with no line, at most one warm part from "empathy". Code says how the parts make the answer, then the answer.
 - When the child says they are writing or wrote their answer, and code asks you to wait, wait with a warm part from "pacing", never your own words.

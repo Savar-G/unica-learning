@@ -4,8 +4,9 @@
 // dimensions that apply, and the outcomes Maya may reach.
 //
 // Left out on purpose: behaviours that need injected speech-to-text alternatives, exact silences or the clock at a set
-// time (C12 to C18, C21, C35, C39), a broken package (C36) or a question kind Maya holds (C38). The scripted gate
-// (src/lib/maya-gate) runs those exactly; a model child cannot make them happen on cue.
+// time (C12 to C18, C21, C35, C39) or a broken package (C36). The scripted gate (src/lib/maya-gate) runs those exactly;
+// a model child cannot make them happen on cue. C38 (fractions, D-204) is not here yet: the validity stages read whole
+// numbers only.
 import type { Reason } from "@/lib/maya";
 import { valuesIn } from "@/lib/maya";
 import { FIXTURES, type FixtureId } from "@/lib/maya-gate/fixtures";

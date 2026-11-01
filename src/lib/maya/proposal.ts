@@ -58,7 +58,7 @@ export type Part = LineChoice | Warm | Talk;
  * model's verdict. Code checks that the child said it and kept it, and that the verdict is right.
  */
 export interface ChildAnswer {
-  /** A number, fraction or remainder value; the session refuses any other kind. */
+  /** A number, fraction, mixed number or remainder value; the session refuses any other kind. */
   value: AnswerValue;
   step: string;
   problem?: "target" | "example";
@@ -126,6 +126,7 @@ const answerValue = {
   anyOf: [
     { type: "object", additionalProperties: false, required: ["type", "value"], properties: { type: { const: "number" }, value: { type: "number" } } },
     { type: "object", additionalProperties: false, required: ["type", "numerator", "denominator"], properties: { type: { const: "fraction" }, numerator: { type: "integer" }, denominator: { type: "integer" } } },
+    { type: "object", additionalProperties: false, required: ["type", "whole", "numerator", "denominator"], properties: { type: { const: "mixed" }, whole: { type: "integer" }, numerator: { type: "integer" }, denominator: { type: "integer" } } },
     { type: "object", additionalProperties: false, required: ["type", "quotient", "remainder"], properties: { type: { const: "remainder" }, quotient: { type: "integer" }, remainder: { type: "integer" } } },
   ],
 };

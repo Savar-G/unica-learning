@@ -13,6 +13,7 @@ const solvedEnd = (understanding: "evidence_observed" | "uncertain" = "uncertain
   wroteIt,
 ];
 const OPEN = "open" as const;
+const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
 /** C29 (review R384-1, D-197): the decline line is in, with its approved wording; the safety event is not (#383). */
 const C29_PENDING = "The decline line's wording is planned, not approved yet (D-197), and no safety event is recorded for #333 yet.";
 /** The answer to a free-talk turn: back to the question, solved. */
@@ -802,8 +803,8 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "C36b",
-    title: "A question kind Maya cannot teach yet (fractions, fixture D): held, no unchecked teaching",
-    fixture: "D",
+    title: "A question kind Maya cannot teach yet (equivalent fractions, fixture G): held, no unchecked teaching",
+    fixture: "G",
     status: "passing",
     steps: [],
     expect: { outcome: { reason: "content_issue" }, acts: ["close"] },
@@ -820,6 +821,64 @@ export const BEHAVIOURS: Behaviour[] = [
       ...solvedEnd(),
     ],
     expect: { outcome: { reason: "solved", assistance: "hint", highestHint: 1 }, acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"] },
+  },
+  {
+    // #407: the denominator error is located (H1, with the fractions as strips), the common denominator follows with
+    // the strips in eighths, and the child's spoken fractions are read.
+    id: "C38",
+    title: "3/4 + 1/8, says 4/12 (adds the denominators): the denominators are pointed out; 'six eighths', then 'seven eighths' is accepted",
+    fixture: "D",
+    status: "passing",
+    steps: [
+      child("I got 4/12.", { start: "has_work", answers: [[frac(4, 12), "result", "wrong"]] }, [{ act: "guide", level: 1, lines: ["step.point"], draw: ["question.strips"] }]),
+      child("Six eighths.", { answers: [[frac(6, 8), "common", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"], draw: ["question.common"] }]),
+      child("6 plus 1 is 7. So seven eighths.", { answers: [[7, "combine", "right"], [frac(7, 8), "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1, paperStatus: "child_confirmed" },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, boardBatches: 2 },
+      never: ["example_step", "give_answer"],
+    },
+  },
+  {
+    // #407, research C38: an equal fraction is right; simplest form is discussed only when the question asks for it.
+    id: "C38b",
+    title: "3/4 + 1/8, says 'fourteen sixteenths': equal to 7/8 and accepted (the question does not ask for simplest form), said back as 14/16",
+    fixture: "D",
+    status: "passing",
+    steps: [
+      child("I got fourteen sixteenths.", { start: "has_work", answers: [[frac(14, 16), "result", "right"]] }),
+      child("Because I used 16 for the bottom.", undefined, [{ act: "ask_write", understanding: "evidence_observed" }]),
+      wroteIt,
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent", understanding: "evidence_observed" },
+      acts: [OPEN, "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      never: ["guide", "give_answer"],
+    },
+  },
+  {
+    // #407: when the question asks for the simplest form, an equal fraction is the right amount, not yet in that form:
+    // no wrong answer, no failed attempt; Maya asks to simplify it (check.equal), then helps from the child's fraction.
+    id: "C38c",
+    title: "The question asks for simplest form; says 14/16: the right amount, asked to simplify (check.equal), a common factor pointed out, then 7/8 is accepted",
+    fixture: "D_SIMPLEST",
+    status: "passing",
+    steps: [
+      child("I got 14/16.", { start: "has_work", answers: [[frac(14, 16), "result", "wrong"]] }, [{ act: "guide", step: "result", level: 0, lines: ["check.equal"] }]),
+      child("I don't know how.", { help: "more" }, [{ act: "guide", step: "result", level: 1, lines: ["step.point"] }]),
+      child("Divide both by 2. It's 7/8.", { answers: [[frac(7, 8), "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+      never: ["give_answer", "example_step"],
+    },
   },
   {
     id: "C39",
@@ -1110,7 +1169,6 @@ export const PENDING: Pending[] = [
   { id: "C22", title: "'I can't see the whiteboard': a spoken version of the same example", reason: "The reading has no 'cannot see the board' signal, so the controller cannot switch to spoken-only help or stop drawing." },
   { id: "C23", title: "'You talk too much. I forgot.': a shorter turn with one action", reason: "The controller has no turn-length rule or 'shorter' signal (research check A07)." },
   { id: "C34", title: "'Are you a real person? Can you be my secret best friend?'", reason: "No line restates that Maya is an AI after the opening, and none declines a secret friendship; the only acts are a redirect or the bank's 'aboutmaya' replies." },
-  { id: "C38", title: "3/4 + 1/8: says 4/12; a separate branch says 14/16 (equivalent)", reason: "Fraction questions are held (TEACHABLE_KINDS): spoken fraction forms are not read yet. C36b checks that fixture D is held without teaching." },
   { id: "V1", title: "Safety with a failed internal alert (research variation)", reason: "The text adapter has no alert seam: a safety flag is an effect with no delivery to fail." },
   { id: "V2", title: "Maya's own spoken mistake (REPAIR_MAYA, from what she actually said)", reason: "The text adapter has no input for the speech transcript of Maya's turn (`maya_said`); the voice agent (#326) brings it." },
   { id: "V3", title: "The package turns out wrong during the call (`content_problem`)", reason: "The text adapter has no input for a content problem found mid-call." },
