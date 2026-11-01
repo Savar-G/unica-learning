@@ -9,6 +9,7 @@ import { learningEvents } from "@/lib/learning-events";
 import { learningEventStore } from "@/lib/learning-events-store";
 import { mayaCalls, recordView, FAKE_MODEL_ID, type CallStatus, type CallView, type MayaCalls } from "@/lib/maya-call";
 import { fromCallRow, mayaCallStore } from "@/lib/maya-call-store";
+import { wordingHistoryStore } from "@/lib/maya-wording-history-store";
 import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { aiTalkReviewer, REVIEW_DEFAULT_MODEL, type TalkReviewer } from "@/lib/maya-talk-review";
@@ -61,6 +62,7 @@ export function serverMayaCalls(): MayaCalls | null {
   if (!db) return null;
   return mayaCalls({
     store: mayaCallStore(db),
+    history: wordingHistoryStore(db),
     events: learningEvents(learningEventStore(db)),
     rebuild: async (childId) => (await rebuildChildProfileNow(childId))?.built === true,
     model: callModel,
