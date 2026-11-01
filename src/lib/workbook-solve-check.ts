@@ -151,10 +151,16 @@ export function toSolve(p: QuestionPackage): SolveRequest {
  * between words are kept, so "1 2" is never "12". */
 const clean = (s: string) => s.toLowerCase().replace(/[−–]/g, "-").replace(/\s+/g, " ").trim().replace(/[.]+$/, "").replace(/^x$/, "×");
 
+/**
+ * Drops the thousands commas of a well-formed number ("1,250", "1,234,567": every group after a comma exactly three
+ * digits). A comma anywhere else stays, so "1,2345" reads as two numbers and fails.
+ */
+const noGrouping = (s: string) => s.replace(/(?<![\d.,])\d{1,3}(?:,\d{3})+(?![\d,])/g, (n) => n.replace(/,/g, ""));
+
 /** The numbers in an answer, in order, each a fraction [numerator, denominator]: "1 1/2" is 3/2, "9 R 2" is 9 and 2. */
 function numbersOf(s: string): [number, number][] {
   const out: [number, number][] = [];
-  const t = s.replace(/(\d),(\d{3})/g, "$1$2").replace(/[−–]/g, "-");
+  const t = noGrouping(s).replace(/[−–]/g, "-");
   const re = /(-?(?:\d+(?:\.\d+)?|\.\d+))(?:\s+(\d+)\/(\d+)|\/(\d+))?/g;
   for (const m of t.matchAll(re)) {
     if (m[2] !== undefined) {
@@ -179,7 +185,7 @@ const sameNumbers = (a: [number, number][], b: [number, number][]) => a.length >
  * number becomes "#".
  */
 const wordsOf = (s: string) => s
-  .replace(/(\d),(\d{3})/g, "$1$2")
+  .replace(/[\s\S]*/, noGrouping)
   .replace(/[−–]/g, "-")
   .replace(/-?(?:\d+(?:\.\d+)?|\.\d+)(?:\s+\d+\/\d+|\/\d+)?/g, "#")
   .toLowerCase()

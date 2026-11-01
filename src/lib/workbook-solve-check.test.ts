@@ -147,6 +147,17 @@ describe("the solve check", () => {
     expect(sameAnswer("lessthan 5", ["less than 5"], true)).toBe(false);
   });
 
+  it("drops a thousands comma only in a well-formed number (R380-16-1)", () => {
+    expect(sameAnswer("1,2345", ["12345"], false)).toBe(false);
+    expect(sameAnswer("1,2345", ["10", "12345"], false)).toBe(false);
+    expect(sameAnswer("12,34", ["1234"], false)).toBe(false);
+    expect(sameAnswer("1,23,456", ["123456"], false)).toBe(false);
+    expect(sameAnswer("1,234,567", ["1234567"], false)).toBe(true);
+    expect(sameAnswer("$1,250.50", ["$1250.50"], false)).toBe(true);
+    expect(sameAnswer("1,250", ["1250"], false)).toBe(true);
+    expect(sameAnswer("12345,678", ["12345678"], false)).toBe(false);
+  });
+
   it("keeps the sign of a mixed number whose whole part is zero (R380-14-2)", () => {
     expect(sameAnswer("-0 1/2 m", ["0 1/2 m"], false)).toBe(false);
     expect(sameAnswer("0 1/2", ["-0 1/2"], false)).toBe(false);
