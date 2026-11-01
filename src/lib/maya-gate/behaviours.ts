@@ -1,6 +1,6 @@
 // The 40 simulated-child behaviours of the teaching research (`.design/research/ta-pedagogy-2026-10/maya-teaching.md`,
 // section 7, C01 to C40), scripted for the behaviour gate (#324), with the separate branches the research asks for
-// (a letter after the id), and the model and adapter branches (M1 to M6). PENDING lists what the controller or the
+// (a letter after the id), and the model and adapter branches (M1 to M11). PENDING lists what the controller or the
 // text adapter cannot run yet, with the reason; docs/maya-gate.md has the same table.
 import type { Behaviour, Pending, Plan, Read, Step } from "./gate";
 
@@ -927,6 +927,97 @@ export const BEHAVIOURS: Behaviour[] = [
       child("I want to stop.", { stop: true }),
     ],
     expect: { outcome: { reason: "child_stopped", highestHint: 0 }, acts: [OPEN, "guide", "guide", "close"], refused: ["hint_too_high"] },
+  },
+  // ---------- Code's fallback keeps the checked reading (#389) ----------
+  {
+    id: "M7",
+    title: "A right step in a twice-refused proposal is kept: the fallback says it right and helps with the next step",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("Seven plus nine is sixteen.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "accept_answer", repair: { act: "accept_answer" } }]),
+      child("Two plus three plus one is six. So 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      refused: ["accepts_wrong_answer", "accepts_wrong_answer"],
+      counts: { fallbacks: 1, hints: 0 },
+    },
+  },
+  {
+    id: "M8",
+    title: "A wrong step read as right in a twice-refused proposal is dropped: nothing is recorded, the step is helped again",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("Seven plus nine is fifteen.", { start: "has_work", answers: [[15, "ones", "right"]] }, [{ act: "guide", step: "tens", repair: { act: "guide", step: "tens" } }]),
+      child("Oh, sixteen. And the tens make 66.", { answers: [[16, "ones", "right"], [66, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      refused: ["accepts_wrong_answer", "accepts_wrong_answer"],
+      counts: { fallbacks: 1 },
+    },
+  },
+  {
+    id: "M9",
+    title: "A right step after a no-start: the easier example does not start, refused twice, then the fallback helps the next step",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("I don't want to.", { start: "no_start" }, [{ act: "clarify" }]),
+      child("Okay. Seven plus nine is sixteen.", { answers: [[16, "ones", "right"]] }, [{ act: "example_step", repair: { act: "example_step" } }]),
+      child("I don't know how to start the tens.", { start: "no_start" }, [{ act: "guide", level: 0 }]),
+      child("Two plus three plus one is six. So 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "clarify", "guide", "guide", "accept_answer", "ask_write", "close"],
+      refused: ["act_not_allowed", "act_not_allowed"],
+      never: ["example_step", "try_target"],
+      counts: { fallbacks: 1 },
+    },
+  },
+  {
+    id: "M10",
+    title: "The child wrote the answer: a request to write it again is refused twice, and the fallback asks about the work",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("I got 66.", { start: "has_work", answers: [[66, "result", "right"]] }),
+      { write: "started" },
+      { write: "done" },
+      child("66", { answers: [[66, "result", "right"]] }, [{ act: "ask_write", lines: ["write.answer"], repair: { act: "ask_write", lines: ["write.answer"] } }]),
+      child("I added the ones first."),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent", paperStatus: "unknown", understanding: "uncertain" },
+      acts: [OPEN, "accept_answer", "ask_write", "close"],
+      refused: ["line_not_offered", "line_not_offered"],
+      counts: { fallbacks: 1 },
+    },
+  },
+  {
+    id: "M11",
+    title: "Every column done but no final answer yet: Maya guides the final step with its own help line",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("Seven plus nine is sixteen.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("Two plus three plus one is six.", { answers: [[6, "tens", "right"]] }, [{ act: "guide", step: "result", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("66!", { answers: [[66, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, fallbacks: 0 },
+    },
   },
 ];
 

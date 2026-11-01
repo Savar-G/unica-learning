@@ -348,12 +348,12 @@ describe("the line set", () => {
     expect(c.refusal({ act: "guide", step: "ones", level: 0, parts: [{ line: "step.invite", slots: { step: "tens" } }] })).toMatchObject({ code: "line_not_offered" });
   });
 
-  it("offers the model every act's lines, and only the steps not done yet", () => {
+  it("offers the model every act's lines, and only the steps not done yet, then the final step", () => {
     const c = call();
     const offers = lineOffers(c.s);
     expect(Object.keys(offers).sort()).toEqual(["accept_answer", "clarify", "confirm", "example_step", "guide", "try_target"].sort());
     const guideSteps = new Set(offers.guide!.flatMap((o) => (o.line.startsWith("step.") ? [o.slots.step] : [])));
-    expect([...guideSteps]).toEqual(["ones", "tens"]);
+    expect([...guideSteps]).toEqual(["ones", "tens", "result"]);
     expect(offers.guide!.every((o) => o.texts.length >= 2)).toBe(true);
   });
 });

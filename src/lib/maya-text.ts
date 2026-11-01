@@ -5,9 +5,10 @@
 // One rule: nothing reaches the child unless the session's `step` accepts it. For each Maya turn the model proposes
 // (src/lib/maya-model.ts); `step` checks the proposal, and the board core (`applyBatch`) checks every board batch the
 // session builds from it. A refused proposal is asked for again once, with the refusal's reason; a second refusal, or
-// a model that fails, is replaced by a safe code fallback: a proposal code builds from the session's own offers (a
-// code-written line or a bank phrase, no reading, no board), which `step` checks like any other. When no fallback is
-// accepted, the call ends as a technical issue and Maya says nothing.
+// a model that fails, is replaced by a safe code fallback: a proposal the controller builds from the session's own
+// offers (`fallbacks`: code-written lines or a bank phrase, no free talk, no board), which `step` checks like any
+// other. It keeps what code can check of the refused proposals' readings, the child's answers (#389), so only the
+// words are replaced. When no fallback is accepted, the call ends as a technical issue and Maya says nothing.
 //
 // Free talk (D-196 rule B, D-197): with `freeTalk` on, the model's own words in a turn with no math line are said only
 // when they pass the session's code guards and a separate review (`reviewer`, src/lib/maya-talk-review.ts) with a time
@@ -19,10 +20,9 @@
 import { applyBatch, createScene, type Batch, type Scene } from "@/lib/board";
 import {
   createSession,
-  lineOffers,
+  fallbacks,
   nextActs,
   step,
-  warmGroups,
   LINES_VERSION,
   PROPOSAL_VERSION,
   type Act,
@@ -132,34 +132,6 @@ export interface TextSession {
   trace(): MayaTrace;
   /** The state to go on with later (`resume`), after the inputs so far have finished. */
   saved(): Promise<SavedTextSession>;
-}
-
-/** Safe acts first; then the gentlest teaching; giving or accepting the answer and closing come last. */
-const FALLBACK_ORDER: readonly Act[] = [
-  "safety", "repair", "open", "guide", "example_step", "try_target", "ask_write", "clarify", "confirm", "check_in", "wait", "redirect",
-  "offer_other_input", "give_answer", "accept_answer", "close",
-];
-
-/** The fallback proposals for the session now, safest first: code-written lines and bank phrases, no reading, no board. */
-function fallbacks(session: Session): unknown[] {
-  const { acts } = nextActs(session);
-  const lines = lineOffers(session);
-  const warm = warmGroups(session);
-  const order = [...acts].sort((a, b) => FALLBACK_ORDER.indexOf(a) - FALLBACK_ORDER.indexOf(b));
-  return order.flatMap((act) => {
-    // The gentlest line first; for a confirmation, the number the child said last.
-    const free = (lines[act] ?? []).filter((o) => !o.requires);
-    const offers = act === "confirm" ? free.reverse() : free.sort((a, b) => (a.level ?? 0) - (b.level ?? 0));
-    const group = warm[act]?.[0];
-    return [
-      ...offers.map((o) => ({
-        version: PROPOSAL_VERSION, act, parts: [{ line: o.line, slots: o.slots }],
-        ...(o.slots.step ? { step: o.slots.step } : {}), ...(act === "guide" ? { level: o.level ?? 0 } : {}),
-      })),
-      ...(group ? [{ version: PROPOSAL_VERSION, act, parts: [{ warm: group }] }] : []),
-      { version: PROPOSAL_VERSION, act, parts: [] },
-    ];
-  });
 }
 
 const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
@@ -303,7 +275,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     if (result?.said) {
       entry.output = result.said;
     } else if (!session.outcome && nextActs(session).expect === "maya") {
-      for (const proposal of fallbacks(session)) {
+      // The fallback keeps what code can check of the refused proposals' readings (#389).
+      const refused = entry.attempts.filter((a) => a.refusal !== null).map((a) => a.proposal);
+      for (const proposal of fallbacks(session, refused)) {
         const tried = await tryProposal(proposal, out, index);
         if (tried.said) {
           entry.attempts.push({ source: "fallback", proposal, refusal: null });

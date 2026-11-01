@@ -34,8 +34,12 @@ Nothing reaches the child unless the session's `step` accepts it (`src/lib/maya-
 1. The model gets the session's offers for this turn: the allowed acts, their code-written lines, the warm groups with their phrases, and the board offers. It returns a version 2 proposal (`src/lib/maya-model.ts`, prompt `PROMPT_VERSION`).
 2. `step` checks the proposal. The board core (`applyBatch`) then checks each board batch the session builds from it.
 3. If either refuses, the model is asked again once, with the refusal's code and reason.
-4. If the second proposal is refused too, or the model fails, code replaces it with a fallback. A fallback is a code line or a bank phrase from the session's own offers, with no reading and no board, and `step` checks it.
+4. If the second proposal is refused too, or the model fails, code replaces it with a fallback (`fallbacks` in `src/lib/maya/session.ts`). A fallback is code lines or a bank phrase from the session's own offers, with no free talk and no board, and `step` checks it like any proposal.
 5. If no fallback is accepted, the call ends as a technical issue and Maya says nothing.
+
+**The fallback keeps what code can check (#389).** Only the model's words are replaced. The fallback carries each answer of the refused proposals' readings that code checks alone, as it checks the answers of an accepted proposal: the child said the number in this turn and kept it, the step is a worked step, a final answer is the last number the child kept, and the model's verdict is the one the answer key and the worked steps give. An answer whose verdict code does not confirm is dropped, never turned round. So a right step is recorded and said ("Yes! 7 + 9 = 16."), and the help goes on from the first step still not done; a right final answer is accepted. No other field of a refused reading is kept: `paper`, `help`, `writing`, `offTopic`, `unsafeRequest` and `correctsHearing` are the model's word only, and would change the outcome or the help allowed. As before, `step` keeps a refused reading's safety, stop, unclear and no-start fields, which only make Maya more careful (the safety guidance, a close, a confirmation, the easier example).
+
+Three rules of the controller go with it. A checked right answer on the child's question shows they have started: a no-start no longer holds, and the easier example does not start after it. Writing that ends after the answer is solved is the child writing it (`wrote`): the request to write is no longer offered, and neither is it after the reading `paper` was accepted. The final step after the last column ("result") has its own help line, an H0 invite to put the whole answer together (`step.invite` with the step `result`).
 
 ## Free talk (D-197)
 

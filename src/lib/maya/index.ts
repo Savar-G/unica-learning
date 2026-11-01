@@ -4,6 +4,7 @@
 // lines from lineOffers and may add warm talk, which talkMath checks.
 export {
   createSession,
+  fallbacks,
   heardWordings,
   learningEvent,
   drawOffers,

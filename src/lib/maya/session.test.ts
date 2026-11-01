@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createSession, learningEvent, nextActs, SAFETY_GUIDANCE, step, TEMPLATES, valuesIn, type Effect, type LineId, type Proposal, type SessionEvent, type Slots } from "@/lib/maya";
+import { createSession, fallbacks, learningEvent, lineOffers, nextActs, SAFETY_GUIDANCE, step, TEMPLATES, valuesIn, type Effect, type LineId, type Proposal, type SessionEvent, type Slots } from "@/lib/maya";
 import { workedSteps, type QuestionPackage } from "@/lib/question-package";
 
 // Maya's teaching controller (#321): scripted child turns, model proposals and a passed-in clock, through the session's
@@ -845,6 +845,71 @@ describe("review follow-up", () => {
     expect(c.refused({ act: "guide", step: "ones", level: 0, parts: [ln("step.invite", { step: "ones" })], board: [sum, put("ones")] })).toMatchObject({ code: "wrong_math" });
     c.child("Show me.");
     c.maya({ act: "guide", step: "ones", level: 3, parts: [ln("step.show", { step: "ones" })], board: [sum, put("ones")], reading: { help: "show" } });
+  });
+});
+
+describe("code's fallback keeps what code can check of a refused reading (#389)", () => {
+  const right16 = { value: num(16), step: "ones", verdict: "right" as const };
+
+  it("keeps only the answers code checks alone, and no field of the reading code cannot check", () => {
+    const c = opened();
+    c.child("Seven plus nine is sixteen. Two plus three is five.");
+    const refused = {
+      version: 2, act: "accept_answer", parts: [ln("answer.right")],
+      reading: {
+        answers: [right16, { value: num(5), step: "tens", verdict: "right" }, { value: num(66), step: "result", verdict: "right" }, { value: "16", step: "ones", verdict: "right" }],
+        paper: "written", help: "show", writing: true, offTopic: true, correctsHearing: true, unsafeRequest: true,
+      },
+    };
+    const options = fallbacks(c.session, [refused, refused]);
+    expect(options.length).toBeGreaterThan(0);
+    // 5 is not the tens (the carried ten makes 6), 66 was never said, "16" is not a number value: all dropped.
+    for (const p of options) expect(p.reading).toEqual({ answers: [right16] });
+    const first = options[0];
+    expect(first).toMatchObject({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })] });
+    const before = c.session;
+    c.send({ type: "proposal", at: T0, proposal: first });
+    // The step is recorded; nothing the code cannot check changed the session.
+    expect(c.session.done).toEqual(["ones"]);
+    expect(c.session).toMatchObject({ paper: before.paper, mishearing: before.mishearing, redirects: before.redirects, state: "GUIDE_TARGET" });
+    expect(c.session.ladder).toMatchObject({ step: "tens", unlocked: 0 });
+  });
+
+  it("builds no fallback reading from a proposal that is not an object, and none when it is not Maya's turn", () => {
+    const c = opened();
+    c.child("Seven plus nine is sixteen.");
+    for (const p of fallbacks(c.session, ["junk", null, { reading: "x" }, { reading: { answers: "16" } }])) expect(p).not.toHaveProperty("reading");
+    const waiting = call();
+    expect(fallbacks(waiting.session, [])).toEqual([]);
+  });
+
+  it("asks for the work, not the answer again, when the check comes after the child wrote it", () => {
+    const c = opened();
+    c.child("I got 66.");
+    c.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [{ value: num(66), step: "result", verdict: "right" }] } });
+    c.send({ type: "writing", at: T0, status: "started" });
+    c.send({ type: "writing", at: T0, status: "done" });
+    c.child("66");
+    const offered = lineOffers(c.session).ask_write!.map((o) => o.line);
+    expect(offered).not.toContain("write.answer");
+    expect(offered).not.toContain("write.yours");
+    const [first] = fallbacks(c.session, []);
+    expect(first).toMatchObject({ act: "ask_write", understanding: "uncertain", parts: [ln("check.thinking")] });
+    expect(said(c.send({ type: "proposal", at: T0, proposal: first }).effects).join(" ")).not.toMatch(/write|paper|page/i);
+  });
+
+  it("lets the model guide the final step with its help line, only once every column is done", () => {
+    const c = opened();
+    c.child("Seven plus nine is sixteen.");
+    const final = { act: "guide" as const, step: "result", level: 0 as const, parts: [ln("step.invite", { step: "result" })] };
+    expect(c.refused({ ...final, reading: { answers: [right16] } })).toMatchObject({ code: "wrong_step" });
+    c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { answers: [right16] } });
+    c.child("Two plus three plus one is six.");
+    const out = c.maya({ ...final, parts: [ln("check.right_step", { step: "tens" }), ...final.parts], reading: { answers: [{ value: num(6), step: "tens", verdict: "right" }] } });
+    const text = said(out.effects).join(" ");
+    expect(TEMPLATES["invite.result"].map((w) => w.replace("{expr}", "27 + 39")).some((w) => text.endsWith(w))).toBe(true);
+    expect(text).not.toMatch(/\b66\b/);
+    expect(c.session.ladder.step).toBe("result");
   });
 });
 

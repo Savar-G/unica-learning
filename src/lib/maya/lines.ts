@@ -17,8 +17,11 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 
-/** The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. Version 2: redirect.decline. */
-export const LINES_VERSION = 2;
+/**
+ * The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. Version 2:
+ * redirect.decline. Version 3 (#389): step.invite for the final step ("result"), after the last column.
+ */
+export const LINES_VERSION = 3;
 
 export const LINE_IDS = [
   "open.hello",
@@ -125,6 +128,12 @@ export const TEMPLATES = {
   "step.invite": [
     "Let's look at {where}. What can you do there?", "Now {where}. What do you think comes next?", "What could you try for {where}?",
     "Let's go to {where}. What do you think?", "Next up, {where}. What would you do?", "How about {where}? What can you do there?",
+  ],
+  // The final step after the last column (#389): every work step is done, and the child puts the whole answer
+  // together. Planned wording, pending Savar's approval. It never says the answer.
+  "invite.result": [
+    "Now put it all together. What is {expr}?", "Every part is done. So what is {expr}?", "So, all together, what is {expr}?",
+    "Now say the whole answer. What is {expr}?", "Put the parts together. What does {expr} make?", "You have all the pieces. What is {expr}?",
   ],
 
   "point.add": [
@@ -484,8 +493,12 @@ export function packageLines(pkg: OperationPackage) {
       return [offer("example.step", step.kind === "result" ? "example.result" : "example.step", { show }, { slots: { step: id }, ...(eq ? { board: eq } : {}) })];
     },
     tryTarget: (): LineOffer[] => [offer("try.target", "try.target", { expr }, { slots: {}, board: expr })],
-    /** The help lines of the child's question's step, H0 to H3. */
+    /**
+     * The help lines of the child's question's step, H0 to H3. The final step ("result", once every work step is done)
+     * has one line, an H0 invite to put the whole answer together (#389).
+     */
     help: (id: string): LineOffer[] => {
+      if (id === "result") return [offer("step.invite", "invite.result", { expr }, { slots: { step: "result" }, level: 0 })];
       const step = find(id);
       return step ? stepLines(pkg, step) : [];
     },
@@ -558,7 +571,7 @@ export function allLineTexts(pkg: OperationPackage, heardValues: readonly Answer
   const heard = [...new Map(heardValues.map((v) => [valueText(v), v])).values()];
   const offers = [
     ...l.hello(), ...l.question(), ...l.assess(), ...l.exampleIntro(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id)),
-    ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.explain(),
+    ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
     ...l.otherInput(), ...l.redirect(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("maya"), ...l.repair(),
   ];

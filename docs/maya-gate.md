@@ -48,7 +48,7 @@ Counts read from each saved trace: Maya turns, outputs, silent turns, refusals, 
 
 ## Behaviours
 
-`passing`: the whole behaviour runs. `partial`: the run covers what the controller supports. The last column says what is still missing, and #383 lists it. A letter after an id is a separate branch the research asks for. `V4` is a research variation. `FT1` to `FT10` are free-talk branches (D-197): the model's own words through the code guards and the scripted review. `M1` to `M6` are model and adapter branches: a failing model, a model that builds its own board, math in the model's own words, a dropped connection, a script that ends early, and a hint above the allowed level.
+`passing`: the whole behaviour runs. `partial`: the run covers what the controller supports. The last column says what is still missing, and #383 lists it. A letter after an id is a separate branch the research asks for. `V4` is a research variation. `FT1` to `FT10` are free-talk branches (D-197): the model's own words through the code guards and the scripted review. `M1` to `M11` are model and adapter branches: a failing model, a model that builds its own board, math in the model's own words, a dropped connection, a script that ends early, a hint above the allowed level, and code's fallback keeping the checked reading of a twice-refused proposal (#389: a right step kept, a wrong one dropped, no easier example after progress, no second request to write) and the final step's help line.
 
 | Id | Fixture | Status | Behaviour | Expected outcome | Not covered yet |
 |---|---|---|---|---|---|
@@ -121,6 +121,11 @@ Counts read from each saved trace: Maya turns, outputs, silent turns, refusals, 
 | M4 | A | passing | The connection fails mid-call: technical_issue | technical_issue |  |
 | M5 | A | passing | The script ends before the call ends: finish() ends it as a technical issue, the trace is complete | technical_issue |  |
 | M6 | A | passing | A guide above the allowed level: refused (hint_too_high), then the right level | child_stopped |  |
+| M7 | A | passing | A right step in a twice-refused proposal is kept: the fallback says it right and helps with the next step | solved, independent |  |
+| M8 | A | passing | A wrong step read as right in a twice-refused proposal is dropped: nothing is recorded, the step is helped again | solved, independent |  |
+| M9 | A | passing | A right step after a no-start: the easier example does not start, refused twice, then the fallback helps the next step | solved, independent |  |
+| M10 | A | passing | The child wrote the answer: a request to write it again is refused twice, and the fallback asks about the work | solved, independent |  |
+| M11 | A | passing | Every column done but no final answer yet: Maya guides the final step with its own help line | solved, independent |  |
 
 ## Pending
 
