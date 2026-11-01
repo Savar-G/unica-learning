@@ -13,7 +13,13 @@
 //      (public.workbook_run_calls, R379-7-1): a retry or a resume replays a page's stored calls instead of asking the
 //      AI again, so no paid attempt is lost and the draft is the one an uninterrupted run makes. The solve check (#380,
 //      src/lib/workbook-solve-check.ts) reads each printed question the AI worded; each check is stored on the run with
-//      its cost (public.workbook_run_solves), a page's checks before the page itself, for the admin to read.
+//      its cost (public.workbook_run_solves) as it comes back, keyed by its call and question (R379-8-1): the call is
+//      stored before its checks start, and a resume runs only the checks with no stored result.
+//   The plan is made once per run (R379-8-2): the first job call reads the child, plans the workbook and stores the
+//   plan with its inputs and fingerprints (public.workbook_run_frames, RunFrame), under the lease. Every later call
+//   reads that plan, never the child's profile, grade or workbooks again, and refuses to go on (the run fails, with
+//   the reason) when the curriculum, the planned book (layouts, rooms), the AI or solve model or the deployed code
+//   changed since, or when a stored page, attempt or call does not fit the plan (ResumeMismatch).
 //   3. render: the template makes one image per page and the PDF, into the workbook bucket at <parent id>/<draft id>/.
 //      A page that does not render gets a proof image (#310 proofPages) with its failure marked; the other pages render.
 //   4. save: the run ends as done, naming the draft, and the draft gets revision 1 with its rendering, in one step.
@@ -32,23 +38,27 @@
 // is refused, so its files are removed. A late call never replaces what the newer holder wrote.
 // Pure TypeScript: no Next.js, React, network, database or clock (the stores, the AI, the engine, the clock and ids are
 // passed in).
-import type { Grade } from "@/lib/assessment";
+import { isGrade, type Grade } from "@/lib/assessment";
 import type { AiClient } from "@/lib/ai-client";
 import type { ChildLearnerProfile } from "@/lib/child-profile";
 import type { PageImage, QuestionBox, WorkbookFiles } from "@/lib/workbook-content";
-import { curriculumFor } from "@/lib/workbook-curriculum";
+import { curriculumFor, curriculumVersion } from "@/lib/workbook-curriculum";
 import {
+  bookOutline,
   generateWorkbook,
+  ResumeMismatch,
   type AttemptLedger,
   type CallStore,
   type FitCheck,
   type GeneratedPage,
   type GeneratedWorkbook,
+  type GenerateInput,
   type PageStore,
   type StoredCall,
   type WorkbookDraftStore,
 } from "@/lib/workbook-generator";
 import { planNextWorkbook } from "@/lib/workbook-placement";
+import type { WorkbookPlan } from "@/lib/workbook-plan";
 import type { SolveLog, Solver, SolveVerdict } from "@/lib/workbook-solve-check";
 import { IMAGE_SCALE, PRINT_PAGE, proofPages, renderWorkbook, type DraftPage, type PrintEngine, type RenderProblem, type WorkbookTemplate } from "@/lib/workbook-render";
 
@@ -160,8 +170,17 @@ export interface WorkbookRunStore {
    * holds the run: false (nothing stored) when the lease is lost.
    */
   saveCall(runId: string, lease: string, page: number, seq: number, call: StoredCall): Promise<boolean>;
-  /** Stores solve checks of the run (at most SOLVE_BATCH at a time), with a heartbeat; false when the lease is lost. */
+  /**
+   * Stores solve checks of the run (at most SOLVE_BATCH at a time), with a heartbeat; false when the lease is lost. A
+   * check with a `callKey` already stored under that key is not stored again (the first stays).
+   */
   saveSolves(runId: string, lease: string, solves: RunSolve[]): Promise<boolean>;
+  /** The verdicts of the run's solve checks that have a call key, by that key (R379-8-1). */
+  solves(runId: string): Promise<Map<string, SolveVerdict>>;
+  /** The run's plan, as its first job call stored it (R379-8-2); null before. */
+  frame(runId: string): Promise<RunFrame | null>;
+  /** Stores the run's plan, with a heartbeat, only while `lease` holds the run (false: nothing stored); the first stays. */
+  saveFrame(runId: string, lease: string, frame: RunFrame): Promise<boolean>;
   /** Stores a finished day page (the first stored wins), with a heartbeat. */
   savePage(runId: string, lease: string, page: GeneratedPage): Promise<boolean>;
   /** Keeps the attempt's error and starts the next attempt; false too when no attempt is left. */
@@ -185,6 +204,36 @@ export interface ChildInputs {
   workbooks: { number: number; levels: number[] }[];
 }
 
+/** The shape version of a stored RunFrame. */
+export const RUN_FRAME_VERSION = 1;
+
+/**
+ * What a run is made from, stored once by its first job call (R379-8-2), so every later call makes the same book: the
+ * child's inputs the plan read (grade, curriculum, profile revision, stored workbooks; never the profile's content or
+ * the child's name), the plan itself, and the fingerprints a later call must find unchanged.
+ */
+export interface RunFrame {
+  version: number;
+  /** The curriculum key ("bc"). */
+  curriculum: string;
+  grade: Grade;
+  /** The child profile revision the plan was made from, or null. */
+  profileRevision: number | null;
+  workbooks: { number: number; levels: number[] }[];
+  plan: WorkbookPlan;
+  versions: {
+    /** curriculumVersion of the curriculum. */
+    curriculum: string;
+    /** bookOutline of the planned book: its pages, layouts, rooms and planned slots. */
+    outline: string;
+    /** The AI model and the solve check's model. */
+    model: string;
+    solveModel: string;
+    /** The deployed code's version (WorkbookJobDeps.build); null where none is known (development). */
+    build: string | null;
+  };
+}
+
 export interface WorkbookJobSource {
   /** Null when there is no such child. */
   inputs(childId: string): Promise<ChildInputs | null>;
@@ -195,6 +244,8 @@ export interface WorkbookJobSource {
  * in US dollars (null when the provider did not say) and what the reader saw, answered and was compared with.
  */
 export interface RunSolve {
+  /** Its key on the run (solveKey: call and question, R379-8-1); a resume reads its verdict instead of checking again. */
+  callKey?: string;
   questionId: string;
   model: string;
   verdict: SolveVerdict["status"];
@@ -242,6 +293,11 @@ export interface WorkbookJobDeps {
   handOff?(runId: string): Promise<void>;
   /** The time limit of one AI call; the generator's default when not given. */
   timeLimitMs?: number;
+  /**
+   * The deployed code's version (the commit): a run goes on only on the code it started on (R379-8-2), since the
+   * templates, the wording and the checks are code. None: not known (development), and not compared.
+   */
+  build?: string | null;
 }
 
 export type JobOutcome = "done" | "failed" | "stale" | "handed-on" | "not-claimed";
@@ -287,6 +343,10 @@ class Refusal extends Error {}
 class Stopped extends Error {}
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** The refusal of a call that finds what the run was made from changed since it started (R379-8-2). */
+const changed = (what: string, was: string | null, is: string | null) =>
+  new Refusal(`The run cannot go on: ${what} changed since it started (${was ?? "none"} then, ${is ?? "none"} now). Start a new run.`);
 
 /** The curriculum key of a signup curriculum: only BC has a map. */
 const CURRICULUM_KEYS: Record<string, string> = { BC: "bc" };
@@ -421,7 +481,11 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps, o: { 
   for (;;) {
     try {
       let draft = await deps.drafts.draft(claimed.draftKey);
-      if (!draft) {
+      if (draft) {
+        // A call that only renders the stored draft renders it with the templates of the code the run started on.
+        const frame = await runs.frame(runId);
+        if (frame && frame.versions.build !== (deps.build ?? null)) throw changed("the site's code", frame.versions.build, deps.build ?? null);
+      } else {
         const written = await write(claimed, deps, lease, progress, check, () => lost, (v) => { lost = v; }, () => left() < PAGE_MARGIN_MS);
         if (written === "paused") return await handOn();
         // The stored draft is the truth: an earlier attempt of this holder may have stored it ("used").
@@ -440,9 +504,9 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps, o: { 
       return "done";
     } catch (e) {
       if (e instanceof Stopped || lost) return "stale";
-      const error = message(e);
+      const error = e instanceof ResumeMismatch ? `The run cannot go on: ${e.message}. Start a new run.` : message(e);
       try {
-        if (e instanceof Refusal) return (await runs.fail(runId, lease, error)) ? "failed" : "stale";
+        if (e instanceof Refusal || e instanceof ResumeMismatch) return (await runs.fail(runId, lease, error)) ? "failed" : "stale";
         console.error("[workbook job] attempt failed", runId, error);
         if (await runs.retry(runId, lease, error)) continue;
         return (await runs.fail(runId, lease, error)) ? "failed" : "stale";
@@ -454,6 +518,53 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps, o: { 
   }
 }
 
+/** The generator's input from a run's plan and the child's name (printed only: the plan never reads it). */
+const generateInput = (run: WorkbookRun, frame: RunFrame, name: string): GenerateInput => ({
+  workbookId: run.draftKey, childId: run.childId, book: { child: name }, number: run.number,
+  profileBuild: frame.profileRevision !== null ? `child profile revision ${frame.profileRevision}` : null,
+  plan: frame.plan, curriculum: curriculumFor(frame.curriculum)!,
+});
+
+/**
+ * The run's plan (R379-8-2): the one its first job call stored; else (this is the first call) the child's inputs read
+ * now, planned and stored under the lease (the first stored stays, and is the one used). Refused when a later call finds
+ * what the plan was made from changed: the curriculum, the planned book, the models or the deployed code. A run with
+ * pages or attempts but no stored plan was started before plans were stored: refused too (it cannot be resumed safely).
+ */
+async function runFrame(run: WorkbookRun, deps: WorkbookJobDeps & { ai: AiClient; solver: Solver }, lease: string, name: string, inputs: ChildInputs): Promise<RunFrame> {
+  let frame = await deps.runs.frame(run.id);
+  if (!frame) {
+    if ((await deps.runs.pages(run.id)).length > 0 || (await deps.runs.attempts(run.id)).size > 0) {
+      throw new Refusal("This run was started before a run's plan was stored, so it cannot go on safely. Start a new run.");
+    }
+    const key = CURRICULUM_KEYS[inputs.province];
+    const curriculum = key ? curriculumFor(key) : null;
+    if (!key || !curriculum) throw new Refusal(`There is no workbook curriculum for ${inputs.province} yet. Only BC has one.`);
+    const planned = planNextWorkbook({ curriculum, grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number });
+    if (!planned.ok) throw new Refusal(`The plan could not be made: ${planned.reason}.`);
+    const made: RunFrame = {
+      version: RUN_FRAME_VERSION, curriculum: key, grade: inputs.grade, profileRevision: inputs.profile?.revision ?? null, workbooks: inputs.workbooks,
+      plan: planned.plan, versions: { curriculum: "", outline: "", model: deps.ai.model, solveModel: deps.solver.model, build: deps.build ?? null },
+    };
+    made.versions.curriculum = curriculumVersion(key)!;
+    made.versions.outline = bookOutline(generateInput(run, made, name));
+    if (!(await deps.runs.saveFrame(run.id, lease, made))) throw new Stopped("the run was taken up by another call");
+    frame = await deps.runs.frame(run.id);
+    if (!frame) throw new Error("the run's plan was not stored");
+  }
+  // Every call, the first included, checks the stored plan against what this call would make it from.
+  if (frame.version !== RUN_FRAME_VERSION || !isGrade(frame.grade) || !frame.plan) throw new Refusal("The run's stored plan is of another shape. Start a new run.");
+  const now = curriculumVersion(frame.curriculum);
+  if (!now) throw new Refusal(`There is no workbook curriculum ${frame.curriculum} any more. Start a new run.`);
+  if (now !== frame.versions.curriculum) throw changed("the curriculum", frame.versions.curriculum, now);
+  if ((deps.build ?? null) !== frame.versions.build) throw changed("the site's code", frame.versions.build, deps.build ?? null);
+  if (deps.ai.model !== frame.versions.model) throw changed("the AI model", frame.versions.model, deps.ai.model);
+  if (deps.solver.model !== frame.versions.solveModel) throw changed("the solve check's model", frame.versions.solveModel, deps.solver.model);
+  const outline = bookOutline(generateInput(run, frame, name));
+  if (outline !== frame.versions.outline) throw changed("the planned book (its pages, layouts or rooms)", frame.versions.outline, outline);
+  return frame;
+}
+
 /** Steps 1 and 2: the plan, then the day pages (the stored ones kept), then the draft, stored. "paused": out of time. */
 async function write(
   run: WorkbookRun, deps: WorkbookJobDeps, lease: string,
@@ -462,15 +573,12 @@ async function write(
 ): Promise<GeneratedWorkbook | "paused"> {
   await progress({ step: "plan" });
   await check();
-  const inputs = await deps.source.inputs(run.childId);
-  if (!inputs) throw new Refusal("The child is not known.");
-  const key = CURRICULUM_KEYS[inputs.province];
-  const curriculum = key ? curriculumFor(key) : null;
-  if (!curriculum) throw new Refusal(`There is no workbook curriculum for ${inputs.province} yet. Only BC has one.`);
   if (!deps.ai) throw new Refusal("The AI is off: OPENROUTER_API_KEY is not set.");
   if (!deps.solver) throw new Refusal("The solve check is off: OPENROUTER_API_KEY is not set.");
-  const planned = planNextWorkbook({ curriculum, grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number });
-  if (!planned.ok) throw new Refusal(`The plan could not be made: ${planned.reason}.`);
+  // The child is read for the name the pages print, and (on the first call only) for the plan.
+  const inputs = await deps.source.inputs(run.childId);
+  if (!inputs) throw new Refusal("The child is not known.");
+  const frame = await runFrame(run, { ...deps, ai: deps.ai, solver: deps.solver }, lease, inputs.name, inputs);
 
   const ai = deps.ai;
   const guardedAi: AiClient = {
@@ -502,77 +610,49 @@ async function write(
       return solver.solve(request, signal);
     },
   };
-  // The solve checks wait here until the next page is stored, then go first (a check of a page that is never stored
-  // is kept too: it was paid for).
-  const solves: RunSolve[] = [];
-  const flushSolves = async () => {
-    while (solves.length > 0) {
-      const batch = solves.splice(0, SOLVE_BATCH);
-      if (isLost() || !(await deps.runs.saveSolves(run.id, lease, batch))) {
-        setLost(true);
-        throw new Stopped("the run was taken up by another call");
-      }
-    }
-  };
-  const onSolve = (log: SolveLog) => {
-    solves.push({
-      questionId: log.id, model: log.model, verdict: log.verdict.status, ms: Math.max(0, Math.round(log.ms)), usd: deps.solveCost?.(log) ?? null,
-      log: { questions: log.questions, answers: (JSON.stringify(log.answers ?? null) ?? "null").slice(0, SOLVE_ANSWERS_MOST), key: log.key, verdict: log.verdict },
-    });
+  const lose = () => {
+    setLost(true);
+    throw new Stopped("the run was taken up by another call");
   };
   const attempts: AttemptLedger = {
     max: SLOT_ATTEMPTS,
     load: () => deps.runs.attempts(run.id),
     async use(page, slots) {
       const counted = isLost() ? null : await deps.runs.useAttempts(run.id, lease, page, slots);
-      if (!counted) {
-        setLost(true);
-        throw new Stopped("the run was taken up by another call");
-      }
-      return counted;
+      return counted ?? lose();
     },
   };
-  // Each call is stored before anything else uses it, its solve checks first (R379-7-1).
+  // Each call is stored as soon as it is built, before its solve checks (R379-7-1, R379-8-1); each solve check as it
+  // comes back, under its key, with its cost (a check of a page that is never stored is kept too: it was paid for).
   const calls: CallStore = {
     load: (numbers) => deps.runs.calls(run.id, numbers),
     async save(page, seq, call) {
-      await flushSolves();
-      if (isLost() || !(await deps.runs.saveCall(run.id, lease, page, seq, call))) {
-        setLost(true);
-        throw new Stopped("the run was taken up by another call");
-      }
+      if (isLost() || !(await deps.runs.saveCall(run.id, lease, page, seq, call))) lose();
+    },
+    async solves(numbers) {
+      const wanted = new Set(numbers);
+      return new Map([...await deps.runs.solves(run.id)].filter(([key]) => wanted.has(Number(key.slice(0, key.indexOf(":"))))));
+    },
+    async saveSolve(callKey, log) {
+      const solve: RunSolve = {
+        callKey, questionId: log.id, model: log.model, verdict: log.verdict.status, ms: Math.max(0, Math.round(log.ms)), usd: deps.solveCost?.(log) ?? null,
+        log: { questions: log.questions, answers: (JSON.stringify(log.answers ?? null) ?? "null").slice(0, SOLVE_ANSWERS_MOST), key: log.key, verdict: log.verdict },
+      };
+      if (isLost() || !(await deps.runs.saveSolves(run.id, lease, [solve]))) lose();
     },
   };
   const pages: PageStore = {
     load: () => deps.runs.pages(run.id),
     async save(page) {
-      await flushSolves();
-      if (isLost() || !(await deps.runs.savePage(run.id, lease, page))) {
-        setLost(true);
-        throw new Stopped("the run was taken up by another call");
-      }
+      if (isLost() || !(await deps.runs.savePage(run.id, lease, page))) lose();
     },
   };
-  const generating = generateWorkbook(
-    {
-      workbookId: run.draftKey, childId: run.childId, book: { child: inputs.name }, number: run.number,
-      profileBuild: inputs.profile ? `child profile revision ${inputs.profile.revision}` : null,
-      plan: planned.plan, curriculum,
-    },
-    {
-      ai: guardedAi, fit: deps.fit(inputs.parentId), store: guardedDrafts, qrToken: deps.qrToken, pages, attempts, calls,
-      concurrency: deps.concurrency ?? PAGE_CONCURRENCY, stop: () => isLost() || outOfTime(), timeLimitMs: deps.timeLimitMs,
-      progress: (done, total) => { void progress({ step: "write", done, total }); },
-      solver: guardedSolver, onSolve, now: deps.now,
-    },
-  );
-  let result: Awaited<typeof generating>;
-  try {
-    result = await generating;
-  } finally {
-    // The checks of the pages not stored (an error, a pause) are stored too, when the run is still this call's.
-    await flushSolves().catch(() => undefined);
-  }
+  const result = await generateWorkbook(generateInput(run, frame, inputs.name), {
+    ai: guardedAi, fit: deps.fit(run.parentId), store: guardedDrafts, qrToken: deps.qrToken, pages, attempts, calls,
+    concurrency: deps.concurrency ?? PAGE_CONCURRENCY, stop: () => isLost() || outOfTime(), timeLimitMs: deps.timeLimitMs,
+    progress: (done, total) => { void progress({ step: "write", done, total }); },
+    solver: guardedSolver, now: deps.now,
+  });
   if (isLost()) throw new Stopped("the run was taken up by another call");
   if (result.status === "paused") return "paused";
   if (result.status === "refused") throw new Refusal(`The draft was not stored: ${result.reason}.`);

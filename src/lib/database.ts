@@ -10,7 +10,7 @@ import type { TestDevice } from "@/lib/test-context";
 import type { StoredReview } from "@/lib/work-review";
 import type { WorkbookStatus } from "@/lib/workbook-content";
 import type { GeneratedPage, GeneratedWorkbook, StoredCall } from "@/lib/workbook-generator";
-import type { DraftRendering, RunError, RunSolve, RunStatus, RunStep } from "@/lib/workbook-job";
+import type { DraftRendering, RunError, RunFrame, RunSolve, RunStatus, RunStep } from "@/lib/workbook-job";
 import type { RenderProblem } from "@/lib/workbook-render";
 import type { BoardHistory } from "@/lib/board-history";
 import type { Outcome } from "@/lib/maya";
@@ -54,6 +54,7 @@ type ColumnTypes = KnownColumns<{
   workbook_run_pages: { page: GeneratedPage };
   workbook_run_calls: { call: StoredCall };
   workbook_run_solves: { verdict: RunSolve["verdict"]; log: RunSolve["log"] };
+  workbook_run_frames: { frame: RunFrame };
 }>;
 type Fits<T, Column> = Json extends Column ? T
   : (null extends T ? 1 : 0) extends (null extends Column ? 1 : 0) ? (NonNullable<T> extends NonNullable<Column> ? T : never) : never;

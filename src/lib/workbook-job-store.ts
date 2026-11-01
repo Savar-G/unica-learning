@@ -5,11 +5,13 @@ import { childProfileStore } from "@/lib/child-profile-store";
 import { toJson, type Database, type Tables } from "@/lib/database";
 import { draftProblem, GENERATED_DRAFT_VERSION } from "@/lib/workbook-generator";
 import { readPaged, SLOT_ATTEMPTS, type WorkbookJobSource, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
+import type { SolveVerdict } from "@/lib/workbook-solve-check";
 
 // The runs' store (#312) in Supabase (migration add_workbook_runs), and the job's read of the child. Pass a client with
 // the secret key: the service role runs the run functions and the progress update; admins only read. The solve checks
 // (migration workbook_run_solves) are stored through save_workbook_run_solves, and each AI call of a page (migration
-// workbook_run_calls) through save_workbook_run_call. The functions
+// workbook_run_calls) through save_workbook_run_call; a solve check with a call key is stored once per key, and the
+// run's plan (migration workbook_run_frames, R379-8-1 and R379-8-2) through save_workbook_run_frame. The functions
 // hold the rules (one active run per child, stale runs stopped, every write held by the lease, the audit entries);
 // tests use src/lib/workbook-job-memory.ts, which keeps the same rules. No Next.js or React.
 
@@ -24,6 +26,14 @@ export const runFromRow = (r: RunRow): WorkbookRun => ({
   startedAt: r.started_at, finishedAt: r.finished_at, error: r.error, errors: r.errors, draftId: r.draft_id, draftKey: r.draft_key, resumes: r.resumes,
   startedBy: { id: r.started_by, email: r.started_by_email },
 });
+
+/** A stored verdict as the generator reads it, or null when it is of another shape. */
+function solveVerdict(x: unknown): SolveVerdict | null {
+  const v = x as { status?: unknown; reason?: unknown } | null;
+  if (v?.status === "agreed") return { status: "agreed" };
+  if ((v?.status === "disagreed" || v?.status === "failed") && typeof v.reason === "string") return { status: v.status, reason: v.reason };
+  return null;
+}
 
 function must<T>(r: { data: T; error: { message: string } | null }, what: string): T {
   if (r.error) throw new Error(`workbook run ${what}: ${r.error.message}`);
@@ -81,6 +91,23 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
     },
     async saveSolves(id, lease, solves) {
       return must(await admin.rpc("save_workbook_run_solves", { p_run: id, p_lease: lease, p_logs: toJson(solves) }), "solve checks save") === true;
+    },
+    async solves(id) {
+      const rows = await readPaged(async (from, to) =>
+        must(await admin.from("workbook_run_solves").select("call_key, verdict:log->verdict").eq("run_id", id).not("call_key", "is", null).order("call_key").range(from, to), "solve checks load") ?? []);
+      const verdicts = new Map<string, SolveVerdict>();
+      for (const r of rows) {
+        const v = solveVerdict(r.verdict);
+        if (r.call_key && v) verdicts.set(r.call_key, v);
+      }
+      return verdicts;
+    },
+    async frame(id) {
+      const row = must(await admin.from("workbook_run_frames").select("frame").eq("run_id", id).maybeSingle(), "plan load");
+      return row?.frame ?? null;
+    },
+    async saveFrame(id, lease, frame) {
+      return must(await admin.rpc("save_workbook_run_frame", { p_run: id, p_lease: lease, p_frame: toJson(frame) }), "plan save") === true;
     },
     async savePage(id, lease, page) {
       return must(await admin.rpc("save_workbook_run_page", { p_run: id, p_lease: lease, p_number: page.number, p_page: toJson(page) }), "page save") === true;

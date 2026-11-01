@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { fakeAiClient } from "@/lib/ai-client-fake";
-import { keySolver, type SolveLog, type Solver } from "@/lib/workbook-solve-check";
+import { keySolver, type SolveLog, type Solver, type SolveVerdict } from "@/lib/workbook-solve-check";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
 import { operationResult } from "@/lib/question-package";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { renderFitCheck } from "@/lib/workbook-fit";
 import { curriculumFor } from "@/lib/workbook-curriculum";
-import { generateWorkbook, kindsOf, shapeOf, type FitCheck, type GenerateDeps, type GeneratedPage, type GeneratedWorkbook, type StoredCall } from "@/lib/workbook-generator";
+import { bookOutline, generateWorkbook, kindsOf, ResumeMismatch, shapeOf, type FitCheck, type GenerateDeps, type GeneratedPage, type GeneratedWorkbook, type StoredCall } from "@/lib/workbook-generator";
 import { planLevel, planWorkbook, type WorkbookPlan } from "@/lib/workbook-plan";
 import { skillRange } from "@/lib/workbook-book";
 import { buildQuestion, choiceAsked, type SlotWording } from "@/lib/workbook-generator-items";
@@ -1964,12 +1964,17 @@ describe("a page's AI calls kept for a resume (R379-7-1)", () => {
     const calls = new Map<string, { page: number; seq: number; call: StoredCall }>();
     // A store keeps JSON, as the database does.
     const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
+    const solves = new Map<string, SolveVerdict>();
     let failSave: number[] = [];
     let saves = 0;
+    let failSolve: number[] = [];
+    let solveSaves = 0;
     return {
-      pages, counts, calls,
+      pages, counts, calls, solves,
       /** The page saves (counted over every try) that throw, as a database error or the function's end would stop it. */
       failAt(...at: number[]) { failSave = at; },
+      /** The solve check saves (counted over every try) that throw: the try stops in the middle of a call's checks. */
+      failSolveAt(...at: number[]) { failSolve = at; },
       deps: {
         pages: {
           load: async () => [...pages.values()].map(copy),
@@ -1991,6 +1996,11 @@ describe("a page's AI calls kept for a resume (R379-7-1)", () => {
           load: async (wanted: number[]) => [...calls.values()].filter((c) => wanted.includes(c.page)).map(copy),
           save: async (page: number, seq: number, call: StoredCall) => {
             if (!calls.has(`${page}:${seq}`)) calls.set(`${page}:${seq}`, copy({ page, seq, call }));
+          },
+          solves: async (wanted: number[]) => new Map([...solves].filter(([k]) => wanted.includes(Number(k.split(":")[0]))).map(([k, v]) => [k, copy(v)])),
+          saveSolve: async (key: string, log: SolveLog) => {
+            if (failSolve.includes(++solveSaves)) throw new Error("the function stopped");
+            if (!solves.has(key)) solves.set(key, copy(log.verdict));
           },
         },
       } satisfies Partial<GenerateDeps>,
@@ -2056,5 +2066,50 @@ describe("a page's AI calls kept for a resume (R379-7-1)", () => {
     await generateWorkbook(laid, deps({ ai: a, ...stores().deps }));
     expect(a.requests.some((r) => JSON.stringify(r).includes("Zoe"))).toBe(false);
     expect(JSON.stringify([...one.s.calls.values()])).not.toContain("Zoe");
+  });
+
+  it("stops with nothing more asked when a kept page, attempt or call does not fit the plan (R379-8-2)", async () => {
+    const s = stores();
+    const a = ai();
+    // A try stopped at its third page save: two pages are kept, and the first day's later pages have kept calls.
+    s.failAt(3);
+    await expect(generateWorkbook(laid, deps({ ai: a, concurrency: 4, ...s.deps }))).rejects.toThrow("the function stopped");
+    expect(s.pages.size).toBe(2);
+    const asked = a.requests.length;
+    const U4 = planWorkbook({
+      profile: { standards: [] }, grade: 0, level: planLevel(BC, "U4")!, passed: {}, workbook: { number: 1, inLevel: 0 },
+      reviews: [], missedReviews: [], misses: [], pausedWeeks: 0, support: null, unassessedUnits: [],
+    });
+    if (!U4.ok) throw new Error(U4.reason);
+    // Another plan: the kept pages are of another book.
+    await expect(generateWorkbook({ ...laid, plan: U4.plan }, deps({ ai: a, ...s.deps }))).rejects.toThrow(ResumeMismatch);
+    // The same plan for another name: the kept pages print the name they were made for.
+    await expect(generateWorkbook({ ...laid, book: { child: "Ava" } }, deps({ ai: a, ...s.deps }))).rejects.toThrow(/kept page \d+ was made for another name/);
+    // A kept call that asked other slots than the plan's page asks.
+    const c = [...s.calls.values()].find((x) => !s.pages.has(x.page) && x.seq === 0)!;
+    const ask = c.call.ask;
+    c.call.ask = { ...ask, slots: [...ask.slots].reverse() };
+    await expect(generateWorkbook(laid, deps({ ai: a, ...s.deps }))).rejects.toThrow(`page ${c.page}: its kept call 0 is workbook_page of`);
+    c.call.ask = ask;
+    // An attempt counted for a slot the plan's page does not have.
+    s.counts.set("3:9.9", 1);
+    await expect(generateWorkbook(laid, deps({ ai: a, ...s.deps }))).rejects.toThrow("the attempts kept for page 3, slot 9.9 name a slot the plan does not have");
+    s.counts.delete("3:9.9");
+    // None of them asked the AI anything; with what was kept as it was, the run goes on.
+    expect(a.requests.length).toBe(asked);
+    expect((await generateWorkbook(laid, deps({ ai: a, concurrency: 4, ...s.deps }))).status).toBe("stored");
+  });
+
+  it("fingerprints the planned book without the child's name, and another plan gives another (R379-8-2)", () => {
+    // Mia is one of the people the plan names: for a child called Mia the plan names others, yet the fingerprint is the same.
+    expect(bookOutline({ ...laid, book: { child: "Mia" } })).toBe(bookOutline(laid));
+    expect(bookOutline(laid)).toMatch(/^[0-9a-f]{28}$/);
+    const U4 = planWorkbook({
+      profile: { standards: [] }, grade: 0, level: planLevel(BC, "U4")!, passed: {}, workbook: { number: 1, inLevel: 0 },
+      reviews: [], missedReviews: [], misses: [], pausedWeeks: 0, support: null, unassessedUnits: [],
+    });
+    if (!U4.ok) throw new Error(U4.reason);
+    expect(bookOutline({ ...laid, plan: U4.plan })).not.toBe(bookOutline(laid));
+    expect(bookOutline({ ...laid, number: 2 })).not.toBe(bookOutline(laid));
   });
 });

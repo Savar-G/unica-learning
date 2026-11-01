@@ -2223,6 +2223,52 @@ export type Database = {
           },
         ]
       }
+      workbook_run_frames: {
+        Row: {
+          child_id: string
+          created_at: string
+          frame: Json
+          parent_id: string
+          run_id: string
+        }
+        Insert: {
+          child_id: string
+          created_at?: string
+          frame: Json
+          parent_id: string
+          run_id: string
+        }
+        Update: {
+          child_id?: string
+          created_at?: string
+          frame?: Json
+          parent_id?: string
+          run_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_run_frames_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_run_frames_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_run_frames_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: true
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_run_pages: {
         Row: {
           child_id: string
@@ -2274,6 +2320,7 @@ export type Database = {
       }
       workbook_run_solves: {
         Row: {
+          call_key: string | null
           child_id: string
           created_at: string
           id: number
@@ -2287,6 +2334,7 @@ export type Database = {
           verdict: string
         }
         Insert: {
+          call_key?: string | null
           child_id: string
           created_at?: string
           id?: never
@@ -2300,6 +2348,7 @@ export type Database = {
           verdict: string
         }
         Update: {
+          call_key?: string | null
           child_id?: string
           created_at?: string
           id?: never
@@ -3035,6 +3084,10 @@ export type Database = {
           p_schema_version: number
         }
         Returns: string
+      }
+      save_workbook_run_frame: {
+        Args: { p_frame: Json; p_lease: string; p_run: string }
+        Returns: boolean
       }
       save_workbook_run_page: {
         Args: { p_lease: string; p_number: number; p_page: Json; p_run: string }

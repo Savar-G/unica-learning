@@ -1,11 +1,12 @@
 // The runs' store (#312) in memory, for tests: the same rules as the Supabase functions (migrations add_workbook_runs
 // and workbook_run_resume, src/lib/workbook-job-store.ts): one active run per child, a run stopped mid-way answered as
 // "stalled" by the next start and taken up again by resume, every write after the start held by the lease, the
-// finished pages, the solve checks, and the audit entries. `children` maps each known child to its parent; `workbooks` gives
+// finished pages, the solve checks (one per call key), the run's plan (the first stored stays), and the audit entries. `children` maps each known child to its parent; `workbooks` gives
 // each child's stored workbook numbers; `now` is the clock.
 import type { RenderProblem } from "@/lib/workbook-render";
 import { draftProblem, type GeneratedPage, type StoredCall, type WorkbookDraftStore } from "@/lib/workbook-generator";
-import { READ_PAGE, readPaged, SLOT_ATTEMPTS, SOLVE_BATCH, type DraftRendering, type RunActor, type RunSolve, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
+import { READ_PAGE, readPaged, SLOT_ATTEMPTS, SOLVE_BATCH, type DraftRendering, type RunActor, type RunFrame, type RunSolve, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
+import type { SolveVerdict } from "@/lib/workbook-solve-check";
 
 export interface MemoryAudit {
   at: string;
@@ -34,6 +35,7 @@ export function memoryRunStore(o: {
   const attempts = new Map<string, Map<string, number>>();
   const solves = new Map<string, RunSolve[]>();
   const calls = new Map<string, Map<string, { page: number; seq: number; call: StoredCall }>>();
+  const frames = new Map<string, RunFrame>();
   // The database keeps JSON (jsonb): a stored call comes back as JSON does.
   const json = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
   const audit: MemoryAudit[] = [];
@@ -133,10 +135,32 @@ export function memoryRunStore(o: {
     },
     async saveSolves(id, lease, batch) {
       if (batch.length > SOLVE_BATCH) throw new Error(`workbook run solve checks save: ${batch.length} checks in one write`);
+      // The database's check (migration workbook_run_frames): "<page>:<seq>:<slot or panel>".
+      const bad = batch.find((x) => x.callKey !== undefined && !/^[0-9]{1,4}:[0-9]:([0-9]{1,3}\.[0-9]{1,3}|e[0-9]{1,3})$/.test(x.callKey));
+      if (bad) throw new Error(`workbook run solve checks save: the call key ${bad.callKey} breaks workbook_run_solves_call_key_check`);
       const r = holding(id, lease);
       if (!r) return false;
       r.heartbeatAt = iso();
-      solves.set(id, [...(solves.get(id) ?? []), ...structuredClone(batch)]);
+      const had = solves.get(id) ?? [];
+      // A check already stored under its call key stays (on conflict do nothing).
+      const fresh = batch.filter((x, k) => x.callKey === undefined || (!had.some((y) => y.callKey === x.callKey) && !batch.slice(0, k).some((y) => y.callKey === x.callKey)));
+      solves.set(id, [...had, ...json(fresh)]);
+      return true;
+    },
+    async solves(id) {
+      const verdicts = new Map<string, SolveVerdict>();
+      for (const x of solves.get(id) ?? []) if (x.callKey !== undefined) verdicts.set(x.callKey, json(x.log.verdict));
+      return verdicts;
+    },
+    async frame(id) {
+      const f = frames.get(id);
+      return f ? json(f) : null;
+    },
+    async saveFrame(id, lease, frame) {
+      const r = holding(id, lease);
+      if (!r) return false;
+      r.heartbeatAt = iso();
+      if (!frames.has(id)) frames.set(id, json(frame));
       return true;
     },
     async savePage(id, lease, page) {
@@ -204,5 +228,5 @@ export function memoryRunStore(o: {
       return r ? view(r) : null;
     },
   };
-  return { ...store, runs, audit, revisions, pageStore: pages, attemptStore: attempts, solveStore: solves, callStore: calls };
+  return { ...store, runs, audit, revisions, pageStore: pages, attemptStore: attempts, solveStore: solves, callStore: calls, frameStore: frames };
 }

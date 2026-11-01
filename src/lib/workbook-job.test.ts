@@ -520,7 +520,7 @@ describe("stale runs", () => {
       const s = setup();
       const id = await started(s);
       await s.runs.claim(id, "lease-a");
-      const call = { built: [], examples: [], refused: [], tries: { "1.1": 1 } };
+      const call = { ask: { name: "workbook_page", slots: ["1.1"], panels: [] }, built: [], examples: [], refused: [], tries: { "1.1": 1 } };
       expect(await s.runs.saveCall(id, "lease-b", 3, 0, call)).toBe(false);
       expect(s.runs.callStore.get(id)?.size ?? 0).toBe(0);
       expect(await s.runs.saveCall(id, "lease-a", 3, 0, call)).toBe(true);
@@ -585,6 +585,179 @@ describe("stale runs", () => {
     expect(runState({ status: "queued", heartbeatAt: null, createdAt: ago(5) }, now)).toBe("waiting");
     expect(runState({ status: "stale", heartbeatAt: ago(5), createdAt: ago(5) }, now)).toBe("stopped");
     expect(runState({ status: "failed", heartbeatAt: ago(900), createdAt: ago(900) }, now)).toBe("failed");
+  });
+});
+
+describe("a run's plan, made once and stored (R379-8-2), and its solve checks kept by call (R379-8-1)", () => {
+  /** The draft of a done run, without its QR tokens (random in live use, made again by a new call). */
+  const draftOf = async (s: ReturnType<typeof setup>, id: string) => {
+    const run = (await s.runs.run(id))!;
+    expect(run.status).toBe("done");
+    const draft = (await s.drafts.draft(run.draftId!))!;
+    return { ...draft, pages: draft.pages.map((p) => ({ ...p, qrToken: "" })) };
+  };
+  /** A run whose job call stops at the given page save, as a function that ends does: it loses the run, nothing more written. */
+  async function stoppedAt(s: ReturnType<typeof setup>, at = 1) {
+    const id = await started(s);
+    let saves = 0;
+    const save = s.runs.savePage;
+    s.deps.runs = { ...s.runs, savePage: async (runId, lease, page) => {
+      if (++saves === at) {
+        s.runs.runs.get(runId)!.lease = null;
+        throw new Error("the function stopped");
+      }
+      return save(runId, lease, page);
+    } };
+    expect(await runWorkbookJob(id, s.deps)).toBe("stale");
+    return id;
+  }
+  /** A child whose profile says 2.4 and 3.3 are not secure: a plan made from it starts a level lower (U9, not U10). */
+  const weaker = { revision: 7, profile: { notYetSecure: ["2.4", "3.3"], standards: [] } as unknown as ChildLearnerProfile };
+
+  it("a profile changed between a stop and a resume: the draft equals the draft of a run that never stopped", async () => {
+    const BC = curriculumFor("bc")!;
+    const was = planNextWorkbook({ curriculum: BC, grade: 3, profile: null, workbooks: [], number: 1 });
+    const now = planNextWorkbook({ curriculum: BC, grade: 3, profile: weaker.profile, workbooks: [], number: 1 });
+    // A plan made again from the new profile would be another book.
+    expect(was.ok && now.ok && [was.plan.level, now.plan.level]).toEqual([10, 9]);
+
+    const one = setup();
+    const oneId = await started(one);
+    expect(await runWorkbookJob(oneId, one.deps)).toBe("done");
+
+    const s = setup();
+    let inputs = child();
+    s.deps.source = { inputs: async () => inputs };
+    const id = await stoppedAt(s);
+    expect(s.runs.pageStore.get(id)?.size ?? 0).toBe(0);
+    expect(s.runs.callStore.get(id)!.size).toBeGreaterThan(0);
+    inputs = child({ profile: weaker, workbooks: [] });
+    expect(await runWorkbookJob(id, s.deps, { resume: true })).toBe("done");
+    const resumed = await draftOf(s, id);
+    expect(resumed).toEqual(await draftOf(one, oneId));
+    expect(resumed).toMatchObject({ levels: [10], profileBuild: null });
+    // The plan was stored once, by the first call, and holds no name.
+    const frame = s.runs.frameStore.get(id)!;
+    expect(frame).toMatchObject({ curriculum: "bc", grade: 3, profileRevision: null, workbooks: [], plan: { level: 10 } });
+    expect(JSON.stringify(frame)).not.toContain("Leah");
+  });
+
+  it("refuses to go on, asking the AI nothing, when the curriculum, the planned book, a model or the code changed since the run started", async () => {
+    const changes: [string, (s: ReturnType<typeof setup>, id: string) => void, RegExp][] = [
+      ["curriculum", (s, id) => { s.runs.frameStore.get(id)!.versions.curriculum = "0".repeat(28); }, /the curriculum changed since it started/],
+      ["outline", (s, id) => { s.runs.frameStore.get(id)!.versions.outline = "0".repeat(28); }, /the planned book \(its pages, layouts or rooms\) changed/],
+      ["model", (s) => { s.deps.ai = { ...s.deps.ai!, model: "another/model" }; }, /the AI model changed since it started \(fake then, another\/model now\)/],
+      ["solve model", (s) => { s.deps.solver = { ...s.deps.solver!, model: "another/reader" }; }, /the solve check's model changed/],
+      ["code", (s) => { s.deps.build = "def456"; }, /the site's code changed since it started \(none then, def456 now\)/],
+    ];
+    for (const [, change, error] of changes) {
+      const s = setup();
+      const id = await stoppedAt(s);
+      const asked = (s.ai as ReturnType<typeof fakeAiClient>).requests.length;
+      change(s, id);
+      expect(await runWorkbookJob(id, s.deps, { resume: true })).toBe("failed");
+      expect((await s.runs.run(id))!.error).toMatch(error);
+      expect((s.ai as ReturnType<typeof fakeAiClient>).requests.length).toBe(asked);
+    }
+  });
+
+  it("renders a stored draft only on the code the run started on", async () => {
+    // The call stops when only the render is left: the draft is stored, and the next call renders it.
+    const s = setup({ budgetMs: 1e9 });
+    s.deps.build = "abc123";
+    const id = await started(s);
+    const finish = s.runs.finish;
+    s.deps.runs = { ...s.runs, finish: async (runId) => {
+      s.runs.runs.get(runId)!.lease = null;
+      return false;
+    } };
+    expect(await runWorkbookJob(id, s.deps)).toBe("stale");
+    expect(await s.drafts.draft((await s.runs.run(id))!.draftKey)).not.toBeNull();
+    s.deps.runs = { ...s.runs, finish };
+    s.deps.build = "def456";
+    expect(await runWorkbookJob(id, s.deps, { resume: true })).toBe("failed");
+    expect((await s.runs.run(id))!.error).toBe("The run cannot go on: the site's code changed since it started (abc123 then, def456 now). Start a new run.");
+  });
+
+  it("refuses a run that kept pages or attempts with no stored plan (started before plans were stored)", async () => {
+    const s = setup();
+    const id = await stoppedAt(s);
+    s.runs.frameStore.delete(id);
+    expect(await runWorkbookJob(id, s.deps, { resume: true })).toBe("failed");
+    expect((await s.runs.run(id))!.error).toBe("This run was started before a run's plan was stored, so it cannot go on safely. Start a new run.");
+  });
+
+  it("fails closed when a stored page or call does not fit the stored plan's pages and slots", async () => {
+    // A stored page with a slot its planned page does not have.
+    const s = setup();
+    const id = await stoppedAt(s, 3);
+    const [page] = s.runs.pageStore.get(id)!.values();
+    page.questions[0].slot = "9.9";
+    expect(await runWorkbookJob(id, s.deps, { resume: true })).toBe("failed");
+    expect((await s.runs.run(id))!.error).toBe(`The run cannot go on: kept page ${page.number} has slot 9.9, which the plan's page does not have. Start a new run.`);
+
+    // A stored call that asked other slots than its planned page's first call.
+    const t = setup();
+    const tid = await stoppedAt(t);
+    const call = [...t.runs.callStore.get(tid)!.values()].find((c) => c.seq === 0)!;
+    call.call.ask = { ...call.call.ask, slots: call.call.ask.slots.slice(1) };
+    expect(await runWorkbookJob(tid, t.deps, { resume: true })).toBe("failed");
+    expect((await t.runs.run(tid))!.error).toMatch(new RegExp(`^The run cannot go on: page ${call.page}: its kept call 0 is workbook_page of`));
+  });
+
+  it("stores a call before its solve checks; a stop during them resumes running only the checks with no stored result (R379-8-1)", async () => {
+    // A reader that answers one more than the key for every printed question with "now" in it, and counts its checks.
+    const reader = () => {
+      let checks = 0;
+      const solver: Solver = {
+        model: "reader",
+        solve: async (request) => {
+          checks++;
+          await new Promise((done) => setTimeout(done, 1));
+          return { answers: request.key.map((k) => ({ question: k.question, box: k.box, answer: /now/.test(request.questions[0].text) && k.question === "question" ? String(Number(k.right[0]) + 1) : k.right[0] })), problem: null };
+        },
+      };
+      return { solver, checks: () => checks };
+    };
+    const a = reader();
+    const one = setup({ solver: a.solver });
+    const oneId = await started(one);
+    expect(await runWorkbookJob(oneId, one.deps)).toBe("done");
+    const keys = one.runs.solveStore.get(oneId)!.map((x) => x.callKey!);
+    // Every check is kept once, under its call key, and each ran once.
+    expect(keys.every((k) => /^\d+:\d:(\d+\.\d+|e\d+)$/.test(k))).toBe(true);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(a.checks()).toBe(keys.length);
+    expect(one.runs.solveStore.get(oneId)!.some((x) => x.verdict === "disagreed")).toBe(true);
+
+    const b = reader();
+    const s = setup({ solver: b.solver });
+    const id = await started(s);
+    let saves = 0;
+    let stoppedAtKey: string | undefined;
+    const saveSolves = s.runs.saveSolves;
+    s.deps.runs = { ...s.runs, saveSolves: async (runId, lease, batch) => {
+      if (++saves === 30) {
+        stoppedAtKey = batch[0].callKey;
+        s.runs.runs.get(runId)!.lease = null;
+        throw new Error("the function stopped");
+      }
+      return saveSolves(runId, lease, batch);
+    } };
+    expect(await runWorkbookJob(id, s.deps)).toBe("stale");
+    // The call whose check stopped the function was stored before its checks started.
+    const [page, seq] = stoppedAtKey!.split(":").map(Number);
+    expect(s.runs.callStore.get(id)!.has(`${page}:${seq}`)).toBe(true);
+    const kept = s.runs.solveStore.get(id)!.length;
+    expect(kept).toBe(29);
+    const before = b.checks();
+    s.deps.runs = s.runs;
+    expect(await runWorkbookJob(id, s.deps, { resume: true })).toBe("done");
+    // The resume ran only the checks with no stored result, and made the draft a run that never stopped makes.
+    expect(b.checks() - before).toBe(keys.length - kept);
+    expect(s.runs.solveStore.get(id)!.map((x) => x.callKey).sort()).toEqual([...keys].sort());
+    expect(await draftOf(s, id)).toEqual(await draftOf(one, oneId));
+    expect((s.ai as ReturnType<typeof fakeAiClient>).requests.length).toBe((one.ai as ReturnType<typeof fakeAiClient>).requests.length);
   });
 });
 
