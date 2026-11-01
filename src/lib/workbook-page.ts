@@ -29,8 +29,11 @@ export type SlotName = (typeof SLOTS)[number];
 export type Figure =
   /** Dots in groups; the last `takenAway` dots are crossed out. */
   | { kind: "dots"; groups: number[]; takenAway?: number }
-  /** One ten-frame, or two when more than 10 are filled. */
-  | { kind: "ten-frame"; filled: number }
+  /**
+   * One ten-frame, or two when more than 10 are filled. `parts` (round 6): the counters of each part in turn, each part
+   * its own colour ("2 and 6": 2 orange, then 6 blue), adding up to `filled`; absent, every counter one colour.
+   */
+  | { kind: "ten-frame"; filled: number; parts?: number[] }
   | { kind: "number-line"; from: number; to: number; step: number; hops: [number, number][] }
   | { kind: "blocks"; hundreds?: number; tens: number; ones: number }
   | { kind: "array"; rows: number; columns: number }
@@ -239,8 +242,12 @@ function partSlots(part: PlannedPart, page: PlannedPage, level: number): { slots
 }
 
 /** Slots that are panels with no items of their own, and the room of cards each takes on a parent-led page. */
-const PANELS: Partial<Record<SlotName, number>> = { "worked-example": 4, "watch-one": 2, reminder: 3 };
-/** A parent-led page (U1 to U3) holds 6 item cards (2 columns, 3 rows); each slot after the first takes 1 more for its chip. */
+/** The reminder prints one row (its sum beside What's going on), as Watch one does: 2 cards. */
+const PANELS: Partial<Record<SlotName, number>> = { "worked-example": 4, "watch-one": 2, reminder: 2 };
+/**
+ * A parent-led page (U1 to U3) holds 6 item cards (2 columns, 3 rows); each slot after the first takes 1 more for its
+ * chip, except a slot headed by a small label (Finish these, and On your own after it).
+ */
 const PARENT_CARDS = 6;
 /** The room the 6-card budget leaves spare on a parent-led page (laid out: about 120 to 180 px), which a wrapped header uses first. */
 const PARENT_SPARE = 100;
@@ -360,7 +367,11 @@ export function pageSlots(page: PlannedPage, level: number, o: { headerGrowth?: 
     const placed = new Map<PlannedSlot, number>();
     const order = [...slots.filter((x) => x.slot === "fix-it"), ...slots.filter((x) => x.slot !== "fix-it")];
     for (const x of order) {
-      const chip = slots.indexOf(x) > 0 ? 1 : 0;
+      // Finish these, and On your own after it, print a small label over their cards, not a chip: no card for it. So a
+      // parent-led practice page holds Watch one, two to finish and two on your own ("Then do the rest on your own").
+      const at = slots.indexOf(x);
+      const labelled = x.slot === "finish-these" || (x.slot === "on-your-own" && slots[at - 1]?.slot === "finish-these");
+      const chip = at > 0 && !labelled ? 1 : 0;
       const cost = PANELS[x.slot];
       if (cost !== undefined) {
         if (room >= cost + 1) {

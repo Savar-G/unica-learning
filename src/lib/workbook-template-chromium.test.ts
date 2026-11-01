@@ -87,6 +87,36 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
     }
   }, 240_000);
 
+  it("gives a written reason on a parent-led card its writing space when the question asks How do you know? itself (#380)", async () => {
+    const { buildQuestion } = await import("@/lib/workbook-generator-items");
+    const draft = book("U2", 1);
+    const page = draft.pages.find((p) => p.content?.kind === "day" && p.type === "parent-led" && p.questions.length > 1)!;
+    const q = page.questions[0];
+    const built = buildQuestion({
+      slot: "1.1", skill: "K1-how-many", difficulty: 1, text: "Do 3 and 3 make 5? How do you know?", format: "written-reason", operation: null, wrongAnswers: [], easier: null,
+      shownWrong: null, figure: null, numbers: [], places: null, direction: null, sequence: null, pattern: null,
+    }, { id: q.package.id, workbookId: draft.id, page: page.number, question: q.number, level: 2, skills: ["K1-how-many"] });
+    const reason: DraftPage = { ...page, questions: [{ number: q.number, package: { ...built.package!, ref: q.package.ref } }, ...page.questions.slice(1)] };
+    const result = await renderWorkbook({ draft: { ...draft, pages: [reason] }, parentId: PARENT, template, engine });
+    expect(result.status === "failed" ? result.problems.filter((x) => x.question === q.number) : []).toEqual([]);
+  }, 60_000);
+
+  it("fits a parent-led page of six relation cards whose choices are words (#380)", async () => {
+    const { buildQuestion } = await import("@/lib/workbook-generator-items");
+    const num = (value: number) => ({ type: "number", value, numerator: null, denominator: null, whole: null, unit: null, hours: null, minutes: null, period: null, parts: [], text: null });
+    const draft = book("U2", 1);
+    const page = draft.pages.find((p) => p.content?.kind === "day" && p.type === "parent-led" && p.questions.length >= 6)!;
+    const questions = page.questions.map((q, k) => {
+      const built = buildQuestion({
+        slot: "1.1", skill: "K3-benchmarks-5-10", difficulty: 1, text: `Is ${k + 6} close to 0 or 10?`, format: "relation", operation: null, wrongAnswers: [], easier: null,
+        shownWrong: null, figure: null, numbers: [num(k + 6)], places: null, direction: null, sequence: null, pattern: null, relation: { kind: k % 2 ? "closer" : "less-than", to: k % 2 ? [0, 10] : [5], labels: [] }, figureShows: null,
+      }, { id: q.package.id, workbookId: draft.id, page: page.number, question: q.number, level: 2, skills: ["K3-benchmarks-5-10"] });
+      return { number: q.number, package: { ...built.package!, ref: q.package.ref } };
+    });
+    const result = await renderWorkbook({ draft: { ...draft, pages: [{ ...page, questions }] }, parentId: PARENT, template, engine });
+    expect(result.status === "failed" ? result.problems : []).toEqual([]);
+  }, 60_000);
+
   it("fills the level test and Show what you know pages to the bottom of their content area", async () => {
     for (const [level, n] of [["U2", 5], ["U12", 6], ["U24", 7]] as const) {
       const draft = book(level, n, true);

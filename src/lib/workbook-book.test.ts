@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { fakeAiClient } from "@/lib/ai-client-fake";
+import { keySolver } from "@/lib/workbook-solve-check";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
 import type { AnswerValue, Item, ItemFormat, Operation, QuestionPackage } from "@/lib/question-package";
 import { conceptLevels, isGroupingSkill, levelSigns, levelMistakes, pageFigure, printedNumbers, printedValues, rangeProblem, samProblem, samWork, skillRange } from "@/lib/workbook-book";
@@ -54,7 +55,7 @@ async function generate(level: string, kind: "first" | "second" | "test", answer
     { workbookId: WORKBOOK, childId: CHILD, number: kind === "first" ? 1 : 2, profileBuild: null, plan: planned.plan, curriculum: BC, book: { child: child.name } },
     {
       ai: fakeAiClient({ answer: (r) => ({ items: read(r).slots.map(answer).filter((x) => x !== undefined) }) }), fit, store: memoryDraftStore({ [CHILD]: PARENT }),
-      qrToken: () => `token-${String(++n).padStart(12, "0")}`, concurrency: 4,
+      qrToken: () => `token-${String(++n).padStart(12, "0")}`, concurrency: 4, solver: keySolver(),
     },
   );
   if (result.status !== "stored") throw new Error(result.status === "refused" ? result.reason : "paused");
@@ -156,18 +157,20 @@ describe("sample profiles", () => {
 
 describe("pageFigure", () => {
   it("maps each item picture to the template's", () => {
-    const add: Operation = { kind: "add", operands: [3, 4] };
-    expect(pageFigure({ kind: "dots", groups: [3, 4], takenAway: 1 }, add)).toEqual({ kind: "dots", groups: [3, 4], takenAway: 1 });
-    expect(pageFigure({ kind: "ten-frame", counters: [6, 3] }, null)).toEqual({ kind: "ten-frame", filled: 9 });
-    expect(pageFigure({ kind: "number-line", from: 0, to: 10, step: 1 }, add)).toEqual({ kind: "number-line", from: 0, to: 10, step: 1, hops: [[3, 7]] });
-    expect(pageFigure({ kind: "number-line", from: 0, to: 10, step: 1 }, { kind: "subtract", operands: [9, 4] })).toMatchObject({ hops: [[9, 5]] });
-    expect(pageFigure({ kind: "base-ten", hundreds: 1, tens: 2, ones: 3 }, null)).toEqual({ kind: "blocks", hundreds: 1, tens: 2, ones: 3 });
-    expect(pageFigure({ kind: "pattern", core: ["circle", "star"], length: 6, blank: 5 }, null)).toEqual({ kind: "pattern", core: ["circle", "star"], length: 6, blank: 5 });
-    expect(pageFigure(null, add)).toBeNull();
+    expect(pageFigure({ kind: "dots", groups: [3, 4], takenAway: 1 })).toEqual({ kind: "dots", groups: [3, 4], takenAway: 1 });
+    // Two parts in two colours, so the child sees each (round 6); one part in one colour.
+    expect(pageFigure({ kind: "ten-frame", counters: [6, 3] })).toEqual({ kind: "ten-frame", filled: 9, parts: [6, 3] });
+    expect(pageFigure({ kind: "ten-frame", counters: [7] })).toEqual({ kind: "ten-frame", filled: 7 });
+    // A question's number line has no hop: the hop would land on the answer (#380); the child draws it.
+    expect(pageFigure({ kind: "number-line", from: 0, to: 10, step: 1 })).toEqual({ kind: "number-line", from: 0, to: 10, step: 1, hops: [] });
+    expect(pageFigure({ kind: "number-line", from: 0, to: 10, step: 1 })).toMatchObject({ hops: [] });
+    expect(pageFigure({ kind: "base-ten", hundreds: 1, tens: 2, ones: 3 })).toEqual({ kind: "blocks", hundreds: 1, tens: 2, ones: 3 });
+    expect(pageFigure({ kind: "pattern", core: ["circle", "star"], length: 6, blank: 5 })).toEqual({ kind: "pattern", core: ["circle", "star"], length: 6, blank: 5 });
+    expect(pageFigure(null)).toBeNull();
   });
 
   it("leaves out a hop off the line", () => {
-    expect(pageFigure({ kind: "number-line", from: 0, to: 10, step: 1 }, { kind: "add", operands: [8, 5] })).toMatchObject({ hops: [] });
+    expect(pageFigure({ kind: "number-line", from: 0, to: 10, step: 1 })).toMatchObject({ hops: [] });
   });
 });
 
@@ -257,16 +260,38 @@ describe("Sam's wrong work", () => {
     }
   });
 
-  it("puts the steps on the page and fails a shown wrong answer code cannot show", async () => {
+  it("puts the steps on the page, shows a mistake the sum allows when the AI's cannot happen, and fails a sum no mistake fits (#380)", async () => {
     const good = await generate("U12", "first");
     const spot = dayPages(good.draft).flatMap((p) => (p.content!.kind === "day" ? p.content!.blocks : [])).find((b) => b.slot === "spot-the-error")!;
     expect(spot.lines![0]).toBe("Add the ones: 8 + 7 = 15. Write 5.");
     expect(spot.lines!.join(" ")).not.toContain("[425]");
 
-    const bad = await generate("U12", "first", (s) => (s.place === "spot-the-error"
-      ? { ...item(s), wrongAnswers: [{ value: num(400), cause: "careless", description: "A slip.", step: null }] }
-      : item(s)));
-    const q = bad.draft.pages.flatMap((p) => p.questions).filter((x) => x.place === "spot-the-error");
+    // Each Spot the error a new sum, so none repeats another of the book.
+    let k = 0;
+    const repaired = await generate("U12", "first", (s) => {
+      if (s.place !== "spot-the-error") return item(s);
+      const a = 260 + k++;
+      return { ...item(s), text: `${a} + 157 = ?`, operation: addOp(a, 157), wrongAnswers: [{ value: num(400), cause: "careless", description: "A slip.", step: null }] };
+    });
+    const fixed = repaired.draft.pages.flatMap((p) => p.questions).filter((x) => x.place === "spot-the-error");
+    expect(fixed.length).toBeGreaterThan(0);
+    for (const x of fixed) {
+      expect(x.check.status).toBe("checked");
+      const shown = x.package!.item!.error!.answer as { value: number };
+      expect(x.package!.wrongAnswers.find((w) => (w.value as { value: number }).value === shown.value)!.cause).toMatch(/^(forgot-carry|smaller-from-larger|regroup-not-taken|wrong-operation|swapped-digits)$/);
+    }
+
+    k = 0;
+    const none = await generate("U12", "first", (s) => {
+      if (s.place !== "spot-the-error") return item(s);
+      // a + b with a < b and a one-digit answer: no carry, no swap, no adding instead of taking away: no mistake of U12.
+      const pairs = Array.from({ length: 8 }, (_, x) => Array.from({ length: 8 }, (_, y) => [x + 1, y + 2] as const)).flat().filter(([x, y]) => x < y && x + y <= 9);
+      const [a, b] = pairs[k % pairs.length];
+      // A name in front keeps each text new, also for the redo of the same slot.
+      const who = ["Ava", "Ben", "Cal", "Dot", "Eli", "Fay", "Gus", "Hal", "Ivy", "Jo"][Math.floor(k++ / pairs.length) % 10];
+      return { ...item(s), text: `${who}: ${a} + ${b} = ?`, operation: addOp(a, b), wrongAnswers: [{ value: num(a + b + 2), cause: "careless", description: "A slip.", step: null }], easier: { text: "1 + 1 = ?", operation: addOp(1, 1) } };
+    });
+    const q = none.draft.pages.flatMap((p) => p.questions).filter((x) => x.place === "spot-the-error");
     expect(q.length).toBeGreaterThan(0);
     expect(q.every((x) => x.check.status === "failed" && x.check.reason.includes("Sam's steps"))).toBe(true);
   });
@@ -275,16 +300,32 @@ describe("Sam's wrong work", () => {
 describe("Spot the error at the early levels", () => {
   it.each(["U2", "U5"])("offers %s only its mistakes and puts Sam's count on the page", async (level) => {
     const asked: string[][] = [];
+    // A new sum for each Spot the error (2 + 2 first, then the slot's planned numbers), so none repeats another of the
+    // book: code prints the bare sum (round 7), so a name in the AI's text no longer tells two sums apart.
+    const names = ["Ava", "Ben", "Cal", "Dot", "Eli", "Fay", "Gus", "Hal", "Ivy", "Jo"];
+    let k = 0;
+    const used = new Set<string>();
     const { draft } = await generate(level, "first", (s) => {
-      const x = s as Asked & { mistakes?: { name: string }[] };
+      const x = s as Asked & { mistakes?: { name: string }[]; numbers?: Record<string, { max: number }> };
       if (x.place !== "spot-the-error") return item(s);
       asked.push((x.mistakes ?? []).map((m) => m.name));
-      return { ...item(s), text: "2 + 2 = ?", operation: addOp(2, 2), wrongAnswers: [{ value: num(5), cause: "counted-one-extra", description: "Counts one too many.", step: null }], easier: { text: "1 + 1 = ?", operation: addOp(1, 1) }, shownWrong: 0 };
+      // Sums in the slot's range (Sam's answer at most its max), 2 + 2 first.
+      const max = Math.min(...Object.values(x.numbers ?? {}).map((n) => n.max));
+      const sums = [[2, 2] as const, ...Array.from({ length: 9 }, (_, a) => Array.from({ length: 9 }, (_, b) => [a + 1, b + 1] as const)).flat()]
+        .filter(([a, b]) => a + b + 1 <= max && a + b > 2);
+      const planned = (s as { planned?: { numbers?: number[] } }).planned?.numbers;
+      const fits = (p: readonly number[] | undefined): p is readonly number[] => !!p && sums.some(([x, y]) => x === p[0] && y === p[1]) && !used.has(`${p}`);
+      const [a, b] = k > 0 && fits(planned) ? planned : sums.find(fits) ?? sums[k % sums.length];
+      used.add(`${[a, b]}`);
+      const who = names[k++ % names.length];
+      return { ...item(s), text: `${who}: ${a} + ${b} = ?`, operation: addOp(a, b), wrongAnswers: [{ value: num(a + b + 1), cause: "counted-one-extra", description: "Counts one too many.", step: null }], easier: { text: "1 + 1 = ?", operation: addOp(1, 1) }, shownWrong: 0 };
     });
     expect(asked.length).toBeGreaterThan(0);
     expect(asked.every((names) => names.join() === levelMistakes(Number(level.slice(1))).join())).toBe(true);
     const spots = draft.pages.flatMap((p) => p.questions).filter((q) => q.place === "spot-the-error");
-    expect(spots.every((q) => q.check.status !== "failed")).toBe(true);
+    // Code prints Spot the error's bare sum (round 7): when a small range runs out of sums, a later page repeats one,
+    // and that is a repeat (a name in the AI's text no longer hides it). No other failure.
+    expect(spots.filter((q) => q.check.status === "failed" && !/repeats a question already asked/.test(q.check.reason)).map((q) => q.check)).toEqual([]);
     const block = dayPages(draft).flatMap((p) => (p.content!.kind === "day" ? p.content!.blocks : [])).find((b) => b.slot === "spot-the-error")!;
     expect(block.lines).toEqual(["Start at 2. Count on 2.", "3, 4, 5", "2 + 2 = [5]"]);
   });
@@ -385,7 +426,7 @@ describe("every number the child sees fits the range (R380-3-1)", () => {
     expect(problem(pkg({ item: item({ regions: [{ id: "w", kind: "work", label: "Make 15" }] }) }))).toContain("15");
   });
 
-  it("fails each figure past the range: dots, a ten-frame's counters in all, base-ten, a number line and its hops, an array", () => {
+  it("fails each figure past the range: dots, a ten-frame's counters in all, base-ten, a number line, an array", () => {
     const fig = (figure: Item["figure"], over: Partial<QuestionPackage> = {}) => pkg({ ...over, item: item({ figure }) });
     expect(problem(fig({ kind: "dots", groups: [6, 6], takenAway: 0 }))).toContain("12");
     expect(problem(fig({ kind: "ten-frame", counters: [7, 5] }))).toContain("12");
@@ -393,7 +434,7 @@ describe("every number the child sees fits the range (R380-3-1)", () => {
     expect(problem(fig({ kind: "number-line", from: 0, to: 20, step: 1 }))).toContain("20");
     expect(problem(fig({ kind: "array", rows: 3, columns: 4 }))).toContain("12");
     expect(problem(fig({ kind: "number-line", from: 0, to: 10, step: 1 }, { operation: { kind: "add", operands: [4, 3] }, answer: { value: n(7), accepted: [], unit: null } }))).toBeNull();
-    expect(printedNumbers(fig({ kind: "number-line", from: 0, to: 10, step: 1 }, { operation: { kind: "add", operands: [4, 3] } }))).toEqual(expect.arrayContaining([0, 10, 4, 7]));
+    expect(printedNumbers(fig({ kind: "number-line", from: 0, to: 10, step: 1 }, { operation: { kind: "add", operands: [4, 3] } }))).toEqual(expect.arrayContaining([0, 10, 4, 3]));
   });
 
   it("fails Sam's answer and reads every number of Sam's steps", () => {

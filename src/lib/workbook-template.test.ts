@@ -155,3 +155,66 @@ describe("the fit check", () => {
     ]);
   });
 });
+
+describe("a sequence item", () => {
+  it("prints its terms in order with its answer boxes in the blanks, on a parent-led card and in a line (#380)", async () => {
+    const { buildQuestion } = await import("@/lib/workbook-generator-items");
+    const num = (value: number) => ({ type: "number", value, numerator: null, denominator: null, whole: null, unit: null, hours: null, minutes: null, period: null, parts: [], text: null });
+    for (const level of ["U2", "U12"]) {
+      const draft = book(level);
+      const page = draft.pages.find((p) => p.content?.kind === "day" && p.questions.length > 0)!;
+      const q = page.questions[0];
+      const built = buildQuestion({
+        slot: "1.1", skill: "K1-number-sequence", difficulty: 1, text: "Fill the gap in the count.", format: "sequence", operation: null, wrongAnswers: [], easier: null,
+        shownWrong: null, figure: null, numbers: [], places: null, direction: null, pattern: null, sequence: { start: num(3), step: num(1), terms: 5, blanks: [2, 4] },
+      }, { id: q.package.id, workbookId: draft.id, page: page.number, question: q.number, level: 2, skills: ["K1-number-sequence"] });
+      expect(built.check.status).toBe("checked");
+      const seqPage: DraftPage = { ...page, questions: [{ number: q.number, package: { ...built.package!, ref: q.package.ref } }, ...page.questions.slice(1)] };
+      const html = workbookTemplate().page(seqPage, { qr: "", qrUrl: "" }, draft)!;
+      const seq = html.match(/<span class="seq">(.*?)<\/span><\/span>(?!<span class="qm">)/)?.[0] ?? "";
+      const printed = [...seq.matchAll(/class="qm">([^<]*)</g)].map((m) => m[1]).filter((t) => t !== ",");
+      expect(printed).toEqual(["3", "4", "6"]);
+      expect(seq.match(/class="ab"/g)).toHaveLength(2);
+      expect(seq).toContain(`data-measure="question-${q.number}-answer"`);
+    }
+  });
+});
+
+describe("an order item and a written reason on a parent-led card", () => {
+  it("prints the numbers to put in order before the boxes, and the lines' label only when the question does not ask it (#380)", async () => {
+    const { buildQuestion } = await import("@/lib/workbook-generator-items");
+    const num = (value: number) => ({ type: "number", value, numerator: null, denominator: null, whole: null, unit: null, hours: null, minutes: null, period: null, parts: [], text: null });
+    const draft = book("U2");
+    const page = draft.pages.find((p) => p.content?.kind === "day" && p.questions.length > 1)!;
+    const [a, b] = page.questions;
+    const base = { slot: "1.1", skill: "K1-order-numerals", difficulty: 1, operation: null, wrongAnswers: [], easier: null, shownWrong: null, figure: null, places: null, sequence: null, pattern: null };
+    const place = (q: typeof a) => ({ id: q.package.id, workbookId: draft.id, page: page.number, question: q.number, level: 2, skills: ["K1-order-numerals"] });
+    const order = buildQuestion({ ...base, text: "Put in order, least first.", format: "order", numbers: [num(4), num(9), num(2)], direction: "up" }, place(a));
+    const reason = buildQuestion({ ...base, text: "Is 3 more than 2? How do you know?", format: "written-reason", numbers: [], direction: null }, place(b));
+    expect([order.check.status, reason.check.status]).toEqual(["checked", "not-checked"]);
+    const html = workbookTemplate().page({
+      ...page, questions: [{ number: a.number, package: { ...order.package!, ref: a.package.ref } }, { number: b.number, package: { ...reason.package!, ref: b.package.ref } }, ...page.questions.slice(2)],
+    }, { qr: "", qrUrl: "" }, draft)!;
+    expect(html).toContain(`<span class="seq"><span class="qm">4, 9, 2</span><span class="qm">→</span></span>`);
+    expect(html.match(/How do you know\?/g)).toHaveLength(1);
+  });
+});
+
+describe("a pattern item's choices", () => {
+  it("are drawn as the shapes, not written as words (#380)", async () => {
+    const { buildQuestion } = await import("@/lib/workbook-generator-items");
+    const draft = book("U2");
+    const page = draft.pages.find((p) => p.content?.kind === "day" && p.questions.length > 0)!;
+    const q = page.questions[0];
+    const built = buildQuestion({
+      slot: "1.1", skill: "K4-extend-repeating", difficulty: 1, text: "What comes next?", format: "pattern", operation: null, wrongAnswers: [], easier: null,
+      shownWrong: null, figure: null, numbers: [], places: null, direction: null, sequence: null, pattern: { core: ["circle", "triangle"], shapes: 6, blank: 5 },
+    }, { id: q.package.id, workbookId: draft.id, page: page.number, question: q.number, level: 2, skills: ["K4-extend-repeating"] });
+    expect(built.check.status).toBe("checked");
+    const html = workbookTemplate().page({ ...page, questions: [{ number: q.number, package: { ...built.package!, ref: q.package.ref } }, ...page.questions.slice(1)] }, { qr: "", qrUrl: "" }, draft)!;
+    const circ = html.match(/<span class="circ"[^>]*>(.*?)<\/span><\/span>/)?.[1] ?? "";
+    expect(circ).toContain(`aria-label="circle"`);
+    expect(circ).toContain(`aria-label="triangle"`);
+    expect(circ).not.toMatch(/<span class="co">(circle|triangle)<\/span>/);
+  });
+});

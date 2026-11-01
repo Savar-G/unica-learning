@@ -107,7 +107,12 @@ export type SessionEvent =
   /** The question's math turned out not to be trustworthy during the call. */
   | { type: "content_problem"; at: number; detail: string }
   /** The connection or a service failed: the call ends. */
-  | { type: "technical"; at: number; detail: string };
+  | { type: "technical"; at: number; detail: string }
+  /**
+   * The child hung up on purpose (#323; in the admin demo, the team member playing the child): the call ends now as
+   * child_stopped, after the outcome's priority (safety, content, solved). Only a failure is a technical issue.
+   */
+  | { type: "hang_up"; at: number };
 
 export interface Outcome {
   /**
@@ -728,6 +733,9 @@ export function step(session: Session, event: SessionEvent): StepResult {
       break;
     case "technical":
       end(s, "technical_issue", effects, true);
+      break;
+    case "hang_up":
+      end(s, "child_stopped", effects, true);
       break;
     case "proposal":
       if (shape) return { session: s, effects, refusal: { code: "invalid_proposal", reason: shape, allowed: (gate(s, {}) ?? teachingActs(s, {}, false)).acts } };

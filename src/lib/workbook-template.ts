@@ -12,7 +12,7 @@
 // an answer box smaller than the band allows, an answer box or choices over the question's own text, a work box under
 // 44 px or writing lines closer than 36 px under their prompt and 34 px apart.
 // Pure TypeScript: no Next.js, React, network, database or clock.
-import { packageItem, valueText, type AnswerRegion, type AnswerValue, type QuestionPackage } from "@/lib/question-package";
+import { packageItem, PATTERN_SHAPES, valueText, type AnswerRegion, type AnswerValue, type QuestionPackage } from "@/lib/question-package";
 import type { Block, DayContent, Figure, PageContent, SlotName, WorkedLine } from "@/lib/workbook-page";
 import {
   mark,
@@ -95,6 +95,99 @@ export function slotMax(slot: SlotName, c: Pick<DayContent, "level" | "pages">):
     case "mini-test": return 5;
     case "already-know-it": return 10;
     case "worked-example": case "watch-one": case "reminder": return 0;
+  }
+}
+
+// ---------- Text room (what the generator tells the AI, #380) ----------
+
+/**
+ * The room a question's text has in a slot: the most characters, in at most `lines` lines of `perLine` characters.
+ * The generator gives it to the AI for each item, so the AI writes text the page has room for; the fit check still
+ * measures the real page. On a card, writing lines (a written reason) or a tall picture (a number line, base-ten
+ * blocks) take the place of a line of text.
+ */
+export interface TextRoom {
+  characters: number;
+  lines: number;
+  perLine: number;
+}
+
+/** The content area's width (.frame). */
+const CONTENT_W = 688;
+/** Geist's average letter is about half its size wide; Geist Mono's 0.6. */
+const SANS_EM = 0.5;
+const MONO_EM = 0.6;
+/** A word that does not fit at a line's end starts the next one: count 90% of the letters a line holds. */
+const WRAP = 0.9;
+
+const textRoomOf = (width: number, font: number, lines: number, em = SANS_EM): TextRoom => {
+  const perLine = Math.floor(width / (font * em));
+  return { characters: Math.floor(perLine * lines * WRAP), lines, perLine };
+};
+
+/**
+ * A slot's text room at a level, from the template's own widths and type sizes (the CSS below):
+ * - a card of two (.pcard, every item of a parent-led page, picture stories at every level): half the content width
+ *   less the card's border and padding, its number badge and icon: 230 px, for 2 lines;
+ * - a line in a list (.list): the full width less the number, the gaps and an answer box: 1 line;
+ * - a line in a grid of two (.two): half of that: 1 line;
+ * - Spot the error: the sum beside Is it right? and the fix box: about 160 px of Geist Mono at U1 to U9 (no "Tick
+ *   one" hint there), the sum only (5 + 3 = ?); about 150 px from U10, 2 lines;
+ * - a warm-up fact (.facts, Geist Mono, one line that never wraps);
+ * - stories, How do you know?, the Mixed set, Challenge, Math in the world, Solve it two ways and test cards by their
+ *   own blocks. Null for a panel (no question).
+ */
+export function textRoom(slot: SlotName, level: number, pages = 8): TextRoom | null {
+  const band = bandOf(level);
+  const six = pages <= 6 && band.name === "mid";
+  const parent = band.name === "parent";
+  const badge = band.name === "mid" ? 24 : 30;
+  const box = Math.max(64, band.box);
+  // .pcard: (688 - 12) / 2, less its border (2) and padding (28), badge, icon (28) and two 10 px gaps.
+  const card = textRoomOf((CONTENT_W - 12) / 2 - 2 - 28 - badge - 28 - 20, band.body, 2);
+  // .list: the number (22) and three 12 px gaps around the text and the box.
+  const full = textRoomOf(CONTENT_W - 22 - 36 - box, band.body, 1);
+  // .two: (688 - 32) / 2, the same.
+  const half = textRoomOf((CONTENT_W - 32) / 2 - 22 - 36 - box, band.body, 1);
+  const list = (many: boolean) => (parent ? card : many ? half : full);
+  switch (slot) {
+    case "worked-example": case "watch-one": case "reminder": return null;
+    case "warm-up": {
+      // A fact grid of 3 (2 at U1 to U9) in Geist Mono: the grey number (22), the box and two gaps of 10.
+      const cols = band.name === "mid" ? 3 : 2;
+      const gap = band.name === "mid" ? 24 : 48;
+      return textRoomOf((CONTENT_W - gap * (cols - 1)) / cols - 22 - 20 - band.box, band.fact, 1, MONO_EM);
+    }
+    case "spot-the-error":
+      // U1 to U9: its own line in the outlined box, the strip and the fix box under it. From U10: about 150 px beside them.
+      return band.name === "mid" ? textRoomOf(150, band.body, 2) : textRoomOf(160, band.math, 1, MONO_EM);
+    case "fix-it":
+      // Three cards in a panel (U4 and up): (688 - 44 - 24) / 3 less padding, badge and gap; the box wraps under.
+      return parent ? card : textRoomOf((CONTENT_W - 44 - 24) / 3 - 28 - badge - 12, band.body, 2);
+    case "in-your-head": case "try-first": case "now-you": case "how-do-you-know":
+      // A panel or outlined box around a full-width line: 40 px of padding less. How do you know? has one line.
+      return parent && slot === "now-you" ? card : textRoomOf(CONTENT_W - 40 - 22 - 36 - box, band.body, 1);
+    case "remember-these": return list(true);
+    case "finish-these": case "on-your-own": return list(six);
+    case "practice-row": return list(true);
+    case "unit-b-practice": return list(true);
+    case "friday-5": case "unit-check": case "mini-test": case "already-know-it": return list(true);
+    case "picture-stories": return card;
+    case "show-what-you-know": case "level-test":
+      // Test cards, two to a row: half the width less padding, badge, gaps and the box; the work area grows.
+      return parent ? card : textRoomOf((CONTENT_W - 16) / 2 - 28 - badge - 24 - box, band.body, 2);
+    case "solve-it-two-ways":
+      // Beside the number and the "Solve it two ways" label (17 letters of Geist Mono).
+      return textRoomOf(CONTENT_W - 22 - 24 - 17 * band.small * MONO_EM, band.body, 2);
+    case "word-problems":
+      // A story's full line beside its number (26 + 12) and a picture.
+      return textRoomOf(CONTENT_W - 38 - 160, band.story, 3);
+    case "mixed-set":
+      return textRoomOf(CONTENT_W - 22 - 12, band.name === "mid" ? 14 : band.story, 2);
+    case "challenge":
+      return textRoomOf(CONTENT_W - 35 - badge - 32 - box, band.body, 4);
+    case "math-in-the-world":
+      return textRoomOf(CONTENT_W - 22 - 36 - box, band.body, 2);
   }
 }
 
@@ -191,6 +284,8 @@ const CSS = `
 .t1 i{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border:1.5px solid #0C0C0E;border-radius:2px;font-style:normal;font-size:12px;color:#0C0C0E;line-height:1}
 .circ{display:inline-flex;align-items:center;gap:36px;min-height:56px;padding:6px 18px;flex:none}
 .circ .co{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-size:var(--fact)}
+.circ.words{flex-direction:column;align-items:flex-start;gap:4px;min-height:0;padding:2px 8px}
+.circ.words .co{font-family:"Unica Sans",Helvetica,Arial,sans-serif;font-size:var(--body);line-height:1.3;white-space:nowrap}
 .wb{display:block;border:1px solid #D4D4DA;border-radius:8px;padding:10px 12px;background:#fff;flex:1 1 auto;min-width:120px}
 .wb .lab{font-weight:400;color:#44444C}
 .ln{display:block;width:100%}
@@ -198,6 +293,8 @@ const CSS = `
 .ln i{display:block;border-bottom:1px solid #9A9AA2;height:${LINE_NEXT}px}
 .ln i:first-of-type{height:${LINE_FIRST}px}
 .pic{display:block;flex:none}
+.seq{display:inline-flex;align-items:center;flex-wrap:wrap;gap:6px 8px}
+.obx{display:inline-flex;align-items:center;flex-wrap:nowrap;gap:8px;flex:none}
 .picr{display:inline-block;flex:none}
 .nl{position:relative;flex:none}
 .nlv{position:absolute;transform:translateX(-50%);font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-size:14px;line-height:1}
@@ -280,6 +377,7 @@ const CSS = `
 .pcard .pb{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
 .pcard .pb>.pic{max-width:60%;height:auto}
 .pcard .draw{height:56px;width:150px}
+.pcard .ln{min-width:160px}
 .pcard .head{display:flex;gap:10px;align-items:center}
 .pcard .ico{width:28px;height:28px;flex:none}
 /* cover */
@@ -412,12 +510,19 @@ export function figureSvg(f: Figure, scale = 1): string {
     case "ten-frame": {
       // A second frame beside the first when more than 10 are filled.
       const frames = f.filled > 10 ? 2 : 1;
+      // Each part in its own colour, as dots are (orange, then blue); with no parts, every counter blue.
+      const colourAt = (i: number) => {
+        if (!f.parts) return COUNTER[1];
+        let seen = 0;
+        for (const [g, n] of f.parts.entries()) if (i < (seen += n)) return COUNTER[g % 3];
+        return COUNTER[1];
+      };
       let body = "";
       for (let i = 0; i < 10 * frames; i++) {
         const cx = (i % 5) * 30 + Math.floor(i / 10) * 166;
         const cy = Math.floor((i % 10) / 5) * 30;
         body += `<rect x="${cx + 1}" y="${cy + 1}" width="30" height="30" fill="#fff" stroke="#0C0C0E" stroke-width="1.2"/>`;
-        if (i < f.filled) body += `<circle cx="${cx + 16}" cy="${cy + 16}" r="10" fill="#3366F0"/>`;
+        if (i < f.filled) body += `<circle cx="${cx + 16}" cy="${cy + 16}" r="10" fill="${colourAt(i)}"/>`;
       }
       return out(152 + (frames - 1) * 166, 62, body);
     }
@@ -542,6 +647,8 @@ interface RegionOpts {
   bare?: boolean;
   /** A picture region drawn as this figure (a parent-led card's squares to colour). */
   figure?: Figure | null;
+  /** Leave out the "Tick one" hint beside a tick strip (Spot the error at U1 to U9). */
+  noTick?: boolean;
 }
 
 function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOpts): string {
@@ -554,27 +661,64 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
       return `<span class="rg">${label}${money}<span class="ab" ${at} style="width:${boxWidth(r.answer, o.band)}px"></span>${unit ? `<span class="unit">${escape(unit)}</span>` : ""}</span>`;
     }
     case "choice": {
-      if (r.mark === "circle") return `<span class="circ" ${at}>${r.choices.map((c) => `<span class="co">${escape(c)}</span>`).join("")}</span>`;
+      if (r.mark === "circle") {
+        // A pattern's choices are its shapes: drawn, not written (a word such as "triangle" at the fact size is too wide
+        // for a card, and a child circles the shape).
+        const shapes = r.choices.every((c) => (PATTERN_SHAPES as readonly string[]).includes(c));
+        const choice = (c: string) => (shapes ? `<svg class="pic" width="30" height="30" viewBox="0 0 32 32" aria-label="${escape(c)}">${shapeSvg(c, 16, 16, "#44444C")}</svg>` : escape(c));
+        // Choices in words ("less than 5", "not equal", "cats") stack in the body type: a card has no room for them in
+        // a row at the size of a fact.
+        const words = !shapes && r.choices.some((c) => /[a-z]{2}/i.test(c));
+        return `<span class="circ${words ? " words" : ""}" ${at}>${r.choices.map((c) => `<span class="co">${choice(c)}</span>`).join("")}</span>`;
+      }
       const choices = r.choices.map((c) => `<span class="ch"><i class="tb"></i><span>${escape(c)}</span></span>`).join("");
-      return `<span class="rg">${r.label ? `<span class="rl">${escape(r.label)}</span>` : ""}<span class="strip" ${at}>${choices}</span><span class="t1"><span>Tick one</span><i>✓</i></span></span>`;
+      return `<span class="rg">${r.label ? `<span class="rl">${escape(r.label)}</span>` : ""}<span class="strip" ${at}>${choices}</span>${o.noTick ? "" : `<span class="t1"><span>Tick one</span><i>✓</i></span>`}</span>`;
     }
     case "work": {
       const h = o.work === "fill" ? "" : `height:${o.work ?? 80}px`;
       return `<div class="wb" ${at} style="${h}"><span class="lab">${escape(r.label)}</span></div>`;
     }
-    case "lines":
-      // A written-reason item's prompt is its question text; the lines need no label of their own.
-      return `<div class="ln" ${at}>${o.bare ? "" : `<div class="lp">${escape(r.label)}</div>`}${"<i></i>".repeat(LINES)}</div>`;
+    case "lines": {
+      // A written-reason item's prompt is its question text; the lines need no label of their own, nor a label the
+      // question already asks ("... How do you know?").
+      const bare = o.bare || q.package.text.toLowerCase().includes(r.label.toLowerCase());
+      return `<div class="ln" ${at}>${bare ? "" : `<div class="lp">${escape(r.label)}</div>`}${"<i></i>".repeat(LINES)}</div>`;
+    }
     case "picture":
       return o.figure ? `<div class="picr" ${at}>${figureSvg(o.figure)}</div>` : `<div class="draw" ${at}></div>`;
   }
 }
 
-/** The regions of a question that sit in a row (boxes, choices) and those that take the full width (work, lines, pictures). */
+/**
+ * The regions of a question that sit in a row (boxes, choices) and those that take the full width (work, lines,
+ * pictures). A sequence prints its terms in order, its boxes in the blanks: "3, 4, [ ], 6". An order item prints the
+ * numbers to put in order before its boxes: "4, 9, 2 → [ ] [ ] [ ]".
+ */
 function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: string } {
   let inline = "";
   let full = "";
-  for (const { region, name } of regionNames(q)) {
+  const names = regionNames(q);
+  const sequence = packageItem(q.package).checks.find((c) => c.kind === "sequence");
+  const inSequence = new Set<string>();
+  if (sequence) {
+    const terms = sequence.terms.map((t) => {
+      if (!("region" in t)) return `<span class="qm">${escape(valueText(t))}</span>`;
+      const x = names.find((n) => n.region.id === t.region);
+      if (!x) return "";
+      inSequence.add(t.region);
+      return regionHtml(q, x.region, x.name, o);
+    });
+    inline += `<span class="seq">${terms.join(`<span class="qm">,</span>`)}</span>`;
+  }
+  const order = packageItem(q.package).checks.find((c) => c.kind === "order");
+  if (order) {
+    // The numbers, then the boxes in one row that never breaks: a parent-led card has room for 4 (the generator's limit).
+    const boxes = order.regions.flatMap((id) => names.filter((n) => n.region.id === id)).map((x) => regionHtml(q, x.region, x.name, o)).join("");
+    order.regions.forEach((id) => inSequence.add(id));
+    inline += `<span class="seq"><span class="qm">${escape(order.numbers.map(valueText).join(", "))}</span><span class="qm">→</span></span><span class="obx">${boxes}</span>`;
+  }
+  for (const { region, name } of names) {
+    if (inSequence.has(region.id)) continue;
     const html = regionHtml(q, region, name, o);
     if (region.kind === "box" || region.kind === "choice") inline += html;
     else full += html;
@@ -693,7 +837,11 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       return chip() + `<div class="outl"><div class="q" style="align-items:flex-start"><span class="lab">${escape(who)}'s work</span><span class="wk">${(b.lines ?? []).map(worked).join("<br>")}</span></div>`
         + qs.map((q) => {
           const { inline, full } = regionsSplit(q, { band, labels: true });
-          return `<div class="list" ${mark.question(q.number)}><div class="q"><span class="n">${q.number}</span><span class="qb">${text(q)}</span><span class="rgs">${inline}</span></div>${full}</div>`;
+          // U1 to U9 leave out the "Tick one" hint (the grown-up reads Is it right? aloud): with it the sum had about 50
+          // px beside the big strip and broke across lines; without it, about 160 px (textRoom's 10 characters).
+          const early = band.name !== "mid";
+          const { inline: row, full: under } = early ? regionsSplit(q, { band, labels: true, noTick: true }) : { inline, full };
+          return `<div class="list" ${mark.question(q.number)}><div class="q"><span class="n">${q.number}</span><span class="qb">${early ? qtext(q) : text(q)}</span><span class="rgs">${row}</span></div>${under}</div>`;
         }).join("") + `</div>`;
     }
     case "watch-one":

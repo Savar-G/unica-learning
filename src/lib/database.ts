@@ -10,8 +10,12 @@ import type { TestDevice } from "@/lib/test-context";
 import type { StoredReview } from "@/lib/work-review";
 import type { WorkbookStatus } from "@/lib/workbook-content";
 import type { GeneratedPage, GeneratedWorkbook } from "@/lib/workbook-generator";
-import type { DraftRendering, RunError, RunStatus, RunStep } from "@/lib/workbook-job";
+import type { DraftRendering, RunError, RunSolve, RunStatus, RunStep } from "@/lib/workbook-job";
 import type { RenderProblem } from "@/lib/workbook-render";
+import type { BoardHistory } from "@/lib/board-history";
+import type { Outcome } from "@/lib/maya";
+import type { CallKind, CallRecord, CallStatus } from "@/lib/maya-call";
+import type { MayaTrace } from "@/lib/maya-trace";
 
 export type { Json };
 
@@ -32,6 +36,13 @@ type ColumnTypes = KnownColumns<{
   children: { province: Province };
   email_log: { kind: LogKind; status: LogStatus | null };
   learning_events: { source: EventSource; question_source: QuestionRef["source"]; result: EventResult; evidence_kind: EvidenceKind | null };
+  maya_calls: {
+    kind: CallKind; mode: CallRecord["mode"]; question_source: QuestionRef["source"]; status: CallStatus; versions: CallRecord["versions"];
+    outcome_reason: Outcome["reason"] | null; assistance: Outcome["assistance"] | null; paper_status: Outcome["paperStatus"] | null;
+    understanding: Outcome["understanding"] | null; safety_severity: Outcome["safetySeverity"]; live: NonNullable<CallRecord["live"]> | null;
+    trace: MayaTrace | null; board_history: BoardHistory | null;
+  };
+  maya_demo_children: { made_by: "maya-demo-child" };
   parents: { source: Record<string, string> };
   reports: { model: ReportModel };
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };
@@ -41,6 +52,7 @@ type ColumnTypes = KnownColumns<{
   workbook_draft_revisions: { kind: "generated" | "edit" | "redo-page"; content: GeneratedWorkbook | null; rendering: DraftRendering | null; render_problems: RenderProblem[] };
   workbook_audit: { detail: Record<string, Json | undefined> };
   workbook_run_pages: { page: GeneratedPage };
+  workbook_run_solves: { verdict: RunSolve["verdict"]; log: RunSolve["log"] };
 }>;
 type Fits<T, Column> = Json extends Column ? T
   : (null extends T ? 1 : 0) extends (null extends Column ? 1 : 0) ? (NonNullable<T> extends NonNullable<Column> ? T : never) : never;
