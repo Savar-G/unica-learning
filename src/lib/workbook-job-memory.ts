@@ -97,6 +97,10 @@ export function memoryRunStore(o: {
       return new Map(await readPaged(async (from, to) => rows.slice(from, Math.min(to + 1, from + limit)), limit));
     },
     async useAttempts(id, lease, page, slots) {
+      // The database's check (migrations workbook_run_attempts and workbook_run_attempts_panels): a question slot or a
+      // worked example.
+      const bad = slots.find((slot) => !/^([0-9]{1,3}\.[0-9]{1,3}|e[0-9]{1,3})$/.test(slot));
+      if (bad) throw new Error(`workbook run attempts use: the slot ${bad} breaks workbook_run_attempts_slot_check`);
       const r = holding(id, lease);
       if (!r) return null;
       if (!attempts.has(id)) attempts.set(id, new Map());

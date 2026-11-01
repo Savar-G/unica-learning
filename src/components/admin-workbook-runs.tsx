@@ -213,7 +213,8 @@ function solveAnswers(x: RunSolve): { reader: string[]; key: string[] } {
   } catch {
     given = [];
   }
-  const label = (k: { question: string; box: string }) => `${k.question === "easier" ? "Easier example" : "Box"} ${k.box}`;
+  // A question with one answer box names it "answer": then the line is "Answer: 13"; else "Box a: 13".
+  const label = (k: { question: string; box: string }) => k.question === "easier" ? "Easier example" : k.box === "answer" ? "Answer" : `Box ${k.box}`;
   return {
     reader: x.log.key.map((k) => {
       const a = given.find((g) => g.question === k.question && g.box === k.box)?.answer;
@@ -251,7 +252,7 @@ function SolveFailures({ pages, solves }: { pages: GeneratedPage[]; solves: Map<
           <td><span className="adm-wb-text">{q.package?.text ?? "No question"}</span>{(x?.log.questions.length ?? 0) > 1 && <span className="adm-sub">Easier example: {x!.log.questions[1].text}</span>}</td>
           <td>{x?.verdict === "failed" ? <span className="adm-sub">{x.log.verdict.status === "agreed" ? "" : x.log.verdict.reason}</span> : <ul className="adm-wb-list">{answers?.reader.map((l) => <li key={l}>{l}</li>)}</ul>}</td>
           <td><ul className="adm-wb-list">{answers?.key.map((l) => <li key={l}>{l}</li>)}</ul></td>
-          <td className="adm-sub adm-nowrap">{x ? `${x.model} · ${(x.ms / 1000).toFixed(1)} s${x.usd !== null ? ` · USD ${x.usd.toFixed(4)}` : ""}` : "No check stored"}</td>
+          <td className="adm-nowrap"><span className="adm-sub">{x ? `${x.model} · ${(x.ms / 1000).toFixed(1)} s${x.usd !== null ? ` · USD ${x.usd.toFixed(4)}` : ""}` : "No check stored"}</span></td>
         </tr>;
       })}
     </Table>
