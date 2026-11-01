@@ -28,6 +28,8 @@ const MIC_TEXT: Record<MicState, string> = {
 const ERROR_TEXT: Record<string, string> = {
   voice_unavailable: "Voice calls are not set up on this server yet.",
   ended: "This call has ended.",
+  technical_issue: "The voice connection failed. Check the saved call below, or connect again.",
+  disconnected: "The connection is closed. Check the saved call, or connect again.",
   connect: "Could not connect to the call. Check the internet connection and try again.",
   no_maya: "Maya did not join the call. The voice helper may be off. Try again in a minute.",
   failed: "Something went wrong. Try again.",
@@ -140,6 +142,8 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
     setError(null);
     setCall("connecting");
     mic.release();
+    liveSince.current = null;
+    agent.current = null;
     try {
       const res = await fetch(`/api/admin/maya/calls/${callId}/token`, { method: "POST" });
       const body = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; ticket?: VoiceTicket } | null;
@@ -147,6 +151,7 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
       const { Room, RoomEvent, Track, ParticipantKind } = await import("livekit-client");
       const r = new Room({ adaptiveStream: false, dynacast: false });
       room.current = r;
+      let terminal = false;
       const isMaya = (p: { kind?: unknown } | undefined) => p?.kind === ParticipantKind.AGENT;
       const readMaya = () => {
         const p = [...r.remoteParticipants.values()].find(isMaya);
@@ -170,19 +175,33 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
       r.on(RoomEvent.ParticipantAttributesChanged, readMaya);
       r.on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
         if (topic !== "maya.call" || !isMaya(participant)) return;
-        let update: { ended?: boolean } = {};
+        let update: { ended?: boolean; error?: string } = {};
         try {
           update = JSON.parse(new TextDecoder().decode(payload));
         } catch {}
-        if (update.ended) {
+        if (update.error === "technical_issue") {
+          setError(ERROR_TEXT.technical_issue);
+          setCall("failed");
+          void r.disconnect();
+          void onEnded();
+        } else if (update.ended) {
+          terminal = true;
+          setError(null);
           setCall("ended");
           void r.disconnect();
           void onEnded();
         } else void onUpdate();
       });
       r.on(RoomEvent.Disconnected, () => {
+        if (room.current !== r) return;
+        room.current = null;
+        agent.current = null;
+        liveSince.current = null;
         setMaya(null);
-        setCall((c) => (c === "ended" || c === "ending" ? c : "ended"));
+        if (terminal) return;
+        // A room event cannot establish the saved call's outcome.
+        setCall("failed");
+        setError(current => current ?? ERROR_TEXT.disconnected);
         void onEnded();
       });
       await r.connect(body.ticket.url, body.ticket.token);
@@ -217,7 +236,8 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
     } catch {}
     await r.disconnect();
     room.current = null;
-    setCall("ended");
+    setCall("failed");
+    setError(ERROR_TEXT.disconnected);
     await onEnded();
   }
 

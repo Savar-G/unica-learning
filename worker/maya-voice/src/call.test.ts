@@ -1,13 +1,15 @@
 import { ReadableStream, type ReadableStreamDefaultController } from "node:stream/web";
-import { initializeLogger, voice } from "@livekit/agents";
+import { EventEmitter } from "node:events";
+import { initializeLogger, llm, normalizeLanguage, stt, voice } from "@livekit/agents";
 import { AudioFrame } from "@livekit/rtc-node";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { templateSkills } from "@/lib/assessment";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
-import { memoryWordingHistoryStore, PAUSES } from "@/lib/maya";
+import { memoryWordingHistoryStore, PAUSES, TIME_LIMITS } from "@/lib/maya";
 import { mayaCalls, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
+import type { MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace } from "@/lib/maya-trace";
@@ -88,12 +90,16 @@ function handTimers() {
   return {
     timers,
     now: () => now,
-    advance(s: number) {
-      now += s * 1000;
-      for (const [h, t] of [...due].sort((a, b) => a[1].at - b[1].at)) {
-        if (t.at > now) continue;
-        due.delete(h);
-        t.run();
+    async advance(s: number) {
+      const end = now + s * 1000;
+      while (now < end) {
+        now = Math.min(end, now + 1000);
+        for (const [h, t] of [...due].sort((a, b) => a[1].at - b[1].at)) {
+          if (t.at > now) continue;
+          due.delete(h);
+          t.run();
+        }
+        await new Promise<void>(resolve => setImmediate(resolve));
       }
     },
   };
@@ -113,7 +119,7 @@ afterEach(async () => {
   cleanup = null;
 });
 
-async function voiceCall() {
+async function voiceCall(options: { speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel } = {}) {
   const clock = handTimers();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -125,11 +131,11 @@ async function voiceCall() {
     history: memoryWordingHistoryStore(),
     events: learningEvents(memoryLearningEventStore({ children: [{ id: CHILD, parentId: PARENT }], tests: [{ id: TEST, childId: CHILD }] })),
     rebuild,
-    model: (id) => (id === null || id === "fake" ? ruleMayaModel() : null),
+    model: (id) => (id === null || id === "fake" ? options.model ?? ruleMayaModel() : null),
     isTestFamily: async (p) => p === PARENT,
     clock: clock.now,
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,
-    seed: () => 42,
+    seed: () => options.seed ?? 42,
   };
   const calls = mayaCalls(seams);
   const started = await calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: "admin-1" });
@@ -139,10 +145,10 @@ async function voiceCall() {
   const opened = await calls.openVoice(started.view.id, config.ids, "Leah");
   if (!opened.ok) throw new Error(opened.error);
   const providers = await makeProviders(config, { fakeMsPerChar: 1 });
-  const session = voiceSession(providers, { endpointingMs: 20, aecWarmupDuration: 0 });
+  const session = voiceSession({ ...providers, stt: options.speech ?? providers.stt }, { endpointingMs: 20, aecWarmupDuration: 0 });
   const microphone = new SilentMicrophone();
   session.input.audio = microphone;
-  session.output.audio = new Speaker();
+  session.output.audio = options.speaker ?? new Speaker();
   const updates: CallUpdate[] = [];
   const closed = vi.fn(async () => {});
   const run = new VoiceCallRun(session, opened.call, { timers: clock.timers, notify: (u) => updates.push(u), closed });
@@ -162,24 +168,24 @@ async function voiceCall() {
     await opened.call.settled();
     return said().slice(before).join(" ");
   };
-  return { id: started.view.id, calls, store, connections, rebuild, run, session, said, childSays, clock, updates, closed, call: opened.call };
+  return { id: started.view.id, calls, store, connections, rebuild, run, session, said, childSays, clock, updates, closed, call: opened.call, seams };
 }
 
 describe("a voice call through LiveKit with the fake providers", () => {
   it("opens when the child joins, carries each spoken turn to Maya and her words back, and stores the call", async () => {
     const c = await voiceCall();
-    c.clock.advance(2);
+    await c.clock.advance(2);
     await c.run.childJoined();
     await waitFor(() => c.said().length === 1, "Maya's opening");
     expect(c.said()[0]).toMatch(/\bAI\b/);
 
-    c.clock.advance(5);
+    await c.clock.advance(5);
     const reply = await c.childSays("I got 56.");
     expect(reply).not.toMatch(/66/);
-    c.clock.advance(5);
+    await c.clock.advance(5);
     // An unsure number: Maya checks what she heard.
     await c.childSays("I got sixty six", { confidence: 0.3, alternatives: ["sixty", "fifty six"] });
-    c.clock.advance(5);
+    await c.clock.advance(5);
     await c.childSays("No, I said 66.");
     expect(c.updates.length).toBeGreaterThanOrEqual(3);
 
@@ -189,7 +195,7 @@ describe("a voice call through LiveKit with the fake providers", () => {
     const stored = live.transcript.filter((l) => l.speaker === "maya").map((l) => l.text.replaceAll("{name}", "Leah"));
     expect(c.said().join(" ")).toBe(stored.join(" "));
 
-    c.clock.advance(10);
+    await c.clock.advance(10);
     await c.run.hangUp();
     const [row] = c.store.rows();
     expect(row).toMatchObject({ mode: "voice", status: "ended", speechToText: "fake", voice: "fake", connectedSeconds: 25 });
@@ -198,7 +204,7 @@ describe("a voice call through LiveKit with the fake providers", () => {
     expect(row.trace?.turns.find((t) => t.kind === "child" && t.text === "I got sixty six")).toMatchObject({ uncertain: true });
     expect(checkTrace(row.trace).ok).toBe(true);
     expect(row.learningEventId).not.toBeNull();
-    expect(c.connections.rows().map((e) => e.kind)).toEqual(["agent_joined", "child_joined", "child_left", "agent_left"]);
+    expect(c.connections.rows().filter(e => e.kind !== "agent_joined").map(e => e.kind)).toEqual(["agent_left", "child_joined", "child_left", "agent_left"]);
     expect(c.updates.at(-1)).toMatchObject({ ended: true });
     expect(c.closed).toHaveBeenCalledTimes(1);
   });
@@ -209,9 +215,9 @@ describe("a voice call through LiveKit with the fake providers", () => {
     await waitFor(() => c.said().length === 1, "Maya's opening");
     await waitFor(() => c.session.agentState !== "speaking", "the opening to finish");
     await c.call.settled();
-    c.clock.advance(PAUSES.thinkCheckMs / 1000 - 1);
+    await c.clock.advance(PAUSES.thinkCheckMs / 1000 - 1);
     expect(c.said()).toHaveLength(1);
-    c.clock.advance(2);
+    await c.clock.advance(2);
     await waitFor(() => c.said().length === 2, "Maya's check-in");
     const stored = (await c.calls.view(c.id))!;
     expect(stored.transcript.some((l) => l.speaker === "note" && l.text === "The child stayed quiet.")).toBe(true);
@@ -221,9 +227,9 @@ describe("a voice call through LiveKit with the fake providers", () => {
     const c = await voiceCall();
     await c.run.childJoined();
     await waitFor(() => c.said().length === 1, "Maya's opening");
-    c.clock.advance(20);
+    await c.clock.advance(20);
     await c.run.childLeft("dropped");
-    c.clock.advance(RECONNECT_GRACE_MS / 1000 + 1);
+    await c.clock.advance(RECONNECT_GRACE_MS / 1000 + 1);
     await waitFor(() => c.closed.mock.calls.length === 1, "the call to close");
     const [row] = c.store.rows();
     expect(row.outcome?.reason).toBe("technical_issue");
@@ -234,11 +240,11 @@ describe("a voice call through LiveKit with the fake providers", () => {
     const c = await voiceCall();
     await c.run.childJoined();
     await waitFor(() => c.said().length === 1, "Maya's opening");
-    c.clock.advance(10);
+    await c.clock.advance(10);
     await c.run.childLeft("dropped");
-    c.clock.advance(5);
+    await c.clock.advance(5);
     await c.run.childJoined();
-    c.clock.advance(RECONNECT_GRACE_MS / 1000 + 1);
+    await c.clock.advance(RECONNECT_GRACE_MS / 1000 + 1);
     expect(c.closed).not.toHaveBeenCalled();
     await c.childSays("Is it 66?");
     await c.run.hangUp();
@@ -246,4 +252,262 @@ describe("a voice call through LiveKit with the fake providers", () => {
     expect(row.connectedSeconds).toBe(10 + RECONNECT_GRACE_MS / 1000 + 1);
     expect(row.outcome?.reason).not.toBe("technical_issue");
   });
+});
+
+
+// preflight.ts: a speculative transcript differs from the completed turn.
+class ProbeSTT extends stt.STT {
+  label = "probe.STT";
+  events = new EventEmitter();
+  constructor() { super({ streaming: true, interimResults: true }); }
+  async _recognize(): Promise<stt.SpeechEvent> { throw new Error("stream only"); }
+  stream() { return new ProbeStream(this); }
+  send(type: stt.SpeechEventType, text = "", confidence = 0.95) {
+    this.events.emit("event", { type, ...(text ? { alternatives: [{ language: normalizeLanguage("en"), text, startTime: 0, endTime: 0, confidence }] } : {}) });
+  }
+}
+class ProbeStream extends stt.SpeechStream {
+  label = "probe.Stream";
+  constructor(readonly source: ProbeSTT) { super(source); }
+  async run() {
+    const put = (event: stt.SpeechEvent) => this.queue.put(event);
+    this.source.events.on("event", put);
+    try { for await (const frame of this.input) { void frame; if (this.abortSignal.aborted) break; } }
+    finally { this.source.events.off("event", put); }
+  }
+}
+
+class HeldSpeaker extends Speaker {
+  held = false;
+  finishPlayback() { this.held = false; super.flush(); }
+  override flush() { if (!this.held) super.flush(); }
+}
+
+function controlSession() {
+  const emitter = new EventEmitter();
+  return Object.assign(emitter, {
+    agentState: "listening", userState: "listening", generateReply: vi.fn(),
+    say: vi.fn(() => ({ waitForPlayout: async () => {} })), close: vi.fn(async () => {}),
+  });
+}
+
+async function controlledRun(c: Awaited<ReturnType<typeof voiceCall>>, call = c.call) {
+  const session = controlSession();
+  const updates: CallUpdate[] = [];
+  const closed = vi.fn(async () => {});
+  const run = new VoiceCallRun(session as unknown as voice.AgentSession, call, { timers: c.clock.timers, notify: u => updates.push(u), closed });
+  await run.agentJoined();
+  await run.childJoined();
+  return { run, session, updates, closed };
+}
+
+describe("R408 controlled probes through public interfaces", () => {
+  it("R408-1 preflight.ts: commits only the completed corrected child turn, once", async () => {
+    const speech = new ProbeSTT();
+    const c = await voiceCall({ speech });
+    await c.run.childJoined();
+    await waitFor(() => c.said().length > 0 && c.session.agentState === "listening", "opening");
+    speech.send(stt.SpeechEventType.START_OF_SPEECH);
+    speech.send(stt.SpeechEventType.PREFLIGHT_TRANSCRIPT, "I got 56.");
+    await new Promise(r => setTimeout(r, 250));
+    expect((await c.calls.view(c.id))!.transcript.filter(l => l.speaker === "child")).toEqual([]);
+    speech.send(stt.SpeechEventType.FINAL_TRANSCRIPT, "I got 66.", 0.3);
+    speech.send(stt.SpeechEventType.END_OF_SPEECH);
+    await waitFor(() => c.said().length > 1, "corrected reply");
+    await c.call.settled();
+    expect((await c.calls.view(c.id))!.transcript.filter(l => l.speaker === "child").map(l => l.text)).toEqual(["I got 66."]);
+  });
+
+  it("R408-2 ending.ts: stores and announces the terminal outcome only after final playout", async () => {
+    const speaker = new HeldSpeaker();
+    const c = await voiceCall({ speaker });
+    await c.run.childJoined();
+    await waitFor(() => c.said().length > 0 && c.session.agentState === "listening", "opening");
+    for (const text of ["66", "I wrote it."]) {
+      await c.childSays(text);
+      await waitFor(() => c.session.agentState === "listening", "playout");
+    }
+    speaker.held = true;
+    await c.childSays("yes");
+    await waitFor(() => c.call.ended, "terminal turn");
+    expect((await c.calls.view(c.id))!.status).toBe("live");
+    expect(c.updates.some(u => u.ended)).toBe(false);
+    expect(c.closed).not.toHaveBeenCalled();
+    await c.clock.advance(5);
+    speaker.finishPlayback();
+    await waitFor(() => c.closed.mock.calls.length === 1, "terminal update");
+    expect((await c.calls.view(c.id))!.status).toBe("ended");
+    expect(c.store.rows()[0].connectedSeconds).toBe(5);
+  });
+
+  it("R408-6 probe.ts: closes a fatal session with a technical outcome", async () => {
+    const c = await voiceCall();
+    const r = await controlledRun(c);
+    await r.run.agent.llmNode(new llm.ChatContext(), {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+    r.session.emit(voice.AgentSessionEventTypes.Close, { reason: "error", error: new Error("provider failed") });
+    expect(r.run.done).not.toBeNull();
+    await r.run.done;
+    expect((await c.calls.view(c.id))!.outcome?.reason).toBe("technical_issue");
+    expect(r.closed).toHaveBeenCalledOnce();
+  });
+
+  it.each(["conflict", "exception"])("R408-7 more.ts: stops media and reports a failed save (%s)", async failure => {
+    const c = await voiceCall();
+    const r = await controlledRun(c);
+    c.seams.store.update = async () => { if (failure === "exception") throw new Error("database unavailable"); return false; };
+    const speech = await r.run.agent.llmNode(new llm.ChatContext(), {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+    await c.call.settled();
+    expect(speech).toBeNull();
+    await waitFor(() => r.closed.mock.calls.length === 1, "lost writer closed");
+    expect(r.session.close).toHaveBeenCalled();
+    expect(r.updates.at(-1)).toMatchObject({ error: "technical_issue" });
+  });
+
+  it("R408-8 probe.ts: rejoin during the leave save cannot end a healthy call", async () => {
+    const c = await voiceCall();
+    const r = await controlledRun(c);
+    await r.run.agent.llmNode(new llm.ChatContext(), {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+    let release!: () => void;
+    const blocked = new Promise<void>(resolve => release = resolve);
+    const connection = c.call.connection.bind(c.call);
+    c.call.connection = async kind => { if (kind === "child_left") await blocked; return connection(kind); };
+    const leaving = r.run.childLeft("dropped");
+    await r.run.childJoined();
+    release();
+    await leaving;
+    r.session.userState = "speaking";
+    await c.clock.advance(31);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    await c.call.settled();
+    expect(r.closed).not.toHaveBeenCalled();
+    await r.run.hangUp();
+  });
+
+  it("R408-9 more.ts: pauses silence while the child is absent for less than the grace period", async () => {
+    const c = await voiceCall();
+    const r = await controlledRun(c);
+    await r.run.agent.llmNode(new llm.ChatContext(), {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+    await c.clock.advance(15);
+    await r.run.tick();
+    await c.clock.advance(5);
+    await r.run.childLeft("dropped");
+    await c.clock.advance(25);
+    await r.run.tick();
+    expect(c.call.ended).toBe(false);
+    await r.run.hangUp();
+  });
+
+  it("R408-10 probe.ts: schedules session timers when a worker restores a started call", async () => {
+    const c = await voiceCall();
+    await c.call.start();
+    await c.call.settled();
+    const reopened = await c.calls.openVoice(c.id, { speechToText: "fake", voice: "fake" }, "Leah");
+    if (!reopened.ok) throw new Error(reopened.error);
+    const r = await controlledRun(c, reopened.call);
+    await c.clock.advance(16);
+    expect(r.session.say).toHaveBeenCalled();
+    await r.run.hangUp();
+  });
+
+  it.each(["child", "maya", "model"])("R408-12 probe.ts: enforces the deadline during continuous %s activity", async activity => {
+    const c = await voiceCall();
+    const r = await controlledRun(c);
+    await r.run.agent.llmNode(new llm.ChatContext(), {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+    if (activity === "child") r.session.userState = "speaking";
+    if (activity === "maya") r.session.agentState = "speaking";
+    if (activity === "model") r.session.agentState = "thinking";
+    await c.clock.advance(TIME_LIMITS.endAtMs / 1000);
+    expect(r.session.close).toHaveBeenCalled();
+    await waitFor(() => r.closed.mock.calls.length === 1, "hard deadline");
+    expect((await c.calls.view(c.id))!.outcome?.reason).toBe("time_limit");
+    expect(r.session.close).toHaveBeenCalled();
+  });
+});
+
+
+it("R408-12: closes while the model has a real unfinished child turn, and refuses its late output", async () => {
+  const model = ruleMayaModel();
+  let block = false;
+  let entered = false;
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => release = resolve);
+  const c = await voiceCall({ model: { ...model, propose: async (input, signal) => {
+    if (block) { entered = true; await pending; }
+    return model.propose(input, signal);
+  } } });
+  const r = await controlledRun(c);
+  await r.run.agent.llmNode(new llm.ChatContext(), {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+  block = true;
+  const child = c.call.child("I got 56.");
+  await waitFor(() => entered, "model input");
+  r.session.agentState = "thinking";
+  let revision = 0;
+  try {
+    await c.clock.advance(TIME_LIMITS.endAtMs / 1000);
+    expect(r.session.close).toHaveBeenCalled();
+    await waitFor(() => r.closed.mock.calls.length === 1, "deadline during model work");
+    const ended = (await c.calls.view(c.id))!;
+    expect(ended.outcome?.reason).toBe("time_limit");
+    revision = ended.revision;
+  } finally { release(); }
+  expect((await child).say).toEqual([]);
+  expect((await c.calls.view(c.id))!.revision).toBe(revision);
+});
+
+it("R408-7: a save failure inside the real speech pipeline closes without waiting on its own speech", async () => {
+  const c = await voiceCall();
+  c.seams.store.update = async () => false;
+  await c.run.childJoined();
+  await waitFor(() => c.call.lost, "lost writer");
+  expect(c.run.done).not.toBeNull();
+  await waitFor(() => c.closed.mock.calls.length === 1, "real pipeline lost writer");
+  expect(c.said()).toEqual([]);
+  expect(c.updates.at(-1)).toMatchObject({ error: "technical_issue" });
+});
+
+it("R408-6: a fatal close saves an outcome while a model turn is unfinished", async () => {
+  const model = ruleMayaModel();
+  let block = false;
+  let entered = false;
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => release = resolve);
+  const c = await voiceCall({ model: { ...model, propose: async (input, signal) => {
+    if (block) { entered = true; await pending; }
+    return model.propose(input, signal);
+  } } });
+  const r = await controlledRun(c);
+  await r.run.agent.llmNode(new llm.ChatContext(), {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+  block = true;
+  const child = c.call.child("I got 56.");
+  await waitFor(() => entered, "model input");
+  try {
+    r.session.emit(voice.AgentSessionEventTypes.Close, { reason: "error" });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect((await c.calls.view(c.id))!.outcome?.reason).toBe("technical_issue");
+    expect(r.closed).toHaveBeenCalledOnce();
+  } finally { release(); }
+  expect((await child).say).toEqual([]);
+});
+
+it("R408-12: bounds an unfinished opening before the first turn can be saved", async () => {
+  const model = ruleMayaModel();
+  let entered = false;
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => release = resolve);
+  const c = await voiceCall({ model: { ...model, propose: async (input, signal) => {
+    entered = true;
+    await pending;
+    return model.propose(input, signal);
+  } } });
+  const r = await controlledRun(c);
+  const opening = r.run.agent.llmNode(new llm.ChatContext(), {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+  await waitFor(() => entered, "opening model input");
+  try {
+    await c.clock.advance(TIME_LIMITS.endAtMs / 1000);
+    expect(r.session.close).toHaveBeenCalled();
+    await r.run.done;
+    expect((await c.calls.view(c.id))!.status).toBe("ended");
+    expect(c.store.rows()[0].learningEventId).toBeNull();
+  } finally { release(); }
+  expect(await opening).toBeNull();
 });

@@ -87,8 +87,7 @@ export default defineAgent({
       log("the child did not join", callId);
       return ctx.shutdown("the child did not join");
     }
-    const { data: kid } = await db.from("children").select("first_name").eq("id", facts.childId).maybeSingle();
-    const opened = await callsOn(db).openVoice(callId, providers.ids, kid?.first_name ?? null);
+    const opened = await callsOn(db).openVoice(callId, providers.ids, null);
     if (!opened.ok) {
       log("the call could not be opened", callId, opened.error);
       return ctx.shutdown("call not opened");
@@ -128,12 +127,13 @@ export default defineAgent({
     });
 
     await run.agentJoined();
+    if (run.done) { await run.done; return; }
     await session.start({
       agent: run.agent,
       room: ctx.room,
       // The call's child only, by microphone: no typed chat, no video, and the call (not LiveKit) decides when it ends.
       inputOptions: { participantIdentity: child.identity, textEnabled: false, closeOnDisconnect: false },
-      // No recording of audio or transcripts on LiveKit's side (D-163: no child audio is stored).
+      // Disable session recording. Direct-provider retention needs separate verified settings (docs/maya-voice.md).
       record: false,
     });
     await run.childJoined();

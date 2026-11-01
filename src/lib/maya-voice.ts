@@ -20,6 +20,9 @@ export const VOICE_AGENT_NAME = "maya-voice";
 export const VOICE_TOKEN_TTL_SECONDS = 5 * 60;
 /** How long the worker waits for the child to come back after the connection drops (ms). */
 export const RECONNECT_GRACE_MS = 30_000;
+/** The maximum worker connection lease, including a crash gap (ms). */
+export const CONNECTION_LEASE_MS = 15_000;
+export const CONNECTION_RENEW_MS = 5_000;
 /** How long the worker waits for the child to join a new room before it gives up (ms). */
 export const JOIN_WAIT_MS = 2 * 60_000;
 /** A transcript the speech-to-text is less sure of than this is uncertain: Maya confirms a number in it. */
@@ -137,6 +140,10 @@ export function voiceProviders(env: Readonly<Record<string, string | undefined>>
     if (!id) problems.push("MAYA_TTS is inworld, but MAYA_VOICE (the Inworld voice id) is not set");
     voice = { provider: "inworld", model: value(env, "MAYA_TTS_MODEL") || TTS_DEFAULT_MODEL, voice: id, apiKey };
   } else if (tts !== "fake") problems.push(`MAYA_TTS must be fake or inworld, not "${tts}"`);
+  const confirmed = new Set(value(env, "MAYA_VOICE_PRIVACY_CONFIRMED").split(",").map(s => s.trim()));
+  if (stt === "assemblyai" && !confirmed.has("assemblyai-optout")) problems.push("MAYA_VOICE_PRIVACY_CONFIRMED must include assemblyai-optout");
+  if (tts === "inworld" && !confirmed.has("inworld-retention")) problems.push("MAYA_VOICE_PRIVACY_CONFIRMED must include inworld-retention");
+  if ((stt === "assemblyai" || tts === "inworld") && !confirmed.has("child-use-approved")) problems.push("MAYA_VOICE_PRIVACY_CONFIRMED must include child-use-approved");
   if (problems.length) return { ok: false, problems };
   return { ok: true, speechToText, voice, ids: { speechToText: providerId(speechToText), voice: providerId(voice) } };
 }
@@ -189,31 +196,23 @@ export interface ConnectionEvent {
 
 /**
  * The seconds the child and Maya were both in the room, from the connection events, up to `endAt` (the call's end) for
- * anyone still there. A leave with no join before it, and a second join without a leave, change nothing.
+ * anyone still there. Worker joins renew a bounded lease. A worker leave closes that segment's child presence.
  */
 export function connectedSeconds(events: readonly ConnectionEvent[], endAt: number): number {
-  const sorted = [...events].sort((a, b) => a.at - b.at);
-  let child: number | null = null;
-  let agent: number | null = null;
-  let both: number | null = null;
+  const sorted = [...events].filter(e => e.at <= endAt).sort((a, b) => a.at - b.at);
+  let child = false;
+  let agentUntil = -Infinity;
+  let previous = sorted[0]?.at ?? endAt;
   let total = 0;
-  const update = (at: number) => {
-    const now = child !== null && agent !== null;
-    if (now && both === null) both = at;
-    if (!now && both !== null) {
-      total += Math.max(0, at - both);
-      both = null;
-    }
-  };
   for (const e of sorted) {
-    if (e.at > endAt) break;
-    if (e.kind === "child_joined" && child === null) child = e.at;
-    else if (e.kind === "child_left" && child !== null) child = null;
-    else if (e.kind === "agent_joined" && agent === null) agent = e.at;
-    else if (e.kind === "agent_left" && agent !== null) agent = null;
-    update(e.at);
+    if (child) total += Math.max(0, Math.min(e.at, agentUntil) - previous);
+    if (e.kind === "child_joined") child = true;
+    if (e.kind === "child_left") child = false;
+    if (e.kind === "agent_joined") agentUntil = e.at + CONNECTION_LEASE_MS;
+    if (e.kind === "agent_left") { agentUntil = -Infinity; child = false; }
+    previous = e.at;
   }
-  if (both !== null) total += Math.max(0, endAt - both);
+  if (child) total += Math.max(0, Math.min(endAt, agentUntil) - previous);
   return Math.round(total / 1000);
 }
 

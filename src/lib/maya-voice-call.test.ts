@@ -47,7 +47,7 @@ function setup() {
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,
     seed: () => 42,
   };
-  return { calls: mayaCalls(seams), seams, store, connections, rebuild, advance: (s: number) => (now += s * 1000), now: () => now };
+  return { calls: mayaCalls(seams), seams, store, connections, eventStore, rebuild, advance: (s: number) => (now += s * 1000), now: () => now };
 }
 
 const ok = (r: CallResult) => {
@@ -82,15 +82,18 @@ describe("a voice call", () => {
     await call.connection("child_joined");
     const opening = await call.start();
     expect(opening.say.join(" ")).toMatch(/\bAI\b/);
+    await call.connection("agent_joined");
     s.advance(6);
     // A number the speech-to-text was unsure of: Maya confirms it.
     const unsure = await call.child("I got sixty-six", { uncertain: true, alternatives: ["sixteen"] });
     expect(unsure.say.length).toBeGreaterThan(0);
+    await call.connection("agent_joined");
     s.advance(6);
     // The child corrects what Maya heard.
     await call.child("No, I said 66.");
     for (const text of ["Because the ones made a ten, so I carried it.", "I wrote it."]) {
       if (call.ended) break;
+      await call.connection("agent_joined");
       s.advance(6);
       await call.child(text);
     }
@@ -99,22 +102,23 @@ describe("a voice call", () => {
     const live = await s.calls.view(view.id);
     expect(live?.transcript.some((l) => l.speaker === "child" && l.text === "No, I said 66.")).toBe(true);
     s.advance(4);
+    const leftAt = s.now();
     await call.connection("child_left");
     s.advance(1);
     await call.end({ reason: "child_stopped" });
 
     const [row] = s.store.rows();
     expect(row).toMatchObject({ mode: "voice", status: "ended", ...PROVIDERS, live: null });
-    // Counted from the child joining to the end of the call (it ended solved before the child left the room).
+    // Room time includes the final speech after the controller selects the solved outcome.
     expect(row.outcome?.reason).toBe("solved");
-    expect(row.connectedSeconds).toBe(Math.round((Date.parse(row.endedAt!) - (T0 + 2000)) / 1000));
+    expect(row.connectedSeconds).toBe(Math.round((leftAt - (T0 + 2000)) / 1000));
     expect(row.connectedSeconds).toBeGreaterThan(20);
     expect(row.outcome?.mishearing.corrections).toBe(1);
     expect(row.outcome?.mishearing.confirmations).toBeGreaterThanOrEqual(1);
     expect(checkTrace(row.trace).ok).toBe(true);
     expect(row.learningEventId).not.toBeNull();
     expect(s.rebuild).toHaveBeenCalledTimes(1);
-    expect(s.connections.rows().map((c) => c.kind)).toEqual(["agent_joined", "child_joined", "child_left"]);
+    expect(s.connections.rows().filter((c, i) => c.kind !== "agent_joined" || i === 0).map((c) => c.kind)).toEqual(["agent_joined", "child_joined", "child_left"]);
     expect(s.connections.rows().every((c) => c.callId === view.id && c.parentId === PARENT && c.childId === CHILD)).toBe(true);
 
     const ended = await s.calls.view(view.id);
@@ -146,7 +150,7 @@ describe("a voice call", () => {
     await call.connection("agent_joined");
     await call.connection("child_joined");
     await call.start();
-    s.advance(TIME_LIMITS.endAtMs / 1000);
+    for (let i = 0; i < TIME_LIMITS.endAtMs / 5000; i++) { s.advance(5); await call.connection("agent_joined"); }
     const last = await call.tick();
     expect(last.ended).toBe(true);
     await call.end({ reason: "child_stopped" });
@@ -202,5 +206,65 @@ describe("a voice call", () => {
     s.advance(TIME_LIMITS.endAtMs / 1000 + 61);
     const ended = ok(await s.calls.input(stuck.id, current.revision, { type: "end" }, "Leah"));
     expect(ended.view).toMatchObject({ status: "ended", outcome: { reason: "time_limit" } });
+  });
+});
+
+
+describe("R408 recovery and privacy", () => {
+  it("R408-3: keeps cancellation event-free after the live-state clear fails", async () => {
+    const s = setup();
+    const view = await newVoiceCall(s);
+    const update = s.store.update.bind(s.store);
+    let fail = true;
+    s.store.update = async (id, revision, change) => {
+      if (fail && change.live === null) { fail = false; throw new Error("clear failed"); }
+      return update(id, revision, change);
+    };
+    await expect(s.calls.input(view.id, view.revision, { type: "end" }, "Leah")).rejects.toThrow("clear failed");
+    const saved = (await s.calls.view(view.id))!;
+    const retried = ok(await s.calls.input(view.id, saved.revision, { type: "end" }, "Leah"));
+    expect(retried.view.learningEventId).toBeNull();
+    expect(s.store.rows()[0].live).toBeNull();
+    expect(s.rebuild).not.toHaveBeenCalled();
+  });
+
+  it("R408-5: excludes the child's name from every saved voice session and opening", async () => {
+    const s = setup();
+    s.seams.seed = () => 1;
+    const view = await newVoiceCall(s);
+    expect(JSON.stringify(s.store.rows()[0].live)).not.toContain("Leah");
+    const call = await open(s, view.id);
+    expect((await call.start()).say.join(" ")).not.toContain("Leah");
+    await call.settled();
+    expect(JSON.stringify(s.store.rows()[0].live)).not.toContain("Leah");
+  });
+
+  it("R408-5: removes personalization when an older saved voice call is opened", async () => {
+    const s = setup();
+    const view = await newVoiceCall(s);
+    const row = s.store.rows()[0];
+    row.live!.text.session.variety.name = "Leah";
+    await s.store.update(row.id, row.revision, { live: row.live });
+    const call = await open(s, view.id);
+    expect(s.store.rows()[0].live?.text.session.variety.name).toBeNull();
+    expect((await call.start()).say.join(" ")).not.toContain("Leah");
+  });
+
+  it("R408-7 R408-11: refuses connection renewals and leave events from a replaced worker", async () => {
+    const s = setup();
+    const view = await newVoiceCall(s);
+    const first = await open(s, view.id);
+    await first.connection("agent_joined");
+    await first.connection("child_joined");
+    const second = await open(s, view.id);
+    const count = s.connections.rows().length;
+    await first.connection("agent_joined");
+    expect(first.lost).toBe(true);
+    await first.connection("agent_left");
+    expect(s.connections.rows()).toHaveLength(count);
+    await second.connection("agent_left");
+    await second.connection("agent_joined");
+    await second.connection("child_joined");
+    expect(second.lost).toBe(false);
   });
 });

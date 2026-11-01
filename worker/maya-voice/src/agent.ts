@@ -5,7 +5,7 @@
 // src/lib/maya-livekit-text.ts). The placeholder LLM below exists because AgentSession wants one, and is never asked.
 //
 // VoiceCallRun owns the call's life around the speech: the opening when the child is there, the ticks the session asks
-// for (pauses and the 9- and 10-minute limits, counted from the end of Maya's speech), the connection events, the
+// for silence (counted from the end of speech), an independent deadline, the connection leases, the
 // hang-up, a dropped connection (the call ends if the child is not back within RECONNECT_GRACE_MS), and the end. It
 // takes its clock and timers, so a test drives it without waiting.
 import { ReadableStream, TransformStream } from "node:stream/web";
@@ -13,7 +13,8 @@ import { stt, voice, type llm, type tts } from "@livekit/agents";
 import type { AudioFrame } from "@livekit/rtc-node";
 import type { FinishOptions } from "@/lib/maya-text";
 import type { VoiceCall, VoiceTurn } from "@/lib/maya-call";
-import { childTurnFrom, nextTickAt, RECONNECT_GRACE_MS, type Heard } from "@/lib/maya-voice";
+import { TIME_LIMITS } from "@/lib/maya";
+import { CONNECTION_RENEW_MS, childTurnFrom, nextTickAt, RECONNECT_GRACE_MS, type Heard } from "@/lib/maya-voice";
 
 const userTexts = (ctx: llm.ChatContext) =>
   ctx.items.flatMap((i) => (i.type === "message" && i.role === "user" ? [i.textContent ?? ""] : []));
@@ -33,6 +34,7 @@ export function voiceSession(providers: { stt: stt.STT; tts: tts.TTS; fake: bool
     // The speech-to-text says when the child's turn ends (AssemblyAI's end of turn; the fake's end of speech).
     turnHandling: {
       turnDetection: "stt",
+      preemptiveGeneration: { enabled: false },
       ...(tuning.endpointingMs !== undefined ? { endpointing: { minDelay: tuning.endpointingMs, maxDelay: tuning.endpointingMs } } : {}),
     },
     ...(tuning.aecWarmupDuration !== undefined ? { aecWarmupDuration: tuning.aecWarmupDuration } : {}),
@@ -47,7 +49,7 @@ export class MayaVoiceAgent extends voice.Agent {
   private finals: Heard[][] = [];
   constructor(
     private readonly call: VoiceCall,
-    private readonly onTurn: (turn: VoiceTurn) => void,
+    private readonly onTurn: (turn: VoiceTurn) => Promise<boolean>,
   ) {
     super({ instructions: "Maya's words come from her session through the text adapter, not from these instructions." });
   }
@@ -75,17 +77,16 @@ export class MayaVoiceAgent extends voice.Agent {
     const fresh = users.slice(this.seen).filter((t) => t.trim());
     this.seen = users.length;
     const said: string[] = [];
-    const take = (turn: VoiceTurn) => {
-      said.push(...turn.say);
-      this.onTurn(turn);
+    const take = async (turn: VoiceTurn) => {
+      if (await this.onTurn(turn)) said.push(...turn.say);
     };
     if (!this.opened) {
       this.opened = true;
-      take(await this.call.start());
+      await take(await this.call.start());
     }
     if (fresh.length > 0) {
       const heard = childTurnFrom(this.finals.splice(0)) ?? { text: fresh.join(" "), uncertain: false, alternatives: [] };
-      take(await this.call.child(heard.text, heard.uncertain ? { uncertain: true, alternatives: heard.alternatives } : undefined));
+      await take(await this.call.child(heard.text, heard.uncertain ? { uncertain: true, alternatives: heard.alternatives } : undefined));
     }
     const text = said.join(" ");
     if (!text) return null;
@@ -102,6 +103,7 @@ export class MayaVoiceAgent extends voice.Agent {
 export interface CallUpdate {
   revision: number;
   ended: boolean;
+  error?: "technical_issue";
 }
 
 export interface Timers {
@@ -117,8 +119,12 @@ export class VoiceCallRun {
   private speechEndedAt: number | null = null;
   private tickTimer: unknown = null;
   private graceTimer: unknown = null;
+  private limitTimer: unknown = null;
+  private leaseTimer: unknown = null;
   private finishing: Promise<void> | null = null;
   private childHere = false;
+  private generation = 0;
+  private speech: voice.SpeechHandle | null = null;
   readonly agent: MayaVoiceAgent;
 
   constructor(
@@ -126,14 +132,17 @@ export class VoiceCallRun {
     private readonly call: VoiceCall,
     private readonly options: {
       timers?: Timers;
-      /** Tells the child's screen; never throws. */
       notify(update: CallUpdate): void;
-      /** After the call is stored: close the room and the job. */
       closed?(): Promise<void>;
     },
   ) {
-    this.agent = new MayaVoiceAgent(call, (turn) => this.after(turn));
-    session.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) => {
+    this.agent = new MayaVoiceAgent(call, turn => this.after(turn));
+    session.on(voice.AgentSessionEventTypes.SpeechCreated, ev => { this.speech = ev.speechHandle; });
+    session.on(voice.AgentSessionEventTypes.Close, () => { void this.finish({ detail: "the voice session closed unexpectedly" }); });
+    session.on(voice.AgentSessionEventTypes.Error, ev => {
+      if (!ev.error.recoverable) void this.finish({ detail: "the voice provider failed" });
+    });
+    session.on(voice.AgentSessionEventTypes.AgentStateChanged, ev => {
       if (ev.oldState === "speaking" && ev.newState !== "speaking") {
         this.speechEndedAt = this.timers.now();
         this.schedule();
@@ -141,101 +150,133 @@ export class VoiceCallRun {
     });
   }
 
-  private get timers() {
-    return this.options.timers ?? realTimers;
-  }
+  private get timers() { return this.options.timers ?? realTimers; }
 
-  /** Maya has joined: stores it. Call before the child is linked. */
   async agentJoined() {
+    // End any old worker segment. Its last lease bounds the crash gap.
+    await this.call.connection("agent_left");
     await this.call.connection("agent_joined");
+    if (this.call.lost) return this.finish({ detail: "the connection could not be saved" });
+    this.renewLease();
+    this.scheduleLimit();
   }
 
-  /** The child joined, or came back after a drop. The first time, Maya opens the call. */
+  private renewLease() {
+    if (this.finishing) return;
+    this.leaseTimer = this.timers.set(CONNECTION_RENEW_MS, () => {
+      void (async () => {
+        await this.call.connection("agent_joined");
+        if (this.call.lost) await this.finish({ detail: "the connection lease could not be saved" });
+        else this.renewLease();
+      })();
+    });
+  }
+
   async childJoined() {
     if (this.finishing || this.childHere) return;
+    const generation = ++this.generation;
     this.childHere = true;
-    if (this.graceTimer !== null) {
-      this.timers.clear(this.graceTimer);
-      this.graceTimer = null;
-    }
+    if (this.graceTimer !== null) this.timers.clear(this.graceTimer);
+    this.graceTimer = null;
     await this.call.connection("child_joined");
+    if (generation !== this.generation || !this.childHere || this.finishing) return;
+    if (this.call.lost) return this.finish({ detail: "the connection could not be saved" });
+    this.speechEndedAt = this.timers.now();
+    this.lastTickAt = this.timers.now();
+    // Bound the opening model request too, before the first session state can be saved.
+    this.scheduleLimit(this.call.session.startedAt ?? this.timers.now());
     if (this.call.session.startedAt === null) this.session.generateReply();
+    else this.schedule();
   }
 
-  /** The child's connection ended: a hang-up ends the call now; a drop ends it unless they are back in time. */
   async childLeft(how: "hang_up" | "dropped") {
     if (this.finishing) return;
-    if (this.childHere) {
-      this.childHere = false;
-      await this.call.connection("child_left");
-    }
+    const generation = ++this.generation;
+    this.childHere = false;
+    if (this.tickTimer !== null) this.timers.clear(this.tickTimer);
+    this.tickTimer = null;
+    await this.call.connection("child_left");
+    if (this.finishing || this.childHere || generation !== this.generation) return;
+    if (this.call.lost) return this.finish({ detail: "the disconnect could not be saved" });
     if (how === "hang_up") return this.finish({ reason: "child_stopped" });
     if (this.graceTimer === null) {
-      this.graceTimer = this.timers.set(RECONNECT_GRACE_MS, () => void this.finish({ detail: "the child's connection dropped and did not come back" }));
+      this.graceTimer = this.timers.set(RECONNECT_GRACE_MS, () => {
+        if (!this.childHere && generation === this.generation) void this.finish({ detail: "the child's connection dropped and did not come back" });
+      });
     }
   }
 
-  /** The child pressed hang up. */
-  hangUp() {
-    return this.finish({ reason: "child_stopped" });
-  }
+  hangUp() { return this.finish({ reason: "child_stopped" }); }
 
-  /** Gives the session its tick now, if it can act on one: Maya says what it brings. */
   async tick() {
     this.tickTimer = null;
-    if (this.finishing || this.call.ended) return;
+    if (this.finishing) return;
+    const started = this.call.session.startedAt;
+    if (started !== null && this.timers.now() >= started + TIME_LIMITS.endAtMs) return this.finish({}, true);
+    if (!this.childHere || this.call.ended) return;
     const busy = this.session.agentState === "speaking" || this.session.agentState === "thinking" || this.session.userState === "speaking";
-    if (busy) {
-      this.tickTimer = this.timers.set(1000, () => void this.tick());
-      return;
-    }
+    if (busy) { this.tickTimer = this.timers.set(1000, () => void this.tick()); return; }
     this.lastTickAt = this.timers.now();
-    const turn = await this.call.tick();
-    if (turn.say.length) this.session.say(turn.say.join(" "), { addToChatCtx: true });
-    this.after(turn);
+    try {
+      const turn = await this.call.tick();
+      if (this.call.lost) return this.finish({ detail: "the call could not be saved" });
+      if (this.finishing) return;
+      const speech = turn.say.length ? this.session.say(turn.say.join(" "), { addToChatCtx: true }) : null;
+      await this.after(turn, speech);
+    } catch { await this.finish({ detail: "the voice turn failed" }); }
   }
 
-  /** After each of Maya's turns: tell the screen once the turn is saved, plan the next tick, and end after a last turn. */
-  private after(turn: VoiceTurn) {
-    void this.call.settled().then(() => this.options.notify({ revision: this.call.revision, ended: false }));
+  private async after(turn: VoiceTurn, handle = this.speech): Promise<boolean> {
+    await this.call.settled();
+    if (this.call.lost) { void this.finish({ detail: "the call could not be saved" }); return false; }
+    if (this.finishing) return false;
+    this.options.notify({ revision: this.call.revision, ended: false });
+    this.scheduleLimit();
     if (turn.ended) {
-      void this.endAfterSpeech();
-      return;
-    }
-    this.schedule();
+      // Do not await inside llmNode: the speech handle needs its text before it can finish.
+      void (async () => {
+        try { await handle?.waitForPlayout(); }
+        catch { await this.finish({ detail: "the final speech failed" }); return; }
+        await this.finish({ reason: "child_stopped" });
+      })();
+    } else this.schedule();
+    return true;
+  }
+
+  private scheduleLimit(startedAt = this.call.session.startedAt) {
+    if (this.limitTimer !== null || this.finishing || startedAt === null) return;
+    this.limitTimer = this.timers.set(startedAt + TIME_LIMITS.endAtMs - this.timers.now(), () => void this.finish({}, true));
   }
 
   private schedule() {
     if (this.tickTimer !== null) this.timers.clear(this.tickTimer);
     this.tickTimer = null;
-    if (this.finishing) return;
+    if (this.finishing || !this.childHere) return;
     const at = nextTickAt(this.call.session, { speechEndedAt: this.speechEndedAt, lastTickAt: this.lastTickAt });
     if (at !== null) this.tickTimer = this.timers.set(at - this.timers.now(), () => void this.tick());
   }
 
-  /** The session ended the call (solved, time, safety): let Maya finish speaking, then close. */
-  private async endAfterSpeech() {
-    for (let i = 0; i < 120 && this.session.agentState !== "speaking"; i++) await new Promise((r) => setTimeout(r, 50));
-    while (this.session.agentState === "speaking") await new Promise((r) => setTimeout(r, 100));
-    await this.finish({ reason: "child_stopped" });
-  }
-
-  /** Ends and stores the call (once), tells the screen, then closes. */
-  finish(how: FinishOptions): Promise<void> {
-    this.finishing ??= (async () => {
-      for (const t of [this.tickTimer, this.graceTimer]) if (t !== null) this.timers.clear(t);
-      this.tickTimer = this.graceTimer = null;
-      await this.call.end(how);
-      if (this.childHere) await this.call.connection("child_left");
-      await this.call.connection("agent_left");
-      this.options.notify({ revision: this.call.revision, ended: true });
-      await this.session.close().catch(() => {});
+  finish(how: FinishOptions, limit = false): Promise<void> {
+    // Set the promise before calling close, whose event can call finish again.
+    this.finishing ??= Promise.resolve().then(async () => {
+      for (const t of [this.tickTimer, this.graceTimer, this.limitTimer, this.leaseTimer]) if (t !== null) this.timers.clear(t);
+      this.tickTimer = this.graceTimer = this.limitTimer = this.leaseTimer = null;
+      // Stop media immediately for a deadline, hang-up, failure or lost ownership.
+      const closing = this.session.close().catch(() => {});
+      let failed = this.call.lost;
+      try {
+        if (limit) await this.call.limit();
+        else await this.call.end(how);
+        if (this.childHere) await this.call.connection("child_left");
+        await this.call.connection("agent_left");
+        failed ||= this.call.lost;
+      } catch { failed = true; }
+      this.options.notify({ revision: this.call.revision, ended: !failed, ...(failed ? { error: "technical_issue" as const } : {}) });
+      await closing;
       await this.options.closed?.();
-    })();
+    });
     return this.finishing;
   }
 
-  get done() {
-    return this.finishing;
-  }
+  get done() { return this.finishing; }
 }

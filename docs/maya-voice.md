@@ -10,18 +10,32 @@ Everything runs with **fake providers** until the accounts below exist. The fake
 2. The call page checks the microphone (a level bar), then **Connect** asks `POST /api/admin/maya/calls/<id>/token` for a fresh token and joins the room `maya-call-<call id>`.
 3. The token admits one participant, `child-<child id>`, to that one room, for 5 minutes (`VOICE_TOKEN_TTL_SECONDS`). It allows the microphone and data, and no admin, create, list or record rights, and no metadata changes. Its attributes name the call, the parent and the child. It also asks LiveKit to dispatch the worker `maya-voice` with the call id (`src/lib/maya-voice-token.ts`).
 4. The worker checks that the room is the call's own and that the joiner is the call's own child, with the token's family attributes (`checkJoiner`). It ignores anyone else. It then opens the call (`openVoice`) and records the speech-to-text and voice ids on it.
-5. Maya opens the call when the child is there. Each finished child turn goes to the call's session. Ticks come only when the session can act on one: the pause policy counts from the end of Maya's speech, closing starts at 9 minutes, and audio ends at 10 minutes.
+5. Maya opens the call when the child is there. Each finished child turn goes to the call's session. Preemptive generation is disabled. Only a completed child turn can change the call. Silence checks stop while the child is absent. Closing starts at 9 minutes. An independent deadline stops media at 10 minutes, including during speech or model work. A restored worker schedules these timers again.
 6. After each saved turn the worker sends `{ revision }` on the `maya.call` data topic, and the page reads the call again (`GET /api/admin/maya/calls/<id>`) for the transcript and board.
-7. **Hang up** (RPC `maya.hang_up`) ends the call as "Child stopped". A dropped connection ends it as a technical issue if the child is not back within 30 seconds. The session's own end (solved, time, safety) closes the room after Maya finishes speaking.
+7. **Hang up** (RPC `maya.hang_up`) ends the call as "Child stopped". A dropped connection ends it as a technical issue if the child is not back within 30 seconds. The session's own end (solved, safety) keeps the saved call live until the final speech handle completes. Then the worker saves the terminal outcome, sends the terminal update, and disconnects. The 10-minute media deadline takes priority. A fatal session closure saves a technical outcome. A lost write or failed save stops media and sends a technical failure to the client. A room disconnect alone leaves the browser recovery controls available until the server confirms an outcome.
 
 ### What is stored
 
 | Where | What |
 |---|---|
 | `maya_calls` (existing columns) | The transcript and board (`trace`), the outcome, `speech_to_text` and `voice` (provider ids, never keys), `connected_seconds`, and the mishearing counts `mishearing_confirmations` (numbers Maya asked to confirm) and `mishearing_corrections` ("no, I said ..."). |
-| `maya_call_connections` (new, migration `add_maya_call_connections`) | One row per `agent_joined`, `agent_left`, `child_joined` and `child_left`, with the server time. Connected seconds count the time the child and Maya were both in the room, up to the call's end. A reconnect gap is not counted. |
+| `maya_call_connections` (new, migration `add_maya_call_connections`) | One row per `agent_joined`, `agent_left`, `child_joined` and `child_left`, with the server time. `agent_joined` renews a 15-second connection lease every 5 seconds. Each new worker first closes the previous segment with `agent_left`. Connected seconds count overlapping child presence and valid worker leases. A crash can add at most 15 seconds after the last renewal. Reconnect gaps and longer crash gaps are excluded. |
 
-No audio is stored. The worker starts its session with `record: false`, and the speech-to-text confidence only marks a child turn as uncertain (below 0.6), so Maya confirms the number. A cancelled call that Maya never joined writes no learning event.
+The app does not save audio. The worker starts its session with `record: false`. This setting does not establish the retention policy of LiveKit Cloud, AssemblyAI, or Inworld. Their effective settings and contracts must be verified before any claim that those systems do not store audio. The speech-to-text confidence marks a child turn as uncertain below 0.6, so Maya confirms the number. A cancelled call that Maya never joined writes no learning event. The saved JSON state keeps a cancellation marker until cleanup succeeds. Each recovery attempt reads that marker.
+
+## Direct-provider privacy gate
+
+These plugins connect directly to AssemblyAI and Inworld. LiveKit Inference retention terms do not cover this route. The research source is `.design/research/ta-voice-2026-10/voice-options.md`, section 8 (2026-10-29).
+
+Before real audio:
+
+1. In AssemblyAI, opt out of model improvement before the first request. Verify the effective opt-out for the worker's account and streaming endpoint. The research records that this opt-out is prospective. See [AssemblyAI data retention and model training](https://assemblyai.com/docs/data-retention-and-model-training).
+2. Obtain and verify Inworld's retention arrangements for the direct TTS API. Confirm the plan or written agreement, retention exceptions, and training use. Do not infer these from LiveKit settings. See [Inworld zero data retention](https://docs.inworld.ai/portal/zero-data-retention).
+3. Obtain written confirmation that the selected providers permit the downstream service for children aged 6-12. The research does not establish this permission. Check the [AssemblyAI terms](https://www.assemblyai.com/legal/terms-of-service) and [Inworld terms](https://inworld.ai/terms), parent consent, subprocessors, and the agreed processing locations. Keep real providers disabled while these terms remain unresolved.
+4. Verify that LiveKit recording and audio observability are disabled. The worker's `record: false` only controls the session setting.
+5. After these checks, set `MAYA_VOICE_PRIVACY_CONFIRMED=assemblyai-optout,inworld-retention,child-use-approved` in the worker. Each real provider requires its own marker. Either real provider also requires `child-use-approved`. The worker refuses a job without the required markers. This flag records an operator confirmation. It cannot verify an external account setting or contract.
+
+Voice sessions have no name personalization. Their saved variety state has no child name. Inworld receives Maya's accepted speech text. This does not remove names that a child supplies in free speech; the privacy gate still applies.
 
 ## Accounts and settings Savar must create
 
@@ -42,6 +56,7 @@ Agents create no accounts. Create these, then set the values below.
 | `LIVEKIT_URL` | Yes | Yes | `wss://<project>.livekit.cloud`. In Vercel it turns on the **Speak** option. |
 | `LIVEKIT_API_KEY` | Yes | Yes | Vercel mints tokens. The worker registers with LiveKit. |
 | `LIVEKIT_API_SECRET` | Yes (Secret) | Yes | Never sent to a browser. |
+| `MAYA_VOICE_PRIVACY_CONFIRMED` | No | Yes for real providers | `assemblyai-optout,inworld-retention,child-use-approved`, only after the checks above. |
 | `MAYA_STT` | No | Yes | `assemblyai`, or `fake` (default). |
 | `ASSEMBLYAI_API_KEY` | No | Yes | Needed when `MAYA_STT=assemblyai`. |
 | `MAYA_STT_MODEL` | No | Optional | Default `universal-3-6-pro`. Other ids: `universal-streaming-english`, `universal-3-5-pro`. |
@@ -55,7 +70,7 @@ Agents create no accounts. Create these, then set the values below.
 | `SUPABASE_SECRET_KEY` | Already set | Yes | The worker's own key `maya_voice_worker` (step 4), not the web app's. |
 | `MAYA_VOICE_LOAD_LIMIT` | No | Optional | 0 to 1: the machine load above which the worker takes no new call. LiveKit's default otherwise. |
 
-A real provider set without its key or voice stops the worker's job with a clear log line. It never falls back to the fake quietly (`voiceProviders`, `src/lib/maya-voice.ts`).
+A real provider set without its privacy confirmation, key or voice stops the worker's job with a clear log line. It never falls back to the fake quietly (`voiceProviders`, `src/lib/maya-voice.ts`).
 
 Deploying the worker to LiveKit Cloud, the privacy page text, the voice choice and the delay measurements are #327.
 

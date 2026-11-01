@@ -11,7 +11,7 @@ import { makeProviders } from "./providers";
 initializeLogger({ pretty: false, level: "silent" });
 
 const build = async (env: Record<string, string>) => {
-  const config = voiceProviders(env);
+  const config = voiceProviders({ MAYA_VOICE_PRIVACY_CONFIRMED: "assemblyai-optout,inworld-retention,child-use-approved", ...env });
   if (!config.ok) throw new Error(config.problems.join("; "));
   return { config, providers: await makeProviders(config) };
 };

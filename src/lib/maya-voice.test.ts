@@ -31,20 +31,20 @@ describe("providers by configuration", () => {
   });
 
   it("chooses AssemblyAI and Inworld by configuration, and stores ids without keys", () => {
-    const p = voiceProviders({ MAYA_STT: "assemblyai", ASSEMBLYAI_API_KEY: "aai-secret", MAYA_TTS: "inworld", INWORLD_API_KEY: "iw-secret", MAYA_VOICE: "Maya-warm" });
+    const p = voiceProviders({ MAYA_VOICE_PRIVACY_CONFIRMED: "assemblyai-optout,inworld-retention,child-use-approved", MAYA_STT: "assemblyai", ASSEMBLYAI_API_KEY: "aai-secret", MAYA_TTS: "inworld", INWORLD_API_KEY: "iw-secret", MAYA_VOICE: "Maya-warm" });
     expect(p).toMatchObject({
       ok: true,
       speechToText: { provider: "assemblyai", model: "universal-3-6-pro", apiKey: "aai-secret" },
       voice: { provider: "inworld", model: "inworld-tts-2", voice: "Maya-warm", apiKey: "iw-secret" },
       ids: { speechToText: "assemblyai/universal-3-6-pro", voice: "inworld/inworld-tts-2/Maya-warm" },
     });
-    const other = voiceProviders({ MAYA_STT: "assemblyai", MAYA_STT_MODEL: "universal-streaming-english", ASSEMBLYAI_API_KEY: "k", MAYA_TTS: "inworld", MAYA_TTS_MODEL: "inworld-tts-2-flash", INWORLD_API_KEY: "k", MAYA_VOICE: "Ashley" });
+    const other = voiceProviders({ MAYA_VOICE_PRIVACY_CONFIRMED: "assemblyai-optout,inworld-retention,child-use-approved", MAYA_STT: "assemblyai", MAYA_STT_MODEL: "universal-streaming-english", ASSEMBLYAI_API_KEY: "k", MAYA_TTS: "inworld", MAYA_TTS_MODEL: "inworld-tts-2-flash", INWORLD_API_KEY: "k", MAYA_VOICE: "Ashley" });
     expect(other.ok && other.ids).toEqual({ speechToText: "assemblyai/universal-streaming-english", voice: "inworld/inworld-tts-2-flash/Ashley" });
     if (p.ok) expect(JSON.stringify(p.ids)).not.toMatch(/secret/);
   });
 
   it("refuses a real provider without its key or voice, and an unknown provider, never falling back to a fake", () => {
-    expect(voiceProviders({ MAYA_STT: "assemblyai" })).toEqual({ ok: false, problems: ["MAYA_STT is assemblyai, but ASSEMBLYAI_API_KEY is not set"] });
+    expect(voiceProviders({ MAYA_STT: "assemblyai" })).toMatchObject({ ok: false, problems: expect.arrayContaining(["MAYA_STT is assemblyai, but ASSEMBLYAI_API_KEY is not set"]) });
     const tts = voiceProviders({ MAYA_TTS: "inworld", INWORLD_API_KEY: "k" });
     expect(tts.ok).toBe(false);
     expect(!tts.ok && tts.problems.join(" ")).toMatch(/MAYA_VOICE/);
@@ -92,22 +92,23 @@ describe("what the child said", () => {
 describe("connected time", () => {
   const T = Date.UTC(2026, 10, 1, 16);
   const at = (s: number) => T + s * 1000;
+  const renew = (end: number) => Array.from({ length: Math.floor(end / 5) }, (_, i) => ({ kind: "agent_joined" as const, at: at((i + 1) * 5) }));
   const ev = (kind: ConnectionEvent["kind"], s: number): ConnectionEvent => ({ kind, at: at(s) });
 
   it("counts only the time the child and Maya were both in the room", () => {
-    expect(connectedSeconds([ev("agent_joined", 0), ev("child_joined", 5), ev("child_left", 65), ev("agent_left", 70)], at(70))).toBe(60);
+    expect(connectedSeconds([...renew(65), ev("agent_joined", 0), ev("child_joined", 5), ev("child_left", 65), ev("agent_left", 70)], at(70))).toBe(60);
     // Maya joins after the child.
-    expect(connectedSeconds([ev("child_joined", 0), ev("agent_joined", 10), ev("child_left", 40)], at(50))).toBe(30);
+    expect(connectedSeconds([...renew(40).filter(e => e.at >= at(10)), ev("child_joined", 0), ev("agent_joined", 10), ev("child_left", 40)], at(50))).toBe(30);
   });
 
   it("counts a reconnect once, without the gap, and runs to the end for anyone still there", () => {
-    const events = [ev("agent_joined", 0), ev("child_joined", 0), ev("child_left", 100), ev("child_joined", 130), ev("child_joined", 140)];
+    const events = [...renew(200), ev("agent_joined", 0), ev("child_joined", 0), ev("child_left", 100), ev("child_joined", 130), ev("child_joined", 140)];
     expect(connectedSeconds(events, at(200))).toBe(170);
     expect(connectedSeconds([...events].reverse(), at(200))).toBe(170);
   });
 
   it("ignores a leave with no join, and events after the end", () => {
-    expect(connectedSeconds([ev("child_left", 1), ev("agent_joined", 0), ev("child_joined", 10), ev("child_left", 900)], at(60))).toBe(50);
+    expect(connectedSeconds([...renew(60), ev("child_left", 1), ev("agent_joined", 0), ev("child_joined", 10), ev("child_left", 900)], at(60))).toBe(50);
     expect(connectedSeconds([], at(60))).toBe(0);
   });
 });
@@ -139,4 +140,20 @@ describe("ticks", () => {
     expect(nextTickAt(talking, { speechEndedAt: null, lastTickAt: T + TIME_LIMITS.closingAtMs })).toBe(T + TIME_LIMITS.endAtMs);
     expect(nextTickAt(talking, { speechEndedAt: null, lastTickAt: T + TIME_LIMITS.endAtMs })).toBeNull();
   });
+});
+
+
+it("R408-4: refuses direct providers until privacy and child-use settings are confirmed", () => {
+  const env = { MAYA_STT: "assemblyai", ASSEMBLYAI_API_KEY: "fake-key", MAYA_TTS: "inworld", INWORLD_API_KEY: "fake-key", MAYA_VOICE: "Ashley" };
+  expect(voiceProviders(env).ok).toBe(false);
+  expect(voiceProviders({ ...env, MAYA_VOICE_PRIVACY_CONFIRMED: "assemblyai-optout,inworld-retention" }).ok).toBe(false);
+  expect(voiceProviders({ ...env, MAYA_VOICE_PRIVACY_CONFIRMED: "assemblyai-optout,inworld-retention,child-use-approved" }).ok).toBe(true);
+});
+
+it("R408-11: bounds a crashed worker's connection lease and starts a separate segment", () => {
+  expect(connectedSeconds([
+    { kind: "agent_joined", at: 0 }, { kind: "child_joined", at: 0 },
+    { kind: "agent_left", at: 70_000 }, { kind: "agent_joined", at: 70_000 },
+    { kind: "child_joined", at: 70_000 }, { kind: "child_left", at: 80_000 },
+  ], 80_000)).toBeLessThanOrEqual(25);
 });
