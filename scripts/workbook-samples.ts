@@ -145,49 +145,50 @@ function costingFetch(): typeof fetch {
 function fakeAi(): AiClient {
   let n = 0;
   let m = 0;
+  const onPage = new Map<string, number>();
+  const NAMES = ["Ava", "Ben", "Cal", "Dot", "Eli", "Fay", "Gus", "Hal", "Ivy", "Jo", "Kai", "Liv", "Max", "Ned", "Oli", "Pia", "Quin", "Rex", "Sam", "Tia",
+    "Uma", "Vic", "Wes", "Xan", "Yara", "Zed", "Abe", "Bea", "Cy", "Dee", "Ed", "Flo", "Gil", "Hope", "Ike", "Jem", "Kit", "Lou", "Mo", "Nia"];
   const num = (value: number) => ({ type: "number", value, numerator: null, denominator: null, whole: null, unit: null, hours: null, minutes: null, period: null, parts: [], text: null });
   const op = (kind: "add" | "subtract", a: number, b: number) => ({ kind, operands: [num(a), num(b)], expression: null, unit: null, denominator: null, values: [] });
-  const SAM: Record<string, { kind: "add" | "subtract"; a: number; b: number; wrong: number; step: string | null }> = {
-    "forgot-carry": { kind: "add", a: 48, b: 37, wrong: 75, step: "tens" },
-    "smaller-from-larger": { kind: "subtract", a: 52, b: 17, wrong: 45, step: "ones" },
-    "regroup-not-taken": { kind: "subtract", a: 62, b: 28, wrong: 44, step: "tens" },
-    "counted-one-extra": { kind: "add", a: 2, b: 2, wrong: 5, step: null },
-    "counted-one-short": { kind: "add", a: 3, b: 2, wrong: 4, step: null },
-    "wrong-start": { kind: "add", a: 3, b: 2, wrong: 4, step: null },
-    "wrong-operation": { kind: "add", a: 3, b: 2, wrong: 1, step: null },
-    "swapped-digits": { kind: "add", a: 7, b: 5, wrong: 21, step: null },
-  };
   return {
     model: "fake",
     async json(request) {
-      const body = JSON.parse((request.content[0] as { text: string }).text) as { slots: { slot: string; skills: string[]; formats?: string[] | null; mistakes?: { name: string }[]; numbers?: Record<string, { max: number }> }[] };
+      type Asked = { slot: string; skills: string[]; formats?: string[] | null; mistakes?: { name: string }[]; numbers?: Record<string, { max: number }> };
+      const body = JSON.parse((request.content[0] as { text: string }).text) as { day: number; page: number; slots: Asked[]; examples?: Asked[] };
       return {
-        items: body.slots.map((s) => {
+        items: [...body.slots, ...(body.examples ?? [])].map((s) => {
           const format = s.formats?.[0] ?? "write-number";
           const base = { slot: s.slot, skill: s.skills[0], difficulty: 2, format, numbers: [], places: null, direction: null, sequence: null, pattern: null, figure: null };
           if (format === "spot-the-error" && s.mistakes?.length) {
-            const name = s.mistakes[m++ % s.mistakes.length].name;
-            const x = SAM[name];
-            const sign = x.kind === "add" ? "+" : "-";
-            // The slot's skill with the widest range, so Sam's sum fits it.
+            // A new sum each time (first number the larger, Sam counts one too many); when that mistake is not one of the
+            // level's, code shows one the sum allows (samFix). The slot's skill with the widest range, so the sum fits it.
             const skill = [...s.skills].sort((p, q) => (s.numbers?.[q]?.max ?? 0) - (s.numbers?.[p]?.max ?? 0))[0];
+            const top = Math.min(99, s.numbers?.[skill]?.max ?? 99);
+            const sums = Array.from({ length: Math.min(top, 12) }, (_, x) => Array.from({ length: Math.min(top, 12) }, (_, y) => [x + 2, y + 2] as const)).flat()
+              .filter(([x, y]) => x >= y && x + y + 1 <= top);
+            const [a, b] = sums[m++ % sums.length];
             return {
-              ...base, skill, text: `${x.a} ${sign} ${x.b} = ?`, operation: op(x.kind, x.a, x.b),
-              wrongAnswers: [{ value: num(x.wrong), cause: name, description: `Sam's mistake: ${name}`, step: x.step }],
-              easier: { text: x.kind === "add" ? "1 + 1 = ?" : "5 - 2 = ?", operation: x.kind === "add" ? op("add", 1, 1) : op("subtract", 5, 2) }, shownWrong: 0,
+              ...base, skill, text: `${a} + ${b} = ?`, operation: op("add", a, b),
+              wrongAnswers: [{ value: num(a + b + 1), cause: "counted-one-extra", description: "Counts one too many", step: null }],
+              easier: { text: "1 + 1 = ?", operation: op("add", 1, 1) }, shownWrong: 0,
             };
           }
-          // a + b stays within the range of the item's skill: to 10 at U1, so 2 + 2 to 7 + 2; numbers stay below 100
-          // so a page of them fits as the real AI's would. The easier example 1 + 1 is smaller.
-          const max = Math.min(100, s.numbers?.[s.skills[0]]?.max ?? 100);
-          const b = max >= 20 ? Math.floor(max * 0.15) : 2;
-          const a = 2 + (n++ % (max - b - 2));
+          // a + b within the range of the item's skill (a + b + 1 at most its max, below 100 so a page of them fits as
+          // the real AI's would), a new pair on each call of a page and a new name each time: no question repeats one of
+          // the book (round 3). The easier example 0 + b is smaller.
+          const max = Math.min(99, s.numbers?.[s.skills[0]]?.max ?? 99);
+          const key = `${body.day}:${body.page}`;
+          const k = onPage.get(key) ?? 0;
+          onPage.set(key, k + 1);
+          const pairs = Array.from({ length: Math.min(max, 12) }, (_, x) => Array.from({ length: Math.min(max, 12) }, (_, y) => [x + 1, y + 1] as const)).flat().filter(([x, y]) => x + y + 1 <= max);
+          const [a, b] = pairs[k % pairs.length];
+          const who = `${NAMES[n % NAMES.length]} and ${NAMES[Math.floor(n++ / NAMES.length) % NAMES.length]}`;
           const reason = format === "written-reason";
           return {
-            ...base, text: reason ? "How do you know your answer is right?" : format === "show-work" ? `Ava has ${a} beads. She gets ${b} more. How many beads now?` : `${a} + ${b} =`,
+            ...base, text: reason ? `How do you know, ${who}?` : `${who} have ${a}. ${b} more. How many now?`,
             operation: reason ? null : op("add", a, b),
             wrongAnswers: reason ? [] : [{ value: num(a + b + 1), cause: "careless", description: "Counts 1 too many", step: null }],
-            easier: reason ? null : { text: "1 + 1 = ?", operation: op("add", 1, 1) }, shownWrong: null,
+            easier: reason ? null : { text: "Try a smaller sum.", operation: op("add", 0, Math.min(a, b)) }, shownWrong: null,
           };
         }),
       };

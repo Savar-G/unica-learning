@@ -131,8 +131,8 @@ const textRoomOf = (width: number, font: number, lines: number, em = SANS_EM): T
  *   less the card's border and padding, its number badge and icon: 230 px, for 2 lines;
  * - a line in a list (.list): the full width less the number, the gaps and an answer box: 1 line;
  * - a line in a grid of two (.two): half of that: 1 line;
- * - Spot the error at U1 to U9: the Is it right? strip, Tick one and the Fix it box take the row, so the text is
- *   about 50 px wide: the sum only (5 + 3 = ?), 2 lines; at U10 and up about 150 px;
+ * - Spot the error: the sum beside Is it right? and the fix box: about 160 px of Geist Mono at U1 to U9 (no "Tick
+ *   one" hint there), the sum only (5 + 3 = ?); about 150 px from U10, 2 lines;
  * - a warm-up fact (.facts, Geist Mono, one line that never wraps);
  * - stories, How do you know?, the Mixed set, Challenge, Math in the world, Solve it two ways and test cards by their
  *   own blocks. Null for a panel (no question).
@@ -159,7 +159,8 @@ export function textRoom(slot: SlotName, level: number, pages = 8): TextRoom | n
       return textRoomOf((CONTENT_W - gap * (cols - 1)) / cols - 22 - 20 - band.box, band.fact, 1, MONO_EM);
     }
     case "spot-the-error":
-      return band.name === "mid" ? textRoomOf(150, band.body, 2) : { characters: 10, lines: 2, perLine: 5 };
+      // U1 to U9: its own line in the outlined box, the strip and the fix box under it. From U10: about 150 px beside them.
+      return band.name === "mid" ? textRoomOf(150, band.body, 2) : textRoomOf(160, band.math, 1, MONO_EM);
     case "fix-it":
       // Three cards in a panel (U4 and up): (688 - 44 - 24) / 3 less padding, badge and gap; the box wraps under.
       return parent ? card : textRoomOf((CONTENT_W - 44 - 24) / 3 - 28 - badge - 12, band.body, 2);
@@ -291,6 +292,7 @@ const CSS = `
 .ln i:first-of-type{height:${LINE_FIRST}px}
 .pic{display:block;flex:none}
 .seq{display:inline-flex;align-items:center;flex-wrap:wrap;gap:6px 8px}
+.obx{display:inline-flex;align-items:center;flex-wrap:nowrap;gap:8px;flex:none}
 .picr{display:inline-block;flex:none}
 .nl{position:relative;flex:none}
 .nlv{position:absolute;transform:translateX(-50%);font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-size:14px;line-height:1}
@@ -635,6 +637,8 @@ interface RegionOpts {
   bare?: boolean;
   /** A picture region drawn as this figure (a parent-led card's squares to colour). */
   figure?: Figure | null;
+  /** Leave out the "Tick one" hint beside a tick strip (Spot the error at U1 to U9). */
+  noTick?: boolean;
 }
 
 function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOpts): string {
@@ -649,7 +653,7 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
     case "choice": {
       if (r.mark === "circle") return `<span class="circ" ${at}>${r.choices.map((c) => `<span class="co">${escape(c)}</span>`).join("")}</span>`;
       const choices = r.choices.map((c) => `<span class="ch"><i class="tb"></i><span>${escape(c)}</span></span>`).join("");
-      return `<span class="rg">${r.label ? `<span class="rl">${escape(r.label)}</span>` : ""}<span class="strip" ${at}>${choices}</span><span class="t1"><span>Tick one</span><i>✓</i></span></span>`;
+      return `<span class="rg">${r.label ? `<span class="rl">${escape(r.label)}</span>` : ""}<span class="strip" ${at}>${choices}</span>${o.noTick ? "" : `<span class="t1"><span>Tick one</span><i>✓</i></span>`}</span>`;
     }
     case "work": {
       const h = o.work === "fill" ? "" : `height:${o.work ?? 80}px`;
@@ -688,7 +692,12 @@ function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: 
     inline += `<span class="seq">${terms.join(`<span class="qm">,</span>`)}</span>`;
   }
   const order = packageItem(q.package).checks.find((c) => c.kind === "order");
-  if (order) inline += `<span class="seq"><span class="qm">${escape(order.numbers.map(valueText).join(", "))}</span><span class="qm">→</span></span>`;
+  if (order) {
+    // The numbers, then the boxes in one row that never breaks: a parent-led card has room for 4 (the generator's limit).
+    const boxes = order.regions.flatMap((id) => names.filter((n) => n.region.id === id)).map((x) => regionHtml(q, x.region, x.name, o)).join("");
+    order.regions.forEach((id) => inSequence.add(id));
+    inline += `<span class="seq"><span class="qm">${escape(order.numbers.map(valueText).join(", "))}</span><span class="qm">→</span></span><span class="obx">${boxes}</span>`;
+  }
   for (const { region, name } of names) {
     if (inSequence.has(region.id)) continue;
     const html = regionHtml(q, region, name, o);
@@ -809,7 +818,11 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       return chip() + `<div class="outl"><div class="q" style="align-items:flex-start"><span class="lab">${escape(who)}'s work</span><span class="wk">${(b.lines ?? []).map(worked).join("<br>")}</span></div>`
         + qs.map((q) => {
           const { inline, full } = regionsSplit(q, { band, labels: true });
-          return `<div class="list" ${mark.question(q.number)}><div class="q"><span class="n">${q.number}</span><span class="qb">${text(q)}</span><span class="rgs">${inline}</span></div>${full}</div>`;
+          // U1 to U9 leave out the "Tick one" hint (the grown-up reads Is it right? aloud): with it the sum had about 50
+          // px beside the big strip and broke across lines; without it, about 160 px (textRoom's 10 characters).
+          const early = band.name !== "mid";
+          const { inline: row, full: under } = early ? regionsSplit(q, { band, labels: true, noTick: true }) : { inline, full };
+          return `<div class="list" ${mark.question(q.number)}><div class="q"><span class="n">${q.number}</span><span class="qb">${early ? qtext(q) : text(q)}</span><span class="rgs">${row}</span></div>${under}</div>`;
         }).join("") + `</div>`;
     }
     case "watch-one":

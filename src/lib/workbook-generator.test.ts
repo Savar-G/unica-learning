@@ -9,7 +9,7 @@ import { curriculumFor } from "@/lib/workbook-curriculum";
 import { generateWorkbook, type FitCheck, type GenerateDeps, type GeneratedWorkbook } from "@/lib/workbook-generator";
 import { planLevel, planWorkbook, type WorkbookPlan } from "@/lib/workbook-plan";
 import { skillRange } from "@/lib/workbook-book";
-import { choiceAsked } from "@/lib/workbook-generator-items";
+import { buildQuestion, choiceAsked } from "@/lib/workbook-generator-items";
 import { textRoom } from "@/lib/workbook-template";
 import { fixedTemplate } from "@/lib/workbook-template-fixed";
 import type { SlotName } from "@/lib/workbook-page";
@@ -41,8 +41,8 @@ const num = (value: number) => ({
 const addOp = (a: number, b: number) => ({ kind: "add", operands: [num(a), num(b)], expression: null, unit: null, denominator: null, values: [] });
 const subOp = (a: number, b: number) => ({ kind: "subtract", operands: [num(a), num(b)], expression: null, unit: null, denominator: null, values: [] });
 
-interface SlotAsked { slot: string; skills: string[] }
-const read = (r: AiJsonRequest) => JSON.parse((r.content[0] as { text: string }).text) as { day: number; pageType: string; slots: SlotAsked[]; note: string | null };
+interface SlotAsked { slot: string; skills: string[]; numbers?: Record<string, { max: number }> }
+const read = (r: AiJsonRequest) => JSON.parse((r.content[0] as { text: string }).text) as { day: number; page: number; pageType: string; slots: SlotAsked[]; examples?: SlotAsked[]; note: string | null };
 
 /** A sound item for a slot: an addition with a carry, its wrong answers and an easier example. */
 function goodItem(s: SlotAsked, over: Record<string, unknown> = {}) {
@@ -58,8 +58,9 @@ function goodItem(s: SlotAsked, over: Record<string, unknown> = {}) {
   };
 }
 
+/** The AI's answer to a request: `make` for each slot, and for each panel's worked example when the page asks for some. */
 const fill = (r: AiJsonRequest, make: (s: SlotAsked, r: ReturnType<typeof read>) => unknown = (s) => goodItem(s)) =>
-  ({ items: read(r).slots.map((s) => make(s, read(r))).filter((x) => x !== undefined) });
+  ({ items: [...read(r).slots, ...(read(r).examples ?? [])].map((s) => make(s, read(r))).filter((x) => x !== undefined) });
 
 const fits: FitCheck = { fits: async () => ({ ok: true }) };
 
@@ -183,7 +184,7 @@ describe("a failed question", () => {
   it("is never dropped: a slot the AI leaves out is marked failed", async () => {
     const ai = fakeAiClient({ answer: (r) => fill(r, (s) => (s.slot === "1.1" ? undefined : goodItem(s))) });
     const q = firstDayPage(await generate(deps({ ai }))).questions[0];
-    expect(q).toMatchObject({ number: 1, slot: "1.1", check: { status: "failed", reason: "the AI wrote nothing for this question" }, attempts: 2, package: null });
+    expect(q).toMatchObject({ number: 1, slot: "1.1", check: { status: "failed", reason: "the AI wrote nothing for this question (its answer held no items)" }, attempts: 2, package: null });
   });
 
   it("is failed with the error when the AI call throws, and the draft is still stored", async () => {
@@ -529,6 +530,31 @@ describe("a book laid out for the templates: room, rules and the content left", 
     text: "2 + 1 = ?", operation: addOp(2, 1), wrongAnswers: [{ value: num(4), cause: "count", description: "Counts one too many.", step: null }],
     easier: { text: "1 + 1 = ?", operation: addOp(1, 1) }, ...over,
   });
+  /**
+   * A fake AI that writes as the book asks (round 3): every question different. Each call on a page takes the next pair
+   * of the slot's range (a + b + 1 at most its max), and each text a new pair of names, so no question repeats one of
+   * the book or of its page. `kind` makes the item from the pair.
+   */
+  const NAMES = ["Ava", "Ben", "Cal", "Dot", "Eli", "Fay", "Gus", "Hal", "Ivy", "Jo", "Kai", "Liv", "Max", "Ned", "Oli", "Pia", "Quin", "Rex", "Sam", "Tia"];
+  function writer(kind: (who: string, a: number, b: number) => Record<string, unknown>) {
+    let names = 0;
+    const onPage = new Map<string, number>();
+    return (s: SlotAsked, r: ReturnType<typeof read>, over: Record<string, unknown> = {}) => {
+      const max = Math.min(10, ...Object.values(s.numbers ?? {}).map((n) => n.max));
+      const pairs = Array.from({ length: max }, (_, a) => Array.from({ length: max }, (_, b) => [a + 1, b + 1] as const)).flat().filter(([a, b]) => a + b + 1 <= max);
+      const key = `${r.day}:${r.page}`;
+      const k = onPage.get(key) ?? 0;
+      onPage.set(key, k + 1);
+      const [a, b] = pairs[k % pairs.length];
+      const c = names++;
+      return goodItem(s, { ...kind(`${NAMES[c % 20]} and ${NAMES[Math.floor(c / 20) % 20]}`, a, b), ...over });
+    };
+  }
+  const adds = () => writer((who, a, b) => ({
+    text: `${who} have ${a}. ${b} more come. How many now?`, operation: addOp(a, b),
+    wrongAnswers: [{ value: num(a + b + 1), cause: "count", description: "Counts one too many.", step: null }],
+    easier: { text: "Try a smaller sum.", operation: addOp(0, Math.min(a, b)) },
+  }));
 
   async function laidOut(d: GenerateDeps) {
     const result = await generateWorkbook(laid, d);
@@ -558,8 +584,10 @@ describe("a book laid out for the templates: room, rules and the content left", 
   });
 
   it("tells the check redo what to change: a wrong answer past the limit counts", async () => {
+    const write = adds();
     const ai = fakeAiClient({
-      answer: (r) => fill(r, (s) => (r.name === "workbook_page" && s.slot === "1.1" ? small(s, { wrongAnswers: [{ value: num(12), cause: "operation", description: "Adds.", step: null }] }) : small(s))),
+      answer: (r) => fill(r, (s, q) => (r.name === "workbook_page" && s.slot === "1.1" && q.day === 1 && q.page === 1
+        ? write(s, q, { wrongAnswers: [{ value: num(12), cause: "operation", description: "Adds.", step: null }] }) : write(s, q))),
     });
     const draft = await laidOut(deps({ ai }));
     const note = read(ai.requests.find((r) => r.name === "workbook_page_redo")!).note!;
@@ -570,53 +598,64 @@ describe("a book laid out for the templates: room, rules and the content left", 
 
   it("stores a missing part (2 + ? = 5) with the missing part as its answer, also on a skill before subtraction", async () => {
     const missing = (part: number, total: number) => ({ kind: "missing-addend", operands: [num(part), num(total)], expression: null, unit: null, denominator: null, values: [] });
-    const ai = fakeAiClient({
-      answer: (r) => fill(r, (s) => small(s, {
-        text: "2 and what make 5?", operation: missing(2, 5), easier: { text: "1 and what make 3?", operation: missing(1, 3) },
-        wrongAnswers: [{ value: num(5), cause: "total", description: "Writes the total.", step: null }],
-      })),
-    });
+    const write = writer((who, a, b) => ({
+      text: `${who} have ${a}. How many more make ${a + b}?`, operation: missing(a, a + b), easier: { text: "Try a smaller sum.", operation: missing(1, 1) },
+      wrongAnswers: [{ value: num(a + b), cause: "total", description: "Writes the total.", step: null }],
+    }));
+    const ai = fakeAiClient({ answer: (r) => fill(r, (s, q) => write(s, q)) });
     const draft = await laidOut(deps({ ai }));
     const qs = draft.pages.flatMap((p) => p.questions).filter((q) => q.place !== "spot-the-error");
     expect(qs.length).toBeGreaterThan(0);
-    expect(qs.every((q) => q.check.status === "checked" && q.package!.answer!.value.type === "number" && (q.package!.answer!.value as { value: number }).value === 3)).toBe(true);
+    expect(qs.every((q) => {
+      const op = q.package!.operation as { kind: string; operands: number[] };
+      return q.check.status === "checked" && op.kind === "missing-addend" && (q.package!.answer!.value as { value: number }).value === op.operands[1] - op.operands[0];
+    })).toBe(true);
     // Some of them are on a skill whose level has not met subtraction (K2 and before): a number bond is allowed there.
     expect(qs.some((q) => !skillRange(BC, 3, q.package!.skill.skills[0]).subtraction)).toBe(true);
     const panels = draft.pages.flatMap((p) => (p.content?.kind === "day" ? p.content.blocks : [])).filter((b) => b.slot === "worked-example" || b.slot === "watch-one" || b.slot === "reminder");
     expect(panels.length).toBeGreaterThan(0);
     for (const b of panels) {
       const lines = [...(b.lines ?? []), ...(b.methods ?? []).flatMap((m) => m.lines)];
-      expect(lines).toEqual(b.slot === "reminder" ? ["1 + [2] = 3"] : ["Count on from 1 to 3: 2, 3.", "1 + [2] = 3"]);
+      expect(lines.at(-1)).toMatch(/^\d+ \+ \[\d+\] = \d+$/);
+      if (b.slot !== "reminder") expect(lines[0]).toMatch(/^Count on from \d+ to \d+: /);
     }
   });
 
   it("works the panels' sums by counting on and back at U3, never in columns", async () => {
-    const ai = fakeAiClient({ answer: (r) => fill(r, (s) => small(s, { text: "10 - 9 = ?", operation: subOp(10, 9), easier: { text: "9 - 8 = ?", operation: subOp(9, 8) }, wrongAnswers: [{ value: num(2), cause: "count", description: "Counts one too many.", step: null }] })) });
+    const write = writer((who, a, b) => ({
+      text: `${who} have ${a + b}. ${b} fly away. How many are left?`, operation: subOp(a + b, b), easier: { text: "Try a smaller sum.", operation: subOp(1, 1) },
+      wrongAnswers: [{ value: num(a + 1), cause: "count", description: "Counts one too many.", step: null }],
+    }));
+    const ai = fakeAiClient({ answer: (r) => fill(r, (s, q) => write(s, q)) });
     const draft = await laidOut(deps({ ai }));
     const watch = draft.pages.flatMap((p) => (p.content?.kind === "day" ? p.content.blocks : [])).filter((b) => b.slot === "watch-one" || b.slot === "worked-example");
     expect(watch.length).toBeGreaterThan(0);
     for (const b of watch) {
       const lines = [...(b.lines ?? []), ...(b.methods ?? []).flatMap((m) => m.lines)];
-      expect(lines).toEqual(["Count back 8 from 9: 8, 7, 6, 5, 4, 3, 2, 1.", "9 − 8 = [1]"]);
+      expect(lines).toHaveLength(2);
+      expect(lines[0]).toMatch(/^Count back \d+ from \d+: [\d, ]+\.$/);
+      expect(lines[1]).toMatch(/^\d+ − \d+ = \[\d+\]$/);
     }
   });
 
   it("works a panel's example from a count item's picture when no question has an operation, never an empty panel", async () => {
-    const ai = fakeAiClient({
-      answer: (r) => fill(r, (s) => small(s, { text: "How many dots?", format: "count", operation: null, easier: null, wrongAnswers: [], figure: "dots", numbers: [num(3), num(4)] })),
-    });
+    const write = writer((who, a, b) => ({ text: `${who} have dots. How many?`, format: "count", operation: null, easier: null, wrongAnswers: [], figure: "dots", numbers: [num(a), num(b)] }));
+    const ai = fakeAiClient({ answer: (r) => fill(r, (s, q) => write(s, q)) });
     const draft = await laidOut(deps({ ai }));
     const panels = draft.pages.flatMap((p) => (p.content?.kind === "day" ? p.content.blocks : [])).filter((b) => b.slot === "watch-one" || b.slot === "worked-example");
     expect(panels.length).toBeGreaterThan(0);
     for (const b of panels) {
-      expect([...(b.lines ?? []), ...(b.methods ?? []).flatMap((m) => m.lines)]).toEqual(["Count them: 1, 2, 3, 4, 5, 6, 7.", "There are [7]."]);
+      const lines = [...(b.lines ?? []), ...(b.methods ?? []).flatMap((m) => m.lines)];
+      expect(lines[0]).toMatch(/^Count them: 1(, \d+)*\.$/);
+      expect(lines[1]).toMatch(/^There are \[\d+\]\.$/);
       expect(b.label).toBe("Count");
     }
   });
 
   it("refuses a yes-or-no or either-or question stored with an operation, and tells the redo", async () => {
+    const write = adds();
     const ai = fakeAiClient({
-      answer: (r) => fill(r, (s) => (r.name === "workbook_page" && s.slot === "1.1" ? small(s, { text: "Is 3 close to 5 or less than 2?" }) : small(s))),
+      answer: (r) => fill(r, (s, q) => (r.name === "workbook_page" && s.slot === "1.1" && q.day === 1 && q.page === 1 ? write(s, q, { text: "Is 3 close to 5 or less than 2?" }) : write(s, q))),
     });
     const draft = await laidOut(deps({ ai }));
     const note = read(ai.requests.find((r) => r.name === "workbook_page_redo")!).note!;
@@ -669,5 +708,150 @@ describe("the vary number", () => {
     expect(slots.every((s) => s.vary >= 1 && s.vary <= Math.min(...Object.values(s.numbers).map((n) => n.max)))).toBe(true);
     expect(new Set(slots.map((s) => s.vary)).size).toBeGreaterThan(3);
     expect((await run()).map((s) => s.vary)).toEqual(slots.map((s) => s.vary));
+  });
+});
+
+describe("round 3 (#380): repeats, panel examples, items that do not match their text", () => {
+  const U3 = (() => {
+    const result = planWorkbook({
+      profile: { standards: [] }, grade: 0, level: planLevel(BC, "U3")!, passed: {}, workbook: { number: 1, inLevel: 0 },
+      reviews: [], missedReviews: [], misses: [], pausedWeeks: 0, support: null, unassessedUnits: [],
+    });
+    if (!result.ok) throw new Error(result.reason);
+    return result.plan;
+  })();
+  const laid = { ...input, plan: U3, book: { child: "Zoe" } };
+  const NAMES = ["Ava", "Ben", "Cal", "Dot", "Eli", "Fay", "Gus", "Hal", "Ivy", "Jo", "Kai", "Liv", "Max", "Ned", "Oli", "Pia", "Quin", "Rex", "Sam", "Tia"];
+  type Req = ReturnType<typeof read> & { examples?: (SlotAsked & { panel: string })[] };
+  const req = (r: AiJsonRequest) => read(r) as Req;
+  /** A fake AI that writes a new question each call, in the slot's range (see the laid-out tests above). */
+  function newEach() {
+    let c = 0;
+    const onPage = new Map<string, number>();
+    return (s: SlotAsked, r: Req, over: Record<string, unknown> = {}) => {
+      const max = Math.min(10, ...Object.values(s.numbers ?? {}).map((n) => n.max));
+      const pairs = Array.from({ length: max }, (_, a) => Array.from({ length: max }, (_, b) => [a + 1, b + 1] as const)).flat().filter(([a, b]) => a + b + 1 <= max);
+      const key = `${r.day}:${r.page}`;
+      const k = onPage.get(key) ?? 0;
+      onPage.set(key, k + 1);
+      const [a, b] = pairs[k % pairs.length];
+      const n = c++;
+      return goodItem(s, {
+        text: `${NAMES[n % 20]} and ${NAMES[Math.floor(n / 20) % 20]} have ${a}. ${b} more come. How many now?`, operation: addOp(a, b),
+        wrongAnswers: [{ value: num(a + b + 1), cause: "count", description: "Counts one too many.", step: null }],
+        easier: { text: "Try a smaller sum.", operation: addOp(0, Math.min(a, b)) }, ...over,
+      });
+    };
+  }
+  async function book(ai: ReturnType<typeof fakeAiClient>, concurrency = 1) {
+    const result = await generateWorkbook(laid, deps({ ai, concurrency }));
+    if (result.status !== "stored") throw new Error(result.reason);
+    return result.draft;
+  }
+
+  it("writes the book day by day: every call of a day comes before the next day's, even with pages at once", async () => {
+    const write = newEach();
+    const ai = fakeAiClient({ answer: (r) => fill(r, (s, q) => write(s, q as Req)) });
+    await book(ai, 6);
+    const days = ai.requests.filter((r) => r.name === "workbook_page").map((r) => req(r).day);
+    expect(days).toEqual([...days].sort((a, b) => a - b));
+  });
+
+  it("tells each page what the book already asked on its skills, and sends a repeat to the redo with the reason", async () => {
+    const write = newEach();
+    let first: string | null = null;
+    const ai = fakeAiClient({
+      answer: (r) => fill(r, (s, q) => {
+        const item = write(s, q as Req) as { text: string };
+        if (r.name !== "workbook_page" || s.slot !== "1.1" || !("place" in s)) return item;
+        // Every later page's question 1.1 asks the book's first question again, word for word.
+        if (first === null) { first = item.text; return item; }
+        return { ...item, text: first };
+      }),
+    });
+    const draft = await book(ai);
+    const asked = ai.requests.filter((r) => r.name === "workbook_page" && req(r).day > 1)
+      .flatMap((r) => (JSON.parse((r.content[0] as { text: string }).text) as { slots: { asked?: string[] }[] }).slots.flatMap((s) => s.asked ?? []));
+    expect(asked).toContain(first);
+    const redo = ai.requests.filter((r) => r.name === "workbook_page_redo").map((r) => req(r).note ?? "");
+    expect(redo.some((n) => n.includes("it repeats a question already asked on page 3"))).toBe(true);
+    expect(redo.some((n) => n.includes("Write a different question"))).toBe(true);
+    const texts = draft.pages.flatMap((p) => p.questions).filter((q) => q.check.status !== "failed").map((q) => q.package!.text);
+    expect(new Set(texts).size).toBe(texts.length);
+  });
+
+  it("on a review place, fails a question that only changes one number of another on its page", async () => {
+    const write = newEach();
+    const ai = fakeAiClient({
+      answer: (r) => fill(r, (s, q) => {
+        const r2 = q as Req;
+        if (r.name !== "workbook_page" || r2.day !== 1 || r2.page !== 1) return write(s, r2);
+        // Day 1 page 1 (Already know it?): "What is 1 more than N?" on every card.
+        const n = Number(s.slot.split(".")[1]);
+        return write(s, r2, { text: `What is 1 more than ${n + 1}?`, operation: addOp(n + 1, 1), wrongAnswers: [{ value: num(n + 4), cause: "count", description: "Counts on too far.", step: null }] });
+      }),
+    });
+    await book(ai);
+    const note = req(ai.requests.find((r) => r.name === "workbook_page_redo" && req(r).day === 1 && req(r).page === 1)!).note!;
+    expect(note).toContain("only by one number: ask another kind of question");
+  });
+
+  it("asks each panel for a worked example of its own skill and shows it, never a sum of another skill on the page", async () => {
+    const write = newEach();
+    const asked: { panel: string; skills: string[] }[] = [];
+    const ai = fakeAiClient({
+      answer: (r) => {
+        for (const e of req(r).examples ?? []) asked.push({ panel: e.panel, skills: e.skills });
+        // The examples are counts (dots of 2 and 2); the questions are additions.
+        return { items: [...req(r).slots.map((s) => write(s, req(r))), ...(req(r).examples ?? []).map((e) => goodItem(e, {
+          text: "How many dots?", format: "count", operation: null, easier: null, wrongAnswers: [], figure: "dots", numbers: [num(2), num(2)],
+        }))] };
+      },
+    });
+    const draft = await book(ai);
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked.every((e) => e.skills.length === 1 && ["worked-example", "watch-one", "reminder"].includes(e.panel))).toBe(true);
+    const panels = draft.pages.flatMap((p) => (p.content?.kind === "day" ? p.content.blocks : [])).filter((b) => ["worked-example", "watch-one"].includes(b.slot));
+    expect(panels.length).toBeGreaterThan(0);
+    for (const b of panels) expect([...(b.lines ?? []), ...(b.methods ?? []).flatMap((m) => m.lines)]).toEqual(["Count them: 1, 2, 3, 4.", "There are [4]."]);
+  });
+
+  it("names the slots the AI answered when it leaves one out", async () => {
+    const write = newEach();
+    const ai = fakeAiClient({ answer: (r) => fill(r, (s, q) => (s.slot === "1.1" ? undefined : write(s, q as Req))) });
+    const draft = await book(ai);
+    const q = firstDayPage(draft).questions[0];
+    expect(q.check.status === "failed" && q.check.reason).toMatch(/^the AI wrote nothing for this question \((it answered slots .*, not 1\.1|its answer held no items)\)$/);
+    const first = ai.requests.find((r) => r.name === "workbook_page_redo")!;
+    expect(req(first).note).toMatch(/Slot 1\.1 failed the check: the AI wrote nothing for this question \(it answered slots [\d., e]+, not 1\.1\)/);
+  });
+});
+
+describe("items whose kind does not match their text (round 3)", () => {
+  const place = { id: "q1", workbookId: WORKBOOK, page: 3, question: 1, level: 3, skills: ["K1-number-sequence"] };
+  const base = { slot: "1.1", skill: "K1-number-sequence", difficulty: 1, operation: null, wrongAnswers: [], easier: null, shownWrong: null, figure: null, numbers: [], places: null, direction: null, sequence: null, pattern: null };
+  const seq = (start: number, terms: number) => ({ start: num(start), step: num(1), terms, blanks: [2] });
+
+  it("makes a count from one number to another a sequence with that start and end", () => {
+    expect(buildQuestion({ ...base, text: "Count back from 10 to 1.", format: "draw" }, place).check).toMatchObject({ status: "failed", reason: expect.stringContaining("is a count: write it as the sequence format, from 10 to 1") });
+    expect(buildQuestion({ ...base, text: "Count from 1 to 10. Start at 2.", format: "sequence", sequence: seq(2, 6) }, place).check).toMatchObject({ status: "failed", reason: "the text counts from 1 to 10, but the sequence goes from 2 to 7: make them the same" });
+    expect(buildQuestion({ ...base, text: "Count from 2 to 7.", format: "sequence", sequence: seq(2, 6) }, place).check.status).toBe("checked");
+    expect(buildQuestion({ ...base, text: "Start at 3. Fill the gaps.", format: "sequence", sequence: seq(2, 6) }, place).check).toMatchObject({ reason: "the text starts at 3, but the sequence starts at 2: make them the same" });
+  });
+
+  it("fails a question that gives its own answer, or adds 0 to hand one back", () => {
+    const sum = (text: string, a: number, b: number) => buildQuestion({
+      ...base, skill: "K5-take-away-change", text, format: "write-number", operation: addOp(a, b),
+      wrongAnswers: [{ value: num(a + b + 1), cause: "count", description: "One too many.", step: null }], easier: { text: "Try a smaller sum.", operation: addOp(0, 1) },
+    }, { ...place, skills: ["K5-take-away-change"] });
+    expect(sum("Red 6, blue 4. How many red?", 6, 0).check).toMatchObject({ status: "failed", reason: expect.stringContaining("adding or taking away 0") });
+    expect(sum("There are 7 cats: 3 and 4. How many?", 3, 4).check).toMatchObject({ status: "failed", reason: "the question gives its own answer (7) in its text: ask for it instead" });
+    expect(sum("3 cats and 4 dogs. How many pets?", 3, 4).check.status).toBe("checked");
+  });
+
+  it("keeps an order item at U1 to U3 to 4 numbers, the boxes its card has room for", () => {
+    const order = (n: number) => buildQuestion({ ...base, skill: "K1-order-numerals", text: "Put in order.", format: "order", numbers: Array.from({ length: n }, (_, i) => num(i + 2)), direction: "up" }, { ...place, skills: ["K1-order-numerals"] });
+    expect(order(4).check.status).toBe("checked");
+    expect(order(5).check).toMatchObject({ status: "failed", reason: expect.stringContaining("2 to 4 numbers") });
   });
 });

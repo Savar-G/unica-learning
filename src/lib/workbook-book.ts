@@ -168,14 +168,64 @@ export interface PageQuestion {
   failed?: string;
 }
 
-/** An operation with a whole-number answer of two places or more, or any computed operation: the panel's sum. */
-function panelOperation(questions: PageQuestion[], prefer: number[]): Operation | null {
-  const ordered = [...questions.filter((q) => prefer.includes(q.slot)), ...questions.filter((q) => !prefer.includes(q.slot))];
-  for (const q of ordered) {
-    const op = q.package?.easierExample?.operation ?? null;
-    if (op) return op;
+/** A panel's worked example: its title, its worked lines, and its one answered line (a reminder's). */
+interface PanelExample {
+  label: string;
+  lines: string[];
+  answered: string;
+}
+
+/** The lines of a sound example item: a sum worked out, or a count, a sequence or an order shown done; else null. */
+function exampleOf(p: QuestionPackage, level: number): PanelExample | null {
+  if (p.operation) {
+    const lines = workedLines(p.operation, 3, level);
+    return { label: operationText(p.operation), lines, answered: lines.at(-1)! };
   }
-  for (const q of ordered) if (q.package?.operation) return q.package.operation;
+  const item = p.item;
+  if (!item) return null;
+  const boxAnswer = (id: string) => {
+    const r = item.regions.find((x) => x.id === id);
+    return r?.kind === "box" && r.answer ? valueText(r.answer) : "?";
+  };
+  for (const c of item.checks) {
+    if (c.kind === "count" && item.figure) {
+      const n = figureCount(item.figure);
+      if (n !== null && n >= 1 && n <= 20) {
+        const lines = [`Count them: ${Array.from({ length: n }, (_, k) => k + 1).join(", ")}.`, `There are [${n}].`];
+        return { label: "Count", lines, answered: lines[1] };
+      }
+    }
+    if (c.kind === "sequence") {
+      const line = c.terms.map((t) => ("region" in t ? `[${boxAnswer(t.region)}]` : valueText(t))).join(", ");
+      return { label: "Fill the gaps", lines: [line], answered: line };
+    }
+    if (c.kind === "order") {
+      const line = c.regions.map((id) => `[${boxAnswer(id)}]`).join(", ");
+      return { label: `Order ${c.numbers.map(valueText).join(", ")}`, lines: [`${c.direction === "up" ? "Least" : "Greatest"} first: ${line}`], answered: line };
+    }
+  }
+  return null;
+}
+
+/**
+ * A panel's example, always of the panel's own skill (the part's step, else its first skill): the AI's worked example
+ * for the panel (GenerateInput's panel examples, #380), else a question of the same part on that skill (its easier
+ * example's sum first), else null: never a sum of another skill on the page.
+ */
+function panelExample(questions: PageQuestion[], example: QuestionPackage | null, skill: string | undefined, sameP: number[], level: number): PanelExample | null {
+  if (example) {
+    const own = exampleOf(example, level);
+    if (own) return own;
+  }
+  const mine = questions.filter((q) => sameP.includes(q.slot) && q.package && (!skill || q.package.skill.skills.includes(skill)));
+  for (const q of mine) {
+    const op = q.package!.easierExample?.operation;
+    if (op) return exampleOf({ ...q.package!, operation: op }, level);
+  }
+  for (const q of mine) {
+    const own = exampleOf(q.package!, level);
+    if (own) return own;
+  }
   return null;
 }
 
@@ -188,21 +238,6 @@ function answeredLine(op: Operation): string {
 
 /** The levels that add and take away by counting on and back, before the written column method (Sam's early mistakes too). */
 const COUNTING_LEVELS = 6;
-
-/**
- * A panel's lines when no question of the page has an operation (every item counts a picture): one count worked out,
- * from the first count item with a picture of at most 20 things. Null when there is none.
- */
-function countPanel(questions: PageQuestion[]): { label: string; lines: string[] } | null {
-  for (const q of questions) {
-    const item = q.package?.item;
-    if (!item?.figure || !item.checks.some((c) => c.kind === "count")) continue;
-    const n = figureCount(item.figure);
-    if (n === null || n < 1 || n > 20) continue;
-    return { label: "Count", lines: [`Count them: ${Array.from({ length: n }, (_, k) => k + 1).join(", ")}.`, `There are [${n}].`] };
-  }
-  return null;
-}
 
 /**
  * The worked lines of an operation: its steps in words (at most `most`), then the sum with its answer in blue. Up to
@@ -780,6 +815,33 @@ export function samProblem(p: QuestionPackage, level: number): string | null {
   return null;
 }
 
+/**
+ * A Spot the error question set to show a mistake its sum allows (#380, round 3): when the AI's named mistake cannot
+ * happen on its sum, code takes the first mistake of the level (from `from`, in turn) that can, and writes Sam's wrong
+ * answer, its cause and its step from it; the first such package `ok` takes (the caller's checks: the package checker,
+ * the level's numbers). Null when no mistake of the level gives one.
+ */
+export function samFix(p: QuestionPackage, level: number, from: number, ok: (p: QuestionPackage) => boolean): QuestionPackage | null {
+  const op = p.operation;
+  if (!op || !p.item) return null;
+  const allowed = levelMistakes(level);
+  const right = operationResult(op);
+  for (let k = 0; k < allowed.length; k++) {
+    const mistake = allowed[(from + k) % allowed.length];
+    const work = samLines(op, mistake);
+    if (!work || (right.type === "number" && right.value === work.answer)) continue;
+    const answer: AnswerValue = { type: "number", value: work.answer };
+    const others = p.wrongAnswers.filter((w) => w.cause !== mistake && !(w.value.type === "number" && w.value.value === work.answer));
+    const fixed: QuestionPackage = {
+      ...p,
+      wrongAnswers: [{ value: answer, cause: mistake, description: `Sam ${SAM_MISTAKE_RULES[mistake].what}.`, step: work.step }, ...others],
+      item: { ...p.item, error: { answer, step: work.step } },
+    };
+    if (ok(fixed)) return fixed;
+  }
+  return null;
+}
+
 /** The mistakes a Spot the error slot offers the AI at a level, with what each is, when it fits and its step. */
 export const mistakesFor = (level: number) => levelMistakes(level).map((name) => ({ name, ...SAM_MISTAKE_RULES[name] }));
 
@@ -798,6 +860,8 @@ export function dayPageContent(o: {
   page: PlannedPage;
   layout: DayLayout;
   questions: PageQuestion[];
+  /** The AI's worked example of each panel slot, by its index in the layout's slots (#380), when it has one. */
+  examples?: { slot: number; package: QuestionPackage }[];
   child: string;
   workbook: number;
 }): PageContent {
@@ -813,32 +877,31 @@ export function dayPageContent(o: {
     const part = page.parts[s.part];
     const figures = mine.map((q) => pageFigure(q.package!.item?.figure, q.package!.operation));
     const withFigures = figures.some(Boolean) ? { figures } : {};
-    // A panel's sum: from the slots of the same part first (its easier example: smaller numbers, same kind).
+    // A panel's example: of the panel's own skill only, from its own worked example or the same part's questions.
     const sameP = layout.slots.flatMap((x, k) => (x.part === s.part && k !== i ? [k] : []));
+    const panel = () => panelExample(questions, o.examples?.find((e) => e.slot === i)?.package ?? null, part?.step?.skill ?? part?.skills[0], sameP, plan.level);
     switch (s.slot) {
       case "worked-example": {
         const step = part?.step ? curriculum.skillSteps(part.step.skill)?.[part.step.step - 1] : undefined;
-        const op = panelOperation(questions, sameP);
-        const counted = op ? null : countPanel(questions);
-        const lines = op ? workedLines(op, 3, plan.level) : counted?.lines ?? [];
+        const ex = panel();
+        const lines = ex?.lines ?? [];
         return {
-          slot: s.slot, items: [], label: op ? operationText(op) : counted?.label,
+          slot: s.slot, items: [], label: ex?.label,
           note: part?.unit === "B" ? "Unit B · new step" : "Unit A · new step",
           methods: lines.length ? [{ label: "Step by step", lines }] : [],
           explain: step?.change ?? "Work one step at a time. Then check your answer.",
         };
       }
       case "watch-one": {
-        const op = panelOperation(questions, sameP);
-        const counted = op ? null : countPanel(questions);
-        return { slot: s.slot, items: [], label: op ? operationText(op) : counted?.label, note: "Watch one worked out. Then finish two.", lines: op ? workedLines(op, 3, plan.level) : counted?.lines ?? [] };
+        const ex = panel();
+        return { slot: s.slot, items: [], label: ex?.label, note: "Watch one worked out. Then finish two.", lines: ex?.lines ?? [] };
       }
       case "reminder": {
-        const op = panelOperation(questions, sameP);
+        const ex = panel();
         const step = part?.step ? curriculum.skillSteps(part.step.skill)?.[part.step.step - 1] : undefined;
         return {
           slot: s.slot, items: [], label: "Remember", note: "From before",
-          lines: op ? [answeredLine(op)] : countPanel(questions)?.lines.slice(-1) ?? [],
+          lines: ex ? [ex.answered] : [],
           explain: step?.change ?? "Do it the same way as before. Check each answer.",
         };
       }

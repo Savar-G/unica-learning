@@ -257,16 +257,38 @@ describe("Sam's wrong work", () => {
     }
   });
 
-  it("puts the steps on the page and fails a shown wrong answer code cannot show", async () => {
+  it("puts the steps on the page, shows a mistake the sum allows when the AI's cannot happen, and fails a sum no mistake fits (#380)", async () => {
     const good = await generate("U12", "first");
     const spot = dayPages(good.draft).flatMap((p) => (p.content!.kind === "day" ? p.content!.blocks : [])).find((b) => b.slot === "spot-the-error")!;
     expect(spot.lines![0]).toBe("Add the ones: 8 + 7 = 15. Write 5.");
     expect(spot.lines!.join(" ")).not.toContain("[425]");
 
-    const bad = await generate("U12", "first", (s) => (s.place === "spot-the-error"
-      ? { ...item(s), wrongAnswers: [{ value: num(400), cause: "careless", description: "A slip.", step: null }] }
-      : item(s)));
-    const q = bad.draft.pages.flatMap((p) => p.questions).filter((x) => x.place === "spot-the-error");
+    // Each Spot the error a new sum, so none repeats another of the book.
+    let k = 0;
+    const repaired = await generate("U12", "first", (s) => {
+      if (s.place !== "spot-the-error") return item(s);
+      const a = 260 + k++;
+      return { ...item(s), text: `${a} + 157 = ?`, operation: addOp(a, 157), wrongAnswers: [{ value: num(400), cause: "careless", description: "A slip.", step: null }] };
+    });
+    const fixed = repaired.draft.pages.flatMap((p) => p.questions).filter((x) => x.place === "spot-the-error");
+    expect(fixed.length).toBeGreaterThan(0);
+    for (const x of fixed) {
+      expect(x.check.status).toBe("checked");
+      const shown = x.package!.item!.error!.answer as { value: number };
+      expect(x.package!.wrongAnswers.find((w) => (w.value as { value: number }).value === shown.value)!.cause).toMatch(/^(forgot-carry|smaller-from-larger|regroup-not-taken|wrong-operation|swapped-digits)$/);
+    }
+
+    k = 0;
+    const none = await generate("U12", "first", (s) => {
+      if (s.place !== "spot-the-error") return item(s);
+      // a + b with a < b and a one-digit answer: no carry, no swap, no adding instead of taking away: no mistake of U12.
+      const pairs = Array.from({ length: 8 }, (_, x) => Array.from({ length: 8 }, (_, y) => [x + 1, y + 2] as const)).flat().filter(([x, y]) => x < y && x + y <= 9);
+      const [a, b] = pairs[k % pairs.length];
+      // A name in front keeps each text new, also for the redo of the same slot.
+      const who = ["Ava", "Ben", "Cal", "Dot", "Eli", "Fay", "Gus", "Hal", "Ivy", "Jo"][Math.floor(k++ / pairs.length) % 10];
+      return { ...item(s), text: `${who}: ${a} + ${b} = ?`, operation: addOp(a, b), wrongAnswers: [{ value: num(a + b + 2), cause: "careless", description: "A slip.", step: null }], easier: { text: "1 + 1 = ?", operation: addOp(1, 1) } };
+    });
+    const q = none.draft.pages.flatMap((p) => p.questions).filter((x) => x.place === "spot-the-error");
     expect(q.length).toBeGreaterThan(0);
     expect(q.every((x) => x.check.status === "failed" && x.check.reason.includes("Sam's steps"))).toBe(true);
   });
@@ -275,16 +297,25 @@ describe("Sam's wrong work", () => {
 describe("Spot the error at the early levels", () => {
   it.each(["U2", "U5"])("offers %s only its mistakes and puts Sam's count on the page", async (level) => {
     const asked: string[][] = [];
+    // A new sum for each Spot the error (2 + 2 first), so none repeats another of the book.
+    const names = ["Ava", "Ben", "Cal", "Dot", "Eli", "Fay", "Gus", "Hal", "Ivy", "Jo"];
+    let k = 0;
     const { draft } = await generate(level, "first", (s) => {
-      const x = s as Asked & { mistakes?: { name: string }[] };
+      const x = s as Asked & { mistakes?: { name: string }[]; numbers?: Record<string, { max: number }> };
       if (x.place !== "spot-the-error") return item(s);
       asked.push((x.mistakes ?? []).map((m) => m.name));
-      return { ...item(s), text: "2 + 2 = ?", operation: addOp(2, 2), wrongAnswers: [{ value: num(5), cause: "counted-one-extra", description: "Counts one too many.", step: null }], easier: { text: "1 + 1 = ?", operation: addOp(1, 1) }, shownWrong: 0 };
+      // Sums in the slot's range (Sam's answer at most its max), 2 + 2 first.
+      const max = Math.min(...Object.values(x.numbers ?? {}).map((n) => n.max));
+      const sums = [[2, 2] as const, ...Array.from({ length: 9 }, (_, a) => Array.from({ length: 9 }, (_, b) => [a + 1, b + 1] as const)).flat()]
+        .filter(([a, b]) => a + b + 1 <= max && a + b > 2);
+      const [a, b] = sums[k % sums.length];
+      const who = names[k++ % names.length];
+      return { ...item(s), text: `${who}: ${a} + ${b} = ?`, operation: addOp(a, b), wrongAnswers: [{ value: num(a + b + 1), cause: "counted-one-extra", description: "Counts one too many.", step: null }], easier: { text: "1 + 1 = ?", operation: addOp(1, 1) }, shownWrong: 0 };
     });
     expect(asked.length).toBeGreaterThan(0);
     expect(asked.every((names) => names.join() === levelMistakes(Number(level.slice(1))).join())).toBe(true);
     const spots = draft.pages.flatMap((p) => p.questions).filter((q) => q.place === "spot-the-error");
-    expect(spots.every((q) => q.check.status !== "failed")).toBe(true);
+    expect(spots.filter((q) => q.check.status === "failed").map((q) => q.check)).toEqual([]);
     const block = dayPages(draft).flatMap((p) => (p.content!.kind === "day" ? p.content!.blocks : [])).find((b) => b.slot === "spot-the-error")!;
     expect(block.lines).toEqual(["Start at 2. Count on 2.", "3, 4, 5", "2 + 2 = [5]"]);
   });

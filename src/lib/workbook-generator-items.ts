@@ -15,6 +15,7 @@
 // agrees with the question. A draw item ("Draw 6 dots.") and a written reason are parent-checked: "not checked by code".
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness.
 import { BC_SKILL_MAP } from "@/lib/assessment";
+import { readNumbers } from "@/lib/number-words";
 import { defaultItem, figureCount } from "@/lib/question-package-items";
 import { PLACE_ORDER, written } from "@/lib/question-package-columns";
 import {
@@ -458,6 +459,8 @@ function numberItem(format: GeneratedFormat, raw: Record<string, unknown>, level
     }
     case "order": {
       if (numbers.length < 2 || numbers.length > 12 || !numbers.every(isNumberValue)) return "an order item needs 2 to 12 numbers";
+      // A parent-led card (U1 to U3) has room for a row of 4 answer boxes.
+      if (level <= 3 && numbers.length > 4) return "an order item at U1 to U3 has 2 to 4 numbers: its card has room for 4 boxes in a row";
       const direction = raw.direction === "down" ? "down" : raw.direction === "up" ? "up" : null;
       if (!direction) return "an order item goes up or down";
       const sorted = [...numbers].sort((a, b) => approx(a) - approx(b));
@@ -577,7 +580,10 @@ const standardOf = (skill: string) => BC_SKILL_MAP.standards.find((s) => s.skill
  */
 export function buildQuestion(raw: unknown, place: SlotPlace): BuiltQuestion {
   try {
-    return build(raw, place);
+    const built = build(raw, place);
+    if (built.check.status === "failed" || !built.package || !isObject(raw)) return built;
+    const problem = kindProblem(built.package, raw);
+    return problem ? fail(problem, built.package, built.stepIds) : built;
   } catch (e) {
     return fail(`code could not build the question: ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -670,6 +676,54 @@ export function choiceAsked(text: string): string | null {
   if (!last) return null;
   if (/^(is|are|am|was|were|does|do|did|can|could|will|would|should|has|have)\b/i.test(last)) return "yes or no";
   if (/\bor\b/i.test(last)) return "for a choice";
+  return null;
+}
+
+/** "Count from 1 to 10", "count back from 10 to 1": the start and the end the text states. */
+const COUNT_FROM_TO = /\bcount(?:\s+(?:on|up|back|down))?\s+from\s+(\d+)\s+to\s+(\d+)/i;
+const START_AT = /\bstart(?:ing)?\s+at\s+(\d+)/i;
+
+/**
+ * Why the item's kind does not fit its text, or null (#380, round 3): a count from one number to another is a sequence
+ * whose first and last terms are those numbers (and one that says where to start starts there); and a question never
+ * gives its own answer: an operation that adds or takes away 0 hands back a number the text gives, and an answer printed
+ * in the text that is not one of the numbers worked with is given away.
+ */
+export function kindProblem(p: QuestionPackage, raw: Record<string, unknown>): string | null {
+  const text = p.text;
+  const fromTo = text.match(COUNT_FROM_TO);
+  const seq = isObject(raw.sequence) ? raw.sequence : null;
+  if (fromTo) {
+    if (p.item?.format !== "boxes" && p.item?.format !== "write-number" || !p.item.checks.some((c) => c.kind === "sequence") || !seq) {
+      return `"${fromTo[0]}" is a count: write it as the sequence format, from ${fromTo[1]} to ${fromTo[2]}, with blanks to fill`;
+    }
+  }
+  if (seq && p.item?.checks.some((c) => c.kind === "sequence")) {
+    const start = (seq.start as { value?: unknown } | null)?.value;
+    const step = (seq.step as { value?: unknown } | null)?.value;
+    const terms = seq.terms;
+    if (typeof start === "number" && typeof step === "number" && typeof terms === "number") {
+      const last = start + (terms - 1) * step;
+      if (fromTo && (Number(fromTo[1]) !== start || Number(fromTo[2]) !== last)) {
+        return `the text counts from ${fromTo[1]} to ${fromTo[2]}, but the sequence goes from ${start} to ${last}: make them the same`;
+      }
+      const at = text.match(START_AT);
+      if (at && Number(at[1]) !== start) return `the text starts at ${at[1]}, but the sequence starts at ${start}: make them the same`;
+    }
+    return null;
+  }
+  const op = p.operation;
+  if (op && (op.kind === "add" || op.kind === "subtract") && op.operands.includes(0) && !/\bzero\b|\b0\b/.test(text)) {
+    return "adding or taking away 0 gives back a number the question already says: ask for a number the child works out";
+  }
+  const answer = p.answer?.value ?? null;
+  const counted = p.item?.checks.some((c) => c.kind === "count") ? p.item.checks : null;
+  const value = answer?.type === "number" ? answer.value : counted && p.item?.figure ? figureCount(p.item.figure) : null;
+  if (value !== null && (op || counted)) {
+    const given = readNumbers(text).map((r) => r.value);
+    const worked = op ? (op.operands as unknown[]).filter((x): x is number => typeof x === "number") : [];
+    if (given.includes(value) && !worked.includes(value)) return `the question gives its own answer (${value}) in its text: ask for it instead`;
+  }
   return null;
 }
 
