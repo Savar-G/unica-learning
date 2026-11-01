@@ -19,13 +19,13 @@ export function failedBySolve(check: QuestionCheck): "disagreed" | "errored" | n
 
 /**
  * One question's state. The question's own check decides first (the generator marks a question failed when the check of
- * its printed words did not agree); else the verdict of its check (`verdict`, undefined when it has none). A check
- * that did not agree but did not fail the question was of an earlier wording: the printed words were not checked.
+ * its printed words did not agree); else the verdict of its current printed question's check
+ * (`verdict`, undefined when it has none). The caller excludes checks of an earlier wording or picture.
  */
 export function questionSolveState(check: QuestionCheck, verdict: "agreed" | "disagreed" | "failed" | undefined): SolveState {
   const failed = failedBySolve(check);
   if (failed) return failed;
-  return verdict === "agreed" ? "agreed" : "not-checked";
+  return verdict === "failed" ? "errored" : verdict ?? "not-checked";
 }
 
 /** A question's state as a short label for its row. */
@@ -56,13 +56,15 @@ const questions = (n: number) => `${n} ${n === 1 ? "question" : "questions"}`;
 export function solveSummary(states: SolveState[], ran: boolean): SolveSummary {
   const disagreed = states.filter((s) => s === "disagreed").length;
   const errored = states.filter((s) => s === "errored").length;
+  const unchecked = states.filter((s) => s === "not-checked").length;
   if (!ran && disagreed === 0 && errored === 0) return { state: "not-checked", disagreed, errored, line: "Checking AI didn't run", tone: "muted" };
   const parts = [
     disagreed > 0 && `${questions(disagreed)} still ${disagreed === 1 ? "disagrees" : "disagree"}`,
     errored > 0 && `Checking AI couldn't check ${questions(errored)}`,
+    unchecked > 0 && `Checking AI didn't check ${questions(unchecked)}`,
   ].filter((x): x is string => !!x);
   if (parts.length === 0) return { state: "agreed", disagreed, errored, line: "All questions agree", tone: "ok" };
-  return { state: disagreed > 0 ? "disagreed" : "errored", disagreed, errored, line: parts.join(" · "), tone: disagreed > 0 ? "bad" : "warn" };
+  return { state: disagreed > 0 ? "disagreed" : errored > 0 ? "errored" : "not-checked", disagreed, errored, line: parts.join(" · "), tone: disagreed > 0 ? "bad" : "warn" };
 }
 
 /** The heading and note above the table of the questions the checking AI did not confirm; null when there are none. */
@@ -94,7 +96,7 @@ export function solveCostLine(costs: (number | null)[]): string | null {
   const known = costs.filter((c): c is number => c !== null);
   if (known.length === 0) return "API cost unknown";
   const total = known.reduce((n, c) => n + c, 0);
-  if (known.length < costs.length) return `API cost: at least ${usdText(total)} (some unknown)`;
+  if (known.length < costs.length) return `API cost: at least USD ${(Math.floor(total * 100) / 100).toFixed(2)} (some unknown)`;
   return `API cost ${usdText(total)}`;
 }
 

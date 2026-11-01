@@ -18,10 +18,11 @@ describe("questionSolveState (R379-1)", () => {
     expect(QUESTION_SOLVE_TEXT.disagreed).toBe("Checking AI disagreed");
   });
 
-  it("is agreed only when the check agreed, and not checked with no check or an earlier wording's", () => {
+  it("uses the current check's verdict, and says not checked when none matches the printed question", () => {
     expect(questionSolveState({ status: "checked" }, "agreed")).toBe("agreed");
     expect(questionSolveState({ status: "checked" }, undefined)).toBe("not-checked");
-    expect(questionSolveState({ status: "checked" }, "disagreed")).toBe("not-checked");
+    expect(questionSolveState({ status: "checked" }, "disagreed")).toBe("disagreed");
+    expect(questionSolveState({ status: "checked" }, "failed")).toBe("errored");
     expect(questionSolveState({ status: "failed", reason: "the easier example is not smaller than the question" }, "agreed")).toBe("agreed");
   });
 });
@@ -35,6 +36,10 @@ describe("solveSummary (R379-1)", () => {
 
   it("says all questions agree only when every check agreed", () => {
     expect(solveSummary(["agreed", "agreed"], true)).toMatchObject({ state: "agreed", line: "All questions agree", tone: "ok" });
+  });
+
+  it("does not claim agreement when a printed question has no check", () => {
+    expect(solveSummary(["agreed", "not-checked"], true)).toMatchObject({ state: "not-checked", line: "Checking AI didn't check 1 question", tone: "warn" });
   });
 
   it("counts the questions that still disagree", () => {
@@ -70,6 +75,8 @@ describe("solveCostLine (R379-2)", () => {
   it("shows an incomplete cost as a lower bound, never as the total", () => {
     expect(solveCostLine([0.12, null])).toBe("API cost: at least USD 0.12 (some unknown)");
     expect(solveCostLine([null, null])).toBe("API cost unknown");
+    expect(solveCostLine([0.129, null])).toBe("API cost: at least USD 0.12 (some unknown)");
+    expect(solveCostLine([0.0004, null])).toBe("API cost: at least USD 0.00 (some unknown)");
   });
 
   it("shows nothing with no checks, and a tiny cost as less than a cent", () => {

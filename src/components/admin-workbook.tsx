@@ -57,10 +57,10 @@ function regionKey(r: AnswerRegion): string {
   return "not scored";
 }
 
-/** A region's plain name: its printed label, else what it is ("Answer box", "Box a", "Choice"); never a bare id. */
+/** A region's plain name: its printed label, else what it is; never an internal id. */
 function regionName(r: AnswerRegion): string {
   if (r.label) return r.label;
-  if (r.kind === "box") return r.id === "answer" ? "Answer box" : `Box ${r.id}`;
+  if (r.kind === "box") return "Answer box";
   if (r.kind === "choice") return "Choice";
   return r.kind === "picture" ? "Drawing space" : "Writing space";
 }
@@ -84,7 +84,7 @@ function AnswerCell({ p }: { p: QuestionPackage }): ReactNode {
   if (!p.item) return <>{p.answer && valueText(p.answer.value)}{accepted}</>;
   return <>
     <ul className="adm-wb-list">{p.item.regions.map((r) => (
-      <li key={r.id} title={`Region ${r.id}`}>{regionName(r)}: {regionKey(r)}</li>
+      <li key={r.id} title={`Region ${r.id}`}>{regionName(r)}{/[?:]$/.test(regionName(r)) ? "" : ":"} {regionKey(r)}</li>
     ))}</ul>
     {accepted}
   </>;
@@ -99,7 +99,7 @@ export function PackageCells({ p, check }: { p: QuestionPackage; check?: ReactNo
     <td><AnswerCell p={p} /></td>
     <td>{check ?? <CheckCell p={p} />}</td>
     <td><ol className="adm-wb-steps">{hasOperation(p) && p.steps.map((s) => <li key={s.id}>{stepText(s, p.operation)}</li>)}</ol></td>
-    <td><SkillCell skill={p.skill} /></td>
+    <td className="adm-wb-skill"><SkillCell skill={p.skill} /></td>
     <td className="adm-nowrap">U{p.level} · {p.difficulty}</td>
     <td><ul className="adm-wb-list">{p.wrongAnswers.map((w, i) => (
       <li key={i}><b>{valueText(w.value)}</b> {w.cause}: {w.description}{w.step && <span className="adm-sub">at the {w.step} step</span>}</li>
