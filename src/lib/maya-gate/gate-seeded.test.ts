@@ -72,6 +72,12 @@ describe("each hard failure can fail the gate (a saved trace changed after the r
       if (c.kind === "child") c.text = "65 because I have no idea how 66 works.";
       return t;
     }],
+    // R391-2: a withdrawn answer, and an "actually" inside the explanation of a wrong one, leave no answer to accept.
+    ["accepted_wrong_answer", "M12", (t) => {
+      const c = t.turns.find((x) => x.kind === "child")!;
+      if (c.kind === "child") c.text = "65 because there are actually 66 blocks.";
+      return t;
+    }],
     // D-199: the final step's answer after only one wrong final answer (the first one read right instead).
     ["hint_skipped", "M14", (t) => {
       (mayaAt(t, 3).attempts.at(-1)!.proposal as { reading: { answers: { value: unknown }[] } }).reading.answers[0].value = { type: "number", value: 66 };

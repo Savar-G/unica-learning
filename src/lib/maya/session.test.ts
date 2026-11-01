@@ -992,6 +992,17 @@ describe("the child's final answer, with an explanation after it (D-199)", () =>
       noIdea.child(said);
       expect(["answer_not_committed", "answer_not_heard"], said).toContain(noIdea.refused(accept)?.code);
     }
+    // A correction word in any other shape after a number leaves no answer: Maya asks rather than guess (R391-2).
+    for (const said of ["66 no that is wrong.", "65 because there are actually 66 blocks.", "I got 66 but wait I am not sure."]) {
+      const unclear = opened();
+      unclear.child(said);
+      expect(["answer_not_committed", "answer_not_heard"], said).toContain(unclear.refused(accept)?.code);
+    }
+    // One before any number takes nothing back.
+    const before = opened();
+    before.child("No idea how, but I got 66.");
+    before.maya(accept);
+    expect(before.session.lastResult).toBe("right");
     // A correction still wins when a number follows it, or when it stands alone.
     const fixed = opened();
     fixed.child("65 because six tens, no wait, 66.");

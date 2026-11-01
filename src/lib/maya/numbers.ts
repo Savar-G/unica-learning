@@ -240,33 +240,61 @@ export const valuesIn = (text: string): AnswerValue[] => readNumbers(text).value
 /** Words a child uses to take back what they just said: "sixty-six... no, sixty", "66... no, I don't know". */
 const CORRECTION = /\b(?:no|wait|i mean|actually|oops)\b/gi;
 /** Words that may sit between a correction word and the number it puts in place ("no wait, 65", "no, I mean 65"). */
-const TAKE_BACK_FILLER = /^(?:[\s,.!?…:;-]|\b(?:no|wait|i mean|actually|oops|um+|uh+|it's|its|it is)\b)*/i;
+const TAKE_BACK_FILLER = /^(?:[\s,.!?…:;-]|\b(?:no|wait|i mean|actually|oops|um+|uh+|it's|its|it is|it was|i got|i get|i think|i think it's|the answer is|it should be|that's|thats|that is)\b)*/i;
 
 /** Words a spoken number may start with before its digits or number words ("point sixty-six", "minus 3"). */
 const NUMBER_LEAD = /^(?:point|minus|negative|a|an|one|half)$/i;
 
+/** One run of correction words ("no wait", "no, I mean"), and whether it is a clean correction or only unclear. */
+interface CorrectionRun { index: number; end: number; clean: boolean }
+
 /**
- * Where the child takes something back (R391-1-1). A correction word counts only when a number is the next word after it (after
- * fillers: "65, no wait, 66", "actually sixty-six") or when it stands alone as its own clause ("66... no, I don't know":
- * the start of the turn or a punctuation mark before it, and a punctuation mark or the end after it). An ordinary "no"
- * ("I have no idea how 66 works", "no clue") takes nothing back, so the numbers after it are never made the answer.
+ * Every run of correction words in a turn (R391-1-1, R391-2). A run is clean only in one of two shapes: it starts a
+ * clause (the start of the turn or a punctuation mark before it) and a number is the next word after it ("65, no, 66",
+ * "No wait, 65", "It's 66, actually 65"); or it starts a clause and stands alone, so it withdraws what came before with
+ * nothing in its place ("66... no, I don't know"). Any other correction word ("66 no that is wrong", "there are actually
+ * 66 blocks", "I have no idea") is unclear: the turn then holds no final answer, so Maya asks rather than guess.
  */
-function takeBacks(text: string): { index: number; end: number }[] {
-  const out: { index: number; end: number }[] = [];
+function correctionRuns(text: string): CorrectionRun[] {
+  const runs: CorrectionRun[] = [];
   for (const m of text.matchAll(CORRECTION)) {
     const index = m.index ?? 0;
     const end = index + m[0].length;
-    const after = text.slice(end);
+    const last = runs[runs.length - 1];
+    // A correction word right after another (only punctuation between) continues its run: "no wait", "no, I mean".
+    if (last && /^[\s,.!?…:;-]*$/.test(text.slice(last.end, index))) {
+      last.end = end;
+      continue;
+    }
+    runs.push({ index, end, clean: false });
+  }
+  for (const r of runs) {
+    const after = text.slice(r.end);
     const words = after.slice((TAKE_BACK_FILLER.exec(after)?.[0] ?? "").length).split(/\s+/);
     // The next word is a number, or starts a spoken number form ("point sixty-six", "minus 3", "a half").
     const lead = NUMBER_LEAD.test(words[0] ?? "") ? words.slice(0, 3).join(" ") : words[0] ?? "";
     const read = readNumbers(lead);
     const numberFollows = read.values.length > 0 || read.unreadable;
-    const alone = /(?:^|[,.!?…;:-])\s*$/.test(text.slice(0, index)) && /^\s*(?:[,.!?…;:-]|$)/.test(after);
-    if (numberFollows || alone) out.push({ index, end });
+    // The start of the turn or a punctuation mark before it, maybe with an interjection ("Oh wait, 28", "Hmm, no, 66").
+    const clauseStart = /(?:^|[,.!?…;:-])\s*(?:(?:oh|ah|oops|um+|uh+|hmm+|okay|ok)[\s,.!?…]*)?$/i.test(text.slice(0, r.index));
+    const alone = /^\s*(?:[,.!?…;:-]|$)/.test(after);
+    r.clean = clauseStart && (numberFollows || alone);
   }
-  return out;
+  return runs;
 }
+
+/** Where the child takes something back: every correction run, clean or unclear (correctionRuns). */
+const takeBacks = (text: string) => correctionRuns(text);
+
+/**
+ * The turn has a correction word in an unclear shape after a number it could take back: it holds no final answer
+ * (correctionRuns). An unclear word before any number ("I am software with no body. I got 66.") takes nothing back.
+ */
+const unclearCorrection = (text: string) => correctionRuns(text).some((r) => {
+  if (r.clean) return false;
+  const before = readNumbers(text.slice(0, r.index));
+  return before.values.length > 0 || before.unreadable;
+});
 
 /** The text split at every word that takes something back (takeBacks). */
 function splitTakeBacks(text: string): string[] {
@@ -345,8 +373,11 @@ export function readAnswer(text: string): AnswerRead {
   if (offersChoice(committed)) return { kept: [], final: null, choice: true };
   const all = readNumbers(committed);
   const answer = readNumbers(withoutExplanations(committed));
-  const final = answer.unreadable || answer.lastInOperation ? null : answer.values[answer.values.length - 1] ?? null;
-  return { kept: all.unreadable ? answer.values : all.values, final, choice: false };
+  // A correction word in an unclear shape anywhere in the turn leaves no final answer: Maya asks (R391-2).
+  const final = unclearCorrection(text) || answer.unreadable || answer.lastInOperation ? null : answer.values[answer.values.length - 1] ?? null;
+  // An unclear correction keeps no number at all, so no step answer is taken from the turn either (R391-2).
+  const kept = unclearCorrection(text) ? [] : all.unreadable ? answer.values : all.values;
+  return { kept, final, choice: false };
 }
 
 /** The text has a number form code cannot read outside the child's explanations: confirm it before judging (D-199). */
@@ -368,7 +399,8 @@ export function takenBack(text: string): { kept: AnswerValue | null } | null {
     return read.values.length > 0 || read.unreadable;
   });
   if (!before && after.values.length === 0 && !after.unreadable) return null;
-  return { kept: readAnswer(last).final };
+  // An unclear correction anywhere puts nothing in place: what was said is taken back, and Maya asks (R391-2).
+  return { kept: unclearCorrection(text) ? null : readAnswer(last).final };
 }
 
 /** The text offers numbers as a choice ("is it 66 or 56?"): none of them is the child's answer yet. */
