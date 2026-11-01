@@ -33,13 +33,13 @@ These are starting measurements. They do not prove that the edits will increase 
 
 | Article topic | Action or limit |
 |---|---|
-| Roundup inclusion | Prepare the specific candidates below. A publisher must choose whether to include the resource. |
+| Roundup inclusion | Prepared five specific candidates in `a-tier/editorial-drafts.md`. A publisher must choose whether to include the resource. |
 | Reclaim earned links | Check the Search Console Links report. No broken earned target was shown. Do not redirect unrelated URLs. |
 | Competitor link opportunities | Read placement-test resource lists that already cite competitors. Offer the missing Canadian online option, not an exchange. |
-| Broken resources | No replacement claim is supported by this first search. Do not claim a live resource is dead. |
-| Original statistics | No suitable verified student-outcome dataset was available for publication. Do not treat the site's small search sample as learning research. |
+| Broken resources | The A-tier pass confirmed one obsolete Teaching Textbooks URL returns 404 and found its working official replacement. It also found mismatched OFTP contact links. See the saved checks and drafts. |
+| Original statistics | Published a dated convenience sample of fees from 13 BC centre pages, with source data, method and chart downloads on the existing cost guide. No student-outcome claim or market-wide estimate. |
 | Journalist requests | No relevant request or deadline was verified. Do not create a paid account or invent credentials. |
-| Graphics for publishers | Wait for a publisher to accept a specific graphic before making it, as the article itself advises. |
+| Graphics for publishers | Published our own reusable source-data chart. Wait for a publisher to accept a custom graphic before making it, as the article itself advises. |
 | Videos for publishers | Wait for a publisher to accept a specific demonstration before recording it. |
 | Free tool | Ship the tutoring quote calculator at `/resources/tutor-cost-bc#calculator`. It needs no account or service. |
 | Link exchanges | Do not join a link network. Google lists excessive exchanges and automated link creation as link spam: [official policy](https://developers.google.com/search/docs/essentials/spam-policies#link-spam). |
