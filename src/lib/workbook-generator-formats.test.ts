@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { fakeAiClient } from "@/lib/ai-client-fake";
+import { keySolver } from "@/lib/workbook-solve-check";
 import type { Grade } from "@/lib/assessment";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { curriculumFor } from "@/lib/workbook-curriculum";
@@ -60,6 +61,7 @@ function deps(answer: (s: SlotAsked, r: AiJsonRequest) => unknown) {
     fit: { fits: async () => ({ ok: true as const }) },
     store: memoryDraftStore({ [CHILD]: PARENT }),
     qrToken: () => `token-${String(++n).padStart(12, "0")}`,
+    solver: keySolver(),
   };
 }
 

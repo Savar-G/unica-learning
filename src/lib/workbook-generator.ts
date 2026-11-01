@@ -29,14 +29,22 @@
 //   in plan order, the back cover, then blank pages to a multiple of 4. Page numbers run from the cover through the
 //   book; question numbers restart on each page. The page type, day and numbers come from the plan and code, never from
 //   the AI: the AI writes no layout, font, size or position.
+// - Round 7 (R380-12-1): at U1 to U9 code prints its own wording of every whole-number +, -, missing part, × and ÷
+//   (src/lib/workbook-wording.ts), filled from the operation the key comes from, and on a page the wording of a shape the
+//   page does not have and the book has printed least. Every other printed text the AI wrote that has a key goes to the
+//   solve check (GenerateDeps.solver, src/lib/workbook-solve-check.ts): a separate model answers it from the printed words
+//   alone; a different answer, or a check that fails or is late, fails the question, which the redo writes once more.
+//   The check is not a generation attempt.
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness (the caller passes the QR token maker).
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { withTimeLimit, type AiClient } from "@/lib/ai-client";
 import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-package";
 import { isQrToken, isUuid } from "@/lib/workbook-content";
 import type { Curriculum } from "@/lib/workbook-curriculum";
-import { buildQuestion, ITEMS_SCHEMA, kindProblem, relationWordings, type BuiltQuestion, type QuestionCheck } from "@/lib/workbook-generator-items";
+import { buildQuestion, isCodeWorded, ITEMS_SCHEMA, kindProblem, relationWordings, type BuiltQuestion, type QuestionCheck, type SlotWording } from "@/lib/workbook-generator-items";
 import { isOneMoreLessSkill } from "@/lib/number-words";
+import { solveCheck, solveReason, type SolveLog, type Solver } from "@/lib/workbook-solve-check";
+import { fillFrame, frameDoes, framePair, framesFor, THINGS, type Action, type WordingKind } from "@/lib/workbook-wording";
 import {
   bookPageContent, dayPageContent, layoutDayPage, mistakesFor, levelSigns, rangeProblem, samFix, samProblem, skillRange, slotRanges, PANEL_SLOTS, SLOT_FORMATS, STRICT_SLOTS,
   type DayLayout, type NumberRange,
@@ -236,11 +244,23 @@ export interface GenerateDeps {
   progress?(done: number, total: number): void;
   /** How many day pages are written at once; 1 when not given. The draft is the same in any order. */
   concurrency?: number;
+  /**
+   * The solve check (round 7): reads each printed question whose words the AI wrote and answers it; a question it does
+   * not answer as the key does fails. The live one is a small model (aiSolver), the fake answers from the key.
+   */
+  solver: Solver;
+  /** The time limit of one solve check; 60 seconds when not given. A late check fails its question. */
+  solveTimeLimitMs?: number;
+  /** Called after each solve check, to log and cost it. */
+  onSolve?(log: SolveLog): void;
+  /** The time in milliseconds, for the solve log only; none when not given. */
+  now?(): number;
 }
 
 export type GenerateResult = { status: "stored"; draft: GeneratedWorkbook } | { status: "refused"; reason: string };
 
 const TIME_LIMIT_MS = 180_000;
+const SOLVE_TIME_LIMIT_MS = 60_000;
 
 /** A question slot of a day page: in a laid-out book, also its template slot and that slot's index in the layout. */
 interface Slot {
@@ -257,6 +277,8 @@ interface Slot {
    */
   planned?: {
     use: number[] | null; spare: number[] | null; name: string | null; say?: string | null; spareSay?: string | null;
+    /** The thing the slot's wording counts (round 7), and the people and things the AI may choose from instead. */
+    thing?: string; names?: string[]; things?: string[];
     /** What the planned wording works (round 6): its operation, and the picture it names; the same for the spare. */
     does?: PlannedDoes | null; spareDoes?: PlannedDoes | null;
   };
@@ -368,141 +390,11 @@ function numberChoices(skill: string, text: string, kind: QuestionKind | "spot",
 /** Spot the error's sum is a bare sum, as a fact is: they share the book's pairs, so "5 + 1 = ?" is not asked twice. */
 const group = (kind: QuestionKind | "spot") => (kind === "spot" ? "fact" : kind);
 
-/** Things a story counts, in turn through the book (a page never has one twice). */
-const THINGS = ["shells", "apples", "cars", "stickers", "hats", "cups", "bugs", "kites", "rocks", "plums", "ducks", "boats", "socks", "books", "leaves", "eggs", "balls", "buttons", "beads", "shoes", "bells", "pens"];
-
-/**
- * What a wording asks (round 6): put together, take away, a missing part, compare (how many more), or read the
- * ten-frame (how many more fill it). A slot of several cards spreads its cards across them.
- */
-type Action = "join" | "separate" | "part" | "compare" | "frame";
-
-/**
- * A wording code plans (round 5): {a} and {b} are the planned numbers, {t} their total, {name} the planned person,
- * {thing} the planned thing. `op` is what it works on them: add [a, b], subtract [t, b] or missing-addend [a, t];
- * `ten`, a missing part to 10 (the numbers become a and 10 - a); `figure`, the picture it names.
- */
-interface Frame {
-  f: string;
-  act: Action;
-  op: PlannedDoes["operation"]["kind"];
-  figure?: "ten-frame" | "dots";
-  shows?: "part" | "total";
-  ten?: true;
-}
-
-const join = (f: string, figure?: Frame["figure"]): Frame => ({ f, act: "join", op: "add", ...(figure ? { figure } : {}) });
-const away = (f: string, figure?: Frame["figure"]): Frame => ({ f, act: "separate", op: "subtract", ...(figure ? { figure } : {}) });
-const part = (f: string, figure?: Frame["figure"]): Frame => ({ f, act: "part", op: "missing-addend", ...(figure ? { figure, shows: "part" as const } : {}) });
-const more = (f: string): Frame => ({ f, act: "compare", op: "missing-addend" });
-const tenFrame = (f: string): Frame => ({ f, act: "frame", op: "missing-addend", figure: "ten-frame", shows: "part", ten: true });
-
-/**
- * The wordings code plans for each kind of question, each a whole short question a parent reads aloud ("How many in
- * all?", "How many are left?"; round 6), the setup kept short to make room. A take-away and a compare only where the
- * skill has met subtraction; on 1 more and 1 less (step), wordings about the step only.
- */
-function framesFor(kind: QuestionKind, step: boolean, subtraction: boolean): Frame[] {
-  const sub = (frames: Frame[]) => (subtraction ? frames : []);
-  switch (kind) {
-    case "story":
-      return [
-        join("{a} {thing} and {b} more. How many in all?"),
-        join("{a} {thing} here, {b} there. How many in all?"),
-        join("{a} {thing}. {name} adds {b}. How many now?"),
-        join("{name} picks {a} {thing}, then {b}. How many now?"),
-        join("{name} has {a} {thing} and gets {b}. How many now?"),
-        ...sub([
-          away("{t} {thing}. {name} takes {b}. How many are left?"),
-          away("{t} {thing}. {b} go away. How many are left?"),
-          away("{name} has {t} {thing} and gives {b} away. How many now?"),
-          away("{t} {thing}. {name} hides {b}. How many are left?"),
-        ]),
-        ...(step ? [] : [
-          part("{name} has {a} {thing}. How many more make {t}?"),
-          part("{a} {thing} in a box. How many more make {t}?"),
-          part("{a} {thing} now. How many more make {t}?"),
-          ...sub([
-            more("{a} cats and {t} dogs. How many more dogs?"), more("{a} red {thing}, {t} blue. How many more blue?"),
-            more("{a} big {thing}, {t} small. How many more small?"),
-          ]),
-        ]),
-      ];
-    case "picture":
-      return [
-        join("Ten-frame: {a} and {b}. How many in all?", "ten-frame"),
-        join("{a} dots and {b} dots. How many in all?", "dots"),
-        join("{a} dots, then {b} more. How many now?", "dots"),
-        join("{a} and {b} on the ten-frame. How many in all?", "ten-frame"),
-        join("Ten-frame: {a}, then {b} more. How many now?", "ten-frame"),
-        join("{a} dots and {b} more dots. How many now?", "dots"),
-        join("Count the dots: {a} and {b}. How many in all?", "dots"),
-        ...sub([away("{t} dots. Take away {b}. How many are left?", "ten-frame"), away("{t} dots. {b} hop off. How many are left?", "ten-frame")]),
-        ...(step ? [] : [
-          tenFrame("Ten-frame: {a} dots. How many more make 10?"),
-          tenFrame("{a} dots. How many boxes are empty?"),
-          tenFrame("Ten-frame: {a} dots. How many to fill it?"),
-          part("{a} dots. How many more make {t}?", "ten-frame"),
-          part("{a} dots. How many more dots make {t}?", "ten-frame"),
-        ]),
-      ];
-    case "fact":
-      return step
-        ? [
-          join("What is {b} more than {a}?"), join("{a} and {b} more is what?"), join("What number is {b} more than {a}?"),
-          ...sub([away("What is {b} less than {t}?"), away("{t} take away {b} is what?"), away("What number is {b} less than {t}?")]),
-        ]
-        : [join("{a} + {b} = ?"), join("What is {a} + {b}?"), join("{a} and {b} make what?"), join("Add {a} and {b}. What do you get?")];
-    case "missing-part":
-      return [
-        part("{name} has {a} {thing}. How many more make {t}?"),
-        part("{a} and how many more make {t}?"),
-        part("{a} + ? = {t}"),
-        part("{t} {thing}: {a} are red. How many are not red?"),
-        part("What do you add to {a} to make {t}?"),
-        part("{a} {thing} in a box. How many more make {t}?"),
-        part("How far is {a} from {t}?"),
-        tenFrame("Ten-frame: {a} dots. How many more make 10?"),
-        ...sub([more("{a} cats and {t} dogs. How many more dogs?"), more("{name} has {a}. Ben has {t}. How many more has Ben?")]),
-      ];
-    default:
-      return [];
-  }
-}
-
-/** The numbers a wording works on a planned pair: a and 10 - a for a missing part to 10 (null when a is not 1 to 9). */
-const framePair = (frame: Frame, pair: number[]): number[] | null => (frame.ten ? (pair[0] >= 1 && pair[0] <= 9 ? [pair[0], 10 - pair[0]] : null) : pair);
-
-/** What a wording works on its numbers [a, b]: its operation and picture. */
-function frameDoes(frame: Frame, [a, b]: number[]): PlannedDoes {
-  const t = a + b;
-  const operands: [number, number] = frame.op === "add" ? [a, b] : frame.op === "subtract" ? [t, b] : [a, t];
-  return { operation: { kind: frame.op, operands }, figure: frame.figure ?? null, figureShows: frame.shows ?? null };
-}
-
-/** A thing (or dots) counted after the number 1, which takes its singular. */
-const PLURAL_AFTER_1 = new RegExp(`\\b1 ((?:red |blue )?)(dots|cats|dogs|${THINGS.join("|")})\\b`, "g");
 /** The wordings of a sequence (missing numbers), with no number in them. */
 const SEQUENCE_FRAMES = [
   "Fill in the missing numbers.", "What numbers are missing?", "Count up. Fill in the boxes.", "Write the numbers that go in the gaps.",
   "Count on. Which numbers are missing?", "Find the missing numbers in the count.", "Count on. Write the numbers you skip.",
 ];
-/** One of each thing: after the number 1 a story counts one shell, not 1 shells. */
-const ONE: Record<string, string> = { leaves: "leaf", shoes: "shoe", boxes: "box" };
-const singular = (w: string) => ONE[w] ?? w.replace(/s$/, "");
-
-/** A wording filled in: the numbers, the name, the pronoun it takes and the thing (one thing after 1). */
-function fillFrame(frame: string, pair: number[], name: string, thing: string): string {
-  const [a, b] = pair;
-  const they = BOYS.includes(name) ? "He" : "She";
-  // "Ben" is the other person of a compare: another boy's name when the planned person is Ben.
-  const other = name === "Ben" ? "Leo" : "Ben";
-  return frame.replaceAll("Ben", other).replaceAll("{a}", String(a)).replaceAll("{b}", String(b)).replaceAll("{t}", String(a + b))
-    .replaceAll("{name}", name).replaceAll("{They}", they).replaceAll("{thing}", thing)
-    .replace(PLURAL_AFTER_1, (_, colour: string, w: string) => `1 ${colour}${singular(w)}`)
-    .replace(/\b1 more come\b/, "1 more comes").replace(/\b1 go away\b/, "1 goes away").replace(/\b1 are red\b/, "1 is red")
-    .replace(/\b1 boxes are\b/, "1 box is");
-}
 
 /**
  * Plans every slot of the book in book order (#380): its skill and kind of question (each skill's kinds in turn, and on
@@ -520,6 +412,7 @@ function planBook(input: GenerateInput, work: PageWork[]) {
   const said = new Set<string>();
   const bookActs = new Map<Action, number>();
   const shapeUse = new Map<string, number>();
+  const spotPairs = new Set<string>();
   const things = THINGS;
   let person = 0;
   let thing = 0;
@@ -566,7 +459,10 @@ function planBook(input: GenerateInput, work: PageWork[]) {
         const ranked = (choices ?? []).filter((p) => !pagePairs.has(bond(p)))
           .map((p, j) => ({ p, j, n: used.get(`${group(numbered.kind)}|${p}`) ?? 0, s: seen(p) }))
           .sort((a, b) => a.s - b.s || a.n - b.n || a.j - b.j);
+        // Spot the error prints its bare sum (round 7): a sum no Spot the error of the book has had, while there is one.
+        if (numbered.kind === "spot" && ranked.some((x) => !spotPairs.has(`${x.p}`))) ranked.splice(0, ranked.length, ...ranked.filter((x) => !spotPairs.has(`${x.p}`)));
         pair = ranked[0]?.p ?? null;
+        if (pair && numbered.kind === "spot") spotPairs.add(`${pair}`);
         spare = ranked.find((x) => pair && bond(x.p) !== bond(pair))?.p ?? null;
         if (pair) {
           used.set(`${group(numbered.kind)}|${pair}`, (used.get(`${group(numbered.kind)}|${pair}`) ?? 0) + 1);
@@ -575,6 +471,8 @@ function planBook(input: GenerateInput, work: PageWork[]) {
         }
       }
       const name = slot.place === "spot-the-error" ? null : people[person++ % people.length];
+      // Each named slot's thing, in turn (round 7): its wording counts it, whether planned here or written by code later.
+      const thingHere = name ? things[thing++ % things.length] : null;
       // Outside practice a book asks one shape of question at most SHAPE_MOST times (duplicateProblem): so does the plan.
       const practice = PRACTICE_PLACES.has(slot.place);
       const withinShapes = (text: string) => practice || !shapeOf(text) || (shapeUse.get(shapeOf(text)) ?? 0) < SHAPE_MOST;
@@ -601,7 +499,7 @@ function planBook(input: GenerateInput, work: PageWork[]) {
         // story kinds (a story for a picture), and takes that kind.
         const storyPlace = slot.place === "picture-stories" || slot.place === "word-problems";
         const kindsHere = [own, ...(storyPlace ? (slot.aim?.orElse ?? []).filter((k) => k === "story" || k === "picture" || k === "missing-part") : [])];
-        const pick = (pairNow: number[] | null, thingNow: string, not: number[] | null = null) => {
+        const pick = (pairNow: number[] | null, thingNow: string, not: number[] | null = null, limit = true) => {
           if (!pairNow) return null;
           // A page of stories takes stories and pictures only, never a bare "9 + ? = 10".
           const frames = kindsHere.flatMap((k, o) => framesFor(k, step, range.subtraction).map((f) => ({ f, k, o })))
@@ -615,12 +513,15 @@ function planBook(input: GenerateInput, work: PageWork[]) {
               if (!numbers || numbers[0] + numbers[1] > range.max) return [];
               // A missing part to 10 changes the numbers: never to a pair another slot of the page (or `not`) has.
               if (bond(numbers) !== bond(pairNow) && (pagePairs.has(bond(numbers)) || (not && bond(numbers) === bond(not)))) return [];
-              return [{ frame: x.f, kind: x.k, numbers, said: fillFrame(x.f.f, numbers, name, thingNow) }];
+              return [{ frame: x.f, kind: x.k, numbers, said: fillFrame(x.f.f, { a: numbers[0], b: numbers[1], t: numbers[0] + numbers[1] }, name, thingNow) }];
             })
-            .filter((x) => x.said.length <= room && !said.has(x.said) && !pageShapes.has(shapeOf(x.said)) && withinShapes(x.said));
+            .filter((x) => x.said.length <= room && !said.has(x.said) && !pageShapes.has(shapeOf(x.said)) && (!limit || withinShapes(x.said)));
+          // Late in the book every shape may be used 3 times (round 7): then the shape the book has used least, so a
+          // slot never runs out of planned wordings.
+          if (!limit) return fills.sort((a, b) => (shapeUse.get(shapeOf(a.said)) ?? 0) - (shapeUse.get(shapeOf(b.said)) ?? 0))[0] ?? null;
           return fills[0] ?? null;
         };
-        const chosen = pick(pair, things[thing % things.length]);
+        const chosen = pick(pair, thingHere!) ?? pick(pair, thingHere!, null, false);
         if (chosen) {
           say = chosen.said;
           if (slot.aim && chosen.kind !== slot.aim.kind) slot.aim = { ...slot.aim, kind: chosen.kind, orElse: [slot.aim.kind, ...slot.aim.orElse.filter((k) => k !== chosen.kind)] };
@@ -632,7 +533,6 @@ function planBook(input: GenerateInput, work: PageWork[]) {
           pageShapes.add(shapeOf(chosen.said));
           countShape(chosen.said);
           said.add(chosen.said);
-          thing++;
           // A missing part to 10 works a and 10 - a: those are the slot's numbers now.
           if (pair && chosen.numbers.join() !== pair.join()) {
             pair = chosen.numbers;
@@ -640,7 +540,7 @@ function planBook(input: GenerateInput, work: PageWork[]) {
           }
         }
         // The spare's wording is for a redo only: it takes no frame from the page's other slots.
-        const other = pick(spare, things[(thing + 7) % things.length], pair);
+        const other = pick(spare, things[(thing + 7) % things.length], pair) ?? pick(spare, things[(thing + 7) % things.length], pair, false);
         if (other) {
           spare = other.numbers;
           spareSay = other.said;
@@ -662,7 +562,11 @@ function planBook(input: GenerateInput, work: PageWork[]) {
       }
       // The numbers a card may print: both numbers and their total (a take-away and a missing part print it).
       if (pair && numbered?.kind !== "spot") for (const x of [pair[0], pair[1], pair[0] + pair[1]]) pageNumbers.set(x, (pageNumbers.get(x) ?? 0) + 1);
-      slot.planned = { use: pair, spare, name, say, spareSay, does, spareDoes };
+      const offered = <T,>(xs: T[], at: number) => [0, 1, 2].map((k) => xs[(at + k * 5) % xs.length]);
+      slot.planned = {
+        use: pair, spare, name, say, spareSay, does, spareDoes,
+        ...(name && thingHere ? { thing: thingHere, names: offered(people, people.indexOf(name)), things: offered(things, things.indexOf(thingHere)) } : {}),
+      };
     }
   }
 }
@@ -745,6 +649,7 @@ const SYSTEM = [
   "Rules: a slot may give the rules of each of its skills in plain words: the largest number, the signs and ideas not taught yet, and the formats to leave out. Follow them exactly; they are checked by code, and an item that breaks one is thrown away.",
   "The operation's answer is exactly the number the child writes in the box. A missing part is the missing-addend kind, operands [the part given, the total]: '2 and what make 5?', '3 + ? = 5', 'Mia has 3. How many more make 5?' and 'How far is 7 from 10?' are missing-addend [2, 5], [3, 5], [3, 5] and [7, 10]; code's answer is the missing part (3, 2, 2, 3). Never write them as 2 + 3 (code would print 5 as the answer). It is a number bond, not subtraction, so it is allowed before subtraction is taught; its totals go to 20.",
   "The box takes the operation's number, so a question with an operation asks for that number: never a yes-or-no question (Is 8 close to 10? Are they equal?) or a choice (close to 10 or less than 5?). Ask 'How far is 8 from 10?' instead, or use the draw format.",
+  "Printed words (round 7): at U1 to U9 code writes the printed text of an item with a whole-number add, subtract, missing-addend, multiply or divide operation, from your operation and picture: your text is not printed there, so get the operation and the figure right. Set name to one of the slot's planned names and thing to one of its planned things, or null for code's choice; on any other item set both to null. Every other text you write is read by a separate checker who sees only the printed words and picture and answers them: write it so it asks exactly what the answer key answers, with every number it needs.",
   "Before you write an easier example, work out both answers: the easier example's answer is a different number from the question's answer. For a missing part, easier means a smaller missing part (fewer to count on) with a total no larger, so its answer differs: for 3 + ? = 5 (answer 2) it is 3 + ? = 4 (answer 1), never 2 + ? = 4 (answer 2 again); for 'How far is 7 from 10?' (answer 3) it is 'How far is 9 from 10?' (answer 1). So ask a missing part of 2 or more: a missing part of 1 has no easier example. Every item with an operation has an easier example; for the smallest sums take a smaller number: 1 + 1 for 2 + 1, 1 + 0 for 1 + 1.",
 ].join("\n");
 
@@ -822,6 +727,7 @@ function pageRequest(input: GenerateInput, w: PageWork, slots: Slot[], note: str
         ...(s.planned?.use || s.planned?.name ? {
           planned: {
             ...(s.planned.use ? { numbers: s.planned.use } : {}), ...(s.planned.name ? { name: s.planned.name } : {}), ...(s.planned.say ? { say: s.planned.say } : {}),
+            ...(s.planned.names ? { names: s.planned.names, things: s.planned.things } : {}),
             ...(s.planned.say && s.planned.does ? { operation: s.planned.does.operation, figure: s.planned.does.figure, figureShows: s.planned.does.figureShows } : {}),
           },
         } : {}),
@@ -904,6 +810,8 @@ interface BookMemory {
   shapes: Map<string, number[]>;
   /** The first question of each shape, to show the AI which shapes are used up. */
   shapeText: Map<string, string>;
+  /** Each shape of code's wordings (round 7) with how often the book prints it: code prints the least used. */
+  codeShapes: Map<string, number>;
 }
 
 /**
@@ -935,8 +843,10 @@ function duplicateProblem(p: QuestionPackage, place: SlotName | null, memory: Bo
   const at = place === "warm-up" ? undefined : memory?.keys.get(key);
   if (at !== undefined) return `it repeats a question already asked on page ${at} ("${p.text}"): write a different question`;
   const shape = shapeOf(p.text);
-  // A relation's words are code's (round 6): only its page must not ask it twice in the same words.
-  const onPages = place && !PRACTICE_PLACES.has(place) && shape && !isRelation(p) ? memory?.shapes.get(shape) ?? [] : [];
+  // A relation's words are code's (round 6), and so are a whole-number question's at U1 to U9 (round 7): code prints the
+  // wording the book has used least, so only the same words twice on a page count.
+  const own = isRelation(p) || isCodeWorded(p);
+  const onPages = place && !PRACTICE_PLACES.has(place) && shape && !own ? memory?.shapes.get(shape) ?? [] : [];
   if (onPages.length >= SHAPE_MOST) return `the book already asks this kind of question ${onPages.length} times (pages ${[...new Set(onPages)].join(", ")}): ask another kind of question`;
   for (const s of siblings) {
     if (dupKey(s.package) === key) return `it is the same as question ${s.number} on this page ("${s.package.text}")`;
@@ -947,7 +857,7 @@ function duplicateProblem(p: QuestionPackage, place: SlotName | null, memory: Bo
     const [a, b] = [numbersIn(p.text), numbersIn(s.package.text)];
     if (place && REVIEW_PLACES.has(place) && a.length > 0 && a.length === b.length && plainText(p.text).replace(/\d+/g, "#") === plainText(s.package.text).replace(/\d+/g, "#")
       && a.filter((x, i) => x !== b[i]).length <= 1) return `it differs from question ${s.number} on this page ("${s.package.text}") only by one number: ask another kind of question`;
-    if (place && !PRACTICE_PLACES.has(place) && shape && shape === shapeOf(s.package.text)) return `it asks the same kind of question as question ${s.number} on this page ("${s.package.text}") with other numbers or names: ask another kind of question`;
+    if (place && !PRACTICE_PLACES.has(place) && shape && !own && shape === shapeOf(s.package.text)) return `it asks the same kind of question as question ${s.number} on this page ("${s.package.text}") with other numbers or names: ask another kind of question`;
   }
   return null;
 }
@@ -961,7 +871,8 @@ function remember(memory: BookMemory, page: number, questions: GeneratedQuestion
     if (!q.package) continue;
     if (!memory.keys.has(dupKey(q.package))) memory.keys.set(dupKey(q.package), page);
     const shape = shapeOf(q.package.text);
-    if (shape && q.place && !PRACTICE_PLACES.has(q.place) && q.check.status !== "failed" && !isRelation(q.package)) {
+    if (shape && q.place && !PRACTICE_PLACES.has(q.place) && q.check.status !== "failed" && isCodeWorded(q.package)) memory.codeShapes.set(shape, (memory.codeShapes.get(shape) ?? 0) + 1);
+    else if (shape && q.place && !PRACTICE_PLACES.has(q.place) && q.check.status !== "failed" && !isRelation(q.package)) {
       memory.shapes.set(shape, [...(memory.shapes.get(shape) ?? []), page]);
       if (!memory.shapeText.has(shape)) memory.shapeText.set(shape, q.package.text);
     }
@@ -1009,6 +920,7 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
       workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: slot.part.skills,
       signs: levelSigns(input.curriculum, input.plan.level),
       ...(slot.place ? { room: roomOf(input, slot.place, w.day)?.characters } : {}), variant: w.number + i,
+      ...(slotWording(input, slot) ? { wording: slotWording(input, slot) } : {}),
     });
     // Sam is only Spot the error's child: anyone else named Sam takes the slot's planned name.
     if (b.package && slot.place && slot.place !== "spot-the-error") b.package = withoutSam(b.package, slot.planned?.name ?? null);
@@ -1040,20 +952,74 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
     }
     return b;
   });
-  // A relation's text is code's (round 6): of its wordings, one whose words no other question of the page has.
-  const taken = new Set(pageTexts.map(shapeOf));
+  // A relation's text is code's (round 6): of its wordings, one whose words no other question of the page has. So is a
+  // whole-number question's at U1 to U9 (round 7): of code's sound wordings, one whose shape the page does not have yet
+  // and the book has printed least (under 3 times when it can), so no slot runs out of wordings late in the book.
+  // A bare sum has no words: its form is its signs ("# + ? = #"), so "1 + ? = 8" and "1 + ? = 9" are one form.
+  const formOf = (x: string) => shapeOf(x) || plainText(x).replace(/\d+/g, "#");
+  const taken = new Set(pageTexts.map(formOf));
   built.forEach((b, k) => {
     if (!b.package) return;
-    const wordings = relationWordings(b.package);
-    if (wordings.length > 0 && taken.has(shapeOf(b.package.text))) {
-      const place = w.slots[which[k]].place;
-      const room = (place ? roomOf(input, place, w.day)?.characters : null) ?? Infinity;
-      const free = wordings.find((x) => !taken.has(shapeOf(x)) && x.length <= room);
-      if (free) b.package = { ...b.package, text: free };
+    const place = w.slots[which[k]].place;
+    const room = (place ? roomOf(input, place, w.day)?.characters : null) ?? Infinity;
+    const onPage = (x: string) => taken.has(formOf(x));
+    if (b.wordings && b.check.status !== "failed") {
+      const practice = !place || PRACTICE_PLACES.has(place);
+      const used = (x: string) => (practice ? 0 : memory?.codeShapes.get(shapeOf(x)) ?? 0);
+      // Not a question the book already printed word for word (warm-up facts come back on purpose).
+      const printed = (x: string) => !!memory && place !== "warm-up" && memory.keys.has(dupKey({ ...b.package!, text: x }));
+      // Within the room if it can; a sound question past its room beats a repeat (the fit check then decides).
+      const unused = b.wordings.filter((x) => !onPage(x) && !printed(x));
+      const fitting = unused.filter((x) => x.length <= room);
+      const fresh = fitting.length ? fitting : unused.sort((x, y) => x.length - y.length).slice(0, 1);
+      const best = fresh.find((x) => used(x) < SHAPE_MOST) ?? [...fresh].sort((x, y) => used(x) - used(y))[0];
+      if (best && best !== b.package.text) b.package = { ...b.package, text: best };
+    } else {
+      const wordings = relationWordings(b.package);
+      if (wordings.length > 0 && onPage(b.package.text)) {
+        const free = wordings.find((x) => !onPage(x) && x.length <= room);
+        if (free) b.package = { ...b.package, text: free };
+      }
     }
-    taken.add(shapeOf(b.package.text));
+    taken.add(formOf(b.package.text));
   });
+  // The solve check (round 7): every sound question and worked example whose printed words the AI wrote is read and
+  // answered by a separate model; one it answers otherwise than the key, or a check that fails or is late, fails it.
+  await Promise.all([...built, ...examples].map(async (b) => {
+    if (b.check.status === "failed" || !b.package) return;
+    const log = await solveCheck(deps.solver, b.package, deps.solveTimeLimitMs ?? SOLVE_TIME_LIMIT_MS, deps.now);
+    if (!log) return;
+    deps.onSolve?.(log);
+    if (log.verdict.status !== "agreed") b.check = { status: "failed", reason: solveReason(log.verdict) };
+  }));
   return { built, examples };
+}
+
+/** Places that print bare sums, and places that print stories: what code's wording of a whole-number question takes. */
+const BARE_PLACES: ReadonlySet<SlotName> = new Set<SlotName>(["warm-up", "in-your-head", "practice-row", "finish-these", "on-your-own", "unit-b-practice", "solve-it-two-ways"]);
+const STORY_PLACES: ReadonlySet<SlotName> = new Set<SlotName>(["word-problems", "picture-stories", "challenge", "math-in-the-world", "mixed-set"]);
+const WORDING_KINDS: readonly string[] = ["story", "picture", "fact", "missing-part"];
+
+/**
+ * What code words a slot's whole-number question with at U1 to U9 (round 7): the planned person and thing (and the
+ * ones the AI may choose instead), the kinds of question its place and aim take, and the planned wording. Undefined
+ * for a slot the book plan named no one for (code's defaults then).
+ */
+function slotWording(input: GenerateInput, slot: Slot): SlotWording | undefined {
+  const p = slot.planned;
+  if (!p?.name || !p.thing) return undefined;
+  const skill = slot.aim?.skill ?? slot.part.skills[0];
+  const text = input.curriculum.skill(skill)?.text ?? skill;
+  const step = /two-more-less|2 more/.test(`${skill} ${text}`) || isOneMoreLessSkill(skill) || /1 more/.test(text.toLowerCase());
+  const aimed = slot.aim ? [slot.aim.kind, ...slot.aim.orElse].filter((k) => WORDING_KINDS.includes(k)) as WordingKind[] : [];
+  const kinds: WordingKind[] = slot.place && BARE_PLACES.has(slot.place) ? ["fact", "missing-part"]
+    : slot.place && STORY_PLACES.has(slot.place) ? ["story", "picture", "missing-part"]
+      : aimed.length ? aimed : ["story", "picture", "missing-part", "fact"];
+  return {
+    name: p.name, thing: p.thing, names: p.names ?? [p.name], things: p.things ?? [p.thing], kinds, step,
+    subtraction: skillRange(input.curriculum, input.plan.level, skill).subtraction,
+    planned: p.say && p.does ? { say: p.say, operation: p.does.operation, figure: p.does.figure } : null,
+  };
 }
 
 /**
@@ -1100,6 +1066,7 @@ function hintFor(reason: string): string | null {
   if (/repeats a question|same as question|text is the same as question|same sum as question|only by one number|same kind of question|this kind of question/.test(reason)) return "Write a different question: another kind (a story, a picture to count, a missing part, a sequence) or other numbers, never one in the slot's asked list.";
   if (/is a count: write it as the sequence format|the sequence goes from|the sequence starts at/.test(reason)) return "Make it a sequence item whose first and last numbers are the ones the text says.";
   if (/gives its own answer|adding or taking away 0/.test(reason)) return "Ask for a number the child works out; the text gives only what the child needs.";
+  if (/the solve check/.test(reason)) return "A reader who sees only the printed text and picture must work out exactly the answer code computes from your data: name every number it works, ask for what it gives, and say nothing that points to another operation.";
   return null;
 }
 
@@ -1139,7 +1106,8 @@ function redoSlot(slot: Slot, reason: string): Slot {
 function overRoom(input: GenerateInput, w: PageWork, i: number, b: BuiltQuestion): { length: number; note: string } | null {
   const place = w.slots[i].place;
   const room = place ? roomOf(input, place, w.day) : null;
-  if (!room || b.check.status === "failed" || !b.package) return null;
+  // Code's wording is already the shortest that fits (round 7): an AI redo would not change it.
+  if (!room || b.check.status === "failed" || !b.package || isCodeWorded(b.package)) return null;
   const id = w.slots[i].id;
   const n = b.package.text.length;
   if (n > room.characters) {
@@ -1405,7 +1373,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
   });
   let done = 0;
   // What the book has asked so far, for a laid-out book: each page is told it, and a repeat goes to the redo.
-  const memory: BookMemory | null = input.book ? { texts: new Map(), keys: new Map(), shapes: new Map(), shapeText: new Map() } : null;
+  const memory: BookMemory | null = input.book ? { texts: new Map(), keys: new Map(), shapes: new Map(), shapeText: new Map(), codeShapes: new Map() } : null;
   const writePage = async (w: PageWork): Promise<GeneratedPage> => {
     const qrToken = tokens[w.number - 1];
     const page = { number: w.number, type: w.page.type, dayLabel: `Day ${w.day}`, day: w.day, pageOfDay: w.page.number, qrToken };

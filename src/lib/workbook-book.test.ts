@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { fakeAiClient } from "@/lib/ai-client-fake";
+import { keySolver } from "@/lib/workbook-solve-check";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
 import type { AnswerValue, Item, ItemFormat, Operation, QuestionPackage } from "@/lib/question-package";
 import { conceptLevels, isGroupingSkill, levelSigns, levelMistakes, pageFigure, printedNumbers, printedValues, rangeProblem, samProblem, samWork, skillRange } from "@/lib/workbook-book";
@@ -54,7 +55,7 @@ async function generate(level: string, kind: "first" | "second" | "test", answer
     { workbookId: WORKBOOK, childId: CHILD, number: kind === "first" ? 1 : 2, profileBuild: null, plan: planned.plan, curriculum: BC, book: { child: child.name } },
     {
       ai: fakeAiClient({ answer: (r) => ({ items: read(r).slots.map(answer).filter((x) => x !== undefined) }) }), fit, store: memoryDraftStore({ [CHILD]: PARENT }),
-      qrToken: () => `token-${String(++n).padStart(12, "0")}`, concurrency: 4,
+      qrToken: () => `token-${String(++n).padStart(12, "0")}`, concurrency: 4, solver: keySolver(),
     },
   );
   if (result.status !== "stored") throw new Error(result.reason);
@@ -299,9 +300,11 @@ describe("Sam's wrong work", () => {
 describe("Spot the error at the early levels", () => {
   it.each(["U2", "U5"])("offers %s only its mistakes and puts Sam's count on the page", async (level) => {
     const asked: string[][] = [];
-    // A new sum for each Spot the error (2 + 2 first), so none repeats another of the book.
+    // A new sum for each Spot the error (2 + 2 first, then the slot's planned numbers), so none repeats another of the
+    // book: code prints the bare sum (round 7), so a name in the AI's text no longer tells two sums apart.
     const names = ["Ava", "Ben", "Cal", "Dot", "Eli", "Fay", "Gus", "Hal", "Ivy", "Jo"];
     let k = 0;
+    const used = new Set<string>();
     const { draft } = await generate(level, "first", (s) => {
       const x = s as Asked & { mistakes?: { name: string }[]; numbers?: Record<string, { max: number }> };
       if (x.place !== "spot-the-error") return item(s);
@@ -310,14 +313,19 @@ describe("Spot the error at the early levels", () => {
       const max = Math.min(...Object.values(x.numbers ?? {}).map((n) => n.max));
       const sums = [[2, 2] as const, ...Array.from({ length: 9 }, (_, a) => Array.from({ length: 9 }, (_, b) => [a + 1, b + 1] as const)).flat()]
         .filter(([a, b]) => a + b + 1 <= max && a + b > 2);
-      const [a, b] = sums[k % sums.length];
+      const planned = (s as { planned?: { numbers?: number[] } }).planned?.numbers;
+      const fits = (p: readonly number[] | undefined): p is readonly number[] => !!p && sums.some(([x, y]) => x === p[0] && y === p[1]) && !used.has(`${p}`);
+      const [a, b] = k > 0 && fits(planned) ? planned : sums.find(fits) ?? sums[k % sums.length];
+      used.add(`${[a, b]}`);
       const who = names[k++ % names.length];
       return { ...item(s), text: `${who}: ${a} + ${b} = ?`, operation: addOp(a, b), wrongAnswers: [{ value: num(a + b + 1), cause: "counted-one-extra", description: "Counts one too many.", step: null }], easier: { text: "1 + 1 = ?", operation: addOp(1, 1) }, shownWrong: 0 };
     });
     expect(asked.length).toBeGreaterThan(0);
     expect(asked.every((names) => names.join() === levelMistakes(Number(level.slice(1))).join())).toBe(true);
     const spots = draft.pages.flatMap((p) => p.questions).filter((q) => q.place === "spot-the-error");
-    expect(spots.filter((q) => q.check.status === "failed").map((q) => q.check)).toEqual([]);
+    // Code prints Spot the error's bare sum (round 7): when a small range runs out of sums, a later page repeats one,
+    // and that is a repeat (a name in the AI's text no longer hides it). No other failure.
+    expect(spots.filter((q) => q.check.status === "failed" && !/repeats a question already asked/.test(q.check.reason)).map((q) => q.check)).toEqual([]);
     const block = dayPages(draft).flatMap((p) => (p.content!.kind === "day" ? p.content!.blocks : [])).find((b) => b.slot === "spot-the-error")!;
     expect(block.lines).toEqual(["Start at 2. Count on 2.", "3, 4, 5", "2 + 2 = [5]"]);
   });

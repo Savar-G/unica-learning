@@ -19,7 +19,10 @@
 // --family-only makes (or finds) the test family and its children, prints them, and stops: no AI, no books.
 // The AI: OPENROUTER_API_KEY (or OPENROUTER_API_KEY_FILE) and AI_MODEL. --anthropic uses the Claude API directly
 // (src/lib/ai-anthropic.ts) with ANTHROPIC_API_KEY, ANTHROPIC_API_KEY_FILE or the Keychain item "anthropic-unica-tools"
-// (the key on Savar's Max plan API credits), and ANTHROPIC_MODEL (default claude-sonnet-5-5). --fake uses a fake AI for a dry run of the
+// (the key on Savar's Max plan API credits), and ANTHROPIC_MODEL (default claude-sonnet-5-5). The solve check (round 7) reads
+// each printed question the AI wrote and answers it, through the same provider: AI_SOLVE_MODEL on OpenRouter (default
+// anthropic/claude-haiku-5.5), ANTHROPIC_SOLVE_MODEL with --anthropic (default claude-haiku-5-5); each check is logged to
+// <label>-solve.jsonl and costed apart. With --fake the solve check answers from the key (free). --fake uses a fake AI for a dry run of the
 // layout: its books are marked FAKE in index.md and are never stored. The secret key: SUPABASE_SECRET_KEY, else the
 // Supabase Management API with SUPABASE_ACCESS_TOKEN or the Keychain item "supabase-pagewise". No key is printed.
 import { execFileSync } from "node:child_process";
@@ -28,7 +31,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import sharp from "sharp";
-import { AI_DEFAULT_MODEL, type AiClient } from "@/lib/ai-client";
+import { AI_DEFAULT_MODEL, AI_SOLVE_DEFAULT_MODEL, type AiClient } from "@/lib/ai-client";
 import { ANTHROPIC_DEFAULT_MODEL, anthropicClient, type AnthropicUsage } from "@/lib/ai-anthropic";
 import { openRouterClient } from "@/lib/ai-openrouter";
 import type { Database } from "@/lib/database";
@@ -42,6 +45,7 @@ import { renderWorkbook, reviewPrint, type PrintEngine, type RenderProblem } fro
 import { sampleChild, samplePlanInput, type SampleBookKind, type SampleChild } from "@/lib/workbook-sample-profiles";
 import { workbookFiles } from "@/lib/workbook-store";
 import { workbookTemplate } from "@/lib/workbook-template";
+import { aiSolver, keySolver, type SolveLog, type Solver } from "@/lib/workbook-solve-check";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
 
 const PROJECT = "cdjobwsyzndtltzfpyqa";
@@ -99,29 +103,32 @@ async function anthropicKey(): Promise<string | null> {
 const ANTHROPIC_PRICES: Record<string, { input: number; output: number; cacheRead: number }> = {
   "claude-sonnet-5-5": { input: 2, output: 10, cacheRead: 0.2 },
   "claude-opus-5-5": { input: 4, output: 20, cacheRead: 0.2 },
+  "claude-haiku-5-5": { input: 0.1, output: 0.5, cacheRead: 0.01 },
 };
 
 /** Adds one Claude API answer to the book's cost. A model with no price (a fallback model) is counted at Opus prices. */
-function countAnthropic(u: AnthropicUsage) {
+function countAnthropic(u: AnthropicUsage, into = costs) {
   const p = ANTHROPIC_PRICES[u.model] ?? ANTHROPIC_PRICES["claude-opus-5-5"];
-  const c = costs.get(costKey) ?? { usd: 0, calls: 0, failed: 0, inTokens: 0, outTokens: 0 };
+  const c = into.get(costKey) ?? { usd: 0, calls: 0, failed: 0, inTokens: 0, outTokens: 0 };
   c.calls++;
   c.usd += (u.inputTokens * p.input + u.cacheWriteTokens * p.input * 1.25 + u.cacheReadTokens * p.cacheRead + u.outputTokens * p.output) / 1e6;
   c.inTokens += u.inputTokens + u.cacheWriteTokens + u.cacheReadTokens;
   c.outTokens += u.outputTokens;
-  costs.set(costKey, c);
+  into.set(costKey, c);
 }
 
 /** The cost of every AI call, in US dollars, by book: OpenRouter's usage.cost on each answer. */
 const costs = new Map<string, { usd: number; calls: number; failed: number; inTokens: number; outTokens: number }>();
+/** The solve checks' cost (round 7), by book, apart from the generator's. */
+const solveCosts: typeof costs = new Map();
 let costKey = "";
 
-function costingFetch(): typeof fetch {
+function costingFetch(into = costs): typeof fetch {
   return async (input, init) => {
     const key = costKey;
     const res = await fetch(input, { ...init, body: typeof init?.body === "string" ? JSON.stringify({ ...JSON.parse(init.body), usage: { include: true } }) : init?.body });
     const text = await res.clone().text().catch(() => "");
-    const c = costs.get(key) ?? { usd: 0, calls: 0, failed: 0, inTokens: 0, outTokens: 0 };
+    const c = into.get(key) ?? { usd: 0, calls: 0, failed: 0, inTokens: 0, outTokens: 0 };
     c.calls++;
     try {
       const u = (JSON.parse(text) as { usage?: { cost?: number; prompt_tokens?: number; completion_tokens?: number } }).usage;
@@ -132,7 +139,7 @@ function costingFetch(): typeof fetch {
       c.failed++;
     }
     if (!res.ok) c.failed++;
-    costs.set(key, c);
+    into.set(key, c);
     return res;
   };
 }
@@ -157,7 +164,7 @@ function fakeAi(): AiClient {
         numbers?: number[]; name?: string; say?: string;
         operation?: { kind: "add" | "subtract" | "missing-addend"; operands: [number, number] }; figure?: string | null; figureShows?: string | null;
       };
-      type Asked = { slot: string; skills: string[]; formats?: string[] | null; mistakes?: { name: string }[]; numbers?: Record<string, { max: number }>; aim?: { skill: string; kind: string }; planned?: Planned };
+      type Asked = { slot: string; skills: string[]; formats?: string[] | null; mistakes?: { name: string }[]; numbers?: Record<string, { max: number }>; aim?: { skill: string; kind: string }; planned?: Planned; room?: { characters: number } };
       const body = JSON.parse((request.content[0] as { text: string }).text) as { day: number; page: number; slots: Asked[]; examples?: Asked[] };
       return {
         items: [...body.slots, ...(body.examples ?? [])].map((s) => {
@@ -215,11 +222,16 @@ function fakeAi(): AiClient {
           if (s.aim?.kind === "relation" && /benchmark/.test(s.aim.skill) && !reason) {
             return { ...base, skill: s.aim.skill, format: "relation", text: `${who}: is ${a + b} less than 5?`, numbers: [num(a + b)], relation: { kind: "less-than", to: [5], labels: [] }, figureShows: null, operation: null, wrongAnswers: [], easier: null, shownWrong: null };
           }
+          // Within the slot's room, as the real AI is asked (round 7): a warm-up fact's room is about 10 characters. A bare
+          // fact has no name to tell it apart, so it takes a sum of its own through the book (the fact counter m).
+          const bare = !reason && `${who} has ${a}. ${b} more. How many?`.length > (s.room?.characters ?? Infinity);
+          const facts = bare ? Array.from({ length: Math.min(max, 40) }, (_, x) => Array.from({ length: Math.min(max, 40) }, (_, y) => [x + 1, y + 1] as const)).flat().filter(([x, y]) => x + y + 1 <= max) : [];
+          const [fa, fb] = bare ? facts[(m++ * 7) % facts.length] : [a, b];
           return {
-            ...base, text: reason ? `How do you know, ${who}?` : `${who} has ${a}. ${b} more. How many?`,
-            operation: reason ? null : op("add", a, b),
-            wrongAnswers: reason ? [] : [{ value: num(a + b + 1), cause: "careless", description: "Counts 1 too many", step: null }],
-            easier: reason ? null : { text: "Try a smaller sum.", operation: op("add", 0, Math.min(a, b)) }, shownWrong: null,
+            ...base, text: reason ? `How do you know, ${who}?` : bare ? `${fa} + ${fb} = ?` : `${who} has ${a}. ${b} more. How many?`,
+            operation: reason ? null : op("add", fa, fb),
+            wrongAnswers: reason ? [] : [{ value: num(fa + fb + 1), cause: "careless", description: "Counts 1 too many", step: null }],
+            easier: reason ? null : { text: "Try a smaller sum.", operation: op("add", 0, Math.min(fa, fb)) }, shownWrong: null,
           };
         }),
       };
@@ -300,6 +312,8 @@ interface BookResult {
   renderProblems: RenderProblem[];
   omissions: number;
   usd: number;
+  /** The solve checks (round 7): how many, how many did not agree with the key (or failed), and their cost. */
+  solve: { checks: number; disagreed: number; failed: number; usd: number };
   calls: number;
   minutes: number;
   error?: string;
@@ -362,6 +376,7 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
   const workbookId = randomUUID();
   costKey = label;
   const t0 = Date.now();
+  const solveLogs: SolveLog[] = [];
   const result = await generateWorkbook(
     { workbookId, childId, number: input.workbook.number, profileBuild: null, plan: planned.plan, curriculum: BC, book: { child: child.name } },
     {
@@ -369,8 +384,10 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
       store: drafts ?? { save: async () => ({ status: "saved", draftId: workbookId }), draft: async () => null },
       qrToken: () => randomBytes(16).toString("base64url"), timeLimitMs: 240_000,
       progress: (done, total) => { if (done % 10 === 0 || done === total) console.log(`  ${label}: ${done}/${total} day pages`); },
+      solver, solveTimeLimitMs: 60_000, now: () => Date.now(), onSolve: (log) => { solveLogs.push(log); },
     },
   );
+  await writeFile(`${out}/${label}-solve.jsonl`, solveLogs.map((l) => `${JSON.stringify(l)}\n`).join(""));
   if (result.status !== "stored") throw new Error(`${label}: ${result.reason}`);
   const draft = result.draft;
   const renderable = renderableDraft(draft);
@@ -400,9 +417,14 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
     for (const [i, png] of printed.images.entries()) await files.put({ path: `${folder}/review-${fileKey}-page-${i + 1}.png`, contentType: "image/png", bytes: png });
   }
   const c = costs.get(label);
+  const sc = solveCosts.get(label);
   return {
     label, level, kind, child, draftId: workbookId, stored: !!drafts, pdf, sheet, draft, renderProblems: strict.status === "failed" ? strict.problems : [],
     omissions: draft.pages.reduce((n, p) => n + (p.omissions?.length ?? 0), 0), usd: c?.usd ?? 0, calls: c?.calls ?? 0, minutes: (Date.now() - t0) / 60000,
+    solve: {
+      checks: solveLogs.length, disagreed: solveLogs.filter((l) => l.verdict.status === "disagreed").length,
+      failed: solveLogs.filter((l) => l.verdict.status === "failed").length, usd: sc?.usd ?? 0,
+    },
   };
 }
 
@@ -417,15 +439,23 @@ if (values["family-only"]) {
 }
 
 let ai: AiClient;
-if (values.fake) ai = fakeAi();
-else if (values.anthropic) {
+// The solve check goes through the same provider as the generator, on its cheapest model; the fake answers from the key.
+let solver: Solver;
+if (values.fake) {
+  ai = fakeAi();
+  solver = keySolver();
+} else if (values.anthropic) {
   const key = await anthropicKey();
   if (!key) throw new Error("no Anthropic key: set ANTHROPIC_API_KEY or ANTHROPIC_API_KEY_FILE, or add the Keychain item anthropic-unica-tools");
-  ai = anthropicClient({ apiKey: key, model: process.env.ANTHROPIC_MODEL || ANTHROPIC_DEFAULT_MODEL, timeout: 200_000, onUsage: countAnthropic });
+  ai = anthropicClient({ apiKey: key, model: process.env.ANTHROPIC_MODEL || ANTHROPIC_DEFAULT_MODEL, timeout: 200_000, onUsage: (u) => countAnthropic(u) });
+  solver = aiSolver(anthropicClient({
+    apiKey: key, model: process.env.ANTHROPIC_SOLVE_MODEL || "claude-haiku-5-5", timeout: 60_000, fallbacks: false, onUsage: (u) => countAnthropic(u, solveCosts),
+  }));
 } else {
   const key = await openRouterKey();
   if (!key) throw new Error("no OpenRouter key: set OPENROUTER_API_KEY or OPENROUTER_API_KEY_FILE (or pass --fake for a layout dry run)");
   ai = openRouterClient({ apiKey: key, model: process.env.AI_MODEL || AI_DEFAULT_MODEL, fetch: costingFetch(), timeout: 200_000 });
+  solver = aiSolver(openRouterClient({ apiKey: key, model: process.env.AI_SOLVE_MODEL || AI_SOLVE_DEFAULT_MODEL, fetch: costingFetch(solveCosts), timeout: 60_000 }));
 }
 const db = store ? createClient<Database>(URL, await secretKey(), { auth: { persistSession: false, autoRefreshToken: false } }) : null;
 const family = db ? await testFamily(db) : null;
@@ -445,6 +475,7 @@ for (const job of jobs) {
     const r = await oneBook(db, family, job.level, job.kind, ai, drafts);
     results.push(r);
     console.log(`  ${r.label}: ${r.draft.counts.pages} pages, ${r.draft.counts.questions} questions, ${r.draft.counts.failed} failed, ${r.draft.counts.failedPages} pages do not fit, ${r.draft.pages.reduce((n, p) => n + (p.leftOut?.length ?? 0), 0)} left out for room, ${r.renderProblems.length} render problems (strict), USD ${r.usd.toFixed(2)}, ${r.minutes.toFixed(1)} min`);
+    console.log(`  ${r.label}: ${r.solve.checks} solve checks (${solver.model}), ${r.solve.disagreed} read another way, ${r.solve.failed} failed or late, USD ${r.solve.usd.toFixed(4)}; log ${out}/${r.label}-solve.jsonl`);
   } catch (e) {
     console.error(`  ${job.level} ${job.kind}: ERROR ${e instanceof Error ? e.message : String(e)}`);
     results.push({ label: `${job.level}-${job.kind}`, level: job.level, kind: job.kind, error: e instanceof Error ? e.message : String(e) } as BookResult);
@@ -454,7 +485,7 @@ for (const job of jobs) {
 
 async function writeIndex() {
   const ok = results.filter((r) => !r.error);
-  const total = ok.reduce((n, r) => n + r.usd, 0);
+  const total = ok.reduce((n, r) => n + r.usd + r.solve.usd, 0);
   const rows = results.map((r) => r.error
     ? `| ${r.label} | | | | | | | | | ERROR: ${r.error.replace(/\|/g, "/")} |`
     : `| [${r.label}](${r.label}.pdf) | ${r.child.name} | ${r.draft.counts.pages} | ${r.draft.counts.questions} | ${r.draft.counts.failed} | ${new Set([...r.renderProblems.map((p) => p.page), ...r.draft.pages.filter((p) => p.fit.status === "failed").map((p) => p.number)]).size} | ${r.draft.counts.notChecked} | ${r.draft.pages.reduce((n, p) => n + (p.leftOut?.length ?? 0), 0)} | ${values.fake ? "FAKE AI" : `USD ${r.usd.toFixed(2)}`} | [sheet](${r.label}-contact.png) |`);
@@ -468,12 +499,16 @@ async function writeIndex() {
   const md = [
     `# Sample workbooks (#363)${values.fake ? " - FAKE AI DRY RUN, NOT SAMPLES" : ""}`,
     "",
-    `Model: ${ai.model}. Books: ${ok.length}. Total AI cost: USD ${total.toFixed(2)}. Draft rows: public.workbook_drafts${store ? "" : " (not stored)"}.`,
+    `Model: ${ai.model}; solve check: ${solver.model}. Books: ${ok.length}. Total AI cost (solve checks included): USD ${total.toFixed(2)}. Draft rows: public.workbook_drafts${store ? "" : " (not stored)"}.`,
     "Nothing is sent to print or shipped. Failed pages are drawn with a red banner in the PDF and the page images.",
     "",
     "| Book | Child | Pages | Questions | Failed questions | Failed pages | Not checked by code | Left out for room | AI cost | Contact sheet |",
     "|---|---|---|---|---|---|---|---|---|---|",
     ...rows,
+    "",
+    "## Solve checks (round 7)",
+    "Each printed question the AI wrote is read and answered by a separate model; one it answers otherwise fails closed (written again once, then marked failed).",
+    ...ok.map((r) => `- ${r.label}: ${r.solve.checks} checks, ${r.solve.disagreed} read another way, ${r.solve.failed} failed or late, USD ${r.solve.usd.toFixed(4)} ([log](${r.label}-solve.jsonl))`),
     "",
     "## Profiles (made up)",
     ...profiles,
@@ -494,4 +529,4 @@ async function writeIndex() {
   ].join("\n");
   await writeFile(`${out}/index.md`, md);
 }
-console.log(`done: ${results.filter((r) => !r.error).length} books, USD ${results.reduce((n, r) => n + (r.usd ?? 0), 0).toFixed(2)}; ${out}/index.md`);
+console.log(`done: ${results.filter((r) => !r.error).length} books, USD ${results.reduce((n, r) => n + (r.usd ?? 0) + (r.solve?.usd ?? 0), 0).toFixed(2)}; ${out}/index.md`);

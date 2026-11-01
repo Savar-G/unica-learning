@@ -18,10 +18,17 @@
 // the data its choices and answer come from; a whole-number operation's text must name the numbers it works (or its
 // picture show them), an easier example's text that names others is written by code from its operation, and a compare,
 // order, places or sequence text must name the same numbers and direction as its data.
+//
+// Code writes the text wherever it can (round 7, R380-12-1): at U1 to U9 a whole-number +, -, missing part, × or ÷
+// prints one of code's wordings (src/lib/workbook-wording.ts), filled from the same operation as the answer key, and its
+// easier example prints the easier operation ("7 - 3 = ?"). The AI's words are never printed there: it may only choose
+// the person and the thing to count from the lists code offers. Any other printed text the AI writes that has an answer
+// key goes to the solve check (src/lib/workbook-solve-check.ts) in the generator.
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness.
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { readNumbers } from "@/lib/number-words";
 import { defaultItem, figureCount } from "@/lib/question-package-items";
+import { codeWordings, isWorded, operationQuestion, type WordingKind } from "@/lib/workbook-wording";
 import { PLACE_ORDER, written } from "@/lib/question-package-columns";
 import {
   checkQuestionPackage,
@@ -30,7 +37,6 @@ import {
   relationChoices,
   operationProblem,
   operationResult,
-  operationText,
   workedSteps,
   type AnswerRegion,
   type AnswerValue,
@@ -147,6 +153,10 @@ export interface AiItem {
   relation: { kind: Relation; to: number[]; labels: string[] } | null;
   /** A picture of a missing part shows the part given or the total (#380); null for any other picture. */
   figureShows: "part" | "total" | null;
+  /** The person code's wording names, one of the names code offers (round 7); null for code's choice. */
+  name: string | null;
+  /** The thing code's wording counts, one of the things code offers (round 7); null for code's choice. */
+  thing: string | null;
 }
 
 const nullable = (schema: Record<string, unknown>) => ({ anyOf: [schema, { type: "null" }] });
@@ -196,6 +206,8 @@ const ITEM_SCHEMA = object({
   pattern: nullable(object({ core: { type: "array", items: { type: "string", enum: [...PATTERN_SHAPES] } }, shapes: { type: "integer" }, blank: { type: "integer" } })),
   relation: nullable(object({ kind: { type: "string", enum: [...RELATIONS] }, to: { type: "array", items: { type: "integer" } }, labels: { type: "array", items: { type: "string" } } })),
   figureShows: nullable({ type: "string", enum: ["part", "total"] }),
+  name: nullable({ type: "string" }),
+  thing: nullable({ type: "string" }),
 });
 
 /** The output schema of one page or redo call: the filled slots. Content only: no field sets a layout. */
@@ -605,6 +617,11 @@ export interface BuiltQuestion {
   package: QuestionPackage | null;
   /** The worked step ids of the AI's operation, when it is valid: the names a wrong answer's step may use. */
   stepIds: string[];
+  /**
+   * Code's sound wordings of the question, when code writes its text (round 7): the printed one first, then the others
+   * the generator may print instead (so a page never asks one shape twice).
+   */
+  wordings?: string[];
 }
 
 /** Where a slot's question goes, and what the plan lets it be. */
@@ -626,7 +643,33 @@ export interface SlotPlace {
   room?: number;
   /** Which of code's wordings a code-written text starts from (round 6): slots of one page take different ones. */
   variant?: number;
+  /** What code words a whole-number question with at U1 to U9 (round 7); absent: code's defaults. */
+  wording?: SlotWording;
 }
+
+/** What the plan gives code to word a slot's whole-number question with (round 7). */
+export interface SlotWording {
+  /** The planned person and thing, and the ones the AI may choose instead (the planned ones among them). */
+  name: string;
+  thing: string;
+  names: readonly string[];
+  things: readonly string[];
+  /** The kinds of question to word it as, best first. */
+  kinds: readonly WordingKind[];
+  /** A skill about 1 (or 2) more and less. */
+  step: boolean;
+  /** The skill has met subtraction. */
+  subtraction: boolean;
+  /** The slot's planned wording and what it works. */
+  planned?: { say: string; operation: { kind: string; operands: number[] }; figure: string | null } | null;
+}
+
+/** People code names when the plan gives none: never Sam (Spot the error's child). */
+const DEFAULT_NAMES = ["Mia", "Ben", "Ava", "Leo", "Lia", "Tom"];
+const DEFAULT_THINGS = ["shells", "apples", "cars", "stickers", "hats", "cups"];
+
+/** A question whose printed text code writes (round 7): a whole-number +, -, missing part, × or ÷ at U1 to U9. */
+export const isCodeWorded = (p: QuestionPackage) => p.level <= 9 && isWorded(p.operation);
 
 const fail = (reason: string, pkg: QuestionPackage | null = null, stepIds: string[] = []): BuiltQuestion => ({ check: { status: "failed", reason }, package: pkg, stepIds });
 
@@ -641,8 +684,15 @@ export function buildQuestion(raw: unknown, place: SlotPlace): BuiltQuestion {
   try {
     const built = build(raw, place);
     if (built.check.status === "failed" || !built.package || !isObject(raw)) return built;
-    const problem = kindProblem(built.package, raw);
-    return problem ? fail(problem, built.package, built.stepIds) : built;
+    const pkg = built.package;
+    if (built.wordings) {
+      // Code's wordings that pass every text check, the first printed (one always does: the bare sum).
+      const sound = built.wordings.filter((w) => !kindProblem({ ...pkg, text: w }, raw));
+      if (sound.length === 0) return fail(kindProblem(pkg, raw)!, pkg, built.stepIds);
+      return { ...built, package: { ...pkg, text: sound[0] }, wordings: sound };
+    }
+    const problem = kindProblem(pkg, raw);
+    return problem ? fail(problem, pkg, built.stepIds) : built;
   } catch (e) {
     return fail(`code could not build the question: ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -691,13 +741,15 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
   }
 
   if (raw.operation === null || raw.operation === undefined) return fail(`a ${format} item needs an operation code can compute`);
-  // The box takes the operation's number, so the question must ask for that number, never yes or no or a choice.
-  const asks = typeof raw.text === "string" ? choiceAsked(raw.text) : null;
-  if (asks) return fail(`the question asks ${asks}, but its answer is the operation's number: ask for a number (How far is 8 from 10?), or use draw`);
   const candidate = operationFrom(raw.operation);
   const problem = operationProblem(candidate);
   if (problem) return fail(`the operation: ${problem}`);
   const op = candidate as Operation;
+  // Code writes the text of a whole-number question at U1 to U9 (round 7): the AI's words are not printed.
+  const worded = place.level <= 9 && isWorded(op);
+  // The box takes the operation's number, so the question must ask for that number, never yes or no or a choice.
+  const asks = !worded && typeof raw.text === "string" ? choiceAsked(raw.text) : null;
+  if (asks) return fail(`the question asks ${asks}, but its answer is the operation's number: ask for a number (How far is 8 from 10?), or use draw`);
   const answer = operationResult(op);
   const stepIds = workedSteps(op).map((s) => s.id);
 
@@ -714,16 +766,21 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
   if (typeof built === "string") return fail(built, null, stepIds);
   // A number line item always draws its line; another format draws the picture the AI named, if any.
   const figureKind = format === "number-line" ? "number-line" : kind;
-  const figure = figureKind ? operationFigure(figureKind, op, answer, shownBy(raw.text, op) ?? raw.figureShows) : null;
+  // Code's wording follows the picture, so a missing part's picture code words shows the part given unless the item says.
+  const shows = worded ? (raw.figureShows ?? "part") : shownBy(raw.text, op) ?? raw.figureShows;
+  const figure = figureKind ? operationFigure(figureKind, op, answer, shows) : null;
   if (typeof figure === "string") return fail(figure, null, stepIds);
   const item = figure ? { ...built, figure } : built;
+  const wordings = worded ? wordingsFor(op, format, figure, raw, place) : [];
+  const text = worded ? wordings[0] : raw.text as string;
 
   const easier = isObject(raw.easier) ? raw.easier : null;
   // A missing part's easier example has one less to count on, to a total one less (3 + ? = 4 for 3 + ? = 5): code
   // writes it when the AI's is missing or is not easier (#380). So does a sum or a take-away of two whole numbers
   // (round 5): one number smaller, so the answer differs (8 - 4: 7 - 4, then 8 - 3; never 6 - 2, which is 4 again).
   const ownEasiers = codeEasiers(op);
-  const own = (e: { text: string; operation: Operation }) => checked(pkg(item, op, wrongAnswers, { ...e, answer: operationResult(e.operation), steps: workedSteps(e.operation) }), stepIds);
+  const done = (b: BuiltQuestion): BuiltQuestion => (worded && b.check.status !== "failed" ? { ...b, wordings } : b);
+  const own = (e: { text: string; operation: Operation }) => done(checked(pkg(item, op, wrongAnswers, { ...e, answer: operationResult(e.operation), steps: workedSteps(e.operation) }, text), stepIds));
   const firstOwn = () => ownEasiers.map(own).find((x) => x.check.status !== "failed") ?? null;
   if (!easier) return firstOwn() ?? fail("the question has no easier example", null, stepIds);
   const easierOp = operationFrom(easier.operation);
@@ -731,16 +788,39 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
   if (easierProblem) return firstOwn() ?? fail(`the easier example's operation: ${easierProblem}`, null, stepIds);
   // The easier example's text names the numbers of its operation (round 6): one that names others is written by code
   // from the operation, so the text read to the child and the answer worked from the operation agree.
-  const easierText = typeof easier.text === "string" && !operationTextProblem(easier.text, easierOp as Operation, null) ? easier.text : operationQuestion(easierOp as Operation);
+  // At U1 to U9 code writes it from its operation, as it writes the question (round 7).
+  const easierText = !worded && typeof easier.text === "string" && !operationTextProblem(easier.text, easierOp as Operation, null) ? easier.text : operationQuestion(easierOp as Operation);
   const easierExample = {
     text: easierText,
     operation: easierOp as Operation,
     answer: operationResult(easierOp as Operation),
     steps: workedSteps(easierOp as Operation),
   };
-  const result = checked(pkg(item, op, wrongAnswers, easierExample), stepIds);
+  const result = done(checked(pkg(item, op, wrongAnswers, easierExample, text), stepIds));
   if (result.check.status === "failed" && /the easier example/.test(result.check.reason)) return firstOwn() ?? result;
   return result;
+}
+
+/**
+ * Code's wordings of a whole-number question (round 7): with the slot's planned person and thing, or the ones the AI
+ * chose from those code offered; as the kinds the plan gives, else as the AI's question reads (a story or a bare sum).
+ */
+function wordingsFor(op: Operation, format: GeneratedFormat, figure: Figure | null, raw: Record<string, unknown>, place: SlotPlace): string[] {
+  const w = place.wording;
+  const variant = place.variant ?? place.question - 1;
+  const offered = (list: readonly string[] | undefined, chosen: unknown) => (typeof chosen === "string" && list?.includes(chosen) ? chosen : null);
+  const name = offered(w?.names, raw.name) ?? w?.name ?? DEFAULT_NAMES[((variant % DEFAULT_NAMES.length) + DEFAULT_NAMES.length) % DEFAULT_NAMES.length];
+  const thing = offered(w?.things, raw.thing) ?? w?.thing ?? DEFAULT_THINGS[((variant % DEFAULT_THINGS.length) + DEFAULT_THINGS.length) % DEFAULT_THINGS.length];
+  const words = typeof raw.text === "string" && /[a-z]{3,}/i.test(raw.text);
+  return codeWordings(op, {
+    format, figure, name, thing,
+    kinds: w?.kinds ?? (words ? ["story", "picture", "missing-part", "fact"] : ["fact", "missing-part"]),
+    step: w?.step ?? false,
+    subtraction: w?.subtraction ?? op.kind === "subtract",
+    variant, room: place.room,
+    // The planned wording names the planned person and thing.
+    planned: w && name === w.name && thing === w.thing ? w.planned ?? null : null,
+  });
 }
 
 /**
@@ -760,14 +840,6 @@ function codeEasiers(op: Operation): { text: string; operation: Operation }[] {
   // A take-away of nothing left (7 - 7) goes last.
   if (op.kind === "subtract") return [[x - 1, y], [x, y - 1]].filter(([p, q]) => q >= 0 && p >= q && p - q !== x - y).sort((m, n) => Number(m[0] === m[1]) - Number(n[0] === n[1])).map(([p, q]) => make("subtract", p, q));
   return [];
-}
-
-/** An operation as a question in plain ASCII: "7 - 4 = ?", "3 + ? = 8"; the package's own text for another kind. */
-function operationQuestion(op: Operation): string {
-  const [a, b] = op.operands as unknown[];
-  if (op.kind === "missing-addend") return `${a} + ? = ${b}`;
-  const sign = ({ add: "+", subtract: "-", multiply: "×", divide: "÷" } as Record<string, string>)[op.kind];
-  return sign && op.operands.length === 2 ? `${a} ${sign} ${b} = ?` : `${operationText(op).replace(/−/g, "-")} = ?`;
 }
 
 // ---------- A relation's wording, by code (round 6) ----------
@@ -990,7 +1062,8 @@ export function kindProblem(p: QuestionPackage, raw: Record<string, unknown>): s
     return "an order item asks to put the numbers in order (least first, or greatest first): ask that, or use another format";
   }
   const op = p.operation;
-  if (op && (op.kind === "add" || op.kind === "subtract") && op.operands.includes(0) && !/\bzero\b|\b0\b/.test(text)) {
+  // Code's own wording names the 0 (round 7), but adding or taking away 0 still hands back a number it gives.
+  if (op && (op.kind === "add" || op.kind === "subtract") && op.operands.includes(0) && (isCodeWorded(p) || !/\bzero\b|\b0\b/.test(text))) {
     return "adding or taking away 0 gives back a number the question already says: ask for a number the child works out";
   }
   const answer = p.answer?.value ?? null;
