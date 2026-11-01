@@ -1094,6 +1094,6 @@ describe("a panel of a relation skill (round 4)", () => {
     const page = result.draft.pages.find((p) => p.content?.kind === "day" && p.content.topic === BC.skillSteps("K3-benchmarks-5-10")?.[0]?.name && p.content.blocks.some((x) => x.slot === "watch-one"))
       ?? result.draft.pages.find((p) => p.content?.kind === "day" && p.content.blocks.some((x) => x.slot === "watch-one" && (x.lines ?? []).some((l) => l.includes("less than 5"))));
     const watch = page!.content!.kind === "day" ? page!.content!.blocks.find((x) => x.slot === "watch-one")! : null;
-    expect(watch).toMatchObject({ label: "7", lines: ["Is 7 less than 5?", "7 comes after 5: [not less than 5]."] });
+    expect(watch).toMatchObject({ label: "Less than 5?", lines: ["Is 7 less than 5?", "7 comes after 5: [not less than 5]."] });
   });
 });

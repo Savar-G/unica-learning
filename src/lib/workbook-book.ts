@@ -209,7 +209,8 @@ function exampleOf(p: QuestionPackage, level: number): PanelExample | null {
         : c.relation === "closer" ? [`Is ${n} close to ${c.to[0]} or ${c.to[1]}?`, `${n} is ${Math.abs(n - c.to[0])} from ${c.to[0]} and ${Math.abs(n - c.to[1])} from ${c.to[1]}: [${r.answer}].`]
         : c.relation === "equal" ? [`${n} and ${m}: equal or not?`, `[${r.answer}].`]
         : [`${c.labels[0]} ${n}, ${c.labels[1]} ${m}. Which has ${c.relation}?`, `[${r.answer}].`];
-      return { label: c.numbers.join(" and "), lines, answered: lines[1] };
+      const label = c.relation === "less-than" ? `Less than ${c.to[0]}?` : c.relation === "closer" ? `Close to ${c.to[0]} or ${c.to[1]}?` : c.relation === "equal" ? "Equal or not?" : `Which has ${c.relation}?`;
+      return { label, lines, answered: lines[1] };
     }
     if (c.kind === "order") {
       const line = c.regions.map((id) => `[${boxAnswer(id)}]`).join(", ");
