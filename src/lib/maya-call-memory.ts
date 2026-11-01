@@ -5,7 +5,12 @@ import type { CallChange, CallConnection, CallRecord, CallStore, ConnectionLog }
 // it read and raises it by one, and a live call always has its saved state. Records are JSON in the database, so the
 // store keeps and gives copies.
 
-export function memoryCallStore(options: { testFamilies: readonly string[] }): CallStore & { rows(): CallRecord[] } {
+interface MemoryCallStore extends CallStore {
+  rows(): CallRecord[];
+  appendConnection(event: CallConnection, revision: number, commit: () => void): boolean;
+}
+
+export function memoryCallStore(options: { testFamilies: readonly string[] }): MemoryCallStore {
   const rows = new Map<string, CallRecord>();
   const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x));
   return {
@@ -28,16 +33,25 @@ export function memoryCallStore(options: { testFamilies: readonly string[] }): C
       rows.set(id, next);
       return true;
     },
+    appendConnection(event, revision, commit) {
+      const r = rows.get(event.callId);
+      if (!r || r.revision !== revision || r.mode !== "voice" || r.parentId !== event.parentId || r.childId !== event.childId) return false;
+      // No await between ownership, insert and revision update: the database RPC is one transaction too.
+      commit();
+      rows.set(r.id, { ...r, revision: revision + 1 });
+      return true;
+    },
     rows: () => [...rows.values()].map(copy),
   };
 }
 
 /** The connection events of voice calls in memory, append only, as public.maya_call_connections keeps them. */
-export function memoryConnectionLog(): ConnectionLog & { rows(): CallConnection[] } {
+export function memoryConnectionLog(store: MemoryCallStore, clock: () => number): ConnectionLog & { rows(): CallConnection[] } {
   const rows: CallConnection[] = [];
   return {
-    async append(e) {
-      rows.push({ ...e });
+    async append(e, revision) {
+      const at = Math.max(clock(), ...rows.filter((row) => row.callId === e.callId).map((row) => row.at));
+      return store.appendConnection(e, revision, () => rows.push({ ...e, at })) ? at : null;
     },
     async read(callId) {
       return rows.filter((r) => r.callId === callId).map(({ kind, at }) => ({ kind, at })).sort((a, b) => a.at - b.at);

@@ -125,6 +125,7 @@ export class VoiceCallRun {
   private childHere = false;
   private generation = 0;
   private speech: voice.SpeechHandle | null = null;
+  private replayingFinal = false;
   readonly agent: MayaVoiceAgent;
 
   constructor(
@@ -185,7 +186,14 @@ export class VoiceCallRun {
     this.lastTickAt = this.timers.now();
     // Bound the opening model request too, before the first session state can be saved.
     this.scheduleLimit(this.call.session.startedAt ?? this.timers.now());
-    if (this.call.session.startedAt === null) this.session.generateReply();
+    const final = this.call.pendingFinal;
+    if (final && !this.replayingFinal) {
+      this.replayingFinal = true;
+      try {
+        const speech = final.say.length ? this.session.say(final.say.join(" "), { addToChatCtx: true }) : null;
+        await this.after(final, speech);
+      } catch { await this.finish({ detail: "the saved final speech failed" }); }
+    } else if (this.call.session.startedAt === null) this.session.generateReply();
     else this.schedule();
   }
 
@@ -265,10 +273,11 @@ export class VoiceCallRun {
       const closing = this.session.close().catch(() => {});
       let failed = this.call.lost;
       try {
-        if (limit) await this.call.limit();
-        else await this.call.end(how);
+        // Store the media-close boundary before counting, using the database's clock.
         if (this.childHere) await this.call.connection("child_left");
         await this.call.connection("agent_left");
+        if (limit) await this.call.limit();
+        else await this.call.end(how);
         failed ||= this.call.lost;
       } catch { failed = true; }
       this.options.notify({ revision: this.call.revision, ended: !failed, ...(failed ? { error: "technical_issue" as const } : {}) });

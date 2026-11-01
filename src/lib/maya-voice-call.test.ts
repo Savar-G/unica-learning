@@ -32,7 +32,7 @@ function setup() {
   let now = T0;
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
-  const connections = memoryConnectionLog();
+  const connections = memoryConnectionLog(store, () => now);
   const eventStore = memoryLearningEventStore({ children: [{ id: CHILD, parentId: PARENT }], tests: [{ id: TEST, childId: CHILD }] });
   const rebuild = vi.fn(async () => true);
   const seams: CallSeams = {

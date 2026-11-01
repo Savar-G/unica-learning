@@ -74,7 +74,7 @@ export interface CallRecord {
   outcome: Outcome | null;
   counts: { mayaTurns: number; childTurns: number; fallbacks: number } | null;
   /** While live: what the text adapter needs to go on, with the package it runs on. Null once ended. */
-  live: { package: QuestionPackage; text: SavedTextSession; cancelled?: true } | null;
+  live: { package: QuestionPackage; text: SavedTextSession; cancelled?: true; pendingVoice?: VoiceTurn } | null;
   trace: MayaTrace | null;
   boardHistory: BoardHistory | null;
   learningEventId: string | null;
@@ -97,7 +97,8 @@ export interface CallConnection extends ConnectionEvent {
 
 /** Where a voice call's connection events go (append only). */
 export interface ConnectionLog {
-  append(event: CallConnection): Promise<void>;
+  /** Checks ownership, raises the revision and appends atomically. Returns the store-clock time, or null on conflict. */
+  append(event: CallConnection, revision: number): Promise<number | null>;
   /** Every stored event of a call, oldest first. */
   read(callId: string): Promise<ConnectionEvent[]>;
 }
@@ -224,6 +225,8 @@ export interface VoiceCall {
   readonly lost: boolean;
   /** The revision of the last save. */
   readonly revision: number;
+  /** Saved accepted final words when this handle restored a controller that had already ended. */
+  readonly pendingFinal: VoiceTurn | null;
   start(): Promise<VoiceTurn>;
   child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }): Promise<VoiceTurn>;
   tick(): Promise<VoiceTurn>;
@@ -553,7 +556,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       if (!found) return { ok: false, error: "not_found" };
       if (found.mode !== "voice") return { ok: false, error: "not_voice" };
       if (found.status !== "live" || !found.live) return { ok: false, error: "ended" };
-      const model = seams.model(found.model);
+      const model = found.live.text.session.outcome ? idleModel(found) : seams.model(found.model);
       if (!model) return { ok: false, error: "model_unavailable" };
       const restored = structuredClone(found.live.text);
       restored.session.variety.name = null;
@@ -563,6 +566,11 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       let record: CallRecord = { ...found, ...claim, revision: found.revision + 1 };
       const pkg = found.live.package;
       const session = textSession(record, pkg, model, null, restored);
+      const last = restored.turns.at(-1);
+      const pendingFinal: VoiceTurn | null = restored.session.outcome ? record.live?.pendingVoice ?? {
+        say: last?.kind === "maya" && last.stateAfter === "CLOSE" ? [...(last.output?.say ?? [])] : [],
+        newBatches: 0, safetyMessage: null, ended: true,
+      } : null;
       const seen: ConnectionEvent[] = [];
       let lost = false;
       let queue: Promise<void> = Promise.resolve();
@@ -581,13 +589,14 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           console.error("[maya voice] connections read failed", record.id, e instanceof Error ? e.message : String(e));
         }
         // The outcome can precede final playout. Count room time through the media close.
-        return { connectedSeconds: connectedSeconds(events, Math.max(endedAt, seams.clock())) };
+        return { connectedSeconds: connectedSeconds(events, Math.max(endedAt, seams.clock(), ...events.map((e) => e.at))) };
       };
-      const persist = () =>
+      const persist = (out: TextOutput) =>
         later(async () => {
           if (lost || record.status === "ended") return;
           // A final voice turn remains live until its speech handle completes.
-          const change: CallChange = { live: { package: pkg, text: await session.saved() }, startedAt: session.trace().startedAt };
+          const pendingVoice: VoiceTurn | undefined = out.ended ? { say: [...out.say], newBatches: 0, safetyMessage: out.safetyMessage, ended: true } : undefined;
+          const change: CallChange = { live: { package: pkg, text: await session.saved(), ...(pendingVoice ? { pendingVoice } : {}) }, startedAt: session.trace().startedAt };
           const saved = await store.update(record.id, record.revision, change) ? { ...record, ...change, revision: record.revision + 1 } : null;
           if (!saved) {
             lost = true;
@@ -601,7 +610,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const turn = async (run: () => Promise<TextOutput>): Promise<VoiceTurn> => {
         if (inactive()) return none;
         const out = await run();
-        persist();
+        persist(out);
         await queue;
         if (inactive()) return none;
         return { say: out.say, newBatches: out.board.length, safetyMessage: out.safetyMessage, ended: out.ended !== null };
@@ -619,6 +628,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         },
         get revision() {
           return record.revision;
+        },
+        get pendingFinal() {
+          return pendingFinal ? structuredClone(pendingFinal) : null;
         },
         start: () => turn(() => session.start()),
         child: (text, options) => turn(() => session.child(text.trim().slice(0, MAX_CHILD_TEXT), options)),
@@ -641,11 +653,11 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           later(async () => {
             if (lost) return;
             try {
-              // Each connection write checks ownership. A replaced worker cannot renew or close the new segment.
-              if (!(await store.update(record.id, record.revision, {}))) { lost = true; return; }
+              // The store serializes ownership and append with replacement claims.
+              const at = await log.append({ ...event, callId: record.id, parentId: record.parentId, childId: record.childId }, record.revision);
+              if (at === null) { lost = true; return; }
               record = { ...record, revision: record.revision + 1 };
-              await log.append({ ...event, callId: record.id, parentId: record.parentId, childId: record.childId });
-              seen.push(event);
+              seen.push({ kind, at });
             } catch (e) {
               lost = true;
               console.error("[maya voice] connection event not stored", record.id, kind, e instanceof Error ? e.message : String(e));

@@ -123,7 +123,7 @@ async function voiceCall(options: { speech?: ProbeSTT; speaker?: Speaker; seed?:
   const clock = handTimers();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
-  const connections = memoryConnectionLog();
+  const connections = memoryConnectionLog(store, clock.now);
   const rebuild = vi.fn(async () => true);
   const seams: CallSeams = {
     store,
@@ -338,6 +338,55 @@ describe("R408 controlled probes through public interfaces", () => {
     await waitFor(() => c.closed.mock.calls.length === 1, "terminal update");
     expect((await c.calls.view(c.id))!.status).toBe("ended");
     expect(c.store.rows()[0].connectedSeconds).toBe(5);
+  });
+
+  it("R408-14 replays the restored terminal words through AgentSession before terminal persistence", async () => {
+    const c = await voiceCall();
+    await c.call.start();
+    let final = await c.call.child("66");
+    for (const text of ["I wrote it.", "yes"]) final = await c.call.child(text);
+    expect(c.call.ended).toBe(true);
+    const opened = await c.calls.openVoice(c.id, { speechToText: "fake", voice: "fake" }, null);
+    if (!opened.ok) throw new Error(opened.error);
+    const config = voiceProviders({});
+    if (!config.ok) throw new Error("fake providers");
+    const providers = await makeProviders(config, { fakeMsPerChar: 1 });
+    let flushed!: () => void;
+    const ready = new Promise<void>(resolve => { flushed = resolve; });
+    class RestoreSpeaker extends HeldSpeaker {
+      override flush() { if (this.held) flushed(); super.flush(); }
+    }
+    const speaker = new RestoreSpeaker();
+    speaker.held = true;
+    const session = voiceSession(providers, { endpointingMs: 20, aecWarmupDuration: 0 });
+    const microphone = new SilentMicrophone();
+    session.input.audio = microphone;
+    session.output.audio = speaker;
+    const updates: CallUpdate[] = [];
+    let complete!: () => void;
+    const done = new Promise<void>(resolve => { complete = resolve; });
+    const closed = vi.fn(async () => { complete(); });
+    const run = new VoiceCallRun(session, opened.call, { timers: c.clock.timers, notify: u => updates.push(u), closed });
+    try {
+      await run.agentJoined();
+      await session.start({ agent: run.agent });
+      microphone.push();
+      const say = vi.spyOn(session, "say");
+      const generate = vi.spyOn(session, "generateReply");
+      await run.childJoined();
+      await ready;
+      expect(say).toHaveBeenCalledOnce();
+      expect(say.mock.calls[0][0]).toBe(final.say.join(" "));
+      expect(generate).not.toHaveBeenCalled();
+      expect(c.store.rows()[0].status).toBe("live");
+      expect(updates.some(u => u.ended)).toBe(false);
+      expect(closed).not.toHaveBeenCalled();
+      speaker.finishPlayback();
+      await done;
+      expect(c.store.rows()[0].status).toBe("ended");
+      expect(updates.filter(u => u.ended)).toHaveLength(1);
+      expect(closed).toHaveBeenCalledOnce();
+    } finally { speaker.finishPlayback(); await run.hangUp(); }
   });
 
   it("R408-6 probe.ts: closes a fatal session with a technical outcome", async () => {

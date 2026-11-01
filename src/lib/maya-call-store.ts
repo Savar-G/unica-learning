@@ -145,13 +145,14 @@ export function mayaCallStore(admin: SupabaseClient<Database>): CallStore {
 
 /**
  * The connection events of voice calls (#326) in public.maya_call_connections: append only, with the secret key. The
- * time (`at`) is the worker's server clock; the database refuses one more than a minute ahead of its own.
+ * database checks the revision and appends in one transaction, with its own monotonic receipt time.
  */
 export function mayaConnectionLog(admin: SupabaseClient<Database>): ConnectionLog {
   return {
-    async append(e) {
-      const { error } = await admin.from("maya_call_connections").insert({ call_id: e.callId, parent_id: e.parentId, child_id: e.childId, kind: e.kind, at: new Date(e.at).toISOString() });
-      if (error) throw new Error(`maya call connection insert: ${error.message}`);
+    async append(e, revision) {
+      const { data, error } = await admin.rpc("append_maya_call_connection", { p_call: e.callId, p_revision: revision, p_kind: e.kind });
+      if (error) throw new Error(`maya call connection append: ${error.message}`);
+      return data === null ? null : Date.parse(data);
     },
     async read(callId) {
       if (!UUID.test(callId)) return [];
