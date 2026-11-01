@@ -3,6 +3,9 @@
 // an Anthropic API key, such as one paid by the monthly API credits of Savar's Max plan. The live site stays on
 // OpenRouter (src/lib/ai-client.ts), because a key on monthly credits stops when the credits run out.
 // API: https://platform.claude.com/docs/en/build-with-claude/structured-outputs (read 2026-10-31).
+// Constrained output has limits (16 union-type parameters, 24 optional ones: the generator's item schemas have about
+// 70 nullable fields). When the API refuses a schema, the adapter sends that request name with the schema in the
+// instructions instead, and parses the JSON from the text; the caller checks the output's shape in both cases.
 // fallbacks "default" (beta server-side-fallback-2026-07-01): a request the model declines is re-run on Anthropic's
 // recommended fallback model inside the same call.
 import Anthropic from "@anthropic-ai/sdk";
@@ -28,6 +31,30 @@ function part(p: AiPart): Anthropic.Beta.BetaContentBlockParam {
 
 const short = (s: unknown) => String(s ?? "").slice(0, 160);
 
+/** The API refused the schema itself (too complex, or a feature it does not support), not the request. */
+const schemaRefused = (e: unknown) =>
+  e instanceof Anthropic.BadRequestError && /schema|union types|optional parameters|output_config/i.test(e.message);
+
+/** The instructions for a request whose schema goes in the text. */
+const schemaInText = (system: string, schema: Record<string, unknown>) =>
+  `${system}\n\nAnswer with one JSON object and nothing else: no code fence, no words before or after it. It must match this JSON Schema exactly: give every property, and use null only where the schema allows null.\n${JSON.stringify(schema)}`;
+
+/** The JSON object in the text: the text itself, or the part from the first "{" to the last "}". */
+function jsonIn(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start < 0 || end <= start) throw new Error("the output is not valid JSON");
+    try {
+      return JSON.parse(text.slice(start, end + 1));
+    } catch {
+      throw new Error("the output is not valid JSON");
+    }
+  }
+}
+
 export function anthropicClient({
   apiKey,
   model = ANTHROPIC_DEFAULT_MODEL,
@@ -47,24 +74,40 @@ export function anthropicClient({
   onUsage?: (usage: AnthropicUsage) => void;
 }): AiClient {
   const client = new Anthropic({ apiKey, maxRetries, timeout, ...(fetch ? { fetch } : {}) });
+  /** Request names whose schema the API refused: they go with the schema in the instructions. */
+  const inText = new Set<string>();
+  const send = (request: AiJsonRequest, signal: AbortSignal, constrained: boolean) =>
+    client.beta.messages.create(
+      {
+        model,
+        max_tokens: request.maxTokens ?? MAX_TOKENS,
+        system: constrained ? request.system : schemaInText(request.system, request.schema),
+        messages: [{ role: "user", content: request.content.map(part) }],
+        thinking: { type: "adaptive" },
+        output_config: {
+          ...(constrained ? { format: { type: "json_schema" as const, schema: request.schema } } : {}),
+          ...(request.effort ? { effort: request.effort } : {}),
+        },
+        betas: ["server-side-fallback-2026-07-01"],
+        fallbacks: "default",
+      },
+      { signal },
+    );
   return {
     model,
     async json(request: AiJsonRequest, signal: AbortSignal) {
       let message: Anthropic.Beta.BetaMessage;
       try {
-        message = await client.beta.messages.create(
-          {
-            model,
-            max_tokens: request.maxTokens ?? MAX_TOKENS,
-            system: request.system,
-            messages: [{ role: "user", content: request.content.map(part) }],
-            thinking: { type: "adaptive" },
-            output_config: { format: { type: "json_schema", schema: request.schema }, ...(request.effort ? { effort: request.effort } : {}) },
-            betas: ["server-side-fallback-2026-07-01"],
-            fallbacks: "default",
-          },
-          { signal },
-        );
+        if (inText.has(request.name)) message = await send(request, signal, false);
+        else {
+          try {
+            message = await send(request, signal, true);
+          } catch (e) {
+            if (!schemaRefused(e) || signal.aborted) throw e;
+            inText.add(request.name);
+            message = await send(request, signal, false);
+          }
+        }
       } catch (e) {
         if (signal.aborted) throw new Error("time is up");
         if (e instanceof Anthropic.APIError) throw new Error(`Anthropic answered ${e.status ?? "no status"}: ${short(e.message)}`);
@@ -82,11 +125,7 @@ export function anthropicClient({
       if (message.stop_reason !== "end_turn") throw new Error(`the model stopped: ${short(message.stop_reason)}`);
       const text = message.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
       if (!text.trim()) throw new Error("no output");
-      try {
-        return JSON.parse(text);
-      } catch {
-        throw new Error("the output is not valid JSON");
-      }
+      return jsonIn(text);
     },
   };
 }

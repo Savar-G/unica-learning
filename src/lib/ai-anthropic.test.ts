@@ -95,6 +95,23 @@ describe("anthropicClient", () => {
     await expect(ai.json(request, signal())).rejects.toThrow("the output is not valid JSON");
   });
 
+  it("puts the schema in the instructions when the API refuses it, and keeps doing so for that request name", async () => {
+    let n = 0;
+    const { ai, sent } = client(() =>
+      n++ === 0
+        ? answer({ type: "error", error: { type: "invalid_request_error", message: "Schemas contains too many parameters with union types (69 parameters)" } }, 400)
+        : answer(message({ content: [{ type: "text", text: 'Here it is: {"q":"5 + 2 = ?"}' }] })),
+    );
+    await expect(ai.json(request, signal())).resolves.toEqual({ q: "5 + 2 = ?" });
+    await expect(ai.json(request, signal())).resolves.toEqual({ q: "5 + 2 = ?" });
+    expect(sent).toHaveLength(3);
+    expect((sent[0].body.output_config as Record<string, unknown>).format).toBeDefined();
+    for (const later of sent.slice(1)) {
+      expect(later.body.output_config).toEqual({ effort: "low" });
+      expect(String(later.body.system)).toContain(JSON.stringify(request.schema));
+    }
+  });
+
   it("reports an HTTP error with its status and no key", async () => {
     const { ai } = client(() => answer({ type: "error", error: { type: "invalid_request_error", message: "bad schema" } }, 400));
     const error = await ai.json(request, signal()).catch((e: Error) => e);
