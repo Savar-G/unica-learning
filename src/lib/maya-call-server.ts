@@ -157,12 +157,15 @@ export interface CallListRow {
   seconds: number | null;
   learningEvent: boolean;
   flag: FlagLevel | null;
+  /** The outcome's own safety, for a call saved before flags existed (R393-L3). */
+  safetySeverity: Outcome["safetySeverity"];
+  safetyFlag: boolean;
 }
 
 /** The newest test calls. */
 export async function listCalls(a: AdminSession, limit = 50): Promise<CallListRow[]> {
-  const rows = must<{ id: string; created_at: string; child_id: string; question_text: string | null; status: CallStatus; model: string; outcome_reason: Outcome["reason"] | null; assistance: Outcome["assistance"] | null; call_seconds: number | null; learning_event_id: string | null; flag: FlagLevel | null }[]>(
-    await a.db.from("maya_calls").select("id, created_at, child_id, question_text, status, model, outcome_reason, assistance, call_seconds, learning_event_id, flag").order("created_at", { ascending: false }).limit(limit),
+  const rows = must<{ id: string; created_at: string; child_id: string; question_text: string | null; status: CallStatus; model: string; outcome_reason: Outcome["reason"] | null; assistance: Outcome["assistance"] | null; call_seconds: number | null; learning_event_id: string | null; flag: FlagLevel | null; safety_severity: Outcome["safetySeverity"]; safety_flag: boolean }[]>(
+    await a.db.from("maya_calls").select("id, created_at, child_id, question_text, status, model, outcome_reason, assistance, call_seconds, learning_event_id, flag, safety_severity, safety_flag").order("created_at", { ascending: false }).limit(limit),
     "maya calls",
   );
   const ids = [...new Set(rows.map((r) => r.child_id))];
@@ -180,6 +183,8 @@ export async function listCalls(a: AdminSession, limit = 50): Promise<CallListRo
     seconds: r.call_seconds,
     learningEvent: r.learning_event_id !== null,
     flag: r.flag,
+    safetySeverity: r.safety_severity,
+    safetyFlag: r.safety_flag,
   }));
 }
 

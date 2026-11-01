@@ -156,7 +156,7 @@ export function MayaCallList({ calls }: { calls: CallListRow[] }) {
               <td>{c.questionText}</td>
               <td>
                 {c.status === "live" ? <span className="adm-chip is-info">Live</span> : c.outcome ? <span className={`adm-chip ${c.outcome === "solved" ? "is-ok" : "is-muted"}`}>{REASON_TEXT[c.outcome]}</span> : "-"}
-                {c.flag && <> <span className="adm-chip is-bad">{FLAG_TEXT[c.flag]}</span></>}
+                {(() => { const t = safetyText(c.flag, c.safetySeverity, c.safetyFlag); return t && <> <span className="adm-chip is-bad">{t}</span></>; })()}
               </td>
               <td>{c.assistance ? ASSISTANCE_TEXT[c.assistance] : "-"}</td>
               <td className="adm-num">{c.seconds === null ? "-" : clock(c.seconds)}</td>
