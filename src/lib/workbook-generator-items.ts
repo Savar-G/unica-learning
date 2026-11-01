@@ -13,6 +13,11 @@
 // the AI names a figure kind only (dots, ten-frame, number-line, base-ten, array); code draws the figure's numbers from
 // the operation or the item's numbers (a count item's counts are its numbers), and the checker checks that the figure
 // agrees with the question. A draw item ("Draw 6 dots.") and a written reason are parent-checked: "not checked by code".
+//
+// The printed question asks what the answer key answers (round 6, R380-11-1): a relation's text is written by code from
+// the data its choices and answer come from; a whole-number operation's text must name the numbers it works (or its
+// picture show them), an easier example's text that names others is written by code from its operation, and a compare,
+// order, places or sequence text must name the same numbers and direction as its data.
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness.
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { readNumbers } from "@/lib/number-words";
@@ -25,6 +30,7 @@ import {
   relationChoices,
   operationProblem,
   operationResult,
+  operationText,
   workedSteps,
   type AnswerRegion,
   type AnswerValue,
@@ -382,7 +388,8 @@ function numberFigure(kind: FigureKind, n: number): Figure | string {
     case "base-ten":
       return w !== null && w < 1000 ? { kind: "base-ten", hundreds: Math.floor(w / 100), tens: Math.floor(w / 10) % 10, ones: w % 10 } : "base-ten blocks show whole numbers to 999";
     case "ten-frame":
-      return w !== null && w <= 20 ? { kind: "ten-frame", counters: w <= 10 ? [w] : [10, w - 10] } : "a ten-frame shows whole numbers to 20";
+      // One number is one part, in one colour (a second frame fills past 10).
+      return w !== null && w <= 20 ? { kind: "ten-frame", counters: [w] } : "a ten-frame shows whole numbers to 20";
     case "dots":
       return w !== null && w <= 20 ? { kind: "dots", groups: [w], takenAway: 0 } : "a dots picture shows whole numbers to 20";
     case "number-line":
@@ -615,6 +622,10 @@ export interface SlotPlace {
    * levels). Absent: all four.
    */
   signs?: readonly string[];
+  /** The most characters the question's text has room for, when code writes the text (a relation, round 6). */
+  room?: number;
+  /** Which of code's wordings a code-written text starts from (round 6): slots of one page take different ones. */
+  variant?: number;
 }
 
 const fail = (reason: string, pkg: QuestionPackage | null = null, stepIds: string[] = []): BuiltQuestion => ({ check: { status: "failed", reason }, package: pkg, stepIds });
@@ -648,11 +659,11 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
   const kind = raw.figure === null || raw.figure === undefined ? null : (raw.figure as FigureKind);
   if (kind !== null && !FIGURE_KINDS.includes(kind)) return fail("the picture is not a kind code draws");
 
-  const pkg = (item: Item, op: Operation | null, wrongAnswers: WrongAnswer[], easierExample: QuestionPackage["easierExample"]): QuestionPackage => ({
+  const pkg = (item: Item, op: Operation | null, wrongAnswers: WrongAnswer[], easierExample: QuestionPackage["easierExample"], text = raw.text as string): QuestionPackage => ({
     id: place.id,
     ref: { source: "workbook", workbookId: place.workbookId, page: place.page, question: place.question },
     templateId: null,
-    text: raw.text as string,
+    text,
     item,
     answer: op ? { value: operationResult(op), accepted: [], unit: null } : null,
     operation: op,
@@ -672,7 +683,11 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
     }
     const item = numberItem(format, raw, place.level, kind);
     if (typeof item === "string") return fail(item);
-    return checked(pkg(item, null, [], null), []);
+    // A relation's text is code's (round 6, R380-11-1): written from the same numbers, benchmarks, kind and labels as
+    // its choices and answer, so the printed question always asks what the answer key answers.
+    const relation = item.checks.find((c) => c.kind === "relation");
+    const text = relation ? pickWording(wordingsOf(relation), place.variant ?? place.question - 1, place.room) : raw.text as string;
+    return checked(pkg(item, null, [], null, text), []);
   }
 
   if (raw.operation === null || raw.operation === undefined) return fail(`a ${format} item needs an operation code can compute`);
@@ -714,8 +729,11 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
   const easierOp = operationFrom(easier.operation);
   const easierProblem = operationProblem(easierOp);
   if (easierProblem) return firstOwn() ?? fail(`the easier example's operation: ${easierProblem}`, null, stepIds);
+  // The easier example's text names the numbers of its operation (round 6): one that names others is written by code
+  // from the operation, so the text read to the child and the answer worked from the operation agree.
+  const easierText = typeof easier.text === "string" && !operationTextProblem(easier.text, easierOp as Operation, null) ? easier.text : operationQuestion(easierOp as Operation);
   const easierExample = {
-    text: easier.text as string,
+    text: easierText,
     operation: easierOp as Operation,
     answer: operationResult(easierOp as Operation),
     steps: workedSteps(easierOp as Operation),
@@ -733,15 +751,169 @@ function codeEasiers(op: Operation): { text: string; operation: Operation }[] {
   const [a, b] = op.operands as unknown[];
   if (op.operands.length !== 2 || !Number.isInteger(a) || !Number.isInteger(b)) return [];
   const [x, y] = [a as number, b as number];
-  const make = (kind: "add" | "subtract" | "missing-addend", p: number, q: number) => ({
-    text: kind === "missing-addend" ? `${p} + ? = ${q}` : `${p} ${kind === "add" ? "+" : "-"} ${q} = ?`,
-    operation: { ...op, kind, operands: [p, q] } as Operation,
-  });
+  const make = (kind: "add" | "subtract" | "missing-addend", p: number, q: number) => {
+    const operation = { ...op, kind, operands: [p, q] } as Operation;
+    return { text: operationQuestion(operation), operation };
+  };
   if (op.kind === "missing-addend") return y > x ? [make("missing-addend", x, y - 1)] : [];
   if (op.kind === "add") return [[x - 1, y], [x, y - 1]].filter(([p, q]) => p >= 0 && q >= 0 && p + q > 0).map(([p, q]) => make("add", p, q));
   // A take-away of nothing left (7 - 7) goes last.
   if (op.kind === "subtract") return [[x - 1, y], [x, y - 1]].filter(([p, q]) => q >= 0 && p >= q && p - q !== x - y).sort((m, n) => Number(m[0] === m[1]) - Number(n[0] === n[1])).map(([p, q]) => make("subtract", p, q));
   return [];
+}
+
+/** An operation as a question in plain ASCII: "7 - 4 = ?", "3 + ? = 8"; the package's own text for another kind. */
+function operationQuestion(op: Operation): string {
+  const [a, b] = op.operands as unknown[];
+  if (op.kind === "missing-addend") return `${a} + ? = ${b}`;
+  const sign = ({ add: "+", subtract: "-", multiply: "×", divide: "÷" } as Record<string, string>)[op.kind];
+  return sign && op.operands.length === 2 ? `${a} ${sign} ${b} = ?` : `${operationText(op).replace(/−/g, "-")} = ?`;
+}
+
+// ---------- A relation's wording, by code (round 6) ----------
+
+const relationCheck = (c: ItemCheck): c is Extract<ItemCheck, { kind: "relation" }> => c.kind === "relation";
+/** A label after a count: one cat, 2 cats. */
+const counted = (n: number, label: string) => `${n} ${n === 1 && /[^s]s$/.test(label) ? label.slice(0, -1) : label}`;
+
+/**
+ * The wordings code writes for a relation question, from the same data as its choices and answer (round 6, R380-11-1):
+ * "Is 7 less than 5?", "Is 8 close to 0 or to 10?", "Are 4 and 6 equal?", "Mia has 6. Ben has 9. Who has more?". Each
+ * wording of a relation has its own words, so two relations of one page never read as one question twice.
+ */
+function wordingsOf(c: Extract<ItemCheck, { kind: "relation" }>): string[] {
+  const [x, y] = c.numbers;
+  switch (c.relation) {
+    case "less-than": {
+      const [b] = c.to;
+      return [`Is ${x} less than ${b}?`, `${x}: less than ${b}, or not?`, `Look at ${x}. Is it less than ${b}?`, `Think of ${x}. Is it less than ${b}?`];
+    }
+    case "closer": {
+      const [a, b] = c.to;
+      return [`Is ${x} close to ${a} or to ${b}?`, `${x}: close to ${a} or close to ${b}?`, `Which is ${x} close to, ${a} or ${b}?`, `Look at ${x}. Close to ${a} or to ${b}?`];
+    }
+    case "equal":
+      return [`Are ${x} and ${y} equal?`, `${x} and ${y}: equal or not?`, `Is ${x} equal to ${y}?`];
+    case "more": case "fewer": {
+      const [l, m] = c.labels;
+      const word = c.relation;
+      // Two names (capitalised) are people; else two things to count.
+      if (/^[A-Z]/.test(l) && /^[A-Z]/.test(m)) {
+        return [`${l} has ${x}. ${m} has ${y}. Who has ${word}?`, `${l}: ${x}. ${m}: ${y}. Who has ${word}?`, `${l} has ${x} and ${m} has ${y}. Who has ${word}?`];
+      }
+      return [`${counted(x, l)} and ${counted(y, m)}. Which group has ${word}?`, `${counted(x, l)}, ${counted(y, m)}. Circle the ${word}.`, `Look: ${counted(x, l)} and ${counted(y, m)}. Which has ${word}?`];
+    }
+  }
+}
+
+/** The wording at `variant` (in turn), or the next that fits the room; the shortest when none fits. */
+function pickWording(wordings: string[], variant: number, room = Infinity): string {
+  const n = wordings.length;
+  const start = ((Math.trunc(variant) % n) + n) % n;
+  const turn = Array.from({ length: n }, (_, i) => wordings[(start + i) % n]);
+  return turn.find((w) => w.length <= room) ?? [...turn].sort((a, b) => a.length - b.length)[0];
+}
+
+/** Every wording code writes for a relation package's question, in turn from the first; empty for another package. */
+export function relationWordings(p: QuestionPackage): string[] {
+  const c = p.item?.checks.find(relationCheck);
+  return c ? wordingsOf(c) : [];
+}
+
+// ---------- A text that names other numbers than its data (round 6) ----------
+
+/** Whole-number operations whose operands the text names: a + b, a - b, a + ? = b, a × b, a ÷ b. */
+const NAMED_KINDS: readonly string[] = ["add", "subtract", "missing-addend", "multiply", "divide"];
+
+/** The numbers a text names, with "one more" and "one less" as 1 (the words a skill about them may use). */
+const namedIn = (text: string) => [...readNumbers(text).map((r) => r.value), ...(/\bone (?:more|less)\b/i.test(text) ? [1] : [])];
+
+/** The numbers a figure shows: each group or part, and all of them (and a ten-frame its 10 boxes). */
+function figureShows(f: Figure | null | undefined): number[] {
+  if (!f) return [];
+  if (f.kind === "dots") return [...f.groups, f.groups.reduce((a, b) => a + b, 0)];
+  // A ten-frame shows its size too: "How many boxes are empty?" works up to 10.
+  if (f.kind === "ten-frame") return [...f.counters, f.counters.reduce((a, b) => a + b, 0), 10];
+  const n = figureCount(f);
+  return n === null ? [] : [n];
+}
+
+/**
+ * Why a text and its whole-number operation disagree, or null (round 6): every number the operation works is in the
+ * text or its picture, and (up to U9, where a question has no extra information) every number the text names is one the
+ * operation works or its answer. A text that asks how many are left takes something away, and one that asks how many
+ * in all puts together. "Gus finds 2 plums, then 5 more" worked as 2 + 6 would print 8 as the answer to 7.
+ */
+function operationTextProblem(text: string, op: Operation, figure: Figure | null, level = 1): string | null {
+  if (!NAMED_KINDS.includes(op.kind) || !op.operands.every((x) => Number.isInteger(x))) return null;
+  const operands = op.operands as number[];
+  const said = namedIn(text);
+  const opText = operationQuestion(op).replace(" = ?", "");
+  const hint = `write the operation of the text's numbers (${op.kind === "missing-addend" ? "a missing part is [the part given, the total]" : "a take-away is [the start, the number taken]"})`;
+  if (said.length > 0 || !figure) {
+    const shown = new Set([...said, ...figureShows(figure)]);
+    const missing = operands.filter((x) => !shown.has(x));
+    if (missing.length > 0) return `the operation works ${opText}, but the text does not name ${[...new Set(missing)].join(" or ")}: ${hint}`;
+  }
+  const answer = operationResult(op);
+  const value = answer.type === "number" ? answer.value : null;
+  const extra = level <= 9 ? said.filter((x) => !operands.includes(x) && x !== value) : [];
+  if (extra.length > 0) return `the text names ${[...new Set(extra)].join(" and ")}, but the operation works ${opText}: ${hint}`;
+  if (/\bleft\b/i.test(text) && op.kind !== "subtract") return `the text asks how many are left, but the operation is ${opText}: a take-away is subtract [the start, the number taken]`;
+  if (/\bin all\b|\baltogether\b/i.test(text) && op.kind === "subtract") return `the text asks how many in all, but the operation takes away (${opText}): putting together is add`;
+  return null;
+}
+
+/** Up, down, or null: what an order text asks ("least to greatest", "greatest first", "biggest to smallest"). */
+function orderAsked(text: string): "up" | "down" | null {
+  const small = text.search(/\b(least|smallest|fewest|lowest)\b/i);
+  const big = text.search(/\b(greatest|biggest|largest|most|highest)\b/i);
+  if (small < 0 && big < 0) return null;
+  if (big < 0) return "up";
+  if (small < 0) return "down";
+  return small < big ? "up" : "down";
+}
+
+/**
+ * Why the text of a format with no operation disagrees with its data, or null (round 6): a compare text names its two
+ * numbers in order, an order text the numbers to order and the direction its boxes take, a places text the number it
+ * splits, and a sequence text its direction and step ("count back", "by 2s").
+ */
+function dataTextProblem(p: QuestionPackage): string | null {
+  const text = p.text;
+  const said = readNumbers(text).map((r) => r.value);
+  for (const c of p.item?.checks ?? []) {
+    switch (c.kind) {
+      case "compare": {
+        if (c.left.type !== "number" || c.right.type !== "number") break;
+        const [l, r] = [c.left.value, c.right.value];
+        if (said.length === 0 && !p.item?.figure) return `the text names no numbers to compare: write "Compare ${l} and ${r}."`;
+        if (said.length > 0 && (said.length !== 2 || said[0] !== l || said[1] !== r)) return `the text names ${said.join(" and ")}, but the item compares ${l} with ${r}: name the two numbers in that order, left first`;
+        break;
+      }
+      case "order": {
+        const ns = c.numbers.map((v) => (v.type === "number" ? v.value : Number.NaN));
+        const sort = (xs: number[]) => [...xs].sort((a, b) => a - b).join(",");
+        if (said.length > 0 && ns.every(Number.isFinite) && sort(said) !== sort(ns)) return `the text names ${said.join(", ")}, but the numbers to order are ${ns.join(", ")}: name the same numbers, or none`;
+        const asked = orderAsked(text);
+        if (asked && asked !== c.direction) return `the text asks for ${asked === "up" ? "least" : "greatest"} first, but the boxes go ${c.direction === "up" ? "least" : "greatest"} first: make direction ${asked}`;
+        break;
+      }
+      case "places":
+        if (said.some((x) => x !== c.number)) return `the text names ${said.join(" and ")}, but the item splits ${c.number}: name only that number`;
+        break;
+      case "sequence": {
+        if (c.step.type !== "number") break;
+        const step = c.step.value;
+        if (/\b(?:count(?:ing)?|skip-count|go(?:es)?)\s+(?:back|down|backward)/i.test(text) && step > 0) return "the text counts back, but the sequence goes up: give it a step below 0";
+        if (/\bcount(?:ing)?\s+(?:on|up|forward)\b/i.test(text) && step < 0) return "the text counts up, but the sequence goes down: give it a step above 0";
+        const by = text.match(/\bby\s+(\d+)s?\b/i);
+        if (by && Number(by[1]) !== Math.abs(step)) return `the text counts by ${by[1]}, but the sequence steps by ${Math.abs(step)}: make them the same`;
+        break;
+      }
+    }
+  }
+  return null;
 }
 
 /**
@@ -805,7 +977,7 @@ export function kindProblem(p: QuestionPackage, raw: Record<string, unknown>): s
       const at = text.match(START_AT);
       if (at && Number(at[1]) !== start) return `the text starts at ${at[1]}, but the sequence starts at ${start}: make them the same`;
     }
-    return null;
+    return dataTextProblem(p);
   }
   const pictured = pictureProblem(text, p.item?.figure ?? null);
   if (pictured) return pictured;
@@ -829,7 +1001,9 @@ export function kindProblem(p: QuestionPackage, raw: Record<string, unknown>): s
     const worked = op ? (op.operands as unknown[]).filter((x): x is number => typeof x === "number") : [];
     if (given.includes(value) && !worked.includes(value)) return `the question gives its own answer (${value}) in its text: ask for it instead`;
   }
-  return null;
+  // The text names the numbers its data works (round 6): the answer key answers the printed question.
+  if (op) return operationTextProblem(text, op, p.item?.figure ?? null, p.level);
+  return dataTextProblem(p);
 }
 
 /** The checker's verdict on a built package. */

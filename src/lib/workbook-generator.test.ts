@@ -461,7 +461,11 @@ describe("answers code computes beyond addition", () => {
 
   /** The first page's question 1, from an AI item with this operation, wrong answers and easier example. */
   async function question(operation: unknown, wrongAnswers: unknown[], easier: unknown) {
-    const ai = fakeAiClient({ answer: (r) => fill(r, (s) => (s.slot === "1.1" ? goodItem(s, { text: "Solve.", operation, wrongAnswers, easier: { text: "Try this first.", operation: easier } }) : goodItem(s))) });
+    // A whole-number sum is printed with its numbers (the text names what the operation works, round 6).
+    const o = operation as { kind: string; operands: { type: string; value: number }[] };
+    const sign = ({ subtract: "-", divide: "÷", multiply: "×" } as Record<string, string>)[o.kind];
+    const text = sign && o.operands.every((x) => x.type === "number") ? `${o.operands[0].value} ${sign} ${o.operands[1].value} = ?` : "Solve.";
+    const ai = fakeAiClient({ answer: (r) => fill(r, (s) => (s.slot === "1.1" ? goodItem(s, { text, operation, wrongAnswers, easier: { text: "Try this first.", operation: easier } }) : goodItem(s))) });
     return firstDayPage(await generate(deps({ ai }))).questions[0];
   }
   const writes = (q: Awaited<ReturnType<typeof question>>) => q.package!.steps.flatMap((s) => ("write" in s ? [s.write] : []));
@@ -1060,7 +1064,9 @@ describe("round 4 (#380): relations, explicit pictures, kinds in turn, question 
     });
     const result = await generateWorkbook({ ...input, plan: U3.plan, book: { child: "Zoe" } }, deps({ ai }));
     if (result.status !== "stored") throw new Error(result.reason);
-    const shaped = result.draft.pages.flatMap((p) => p.questions).filter((q) => q.check.status !== "failed" && q.place && !["warm-up", "finish-these", "on-your-own", "practice-row", "unit-b-practice", "now-you"].includes(q.place));
+    // Of the AI's shape (a repeat whose item is the planned one may take code's planned wording instead, round 6).
+    const shaped = result.draft.pages.flatMap((p) => p.questions).filter((q) => q.check.status !== "failed" && q.place && !["warm-up", "finish-these", "on-your-own", "practice-row", "unit-b-practice", "now-you"].includes(q.place)
+      && shapeOf(q.package!.text) === "has many more make");
     expect(shaped.length).toBeLessThanOrEqual(3);
     const notes = ai.requests.filter((r) => r.name === "workbook_page_redo").map((r) => read(r).note ?? "");
     expect(notes.some((x) => /asks the same kind of question as question \d+ on this page/.test(x))).toBe(true);
@@ -1243,13 +1249,13 @@ describe("round 5 (#380): code plans the book's numbers and names, rooms and row
 
   it("sends a repeat's redo the slot's spare numbers and its next kind", async () => {
     const write = short();
-    let first: string | null = null;
+    let first: Record<string, unknown> | null = null;
     const ai = fakeAiClient({
       answer: (r) => fill(r, (s) => {
-        const item = write(s) as { text: string };
+        const item = write(s) as Record<string, unknown>;
         if (r.name !== "workbook_page" || s.slot !== "1.1" || !("place" in s)) return item;
-        if (first === null) { first = item.text; return item; }
-        return { ...item, text: first };
+        if (first === null) { first = item; return item; }
+        return { ...first, slot: s.slot, skill: item.skill };
       }),
     });
     await book(ai);
@@ -1358,5 +1364,253 @@ describe("round 5 (#380): code plans the book's numbers and names, rooms and row
       expect(figures.figures.slice(0, 2).every(Boolean)).toBe(true);
       expect(p.questions.map((q) => q.number)).toEqual(p.questions.map((_, k) => k + 1));
     }
+  });
+});
+
+describe("round 6 (#380): the printed question asks what the answer key answers", () => {
+  const at = (skill: string, level = 3, over: Record<string, unknown> = {}) => ({ id: "q1", workbookId: WORKBOOK, page: 3, question: 1, level, skills: [skill], ...over });
+  const empty = { difficulty: 1, operation: null, wrongAnswers: [], easier: null, shownWrong: null, figure: null, numbers: [], places: null, direction: null, sequence: null, pattern: null, relation: null, figureShows: null };
+  const relation = (text: string, numbers: number[], rel: Record<string, unknown>, skill = "K3-benchmarks-5-10", place: Record<string, unknown> = {}) =>
+    buildQuestion({ ...empty, slot: "1.1", skill, text, format: "relation", numbers: numbers.map(num), relation: rel }, at(skill, 3, place));
+  const choice = (b: ReturnType<typeof relation>) => b.package!.item!.regions[0] as { choices: string[]; answer: string };
+  /** The numbers the printed text names, in order. */
+  const named = (text: string) => (text.match(/\d+/g) ?? []).map(Number);
+
+  it("writes a relation's text from the same data as its choices and answer: a benchmark the AI's text contradicts", () => {
+    // R380-11-1: "Is 7 less than 5?" with the benchmark 10 printed "yes" for a question whose answer is no.
+    const b = relation("Is 7 less than 5?", [7], { kind: "less-than", to: [10], labels: [] });
+    expect(b.check.status).toBe("checked");
+    expect(b.package!.text).not.toBe("Is 7 less than 5?");
+    expect(named(b.package!.text)).toEqual([7, 10]);
+    expect(b.package!.text).toMatch(/less than 10/);
+    expect(choice(b)).toMatchObject({ choices: ["less than 10", "not less than 10"], answer: "less than 10" });
+  });
+
+  it("writes a relation's text with each number beside its own label, whatever order the AI's text gave them", () => {
+    // The AI's text says Mia has 9, but its data gives Mia 6: the printed text follows the data the answer comes from.
+    const people = relation("Mia has 9 cars. Ben has 6. Who has more?", [6, 9], { kind: "more", to: [], labels: ["Mia", "Ben"] }, "K2-compare-quantities");
+    expect(people.package!.text).toMatch(/Mia has 6\. Ben has 9\. Who has more\?/);
+    expect(choice(people).answer).toBe("Ben");
+    const things = relation("3 dogs and 5 cats. Which group has fewer?", [5, 3], { kind: "fewer", to: [], labels: ["dogs", "cats"] }, "K2-compare-quantities");
+    expect(things.package!.text).toMatch(/^5 dogs and 3 cats\./);
+    expect(things.package!.text).toMatch(/fewer/);
+    expect(choice(things)).toMatchObject({ choices: ["dogs", "cats"], answer: "cats" });
+    expect(relation("x", [1, 4], { kind: "more", to: [], labels: ["cats", "dogs"] }, "K2-compare-quantities").package!.text).toMatch(/^1 cat and 4 dogs/);
+  });
+
+  it("writes a relation's text in its own kind when the AI's text asks another relation", () => {
+    const less = relation("Is 8 close to 0 or 10?", [8], { kind: "less-than", to: [10], labels: [] });
+    expect(less.package!.text).toMatch(/less than 10/);
+    expect(less.package!.text).not.toMatch(/close/);
+    expect(choice(less).answer).toBe("less than 10");
+    const closer = relation("Is 8 less than 10?", [8], { kind: "closer", to: [0, 10], labels: [] });
+    expect(closer.package!.text).toMatch(/close to 0 or (close )?to 10/);
+    expect(choice(closer).answer).toBe("close to 10");
+    const equal = relation("Who has more?", [4, 6], { kind: "equal", to: [], labels: [] }, "K6-equal-sets");
+    expect(equal.package!.text).toMatch(/equal/);
+    expect(named(equal.package!.text)).toEqual([4, 6]);
+    expect(choice(equal).answer).toBe("not equal");
+  });
+
+  it("gives two relations of a page different words, within the room", () => {
+    const one = relation("?", [7], { kind: "less-than", to: [5], labels: [] }, "K3-benchmarks-5-10", { variant: 0 });
+    const two = relation("?", [3], { kind: "less-than", to: [5], labels: [] }, "K3-benchmarks-5-10", { variant: 1 });
+    expect(shapeOf(one.package!.text)).not.toBe(shapeOf(two.package!.text));
+    const tight = relation("?", [7], { kind: "less-than", to: [5], labels: [] }, "K3-benchmarks-5-10", { variant: 2, room: 18 });
+    expect(tight.package!.text.length).toBeLessThanOrEqual(18);
+  });
+
+  const sum = (text: string, operation: unknown, over: Record<string, unknown> = {}, skill = "K5-take-away-change") => buildQuestion({
+    ...empty, slot: "1.1", skill, text, format: "write-number", operation,
+    wrongAnswers: [{ value: num(99), cause: "count", description: "x", step: null }], easier: { text: "1 + 1 = ?", operation: addOp(1, 1) }, ...over,
+  }, at(skill));
+
+  it("fails an operation whose numbers are not the ones its text names", () => {
+    // "Gus finds 2 plums, then 5 more" worked as 2 + 6 would print 8 as the answer to 7.
+    expect(sum("Gus finds 2 plums, then 5 more. How many in all?", addOp(2, 6)).check).toMatchObject({ status: "failed", reason: expect.stringContaining("the text does not name 6") });
+    expect(sum("Gus finds 2 plums, then 5 more. How many in all?", addOp(2, 5)).check.status).toBe("checked");
+    expect(sum("8 cups. Mia takes 3. How many are left?", subOp(8, 3)).check.status).toBe("checked");
+    expect(sum("8 cups. Mia takes 3. How many are left?", subOp(9, 3)).check).toMatchObject({ status: "failed" });
+    // A number the text names that the operation does not work (up to U9).
+    expect(sum("Mia has 3 cups and 2 hats. She gets 4 cups. How many cups?", addOp(3, 4)).check).toMatchObject({ status: "failed", reason: expect.stringContaining("the text names 2") });
+  });
+
+  it("fails a take-away worded as putting together, and a sum worded as a take-away", () => {
+    expect(sum("8 cups. Mia takes 3. How many are left?", addOp(8, 3)).check).toMatchObject({ status: "failed", reason: expect.stringContaining("how many are left") });
+    expect(sum("8 cups and 3 more. How many in all?", subOp(8, 3), { wrongAnswers: [{ value: num(9), cause: "count", description: "x", step: null }] }).check).toMatchObject({ status: "failed", reason: expect.stringContaining("how many in all") });
+  });
+
+  it("lets a picture show a number its text does not name", () => {
+    const missing = (part: number, total: number) => ({ kind: "missing-addend", operands: [num(part), num(total)], expression: null, unit: null, denominator: null, values: [] });
+    const b = sum("How many more dots make 10?", missing(6, 10), { figure: "ten-frame", figureShows: "part", easier: { text: "6 + ? = 9", operation: missing(6, 9) } }, "K3-make-10");
+    expect(b.check.status).toBe("checked");
+    expect(sum("How many more make 10?", missing(6, 10), { easier: { text: "6 + ? = 9", operation: missing(6, 9) } }, "K3-make-10").check.status).toBe("failed");
+  });
+
+  it("writes an easier example's text from its operation when the AI's names other numbers", () => {
+    const b = sum("8 cups. Mia takes 3. How many are left?", subOp(8, 3), { easier: { text: "5 cups. Mia takes 2. How many are left?", operation: subOp(7, 3) } });
+    expect(b.check.status).toBe("checked");
+    expect(b.package!.easierExample).toMatchObject({ text: "7 - 3 = ?", answer: { type: "number", value: 4 } });
+    // One that names its own numbers stays.
+    expect(sum("8 cups. Mia takes 3. How many are left?", subOp(8, 3), { easier: { text: "7 cups. Mia takes 3. How many are left?", operation: subOp(7, 3) } }).package!.easierExample!.text)
+      .toBe("7 cups. Mia takes 3. How many are left?");
+  });
+
+  it("fails a compare, order, places or sequence text that names other numbers or another direction than its data", () => {
+    const item = (skill: string, text: string, over: Record<string, unknown>) => buildQuestion({ ...empty, slot: "1.1", skill, text, ...over }, at(skill, 10));
+    const compare = (text: string) => item("2.7-greater-less-symbols", text, { format: "compare", numbers: [num(7), num(5)] });
+    expect(compare("Compare 7 and 5.").check.status).toBe("checked");
+    expect(compare("Compare 5 and 7.").check).toMatchObject({ status: "failed", reason: expect.stringContaining("compares 7 with 5") });
+    expect(compare("Circle <, > or =.").check).toMatchObject({ status: "failed", reason: expect.stringContaining("names no numbers") });
+    const order = (text: string, direction = "up") => item("2.1-compare-order-100", text, { format: "order", numbers: [num(4), num(9), num(2)], direction });
+    expect(order("Put in order, least first.").check.status).toBe("checked");
+    expect(order("Put 4, 9 and 2 in order from least to greatest.").check.status).toBe("checked");
+    expect(order("Put 4, 8 and 2 in order, least first.").check).toMatchObject({ status: "failed", reason: expect.stringContaining("the numbers to order are 4, 9, 2") });
+    expect(order("Order from greatest to least.").check).toMatchObject({ status: "failed", reason: expect.stringContaining("make direction down") });
+    expect(order("Order from greatest to least.", "down").check.status).toBe("checked");
+    const places = (text: string) => item("2.1-place-value-tens-ones", text, { format: "places", numbers: [num(47)] });
+    expect(places("How many tens and ones in 47?").check.status).toBe("checked");
+    expect(places("How many tens and ones in 74?").check).toMatchObject({ status: "failed", reason: expect.stringContaining("splits 47") });
+    const seq = (text: string, step: number) => item("2.1-number-line-100", text, { format: "sequence", sequence: { start: num(20), step: num(step), terms: 5, blanks: [2] } });
+    expect(seq("Count back. Fill in the missing numbers.", -2).check.status).toBe("checked");
+    expect(seq("Count back. Fill in the missing numbers.", 2).check).toMatchObject({ status: "failed", reason: expect.stringContaining("counts back") });
+    expect(seq("Skip-count by 5s.", 2).check).toMatchObject({ status: "failed", reason: expect.stringContaining("counts by 5") });
+  });
+});
+
+describe("round 6 (#380): what a parent sees on a page of stories", () => {
+  const U3 = (() => {
+    const result = planWorkbook({
+      profile: { standards: [] }, grade: 0, level: planLevel(BC, "U3")!, passed: {}, workbook: { number: 1, inLevel: 0 },
+      reviews: [], missedReviews: [], misses: [], pausedWeeks: 0, support: null, unassessedUnits: [],
+    });
+    if (!result.ok) throw new Error(result.reason);
+    return result.plan;
+  })();
+  const laid = { ...input, plan: U3, book: { child: "Zoe" } };
+  type Does = { operation: { kind: string; operands: [number, number] }; figure: string | null; figureShows: string | null };
+  type Planned = SlotAsked & { place: string; room?: { characters: number }; aim?: { skill: string; kind: string }; planned?: { numbers?: number[]; name?: string; say?: string } & Partial<Does> };
+  const body = (r: AiJsonRequest) => JSON.parse((r.content[0] as { text: string }).text) as { day: number; page: number; slots: Planned[] };
+  const opOf = (d: Does["operation"]) => ({ kind: d.kind, operands: d.operands.map(num), expression: null, unit: null, denominator: null, values: [] });
+  const answerOf = ({ kind, operands: [x, y] }: Does["operation"]) => (kind === "add" ? x + y : kind === "subtract" ? x - y : y - x);
+  /** The first request of each page: what code planned for it. */
+  async function plannedPages() {
+    const ai = fakeAiClient({ answer: () => ({ items: [] }) });
+    await generateWorkbook(laid, deps({ ai }));
+    const seen = new Set<string>();
+    return ai.requests.filter((r) => r.name === "workbook_page").map(body).filter((b) => !seen.has(`${b.day}.${b.page}`) && !!seen.add(`${b.day}.${b.page}`));
+  }
+  /** What a planned wording asks: put together, take away, compare, read the ten-frame, or a missing part. */
+  const actionOf = (s: Planned) => {
+    const p = s.planned!;
+    if (p.operation!.kind === "add") return "join";
+    if (p.operation!.kind === "subtract") return "separate";
+    if (/How many more (dogs|blue|small|has \w+)\?$/.test(p.say!)) return "compare";
+    if (p.figure === "ten-frame" && p.operation!.operands[1] === 10) return "frame";
+    return "part";
+  };
+
+  it("spreads a slot of story cards across put together, take away, missing part, compare and the ten-frame: at most 2 of 6 alike", async () => {
+    const pages = await plannedPages();
+    let slots = 0;
+    for (const p of pages) {
+      const stories = p.slots.filter((s) => s.place === "picture-stories" && s.planned?.say && s.planned.operation);
+      if (stories.length < 6) continue;
+      slots++;
+      const count = new Map<string, number>();
+      for (const s of stories) count.set(actionOf(s), (count.get(actionOf(s)) ?? 0) + 1);
+      // A page of stories never takes a bare fact ("9 + ? = 10", "How far is 7 from 10?").
+      for (const s of stories) expect(s.planned!.say, s.planned!.say).not.toMatch(/=|^What do you add|^How far is|^\d+ and how many more/);
+      expect(Math.max(...count.values()), `day ${p.day} page ${p.page}: ${stories.map((s) => s.planned!.say).join(" | ")}`).toBeLessThanOrEqual(2);
+      expect(count.size).toBeGreaterThanOrEqual(3);
+    }
+    expect(slots).toBeGreaterThan(0);
+  });
+
+  it("plans whole short questions a parent reads aloud, never 'Total?' or 'In all?' on their own", async () => {
+    const says = (await plannedPages()).flatMap((p) => p.slots.flatMap((s) => (s.planned?.say ? [s.planned.say] : [])));
+    expect(says.length).toBeGreaterThan(80);
+    for (const say of says) {
+      const last = say.match(/[^.?!]*[?.!]$/)?.[0].trim() ?? say;
+      expect(last.split(/\s+/).length, say).toBeGreaterThanOrEqual(3);
+    }
+    expect(says.some((x) => /How many are left\?$/.test(x))).toBe(true);
+    expect(says.some((x) => /How many in all\?$/.test(x))).toBe(true);
+  });
+
+  it("plans each wording with the operation and picture it works: each builds a checked question", async () => {
+    let built = 0;
+    for (const p of await plannedPages()) {
+      for (const s of p.slots) {
+        const d = s.planned;
+        if (!d?.say || !d.operation) continue;
+        const answer = answerOf(d.operation);
+        const wrong = [d.operation.operands[0], d.operation.operands[1]].find((x) => x !== answer)!;
+        const b = buildQuestion({
+          slot: s.slot, skill: s.aim?.skill ?? s.skills[0], difficulty: 1, text: d.say, format: "write-number", operation: opOf(d.operation),
+          wrongAnswers: [{ value: num(wrong), cause: "count", description: "x", step: null }], easier: null, shownWrong: null,
+          figure: d.figure ?? null, figureShows: d.figureShows ?? null, numbers: [], places: null, direction: null, sequence: null, pattern: null, relation: null,
+        }, { id: "q", workbookId: WORKBOOK, page: 3, question: 1, level: 3, skills: [s.aim?.skill ?? s.skills[0]] });
+        expect(b.check, `${d.say} ${JSON.stringify(d.operation)}`).toEqual({ status: "checked" });
+        built++;
+      }
+    }
+    expect(built).toBeGreaterThan(60);
+  });
+
+  it("gives a repeat whose item is the planned one the planned wording from code, with no AI redo", async () => {
+    // The AI works each planned operation but words every question alike ("Ava has 3 and 4. How many?").
+    const ai = fakeAiClient({
+      answer: (r) => ({
+        items: body(r).slots.flatMap((s) => {
+          const d = s.planned;
+          if (!d?.operation) return [];
+          const [x, y] = d.operation.operands;
+          const answer = answerOf(d.operation);
+          return [{
+            slot: s.slot, skill: s.aim?.skill ?? s.skills[0], difficulty: 1, text: `Ava has ${x} and ${y}. How many?`, format: "write-number", operation: opOf(d.operation),
+            wrongAnswers: [{ value: num(x === answer ? y : x), cause: "count", description: "x", step: null }], easier: null, shownWrong: null,
+            figure: d.figure ?? null, figureShows: d.figureShows ?? null, numbers: [], places: null, direction: null, sequence: null, pattern: null, relation: null,
+          }];
+        }),
+      }),
+    });
+    const result = await generateWorkbook(laid, deps({ ai }));
+    if (result.status !== "stored") throw new Error(result.reason);
+    const planned = new Map<string, string | undefined>(ai.requests.filter((r) => r.name === "workbook_page").map(body).flatMap((b) => b.slots.map((s) => [`${b.day}.${b.page}.${s.slot}`, s.planned?.say] as const)));
+    const reworded = result.draft.pages.flatMap((p) => p.questions.filter((q) => q.package && q.package.text === planned.get(`${p.day}.${p.pageOfDay}.${q.slot}`) && !q.package.text.startsWith("Ava")));
+    expect(reworded.length).toBeGreaterThan(20);
+    expect(reworded.every((q) => q.check.status !== "failed" && q.attempts === 1)).toBe(true);
+  });
+
+  it("fails a question whose text is word for word another's on its page, whatever its numbers, and rewrites it once", async () => {
+    const asked: string[] = [];
+    const ai = fakeAiClient({
+      answer: (r) => {
+        if (r.name === "workbook_page_redo") asked.push(body(r as AiJsonRequest).slots.length ? (JSON.parse((r.content[0] as { text: string }).text) as { note: string }).note : "");
+        return {
+          items: body(r).slots.map((s, k) => ({
+            slot: s.slot, skill: s.skills[0], difficulty: 1, text: "Fill in the missing numbers.", format: "sequence", operation: null, wrongAnswers: [], easier: null, shownWrong: null,
+            figure: null, figureShows: null, numbers: [], places: null, direction: null, pattern: null, relation: null,
+            sequence: { start: num(1 + (k % 4)), step: num(1), terms: 4, blanks: [2] },
+          })),
+        };
+      },
+    });
+    await generateWorkbook(laid, deps({ ai }));
+    expect(asked.some((x) => /its text is the same as question \d+'s on this page \("Fill in the missing numbers\."\): word it another way/.test(x))).toBe(true);
+  });
+});
+
+describe("a ten-frame of two parts (round 6)", () => {
+  it("draws each part in its own colour, and one part in one colour", async () => {
+    const { figureSvg } = await import("@/lib/workbook-template");
+    const fills = (svg: string) => [...svg.matchAll(/<circle [^>]*fill="(#[0-9A-F]+)"/gi)].map((m) => m[1]);
+    const two = fills(figureSvg({ kind: "ten-frame", filled: 8, parts: [2, 6] }));
+    expect(two).toHaveLength(8);
+    expect(new Set(two.slice(0, 2)).size).toBe(1);
+    expect(new Set(two.slice(2)).size).toBe(1);
+    expect(two[0]).not.toBe(two[2]);
+    expect(new Set(fills(figureSvg({ kind: "ten-frame", filled: 7 }))).size).toBe(1);
   });
 });

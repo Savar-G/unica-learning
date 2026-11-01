@@ -20,7 +20,10 @@
 // - The book plan (#380): before any AI call, code gives each slot its skill, kind of question, numbers and a person's
 //   name, in book order (planBook): a page never has two slots on one pair of numbers, and each kind takes the pairs
 //   the book has used least. A question that repeats one goes to the redo with the slot's spare numbers and next kind.
-//   A sound question whose text runs past its room joins the same redo, to be written shorter (kept only if it is). Each question left out is in the page's `leftOut` and its part's
+//   A sound question whose text runs past its room joins the same redo, to be written shorter (kept only if it is).
+//   Round 6: each planned wording comes with what it works (its operation and picture); a slot of cards spreads them
+//   across put together, take away, a missing part, compare and the ten-frame; and a repeat whose item is the planned
+//   one takes the planned wording from code, with no AI call. Each question left out is in the page's `leftOut` and its part's
 //   omission. A page keeps at least one question: if it does not fit with one, it keeps them all and is marked failed.
 // - The book (CONTEXT.md sections 1 and 7, D-187, D-191): the cover (page 1), the How + Plan page, the ten days' pages
 //   in plan order, the back cover, then blank pages to a multiple of 4. Page numbers run from the cover through the
@@ -32,7 +35,7 @@ import { withTimeLimit, type AiClient } from "@/lib/ai-client";
 import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-package";
 import { isQrToken, isUuid } from "@/lib/workbook-content";
 import type { Curriculum } from "@/lib/workbook-curriculum";
-import { buildQuestion, ITEMS_SCHEMA, type BuiltQuestion, type QuestionCheck } from "@/lib/workbook-generator-items";
+import { buildQuestion, ITEMS_SCHEMA, kindProblem, relationWordings, type BuiltQuestion, type QuestionCheck } from "@/lib/workbook-generator-items";
 import { isOneMoreLessSkill } from "@/lib/number-words";
 import {
   bookPageContent, dayPageContent, layoutDayPage, mistakesFor, levelSigns, rangeProblem, samFix, samProblem, skillRange, slotRanges, PANEL_SLOTS, SLOT_FORMATS, STRICT_SLOTS,
@@ -252,7 +255,18 @@ interface Slot {
    * other slot of the page has and the book has not used for this kind, if it can; `spare`, another such pair for a redo
    * after a repeat; `name`, a person's name (never Sam, the child of Spot the error).
    */
-  planned?: { use: number[] | null; spare: number[] | null; name: string | null; say?: string | null; spareSay?: string | null };
+  planned?: {
+    use: number[] | null; spare: number[] | null; name: string | null; say?: string | null; spareSay?: string | null;
+    /** What the planned wording works (round 6): its operation, and the picture it names; the same for the spare. */
+    does?: PlannedDoes | null; spareDoes?: PlannedDoes | null;
+  };
+}
+
+/** What a planned wording works: its operation on whole numbers, and its picture (what a missing part's shows). */
+interface PlannedDoes {
+  operation: { kind: "add" | "subtract" | "missing-addend"; operands: [number, number] };
+  figure: "ten-frame" | "dots" | null;
+  figureShows: "part" | "total" | null;
 }
 
 /** The kinds of question code turns through for a skill, so its questions differ (#380). */
@@ -358,65 +372,116 @@ const group = (kind: QuestionKind | "spot") => (kind === "spot" ? "fact" : kind)
 const THINGS = ["shells", "apples", "cars", "stickers", "hats", "cups", "bugs", "kites", "rocks", "plums", "ducks", "boats", "socks", "books", "leaves", "eggs", "balls", "buttons", "beads", "shoes", "bells", "pens"];
 
 /**
- * The wordings code plans for each kind of question (round 5): {a} and {b} are the planned numbers, {t} their total,
- * {name} the planned person, {They} the pronoun for them, {thing} the planned thing. A take-away only where the skill
- * has met subtraction; on 1 more and 1 less (step), wordings about the step.
+ * What a wording asks (round 6): put together, take away, a missing part, compare (how many more), or read the
+ * ten-frame (how many more fill it). A slot of several cards spreads its cards across them.
  */
-function framesFor(kind: QuestionKind, step: boolean, subtraction: boolean): string[] {
+type Action = "join" | "separate" | "part" | "compare" | "frame";
+
+/**
+ * A wording code plans (round 5): {a} and {b} are the planned numbers, {t} their total, {name} the planned person,
+ * {thing} the planned thing. `op` is what it works on them: add [a, b], subtract [t, b] or missing-addend [a, t];
+ * `ten`, a missing part to 10 (the numbers become a and 10 - a); `figure`, the picture it names.
+ */
+interface Frame {
+  f: string;
+  act: Action;
+  op: PlannedDoes["operation"]["kind"];
+  figure?: "ten-frame" | "dots";
+  shows?: "part" | "total";
+  ten?: true;
+}
+
+const join = (f: string, figure?: Frame["figure"]): Frame => ({ f, act: "join", op: "add", ...(figure ? { figure } : {}) });
+const away = (f: string, figure?: Frame["figure"]): Frame => ({ f, act: "separate", op: "subtract", ...(figure ? { figure } : {}) });
+const part = (f: string, figure?: Frame["figure"]): Frame => ({ f, act: "part", op: "missing-addend", ...(figure ? { figure, shows: "part" as const } : {}) });
+const more = (f: string): Frame => ({ f, act: "compare", op: "missing-addend" });
+const tenFrame = (f: string): Frame => ({ f, act: "frame", op: "missing-addend", figure: "ten-frame", shows: "part", ten: true });
+
+/**
+ * The wordings code plans for each kind of question, each a whole short question a parent reads aloud ("How many in
+ * all?", "How many are left?"; round 6), the setup kept short to make room. A take-away and a compare only where the
+ * skill has met subtraction; on 1 more and 1 less (step), wordings about the step only.
+ */
+function framesFor(kind: QuestionKind, step: boolean, subtraction: boolean): Frame[] {
+  const sub = (frames: Frame[]) => (subtraction ? frames : []);
   switch (kind) {
     case "story":
       return [
-        "{name} has {a} {thing}. {b} more come. How many?",
-        "{name} has {a} {thing}, gets {b} more. How many?",
-        "{a} {thing} on a mat. {name} adds {b}. How many?",
-        "{name} sees {a} {thing}, then {b} more. How many?",
-        "{name} finds {a} {thing}, then {b} more. In all?",
-        "{a} {thing} here, {b} there. How many in all?",
-        "{name} picks {a} {thing}, then {b}. How many?",
-        ...(subtraction ? [
-          "{name} has {t} {thing}. {b} go. How many left?",
-          "{t} {thing}. {name} takes {b}. How many left?",
-          "{t} {thing}. {name} loses {b}. How many left?",
-        ] : []),
+        join("{a} {thing} and {b} more. How many in all?"),
+        join("{a} {thing} here, {b} there. How many in all?"),
+        join("{a} {thing}. {name} adds {b}. How many now?"),
+        join("{name} picks {a} {thing}, then {b}. How many now?"),
+        join("{name} has {a} {thing} and gets {b}. How many now?"),
+        ...sub([
+          away("{t} {thing}. {name} takes {b}. How many are left?"),
+          away("{t} {thing}. {b} go away. How many are left?"),
+          away("{name} has {t} {thing} and gives {b} away. How many now?"),
+          away("{t} {thing}. {name} hides {b}. How many are left?"),
+        ]),
+        ...(step ? [] : [
+          part("{name} has {a} {thing}. How many more make {t}?"),
+          part("{a} {thing} in a box. How many more make {t}?"),
+          part("{a} {thing} now. How many more make {t}?"),
+          ...sub([
+            more("{a} cats and {t} dogs. How many more dogs?"), more("{a} red {thing}, {t} blue. How many more blue?"),
+            more("{a} big {thing}, {t} small. How many more small?"),
+          ]),
+        ]),
       ];
     case "picture":
       return [
-        "Ten-frame: {a} and {b}. How many dots?",
-        "Dots: {a} and {b} more. How many in all?",
-        "{a} red dots, {b} blue dots. How many?",
-        "The ten-frame has {a} and {b}. Total?",
-        "{name} puts {a} dots and {b} more. How many?",
-        "Count the dots: {a} and {b}. How many?",
-        "{a} dots, then {b} more. How many now?",
-        "Ten-frame: {a}, then {b} more. How many?",
-        "Look: {a} dots and {b} dots. In all?",
-        "{a} and {b} on the ten-frame. How many?",
-        "Add the dots: {a} and {b}. How many?",
-        "{name} sees {a} dots and {b} more. In all?",
+        join("Ten-frame: {a} and {b}. How many in all?", "ten-frame"),
+        join("{a} dots and {b} dots. How many in all?", "dots"),
+        join("{a} dots, then {b} more. How many now?", "dots"),
+        join("{a} and {b} on the ten-frame. How many in all?", "ten-frame"),
+        join("Ten-frame: {a}, then {b} more. How many now?", "ten-frame"),
+        join("{a} dots and {b} more dots. How many now?", "dots"),
+        join("Count the dots: {a} and {b}. How many in all?", "dots"),
+        ...sub([away("{t} dots. Take away {b}. How many are left?", "ten-frame"), away("{t} dots. {b} hop off. How many are left?", "ten-frame")]),
+        ...(step ? [] : [
+          tenFrame("Ten-frame: {a} dots. How many more make 10?"),
+          tenFrame("{a} dots. How many boxes are empty?"),
+          tenFrame("Ten-frame: {a} dots. How many to fill it?"),
+          part("{a} dots. How many more make {t}?", "ten-frame"),
+          part("{a} dots. How many more dots make {t}?", "ten-frame"),
+        ]),
       ];
     case "fact":
       return step
-        ? ["What is {b} more than {a}?", "{a} and {b} more is what?", "What number is {b} more than {a}?", ...(subtraction ? ["What is {b} less than {t}?", "{t} take away {b} is what?", "What number is {b} less than {t}?"] : [])]
-        : ["{a} + {b} = ?", "What is {a} + {b}?", "{a} and {b} make what?", "Add {a} and {b}. What do you get?"];
+        ? [
+          join("What is {b} more than {a}?"), join("{a} and {b} more is what?"), join("What number is {b} more than {a}?"),
+          ...sub([away("What is {b} less than {t}?"), away("{t} take away {b} is what?"), away("What number is {b} less than {t}?")]),
+        ]
+        : [join("{a} + {b} = ?"), join("What is {a} + {b}?"), join("{a} and {b} make what?"), join("Add {a} and {b}. What do you get?")];
     case "missing-part":
       return [
-        "{name} has {a} {thing}. How many more make {t}?",
-        "{a} and what make {t}?",
-        "{a} + ? = {t}",
-        "{name} needs {t} {thing}, has {a}. How many more?",
-        "{t} {thing}: {a} are red. How many are not?",
-        "What do you add to {a} to make {t}?",
-        "{a} {thing} in a box. How many more make {t}?",
-        "How far is {a} from {t}?",
-        "{name} has {a}. How many more to get {t}?",
+        part("{name} has {a} {thing}. How many more make {t}?"),
+        part("{a} and how many more make {t}?"),
+        part("{a} + ? = {t}"),
+        part("{t} {thing}: {a} are red. How many are not red?"),
+        part("What do you add to {a} to make {t}?"),
+        part("{a} {thing} in a box. How many more make {t}?"),
+        part("How far is {a} from {t}?"),
+        tenFrame("Ten-frame: {a} dots. How many more make 10?"),
+        ...sub([more("{a} cats and {t} dogs. How many more dogs?"), more("{name} has {a}. Ben has {t}. How many more has Ben?")]),
       ];
     default:
       return [];
   }
 }
 
+/** The numbers a wording works on a planned pair: a and 10 - a for a missing part to 10 (null when a is not 1 to 9). */
+const framePair = (frame: Frame, pair: number[]): number[] | null => (frame.ten ? (pair[0] >= 1 && pair[0] <= 9 ? [pair[0], 10 - pair[0]] : null) : pair);
+
+/** What a wording works on its numbers [a, b]: its operation and picture. */
+function frameDoes(frame: Frame, [a, b]: number[]): PlannedDoes {
+  const t = a + b;
+  const operands: [number, number] = frame.op === "add" ? [a, b] : frame.op === "subtract" ? [t, b] : [a, t];
+  return { operation: { kind: frame.op, operands }, figure: frame.figure ?? null, figureShows: frame.shows ?? null };
+}
+
 /** A thing (or dots) counted after the number 1, which takes its singular. */
-const PLURAL_AFTER_1 = new RegExp(`\\b1 ((?:red |blue )?)(dots|${THINGS.join("|")})\\b`, "g");
+const PLURAL_AFTER_1 = new RegExp(`\\b1 ((?:red |blue )?)(dots|cats|dogs|${THINGS.join("|")})\\b`, "g");
 /** The wordings of a sequence (missing numbers), with no number in them. */
 const SEQUENCE_FRAMES = [
   "Fill in the missing numbers.", "What numbers are missing?", "Count up. Fill in the boxes.", "Write the numbers that go in the gaps.",
@@ -430,10 +495,13 @@ const singular = (w: string) => ONE[w] ?? w.replace(/s$/, "");
 function fillFrame(frame: string, pair: number[], name: string, thing: string): string {
   const [a, b] = pair;
   const they = BOYS.includes(name) ? "He" : "She";
-  return frame.replaceAll("{a}", String(a)).replaceAll("{b}", String(b)).replaceAll("{t}", String(a + b))
+  // "Ben" is the other person of a compare: another boy's name when the planned person is Ben.
+  const other = name === "Ben" ? "Leo" : "Ben";
+  return frame.replaceAll("Ben", other).replaceAll("{a}", String(a)).replaceAll("{b}", String(b)).replaceAll("{t}", String(a + b))
     .replaceAll("{name}", name).replaceAll("{They}", they).replaceAll("{thing}", thing)
     .replace(PLURAL_AFTER_1, (_, colour: string, w: string) => `1 ${colour}${singular(w)}`)
-    .replace(/\b1 more come\b/, "1 more comes").replace(/\b1 go\b/, "1 goes").replace(/\b1 are red\b/, "1 is red");
+    .replace(/\b1 more come\b/, "1 more comes").replace(/\b1 go away\b/, "1 goes away").replace(/\b1 are red\b/, "1 is red")
+    .replace(/\b1 boxes are\b/, "1 box is");
 }
 
 /**
@@ -450,6 +518,8 @@ function planBook(input: GenerateInput, work: PageWork[]) {
   const used = new Map<string, number>();
   const frameUse = new Map<string, number>();
   const said = new Set<string>();
+  const bookActs = new Map<Action, number>();
+  const shapeUse = new Map<string, number>();
   const things = THINGS;
   let person = 0;
   let thing = 0;
@@ -458,6 +528,10 @@ function planBook(input: GenerateInput, work: PageWork[]) {
     const pageKinds = new Set<string>();
     const pagePairs = new Set<string>();
     const pageFrames = new Set<string>();
+    // What each template slot's cards ask so far (round 6), by the slot's index in the layout.
+    const slotActs = new Map<number, Map<Action, number>>();
+    const pageShapes = new Set<string>();
+    const pageNumbers = new Map<number, number>();
     for (const slot of w.slots) {
       const k = inPart.get(slot.part) ?? 0;
       inPart.set(slot.part, k + 1);
@@ -486,9 +560,12 @@ function planBook(input: GenerateInput, work: PageWork[]) {
       if (numbered) {
         const choices = numberChoices(numbered.skill, curriculum.skill(numbered.skill)?.text ?? numbered.skill, numbered.kind, skillRange(curriculum, plan.level, numbered.skill));
         const bond = (p: number[]) => [...p].sort((a, b) => a - b).join(",");
+        // The pair whose numbers the page prints least first, a number printed twice costing more (round 6: not "1 cat", "1 dot" and "1 red
+        // button" on one page), then the pair its kind has used least.
+        const seen = (p: number[]) => [p[0], p[1], p[0] + p[1]].reduce((n, x) => n + (pageNumbers.get(x) ?? 0) ** 2, 0);
         const ranked = (choices ?? []).filter((p) => !pagePairs.has(bond(p)))
-          .map((p, j) => ({ p, j, n: used.get(`${group(numbered.kind)}|${p}`) ?? 0 }))
-          .sort((a, b) => a.n - b.n || a.j - b.j);
+          .map((p, j) => ({ p, j, n: used.get(`${group(numbered.kind)}|${p}`) ?? 0, s: seen(p) }))
+          .sort((a, b) => a.s - b.s || a.n - b.n || a.j - b.j);
         pair = ranked[0]?.p ?? null;
         spare = ranked.find((x) => pair && bond(x.p) !== bond(pair))?.p ?? null;
         if (pair) {
@@ -498,46 +575,94 @@ function planBook(input: GenerateInput, work: PageWork[]) {
         }
       }
       const name = slot.place === "spot-the-error" ? null : people[person++ % people.length];
-      // The wording: a frame of the kind, filled with the numbers, the name and a thing, within the slot's room.
+      // Outside practice a book asks one shape of question at most SHAPE_MOST times (duplicateProblem): so does the plan.
+      const practice = PRACTICE_PLACES.has(slot.place);
+      const withinShapes = (text: string) => practice || !shapeOf(text) || (shapeUse.get(shapeOf(text)) ?? 0) < SHAPE_MOST;
+      const countShape = (text: string) => { if (!practice && shapeOf(text)) shapeUse.set(shapeOf(text), (shapeUse.get(shapeOf(text)) ?? 0) + 1); };
+      // The wording: a frame of the kind, filled with the numbers, the name and a thing, within the slot's room. A slot
+      // of several cards spreads them across what they ask (round 6): the action it has asked least first, then the
+      // one the book has asked least, so no action takes more than its share of the cards.
       let say: string | null = null;
       let spareSay: string | null = null;
+      let does: PlannedDoes | null = null;
+      let spareDoes: PlannedDoes | null = null;
       if (numbered && numbered.kind !== "spot" && numbered.kind !== "relation" && name) {
         const range = skillRange(curriculum, plan.level, numbered.skill);
         const room = roomOf(input, slot.place, w.day)?.characters ?? Infinity;
         const text = curriculum.skill(numbered.skill)?.text ?? numbered.skill;
         const step = /two-more-less|2 more/.test(`${numbered.skill} ${text}`) || isOneMoreLessSkill(numbered.skill) || /1 more/.test(text.toLowerCase());
-        const pick = (pairNow: number[] | null) => {
+        const acts = slotActs.get(slot.layoutSlot) ?? new Map<Action, number>();
+        slotActs.set(slot.layoutSlot, acts);
+        const bond = (p: number[]) => [...p].sort((x, y) => x - y).join(",");
+        // At most a third of a slot's cards ask one thing (2 of 6), when the level has that many things to ask.
+        const cap = Math.max(1, Math.ceil(w.slots.filter((x) => x.layoutSlot === slot.layoutSlot).length / 3));
+        const own = numbered.kind as QuestionKind;
+        // On a page of stories, a card whose kind has nothing left under the cap borrows a wording of the slot's other
+        // story kinds (a story for a picture), and takes that kind.
+        const storyPlace = slot.place === "picture-stories" || slot.place === "word-problems";
+        const kindsHere = [own, ...(storyPlace ? (slot.aim?.orElse ?? []).filter((k) => k === "story" || k === "picture" || k === "missing-part") : [])];
+        const pick = (pairNow: number[] | null, thingNow: string, not: number[] | null = null) => {
           if (!pairNow) return null;
-          const fills = framesFor(numbered.kind as QuestionKind, step, range.subtraction).map((f, j) => ({ f, j, n: frameUse.get(f) ?? 0 }))
-            .filter((x) => !pageFrames.has(x.f))
-            .sort((a, b) => a.n - b.n || hashOf(`${slot.id}:${w.number}:${a.j}`) - hashOf(`${slot.id}:${w.number}:${b.j}`))
-            .map((x) => ({ f: x.f, said: fillFrame(x.f, pairNow, name, things[thing % things.length]) }))
-            .filter((x) => x.said.length <= room && !said.has(x.said));
+          // A page of stories takes stories and pictures only, never a bare "9 + ? = 10".
+          const frames = kindsHere.flatMap((k, o) => framesFor(k, step, range.subtraction).map((f) => ({ f, k, o })))
+            .filter((x) => !storyPlace || /\{thing\}|\{name\}|dots|cats|[Tt]en-frame/.test(x.f.f));
+          const fills = frames.map((x, j) => ({ ...x, j, n: frameUse.get(x.f.f) ?? 0, a: acts.get(x.f.act) ?? 0 }))
+            .filter((x) => !pageFrames.has(x.f.f))
+            .sort((a, b) => Number(a.a >= cap) - Number(b.a >= cap) || a.o - b.o || a.a - b.a || (bookActs.get(a.f.act) ?? 0) - (bookActs.get(b.f.act) ?? 0)
+              || a.n - b.n || hashOf(`${slot.id}:${w.number}:${a.j}`) - hashOf(`${slot.id}:${w.number}:${b.j}`))
+            .flatMap((x) => {
+              const numbers = framePair(x.f, pairNow);
+              if (!numbers || numbers[0] + numbers[1] > range.max) return [];
+              // A missing part to 10 changes the numbers: never to a pair another slot of the page (or `not`) has.
+              if (bond(numbers) !== bond(pairNow) && (pagePairs.has(bond(numbers)) || (not && bond(numbers) === bond(not)))) return [];
+              return [{ frame: x.f, kind: x.k, numbers, said: fillFrame(x.f.f, numbers, name, thingNow) }];
+            })
+            .filter((x) => x.said.length <= room && !said.has(x.said) && !pageShapes.has(shapeOf(x.said)) && withinShapes(x.said));
           return fills[0] ?? null;
         };
-        const chosen = pick(pair);
+        const chosen = pick(pair, things[thing % things.length]);
         if (chosen) {
           say = chosen.said;
-          frameUse.set(chosen.f, (frameUse.get(chosen.f) ?? 0) + 1);
-          pageFrames.add(chosen.f);
+          if (slot.aim && chosen.kind !== slot.aim.kind) slot.aim = { ...slot.aim, kind: chosen.kind, orElse: [slot.aim.kind, ...slot.aim.orElse.filter((k) => k !== chosen.kind)] };
+          does = frameDoes(chosen.frame, chosen.numbers);
+          frameUse.set(chosen.frame.f, (frameUse.get(chosen.frame.f) ?? 0) + 1);
+          acts.set(chosen.frame.act, (acts.get(chosen.frame.act) ?? 0) + 1);
+          bookActs.set(chosen.frame.act, (bookActs.get(chosen.frame.act) ?? 0) + 1);
+          pageFrames.add(chosen.frame.f);
+          pageShapes.add(shapeOf(chosen.said));
+          countShape(chosen.said);
           said.add(chosen.said);
           thing++;
+          // A missing part to 10 works a and 10 - a: those are the slot's numbers now.
+          if (pair && chosen.numbers.join() !== pair.join()) {
+            pair = chosen.numbers;
+            pagePairs.add(bond(pair));
+          }
         }
         // The spare's wording is for a redo only: it takes no frame from the page's other slots.
-        const other = pick(spare);
-        if (other) spareSay = fillFrame(other.f, spare!, name, things[(thing + 7) % things.length]);
+        const other = pick(spare, things[(thing + 7) % things.length], pair);
+        if (other) {
+          spare = other.numbers;
+          spareSay = other.said;
+          spareDoes = frameDoes(other.frame, other.numbers);
+          // Kept for the redo: no later slot takes the same words.
+          said.add(other.said);
+        }
       }
       // A sequence names no number in its text (code can then fit it to a card): only its wording is planned.
       if (slot.aim?.kind === "sequence") {
         const room = roomOf(input, slot.place, w.day)?.characters ?? Infinity;
-        const frame = SEQUENCE_FRAMES.map((f, j) => ({ f, j, n: frameUse.get(f) ?? 0 })).filter((x) => !pageFrames.has(x.f) && x.f.length <= room).sort((a, b) => a.n - b.n || a.j - b.j)[0]?.f;
+        const frame = SEQUENCE_FRAMES.map((f, j) => ({ f, j, n: frameUse.get(f) ?? 0 })).filter((x) => !pageFrames.has(x.f) && x.f.length <= room && withinShapes(x.f)).sort((a, b) => a.n - b.n || a.j - b.j)[0]?.f;
         if (frame) {
           say = frame;
           frameUse.set(frame, (frameUse.get(frame) ?? 0) + 1);
           pageFrames.add(frame);
+          countShape(frame);
         }
       }
-      slot.planned = { use: pair, spare, name, say, spareSay };
+      // The numbers a card may print: both numbers and their total (a take-away and a missing part print it).
+      if (pair && numbered?.kind !== "spot") for (const x of [pair[0], pair[1], pair[0] + pair[1]]) pageNumbers.set(x, (pageNumbers.get(x) ?? 0) + 1);
+      slot.planned = { use: pair, spare, name, say, spareSay, does, spareDoes };
     }
   }
 }
@@ -608,7 +733,8 @@ const SYSTEM = [
   "A picture of a missing part shows the part given or the total: say which in figureShows ('Mia has 3. How many more make 8?' shows the part, 3; 'Ten-frame: 8 dots. 5 and how many more?' shows the total, 8). Any number the text says the picture shows ('8 dots', 'Ten-frame: 8') is what code draws.",
   "One question per item: the text never holds a worked fact or a second task ('5 and 0 more is 5. Show 6.' is not a question). A draw item says what to draw and never asks how many, which number or who; ask which has more with a relation item.",
   "Used up: the request may list usedUp, shapes of question the book already asks 3 times: each an example and its words (the question's lowercase words in order, without numbers, names or other capitalised words). Outside practice, write no question whose lowercase words are exactly one of them: use other words or another kind of question, not only other numbers or names.",
-  "Planned: a slot may give planned numbers and a name, chosen by code across the whole book so its questions differ. Build the item on the numbers [a, b]: a sum is a + b; a take-away starts at a + b and takes b away; a missing part has the part a and the total a + b; a picture shows a and b (or a + b in all); 1 more than a is a + 1; a relation uses a (and b); Sam's sum in Spot the error is a + b (or a + b take away b). Keep to them unless a rule of the slot forbids it; then change as little as you can. A person in the question is the planned name. Never name anyone Sam outside Spot the error: Sam is the child whose work Spot the error shows. Planned say is the wording code chose for the slot, with those numbers, that name and a thing to count, so the book's questions do not all sound alike: write the question text as say, word for word, unless a rule of the slot forbids it (then change as few words as you can). Its operation, picture, wrong answers and easier example are of that text: 'Mia has 3 shells. How many more make 8?' is missing-addend [3, 8]; 'Ten-frame: 3 and 4. How many dots?' is add 3 + 4 with a ten-frame.",
+  "Planned: a slot may give planned numbers and a name, chosen by code across the whole book so its questions differ. Build the item on the numbers [a, b]: a sum is a + b; a take-away starts at a + b and takes b away; a missing part has the part a and the total a + b; a picture shows a and b (or a + b in all); 1 more than a is a + 1; a relation uses a (and b); Sam's sum in Spot the error is a + b (or a + b take away b). Keep to them unless a rule of the slot forbids it; then change as little as you can. A person in the question is the planned name. Never name anyone Sam outside Spot the error: Sam is the child whose work Spot the error shows. Planned say is the wording code chose for the slot, with those numbers, that name and a thing to count, so the book's questions do not all sound alike: write the question text as say, word for word, unless a rule of the slot forbids it (then change as few words as you can). Its operation, picture, wrong answers and easier example are of that text: 'Mia has 3 shells. How many more make 8?' is missing-addend [3, 8]; 'Ten-frame: 3 and 4. How many in all?' is add 3 + 4 with a ten-frame. With say, planned gives its operation (kind and operands), figure and figureShows: use exactly those. Code checks that the text names the numbers the operation works: an operation of other numbers fails.",
+  "Relation format: code writes the question text from your numbers, relation kind, benchmarks and labels (your text is replaced), so get those right: they are what the child reads.",
   "Asked: a slot may list asked, the questions the book already asks on its skills. Never repeat one of them. On this page, no two questions may be the same, work the same sum, or differ only by one number when another kind of question is possible: change the kind (a story, a picture to count, a missing part, a sequence), not only a number.",
   "Examples: the request may list examples. Each is the worked example a panel (worked-example, watch-one, reminder) shows for its own skill: fill it like a slot, with its id and on that skill only, of the kind its aim gives. Give a small sum of the skill (write-number with an operation), or a count, sequence, order or relation item code can show done. It is not printed as a question, so it has no room limit.",
   "A count from one number to another ('Count from 2 to 7', 'Count back from 10 to 1') is the sequence format, starting and ending at those numbers; if the text says 'start at 2', the sequence starts at 2.",
@@ -693,7 +819,12 @@ function pageRequest(input: GenerateInput, w: PageWork, slots: Slot[], note: str
         ...(s.planned?.use ? {} : { vary: varyNumber(`${day}:${page.number}:${s.id}`, max) }),
         ...(memory ? { asked: asked(s.part.skills) } : {}),
         ...(s.aim ? { aim: { skill: s.aim.skill, kind: s.aim.kind, means: KIND_WORDS[s.aim.kind], orElse: s.aim.orElse } } : {}),
-        ...(s.planned?.use || s.planned?.name ? { planned: { ...(s.planned.use ? { numbers: s.planned.use } : {}), ...(s.planned.name ? { name: s.planned.name } : {}), ...(s.planned.say ? { say: s.planned.say } : {}) } } : {}),
+        ...(s.planned?.use || s.planned?.name ? {
+          planned: {
+            ...(s.planned.use ? { numbers: s.planned.use } : {}), ...(s.planned.name ? { name: s.planned.name } : {}), ...(s.planned.say ? { say: s.planned.say } : {}),
+            ...(s.planned.say && s.planned.does ? { operation: s.planned.does.operation, figure: s.planned.does.figure, figureShows: s.planned.does.figureShows } : {}),
+          },
+        } : {}),
       };
     }),
     // Shapes of question the book has used up: none of the page's questions (outside practice) may take one again.
@@ -804,10 +935,13 @@ function duplicateProblem(p: QuestionPackage, place: SlotName | null, memory: Bo
   const at = place === "warm-up" ? undefined : memory?.keys.get(key);
   if (at !== undefined) return `it repeats a question already asked on page ${at} ("${p.text}"): write a different question`;
   const shape = shapeOf(p.text);
-  const onPages = place && !PRACTICE_PLACES.has(place) && shape ? memory?.shapes.get(shape) ?? [] : [];
+  // A relation's words are code's (round 6): only its page must not ask it twice in the same words.
+  const onPages = place && !PRACTICE_PLACES.has(place) && shape && !isRelation(p) ? memory?.shapes.get(shape) ?? [] : [];
   if (onPages.length >= SHAPE_MOST) return `the book already asks this kind of question ${onPages.length} times (pages ${[...new Set(onPages)].join(", ")}): ask another kind of question`;
   for (const s of siblings) {
     if (dupKey(s.package) === key) return `it is the same as question ${s.number} on this page ("${s.package.text}")`;
+    // The same words twice on a page read as one question asked again, whatever the numbers behind them (round 6).
+    if (plainText(s.package.text) === plainText(p.text)) return `its text is the same as question ${s.number}'s on this page ("${s.package.text}"): word it another way`;
     const op = opKey(p);
     if (op && op === opKey(s.package)) return `it works the same sum as question ${s.number} on this page ("${s.package.text}")`;
     const [a, b] = [numbersIn(p.text), numbersIn(s.package.text)];
@@ -818,13 +952,16 @@ function duplicateProblem(p: QuestionPackage, place: SlotName | null, memory: Bo
   return null;
 }
 
+/** A relation item: its text is code's (round 6). */
+const isRelation = (p: QuestionPackage) => (p.item?.checks ?? []).some((c) => c.kind === "relation");
+
 /** Adds a finished page's questions to what the book has asked. */
 function remember(memory: BookMemory, page: number, questions: GeneratedQuestion[]) {
   for (const q of questions) {
     if (!q.package) continue;
     if (!memory.keys.has(dupKey(q.package))) memory.keys.set(dupKey(q.package), page);
     const shape = shapeOf(q.package.text);
-    if (shape && q.place && !PRACTICE_PLACES.has(q.place) && q.check.status !== "failed") {
+    if (shape && q.place && !PRACTICE_PLACES.has(q.place) && q.check.status !== "failed" && !isRelation(q.package)) {
       memory.shapes.set(shape, [...(memory.shapes.get(shape) ?? []), page]);
       if (!memory.shapeText.has(shape)) memory.shapeText.set(shape, q.package.text);
     }
@@ -871,6 +1008,7 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
       id: `${input.workbookId}:d${w.day}p${w.page.number}s${slot.id}`,
       workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: slot.part.skills,
       signs: levelSigns(input.curriculum, input.plan.level),
+      ...(slot.place ? { room: roomOf(input, slot.place, w.day)?.characters } : {}), variant: w.number + i,
     });
     // Sam is only Spot the error's child: anyone else named Sam takes the slot's planned name.
     if (b.package && slot.place && slot.place !== "spot-the-error") b.package = withoutSam(b.package, slot.planned?.name ?? null);
@@ -902,7 +1040,47 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
     }
     return b;
   });
+  // A relation's text is code's (round 6): of its wordings, one whose words no other question of the page has.
+  const taken = new Set(pageTexts.map(shapeOf));
+  built.forEach((b, k) => {
+    if (!b.package) return;
+    const wordings = relationWordings(b.package);
+    if (wordings.length > 0 && taken.has(shapeOf(b.package.text))) {
+      const place = w.slots[which[k]].place;
+      const room = (place ? roomOf(input, place, w.day)?.characters : null) ?? Infinity;
+      const free = wordings.find((x) => !taken.has(shapeOf(x)) && x.length <= room);
+      if (free) b.package = { ...b.package, text: free };
+    }
+    taken.add(shapeOf(b.package.text));
+  });
   return { built, examples };
+}
+
+/**
+ * A question given its slot's planned wording by code (round 6), or null: when the AI's text failed as a repeat of its
+ * page or book but its item works the planned operation (with the planned picture), code's wording of the same item.
+ * The rewritten question is checked again in full; null when it would fail.
+ */
+function withPlannedWording(input: GenerateInput, b: BuiltQuestion, slot: Slot): BuiltQuestion | null {
+  const say = slot.planned?.say;
+  const does = slot.planned?.does;
+  const p = b.package;
+  if (!say || !does || !p?.operation || p.text === say) return null;
+  if (p.operation.kind !== does.operation.kind || JSON.stringify(p.operation.operands) !== JSON.stringify(does.operation.operands)) return null;
+  if (does.figure && p.item?.figure?.kind !== does.figure) return null;
+  const pkg: QuestionPackage = { ...p, text: say };
+  const check = checkQuestionPackage(pkg);
+  if (check.status === "failed" || kindProblem(pkg, {}) || rangeProblem(pkg, input.curriculum, input.plan.level)) return null;
+  return { ...b, package: pkg, check: check.status === "checked" ? { status: "checked" } : { status: "not-checked", reason: check.reason } };
+}
+
+/** A failed repeat given its planned wording by code, when that is sound and repeats nothing on the page (round 6). */
+function rewordRepeat(input: GenerateInput, b: BuiltQuestion, slot: Slot, memory: BookMemory | null, others: { number: number; package: QuestionPackage }[]): BuiltQuestion {
+  if (b.check.status !== "failed" || !NEEDS_NEW.test(b.check.reason)) return b;
+  const again = withPlannedWording(input, b, slot);
+  if (!again) return b;
+  markRepeat(again, slot.place, memory, others);
+  return again.check.status === "failed" ? b : again;
 }
 
 const generated = (w: PageWork, i: number, b: BuiltQuestion, attempts: GeneratedQuestion["attempts"]): GeneratedQuestion => ({
@@ -919,14 +1097,14 @@ function hintFor(reason: string): string | null {
   if (/needs an operation code can compute/.test(reason)) return "A question with no number answer is a draw item (a parent checks it); else give the operation.";
   if (/has no easier example/.test(reason)) return "Give an easier example of the same kind: a smaller missing part (3 + ? = 4 for 3 + ? = 5), or smaller numbers (1 + 1 for 2 + 1).";
   if (/but its answer is the operation's number/.test(reason)) return "Ask for the number the operation gives, or make it a draw item.";
-  if (/repeats a question|same as question|same sum as question|only by one number|same kind of question|this kind of question/.test(reason)) return "Write a different question: another kind (a story, a picture to count, a missing part, a sequence) or other numbers, never one in the slot's asked list.";
+  if (/repeats a question|same as question|text is the same as question|same sum as question|only by one number|same kind of question|this kind of question/.test(reason)) return "Write a different question: another kind (a story, a picture to count, a missing part, a sequence) or other numbers, never one in the slot's asked list.";
   if (/is a count: write it as the sequence format|the sequence goes from|the sequence starts at/.test(reason)) return "Make it a sequence item whose first and last numbers are the ones the text says.";
   if (/gives its own answer|adding or taking away 0/.test(reason)) return "Ask for a number the child works out; the text gives only what the child needs.";
   return null;
 }
 
 /** A reason that the question repeats one of the book or of its page, or gives its own answer: its redo takes new numbers. */
-const NEEDS_NEW = /repeats a question|same as question|same sum as question|only by one number|same kind of question|this kind of question|gives its own answer/;
+const NEEDS_NEW = /repeats a question|same as question|text is the same as question|same sum as question|only by one number|same kind of question|this kind of question|gives its own answer/;
 
 /** The redo's words for a failed question or worked example. */
 function failNote(id: string, b: BuiltQuestion, slot?: Slot): string {
@@ -950,7 +1128,7 @@ function redoSlot(slot: Slot, reason: string): Slot {
   return {
     ...slot,
     ...(slot.aim && next ? { aim: { ...slot.aim, kind: next, orElse: slot.aim.orElse.filter((k) => k !== next) } } : {}),
-    ...(slot.planned?.spare ? { planned: { ...slot.planned, use: slot.planned.spare, spare: null, say: slot.planned.spareSay ?? null, spareSay: null } } : {}),
+    ...(slot.planned?.spare ? { planned: { ...slot.planned, use: slot.planned.spare, spare: null, say: slot.planned.spareSay ?? null, spareSay: null, does: slot.planned.spareDoes ?? null, spareDoes: null } } : {}),
   };
 }
 
@@ -996,7 +1174,11 @@ async function firstPass(input: GenerateInput, deps: GenerateDeps, w: PageWork, 
   const all = w.slots.map((_, i) => i);
   const first = await writeSlots(input, deps, w, all, null, "workbook_page", w.panels, memory);
   const built = first.built;
-  built.forEach((b, i) => markRepeat(b, w.slots[i].place, memory, siblingsOf(built, i)));
+  built.forEach((b, i) => {
+    markRepeat(b, w.slots[i].place, memory, siblingsOf(built, i));
+    // A repeat whose item is the planned one takes the planned wording from code, with no AI call (round 6).
+    built[i] = rewordRepeat(input, b, w.slots[i], memory, siblingsOf(built, i));
+  });
   const examples = first.examples;
   const questions = all.map((i) => generated(w, i, built[i], 1));
   const failed = all.filter((i) => built[i].check.status === "failed");
@@ -1017,8 +1199,9 @@ async function firstPass(input: GenerateInput, deps: GenerateDeps, w: PageWork, 
     const redoWork: PageWork = { ...w, slots: w.slots.map((x, i) => (failed.includes(i) ? redoSlot(x, (built[i].check as { reason: string }).reason) : x)) };
     const redo = await writeSlots(input, deps, redoWork, which, note, "workbook_page_redo", failedPanels.map((k) => w.panels[k]), memory, memory ? kept : []);
     which.forEach((i, k) => {
-      const fresh = redo.built[k];
+      let fresh = redo.built[k];
       markRepeat(fresh, w.slots[i].place, memory, siblingsOf(built, built.length, i));
+      fresh = rewordRepeat(input, fresh, redoWork.slots[i], memory, siblingsOf(built, built.length, i));
       const wasLong = long.find((x) => x.i === i);
       // A long question keeps its first version unless the redo is sound and shorter.
       if (wasLong && (fresh.check.status === "failed" || !fresh.package || !!overRoom(input, w, i, fresh) && fresh.package.text.length >= wasLong.length)) {

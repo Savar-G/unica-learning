@@ -29,8 +29,11 @@ export type SlotName = (typeof SLOTS)[number];
 export type Figure =
   /** Dots in groups; the last `takenAway` dots are crossed out. */
   | { kind: "dots"; groups: number[]; takenAway?: number }
-  /** One ten-frame, or two when more than 10 are filled. */
-  | { kind: "ten-frame"; filled: number }
+  /**
+   * One ten-frame, or two when more than 10 are filled. `parts` (round 6): the counters of each part in turn, each part
+   * its own colour ("2 and 6": 2 orange, then 6 blue), adding up to `filled`; absent, every counter one colour.
+   */
+  | { kind: "ten-frame"; filled: number; parts?: number[] }
   | { kind: "number-line"; from: number; to: number; step: number; hops: [number, number][] }
   | { kind: "blocks"; hundreds?: number; tens: number; ones: number }
   | { kind: "array"; rows: number; columns: number }

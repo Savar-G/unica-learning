@@ -157,7 +157,9 @@ describe("sample profiles", () => {
 describe("pageFigure", () => {
   it("maps each item picture to the template's", () => {
     expect(pageFigure({ kind: "dots", groups: [3, 4], takenAway: 1 })).toEqual({ kind: "dots", groups: [3, 4], takenAway: 1 });
-    expect(pageFigure({ kind: "ten-frame", counters: [6, 3] })).toEqual({ kind: "ten-frame", filled: 9 });
+    // Two parts in two colours, so the child sees each (round 6); one part in one colour.
+    expect(pageFigure({ kind: "ten-frame", counters: [6, 3] })).toEqual({ kind: "ten-frame", filled: 9, parts: [6, 3] });
+    expect(pageFigure({ kind: "ten-frame", counters: [7] })).toEqual({ kind: "ten-frame", filled: 7 });
     // A question's number line has no hop: the hop would land on the answer (#380); the child draws it.
     expect(pageFigure({ kind: "number-line", from: 0, to: 10, step: 1 })).toEqual({ kind: "number-line", from: 0, to: 10, step: 1, hops: [] });
     expect(pageFigure({ kind: "number-line", from: 0, to: 10, step: 1 })).toMatchObject({ hops: [] });

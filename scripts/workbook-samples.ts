@@ -153,7 +153,11 @@ function fakeAi(): AiClient {
   return {
     model: "fake",
     async json(request) {
-      type Asked = { slot: string; skills: string[]; formats?: string[] | null; mistakes?: { name: string }[]; numbers?: Record<string, { max: number }>; aim?: { skill: string; kind: string }; planned?: { numbers?: number[]; name?: string } };
+      type Planned = {
+        numbers?: number[]; name?: string; say?: string;
+        operation?: { kind: "add" | "subtract" | "missing-addend"; operands: [number, number] }; figure?: string | null; figureShows?: string | null;
+      };
+      type Asked = { slot: string; skills: string[]; formats?: string[] | null; mistakes?: { name: string }[]; numbers?: Record<string, { max: number }>; aim?: { skill: string; kind: string }; planned?: Planned };
       const body = JSON.parse((request.content[0] as { text: string }).text) as { day: number; page: number; slots: Asked[]; examples?: Asked[] };
       return {
         items: [...body.slots, ...(body.examples ?? [])].map((s) => {
@@ -190,6 +194,23 @@ function fakeAi(): AiClient {
           const who = `${s.planned?.name ?? NAMES[n % NAMES.length]} ${word}`;
           n++;
           const reason = format === "written-reason";
+          // The slot's planned wording with its operation and picture (round 6), word for word, as the real AI is asked;
+          // code writes the easier example.
+          const plan = s.planned;
+          if (plan?.say && plan.operation && (format === "write-number" || format === "show-work")) {
+            const [x, y] = plan.operation.operands;
+            const right = plan.operation.kind === "add" ? x + y : plan.operation.kind === "subtract" ? x - y : y - x;
+            return {
+              ...base, skill: s.aim?.skill ?? base.skill, text: plan.say, operation: { ...op("add", x, y), kind: plan.operation.kind },
+              figure: plan.figure ?? null, figureShows: plan.figureShows ?? null,
+              wrongAnswers: [{ value: num(x === right ? y : x), cause: "careless", description: "Writes a number from the question", step: null }],
+              easier: null, shownWrong: null,
+            };
+          }
+          if (plan?.say && s.aim?.kind === "sequence" && !reason) {
+            const start = 1 + (n++ % 4);
+            return { ...base, skill: s.aim.skill, format: "sequence", text: plan.say, sequence: { start: num(start), step: num(1), terms: 5, blanks: [1, 3] }, operation: null, wrongAnswers: [], easier: null, shownWrong: null, relation: null, figureShows: null };
+          }
           // A relation aim on a skill about less than 5: "Is 7 less than 5?", circled.
           if (s.aim?.kind === "relation" && /benchmark/.test(s.aim.skill) && !reason) {
             return { ...base, skill: s.aim.skill, format: "relation", text: `${who}: is ${a + b} less than 5?`, numbers: [num(a + b)], relation: { kind: "less-than", to: [5], labels: [] }, figureShows: null, operation: null, wrongAnswers: [], easier: null, shownWrong: null };

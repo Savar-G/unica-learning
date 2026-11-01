@@ -105,7 +105,8 @@ describe("places", () => {
     expect(blocks.check).toEqual({ status: "checked" });
     expect(blocks.package!.item!.figure).toEqual({ kind: "base-ten", hundreds: 0, tens: 4, ones: 7 });
     const frame = await first((s) => item(s, "places", { numbers: [num(14)], figure: "ten-frame" }));
-    expect(frame.package!.item!.figure).toEqual({ kind: "ten-frame", counters: [10, 4] });
+    // One number is one part, in one colour (round 6); the second frame fills past 10.
+    expect(frame.package!.item!.figure).toEqual({ kind: "ten-frame", counters: [14] });
     expect(regions(frame)).toEqual([box("tens", 1, "tens"), box("ones", 4, "ones")]);
   });
 });

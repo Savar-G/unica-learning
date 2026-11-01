@@ -8,7 +8,7 @@
 //
 // Pictures: a question package's item figure (#377, src/lib/question-package.ts) is drawn by the template from the
 // block's `figures` (src/lib/workbook-page.ts). `pageFigure` maps one to the other: dots keep their groups and the
-// crossed-out count, a ten-frame shows its counters in all (`filled`), a number line has no hop (it would land on the
+// crossed-out count, a ten-frame shows its counters in all (`filled`) with each of two parts in its own colour, a number line has no hop (it would land on the
 // answer: the child draws it), base-ten blocks keep hundreds, tens and ones, and a pattern keeps its shapes.
 //
 // The words here are code's, never the AI's: headers, panel labels and explanations come from the plan and the
@@ -282,7 +282,11 @@ export function pageFigure(f: ItemFigure | null | undefined): Figure | null {
   if (!f) return null;
   switch (f.kind) {
     case "dots": return { kind: "dots", groups: [...f.groups], takenAway: f.takenAway };
-    case "ten-frame": return { kind: "ten-frame", filled: f.counters.reduce((a, b) => a + b, 0) };
+    // Two parts ("2 and 6") in two colours, so the child sees each part (round 6); one part in one colour.
+    case "ten-frame": {
+      const filled = f.counters.reduce((a, b) => a + b, 0);
+      return f.counters.filter((n) => n > 0).length > 1 ? { kind: "ten-frame", filled, parts: [...f.counters] } : { kind: "ten-frame", filled };
+    }
     // A question's number line has no hop drawn: the hop lands on the answer, so the child draws it (#380).
     case "number-line": return { kind: "number-line", from: f.from, to: f.to, step: f.step, hops: [] };
     case "base-ten": return { kind: "blocks", hundreds: f.hundreds, tens: f.tens, ones: f.ones };

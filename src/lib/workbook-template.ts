@@ -510,12 +510,19 @@ export function figureSvg(f: Figure, scale = 1): string {
     case "ten-frame": {
       // A second frame beside the first when more than 10 are filled.
       const frames = f.filled > 10 ? 2 : 1;
+      // Each part in its own colour, as dots are (orange, then blue); with no parts, every counter blue.
+      const colourAt = (i: number) => {
+        if (!f.parts) return COUNTER[1];
+        let seen = 0;
+        for (const [g, n] of f.parts.entries()) if (i < (seen += n)) return COUNTER[g % 3];
+        return COUNTER[1];
+      };
       let body = "";
       for (let i = 0; i < 10 * frames; i++) {
         const cx = (i % 5) * 30 + Math.floor(i / 10) * 166;
         const cy = Math.floor((i % 10) / 5) * 30;
         body += `<rect x="${cx + 1}" y="${cy + 1}" width="30" height="30" fill="#fff" stroke="#0C0C0E" stroke-width="1.2"/>`;
-        if (i < f.filled) body += `<circle cx="${cx + 16}" cy="${cy + 16}" r="10" fill="#3366F0"/>`;
+        if (i < f.filled) body += `<circle cx="${cx + 16}" cy="${cy + 16}" r="10" fill="${colourAt(i)}"/>`;
       }
       return out(152 + (frames - 1) * 166, 62, body);
     }
