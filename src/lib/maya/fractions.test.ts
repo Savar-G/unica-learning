@@ -192,6 +192,17 @@ describe("reading spoken and typed fractions in a fraction call (#407)", () => {
     expect(c.propose({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(value, "result", "right")] } }).refusal).toBeNull();
     expect(c.s.solved).toBe("child");
   });
+
+  it.each(["a half", "one half", "1/2", "two fourths"].flatMap((form) =>
+    ["because", "since", "cause", "'cause", "’cause", "cuz", "coz"].flatMap((explanation) =>
+      ["", "3/4, actually "].map((prefix) => `${prefix}${form} ${explanation} three plus one is four`))))("keeps a supported fraction before the shared explanation grammar: %s", (said) => {
+    const value = said.includes("two fourths") ? frac(2, 4) : frac(1, 2);
+    expect(readAnswer(said, READ)).toMatchObject({ final: value, sure: true });
+    const pkg = pkgOf("3/8 + 1/8 = ?", add(frac(3, 8), frac(1, 8)), EASY);
+    const c = call(pkg, said);
+    expect(c.propose({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(value, "result", "right")] } }).refusal).toBeNull();
+    expect(c.s.solved).toBe("child");
+  });
 });
 
 describe("right answers follow the question's wording (#407, research C38)", () => {

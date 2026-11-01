@@ -287,7 +287,7 @@ for (const [one, many, value] of [
  * What may follow a singular fraction ("one half", "a quarter") for code to read it: the end of a clause, or a word that
  * goes on with math or an explanation. Anything else ("a third time", "a quarter past 3") is not read as a fraction.
  */
-const AFTER_ONE = /^(?:[.,!?;:\n+=×÷-]|of|and|or|is|plus|minus|because|cause|since|so|equals|then|right)$/;
+const AFTER_ONE = /^(?:[.,!?;:\n+=×÷-]|of|and|or|is|plus|minus|so|equals|then|right)$/;
 
 /**
  * The text with each exact spoken fraction written as code writes it (#407): a number (digits or number words) then a
@@ -337,7 +337,10 @@ export function writtenFractions(text: string): string {
       if (den!.plural) invalid(k);
       continue;
     }
-    if (den && !den.plural && !(k + 1 >= words.length || AFTER_ONE.test(words[k + 1].t))) continue;
+    const following = k + 1 < words.length ? low.slice(words[k + 1].at) : "";
+    const explanation = EXPLANATION.exec(following);
+    const explains = explanation !== null && /^[’']?$/.test(following.slice(0, explanation.index));
+    if (den && !den.plural && !(k + 1 >= words.length || AFTER_ONE.test(words[k + 1].t) || explains)) continue;
     if (!n || !d || !adjacent(n.to, k) || (bar && !adjacent(k, d.from)) || d.value === 0 ||
         (den && (n.value === 1) === den.plural)) {
       invalid(k);
