@@ -87,21 +87,21 @@ export const FRAMES: readonly Frame[] = [
     "{name} sees {a} cats and {t} dogs. How many more dogs than cats does {he} see?",
     "{name} has {a} red {thing} and {t} blue {thing}. How many more blue {thing} are there?"].map(more("story")),
   // Pictures: the counters, dots and ten-frame a child sees, with a person who puts them there.
-  join("picture", { figure: "ten-frame" })("{name} has {a} red and {b} blue counters. How many counters does {he} have?"),
+  join("picture", { figure: "ten-frame" })("{name} has {a} orange and {b} blue counters. How many counters does {he} have?"),
   join("picture", { figure: "ten-frame" })("{name} puts {a} counters on the ten-frame. {He} adds {b} more. How many counters are on it now?"),
   join("picture", { figure: "dots" })("{name} draws {a} dots. Then {he} draws {b} more. How many dots did {he} draw?"),
-  join("picture", { figure: "dots" })("{name} draws {a} red dots and {b} blue dots. How many dots are there?"),
+  join("picture", { figure: "dots" })("{name} draws {a} orange dots and {b} blue dots. How many dots are there?"),
   away("picture", { figure: "ten-frame" })("{name} has {t} counters. {He} takes away {b}. How many counters does {he} have now?"),
   away("picture", { figure: "dots" })("{name} draws {t} dots. {He} crosses out {b}. How many dots are not crossed out?"),
   tenFrame("{name} puts {a} counters on the ten-frame. How many more counters fill it?"),
   tenFrame("{name} has {a} counters on the ten-frame. How many more counters make 10?"),
   part("picture", { figure: "ten-frame", shows: "part" })("{name} has {a} counters. How many more counters make {t}?"),
   part("picture", { figure: "dots", shows: "part" })("{name} draws {a} dots. How many more dots make {t}?"),
-  // Pictures to count on a practice page (not a story: never on a page of stories).
-  join("picture", { figure: "dots" })("Count the dots: {a} and {b}. How many dots?"),
-  join("picture", { figure: "ten-frame" })("The ten-frame shows {a} and {b}. How many counters?"),
-  away("picture", { figure: "ten-frame" })("{t} counters. Take away {b}. How many counters now?"),
-  tenFrame("Ten-frame: {a} counters. How many more make 10?"),
+  // Short picture stories for practice and review cards (D-201).
+  join("picture", { figure: "dots" })("{name} draws {a} dots. {He} adds {b} dots. How many dots now?"),
+  join("picture", { figure: "ten-frame" })("{name} puts {a} counters on a ten-frame. {He} adds {b}. How many counters now?"),
+  away("picture", { figure: "ten-frame" })("{name} has {t} counters. {He} takes away {b}. How many counters does {name} have now?"),
+  tenFrame("{name} has {a} counters on a ten-frame. How many more counters fill it?"),
   // Bare facts.
   ...["{a} + {b} = ?", "? = {a} + {b}", "What is {a} + {b}?", "{a} and {b} make what?", "Add {a} and {b}. What do you get?", "Find {a} + {b}."]
     .map((f) => join("fact", { step: "never" })(f)),
@@ -116,9 +116,9 @@ export const FRAMES: readonly Frame[] = [
   // Equal groups and sharing.
   ...["{name} has {a} bags. Each bag holds {b} {thing}. How many {thing} does {he} have?", "{name} makes {a} rows of {b} {thing}. How many {thing} are in the rows?",
     "{name} has {a} boxes with {b} {thing} in each. How many {thing} does {he} have?", "{name} sets out {a} plates. Each plate has {b} {thing}. How many {thing} are there?"].map(groups("story")),
-  groups("picture", { figure: "array" })("{a} rows of {b} squares. How many squares?"),
-  groups("picture", { figure: "array" })("The array has {a} rows of {b}. How many squares?"),
-  groups("picture", { figure: "dots" })("{a} groups of {b} dots. How many dots?"),
+  groups("picture", { figure: "array" })("{name} draws {a} rows of {b} squares. How many squares did {he} draw?"),
+  groups("picture", { figure: "array" })("{name} makes an array of {a} rows of {b} squares. How many squares are in it?"),
+  groups("picture", { figure: "dots" })("{name} draws {a} groups of {b} dots. How many dots did {he} draw?"),
   ...["{a} × {b} = ?", "? = {a} × {b}", "What is {a} × {b}?", "Find {a} × {b}."].map((f) => groups("fact")(f)),
   ...["{name} shares {t} {thing} with {b} friends. Each friend gets the same. How many {thing} does each friend get?", "{name} puts {t} {thing} in {b} equal groups. How many {thing} are in each group?",
     "{name} puts {t} {thing} in bags of {b}. How many bags does {he} fill?", "{name} has {t} {thing}. {He} gives the same to each of {b} friends. How many {thing} does each friend get?"].map(share("story")),
@@ -171,7 +171,7 @@ export const PEOPLE = GIRLS.flatMap((g, i) => [g, BOYS[i]]);
 
 /** Words counted after the number 1, which take their singular. */
 const COUNTED = ["dots", "cats", "dogs", "groups", "bags", "rows", "boxes", "plates", "friends", "squares", "hops", "counters", "frogs", "birds", "ducks", ...THINGS];
-const PLURAL_AFTER_1 = new RegExp(`\\b1 ((?:red |blue |big |small )?)(${[...new Set(COUNTED)].join("|")})\\b`, "g");
+const PLURAL_AFTER_1 = new RegExp(`\\b1 ((?:red |orange |blue |big |small )?)(${[...new Set(COUNTED)].join("|")})\\b`, "g");
 /** One of each thing: after the number 1 a story counts one shell, not 1 shells. */
 const ONE: Record<string, string> = { leaves: "leaf", shoes: "shoe", boxes: "box" };
 const singular = (w: string) => ONE[w] ?? w.replace(/s$/, "");
@@ -207,8 +207,18 @@ export function fillFrame(f: string, n: FrameNumbers, name: string, thing: strin
     .replace(/\b1 are crossed\b/, "1 is crossed").replace(/\b1 hops up\b/, "1 hop up");
 }
 
-/** Words that end in s and are not things. */
-const NOT_PLURAL = new Set(["does", "has", "was", "his", "hers", "its", "this", "yes", "less", "gets", "finds", "sees", "puts", "takes", "gives", "loses", "brings", "wants", "needs", "holds", "draws", "makes", "sets", "comes", "crosses", "adds", "shares", "hops", "flies", "swims"]);
+/** Concrete things that quantity cards count. Number-line hops and place-value names are math, not things. */
+const REAL_THINGS = ["dots", "cats", "dogs", "bags", "boxes", "plates", "friends", "squares", "counters", "frogs", "birds", "ducks", ...THINGS];
+
+/** Check quantity questions on any page, at any level. Pure number questions have no counted thing. */
+export function quantityStoryProblem(text: string, facts: StoryFacts = {}): string | null {
+  const things = [...REAL_THINGS, ...(facts.thing ? [facts.thing] : []), ...(facts.things ?? [])];
+  // A geometric square or a square root is a curriculum term. Counted squares are things.
+  const wording = text.toLowerCase().replace(/\bsquare (?:roots?|units?|centimetres?|metres?|kilometres?|millimetres?|inches|feet)\b/g, "");
+  const nouns = new Set([...wording.matchAll(/\b(?:\d+(?:\.\d+)?|many|more|some|count the) (?:red |orange |blue |green |big |small )?([a-z]+)\b/g)].map((m) => m[1]));
+  const quantity = text.includes("?") && (/\b(?:dots?|counters?)\b/.test(wording) || things.some((thing) => nouns.has(thing) || nouns.has(singular(thing))));
+  return quantity ? storyProblem(text, facts) : null;
+}
 
 /** Words a story never uses (D-201): the question says "now" or asks plainly instead. */
 const STORY_BANNED = /\b(in all|altogether|total|left over)\b/i;
@@ -217,6 +227,8 @@ const STORY_BANNED = /\b(in all|altogether|total|left over)\b/i;
 export interface StoryFacts {
   /** The thing code planned the story to count ("plums"): the question must name it again. */
   thing?: string | null;
+  /** Concrete noun labels supplied by code, such as the two things a relation compares. */
+  things?: readonly string[];
 }
 
 /**
@@ -229,16 +241,17 @@ export function storyProblem(text: string, facts: StoryFacts = {}): string | nul
   const banned = text.match(STORY_BANNED);
   if (banned) return `a story never says "${banned[1].toLowerCase()}": ask "How many <things> does <name> have now?" or ask plainly`;
   if (!PEOPLE.some((n) => new RegExp(`\\b${n}\\b`).test(text))) return `a story has a person with a first name (the slot's planned name) and real things: "${PEOPLE[0]} has 2 plums.", never a bare "2 plums"`;
-  const thing = facts.thing;
-  if (thing) {
-    const sentences = text.split(/(?<=[.!?])\s+/);
-    const question = sentences.filter((x) => x.endsWith("?")).at(-1) ?? "";
-    const story = sentences.filter((x) => x !== question).join(" ");
-    const named = (x: string) => new RegExp(`\\b(${thing}|${singular(thing)})\\b`, "i").test(x);
-    // Or another plural thing the story names: "How many bags does he fill?" after "in bags of 5".
-    const plurals = (x: string) => new Set((x.toLowerCase().match(/\b[a-z]{3,}s\b/g) ?? []).filter((w) => !NOT_PLURAL.has(w)));
-    const counted = [...plurals(question)].some((w) => plurals(story).has(w));
-    if (named(story) && !named(question) && !counted) return `the question names the counted thing again: "How many ${thing} ...?"`;
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  const question = sentences.filter((x) => x.endsWith("?")).at(-1) ?? "";
+  const story = sentences.filter((x) => x !== question).join(" ");
+  const things = [...new Set([...(facts.thing ? [facts.thing] : []), ...(facts.things ?? []), ...REAL_THINGS])];
+  const storyWords = new Set(story.toLowerCase().match(/[a-z]+/g));
+  const questionWords = new Set(question.toLowerCase().match(/[a-z]+/g));
+  const named = (words: Set<string>, thing: string) => words.has(thing) || words.has(singular(thing));
+  const countedThings = things.filter((thing) => named(storyWords, thing));
+  // Sharing may ask for bags rather than their contents. Both must occur in the story.
+  if (countedThings.length && !countedThings.some((thing) => named(questionWords, thing))) {
+    return `the question names the counted thing again: "How many ${countedThings[0]} ...?"`;
   }
   return null;
 }

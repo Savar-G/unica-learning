@@ -10,7 +10,7 @@ import { curriculumFor } from "@/lib/workbook-curriculum";
 import { generateWorkbook, kindsOf, shapeOf, type FitCheck, type GenerateDeps, type GeneratedWorkbook } from "@/lib/workbook-generator";
 import { planLevel, planWorkbook, type WorkbookPlan } from "@/lib/workbook-plan";
 import { skillRange } from "@/lib/workbook-book";
-import { buildQuestion, choiceAsked, type SlotWording } from "@/lib/workbook-generator-items";
+import { buildQuestion, choiceAsked, pictureProblem, type SlotWording } from "@/lib/workbook-generator-items";
 import { aiTextProblem } from "@/lib/number-words";
 import { FRAMES, storyProblem } from "@/lib/workbook-wording";
 import { textRoom } from "@/lib/workbook-template";
@@ -651,7 +651,7 @@ describe("a book laid out for the templates: room, rules and the content left", 
   });
 
   it("works a panel's example from a count item's picture when no question has an operation, never an empty panel", async () => {
-    const write = writer((who, a, b) => ({ text: `${who} have dots. How many?`, format: "count", operation: null, easier: null, wrongAnswers: [], figure: "dots", numbers: [num(a), num(b)] }));
+    const write = writer((who, a, b) => ({ text: `Mia ${who} has dots. How many dots?`, format: "count", operation: null, easier: null, wrongAnswers: [], figure: "dots", numbers: [num(a), num(b)] }));
     const ai = fakeAiClient({ answer: (r) => fill(r, (s, q) => write(s, q)) });
     const draft = await laidOut(deps({ ai }));
     const panels = draft.pages.flatMap((p) => (p.content?.kind === "day" ? p.content.blocks : [])).filter((b) => b.slot === "watch-one" || b.slot === "worked-example");
@@ -756,7 +756,7 @@ describe("round 3 (#380): repeats, panel examples, items that do not match their
       const [a, b] = pairs[k % pairs.length];
       const n = c++;
       // A count prints the AI's words at U3 (round 7: code words a sum there), so its repeats are the AI's.
-      if (kind === "count") return goodItem(s, { text: `${NAMES[n % 20]} ${tag(n)} has dots. How many?`, format: "count", operation: null, easier: null, wrongAnswers: [], figure: "dots", numbers: [num(a), num(b)], ...over });
+      if (kind === "count") return goodItem(s, { text: `${NAMES[n % 20]} ${tag(n)} has dots. How many dots?`, format: "count", operation: null, easier: null, wrongAnswers: [], figure: "dots", numbers: [num(a), num(b)], ...over });
       return goodItem(s, {
         // Within a card's room (41 characters): a longer text goes to the redo to be written shorter (round 5).
         text: `${NAMES[n % 20]} ${tag(n)} has ${a}. ${b} more come. How many?`, operation: addOp(a, b),
@@ -831,7 +831,7 @@ describe("round 3 (#380): repeats, panel examples, items that do not match their
         for (const e of req(r).examples ?? []) asked.push({ panel: e.panel, skills: e.skills });
         // The examples are counts (dots of 2 and 2); the questions are additions.
         return { items: [...req(r).slots.map((s) => write(s, req(r))), ...(req(r).examples ?? []).map((e) => goodItem(e, {
-          text: "How many dots?", format: "count", operation: null, easier: null, wrongAnswers: [], figure: "dots", numbers: [num(2), num(2)],
+          text: "Mia draws dots. How many dots?", format: "count", operation: null, easier: null, wrongAnswers: [], figure: "dots", numbers: [num(2), num(2)],
         }))] };
       },
     });
@@ -906,7 +906,7 @@ describe("items whose kind does not match their text (round 3)", () => {
     let level = 10;
     expect(sum("Red 6, blue 4. How many red?", 6, 0).check).toMatchObject({ status: "failed", reason: expect.stringContaining("adding or taking away 0") });
     expect(sum("There are 7 cats: 3 and 4. How many?", 3, 4).check).toMatchObject({ status: "failed", reason: "the question gives its own answer (7) in its text: ask for it instead" });
-    expect(sum("3 cats and 4 dogs. How many pets?", 3, 4).check.status).toBe("checked");
+    expect(sum("Mia has 3 cats. She gets 4 more. How many cats does she have now?", 3, 4).check.status).toBe("checked");
     // At U3 code writes the text from the sum (round 7): never the answer, and adding 0 still fails.
     level = 3;
     const coded = sum("There are 7 cats: 3 and 4. How many?", 3, 4);
@@ -1031,7 +1031,7 @@ describe("round 4 (#380): relations, explicit pictures, kinds in turn, question 
       ...empty, slot: "1.1", skill: "K3-ten-frame", text, format: "write-number", operation: addOp(5, 2), figure: "ten-frame",
       wrongAnswers: [{ value: num(8), cause: "count", description: "x", step: null }], easier: { text: "Try a smaller sum.", operation: addOp(1, 1) },
     }, at("K3-ten-frame", 10));
-    expect(sum("Ten-frame: 5 dots and 2 more. How many?").check.status).toBe("checked");
+    expect(sum("Mia has 5 dots on a ten-frame. She adds 2. How many dots now?").check.status).toBe("checked");
     expect(sum("Ten-frame: 9 dots. How many?").check).toMatchObject({ status: "failed", reason: expect.stringContaining("the text says the picture shows 9, but it shows 5 and 2") });
   });
 
@@ -1284,7 +1284,7 @@ describe("round 5 (#380): code plans the book's numbers and names, rooms and row
     const write = short();
     let first: Record<string, unknown> | null = null;
     // A count prints the AI's words at U3 (code words a sum there, round 7): question 1.1 repeats the book's first one.
-    const count = (s: SlotAsked) => ({ ...empty, slot: s.slot, skill: s.skills[0], text: "Ava qq has dots. How many?", format: "count", figure: "dots", numbers: [num(2), num(3)] });
+    const count = (s: SlotAsked) => ({ ...empty, slot: s.slot, skill: s.skills[0], text: "Ava qq has dots. How many dots?", format: "count", figure: "dots", numbers: [num(2), num(3)] });
     const ai = fakeAiClient({
       answer: (r) => fill(r, (s) => {
         const item = write(s) as Record<string, unknown>;
@@ -1326,7 +1326,7 @@ describe("round 5 (#380): code plans the book's numbers and names, rooms and row
 
   it("writes a text past its room again, shorter; keeps the first version when the redo is not shorter, never failed for length", async () => {
     const write = short();
-    const long = (k: number) => `Ava ${tag(9000 + k)} has ${k + 2} red cars and 1 blue car in a box. How many cars are in the box?`;
+    const long = (k: number) => `Ava ${tag(9000 + k)} has ${k + 2} cars and 1 more car in a box. How many cars are in the box?`;
     // A count prints the AI's words at U3 (round 7: code words a sum there, within its room).
     const longItem = (k: number) => ({ text: long(k), format: "count", operation: null, easier: null, wrongAnswers: [], figure: "dots", numbers: [num(k + 2), num(1)] });
     const ai = fakeAiClient({
@@ -1428,13 +1428,13 @@ describe("round 6 (#380): the printed question asks what the answer key answers"
   it("writes a relation's text with each number beside its own label, whatever order the AI's text gave them", () => {
     // The AI's text says Mia has 9, but its data gives Mia 6: the printed text follows the data the answer comes from.
     const people = relation("Mia has 9 cars. Ben has 6. Who has more?", [6, 9], { kind: "more", to: [], labels: ["Mia", "Ben"] }, "K2-compare-quantities");
-    expect(people.package!.text).toMatch(/Mia has 6\. Ben has 9\. Who has more\?/);
+    expect(people.package!.text).toMatch(/Mia has 6 counters\. Ben has 9\. Who has more counters\?/);
     expect(choice(people).answer).toBe("Ben");
     const things = relation("3 dogs and 5 cats. Which group has fewer?", [5, 3], { kind: "fewer", to: [], labels: ["dogs", "cats"] }, "K2-compare-quantities");
-    expect(things.package!.text).toMatch(/^5 dogs and 3 cats\./);
+    expect(things.package!.text).toMatch(/^Mia sees 5 dogs and 3 cats\./);
     expect(things.package!.text).toMatch(/fewer/);
     expect(choice(things)).toMatchObject({ choices: ["dogs", "cats"], answer: "cats" });
-    expect(relation("x", [1, 4], { kind: "more", to: [], labels: ["cats", "dogs"] }, "K2-compare-quantities").package!.text).toMatch(/^1 cat and 4 dogs/);
+    expect(relation("x", [1, 4], { kind: "more", to: [], labels: ["cats", "dogs"] }, "K2-compare-quantities").package!.text).toMatch(/^Mia sees 1 cat and 4 dogs/);
   });
 
   it("writes a relation's text in its own kind when the AI's text asks another relation", () => {
@@ -1467,9 +1467,9 @@ describe("round 6 (#380): the printed question asks what the answer key answers"
 
   it("fails an operation whose numbers are not the ones its text names", () => {
     // "Gus finds 2 plums, then 5 more" worked as 2 + 6 would print 8 as the answer to 7.
-    expect(sum("Gus finds 2 plums, then 5 more. How many in all?", addOp(2, 6)).check).toMatchObject({ status: "failed", reason: expect.stringContaining("the text does not name 6") });
-    expect(sum("Gus finds 2 plums, then 5 more. How many in all?", addOp(2, 5)).check.status).toBe("checked");
-    expect(sum("8 cups. Mia takes 3. How many are left?", subOp(8, 3)).check.status).toBe("checked");
+    expect(sum("Gus finds 2 plums. He finds 5 more. How many plums did he find?", addOp(2, 6)).check).toMatchObject({ status: "failed", reason: expect.stringContaining("the text does not name 6") });
+    expect(sum("Gus finds 2 plums. He finds 5 more. How many plums did he find?", addOp(2, 5)).check.status).toBe("checked");
+    expect(sum("Mia has 8 cups. She takes away 3. How many cups does she have now?", subOp(8, 3)).check.status).toBe("checked");
     expect(sum("8 cups. Mia takes 3. How many are left?", subOp(9, 3)).check).toMatchObject({ status: "failed" });
     // Up to U9 code prints its own wording, which names only the numbers the operation works (round 7).
     const coded = sum("Mia has 3 cups and 2 hats. She gets 4 cups. How many cups?", addOp(3, 4), {}, "K5-take-away-change", 3);
@@ -1484,19 +1484,19 @@ describe("round 6 (#380): the printed question asks what the answer key answers"
 
   it("lets a picture show a number its text does not name", () => {
     const missing = (part: number, total: number) => ({ kind: "missing-addend", operands: [num(part), num(total)], expression: null, unit: null, denominator: null, values: [] });
-    const b = sum("How many more dots make 10?", missing(6, 10), { figure: "ten-frame", figureShows: "part", easier: { text: "6 + ? = 9", operation: missing(6, 9) } }, "K3-make-10");
+    const b = sum("Mia has dots on a ten-frame. How many more dots make 10?", missing(6, 10), { figure: "ten-frame", figureShows: "part", easier: { text: "6 + ? = 9", operation: missing(6, 9) } }, "K3-make-10");
     expect(b.check.status).toBe("checked");
     expect(sum("How many more make 10?", missing(6, 10), { easier: { text: "6 + ? = 9", operation: missing(6, 9) } }, "K3-make-10").check.status).toBe("failed");
   });
 
   it("writes an easier example's text from its operation when the AI's names other numbers", () => {
-    const b = sum("8 cups. Mia takes 3. How many are left?", subOp(8, 3), { easier: { text: "5 cups. Mia takes 2. How many are left?", operation: subOp(7, 3) } });
+    const b = sum("Mia has 8 cups. She takes away 3. How many cups does she have now?", subOp(8, 3), { easier: { text: "5 cups. Mia takes 2. How many are left?", operation: subOp(7, 3) } });
     expect(b.check.status).toBe("checked");
     expect(b.package!.easierExample).toMatchObject({ text: "7 - 3 = ?", answer: { type: "number", value: 4 } });
     // One that names its own numbers stays (at U10; at U1 to U9 code writes it from its operation, round 7).
-    expect(sum("8 cups. Mia takes 3. How many are left?", subOp(8, 3), { easier: { text: "7 cups. Mia takes 3. How many are left?", operation: subOp(7, 3) } }).package!.easierExample!.text)
+    expect(sum("Mia has 8 cups. She takes away 3. How many cups does she have now?", subOp(8, 3), { easier: { text: "7 cups. Mia takes 3. How many are left?", operation: subOp(7, 3) } }).package!.easierExample!.text)
       .toBe("7 cups. Mia takes 3. How many are left?");
-    expect(sum("8 cups. Mia takes 3. How many are left?", subOp(8, 3), { easier: { text: "7 cups. Mia takes 3. How many are left?", operation: subOp(7, 3) } }, "K5-take-away-change", 3).package!.easierExample!.text)
+    expect(sum("Mia has 8 cups. She takes away 3. How many cups does she have now?", subOp(8, 3), { easier: { text: "7 cups. Mia takes 3. How many are left?", operation: subOp(7, 3) } }, "K5-take-away-change", 3).package!.easierExample!.text)
       .toBe("7 - 3 = ?");
   });
 
@@ -1676,8 +1676,8 @@ describe("plain story language on a story place (D-201)", () => {
     expect(story("Raj has 3 apples and finds 4 more. How many apples in all?", 12).check).toEqual({ status: "failed", reason: expect.stringMatching(/never says "in all"/) });
     expect(story("3 apples. 4 more. How many apples are there now?", 12).check).toEqual({ status: "failed", reason: expect.stringMatching(/a person with a first name/) });
     expect(story("Raj has 3 apples. He finds 4 more. How many apples does Raj have now?", 12).check).toEqual({ status: "checked" });
-    // Off a story place, the same words are not checked for story language.
-    expect(story("3 apples. 4 more. How many apples are there now?", 12, {}).check).toEqual({ status: "checked" });
+    // Quantity questions on practice and review pages use the same checks.
+    expect(story("3 apples. 4 more. How many apples are there now?", 12, {}).check).toEqual({ status: "failed", reason: expect.stringMatching(/a person/) });
   });
 
   it("prints only a code wording with a person and the planned thing named again at U1 to U9", () => {
@@ -1718,10 +1718,10 @@ describe("round 7 (#380, R380-12-1): code writes the text where it can, a solve 
   };
 
   it("never prints the review's example at U3: code words add [7, 5] as a sum, from the same numbers as the key", () => {
-    const b = built("Mia has 7 shells. She gives away 5. How many does she have now?", addOp(7, 5), 3);
+    const b = built("Mia has 7 shells. She gives away 5. How many shells does she have now?", addOp(7, 5), 3);
     expect(b.check.status).toBe("checked");
     expect(b.package!.answer!.value).toEqual({ type: "number", value: 12 });
-    expect(b.package!.text).not.toBe("Mia has 7 shells. She gives away 5. How many does she have now?");
+    expect(b.package!.text).not.toBe("Mia has 7 shells. She gives away 5. How many shells does she have now?");
     expect((b.package!.text.match(/\d+/g) ?? []).map(Number).sort((x, y) => x - y)).toEqual([5, 7]);
     // Every wording code may print instead is a putting together of 7 and 5, never a take-away.
     expect(b.wordings!.length).toBeGreaterThan(5);
@@ -1773,7 +1773,7 @@ describe("round 7 (#380, R380-12-1): code writes the text where it can, a solve 
     const logs: SolveLog[] = [];
     const ai = fakeAiClient({
       answer: (r) => fill(r, (s, q) => (q.day === 1 && q.page === 1 && s.slot === "1.1"
-        ? goodItem(s, { text: "Mia has 7 shells. She gives away 5. How many does she have now?", operation: addOp(7, 5), easier: { text: "6 + 5 = ?", operation: addOp(6, 5) }, wrongAnswers: [{ value: num(2), cause: "operation", description: "x", step: null }] })
+        ? goodItem(s, { text: "Mia has 7 shells. She gives away 5. How many shells does she have now?", operation: addOp(7, 5), easier: { text: "6 + 5 = ?", operation: addOp(6, 5) }, wrongAnswers: [{ value: num(2), cause: "operation", description: "x", step: null }] })
         : goodItem(s))),
     });
     const draft = await generate(deps({ ai, solver, onSolve: (l) => logs.push(l) }));
@@ -1814,5 +1814,45 @@ describe("round 7 (#380, R380-12-1): code writes the text where it can, a solve 
     const late = numbered.filter((x) => x.day >= 9);
     expect(late.length).toBeGreaterThan(10);
     expect(late.filter((x) => !x.s.planned!.say).map((x) => x.s.place)).toEqual([]);
+  });
+});
+
+
+describe("quantity card checks at every level (D-201)", () => {
+  const raw = (text: string) => ({
+    slot: "1.1", skill: "K1-how-many", difficulty: 1, text, format: "count", operation: null, wrongAnswers: [], easier: null,
+    figure: "dots", numbers: [num(3)], places: null, direction: null, sequence: null, pattern: null, relation: null,
+  });
+  it.each(Array.from({ length: 30 }, (_, i) => i + 1))("rejects unsafe picture text at U%i, outside a story place", (level) => {
+    const place = { id: "q1", workbookId: WORKBOOK, page: 3, question: 1, level, skills: ["K1-how-many"] };
+    for (const text of ["3 dots. How many dots?", "Mia draws 3 dots. How many now?", "Mia draws 3 dots. How many dots in all?"]) {
+      expect(buildQuestion(raw(text), place).check.status, text).toBe("failed");
+    }
+    expect(buildQuestion(raw("Mia draws dots. How many dots did she draw?"), place).check).toEqual({ status: "checked" });
+  });
+
+  it("rewrites a failed practice quantity question before it can print", async () => {
+    const ai = fakeAiClient({ answer: (r) => fill(r, (s) => s.slot === "1.1" ? {
+      ...raw(r.name === "workbook_page" ? "Dots. How many dots?" : "Mia draws dots. How many dots?"),
+      slot: s.slot, skill: s.skills[0], numbers: [num(2), num(3)],
+    } : goodItem(s)) });
+    const result = await generateWorkbook(input, deps({ ai }));
+    if (result.status !== "stored") throw new Error(result.reason);
+    const question = result.draft.pages.find((p) => p.questions.length)!.questions[0];
+    expect(question.attempts).toBe(2);
+    expect(question.check).toEqual({ status: "checked" });
+    expect(question.package!.text).toBe("Mia draws dots. How many dots?");
+    expect(read(ai.requests.find((r) => r.name === "workbook_page_redo")!).note).toMatch(/a person with a first name/);
+  });
+
+  it("rejects red dots and checks each printed colour's quantity", () => {
+    expect(pictureProblem("Mia has 3 blue counters. How many counters?", { kind: "ten-frame", counters: [3] })).toBeNull();
+    expect(pictureProblem("Mia has 3 orange counters. How many counters?", { kind: "ten-frame", counters: [3] })).toMatch(/picture shows 0/);
+    expect(pictureProblem("Mia has 4 orange and 3 blue counters. How many counters?", { kind: "ten-frame", counters: [3, 4] })).toMatch(/picture shows 3/);
+    for (const f of [{ kind: "dots" as const, groups: [3, 4], takenAway: 0 }, { kind: "ten-frame" as const, counters: [3, 4] }]) {
+      expect(pictureProblem("Mia draws 3 red dots and 4 blue dots. How many dots?", f)).toMatch(/says red/);
+      expect(pictureProblem("Mia draws 4 orange dots and 3 blue dots. How many dots?", f)).toMatch(/picture shows 3/);
+      expect(pictureProblem("Mia draws 3 orange dots and 4 blue dots. How many dots?", f)).toBeNull();
+    }
   });
 });

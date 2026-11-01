@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FRAMES, fillFrame, GIRLS, BOYS, storyProblem, THINGS } from "@/lib/workbook-wording";
+import { FRAMES, fillFrame, GIRLS, BOYS, storyProblem, quantityStoryProblem, THINGS } from "@/lib/workbook-wording";
 
 // Plain story language (D-201): code's own story wordings keep every rule, and storyProblem refuses a story that breaks
 // one it can check exactly.
@@ -52,5 +52,33 @@ describe("storyProblem", () => {
     expect(storyProblem("Gus has 2 plums. He finds 5 more. How many does he have now?", { thing: "plums" })).toMatch(/names the counted thing again/);
     expect(storyProblem("Gus has 2 plums. He finds 5 more. How many plums does he have now?", { thing: "plums" })).toBeNull();
     expect(storyProblem("Gus has 1 leaf. He finds 5 more. How many leaves does he have now?", { thing: "leaves" })).toBeNull();
+  });
+});
+
+
+describe("quantity questions on practice and review cards", () => {
+  it("gives every picture frame a person and repeats its counted thing", () => {
+    for (const f of FRAMES.filter((x) => x.kind === "picture")) {
+      expect(f.f).toContain("{name}");
+      const text = fill(f.f);
+      expect(quantityStoryProblem(text, { thing: "plums" }), text).toBeNull();
+    }
+  });
+
+  it("checks the picture noun even when the slot planned a different thing", () => {
+    expect(quantityStoryProblem("Mia draws 3 dots. How many now?", { thing: "shells" })).toMatch(/names the counted thing again/);
+    expect(quantityStoryProblem("Count the dots. How many?")).toMatch(/a person/);
+    expect(quantityStoryProblem("Mia draws dots. How many?")).toMatch(/names the counted thing again/);
+    expect(quantityStoryProblem("10 counters. Take away 2. How many counters now?")).toMatch(/a person/);
+    expect(quantityStoryProblem("Mia has 10 counters. She takes away 2. How many counters does Mia have now?")).toBeNull();
+    for (const phrase of ["in all", "altogether", "total", "left over"]) {
+      expect(quantityStoryProblem(`Mia has 3 dots. How many dots ${phrase}?`)).toMatch(/never says/);
+    }
+  });
+
+  it("keeps number sentences and curriculum math questions", () => {
+    for (const text of ["5 + 4 = ?", "? = 1 + 3", "What is 3 × 4?", "How many hops from 3 to 8?", "How many tens and ones?", "What is the square root of 16?", "What is the perimeter of a square?", "How many square centimetres are in 2 square metres?"]) {
+      expect(quantityStoryProblem(text), text).toBeNull();
+    }
   });
 });

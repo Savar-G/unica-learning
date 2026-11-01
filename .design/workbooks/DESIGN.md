@@ -307,8 +307,9 @@ From the FigJam stickies beside the Mateo sample:
 
 ## 9. Plain story language (D-201)
 
-Every story question at every level (word problems, picture stories, the Mixed set) uses linguistic modification:
-everyday words simplified, the math kept.
+Every story question at every level uses plain language. This includes picture cards on practice and review pages,
+word problems, picture stories and the Mixed set. Bare number sentences and pure equation cards stay as equations.
+Simplify everyday words and keep the math.
 
 1. A person with a first name and real things: "Gus has 2 plums.", never bare counts such as "2 plums" or "9 dots".
 2. One action per sentence: "He finds 5 more."
@@ -318,6 +319,7 @@ everyday words simplified, the math kept.
 5. The math words the curriculum teaches stay ("ten-frame", "take away"); only everyday words are simplified.
 
 At U1 to U9 code writes every story (`src/lib/workbook-wording.ts`). From U10 the AI writes them under these rules, and
-code refuses a story with a banned phrase, with no person, or (when code planned it) whose question does not name the
-counted thing again: the question is written again, never printed.
+code refuses a quantity question on any page with a banned phrase, with no person, or whose question does not name
+the counted thing again when code knows the noun. The question is written again, never printed. The picture uses the
+same counts and colours as the text. The real fit check refuses any card with more than 3 lines at every level.
 

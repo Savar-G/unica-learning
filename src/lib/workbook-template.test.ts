@@ -4,7 +4,7 @@ import { packageItem } from "@/lib/question-package";
 import { workbookProblem } from "@/lib/workbook-content";
 import { renderWorkbook, type DraftPage, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleBook } from "@/lib/workbook-sample-book";
-import { workbookTemplate } from "@/lib/workbook-template";
+import { bandOf, workbookTemplate } from "@/lib/workbook-template";
 
 // The workbook templates (#310) through the renderer with the fake print engine: every page type of the sample books
 // has a layout and prints its number and QR code, the rendered book is one the store takes, and the template's fit
@@ -160,14 +160,19 @@ describe("the fit check", () => {
     expect(wide.status === "failed" && wide.problems.some((x) => x.slot === "title" && /does not fit on one line/.test(x.reason))).toBe(true);
   });
 
-  it("fails a card whose question text takes more than 3 lines (D-201)", async () => {
-    const early = book("U2");
-    const parent = early.pages.find((p) => p.type === "parent-led" && p.questions.length > 0)!;
-    const n = parent.questions[0].number;
-    const lines = (k: number) => fakePrintEngine({ rects: { ...AREA, [`1 question-${n}`]: { x: 64, y: 290, width: 330, height: 200 }, [`1 question-${n}-content`]: { x: 110, y: 300, width: 260, height: 28 * k }, [`1 question-${n}-answer`]: { x: 110, y: 420, width: 64, height: 56 } } });
-    const three = await render(only(early, parent), lines(3));
+  it.each(Array.from({ length: 30 }, (_, i) => i + 1))("enforces 3 lines on a card at U%i (D-201)", async (level) => {
+    const draft = book(`U${level}`);
+    const page = draft.pages.find((p) => p.questions.length && p.content?.kind === "day"
+      && p.content.blocks.some((b) => level <= 3 || ["picture-stories", "show-what-you-know"].includes(b.slot)))!;
+    const c = page.content!;
+    if (c.kind !== "day") throw new Error("not a day page");
+    const block = c.blocks.find((b) => b.items.length && (level <= 3 || ["picture-stories", "show-what-you-know"].includes(b.slot)))!;
+    const n = block.items[0];
+    const lineHeight = bandOf(level).body * 1.4;
+    const lines = (k: number) => fakePrintEngine({ rects: { ...AREA, [`1 question-${n}`]: { x: 64, y: 290, width: 330, height: 200 }, [`1 question-${n}-content`]: { x: 110, y: 300, width: 260, height: lineHeight * k }, [`1 question-${n}-answer`]: { x: 110, y: 420, width: 64, height: 56 } } });
+    const three = await render(only(draft, page), lines(3));
     expect(three.status === "failed" ? three.problems.filter((x) => /lines on its card/.test(x.reason)) : []).toEqual([]);
-    const four = await render(only(early, parent), lines(4));
+    const four = await render(only(draft, page), lines(4));
     expect(four.status === "failed" && four.problems.filter((x) => /lines on its card/.test(x.reason)).map((x) => x.question)).toEqual([n]);
   });
 

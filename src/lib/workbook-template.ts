@@ -1068,7 +1068,7 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
 
   // A card's question text (D-201): at most CARD_LINES lines, so a story in full sentences never runs over its card.
   for (const b of c.blocks) {
-    if (!(band.name === "parent" || b.slot === "picture-stories")) continue;
+    if (!(band.name === "parent" || ["picture-stories", "fix-it", "show-what-you-know", "level-test", "challenge"].includes(b.slot))) continue;
     for (const n of b.items) {
       const m = measured.get(`question-${n}-content`);
       const lines = m ? Math.round(m.height / (band.body * 1.4)) : 0;
