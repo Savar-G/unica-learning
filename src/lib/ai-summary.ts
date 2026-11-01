@@ -5,7 +5,7 @@ import { PARENT_NOT_YOURS, PARENT_NOTE, PARENT_YOURS } from "@/lib/parent";
 import { SITE_URL } from "@/lib/metadata";
 import { resourcePath, RESOURCES } from "@/lib/resources";
 import { blogPath, BLOG_POSTS } from "@/lib/blog";
-import { BRAND, PLANS, cad } from "@/lib/site";
+import { ADDITIONAL_CHILD_PRICE, BRAND, OFFER_ENDS, PLANS, cad } from "@/lib/site";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 
 const url = (path: string) => `${SITE_URL}${path}`;
@@ -18,15 +18,17 @@ Prices are in Canadian dollars. Delivery across Canada is included. There is one
 ## ${PLANS.one.name} (${PLANS.one.note})
 - Price: CAD ${cad(PLANS.one.price)} per month
 - First month: free
+- Offer ends: ${OFFER_ENDS}
+- Each additional child: CAD ${cad(ADDITIONAL_CHILD_PRICE)} per month
 - Includes: 2 personalized math workbooks a month, one every two weeks; the Unica app for parents to scan finished pages and see progress and for children to talk with the Teaching Assistant when stuck; delivery
 
 ## Terms
 - The online math assessment is free and comes before any plan or card. Every family in Canada can take the free online math assessment. Start at ${url("/start")}
 - After the report, families across Canada can choose the plan and add a card. Nothing is charged when the card is added. The first month is free, starting when the first workbook ships; the monthly price is charged on day 30, then monthly until you cancel.
 - Cancel before day 30 and you pay nothing. A reminder email comes 7 days before the first charge, with a link to manage or cancel the plan.
-- Cancel anytime. Pause for a week, a month or longer.
+- Cancel anytime. Contact us to arrange a pause of up to two months a year.
 
-More: ${url("/#price")}
+More: ${url("/pricing")}
 `;
 }
 
@@ -66,6 +68,8 @@ Parents in Canada with a child aged 5 to 14 who want math practice on paper, at 
 - Details: ${url("/pricing.md")}
 
 ## Pages
+- [Math program pricing](${url("/pricing")}): monthly prices, sibling discount, free first month, payment timing and cancellation
+- [How the free assessment works](${url("/math-assessment")}): what it checks, how to start and what the report includes
 - [Home](${url("/")}): what ${BRAND} is, how it works, pricing and FAQ
 - [Free math assessment](${url("/start")}): create a parent account and start the free online math assessment
 - [Our story](${url("/our-story")}): why we built ${BRAND}
