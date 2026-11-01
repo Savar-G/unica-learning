@@ -195,15 +195,21 @@ export function keyForms(key: string): Set<string> {
 }
 
 /**
+ * The word answers whose case never matters ("Even" is "even"). Every other key keeps its case, because a unit can look
+ * like a word: "ML" is not "mL", "Mg" is not "mg", "Pa" is not "pA".
+ */
+const WORD_ANSWERS = new Set(["yes", "no", "true", "false", "even", "odd", "more", "less", "fewer", "same", "equal", "different", "greater", "smaller", "bigger", "longer", "shorter", "heavier", "lighter", "taller", "both", "neither", "none", "all", "right", "wrong", "correct", "incorrect", "possible", "impossible", "likely", "unlikely", "certain"]);
+
+/**
  * Whether the solver's answer is one the key counts as right. A choice must be the right option as printed (case kept, so "1 ML" is never "1 mL");
- * a box answer must be one of the forms code writes for the key or an accepted alternative (keyForms). A word-only key
- * ("even") is compared without case. Nothing else passes: no unit is converted, assumed or added, and no number is read
+ * a box answer must be one of the forms code writes for the key or an accepted alternative (keyForms). Only a listed
+ * word answer (WORD_ANSWERS: "even") is compared without case. Nothing else passes: no unit is converted, assumed or added, and no number is read
  * from the answer.
  */
 export function sameAnswer(given: string, right: string[], choice: boolean): boolean {
   const g = even(given);
   if (choice) return right.some((r) => even(r) === g);
-  return right.some((r) => (/^[a-z ]+$/i.test(even(r)) ? even(r).toLowerCase() === g.toLowerCase() : keyForms(r).has(g)));
+  return right.some((r) => keyForms(r).has(g) || (WORD_ANSWERS.has(even(r).toLowerCase()) && even(r).toLowerCase() === g.toLowerCase()));
 }
 
 /** The output schema: an answer for each box of each question, and a problem when a question cannot be answered. */

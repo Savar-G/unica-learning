@@ -177,6 +177,11 @@ describe("the solve check", () => {
     expect(sameAnswer("−12", ["−12"], false)).toBe(true);
     expect(sameAnswer("-12.", ["−12"], false)).toBe(true);
     expect(sameAnswer("Even", ["even"], false)).toBe(true);
+    expect(sameAnswer("mL", ["ML"], false)).toBe(false);
+    expect(sameAnswer("mg", ["Mg"], false)).toBe(false);
+    expect(sameAnswer("pA", ["Pa"], false)).toBe(false);
+    expect(sameAnswer("ML", ["ML"], false)).toBe(true);
+    expect(sameAnswer("YES", ["yes"], false)).toBe(true);
     expect(sameAnswer("1 h 30 min", ["1 h 30 min"], false)).toBe(true);
     expect(sameAnswer("1h 30min", ["1 h 30 min"], false)).toBe(true);
     expect(sameAnswer("90 min", ["1 h 30 min"], false)).toBe(false);
