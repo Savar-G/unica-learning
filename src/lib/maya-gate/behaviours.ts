@@ -44,13 +44,13 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "C02",
-    title: "Says 56: not accepted; the ones and the extra ten are checked",
+    title: "Says 56: not accepted; the ones are checked, and where the extra ten comes from is explained",
     fixture: "A",
     status: "passing",
     steps: [
       child("I got 56.", { start: "has_work", answers: [[56, "result", "wrong"]] }, [{ act: "guide", level: 0 }]),
       child("Seven plus nine is 16.", { answers: [[16, "ones", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
-      child("Two plus three is 5.", { answers: [[5, "tens", "wrong"]] }, [{ act: "guide", level: 1, lines: ["check.not_yet", "step.point"] }]),
+      child("Two plus three is 5.", { answers: [[5, "tens", "wrong"]] }, [{ act: "guide", level: 1, lines: ["check.not_yet", "step.regroup"] }]),
       child("Plus the extra one, that's 6. So 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
       ...solvedEnd(),
     ],
@@ -62,18 +62,18 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "C03",
-    title: "Right ones, lost ten: the missing ten is named, no new example",
+    title: "Right ones, lost ten: where the missing ten comes from is explained, no new example",
     fixture: "A",
     status: "passing",
     steps: [
       child("7 plus 9 is 16. I wrote 6, then 2 plus 3 is 5.", { start: "has_work", answers: [[16, "ones", "right"], [5, "tens", "wrong"]] }, [
-        { act: "guide", level: 2, lines: ["check.right_step", "check.not_yet", "step.operation"] },
+        { act: "guide", level: 1, lines: ["check.right_step", "check.not_yet", "step.regroup"] },
       ]),
       child("2 plus 3 plus 1 is 6. So 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
       ...solvedEnd(),
     ],
     expect: {
-      outcome: { reason: "solved", assistance: "hint", highestHint: 2 },
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
       acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
       never: ["example_step"],
     },

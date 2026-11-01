@@ -19,8 +19,14 @@ const WORD_VALUES = new Map<string, number>([
 const CHANGES = /^(?:halfs?|halves|thirds?|quarters?|fourths?|fifths?|sixths?|sevenths?|eighths?|ninths?|tenths?|hundredths?|thousandths?|millions?|billions?|trillions?|zillions?|gazillions?|lakhs?|crores?|dozens?|squared?|cubed?|roots?|sqrt|factorial|percent|power|twice|double|triple|decimal|dot|%|\^|[\u00B2\u00B3\u00B9\u2070-\u2079])$/;
 /** Words that join a value-changing word to its number ("half of 66", "66 and a half", "square root of 66"). */
 const LINK = /^(?:of|a|an|the|and)$/;
-/** Place words right after a number ("66 tens"): they change its value, a form code does not read yet. */
+/**
+ * Place words right after a number. After a digit or a teen ("6 tens", "sixteen ones") they name the digits of a column,
+ * as a child says a step ("I got 6 tens"): the number is kept as that step's value, but it is never the final answer.
+ * After a bigger number ("66 tens") they change its value: a form code does not read yet.
+ */
 const PLACE = /^(?:ones|tens|hundreds|thousands)$/;
+/** The largest number a place word may follow as a column's digits ("19 ones"); above it the form is unreadable. */
+const PLACED_MAX = 19;
 /**
  * Operations between two numbers ("27 minus 66", "27 + 66", "27 take away 66"): the second number is part of the
  * operation, not an answer. "minus" and "-" are read with the signs below.
@@ -65,6 +71,8 @@ export interface NumbersRead {
   unreadable: boolean;
   /** The last number is the second number of an operation ("27 minus 66"), so it is not an answer the child kept. */
   lastInOperation: boolean;
+  /** The last number is followed by a place word ("6 tens"): a column's digits, never the final answer. */
+  lastPlaced: boolean;
 }
 
 /**
@@ -81,6 +89,8 @@ export function readNumbers(text: string): NumbersRead {
   const items: (number | "bar" | "rem")[] = [];
   /** For each number in items: it is the second number of an operation. */
   const operands = new Map<number, boolean>();
+  /** The numbers in items a place word follows ("6 tens"). */
+  const placed = new Set<number>();
   let inOperation = false;
   let total = 0;
   let current = 0;
@@ -129,7 +139,15 @@ export function readNumbers(text: string): NumbersRead {
       if (linked(i)) unreadable = true;
       continue;
     }
-    if ((token === "to" && next === "the" && (afterNumber || last !== null)) || (PLACE.test(token) && (afterNumber || last !== null))) {
+    if (PLACE.test(token) && (afterNumber || last !== null)) {
+      flush();
+      const at = items.length - 1;
+      const n = items[at];
+      if (typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= PLACED_MAX) placed.add(at);
+      else unreadable = true;
+      continue;
+    }
+    if (token === "to" && next === "the" && (afterNumber || last !== null)) {
       unreadable = true;
       continue;
     }
@@ -215,12 +233,14 @@ export function readNumbers(text: string): NumbersRead {
 
   const values: AnswerValue[] = [];
   let lastInOperation = false;
+  let lastPlaced = false;
   const whole = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n);
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
     if (typeof item !== "number") continue;
     const [between, after] = [items[i + 1], items[i + 2]];
     lastInOperation = operands.get(i) ?? false;
+    lastPlaced = placed.has(i);
     if (between === "bar" && whole(item) && whole(after) && after > 0) {
       values.push({ type: "fraction", numerator: item, denominator: after });
       i += 2;
@@ -231,7 +251,7 @@ export function readNumbers(text: string): NumbersRead {
       values.push({ type: "number", value: item });
     }
   }
-  return { values, unreadable, lastInOperation };
+  return { values, unreadable, lastInOperation, lastPlaced };
 }
 
 /** The numbers, fractions and remainder answers in a text, in order (readNumbers). */
@@ -401,6 +421,12 @@ export interface AnswerRead {
   /** The turn offers numbers as a choice ("is it 66 or 56?"): none of them is the child's answer yet. */
   choice: boolean;
   /**
+   * The numbers kept outside the child's explanations, in order: what the child gave as answers, and not as reasons.
+   * A wrong final answer the child said among them may be judged wrong even when a later number is the final one
+   * ("I got 56. I did 7 plus 9 is 16 ... 2 plus 3 is 5"); it is never accepted as right.
+   */
+  outside: AnswerValue[];
+  /**
    * The child committed (R391-5): no doubt ("maybe", "?", "or something") and the final answer stands among plain answer
    * words (committedFinal). A number the child was not sure of may be judged wrong, never accepted as right.
    */
@@ -419,6 +445,8 @@ const ANSWER_WORDS = new Set([
   "are", "there", "here", "wrote", "write", "down", "done", "a", "an", "of", "on", "one", "mean", "meant", "groups", "group",
   "rows", "row", "lots", "sets", "set", "each", "left", "over", "remainder", "r", "whole", "number", "altogether", "but",
   "said", "just", "really", "actually", "wait", "no", "point", "zero",
+  // Where the answer went, and how a child ends a turn ("I got 66. I wrote it on my paper.", "I'm done. Thanks, Maya!").
+  "paper", "page", "board", "sheet", "notebook", "finished", "thanks", "yay", "hooray", "woohoo", "yippee", "maya",
 ]);
 /** Words of ordinary math talk after an answer ("I carried the ten", "I added the ones first", "I counted on my fingers"). */
 const MATH_WORDS = new Set([
@@ -433,7 +461,7 @@ const UNIT_WORD = /^(?:mm|cm|dm|m|km|g|kg|mg|ml|l|(?:milli|centi|deci|kilo)?(?:m
 
 /** Every word of a clause is a plain answer word, a number word, a place, an operation, a filler or a unit. */
 function plainClause(clause: string): boolean {
-  const words = clause.toLowerCase().replace(/[’]/g, "'").replace(/[^\w'$¢%.+×÷=\/-]+/g, " ").trim().split(/\s+/).filter(Boolean);
+  const words = clause.toLowerCase().replace(/\bthank you\b/g, "thanks").replace(/[’]/g, "'").replace(/[^\w'$¢%.+×÷=\/-]+/g, " ").trim().split(/\s+/).filter(Boolean);
   return words.every((w) => {
     const bare = w.replace(/^[.'-]+|[.'-]+$/g, "");
     if (!bare) return true;
@@ -484,19 +512,19 @@ const EXPLANATION_ALL = /\b(?:because|since|cause|cuz|coz)\b/gi;
  */
 export function readAnswer(text: string): AnswerRead {
   const committed = committedText(text);
-  if (offersChoice(committed)) return { kept: [], final: null, choice: true, sure: false };
+  if (offersChoice(committed)) return { kept: [], final: null, choice: true, sure: false, outside: [] };
   const all = readNumbers(committed);
   const answer = readNumbers(withoutExplanations(committed));
   // A correction word in an unclear shape after a number, or a negative anywhere, leaves no final answer: Maya asks
   // (R391-2, R391-3).
   const unsure = unclearCorrection(text) || negativeNearAnswer(text);
-  const final = unsure || answer.unreadable || answer.lastInOperation ? null : answer.values[answer.values.length - 1] ?? null;
+  const final = unsure || answer.unreadable || answer.lastInOperation || answer.lastPlaced ? null : answer.values[answer.values.length - 1] ?? null;
   // An unclear correction keeps no number at all, so no step answer is taken from the turn either (R391-2).
   const kept = unsure ? [] : all.unreadable ? answer.values : all.values;
   // Sure: no doubt anywhere from the first number on, and the final answer stands only among plain answer words.
   // The explanation is read too, so nothing can hide behind "because" (R391-8-2).
   const sure = !unsure && !doubtNearAnswer(text) && committedFinal(withoutExplanations(committed)) && plainExplanations(committed);
-  return { kept, final, choice: false, sure };
+  return { kept, final, choice: false, sure, outside: unsure ? [] : answer.values };
 }
 
 /** The text has a number form code cannot read outside the child's explanations: confirm it before judging (D-199). */
