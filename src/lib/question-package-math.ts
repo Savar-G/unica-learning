@@ -542,7 +542,8 @@ export function stepText(step: WorkedStep, operation: Operation): string {
       return zeros === 0 ? line : `${line} It starts with ${zeros} ${zeros === 1 ? "zero" : "zeros"} because the ${multiplier} is in the ${row}.`;
     }
     case "place-point":
-      return `The numbers have ${step.decimals} decimal ${step.decimals === 1 ? "place" : "places"} in all, so ${step.product} becomes ${step.value}.`;
+      // Plain language (D-202): never "in all".
+      return `Together, the numbers have ${step.decimals} decimal ${step.decimals === 1 ? "place" : "places"}. So ${step.product} becomes ${step.value}.`;
     case "divide-digit": {
       const { place, digit, current, quotient, write, product, remainder } = step;
       const divisor = operation.operands[1] as number;

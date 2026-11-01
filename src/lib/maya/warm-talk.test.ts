@@ -542,6 +542,15 @@ describe("R374-4-1: with freeTalk off (the default), every word Maya says comes 
         expect(PHRASES.frustrated.filter((p) => !p.includes("{echo}")).map(bare)).toContain(said.text);
       }
     });
+
+    it("never echoes a banned plain-language phrase (D-202)", () => {
+      for (const echo of ["left over", "altogether", "in all"]) {
+        const c = call();
+        c.child("I had left over pizza, altogether it was the best in all the world.");
+        const said = c.say({ act: "clarify", parts: [{ warm: "food", echo }] });
+        expect(PHRASES.food.filter((p) => !p.includes("{echo}")).map(bare), echo).toContain(said.text);
+      }
+    });
   });
 
   it("can say or show nothing but code lines, bank phrases, echo frames of the child's words, and the safety guidance, on every channel", () => {

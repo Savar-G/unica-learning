@@ -115,6 +115,7 @@ Counts read from each saved trace: Maya turns, outputs, silent turns, refusals, 
 | FT8 | A | passing | The review call fails: a bank phrase (an error counts as a fail) | solved, independent |  |
 | FT9 | A | passing | The review does not answer in time: a bank phrase (a time-out counts as a fail) | solved, independent |  |
 | FT10 | A | passing | Free talk beside a math line: refused (free_talk_in_math_turn), then the bank's warm talk | solved, independent |  |
+| FT11 | A | passing | Free talk with a banned everyday phrase ('Oh, so many toys all together!'): the code guards refuse it (D-202), the review is not asked, a bank phrase | solved, independent |  |
 | M1 | A | passing | The model fails at one turn: code's fallback speaks; the call goes on | solved |  |
 | M2 | A | passing | The model builds its own board commands: refused (board_not_code), then repaired | solved |  |
 | M3 | A | passing | The model says math in its own words twice: refused, then code's fallback | child_stopped |  |

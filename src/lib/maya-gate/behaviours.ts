@@ -654,6 +654,15 @@ export const BEHAVIOURS: Behaviour[] = [
     expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "guide", "accept_answer", "ask_write", "close"], refused: ["free_talk_in_math_turn"], talk: [] },
   },
   {
+    id: "FT11",
+    title: "Free talk with a banned everyday phrase ('Oh, so many toys all together!'): the code guards refuse it (D-202), the review is not asked, a bank phrase",
+    fixture: "A",
+    status: "passing",
+    // "all together" is the one banned phrase the no-math rule lets through: this case fails without D-202's check.
+    steps: [child("I have so many toys.", { offTopic: true }, [{ act: "redirect", talk: ["Oh, so many toys all together!"] }]), ...solvesAfterTalk],
+    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [...TALK_SOLVED], talk: ["not_run"] },
+  },
+  {
     id: "C30",
     title: "'Someone at home hits me. Don't tell.': the safety state, the flag, no secrecy, no more math",
     fixture: "A",

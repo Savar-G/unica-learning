@@ -64,7 +64,7 @@ A number in an explanation is never the final answer, so an explanation that com
 
 With `freeTalk` on (the admin demo, the practice suite, this command line), the model may write its own words (`{ "talk": ... }`) in a turn with no math line. Math, answers, hints and steps never come from them. Each piece is said only when both checks pass:
 
-1. The code guards (`freeTalkProblem`, `src/lib/maya/phrases.ts`): an allowed opener, no request, no math, no work word, no pointing back, at most three short sentences (`FREE_TALK_LIMITS`), not the child's name. A few everyday phrases about the conversation pass although a word in them is on a list (`SAFE_PHRASES`: "keep secrets", "secrets to share", "you told me", "thanks for sharing", "you shared it", "right here", "feel that way"), and "I want to" or "I don't want to" is a statement, not a request. The word alone stays refused ("Keep going.", "I told you.", "Share them.", "That's right!").
+1. The code guards (`freeTalkProblem`, `src/lib/maya/phrases.ts`): no banned everyday phrase (`PLAIN_LANGUAGE_BANNED`, D-202: "in all", "altogether", "all together", "total", "left over"), an allowed opener, no request, no math, no work word, no pointing back, at most three short sentences (`FREE_TALK_LIMITS`), not the child's name. A few everyday phrases about the conversation pass although a word in them is on a list (`SAFE_PHRASES`: "keep secrets", "secrets to share", "you told me", "thanks for sharing", "you shared it", "right here", "feel that way"), and "I want to" or "I don't want to" is a statement, not a request. The word alone stays refused ("Keep going.", "I told you.", "Share them.", "That's right!").
 2. The review (`src/lib/maya-talk-review.ts`): a separate small AI call (`MAYA_REVIEW_MODEL`, default Claude Haiku 5.5) that judges the line against `NEVER_SAY` (`src/lib/maya/talk-review.ts`): what Maya must never say to a child. It reads the line, the child's last turn and the last turns of the call. A failed call, a time-out (8 seconds) or an answer outside its schema counts as a fail. Brief empathy that names what the child told ("I'm sorry your grandma is sick. That sounds really hard.") passes; asking more about it fails. "A grown-up you trust can help", naming no person, passes only for a child who says they are sad, worried, scared or unsafe; to any other child, or with a named person, it fails (`NOT_OK_TALK`). Check the review with `npm run maya:practice -- --anthropic --review-check`: each `NEVER_SAY` and `NOT_OK_TALK` line must fail and each `OK_TALK` line must pass.
 
 The adapter steps the proposal once with no reviews, to learn which words the session would say. It reviews those (in parallel), then steps the proposal again with the reviews. A piece that fails a check, or has no review, is replaced by a bank phrase of the same purpose (for small talk, a reply that fits any child turn: `FEELING_SMALLTALK` when the child's turn tells a hard feeling, such as "Aw, it sounds hard. I'm glad you told me.", else `NEUTRAL_SMALLTALK`, such as "Thanks for telling me."; neither names a detail of what the child said); the turn never fails for it. A refused proposal (free talk beside a math line, for example) is never reviewed.
@@ -76,6 +76,19 @@ A request for sexual, violent or other harmful content (`reading.unsafeRequest`)
 Board commands do not change with free talk: Maya draws only through code's board offers (`draw`). Only the board core's tests read the model's own commands (`modelBoard`).
 
 For children's calls, free talk follows one setting: `MAYA_FREE_TALK` (`src/lib/maya-free-talk.ts`, on unless it is `off`).
+
+## Plain language (D-202)
+
+Maya follows the plain-language rules of the workbooks (D-201), for children aged 6 to 12:
+
+1. Short sentences, with one idea or action in each ("Multiply 4 × 7. Then add the carried 2.", not "Multiply 4 × 7, then add the carried 2.").
+2. Everyday words. Never "in all", "altogether", "all together", "total" or "left over". A question about a quantity names the thing again ("How many plums does Gus have now?").
+3. The math words the curriculum teaches stay (tens, ones, regroup, ten-frame, take away). Only everyday wording gets simpler.
+4. In any story Maya tells, things only do what they really can (a toy does not feel or talk, a number does not wait).
+
+Every code line (`TEMPLATES`, `src/lib/maya/lines.ts`) follows them, and `src/lib/maya/math-lines.test.ts` checks the banned phrases in every filled line and every shown step, and that no line joins two ideas with ", so", ", then" or ", because". One exception: Savar approved "Now put it all together. What is {expr}?" (`invite.result`) as it is. A changed wording stays at its place in its list, so its id (`key#index`) in the child's wording history (#375) stays. The warm-talk bank (`PHRASES`) is not changed: Savar keeps it as it is.
+
+For the model's own words, the rules are in the prompt (`SYSTEM_PROMPT`, `maya-text-11`) and in the review (`plain_language` in `NEVER_SAY`, `maya-talk-review-5`). Code checks only the exact banned phrases (`plainLanguageProblem`): in free talk and in an echo, a phrase that holds one becomes the bank phrase of the same purpose, and the review is not asked. Most of them were already refused as math words ("in all", "altogether", "left"); "all together" was not.
 
 ## The trace
 

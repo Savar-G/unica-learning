@@ -300,7 +300,8 @@ function openerProblem(sentence: string, names: ReadonlySet<string>): string | n
 }
 
 /**
- * Why free talk fails the guards of rule B, or null when it passes: the length cap; a sentence that does not start as a
+ * Why free talk fails the guards of rule B, or null when it passes: the length cap; a banned plain-language phrase
+ * (PLAIN_LANGUAGE_BANNED, D-202); a sentence that does not start as a
  * reaction, a feeling, a greeting or a question (OPENERS), or that holds a request; math (the strict no-math rule); a
  * work word or one that points back; or the child's name (code writes it, never the model). `childTexts` are the
  * child's turns, whose names may start a sentence ("Biscuit is a great name!").
@@ -308,6 +309,8 @@ function openerProblem(sentence: string, names: ReadonlySet<string>): string | n
 export function freeTalkProblem(text: string, childName: string | null = null, childTexts: readonly string[] = []): string | null {
   const t = text.trim();
   if (t === "" || t.length > FREE_TALK_LIMITS.chars) return "length";
+  const plain = plainLanguageProblem(t);
+  if (plain !== null) return plain;
   if (!/[.?!]["')\]]*$/.test(t)) return "not whole sentences";
   const sentences = t.split(/(?<=[.?!])\s+/).filter(Boolean);
   if (sentences.length > FREE_TALK_LIMITS.sentences) return "too many sentences";
@@ -328,8 +331,28 @@ export function freeTalkProblem(text: string, childName: string | null = null, c
   return workProblem(withoutSafePhrases(t)) ?? (name && wordsOf(t).includes(name) ? "the child's name" : null);
 }
 
-/** The second layer alone: math (the strict no-math rule), a work word, or a word that points back. Bank phrases pass it. */
+/**
+ * The everyday words Maya never says (D-202, the plain-language rules of the workbooks, D-201): she names the thing
+ * again instead ("How many plums does Gus have now?"). Code checks only these exact phrases on the words the model
+ * writes (free talk) or picks (an echo); words that hold one become the bank phrase of the same purpose. The rest of
+ * the rules (short sentences, everyday words, things only do what they really can) are in the prompts.
+ */
+export const PLAIN_LANGUAGE_BANNED = ["in all", "altogether", "all together", "total", "left over"] as const;
+
+/** The first banned plain-language phrase in a text, as a whole word or words, or null. */
+export function plainLanguageProblem(text: string): string | null {
+  const joined = ` ${wordsOf(text).join(" ")} `;
+  const found = PLAIN_LANGUAGE_BANNED.find((p) => joined.includes(` ${p} `));
+  return found ? `plain language: ${found}` : null;
+}
+
+/**
+ * The second layer alone: a banned plain-language phrase (D-202), math (the strict no-math rule), a work word, or a word
+ * that points back. Bank phrases pass it.
+ */
 export function workProblem(text: string): string | null {
+  const plain = plainLanguageProblem(text);
+  if (plain !== null) return plain;
   const math = talkMath(text);
   if (math !== null) return `math: ${math}`;
   const words = wordsOf(text);
