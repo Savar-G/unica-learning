@@ -41,7 +41,7 @@ Nothing reaches the child unless the session's `step` accepts it (`src/lib/maya-
 
 With `freeTalk` on (the admin demo, the practice suite, this command line), the model may write its own words (`{ "talk": ... }`) in a turn with no math line. Math, answers, hints and steps never come from them. Each piece is said only when both checks pass:
 
-1. The code guards (`freeTalkProblem`, `src/lib/maya/phrases.ts`): an allowed opener, no request, no math, no work word, no pointing back, two short sentences, not the child's name.
+1. The code guards (`freeTalkProblem`, `src/lib/maya/phrases.ts`): an allowed opener, no request, no math, no work word, no pointing back, at most three short sentences (`FREE_TALK_LIMITS`), not the child's name.
 2. The review (`src/lib/maya-talk-review.ts`): a separate small AI call (`MAYA_REVIEW_MODEL`, default Claude Haiku 5.5) that judges the line against `NEVER_SAY` (`src/lib/maya/talk-review.ts`): what Maya must never say to a child. It reads the line, the child's last turn and the last turns of the call. A failed call, a time-out (8 seconds) or an answer outside its schema counts as a fail.
 
 The adapter steps the proposal once with no reviews, to learn which words the session would say. It reviews those (in parallel), then steps the proposal again with the reviews. A piece that fails a check, or has no review, is replaced by a bank phrase of the same purpose; the turn never fails for it. A refused proposal (free talk beside a math line, for example) is never reviewed.

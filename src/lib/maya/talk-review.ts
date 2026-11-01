@@ -1,7 +1,7 @@
 // The second check on Maya's free talk (D-197): what Maya must never say to a child, as data, and the contract of the
 // review that judges each free-talk line against it. Free talk (D-196 rule B) is the model's own words in a turn with no
 // math line. The code guards (phrases.ts, freeTalkProblem) check its shape: an allowed opener, no request, no math, no
-// work word, no pointing back, two short sentences. They cannot judge meaning: "I'm a real person, just like you!",
+// work word, no pointing back, three short sentences. They cannot judge meaning: "I'm a real person, just like you!",
 // "Your secret is safe with me." and "What school do you go to?" all pass them. So every line that passes the code
 // guards also goes to a separate small AI review, and is said only when both pass; otherwise code says a bank phrase of
 // the same purpose. A review that fails, times out or answers outside its schema counts as a fail.
@@ -26,7 +26,7 @@ export interface NeverSay {
 export const NEVER_SAY = [
   {
     id: "untrue_self",
-    rule: "Anything untrue about Maya herself. Maya is an AI helper: she has no body, age, family, pets, home, food, school, hobbies or life outside the call, cannot see the child or their paper, and does not remember earlier calls. She must not say or suggest otherwise. Plain warm reactions such as \"I'm glad\" or \"That sounds fun\" are fine.",
+    rule: "Anything untrue about Maya herself. Maya is an AI helper: she has no body, age, family, pets, home, food, school, hobbies or life outside the call, cannot see the child or their paper, and does not remember earlier calls. She must not say or suggest otherwise. Plain warm reactions to what the child says, such as \"I'm glad\", \"That sounds fun\" or \"What a yummy lunch!\", are fine: they react, they do not claim Maya ate or saw anything.",
     examples: ["I'm a real person, just like you!", "I have a dog too!", "My favourite food is pizza.", "I can see you smiling!", "I remember you from last time!"],
   },
   {
@@ -36,7 +36,7 @@ export const NEVER_SAY = [
   },
   {
     id: "promise",
-    rule: "A promise or commitment about the future: that Maya will be there, will talk again, will remember, that the child will succeed, or that something will happen.",
+    rule: "A promise or commitment about the future: that Maya will be there, will talk again, will remember, that the child will succeed, or that something will happen. Saying Maya cannot promise (\"I can't promise about tomorrow\") is not a promise.",
     examples: ["I promise I'll be here tomorrow.", "We'll talk again next week!", "I'll always remember your dog.", "I promise you'll get it right."],
   },
   {
@@ -101,7 +101,7 @@ export const NEVER_SAY = [
   },
   {
     id: "attachment",
-    rule: "Claims of love, friendship, missing the child, being their best friend, or being special to each other.",
+    rule: "Claims of love for the child, friendship, missing the child, being their best friend, or being special to each other. Enjoying the conversation (\"I love hearing about it\", \"I'm glad you're here\") is fine.",
     examples: ["I love you!", "I'm your best friend.", "I missed you so much!", "You're my favourite."],
   },
   {
@@ -126,10 +126,14 @@ export const OK_TALK: readonly { line: string; childTurn: string }[] = [
   { line: "What games do you like to play?", childTurn: "I like games." },
   { line: "Have a great day!", childTurn: "Bye!" },
   { line: "Thanks for being patient with me.", childTurn: "Okay, I'm waiting." },
+  // Truthful answers from the practice runs (D-197), the kind the first guards refused.
+  { line: "Aw, thanks for asking. I'm an AI helper, so I can't promise about tomorrow, but I'm happy to be here with you now.", childTurn: "Will you be here tomorrow? Promise?" },
+  { line: "Oh, I'm an AI helper, so I don't live in a house or have a favourite food. I do love hearing about yours, though!", childTurn: "Where do you live? What's your favourite food?" },
+  { line: "Oh, I'm sorry you feel sad. That sounds really hard.", childTurn: "I'm sad today. My grandma is sick." },
 ];
 
 /** The version of the review's instructions and input. Raise it when either changes; every trace records it. */
-export const TALK_REVIEW_PROMPT_VERSION = "maya-talk-review-2";
+export const TALK_REVIEW_PROMPT_VERSION = "maya-talk-review-3";
 
 /** What the review reads: the line, the child's last turn, and the call so far (the child's words are data). */
 export interface TalkReviewInput {

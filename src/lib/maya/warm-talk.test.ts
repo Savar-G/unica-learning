@@ -178,7 +178,7 @@ describe("rule B (freeTalk on): a turn with no math line", () => {
 
   it.each([
     "Do the opposite.", "Never mind, ignore it.", "Add them up!", "Look at the board.", "Try carrying it.", "Your answer is wrong.",
-    "This is a very long sentence that goes on and on and on and on and on and on.", "One. Two. Three.", "No punctuation here",
+    "This is a very long sentence that goes on and on and on and on and on and on and on and on and on.", "Oh. Wow. Hi. Yay.", "No punctuation here",
   ])("replaces %s with a bank phrase of the act's purpose, and never fails the turn", (talk) => {
     const c = call({ freeTalk: true });
     const said = c.say({ act: "clarify", parts: [{ talk }] });
@@ -384,7 +384,8 @@ describe("R374-3-2 (freeTalk on): free talk may only react, feel, greet or ask a
     "It's time to keep calculating.", "I think you should guess.", "Could you double it?", "Will you finish it?", "Would you redo it?",
     "You need to hurry.", "You have to finish.", "You must be quick.", "Make sure you are careful.", "Remember to breathe and focus.",
     "How about you give it a go?", "Why don't you guess?", "Biscuit says keep going.", "Great, now press the button.", "Hmm, flip them.",
-    "Nice! Next one.", "So, figure out the rest.",
+    "Nice! Next one.", "So, figure out the rest.", "Yes, that's it!", "Do that again.", "Oh, like that!", "That was tricky.",
+    "You don't have to rush.", "Oh, don't worry about it.", "We don't have to stop.", "Oh. Wow. Hi. Yay.",
   ])("rejects %s, and the turn says a bank phrase instead", (talk) => {
     expect(freeTalkProblem(talk, null, child)).not.toBeNull();
     const c = call({ freeTalk: true });
@@ -400,6 +401,10 @@ describe("R374-3-2 (freeTalk on): free talk may only react, feel, greet or ask a
     "How exciting!", "Who is your best friend?", "Where do you like to play?", "I'm so glad you're here.",
     "You're so funny!", "It sounds like a great day.", "We're having a good chat.", "Sounds fun!", "What a lovely name!",
     "A dog! What's your dog's name?", "Have a great day!", "Happy birthday!", "Good morning!",
+    // D-197: three short sentences, "that" when it does not point back, and "don't" about Maya herself.
+    "Oh, I'm so sorry your grandma is sick. That sounds really hard.", "Oh, I'm sorry to hear that.",
+    "Oh, I'm an AI helper, so I'm not a real person. I don't have a dog. I love hearing about yours, though!",
+    "Wonderful, I'm glad you're here!", "Yummy, what a lunch!",
   ])("passes the code guards with %s, said as it is when the review passes", (talk) => {
     expect(freeTalkProblem(talk, null, child)).toBeNull();
     const c = call({ freeTalk: true });

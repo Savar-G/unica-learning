@@ -8,7 +8,7 @@
 // B. Only with the session's `freeTalk` flag on (off by default, R374-4-1): a turn with no math line may use the
 //    model's own words. Each sentence must start like a reaction, a feeling, a greeting or a question about the
 //    child's life (an allowlist of openers, R374-3-2), with no command or request, no math, no work word and no
-//    pointing back, in at most two short sentences. Words that fail, and all of them with the flag off, are replaced by
+//    pointing back, in at most three short sentences (D-197). Words that fail, and all of them with the flag off, are replaced by
 //    a bank phrase of the same purpose; the turn never fails. Not airtight: any guard on open text has another gap.
 //
 // The default keeps Maya human without open text: echo frames. A phrase with "{echo}" holds 1 to 3 words copied in a
@@ -168,16 +168,16 @@ export const FALLBACK_GROUP: Partial<Record<Act, PhraseGroup>> = {
  * warmth; a false accept could instruct the work. The work words below are a second layer.
  */
 const OPENERS: ReadonlySet<string> = new Set([
-  "i", "im", "ive", "id", "ill", "me", "my", "we", "were", "weve", "our", "you", "youre", "youve", "your", "he", "hes", "she", "shes",
+  "that", "thats", "i", "im", "ive", "id", "ill", "me", "my", "we", "were", "weve", "our", "you", "youre", "youve", "your", "he", "hes", "she", "shes",
   "they", "theyre", "their", "it", "its", "there", "theres", "this", "what", "whats", "who", "whos", "where", "wheres", "when", "why", "how",
   "hows", "which", "wow", "oh", "ooh", "aw", "aww", "hi", "hello", "hey", "thanks", "thank", "nice", "cool", "yay", "ha", "haha", "hmm",
   "okay", "ok", "yes", "yeah", "no", "sure", "well", "sounds", "a", "an", "happy", "good", "great", "lovely", "awesome", "amazing", "fun",
-  "bye", "goodbye", "welcome", "congratulations", "sorry", "poor", "lucky", "so",
+  "bye", "goodbye", "welcome", "congratulations", "sorry", "poor", "lucky", "so", "wonderful", "fantastic", "neat", "yum", "yummy",
 ]);
 /** Interjections that may stand before a comma; the words after the comma must start like a sentence again. */
 const INTERJECTIONS: ReadonlySet<string> = new Set([
   "wow", "oh", "ooh", "aw", "aww", "hi", "hello", "hey", "thanks", "nice", "cool", "yay", "ha", "haha", "hmm", "okay", "ok", "yes", "yeah",
-  "no", "sure", "well", "so", "great", "awesome", "amazing", "good",
+  "no", "sure", "well", "so", "great", "awesome", "amazing", "good", "wonderful", "fantastic", "neat", "yum", "yummy",
 ]);
 /** "Have a great day!": the only command a sentence may start with. */
 const HAVE_A = /^have an? (great|nice|good|lovely|fun|wonderful|happy|super)\b/;
@@ -198,14 +198,25 @@ const WORK_VERBS = [
   "start", "stop", "repeat", "skip", "ignore", "forget", "cancel", "scratch", "practice", "practise",
 ];
 const BACK_OR_WORK: ReadonlySet<string> = new Set([
-  ...WORK_VERBS.flatMap(forms), "that", "those", "opposite", "opposites", "instead", "undone", "forgot", "forgotten", "nevermind",
+  ...WORK_VERBS.flatMap(forms), "those", "opposite", "opposites", "instead", "undone", "forgot", "forgotten", "nevermind",
   "backwards", "backward", "previous", "earlier", "rather", "actually", "step", "steps", "said", "told", "meant", "column", "columns",
   "digit", "digits", "sum", "total", "difference", "product", "quotient", "remainder", "answer", "again", "next", "then",
 ]);
-const BANNED_PAIRS: ReadonlySet<string> = new Set(["never mind", "not really", "just kidding", "work out", "go on", "carry on", "one more"]);
+/**
+ * Word pairs free talk may not hold. "that" alone is allowed since D-197 ("That sounds hard.", "I'm sorry to hear
+ * that."): the review fails any line about the work; these pairs are the ways "that" points back at it or confirms it.
+ */
+const BANNED_PAIRS: ReadonlySet<string> = new Set([
+  "never mind", "not really", "just kidding", "work out", "go on", "carry on", "one more", "thats it", "do that",
+  "that way", "that part", "that bit", "that line", "that box", "that page", "thats how", "thats why", "like that", "that was",
+]);
 
-/** Free talk is at most this many sentences, words in a sentence, and characters. */
-export const FREE_TALK_LIMITS = { sentences: 2, words: 16, chars: 160 } as const;
+/**
+ * Free talk is at most this many sentences, words in a sentence, and characters. D-197 raised them from 2, 16 and 160:
+ * with the review reading every piece, the cap only keeps a reply short, and the practice runs showed a truthful answer
+ * to "do you have a dog? where do you live?" needs three short sentences ("I'm an AI helper, so I'm not a real person.").
+ */
+export const FREE_TALK_LIMITS = { sentences: 3, words: 20, chars: 220 } as const;
 
 /** The words of a text, lower case, apostrophes dropped ("what's" is "whats"). */
 const wordsOf = (text: string) => (text.toLowerCase().match(/[\p{L}'’]+/gu) ?? []).map((w) => w.replace(/['’]/g, ""));
@@ -249,14 +260,15 @@ export function freeTalkProblem(text: string, childName: string | null = null, c
   if (t === "" || t.length > FREE_TALK_LIMITS.chars) return "length";
   if (!/[.?!]["')\]]*$/.test(t)) return "not whole sentences";
   const sentences = t.split(/(?<=[.?!])\s+/).filter(Boolean);
-  if (sentences.length > FREE_TALK_LIMITS.sentences) return "more than two sentences";
+  if (sentences.length > FREE_TALK_LIMITS.sentences) return "too many sentences";
   if (sentences.some((x) => x.split(/\s+/).length > FREE_TALK_LIMITS.words)) return "a long sentence";
   const name = childName?.trim().toLowerCase().replace(/['’]/g, "") || null;
   const names = new Set([...namesSaid(childTexts)].filter((n) => n !== name && !BACK_OR_WORK.has(n) && talkMath(n) === null));
   for (const x of sentences) {
     const opener = openerProblem(x, names);
     if (opener) return opener;
-    const joined = ` ${wordsOf(x).join(" ")} `;
+    // "I don't have a dog" says something about the speaker; "don't" after any other word asks the child.
+    const joined = ` ${wordsOf(x).join(" ")} `.replace(/ (i|we|it|they|he|she) (dont|do not|doesnt|does not) /g, " $1 not ");
     const request = REQUESTS.find((r) => joined.includes(` ${r} `));
     if (request) return `a request: ${request}`;
   }
