@@ -698,7 +698,7 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
     // Every check of the run, in pages of the database's row limit (a book has a few hundred to a few thousand).
     readPaged(async (from, to) => must<{ question_id: string; model: string; verdict: RunSolve["verdict"]; ms: number; usd: number | null; log: RunSolve["log"] }[]>(
       await a.db.from("workbook_run_solves").select("question_id, model, verdict, ms, usd, log").eq("run_id", run.id).order("id").range(from, to), "workbook solve checks")),
-    readPaged(async (from, to) => must<{ provider: "subscription" | "api"; outcome: "answered" | "failed" | "unavailable"; usd: number | null; note: string | null }[]>(
+    readPaged(async (from, to) => must<{ provider: "subscription" | "api"; outcome: "started" | "answered" | "failed" | "unavailable"; usd: number | null; note: string | null; requests: number | null }[]>(
       await a.db.from("workbook_run_ai_calls").select("provider, outcome, usd, note, requests").eq("run_id", run.id).order("id").range(from, to), "workbook AI calls")),
   ]);
   // A draft of an older shape (before the page layouts) is shown as "old draft format", not read as this shape.

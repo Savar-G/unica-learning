@@ -20,9 +20,9 @@ When you press **Prepare next workbook** on the live site, the site only queues 
 Each turn, the worker:
 
 1. Writes its heartbeat to `public.workbook_workers` (every 30 seconds, also while it makes a run).
-2. Takes the oldest run for the Mac: a queued run, or a running run with no holder or no progress for 6 minutes. The claim is atomic. If another process took the run first, the worker goes to the next run.
-3. Makes the whole run in one job call. There is no Vercel time limit. `caffeinate -i -s` keeps the Mac awake until the run ends.
-4. When it has nothing to do, it checks `origin/main` every 5 minutes. When `origin/main` has moved, the worker exits between runs. launchd then starts the launcher again, and the launcher pulls the new code.
+2. Takes the oldest run for the Mac: a queued run, or a running run with no holder or no progress for 6 minutes. The claim and resume check the selected runner in the same database operation. If another process took the run first, the worker goes to the next run.
+3. Renews the run lease every 30 seconds and before each AI call. If renewal fails, it stops AI calls under that lease. Makes the whole run in one job call. There is no Vercel time limit. `caffeinate -i -s` keeps the Mac awake until the run ends.
+4. Between runs and when it has nothing to do, it checks `origin/main` every 5 minutes. When `origin/main` has moved, the worker exits between runs. launchd then starts the launcher again, and the launcher pulls the new code.
 
 A run continues only on the code it started on (R379-8-2). The worker's build is its commit when the checkout is clean, else a value of its own. A run that started on other code fails with "the site's code changed". Start a new run when this occurs.
 
@@ -31,10 +31,10 @@ A run continues only on the code it started on (R379-8-2). The worker's build is
 - Each AI call goes to the subscription first: `claude -p --output-format json --json-schema <schema> --safe-mode --tools "" --no-session-persistence`. Claude Code checks the output against the schema. The generator then checks the output again, as it does on the API path.
 - The child process gets no API key. It gets only `PATH`, `HOME` and a few other variables. `WORKBOOK_CLAUDE_CONFIG_DIR` is passed as `CLAUDE_CONFIG_DIR`, so you can choose which Claude account runs it.
 - The subscription can be unable to take a call. These are the causes: a usage limit, no `claude` on `PATH`, `claude` not logged in, a crash, or an image in the request (`claude -p` reads only text). Then that call goes to the API.
-- After a usage limit, a missing CLI or a lost login, the worker uses the API for the rest of that run. It does not try the subscription on every call.
+- After a usage limit, a missing CLI or a lost login, the worker uses the API for the rest of that run. The run stores this exclusion. A worker restart or a resume restores it before the next AI call.
 - A bad answer (not JSON, or not to the schema) is not sent to the API. The generator's own retry handles it, as before.
 - The generator and the solve check send text only today. No call goes to the API because of images.
-- Each call is logged in `public.workbook_run_ai_calls`, with the provider, the model, the outcome, the time and the cost (USD 0 on the subscription). The admin run page shows the calls on each provider and the API cost.
+- Each call is logged in `public.workbook_run_ai_calls`, with the provider, the model, the outcome, the time and the cost (USD 0 on the subscription). A durable call ID is saved before the request. The result and cost are saved before the workbook result checkpoint. Failed saves keep their records for retry. A crash leaves an unfinished call with an unknown final cost. The admin run page labels counts as logical calls and shows API retries separately.
 
 ## Install (once)
 
@@ -53,7 +53,7 @@ bash scripts/install-workbook-worker.sh
 
 The script does these steps:
 
-1. It clones the repo to `~/.unica-workbook-worker` (set `WORKER_DIR` to change it) and moves the clone to `origin/main`.
+1. It stops the old LaunchAgent and waits for its process tree to exit before it changes files. If a process does not stop within 60 seconds, the install stops. It clones the repo to `~/.unica-workbook-worker` (set `WORKER_DIR` to change it) and moves the clone to `origin/main`.
 2. It writes the settings file `~/.config/unica/workbook-worker.env` (chmod 600), if there is none.
 3. It writes the LaunchAgent `~/Library/LaunchAgents/com.unicalearning.workbook-worker.plist` and loads it. The LaunchAgent has `RunAtLoad`, `KeepAlive` (it starts the worker again when the worker exits or crashes), `ProcessType Interactive`, and the log at `~/Library/Logs/unica-workbook-worker.log`.
 

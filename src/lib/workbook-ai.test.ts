@@ -158,3 +158,11 @@ describe("R404 provider persistence and request counts", () => {
     expect(summarizeAiCalls(rows)).toMatchObject({ api: { calls: 1, usd: 0.05 }, retries: 1 });
   });
 });
+
+
+it("keeps known costs for unavailable and unfinished calls, with missing results separate", () => {
+  expect(summarizeAiCalls([
+    { provider: "api", outcome: "unavailable", usd: 0.02, note: "overloaded", requests: 2 },
+    { provider: "api", outcome: "started", usd: 0.03, note: null, requests: 1 },
+  ])).toMatchObject({ api: { calls: 0, usd: 0.05 }, unavailable: { api: 1 }, incomplete: 1, retries: 1 });
+});
