@@ -41,6 +41,10 @@
 //   again (the job's ledger allows 2: a question that had its check redo is not written again for the fit). The days
 //   run in order; the pages of one day run at once (`concurrency`), and each of them reads what the days before asked
 //   (the book memory), never its own day's other pages, so the draft is the same at any concurrency and after a resume.
+//   With a call store (GenerateDeps.calls, R379-7-1) each AI call of a page is kept as it came back, built and
+//   checked, with the attempts it counted, before anything else happens; a later call replays a page's kept calls in
+//   order instead of asking again, so an attempt that was paid for is never lost or used twice, and a resumed page is
+//   the page an uninterrupted run would have made.
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness (the caller passes the QR token maker).
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { withTimeLimit, type AiClient } from "@/lib/ai-client";
@@ -262,6 +266,31 @@ export interface AttemptLedger {
   use(page: number, slots: string[]): Promise<{ refused: string[] }>;
 }
 
+/**
+ * One AI call of a day page as it came back (#312, R379-7-1): its questions and worked examples, built and checked
+ * (the solve check included), the slots and panels it did not ask (refused), and the attempts each slot and panel it
+ * counted had used once counted. Holds only what the AI wrote and code built from it: the AI is never told the child's
+ * name (pageRequest), so no call holds it.
+ */
+export interface StoredCall {
+  built: BuiltQuestion[];
+  examples: BuiltQuestion[];
+  refused: string[];
+  tries: Record<string, number>;
+}
+
+/**
+ * Where each AI call of a day page is kept as soon as it comes back (#312, R379-7-1), keyed by its book page and its
+ * place in that page's calls (`seq`: 0 the first call, then the redo, then the shorter rewrite). A later call replays
+ * a page's kept calls instead of asking the AI again. `save` throws when the run may no longer write: the generation
+ * stops. The first call kept at a key stays.
+ */
+export interface CallStore {
+  /** The kept calls of these book pages. */
+  load(pages: number[]): Promise<{ page: number; seq: number; call: StoredCall }[]>;
+  save(page: number, seq: number, call: StoredCall): Promise<void>;
+}
+
 export interface GenerateDeps {
   ai: AiClient;
   fit: FitCheck;
@@ -289,6 +318,8 @@ export interface GenerateDeps {
   pages?: PageStore;
   /** The attempts used before this call (#312); none when not given (no limit past the generator's own). */
   attempts?: AttemptLedger;
+  /** Each page's AI calls, kept for a resume (R379-7-1); none when not given (nothing is replayed). */
+  calls?: CallStore;
   /** Asked before each day page starts: true stops starting pages (a time budget); the result is "paused". */
   stop?(): boolean;
 }
@@ -935,6 +966,8 @@ interface PageWork {
   panels: Panel[];
   /** The AI attempts each slot and panel of the page used (#312), with those of earlier calls; shared by its redos. */
   tries: Tries;
+  /** The page's AI calls in order (R379-7-1): the next call's place, and the calls an earlier try kept; shared too. */
+  calls: { next: number; kept: Map<number, StoredCall> };
 }
 
 /** A page's AI attempts by slot or panel id, and the most a slot may use (the ledger's; no limit without one). */
@@ -957,6 +990,14 @@ const hasTry = (w: PageWork, id: string) => (w.tries.used.get(id) ?? 0) < w.trie
  * asked: it comes back failed with no package, and is in `refused`. Throws only when the ledger does (the run was lost).
  */
 async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork, which: number[], note: string | null, name: string, panels: Panel[] = [], memory: BookMemory | null = null, pageTexts: string[] = [], o: { wordLater?: boolean } = {}) {
+  // A call an earlier try kept (R379-7-1): the same call of the same page, replayed as it came back, with the attempts
+  // it counted; no attempt is counted again and the AI is not asked.
+  const seq = w.calls.next++;
+  const kept = w.calls.kept.get(seq);
+  if (kept) {
+    for (const [id, n] of Object.entries(kept.tries)) w.tries.used.set(id, n);
+    return { built: kept.built, examples: kept.examples, refused: new Set(kept.refused) };
+  }
   const ids = [...which.map((i) => w.slots[i].id), ...panels.map((x) => x.id)];
   const open = ids.filter((id) => hasTry(w, id));
   const denied = open.length > 0 && deps.attempts ? (await deps.attempts.use(w.number, open)).refused : [];
@@ -1037,6 +1078,12 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
     deps.onSolve?.(log);
     if (log.verdict.status !== "agreed") b.check = { status: "failed", reason: solveReason(log.verdict) };
   }));
+  // The call is kept with the attempts it counted before anything else uses it (R379-7-1), so a try that stops later
+  // (another page fails, the function ends) never loses an attempt it paid for. A call that counted none is not kept:
+  // it asked nothing, and a replay makes the same.
+  if (open.length > 0 && deps.calls) {
+    await deps.calls.save(w.number, seq, { built, examples, refused: [...refused], tries: Object.fromEntries(open.map((id) => [id, w.tries.used.get(id)!])) });
+  }
   return { built, examples, refused };
 }
 
@@ -1468,7 +1515,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
         const skill = part?.step?.skill ?? part?.skills[0];
         return PANEL_SLOTS.includes(x.slot) && skill ? [{ id: `e${k + 1}`, layoutSlot: k, place: x.slot, skill }] : [];
       });
-      work.push({ number: ++number, day: day.day, page, layout, slots: layout ? layoutSlots(page, layout) : slotsOf(page), panels, tries: { used: new Map(), max: Infinity } });
+      work.push({ number: ++number, day: day.day, page, layout, slots: layout ? layoutSlots(page, layout) : slotsOf(page), panels, tries: { used: new Map(), max: Infinity }, calls: { next: 0, kept: new Map() } });
     }
   }
   // Each slot's skill, kind of question, numbers and person, planned in book order (#380), so the same skill is not
@@ -1487,6 +1534,12 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
       const n = spentBefore.get(`${w.number}:${id}`);
       if (n) w.tries.used.set(id, n);
     }
+  }
+  // The AI calls earlier tries kept of the pages still to write (R379-7-1): each page replays them in order.
+  const open = work.filter((w) => !kept.has(w.number) && w.slots.length > 0);
+  if (deps.calls && open.length > 0) {
+    const byNumber = new Map(open.map((w) => [w.number, w]));
+    for (const c of await deps.calls.load(open.map((w) => w.number))) byNumber.get(c.page)?.calls.kept.set(c.seq, c.call);
   }
   const used = new Set([...kept.values()].map((p) => p.qrToken));
   const tokens = Array.from({ length: total }, (_, i) => kept.get(i + 1)?.qrToken ?? (() => {

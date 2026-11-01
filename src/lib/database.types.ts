@@ -2171,6 +2171,58 @@ export type Database = {
           },
         ]
       }
+      workbook_run_calls: {
+        Row: {
+          call: Json
+          child_id: string
+          created_at: string
+          page: number
+          parent_id: string
+          run_id: string
+          seq: number
+        }
+        Insert: {
+          call: Json
+          child_id: string
+          created_at?: string
+          page: number
+          parent_id: string
+          run_id: string
+          seq: number
+        }
+        Update: {
+          call?: Json
+          child_id?: string
+          created_at?: string
+          page?: number
+          parent_id?: string
+          run_id?: string
+          seq?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_run_calls_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_run_calls_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_run_calls_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_run_pages: {
         Row: {
           child_id: string
@@ -2956,6 +3008,16 @@ export type Database = {
         Returns: boolean
       }
       save_workbook_rendering: { Args: { p_rendering: Json }; Returns: Json }
+      save_workbook_run_call: {
+        Args: {
+          p_call: Json
+          p_lease: string
+          p_page: number
+          p_run: string
+          p_seq: number
+        }
+        Returns: boolean
+      }
       save_workbook_run_draft: {
         Args: {
           p_draft: Json

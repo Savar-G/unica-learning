@@ -4,7 +4,7 @@
 // finished pages, the solve checks, and the audit entries. `children` maps each known child to its parent; `workbooks` gives
 // each child's stored workbook numbers; `now` is the clock.
 import type { RenderProblem } from "@/lib/workbook-render";
-import { draftProblem, type GeneratedPage, type WorkbookDraftStore } from "@/lib/workbook-generator";
+import { draftProblem, type GeneratedPage, type StoredCall, type WorkbookDraftStore } from "@/lib/workbook-generator";
 import { READ_PAGE, readPaged, SLOT_ATTEMPTS, SOLVE_BATCH, type DraftRendering, type RunActor, type RunSolve, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
 
 export interface MemoryAudit {
@@ -33,6 +33,9 @@ export function memoryRunStore(o: {
   const pages = new Map<string, Map<number, GeneratedPage>>();
   const attempts = new Map<string, Map<string, number>>();
   const solves = new Map<string, RunSolve[]>();
+  const calls = new Map<string, Map<string, { page: number; seq: number; call: StoredCall }>>();
+  // The database keeps JSON (jsonb): a stored call comes back as JSON does.
+  const json = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
   const audit: MemoryAudit[] = [];
   const revisions: MemoryRevision[] = [];
   const iso = () => o.now().toISOString();
@@ -113,6 +116,21 @@ export function memoryRunStore(o: {
     async pages(id) {
       return [...(pages.get(id)?.values() ?? [])].map((p) => structuredClone(p));
     },
+    async calls(id, numbers) {
+      return [...(calls.get(id)?.values() ?? [])].filter((c) => numbers.includes(c.page)).sort((a, b) => a.page - b.page || a.seq - b.seq).map(json);
+    },
+    async saveCall(id, lease, page, seq, call) {
+      // The database's checks (migration workbook_run_calls).
+      if (!Number.isInteger(page) || page < 1 || page > 1000 || !Number.isInteger(seq) || seq < 0 || seq > 9) {
+        throw new Error(`workbook run call save: page ${page}, call ${seq} breaks workbook_run_calls' checks`);
+      }
+      const r = holding(id, lease);
+      if (!r) return false;
+      r.heartbeatAt = iso();
+      if (!calls.has(id)) calls.set(id, new Map());
+      if (!calls.get(id)!.has(`${page}:${seq}`)) calls.get(id)!.set(`${page}:${seq}`, json({ page, seq, call }));
+      return true;
+    },
     async saveSolves(id, lease, batch) {
       if (batch.length > SOLVE_BATCH) throw new Error(`workbook run solve checks save: ${batch.length} checks in one write`);
       const r = holding(id, lease);
@@ -186,5 +204,5 @@ export function memoryRunStore(o: {
       return r ? view(r) : null;
     },
   };
-  return { ...store, runs, audit, revisions, pageStore: pages, attemptStore: attempts, solveStore: solves };
+  return { ...store, runs, audit, revisions, pageStore: pages, attemptStore: attempts, solveStore: solves, callStore: calls };
 }

@@ -8,7 +8,10 @@
 //      at a time, and checks every answer and every page's fit against the real templates (#310). Each finished page
 //      is stored on the run (public.workbook_run_pages) as it is done; the run shows "12 of 80 day pages". Each AI
 //      attempt of a question is counted on the run before its call (public.workbook_run_attempts), so a retry or a
-//      resume never gives a question a third attempt, even when its page was never stored. The solve check (#380,
+//      resume never gives a question a third attempt, even when its page was never stored. Each AI call of a page is
+//      stored on the run as soon as it comes back, built and checked, with the attempts it counted
+//      (public.workbook_run_calls, R379-7-1): a retry or a resume replays a page's stored calls instead of asking the
+//      AI again, so no paid attempt is lost and the draft is the one an uninterrupted run makes. The solve check (#380,
 //      src/lib/workbook-solve-check.ts) reads each printed question the AI worded; each check is stored on the run with
 //      its cost (public.workbook_run_solves), a page's checks before the page itself, for the admin to read.
 //   3. render: the template makes one image per page and the PDF, into the workbook bucket at <parent id>/<draft id>/.
@@ -37,10 +40,12 @@ import { curriculumFor } from "@/lib/workbook-curriculum";
 import {
   generateWorkbook,
   type AttemptLedger,
+  type CallStore,
   type FitCheck,
   type GeneratedPage,
   type GeneratedWorkbook,
   type PageStore,
+  type StoredCall,
   type WorkbookDraftStore,
 } from "@/lib/workbook-generator";
 import { planNextWorkbook } from "@/lib/workbook-placement";
@@ -148,6 +153,13 @@ export interface WorkbookRunStore {
    * refused slots, or null (nothing counted) when the lease is lost.
    */
   useAttempts(runId: string, lease: string, page: number, slots: string[]): Promise<{ refused: string[] } | null>;
+  /** The stored AI calls of these book pages of the run (R379-7-1). */
+  calls(runId: string, pages: number[]): Promise<{ page: number; seq: number; call: StoredCall }[]>;
+  /**
+   * Stores one AI call of a page (the first stored at its page and place wins), with a heartbeat, only while `lease`
+   * holds the run: false (nothing stored) when the lease is lost.
+   */
+  saveCall(runId: string, lease: string, page: number, seq: number, call: StoredCall): Promise<boolean>;
   /** Stores solve checks of the run (at most SOLVE_BATCH at a time), with a heartbeat; false when the lease is lost. */
   saveSolves(runId: string, lease: string, solves: RunSolve[]): Promise<boolean>;
   /** Stores a finished day page (the first stored wins), with a heartbeat. */
@@ -520,6 +532,17 @@ async function write(
       return counted;
     },
   };
+  // Each call is stored before anything else uses it, its solve checks first (R379-7-1).
+  const calls: CallStore = {
+    load: (numbers) => deps.runs.calls(run.id, numbers),
+    async save(page, seq, call) {
+      await flushSolves();
+      if (isLost() || !(await deps.runs.saveCall(run.id, lease, page, seq, call))) {
+        setLost(true);
+        throw new Stopped("the run was taken up by another call");
+      }
+    },
+  };
   const pages: PageStore = {
     load: () => deps.runs.pages(run.id),
     async save(page) {
@@ -537,7 +560,7 @@ async function write(
       plan: planned.plan, curriculum,
     },
     {
-      ai: guardedAi, fit: deps.fit(inputs.parentId), store: guardedDrafts, qrToken: deps.qrToken, pages, attempts,
+      ai: guardedAi, fit: deps.fit(inputs.parentId), store: guardedDrafts, qrToken: deps.qrToken, pages, attempts, calls,
       concurrency: deps.concurrency ?? PAGE_CONCURRENCY, stop: () => isLost() || outOfTime(), timeLimitMs: deps.timeLimitMs,
       progress: (done, total) => { void progress({ step: "write", done, total }); },
       solver: guardedSolver, onSolve, now: deps.now,

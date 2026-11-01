@@ -8,7 +8,8 @@ import { readPaged, SLOT_ATTEMPTS, type WorkbookJobSource, type WorkbookRun, typ
 
 // The runs' store (#312) in Supabase (migration add_workbook_runs), and the job's read of the child. Pass a client with
 // the secret key: the service role runs the run functions and the progress update; admins only read. The solve checks
-// (migration workbook_run_solves) are stored through save_workbook_run_solves. The functions
+// (migration workbook_run_solves) are stored through save_workbook_run_solves, and each AI call of a page (migration
+// workbook_run_calls) through save_workbook_run_call. The functions
 // hold the rules (one active run per child, stale runs stopped, every write held by the lease, the audit entries);
 // tests use src/lib/workbook-job-memory.ts, which keeps the same rules. No Next.js or React.
 
@@ -68,6 +69,15 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
     async pages(id) {
       const rows = must(await admin.from("workbook_run_pages").select("page").eq("run_id", id).order("number"), "pages load") ?? [];
       return rows.map((r) => r.page);
+    },
+    async calls(id, pages) {
+      if (pages.length === 0) return [];
+      const rows = await readPaged(async (from, to) =>
+        must(await admin.from("workbook_run_calls").select("page, seq, call").eq("run_id", id).in("page", pages).order("page").order("seq").range(from, to), "calls load") ?? [], 100);
+      return rows.map((r) => ({ page: r.page, seq: r.seq, call: r.call }));
+    },
+    async saveCall(id, lease, page, seq, call) {
+      return must(await admin.rpc("save_workbook_run_call", { p_run: id, p_lease: lease, p_page: page, p_seq: seq, p_call: toJson(call) }), "call save") === true;
     },
     async saveSolves(id, lease, solves) {
       return must(await admin.rpc("save_workbook_run_solves", { p_run: id, p_lease: lease, p_logs: toJson(solves) }), "solve checks save") === true;

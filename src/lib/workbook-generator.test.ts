@@ -7,7 +7,7 @@ import { operationResult } from "@/lib/question-package";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { renderFitCheck } from "@/lib/workbook-fit";
 import { curriculumFor } from "@/lib/workbook-curriculum";
-import { generateWorkbook, kindsOf, shapeOf, type FitCheck, type GenerateDeps, type GeneratedPage, type GeneratedWorkbook } from "@/lib/workbook-generator";
+import { generateWorkbook, kindsOf, shapeOf, type FitCheck, type GenerateDeps, type GeneratedPage, type GeneratedWorkbook, type StoredCall } from "@/lib/workbook-generator";
 import { planLevel, planWorkbook, type WorkbookPlan } from "@/lib/workbook-plan";
 import { skillRange } from "@/lib/workbook-book";
 import { buildQuestion, choiceAsked, type SlotWording } from "@/lib/workbook-generator-items";
@@ -1911,5 +1911,150 @@ describe("round 7 (#380, R380-12-1): code writes the text where it can, a solve 
     const late = numbered.filter((x) => x.day >= 9);
     expect(late.length).toBeGreaterThan(10);
     expect(late.filter((x) => !x.s.planned!.say).map((x) => x.s.place)).toEqual([]);
+  });
+});
+
+describe("a page's AI calls kept for a resume (R379-7-1)", () => {
+  const U3 = (() => {
+    const result = planWorkbook({
+      profile: { standards: [] }, grade: 0, level: planLevel(BC, "U3")!, passed: {}, workbook: { number: 1, inLevel: 0 },
+      reviews: [], missedReviews: [], misses: [], pausedWeeks: 0, support: null, unassessedUnits: [],
+    });
+    if (!result.ok) throw new Error(result.reason);
+    return result.plan;
+  })();
+  const laid = { ...input, plan: U3, book: { child: "Zoe" } };
+  const hash = (t: string) => [...t].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
+
+  /**
+   * An AI whose answer depends only on what it is asked, except that a page's first call asked a second time answers
+   * every slot with an operation code cannot build (a failed check): what a lost first answer would cost. Slot 1.2 of
+   * every third page fails its first answer too, so pages have redos to keep.
+   */
+  function ai() {
+    const firsts = new Set<string>();
+    return fakeAiClient({
+      answer: async (r) => {
+        const req = read(r);
+        const again = r.name === "workbook_page" && firsts.has(`${req.day}:${req.page}`);
+        if (r.name === "workbook_page") firsts.add(`${req.day}:${req.page}`);
+        const text = (r.content[0] as { text: string }).text;
+        await new Promise((done) => setTimeout(done, hash(text) % 3));
+        return fill(r, (s) => {
+          const max = Math.min(10, ...Object.values(s.numbers ?? {}).map((n) => n.max));
+          const h = hash(`${text}|${s.slot}`);
+          const b = max >= 5 ? 2 : 1;
+          const a = 1 + (h % Math.max(1, max - b - 1));
+          const item = goodItem(s, {
+            text: `Kim ${tag(h % 40)} has ${a}. ${b} more come. How many now?`, operation: addOp(a, b),
+            wrongAnswers: [{ value: num(a + b + 1), cause: "count", description: "Counts one too many.", step: null }],
+            easier: { text: "Try a smaller sum.", operation: addOp(0, Math.min(a, b)) },
+          });
+          const bad = again || (r.name === "workbook_page" && s.slot === "1.2" && req.page % 3 === 0);
+          return bad ? { ...item, operation: { kind: "add", operands: [], expression: null, unit: null, denominator: null, values: [] } } : item;
+        });
+      },
+    });
+  }
+
+  /** The run's stores, kept between tries as the job's run keeps them: pages, the attempt ledger (2) and the calls. */
+  function stores() {
+    const pages = new Map<number, GeneratedPage>();
+    const counts = new Map<string, number>();
+    const calls = new Map<string, { page: number; seq: number; call: StoredCall }>();
+    // A store keeps JSON, as the database does.
+    const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
+    let failSave: number[] = [];
+    let saves = 0;
+    return {
+      pages, counts, calls,
+      /** The page saves (counted over every try) that throw, as a database error or the function's end would stop it. */
+      failAt(...at: number[]) { failSave = at; },
+      deps: {
+        pages: {
+          load: async () => [...pages.values()].map(copy),
+          save: async (p: GeneratedPage) => {
+            if (failSave.includes(++saves)) throw new Error("the function stopped");
+            if (!pages.has(p.number)) pages.set(p.number, copy(p));
+          },
+        },
+        attempts: {
+          max: 2,
+          load: async () => new Map(counts),
+          use: async (page: number, slots: string[]) => {
+            const refused = slots.filter((x) => (counts.get(`${page}:${x}`) ?? 0) >= 2);
+            for (const x of slots) if (!refused.includes(x)) counts.set(`${page}:${x}`, (counts.get(`${page}:${x}`) ?? 0) + 1);
+            return { refused };
+          },
+        },
+        calls: {
+          load: async (wanted: number[]) => [...calls.values()].filter((c) => wanted.includes(c.page)).map(copy),
+          save: async (page: number, seq: number, call: StoredCall) => {
+            if (!calls.has(`${page}:${seq}`)) calls.set(`${page}:${seq}`, copy({ page, seq, call }));
+          },
+        },
+      } satisfies Partial<GenerateDeps>,
+    };
+  }
+
+  const pagesOf = (r: Awaited<ReturnType<typeof generateWorkbook>>) => {
+    if (r.status !== "stored") throw new Error(r.status === "refused" ? r.reason : r.status);
+    // Tokens are random in live use: a resumed run makes new ones for the pages it writes.
+    return r.draft.pages.map((p) => ({ ...p, qrToken: "" }));
+  };
+
+  async function uninterrupted() {
+    const s = stores();
+    const a = ai();
+    const pages = pagesOf(await generateWorkbook(laid, deps({ ai: a, concurrency: 4, ...s.deps })));
+    return { pages, counts: s.counts, requests: a.requests.length, s };
+  }
+
+  it("resumes after a later page's first answer came back but before that page was stored: the same questions and attempts", async () => {
+    const one = await uninterrupted();
+    // Some question used its redo, so attempt counts of 2 are in the comparison.
+    expect([...one.counts.values()]).toContain(2);
+    expect(one.pages.flatMap((p) => p.questions).some((q) => q.attempts === 2)).toBe(true);
+
+    const s = stores();
+    const a = ai();
+    // The first page's save stops the try: the day's later pages have made their first call and are not stored.
+    s.failAt(1);
+    await expect(generateWorkbook(laid, deps({ ai: a, concurrency: 4, ...s.deps }))).rejects.toThrow("the function stopped");
+    expect(s.pages.size).toBe(0);
+    const firstDay = one.pages.filter((p) => p.day === 1 && p.questions.length > 0).map((p) => p.number);
+    const kept = new Set([...s.calls.values()].filter((c) => c.seq === 0).map((c) => c.page));
+    expect(firstDay.filter((n) => kept.has(n)).length).toBeGreaterThan(1);
+
+    const resumed = pagesOf(await generateWorkbook(laid, deps({ ai: a, concurrency: 4, ...s.deps })));
+    expect(resumed).toEqual(one.pages);
+    expect(s.counts).toEqual(one.counts);
+    // No call was asked twice: the AI answered as many calls as the run that was never stopped.
+    expect(a.requests.length).toBe(one.requests);
+  });
+
+  it("resumes after two stops in a row the same way", async () => {
+    const one = await uninterrupted();
+    const s = stores();
+    const a = ai();
+    // The first try stops at its first page save, the second at its second (a page further on); the third finishes.
+    s.failAt(1, 3);
+    await expect(generateWorkbook(laid, deps({ ai: a, concurrency: 4, ...s.deps }))).rejects.toThrow("the function stopped");
+    await expect(generateWorkbook(laid, deps({ ai: a, concurrency: 4, ...s.deps }))).rejects.toThrow("the function stopped");
+    expect(s.pages.size).toBe(1);
+    const resumed = pagesOf(await generateWorkbook(laid, deps({ ai: a, concurrency: 4, ...s.deps })));
+    expect(resumed).toEqual(one.pages);
+    expect(s.counts).toEqual(one.counts);
+    expect(a.requests.length).toBe(one.requests);
+    expect(Math.max(...s.counts.values())).toBe(2);
+  });
+
+  it("never tells the AI the child's name, so no kept call holds it", async () => {
+    const one = await uninterrupted();
+    expect(one.s.calls.size).toBeGreaterThan(0);
+    const a = ai();
+    await generateWorkbook(laid, deps({ ai: a, ...stores().deps }));
+    expect(a.requests.some((r) => JSON.stringify(r).includes("Zoe"))).toBe(false);
+    expect(JSON.stringify([...one.s.calls.values()])).not.toContain("Zoe");
   });
 });

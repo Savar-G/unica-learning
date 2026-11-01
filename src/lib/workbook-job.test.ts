@@ -394,9 +394,10 @@ describe("stale runs", () => {
     expect(atRetry).toMatchObject({ inFlight: 0, stored: 2 });
     const run = (await s.runs.run(id))!;
     expect(run).toMatchObject({ status: "done", attempts: 2 });
-    // The second attempt writes each page that was not stored once: one page call each. (The first attempt's calls of
-    // the pages after the one that failed are lost: their pages wait for it, in page order, #312 round 3.)
-    expect(pageCalls(slow.requests) - atRetry!.calls).toBe(run.totalPages! - atRetry!.stored);
+    // Every page's first call was asked once in all (R379-7-1): the first attempt's calls of the pages after the one
+    // that failed were stored as they came back, and the second attempt replays them instead of asking again.
+    expect(atRetry!.calls).toBeGreaterThan(atRetry!.stored + 1);
+    expect(pageCalls(slow.requests)).toBe(run.totalPages!);
     // The draft's day pages are the stored pages.
     const draft = (await s.drafts.draft(run.draftId!))!;
     for (const p of s.runs.pageStore.get(id)!.values()) expect(draft.pages[p.number - 1]).toEqual(p);
@@ -436,6 +437,98 @@ describe("stale runs", () => {
     // The stored page and the draft show the true count.
     expect(s.runs.pageStore.get(id)!.get(first.number)!.questions.find((x) => x.slot === "1.1")!.attempts).toBe(2);
     expect(draft.pages[first.number - 1]).toEqual(s.runs.pageStore.get(id)!.get(first.number));
+  });
+
+  describe("a job call that stops after a later page's first answer, before that page is stored (R379-7-1)", () => {
+    /**
+     * The dev fake's items, except that a page's first call asked a second time answers slot 1.1 with an operation code
+     * cannot build: what a lost first answer would cost (a failed check, and with it the redo).
+     */
+    const once = () => {
+      const firsts = new Set<string>();
+      return fakeAiClient({
+        answer: (r) => {
+          const req = JSON.parse((r.content[0] as { text: string }).text) as { day: number; page: number };
+          const again = r.name === "workbook_page" && firsts.has(`${req.day}:${req.page}`);
+          if (r.name === "workbook_page") firsts.add(`${req.day}:${req.page}`);
+          const items = answer(r).items;
+          return { items: again ? items.map((it) => (it.slot === "1.1" ? { ...it, operation: { kind: "add", operands: [], expression: null, unit: null, denominator: null, values: [] } } : it)) : items };
+        },
+      });
+    };
+    /** The day pages of a done run's draft, without their QR tokens (random in live use, made again by a new call). */
+    const dayPages = async (s: ReturnType<typeof setup>, id: string) => {
+      const run = (await s.runs.run(id))!;
+      expect(run.status).toBe("done");
+      const draft = (await s.drafts.draft(run.draftId!))!;
+      return draft.pages.map((p) => ({ ...p, qrToken: "" }));
+    };
+    async function uninterrupted() {
+      const ai = once();
+      const s = setup({ ai });
+      const id = await started(s);
+      expect(await runWorkbookJob(id, s.deps)).toBe("done");
+      return { pages: await dayPages(s, id), attempts: s.runs.attemptStore.get(id)!, requests: ai.requests.length };
+    }
+    /**
+     * A run whose job calls stop at the given page saves (counted over every call), as a function that ends does: the
+     * later pages' first calls in flight come back and are stored, then the call loses the run with nothing more
+     * written, and the next job call takes it up.
+     */
+    async function stopping(at: number[]) {
+      const ai = once();
+      const s = setup({ ai });
+      const id = await started(s);
+      let saves = 0;
+      const save = s.runs.savePage;
+      s.deps.runs = { ...s.runs, savePage: async (runId, lease, page) => {
+        if (at.includes(++saves)) {
+          await new Promise((done) => setTimeout(done, 20));
+          s.runs.runs.get(runId)!.lease = null;
+          throw new Error("the function stopped");
+        }
+        return save(runId, lease, page);
+      } };
+      const outcomes = [await runWorkbookJob(id, s.deps)];
+      while (outcomes.at(-1) === "stale") outcomes.push(await runWorkbookJob(id, s.deps, { resume: true }));
+      return { s, id, ai, outcomes };
+    }
+
+    it("replays the stored answers: the same questions and attempt counts as a run that never stopped", async () => {
+      const one = await uninterrupted();
+      const { s, id, ai, outcomes } = await stopping([1]);
+      expect(outcomes).toEqual(["stale", "done"]);
+      // Pages of the first day had stored their first call but not their page when the call stopped.
+      const calls = [...s.runs.callStore.get(id)!.values()];
+      const stored = new Set(s.runs.pageStore.get(id)!.keys());
+      expect(calls.filter((c) => c.seq === 0).length).toBe(stored.size);
+      expect(await dayPages(s, id)).toEqual(one.pages);
+      expect(s.runs.attemptStore.get(id)).toEqual(one.attempts);
+      expect(ai.requests.length).toBe(one.requests);
+    });
+
+    it("replays them the same way after two stops in a row", async () => {
+      const one = await uninterrupted();
+      const { s, id, ai, outcomes } = await stopping([1, 3]);
+      expect(outcomes).toEqual(["stale", "stale", "done"]);
+      expect(await dayPages(s, id)).toEqual(one.pages);
+      expect(s.runs.attemptStore.get(id)).toEqual(one.attempts);
+      expect(ai.requests.length).toBe(one.requests);
+    });
+
+    it("stores a call only for the lease holder", async () => {
+      const s = setup();
+      const id = await started(s);
+      await s.runs.claim(id, "lease-a");
+      const call = { built: [], examples: [], refused: [], tries: { "1.1": 1 } };
+      expect(await s.runs.saveCall(id, "lease-b", 3, 0, call)).toBe(false);
+      expect(s.runs.callStore.get(id)?.size ?? 0).toBe(0);
+      expect(await s.runs.saveCall(id, "lease-a", 3, 0, call)).toBe(true);
+      // The first call stored at a page and place stays.
+      expect(await s.runs.saveCall(id, "lease-a", 3, 0, { ...call, tries: { "1.1": 2 } })).toBe(true);
+      expect(await s.runs.calls(id, [3])).toEqual([{ page: 3, seq: 0, call }]);
+      expect(await s.runs.calls(id, [4])).toEqual([]);
+    });
   });
 
   it("reads every attempt count past the database's row limit, page by page (R379-3-1)", async () => {
