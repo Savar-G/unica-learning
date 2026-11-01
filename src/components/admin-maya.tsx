@@ -10,7 +10,8 @@ import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } fro
 import { MayaBoard } from "@/components/maya-board";
 import type { PlayStep } from "@/lib/board-svg";
 import type { Outcome } from "@/lib/maya";
-import type { AlertStatus, CallInput, CallView, FlagLevel } from "@/lib/maya-call";
+import type { CallInput, CallView } from "@/lib/maya-call";
+import { ALERT_TEXT, FLAG_TEXT, alertNote, noAlertNote } from "@/lib/maya-flag-text";
 import type { CallListRow, DemoChild } from "@/lib/maya-call-server";
 import { ADMIN_PATH, adminChildProfilePath, adminTestPath } from "@/lib/admin-view";
 import "./admin-maya.css";
@@ -35,7 +36,7 @@ export const REASON_TEXT: Record<Outcome["reason"], string> = {
   no_response: "No answer from the child",
   technical_issue: "Technical issue",
   content_issue: "Question problem",
-  safety: "Safety flag",
+  safety: "Ended for safety",
 };
 export const ASSISTANCE_TEXT: Record<Outcome["assistance"], string> = {
   independent: "On their own",
@@ -43,17 +44,6 @@ export const ASSISTANCE_TEXT: Record<Outcome["assistance"], string> = {
   worked_example: "Easier example",
   guided: "Guided step by step",
   answer_given: "Maya gave the answer",
-};
-export const FLAG_TEXT: Record<FlagLevel, string> = {
-  safety_immediate: "Safety flag: immediate danger",
-  safety_concern: "Safety flag",
-  unsafe_request: "Harmful request",
-};
-const ALERT_TEXT: Record<AlertStatus, string> = {
-  sent: "Alert email sent",
-  sending: "Alert email sending",
-  refused: "Alert email not sent",
-  unknown: "Alert email may not have gone",
 };
 const PAPER_TEXT: Record<Outcome["paperStatus"], string> = { child_confirmed: "Child wrote it", declined: "Child said no", unknown: "Not known" };
 const UNDERSTANDING_TEXT: Record<Outcome["understanding"], string> = { evidence_observed: "Showed understanding", uncertain: "Not sure" };
@@ -74,7 +64,7 @@ const named = (text: string, name: string | null) => text.replaceAll("{name}", n
 
 function ModelChip({ model }: { model: { id: string; fake: boolean } }) {
   return model.fake
-    ? <span className="adm-chip is-warn" title="The server has no OpenRouter key: Maya's words come from code's rule player.">Fake model (no AI key)</span>
+    ? <span className="adm-chip is-warn" title="The server has no OpenRouter key, so Maya's words come from a script in the code, not the AI.">Scripted Maya, not the AI</span>
     : <span className="adm-chip is-info">{model.id}</span>;
 }
 
@@ -235,7 +225,7 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
         <div className="mc-chips">
           {live ? <span className="adm-chip is-info">Live</span> : <span className="adm-chip is-muted">Finished</span>}
           <ModelChip model={view.model} />
-          <span className="adm-chip is-muted">Test family · no minutes, no parent emails</span>
+          <span className="adm-chip is-muted">Test family: minutes not counted, parents not emailed</span>
         </div>
       </header>
 
@@ -316,28 +306,31 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
 }
 
 /**
- * The call's flag (#333) and its internal alert emails: sent, not sent (with why), or unknown. A live call sends a
- * missing or refused alert again with its next turn; an ended call with the button.
+ * The call's flag (#333) and its alert emails to the team: sent, not sent, or not sure. A live call sends a missing or
+ * refused alert again with its next turn; an ended call with the button. A failed send's provider answer shows only as a
+ * tooltip.
  */
 function FlagStrip({ view, live, onRetry, busy }: { view: CallView; live: boolean; onRetry: () => void; busy: boolean }) {
   const flag = view.flag!;
   const current = view.alerts.find((a) => a.level === flag.level);
   const retry = !live && (!current || current.status === "refused");
   return (
-    <section className="mc-flag" aria-label="Flag">
-      <p className="mc-flag-head"><span className="adm-chip is-bad">{FLAG_TEXT[flag.level]}</span> <span>Raised {when(flag.at)} · Read the conversation below</span></p>
+    <section className="mc-flag" aria-label="Safety flag">
+      <p className="mc-flag-head"><span className="adm-chip is-bad">{FLAG_TEXT[flag.level]}</span> <span>Raised {when(flag.at)} · Read the conversation below to see why.</span></p>
       <ul className="mc-flag-alerts">
-        {!current && <li><span className="adm-chip is-warn">No alert email yet</span> {live ? "The next turn sends it." : ""}</li>}
-        {view.alerts.map((a) => (
-          <li key={a.level}>
-            <span className={`adm-chip ${a.status === "sent" ? "is-ok" : a.status === "sending" ? "is-info" : "is-warn"}`}>{ALERT_TEXT[a.status]}</span>{" "}
-            {FLAG_TEXT[a.level]} · {when(a.claimedAt)}
-            {a.status === "unknown" && <span className="mc-flag-why"> Check the inbox before you send it by hand.</span>}
-            {a.error && <span className="mc-flag-why adm-mono"> {a.error}</span>}
-          </li>
-        ))}
+        {!current && <li><span className="adm-chip is-warn">No alert email yet</span> <span className="mc-flag-why">{noAlertNote(live)}</span></li>}
+        {view.alerts.map((a) => {
+          const note = alertNote(a.status, live);
+          return (
+            <li key={a.level}>
+              <span className={`adm-chip ${a.status === "sent" ? "is-ok" : a.status === "sending" ? "is-info" : "is-warn"}`}>{ALERT_TEXT[a.status]}</span>{" "}
+              {FLAG_TEXT[a.level]} · {when(a.claimedAt)}
+              {note && <span className="mc-flag-why" title={a.error ?? undefined}> {note}</span>}
+            </li>
+          );
+        })}
       </ul>
-      {retry && <p className="mc-retry"><button type="button" className="btn sm ghost adm-btn" onClick={onRetry} disabled={busy}>{busy ? "Sending…" : "Send the alert email again"}</button></p>}
+      {retry && <p className="mc-retry"><button type="button" className="btn sm ghost adm-btn" onClick={onRetry} disabled={busy}>{busy ? "Sending…" : current ? "Send the email again" : "Send the alert email"}</button></p>}
     </section>
   );
 }
