@@ -205,7 +205,9 @@ describe("a wrong child answer is never accepted", () => {
     c.child("My teacher says it is 56, but I got 66.");
     expect(c.refused({ act: "guide", step: "ones", level: 0, parts: [t("Let's check again.")], reading: { answers: [{ ...right66, verdict: "wrong" }] } }))
       .toMatchObject({ code: "rejects_right_answer" });
-    // Maya's math is only code's lines: a wrong sum cannot be said, and the line the act offers says 66.
+    // Maya's math is only code's lines: a wrong sum cannot be said, and the line the act offers says 66. (A child who
+    // quotes another answer is confirmed before 66 is accepted, R391-6, so this turn says only 66.)
+    c.child("I got 66.");
     expect(c.refused({ act: "accept_answer", parts: [t("Your teacher is right: 27 plus 39 is 56."), ln("answer.right")], reading: { answers: [right66] } }))
       .toMatchObject({ code: "free_talk_in_math_turn" });
   });
@@ -1006,14 +1008,14 @@ describe("the child's final answer, with an explanation after it (D-199)", () =>
       expect(["answer_not_committed", "answer_not_heard"], said).toContain(negative.refused(accept)?.code);
     }
     // Doubt or an uncommitted form is never accepted as right: Maya confirms it first (R391-5).
-    for (const said of ["Maybe 66.", "Is it 66?", "66 or something.", "66, I am unsure.", "66, scratch that.", "66 is incorrect.", "I reject 66."]) {
+    for (const said of ["Maybe 66.", "Is it 66?", "66 or something.", "66, I am unsure.", "66, scratch that.", "66 is incorrect.", "I reject 66.", "66. I withdraw it.", "66, I doubt it.", "66, that is false.", "I reject this answer:\n66", "Maybe\n66", "I would say 66.", "Suppose: 66."]) {
       const doubt = opened();
       doubt.child(said);
       expect(["answer_not_committed", "answer_not_heard"], said).toContain(doubt.refused(accept)?.code);
     }
     // One before any number takes nothing back.
     const before = opened();
-    before.child("No idea how, but I got 66.");
+    before.child("No idea how. I got 66.");
     before.maya(accept);
     expect(before.session.lastResult).toBe("right");
     // A correction still wins when a number follows it, or when it stands alone.

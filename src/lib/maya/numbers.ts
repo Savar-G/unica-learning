@@ -295,29 +295,33 @@ const takeBacks = (text: string) => correctionRuns(text);
  * near it may be rejected rather than given, so the turn holds no answer and Maya asks (R391-3). No reading of what the
  * negative applies to is tried, because none is reliable in children's speech.
  */
-const NEGATIVE = /\b(?:not|never|wrong|nope|nah|incorrect|mistake|mistaken|reject|rejected|ruled|scratch|forget|ignore|undo|cancel|dont|doesnt|didnt|isnt|wasnt|arent|werent|cant|wont|couldnt|shouldnt|aint)\b|\w+n['’]t\b|\btake (?:that|it) back\b/i;
+const NEGATIVE = /\b(?:not|never|wrong|nope|nah|false|untrue|doubt|doubts|withdraw|withdrawn|retract|incorrect|mistake|mistaken|reject|rejected|ruled|scratch|forget|ignore|undo|cancel|dont|doesnt|didnt|isnt|wasnt|arent|werent|cant|wont|couldnt|shouldnt|aint)\b|\w+n['’]t\b|\btake (?:that|it) back\b/i;
 /**
  * Words of doubt, and a question mark (R391-5): "maybe 66", "is it 66?", "66 or something", "66, I am unsure". The
  * number may still be judged wrong, but it is never accepted as right: Maya confirms it first.
  */
 const DOUBT = /\b(?:maybe|perhaps|probably|possibly|guess|guessing|unsure|sure|or something|or so|ish|dunno|idk|kinda|sorta)\b|\?/i;
 
+/** The first line to read from: the line before `first` when it runs on into it (no sentence end: "Maybe" then "66"). */
+const runsOn = (lines: string[], first: number) => (first > 0 && !/[.!?]\s*$/.test(lines[first - 1]) ? first - 1 : first);
+
 /**
- * A negative in the child's first turn that holds a number or any turn after it (a line is one child turn: "I don't
+ * A negative in the child's first turn that holds a number, the turn just before it ("I reject this answer:" then
+ * "66", R391-6-2), or any turn after it (a line is one child turn: "I don't
  * know." then "Sixteen for the ones." keeps 16, but "It is not 66.", or "66" then "That is wrong", keeps nothing:
  * R391-3, R391-4-1).
  */
 const negativeNearAnswer = (text: string) => {
   const lines = text.split("\n");
   const first = lines.findIndex((line) => { const r = readNumbers(line); return r.values.length > 0 || r.unreadable; });
-  return first >= 0 && lines.slice(first).some((line) => NEGATIVE.test(line));
+  return first >= 0 && lines.slice(runsOn(lines, first)).some((line) => NEGATIVE.test(line));
 };
 
 /** A word of doubt or a question mark in the child's first turn with a number or any turn after it (DOUBT). */
 const doubtNearAnswer = (text: string) => {
   const lines = text.split("\n");
   const first = lines.findIndex((line) => { const r = readNumbers(line); return r.values.length > 0 || r.unreadable; });
-  return first >= 0 && lines.slice(first).some((line) => DOUBT.test(line));
+  return first >= 0 && lines.slice(runsOn(lines, first)).some((line) => DOUBT.test(line));
 };
 
 /**
@@ -408,10 +412,19 @@ export interface AnswerRead {
 const ANSWER_WORDS = new Set([
   "i", "i'm", "im", "got", "get", "gets", "it", "it's", "its", "is", "was", "the", "answer", "my", "so", "then", "and",
   "that's", "thats", "that", "makes", "make", "equals", "equal", "to", "gives", "oh", "ok", "okay", "well", "yes", "yeah",
-  "yep", "now", "think", "all", "together", "total", "in", "for", "final", "sum", "should", "be", "would", "have", "has",
+  "yep", "now", "think", "all", "together", "total", "in", "for", "final", "sum", "have", "has",
   "are", "there", "here", "wrote", "write", "down", "done", "a", "an", "of", "on", "one", "mean", "meant", "groups", "group",
   "rows", "row", "lots", "sets", "set", "each", "left", "over", "remainder", "r", "whole", "number", "altogether", "but",
-  "said", "say", "says", "just", "really", "actually", "wait", "no", "point", "zero",
+  "said", "just", "really", "actually", "wait", "no", "point", "zero",
+]);
+/** Words of ordinary math talk after an answer ("I carried the ten", "I added the ones first", "I counted on my fingers"). */
+const MATH_WORDS = new Set([
+  "added", "carried", "carry", "counted", "count", "took", "borrowed", "regrouped", "regroup", "used", "did", "worked",
+  "out", "first", "next", "last", "lined", "up", "put", "made", "split", "broke", "apart", "doubled", "halved", "subtracted",
+  "multiplied", "divided", "shared", "grouped", "drew", "dots", "blocks", "fingers", "line", "head", "with", "from", "by",
+  "me", "them", "they", "these", "those", "this", "column", "columns", "top", "bottom", "under", "above", "extra", "more",
+  "less", "other", "both", "times", "again", "too", "also", "checked", "check", "know", "knew", "remember", "remembered",
+  "away", "fine", "alright",
 ]);
 const UNIT_WORD = /^(?:mm|cm|dm|m|km|g|kg|mg|ml|l|(?:milli|centi|deci|kilo)?(?:metre|meter|gram|litre|liter)s?|metres?|meters?|grams?|litres?|liters?|dollars?|cents?|seconds?|minutes?|hours?|days?|weeks?|months?|years?|o'clock|am|pm|a\.m\.|p\.m\.|degrees?|percent|\$|¢|%)$/i;
 
@@ -421,20 +434,29 @@ function plainClause(clause: string): boolean {
   return words.every((w) => {
     const bare = w.replace(/^[.'-]+|[.'-]+$/g, "");
     if (!bare) return true;
-    if (ANSWER_WORDS.has(bare) || UNIT_WORD.test(bare) || PLACE.test(bare) || OPERATION.test(bare) || RESULT.test(bare) || FILLER.test(bare) || LINK.test(bare) || CHANGES.test(bare)) return true;
+    if (ANSWER_WORDS.has(bare) || MATH_WORDS.has(bare) || UNIT_WORD.test(bare) || PLACE.test(bare) || OPERATION.test(bare) || RESULT.test(bare) || FILLER.test(bare) || LINK.test(bare) || CHANGES.test(bare)) return true;
     const read = readNumbers(bare);
     return read.values.length > 0 || read.unreadable;
   });
 }
 
 /**
- * The final number's own clause is plain (plainClause): the child committed to it. Later clauses ("I added the ones
- * first") need only be free of doubt and rejection (DOUBT, NEGATIVE).
+ * Every clause of the final number's sentence (with a line before that runs on into it) and of every sentence after it
+ * is plain (plainClause: answer words, math talk, numbers, units): the child committed to it (R391-6). Any other word anywhere there ("66, I doubt it", "Maybe" then
+ * "66", "I would say 66", "Suppose: 66") means Maya confirms the answer before she accepts it.
  */
 function committedFinal(text: string): boolean {
-  const clauses = text.split(/[.!;,:\n]+/);
-  const last = clauses.map((c) => readNumbers(c)).map((r) => r.values.length > 0 || r.unreadable).lastIndexOf(true);
-  return last >= 0 && plainClause(clauses[last]);
+  const lines = text.split("\n");
+  const at = lines.map((l) => { const r = readNumbers(l); return r.values.length > 0 || r.unreadable; }).lastIndexOf(true);
+  if (at < 0) return false;
+  // The line before counts when it runs on into the answer ("Maybe" then "66", "I reject this answer:" then "66"); one
+  // that ends a sentence ("I don't know." then "66") does not.
+  const before = at > 0 && !/[.!?]\s*$/.test(lines[at - 1]) ? `${lines[at - 1]}: ` : "";
+  const sentences = `${before}${lines[at]}`.split(/[.!?]+/);
+  const last = sentences.map((x) => { const r = readNumbers(x); return r.values.length > 0 || r.unreadable; }).lastIndexOf(true);
+  // The final number's sentence, with whatever introduces it in that sentence ("Suppose: 66", "I would say 66"), and
+  // every sentence after it.
+  return last >= 0 && sentences.slice(last).every((x) => x.split(/[,;:]+/).every(plainClause));
 }
 
 /**
