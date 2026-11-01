@@ -119,6 +119,13 @@ describe("reading the review's answer", () => {
     ["a fail with no reason", { verdict: "fail", rules: ["promise"], reason: " " }],
     ["another field", { verdict: "pass", rules: [], reason: "", ok: true }],
     ["no verdict", { rules: [], reason: "" }],
+    ["a pass with no reason field", { verdict: "pass", rules: [] }],
+    ["a pass with a null reason", { verdict: "pass", rules: [], reason: null }],
+    ["a pass with a numeric reason", { verdict: "pass", rules: [], reason: 0 }],
+    ["a pass with a reason", { verdict: "pass", rules: [], reason: "Mostly fine, but it promises." }],
+    ["a pass with an oversized reason", { verdict: "pass", rules: [], reason: " ".repeat(301) }],
+    ["a fail with an oversized reason", { verdict: "fail", rules: ["promise"], reason: "x".repeat(301) }],
+    ["a fail with a numeric reason", { verdict: "fail", rules: ["promise"], reason: 7 }],
     ["text", "pass"],
   ])("counts %s as an error (a fail)", (_name, raw) => expect(readTalkReview(raw).verdict).toBe("error"));
 

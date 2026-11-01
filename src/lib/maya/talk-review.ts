@@ -196,16 +196,18 @@ export const TALK_REVIEW_SCHEMA = {
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 /**
- * Reads the review's raw output. A pass must name no rule; a fail must name at least one known rule and a reason. Any
+ * Reads the review's raw output. Every field must be there with its schema type and size. A pass must name no rule and
+ * no reason; a fail must name at least one known rule and a reason. Any
  * other shape is an error, which counts as a fail.
  */
 export function readTalkReview(raw: unknown): TalkReviewResult {
   if (!isObject(raw) || Object.keys(raw).some((k) => !["verdict", "rules", "reason"].includes(k))) return { verdict: "error", reason: "the review answered outside its schema" };
   const rules = raw.rules;
   if (!Array.isArray(rules) || !rules.every((r) => (NEVER_SAY_IDS as readonly unknown[]).includes(r))) return { verdict: "error", reason: "the review named an unknown rule" };
-  if (raw.verdict === "pass") return rules.length === 0 ? { verdict: "pass" } : { verdict: "error", reason: "the review passed a line and named a rule" };
+  if (typeof raw.reason !== "string" || raw.reason.length > TALK_REVIEW_SCHEMA.properties.reason.maxLength) return { verdict: "error", reason: "the review answered outside its schema" };
+  const reason = raw.reason.trim();
+  if (raw.verdict === "pass") return rules.length === 0 && reason === "" ? { verdict: "pass" } : { verdict: "error", reason: "the review passed a line and named a rule or a reason" };
   if (raw.verdict !== "fail") return { verdict: "error", reason: "the review gave no verdict" };
-  const reason = typeof raw.reason === "string" ? raw.reason.trim().slice(0, 300) : "";
   if (rules.length === 0 || reason === "") return { verdict: "error", reason: "the review failed a line without a rule and a reason" };
   return { verdict: "fail", rules: [...new Set(rules as NeverSayId[])], reason };
 }
