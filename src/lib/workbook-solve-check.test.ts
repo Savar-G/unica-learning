@@ -98,7 +98,6 @@ describe("the solve check", () => {
 
   it("takes an answer in any written form of the key's number, and a choice exactly", () => {
     expect(sameAnswer("12", ["12"], false)).toBe(true);
-    expect(sameAnswer("12 shells", ["12"], false)).toBe(true);
     expect(sameAnswer("1,250", ["1250"], false)).toBe(true);
     expect(sameAnswer("3/2", ["1 1/2"], false)).toBe(true);
     expect(sameAnswer("0.50", ["0.5"], false)).toBe(true);
@@ -125,6 +124,21 @@ describe("the solve check", () => {
     expect(sameAnswer("5cm", ["5 cm"], false)).toBe(true);
     expect(sameAnswer("3:30 p.m.", ["3:30 pm"], false)).toBe(true);
     expect(sameAnswer("$4.75", ["$4.75"], false)).toBe(true);
-    expect(sameAnswer("7 apples", ["7"], false)).toBe(true);
+    expect(sameAnswer("7 apples", ["7"], false)).toBe(false);
+    expect(sameAnswer("12 shells", ["12"], false)).toBe(false);
+  });
+
+  it("never lets an added word through, since no list tells a counted thing from a unit (R380-14-1)", () => {
+    expect(sameAnswer("5 inches", ["5"], false)).toBe(false);
+    expect(sameAnswer("5 feet", ["5"], false)).toBe(false);
+    expect(sameAnswer("5 furlongs", ["5"], false)).toBe(false);
+  });
+
+  it("keeps the sign of a mixed number whose whole part is zero (R380-14-2)", () => {
+    expect(sameAnswer("-0 1/2 m", ["0 1/2 m"], false)).toBe(false);
+    expect(sameAnswer("0 1/2", ["-0 1/2"], false)).toBe(false);
+    expect(sameAnswer("-0 1/2", ["-1/2"], false)).toBe(true);
+    expect(sameAnswer("-1 1/2", ["-3/2"], false)).toBe(true);
+    expect(sameAnswer("-1 1/2", ["-1/2"], false)).toBe(false);
   });
 });

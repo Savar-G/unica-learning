@@ -156,9 +156,10 @@ function numbersOf(s: string): [number, number][] {
   const re = /(-?\d+(?:\.\d+)?)(?:\s+(\d+)\/(\d+)|\/(\d+))?/g;
   for (const m of t.matchAll(re)) {
     if (m[2] !== undefined) {
-      const w = Number(m[1]);
+      const negative = m[1].startsWith("-");
+      const w = Math.abs(Number(m[1]));
       const d = Number(m[3]);
-      out.push([w * d + Math.sign(w || 1) * Number(m[2]), d]);
+      out.push([(negative ? -1 : 1) * (w * d + Number(m[2])), d]);
     } else if (m[4] !== undefined) out.push([Number(m[1]), Number(m[4])]);
     else {
       const places = (m[1].split(".")[1] ?? "").length;
@@ -184,29 +185,20 @@ const wordsOf = (s: string) => s
 
 /**
  * Whether the solver's answer is one the key counts as right: the same choice, or the same numbers in the same order
- * with the same words around them (units, a.m. or p.m., "R" for a remainder). A different or missing unit fails, which
- * fails the question closed: a unit is never converted or assumed.
+ * with the same words around them (units, a.m. or p.m., "R" for a remainder) and nothing added. A different, missing
+ * or added unit or word fails, which fails the question closed: a unit is never converted or assumed.
  */
 export function sameAnswer(given: string, right: string[], choice: boolean): boolean {
   if (choice) return right.some((r) => clean(r) === clean(given));
   return right.some((r) => clean(r) === clean(given) || (/\d/.test(r) && sameNumbers(numbersOf(r), numbersOf(given)) && sameWords(r, given)));
 }
 
-/** A unit of measure, time or money (or "R" for a remainder), spelled out or short: never a plain count word ("12 shells"). */
-const UNIT_WORD = /^(?:r|mm|cm|dm|m|km|mg|g|kg|t|ml|cl|dl|l|kl|s|sec|secs|min|mins|h|hr|hrs|am|pm|c|(?:milli|centi|deci|kilo)?(?:metre|meter|gram|litre|liter)s?|tonnes?|seconds?|minutes?|hours?|days?|weeks?|months?|years?|cents?|dollars?|degrees?|percent)$/;
-
 /**
- * Whether the words around the numbers match. They must be the same, with one allowance: when the key is a plain
- * number (a count), the solver may name what it counts ("12 shells"), as long as that name holds no unit, sign or time.
+ * Whether the words around the numbers match: the same units, signs, a.m. or p.m. and "R", and nothing added. A
+ * counted name ("12 shells" for 12) fails too, because no list can tell a counted thing from a unit ("5 inches"); the
+ * solver is told to write a count as the number only, and a mismatch fails the question closed.
  */
-function sameWords(right: string, given: string): boolean {
-  const r = wordsOf(right);
-  const g = wordsOf(given);
-  if (r === g) return true;
-  if (!/^#+$/.test(r) || g.replace(/[a-z]+/g, "") !== r) return false;
-  const words = given.toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/).filter(Boolean);
-  return words.every((w) => !UNIT_WORD.test(w));
-}
+const sameWords = (right: string, given: string) => wordsOf(right) === wordsOf(given);
 
 /** The output schema: an answer for each box of each question, and a problem when a question cannot be answered. */
 export const SOLVE_SCHEMA = {
@@ -222,7 +214,7 @@ export const SOLVE_SCHEMA = {
 
 const SYSTEM = [
   "You check printed math questions from a workbook for a child aged 6 to 12. Each question is given as the child sees it: its text, the picture in words, what the card prints beside the text, and its answer boxes and choices.",
-  "Answer every box and choice of every question, as a careful child who reads the question exactly as printed would. Write a box's answer as the child writes it: a number in digits (12, 0.5, 3/4, 1 1/2, 9 R 2), an amount with its unit, written as the question writes it (5 cm, $4.75), or a time with a.m. or p.m. when the question uses them (3:30 p.m.). Never convert a unit. For a choice, give one of its options exactly as printed.",
+  "Answer every box and choice of every question, as a careful child who reads the question exactly as printed would. Write a box's answer as the child writes it: a count or a plain number as the number only, in digits, with no word after it (12, not 12 shells; 0.5, 3/4, 1 1/2, 9 R 2), an amount with its unit, written as the question writes it (5 cm, $4.75), or a time with a.m. or p.m. when the question uses them (3:30 p.m.). Never convert a unit. For a choice, give one of its options exactly as printed.",
   "Use only what is printed. Do not guess what the writer meant. If a question cannot be answered as printed (it is unclear, it leaves out a number, or its boxes do not take what it asks), say which and why in problem; else problem is null.",
 ].join("\n");
 
