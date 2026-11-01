@@ -81,7 +81,7 @@ Each fraction must be one complete expression. The operands must be next to the 
 
 For a mixed answer such as `1 2/8`, this help uses the fractional part (`2/8`) and keeps the whole part (`1`). A form listed as wrong does not enable `check.equal` unless the question asks for simplest form. These checks do not change which fraction questions Maya teaches. The fraction lines still need Savar's approval.
 
-Expression grouping uses the existing correction and explanation grammar. It preserves multiword corrections such as "I mean" and every supported explanation word, including "cuz" and "coz". Ordinary connecting words do not become expression boundaries.
+Expression grouping uses the existing correction and explanation grammar. It preserves multiword corrections such as "I mean" and every supported explanation word, including "cuz" and "coz". Correction detection uses recognized fraction spans at their original text positions, so "actually a half" and "actually 1/2" follow the same rules. Ordinary connecting words do not become expression boundaries.
 
 An equal-form final answer must be committed before it completes any work step or receives `check.equal`. A doubtful answer such as "Maybe 14/16?" is confirmed first. This check also applies to code fallbacks. An ordinary wrong answer still follows the wrong-answer path.
 

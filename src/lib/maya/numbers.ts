@@ -304,19 +304,11 @@ export function writtenFractions(text: string): string {
   if (low.length !== text.length) return UNREAD_MARK;
   const words = [...low.matchAll(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+|[a-z]+|\S|\n/g)]
     .map((m) => ({ t: m[0], at: m.index, end: m.index + m[0].length }));
-  type Span = { from: number; to: number; text: string };
+  type Span = { from: number; to: number; text: string; anchor: number };
   const spans: Span[] = [];
   // An operand must touch the bar, or have only horizontal space between it and the bar. Never cross a sentence.
   const adjacent = (a: number, b: number) => a >= 0 && b < words.length && /^[ \t]*$/.test(low.slice(words[a].end, words[b].at));
   const numeric = (i: number) => i >= 0 && i < words.length && (/^(?:\d|\.\d)/.test(words[i].t) || kindOf(words[i].t) !== null);
-  // These tokens separate number expressions. Other words cannot join a separate
-  // whole-number fragment to a fraction unless the mixed-number grammar consumes it.
-  const corrections = correctionRuns(low).filter((run) => run.clean);
-  const expressionBoundary = (at: number) => {
-    const word = words[at];
-    return /^[.!?;:\n]$/.test(word.t) || RESULT.test(word.t) || OPERATION.test(word.t) || EXPLANATION.test(word.t) ||
-      /^(?:so|then)$/.test(word.t) || corrections.some((run) => word.at >= run.index && word.end <= run.end);
-  };
   /** One complete nonnegative integer, without "and". A run such as "six sixty" has no reading. */
   const integer = (at: number, direction: -1 | 1) => {
     if (at < 0 || at >= words.length) return null;
@@ -331,7 +323,7 @@ export function writtenFractions(text: string): string {
     return !read.unreadable && read.values.length === 1 && v.type === "number" && Number.isSafeInteger(v.value) && v.value >= 0
       ? { from, to, value: v.value } : null;
   };
-  const invalid = (at: number) => spans.push({ from: at, to: at, text: UNREAD_MARK });
+  const invalid = (at: number) => spans.push({ from: at, to: at, text: UNREAD_MARK, anchor: at });
   for (let k = 0; k < words.length; k++) {
     const token = words[k].t;
     const bar = token === "/" || token === "over";
@@ -381,16 +373,33 @@ export function writtenFractions(text: string): string {
     while (right + 1 < words.length && !/^[.!?;:\n]$/.test(words[right + 1].t)) right += 1;
     const ofPhrase = words.slice(left, right + 1).some((w) => w.t === "of");
     const signed = words.slice(left, right + 1).some((w) => /^(?:minus|negative|dash|[+\-])$/.test(w.t));
-    let expressionFrom = from;
-    let expressionTo = to;
+    if (attachedBefore || attachedAfter || ofPhrase || signed) invalid(k);
+    else spans.push({ from, to, text: value, anchor: k });
+  }
+  // Recognize local fraction forms before classifying corrections. Reuse these
+  // exact spans so article fractions and digit fractions have the same grammar.
+  // Their source offsets stay unchanged, even when the written form is shorter.
+  const fractionStarts = new Set(spans.filter((span) => span.text !== UNREAD_MARK).map((span) => words[span.from].at));
+  const corrections = correctionRuns(low, (at) => fractionStarts.has(at)).filter((run) => run.clean);
+  const expressionBoundary = (at: number) => {
+    const word = words[at];
+    return /^[.!?;:\n]$/.test(word.t) || RESULT.test(word.t) || OPERATION.test(word.t) || EXPLANATION.test(word.t) ||
+      /^(?:so|then)$/.test(word.t) || corrections.some((run) => word.at >= run.index && word.end <= run.end);
+  };
+  for (const span of spans) {
+    if (span.text === UNREAD_MARK) continue;
+    let expressionFrom = span.from;
+    let expressionTo = span.to;
     while (expressionFrom > 0 && !expressionBoundary(expressionFrom - 1)) expressionFrom -= 1;
     while (expressionTo + 1 < words.length && !expressionBoundary(expressionTo + 1)) expressionTo += 1;
     // Every numeric fragment in this expression must belong to the recognized
     // integer/fraction/mixed form. Never retain only the fraction of an unsupported mixed form.
     const unconsumedNumber = words.slice(expressionFrom, expressionTo + 1)
-      .some((_word, i) => { const at = expressionFrom + i; return (at < from || at > to) && numeric(at); });
-    if (attachedBefore || attachedAfter || ofPhrase || signed || unconsumedNumber) invalid(k);
-    else spans.push({ from, to, text: value });
+      .some((_word, i) => { const at = expressionFrom + i; return (at < span.from || at > span.to) && numeric(at); });
+    if (unconsumedNumber) {
+      span.from = span.to = span.anchor;
+      span.text = UNREAD_MARK;
+    }
   }
   // Overlapping expressions ("3/4/5") are unsupported as a whole, never separate fractions.
   spans.sort((a, b) => a.from - b.from);
@@ -423,7 +432,7 @@ interface CorrectionRun { index: number; end: number; clean: boolean; numberNext
  * nothing in its place ("66... no, I don't know"). Any other correction word ("66 no that is wrong", "there are actually
  * 66 blocks", "I have no idea") is unclear: the turn then holds no final answer, so Maya asks rather than guess.
  */
-function correctionRuns(text: string): CorrectionRun[] {
+function correctionRuns(text: string, numberStartsAt?: (at: number) => boolean): CorrectionRun[] {
   const runs: CorrectionRun[] = [];
   for (const m of text.matchAll(CORRECTION)) {
     const index = m.index ?? 0;
@@ -438,11 +447,12 @@ function correctionRuns(text: string): CorrectionRun[] {
   }
   for (const r of runs) {
     const after = text.slice(r.end);
-    const words = after.slice((TAKE_BACK_FILLER.exec(after)?.[0] ?? "").length).split(/\s+/);
+    const filler = (TAKE_BACK_FILLER.exec(after)?.[0] ?? "").length;
+    const words = after.slice(filler).split(/\s+/);
     // The next word is a number, or starts a spoken number form ("point sixty-six", "minus 3", "a half").
     const lead = NUMBER_LEAD.test(words[0] ?? "") ? words.slice(0, 3).join(" ") : words[0] ?? "";
     const read = readNumbers(lead);
-    const numberFollows = read.values.length > 0 || read.unreadable;
+    const numberFollows = read.values.length > 0 || read.unreadable || numberStartsAt?.(r.end + filler) === true;
     // The start of the turn or a punctuation mark before it, maybe with an interjection ("Oh wait, 28", "Hmm, no, 66").
     const clauseStart = /(?:^|[,.!?…;:-])\s*(?:(?:oh|ah|oops|um+|uh+|hmm+|okay|ok)[\s,.!?…]*)?$/i.test(text.slice(0, r.index));
     const alone = /^\s*(?:[,.!?…;:-]|$)/.test(after);

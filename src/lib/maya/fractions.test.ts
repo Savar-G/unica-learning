@@ -171,6 +171,27 @@ describe("reading spoken and typed fractions in a fraction call (#407)", () => {
     expect(r.refusal).toBeNull();
     expect(c.s.solved).toBe("child");
   });
+
+  it.each([
+    ...["actually", "oops", "wait", "I mean", "no,", "no wait,", "oh wait, I mean", "actually, I think it's"].map((correction) => [`3/4, ${correction} a half`, frac(1, 2)] as const),
+    ["3/4, actually a quarter", frac(1, 4)],
+    ["3/4, actually an eighth", frac(1, 8)],
+    ["fourteen sixteenths, I mean a half", frac(1, 2)],
+    ["1 3/8, I mean a quarter", frac(1, 4)],
+    ["3/4, actually, a half", frac(1, 2)],
+    ["3/4, actually one half", frac(1, 2)],
+    ["3/4, actually 1/2", frac(1, 2)],
+    ["3/4, actually two and a half", mixed(2, 1, 2)],
+    ["3/4, I mean 2 1/2", mixed(2, 1, 2)],
+  ] as const)("reads the same supported fraction grammar after a correction: %j", (said, value) => {
+    expect(readAnswer(said, READ)).toMatchObject({ final: value, sure: true });
+    const first = value.type === "mixed" ? frac(9, 4) : frac(1, value.denominator * 2);
+    const second = value.type === "mixed" ? frac(1, 4) : first;
+    const pkg = pkgOf("Add the fractions.", add(first, second), EASY);
+    const c = call(pkg, said);
+    expect(c.propose({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(value, "result", "right")] } }).refusal).toBeNull();
+    expect(c.s.solved).toBe("child");
+  });
 });
 
 describe("right answers follow the question's wording (#407, research C38)", () => {
