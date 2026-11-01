@@ -8,6 +8,8 @@ import { renderFitCheck } from "@/lib/workbook-fit";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import { generateWorkbook, type FitCheck, type GenerateDeps, type GeneratedWorkbook } from "@/lib/workbook-generator";
 import { planLevel, planWorkbook, type WorkbookPlan } from "@/lib/workbook-plan";
+import { skillRange } from "@/lib/workbook-book";
+import { choiceAsked } from "@/lib/workbook-generator-items";
 import { textRoom } from "@/lib/workbook-template";
 import { fixedTemplate } from "@/lib/workbook-template-fixed";
 import type { SlotName } from "@/lib/workbook-page";
@@ -37,6 +39,7 @@ const num = (value: number) => ({
   type: "number", value, numerator: null, denominator: null, whole: null, unit: null, hours: null, minutes: null, period: null, parts: [], text: null,
 });
 const addOp = (a: number, b: number) => ({ kind: "add", operands: [num(a), num(b)], expression: null, unit: null, denominator: null, values: [] });
+const subOp = (a: number, b: number) => ({ kind: "subtract", operands: [num(a), num(b)], expression: null, unit: null, denominator: null, values: [] });
 
 interface SlotAsked { slot: string; skills: string[] }
 const read = (r: AiJsonRequest) => JSON.parse((r.content[0] as { text: string }).text) as { day: number; pageType: string; slots: SlotAsked[]; note: string | null };
@@ -243,9 +246,17 @@ describe("a page that does not fit", () => {
 
   it("is written again once, shorter, with the problems; when no question left out makes it fit, it keeps them all, marked failed", async () => {
     const target = 3;
-    const fit: FitCheck = { fits: async (page) => (page.number === target ? { ok: false, problems: [{ question: 2, reason: "question 2 does not fit its space" }] } : { ok: true }) };
+    const sizes: number[] = [];
+    const fit: FitCheck = {
+      fits: async (page) => {
+        if (page.number === target) sizes.push(page.questions.length);
+        return page.number === target ? { ok: false, problems: [{ question: 2, reason: "question 2 does not fit its space" }] } : { ok: true };
+      },
+    };
     const ai = fakeAiClient({ answer: (r) => fill(r) });
     const draft = await generate(deps({ ai, fit }));
+    // It tries with fewer questions, down to one, never none: its panels take their sums from its questions.
+    expect(Math.min(...sizes)).toBe(1);
     const page = draft.pages[target - 1];
     expect(page.fit).toEqual({ status: "failed", problems: [{ question: 2, reason: "question 2 does not fit its space" }] });
     expect(page.attempts).toBe(2);
@@ -555,6 +566,55 @@ describe("a book laid out for the templates: room, rules and the content left", 
     expect(note).toContain("the number 12 is too big for this question: its numbers are at most");
     expect(note).toContain("Leave out a wrong answer past the limit.");
     expect(firstDayPage(draft).questions[0]).toMatchObject({ slot: "1.1", attempts: 2, check: { status: "checked" } });
+  });
+
+  it("stores a missing part (2 + ? = 5) with the missing part as its answer, also on a skill before subtraction", async () => {
+    const missing = (part: number, total: number) => ({ kind: "missing-addend", operands: [num(part), num(total)], expression: null, unit: null, denominator: null, values: [] });
+    const ai = fakeAiClient({
+      answer: (r) => fill(r, (s) => small(s, {
+        text: "2 and what make 5?", operation: missing(2, 5), easier: { text: "1 and what make 3?", operation: missing(1, 3) },
+        wrongAnswers: [{ value: num(5), cause: "total", description: "Writes the total.", step: null }],
+      })),
+    });
+    const draft = await laidOut(deps({ ai }));
+    const qs = draft.pages.flatMap((p) => p.questions).filter((q) => q.place !== "spot-the-error");
+    expect(qs.length).toBeGreaterThan(0);
+    expect(qs.every((q) => q.check.status === "checked" && q.package!.answer!.value.type === "number" && (q.package!.answer!.value as { value: number }).value === 3)).toBe(true);
+    // Some of them are on a skill whose level has not met subtraction (K2 and before): a number bond is allowed there.
+    expect(qs.some((q) => !skillRange(BC, 3, q.package!.skill.skills[0]).subtraction)).toBe(true);
+    const panels = draft.pages.flatMap((p) => (p.content?.kind === "day" ? p.content.blocks : [])).filter((b) => b.slot === "worked-example" || b.slot === "watch-one" || b.slot === "reminder");
+    expect(panels.length).toBeGreaterThan(0);
+    for (const b of panels) {
+      const lines = [...(b.lines ?? []), ...(b.methods ?? []).flatMap((m) => m.lines)];
+      expect(lines).toEqual(b.slot === "reminder" ? ["1 + [2] = 3"] : ["Count on from 1 to 3: 2, 3.", "1 + [2] = 3"]);
+    }
+  });
+
+  it("works the panels' sums by counting on and back at U3, never in columns", async () => {
+    const ai = fakeAiClient({ answer: (r) => fill(r, (s) => small(s, { text: "10 - 9 = ?", operation: subOp(10, 9), easier: { text: "9 - 8 = ?", operation: subOp(9, 8) }, wrongAnswers: [{ value: num(2), cause: "count", description: "Counts one too many.", step: null }] })) });
+    const draft = await laidOut(deps({ ai }));
+    const watch = draft.pages.flatMap((p) => (p.content?.kind === "day" ? p.content.blocks : [])).filter((b) => b.slot === "watch-one" || b.slot === "worked-example");
+    expect(watch.length).toBeGreaterThan(0);
+    for (const b of watch) {
+      const lines = [...(b.lines ?? []), ...(b.methods ?? []).flatMap((m) => m.lines)];
+      expect(lines).toEqual(["Count back 8 from 9: 8, 7, 6, 5, 4, 3, 2, 1.", "9 − 8 = [1]"]);
+    }
+  });
+
+  it("refuses a yes-or-no or either-or question stored with an operation, and tells the redo", async () => {
+    const ai = fakeAiClient({
+      answer: (r) => fill(r, (s) => (r.name === "workbook_page" && s.slot === "1.1" ? small(s, { text: "Is 3 close to 5 or less than 2?" }) : small(s))),
+    });
+    const draft = await laidOut(deps({ ai }));
+    const note = read(ai.requests.find((r) => r.name === "workbook_page_redo")!).note!;
+    expect(note).toContain("the question asks yes or no, but its answer is the operation's number");
+    expect(firstDayPage(draft).questions[0]).toMatchObject({ attempts: 2, check: { status: "checked" } });
+    expect(choiceAsked("Is 8 close to 10?")).toBe("yes or no");
+    expect(choiceAsked("Mia has 4. Are they equal?")).toBe("yes or no");
+    expect(choiceAsked("Is it 4 or 7?")).toBe("yes or no");
+    expect(choiceAsked("Which is more, 4 or 7?")).toBe("for a choice");
+    expect(choiceAsked("Is 8 here. How far is 8 from 10?")).toBeNull();
+    expect(choiceAsked("6 + 2 = ?")).toBeNull();
   });
 
   it("drops a slot from the page's content when every question of it is left out, and keeps the others' numbers in step", async () => {

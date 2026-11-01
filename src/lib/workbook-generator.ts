@@ -17,7 +17,7 @@
 //   its room; of the two versions of a question the page keeps the sound one, and of two sound ones the shorter. If the
 //   page still does not fit, it leaves out questions, one at a time, until it fits: the last question the fit check
 //   names, else the page's last. Nothing is shrunk. Each question left out is in the page's `leftOut` and its part's
-//   omission. If the page does not fit with no question, it keeps its questions and is marked failed.
+//   omission. A page keeps at least one question: if it does not fit with one, it keeps them all and is marked failed.
 // - The book (CONTEXT.md sections 1 and 7, D-187, D-191): the cover (page 1), the How + Plan page, the ten days' pages
 //   in plan order, the back cover, then blank pages to a multiple of 4. Page numbers run from the cover through the
 //   book; question numbers restart on each page. The page type, day and numbers come from the plan and code, never from
@@ -148,8 +148,14 @@ export interface GeneratedWorkbook {
   counts: { pages: number; questions: number; checked: number; notChecked: number; failed: number; failedPages: number };
 }
 
-/** The shape version of a stored GeneratedWorkbook. Raise it when the shape changes. */
-export const GENERATED_DRAFT_VERSION = 1;
+/**
+ * The shape version of a stored GeneratedWorkbook. Raise it when the shape changes. Version 2 (#380): a question may
+ * have 3 attempts, a page may have `leftOut`, and a package may hold the missing-addend kind (count-up steps), which
+ * code before it cannot compute. A version 1 draft is a version 2 draft too, so both are read.
+ */
+export const GENERATED_DRAFT_VERSION = 2;
+/** The stored shape versions this code reads. */
+export const READABLE_DRAFT_VERSIONS: readonly number[] = [1, 2];
 
 export type DraftSave = { status: "saved"; draftId: string } | { status: "refused"; reason: string };
 
@@ -268,11 +274,12 @@ const SYSTEM = [
   "Pictures: figure names a picture kind (dots, ten-frame, number-line, base-ten, array) or null. Code draws it from the operation (dots for 3 + 4 are 3 and 4 dots; an array for 3 × 4) or from numbers (count: dots take each group, a ten-frame each part, base-ten the hundreds, tens and ones, an array the rows and columns); you never draw, size or place it. Picture stories below U10 should have dots or a ten-frame with small whole numbers.",
   "Keep to the part's kind: practice builds from easy to harder in small changes; Fix it uses new numbers on the skills listed, never a question named in 'avoid'; Friday 5, mini-tests and the level test have no hints.",
   "Copy: short plain sentences a child can read; Canadian English (Mom, metre, litre, colour); money in Canadian dollars and cents; never a school grade, a brand name, or a prompt to scan or call anyone; no last names.",
-  "Room: a slot may give its room: the most characters its question text has room for on the printed page (characters), in lines of about perLine characters. Count the characters of the text, spaces included, and stay within it: the page has no room for more, and nothing is shrunk to fit. Say it short: '3 cars. 2 more come. How many now?', not a long story. On a card (lines 2), writing lines (written-reason) or a tall picture (number-line, base-ten) take the place of a line: then write one line at most. A written-reason card's lines take as much room as 2 lines of text, so a page of cards has at most 2 written-reason items. For another question with no number answer (Equal? Which has more?), use draw ('Draw 3 dots and 3 dots. Circle the bigger group.'): a parent checks it and it takes the room of an answer box. A write-number item always needs an operation.",
+  "Room: a slot may give its room: the most characters its question text has room for on the printed page (characters), in lines of about perLine characters. Count the characters of the text, spaces included, and stay within it: the page has no room for more, and nothing is shrunk to fit. Say it short: '3 cars. 2 more come. How many now?', not a long story. On a card (lines 2), writing lines (written-reason) or a tall picture (number-line, base-ten) take the place of a line: then write one line at most. A ten-frame on a card is taller than its answer box: with a ten-frame, write one line. A written-reason card's lines take as much room as 2 lines of text, so a page of cards has at most 2 written-reason items. For another question with no number answer (Equal? Which has more?), use draw ('Draw 3 dots and 3 dots. Circle the bigger group.'): a parent checks it and it takes the room of an answer box. A write-number item always needs an operation.",
   "A missing number in a list (4, 5, ?, 7) is the sequence format, with the blanks as data: never write _ or a gap in the text.",
   "Rules: a slot may give the rules of each of its skills in plain words: the largest number, the signs and ideas not taught yet, and the formats to leave out. Follow them exactly; they are checked by code, and an item that breaks one is thrown away.",
-  "The operation's answer is exactly the number the child writes in the box: 'Mia has 3. How many more make 5?' is 5 - 3 = 2, never 3 + 2 (code would print 5 as the answer). When a skill's rules forbid subtraction, do not ask how many more: ask for the total (3 and 2 more make how many?).",
-  "Before you write an easier example, work out both answers: the easier example's answer is a different number from the question's answer. When every question of a skill has the same answer (make 5, make 10), the easier example makes a smaller total (make 4).",
+  "The operation's answer is exactly the number the child writes in the box. A missing part is the missing-addend kind, operands [the part given, the total]: '2 and what make 5?', '3 + ? = 5', 'Mia has 3. How many more make 5?' and 'How far is 7 from 10?' are missing-addend [2, 5], [3, 5], [3, 5] and [7, 10]; code's answer is the missing part (3, 2, 2, 3). Never write them as 2 + 3 (code would print 5 as the answer). It is a number bond, not subtraction, so it is allowed before subtraction is taught; its totals go to 20.",
+  "The box takes the operation's number, so a question with an operation asks for that number: never a yes-or-no question (Is 8 close to 10? Are they equal?) or a choice (close to 10 or less than 5?). Ask 'How far is 8 from 10?' instead, or use the draw format.",
+  "Before you write an easier example, work out both answers: the easier example's answer is a different number from the question's answer. When every question of a skill has the same answer (make 5, make 10), the easier example makes a smaller total: for 3 + ? = 5 it is 2 + ? = 4. For a missing part, easier means fewer to count on, with a total no larger: for 'How far is 7 from 10?' (7 + ? = 10, count 3) it is 'How far is 9 from 10?' (9 + ? = 10, count 1). Every item with an operation has an easier example; for the smallest sums take a smaller number: 1 + 1 for 2 + 1, 1 + 0 for 1 + 1.",
 ].join("\n");
 
 /** A skill's rules in plain words for the AI, from its number range (skillRange): the checks rangeProblem makes. */
@@ -282,7 +289,7 @@ function rangeRules(skill: string, r: NumberRange): string {
     `Every number is ${whole ? `a whole number from 0 to ${r.max}` : `at most ${r.max}`}: the numbers in the text, the operation's numbers and its answer, every wrong answer, and the easier example's numbers and answer. Leave out a wrong answer that would be bigger (adding by mistake on a take-away often is).`,
   ];
   const no: string[] = [];
-  if (!r.subtraction) no.push("subtraction (no subtract operation, no - sign)");
+  if (!r.subtraction) no.push("subtraction (no subtract operation, no - sign; a missing part such as 2 + ? = 5 is the missing-addend kind, which is allowed)");
   if (!r.multiplication) no.push(r.grouping ? "multiplication (no multiply operation, no × sign)" : "multiplication (no multiply operation, no × sign, no 'groups of')");
   if (!r.division) no.push("division (no divide operation, no ÷ sign, no sharing into equal groups as an operation)");
   if (!r.comparison) no.push("comparison (no < or > anywhere, so never the compare format; to compare two numbers use the order format or ask which is more in words)");
@@ -423,6 +430,8 @@ function hintFor(reason: string): string | null {
   if (/this question uses no /.test(reason)) return "Keep to the slot's rules: only an operation kind and a format they allow.";
   if (/easier example is not smaller/.test(reason)) return "Sort both sets of numbers from least to greatest: each easier number is no larger than the question's at its place, and one is smaller (for 4 + 3: 1 + 2 or 2 + 3).";
   if (/needs an operation code can compute/.test(reason)) return "A question with no number answer is a draw item (a parent checks it); else give the operation.";
+  if (/has no easier example/.test(reason)) return "Give an easier example of the same kind: a smaller total (2 + ? = 4 for 3 + ? = 5), or smaller numbers (1 + 1 for 2 + 1).";
+  if (/but its answer is the operation's number/.test(reason)) return "Ask for the number the operation gives, or make it a draw item.";
   return null;
 }
 
@@ -599,7 +608,8 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
       const leftOut: { question: GeneratedQuestion; slot: Slot; reason: string }[] = [];
       let kept = questions;
       let left = fit;
-      while (!left.ok && kept.length > 0) {
+      // A page keeps at least one question: its panels take their sums from its questions.
+      while (!left.ok && kept.length > 1) {
         const out = toLeaveOut(kept, left.problems);
         leftOut.push({ question: kept[out.index], slot: w.slots.find((x) => x.id === kept[out.index].slot)!, reason: out.reason });
         kept = renumbered(kept.filter((_, k) => k !== out.index));

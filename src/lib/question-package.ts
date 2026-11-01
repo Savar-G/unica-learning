@@ -117,6 +117,9 @@ export interface FractionParts {
 /**
  * A computable operation (question-package-math.ts has the limits of each kind):
  * - add, subtract: whole numbers from 0 to 9999; subtraction never goes below zero.
+ * - missing-addend: a known part and a total ("2 + ? = 5", "How far is 7 from 10?"), whole numbers to 20 with the part
+ *   no larger than the total; the answer is the missing part (3), worked by counting on from the part to the total. It
+ *   is a number bond, so it is not subtraction: a level that has not met subtraction may ask it.
  * - multiply: a whole number to 9999 times a whole number to 999 (long multiplication).
  * - divide: a whole number to 9999 divided by a whole number from 1 to 99 (long division, with a remainder).
  * - decimal-add, decimal-subtract, decimal-multiply: numbers to 9999.999 with at most 3 decimal places.
@@ -137,7 +140,7 @@ export interface FractionParts {
  *   both sides, then checked by putting the solution in.
  */
 export type Operation =
-  | KindsOf<"add" | "subtract" | "multiply" | "divide" | "decimal-add" | "decimal-subtract" | "decimal-multiply", [number, number]>
+  | KindsOf<"add" | "subtract" | "multiply" | "divide" | "decimal-add" | "decimal-subtract" | "decimal-multiply" | "missing-addend", [number, number]>
   | KindsOf<"fraction-add" | "fraction-subtract" | "fraction-multiply" | "fraction-divide", [FractionOperand, FractionOperand]>
   | { kind: "fraction-simplify"; operands: [Extract<AnswerValue, { type: "fraction" }>] }
   | { kind: "fraction-equivalent"; operands: [Extract<AnswerValue, { type: "fraction" }>]; denominator: number }
@@ -282,6 +285,14 @@ export type WorkedStep =
       from: ClockTime;
       to: ClockTime;
       minutes: number;
+    }
+  | {
+      /** A missing part found by counting on from the known part to the total: each number said, then how many. */
+      id: "count";
+      kind: "count-up";
+      from: number;
+      to: number;
+      said: number[];
     }
   | { id: "total"; kind: "add-durations"; minutes: number[]; total: number }
   | { id: "clock"; kind: "clock-change"; from: ClockTime; to: ClockTime }
@@ -760,7 +771,10 @@ const carries = (s: WorkedStep) => ((s.kind === "add-column" || s.kind === "mult
 const WHOLE_KINDS: readonly string[] = ["add", "subtract", "multiply", "divide"];
 function size(operation: Operation): Size {
   const steps = workedSteps(operation);
-  const numbers = WHOLE_KINDS.includes(operation.kind) ? [...(operation.operands as number[])].sort((x, y) => x - y) : null;
+  // A missing part is counted on from the part to the total: its size is the count and the total (9 + ? = 10 counts
+  // 1 to 10, so it is easier than 7 + ? = 10, which counts 3).
+  const numbers = operation.kind === "missing-addend" ? [operation.operands[1] - operation.operands[0], operation.operands[1]].sort((x, y) => x - y)
+    : WHOLE_KINDS.includes(operation.kind) ? [...(operation.operands as number[])].sort((x, y) => x - y) : null;
   return { digits: (operationText(operation).match(/\d/g) ?? []).length, steps: steps.length, carries: steps.filter(carries).length, numbers };
 }
 /**
@@ -768,7 +782,7 @@ function size(operation: Operation): Size {
  * of both and fewer carries ($1.20 + $0.30 is easier than $4.75 + $2.50: every dollar amount is written to the cent), or
  * as many of all three and smaller whole numbers: each no larger, one smaller, from least to greatest (#377: a one-digit
  * picture story such as 3 + 4 has no example with fewer digits, steps or carries, but 2 + 1 is easier; 38 + 45 is not
- * easier than 48 + 37).
+ * easier than 48 + 37). A missing part's numbers are its count and its total: 9 + ? = 10 is easier than 7 + ? = 10.
  */
 const fewer = (a: number[] | null, b: number[] | null) =>
   a !== null && b !== null && a.length === b.length && a.every((x, i) => x <= b[i]) && a.some((x, i) => x < b[i]);

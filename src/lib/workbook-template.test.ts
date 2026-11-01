@@ -155,3 +155,27 @@ describe("the fit check", () => {
     ]);
   });
 });
+
+describe("a sequence item", () => {
+  it("prints its terms in order with its answer boxes in the blanks, on a parent-led card and in a line (#380)", async () => {
+    const { buildQuestion } = await import("@/lib/workbook-generator-items");
+    const num = (value: number) => ({ type: "number", value, numerator: null, denominator: null, whole: null, unit: null, hours: null, minutes: null, period: null, parts: [], text: null });
+    for (const level of ["U2", "U12"]) {
+      const draft = book(level);
+      const page = draft.pages.find((p) => p.content?.kind === "day" && p.questions.length > 0)!;
+      const q = page.questions[0];
+      const built = buildQuestion({
+        slot: "1.1", skill: "K1-number-sequence", difficulty: 1, text: "Fill the gap in the count.", format: "sequence", operation: null, wrongAnswers: [], easier: null,
+        shownWrong: null, figure: null, numbers: [], places: null, direction: null, pattern: null, sequence: { start: num(3), step: num(1), terms: 5, blanks: [2, 4] },
+      }, { id: q.package.id, workbookId: draft.id, page: page.number, question: q.number, level: 2, skills: ["K1-number-sequence"] });
+      expect(built.check.status).toBe("checked");
+      const seqPage: DraftPage = { ...page, questions: [{ number: q.number, package: { ...built.package!, ref: q.package.ref } }, ...page.questions.slice(1)] };
+      const html = workbookTemplate().page(seqPage, { qr: "", qrUrl: "" }, draft)!;
+      const seq = html.match(/<span class="seq">(.*?)<\/span><\/span>(?!<span class="qm">)/)?.[0] ?? "";
+      const printed = [...seq.matchAll(/class="qm">([^<]*)</g)].map((m) => m[1]).filter((t) => t !== ",");
+      expect(printed).toEqual(["3", "4", "6"]);
+      expect(seq.match(/class="ab"/g)).toHaveLength(2);
+      expect(seq).toContain(`data-measure="question-${q.number}-answer"`);
+    }
+  });
+});

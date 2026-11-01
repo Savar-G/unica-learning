@@ -193,6 +193,8 @@ function equivalentTo(op: EquivalentOperation): FractionParts {
 type Fields = Record<string, unknown>;
 
 const MAX_WHOLE = 9999;
+/** The largest total a missing part is counted on to. */
+const MAX_COUNT_UP = 20;
 const MAX_MULTIPLIER = 999;
 const MAX_DIVISOR = 99;
 const MAX_PLACES = 3;
@@ -398,6 +400,16 @@ const KINDS: { [K in OperationKind]: KindRules<Of<K>> } = {
     },
     result: (op) => decimalResult(op, "multiply"),
   },
+  "missing-addend": {
+    ...NUMBER_RULES,
+    problem: (op) => wholeProblem(op, [MAX_COUNT_UP, MAX_COUNT_UP], `code checks missing parts only of totals up to ${MAX_COUNT_UP}`)
+      ?? ((op.operands as number[])[0] > (op.operands as number[])[1] ? fail("the known part is more than the total") : null),
+    text: ({ operands: [a, b] }) => `${a} + ? = ${b}`,
+    statement: ({ operands: [a] }) => `${a} + ?`,
+    steps: ({ operands: [a, b] }) => [{ id: "count", kind: "count-up", from: a, to: b, said: Array.from({ length: b - a }, (_, i) => a + i + 1) }],
+    result: ({ operands: [a, b] }) => ({ type: "number", value: b - a }),
+    say: ({ operands: [a, b] }, value) => `${a} + ${valueText(value)} = ${b}`,
+  },
   "fraction-add": fractionPair("+", () => null),
   "fraction-subtract": fractionPair(MINUS, (a, b) => (belowZero(a, b) ? BELOW_ZERO : null)),
   "fraction-multiply": fractionPair(TIMES, () => null),
@@ -575,6 +587,10 @@ export function stepText(step: WorkedStep, operation: Operation): string {
       return `${partsText(step.from)} is ${step.whole} ${step.whole === 1 ? "whole" : "wholes"} and ${partsText(step.rest)} more: ${step.whole} ${partsText(step.rest)}.`;
     case "scale-fraction":
       return `${capital(step.by)} the numerator and the denominator by ${step.factor}: ${partsText(step.from)} = ${partsText(step.to)}.`;
+    case "count-up":
+      return step.said.length === 0
+        ? `Start at ${step.from}. It is already ${step.to}, so 0 more.`
+        : `Start at ${step.from}. Count on to ${step.to}: ${step.said.join(", ")}. That is ${step.said.length} more.`;
     case "convert-unit":
     case "round-cash":
     case "count-on":

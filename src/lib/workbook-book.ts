@@ -178,10 +178,36 @@ function panelOperation(questions: PageQuestion[], prefer: number[]): Operation 
   return null;
 }
 
-/** The worked lines of an operation: its steps in words (at most `most`), then the sum with its answer in blue. */
-function workedLines(op: Operation, most: number): string[] {
+/** The sum with its answer in blue: "5 + 2 = [7]", and for a missing part "2 + [3] = 5". */
+function answeredLine(op: Operation): string {
+  const answer = valueText(operationResult(op));
+  if (op.kind === "missing-addend") return `${op.operands[0]} + [${answer}] = ${op.operands[1]}`;
+  return `${operationText(op)} = [${answer}]`;
+}
+
+/** The levels that add and take away by counting on and back, before the written column method (Sam's early mistakes too). */
+const COUNTING_LEVELS = 6;
+
+/**
+ * The worked lines of an operation: its steps in words (at most `most`), then the sum with its answer in blue. Up to
+ * U6 a sum of whole numbers to 10 more or less is counted on or back, as the child does it, never worked in columns
+ * ("Start at 10. Count back 9."): the column method's regrouping comes later.
+ */
+function workedLines(op: Operation, most: number, level: number): string[] {
+  const [a, b] = op.operands as unknown[];
+  if (level <= COUNTING_LEVELS && typeof a === "number" && typeof b === "number") {
+    // One line of counting, then the sum: the panel's half-width box has room for little more.
+    if ((op.kind === "add" || op.kind === "subtract") && b >= 1 && b <= 10) {
+      const dir = op.kind === "add" ? 1 : -1;
+      const said = Array.from({ length: b }, (_, k) => a + dir * (k + 1));
+      return [`Count ${op.kind === "add" ? "on" : "back"} ${b} from ${a}: ${said.join(", ")}.`, answeredLine(op)];
+    }
+    if (op.kind === "missing-addend" && b > a) {
+      return [`Count on from ${a} to ${b}: ${Array.from({ length: b - a }, (_, k) => a + k + 1).join(", ")}.`, answeredLine(op)];
+    }
+  }
   const steps = workedSteps(op).filter((s) => s.kind !== "result").map((s) => stepText(s, op));
-  return [...steps.slice(0, most), `${operationText(op)} = [${valueText(operationResult(op))}]`];
+  return [...steps.slice(0, most), answeredLine(op)];
 }
 
 /**
@@ -195,8 +221,9 @@ export function pageFigure(f: ItemFigure | null | undefined, op: Operation | nul
     case "ten-frame": return { kind: "ten-frame", filled: f.counters.reduce((a, b) => a + b, 0) };
     case "number-line": {
       const [a, b] = (op?.operands ?? []) as unknown[];
-      const hops: [number, number][] = typeof a === "number" && typeof b === "number" && (op?.kind === "add" || op?.kind === "subtract")
-        ? [[a, op.kind === "add" ? a + b : a - b]]
+      // A missing part hops from the part to the total.
+      const hops: [number, number][] = typeof a === "number" && typeof b === "number" && (op?.kind === "add" || op?.kind === "subtract" || op?.kind === "missing-addend")
+        ? [[a, op.kind === "add" ? a + b : op.kind === "subtract" ? a - b : b]]
         : [];
       return { kind: "number-line", from: f.from, to: f.to, step: f.step, hops: hops.filter(([x, y]) => [x, y].every((v) => v >= Math.min(f.from, f.to) && v <= Math.max(f.from, f.to))) };
     }
@@ -364,7 +391,7 @@ function operationNumbers(op: Operation | null | undefined): Read[] {
   const operand = (o: number | string | AnswerValue): Read[] => (typeof o === "number" ? [num(o)] : typeof o === "string" ? readNumbers(o) : valueNumbers(o));
   const operands = (op.operands as readonly (number | string | AnswerValue)[]).flatMap(operand);
   switch (op.kind) {
-    case "add": case "subtract": case "multiply": case "divide":
+    case "add": case "subtract": case "multiply": case "divide": case "missing-addend":
     case "convert": case "quantity-add": case "quantity-subtract": case "quantity-multiply":
     case "money-round": case "elapsed-time": case "time-add": case "clock-convert": case "solve":
       return operands;
@@ -471,6 +498,8 @@ function kindOperation(op: Operation | null | undefined): SignOperation[] {
   switch (op.kind) {
     case "add": case "decimal-add": case "fraction-add": case "quantity-add": case "time-add": case "clock-convert": case "convert":
     case "money-round": case "fraction-simplify": case "fraction-equivalent":
+    // A missing part ("2 + ? = 5") is a number bond, counted on: it prints no subtraction.
+    case "missing-addend":
       return [];
     case "subtract": case "decimal-subtract": case "fraction-subtract": case "quantity-subtract": case "elapsed-time":
       return ["subtraction"];
@@ -774,7 +803,7 @@ export function dayPageContent(o: {
       case "worked-example": {
         const step = part?.step ? curriculum.skillSteps(part.step.skill)?.[part.step.step - 1] : undefined;
         const op = panelOperation(questions, sameP);
-        const lines = op ? workedLines(op, 3) : [];
+        const lines = op ? workedLines(op, 3, plan.level) : [];
         return {
           slot: s.slot, items: [], label: op ? operationText(op) : undefined,
           note: part?.unit === "B" ? "Unit B · new step" : "Unit A · new step",
@@ -784,14 +813,14 @@ export function dayPageContent(o: {
       }
       case "watch-one": {
         const op = panelOperation(questions, sameP);
-        return { slot: s.slot, items: [], label: op ? operationText(op) : undefined, note: "Watch one worked out. Then finish two.", lines: op ? workedLines(op, 3) : [] };
+        return { slot: s.slot, items: [], label: op ? operationText(op) : undefined, note: "Watch one worked out. Then finish two.", lines: op ? workedLines(op, 3, plan.level) : [] };
       }
       case "reminder": {
         const op = panelOperation(questions, sameP);
         const step = part?.step ? curriculum.skillSteps(part.step.skill)?.[part.step.step - 1] : undefined;
         return {
           slot: s.slot, items: [], label: "Remember", note: "From before",
-          lines: op ? [`${operationText(op)} = [${valueText(operationResult(op))}]`] : [],
+          lines: op ? [answeredLine(op)] : [],
           explain: step?.change ?? "Do it the same way as before. Check each answer.",
         };
       }

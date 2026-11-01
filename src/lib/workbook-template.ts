@@ -290,6 +290,7 @@ const CSS = `
 .ln i{display:block;border-bottom:1px solid #9A9AA2;height:${LINE_NEXT}px}
 .ln i:first-of-type{height:${LINE_FIRST}px}
 .pic{display:block;flex:none}
+.seq{display:inline-flex;align-items:center;flex-wrap:wrap;gap:6px 8px}
 .picr{display:inline-block;flex:none}
 .nl{position:relative;flex:none}
 .nlv{position:absolute;transform:translateX(-50%);font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-size:14px;line-height:1}
@@ -662,11 +663,28 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
   }
 }
 
-/** The regions of a question that sit in a row (boxes, choices) and those that take the full width (work, lines, pictures). */
+/**
+ * The regions of a question that sit in a row (boxes, choices) and those that take the full width (work, lines,
+ * pictures). A sequence prints its terms in order, its boxes in the blanks: "3, 4, [ ], 6".
+ */
 function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: string } {
   let inline = "";
   let full = "";
-  for (const { region, name } of regionNames(q)) {
+  const names = regionNames(q);
+  const sequence = packageItem(q.package).checks.find((c) => c.kind === "sequence");
+  const inSequence = new Set<string>();
+  if (sequence) {
+    const terms = sequence.terms.map((t) => {
+      if (!("region" in t)) return `<span class="qm">${escape(valueText(t))}</span>`;
+      const x = names.find((n) => n.region.id === t.region);
+      if (!x) return "";
+      inSequence.add(t.region);
+      return regionHtml(q, x.region, x.name, o);
+    });
+    inline += `<span class="seq">${terms.join(`<span class="qm">,</span>`)}</span>`;
+  }
+  for (const { region, name } of names) {
+    if (inSequence.has(region.id)) continue;
     const html = regionHtml(q, region, name, o);
     if (region.kind === "box" || region.kind === "choice") inline += html;
     else full += html;

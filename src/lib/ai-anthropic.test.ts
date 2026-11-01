@@ -90,9 +90,20 @@ describe("anthropicClient", () => {
     await expect(ai.json(request, signal())).rejects.toThrow("the model stopped: max_tokens");
   });
 
-  it("throws when the output is not JSON", async () => {
+  it("throws when the output is not JSON, quoting the start of what the model wrote", async () => {
     const { ai } = client(() => answer(message({ content: [{ type: "text", text: "not json" }] })));
-    await expect(ai.json(request, signal())).rejects.toThrow("the output is not valid JSON");
+    await expect(ai.json(request, signal())).rejects.toThrow(/^the output is not valid JSON \(.*\): "not json"$/);
+    const long = `{"items": [{"text": "a \\"quoted\\" word"}, ${"x".repeat(400)}`;
+    const { ai: cut } = client(() => answer(message({ content: [{ type: "text", text: long }] })));
+    const error = await cut.json(request, signal()).catch((e: Error) => e.message);
+    expect(error).toMatch(/^the output is not valid JSON \(an object that never closes\): "\{\\"items/);
+    expect(error.length).toBeLessThan(400);
+  });
+
+  it("reads the first whole object when words or a note with braces come around it", async () => {
+    const text = 'Here it is:\n```json\n{"ok": "a } in a string", "n": {"x": 1}}\n```\nNote: {not json}';
+    const { ai } = client(() => answer(message({ content: [{ type: "text", text }] })));
+    expect(await ai.json(request, signal())).toEqual({ ok: "a } in a string", n: { x: 1 } });
   });
 
   it("puts the schema in the instructions when the API refuses it, and keeps doing so for that request name", async () => {

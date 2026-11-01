@@ -39,19 +39,44 @@ const schemaRefused = (e: unknown) =>
 const schemaInText = (system: string, schema: Record<string, unknown>) =>
   `${system}\n\nAnswer with one JSON object and nothing else: no code fence, no words before or after it. It must match this JSON Schema exactly: give every property, and use null only where the schema allows null.\n${JSON.stringify(schema)}`;
 
-/** The JSON object in the text: the text itself, or the part from the first "{" to the last "}". */
+/** The first complete JSON object in the text, from its first "{" to the "}" that closes it (strings read whole). */
+function firstObject(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (inString) {
+      if (c === "\\") i++;
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) return text.slice(start, i + 1);
+  }
+  return null;
+}
+
+/** The start of the text, on one line, for an error: what the model wrote instead of JSON. */
+const head = (text: string) => JSON.stringify(text.slice(0, 300).replace(/\s+/g, " "));
+
+/**
+ * The JSON object in the text: the text itself, else its first complete object (words or a code fence around it, or a
+ * note after it with braces of its own). When there is none, the error names why and quotes the first 300 characters.
+ */
 function jsonIn(text: string): unknown {
   try {
     return JSON.parse(text);
-  } catch {
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    if (start < 0 || end <= start) throw new Error("the output is not valid JSON");
-    try {
-      return JSON.parse(text.slice(start, end + 1));
-    } catch {
-      throw new Error("the output is not valid JSON");
+  } catch (e) {
+    const object = firstObject(text);
+    if (object) {
+      try {
+        return JSON.parse(object);
+      } catch (inner) {
+        throw new Error(`the output is not valid JSON (${short(inner instanceof Error ? inner.message : inner)}): ${head(text)}`);
+      }
     }
+    throw new Error(`the output is not valid JSON (${object === null && text.includes("{") ? "an object that never closes" : short(e instanceof Error ? e.message : e)}): ${head(text)}`);
   }
 }
 

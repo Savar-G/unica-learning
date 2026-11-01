@@ -639,6 +639,15 @@ function figureAgreement(f: Figure, checks: ItemCheck[], read: CheckInput): Item
   const computed = ctx.computed;
   if (computed) {
     const op = computed.operation;
+    if (op.kind === "missing-addend") {
+      // The part the child has, to count on from: dots or a ten-frame of it, or a number line through it and the total.
+      const [part, total] = op.operands;
+      const what = `${part} + ? = ${total}`;
+      if (f.kind === "dots") return sameList(f.groups, [part]) && f.takenAway === 0 ? null : differs(what);
+      if (f.kind === "ten-frame") return sameList(f.counters, [part]) ? null : differs(what);
+      if (f.kind === "number-line") return onLine([part, total], what);
+      return differs(what);
+    }
     if (op.kind !== "add" && op.kind !== "subtract" && op.kind !== "multiply") return unclear;
     const [a, b] = op.operands;
     const answer = wholes([computed.answer], ctx)?.[0];

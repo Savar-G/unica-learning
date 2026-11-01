@@ -56,7 +56,7 @@ export type FigureKind = (typeof FIGURE_KINDS)[number];
 
 /** Every operation kind the question package computes (a kind missing here fails the build). */
 const OPERATION_KINDS = [
-  "add", "subtract", "multiply", "divide", "decimal-add", "decimal-subtract", "decimal-multiply",
+  "add", "subtract", "missing-addend", "multiply", "divide", "decimal-add", "decimal-subtract", "decimal-multiply",
   "fraction-add", "fraction-subtract", "fraction-multiply", "fraction-divide", "fraction-simplify", "fraction-equivalent",
   "convert", "quantity-add", "quantity-subtract", "quantity-multiply", "money-round", "elapsed-time", "time-add",
   "clock-convert", "evaluate", "solve",
@@ -65,7 +65,7 @@ const ALL_KINDS: Exclude<OperationKind, (typeof OPERATION_KINDS)[number]> extend
 void ALL_KINDS;
 
 /** Kinds whose operands are plain numbers. */
-const NUMBER_KINDS: readonly string[] = ["add", "subtract", "multiply", "divide", "decimal-add", "decimal-subtract", "decimal-multiply"];
+const NUMBER_KINDS: readonly string[] = ["add", "subtract", "missing-addend", "multiply", "divide", "decimal-add", "decimal-subtract", "decimal-multiply"];
 /** Kinds whose one operand is an expression or an equation. */
 const EXPRESSION_KINDS: readonly string[] = ["evaluate", "solve"];
 
@@ -313,6 +313,14 @@ function lineThrough(values: number[]): Figure | string {
 
 /** The figure of an operation question: the operation's numbers drawn as the kind the AI named. */
 function operationFigure(kind: FigureKind, op: Operation, answer: AnswerValue): Figure | string {
+  if (op.kind === "missing-addend") {
+    // The part the child has, to count on from to the total.
+    const [part, total] = op.operands;
+    if (kind === "dots") return { kind: "dots", groups: [part], takenAway: 0 };
+    if (kind === "ten-frame") return { kind: "ten-frame", counters: [part] };
+    if (kind === "number-line") return lineThrough([part, total]);
+    return `a missing part draws dots, a ten-frame or a number line, not ${kind}`;
+  }
   if (op.kind !== "add" && op.kind !== "subtract" && op.kind !== "multiply") return `code draws a picture only for +, − and × of whole numbers, not ${op.kind}`;
   const [a, b] = op.operands;
   if (whole(a) === null || whole(b) === null) return "code draws a picture only for whole numbers";
@@ -613,6 +621,9 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
   }
 
   if (raw.operation === null || raw.operation === undefined) return fail(`a ${format} item needs an operation code can compute`);
+  // The box takes the operation's number, so the question must ask for that number, never yes or no or a choice.
+  const asks = typeof raw.text === "string" ? choiceAsked(raw.text) : null;
+  if (asks) return fail(`the question asks ${asks}, but its answer is the operation's number: ask for a number (How far is 8 from 10?), or use draw`);
   const candidate = operationFrom(raw.operation);
   const problem = operationProblem(candidate);
   if (problem) return fail(`the operation: ${problem}`);
@@ -646,6 +657,20 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
     steps: workedSteps(easierOp as Operation),
   };
   return checked(pkg(item, op, wrongAnswers, easierExample), stepIds);
+}
+
+/**
+ * What the question asks when it is not a number, or null: its last question (the sentence that ends in "?") asks yes
+ * or no ("Is 8 close to 10?", "Are they equal?") or for a choice between words ("close to 10 or less than 5?"). A
+ * number answer with "or" between two numbers ("4 or 7?") is a choice too: the box would take the operation's number.
+ */
+export function choiceAsked(text: string): string | null {
+  const questions = text.match(/[^.?!]*\?/g);
+  const last = questions?.at(-1)?.trim() ?? "";
+  if (!last) return null;
+  if (/^(is|are|am|was|were|does|do|did|can|could|will|would|should|has|have)\b/i.test(last)) return "yes or no";
+  if (/\bor\b/i.test(last)) return "for a choice";
+  return null;
 }
 
 /** The checker's verdict on a built package. */
