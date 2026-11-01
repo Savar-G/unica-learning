@@ -49,14 +49,17 @@ describe("the FAQ describes the online math assessment", () => {
   it("says no card is needed for the assessment, and the card comes after the report", () => {
     const a = answer(/card/);
     expect(a).toMatch(/You do not need a card for the assessment\./);
-    expect(a).toMatch(/After the report, you can choose a plan and add a card\./);
+    expect(a).toMatch(/After the report, BC-curriculum families can choose a plan and add a card\./);
+    expect(a).toMatch(/Other curricula can join the workbook waitlist without a card\./);
     expect(a).toMatch(/first workbook ships/);
     expect(a).not.toMatch(/when you sign up/);
   });
 
-  it("states Canada-wide workbook availability without promising complete provincial alignment", () => {
+  it("separates the Canada-wide assessment from current BC plan availability", () => {
     const a = answer(/curriculum/);
-    expect(a).toMatch(/Workbooks are available to families across Canada\./);
+    expect(a).toMatch(/Workbooks follow the British Columbia curriculum today\./);
+    expect(a).toMatch(/free assessment is available across Canada/);
+    expect(a).toMatch(/Other curricula can join the workbook waitlist/);
     expect(a).toMatch(/province-specific curriculum alignment/);
     expect(answer(/Where do you deliver/)).toMatch(/deliver workbooks across Canada/);
   });
@@ -79,7 +82,8 @@ describe("the plain-text summaries for AI assistants", () => {
     expect(text).toMatch(/\/start\)/);
     expect(text).toMatch(/Assess: your child takes the free math assessment online, on a laptop or tablet\./);
     expect(text).not.toMatch(/assessment on paper|card at signup/);
-    expect(text).toMatch(/Families across Canada can sign up for workbooks\./);
+    expect(text).toMatch(/BC-curriculum families can choose a plan after the report/);
+    expect(text).toMatch(/Other curricula can join the workbook waitlist without a card/);
   });
 
   it("/pricing.md: no card at signup; plan and card after the report", () => {
@@ -87,7 +91,8 @@ describe("the plain-text summaries for AI assistants", () => {
     expect(text).not.toMatch(/at signup/);
     expect(text).toMatch(/after the report/i);
     expect(text).toMatch(/Every family in Canada can take the free online math assessment\./);
-    expect(text).toMatch(/After the report, families across Canada can choose the plan and add a card\./);
+    expect(text).toMatch(/After the report, BC-curriculum families can choose the plan and add a card\./);
+    expect(text).toMatch(/Other curricula can join the workbook waitlist without a card/);
   });
 });
 
