@@ -447,6 +447,8 @@ describe("R374-3-2 (freeTalk on): free talk may only react, feel, greet or ask a
     "Aw, I'm sorry your grandma is sick. That sounds hard, and it's okay to feel sad. I'm glad you told me.",
     "I can't promise to keep secrets, sorry. I'm an AI helper, and I don't want to say something untrue.",
     "Oh, I hear you. I'm right here with you.", "Thanks for sharing!", "I can't keep it secret, because I'm an AI helper.",
+    // Practice run 6.
+    "Aw, thanks for asking. I don't have any secrets to share, because I'm an AI helper.", "Oh, I hear you. It's okay to feel that way.",
   ])("passes the code guards with %s (practice run 5: a false catch)", (talk) => {
     expect(freeTalkProblem(talk, null, child)).toBeNull();
   });
@@ -454,9 +456,22 @@ describe("R374-3-2 (freeTalk on): free talk may only react, feel, greet or ask a
   it.each([
     "Keep going.", "Oh, keep at it!", "I told you.", "Like I told you, it's fine.", "Share them out.", "You shared them fairly.", "That's right!",
     "You're right!", "Want to keep going?", "You want to finish?", "Oh, you can tell me your secret.", "I'm right about it.",
-    "Thanks for writing it down.", "I'm glad you wrote it down.", "Your sixty-six is great.",
+    "Thanks for writing it down.", "I'm glad you wrote it down.", "Your sixty-six is great.", "Do it that way.", "Share it that way.",
   ])("still refuses %s: only the exact everyday phrases are let through", (talk) => {
     expect(freeTalkProblem(talk, null, child)).not.toBeNull();
+  });
+
+  it("ends a free-talk reply with a code phrase that leads back to the question, with no math (practice run 6)", () => {
+    const talk = "Aw, I'm sorry your grandma is sick. That sounds really hard.";
+    for (const act of ["clarify", "redirect"] as const) {
+      const c = call({ freeTalk: true });
+      c.child("I'm sad today. My grandma is sick.");
+      const said = c.say({ act, ...(act === "redirect" ? { reading: { offTopic: true } } : {}), parts: [{ talk }, { warm: "back" }] }, passed(talk));
+      expect(said.text.startsWith(`${talk} `)).toBe(true);
+      const back = said.text.slice(talk.length + 1);
+      expect(PHRASES.back).toContain(back);
+      expect(talkMath(back)).toBeNull();
+    }
   });
 
   it("lets a sentence start with a name only when the child said it", () => {

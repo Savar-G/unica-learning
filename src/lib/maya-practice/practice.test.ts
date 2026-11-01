@@ -511,10 +511,10 @@ describe("the docs", () => {
 
 describe("the practice child speaks like a child (practice run 5: too_long and turn_cap)", () => {
   it("asks for one short thing per turn, and each persona request once, so the call can end", () => {
-    expect(SIMULATOR_PROMPT_VERSION).toBe("practice-child-2");
+    expect(SIMULATOR_PROMPT_VERSION).toBe("practice-child-3");
     expect(SIMULATOR_SYSTEM).toContain("Say one thing per turn");
     expect(SIMULATOR_SYSTEM).toContain("not every step of your working");
     expect(SIMULATOR_SYSTEM).toContain("ask again at most once");
-    expect(SIMULATOR_SYSTEM).toContain("let the call end");
+    expect(SIMULATOR_SYSTEM).toContain("wait for Maya to say goodbye");
   });
 });

@@ -26,6 +26,9 @@ export const PHRASE_GROUPS = [
   "encourage", "empathy", "checkin", "pacing", "hearing", "smalltalk", "opening", "closing",
   // Replies to what children say between the math (D-196 echo frames): "{echo}" is 1 to 3 of the child's own words.
   "pets", "family", "school", "games", "food", "sports", "trips", "tired", "happy", "bored", "frustrated", "aboutmaya",
+  // D-197: said after free talk (the model adds it), so a reply to the child also leads back to the question (practice
+  // run 6). No math: the next turn restates the question with a line.
+  "back",
 ] as const;
 export type PhraseGroup = (typeof PHRASE_GROUPS)[number];
 
@@ -133,6 +136,13 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
     "I'm an AI helper, so I'm a bit different from you.", "I'm an AI, and my favourite thing is helping you learn.",
     "Fun question! I'm an AI, but I love hearing about you.",
   ],
+  back: [
+    "Whenever you're ready, we'll get back to our question.", "When you're ready, we can go back to our question.",
+    "Our question is waiting for us when you're ready.", "We can go back to our question whenever you like.", "Shall we get back to our question?",
+    "Shall we go back to our question together?", "Let's get back to our question when you're ready.", "Let's go back to our question together.",
+    "Our question is still here for us.", "Back to our question whenever you're ready.", "Let's head back to our question.",
+    "When you feel ready, we'll go back to our question.",
+  ],
 };
 
 /** The acts each purpose fits. */
@@ -151,6 +161,7 @@ export const PHRASE_ACTS: Record<PhraseGroup, readonly Act[]> = {
   closing: ["close", "ask_write"],
   pets: REPLY_ACTS, family: REPLY_ACTS, school: REPLY_ACTS, games: REPLY_ACTS, food: REPLY_ACTS, sports: REPLY_ACTS, trips: REPLY_ACTS,
   tired: FEELING_ACTS, happy: FEELING_ACTS, bored: FEELING_ACTS, frustrated: FEELING_ACTS, aboutmaya: REPLY_ACTS,
+  back: ["redirect", "clarify"],
 };
 
 /**
@@ -253,6 +264,8 @@ const SAFE_PHRASES: readonly RegExp[] = [
   /\b(you )?shared (it|that|this|with me|a little|so much)\b/giu,
   /\byou shared(?=[.?!,])/giu,
   /\bfor sharing\b/giu,
+  /\bsecrets? to share\b/giu,
+  /\b(feel|feels|feeling|felt) that way\b/giu,
   /\bright (here|there|beside you|with you)\b/giu,
 ];
 /** The text with SAFE_PHRASES taken out, for the work check of free talk. */

@@ -152,7 +152,7 @@ describe("the main path", () => {
     c.child("66");
     c.maya({ act: "accept_answer", parts: [t("Yes. How do you know?")], reading: { answers: [right66] } });
     c.child("I don't know.");
-    expect(c.refused({ act: "close", parts: [t("Bye!")] })).toMatchObject({ code: "act_not_allowed", allowed: ["ask_write", "guide", "confirm"] });
+    expect(c.refused({ act: "close", parts: [t("Bye!")] })).toMatchObject({ code: "act_not_allowed", allowed: ["ask_write", "guide"] });
     c.maya({ act: "ask_write", parts: [ln("write.answer")], understanding: "uncertain" });
     c.child("No, I don't want to.");
     const { effects } = c.maya({ act: "close", parts: [t("That's okay. Bye for now!")], reading: { paper: "declined" } });
@@ -448,6 +448,24 @@ describe("CONFIRM_HEARD", () => {
     expect(c.session.outcome).toMatchObject({ reason: "solved", mishearing: { confirmations: 1, corrections: 1 } });
   });
 
+  it("does not offer a third confirmation in a row of a clear turn, nor one after the answer is accepted (practice runs 5 and 6)", () => {
+    const c = opened();
+    c.child("7 plus 9 is 16.");
+    expect(c.next.acts).toContain("confirm");
+    c.maya({ act: "confirm", parts: [ln("confirm.which", { heard: "16", other: "60" })] });
+    c.child("Yeah, 16.");
+    expect(c.next.acts).toContain("confirm");
+    c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "16" })] });
+    c.child("Yes, sixteen!");
+    expect(c.next.acts).not.toContain("confirm");
+    expect(c.refused({ act: "confirm", parts: [ln("confirm.heard", { heard: "16" })] })).toMatchObject({ code: "act_not_allowed" });
+    const d = opened();
+    d.child("66");
+    d.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [right66] } });
+    d.child("Is 66 right?");
+    expect(d.next.acts).not.toContain("confirm");
+  });
+
   it("after two failed confirmations offers another way to answer, then closes as a technical issue", () => {
     const c = opened();
     c.child("fifteen", { uncertain: true });
@@ -619,7 +637,7 @@ describe("TIME_CLOSE and the end", () => {
     c.child("It's 66!");
     c.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [right66] } });
     c.child("Okay.");
-    expect(c.next).toEqual({ expect: "maya", acts: ["ask_write", "close", "confirm"] });
+    expect(c.next).toEqual({ expect: "maya", acts: ["ask_write", "close"] });
     c.maya({ act: "close", parts: [t("Great work. Bye!")] });
     expect(c.session.outcome).toMatchObject({ reason: "solved", assistance: "worked_example" });
   });

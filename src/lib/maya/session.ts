@@ -602,8 +602,10 @@ const MAIN_ACTS: Record<Teaching, Act[]> = {
 
 /** The teaching acts allowed now. `rightResult`: the child's turn holds a checked right final answer. */
 function teachingActs(s: Session, reading: Reading, rightResult: boolean): Allowed {
-  // Maya may always check what she heard before she goes on.
-  const confirm: Act[] = s.turn ? ["confirm"] : [];
+  // Maya may check what she heard before she goes on, but not a third time in a row (practice run 6, F06: "16 or
+  // 60?" eleven times after the child said 16 each time), and not once the answer is accepted (run 5, F05: "Just
+  // checking, was that 66?" after "You got it!"). An unclear turn still gets its two confirmations (gate).
+  const confirm: Act[] = s.turn && s.confirmTries < 2 && s.solved === null ? ["confirm"] : [];
   if (s.state === "TIME_CLOSE") {
     const acts: Act[] = s.solved !== null ? (s.writeAsked ? ["close"] : ["ask_write", "close"])
       : rightResult ? ["accept_answer", "close"] : ["give_answer", "ask_write", "close"];
