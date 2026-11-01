@@ -108,4 +108,23 @@ describe("the solve check", () => {
     expect(sameAnswer("Ben", ["Ben"], true)).toBe(true);
     expect(sameAnswer("<", [">"], true)).toBe(false);
   });
+
+  it("never counts another unit, a missing unit or the other half of the day as the same answer (R380-13-1)", () => {
+    expect(sameAnswer("5 cm", ["5 m"], false)).toBe(false);
+    expect(sameAnswer("5 m", ["5 cm"], false)).toBe(false);
+    expect(sameAnswer("3:30 a.m.", ["3:30 p.m."], false)).toBe(false);
+    expect(sameAnswer("3:30", ["3:30 p.m."], false)).toBe(false);
+    expect(sameAnswer("5", ["5 km"], false)).toBe(false);
+    expect(sameAnswer("50 mm", ["5 cm"], false)).toBe(false);
+    expect(sameAnswer("5 cm", ["5"], false)).toBe(false);
+    expect(sameAnswer("5 metres", ["5"], false)).toBe(false);
+    expect(sameAnswer("$5", ["5"], false)).toBe(false);
+    expect(sameAnswer("5%", ["5"], false)).toBe(false);
+    expect(sameAnswer("9 R 2", ["9 2"], false)).toBe(false);
+    expect(sameAnswer("5 cm", ["5 cm"], false)).toBe(true);
+    expect(sameAnswer("5cm", ["5 cm"], false)).toBe(true);
+    expect(sameAnswer("3:30 p.m.", ["3:30 pm"], false)).toBe(true);
+    expect(sameAnswer("$4.75", ["$4.75"], false)).toBe(true);
+    expect(sameAnswer("7 apples", ["7"], false)).toBe(true);
+  });
 });

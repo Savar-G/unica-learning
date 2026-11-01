@@ -170,10 +170,42 @@ function numbersOf(s: string): [number, number][] {
 
 const sameNumbers = (a: [number, number][], b: [number, number][]) => a.length > 0 && a.length === b.length && a.every(([n, d], i) => n * b[i][1] === b[i][0] * d);
 
-/** Whether the solver's answer is one the key counts as right: the same choice, or the same numbers in the same order. */
+/**
+ * Everything in an answer but its numbers: the units, signs and labels around them, so "5 cm" and "5 m", "3:30 a.m." and
+ * "3:30 p.m.", or "5" and "5 km" never count as the same answer. Spaces and dots are dropped ("a.m." is "am"); every
+ * number becomes "#".
+ */
+const wordsOf = (s: string) => s
+  .replace(/(\d),(\d{3})/g, "$1$2")
+  .replace(/[−–]/g, "-")
+  .replace(/-?\d+(?:\.\d+)?(?:\s+\d+\/\d+|\/\d+)?/g, "#")
+  .toLowerCase()
+  .replace(/[\s.]+/g, "");
+
+/**
+ * Whether the solver's answer is one the key counts as right: the same choice, or the same numbers in the same order
+ * with the same words around them (units, a.m. or p.m., "R" for a remainder). A different or missing unit fails, which
+ * fails the question closed: a unit is never converted or assumed.
+ */
 export function sameAnswer(given: string, right: string[], choice: boolean): boolean {
   if (choice) return right.some((r) => clean(r) === clean(given));
-  return right.some((r) => clean(r) === clean(given) || (/\d/.test(r) && sameNumbers(numbersOf(r), numbersOf(given))));
+  return right.some((r) => clean(r) === clean(given) || (/\d/.test(r) && sameNumbers(numbersOf(r), numbersOf(given)) && sameWords(r, given)));
+}
+
+/** A unit of measure, time or money (or "R" for a remainder), spelled out or short: never a plain count word ("12 shells"). */
+const UNIT_WORD = /^(?:r|mm|cm|dm|m|km|mg|g|kg|t|ml|cl|dl|l|kl|s|sec|secs|min|mins|h|hr|hrs|am|pm|c|(?:milli|centi|deci|kilo)?(?:metre|meter|gram|litre|liter)s?|tonnes?|seconds?|minutes?|hours?|days?|weeks?|months?|years?|cents?|dollars?|degrees?|percent)$/;
+
+/**
+ * Whether the words around the numbers match. They must be the same, with one allowance: when the key is a plain
+ * number (a count), the solver may name what it counts ("12 shells"), as long as that name holds no unit, sign or time.
+ */
+function sameWords(right: string, given: string): boolean {
+  const r = wordsOf(right);
+  const g = wordsOf(given);
+  if (r === g) return true;
+  if (!/^#+$/.test(r) || g.replace(/[a-z]+/g, "") !== r) return false;
+  const words = given.toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/).filter(Boolean);
+  return words.every((w) => !UNIT_WORD.test(w));
 }
 
 /** The output schema: an answer for each box of each question, and a problem when a question cannot be answered. */
@@ -190,7 +222,7 @@ export const SOLVE_SCHEMA = {
 
 const SYSTEM = [
   "You check printed math questions from a workbook for a child aged 6 to 12. Each question is given as the child sees it: its text, the picture in words, what the card prints beside the text, and its answer boxes and choices.",
-  "Answer every box and choice of every question, as a careful child who reads the question exactly as printed would. Write a box's answer as the child writes it: a number in digits (12, 0.5, 3/4, 1 1/2, 9 R 2), an amount with its unit (5 cm, $4.75), or a time (3:30 p.m.). For a choice, give one of its options exactly as printed.",
+  "Answer every box and choice of every question, as a careful child who reads the question exactly as printed would. Write a box's answer as the child writes it: a number in digits (12, 0.5, 3/4, 1 1/2, 9 R 2), an amount with its unit, written as the question writes it (5 cm, $4.75), or a time with a.m. or p.m. when the question uses them (3:30 p.m.). Never convert a unit. For a choice, give one of its options exactly as printed.",
   "Use only what is printed. Do not guess what the writer meant. If a question cannot be answered as printed (it is unclear, it leaves out a number, or its boxes do not take what it asks), say which and why in problem; else problem is null.",
 ].join("\n");
 
