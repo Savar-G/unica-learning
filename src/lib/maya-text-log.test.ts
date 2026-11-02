@@ -3,7 +3,7 @@ import { SAFETY_GUIDANCE } from "@/lib/maya";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { createTextSession, type SavedTextSession, type TextOutput, type TextSession } from "@/lib/maya-text";
-import { checkTrace, type MayaTrace, type TraceObligation } from "@/lib/maya-trace";
+import { checkTrace, traceCounts, type MayaTrace, type TraceObligation } from "@/lib/maya-trace";
 
 const T0 = Date.UTC(2026, 10, 1);
 const pkg = SAMPLE_PACKAGES["add-27-39"];
@@ -20,12 +20,12 @@ class InputOracle {
   inputs: Input[] = [];
   add(input: Input) { this.inputs.push(input); }
   assert(trace: MayaTrace, settled = true) {
-    const expected: { kind: TraceObligation["kind"]; text?: string }[] = [];
-    for (const input of this.inputs) {
+    const expected: { kind: TraceObligation["kind"]; text?: string; inputIndex?: number }[] = [];
+    for (const [inputIndex, input] of this.inputs.entries()) {
       if (input.kind === "start" && !expected.length) expected.push({ kind: "start_pending" }, { kind: "opening_due" });
-      if (input.kind === "child") expected.push({ kind: "child_turn_pending", text: input.text });
-      if (input.kind === "repair") expected.push({ kind: "repair_due", text: input.text });
-      if (input.kind === "content") expected.push({ kind: "content_problem", text: input.text });
+      if (input.kind === "child") expected.push({ kind: "child_turn_pending", text: input.text, inputIndex });
+      if (input.kind === "repair") expected.push({ kind: "repair_due", text: input.text, inputIndex });
+      if (input.kind === "content") expected.push({ kind: "content_problem", text: input.text, inputIndex });
     }
     const readings = this.inputs.filter((i) => i.kind === "safety");
     if (readings.length) expected.push({ kind: "safety_due" });
@@ -55,14 +55,21 @@ class InputOracle {
       expect(safetyOutputs).toEqual([SAFETY_GUIDANCE[severe]]);
     }
     expect(ledger, "unexpected or missing obligations").toHaveLength(expected.length);
+    let childCursor = -1;
     for (const item of expected) {
+      let childInput = -1;
+      if (item.kind === "child_turn_pending") {
+        childInput = trace.turns.findIndex((t, i) => i > childCursor && t.kind === "child" && t.text === item.text);
+        expect(childInput, "missing child input").toBeGreaterThan(childCursor);
+        childCursor = childInput;
+      }
       const matches = ledger.filter((o) => o.kind === item.kind && (item.text === undefined || o.text === item.text));
       expect(matches.length, `missing or duplicate ${JSON.stringify(item)}`).toBe(1);
       const o = matches[0];
       if (o.status === "dropped") {
         const laterChild = item.kind === "child_turn_pending" && this.inputs.some((i, index) => i.kind === "child" && i.text === item.text && this.inputs.slice(index + 1).some((x) => x.kind === "child"));
-        const priority = this.inputs.some((i) => ["content", "technical", "stop", "safety"].includes(i.kind));
-        const partial = this.inputs.some((i) => i.kind === "partial");
+        const priority = this.inputs.slice((item.inputIndex ?? -1) + 1).some((i) => ["content", "technical", "stop", "safety"].includes(i.kind));
+        const partial = trace.turns.slice(childInput + 1).some((t) => t.kind === "partial");
         const valid = o.reason === "replaced by the next complete transcript" ? laterChild :
           o.reason === "cancelled by partial transcript" ? partial && item.kind === "child_turn_pending" :
           o.reason === "superseded by priority input" || o.reason === "superseded by safety" ? priority && item.kind !== "safety_due" :
@@ -70,6 +77,7 @@ class InputOracle {
         expect(valid, `invalid drop ${JSON.stringify(o)}`).toBe(true);
       } else if (settled) expect(o.status, `unserved ${JSON.stringify(item)}`).toBe("served");
       if (o.status === "served") {
+        if (item.kind === "child_turn_pending") expect(o.servedBy!, "response must follow its child input").toBeGreaterThan(childInput);
         const delivered = trace.turns[o.servedBy!];
         expect(delivered).toBeDefined();
         if (item.kind === "start_pending") expect(delivered.kind).toBe("start");
@@ -78,6 +86,7 @@ class InputOracle {
           if (delivered.kind === "maya") {
             expect(delivered.output).not.toBeNull();
             const act = delivered.output!.act;
+            if (item.kind === "child_turn_pending") expect(["open", "repair", "safety"]).not.toContain(act);
             if (item.kind === "opening_due") expect(act).toBe("open");
             if (item.kind === "repair_due") expect(act).toBe("repair");
             if (item.kind === "safety_due") expect(act).toBe("safety");
@@ -104,6 +113,17 @@ async function goodTrace() {
   return { trace: json(s.trace()), oracle };
 }
 describe("R424-16: independent oracle rejects all five invalid cases", () => {
+  it("R424-16: rejects an earlier check-in as service of a later child", async () => {
+    let now = T0;
+    const s = createTextSession({ callId: "causal-oracle", package: pkg, model: ruleMayaModel(), clock: () => now });
+    await s.start(); now += 20000; await s.tick(); await s.child("56.");
+    const trace = json(s.trace()), oracle = new InputOracle();
+    oracle.add({ kind: "start" }); oracle.add({ kind: "child", text: "56." }); oracle.assert(trace);
+    const ci = trace.turns.findIndex((t) => t.kind === "child");
+    trace.turns = trace.turns.slice(0, ci + 1); trace.board = [];
+    trace.obligations!.find((o) => o.kind === "child_turn_pending")!.servedBy = trace.turns.findIndex((t) => t.kind === "maya" && t.output?.act === "check_in");
+    expect(() => oracle.assert(trace)).toThrow();
+  });
   it.each(["missing child", "invalid drop", "teaching after partial", "duplicate safety", "close before safety"])("rejects %s", async (mutation) => {
     const { trace, oracle } = await goodTrace();
     oracle.assert(trace);
@@ -124,9 +144,79 @@ describe("R424-16: independent oracle rejects all five invalid cases", () => {
 
 function folded(saved: SavedTextSession) {
   const cache = json(saved);
-  delete cache.initial; delete cache.log;
+  delete cache.initial; delete cache.log; delete cache.checkpoint; delete cache.nextRequestId;
   return cache;
 }
+// Five additional schedule families target continuation at receipt and delivery boundaries.
+async function round7Seed(seed: number, counts: Map<string, number>) {
+  const hit = (key: string) => counts.set(key, (counts.get(key) ?? 0) + 1);
+  const base = ruleMayaModel(), oracle = new InputOracle();
+  let now = T0, held = false, calls = 0;
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<unknown>();
+  const model = { ...base, propose: async (...args: Parameters<typeof base.propose>) => {
+    if (held) { calls++; entered.resolve(); return release.promise; }
+    return base.propose(...args);
+  } };
+  const opts = { callId: `round7-${seed}`, package: pkg, random: seed, clock: () => now, model };
+  let s = createTextSession(opts);
+  oracle.add({ kind: "start" });
+  const scenario = seed % 5;
+  const opening = s.start();
+  if (scenario === 1) {
+    let intervention: Promise<TextOutput> | undefined;
+    for (let i = 0; i < 200; i++) { await Promise.resolve(); if (s.session.opened) { intervention = s.partial("Wait"); break; } }
+    expect(intervention).toBeDefined(); await intervention; await opening;
+    oracle.add({ kind: "partial" });
+    s = createTextSession({ ...opts, resume: json(await s.saved()) });
+    expect((await s.tick()).say).toEqual([]);
+    oracle.assert(s.trace(), false);
+    oracle.add({ kind: "child", text: "66." }); await s.child("66.");
+    expect(s.session.solved).toBe("child"); oracle.assert(s.trace()); hit("R424-19");
+  } else {
+    const out = await opening;
+    if (scenario === 0) {
+      oracle.add({ kind: "child", text: "66." });
+      const answer = s.child("66.");
+      let snapshot = await s.saved();
+      for (let i = 0; i < 200 && snapshot.log?.at(-1)?.kind !== "response"; i++) snapshot = await s.saved();
+      expect(snapshot.log?.at(-1)?.kind).toBe("response");
+      s = createTextSession({ ...opts, resume: json(snapshot), model: { ...base, propose: async () => { throw new Error("offline"); } } });
+      expect((await s.start()).say).toEqual((await answer).say);
+      expect(s.session.solved).toBe("child"); oracle.assert(s.trace()); hit("R424-18");
+    } else if (scenario === 2) {
+      oracle.add({ kind: "child", text: "I want to stop." });
+      const closing = s.child("I want to stop.");
+      let intervention: Promise<TextOutput> | undefined;
+      for (let i = 0; i < 200; i++) { await Promise.resolve(); if (s.session.outcome) { intervention = s.partial("Wait"); break; } }
+      expect(intervention).toBeDefined(); await intervention; await closing;
+      oracle.add({ kind: "partial" });
+      s = createTextSession({ ...opts, resume: json(await s.saved()) });
+      expect((await s.start()).ended).toBeNull(); expect(s.session.outcome).toBeNull();
+      oracle.assert(s.trace(), false); hit("R424-20");
+    } else if (scenario === 3) {
+      held = true; oracle.add({ kind: "child", text: "66." });
+      const answer = s.child("66."); await entered.promise;
+      const approval = s.mayaSaid(out.say[0]);
+      const snapshot = json(await s.saved()); held = false; release.resolve(accept);
+      expect((await answer).cancelled).toBe(false); expect((await approval).cancelled).toBe(false);
+      expect(s.session.solved).toBe("child"); expect(calls).toBe(1);
+      const resumed = createTextSession({ ...opts, resume: snapshot }); await resumed.start();
+      expect(resumed.session.solved).toBe("child"); oracle.assert(resumed.trace()); oracle.assert(s.trace()); hit("R424-21");
+    } else {
+      now += 20000 + seed; await s.tick(); oracle.add({ kind: "child", text: "56." }); await s.child("56.");
+      oracle.assert(s.trace());
+      const trace = json(s.trace()), ci = trace.turns.findIndex((t) => t.kind === "child");
+      trace.turns = trace.turns.slice(0, ci + 1); trace.board = [];
+      trace.obligations!.find((o) => o.kind === "child_turn_pending")!.servedBy = trace.turns.findIndex((t) => t.kind === "maya" && t.output?.act === "check_in");
+      expect(() => oracle.assert(trace)).toThrow();
+      // Keep counts consistent so only the missing causal response can fail validation.
+      trace.counts = traceCounts(trace.turns);
+      expect(checkTrace(trace).ok).toBe(false); hit("R424-16-causal");
+    }
+  }
+  expect(checkTrace(s.trace())).toMatchObject({ ok: true }); hit("round7_save_resume");
+}
+
 async function seedRun(seed: number, counts: Map<string, number>) {
   let rng = seed;
   const rand = (n: number) => { rng ^= rng << 13; rng ^= rng >>> 17; rng ^= rng << 5; return (rng >>> 0) % n; };
@@ -287,9 +377,9 @@ describe("event log interleavings", () => {
   it.each(Array.from({ length: 20 }, (_, i) => i * 100 + 1))("100 deterministic seeds from %i", async (first) => {
     const counts = new Map<string, number>();
     for (let seed = first; seed < first + 100; seed++) {
-      try { await seedRun(seed, counts); } catch (error) { throw new Error(`seed ${seed}`, { cause: error }); }
+      try { await seedRun(seed, counts); await round7Seed(seed, counts); } catch (error) { throw new Error(`seed ${seed}`, { cause: error }); }
     }
-    for (const key of ["save_resume", "provider_failure", "partial_tick", "R424-13", "R424-14", "R424-15", "R424-17", "escalation", "safety_content_partial", "repair_partial_terminal"]) expect(counts.get(key), key).toBeGreaterThan(0);
+    for (const key of ["save_resume", "provider_failure", "partial_tick", "R424-13", "R424-14", "R424-15", "R424-17", "escalation", "safety_content_partial", "repair_partial_terminal", "R424-16-causal", "R424-18", "R424-19", "R424-20", "R424-21", "round7_save_resume"]) expect(counts.get(key), key).toBeGreaterThan(0);
     process.stdout.write(JSON.stringify({ first, seeds: 100, counts: Object.fromEntries(counts) }) + "\n");
   }, 60000);
 });

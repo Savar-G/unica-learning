@@ -497,6 +497,8 @@ function check(raw: unknown): MayaTrace {
   if ((r.version as number) >= 5 || r.obligations !== undefined) {
     need(Array.isArray(r.obligations), "obligations", "the obligation ledger");
     const ids = new Set<number>();
+    let childCursor = -1;
+    const childResponses = new Set<number>();
     (r.obligations as unknown[]).forEach((raw, i) => {
       const path = `obligations[${i}]`;
       need(isObject(raw), path, "an obligation");
@@ -515,8 +517,18 @@ function check(raw: unknown): MayaTrace {
       need(o.kind === "safety_due" ? o.severity === "concern" || o.severity === "immediate" : o.severity === undefined, `${path}.severity`, "a severity for safety only");
       need(o.status === "served" || o.servedBy === undefined, `${path}.servedBy`, "absent unless served");
       need(o.status === "dropped" ? isName(o.reason) : o.reason === undefined, `${path}.reason`, "a non-empty reason only when dropped");
+      let childInput = -1;
+      if (o.kind === "child_turn_pending") {
+        childInput = turns.findIndex((t, index) => index > childCursor && t.kind === "child" && t.text === o.text && t.at === o.at);
+        need(childInput >= 0, path, "a distinct matching child input");
+        childCursor = childInput;
+      }
       if (o.status === "served") {
         need(isCount(o.servedBy) && (o.servedBy as number) < turns.length, `${path}.servedBy`, "the trace turn that served the obligation");
+        if (o.kind === "child_turn_pending") {
+          need((o.servedBy as number) > childInput && !childResponses.has(o.servedBy as number), `${path}.servedBy`, "a distinct response after this child input");
+          childResponses.add(o.servedBy as number);
+        }
         const t = turns[o.servedBy as number];
         const act = (t.output as { act?: unknown } | null)?.act;
         const serves = o.kind === "start_pending" ? t.kind === "start" :

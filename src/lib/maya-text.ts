@@ -85,9 +85,12 @@ export interface TextSessionOptions {
  */
 export interface SavedTextSession {
   v: 1 | 6;
-  /** Version 6: authoritative initial state and append-only input/response/delivery log. */
+  /** Version 6: initial state and the bounded input/response/delivery tail after the checkpoint. */
   initial?: TextLogInitial;
   log?: TextLogEvent[];
+  /** Committed fold before the bounded log tail. Plain JSON, including pending work. */
+  checkpoint?: TextCheckpoint;
+  nextRequestId?: number;
   session: Session;
   endedAt: number | null;
   turns: TraceTurn[];
@@ -170,7 +173,7 @@ export interface TextSession {
 const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
 
 // The reducer owns all persistent state. The driver owns only promises and abort signals.
-import { foldTextEvent, initialTextState, type TextLogEvent, type TextLogInitial, type TextFold } from "@/lib/maya-text-log";
+import { foldTextEvent, initialTextState, matchesApproval, textOutput, saveTextCheckpoint, restoreTextCheckpoint, type TextCheckpoint, type TextLogEvent, type TextLogInitial, type TextFold } from "@/lib/maya-text-log";
 
 export function createTextSession(options: TextSessionOptions): TextSession {
   const { model, clock, resume } = options;
@@ -182,7 +185,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     approved: resume?.approved, obligations: resume?.obligations, childState: resume?.childState, problems: resume?.problems,
   };
   const log: TextLogEvent[] = structuredClone(resume?.v === 6 ? resume.log ?? [] : []);
-  let folded: TextFold = initialTextState(initial);
+  let checkpoint = resume?.checkpoint ? structuredClone(resume.checkpoint) : undefined;
+  let nextRequestId = resume?.nextRequestId ?? Math.max(0, ...log.flatMap((e) => e.kind === "request" ? [e.requestId + 1] : []));
+  let logBytes = new TextEncoder().encode(JSON.stringify(log)).byteLength;
+  let folded: TextFold = checkpoint ? restoreTextCheckpoint(checkpoint) : initialTextState(initial);
   for (const e of log) folded = foldTextEvent(folded, e);
   let needsRecovery = folded.request !== null;
   let active: AbortController | null = null;
@@ -197,6 +203,11 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   function append(e: TextLogEvent) {
     log.push(structuredClone(e));
     folded = foldTextEvent(folded, log.at(-1)!);
+    logBytes += new TextEncoder().encode(JSON.stringify(e)).byteLength + 1;
+    if (log.length >= 64 || logBytes >= 65536) {
+      checkpoint = saveTextCheckpoint(folded);
+      log.length = 0; logBytes = 0;
+    }
   }
   function recover() {
     if (!needsRecovery) return;
@@ -212,7 +223,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     finally { controller.signal.removeEventListener("abort", abort); }
   }
   async function request(source: "model" | "repair", controller: AbortController) {
-    const requestId = log.length;
+    const requestId = nextRequestId++;
     const repair = source === "repair" && folded.attempts.at(-1)?.refusal ? {
       proposal: folded.attempts.at(-1)!.proposal,
       refusal: folded.attempts.at(-1)!.refusal!,
@@ -229,8 +240,12 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (!stale) options.onError?.(error, { turn: folded.turns.length, source });
     });
     if (await wait(response, controller) === stopped || controller.signal.aborted) return;
+    await reviewCandidate(controller);
+  }
+  async function reviewCandidate(controller: AbortController) {
     const candidate = folded.candidate;
     if (!candidate) return;
+    const requestId = candidate.requestId;
     // Priority readings are already folded before any external free-talk review.
     const first = step(folded.session, { type: "proposal", at: now(), proposal: candidate.proposal });
     const texts = [...new Set(first.refusal ? [] : first.effects.flatMap((e) => e.kind === "say" ? e.talk ?? [] : []).filter((t) => t.code === null && t.review === "not_run").map((t) => t.proposed))];
@@ -245,10 +260,11 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   async function pump(controller: AbortController) {
     for (let n = 0; n < MAX_MAYA_TURNS && !controller.signal.aborted; n++) {
       if (folded.session.outcome) break;
-      const urgent = ["SAFETY", "CONTENT_HOLD"].includes(folded.session.state);
+      const urgent = folded.session.safety.flagged || folded.session.contentProblem !== null;
       if (folded.childState === "child_speaking" && !urgent) break;
       if (nextActs(folded.session).expect !== "maya") break;
-      if (!folded.attempts.length) await request("model", controller);
+      if (folded.candidate) await reviewCandidate(controller);
+      else if (!folded.attempts.length) await request("model", controller);
       if (controller.signal.aborted) break;
       if (folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome) await request("repair", controller);
       if (controller.signal.aborted) break;
@@ -271,7 +287,13 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       try {
         if (respond) await pump(controller);
         if (controller.signal.aborted) return { ...newOutput(), cancelled: true };
-        const out = structuredClone(folded.output);
+        const blocked = folded.childState === "child_speaking" && !folded.session.outcome && !folded.session.safety.flagged && !folded.session.contentProblem && !(folded.session.startedAt !== null && now() - folded.session.startedAt >= (folded.session.limits?.endAtMs ?? 600000));
+        if (blocked) {
+          const out = { ...newOutput(), cancelled: folded.output.cancelled };
+          append({ kind: "cancelled", at: now() });
+          return out;
+        }
+        const out = textOutput(folded);
         append({ kind: "delivered", at: now() });
         return out;
       } catch (error) {
@@ -285,9 +307,11 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   }
   function receive(event: SessionEvent, respond = true): Promise<TextOutput> {
     recover();
-    const nonInterrupting = event.type === "writing" || event.type === "tick" || event.type === "start" || event.type === "content_problem";
+    const nonInterrupting = event.type === "writing" || event.type === "tick" || event.type === "start" || event.type === "content_problem" || event.type === "maya_said";
     if (!nonInterrupting) { generation++; active?.abort(); }
+    const approval = event.type === "maya_said" && matchesApproval(folded, event.text);
     append({ kind: "input", at: event.at, event });
+    if (approval) return Promise.resolve(newOutput());
     if (event.type === "child_turn" && event.final === false) {
       const out = { ...newOutput(), cancelled: folded.output.cancelled };
       // A partial returns immediately. It cannot deliver protected speech while cancelling a request.
@@ -298,7 +322,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   }
   function trace(): MayaTrace {
     const { session, turns, board, obligations, endedAt } = folded;
-    const outcome = folded.output.ended ? null : session.outcome;
+    const outcome = folded.pending.length ? null : session.outcome;
     const raw = typeof options.package === "object" && options.package !== null ? options.package as Record<string, unknown> : {};
     return redactTrace({ kind: TRACE_KIND, version: TRACE_VERSION, callId: options.callId, runner: options.runner ?? "text",
       startedAt: iso(session.startedAt), endedAt: iso(outcome ? endedAt ?? session.now : null),
@@ -328,6 +352,6 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       return trace();
     },
     trace,
-    saved: async () => structuredClone({ v: 6 as const, initial, log, session: folded.session, turns: folded.turns, board: folded.board, endedAt: folded.endedAt, approved: folded.approved, obligations: folded.obligations, childState: folded.childState }),
+    saved: async () => structuredClone({ v: 6 as const, initial, checkpoint, nextRequestId, log, session: folded.session, turns: folded.turns, board: folded.board, endedAt: folded.endedAt, approved: folded.approved, obligations: folded.obligations, childState: folded.childState }),
   };
 }

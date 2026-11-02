@@ -5,7 +5,7 @@ import type { OperationPackage } from "@/lib/question-package";
 import { BEHAVIOURS } from "./behaviours";
 import { FIXTURES } from "./fixtures";
 import { judgeSaved, runCallBehaviour, runGateBehaviour } from "./call";
-import { callKey, HARD_FAILURES, judge, memoryTraceStore, runBehaviour, scenarioModel, type Behaviour, type HardFailure, type SavedCall } from "./gate";
+import { callKey, HARD_FAILURES, runsOnCall, judge, memoryTraceStore, runBehaviour, scenarioModel, type Behaviour, type HardFailure, type SavedCall } from "./gate";
 
 vi.mock("server-only", () => ({}));
 
@@ -91,6 +91,7 @@ describe("each hard failure can fail the gate (a saved trace changed after the r
     ["accepted_wrong_answer", "C07", (t) => {
       const c = t.turns.find((x) => x.kind === "child")!;
       if (c.kind === "child") c.text = "7 plus 9 is 16, so I carried a ten. I got 56.";
+      for (const o of t.obligations ?? []) if (o.kind === "child_turn_pending" && o.at === c.at) o.text = c.kind === "child" ? c.text : o.text;
       return t;
     }],
     ["hint_skipped", "C02", (t) => { (mayaAt(t, 3).attempts.at(-1)!.proposal as { level: number }).level = 4; return t; }],
@@ -99,18 +100,21 @@ describe("each hard failure can fail the gate (a saved trace changed after the r
     ["accepted_wrong_answer", "M12", (t) => {
       const c = t.turns.find((x) => x.kind === "child")!;
       if (c.kind === "child") c.text = "So I got 56, because 27 and 39 make 66.";
+      for (const o of t.obligations ?? []) if (o.kind === "child_turn_pending" && o.at === c.at) o.text = c.kind === "child" ? c.text : o.text;
       return t;
     }],
     // R391-1-1: an ordinary "no" in the explanation of a wrong answer takes nothing back, so the 66 after it is not the answer.
     ["accepted_wrong_answer", "M12", (t) => {
       const c = t.turns.find((x) => x.kind === "child")!;
       if (c.kind === "child") c.text = "65 because I have no idea how 66 works.";
+      for (const o of t.obligations ?? []) if (o.kind === "child_turn_pending" && o.at === c.at) o.text = c.kind === "child" ? c.text : o.text;
       return t;
     }],
     // R391-2: a withdrawn answer, and an "actually" inside the explanation of a wrong one, leave no answer to accept.
     ["accepted_wrong_answer", "M12", (t) => {
       const c = t.turns.find((x) => x.kind === "child")!;
       if (c.kind === "child") c.text = "65 because there are actually 66 blocks.";
+      for (const o of t.obligations ?? []) if (o.kind === "child_turn_pending" && o.at === c.at) o.text = c.kind === "child" ? c.text : o.text;
       return t;
     }],
     // D-199: the final step's answer after only one wrong final answer (the first one read right instead).
@@ -309,7 +313,7 @@ describe("a sabotaged controller makes the gate fail", () => {
       expect(await run("decline_space", id)).toContain("flow_mismatch");
     });
 
-  it.each(BEHAVIOURS.filter((b) => b.expect.safety).map((b) => b.id))(
+  it.each(BEHAVIOURS.filter((b) => b.expect.safety && runsOnCall(b)).map((b) => b.id))(
     "%s: cleanup cannot hide a safety call that did not end automatically", async (id) => {
       expect(await run("no_auto_end", id)).toContain("safety_not_taken");
     },

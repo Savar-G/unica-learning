@@ -227,7 +227,9 @@ describe("the saved files are the run (R386-2)", () => {
     const { store, recount } = await suite([C07], { runs: 1 });
     const bad = "As an AI, Maya: the answer is 66.";
     const t = JSON.parse(store.load(traceFile("C07-r1"))!);
-    t.turns.find((x: { kind: string }) => x.kind === "child").text = bad;
+    const changed = t.turns.find((x: { kind: string }) => x.kind === "child");
+    changed.text = bad;
+    for (const o of t.obligations ?? []) if (o.kind === "child_turn_pending" && o.at === changed.at) o.text = bad;
     store.save(traceFile("C07-r1"), JSON.stringify(t));
     rewrite(store, "C07-r1", simFile("C07-r1"), withChildTexts(store.load(simFile("C07-r1"))!, [bad]));
     const codes = recount().runs[0].invalid.map((x) => x.code);

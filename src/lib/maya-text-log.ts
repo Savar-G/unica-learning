@@ -1,6 +1,6 @@
 // Persistent transition rules for the text adapter. No provider, clock, promise or abort signal enters this fold.
 import { applyBatch, createScene, type Batch, type Scene } from "@/lib/board";
-import { nextActs, speechKey, step, TIME_LIMITS, type Act, type Effect, type Session, type SessionEvent, type TalkReview } from "@/lib/maya";
+import { nextActs, speechKey, step, TIME_LIMITS, SAFETY_GUIDANCE, type Act, type Effect, type Session, type SessionEvent, type TalkReview } from "@/lib/maya";
 import { type TraceAttempt, type TraceBoardBatch, type TraceError, type TraceObligation, type TraceTurn } from "@/lib/maya-trace";
 import type { TextOutput } from "@/lib/maya-text";
 
@@ -27,11 +27,15 @@ export type TextLogEvent =
 type PendingOutput = { entry: Extract<TraceTurn, { kind: "maya" }>; act: Act; say: string[]; batches: Batch[]; obligations: number[]; control: number };
 export interface TextFold {
   session: Session;
+  /** Upper bound on persisted event content for one live call. */
+  historyBytes: number;
   scene: Scene;
   endedAt: number | null;
   turns: TraceTurn[];
   board: TraceBoardBatch[];
   approved: string[];
+  approvals: { outputId: number; turn: number; text: string; cancelled: boolean; acknowledged: boolean }[];
+  nextOutputId: number;
   initialSession: Session;
   initialScene: Scene;
   controls: { event: SessionEvent; replaceTurn?: boolean; cancelled?: boolean }[];
@@ -42,9 +46,33 @@ export interface TextFold {
   attempts: TraceAttempt[];
   deferred: { event: SessionEvent; childId: number | null }[];
   pending: PendingOutput[];
-  output: TextOutput;
+  output: Pick<TextOutput, "say" | "board" | "cancelled">;
 }
-const emptyOutput = (): TextOutput => ({ say: [], board: [], ended: null, safetyMessage: null, cancelled: false });
+export type TextCheckpoint = Omit<TextFold, "scene" | "initialScene" | "endedAt"> & { sceneBatches: Batch[]; initialSceneBatches: Batch[] };
+export function saveTextCheckpoint(s: TextFold): TextCheckpoint {
+  const { scene: _scene, initialScene: _initialScene, endedAt: _endedAt, ...data } = s;
+  void _scene; void _initialScene; void _endedAt;
+  const committed = s.board.map((b) => ({ transactionId: b.transactionId, commands: b.commands }));
+  return structuredClone({ ...data, sceneBatches: [...committed, ...s.pending.flatMap((p) => p.batches)], initialSceneBatches: committed });
+}
+export function restoreTextCheckpoint(checkpoint: TextCheckpoint): TextFold {
+  const { sceneBatches, initialSceneBatches, ...data } = structuredClone(checkpoint);
+  const restore = (batches: Batch[]) => {
+    let scene = createScene();
+    for (const batch of batches) {
+      const result = applyBatch(scene, batch);
+      if (!result.ok) throw new Error("maya text: checkpoint board does not apply");
+      scene = result.scene;
+    }
+    return scene;
+  };
+  return { ...data, endedAt: data.session.outcome ? data.session.now : null, scene: restore(sceneBatches), initialScene: restore(initialSceneBatches) };
+}
+export const MAX_TEXT_HISTORY_BYTES = 262144;
+const emptyOutput = (): TextFold["output"] => ({ say: [], board: [], cancelled: false });
+export function textOutput(s: TextFold): TextOutput {
+  return { ...structuredClone(s.output), ended: s.session.outcome, safetyMessage: s.session.outcome && s.session.safety.flagged ? SAFETY_GUIDANCE[s.session.safety.severity!] : null };
+}
 const due = (s: TextFold, kind: TraceObligation["kind"]) => s.obligations.filter((o) => o.kind === kind && o.status === "pending");
 function owe(s: TextFold, kind: TraceObligation["kind"], at: number, extra = {}) {
   const o: TraceObligation = { id: (s.obligations.at(-1)?.id ?? -1) + 1, kind, at, status: "pending", ...extra };
@@ -60,12 +88,13 @@ function terminal(s: TextFold) {
 function refreshOutput(s: TextFold) {
   s.output.say = s.pending.flatMap((p) => p.say);
   s.output.board = s.pending.flatMap((p) => p.batches);
+  s.endedAt = s.session.outcome ? s.session.now : null;
 }
 /** Recompute controller state after an output decision. Inputs and priority readings remain in their original order. */
-function rebuildController(s: TextFold) {
+function replayControls(s: TextFold, count = s.controls.length) {
   let session = structuredClone(s.initialSession);
   let scene = s.initialScene;
-  for (const c of s.controls) {
+  for (const c of s.controls.slice(0, count)) {
     let event = c.event;
     if (c.replaceTurn) session.turn = null;
     if (c.cancelled && event.type === "proposal") {
@@ -79,15 +108,29 @@ function rebuildController(s: TextFold) {
       if (applied.ok) scene = applied.scene;
     }
   }
-  s.session = session; s.scene = scene;
+  return { session, scene };
+}
+function rebuildController(s: TextFold) { Object.assign(s, replayControls(s)); }
+/** Commit every control before the first output that can still be cancelled. */
+function commitControls(s: TextFold) {
+  const count = Math.min(s.controls.length, ...s.pending.map((p) => p.control));
+  if (!count) return;
+  const checkpoint = replayControls(s, count);
+  s.initialSession = checkpoint.session; s.initialScene = checkpoint.scene;
+  s.controls.splice(0, count);
+  for (const p of s.pending) p.control -= count;
+}
+export function matchesApproval(s: TextFold, text: string) {
+  return s.approvals.find((a) => !a.cancelled && !a.acknowledged && a.text.split(/(?<=[.?!])\s+/).some((_sentence, i, all) => speechKey(text) === speechKey(all.slice(0, i + 1).join(" "))));
 }
 function controllerStep(s: TextFold, event: SessionEvent, replaceTurn = false) {
   s.controls.push({ event: structuredClone(event), ...(replaceTurn ? { replaceTurn: true } : {}) });
   if (replaceTurn) s.session.turn = null;
   return step(s.session, event);
 }
-function cancel(s: TextFold, reason: string, urgent = false) {
+function cancel(s: TextFold, reason: string, urgent = false, revoke = true) {
   const hadRequest = s.request !== null || s.candidate !== null;
+  if (revoke) { for (const a of s.approvals) a.cancelled = true; s.approved = []; }
   s.request = null;
   s.candidate = null;
   s.attempts = [];
@@ -128,7 +171,6 @@ function syncSafety(s: TextFold, at: number) {
 function takeEffects(s: TextFold, effects: Effect[], at: number, attempts: TraceAttempt[] = [], stateBefore = s.session.state) {
   for (const e of effects) {
     if (e.kind === "cancel_output") s.output.cancelled = true;
-    if (e.kind === "end") { s.endedAt = e.at; s.output.ended = e.outcome; s.output.safetyMessage = e.safetyMessage; }
   }
   const says = effects.filter((e) => e.kind === "say");
   const batches = effects.flatMap((e) => e.kind === "board" ? [e.batch] : []);
@@ -160,10 +202,10 @@ function applyInput(s: TextFold, event: SessionEvent, error?: TraceError, record
     }
   }
   if (event.type === "maya_said") {
-    const reported = event.text;
-    const match = s.approved.findIndex((text) => text.split(/(?<=[.?!])\s+/).some((_sentence, i, all) => speechKey(reported) === speechKey(all.slice(0, i + 1).join(" "))));
-    event = { ...event, approvedTurn: match < 0 ? -1 : s.session.turns.findLastIndex((t) => t.speaker === "maya" && t.text === s.approved[match]) };
-    if (match >= 0) s.approved.splice(match, 1);
+    const match = matchesApproval(s, event.text);
+    event = { ...event, approvedTurn: match?.turn ?? -1 };
+    if (match) match.acknowledged = true;
+    s.approved = s.approvals.filter((a) => !a.cancelled && !a.acknowledged).map((a) => a.text);
   }
   if (event.type === "content_problem") owe(s, "content_problem", at, { text: event.detail });
   const before = s.session.state;
@@ -228,13 +270,14 @@ function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt
   flushDeferred(s);
 }
 export function initialTextState(initial: TextLogInitial): TextFold {
-  const s: TextFold = { ...structuredClone(initial), scene: createScene(), initialSession: structuredClone(initial.session), initialScene: createScene(), controls: [], approved: structuredClone(initial.approved ?? initial.session.turns.filter((t) => t.speaker === "maya").slice(-1).map((t) => t.text)), obligations: structuredClone(initial.obligations ?? []), childState: initial.childState ?? "listening", request: null, candidate: null, attempts: [], deferred: [], pending: [], output: emptyOutput() };
+  const s: TextFold = { ...structuredClone(initial), historyBytes: 0, scene: createScene(), initialSession: structuredClone(initial.session), initialScene: createScene(), controls: [], approvals: [], nextOutputId: 0, approved: structuredClone(initial.approved ?? initial.session.turns.filter((t) => t.speaker === "maya").slice(-1).map((t) => t.text)), obligations: structuredClone(initial.obligations ?? []), childState: initial.childState ?? "listening", request: null, candidate: null, attempts: [], deferred: [], pending: [], output: emptyOutput() };
   for (const b of s.board) {
     const applied = applyBatch(s.scene, { transactionId: b.transactionId, commands: b.commands });
     if (!applied.ok) throw new Error(`maya text: the saved board batch ${b.transactionId} does not apply again`);
     s.scene = applied.scene;
   }
   s.initialScene = s.scene;
+  s.approvals = s.approved.map((text) => ({ outputId: 0, turn: s.session.turns.findLastIndex((t) => t.speaker === "maya" && t.text === text), text, cancelled: false, acknowledged: false }));
   if (!initial.childState) for (const t of s.turns) { if (t.kind === "partial") s.childState = "child_speaking"; if (t.kind === "child") s.childState = "listening"; }
   if (!initial.obligations && !s.session.outcome) {
     if (s.session.startedAt !== null && !s.session.opened && s.session.package) owe(s, "opening_due", s.session.now ?? 0);
@@ -244,10 +287,21 @@ export function initialTextState(initial: TextLogInitial): TextFold {
   }
   syncSafety(s, s.session.now ?? 0);
   for (const detail of initial.problems ?? []) applyInput(s, { type: "content_problem", at: s.session.now ?? 0, detail });
+  refreshOutput(s);
   return s;
 }
 /** Apply one log record. The caller owns the cache; replay calls the same reducer with the same initial state. */
 export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
+  if (!s.session.outcome) {
+    const bytes = new TextEncoder().encode(JSON.stringify(e)).byteLength;
+    if (s.historyBytes + bytes > MAX_TEXT_HISTORY_BYTES) {
+      cancel(s, "call record limit reached", true);
+      applyInput(s, { type: "technical", at: e.at, detail: "the call record limit was reached" });
+      commitControls(s); refreshOutput(s);
+      return s;
+    }
+    s.historyBytes += bytes;
+  }
   switch (e.kind) {
     case "input": {
       const event = e.event;
@@ -257,12 +311,18 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
           if (!s.session.outcome) s.turns.push(event.type === "writing" ? { kind: "writing", at: e.at, status: event.status } : { kind: "tick", at: e.at });
           break;
         }
+      } else if (event.type === "maya_said") {
+        if (!matchesApproval(s, event.text)) {
+          const request = s.request, candidate = s.candidate, attempts = s.attempts;
+          cancel(s, "superseded by speech repair");
+          s.request = request; s.candidate = candidate; s.attempts = attempts;
+        }
       } else if (event.type === "content_problem") {
         const request = s.request, candidate = s.candidate;
         cancel(s, "superseded by priority input", true);
         s.request = request; s.candidate = candidate;
       } else if (event.type !== "start") {
-        cancel(s, event.type === "child_turn" && event.final === false ? "cancelled by partial transcript" : "superseded by priority input", ["content_problem", "technical", "hang_up"].includes(event.type));
+        cancel(s, event.type === "child_turn" && event.final === false ? "cancelled by partial transcript" : "superseded by priority input", ["content_problem", "technical", "hang_up"].includes(event.type), event.type !== "child_turn" || event.final === false);
       }
       applyInput(s, event, e.error);
       flushDeferred(s);
@@ -301,7 +361,7 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       break;
     }
     case "fallback": proposal(s, e.proposal, e.at, { source: "fallback", proposal: e.proposal, refusal: null }); break;
-    case "recover": s.request = null; s.candidate = null; break;
+    case "recover": if (!s.candidate) s.request = null; break;
     case "cancelled": s.output.cancelled = false; break;
     case "delivered": {
       const last = s.turns.at(-1);
@@ -319,10 +379,16 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
         for (const b of p.batches) s.board.push({ at: turn.at, turn: index, transactionId: b.transactionId, commands: b.commands });
       }
       if (terminalTurn) s.turns.push(terminalTurn);
-      if (s.output.say.length) s.approved = [...s.output.say];
+      if (s.output.say.length) {
+        const outputId = ++s.nextOutputId;
+        s.approvals = s.output.say.map((text) => ({ outputId, turn: s.session.turns.findLastIndex((t) => t.speaker === "maya" && t.text === text), text, cancelled: false, acknowledged: false }));
+        s.approved = [...s.output.say];
+      }
       s.pending = []; s.output = emptyOutput(); terminal(s); flushDeferred(s);
       break;
     }
   }
+  commitControls(s);
+  refreshOutput(s);
   return s;
 }
