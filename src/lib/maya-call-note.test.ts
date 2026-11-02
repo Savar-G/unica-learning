@@ -471,6 +471,47 @@ describe("hiding the child's name (R403-2)", () => {
     expect(noteTranscriptLines(note, "小明").filter((l) => l.speaker === "child")[0].text).toBe("我叫小明");
   });
 
+  // Round 3: invisible characters and other Unicode forms of the name, and the name as one whole span.
+  const flat = (s: string) => foldWord(s.replace(/[\p{Cf}\u{FE00}-\u{FE0F}]/gu, "").normalize("NFKC"));
+  it.each([
+    ["Leah", "Le​ah is here.", "{child} is here."],
+    ["Leah", "I am Le‍ah", "I am {child}"],
+    ["Leah", "Le​ah said hi to LE⁠AH", "{child} said hi to {child}"],
+    ["Leah", "L️eah­ and Leah", "{child} and {child}"],
+    ["小明", "我叫小​明", "我叫{child}"],
+    ["小明", "小‍明说我是小︀明", "{child}说我是{child}"],
+    ["민수", "민수가 했어요".normalize("NFD"), "{child}가 했어요"],
+    ["민수".normalize("NFD"), "민수가 했어요", "{child}가 했어요"],
+    ["ガク", "ｶﾞｸです", "{child}です"],
+    ["ｶﾞｸ", "ガクです", "{child}です"],
+    ["José", "José said hi".normalize("NFD"), "{child} said hi"],
+    ["Zoe", "Ｚｏｅ said hi", "{child} said hi"],
+    ["Ｌｅ​ah", "Leah said hi", "{child} said hi"],
+    ["ジョージ", "ジョージです。ジョージ", "{child}です。{child}"],
+    ["ジョージ", "ジョギングは楽しい", "ジョギングは楽しい"],
+    ["Ann", "Ann has planning", "{child} has planning"],
+  ])("%s in %s reaches neither the AI nor the stored note (R403-2, R403-6)", async (name, text, hidden) => {
+    const { ended } = await endedTestCall([text, ...NO_START], undefined, name);
+    const call = asFamily(ended);
+    const ai = fakeNoteAi("sure");
+    const s = setup(ai, [call], [TEST_PARENT], async () => name);
+    const note = written(await s.notes.write({ call, package: ended.package, event: ended.event }));
+    expect(ai.requests.length).toBeGreaterThan(0);
+    expect(note.transcript.filter((l) => l.speaker === "child")[0].text).toBe(hidden);
+    const sent = flat(JSON.stringify(ai.requests));
+    const stored = flat(JSON.stringify(s.store.rows()));
+    // A Latin name is a whole word ("ann" in "planning" is not the name); other scripts are hidden anywhere.
+    const n = flat(name);
+    const leak = new RegExp(/^\p{Script=Latin}+$/u.test(n) ? `(?<!\\p{L})${n}(?!\\p{L})` : n, "u");
+    if (hidden.includes("{child}")) {
+      expect(sent).not.toMatch(leak);
+      expect(stored).not.toMatch(leak);
+    } else {
+      expect(sent).toContain(flat(text));
+      expect(stored).toContain(flat(text));
+    }
+  });
+
   it("folds case and accents", () => {
     expect(foldWord("ZOË")).toBe("zoe");
     expect(foldWord("Élodie")).toBe("elodie");

@@ -11,9 +11,9 @@
 //   the ids of the sentences whose condition holds for this call, or "none". Any other answer, a failed or slow AI, or no AI gives the
 //   code-only note. A call with a safety flag never asks the AI.
 // - The child's name is never stored in the note and never sent to the AI (R403-2): sentences hold the token {child},
-//   and so does the stored transcript, where every word that is the name (Unicode letters, any case or accent, see
-//   `hideName`) becomes {child}; `noteSentences` and `noteTranscriptLines` put the name in when the note is shown. When
-//   the name cannot be read, nothing is asked and no note is written; the call keeps the note pending (src/lib/maya-call.ts).
+//   and so does the stored transcript, where every word that is the name (Unicode letters, any case, accent or width,
+//   invisible characters removed, see `hideName`) becomes {child}; `noteSentences` and `noteTranscriptLines` put the
+//   name in when the note is shown. When the name cannot be read, nothing is asked and no note is written; the call keeps the note pending (src/lib/maya-call.ts).
 //
 // Test calls never get a note: the writer refuses an admin test call (any kind not in NOTE_CALL_KINDS) and any call of
 // a family marked as a test family, before it reads or asks anything; the database refuses both again.
@@ -270,72 +270,75 @@ export function foldWord(s: string): string {
 }
 
 /**
- * Scripts written without spaces between words (Chinese, Japanese, Thai and others), and Korean, where a particle is
- * written onto the name ("민수가"). A name in these scripts can sit anywhere inside a run of letters.
+ * Characters that show nothing: format characters (Unicode \p{Cf}: zero-width space and joiners, the soft hyphen, the
+ * word joiner, direction marks) and variation selectors. Written between the letters of a name ("Le\u200Bah"), they
+ * must not hide it.
  */
-const UNSPACED = "\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}\\p{Script=Thai}\\p{Script=Lao}\\p{Script=Khmer}\\p{Script=Myanmar}\\p{Script=Tibetan}";
-const IS_UNSPACED = new RegExp(`[${UNSPACED}]`, "u");
+const INVISIBLE = /[\p{Cf}\u{FE00}-\u{FE0F}\u{E0100}-\u{E01EF}]/gu;
+
+/**
+ * The text in one plain form: no invisible characters, then Unicode NFC, then NFKC on each run of letters and marks, so
+ * full-width "Ｚｏｅ", half-width "ｶﾞｸ", decomposed Hangul and separate accents all have the form of the plain name.
+ * Punctuation, digits and spaces keep their form ("：" and "！" stay). The name and the text get the same form before
+ * they are compared, and the note stores and sends this form, so no position must be mapped back (R403-2, round 3).
+ */
+function plainText(s: string): string {
+  return s
+    .replace(INVISIBLE, "")
+    .normalize("NFC")
+    .replace(/[\p{L}\p{M}]+/gu, (run) => run.normalize("NFKC").replace(INVISIBLE, ""));
+}
+
+/**
+ * Scripts written without spaces between words (Chinese, Japanese, Thai and others), and Korean, where a particle is
+ * written onto the name ("민수가"). A name in these scripts can sit anywhere inside a run of letters. The class uses the
+ * scripts a character is written in (Script_Extensions), so the Japanese long-vowel mark "ー" and the voicing marks stay
+ * in the name ("ジョージ" is one name, never "ジョ", review R403-6). Only letters and marks count; punctuation such as "・"
+ * or "。" ends a name.
+ */
+const UNSPACED_SCRIPTS = "\\p{scx=Han}\\p{scx=Hiragana}\\p{scx=Katakana}\\p{scx=Hangul}\\p{scx=Thai}\\p{scx=Lao}\\p{scx=Khmer}\\p{scx=Myanmar}\\p{scx=Tibetan}";
+const UNSPACED_LETTER = `(?:(?=[\\p{L}\\p{M}])[${UNSPACED_SCRIPTS}])`;
+const IS_UNSPACED = new RegExp(UNSPACED_LETTER, "u");
 /** A run of letters of the spaced scripts (Latin and others), with their accents: a word. */
-const LETTER_RUN = new RegExp(`(?:(?![${UNSPACED}])[\\p{L}\\p{M}])+`, "gu");
+const SPACED_RUN = `(?:(?!${UNSPACED_LETTER})[\\p{L}\\p{M}])+`;
+const LETTER_RUN = new RegExp(SPACED_RUN, "gu");
 /** A run of letters of one kind: an unspaced run, or a spaced word. */
-const NAME_RUN = new RegExp(`[${UNSPACED}](?:[${UNSPACED}]|\\p{M})*|(?:(?![${UNSPACED}])[\\p{L}\\p{M}])+`, "gu");
+const NAME_RUN = new RegExp(`${UNSPACED_LETTER}(?:${UNSPACED_LETTER}|\\p{M})*|${SPACED_RUN}`, "gu");
 /** One character with its accents. */
 const UNIT = /\P{M}\p{M}*|\p{M}+/gu;
 
-/** One character of an unspaced script, compared without width or case ("ﾕ" and "ユ" are the same). */
-const foldUnit = (u: string) => (IS_UNSPACED.test(u) ? u.normalize("NFKC").toLowerCase() : foldWord(u));
-
 /**
- * The text with every word that is the child's name replaced by `token`. For the spaced scripts a word is a run of
- * letters (Unicode \p{L} with its accents), compared without case or accents, so "Zoë", "ZOE" and "zoe" all match "Zoë",
- * and "Élodie" matches "Elodie". A name of several words ("Mary Ann") hides each word of it with two or more letters. A
- * word matches when it is the name, the name with "s" ("Zoës"), or the name with its last letter stretched ("Leahhh");
- * a possessive ("Zoë's", "Zoë’s") is the name followed by an apostrophe, so it matches too. The name inside a longer
- * word ("Ann" in "planning" or "Annual") is another word and stays. A name in an unspaced script (see UNSPACED) is
- * hidden wherever it is, also inside a longer run ("我叫小明", "민수가"), compared without width or case; a Latin name
- * written next to such letters ("我叫Zoe") is a word of its own (review R403-2, round 2).
+ * The text, in its plain form (see `plainText`), with every word that is the child's name replaced by `token`. The
+ * name gets the same plain form first. For the spaced scripts a word is a run of letters (Unicode \p{L} with its
+ * accents), compared without case or accents, so "Zoë", "ZOE" and "zoe" all match "Zoë", and "Élodie" matches "Elodie".
+ * A name of several words ("Mary Ann") hides each word of it with two or more letters. A word matches when it is the
+ * name, the name with "s" ("Zoës"), or the name with its last letter stretched ("Leahhh"); a possessive ("Zoë's",
+ * "Zoë’s") is the name followed by an apostrophe, so it matches too. The name inside a longer word ("Ann" in "planning"
+ * or "Annual") is another word and stays. A name in an unspaced script (see UNSPACED_SCRIPTS) is hidden as a whole
+ * wherever it is, also inside a longer run ("我叫小明", "민수가"), without case, and only where it ends on a whole
+ * character; a part of it never matches ("ジョギング" stays for "ジョージ"). A Latin name written next to such letters
+ * ("我叫Zoe") is a word of its own (review R403-2, rounds 2 and 3).
  */
 export function hideName(text: string, childName: string, token: string): string {
-  const parts = nameParts(childName);
+  const plain = plainText(text);
+  const parts = nameParts(plainText(childName));
   const spaced = parts.filter((p) => !p.unspaced).map((p) => p.folded);
   const unspaced = parts.filter((p) => p.unspaced).map((p) => p.folded);
-  const words = spaced.length === 0 ? text : text.replace(LETTER_RUN, (run) => {
+  const words = spaced.length === 0 ? plain : plain.replace(LETTER_RUN, (run) => {
     const word = foldWord(run);
     return spaced.some((p) => word === p || (word.startsWith(p) && isNameTail(word.slice(p.length), p))) ? token : run;
   });
-  return unspaced.length === 0 ? words : hideInside(words, unspaced, token);
+  if (unspaced.length === 0) return words;
+  // Longest first, so a longer name part wins over a shorter one at the same place.
+  const names = [...unspaced].sort((a, b) => b.length - a.length).map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return words.replace(new RegExp(`(?:${names.join("|")})(?!\\p{M})`, "giu"), token);
 }
 
-/** The text with every place where a folded name part appears, starting and ending on whole characters, as `token`. */
-function hideInside(text: string, parts: readonly string[], token: string): string {
-  const units = text.match(UNIT) ?? [];
-  const folded = units.map(foldUnit);
-  let out = "";
-  for (let i = 0; i < units.length; ) {
-    let end = -1;
-    for (const p of parts) {
-      let acc = "";
-      for (let j = i; j < units.length && acc.length < p.length; j++) {
-        acc += folded[j];
-        if (acc === p) end = Math.max(end, j);
-      }
-    }
-    if (end >= i) {
-      out += token;
-      i = end + 1;
-    } else {
-      out += units[i];
-      i += 1;
-    }
-  }
-  return out;
-}
-
-/** The folded parts of a name: those with two or more letters, or every part when none has two. */
+/** The parts of a name in plain form, folded: those with two or more letters, or every part when none has two. */
 function nameParts(childName: string): { folded: string; unspaced: boolean }[] {
-  const all = (childName.normalize("NFC").match(NAME_RUN) ?? []).map((run) => {
+  const all = (childName.match(NAME_RUN) ?? []).map((run) => {
     const unspaced = IS_UNSPACED.test(run);
-    return { folded: unspaced ? (run.match(UNIT) ?? []).map(foldUnit).join("") : foldWord(run), unspaced, letters: (run.match(UNIT) ?? []).length };
+    return { folded: unspaced ? run.toLowerCase() : foldWord(run), unspaced, letters: (run.match(UNIT) ?? []).length };
   }).filter((p) => p.folded);
   const long = all.filter((p) => p.letters >= 2);
   const seen = new Set<string>();
