@@ -543,6 +543,12 @@ export interface WorkbookDetail {
   child: ChildRow | null;
   /** Short-lived URLs of the page images, by path, signed with the admin's session under the bucket's admin policy. */
   images: Record<string, string>;
+  /** Its audit log (#314): the draft it was approved from, its approval, printing and shipping, with who and when. */
+  audit: AuditEntry[];
+  /** The run whose draft it was approved from, or null (a workbook stored another way). */
+  runId: string | null;
+  /** Shipped, and no other workbook of the child was shipped before it: the page leads to start plan (D-140). */
+  firstShipped: boolean;
 }
 
 /** One workbook with its pages, questions and page images, or null. */
@@ -550,28 +556,43 @@ export async function getWorkbook(a: AdminSession, id: string): Promise<Workbook
   const workbook = await workbookStore(a.db).workbook(id);
   if (!workbook) return null;
   const paths = workbook.pages.flatMap((p) => (p.image ? [p.image.path] : []));
-  const [children, signed] = await Promise.all([
+  const [children, signed, audit, runs, shipped] = await Promise.all([
     childrenById(a, [workbook.childId]),
     paths.length ? a.db.storage.from(WORKBOOK_FILES_BUCKET).createSignedUrls(paths, WORKBOOK_URL_SECONDS) : Promise.resolve({ data: [], error: null }),
+    a.db.from("workbook_audit").select("id, at, actor_email, action, detail").or(`workbook_id.eq.${workbook.id},draft_id.eq.${workbook.id}`)
+      .order("at").order("id").range(0, 199).then((r) => must<AuditEntry[]>(r, "workbook audit")),
+    a.db.from("workbook_runs").select("id").eq("draft_id", workbook.id).order("created_at", { ascending: false }).limit(1)
+      .then((r) => must<{ id: string }[]>(r, "workbook run")),
+    a.db.from("workbooks").select("id, shipped_at").eq("child_id", workbook.childId).eq("status", "shipped")
+      .then((r) => must<{ id: string; shipped_at: string | null }[]>(r, "shipped workbooks")),
   ]);
   if (signed.error) console.error("[admin] workbook images sign failed", signed.error.message);
   const images: Record<string, string> = {};
   for (const item of signed.data ?? []) if (item.path && item.signedUrl && !item.error) images[item.path] = item.signedUrl;
-  return { workbook, child: children[0] ?? null, images };
+  const at = (w: { shipped_at: string | null }) => (w.shipped_at ? new Date(w.shipped_at).getTime() : Infinity);
+  const mine = shipped.find((w) => w.id === workbook.id);
+  const firstShipped = !!mine && shipped.every((w) => w.id === workbook.id || at(w) > at(mine));
+  return { workbook, child: children[0] ?? null, images, audit, runId: runs[0]?.id ?? null, firstShipped };
 }
 
 /** A fresh short-lived URL of a stored workbook PDF, signed with the admin's session, or null when there is none. */
-async function signPdf(a: AdminSession, path: string | null | undefined): Promise<string | null> {
+async function signPdf(a: AdminSession, path: string | null | undefined, download?: string): Promise<string | null> {
   if (!path) return null;
-  const { data, error } = await a.db.storage.from(WORKBOOK_FILES_BUCKET).createSignedUrl(path, WORKBOOK_URL_SECONDS);
+  const { data, error } = await a.db.storage.from(WORKBOOK_FILES_BUCKET).createSignedUrl(path, WORKBOOK_URL_SECONDS, download ? { download } : undefined);
   if (error) console.error("[admin] workbook pdf sign failed", error.message);
   return data?.signedUrl ?? null;
 }
 
-/** The PDF of a stored workbook, as a fresh signed URL, or null. */
-export async function workbookPdfUrl(a: AdminSession, id: string): Promise<string | null> {
+/** The PDF of a stored workbook, as a fresh signed URL, or null. `download`: the URL saves the file (for print). */
+export async function workbookPdfUrl(a: AdminSession, id: string, o: { download?: boolean } = {}): Promise<string | null> {
   if (!isUuid(id)) return null;
-  return signPdf(a, (await workbookStore(a.db).workbook(id))?.pdfPath);
+  const [book] = must<{ child_id: string; number: number; pdf_path: string | null }[]>(
+    await a.db.from("workbooks").select("child_id, number, pdf_path").eq("id", id).limit(1), "workbook");
+  if (!book) return null;
+  if (!o.download) return signPdf(a, book.pdf_path);
+  const [child] = await childrenById(a, [book.child_id]);
+  const name = (child?.first_name ?? "child").normalize("NFKD").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "child";
+  return signPdf(a, book.pdf_path, `unica-${name}-workbook-${book.number}.pdf`);
 }
 
 /** The PDF of a run's draft (its latest revision), as a fresh signed URL, or null. */
@@ -687,6 +708,8 @@ export interface RunDetail {
   solves: RunSolve[];
   /** The run's AI calls by provider (D-200): the Claude subscription or the API, and the API's cost. */
   aiCalls: AiCallSummary;
+  /** The workbook approved from this run's draft (#314: it keeps the draft's id), or null. */
+  approved: { id: string; status: WorkbookSummary["status"] } | null;
 }
 
 /** One run with its draft, page images and audit log, or null. */
@@ -695,7 +718,7 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
   const [row] = must<Parameters<typeof runFromRow>[0][]>(await a.db.from("workbook_runs").select(RUN_COLUMNS).eq("id", id).limit(1), "workbook run");
   if (!row) return null;
   const run = runFromRow(row);
-  const [children, draftRow, revision, audit, solveRows, callRows] = await Promise.all([
+  const [children, draftRow, revision, audit, solveRows, callRows, approved] = await Promise.all([
     childrenById(a, [run.childId]),
     run.draftId
       ? a.db.from("workbook_drafts").select("schema_version, draft").eq("id", run.draftId).maybeSingle().then((r) => must<{ schema_version: number; draft: GeneratedWorkbook } | null>(r, "workbook draft"))
@@ -712,6 +735,9 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
       await a.db.from("workbook_run_solves").select("question_id, model, verdict, ms, usd, log").eq("run_id", run.id).order("id").range(from, to), "workbook solve checks")),
     readPaged(async (from, to) => must<{ provider: "subscription" | "api"; outcome: "started" | "answered" | "failed" | "unavailable"; usd: number | null; note: string | null; requests: number | null }[]>(
       await a.db.from("workbook_run_ai_calls").select("provider, outcome, usd, note, requests").eq("run_id", run.id).order("id").range(from, to), "workbook AI calls")),
+    run.draftId
+      ? a.db.from("workbooks").select("id, status").eq("id", run.draftId).maybeSingle().then((r) => must<{ id: string; status: WorkbookSummary["status"] } | null>(r, "approved workbook"))
+      : null,
   ]);
   // A draft of an older shape (before the page layouts) is shown as "old draft format", not read as this shape.
   const oldFormat = draftRow && oldDraft(draftRow.schema_version, draftRow.draft.pages[0]?.content) ? draftRow.schema_version : null;
@@ -722,7 +748,7 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
   const images: Record<string, string> = {};
   for (const item of signed.data ?? []) if (item.path && item.signedUrl && !item.error) images[item.path] = item.signedUrl;
   return {
-    run, child: children[0] ?? null, images, audit, oldFormat,
+    run, child: children[0] ?? null, images, audit, oldFormat, approved,
     aiCalls: summarizeAiCalls(callRows.map((r) => ({ ...r, usd: r.usd === null ? null : Number(r.usd) }))),
     solves: solveRows.map((r) => ({ questionId: r.question_id, model: r.model, verdict: r.verdict, ms: r.ms, usd: r.usd === null ? null : Number(r.usd), log: r.log })),
     draft: current ? { workbook: current.draft, rendering: revision?.rendering ?? null, problems: revision?.render_problems ?? [], revision: revision?.revision ?? 1 } : null,
