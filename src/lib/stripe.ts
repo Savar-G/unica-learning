@@ -66,10 +66,15 @@ async function checkoutUrl(s: Stripe, customer: string, p: CardSetup, metadata: 
     mode: "setup",
     currency: "cad",
     customer,
+    shipping_address_collection: { allowed_countries: ["CA"] },
+    customer_update: { shipping: "auto" },
     client_reference_id: p.ref,
     metadata,
     setup_intent_data: { description, metadata },
-    custom_text: { submit: { message: cardTerms(p.price) } },
+    custom_text: {
+      shipping_address: { message: "We use this address to ship your workbook. Delivery within Canada is included." },
+      submit: { message: cardTerms(p.price) },
+    },
     success_url: urls.success,
     cancel_url: urls.cancel,
   }, options);

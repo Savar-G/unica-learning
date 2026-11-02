@@ -194,7 +194,7 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
             </button>
           ))}
         </div>
-        <p className="rpt-small">You add your card on a secure payment page.</p>
+        <p className="rpt-small">You add your card and shipping address on a secure payment page. We use the address to ship your workbook.</p>
       </>}
       <p className="sr-only" role="status">{announce}</p>
     </div>
