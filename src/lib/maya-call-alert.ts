@@ -1,3 +1,4 @@
+import { formatInZone, PACIFIC_ZONE } from "@/lib/family-time";
 import "server-only";
 import { ADMIN_PATH } from "@/lib/admin-view";
 import { sendEmailOnce, type MailTransport, type SendLedger } from "@/lib/email-delivery";
@@ -45,7 +46,7 @@ const FLAG_TEXT: Record<FlagLevel, { subject: string; body: string }> = {
 
 /** The flag time in Vancouver time, where the team works. */
 const pacific = (iso: string) =>
-  `${new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", dateStyle: "full", timeStyle: "short" }).format(new Date(iso))} Pacific time`;
+  `${formatInZone(iso, PACIFIC_ZONE, { dateStyle: "full", timeStyle: "short" })} Pacific time`;
 
 /** The alert email: which call, when, and the link to the admin call page. Never the child's words. */
 export function safetyAlertEmail(call: AlertCall, origin: string): { subject: string; text: string } {

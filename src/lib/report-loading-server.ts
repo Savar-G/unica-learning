@@ -65,7 +65,7 @@ interface AnswerRow {
   away_ms: number | null;
 }
 
-const record = (row: ReportRow, assessment: ReportAssessmentRow | null, child: ChildRow | null): ReportRecord => ({
+const record = (row: ReportRow, assessment: ReportAssessmentRow | null, child: ChildRow | null, postal: string | null): ReportRecord => ({
   id: row.id,
   assessmentId: row.assessment_id,
   childId: row.child_id,
@@ -75,6 +75,7 @@ const record = (row: ReportRow, assessment: ReportAssessmentRow | null, child: C
   // A report is only for a finished test, which always has its finish time (assessments_check).
   assessment: assessment?.completed_at ? { completedAt: assessment.completed_at, province: assessment.province } : null,
   child: child ? { firstName: child.first_name } : null,
+  postal,
 });
 
 const assessmentRecord = (row: AssessmentRow): AssessmentRecord => ({
@@ -116,9 +117,9 @@ function must<T>({ data, error }: Result<T>, what: string): T {
 async function embeddedReport(db: SupabaseClient<Database>, id: string, what: string): Promise<ReportRecord | null> {
   if (!isUuid(id)) return null;
   const row = must(await db.from("reports")
-    .select(`${REPORT_COLUMNS}, assessment:assessments(completed_at, province), child:children(first_name)`)
+    .select(`${REPORT_COLUMNS}, assessment:assessments(completed_at, province), child:children(first_name), parent:parents(postal)`)
     .eq("id", id).maybeSingle(), what);
-  return row ? record(row, row.assessment, row.child) : null;
+  return row ? record(row, row.assessment, row.child, row.parent?.postal ?? null) : null;
 }
 
 /** The stored learner profile JSON of a test, as this client may see it, filtered on its parent when given; null when none. */
@@ -159,12 +160,13 @@ export function adminReportReader({ db }: AdminSession): ReportReader {
       const row = must(await db.rpc("admin_reports").select(REPORT_COLUMNS).eq("id", id).maybeSingle(), "admin report load");
       if (!row) return null;
       const [assessment, child] = await Promise.all([
-        db.rpc("admin_assessments").select("completed_at, province").eq("id", row.assessment_id).maybeSingle()
+        db.rpc("admin_assessments").select("completed_at, province, parent_id").eq("id", row.assessment_id).maybeSingle()
           .then((r) => must(r, "admin report test load")),
         db.rpc("admin_children").select("first_name").eq("id", row.child_id).maybeSingle()
           .then((r) => must(r, "admin report child load")),
       ]);
-      return record(row, assessment, child);
+      const parent = assessment ? must(await db.rpc("admin_parents").select("postal").eq("id", assessment.parent_id).maybeSingle(), "admin report parent load") : null;
+      return record(row, assessment, child, parent?.postal ?? null);
     },
     async assessment(id) {
       if (!isUuid(id)) return null;

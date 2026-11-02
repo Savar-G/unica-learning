@@ -16,10 +16,10 @@ afterEach(() => {
 
 describe("family time hydration", () => {
   it.each([
-    ["V3S 1A1", "8:29 p.m. on Tuesday, November 17"],
+    ["V3S 1A1", "9:29 p.m. on Tuesday, November 17"],
     ["M5V 2T6", "11:29 p.m. on Tuesday, November 17"],
-    [null, "8:29 p.m. on Tuesday, November 17"],
-    ["unknown", "8:29 p.m. on Tuesday, November 17"],
+    [null, "9:29 p.m. on Tuesday, November 17"],
+    ["unknown", "9:29 p.m. on Tuesday, November 17"],
   ])("keeps the server text when the device zone differs, postal %s", async (postal, expected) => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const opensAt = Date.parse("2026-11-18T04:29:00Z");

@@ -1,3 +1,4 @@
+import { localDay, PACIFIC_ZONE } from "@/lib/family-time";
 // The admin export of the raw test data (#200, spec #181, D-118): one file per dataset, as CSV or JSON. Pure: the rows
 // come through ExportReader (src/lib/admin-store.ts reads the database with the admin's session; the in-memory reader
 // in src/lib/admin-export-memory.ts is for tests and the local demo). The export reads and writes one page at a time,
@@ -207,7 +208,7 @@ export function exportHref({ dataset: id, format, withTests }: ExportRequest, de
 
 /** "unica-answers-2026-10-16.csv": the dataset and the day of the export in Pacific time, and whether test families are in. */
 export function exportFileName({ dataset: id, format, withTests }: ExportRequest, now: Date): string {
-  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  const day = localDay(now, PACIFIC_ZONE);
   return `unica-${id.replaceAll("_", "-")}-${day}${withTests ? "-with-test-families" : ""}.${format}`;
 }
 

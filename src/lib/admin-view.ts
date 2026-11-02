@@ -1,6 +1,7 @@
 // The admin area (#77) in plain data: the list filters, the test's answers beside its questions, and the words for the
 // flags. Pure: no network, database or clock, so the pages (src/app/(product)/admin) only fetch and show. Server and admin only:
 // it handles correct answers, which a parent's browser must never get.
+import { partsInZone, PACIFIC_ZONE } from "@/lib/family-time";
 import {
   BANKS,
   MISCONCEPTIONS,
@@ -385,25 +386,23 @@ export function contextFacts(c: TestContextRecord): [string, string][] {
   ];
 }
 
-const PACIFIC = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "America/Vancouver",
+const PACIFIC: Intl.DateTimeFormatOptions = {
   year: "numeric",
   month: "2-digit",
   day: "2-digit",
   hour: "2-digit",
   minute: "2-digit",
   hourCycle: "h23",
-});
+};
 
 /** A stored moment as "2026-10-11 10:55", Pacific time (Savar and Cedric are in BC); "-" for none. */
 export function when(iso: string | null): string {
   if (!iso) return "-";
-  const part = Object.fromEntries(PACIFIC.formatToParts(new Date(iso)).map((p) => [p.type, p.value]));
+  const part = partsInZone(iso, PACIFIC_ZONE, PACIFIC);
   return `${part.year}-${part.month}-${part.day} ${part.hour}:${part.minute}`;
 }
 
-const PACIFIC_SECONDS = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "America/Vancouver",
+const PACIFIC_SECONDS: Intl.DateTimeFormatOptions = {
   year: "numeric",
   month: "2-digit",
   day: "2-digit",
@@ -411,12 +410,12 @@ const PACIFIC_SECONDS = new Intl.DateTimeFormat("en-CA", {
   minute: "2-digit",
   second: "2-digit",
   hourCycle: "h23",
-});
+};
 
 /** A moment the server stored, to the second, as "2026-10-11 10:55:03" Pacific time (#184); "-" for none. */
 export function whenExact(iso: string | null): string {
   if (!iso) return "-";
-  const part = Object.fromEntries(PACIFIC_SECONDS.formatToParts(new Date(iso)).map((p) => [p.type, p.value]));
+  const part = partsInZone(iso, PACIFIC_ZONE, PACIFIC_SECONDS);
   return `${part.year}-${part.month}-${part.day} ${part.hour}:${part.minute}:${part.second}`;
 }
 

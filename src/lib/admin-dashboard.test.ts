@@ -129,9 +129,9 @@ describe("days and ranges", () => {
   it("steps calendar days across a DST change without skipping one", () => {
     expect(shiftDay("2026-11-02", -1)).toBe("2026-11-01");
     expect(shiftDay("2026-03-01", 1)).toBe("2026-03-02");
-    // 23:30 Pacific: stepping back 24 h at a time would land on Nov 1 twice
+    // BC no longer falls back. 07:30 UTC is November 3, not November 2.
     const days = rangeDays("7d", new Date("2026-11-03T07:30:00Z"), null);
-    expect(days).toEqual(["2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01", "2026-11-02"]);
+    expect(days).toEqual(["2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01", "2026-11-02", "2026-11-03"]);
   });
 
   it("starts all time at the first signup, with at least 14 days", () => {

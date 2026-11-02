@@ -1,5 +1,7 @@
 "use client";
 
+import { localDay, PACIFIC_ZONE } from "@/lib/family-time";
+
 import { useState } from "react";
 
 const ERRORS: Record<string, string> = {
@@ -33,7 +35,7 @@ export function StartPlan({ cardId, child }: { cardId: string; child: string }) 
     } catch { setError("The response was lost. Open the family in Stripe to check before trying again."); }
     finally { setBusy(false); }
   }
-  if (done) return <span className="adm-note">Started. First charge {new Date(done).toLocaleDateString("en-CA", { timeZone: "America/Vancouver" })}</span>;
+  if (done) return <span className="adm-note">Started. First charge {localDay(done, PACIFIC_ZONE)}</span>;
   return <>
     <button type="button" className="btn adm-btn" onClick={start} disabled={busy}>{busy ? "Starting..." : "Workbook delivered: start free month"}</button>
     {error && <p role="alert" className="adm-note">{error}</p>}

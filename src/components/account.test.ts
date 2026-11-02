@@ -23,10 +23,10 @@ const wait: StartState = { kind: "wait", completedAt: opensAt - 30 * 86400000, o
 
 describe("family times in the server-rendered account and start button", () => {
   it.each([
-    ["V3S 1A1", "8:29 p.m. on Tuesday, November 17"],
+    ["V3S 1A1", "9:29 p.m. on Tuesday, November 17"],
     [" m5v 2t6 ", "11:29 p.m. on Tuesday, November 17"],
-    [null, "8:29 p.m. on Tuesday, November 17"],
-    ["unknown", "8:29 p.m. on Tuesday, November 17"],
+    [null, "9:29 p.m. on Tuesday, November 17"],
+    ["unknown", "9:29 p.m. on Tuesday, November 17"],
   ])("uses the postal code %s before JavaScript runs", (postal, expected) => {
     for (const report of [undefined, "/account/report/r1"]) {
       const text = page(wait, postal, report);
@@ -38,7 +38,7 @@ describe("family times in the server-rendered account and start button", () => {
 
   it.each([
     ["V3S 1A1", "2026-11-01T08:30:00Z", "1:30 a.m. on Sunday, November 1"],
-    ["V3S 1A1", "2026-11-01T09:30:00Z", "1:30 a.m. on Sunday, November 1"],
+    ["V3S 1A1", "2026-11-01T09:30:00Z", "2:30 a.m. on Sunday, November 1"],
     ["M5V 2T6", "2026-11-01T05:30:00Z", "1:30 a.m. on Sunday, November 1"],
     ["M5V 2T6", "2026-11-01T06:30:00Z", "1:30 a.m. on Sunday, November 1"],
     ["V3S 1A1", "2026-03-08T09:30:00Z", "1:30 a.m. on Sunday, March 8"],

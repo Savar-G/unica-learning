@@ -36,10 +36,10 @@ vi.mock("@/lib/supabase-auth", () => ({
 beforeEach(() => { family.postal = "V3S 1A1"; });
 
 it.each([
-  ["V3S 1A1", "8:29 p.m. on Tuesday, November 17"],
+  ["V3S 1A1", "9:29 p.m. on Tuesday, November 17"],
   ["M5V 2T6", "11:29 p.m. on Tuesday, November 17"],
-  [null, "8:29 p.m. on Tuesday, November 17"],
-  ["unknown", "8:29 p.m. on Tuesday, November 17"],
+  [null, "9:29 p.m. on Tuesday, November 17"],
+  ["unknown", "9:29 p.m. on Tuesday, November 17"],
 ])("reads the parent's postal code on the account and start server pages: %s", async (postal, expected) => {
   family.postal = postal;
   const pages = [

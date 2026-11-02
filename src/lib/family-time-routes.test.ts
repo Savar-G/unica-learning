@@ -31,10 +31,10 @@ describe.each([
   ["/api/desk/forgot-pin", forgotPin],
 ] as const)("server-formatted retry times from %s", (path, post) => {
   it.each([
-    ["V3S 1A1", "8:29 p.m."],
+    ["V3S 1A1", "9:29 p.m."],
     ["M5V 2T6", "11:29 p.m."],
-    [null, "8:29 p.m."],
-    ["unknown", "8:29 p.m."],
+    [null, "9:29 p.m."],
+    ["unknown", "9:29 p.m."],
   ])("uses the family's postal code %s", async (postal, clock) => {
     family.postal = postal;
     const response = await post(new Request(`http://localhost${path}`, {

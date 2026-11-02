@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
 import { DESK_COOKIE, DESK_HOME, deskView, questionCrop, readLock, tapAreas, type DeskView } from "@/lib/desk";
-import { zoneFor } from "@/lib/family-time";
+import { formatInZone, zoneFor } from "@/lib/family-time";
 import { questionBoard } from "@/lib/desk-board";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { WORKBOOK_FILES_BUCKET, type WorkbookSummary } from "@/lib/workbook-content";
@@ -20,7 +20,7 @@ export const metadata = pageMetadata({
 const PAGE_URL_SECONDS = 15 * 60;
 
 const sentOn = (w: WorkbookSummary, timeZone: string) =>
-  w.shippedAt ? `Sent ${new Date(w.shippedAt).toLocaleDateString("en-CA", { month: "long", day: "numeric", timeZone })}` : null;
+  w.shippedAt ? `Sent ${formatInZone(w.shippedAt, timeZone, { month: "long", day: "numeric" })}` : null;
 const book = (w: WorkbookSummary, timeZone: string): DeskBook => ({ id: w.id, number: w.number, sent: sentOn(w, timeZone) });
 const whole = (v: string | string[] | undefined) => (typeof v === "string" && /^\d{1,4}$/.test(v) ? Number(v) : undefined);
 

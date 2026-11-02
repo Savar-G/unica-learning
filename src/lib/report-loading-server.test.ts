@@ -1,12 +1,31 @@
 import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
-import { parentReportReader } from "@/lib/report-loading-server";
+import { parentReportReader, secretKeyReportReader } from "@/lib/report-loading-server";
 
 // The parent's reader of the report-loading module (#161) and the learner profile (#198): parents have no read access
 // to public.learner_profiles (admins only, D-115), so the reader reads it with the secret key, filtered on the parent's
 // own test. Through the reader's interface, against a fake PostgREST that keeps the rows and applies each request's
 // eq filters, as Postgres would.
 vi.mock("server-only", () => ({}));
+
+it.each(["G0G 1W0", "V1C 3H8", null])("reads the report family's postal code %s for the page and email", async (postal) => {
+  const requests: URL[] = [];
+  const db = createClient("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input) => {
+    const url = new URL(String(input));
+    requests.push(url);
+    return Response.json({ id: TEST, assessment_id: TEST, child_id: OTHER, model: {}, questions: 36, minutes: 34,
+      assessment: { completed_at: "2026-11-18T04:29:00Z", province: "BC" }, child: { first_name: "Asha" }, parent: { postal } });
+  } } });
+  for (const reader of [parentReportReader(db), secretKeyReportReader(db)]) {
+    expect(await reader.report(TEST)).toMatchObject({ postal });
+  }
+  expect(requests).toHaveLength(2);
+  for (const url of requests) {
+    expect(url.pathname).toBe("/rest/v1/reports");
+    expect(url.searchParams.get("id")).toBe(`eq.${TEST}`);
+    expect(url.searchParams.get("select")).toContain("parent:parents(postal)");
+  }
+});
 
 const TEST = "00000000-0000-4000-8000-000000000001";
 const OTHER = "00000000-0000-4000-8000-000000000002";

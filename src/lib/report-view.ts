@@ -24,6 +24,7 @@ import {
   type StrandStatus,
 } from "@/lib/assessment";
 import type { ReportSrc } from "@/lib/next-step";
+import { formatInZone, zoneForProvince } from "@/lib/family-time";
 import { CURRICULA } from "@/lib/signup";
 import { PLANS, cad, type PlanId } from "@/lib/site";
 
@@ -32,6 +33,8 @@ export interface ReportView {
   id: string;
   childName: string;
   province: Province;
+  /** The family's postal zone. Older saved/demo inputs may have only a province. */
+  timeZone?: string;
   /** When the test finished (ISO). */
   completedAt: string;
   /** Questions the child answered. */
@@ -300,18 +303,8 @@ export function factsView(v: ReportView, { speed: withSpeed = v.model.level.grad
   };
 }
 
-// The main time zone of each province. "other" is mostly Quebec and the Atlantic provinces.
-const TIME_ZONE: Record<Province, string> = {
-  BC: "America/Vancouver",
-  AB: "America/Edmonton",
-  SK: "America/Regina",
-  MB: "America/Winnipeg",
-  ON: "America/Toronto",
-  other: "America/Toronto",
-};
-
 /** A day in the family's time zone, for example "October 10, 2026". */
-const familyDate = (v: ReportView, at: number) => new Intl.DateTimeFormat("en-CA", { dateStyle: "long", timeZone: TIME_ZONE[v.province] }).format(new Date(at));
+const familyDate = (v: ReportView, at: number) => formatInZone(at, v.timeZone ?? zoneForProvince(v.province), { dateStyle: "long" });
 
 /** The day the test finished, in the family's time zone, for example "October 10, 2026". */
 export const reportDate = (v: ReportView) => familyDate(v, Date.parse(v.completedAt));
