@@ -14,16 +14,27 @@ import { MAX_SEND_ATTEMPTS } from "@/lib/reminders";
 
 /** Ids per `in` filter, so a request URL stays short. */
 const CHUNK = 100;
+/** PostgREST answers at most this many rows per request (max-rows), so a shorter page is the last one. */
+const PAGE = 1000;
 /** Reads two days wider than the rules: a call's local day can be a day off its UTC date. */
 const SLACK_DAYS = 2;
 
-async function inChunks<T>(ids: readonly string[], read: (chunk: string[]) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
+type Result<T> = PromiseLike<{ data: T[] | null; error: { message: string } | null }>;
+
+/** Every row of a read, page by page. The read must have a stable order. */
+async function allPages<T>(read: (from: number, to: number) => Result<T>): Promise<T[]> {
   const out: T[] = [];
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    const { data, error } = await read(ids.slice(i, i + CHUNK));
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await read(from, from + PAGE - 1);
     if (error) throw new Error(`maya daily load: ${error.message}`);
     out.push(...(data ?? []));
+    if ((data ?? []).length < PAGE) return out;
   }
+}
+
+async function inChunks<T>(ids: readonly string[], read: (chunk: string[]) => Promise<T[]>): Promise<T[]> {
+  const out: T[] = [];
+  for (let i = 0; i < ids.length; i += CHUNK) out.push(...(await read(ids.slice(i, i + CHUNK))));
   return out;
 }
 
@@ -31,23 +42,25 @@ export function mayaDailyStore(admin: SupabaseClient<Database>): DailyStore {
   return {
     async load(now) {
       const since = new Date(now - (LOOKBACK_DAYS + SLACK_DAYS) * 24 * 60 * 60_000).toISOString();
-      // A few notes a day per family at most: one page holds them. More would be cut, and the run says so.
-      const { data: noteRows, error } = await admin.from("maya_call_notes").select("*").gte("call_ended_at", since).order("call_ended_at").limit(1000);
-      if (error) throw new Error(`maya daily load: ${error.message}`);
-      if ((noteRows ?? []).length === 1000) console.error("[maya daily] 1000 notes read; later ones wait for the next run");
-      const notes = (noteRows ?? []).map(fromNoteRow);
+      // Every note in the window, so a parent's day is whole before its claim. A note written between two pages can
+      // come twice (offset paging); the map keeps one per call.
+      const noteRows = await allPages((from, to) => admin.from("maya_call_notes").select("*").gte("call_ended_at", since).order("call_ended_at").order("call_id").range(from, to));
+      const notes = [...new Map(noteRows.map((r) => [r.call_id, fromNoteRow(r)])).values()];
       const parentIds = [...new Set(notes.map((n) => n.parentId))];
       const childIds = [...new Set(notes.map((n) => n.childId))];
-      const [parents, children, log] = await Promise.all([
-        inChunks(parentIds, (ids) => admin.from("parents").select("id, name, email, postal").in("id", ids)),
-        inChunks(childIds, (ids) => admin.from("children").select("id, parent_id, first_name").in("id", ids)),
-        inChunks(parentIds, (ids) => admin.from("email_log").select("id, kind, parent_id, day, status, attempts").in("parent_id", ids).in("kind", ["maya_daily", "maya_unsubscribe"])),
+      // Only the log rows that matter: each parent's Maya unsubscribe, and the daily claims of the days in the window.
+      const sinceDay = since.slice(0, 10);
+      const [parents, children, unsubscribes, daily] = await Promise.all([
+        inChunks(parentIds, (ids) => allPages((from, to) => admin.from("parents").select("id, name, email, postal").in("id", ids).order("id").range(from, to))),
+        inChunks(childIds, (ids) => allPages((from, to) => admin.from("children").select("id, parent_id, first_name").in("id", ids).order("id").range(from, to))),
+        inChunks(parentIds, (ids) => allPages((from, to) => admin.from("email_log").select("id, kind, parent_id, day, status, attempts").eq("kind", "maya_unsubscribe").in("parent_id", ids).order("id").range(from, to))),
+        inChunks(parentIds, (ids) => allPages((from, to) => admin.from("email_log").select("id, kind, parent_id, day, status, attempts").eq("kind", "maya_daily").in("parent_id", ids).gte("day", sinceDay).order("id").range(from, to))),
       ]);
       return {
         parents: parents.map((p) => ({ id: p.id, name: p.name, email: p.email, postal: p.postal })),
         children: children.map((c) => ({ id: c.id, parentId: c.parent_id, firstName: c.first_name })),
         notes,
-        log: log.map((e) => ({ id: e.id, kind: e.kind as DailyLogEntry["kind"], parentId: e.parent_id, day: e.day, status: e.status, attempts: e.attempts })),
+        log: [...unsubscribes, ...daily].map((e) => ({ id: e.id, kind: e.kind as DailyLogEntry["kind"], parentId: e.parent_id, day: e.day, status: e.status, attempts: e.attempts })),
       };
     },
     ledger: mayaDailyLedger(admin),
