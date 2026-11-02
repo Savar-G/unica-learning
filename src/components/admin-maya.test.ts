@@ -10,6 +10,7 @@ import type { CallListRow } from "@/lib/maya-call-server";
 const row = (over: Partial<CallListRow>): CallListRow => ({
   id: "c1", createdAt: "2026-10-31T12:00:00Z", childId: "k1", childName: "Iris", questionText: "68 – 19 = ?", status: "ended",
   model: { id: "fake", fake: true }, outcome: "safety", assistance: null, seconds: 12, learningEvent: true,
+  mode: "text", connectedSeconds: null, mishearing: null,
   flag: null, safetySeverity: null, safetyFlag: false, ...over,
 });
 const text = (calls: CallListRow[]) => renderToStaticMarkup(createElement(MayaCallList, { calls })).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");

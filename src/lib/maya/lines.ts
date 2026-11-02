@@ -5,24 +5,32 @@
 // Warm talk around the lines follows D-196 (phrases.ts).
 //
 // Each line has 5 to 8 child-friendly wordings (ages 6 to 12) with the same meaning, numbers and order; Savar approved
-// the wording (#372). Code picks the wording the child has heard least lately (variety.ts), so calls do not sound the
+// the wording (#372). Every wording follows the plain-language rules (D-202): short sentences with one idea or action
+// each, everyday words (never "in all", "altogether", "all together", "total" or "left over"), and the curriculum's math
+// words. A wording is changed in place, never moved, so its id (`key#index`) in a child's wording history stays. Code picks the wording the child has heard least lately (variety.ts), so calls do not sound the
 // same. Pure TypeScript: no clock, network or randomness.
 import {
+  equivalent,
   operationText,
+  sameValue,
   stepText,
   valueText,
   type AnswerValue,
+  type FractionParts,
   type OperationPackage,
   type Place,
   type WorkedStep,
 } from "@/lib/question-package";
+import { simplestWords, teachSteps } from "./fractions";
 
 /**
  * The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. Version 2:
  * redirect.decline. Version 3 (#389): step.invite for the final step ("result"), after the last column. Version 4 (D-199):
- * answer.parts, how the parts make the answer, said before answer.give on the final step.
+ * answer.parts, how the parts make the answer, said before answer.give on the final step. Version 5: regroup.add, where
+ * a column's carry comes from, as step.regroup in addition. Version 6 (#407): fraction steps (common denominator,
+ * numerators, simplest form) and check.equal, an equal fraction when the question asks for the simplest form.
  */
-export const LINES_VERSION = 4;
+export const LINES_VERSION = 6;
 
 export const LINE_IDS = [
   "open.hello",
@@ -39,6 +47,7 @@ export const LINE_IDS = [
   "step.show",
   "check.right_step",
   "check.not_yet",
+  "check.equal",
   "check.explain",
   "check.thinking",
   "answer.right",
@@ -84,7 +93,7 @@ export interface LineOffer {
    * The line judges the child's answer for a step: it is allowed only when the proposal's reading has an answer for
    * that step that code checked and found right (or wrong).
    */
-  requires?: { answer: "right" | "wrong"; step: string };
+  requires?: { answer: "right" | "wrong" | "equal"; step: string; heard?: string };
   /** Every variant of the line, filled in. Code picks one (`key#index` is the wording's id, see variety.ts). */
   texts: string[];
   /** The template the variants come from. */
@@ -102,7 +111,7 @@ export interface LineOffer {
 export const TEMPLATES = {
   "open.hello": [
     "Hi, I'm Maya, an AI helper.", "Hello! I'm Maya. I'm an AI, here to help you.", "Hi there! I'm Maya, an AI math helper.",
-    "Hey! I'm Maya, an AI helper for your workbook.", "Hello, I'm Maya. I'm an AI, and I'm here to help.", "Hi! My name is Maya, and I'm an AI helper.",
+    "Hey! I'm Maya, an AI helper for your workbook.", "Hello, I'm Maya. I'm an AI. I'm here to help.", "Hi! My name is Maya. I'm an AI helper.",
   ],
   "question.problem": [
     "Today we're working on {expr}.", "Our question is {expr}.", "Let's work on {expr} together.", "We're doing {expr} today.",
@@ -132,9 +141,9 @@ export const TEMPLATES = {
     "Let's go to {where}. What do you think?", "Next up, {where}. What would you do?", "How about {where}? What can you do there?",
   ],
   // The final step after the last column (#389): every work step is done, and the child puts the whole answer
-  // together. Planned wording, pending Savar's approval. It never says the answer.
+  // together. It never says the answer. Savar approved the wording on 2026-11-01, with "So what is {expr}?" (D-202).
   "invite.result": [
-    "Now put it all together. What is {expr}?", "Every part is done. So what is {expr}?", "So, all together, what is {expr}?",
+    "Now put it all together. What is {expr}?", "Every part is done. So what is {expr}?", "So what is {expr}?",
     "Now say the whole answer. What is {expr}?", "Put the parts together. What does {expr} make?", "You have all the pieces. What is {expr}?",
   ],
 
@@ -144,20 +153,31 @@ export const TEMPLATES = {
   ],
   "point.add.carry": [
     "Look at the {place}: {list}, and the {carry} you carried.", "In the {place} we have {list}, plus the carried {carry}.",
-    "Don't forget the carried {carry} in the {place}, with {list}.", "The {place} have {list}, and the {carry} you carried.",
+    "Don't forget the carried {carry} in the {place}. It goes with {list}.", "The {place} have {list}, and the {carry} you carried.",
     "Look at the {place} column: {list}, and the carried {carry} on top.",
   ],
   "point.add.single": [
     "Look at the {place}. There is only a {term} there.", "The {place} have just the {term}.", "Only the {term} is in the {place}.",
     "In the {place}, there's just a {term}.", "Look at the {place}: there's only the {term}.",
   ],
+  // Where a carry comes from, in addition (2026-11-01, practice C01 and C02: a child who never carried heard "the 1
+  // you carried" again and again). Filled from the column whose sum makes the carry ("7 + 9 = 16"): {from} is that
+  // column, {to} the next one. Said before any line names a carried digit, when the child lost the carry, says they did
+  // not carry, or plans to write the two-digit sum in one column. Pending Savar's approval (D-202).
+  "regroup.add": [
+    "{eq}. {total} is {carry} {big} and {write} {small}. Write {write} in the {from}. Carry {carry} {big} to the {to}.",
+    "{eq}. {total} is {carry} {big} and {write} {small}. Write just {write} in the {from}. Move {carry} {big} to the {to}.",
+    "{total} is {carry} {big} and {write} {small}. Only the {write} goes in the {from}. The {carry} {big} goes to the {to}.",
+    "{eq}. Split {total} into {carry} {big} and {write} {small}. Write {write} in the {from}. Carry {carry} {big} to the {to}.",
+    "{eq}. {total} has {carry} {big} and {write} {small}. The {write} stays in the {from}. The {carry} {big} goes to the {to}.",
+  ],
   "operation.add": [
     "Add the {place}: {sum}. What do you get?", "What is {sum}?", "Let's add the {place}: {sum}.", "Add up the {place}: {sum}.",
     "What do you get for {sum}?", "Can you add {sum}?",
   ],
   "operation.add.single": [
-    "Bring down the {term} in the {place}.", "Nothing to add in the {place}, so bring down the {term}.", "Just bring down the {term} in the {place}.",
-    "The {place} only have the {term}, so bring it down.", "Bring the {term} straight down in the {place}.",
+    "Bring down the {term} in the {place}.", "There is nothing to add in the {place}. Bring down the {term}.", "Just bring down the {term} in the {place}.",
+    "The {place} only have the {term}. Bring it down.", "Bring the {term} straight down in the {place}.",
   ],
 
   "point.subtract": [
@@ -166,10 +186,10 @@ export const TEMPLATES = {
     "Look at the {place} column: {have} over {bottom}.",
   ],
   "point.subtract.lent": [
-    "The {place} gave 1 to the {next}, so there are {have} on top now. Below is {bottom}.",
-    "Look at the {place}: after giving 1 to the {next}, the top is {have}. The bottom is {bottom}.",
-    "The {place} lent 1 to the {next}, so the top is {have} now. The bottom is {bottom}.",
-    "After giving 1 to the {next}, the {place} have {have} on top and {bottom} below.",
+    "The {place} gave 1 to the {next}. Now there are {have} on top. Below is {bottom}.",
+    "Look at the {place}. They gave 1 to the {next}. The top is {have} now. The bottom is {bottom}.",
+    "The {place} lent 1 to the {next}. So the top is {have} now. The bottom is {bottom}.",
+    "The {place} gave 1 to the {next}. Now they have {have} on top and {bottom} below.",
     "Remember, the {place} gave 1 to the {next}. Now it's {have} on top and {bottom} below.",
   ],
   "point.subtract.single": [
@@ -178,22 +198,22 @@ export const TEMPLATES = {
     "Look at the {place}: just {have} on top.",
   ],
   "regroup.subtract": [
-    "{have} is less than {bottom}, so regroup 1 {big} as 10 {place}.", "We need more {place}: trade 1 {big} for 10 {place}.",
-    "Regroup 1 {big} as 10 {place}, so {have} becomes {from}.", "{have} is smaller than {bottom}, so trade 1 {big} for 10 {place}.",
-    "There aren't enough {place}, so regroup 1 {big} as 10 {place}.", "Take 1 {big} and make it 10 {place}, so {have} becomes {from}.",
+    "{have} is less than {bottom}. So regroup 1 {big} as 10 {place}.", "We need more {place}: trade 1 {big} for 10 {place}.",
+    "Regroup 1 {big} as 10 {place}. Now {have} becomes {from}.", "{have} is smaller than {bottom}. So trade 1 {big} for 10 {place}.",
+    "There aren't enough {place}. So regroup 1 {big} as 10 {place}.", "Take 1 {big} and make it 10 {place}. Now {have} becomes {from}.",
   ],
   "operation.subtract": [
     "Subtract the {place}: {from} − {bottom}. What do you get?", "What is {from} − {bottom}?", "Now take {bottom} away from {from}.",
     "Subtract {from} − {bottom} in the {place}.", "What do you get for {from} − {bottom}?", "In the {place}, what is {from} − {bottom}?",
   ],
   "operation.subtract.single": [
-    "Bring down the {from} in the {place}.", "Nothing to take away in the {place}, so bring down the {from}.",
-    "Just bring down the {from} in the {place}.", "The {place} have only the {from}, so bring it down.",
+    "Bring down the {from} in the {place}.", "There is nothing to take away in the {place}. Bring down the {from}.",
+    "Just bring down the {from} in the {place}.", "The {place} have only the {from}. Bring it down.",
     "Bring the {from} straight down in the {place}.",
   ],
   "operation.subtract.none": [
-    "There is nothing to write in the {place}.", "The {place} stay empty: a number does not start with 0.",
-    "Leave the {place} empty: a number does not start with 0.", "Nothing goes in the {place}, because a number does not start with 0.",
+    "There is nothing to write in the {place}.", "The {place} stay empty. A number does not start with 0.",
+    "Leave the {place} empty. A number does not start with 0.", "Nothing goes in the {place}. A number does not start with 0.",
     "We don't write anything in the {place}.",
   ],
 
@@ -202,16 +222,16 @@ export const TEMPLATES = {
     "Next, the {top} in the {place} and the {by}.", "Look at the {top} on top and the {by} at the bottom.",
   ],
   "point.multiply.carry": [
-    "Look at the {carry} you carried.", "There's a carried {carry} left over.", "We still have the carried {carry}.",
-    "Don't forget the {carry} you carried.", "The carried {carry} is still waiting.",
+    "Look at the {carry} you carried.", "There's still a carried {carry}.", "We still have the carried {carry}.",
+    "Don't forget the {carry} you carried.", "The carried {carry} is still there.",
   ],
   "operation.multiply": [
     "Multiply {top} × {by}. What do you get?", "What is {top} × {by}?", "Let's multiply {top} × {by}.", "What do you get for {top} × {by}?",
     "Can you work out {top} × {by}?", "Now multiply {top} × {by}.",
   ],
   "operation.multiply.carry": [
-    "Multiply {top} × {by}, then add the carried {carry}.", "What is {top} × {by} + {carry}?", "Do {top} × {by} and add the {carry} you carried.",
-    "Work out {top} × {by}, then add the carried {carry}.", "Multiply {top} × {by}, and don't forget to add the {carry}.",
+    "Multiply {top} × {by}. Then add the carried {carry}.", "What is {top} × {by} + {carry}?", "Do {top} × {by}. Then add the {carry} you carried.",
+    "Work out {top} × {by}. Then add the carried {carry}.", "Multiply {top} × {by}. Don't forget to add the {carry}.",
   ],
   "operation.multiply.last": [
     "Write the carried {carry} at the front.", "Now write the {carry} you carried.", "Put the carried {carry} at the front.",
@@ -220,29 +240,76 @@ export const TEMPLATES = {
 
   "point.row": ["Look at the whole {row} row.", "Let's read the {row} row.", "Now look at all of the {row} row.", "Let's see the whole {row} row.", "Look across the {row} row."],
   "point.row.zeros": [
-    "Start the {row} row with {zeros}, because the {by} is in the {row}.", "The {by} is in the {row}, so the row starts with {zeros}.",
-    "Because the {by} is in the {row}, begin the row with {zeros}.", "The {row} row starts with {zeros}, since the {by} is in the {row}.",
-    "Begin the {row} row with {zeros}: the {by} is in the {row}.",
+    "Start the {row} row with {zeros}. This is because the {by} is in the {row}.", "The {by} is in the {row}. So the row starts with {zeros}.",
+    "The {by} is in the {row}. So begin the row with {zeros}.", "The {row} row starts with {zeros}. The {by} is in the {row}.",
+    "Begin the {row} row with {zeros}. The {by} is in the {row}.",
   ],
-  "operation.row": ["The {row} row is {top} × {by}.", "What is {top} × {by}?", "The {row} row works out {top} × {by}.", "This row is {top} × {by}.", "Can you work out {top} × {by}?"],
+  "operation.row": ["The {row} row is {top} × {by}.", "What is {top} × {by}?", "The {row} row is for {top} × {by}.", "This row is {top} × {by}.", "Can you work out {top} × {by}?"],
 
   "point.point": [
     "Count the decimal places in both numbers.", "How many digits are after the points in both numbers?", "Look at the digits after the points in both numbers.",
     "Let's count the decimal places in both numbers.", "How many decimal places do both numbers have?",
   ],
   "operation.point": [
-    "The numbers have {places} in all.", "Count {places} from the right in {product}.", "There are {places} in all, so count them from the right in {product}.",
+    "Together, the numbers have {places}.", "Count {places} from the right in {product}.", "The numbers have {places} together. Count {places} from the right in {product}.",
     "Both numbers together have {places}.", "In {product}, count {places} from the right.",
   ],
 
   "point.divide.first": ["Look at the {current}.", "Start with the {current}.", "Let's begin with the {current}.", "First, look at the {current}.", "We start at the {current}."],
   "point.divide": [
-    "Bring down the {digit} to make {current}.", "Now bring down the {digit}. That makes {current}.", "Bring the {digit} down, and now we have {current}.",
-    "Bring down the {digit}: now it's {current}.", "Next, bring down the {digit} to make {current}.",
+    "Bring down the {digit} to make {current}.", "Now bring down the {digit}. That makes {current}.", "Bring the {digit} down. Now we have {current}.",
+    "Bring down the {digit}. Now it's {current}.", "Next, bring down the {digit} to make {current}.",
   ],
   "operation.divide": [
     "How many {by}s fit in {current}?", "What is {current} ÷ {by}?", "Divide {current} by {by}.", "How many times does {by} go into {current}?",
     "What do you get for {current} ÷ {by}?", "Can you work out {current} ÷ {by}?",
+  ],
+
+  // Fractions (#407): adding and subtracting fractions, then the simplest form when the question asks for it. Every number is filled
+  // from the checked step; no line says the final fraction before the child does. Math words of the curriculum stay:
+  // numerator, denominator and common denominator (BC 5.3, 8.5), simplest form and lowest terms (BC 7.4).
+  "point.common": [
+    "Look at the denominators: {a} and {b}. They are not the same.", "The denominators are {a} and {b}. They are different.",
+    "Check the denominators first. One is {a}. The other is {b}.", "The parts are not the same size. The denominators are {a} and {b}.",
+    "Find the denominators. They are {a} and {b}. They don't match.", "We need parts of the same size. Right now the denominators are {a} and {b}.",
+  ],
+  "operation.common": [
+    "Use {d} as the common denominator. Multiply the numerator and the denominator of {from} by {factor}.",
+    "Make both denominators {d}. Multiply the top and the bottom of {from} by {factor}.",
+    "The common denominator is {d}. Multiply {from} by {factor} on the top and the bottom.",
+    "Let's use {d} as the denominator. Multiply the numerator and the denominator of {from} by {factor}.",
+    "We want {d} as the denominator. Multiply both numbers in {from} by {factor}.",
+    "Change {from} so its denominator is {d}. Multiply the numerator and the denominator by {factor}.",
+  ],
+  "operation.common.both": [
+    "Use {d} as the common denominator. Multiply the top and bottom of {from} by {factor}. Multiply {from2} by {factor2} the same way.",
+    "Make both denominators {d}. Multiply the top and bottom of {from} by {factor}. Multiply the top and bottom of {from2} by {factor2}.",
+    "The common denominator is {d}. Multiply {from} by {factor} on the top and bottom. Multiply {from2} by {factor2} the same way.",
+    "Let's use {d} as the denominator. For {from}, multiply the top and bottom by {factor}. For {from2}, multiply them by {factor2}.",
+    "We want {d} as the denominator. Multiply both numbers in {from} by {factor}. Multiply both numbers in {from2} by {factor2}.",
+  ],
+  "point.combine": [
+    "Both denominators are {d}. Look at the numerators: {a} and {b}.", "The denominators match. The numerators are {a} and {b}.",
+    "Look at the numerators: {a} and {b}. The denominator is {d} for both.", "The parts are the same size. Look at the numerators, {a} and {b}.",
+    "The denominators are both {d}. Find the numerators. They are {a} and {b}.", "Both fractions have {d} as the denominator. Now look at {a} and {b} on top.",
+  ],
+  "operation.combine.add": [
+    "Add the numerators: {a} + {b}. Keep the denominator {d}.", "What is {a} + {b}? The denominator stays {d}.",
+    "Add {a} + {b} for the new numerator. Keep {d} as the denominator.", "Add the tops: {a} + {b}. The bottom stays {d}.",
+    "Work out {a} + {b}. That is the new numerator. The denominator stays {d}.", "Add the numerators, {a} + {b}. The denominator does not change. It stays {d}.",
+  ],
+  "operation.combine.subtract": [
+    "Subtract the numerators: {a} − {b}. Keep the denominator {d}.", "What is {a} − {b}? The denominator stays {d}.",
+    "Work out {a} − {b} for the new numerator. Keep {d} as the denominator.", "Subtract the tops: {a} − {b}. The bottom stays {d}.",
+    "Work out {a} − {b}. That is the new numerator. The denominator stays {d}.", "Take {b} away from {a} in the numerators. The denominator stays {d}.",
+  ],
+  "point.simplify": [
+    "Find a number that divides both {n} and {d}.", "Can {n} and {d} both be divided by the same number?", "Look for a number that goes into {n} and into {d}.",
+    "Which number divides both {n} and {d} evenly?", "Is there a number that divides {n} and also {d}?", "Think of a number that {n} and {d} can both be divided by.",
+  ],
+  "operation.simplify": [
+    "Divide the numerator and the denominator by {g}.", "Divide {n} and {d} by {g}.", "Both {n} and {d} can be divided by {g}. Divide them both.",
+    "What is {n} ÷ {g}? And what is {d} ÷ {g}?", "Divide the top and the bottom by {g}.", "Use {g}. Divide {n} by {g}. Then divide {d} by {g}.",
   ],
 
   "step.show": ["{show}", "Watch me. {show}", "Here's how it goes. {show}", "Let me show you. {show}", "Follow along. {show}", "Like this. {show}", "I'll do this part. {show}"],
@@ -253,6 +320,14 @@ export const TEMPLATES = {
     "Not quite. Let's look at {where} again.", "Almost! Let's check {where} together.", "Hmm, not yet. Let's try {where} again.",
     "Close! Let's look at {where} once more.", "Not yet. Let's go back to {where}.", "Good try. Let's check {where} again together.",
   ],
+  // An equal fraction when the question asks for the simplest form (#407): the right amount, not yet in the form asked.
+  // {form} is the question's own words: "simplest form" or "lowest terms".
+  "check.equal": [
+    "{heard} is the right amount. The question asks for {form}. Can you simplify it?", "{heard} is equal to the answer. Now write it in {form}.",
+    "Good, {heard} is the same amount. The question wants {form}. Can you simplify {heard}?",
+    "You found the right amount: {heard}. Now simplify it. The question asks for {form}.", "{heard} has the right value. What is {heard} in {form}?",
+    "{heard} is the right amount. Let's write it in {form}.",
+  ],
   "check.explain": [
     "How did you get {where}?", "Can you tell me how you did {where}?", "Show me how you worked out {where}.", "How did you work out {where}?",
     "Tell me what you did for {where}.", "What did you do in {where}?",
@@ -260,21 +335,21 @@ export const TEMPLATES = {
 
   // Asking for the child's thinking is a teaching move, so it is a code line, not warm talk (R374-5).
   "check.thinking": [
-    "Tell me what you're thinking.", "Walk me through your thinking.", "How did you work it out?", "What made you think of it?",
-    "Talk me through it.", "I'm curious how you figured it out.", "How do you know?",
+    "Tell me what you're thinking.", "Tell me how you thought about it.", "How did you work it out?", "What made you think of it?",
+    "Tell me how you did it.", "I'm curious how you figured it out.", "How do you know?",
   ],
   "answer.right": [
     "Yes! {expr} = {answer}.", "That's right: {expr} = {answer}.", "You got it! {expr} = {answer}.", "Yes, {expr} = {answer}!",
     "Exactly! {expr} = {answer}.", "That's it: {expr} = {answer}.", "Well done! {expr} = {answer}.",
   ],
   "answer.give": [
-    "The answer is {answer}. Please write {answer} on your paper.", "It comes to {answer}. Can you write {answer} on your paper?",
+    "The answer is {answer}. Please write {answer} on your paper.", "It's {answer}. Can you write {answer} on your paper?",
     "So the answer is {answer}. Please write {answer} on your paper.", "That makes {answer}. Can you write {answer} on your page?",
     "The answer is {answer}. Now write {answer} on your paper.",
   ],
   // How the parts make the answer (D-199): code says it before answer.give when it gives the answer on the final step,
   // after two wrong final answers once every column is done. Filled from the checked answer's digits by place, never
-  // from the model. Planned wording, pending Savar's approval.
+  // from the model. Savar approved the wording on 2026-11-01.
   "answer.parts": [
     "{parts} make {total}.", "Let's put the parts together: {parts} make {total}.", "Here's how the parts fit: {parts} make {total}.",
     "Put them together: {parts} make {total}.", "Look at the parts: {parts}. Together they make {total}.",
@@ -352,6 +427,12 @@ function whereOf(step: WorkedStep): string {
       return `the ${step.row} row`;
     case "place-point":
       return "the decimal point";
+    case "common-denominator":
+      return "the denominators";
+    case "combine-numerators":
+      return "the numerators";
+    case "simplify":
+      return "the simplest form";
     default:
       return "this step";
   }
@@ -380,10 +461,57 @@ function equationOf(step: WorkedStep, pkg: OperationPackage, problem: "target" |
     }
     case "result":
       return `${operationText(op)} = ${valueText(step.value)}`;
+    // Fraction steps (#407): never the final fraction, so a judged step never gives the answer away.
+    case "common-denominator": {
+      const changed = changedFractions(step);
+      return changed.length > 0 ? changed.map(([from, to]) => `${parts(from)} = ${parts(to)}`).join(" and ") : null;
+    }
+    case "combine-numerators":
+      return `${step.numerators[0]} ${step.op === "add" ? "+" : "−"} ${step.numerators[1]} = ${step.numerator}`;
+    case "simplify":
+      return `${step.from.numerator} ÷ ${step.divisor} = ${step.to.numerator} and ${step.from.denominator} ÷ ${step.divisor} = ${step.to.denominator}`;
     default:
       return null;
   }
 }
+
+/** A fraction as written: "3/4". */
+const parts = ({ numerator, denominator }: FractionParts) => `${numerator}/${denominator}`;
+
+/** The fractions a common-denominator step changes, each with what it becomes and the factor ("3/4" to "6/8", by 2). */
+function changedFractions(step: Extract<WorkedStep, { kind: "common-denominator" }>): [FractionParts, FractionParts, number][] {
+  return step.from.flatMap((from, i): [FractionParts, FractionParts, number][] => (step.factors[i] > 1 ? [[from, step.to[i], step.factors[i]]] : []));
+}
+
+/**
+ * A fraction step shown in words (#407), one idea a sentence (D-202), for H3 and the easier example: "Multiply the
+ * numerator and the denominator of 3/4 by 2. 3/4 = 6/8." Never the final fraction: the child puts it together. Null for a
+ * step that is not a fraction step.
+ */
+function fractionShow(step: WorkedStep): string | null {
+  switch (step.kind) {
+    case "common-denominator":
+      return changedFractions(step).map(([from, to, factor], i) => (i === 0
+        ? `Multiply the numerator and the denominator of ${parts(from)} by ${factor}. ${parts(from)} = ${parts(to)}.`
+        : `Multiply ${parts(from)} by ${factor} the same way. ${parts(from)} = ${parts(to)}.`)).join(" ");
+    case "combine-numerators": {
+      const [a, b] = step.numerators;
+      return step.op === "add"
+        ? `Add the numerators: ${a} + ${b} = ${step.numerator}. The denominator stays ${step.denominator}.`
+        : `Subtract the numerators: ${a} − ${b} = ${step.numerator}. The denominator stays ${step.denominator}.`;
+    }
+    case "simplify": {
+      const { from, divisor: g, to } = step;
+      return `Divide the numerator and the denominator by ${g}. ${from.numerator} ÷ ${g} = ${to.numerator}. ${from.denominator} ÷ ${g} = ${to.denominator}.`;
+    }
+    default:
+      return null;
+  }
+}
+
+/** A worked step in words: a fraction step as fractionShow says it, any other as the shared step text. */
+const showOf = (step: WorkedStep, pkg: OperationPackage, problem: "target" | "example") =>
+  fractionShow(step) ?? stepText(step, problem === "target" ? pkg.operation : pkg.easierExample.operation);
 
 /** The top number of a long multiplication as its rows work it: without its point (2.5 × 1.3 works 25 × 13). */
 function rowTop(pkg: OperationPackage, problem: "target" | "example"): number {
@@ -404,6 +532,8 @@ function stepLines(pkg: OperationPackage, step: WorkedStep): LineOffer[] {
     case "add-column": {
       const { place, digits, carryIn } = step;
       const terms = [...digits, ...(carryIn > 0 ? [carryIn] : [])];
+      const from = carryIn > 0 ? carrySource(pkg, step) : null;
+      if (from) out.push(regroupOffer(pkg, from, { step: step.id }));
       if (terms.length === 1) {
         add("step.point", "point.add.single", { place, term: terms[0] }, 1);
         add("step.operation", "operation.add.single", { place, term: terms[0] }, 2);
@@ -462,16 +592,67 @@ function stepLines(pkg: OperationPackage, step: WorkedStep): LineOffer[] {
       add("step.operation", "operation.divide", { current: step.current, by }, 2, `${step.current} ÷ ${by}`);
       break;
     }
+    case "common-denominator": {
+      const [x, y] = step.from;
+      const changed = changedFractions(step);
+      add("step.point", "point.common", { a: x.denominator, b: y.denominator }, 1);
+      const [first, second] = changed.map(([from, , factor]) => ({ from: parts(from), factor }));
+      if (first && second) add("step.operation", "operation.common.both", { d: step.denominator, from: first.from, factor: first.factor, from2: second.from, factor2: second.factor }, 2);
+      else if (first) add("step.operation", "operation.common", { d: step.denominator, ...first }, 2);
+      break;
+    }
+    case "combine-numerators": {
+      const [a, b] = step.numerators;
+      const sign = step.op === "add" ? "+" : "−";
+      add("step.point", "point.combine", { a, b, d: step.denominator }, 1);
+      add("step.operation", step.op === "add" ? "operation.combine.add" : "operation.combine.subtract", { a, b, d: step.denominator }, 2, `${a} ${sign} ${b}`);
+      break;
+    }
+    case "simplify":
+      out.push(...simplifyLines(step.from, slots));
+      break;
     default:
       break;
   }
   const eq = equationOf(step, pkg, "target");
-  out.push(offer("step.show", "step.show", { show: stepText(step, pkg.operation) }, { slots, level: 3, ...(eq ? { board: eq } : {}) }));
+  out.push(offer("step.show", "step.show", { show: showOf(step, pkg, "target") }, { slots, level: 3, ...(eq ? { board: eq } : {}) }));
   return out;
 }
 
-/** The worked steps a child does, without the result. */
-const workSteps = (steps: WorkedStep[]) => steps.filter((s) => s.kind !== "result");
+/**
+ * The H1 and H2 lines to simplify a fraction (#407): "Find a number that divides both 14 and 16." and "Divide the
+ * numerator and the denominator by 2.", by the greatest number that divides both. None for a fraction already in lowest
+ * terms.
+ */
+function simplifyLines(from: FractionParts, slots: Slots): LineOffer[] {
+  const g = gcd(from.numerator, from.denominator);
+  if (g <= 1) return [];
+  const vars = { n: from.numerator, d: from.denominator, g };
+  return [offer("step.point", "point.simplify", vars, { slots, level: 1 }), offer("step.operation", "operation.simplify", vars, { slots, level: 2 })];
+}
+
+const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b));
+
+/** The column of an addition whose sum makes the carry a column takes ("ones" for the tens of 27 + 39), or null. */
+function carrySource(pkg: OperationPackage, step: Extract<WorkedStep, { kind: "add-column" }>): Extract<WorkedStep, { kind: "add-column" }> | null {
+  const columns = pkg.steps.filter((s): s is Extract<WorkedStep, { kind: "add-column" }> => s.kind === "add-column");
+  const before = columns[columns.findIndex((s) => s.id === step.id) - 1];
+  return before && before.carryOut > 0 && before.carryOut === step.carryIn ? before : null;
+}
+
+/**
+ * The regroup line of a carry (step.regroup, H1), filled from the column whose sum makes it: "7 + 9 = 16. 16 is 1 ten
+ * and 6 ones. Write 6 in the ones. Carry 1 ten to the tens."
+ */
+function regroupOffer(pkg: OperationPackage, from: Extract<WorkedStep, { kind: "add-column" }>, slots: Slots): LineOffer {
+  const to = leftOf(from.place);
+  const eq = equationOf(from, pkg, "target") ?? `${from.total}`;
+  const vars = {
+    eq, total: from.total, carry: from.carryOut, big: from.carryOut === 1 ? UNIT[to] : to, write: from.write,
+    small: from.write === 1 ? UNIT[from.place] : from.place, from: from.place, to,
+  };
+  return offer("step.regroup", "regroup.add", vars, { slots, level: 1, board: eq });
+}
 
 /**
  * The answer's digits by place, highest first, and the number they make (D-199): "6 tens and 6 ones" make 66, "3 ones,
@@ -508,7 +689,7 @@ export function packageLines(pkg: OperationPackage) {
   const expr = operationText(pkg.operation);
   const exampleExpr = operationText(pkg.easierExample.operation);
   const answer = valueText(pkg.answer.value);
-  const steps = workSteps(pkg.steps);
+  const steps = teachSteps(pkg);
   const find = (id: string) => steps.find((s) => s.id === id);
   return {
     hello: (): LineOffer[] => [offer("open.hello", "open.hello", {})],
@@ -522,7 +703,7 @@ export function packageLines(pkg: OperationPackage) {
     exampleStep: (id: string): LineOffer[] => {
       const step = pkg.easierExample.steps.find((s) => s.id === id);
       if (!step) return [];
-      const show = stepText(step, pkg.easierExample.operation);
+      const show = showOf(step, pkg, "example");
       const eq = equationOf(step, pkg, "example");
       return [offer("example.step", step.kind === "result" ? "example.result" : "example.step", { show }, { slots: { step: id }, ...(eq ? { board: eq } : {}) })];
     },
@@ -535,6 +716,17 @@ export function packageLines(pkg: OperationPackage) {
       if (id === "result") return [offer("step.invite", "invite.result", { expr }, { slots: { step: "result" }, level: 0 })];
       const step = find(id);
       return step ? stepLines(pkg, step) : [];
+    },
+    /**
+     * The regroup line of the column a carry comes from (the ones of 27 + 39), for a child who plans to write its
+     * two-digit sum in it ("I write 16 under the ones"). Its slots name the column and "carry", so it differs from the
+     * regroup line of a column that takes a carry. Empty for a column with no carry.
+     */
+    regroupOut: (id: string): LineOffer[] => {
+      const columns = pkg.steps.filter((s): s is Extract<WorkedStep, { kind: "add-column" }> => s.kind === "add-column");
+      const at = columns.findIndex((s) => s.id === id);
+      const next = columns[at + 1];
+      return at >= 0 && next && carrySource(pkg, next) ? [regroupOffer(pkg, columns[at], { step: id, other: "carry" })] : [];
     },
     /** "Yes! 7 + 9 = 16.": only after code checked the child's right answer for that step. */
     rightStep: (id: string): LineOffer[] => {
@@ -553,14 +745,27 @@ export function packageLines(pkg: OperationPackage) {
     },
     explain: (): LineOffer[] => steps.map((s) => offer("check.explain", "check.explain", { where: whereOf(s) }, { slots: { step: s.id } })),
     thinking: (): LineOffer[] => [offer("check.thinking", "check.thinking", {})],
-    answerRight: (): LineOffer[] => [offer("answer.right", "answer.right", { expr, answer }, { slots: {}, board: `${expr} = ${answer}` })],
+    /** "Yes! 3/4 + 1/8 = 7/8.", in the form the child gave when it is an equal form code accepted ("= 14/16", #407). */
+    answerRight: (form: AnswerValue = pkg.answer.value): LineOffer[] => {
+      const said = valueText(form);
+      return [offer("answer.right", "answer.right", { expr, answer: said }, { slots: {}, board: `${expr} = ${said}` })];
+    },
     answerGive: (): LineOffer[] => [offer("answer.give", "answer.give", { answer })],
     /** How the parts make the answer ("6 tens and 6 ones make 66."), said before answer.give on the final step (D-199). */
     answerParts: (): LineOffer[] => {
       const parts = placeParts(pkg.answer.value);
       return parts ? [offer("answer.parts", "answer.parts", parts)] : [];
     },
-    writeAnswer: (): LineOffer[] => [offer("write.answer", "write.answer", { answer })],
+    writeAnswer: (form: AnswerValue = pkg.answer.value): LineOffer[] => [offer("write.answer", "write.answer", { answer: valueText(form) })],
+    /**
+     * An equal fraction when the question asks for the simplest form (#407): "14/16 is the right amount. The question
+     * asks for simplest form. Can you simplify it?", only after code checked the child's final answer as that equal form.
+     */
+    equal: (form: AnswerValue, words: string): LineOffer[] =>
+      [offer("check.equal", "check.equal", { heard: valueText(form), form: words }, { slots: { step: "result", heard: valueText(form) }, requires: { answer: "equal", step: "result", heard: valueText(form) } })],
+    /** The H1 and H2 help to simplify the child's own equal fraction, on the final step (#407). */
+    simplifyOwn: (form: AnswerValue): LineOffer[] =>
+      (form.type === "fraction" || form.type === "mixed" ? simplifyLines(form, { step: "result" }) : []),
     writeYours: (): LineOffer[] => [offer("write.yours", "write.yours", {})],
     /** "Did you say 15?" for each number Maya may have heard, and "15 or 50?" for each pair that sound alike. */
     heard: (values: readonly AnswerValue[], pairs: readonly [AnswerValue, AnswerValue][]): LineOffer[] => [
@@ -608,9 +813,12 @@ export function normalSlots(raw: Slots | Record<string, unknown>): Slots {
 export function allLineTexts(pkg: OperationPackage, heardValues: readonly AnswerValue[] = []): string[] {
   const l = packageLines(pkg);
   const heard = [...new Map(heardValues.map((v) => [valueText(v), v])).values()];
+  // An equal fraction the child said (14/16 for 7/8, #407): said back as accepted, or as an equal form to simplify.
+  const equalForms = heard.filter((v) => (v.type === "fraction" || v.type === "mixed") && equivalent(v, pkg.answer.value) && !sameValue(v, pkg.answer.value));
   const offers = [
+    ...equalForms.flatMap((v) => [...l.answerRight(v), ...l.writeAnswer(v), ...l.equal(v, simplestWords(pkg)), ...l.simplifyOwn(v)]),
     ...l.hello(), ...l.question(), ...l.assess(), ...l.exampleIntro(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id)),
-    ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.explain(),
+    ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
     ...l.otherInput(), ...l.redirect(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("maya"), ...l.repair(),
   ];

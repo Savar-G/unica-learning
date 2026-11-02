@@ -52,7 +52,7 @@ describe("the FAQ describes the online math assessment", () => {
     expect(a).toMatch(/You do not need a card for the assessment\./);
     expect(a).toMatch(/After the report, BC-curriculum families can choose a plan and add a card\./);
     expect(a).toMatch(/Other curricula can join the workbook waitlist without a card\./);
-    expect(a).toMatch(/first workbook ships/);
+    expect(a).toMatch(/first workbook arrives at your home/);
     expect(a).not.toMatch(/when you sign up/);
   });
 

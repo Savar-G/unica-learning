@@ -17,7 +17,10 @@ import type { RenderProblem } from "@/lib/workbook-render";
 import type { BoardHistory } from "@/lib/board-history";
 import type { Outcome, WordingHistory } from "@/lib/maya";
 import type { AlertStatus, CallKind, CallRecord, CallStatus, FlagLevel } from "@/lib/maya-call";
+import type { CallNote, NoteFacts, NoteTranscriptLine } from "@/lib/maya-call-note";
 import type { MayaTrace } from "@/lib/maya-trace";
+import type { WorkbookDelivery, WorkbookEmailKind, WorkbookEmailStatus } from "@/lib/workbook-email";
+import type { ConnectionKind } from "@/lib/maya-voice";
 
 export type { Json };
 
@@ -42,8 +45,10 @@ type ColumnTypes = KnownColumns<{
     kind: CallKind; mode: CallRecord["mode"]; question_source: QuestionRef["source"]; status: CallStatus; versions: CallRecord["versions"];
     outcome_reason: Outcome["reason"] | null; assistance: Outcome["assistance"] | null; paper_status: Outcome["paperStatus"] | null;
     understanding: Outcome["understanding"] | null; safety_severity: Outcome["safetySeverity"]; live: NonNullable<CallRecord["live"]> | null;
-    trace: MayaTrace | null; board_history: BoardHistory | null; flag: FlagLevel | null;
+    trace: MayaTrace | null; board_history: BoardHistory | null; flag: FlagLevel | null; note_pending: CallRecord["notePending"];
   };
+  maya_call_notes: { facts: NoteFacts; sentences: string[]; writer: CallNote["writer"]; transcript: NoteTranscriptLine[] };
+  maya_call_connections: { kind: ConnectionKind };
   maya_call_alerts: { level: FlagLevel; status: AlertStatus };
   maya_demo_children: { made_by: "maya-demo-child" };
   maya_wording_history: { heard: WordingHistory };
@@ -52,6 +57,7 @@ type ColumnTypes = KnownColumns<{
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };
   workbooks: { status: WorkbookStatus };
   workbook_drafts: { draft: GeneratedWorkbook };
+  workbook_emails: { kind: WorkbookEmailKind; status: WorkbookEmailStatus; delivery: WorkbookDelivery | Record<string, never> };
   workbook_runs: { status: RunStatus; step: RunStep | null; errors: RunError[]; runner: RunRunner };
   workbook_draft_revisions: { kind: "generated" | "edit" | "redo-page"; content: GeneratedWorkbook | null; rendering: DraftRendering | null; render_problems: RenderProblem[] };
   workbook_audit: { detail: Record<string, Json | undefined> };

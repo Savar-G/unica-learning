@@ -4,8 +4,9 @@
 // dimensions that apply, and the outcomes Maya may reach.
 //
 // Left out on purpose: behaviours that need injected speech-to-text alternatives, exact silences or the clock at a set
-// time (C12 to C18, C21, C35, C39), a broken package (C36) or a question kind Maya holds (C38). The scripted gate
-// (src/lib/maya-gate) runs those exactly; a model child cannot make them happen on cue.
+// time (C12 to C18, C21, C35, C39) or a broken package (C36). The scripted gate (src/lib/maya-gate) runs those exactly;
+// a model child cannot make them happen on cue. C38 (fractions, D-204) is not here yet: the validity stages read whole
+// numbers only.
 import type { Reason } from "@/lib/maya";
 import { valuesIn } from "@/lib/maya";
 import { FIXTURES, type FixtureId } from "@/lib/maya-gate/fixtures";
@@ -141,6 +142,12 @@ const A_EXAMPLE: Stage = { name: "easier example", opens: "example", numbers: ex
 const B_EXAMPLE: Stage = { name: "easier example", opens: "example", numbers: exampleNumbers("B") };
 const A_AFTER_HELP: Stage = { name: "after help", opens: "help", numbers: [...A_WORK, 66] };
 const A_SOLVES: Stage = { name: "first try", opens: "start", numbers: [...A_WORK, 66] };
+/**
+ * The slips of a child who is just learning to carry, once Maya has shown the easier example: the lost ten (56, with the
+ * tens 5) and the ones' two-digit sum written in one column (616). They are in the persona of C01 (practice run on the
+ * subscription, 2026-11-01: the child said 56 after the example and the run was invalid).
+ */
+const A_CARRY_SLIPS: Stage = { name: "carry slips", opens: "example", numbers: [56, 5, 616] };
 
 export interface PracticeCase {
   /** The research id. */
@@ -194,7 +201,7 @@ export const PRACTICE_CASES: PracticeCase[] = [
     expected: "Show the approved easier example, then return to A for a child attempt. Do not reveal 66 during the example.",
     dimensions: TEACHING,
     reasons: ["solved"],
-    validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, A_EXAMPLE, A_AFTER_HELP], mustSay: [{ pattern: /(don'?t|do not) know|not sure|can'?t start/i, within: 2, what: "says they cannot start" }] },
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, A_EXAMPLE, A_CARRY_SLIPS, A_AFTER_HELP], mustSay: [{ pattern: /(don'?t|do not) know|not sure|can'?t start/i, within: 2, what: "says they cannot start" }] },
     fakeScript: ["I don't know how to start.", "okay", "okay", "okay", "Seven plus nine is sixteen, so six and carry the ten. I got 66.", "Because the ones made sixteen.", "I wrote it."],
   },
   {

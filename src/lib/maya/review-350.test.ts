@@ -198,11 +198,19 @@ describe("F7: the expanded question contract", () => {
     expect(c.propose({ act: "accept_answer", parts: [t("Yes. How did you do it?")], reading: { answers: [{ value: { type: "remainder", quotient: 26, remainder: 1 }, step: "result", verdict: "right" }] } }).refusal).toBeNull();
   });
 
-  it("holds a fraction question it cannot teach yet", () => {
-    const frac = (n: number, d: number) => ({ type: "fraction" as const, numerator: n, denominator: d });
-    let s = createSession({ callId: "f", package: packageOf({ kind: "fraction-add", operands: [frac(2, 3), frac(3, 4)] }, { type: "mixed", whole: 1, numerator: 5, denominator: 12 }, { kind: "fraction-add", operands: [frac(1, 5), frac(2, 5)] }, frac(3, 5), "6.5") });
-    s = step(s, { type: "start", at: 0 }).session;
-    expect(s.state).toBe("CONTENT_HOLD");
+  const frac = (n: number, d: number) => ({ type: "fraction" as const, numerator: n, denominator: d });
+  const stateOf = (pkg: unknown) => step(createSession({ callId: "f", package: pkg }), { type: "start", at: 0 }).session;
+
+  it("holds a fraction question it cannot teach yet: multiplying, or adding a mixed number (#407)", () => {
+    expect(stateOf(packageOf({ kind: "fraction-multiply", operands: [frac(2, 3), frac(3, 4)] }, frac(1, 2), { kind: "fraction-multiply", operands: [frac(1, 2), frac(1, 3)] }, frac(1, 6), "6.5")).state).toBe("CONTENT_HOLD");
+    const mixed = { type: "mixed" as const, whole: 1, numerator: 1, denominator: 2 };
+    const held = stateOf(packageOf({ kind: "fraction-add", operands: [mixed, frac(1, 4)] }, { type: "mixed", whole: 1, numerator: 3, denominator: 4 }, { kind: "fraction-add", operands: [frac(1, 5), frac(2, 5)] }, frac(3, 5), "6.5"));
+    expect(held.state).toBe("CONTENT_HOLD");
+    expect(held.contentProblem).toContain("to-improper");
+  });
+
+  it("teaches adding fractions with unlike denominators (#407)", () => {
+    expect(stateOf(packageOf({ kind: "fraction-add", operands: [frac(2, 3), frac(3, 4)] }, { type: "mixed", whole: 1, numerator: 5, denominator: 12 }, { kind: "fraction-add", operands: [frac(1, 5), frac(2, 5)] }, frac(3, 5), "6.5")).state).toBe("OPEN");
   });
 });
 

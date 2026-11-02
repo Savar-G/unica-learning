@@ -771,5 +771,7 @@ describe("the prompt names only real lines and groups (practice runs 6 and 7)", 
     expect(SYSTEM_PROMPT).not.toMatch(/then a "question" line/);
     // D-199: after two wrong final answers, the model gives the answer and leaves its words to code.
     expect(SYSTEM_PROMPT).toMatch(/wrong a second time, code offers only "give_answer": use it with no line/);
+    // D-202: own words follow the plain-language rules, and the code check refuses the banned phrases.
+    expect(SYSTEM_PROMPT).toMatch(/plain-language rules \(D-202\).*Never "in all", "altogether", "all together", "total" or "left over": a code check refuses them/);
   });
 });

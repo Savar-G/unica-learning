@@ -246,6 +246,10 @@ Migration `add_maya_call_flags` (#333) adds the call's safety flag (`maya_calls.
 
 The service role may only read the table and call `record_maya_wordings`, which merges a call's wordings into the row under the row's lock (each wording keeps its newest time, then only the newest are kept), so two calls of the same child that end together both keep theirs. It has no direct insert, update or delete grant. The table has the family write fence trigger. Row-level security is on; the one policy lets admins read. A signed-in parent and anon read nothing.
 
+`public.maya_call_notes` (migration `add_maya_call_notes`, #331) holds the parent's note of each ended family call with Maya: code-written facts and sentences, at most one warm sentence of code's own that the AI picked, and the call's transcript as the parent reads it (what the child and Maya said) (`src/lib/maya-call-note.ts`). The sentences and the transcript hold `{child}` for every form of the child's name, so the note stores no name. Until a note is written, its inputs (the question package and the call's learning event) wait in `maya_calls.note_pending` (migration `maya_calls_note_pending`), which goes with the call. `call_id` references `public.maya_calls`, `parent_id` references `public.parents`, and `child_id` with `parent_id` references `public.children (id, parent_id)`, all `on delete cascade`. There are no files. The existing family deletion removes every note when it deletes the parent's Auth user, and deleting a call or a child removes its notes (checked on 2026-11-01 in a rolled-back transaction: with the family's deletion requested, deleting the Auth user left no note). The worker needs no code change and no table list. The retention rules need no change: a note is written only when a call ends, so it adds no activity of its own; a trigger refuses a note for an admin test call and for a test family, and today only admin test calls exist, so no note exists yet.
+
+The service role may only insert and read, so a note never changes. Row-level security is on: a signed-in parent reads only their own family's notes (checked on 2026-11-01: the owner's session read the note, another parent's session read none, anon has no grant), and admins read all. The table has the family write fence trigger.
+
 Checked on the live database (1 November 2026), in one transaction that was rolled back, for a test family's child (one child in the family) and a child of a second test family:
 
 | Check | Result |
@@ -263,3 +267,24 @@ Checked on the live database (1 November 2026), in one transaction that was roll
 | The Auth user is deleted (the deletion's last step) | 0 rows left for the family |
 
 Two writes for the same child sent together on the live database (1 November 2026, a test family's child; the row was removed afterwards): the second waited about 2.5 seconds for the first's lock, and the row kept both wordings.
+
+`public.maya_call_connections` (migration `add_maya_call_connections`, #326) holds when the child and Maya joined and left each voice call: an event kind and two times, no audio and no words (`src/lib/maya-call-store.ts`, `mayaConnectionLog`). `call_id` with `parent_id` and `child_id` references `public.maya_calls (id, parent_id, child_id)`, `parent_id` references `public.parents`, and `child_id` with `parent_id` references `public.children (id, parent_id)`, all `on delete cascade`. A row can only name its call's own family, and only a voice call (trigger `maya_call_connection_voice`). There are no files: no audio is stored anywhere (the voice worker starts LiveKit with recording off). The existing family deletion removes every row when it deletes the parent's Auth user; deleting a call removes its rows. The worker needs no code change and no table list. The retention rules need no change: today only admin test calls of test families have voice calls, and the rows add no activity of their own.
+
+The service role may only insert and read: no update or delete grant. The table has the family write fence trigger. Row-level security is on; the one policy lets admins read. A signed-in parent and anon read nothing.
+
+Checked on the live database (1 November 2026), in transactions that were rolled back, with a voice call of a test family (A) and one of a second test family (B):
+
+| Check | Result |
+|---|---|
+| Server (service role) appends 3 events (2 for A, 1 for B) | written |
+| A row naming A's call with B's family | refused (23503) |
+| A row for a text call | refused (55000, `maya_call_not_voice`) |
+| A time an hour ahead of the database's clock | refused (23514) |
+| Server update; server delete | refused (42501) both |
+| An admin reads | 3 rows |
+| Parent A (whose call it is) reads; inserts | 0 rows; refused (42501) |
+| Parent B reads A's call; reads any | 0 rows; 0 rows |
+| Anon reads | refused (42501) |
+| Family B's Auth user is deleted | 0 rows left for B; A's 2 rows stay |
+| A's call is deleted | 0 rows left for it |
+| A write after family A's deletion request | refused (55000, `family_unavailable`) |

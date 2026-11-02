@@ -9,13 +9,27 @@
 // board commands, outcome and versions, src/lib/maya-trace.ts), the board history (src/lib/board-history.ts), the
 // outcome fields and counts, and drops `live`. Then it writes the call's one learning event for the target question
 // (`learningEvent` of the session, key `call:<id>`, so a retry stores it once) and rebuilds the child's profile.
-// "end" on an ended call whose event or rebuild failed runs those two again.
+// "end" on an ended call whose event, rebuild or parent note failed runs those again.
 //
 // The child's wording history (D-196, #375): `start` reads it before the session is made, so Maya prefers the wordings
 // the child has not heard lately; the session keeps it in its saved state for the call's later requests. When the call
 // ends, the wordings it said are added to it (before the learning event; again on a retried "end" while the call keeps
 // its state, which changes nothing, since each wording keeps its newest time). A history that cannot be read or written
 // never stops a call: the call goes on with an empty history, or keeps its outcome without the record.
+//
+// The parent's note (#331, src/lib/maya-call-note.ts): when a call ends, the same write that stores its outcome keeps
+// the note's inputs in `notePending` (the question package and the learning event as code built it). After the event
+// and the rebuild, the `note` seam writes the note within NOTE_STEP_MS; once it says "done" (stored, or refused for
+// good), `notePending` is cleared, without raising the call's revision (R403-5). A failed, refused-for-now or slow note leaves it, so a retried "end" of the call, or
+// the end of a later call of the same child, writes it from those inputs (R403-3, R403-4). The note never holds up the
+// learning event, and the call's answer waits for it at most NOTE_STEP_MS.
+// Voice calls (#326): `startVoice` makes the call's record without starting it; Maya's voice worker (worker/maya-voice)
+// opens it (`openVoice`) when the child joins the call's room, and keeps the session in memory for the whole call. The
+// handle saves the call after each input, as a text call is saved after each request, so the record is current and a
+// second writer is refused. It also stores when the child and Maya joined and left (`connections`, migration
+// add_maya_call_connections), and the call's connected seconds when it ends. The speech-to-text and voice ids go on
+// the record when the worker opens it. A live voice call takes no typed input; the admin may end one only before it
+// started or once it cannot still be running (VOICE_CALL_STALE_MS).
 //
 // Test calls never touch a real family: `start` refuses a family the seam does not call a test family, the database
 // refuses it again (migration add_maya_calls), and a test call never counts minutes.
@@ -28,12 +42,13 @@
 //
 // Seams: the call store (Supabase: src/lib/maya-call-store.ts; memory: src/lib/maya-call-memory.ts), the wording
 // history (Supabase: src/lib/maya-wording-history-store.ts; memory: memoryWordingHistoryStore), the learning events, the
-// profile rebuild, the alerts, the model by id, the clock, ids and the seed. Pure otherwise: no Next.js, React,
+// profile rebuild, the alerts, the parent's note (#331), the model by id, the clock, ids and the seed. Pure otherwise: no Next.js, React,
 // network or database; node:crypto through the trace's package hash.
 import { applyBatch, boardView, createScene, type Batch } from "@/lib/board";
 import { createHistory, mayaWrites, type BoardHistory } from "@/lib/board-history";
 import { fitView, type PlayStep } from "@/lib/board-svg";
-import type { LearningEvents } from "@/lib/learning-events";
+import type { LearningEvents, NewLearningEvent } from "@/lib/learning-events";
+import type { NoteStep } from "@/lib/maya-call-note";
 import { heardWordings, learningEvent, type Outcome, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
 import { freeTalkFor } from "@/lib/maya-free-talk";
 import type { MayaModel } from "@/lib/maya-model";
@@ -41,6 +56,12 @@ import type { TalkReviewer } from "@/lib/maya-talk-review";
 import { createTextSession, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession } from "@/lib/maya-text";
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
 import { checkQuestionPackage, type QuestionPackage, type QuestionRef } from "@/lib/question-package";
+import { connectedSeconds, VOICE_CALL_STALE_MS, type ConnectionEvent, type ConnectionKind } from "@/lib/maya-voice";
+
+/** The longest the note step of an ended call may take; after it the note stays pending. */
+export const NOTE_STEP_MS = 20_000;
+/** The most earlier calls of the child whose pending note a call's end picks up. */
+export const NOTE_SWEEP = 3;
 
 /** The version of the call record's shape (record_version). */
 export const CALL_RECORD_VERSION = 1;
@@ -134,17 +155,39 @@ export interface CallRecord {
   outcome: Outcome | null;
   counts: { mayaTurns: number; childTurns: number; fallbacks: number } | null;
   /** While live: what the text adapter needs to go on, with the package it runs on. Null once ended. */
-  live: { package: QuestionPackage; text: SavedTextSession } | null;
+  live: { package: QuestionPackage; text: SavedTextSession; cancelled?: true; pendingVoice?: VoiceTurn } | null;
   trace: MayaTrace | null;
   boardHistory: BoardHistory | null;
   learningEventId: string | null;
   profileRebuiltAt: string | null;
+  /** An ended call whose parent note is not written yet: the note's inputs, kept for a retry. Null once done. */
+  notePending: { package: QuestionPackage; event: NewLearningEvent | null } | null;
+
+  /** Voice calls: the speech-to-text and voice ids (set when the worker opens the call), and the connected seconds. */
+  speechToText: string | null;
+  voice: string | null;
+  connectedSeconds: number | null;
   /** The call's highest flag so far (#333), or null. */
   flag: CallFlag | null;
 }
 
 /** The fields an update may change. */
-export type CallChange = Partial<Pick<CallRecord, "status" | "startedAt" | "endedAt" | "outcome" | "counts" | "live" | "trace" | "boardHistory" | "learningEventId" | "profileRebuiltAt" | "flag">>;
+export type CallChange = Partial<Pick<CallRecord, "status" | "startedAt" | "endedAt" | "outcome" | "counts" | "live" | "trace" | "boardHistory" | "learningEventId" | "profileRebuiltAt" | "speechToText" | "voice" | "connectedSeconds" | "flag" | "notePending">>;
+
+/** One connection event of a voice call, as stored. */
+export interface CallConnection extends ConnectionEvent {
+  callId: string;
+  parentId: string;
+  childId: string;
+}
+
+/** Where a voice call's connection events go (append only). */
+export interface ConnectionLog {
+  /** Checks ownership, raises the revision and appends atomically. Returns the store-clock time, or null on conflict. */
+  append(event: CallConnection, revision: number): Promise<number | null>;
+  /** Every stored event of a call, oldest first. */
+  read(callId: string): Promise<ConnectionEvent[]>;
+}
 
 /** The store seam. */
 export interface CallStore {
@@ -152,6 +195,14 @@ export interface CallStore {
   get(id: string): Promise<CallRecord | null>;
   /** Writes the change and raises the revision by one, only when the stored revision is `revision`. False otherwise. */
   update(id: string, revision: number, change: CallChange): Promise<boolean>;
+  /** The child's ended calls whose note is pending, oldest end first, at most `limit`. */
+  pendingNotes(childId: string, limit: number): Promise<CallRecord[]>;
+  /**
+   * Clears an ended call's pending note without raising its revision (review R403-5): the note is not part of the
+   * call's requests, so a clear that is still writing when the note time is up never makes the revision a request
+   * holds stale. True when the call had a pending note.
+   */
+  clearNote(id: string): Promise<boolean>;
 }
 
 export interface CallSeams {
@@ -173,6 +224,17 @@ export interface CallSeams {
   reviewer?(modelId: string): TalkReviewer | null;
   /** True when the family is marked as a test family (public.test_accounts). */
   isTestFamily(parentId: string): Promise<boolean>;
+  /**
+   * The parent's note of an ended call (#331, src/lib/maya-call-note.ts), run after the learning event. Optional.
+   * "done" when the note is stored or refused for good (the note module refuses test calls and test families itself);
+   * "pending", a throw or no answer within NOTE_STEP_MS keeps the call's `notePending` for a retry. Never changes the call
+   * otherwise.
+   */
+  note?(ended: { call: CallRecord; package: QuestionPackage; event: NewLearningEvent | null }): Promise<NoteStep>;
+  /** The note step's time limit in milliseconds; NOTE_STEP_MS when not set. */
+  noteMs?: number;
+  /** Voice calls: where the connection events go. Optional: without it a voice call cannot be opened. */
+  connections?: ConnectionLog;
   /** The internal safety alerts (#333). */
   alerts: CallAlerts;
   /** What a request for harmful content raises; default UNSAFE_REQUEST_FLAG. */
@@ -218,6 +280,9 @@ export interface FreeTalkLine {
 export interface CallView {
   id: string;
   kind: CallKind;
+  mode: CallRecord["mode"];
+  /** Voice calls: what carried the call, and the time the child and Maya were both connected. */
+  voice: { speechToText: string | null; voice: string | null; connectedSeconds: number | null } | null;
   status: CallStatus;
   revision: number;
   createdAt: string;
@@ -239,6 +304,8 @@ export interface CallView {
   counts: CallRecord["counts"];
   learningEventId: string | null;
   profileRebuiltAt: string | null;
+  /** The call's parent note is not written yet. */
+  notePending: boolean;
   /** The call's highest flag so far (#333), and its internal alerts. */
   flag: CallFlag | null;
   alerts: AlertState[];
@@ -246,10 +313,59 @@ export interface CallView {
 
 export type CallResult =
   | { ok: true; view: CallView; output: { say: string[]; newBatches: number; safetyMessage: string | null } }
-  | { ok: false; error: "not_found" | "not_test_family" | "invalid_question" | "invalid_input" | "conflict" | "model_unavailable" };
+  | { ok: false; error: "not_found" | "not_test_family" | "invalid_question" | "invalid_input" | "conflict" | "model_unavailable" | "voice_call" };
+
+/** What reached the child after one input of a voice call. */
+export interface VoiceTurn {
+  say: string[];
+  newBatches: number;
+  safetyMessage: string | null;
+  /** The call ended with this input. */
+  ended: boolean;
+}
+
+/**
+ * A voice call open in the worker. Inputs run one at a time, in order; each returns as soon as Maya's words are known
+ * and the call is saved behind it (`settled` waits for the saves). Once a save is refused (another writer changed the
+ * call) or fails, the handle is `lost`: inputs return nothing and nothing more is written.
+ */
+export interface VoiceCall {
+  readonly id: string;
+  /** The session now (plain data), for the tick planner. */
+  readonly session: TextSession["session"];
+  readonly ended: boolean;
+  readonly lost: boolean;
+  /** The store confirmed that this handle no longer owns its revision. A thrown save is only uncertain. */
+  readonly replaced: boolean;
+  /** The revision of the last save. */
+  readonly revision: number;
+  /** Saved accepted final words when this handle restored a controller that had already ended. */
+  readonly pendingFinal: VoiceTurn | null;
+  start(): Promise<VoiceTurn>;
+  child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }): Promise<VoiceTurn>;
+  tick(): Promise<VoiceTurn>;
+  writing(status: "started" | "done"): Promise<VoiceTurn>;
+  /** Ends from the last durable state without waiting for active model work. */
+  limit(): Promise<void>;
+  /** Stores a connection event (on the server's clock). Never throws. */
+  connection(kind: ConnectionKind): Promise<void>;
+  /**
+   * Ends the call if it has not ended: "child_stopped" when the child hung up, else a technical issue with `detail`.
+   * Stores the outcome, the connected seconds, the learning event and the profile rebuild. Safe to call twice.
+   */
+  end(how: FinishOptions): Promise<void>;
+  /** Waits until every save so far is done. */
+  settled(): Promise<void>;
+}
+
+export type OpenVoiceResult = { ok: true; call: VoiceCall } | { ok: false; error: "not_found" | "not_voice" | "ended" | "conflict" | "model_unavailable" | "unavailable" };
 
 export interface MayaCalls {
   start(input: { kind: CallKind; parentId: string; childId: string; childName: string | null; package: unknown; startedBy: string | null }): Promise<CallResult>;
+  /** Makes a voice call's record, not started: Maya's worker starts it when the child joins. */
+  startVoice(input: { kind: CallKind; parentId: string; childId: string; childName: string | null; package: unknown; startedBy: string | null }): Promise<CallResult>;
+  /** Opens a live voice call in the worker, with the providers that carry it. */
+  openVoice(id: string, providers: { speechToText: string; voice: string }, childName: string | null): Promise<OpenVoiceResult>;
   input(id: string, revision: number, input: CallInput, childName: string | null): Promise<CallResult>;
   view(id: string): Promise<CallView | null>;
 }
@@ -321,6 +437,8 @@ export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertStat
   return {
     id: record.id,
     kind: record.kind,
+    mode: record.mode,
+    voice: record.mode === "voice" ? { speechToText: record.speechToText, voice: record.voice, connectedSeconds: record.connectedSeconds } : null,
     status: record.status,
     revision: record.revision,
     createdAt: record.createdAt,
@@ -340,6 +458,7 @@ export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertStat
     counts: record.counts,
     learningEventId: record.learningEventId,
     profileRebuiltAt: record.profileRebuiltAt,
+    notePending: record.notePending !== null,
     flag: record.flag,
     alerts,
   };
@@ -458,11 +577,12 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
    * until each has worked once. `ended` is the call's final session; the record keeps it in `live` until the event is
    * written, so a later "end" can try again (and adds the same wordings again, which changes nothing).
    */
-  async function afterEnd(record: CallRecord, ended: TextSession | null): Promise<CallRecord> {
+  async function afterEnd(record: CallRecord, ended: TextSession | null, noEvent = false, sweep = false): Promise<CallRecord> {
     let current = record;
     if (ended) await recordHeard(current, ended);
     if (!current.learningEventId && ended) {
-      const event = learningEvent(ended.session, { parentId: current.parentId, childId: current.childId });
+      // A voice call Maya never joined has no learning to record: the child never spoke.
+      const event = noEvent || current.live?.cancelled ? null : learningEvent(ended.session, { parentId: current.parentId, childId: current.childId });
       let eventId: string | null = null;
       let done = event === null;
       if (event) {
@@ -488,41 +608,141 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const at = iso(seams.clock());
       if (await store.update(current.id, current.revision, { profileRebuiltAt: at })) current = { ...current, profileRebuiltAt: at, revision: current.revision + 1 };
     }
+    return notes(current, sweep);
+  }
+
+  /**
+   * The parent's notes after the event and the rebuild: this call's pending note, then (`sweep`, at a call's first end)
+   * up to NOTE_SWEEP earlier calls of the child whose note is still pending. All of it within the note time limit: once
+   * it is up the call answers, and no late result changes the call's revision (a written note is found on the next try).
+   */
+  async function notes(record: CallRecord, sweep: boolean): Promise<CallRecord> {
+    const note = seams.note;
+    if (!note || (!record.notePending && !sweep)) return record;
+    let current = record;
+    let late = false;
+    const one = async (r: CallRecord): Promise<CallRecord> => {
+      if (!r.notePending) return r;
+      let step: NoteStep = "pending";
+      try {
+        step = await note({ call: r, package: r.notePending.package, event: r.notePending.event });
+      } catch (e) {
+        console.error("[maya call] note failed", r.id, e instanceof Error ? e.message : String(e));
+      }
+      if (step !== "done" || late || !(await store.clearNote(r.id))) return r;
+      return { ...r, notePending: null };
+    };
+    const work = (async () => {
+      const done = await one(current);
+      if (!late) current = done;
+      if (!sweep) return;
+      for (const other of await store.pendingNotes(record.childId, NOTE_SWEEP + 1)) {
+        if (late) return;
+        if (other.id !== record.id && other.status === "ended") await one(other);
+      }
+    })();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeUp = new Promise<"late">((resolve) => {
+      timer = setTimeout(() => resolve("late"), seams.noteMs ?? NOTE_STEP_MS);
+    });
+    try {
+      if ((await Promise.race([work.then(() => "done" as const), timeUp])) === "late") {
+        late = true;
+        console.error("[maya call] note step ran out of time", record.id);
+      }
+    } catch (e) {
+      console.error("[maya call] note step failed", record.id, e instanceof Error ? e.message : String(e));
+    } finally {
+      clearTimeout(timer);
+    }
+    work.catch(() => {});
     return current;
   }
 
   /** Stores the outcome of a call that has just ended, then writes its event and rebuilds the profile. Null on a conflict. */
-  async function end(record: CallRecord, pkg: QuestionPackage, session: TextSession, how: FinishOptions = {}): Promise<CallRecord | null> {
+  async function end(record: CallRecord, pkg: QuestionPackage, session: TextSession, how: FinishOptions = {}, extra?: (endedAt: number) => Promise<CallChange>, noEvent = false): Promise<CallRecord | null> {
     const trace = await session.finish(how);
+    const endedAt = trace.endedAt ?? iso(seams.clock());
     const flag = risen(record.flag, flagOf(session, unsafe));
     const change: CallChange = {
+      ...(extra ? await extra(Date.parse(endedAt)) : {}),
       ...(flag && { flag }),
       status: "ended",
       // Kept until the learning event is written (afterEnd).
-      live: { package: pkg, text: await session.saved() },
+      live: { package: pkg, text: await session.saved(), ...(noEvent ? { cancelled: true as const } : {}) },
+      // Kept until the parent's note is written (notes). A call Maya never joined has no learning event.
+      notePending: seams.note ? { package: pkg, event: noEvent ? null : learningEvent(session.session, { parentId: record.parentId, childId: record.childId }) } : null,
       trace,
       boardHistory: boardHistoryOf(trace),
       outcome: trace.outcome,
       counts: countsOf(trace),
       startedAt: trace.startedAt,
-      endedAt: trace.endedAt ?? iso(seams.clock()),
+      endedAt,
     };
     if (!(await store.update(record.id, record.revision, change))) return null;
     const ended = { ...record, ...change, revision: record.revision + 1 };
     // Safety first: the alert goes before the learning record.
     await alert(ended);
-    return afterEnd(ended, session);
+    return afterEnd(ended, session, noEvent, true);
   }
 
   /** Saves a live call after an input, or ends it when the call has ended. Null on a conflict. */
-  async function save(record: CallRecord, pkg: QuestionPackage, session: TextSession): Promise<CallRecord | null> {
-    if (session.ended) return end(record, pkg, session);
+  async function save(record: CallRecord, pkg: QuestionPackage, session: TextSession, extra?: (endedAt: number) => Promise<CallChange>): Promise<CallRecord | null> {
+    if (session.ended) return end(record, pkg, session, {}, extra);
     const flag = risen(record.flag, flagOf(session, unsafe));
     const change: CallChange = { live: { package: pkg, text: await session.saved() }, startedAt: session.trace().startedAt, ...(flag && { flag }) };
     if (!(await store.update(record.id, record.revision, change))) return null;
     const saved = { ...record, ...change, revision: record.revision + 1 };
     await alert(saved);
     return saved;
+  }
+
+  /** Checks a new call's family and question, and stores its record with the session not started. */
+  async function newCall(input: Parameters<MayaCalls["start"]>[0], mode: CallRecord["mode"]): Promise<{ ok: true; record: CallRecord; session: TextSession; pkg: QuestionPackage } | Extract<CallResult, { ok: false }>> {
+    if (!(await seams.isTestFamily(input.parentId))) return { ok: false, error: "not_test_family" };
+    const check = checkQuestionPackage(input.package);
+    if (!check.ok) return { ok: false, error: "invalid_question" };
+    const pkg = check.package;
+    const model = seams.model(null);
+    if (!model) return { ok: false, error: "model_unavailable" };
+    const id = seams.newId();
+    const session = textSession({ id }, pkg, model, mode === "voice" ? null : input.childName, undefined, seams.seed(), await readHistory(input.childId));
+    const empty = session.trace();
+    const record: CallRecord = {
+      id,
+      createdAt: iso(seams.clock()),
+      recordVersion: CALL_RECORD_VERSION,
+      kind: input.kind,
+      mode,
+      startedBy: input.startedBy,
+      parentId: input.parentId,
+      childId: input.childId,
+      question: pkg.ref,
+      packageId: pkg.id,
+      packageHash: packageHash(pkg),
+      questionText: pkg.text,
+      status: "live",
+      revision: 0,
+      startedAt: null,
+      endedAt: null,
+      model: model.id,
+      promptVersion: model.promptVersion,
+      versions: { ...empty.versions, trace: empty.version },
+      outcome: null,
+      counts: null,
+      live: { package: pkg, text: await session.saved() },
+      trace: null,
+      boardHistory: null,
+      learningEventId: null,
+      profileRebuiltAt: null,
+      notePending: null,
+      speechToText: null,
+      voice: null,
+      connectedSeconds: null,
+      flag: null,
+    };
+    await store.insert(record);
+    return { ok: true, record, session, pkg };
   }
 
   const result = async (record: CallRecord, trace: MayaTrace, out: TextOutput | null): Promise<CallResult> => ({
@@ -533,45 +753,10 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
 
   return {
     async start(input) {
-      if (!(await seams.isTestFamily(input.parentId))) return { ok: false, error: "not_test_family" };
-      const check = checkQuestionPackage(input.package);
-      if (!check.ok) return { ok: false, error: "invalid_question" };
-      const pkg = check.package;
-      const model = seams.model(null);
-      if (!model) return { ok: false, error: "model_unavailable" };
-      const id = seams.newId();
-      const session = textSession({ id }, pkg, model, input.childName, undefined, seams.seed(), await readHistory(input.childId));
-      const empty = session.trace();
-      let record: CallRecord = {
-        id,
-        createdAt: iso(seams.clock()),
-        recordVersion: CALL_RECORD_VERSION,
-        kind: input.kind,
-        mode: "text",
-        startedBy: input.startedBy,
-        parentId: input.parentId,
-        childId: input.childId,
-        question: pkg.ref,
-        packageId: pkg.id,
-        packageHash: packageHash(pkg),
-        questionText: pkg.text,
-        status: "live",
-        revision: 0,
-        startedAt: null,
-        endedAt: null,
-        model: model.id,
-        promptVersion: model.promptVersion,
-        versions: { ...empty.versions, trace: empty.version },
-        outcome: null,
-        counts: null,
-        live: { package: pkg, text: await session.saved() },
-        trace: null,
-        boardHistory: null,
-        learningEventId: null,
-        profileRebuiltAt: null,
-        flag: null,
-      };
-      await store.insert(record);
+      const made = await newCall(input, "text");
+      if (!made.ok) return made;
+      let { record } = made;
+      const { session, pkg } = made;
       let out: TextOutput | null = null;
       try {
         out = await session.start();
@@ -580,6 +765,156 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         if (saved) record = saved;
       }
       return result(record, record.trace ?? session.trace(), out);
+    },
+
+    async startVoice(input) {
+      const made = await newCall(input, "voice");
+      if (!made.ok) return made;
+      return result(made.record, made.session.trace(), null);
+    },
+
+    async openVoice(id, providers) {
+      const log = seams.connections;
+      if (!log) return { ok: false, error: "unavailable" };
+      const found = await store.get(id);
+      if (!found) return { ok: false, error: "not_found" };
+      if (found.mode !== "voice") return { ok: false, error: "not_voice" };
+      if (found.status !== "live" || !found.live) return { ok: false, error: "ended" };
+      const model = found.live.text.session.outcome ? idleModel(found) : seams.model(found.model);
+      if (!model) return { ok: false, error: "model_unavailable" };
+      const restored = structuredClone(found.live.text);
+      restored.session.variety.name = null;
+      restored.session.variety.nameAt = null;
+      const claim: CallChange = { speechToText: providers.speechToText, voice: providers.voice, live: { ...found.live, text: restored } };
+      if (!(await store.update(found.id, found.revision, claim))) return { ok: false, error: "conflict" };
+      let record: CallRecord = { ...found, ...claim, revision: found.revision + 1 };
+      const pkg = found.live.package;
+      const session = textSession(record, pkg, model, null, restored);
+      const last = restored.turns.at(-1);
+      const pendingFinal: VoiceTurn | null = restored.session.outcome ? record.live?.pendingVoice ?? {
+        say: last?.kind === "maya" && last.stateAfter === "CLOSE" ? [...(last.output?.say ?? [])] : [],
+        newBatches: 0, safetyMessage: null, ended: true,
+      } : null;
+      const seen: ConnectionEvent[] = [];
+      let lost = false;
+      let replaced = false;
+      let queue: Promise<void> = Promise.resolve();
+      const later = (work: () => Promise<void>) => {
+        queue = queue.then(work).catch((e) => {
+          lost = true;
+          console.error("[maya voice] save failed", record.id, e instanceof Error ? e.message : String(e));
+        });
+      };
+      /** The connected seconds when the call ends: from every stored event of the call (a restarted worker's too). */
+      const connected = async (endedAt: number): Promise<CallChange> => {
+        let events: ConnectionEvent[] = seen;
+        try {
+          events = await log.read(record.id);
+        } catch (e) {
+          console.error("[maya voice] connections read failed", record.id, e instanceof Error ? e.message : String(e));
+        }
+        // The outcome can precede final playout. Count room time through the media close.
+        return { connectedSeconds: connectedSeconds(events, Math.max(endedAt, seams.clock(), ...events.map((e) => e.at))) };
+      };
+      const persist = (out: TextOutput) =>
+        later(async () => {
+          if (lost || record.status === "ended") return;
+          // A final voice turn remains live until its speech handle completes.
+          const pendingVoice: VoiceTurn | undefined = out.ended ? { say: [...out.say], newBatches: 0, safetyMessage: out.safetyMessage, ended: true } : undefined;
+          const change: CallChange = { live: { package: pkg, text: await session.saved(), ...(pendingVoice ? { pendingVoice } : {}) }, startedAt: session.trace().startedAt };
+          const saved = await store.update(record.id, record.revision, change) ? { ...record, ...change, revision: record.revision + 1 } : null;
+          if (!saved) {
+            lost = true;
+            replaced = true;
+            console.error("[maya voice] the call changed elsewhere; this worker stops writing", record.id);
+            return;
+          }
+          record = saved;
+        });
+      const none: VoiceTurn = { say: [], newBatches: 0, safetyMessage: null, ended: false };
+      const inactive = () => lost || record.status === "ended";
+      const turn = async (run: () => Promise<TextOutput>): Promise<VoiceTurn> => {
+        if (inactive()) return none;
+        const out = await run();
+        persist(out);
+        await queue;
+        if (inactive()) return none;
+        return { say: out.say, newBatches: out.board.length, safetyMessage: out.safetyMessage, ended: out.ended !== null };
+      };
+      const call: VoiceCall = {
+        id: record.id,
+        get session() {
+          return session.session;
+        },
+        get ended() {
+          return session.ended;
+        },
+        get lost() {
+          return lost;
+        },
+        get replaced() {
+          return replaced;
+        },
+        get revision() {
+          return record.revision;
+        },
+        get pendingFinal() {
+          return pendingFinal ? structuredClone(pendingFinal) : null;
+        },
+        start: () => turn(() => session.start()),
+        child: (text, options) => turn(() => session.child(text.trim().slice(0, MAX_CHILD_TEXT), options)),
+        tick: () => turn(() => session.tick()),
+        writing: (status) => turn(() => session.writing(status)),
+        async limit() {
+          later(async () => {
+            if (lost || record.status === "ended" || !record.live) return;
+            // Restore only accepted, saved work. An outstanding model answer cannot delay the deadline.
+            const final = textSession(record, pkg, idleModel(record), null, record.live.text);
+            await final.tick();
+            const ended = await end(record, pkg, final, {}, connected, record.startedAt === null);
+            if (!ended) { lost = true; replaced = true; }
+            else record = ended;
+          });
+          await queue;
+        },
+        async connection(kind) {
+          const event: ConnectionEvent = { kind, at: seams.clock() };
+          later(async () => {
+            if (lost) return;
+            try {
+              // The store serializes ownership and append with replacement claims.
+              const at = await log.append({ ...event, callId: record.id, parentId: record.parentId, childId: record.childId }, record.revision);
+              if (at === null) { lost = true; replaced = true; return; }
+              record = { ...record, revision: record.revision + 1 };
+              seen.push({ kind, at });
+            } catch (e) {
+              lost = true;
+              console.error("[maya voice] connection event not stored", record.id, kind, e instanceof Error ? e.message : String(e));
+            }
+          });
+          await queue;
+        },
+        async end(how) {
+          await queue;
+          if (lost) return;
+          if (record.status === "live") {
+            later(async () => {
+              // A fatal close or hang-up must not wait for an unfinished model turn.
+              const final = textSession(record, pkg, idleModel(record), null, record.live!.text);
+              const ended = await end(record, pkg, final, how, connected, record.startedAt === null);
+              if (!ended) { lost = true; replaced = true; }
+              else record = ended;
+            });
+          } else if (!record.learningEventId || !record.profileRebuiltAt) {
+            later(async () => {
+              record = await afterEnd(record, record.live ? session : null);
+            });
+          }
+          await queue;
+        },
+        settled: () => queue,
+      };
+      return { ok: true, call };
     },
 
     async input(id, revision, input, childName) {
@@ -596,6 +931,16 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         return result(done, done.trace!, null);
       }
       if (!record.live) return { ok: false, error: "conflict" };
+      if (record.mode === "voice") {
+        // The worker holds a live voice call. The admin may only end one that never started, or one that cannot still
+        // be running (the worker stopped without ending it).
+        const started = record.startedAt === null ? null : Date.parse(record.startedAt);
+        if (input.type !== "end" || (started !== null && seams.clock() - started < VOICE_CALL_STALE_MS)) return { ok: false, error: "voice_call" };
+        const session = textSession(record, record.live.package, idleModel(record), childName, record.live.text);
+        const detail = started === null ? "Maya did not join the voice call" : "the voice call stopped without an end";
+        const ended = await end(record, record.live.package, session, { detail }, async (endedAt) => ({ connectedSeconds: connectedSeconds(await seams.connections?.read(record.id).catch(() => []) ?? [], endedAt) }), started === null);
+        return ended ? result(ended, ended.trace!, null) : { ok: false, error: "conflict" };
+      }
       const { package: pkg, text: saved } = record.live;
       const model = seams.model(record.model);
       if (!model) {
