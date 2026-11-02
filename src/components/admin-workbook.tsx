@@ -4,7 +4,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { WorkbookDetail } from "@/lib/admin-store";
-import { ADMIN_PATH, adminWorkbookRunPath, when, workbookPdfPath } from "@/lib/admin-view";
+import { adminWorkbookRunPath, when, workbookPdfPath } from "@/lib/admin-view";
 import { checkQuestionPackage, hasOperation, packageItem, stepText, valueText, type AnswerRegion, type QuestionPackage } from "@/lib/question-package";
 import type { WorkbookPage, WorkbookQuestion, WorkbookStatus } from "@/lib/workbook-content";
 import { curriculumFor } from "@/lib/workbook-curriculum";
@@ -136,8 +136,7 @@ function doneText(at: string | null, action: string, audit: WorkbookDetail["audi
  * (printed). The child's first shipped workbook leads to "Workbook shipped: start plan" (D-140); no plan starts here.
  */
 function PrintAndShip({ detail }: { detail: WorkbookDetail }) {
-  const { workbook: w, child } = detail;
-  const name = child?.first_name ?? "this child";
+  const { workbook: w } = detail;
   return <section className="adm-wb-section" aria-labelledby="print-and-ship">
     <h2 id="print-and-ship">Print and ship</h2>
     <div className="adm-row">
@@ -147,10 +146,6 @@ function PrintAndShip({ detail }: { detail: WorkbookDetail }) {
     </div>
     {w.status === "draft" && <p className="adm-note">This workbook is not approved. Approve its draft first.</p>}
     {(w.status === "printed" || w.status === "shipped") && <p className="adm-note">A printed workbook cannot change.</p>}
-    {w.status === "shipped" && w.number === 1 && detail.delivery && (
-      <p className="adm-note" role="note"><b>Workbook 1 delivery is confirmed.</b> To start {name}&apos;s free month, open{" "}
-        <Link href={`${ADMIN_PATH}/next-steps`}>Cards and waitlist</Link> and press &ldquo;Workbook delivered: start free month&rdquo; on {name}&apos;s card.</p>
-    )}
   </section>;
 }
 
@@ -175,7 +170,7 @@ export function AdminWorkbook({ email, detail }: { email: string; detail: Workbo
       ]} />
       <PrintAndShip detail={detail} />
       {w.status === "shipped" && <WorkbookDelivery workbookId={w.id} childId={w.childId} number={w.number}
-        timeZone={detail.deliveryZone} receipt={detail.delivery} actor={audit.find((e) => e.id === detail.delivery?.auditId)?.actor_email} />}
+        timeZone={detail.deliveryZone} receipt={detail.delivery} actor={audit.find((e) => e.id === (detail.delivery?.correction?.auditId ?? detail.delivery?.auditId))?.actor_email} />}
       {w.pages.map((p) => (
         <section key={p.number} className="adm-wb-section" aria-labelledby={`page-${p.number}`}>
           <h2 id={`page-${p.number}`}>{pageTitle(p)}</h2>

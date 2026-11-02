@@ -1,5 +1,5 @@
 import { adminSession } from "@/lib/admin-store";
-import { confirmDelivery } from "@/lib/workbook-delivery";
+import { confirmDelivery, correctDelivery } from "@/lib/workbook-delivery";
 import { workbookDeliveryStore } from "@/lib/workbook-delivery-store";
 import { familyProvince, familyZone } from "@/lib/family-time";
 import { isUuid } from "@/lib/workbook-content";
@@ -27,7 +27,11 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/workb
     const saved = await store.receipt(id);
     const timeZone = saved?.timeZone ?? familyZone({ timeZone: parent.data.time_zone, postal: parent.data.postal, province: familyProvince(children.data) });
     if (JSON.stringify(toJson(body.timeZone)) !== JSON.stringify(toJson(timeZone))) return Response.json({ status: "refused", reason: "zone_changed" }, { status: 409 });
-    const result = await confirmDelivery(store, { workbookId: id, childId: body.childId, number: body.number, localTime: body.localTime, timeZone }, Date.now());
+    const input = { workbookId: id, childId: body.childId, number: body.number, localTime: body.localTime, timeZone };
+    if (body.action !== undefined && body.action !== "correct") return Response.json({ status: "refused", reason: "invalid_correction" }, { status: 400 });
+    const result = body.action === "correct"
+      ? await correctDelivery(store, { ...input, reason: body.reason, requestId: body.requestId, expectedAuditId: body.expectedAuditId }, Date.now())
+      : await confirmDelivery(store, input, Date.now());
     return Response.json(result, { status: result.status === "confirmed" ? 200 : 409, headers: { "Cache-Control": "private, no-store" } });
   } catch {
     return Response.json({ status: "refused", reason: "unavailable" }, { status: 503 });

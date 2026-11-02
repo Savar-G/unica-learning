@@ -13,12 +13,18 @@ export function deliveryFromRow(r: ReceiptRow): DeliveryReceipt {
 
 /** Pass the current session. The RPC checks live admin membership; reads use RLS. */
 export function workbookDeliveryStore(db: SupabaseClient<Database>): DeliveryStore {
-  return {
+  const store: DeliveryStore = {
     async receipt(id) {
       if (!isUuid(id)) return null;
       const { data, error } = await db.from("workbook_delivery_receipts").select("*").eq("workbook_id", id).maybeSingle();
       if (error) throw new Error(`delivery read: ${error.message}`);
-      return data ? deliveryFromRow(data) : null;
+      if (!data) return null;
+      const original = deliveryFromRow(data);
+      const correction = await db.from("workbook_delivery_corrections").select("*").eq("workbook_id", id).order("audit_id", { ascending: false }).limit(1).maybeSingle();
+      if (correction.error) throw new Error(`delivery correction read: ${correction.error.message}`);
+      const c = correction.data;
+      return c ? { ...original, originalDeliveredAt: original.deliveredAt, deliveredAt: new Date(c.delivered_at).toISOString(), localTime: c.local_time,
+        correction: { id: c.id, reason: c.reason, deliveredAt: new Date(c.delivered_at).toISOString(), recordedAt: new Date(c.recorded_at).toISOString(), actorId: c.actor_id, auditId: c.audit_id, previousDeliveredAt: new Date(c.previous_delivered_at).toISOString() } } : original;
     },
     async confirm(input) {
       const zone = input.timeZone;
@@ -29,9 +35,29 @@ export function workbookDeliveryStore(db: SupabaseClient<Database>): DeliverySto
       });
       if (error) throw new Error(`delivery confirm: ${error.message}`);
       const a = data as { status?: string; reason?: string; receipt?: ReceiptRow } | null;
-      if (a?.status === "confirmed" && a.receipt?.workbook_id) return { status: "confirmed", receipt: deliveryFromRow(a.receipt) };
+      if (a?.status === "confirmed" && a.receipt?.workbook_id) {
+        const receipt = await store.receipt(input.workbookId);
+        if (receipt) return { status: "confirmed", receipt };
+      }
       if (a?.status === "refused" && typeof a.reason === "string") return { status: "refused", reason: a.reason };
       throw new Error("delivery confirm: unexpected answer");
     },
+    async correct(input) {
+      const zone = input.timeZone;
+      const { data, error } = await db.rpc("correct_workbook_delivery", {
+        p_workbook: input.workbookId, p_child: input.childId, p_number: input.number,
+        p_delivered: input.deliveredAt, p_local: input.localTime, p_zone: typeof zone === "string" ? zone : zone.zone,
+        p_override: typeof zone === "string", p_reason: input.reason, p_request: input.requestId, p_expected_audit: input.expectedAuditId,
+      });
+      if (error) throw new Error(`delivery correction: ${error.message}`);
+      const a = data as { status?: string; reason?: string } | null;
+      if (a?.status === "refused" && typeof a.reason === "string") return { status: "refused", reason: a.reason };
+      if (a?.status === "corrected") {
+        const receipt = await store.receipt(input.workbookId);
+        if (receipt) return { status: "confirmed", receipt };
+      }
+      throw new Error("delivery correction: unexpected answer");
+    },
   };
+  return store;
 }

@@ -1,10 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  effectiveZone, familyZone, familyTime, familyWhen, formatCalendarDate, localDay, localWeekStart,
+  effectiveZone, familyZone, familyZoneName, familyTime, familyWhen, formatCalendarDate, localDay, localWeekStart,
   PACIFIC_ZONE, warnIfTimeZoneDataIsOld, zoneFor,
 } from "@/lib/family-time";
 
 afterEach(() => vi.restoreAllMocks());
+
+it.each([
+  ["America/Toronto", "Toronto time"], ["America/Vancouver", "Vancouver time"],
+  ["America/St_Johns", "St Johns time"], ["America/New_York", "New York time"],
+  ["US/Eastern", "New York time"], ["UTC", "Coordinated Universal Time"], ["Etc/GMT+6", "UTC-6 time"],
+])("names %s in plain words", (zone, name) => {
+  expect(familyZoneName(zone)).toBe(name);
+  expect(familyZoneName({ zone, override: false })).toBe(name);
+});
 const at = Date.parse("2026-11-18T04:29:00Z");
 
 describe("Canadian family clocks", () => {

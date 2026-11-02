@@ -162,6 +162,18 @@ export function warnIfTimeZoneDataIsOld(warn: (message: string) => void = consol
 export const familyTime = (at: number, timeZone: FamilyZone): string =>
   formatInZone(at, timeZone, { hour: "numeric", minute: "2-digit" });
 
+/** A stable place name for people, without seasonal abbreviations or an IANA identifier. */
+export function familyZoneName(zone: FamilyZone): string {
+  const name = typeof zone === "string" ? zone : zone.zone;
+  const canonical = normalizeTimeZone(name) ?? PACIFIC_ZONE;
+  const fixed = /^(?:Etc\/)?(?:GMT|UTC)([+-]\d+)?$/.exec(canonical);
+  if (fixed) {
+    const hours = fixed[1] ? -Number(fixed[1]) : 0;
+    return hours ? `UTC${hours > 0 ? "+" : ""}${hours} time` : "Coordinated Universal Time";
+  }
+  return `${canonical.split("/").at(-1)!.replaceAll("_", " ")} time`;
+}
+
 /** For example, "4:15 p.m. on Monday, October 12", in the family's time zone. */
 export function familyWhen(at: number, timeZone: FamilyZone): string {
   const day = formatInZone(at, timeZone, { weekday: "long", month: "long", day: "numeric" });

@@ -8,14 +8,13 @@
   "checks": [
     "Family freeze refuses receipt retries",
     "Real worker deletes dedicated synthetic family",
-    "Receipt and audit rows cascade",
+    "Receipt, correction and audit rows cascade",
     "Auth user absent"
   ],
   "proofLimits": [
     "No image bucket added in this slice. Existing scan storage tests belong to S1. Retention eligibility code is unchanged."
   ],
   "finalCleanup": {
-    "remainingQaFamilies": 0,
-    "remainingQaAuditRows": 0
+    "remainingQaFamilies": 0
   }
 }

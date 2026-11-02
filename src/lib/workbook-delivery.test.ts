@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { confirmDelivery, deliveryDeadlines, deliveryInstant, firstDelivery, type DeliveryReceipt, type DeliveryStore } from "@/lib/workbook-delivery";
+import { confirmDelivery, correctDelivery, deliveryDeadlines, deliveryInstant, firstDelivery, type DeliveryReceipt, type DeliveryStore } from "@/lib/workbook-delivery";
 
 const receipt: DeliveryReceipt = {
   workbookId: "00000000-0000-4000-8000-000000000001", parentId: "00000000-0000-4000-8000-000000000002",
@@ -25,7 +25,7 @@ describe("delivery time and billing prerequisites through public interfaces", ()
   });
   it("refuses malformed dates, future delivery, bad zones and identities before a write", async () => {
     const confirm = vi.fn();
-    const store: DeliveryStore = { confirm, receipt: vi.fn() };
+    const store: DeliveryStore = { confirm, correct: vi.fn(), receipt: vi.fn() };
     for (const localTime of ["2026-02-30T10:00", "2026-11-02T24:00", "2026-11-02T10:60", "2026-11-03T09:00", "bad"]) {
       expect(await confirmDelivery(store, { ...input, localTime }, now)).toMatchObject({ status: "refused" });
     }
@@ -35,11 +35,11 @@ describe("delivery time and billing prerequisites through public interfaces", ()
   });
   it("passes only the validated actual time to the atomic store", async () => {
     const confirm = vi.fn().mockResolvedValue({ status: "confirmed", receipt });
-    expect(await confirmDelivery({ confirm, receipt: vi.fn() }, input, now)).toEqual({ status: "confirmed", receipt });
+    expect(await confirmDelivery({ confirm, correct: vi.fn(), receipt: vi.fn() }, input, now)).toEqual({ status: "confirmed", receipt });
     expect(confirm).toHaveBeenCalledWith({ ...input, deliveredAt: receipt.deliveredAt });
   });
   it("requires the exact shipped first book receipt for separate billing", async () => {
-    const store: DeliveryStore = { confirm: vi.fn(), receipt: vi.fn().mockResolvedValue(receipt) };
+    const store: DeliveryStore = { confirm: vi.fn(), correct: vi.fn(), receipt: vi.fn().mockResolvedValue(receipt) };
     const book = { id: receipt.workbookId, parentId: receipt.parentId, childId: receipt.childId, number: 1, status: "shipped" };
     expect(await firstDelivery(store, [book], receipt.parentId, receipt.childId)).toEqual(receipt);
     for (const change of [{ number: 2 }, { status: "printed" }, { parentId: "other" }, { childId: "other" }]) {
@@ -50,4 +50,29 @@ describe("delivery time and billing prerequisites through public interfaces", ()
     store.receipt = vi.fn().mockResolvedValue(null);
     expect(await firstDelivery(store, [book], receipt.parentId, receipt.childId)).toBeNull();
   });
+});
+
+// A running four-day clock is derived from the original receipt before the correction is made.
+it("uses a corrected time after the reminder clock has started and preserves the original audit", async () => {
+  const correction = { ...input, requestId: "00000000-0000-4000-8000-000000000004", expectedAuditId: receipt.auditId,
+    localTime: "2026-10-29T09:37", reason: "  Parent confirmed the arrival date  " };
+  const corrected = { ...receipt, originalDeliveredAt: receipt.deliveredAt, deliveredAt: "2026-10-29T13:37:00.000Z", localTime: correction.localTime };
+  const store: DeliveryStore = { receipt: vi.fn().mockResolvedValue(receipt), confirm: vi.fn(), correct: vi.fn().mockResolvedValue({ status: "confirmed", receipt: corrected }) };
+  const before = deliveryDeadlines((await store.receipt(receipt.workbookId))!);
+  expect(before.reminderAt).toBe("2026-11-03T14:37:00.000Z");
+  const result = await correctDelivery(store, correction, now);
+  expect(result).toEqual({ status: "confirmed", receipt: corrected });
+  expect(store.correct).toHaveBeenCalledWith({ ...correction, reason: "Parent confirmed the arrival date", deliveredAt: corrected.deliveredAt });
+  if (result.status !== "confirmed") throw new Error("Correction was refused");
+  expect(deliveryDeadlines(result.receipt)).toEqual({ reminderAt: "2026-11-02T14:37:00.000Z", backstopAt: "2026-11-19T14:37:00.000Z" });
+  expect(result.receipt.originalDeliveredAt).toBe(receipt.deliveredAt);
+  expect(result.receipt.auditId).toBe(receipt.auditId);
+});
+it("refuses a missing reason, invalid request/version, future or pre-validation invalid time before correcting", async () => {
+  const store: DeliveryStore = { receipt: vi.fn(), confirm: vi.fn(), correct: vi.fn() };
+  const correction = { ...input, requestId: "00000000-0000-4000-8000-000000000004", expectedAuditId: 1, reason: "Parent confirmed the date" };
+  for (const change of [{ reason: " " }, { reason: "x".repeat(301) }, { requestId: "bad" }, { expectedAuditId: 0 }, { localTime: "2099-01-01T10:00" }, { localTime: "2026-02-30T10:00" }]) {
+    expect(await correctDelivery(store, { ...correction, ...change }, now)).toMatchObject({ status: "refused" });
+  }
+  expect(store.correct).not.toHaveBeenCalled();
 });

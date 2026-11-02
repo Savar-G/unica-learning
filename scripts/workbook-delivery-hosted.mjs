@@ -100,6 +100,65 @@ if(mode==='prepare'){
  checks.push('Admin reload renders missing delivery work and the saved receipt. Direct RPC time checks hold.');
  writeFileSync(`${evidence}/hosted-actions.json`,JSON.stringify({checks,first,second,firstDeadlines:core.deliveryDeadlines(first),secondDeadlines:core.deliveryDeadlines(second),proofLimits:['Synthetic families only. No paid AI or real Stripe request. S11b progress/re-evaluation remains future work.']},null,2)+'\n');
  console.log(checks.join('\n'));
+} else if(mode==='check-corrections'){
+ await build({entryPoints:['src/lib/workbook-delivery.ts','src/lib/workbook-delivery-store.ts'],bundle:true,platform:'node',format:'cjs',outdir:'/tmp/r474-modules',packages:'external',tsconfig:'tsconfig.json'});
+ const core=require('/tmp/r474-modules/workbook-delivery.js'),{workbookDeliveryStore}=require('/tmp/r474-modules/workbook-delivery-store.js');
+ const f=JSON.parse(readFileSync(fixtureFile)),[owner,other,admin]=f.families;
+ const [a,o,x]=await Promise.all([session(admin),session(owner),session(other)]),store=workbookDeliveryStore(a.db),checks=[];
+ const original=await store.receipt(owner.books[0]);assert(original && !original.correction);
+ const originalRow=ok(await service.from('workbook_delivery_receipts').select('*').eq('workbook_id',owner.books[0]).single());
+ const beforeDeadlines=core.deliveryDeadlines(original);assert(Date.now()>Date.parse(beforeDeadlines.reminderAt),'The original reminder clock must have reached its deadline');
+ const input={action:'correct',childId:owner.child,number:1,localTime:'2026-10-30T09:37',timeZone:original.timeZone,reason:'Parent confirmed the arrival date',requestId:randomUUID(),expectedAuditId:original.auditId};
+ for(const s of [null,o,x])assert.equal((await action(s,owner.books[0],input)).http,404);
+ const direct={p_workbook:owner.books[0],p_child:owner.child,p_number:1,p_delivered:'2026-10-30T13:37Z',p_local:input.localTime,p_zone:'America/Toronto',p_override:true,p_reason:input.reason,p_request:input.requestId,p_expected_audit:input.expectedAuditId};
+ for(const s of [o,x])assert.equal(ok(await s.db.rpc('correct_workbook_delivery',direct)).reason,'admin_required');
+ const anonymous=createClient(url,pub,{auth:{persistSession:false}});assert((await anonymous.rpc('correct_workbook_delivery',direct)).error);
+ const concurrent=await Promise.all(Array.from({length:8},()=>action(a,owner.books[0],input)));assert(concurrent.every(r=>r.http===200),JSON.stringify(concurrent));
+ const corrected=await store.receipt(owner.books[0]);assert(corrected.correction);assert.equal(corrected.originalDeliveredAt,original.deliveredAt);assert.equal(corrected.deliveredAt,'2026-10-30T13:37:00.000Z');
+ assert.equal(corrected.correction.reason,input.reason);assert.equal(corrected.correction.actorId,admin.id);assert.equal(corrected.correction.previousDeliveredAt,original.deliveredAt);assert(Date.parse(corrected.correction.recordedAt)>Date.parse(corrected.deliveredAt));
+ assert.deepEqual(core.deliveryDeadlines(corrected),{reminderAt:'2026-11-03T14:37:00.000Z',backstopAt:'2026-11-20T14:37:00.000Z'});
+ assert.deepEqual(ok(await service.from('workbook_delivery_receipts').select('*').eq('workbook_id',owner.books[0]).single()),originalRow);
+ assert.deepEqual(await workbookDeliveryStore((await session(admin)).db).receipt(owner.books[0]),corrected);
+ const corrections=ok(await service.from('workbook_delivery_corrections').select('*').eq('workbook_id',owner.books[0]));assert.equal(corrections.length,1);
+ const audit=ok(await service.from('workbook_audit').select('*').eq('id',corrected.correction.auditId).single());
+ assert.equal(audit.detail.originalDeliveredAt,originalRow.delivered_at);assert.equal(Date.parse(audit.detail.deliveredAt),Date.parse(corrected.deliveredAt));assert.equal(audit.detail.reason,input.reason);assert.equal(audit.actor_id,admin.id);
+ assert.equal(ok(await service.from('workbook_audit').select('id').eq('workbook_id',owner.books[0]).eq('action','workbook-delivered')).length,1);
+ checks.push('After the original four-day deadline passed, eight concurrent HTTP corrections append one correction/audit. Reload uses the new four/21-day anchors; original receipt and audit remain unchanged.');
+ assert.equal((await action(a,owner.books[0],{...input,reason:'Changed reason'})).result.reason,'correction_conflict');
+ const current={...input,expectedAuditId:corrected.correction.auditId};
+ for(const [change,reason] of [[{reason:' '},'correction_reason_required'],[{reason:'x'.repeat(301)},'correction_reason_required'],[{localTime:'2099-01-01T09:37'},'invalid_delivery_time'],[{localTime:'2026-09-30T09:37'},'invalid_delivery_time'],[{localTime:'2026-02-30T09:37'},'invalid_delivery_time'],[{childId:other.child},'identity_mismatch'],[{number:2},'identity_mismatch'],[{localTime:corrected.localTime},'time_unchanged']]){
+  const r=await action(a,owner.books[0],{...current,...change,requestId:randomUUID()});assert.equal(r.result.reason,reason,JSON.stringify(r));
+ }
+ assert.equal((await action(a,other.books[0],{...current,childId:other.child,requestId:randomUUID()})).result.reason,'receipt_required');
+ for(const [delivered,local] of [['2099-01-01T14:37Z','2099-01-01T09:37'],['2026-09-30T13:37Z','2026-09-30T09:37'],['2026-10-30T14:37Z',input.localTime]]){
+  assert.equal(ok(await a.db.rpc('correct_workbook_delivery',{...direct,p_request:randomUUID(),p_delivered:delivered,p_local:local})).status,'refused');
+ }
+ checks.push('Short reason required. Invalid/future/before-shipment times, missing receipt, foreign child/number, changed retry and unchanged time refused through HTTP; direct RPC checks hold.');
+ const racing=await Promise.all(['2026-10-31T09:37','2026-11-01T09:37'].map(localTime=>action(a,owner.books[0],{...current,localTime,requestId:randomUUID()})));
+ assert.equal(racing.filter(r=>r.http===200).length,1);assert.equal(racing.filter(r=>r.result.reason==='stale_delivery').length,1);
+ const latest=await store.receipt(owner.books[0]);assert.notEqual(latest.correction.auditId,corrected.correction.auditId);
+ assert.deepEqual((await action(a,owner.books[0],input)).result.receipt,latest,'Retrying an old correction cannot restore its old effective time');
+ assert.deepEqual((await action(a,owner.books[0],{childId:owner.child,number:1,localTime:original.localTime,timeZone:original.timeZone})).result.receipt,latest);
+ assert.equal(ok(await service.from('workbook_delivery_corrections').select('id').eq('workbook_id',owner.books[0])).length,2);
+ assert.deepEqual(ok(await service.from('workbook_delivery_receipts').select('*').eq('workbook_id',owner.books[0]).single()),originalRow);
+ assert.equal(ok(await service.from('workbook_delivery_corrections').select('*').eq('id',corrected.correction.id).single()).reason,input.reason);
+ checks.push('Two different corrections from the same version race: one wins, one is stale. A retry of the older correction or original confirmation returns the latest effective receipt and creates no extra audit.');
+ assert.deepEqual(await workbookDeliveryStore(o.db).receipt(owner.books[0]),latest);assert.equal(await workbookDeliveryStore(x.db).receipt(owner.books[0]),null);
+ assert.equal(ok(await x.db.from('workbook_delivery_corrections').select('*').eq('workbook_id',owner.books[0])).length,0);
+ assert((await anonymous.from('workbook_delivery_corrections').select('*')).error);
+ for(const s of [a,o,x]){
+  assert((await s.db.from('workbook_delivery_corrections').insert({id:randomUUID()})).error);
+  assert((await s.db.from('workbook_delivery_corrections').update({reason:'overwrite'}).eq('workbook_id',owner.books[0])).error);
+  assert((await s.db.from('workbook_delivery_corrections').delete().eq('workbook_id',owner.books[0])).error);
+ }
+ assert((await service.from('workbook_delivery_corrections').update({reason:'overwrite'}).eq('workbook_id',owner.books[0])).error);
+ assert.equal((await core.firstDelivery(store,[{id:owner.books[0],parentId:owner.id,childId:owner.child,number:1,status:'shipped'}],owner.id,owner.child)).deliveredAt,latest.deliveredAt);
+ checks.push('Owner/admin readers use the effective correction; another family sees none. All browser direct writes and service updates are denied. The separate billing prerequisite reads the same effective receipt.');
+ const html=await fetch(`${base}/admin/workbooks/${owner.books[0]}`,{headers:{cookie:a.header}}).then(r=>r.text());
+ assert(html.includes('Toronto time'));assert(html.includes('Correct delivery time'));assert(html.includes('Corrected delivery time'));
+ assert.equal((html.match(/To start the first free month/g)||[]).length,1);assert(!html.includes('To start Alex'));
+ writeFileSync(`${evidence}/hosted-corrections.json`,JSON.stringify({checks,original,corrected,latest,beforeDeadlines,correctedDeadlines:core.deliveryDeadlines(corrected),latestDeadlines:core.deliveryDeadlines(latest),audit:{actorId:audit.actor_id,at:audit.at,detail:audit.detail},proofLimits:['No reminder email had been sent: S11b dispatch is not implemented. The original anchor was already due before correction. No Stripe/AI call.']},null,2)+'\n');
+ console.log(checks.join('\n'));
 } else if(mode==='delete'){
  const f=JSON.parse(readFileSync(fixtureFile)),[owner,,admin]=f.families,a=await session(admin);
  const workerKey=JSON.parse(readFileSync('/tmp/r474-worker-key.json')).api_key;
@@ -109,11 +168,13 @@ if(mode==='prepare'){
  assert.equal(ok(await a.db.rpc('request_family_deletion',{p:owner.id,confirmation:owner.email})),'requested');
  const input={childId:owner.child,number:1,localTime:'2026-10-25T09:37',timeZone:'America/Toronto'};
  assert.equal((await action(a,owner.books[0],input)).result.reason,'family_frozen');
+ assert.equal((await action(a,owner.books[0],{...input,action:'correct',reason:'Frozen family check',requestId:randomUUID(),expectedAuditId:1})).result.reason,'family_frozen');
  const result=await runFamilyDeletion(worker,owner.id,worker,Date.now()+45000);assert.equal(result.state,'deleted',JSON.stringify(result));
  assert.equal(ok(await service.from('workbook_delivery_receipts').select('*').eq('parent_id',owner.id)).length,0);
  assert.equal(ok(await service.from('workbook_audit').select('*').eq('parent_id',owner.id)).length,0);
+ assert.equal(ok(await service.from('workbook_delivery_corrections').select('*').eq('parent_id',owner.id)).length,0);
  assert((await worker.auth.admin.getUserById(owner.id)).error);
- writeFileSync(`${evidence}/hosted-deletion.json`,JSON.stringify({credential:'Existing retention_worker key',result,checks:['Family freeze refuses receipt retries','Real worker deletes dedicated synthetic family','Receipt and audit rows cascade','Auth user absent'],proofLimits:['No image bucket added in this slice. Existing scan storage tests belong to S1. Retention eligibility code is unchanged.']},null,2)+'\n');
+ writeFileSync(`${evidence}/hosted-deletion.json`,JSON.stringify({credential:'Existing retention_worker key',result,checks:['Family freeze refuses receipt retries','Real worker deletes dedicated synthetic family','Receipt, correction and audit rows cascade','Auth user absent'],proofLimits:['No image bucket added in this slice. Existing scan storage tests belong to S1. Retention eligibility code is unchanged.']},null,2)+'\n');
  for(const fam of f.families.slice(1))ok(await service.auth.admin.deleteUser(fam.id));
  console.log('PASS: hosted family deletion with actual retention_worker credentials; all three synthetic families removed.');
-} else throw new Error('Use prepare, check, or delete');
+} else throw new Error('Use prepare, check, check-corrections, or delete');

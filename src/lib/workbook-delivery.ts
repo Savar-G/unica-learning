@@ -1,20 +1,26 @@
 import { addDays, localDateTime, localDay, normalizeTimeZone, partsInZone, type FamilyZone } from "@/lib/family-time";
 import { isUuid } from "@/lib/workbook-content";
 
-/** One immutable receipt. Audit time and actor come from the authenticated database action. */
+/** The original receipt plus its latest append-only correction, if any. deliveredAt is effective. */
 export interface DeliveryReceipt {
   workbookId: string; parentId: string; childId: string; number: number;
   deliveredAt: string; localTime: string; timeZone: FamilyZone;
   recordedAt: string; actorId: string; auditId: number;
+  correction?: { id: string; reason: string; deliveredAt: string; recordedAt: string; actorId: string; auditId: number; previousDeliveredAt: string };
+  originalDeliveredAt?: string;
 }
 export interface DeliveryInput {
   workbookId: string; childId: string; number: number; localTime: string; timeZone: FamilyZone;
+}
+export interface DeliveryCorrectionInput extends DeliveryInput {
+  requestId: string; expectedAuditId: number; reason: string;
 }
 export type DeliveryResult = { status: "confirmed"; receipt: DeliveryReceipt } | { status: "refused"; reason: string };
 export interface DeliveryStore {
   receipt(workbookId: string): Promise<DeliveryReceipt | null>;
   /** Atomic admin authorization, identity/status/freeze checks, insert-or-return, and audit. */
   confirm(input: DeliveryInput & { deliveredAt: string }): Promise<DeliveryResult>;
+  correct(input: DeliveryCorrectionInput & { deliveredAt: string }): Promise<DeliveryResult>;
 }
 
 export function deliveryLocalTime(at: string | number, zone: FamilyZone): string {
@@ -35,6 +41,17 @@ export function deliveryInstant(local: string, zone: FamilyZone): number | null 
 
 /** No billing or AI dependency. A retry keeps the original receipt, actor, and server time. */
 export async function confirmDelivery(store: DeliveryStore, input: DeliveryInput, now: number): Promise<DeliveryResult> {
+  return validatedDelivery(input, now, (checked) => store.confirm(checked));
+}
+
+export async function correctDelivery(store: DeliveryStore, input: DeliveryCorrectionInput, now: number): Promise<DeliveryResult> {
+  const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+  if (!reason || reason.length > 300) return { status: "refused", reason: "correction_reason_required" };
+  if (!isUuid(input.requestId) || !Number.isSafeInteger(input.expectedAuditId) || input.expectedAuditId < 1) return { status: "refused", reason: "invalid_correction" };
+  return validatedDelivery(input, now, (checked) => store.correct({ ...checked, requestId: input.requestId, expectedAuditId: input.expectedAuditId, reason }));
+}
+
+async function validatedDelivery(input: DeliveryInput, now: number, write: (input: DeliveryInput & { deliveredAt: string }) => Promise<DeliveryResult>): Promise<DeliveryResult> {
   if (!isUuid(input.workbookId) || !isUuid(input.childId) || !Number.isInteger(input.number) || input.number < 1 || input.number > 1000) return { status: "refused", reason: "identity_mismatch" };
   const supplied = typeof input.timeZone === "string" ? input.timeZone : input.timeZone?.zone;
   const zone = normalizeTimeZone(supplied);
@@ -42,10 +59,10 @@ export async function confirmDelivery(store: DeliveryStore, input: DeliveryInput
   const timeZone: FamilyZone = typeof input.timeZone === "string" ? zone : { zone, override: false };
   const at = deliveryInstant(input.localTime, timeZone);
   if (at === null || !Number.isFinite(now) || at > now) return { status: "refused", reason: "invalid_delivery_time" };
-  return store.confirm({ ...input, timeZone, deliveredAt: new Date(at).toISOString() });
+  return write({ ...input, timeZone, deliveredAt: new Date(at).toISOString() });
 }
 
-/** Initial anchors only. S11b owns scan activity, eligibility, re-evaluation, and send-once claims. */
+/** Use the effective time after corrections. S11b owns activity, re-evaluation, and send-once claims. */
 export function deliveryDeadlines(receipt: DeliveryReceipt): { reminderAt: string; backstopAt: string } {
   const zone = receipt.timeZone;
   const p = partsInZone(receipt.deliveredAt, zone, { hour: "numeric", minute: "numeric", hourCycle: "h23" });

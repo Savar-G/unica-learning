@@ -3,6 +3,7 @@
 import type { AuditEntry } from "@/lib/admin-store";
 import { when } from "@/lib/admin-view";
 import { Table } from "@/components/admin";
+import { familyZoneName, formatInZone, type FamilyZone } from "@/lib/family-time";
 
 const ACTION: Record<string, string> = {
   "run-started": "Started preparing", "run-retried": "Tried again after an error", "run-failed": "Failed", "run-stopped": "Stopped a run with no progress",
@@ -10,11 +11,21 @@ const ACTION: Record<string, string> = {
   "workbook-comments-sent": "Applied review comments",
   "workbook-approved": "Approved for print", "workbook-printed": "Marked printed", "workbook-shipped": "Marked shipped",
   "workbook-delivered": "Confirmed workbook delivered",
+  "workbook-delivery-corrected": "Corrected delivery time",
 };
 
 /** An audit entry's details in plain words; the raw keys and values stay in the tooltip. */
 function auditDetail(detail: Record<string, unknown>): string {
   const lines: string[] = [];
+  if (typeof detail.deliveredAt === "string" && typeof detail.timeZone === "string") {
+    const zone: FamilyZone = detail.zoneOverride === false ? { zone: detail.timeZone, override: false } : detail.timeZone;
+    const time = (at: string) => formatInZone(at, zone, { dateStyle: "medium", timeStyle: "short" });
+    if (typeof detail.originalDeliveredAt === "string") lines.push(`Original delivery: ${time(detail.originalDeliveredAt)}`);
+    if (typeof detail.previousDeliveredAt === "string") lines.push(`Changed from ${time(detail.previousDeliveredAt)} to ${time(detail.deliveredAt)}`);
+    else lines.push(`Delivered ${time(detail.deliveredAt)}`);
+    lines.push(familyZoneName(zone));
+    if (typeof detail.reason === "string") lines.push(`Reason: ${detail.reason}`);
+  }
   for (const [k, v] of Object.entries(detail)) {
     if (k === "comments" && typeof v === "number") lines.push(`${v} comments`);
     else if (k === "pages" && Array.isArray(v)) lines.push(`Pages ${v.join(", ")}`);

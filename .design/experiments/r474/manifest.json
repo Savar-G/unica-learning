@@ -8,7 +8,7 @@
   "constraint_mode": "existing-system",
   "branch": "site/workbook-delivery-confirm",
   "base": "63d52fad99928a2a1ab170ab1dcbed97303fdb39",
-  "codeSchemaSha256": "17e3b1871aa3b11374a5ca608eea95aee0e963f1b0a1cd1ac325bad5fa15898a",
+  "codeSchemaSha256": "6c3d4df8385e74e6bcdb499b8a3419d8703b249a782cedca21d06cf6cec291e2",
   "codeSchemaHashFiles": [
     "src/app/(product)/admin/next-steps/page.tsx",
     "src/app/(product)/admin/workbooks/page.tsx",
@@ -23,12 +23,14 @@
     "src/components/workbook-delivery.tsx",
     "src/lib/admin-store.ts",
     "src/lib/database.types.ts",
+    "src/lib/family-time.test.ts",
     "src/lib/family-time.ts",
     "src/lib/trial-delivery-route.test.ts",
     "src/lib/workbook-delivery-store.ts",
     "src/lib/workbook-delivery.test.ts",
     "src/lib/workbook-delivery.ts",
-    "supabase/migrations/20261102223812_workbook_delivery_receipts.sql"
+    "supabase/migrations/20261102223812_workbook_delivery_receipts.sql",
+    "supabase/migrations/20261102225721_workbook_delivery_corrections.sql"
   ],
   "fixture": "Three new, marked synthetic families per run. No real family row changed. All fixture families removed.",
   "browser": "Aside, account u0, desktop Chromium with viewport resizing",
@@ -76,10 +78,40 @@
       "file": "confirmed-phone.png",
       "state": "confirmed",
       "viewport": "phone"
+    },
+    {
+      "file": "correction-laptop.png",
+      "state": "correction",
+      "viewport": "laptop"
+    },
+    {
+      "file": "correction-tablet.png",
+      "state": "correction",
+      "viewport": "tablet"
+    },
+    {
+      "file": "correction-phone.png",
+      "state": "correction",
+      "viewport": "phone"
+    },
+    {
+      "file": "corrected-laptop.png",
+      "state": "corrected",
+      "viewport": "laptop"
+    },
+    {
+      "file": "corrected-tablet.png",
+      "state": "corrected",
+      "viewport": "tablet"
+    },
+    {
+      "file": "corrected-phone.png",
+      "state": "corrected",
+      "viewport": "phone"
     }
   ],
-  "humanVisualApproval": "pending",
-  "review": "Builder review only. Parent agent will arrange the code review.",
+  "humanVisualApproval": "Savar approved the initial appearance with three requested changes; all three are implemented.",
+  "review": "The separate Codex review of 87faf37 is outside this change set. Its findings have not been supplied.",
   "migration": {
     "name": "workbook_delivery_receipts",
     "hostedVersion": "20261102223909",
@@ -92,7 +124,7 @@
     "npm test": {
       "exit": 0,
       "files": 272,
-      "tests": 12404
+      "tests": 12413
     },
     "npx eslint src": {
       "exit": 0
@@ -106,5 +138,15 @@
     "No real Stripe call or paid AI call. Billing parameters tested with a fake provider.",
     "S11b owns progress scans, delivery re-evaluation, unique triggers, reminder eligibility and dispatch.",
     "S1 image-storage boundaries were not repeated; this slice adds no image or bucket."
-  ]
+  ],
+  "changeSetBase": "87faf3722ab267b03593438bd8d49669fa99b987",
+  "screenshotCount": 12,
+  "correctionMigration": {
+    "name": "workbook_delivery_corrections",
+    "hostedVersion": "20261102225755",
+    "project": "cdjobwsyzndtltzfpyqa",
+    "applied": true,
+    "typesGenerated": true,
+    "typesDiff": "106 added lines, only the correction table and RPC"
+  }
 }
