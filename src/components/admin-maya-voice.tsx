@@ -116,6 +116,7 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
   const [said, setSaid] = useState("");
   const [sending, setSending] = useState(false);
   const room = useRef<LkRoom | null>(null);
+  const endNotification = useRef<{ room: LkRoom; notify(): Promise<void> } | null>(null);
   const agent = useRef<string | null>(null);
   const audioHost = useRef<HTMLDivElement>(null);
   const liveSince = useRef<number | null>(null);
@@ -153,8 +154,9 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
       room.current = r;
       let terminal = false;
       let newestSegment = -1;
-      let notified = false;
-      const refreshEnded = () => { if (!notified) { notified = true; void onEnded(); } };
+      let notification: Promise<void> | null = null;
+      const refreshEnded = () => notification ??= Promise.resolve().then(onEnded);
+      endNotification.current = { room: r, notify: refreshEnded };
       const isMaya = (p: { kind?: unknown } | undefined) => p?.kind === ParticipantKind.AGENT;
       const segmentOf = (p: { attributes: Record<string, string> }) => {
         const raw = p.attributes["maya.segment"];
@@ -254,15 +256,24 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
   async function hangUp() {
     const r = room.current;
     if (!r) return;
+    const notify = endNotification.current?.room === r ? endNotification.current.notify : null;
     setCall("ending");
     try {
       if (agent.current) await r.localParticipant.performRpc({ destinationIdentity: agent.current, method: "maya.hang_up", payload: "", responseTimeout: 5000 });
     } catch {}
-    await r.disconnect();
-    room.current = null;
-    setCall("failed");
-    setError(ERROR_TEXT.disconnected);
-    await onEnded();
+    try {
+      await r.disconnect();
+    } finally {
+      if (room.current === r) {
+        room.current = null;
+        agent.current = null;
+        liveSince.current = null;
+        setMaya(null);
+        setCall("failed");
+        setError(ERROR_TEXT.disconnected);
+      }
+      await notify?.();
+    }
   }
 
   async function say(e: FormEvent) {
