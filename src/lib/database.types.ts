@@ -1935,6 +1935,29 @@ export type Database = {
         }
         Relationships: []
       }
+      scan_photo_notices: {
+        Row: {
+          acknowledged_at: string
+          parent_id: string
+        }
+        Insert: {
+          acknowledged_at?: string
+          parent_id: string
+        }
+        Update: {
+          acknowledged_at?: string
+          parent_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_photo_notices_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: true
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scan_photos: {
         Row: {
           child_id: string
@@ -3528,6 +3551,10 @@ export type Database = {
           resource_kind: string
           token: string
         }
+        Returns: boolean
+      }
+      acknowledge_scan_photo_notice: {
+        Args: { p_parent: string }
         Returns: boolean
       }
       admin_assessments: {

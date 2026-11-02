@@ -27,7 +27,7 @@ async function api(path: string, init?: RequestInit) {
   return data;
 }
 
-export function ScanPages({ childrenList, parent }: { childrenList: { id: string; first_name: string }[]; parent: string }) {
+export function ScanPages({ childrenList, parent, noticeAcknowledged }: { childrenList: { id: string; first_name: string }[]; parent: string; noticeAcknowledged: boolean }) {
   const [child, setChild] = useState(childrenList[0]?.id ?? "");
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [current, setCurrent] = useState<Photo | null>(null);
@@ -36,6 +36,11 @@ export function ScanPages({ childrenList, parent }: { childrenList: { id: string
   const [message, setMessage] = useState("");
   const [failed, setFailed] = useState(false);
   const [recoverable, setRecoverable] = useState(false);
+  const [acknowledged, setAcknowledged] = useState(noticeAcknowledged);
+  const [noticeOpen, setNoticeOpen] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
+  const replacement = useRef<Promise<void> | null>(null);
+  const operations = useRef(0);
   const upload = useRef<{ id: string } | null>(null);
   const epoch = useRef(0);
   const invalidate = useCallback(() => { epoch.current++; }, []);
@@ -54,7 +59,7 @@ export function ScanPages({ childrenList, parent }: { childrenList: { id: string
   useEffect(() => {
     const { data } = browserClient().auth.onAuthStateChange((_event, session) => {
       if (session?.user.id !== parent) {
-        epoch.current++; clearImage(); setCurrent(null); setPhotos([]); upload.current = null;
+        epoch.current++; operations.current = 0; clearImage(); setCurrent(null); setPhotos([]); upload.current = null; replacement.current = null;
         setFailed(true); setMessage("Your account changed. Sign in again to view photos.");
       }
     });
@@ -81,6 +86,7 @@ export function ScanPages({ childrenList, parent }: { childrenList: { id: string
 
   async function run(action: () => Promise<void>) {
     const version = epoch.current;
+    operations.current++;
     setBusy(true); setMessage(""); setFailed(false); setRecoverable(false);
     try { await action(); }
     catch (error) {
@@ -88,7 +94,21 @@ export function ScanPages({ childrenList, parent }: { childrenList: { id: string
         setFailed(true); setMessage(errorText[error instanceof Error ? error.message : ""] ?? "We cannot complete this step. Try again.");
         setRecoverable(Boolean(upload.current) && (!(error instanceof Error) || !errorText[error.message] || error.message === "uncertain"));
       }
-    } finally { if (version === epoch.current) setBusy(false); }
+    } finally { if (version === epoch.current) { operations.current--; setBusy(operations.current > 0); } }
+  }
+
+  function takeDifferentPhoto(photo: Photo) {
+    const version = epoch.current;
+    const discarded = api(`/api/account/scans/${photo.id}`, { method: "DELETE" }).then(async () => {
+      if (version !== epoch.current) return;
+      clearImage(); setCurrent(null); upload.current = null; setMessage("");
+      await list();
+    });
+    replacement.current = discarded;
+    void run(() => discarded);
+    // Keep the camera/picker within the click's user activation, including Safari.
+    // A selected replacement waits for the server discard before it can upload.
+    picker.current?.click();
   }
 
   async function send(file: File) {
@@ -107,22 +127,35 @@ export function ScanPages({ childrenList, parent }: { childrenList: { id: string
   }
 
   return <div className="scan-pages">
-    <p className="lead">Keep a photo of a finished page with your child&apos;s workbook.</p>
+    <input ref={picker} hidden aria-label="Take or choose a photo" type="file" accept="image/jpeg,image/png,image/webp,image/heic" capture="environment" disabled={!child} onChange={(event) => {
+      const file = event.target.files?.[0];
+      const version = epoch.current;
+      if (file) void run(async () => { await replacement.current; if (version !== epoch.current) return; replacement.current = null; await send(file); });
+      event.target.value = "";
+    }} />
+    <p className="lead">Take a photo of each finished page. Later, we&apos;ll use it to mark your child&apos;s work.</p>
     <label className="scan-child">Child
       <select value={child} disabled={busy} onChange={(event) => {
-        epoch.current++; clearImage(); setCurrent(null); setPhotos([]); upload.current = null; setMessage(""); setBusy(false); setChild(event.target.value);
+        epoch.current++; operations.current = 0; clearImage(); setCurrent(null); setPhotos([]); upload.current = null; replacement.current = null; setMessage(""); setBusy(false); setChild(event.target.value);
       }}>{childrenList.map((c) => <option key={c.id} value={c.id}>{c.first_name}</option>)}</select>
     </label>
-    {!current && <section className="acct-card scan-notice" aria-label="About your page photos">
+    {!current && acknowledged && <p className="small scan-privacy-line">Photos are private and kept for 90 days. <button type="button" className="scan-link" aria-expanded={noticeOpen} aria-controls="scan-photo-notice" onClick={() => setNoticeOpen(!noticeOpen)}>More about photos</button></p>}
+    {!current && (!acknowledged || noticeOpen) && <section id="scan-photo-notice" className="acct-card scan-notice" aria-label="About your page photos">
       <h2>Before you take a photo</h2>
       <p>We keep one private page photo for up to 90 days. We remove photo details such as the location. We do not keep the original camera file.</p>
       <p>The whole page photo will be used for marking by an AI service when checking is available. It can show your child&apos;s first name and printed page code. No marking happens yet.</p>
       <p>You and our admin team can view the photo. You can delete it sooner. We will keep marks and the AI&apos;s reading of written answers until your family account is deleted. <Link href="/privacy">Read about privacy</Link>.</p>
+      {!acknowledged && <button className="btn ghost" disabled={busy} onClick={() => void run(async () => {
+        const version = epoch.current;
+        await api("/api/account/scans/notice", { method: "POST" });
+        if (version === epoch.current) { setAcknowledged(true); setNoticeOpen(false); }
+      })}>Got it</button>}
+      {acknowledged && <button className="scan-link" onClick={() => setNoticeOpen(false)}>Close photo details</button>}
     </section>}
     {!current && <section className="scan-capture">
       <h2>Photograph one finished page</h2>
       <p>Lay the page flat in good light. Keep all four corners and the QR code in view.</p>
-      <label className={`btn scan-file${busy ? " scan-disabled" : ""}`}>{busy ? "Uploading photo..." : "Take or choose a photo"}<input aria-label="Take or choose a photo" type="file" accept="image/jpeg,image/png,image/webp,image/heic" capture="environment" disabled={busy || !child} onChange={(event) => { const file = event.target.files?.[0]; if (file) void run(() => send(file)); event.target.value = ""; }} /></label>
+      <button type="button" className="btn scan-file" disabled={busy || !child} onClick={() => picker.current?.click()}>{busy ? "Uploading photo..." : "Take or choose a photo"}</button>
       <p className="small">One page in each photo. No marks or scores yet.</p>
     </section>}
     {message && <p role={failed ? "alert" : "status"} className={`acct-alert${failed ? "" : " acct-saved"}`}>{message}</p>}
@@ -142,13 +175,15 @@ export function ScanPages({ childrenList, parent }: { childrenList: { id: string
           const version = epoch.current;
           const data = await api(`/api/account/scans/${current.id}`, { method: "POST" });
           if (version !== epoch.current) return;
-          setCurrent(data.photo); setMessage("Photo saved. No marking has started."); await list();
+          setCurrent(data.photo); setAcknowledged(true); setNoticeOpen(false); setMessage("Photo saved. No marking has started."); await list();
         })}>Save this page</button>}
-        <button className="btn ghost" disabled={busy} onClick={() => void run(async () => {
+        {current.state === "pending" && <button className="btn ghost" disabled={busy} onClick={() => takeDifferentPhoto(current)}>Take a different photo</button>}
+        {current.state === "saved" && <><button className="btn ghost" disabled={busy} onClick={() => void run(async () => {
           await api(`/api/account/scans/${current.id}`, { method: "DELETE" });
           clearImage(); setCurrent(null); setMessage("Photo deleted. You can take another photo."); await list();
-        })}>{current.state === "pending" ? "Discard photo" : "Delete photo"}</button>
+        })}>Delete photo</button>
         <button className="btn ghost" disabled={busy} onClick={() => { clearImage(); setCurrent(null); setMessage(""); }}>Another page</button>
+        </>}
       </div>
     </section>}
     {photos.length > 0 && <section aria-label="Your page photos"><h2>Your page photos</h2><ul className="scan-list">{photos.map((photo) => <li key={photo.id}><span><b>Workbook {photo.book}</b><br />{photo.day ?? "Workbook page"} · Page {photo.page}</span><button className="btn ghost" disabled={busy} onClick={() => void run(() => show(photo))}>{photo.state === "pending" ? "Confirm page" : "View photo"}</button></li>)}</ul></section>}

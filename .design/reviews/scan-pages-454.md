@@ -1,6 +1,6 @@
 # Scan pages S1 review
 
-Independence: implementation self-review. Savar's visual approval is pending. This is not independent release acceptance.
+Independence: implementation self-review. Savar approved the look with three specified changes, implemented in this revision. This is not independent release acceptance.
 
 Contract: reuse Parent home and product styles. Select a child, take one photo, confirm the stored child/workbook/day/page, save, view and delete. State whole-page future AI use before upload. Do not show scores in S1.
 
@@ -19,4 +19,6 @@ The screens use the existing SupportPage, account cards, buttons, type and color
 | Craft | 7 | Photo keeps its aspect ratio; spacing uses the product conventions; long notice remains dense |
 | Evidence | 7 | Live test Storage/RLS/deletion evidence; no physical camera or deployed cleanup proof |
 
-Recommendation: needs decision. Keep the PR as a draft. Savar must approve the look before merge. Complete physical iPhone Safari and Android Chrome camera checks and deployed cleanup verification. Later crops, marking history and a separately configured concurrent queue boundary have separate evidence requirements.
+Recommendation: keep the PR as a draft for the code re-check and remaining release evidence. Savar approved the look with the three requested revisions. Complete physical iPhone Safari and Android Chrome camera checks and deployed cleanup verification. Later crops and marking history have separate evidence requirements. Codex tested the separately configured concurrent queue boundary locally at 13cf268.
+
+Revision evidence: per-parent full/short disclosure, exact revised intro, and one retake action. The Aside native file chooser opened from the retake click. The phone photo button is within the viewport before scrolling. See the refreshed manifest and r477-notice-and-retake.json.

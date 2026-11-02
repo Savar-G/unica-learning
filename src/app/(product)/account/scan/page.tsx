@@ -11,9 +11,12 @@ export default async function ScanPage() {
   const db = await sessionClient();
   const { data } = await db.auth.getUser();
   if (!data.user) redirect("/sign-in");
-  const kids = await db.from("children").select("id,first_name").eq("parent_id", data.user.id).order("created_at");
+  const [kids, notice] = await Promise.all([
+    db.from("children").select("id,first_name").eq("parent_id", data.user.id).order("created_at"),
+    db.from("scan_photo_notices").select("parent_id").eq("parent_id", data.user.id).maybeSingle(),
+  ]);
   return <SupportPage label="Your account" title="Scan pages">
     <p><Link href="/account">Back to your account</Link></p>
-    <ScanPages childrenList={kids.data ?? []} parent={data.user.id} />
+    <ScanPages childrenList={kids.data ?? []} parent={data.user.id} noticeAcknowledged={Boolean(notice.data)} />
   </SupportPage>;
 }

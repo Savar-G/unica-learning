@@ -1,0 +1,25 @@
+{
+  "finding": "R477-1",
+  "redControl": "Both overdue photos stayed; cleanup removed zero.",
+  "fixed": {
+    "pending25Hours": "expired and physically removed",
+    "saved91Days": "expired and physically removed",
+    "inFlight": "expired; delayed body refused; no object",
+    "quota": "Retained until actual removal, then zero",
+    "repeatCleanup": 0
+  },
+  "fence": [
+    "new admissions denied",
+    "active-state restoration denied",
+    "identity edits denied",
+    "premature byte release denied",
+    "browser expiry RPC denied",
+    "secret-key object creation denied"
+  ],
+  "notice": [
+    "first save remembered server-side",
+    "survives image expiry",
+    "removed with family"
+  ],
+  "proof": "Disposable local Supabase Auth, Storage and PostgreSQL; real PUT and cleanup modules with cookie extraction seam."
+}

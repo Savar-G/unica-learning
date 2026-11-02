@@ -53,6 +53,36 @@
       "viewport": "tablet"
     },
     {
+      "file": "first-notice-laptop.png",
+      "state": "first-notice",
+      "viewport": "laptop"
+    },
+    {
+      "file": "first-notice-phone.png",
+      "state": "first-notice",
+      "viewport": "phone"
+    },
+    {
+      "file": "first-notice-tablet.png",
+      "state": "first-notice",
+      "viewport": "tablet"
+    },
+    {
+      "file": "photo-details-laptop.png",
+      "state": "photo-details",
+      "viewport": "laptop"
+    },
+    {
+      "file": "photo-details-phone.png",
+      "state": "photo-details",
+      "viewport": "phone"
+    },
+    {
+      "file": "photo-details-tablet.png",
+      "state": "photo-details",
+      "viewport": "tablet"
+    },
+    {
       "file": "refused-laptop.png",
       "state": "refused",
       "viewport": "laptop"
@@ -98,12 +128,15 @@
       "viewport": "tablet"
     }
   ],
-  "approval": "Pending Savar visual approval before merge",
+  "approval": "Savar approved the look with the three specified changes; these changes are implemented.",
   "proofLimits": [
     "These are viewport checks, not physical iPhone Safari or Android Chrome camera checks.",
     "The QR fixture is generated, not a camera photograph.",
     "S1 has no crops, marks or AI calls. Later slices must prove their own lifecycle contracts.",
     "The cleanup route requires deployment of this branch. Verify hosted invocation after deployment."
   ],
-  "browserTransport": "Actual browser conversion passed with an 18,030,953-byte synthetic PNG; normalized saved JPEG is 76,720 bytes."
+  "browserTransport": "Actual browser conversion passed with an 18,030,953-byte synthetic PNG; normalized saved JPEG is 76,720 bytes.",
+  "revision": "Savar look changes and R477-1 fix after 13cf268",
+  "noticeStorage": "Per-parent scan_photo_notices, set by explicit acknowledgement or first saved photo; survives photo expiry/deletion; cascades with family.",
+  "retake": "One Take a different photo action; native picker opens in the click; upload waits for discard."
 }
