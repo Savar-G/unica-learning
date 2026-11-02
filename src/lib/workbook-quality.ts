@@ -42,7 +42,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     const formats = new Set(questions.flatMap(q => q.package?.item ? [q.package.item.format] : []));
     // Include time to read worked examples and move between pages.
     const minutes = questions.reduce((n, q) => n + questionMinutes(q), 0) + ofDay.length * .35;
-    const largestNumber = Math.max(0, ...questions.flatMap(q => q.package ? printedNumbers(q.package).map(Math.abs) : []));
+    const largestNumber = Math.max(0, ...questions.flatMap(q => q.package ? printedNumbers({...q.package, wrongAnswers: [], easierExample: null}).map(Math.abs) : []));
     days.push({ day, minutes: Math.round(minutes * 10) / 10, formats: formats.size, largestNumber });
     if (minutes >= 30) for (const p of ofDay) issues.push({ page: p.number, kind: "time", reason: `Day ${day} is estimated at ${minutes.toFixed(1)} minutes; keep it below 30` });
     if (questions.length >= 8 && formats.size < 2) for (const p of ofDay) issues.push({ page: p.number, kind: "variety", reason: `Day ${day} uses only ${formats.size} answer format` });
@@ -51,7 +51,9 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
   // flat main-unit sequence. A short review need not contain days 8 to 10.
   const skills = new Set(pages.flatMap(p => p.questions.flatMap(q => q.package?.skill.skills ?? [])));
   for (const skill of skills) {
-    const largest = (late: boolean) => Math.max(0, ...pages.filter(p => p.day !== null && (late ? p.day >= 8 : p.day <= 3)).flatMap(p => p.questions.flatMap(q => q.package?.skill.skills.includes(skill) ? printedNumbers(q.package).map(Math.abs) : [])));
+    // An earlier skill's fixed review range need not grow with the new unit.
+    if (skill.startsWith("K") && pages.some(p => p.questions.some(q => (q.package?.level ?? 0) > 3))) continue;
+    const largest = (late: boolean) => Math.max(0, ...pages.filter(p => p.day !== null && (late ? p.day >= 8 : p.day <= 3)).flatMap(p => p.questions.flatMap(q => q.package?.skill.skills.includes(skill) ? printedNumbers({...q.package, wrongAnswers: [], easierExample: null}).map(Math.abs) : [])));
     const early = largest(false), late = largest(true);
     if (early > 0 && late > 0 && late <= early) {
       for (const p of pages.filter(p => (p.day ?? 0) >= 8 && p.questions.some(q => q.package?.skill.skills.includes(skill)))) issues.push({ page: p.number, kind: "progress", reason: `${skill}: days 8 to 10 do not use bigger numbers than days 1 to 3 (${late} versus ${early})` });

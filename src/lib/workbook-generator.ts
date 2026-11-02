@@ -1896,9 +1896,9 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
 
   let quality: BookQuality | undefined;
   if (input.itemPolicy === "approved-v1") {
-    const reviewed = await checkWholeBook(pages, async (page, issues) => {
+    const reviewed = await checkWholeBook(pages, async (page) => {
       const w = byNumber.get(page.number);
-      if (!w || !issues.some(i => i.kind === "repeat")) return null;
+      if (!w) return null;
       const questions = page.questions.map(q => {
         const slot = w.slots.find(s => s.id === q.slot);
         const c = slot ? contractFor(input, w, slot, 2) : null;
