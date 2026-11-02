@@ -205,6 +205,40 @@ describe("reading spoken and typed fractions in a fraction call (#407)", () => {
   });
 });
 
+describe("fraction expression and explanation boundaries", () => {
+  it.each(["a half", "one half", "1/2", "two fourths"].flatMap((form) =>
+    ["because", "since", "cause", "'cause", "’cause", "cuz", "coz"].flatMap((word) =>
+      ["", "3/4, actually "].flatMap((prefix) =>
+        ["3 - 1 is 2", "I used two of four"].flatMap((body) =>
+          [" ", ". "].map((separator) => `${prefix}${form}${separator}${word} ${body}`))))))("keeps the answer before arithmetic in its explanation: %s", (said) => {
+    const value = said.includes("two fourths") ? frac(2, 4) : frac(1, 2);
+    expect(readAnswer(said, READ)).toMatchObject({ final: value, sure: true });
+    const pkg = pkgOf("3/4 - 1/4 = ?", sub(frac(3, 4), frac(1, 4)), sub(frac(3, 5), frac(1, 5)));
+    const proposal = { version: 2, act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(value, "result", "right")] } };
+    const direct = call(pkg, said);
+    expect(direct.propose(proposal).refusal).toBeNull();
+    expect(direct.s.solved).toBe("child");
+    const fallback = call(pkg, said);
+    const offers = fallbacks(fallback.s, [proposal, proposal]);
+    expect(offers.length).toBeGreaterThan(0);
+    expect(fallback.send({ type: "proposal", at: 2, proposal: offers[0] }).refusal).toBeNull();
+    expect(fallback.s.solved).toBe("child");
+  });
+
+  it.each(["a half", "1/2"].flatMap((form) => [
+    `${form} of it because 3 - 1 is 2`, `negative ${form} because 3 - 1 is 2`,
+    `${form} because I am not sure`, `${form} because I doubt it`,
+    `${form} because I reject this answer`,
+  ]))("does not score an operation or a withdrawal across an explanation: %s", (said) => {
+    const read = readAnswer(said, READ);
+    expect(read.final === null || !read.sure).toBe(true);
+    const pkg = pkgOf("3/4 - 1/4 = ?", sub(frac(3, 4), frac(1, 4)), sub(frac(3, 5), frac(1, 5)));
+    const c = call(pkg, said);
+    expect(c.propose({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(frac(1, 2), "result", "right")] } }).refusal).not.toBeNull();
+    expect(c.s.solved).toBeNull();
+  });
+});
+
 describe("right answers follow the question's wording (#407, research C38)", () => {
   it("takes an equal fraction when the question does not ask for the simplest form", () => {
     expect(rightForQuestion(C38, frac(7, 8))).toBe(true);

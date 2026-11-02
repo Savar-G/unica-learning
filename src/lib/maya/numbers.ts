@@ -369,14 +369,7 @@ export function writtenFractions(text: string): string {
     const after = to + 1;
     const attachedBefore = before >= 0 && adjacent(before, from) && joins(before);
     const attachedAfter = after < words.length && adjacent(to, after) && (numeric(after) || /^(?:and|over|\/)$/.test(words[after].t) || DENOMINATORS.has(words[after].t));
-    // A fraction of anything, including a pronoun, is an operation. Never drop "of it" to keep the fraction.
-    let left = from;
-    let right = to;
-    while (left > 0 && !/^[.!?;:\n]$/.test(words[left - 1].t)) left -= 1;
-    while (right + 1 < words.length && !/^[.!?;:\n]$/.test(words[right + 1].t)) right += 1;
-    const ofPhrase = words.slice(left, right + 1).some((w) => w.t === "of");
-    const signed = words.slice(left, right + 1).some((w) => /^(?:minus|negative|dash|[+\-])$/.test(w.t));
-    if (attachedBefore || attachedAfter || ofPhrase || signed) invalid(k);
+    if (attachedBefore || attachedAfter) invalid(k);
     else spans.push({ from, to, text: value, anchor: k });
   }
   // Recognize local fraction forms before classifying corrections. Reuse these
@@ -399,7 +392,11 @@ export function writtenFractions(text: string): string {
     // integer/fraction/mixed form. Never retain only the fraction of an unsupported mixed form.
     const unconsumedNumber = words.slice(expressionFrom, expressionTo + 1)
       .some((_word, i) => { const at = expressionFrom + i; return (at < span.from || at > span.to) && numeric(at); });
-    if (unconsumedNumber) {
+    // Signs and "of" belong to this expression, not arithmetic in its explanation or an earlier corrected answer.
+    const expression = words.slice(expressionFrom, expressionTo + 1);
+    const ofPhrase = expression.some((w) => w.t === "of");
+    const signed = expression.some((w) => /^(?:minus|negative|dash|[+\-])$/.test(w.t));
+    if (unconsumedNumber || ofPhrase || signed) {
       span.from = span.to = span.anchor;
       span.text = UNREAD_MARK;
     }
