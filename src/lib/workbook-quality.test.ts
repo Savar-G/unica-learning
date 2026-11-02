@@ -40,6 +40,9 @@ it("counts dropped questions and fails at 5 percent", () => {
 });
 
 it("measures the printed content and keeps an unknown measurement unknown", () => {
-  const q = measuredPageUse([{ sheet: 0, name: "slot-content", y: 100, height: 800, visible: true }, { sheet: 0, name: "block-0", y: 100, height: 400, visible: true }, { sheet: 0, name: "block-1", y: 520, height: 300, visible: true }, { sheet: 1, name: "sheet", y: 0, height: 1000, visible: true }]);
+  const questions = page(3,1).questions.flatMap(q=>q.package ? [{number:q.number,package:q.package}]:[]);
+  const pages = [0,1].map(i=>({ number:i+1, dayLabel:"Day 1", type:"practice" as const, qrToken:"token-000000000001", questions }));
+  const m = (sheet:number,name:string,y:number,height:number) => ({sheet,name,y,height,x:0,width:688,clientWidth:688,clientHeight:height,scrollWidth:688,scrollHeight:height,visible:true,textPrinted:true,text:""});
+  const q = measuredPageUse(pages,[m(0,"slot-content",100,800),m(0,"question-1",100,400),m(0,"question-2",520,300),m(1,"sheet",0,1000)]);
   expect(q).toEqual([{ page: 1, fraction: .9 }, { page: 2, fraction: null }]);
 });

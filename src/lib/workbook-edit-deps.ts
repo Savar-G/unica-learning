@@ -32,7 +32,7 @@ export async function runWorkbookEditWith(db: SupabaseClient<Database>, id: stri
   const solver = (fake ? workbookFakeSolver(env) : live?.solve?.solver) ?? {
     model: "unavailable", solve: async () => { throw new Error("The solve checker is unavailable."); },
   };
-  const generation = { ai: fake ?? live?.ai ?? null, solver, fit: renderFitCheck({ template, engine, parentId: edit.data.parent_id }),
+  const generation = { ai: fake ?? live?.ai ?? null, solver, fit: renderFitCheck({ template, engine, parentId: edit.data.parent_id, fullness: true }),
     store: workbookDraftStore(db), qrToken: () => randomBytes(16).toString("base64url"), timeLimitMs: place.timeLimitMs };
   const started = Date.now(), lease = randomUUID();
   const timer = setInterval(() => { void db.from("workbook_edits").update({ heartbeat_at: new Date().toISOString() })

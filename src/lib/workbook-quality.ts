@@ -1,3 +1,5 @@
+import { pageFullness } from "./workbook-template";
+import type { DraftPage, MeasuredElement } from "./workbook-render";
 import type { GeneratedPage } from "./workbook-generator";
 import { dayTimeProblem, estimatedDayMinutes } from "./workbook-feedback-check";
 import { printedNumbers } from "./workbook-book";
@@ -65,7 +67,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
   }
   const questions = pages.flatMap(p => p.questions);
   const failedRate = questions.length ? questions.filter(q => q.check.status === "failed").length / questions.length : 1;
-  return { failedRate, dropped: pages.reduce((n, p) => n + (p.leftOut?.length ?? 0), 0), days, issues,
+  return { failedRate, dropped: pages.reduce((n, p) => n + Math.max(p.leftOut?.length ?? 0, (p.omissions ?? []).reduce((n,o)=>n + Math.max(0,o.requested-o.placed),0)), 0), days, issues,
     ready: failedRate < .05 && issues.length === 0 && pages.every(p => p.fit.status !== "failed") };
 }
 
@@ -91,11 +93,6 @@ export interface PageUse { page: number; fraction: number | null }
 
 /** Vertical use of the measured content area. Do not call this an ink-area
  * measurement: writing and work spaces are intentional page content. */
-export function measuredPageUse(measured: readonly { sheet: number; name: string; y: number; height: number; visible: boolean }[]): PageUse[] {
-  return [...new Set(measured.map(m => m.sheet))].map(sheet => {
-    const content = measured.find(m => m.sheet === sheet && m.name === "slot-content");
-    const blocks = measured.filter(m => m.sheet === sheet && /^block-\d+$/.test(m.name) && m.visible && m.height > 0);
-    const fraction = content && content.height > 0 && blocks.length ? Math.min(1, Math.max(0, (Math.max(...blocks.map(b => b.y + b.height)) - content.y) / content.height)) : null;
-    return { page: sheet + 1, fraction };
-  });
+export function measuredPageUse(pages: readonly DraftPage[], measured: readonly MeasuredElement[]): PageUse[] {
+  return pages.map((page, sheet) => ({ page: page.number, fraction: pageFullness(page, new Map(measured.filter(m=>m.sheet===sheet).map(m=>[m.name,m]))) }));
 }

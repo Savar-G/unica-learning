@@ -100,6 +100,7 @@ export type { QuestionCheck } from "@/lib/workbook-generator-items";
 
 /** A fit problem on a page: the question, or null for the page. */
 export interface FitProblem {
+  kind?: "fullness";
   question: number | null;
   reason: string;
 }
@@ -1807,7 +1808,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
       examples = pass.examples;
       let fit = await check(questions);
       let attempts: 1 | 2 = 1;
-      const shorter = fit.ok ? null : await shorterRewrite(input, deps, w, questions, shorterNote(input, w, questions, fit.problems), memory);
+      const shorter = fit.ok || fit.problems.every(p => p.kind === "fullness") ? null : await shorterRewrite(input, deps, w, questions, shorterNote(input, w, questions, fit.problems), memory);
       if (shorter) {
         questions = shorter;
         fit = await check(questions);
@@ -1827,7 +1828,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
       let kept = questions;
       let left = fit;
       // A page keeps at least one question: its panels take their sums from its questions.
-      while (!left.ok && kept.length > 1) {
+      while (!left.ok && !left.problems.every(p => p.kind === "fullness") && kept.length > 1) {
         const out = toLeaveOut(kept, left.problems);
         leftOut.push({ question: kept[out.index], slot: w.slots.find((x) => x.id === kept[out.index].slot)!, reason: out.reason });
         kept = renumbered(kept.filter((_, k) => k !== out.index));
@@ -1952,6 +1953,7 @@ function editNumbers(value: unknown): number[] {
 /** Replace only the selected questions of a stored day page. The plan, checks and templates stay binding. */
 export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDeps, page: GeneratedPage,
   change: { question: number | number[] | null; note: string; item?: unknown; items?: Record<number, unknown> }): Promise<GeneratedPage> {
+  input = { ...input, itemPolicy: undefined };
   const w = layOut(input).work.find((x) => x.number === page.number);
   if (!w || !page.content || page.content.kind !== "day") throw new Error("This page has no questions to rewrite.");
   const targets = page.questions.filter((q) => change.question === null || (Array.isArray(change.question) ? change.question.includes(q.number) : q.number === change.question));

@@ -6,14 +6,21 @@
 // over its own text, a work box or writing lines under their minimum. The real templates lay out a page from its
 // content, so the generator lays its book out for them (GenerateInput.book) and every page it checks has content.
 // Pure TypeScript: no Next.js, React, network, database or clock (the engine is passed in).
+import { fullnessProblem } from "@/lib/workbook-template";
+import type { MeasuredElement, PrintEngine } from "@/lib/workbook-render";
 import type { FitCheck, GeneratedWorkbook } from "@/lib/workbook-generator";
-import { renderWorkbook, type PrintEngine, type WorkbookDraft, type WorkbookTemplate } from "@/lib/workbook-render";
+import { renderWorkbook, type WorkbookDraft, type WorkbookTemplate } from "@/lib/workbook-render";
 
-export function renderFitCheck(o: { template: WorkbookTemplate; engine: PrintEngine; parentId: string }): FitCheck {
+export function renderFitCheck(o: { template: WorkbookTemplate; engine: PrintEngine; parentId: string; fullness?: boolean }): FitCheck {
   return {
     async fits(page, book) {
-      const result = await renderWorkbook({ draft: { ...book, pages: [page] }, parentId: o.parentId, template: o.template, engine: o.engine });
-      if (result.status === "rendered") return { ok: true };
+      let measured: MeasuredElement[] = [];
+      const engine: PrintEngine = { print: async job => { const result = await o.engine.print(job); measured = result.measured; return result; } };
+      const result = await renderWorkbook({ draft: { ...book, pages: [page] }, parentId: o.parentId, template: o.template, engine });
+      if (result.status === "rendered") {
+        const fullness = o.fullness ? fullnessProblem(page, new Map(measured.map(m=>[m.name,m]))) : null;
+        return fullness ? {ok:false,problems:[{question:null,reason:fullness,kind:"fullness"}]} : { ok: true };
+      }
       return { ok: false, problems: result.problems.map((p) => ({ question: p.question, reason: p.reason })) };
     },
   };

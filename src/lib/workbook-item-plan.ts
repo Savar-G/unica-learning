@@ -88,11 +88,13 @@ export function planItem(o: { skill: string; slot: string; level: number; day: n
       item.format = "written-reason"; // Built as a circle region below, using the existing renderer.
       break;
     }
-    case "count":
-      item.text = `Fill the ten-frame boxes to show ${top}.`;
+    case "count": {
+      const count = Math.min(20, max, Math.max(r.min, 1 + seed % max));
+      item.text = `Fill the ten-frame boxes to show ${count}.`;
       item.format = "draw";
-      numbers = [top];
+      numbers = [count];
       break;
+    }
     case "sequence": {
       const stepSize = /skip-count/.test(o.skill) ? (seed % 2 || max < 10 ? 2 : 5) : 1;
       const terms = Math.min(3 + seed % 3, Math.floor(max / stepSize) + 1);
@@ -161,7 +163,7 @@ export function planItem(o: { skill: string; slot: string; level: number; day: n
     const sound = words.filter(text => stable((text.match(/\d+/g) ?? []).map(Number).sort((a,b)=>a-b)) === stable([...numbers].sort((a,b)=>a-b)));
     if (sound.length) { item.text = sound[Math.floor(seed / 3) % sound.length]; item.name = name; item.thing = thing; }
   }
-  if (source === "explain") { item.text = type === "likelihood" ? "Why can a stone never grow legs?" : `How can you check ${top}?`; item.format = "written-reason"; item.operation = null; item.wrongAnswers = []; item.easier = null; numbers = type === "likelihood" ? [] : [top]; }
+  if (source === "explain") { item.text = type === "likelihood" ? "Why can a stone never grow legs?" : `How can you check ${top}?`; item.format = "written-reason"; item.operation = null; item.figure = null; item.figureShows = null; item.numbers = []; item.sequence = null; item.relation = null; item.wrongAnswers = []; item.easier = null; numbers = type === "likelihood" ? [] : [top]; }
   return { type, source, item, numbers, dayRange: r };
 }
 

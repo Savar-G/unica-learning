@@ -35,6 +35,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import sharp from "sharp";
+import { fakeAiClient } from "@/lib/ai-client-fake";
+import { fakeWorkbookItems } from "@/lib/workbook-ai-fake";
 import { AI_DEFAULT_MODEL, AI_SOLVE_DEFAULT_MODEL, type AiClient } from "@/lib/ai-client";
 import type { AiCallRecord } from "@/lib/ai-fallback";
 import { workbookAi, workbookAiPrimary, type AiCallKind } from "@/lib/workbook-ai";
@@ -49,7 +51,7 @@ import { generateWorkbook, type GeneratedWorkbook, type WorkbookDraftStore } fro
 import { measuredPageUse, workbookQuality, type PageUse } from "@/lib/workbook-quality";
 import { reviewDays } from "@/lib/workbook-review-days";
 import { planWorkbook } from "@/lib/workbook-plan";
-import { renderWorkbook, reviewPrint, type PrintEngine, type RenderProblem } from "@/lib/workbook-render";
+import { renderWorkbook, reviewPrint, type PrintEngine, type RenderProblem, type MeasuredElement } from "@/lib/workbook-render";
 import { sampleChild, samplePlanInput, type SampleBookKind, type SampleChild } from "@/lib/workbook-sample-profiles";
 import { workbookFiles } from "@/lib/workbook-store";
 import { workbookTemplate } from "@/lib/workbook-template";
@@ -188,93 +190,7 @@ function costingFetch(into = costs): typeof fetch {
  * slot's range (its numbers.max) and is written in digits, never as words, as the real AI is asked to.
  */
 function fakeAi(): AiClient {
-  let n = 0;
-  let m = 0;
-  const onPage = new Map<string, number>();
-  const NAMES = ["Ava", "Ben", "Cal", "Dot", "Eli", "Fay", "Gus", "Hal", "Ivy", "Jo", "Kai", "Liv", "Max", "Ned", "Oli", "Pia", "Quin", "Rex", "Sam", "Tia",
-    "Uma", "Vic", "Wes", "Xan", "Yara", "Zed", "Abe", "Bea", "Cy", "Dee", "Ed", "Flo", "Gil", "Hope", "Ike", "Jem", "Kit", "Lou", "Mo", "Nia"];
-  const num = (value: number) => ({ type: "number", value, numerator: null, denominator: null, whole: null, unit: null, hours: null, minutes: null, period: null, parts: [], text: null });
-  const op = (kind: "add" | "subtract", a: number, b: number) => ({ kind, operands: [num(a), num(b)], expression: null, unit: null, denominator: null, values: [] });
-  return {
-    model: "fake",
-    async json(request) {
-      type Planned = {
-        numbers?: number[]; name?: string; say?: string;
-        operation?: { kind: "add" | "subtract" | "missing-addend"; operands: [number, number] }; figure?: string | null; figureShows?: string | null;
-      };
-      type Asked = { slot: string; skills: string[]; formats?: string[] | null; mistakes?: { name: string }[]; numbers?: Record<string, { max: number }>; aim?: { skill: string; kind: string }; planned?: Planned; room?: { characters: number } };
-      const body = JSON.parse((request.content[0] as { text: string }).text) as { day: number; page: number; slots: Asked[]; examples?: Asked[] };
-      return {
-        items: [...body.slots, ...(body.examples ?? [])].map((s) => {
-          const format = s.formats?.[0] ?? "write-number";
-          const base = { slot: s.slot, skill: s.skills[0], difficulty: 2, format, numbers: [], places: null, direction: null, sequence: null, pattern: null, figure: null };
-          if (format === "spot-the-error" && s.mistakes?.length) {
-            // A new sum each time (first number the larger, Sam counts one too many); when that mistake is not one of the
-            // level's, code shows one the sum allows (samFix). The slot's skill with the widest range, so the sum fits it.
-            const skill = [...s.skills].sort((p, q) => (s.numbers?.[q]?.max ?? 0) - (s.numbers?.[p]?.max ?? 0))[0];
-            const top = Math.min(99, s.numbers?.[skill]?.max ?? 99);
-            const sums = Array.from({ length: Math.min(top, 12) }, (_, x) => Array.from({ length: Math.min(top, 12) }, (_, y) => [x + 2, y + 2] as const)).flat()
-              .filter(([x, y]) => x >= y && x + y + 1 <= top);
-            const [a, b] = sums[m++ % sums.length];
-            return {
-              ...base, skill, text: `${a} + ${b} = ?`, operation: op("add", a, b),
-              wrongAnswers: [{ value: num(a + b + 1), cause: "counted-one-extra", description: "Counts one too many", step: null }],
-              easier: { text: "1 + 1 = ?", operation: op("add", 1, 1) }, shownWrong: 0,
-            };
-          }
-          // a + b within the range of the item's skill (a + b + 1 at most its max, below 100 so a page of them fits as
-          // the real AI's would), a new pair on each call of a page and a new name each time: no question repeats one of
-          // the book (round 3). The easier example 0 + b is smaller.
-          const max = Math.min(99, s.numbers?.[s.skills[0]]?.max ?? 99);
-          const key = `${body.day}:${body.page}`;
-          const k = onPage.get(key) ?? 0;
-          onPage.set(key, k + 1);
-          const pairs = Array.from({ length: Math.min(max, 12) }, (_, x) => Array.from({ length: Math.min(max, 12) }, (_, y) => [x + 1, y + 1] as const)).flat().filter(([x, y]) => x + y + 1 <= max);
-          // The slot's planned numbers when code planned some (round 5), as the real AI is asked to.
-          const planned = s.planned?.numbers && s.planned.numbers[0] >= 1 && s.planned.numbers[0] + s.planned.numbers[1] + 1 <= max ? s.planned.numbers : null;
-          const [a, b] = planned ?? pairs[k % pairs.length];
-          // A name and a made-up word of its own ("qab"): each question has a shape of its own, as the real AI's must
-          // (the shape check, #380), and a text within a card's room.
-          const word = `q${n.toString(26).split("").map((d) => String.fromCharCode(97 + parseInt(d, 26))).join("")}`;
-          const who = `${s.planned?.name ?? NAMES[n % NAMES.length]} ${word}`;
-          n++;
-          const reason = format === "written-reason";
-          // The slot's planned wording with its operation and picture (round 6), word for word, as the real AI is asked;
-          // code writes the easier example.
-          const plan = s.planned;
-          if (plan?.say && plan.operation && (format === "write-number" || format === "show-work")) {
-            const [x, y] = plan.operation.operands;
-            const right = plan.operation.kind === "add" ? x + y : plan.operation.kind === "subtract" ? x - y : y - x;
-            return {
-              ...base, skill: s.aim?.skill ?? base.skill, text: plan.say, operation: { ...op("add", x, y), kind: plan.operation.kind },
-              figure: plan.figure ?? null, figureShows: plan.figureShows ?? null,
-              wrongAnswers: [{ value: num(x === right ? y : x), cause: "careless", description: "Writes a number from the question", step: null }],
-              easier: null, shownWrong: null,
-            };
-          }
-          if (plan?.say && s.aim?.kind === "sequence" && !reason) {
-            const start = 1 + (n++ % 4);
-            return { ...base, skill: s.aim.skill, format: "sequence", text: plan.say, sequence: { start: num(start), step: num(1), terms: 5, blanks: [1, 3] }, operation: null, wrongAnswers: [], easier: null, shownWrong: null, relation: null, figureShows: null };
-          }
-          // A relation aim on a skill about less than 5: "Is 7 less than 5?", circled.
-          if (s.aim?.kind === "relation" && /benchmark/.test(s.aim.skill) && !reason) {
-            return { ...base, skill: s.aim.skill, format: "relation", text: `${who}: is ${a + b} less than 5?`, numbers: [num(a + b)], relation: { kind: "less-than", to: [5], labels: [] }, figureShows: null, operation: null, wrongAnswers: [], easier: null, shownWrong: null };
-          }
-          // Within the slot's room, as the real AI is asked (round 7): a warm-up fact's room is about 10 characters. A bare
-          // fact has no name to tell it apart, so it takes a sum of its own through the book (the fact counter m).
-          const bare = !reason && `${who} has ${a}. ${b} more. How many?`.length > (s.room?.characters ?? Infinity);
-          const facts = bare ? Array.from({ length: Math.min(max, 40) }, (_, x) => Array.from({ length: Math.min(max, 40) }, (_, y) => [x + 1, y + 1] as const)).flat().filter(([x, y]) => x + y + 1 <= max) : [];
-          const [fa, fb] = bare ? facts[(m++ * 7) % facts.length] : [a, b];
-          return {
-            ...base, text: reason ? `How do you know, ${who}?` : bare ? `${fa} + ${fb} = ?` : `${who} has ${a}. ${b} more. How many?`,
-            operation: reason ? null : op("add", fa, fb),
-            wrongAnswers: reason ? [] : [{ value: num(fa + fb + 1), cause: "careless", description: "Counts 1 too many", step: null }],
-            easier: reason ? null : { text: "Try a smaller sum.", operation: op("add", 0, Math.min(fa, fb)) }, shownWrong: null,
-          };
-        }),
-      };
-    },
-  };
+  return fakeAiClient({ model: "fake", answer: fakeWorkbookItems });
 }
 
 // ---------- The test family ----------
@@ -364,13 +280,13 @@ const template = workbookTemplate(await fixedTemplateFonts());
 // Chromium can fail to start when several start at once: each print gets up to 3 tries, so one failed launch does not
 // lose a whole book.
 const chromium = chromiumPrintEngine();
-let lastPageUse: PageUse[] = [];
+let lastMeasured: MeasuredElement[] = [];
 const engine: PrintEngine = {
   async print(job) {
     for (let attempt = 1; ; attempt++) {
       try {
         const printed = await chromium.print(job);
-        lastPageUse = measuredPageUse(printed.measured);
+        lastMeasured = printed.measured;
         return printed;
       } catch (e) {
         if (attempt >= 3) throw e;
@@ -422,7 +338,7 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
   const result = await generateWorkbook(
     { workbookId, childId, number: input.workbook.number, profileBuild: null, plan: reviewDays(planned.plan, values.days), curriculum: BC, book: { child: child.name }, itemPolicy: "approved-v1" },
     {
-      ai, fit: renderFitCheck({ template, engine, parentId }), concurrency: Number(values.concurrency),
+      ai, fit: renderFitCheck({ template, engine, parentId, fullness: true }), concurrency: Number(values.concurrency),
       store: drafts ?? { save: async () => ({ status: "saved", draftId: workbookId }), draft: async () => null },
       qrToken: () => randomBytes(16).toString("base64url"), timeLimitMs: 240_000,
       progress: (done, total) => { if (done % 10 === 0 || done === total) console.log(`  ${label}: ${done}/${total} day pages`); },
@@ -448,7 +364,7 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
     : await reviewPrint({ draft: renderable, template, engine, problems });
   const pdf = `${out}/${label}.pdf`;
   const sheet = `${out}/${label}-contact.png`;
-  const pageUse = lastPageUse.filter(p => draft.pages[p.page - 1]?.day !== null);
+  const pageUse = measuredPageUse(renderable.pages, lastMeasured).filter(p => draft.pages[p.page - 1]?.day !== null);
   await writeFile(`${out}/${label}-draft.json`, JSON.stringify(draft, null, 2));
   await writeFile(pdf, printed.pdf);
   await mkdir(`${out}/pages/${label}`, { recursive: true });
