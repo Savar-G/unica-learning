@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
 import { DESK_COOKIE, DESK_HOME, deskView, questionCrop, readLock, tapAreas, type DeskView } from "@/lib/desk";
-import { formatInZone, zoneFor, type FamilyZone } from "@/lib/family-time";
+import { formatInZone, familyZone, type FamilyZone } from "@/lib/family-time";
 import { questionBoard } from "@/lib/desk-board";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { WORKBOOK_FILES_BUCKET, type WorkbookSummary } from "@/lib/workbook-content";
@@ -37,8 +37,8 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
 
   const { w, p, q, pick, from } = await searchParams;
   const [{ data: child }, { data: family }, view] = await Promise.all([
-    db.from("children").select("id, first_name").eq("id", lock.childId).maybeSingle(),
-    db.from("parents").select("postal").maybeSingle(),
+    db.from("children").select("id, first_name, province").eq("id", lock.childId).maybeSingle(),
+    db.from("parents").select("postal, time_zone").maybeSingle(),
     // A failed read still shows the desk, with Leave, and says the workbook cannot be shown.
     deskView(workbookStore(db), {
       parentId: parent, childId: lock.childId, workbookId: typeof w === "string" ? w : undefined, page: whole(p), question: whole(q),
@@ -48,7 +48,7 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
     }),
   ]);
   const name = child?.first_name ?? null;
-  const timeZone = zoneFor(family?.postal ?? null);
+  const timeZone = familyZone({ timeZone: family?.time_zone, postal: family?.postal, province: child?.province });
 
   if (!child || !view || view.status === "no-workbook") {
     return (

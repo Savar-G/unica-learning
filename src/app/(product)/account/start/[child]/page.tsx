@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { after } from "next/server";
 import { notFound, redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
-import { startWhen, zoneFor } from "@/lib/family-time";
+import { startWhen, familyZone } from "@/lib/family-time";
 import { CURRICULA } from "@/lib/signup";
 import { stateFor } from "@/lib/test-attempt";
 import { parentStartStates } from "@/lib/test-attempt-server";
@@ -42,7 +42,7 @@ export default async function StartScreen({ params, searchParams }: PageProps<"/
   const [{ data: child }, states, { data: family }] = await Promise.all([
     db.from("children").select("id, first_name, grade, province").eq("id", id).maybeSingle(),
     parentStartStates(parent, id),
-    db.from("parents").select("postal").maybeSingle(),
+    db.from("parents").select("postal, time_zone").maybeSingle(),
   ]);
   if (!child) notFound();
   // The click on the reminder's button (D-105), counted after the page is sent, so it never slows or stops the page.
@@ -73,7 +73,7 @@ export default async function StartScreen({ params, searchParams }: PageProps<"/
       ) : (
         <>
           {state.kind !== "wait" && <p className="lead">{child.first_name} takes the test alone, on this device, in one sitting. Start when {child.first_name} is ready.</p>}
-          <div className="acct-begin"><StartTest childId={child.id} name={child.first_name} state={state} when={startWhen(state, zoneFor(family?.postal ?? null))} /></div>
+          <div className="acct-begin"><StartTest childId={child.id} name={child.first_name} state={state} when={startWhen(state, familyZone({ timeZone: family?.time_zone, postal: family?.postal, province: child.province }))} /></div>
         </>
       )}
       <p className="small acct-out"><Link href="/account">Your account</Link></p>

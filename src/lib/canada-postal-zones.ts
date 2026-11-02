@@ -95,10 +95,13 @@ export const KNOWN_AMBIGUOUS_FSAS = {
   X0C: { zone: "America/Rankin_Inlet", reason: "Most residents use seasonal Central; Coral Harbour keeps UTC-5.", sources: [TZ, FSA, AIR] },
 } as const;
 
-/** Postal code -> zone and override scope. Missing and malformed codes use BC time. */
-export function zoneFor(postal: string | null): FamilyZone {
+/** Postal code -> zone and override scope. Missing and malformed codes have no mapping. */
+export function postalZone(postal: string | null | undefined): FamilyZone | undefined {
   const code = (postal ?? "").replace(/\s/g, "").toUpperCase();
-  if (!/^[ABCEGHJ-NPRSTVXY][0-9][ABCEGHJ-NPRSTVWXYZ][0-9][ABCEGHJ-NPRSTVWXYZ][0-9]$/.test(code)) return PACIFIC_ZONE;
+  if (!/^[ABCEGHJ-NPRSTVXY][0-9][ABCEGHJ-NPRSTVWXYZ][0-9][ABCEGHJ-NPRSTVWXYZ][0-9]$/.test(code)) return undefined;
   const fsa = code.slice(0, 3);
   return POSTAL_ZONES[code]?.zone ?? FSA_ZONES[fsa]?.zone ?? PROVINCE_ZONES[PROVINCE_BY_PREFIX[code[0]]] ?? PACIFIC_ZONE;
 }
+
+/** Postal-only callers without family context use Pacific when the code is unknown. */
+export const zoneFor = (postal: string | null): FamilyZone => postalZone(postal) ?? PACIFIC_ZONE;

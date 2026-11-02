@@ -65,7 +65,7 @@ interface AnswerRow {
   away_ms: number | null;
 }
 
-const record = (row: ReportRow, assessment: ReportAssessmentRow | null, child: ChildRow | null, postal: string | null): ReportRecord => ({
+const record = (row: ReportRow, assessment: ReportAssessmentRow | null, child: ChildRow | null, postal: string | null, timeZone: string | null): ReportRecord => ({
   id: row.id,
   assessmentId: row.assessment_id,
   childId: row.child_id,
@@ -76,6 +76,7 @@ const record = (row: ReportRow, assessment: ReportAssessmentRow | null, child: C
   assessment: assessment?.completed_at ? { completedAt: assessment.completed_at, province: assessment.province } : null,
   child: child ? { firstName: child.first_name } : null,
   postal,
+  timeZone,
 });
 
 const assessmentRecord = (row: AssessmentRow): AssessmentRecord => ({
@@ -117,9 +118,9 @@ function must<T>({ data, error }: Result<T>, what: string): T {
 async function embeddedReport(db: SupabaseClient<Database>, id: string, what: string): Promise<ReportRecord | null> {
   if (!isUuid(id)) return null;
   const row = must(await db.from("reports")
-    .select(`${REPORT_COLUMNS}, assessment:assessments(completed_at, province), child:children(first_name), parent:parents(postal)`)
+    .select(`${REPORT_COLUMNS}, assessment:assessments(completed_at, province), child:children(first_name), parent:parents(postal, time_zone)`)
     .eq("id", id).maybeSingle(), what);
-  return row ? record(row, row.assessment, row.child, row.parent?.postal ?? null) : null;
+  return row ? record(row, row.assessment, row.child, row.parent?.postal ?? null, row.parent?.time_zone ?? null) : null;
 }
 
 /** The stored learner profile JSON of a test, as this client may see it, filtered on its parent when given; null when none. */
@@ -151,8 +152,8 @@ export function parentReportReader(db: SupabaseClient<Database>, profiles?: { ad
         .eq("id", id).maybeSingle(), "parent report load");
       if (!row) return null;
       // RLS restricts this separate session read to the signed-in parent's own row.
-      const parent = must(await db.from("parents").select("postal").maybeSingle(), "parent report postal load");
-      return record(row, row.assessment, row.child, parent?.postal ?? null);
+      const parent = must(await db.from("parents").select("postal, time_zone").maybeSingle(), "parent report postal load");
+      return record(row, row.assessment, row.child, parent?.postal ?? null, parent?.time_zone ?? null);
     },
     // A parent may not read the stored test (its right answers) or the answers: there is no grant, so nothing is read.
     assessment: async () => null,
@@ -175,8 +176,8 @@ export function adminReportReader({ db }: AdminSession): ReportReader {
         db.rpc("admin_children").select("first_name").eq("id", row.child_id).maybeSingle()
           .then((r) => must(r, "admin report child load")),
       ]);
-      const parent = assessment ? must(await db.rpc("admin_parents").select("postal").eq("id", assessment.parent_id).maybeSingle(), "admin report parent load") : null;
-      return record(row, assessment, child, parent?.postal ?? null);
+      const parent = assessment ? must(await db.rpc("admin_parents").select("postal, time_zone").eq("id", assessment.parent_id).maybeSingle(), "admin report parent load") : null;
+      return record(row, assessment, child, parent?.postal ?? null, parent?.time_zone ?? null);
     },
     async assessment(id) {
       if (!isUuid(id)) return null;

@@ -2,7 +2,9 @@
 
 Audited on 2026-11-01 for PR #425.
 
-`zoneFor` uses a province or territory default, then an FSA exception, then an exact full-code exception. It removes spaces and accepts lowercase input. Missing or malformed input uses BC time. It does not infer a place from five characters of a postal code.
+`familyZone` uses a valid stored `parents.time_zone` first, then the postal mapping, then the child's province, then Pacific. All family formatting and day or week calculations use `src/lib/family-time.ts` and its dated overrides, including stored browser zones. Fixed zones such as Creston and Regina keep their rules.
+
+The postal mapping uses a province or territory default, then an FSA exception, then an exact full-code exception. It removes spaces and accepts lowercase input. Missing or malformed postal input falls through to the child's province, then Pacific. The postal-only `zoneFor` helper keeps its Pacific fallback for callers without family fields. It does not infer a place from five characters of a postal code.
 
 The FSA choices serve most residents. A postal code is a delivery route, so an FSA can cross a time boundary. The source-linked tables in `src/lib/canada-postal-zones.ts` keep those choices and their exact-code exceptions together. New postal codes in a split FSA inherit its stated choice until a source identifies their community.
 
@@ -60,3 +62,9 @@ The seasonal Central entry uses `America/Chicago` with `override: false`. A runt
 Public-interface tests check January and November clocks for every reported case and each audited region. Summer probes distinguish Atlantic with and without DST, and Eureka from Resolute. A simulated updated runtime checks that eastern Ontario keeps seasonal Central. These checks do not make a postal directory complete. The known ambiguous FSA list states the remaining address-level limit.
 
 The parent report reader reads `parents.postal` separately with the parent's session. It never uses `reports.parent_id`. The secret-key reader keeps its parent join. The admin reader keeps its admin RPCs. No grants or migrations change.
+
+## Maya integration
+
+The weekly recap uses the shared calendar functions for Monday 7 a.m. release, call-week grouping, the final Sunday and Monday-midnight expiry. The minutes ledger uses the same layer for Monday-midnight weekly resets and the separate 120-second daily demo cap. Parent home passes one resolved zone to its date labels and minutes reader. Browser-zone capture still writes once.
+
+The weekly, reminder and report readers load the stored browser zone with the postal code. The parent report reader still reads its parent row separately under its session. No report parent join or new grant is needed.

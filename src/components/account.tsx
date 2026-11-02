@@ -1117,3 +1117,13 @@ export function PinForm({ isSet }: { isSet: boolean }) {
     </form>
   );
 }
+
+/** Sends the browser's time zone once when the family has none stored (#330: Maya's week starts on the family's Monday). */
+export function SaveTimeZone() {
+  useEffect(() => {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!timeZone) return;
+    void fetch("/api/account/time-zone", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ timeZone }) }).catch(() => {});
+  }, []);
+  return null;
+}

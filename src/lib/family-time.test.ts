@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  effectiveZone, familyTime, familyWhen, formatCalendarDate, localDay, localWeekStart,
+  effectiveZone, familyZone, familyTime, familyWhen, formatCalendarDate, localDay, localWeekStart,
   PACIFIC_ZONE, warnIfTimeZoneDataIsOld, zoneFor,
 } from "@/lib/family-time";
 
@@ -256,5 +256,27 @@ describe("runtime time-zone data", () => {
 
   it("reports stale time-zone data in this test runtime", () => {
     warnIfTimeZoneDataIsOld();
+  });
+});
+
+
+describe("one family-zone selection rule", () => {
+  it("uses a valid browser zone before the postal and province", () => {
+    expect(familyZone({ timeZone: "America/Toronto", postal: "V3S 1A1", province: "AB" })).toBe("America/Toronto");
+  });
+
+  it("uses the postal mapping after an invalid browser zone, then province, then Pacific", () => {
+    expect(familyZone({ timeZone: "Not/AZone", postal: "T2P 1J9", province: "BC" })).toBe("America/Edmonton");
+    expect(familyZone({ timeZone: "", postal: "bad", province: "AB" })).toBe("America/Edmonton");
+    expect(familyZone({ postal: null, province: "unknown" })).toBe(PACIFIC_ZONE);
+  });
+
+  it.each([
+    ["America/Vancouver", "5:00 a.m."], ["Canada/Pacific", "5:00 a.m."],
+    ["America/Edmonton", "6:00 a.m."], ["America/Inuvik", "6:00 a.m."],
+    ["America/Winnipeg", "7:00 a.m."], ["America/Creston", "5:00 a.m."],
+    ["America/Regina", "6:00 a.m."],
+  ])("applies the November override to browser zone %s and preserves fixed zones", (timeZone, expected) => {
+    expect(familyTime(Date.parse("2026-11-09T12:00:00Z"), familyZone({ timeZone }))).toBe(expected);
   });
 });

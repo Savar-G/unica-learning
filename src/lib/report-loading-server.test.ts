@@ -27,8 +27,8 @@ it.each(["G0G 1W0", "V1C 3H8", null])("reads the parent's own postal code %s wit
     requests.push(url);
     const select = url.searchParams.get("select") ?? "";
     if (url.pathname === "/rest/v1/parents") {
-      expect(select).toBe("postal");
-      return Response.json({ postal }); // Parents read their own row through RLS.
+      expect(select).toBe("postal,time_zone");
+      return Response.json({ postal, time_zone: "America/Vancouver" }); // Parents read their own row through RLS.
     }
     expect(url.pathname).toBe("/rest/v1/reports");
     expect(url.searchParams.get("id")).toBe(`eq.${TEST}`);
@@ -58,7 +58,7 @@ it("keeps the secret reader's parent join under its own access", async () => {
   const db = createClient("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input) => {
     const url = new URL(String(input));
     expect(url.pathname).toBe("/rest/v1/reports");
-    expect(url.searchParams.get("select")).toContain("parent:parents(postal)");
+    expect(url.searchParams.get("select")).toContain("parent:parents(postal,time_zone)");
     return Response.json({ id: TEST, assessment_id: TEST, child_id: OTHER, model: {}, questions: 36, minutes: 34,
       assessment: null, child: null, parent: { postal: "M5V 2T6" } });
   } } });

@@ -1,12 +1,34 @@
 import type { Province, StartState } from "@/lib/assessment";
 
-import { PACIFIC_ZONE, PROVINCE_ZONES, type FamilyZone } from "@/lib/canada-postal-zones";
+import { PACIFIC_ZONE, PROVINCE_ZONES, postalZone, type FamilyZone } from "@/lib/canada-postal-zones";
 export { PACIFIC_ZONE, zoneFor, type FamilyZone } from "@/lib/canada-postal-zones";
 
-/** Only for older report inputs that have a curriculum province but no postal field. */
-export function zoneForProvince(province: Province): string {
-  return PROVINCE_ZONES[province] ?? PROVINCE_ZONES.ON;
+/** Whether the runtime accepts a stored browser IANA zone. */
+export function validTimeZone(tz: unknown): tz is string {
+  if (typeof tz !== "string" || tz.length < 1 || tz.length > 64 || !/^[A-Za-z][A-Za-z0-9_+/-]*$/.test(tz)) return false;
+  try {
+    new Intl.DateTimeFormat("en-CA", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
 }
+
+export interface FamilyLocation {
+  timeZone?: string | null;
+  postal?: string | null;
+  province?: string | null;
+}
+
+/** One family rule: valid browser zone, postal mapping, child's province, then Pacific. */
+export function familyZone({ timeZone, postal, province }: FamilyLocation): FamilyZone {
+  // Resolve aliases too, so Canada/Pacific gets the same override as America/Vancouver.
+  if (validTimeZone(timeZone)) return new Intl.DateTimeFormat("en-CA", { timeZone }).resolvedOptions().timeZone;
+  return postalZone(postal) ?? (province ? PROVINCE_ZONES[province] : undefined) ?? PACIFIC_ZONE;
+}
+
+/** Only for older report inputs that have a curriculum province but no family fields. */
+export const zoneForProvince = (province: Province): FamilyZone => familyZone({ province });
 
 // Keep named zones before each cutoff, preserving historical offsets.
 // Etc/GMT signs are reversed: Etc/GMT+7 means UTC-7.
@@ -58,13 +80,21 @@ export const localDay = (at: Instant, zone: FamilyZone): string =>
 export const formatCalendarDate = (day: string, options: FormatOptions): string =>
   formatInZone(`${day}T12:00:00Z`, "UTC", options);
 
-/** Most recent Monday at the local hour (0 for a weekly reset, 7 for weekly email). */
-export function localWeekStart(at: number, zone: FamilyZone, hour = 0): number {
+/** Calendar date arithmetic, independent of elapsed hours and seasonal clock changes. */
+export function addDays(day: string, days: number): string {
+  const date = new Date(`${day}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+export function weekStartFor(day: string): string {
+  return addDays(day, -((new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7));
+}
+
+/** An instant at a local calendar date and hour, using the dated override at the resulting instant. */
+export function localDateTime(day: string, zone: FamilyZone, hour = 0): number {
   if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw new RangeError("Hour must be between 0 and 23");
-  const p = partsInZone(at, zone, { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", hourCycle: "h23" });
-  const date = new Date(Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day)));
-  const daysSinceMonday = (date.getUTCDay() + 6) % 7;
-  date.setUTCDate(date.getUTCDate() - daysSinceMonday - (daysSinceMonday === 0 && Number(p.hour) < hour ? 7 : 0));
+  const date = new Date(`${day}T00:00:00Z`);
   date.setUTCHours(hour);
   const wall = date.getTime();
   let result = wall;
@@ -76,7 +106,30 @@ export function localWeekStart(at: number, zone: FamilyZone, hour = 0): number {
     if (next === result) return result;
     result = next;
   }
-  throw new RangeError("Cannot resolve local Monday");
+  throw new RangeError("Cannot resolve local date and hour");
+}
+
+/** Most recent Monday at the local hour (0 for a weekly reset, 7 for weekly email). */
+export function localWeekStart(at: number, zone: FamilyZone, hour = 0): number {
+  const monday = weekStartFor(localDay(at, zone));
+  const start = localDateTime(monday, zone, hour);
+  return at < start ? localDateTime(addDays(monday, -7), zone, hour) : start;
+}
+
+/** A local ledger period and the instant when the next one starts. */
+export interface Period {
+  start: string;
+  resetsAt: number;
+}
+
+export function weekOf(at: number, zone: FamilyZone): Period {
+  const start = weekStartFor(localDay(at, zone));
+  return { start, resetsAt: localDateTime(addDays(start, 7), zone) };
+}
+
+export function dayOf(at: number, zone: FamilyZone): Period {
+  const start = localDay(at, zone);
+  return { start, resetsAt: localDateTime(addDays(start, 1), zone) };
 }
 
 /** Test/startup diagnostic. Probe behaviour where no tz version is exposed. */

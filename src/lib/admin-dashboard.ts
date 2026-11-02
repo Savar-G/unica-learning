@@ -20,7 +20,7 @@ export interface RawCard {
   saved_in_stripe_only?: boolean;
 }
 export interface RawWaitlist { id: string; created_at: string; parent_id: string; child_id: string; province: Province }
-export interface RawEmail { id: string; created_at: string; parent_id: string; child_id: string | null; assessment_id: string | null; kind: "continue" | "come_back" | "start" | "start_followup" | "unsubscribe"; status: "claimed" | "sent" | "failed" | null; attempts: number; sent_at: string | null; error: string | null; clicks: number; first_clicked_at: string | null }
+export interface RawEmail { id: string; created_at: string; parent_id: string; child_id: string | null; assessment_id: string | null; kind: "continue" | "come_back" | "start" | "start_followup" | "unsubscribe" | "maya_daily" | "maya_weekly" | "maya_unsubscribe"; status: "claimed" | "sent" | "failed" | null; attempts: number; sent_at: string | null; error: string | null; clicks: number; first_clicked_at: string | null }
 /** A Stripe subscription of a saved card's customer. Times are ISO. `amount`: the price per unit, in cents. */
 export interface RawSubscription {
   id: string;
@@ -110,7 +110,7 @@ export function monthlyAmount(s: RawSubscription): number {
 
 // Emails
 
-export type EmailKind = "start" | "start_followup" | "continue" | "come_back" | "report" | "alert" | "unsubscribe";
+export type EmailKind = "start" | "start_followup" | "continue" | "come_back" | "report" | "alert" | "unsubscribe" | "maya_daily" | "maya_weekly" | "maya_unsubscribe";
 export interface EmailKindInfo { kind: EmailKind; label: string; subject: string; to: string; trigger: string }
 /** Every email the site logs. The subjects follow reminder-email.ts and report-email.ts. */
 export const EMAIL_KINDS: readonly EmailKindInfo[] = [
@@ -121,7 +121,12 @@ export const EMAIL_KINDS: readonly EmailKindInfo[] = [
   { kind: "report", label: "Report email", subject: "{child}'s math report is ready", to: "Parent", trigger: "Test finished, report built" },
   { kind: "alert", label: "Report alert", subject: "Test finished: {child}, grade {grade}, working at ...", to: "You", trigger: "Test finished, report built" },
   { kind: "unsubscribe", label: "Unsubscribe", subject: "No email: the parent turned reminders off", to: "-", trigger: "Parent clicked unsubscribe" },
+  { kind: "maya_daily", label: "Daily Maya email (retired)", subject: "{child} talked with Maya on ...", to: "Parent", trigger: "Replaced by the weekly Maya email" },
+  { kind: "maya_weekly", label: "Weekly Maya email", subject: "Weekly Maya email", to: "Parent", trigger: "Monday at 7 a.m. family time, after a week with calls" },
+  { kind: "maya_unsubscribe", label: "Maya unsubscribe", subject: "No email: the parent turned Maya emails off", to: "-", trigger: "Parent clicked unsubscribe in a Maya email" },
 ];
+/** An unsubscribe row: no email went. */
+export const isUnsubscribe = (kind: EmailKind) => kind === "unsubscribe" || kind === "maya_unsubscribe";
 export const EMAIL_LABEL = Object.fromEntries(EMAIL_KINDS.map((k) => [k.kind, k.label])) as Record<EmailKind, string>;
 
 /** What Resend said happened to an email after it took it (D-104). */
@@ -141,8 +146,8 @@ export function deliveryLine(e: EmailEvent): { text: string; bad: boolean } | nu
 }
 /** "Clicked 2 times" for an email the parent clicked (D-105), else null. */
 export const clicksText = (e: EmailEvent) => (e.clicks ? `Clicked ${e.clicks.count === 1 ? "once" : `${e.clicks.count} times`}` : null);
-/** The emails a parent can click: every one to the parent with a button (not the alert to Savar, not an unsubscribe). */
-export const clickable = (e: EmailEvent) => e.kind !== "alert" && e.kind !== "unsubscribe";
+/** The emails a parent can click: every one to the parent with a button (not the alert to Savar, not an unsubscribe, not the Maya recap, which has no button). */
+export const clickable = (e: EmailEvent) => e.kind !== "alert" && e.kind !== "maya_daily" && e.kind !== "maya_weekly" && !isUnsubscribe(e.kind);
 /** The dot of an email in the lists: failed when it did not reach the parent. */
 export const emailDot = (e: EmailEvent) => (emailFailed(e) ? "failed" : e.status);
 
@@ -280,7 +285,7 @@ export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
       const grade = e.assessment_id ? (testById.get(e.assessment_id)?.grade ?? null) : null;
       return {
         id: e.id, kind: e.kind, at: e.sent_at ?? e.created_at, familyId: p.id, familyName: p.name, childName: child, attempts: e.attempts, error: e.error,
-        status: e.kind === "unsubscribe" || e.status === "sent" ? "sent" : e.status === "failed" ? "failed" : "pending",
+        status: isUnsubscribe(e.kind) || e.status === "sent" ? "sent" : e.status === "failed" ? "failed" : "pending",
         subject: subjectFor(e.kind, child, grade),
         delivery: deliveryOf.get(e.id) ?? null,
         clicks: e.clicks > 0 && e.first_clicked_at ? { count: e.clicks, first: e.first_clicked_at } : null,
@@ -337,7 +342,7 @@ export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
       subscription: shown ? { status: shown.status, since: shown.created, endedAt: shown.endedAt, monthly: (paying.length > 0 ? paying : trialing).reduce((n, s) => n + monthlyAmount(s), 0) } : null,
       subscriptions: subs,
       emails,
-      lastEmail: emails.find((e) => e.kind !== "alert" && e.kind !== "unsubscribe") ?? null,
+      lastEmail: emails.find((e) => e.kind !== "alert" && !isUnsubscribe(e.kind)) ?? null,
       unsubscribed,
       nextReminders,
       test: testIds.has(p.id),
@@ -371,7 +376,7 @@ export function activities(families: Family[]): Activity[] {
       if (s.endedAt) add(s.endedAt, "cancelled", "subscription ended in Stripe");
     }
     add(f.reached.waitlist, "waitlist", "joined the waitlist");
-    for (const e of f.emails) add(e.at, "email", e.kind === "unsubscribe" ? "turned reminders off" : `${EMAIL_LABEL[e.kind]}: "${e.subject}"`, e);
+    for (const e of f.emails) add(e.at, "email", e.kind === "unsubscribe" ? "turned reminders off" : e.kind === "maya_unsubscribe" ? "turned Maya emails off" : `${EMAIL_LABEL[e.kind]}: "${e.subject}"`, e);
   }
   return out.sort(newestFirst);
 }
@@ -441,7 +446,7 @@ const PICK: Record<Exclude<keyof DayCounts, "day">, Pick> = {
   started: (f) => f.tests.map((t) => t.startedAt),
   finished: (f) => f.tests.map((t) => t.completedAt),
   cards: (f) => f.cards.map((c) => c.savedAt),
-  emails: (f) => f.emails.filter((e) => e.status === "sent" && e.kind !== "unsubscribe" && e.kind !== "alert").map((e) => e.at),
+  emails: (f) => f.emails.filter((e) => e.status === "sent" && !isUnsubscribe(e.kind) && e.kind !== "alert").map((e) => e.at),
 };
 const pickSubscriptions: Pick = (f) => f.subscriptions.map((s) => s.created);
 const STUCK_DAYS = 2;

@@ -3,7 +3,7 @@
 // Same look as the report email
 // (src/lib/report-email.ts).
 // CASL: every reminder names the sender, gives the mailing address and the website, and has an unsubscribe link.
-import { familyWhen, zoneFor } from "@/lib/family-time";
+import { familyWhen, familyZone } from "@/lib/family-time";
 import { emailDocument, emailFooterText, emailSignatureText } from "@/lib/email-brand";
 import type { ReminderKind } from "@/lib/reminders";
 
@@ -15,6 +15,8 @@ interface Common {
   unsubscribeUrl: string;
   /** The parent's postal code: it picks the time zone for the deadline. Null (the short phone signup, D-134): Pacific. */
   postal: string | null;
+  timeZone?: string | null;
+  province?: string | null;
   /** Questions in the test for the child's grade. */
   total: number;
 }
@@ -38,7 +40,7 @@ function content(e: ReminderEmailInput): { subject: string; preview: string; par
   const alone = `${name} takes it alone, in one sitting, on a laptop or tablet.`;
   switch (e.kind) {
     case "continue": {
-      const until = `${name} can continue from the same question until ${familyWhen(e.resumeUntil, zoneFor(e.postal))}.`;
+      const until = `${name} can continue from the same question until ${familyWhen(e.resumeUntil, familyZone(e))}.`;
       return {
         subject: `${name} can finish the math test`,
         preview: until,

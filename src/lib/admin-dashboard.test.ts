@@ -88,6 +88,11 @@ describe("family stage", () => {
   });
 });
 
+it.each(["claimed", "sent", "failed"] as const)("R421W-4: a %s weekly email has a complete admin subject", (status) => {
+  const families = buildFamilies(rows({ parents: [parent("a", ago(10))], emails: [{ ...email("weekly", "a", "maya_weekly", ago(1), status), child_id: null }] }));
+  expect(families[0].emails[0].subject).toBe("Weekly Maya email");
+});
+
 describe("emails", () => {
   const r = rows({
     parents: [parent("a", ago(10))],
