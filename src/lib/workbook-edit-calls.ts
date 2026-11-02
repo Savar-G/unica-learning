@@ -14,6 +14,12 @@ export interface EditCallStore {
 }
 export type EditCall = <T>(kind: "write" | "solve", question: string, request: unknown, dispatch: () => Promise<T>) => Promise<T>;
 
+type CallOutcome<T> = { value: T } | { error: string };
+function readOutcome<T>(outcome: CallOutcome<T>): T {
+  if ("error" in outcome) throw new Error(outcome.error);
+  return outcome.value;
+}
+
 /** One instance per page and execution. The sequence distinguishes deliberate writer retries from recovery. */
 export function editCalls(store: EditCallStore, id: string, lease: string, page: number, frame: unknown): EditCall {
   const sequences = new Map<string, number>();
@@ -28,19 +34,25 @@ export function editCalls(store: EditCallStore, id: string, lease: string, page:
     catch (e) { throw new WriterPersistenceError(String(e)); }
     if (row.status === "limit") throw new EditCallLimitError(EDIT_CALL_LIMIT_REASON);
     if (row.status === "stopped") throw new WriterPersistenceError("This edit stopped. Try again.");
-    if (row.status === "saved") return (row.result as { value: T }).value;
-    // A thrown or timed-out request remains uncertain. Its dispatch still spends one attempt.
-    const result = await dispatch();
-    const saved: Json = JSON.parse(JSON.stringify({ value: result }));
+    if (row.status === "saved") return readOutcome(row.result as CallOutcome<T>);
+    // Replay observed failures too, so recovery reaches the same saved retry sequence.
+    // A process crash without a saved outcome still spends its reserved attempt.
+    let outcome: CallOutcome<T>;
+    try { outcome = { value: await dispatch() }; }
+    catch (e) {
+      if (e instanceof WriterPersistenceError) throw e;
+      outcome = { error: e instanceof Error ? e.message : String(e) };
+    }
+    const saved: Json = JSON.parse(JSON.stringify(outcome));
     // Retry storage of this result. Never retry the AI because storage failed.
     for (let retry = 0; retry < 3; retry++) {
       try {
         if (!await store.completeCall(id, lease, key, row.attempt, saved)) throw new Error("This edit stopped. Try again.");
-        return result;
+        break;
       } catch (e) {
         if (retry === 2) throw new WriterPersistenceError(String(e));
       }
     }
-    throw new WriterPersistenceError("The AI result could not be saved.");
+    return readOutcome(outcome);
   };
 }
