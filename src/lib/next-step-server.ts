@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { gradeName, withFamilyCardOperation, type Province } from "@/lib/assessment";
-import { sendEmail } from "@/lib/email-delivery";
+import { emailConfigProblem, sendEmail } from "@/lib/email-delivery";
 import type { CardCheckResult, CardResult, NextStepError, ReportSrc, WaitlistResult } from "@/lib/next-step";
 import { REPORT_PLANS, reportPath, type PlanOption } from "@/lib/report-view";
 import { CURRICULA } from "@/lib/signup";
@@ -14,6 +14,7 @@ import { adminClient } from "@/lib/supabase-auth";
 import { checkCard, chooseCardPlan, recordSavedCard, type CardEvidence } from "@/lib/saved-card";
 import { savedCards } from "@/lib/saved-card-server";
 import { beginCardOperation, endCardOperation } from "@/lib/family-deletion-store";
+import { sendQueuedWorkbookWelcome } from "@/lib/workbook-email-server";
 
 // The report's next step (#66), on the server. The routes pass the signed-in parent from the session cookie, never
 // from the request body, and every read here is filtered by that parent, so a parent can act only on their own report.
@@ -170,6 +171,10 @@ export async function recordCardSaved(evidence: CardEvidence) {
   if (!admin || !/^[0-9a-f-]{36}$/i.test(evidence.ref)) return;
   const recorded = await recordSavedCard(evidence, savedCards(admin, stripe()));
   if (recorded.state !== "saved") console.error("[next-step] card saved record failed", evidence.ref);
+  else if (!emailConfigProblem()) after(async () => {
+    try { await sendQueuedWorkbookWelcome(admin, evidence.ref); }
+    catch { console.error("[workbook email] welcome remains queued", evidence.ref); }
+  });
 }
 
 /** A parent outside BC joined the waitlist from the report. One row per child: a second click finds the first. */

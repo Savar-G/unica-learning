@@ -41,7 +41,7 @@ export default function PricingPage() {
             <ol>
               <li>Take the <Link href="/math-assessment">free online math assessment</Link>. No card is needed.</li>
               <li>Read the report. If your child follows the BC curriculum, choose a plan and add a card only if you want to continue. Other curricula receive a waitlist option with no card required.</li>
-              <li>Your free first month starts when the first workbook ships. Nothing is charged when you add the card.</li>
+              <li>Your free first month starts when the first workbook arrives at your home. Nothing is charged when you add the card.</li>
               <li>On day {TRIAL_DAYS}, we charge the monthly price. Charges then repeat monthly until you cancel.</li>
             </ol>
             <p>We email you seven days before the first charge, with a link to manage or cancel the plan. Cancel before day {TRIAL_DAYS} and you pay nothing.</p>

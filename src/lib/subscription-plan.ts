@@ -1,4 +1,4 @@
-// The paid plan a saved card starts when the first workbook ships (D-139): a monthly Stripe subscription with the free
+// The paid plan a saved card starts when the first workbook arrives at your home (D-139): a monthly Stripe subscription with the free
 // first month (a trial), then the full price each month. Pure, so its numbers are tested; stripe.ts sends it.
 import { PLANS, TRIAL_DAYS, type PlanId } from "@/lib/site";
 

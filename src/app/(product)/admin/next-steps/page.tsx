@@ -9,7 +9,7 @@ export default async function NextStepsPage({ searchParams }: PageProps<"/admin/
   const { cards, waitlist } = await listNextSteps(admin, offset);
   return <AdminFrame email={admin.email} section="next-steps" title="Cards and waitlist">
     <p className="adm-note">For the shipping address, use &quot;Open in Stripe&quot; on the child&apos;s card setup and check Shipping details on the customer. If no shipping address is saved, ask the parent for it before mailing the workbook. A billing address is not a confirmed shipping address.</p>
-    <p className="adm-note">A saved card is not a payment. When a child&apos;s first workbook ships, press &quot;Workbook shipped: start plan&quot;: the free first month begins, and Stripe charges the monthly price on day 30, then every month. Stripe emails the parent a reminder 7 days before day 30, with a link to manage or cancel the plan. The dashboard shows who is paying.</p>
+    <p className="adm-note">A saved card is not a payment. Confirm that the child&apos;s first workbook has arrived at the family&apos;s home. Then press &quot;Workbook delivered: start free month&quot;. The 30-day free month begins at that confirmation. Adding a card, printing a workbook, and sending tracking details do not start it. Stripe charges the monthly price on day 30, then every month. Stripe emails the parent a reminder 7 days before day 30, with a link to manage or cancel the plan. The dashboard shows who is paying.</p>
     <h2>Card setups</h2><CardsTable cards={cards.rows} />
     <h2>Waitlist</h2><WaitlistTable waitlist={waitlist.rows} />
     <More more={cards.more || waitlist.more} max={LIST_MAX} offset={offset} action="/admin/next-steps" />

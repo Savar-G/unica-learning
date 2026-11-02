@@ -21,7 +21,7 @@ export const FAQ = [
   ["What if we miss a few days?", "The next book picks up where your child is. Nothing is lost."],
   ["What if we forget to send photos?", "We send a reminder. Until new pages arrive, the next book reviews what your child last worked on."],
   ["What happens to my child's work?", "We use it to plan your child's next book and show their progress. We do not sell it, and you can ask us to delete it at any time."],
-  ["Why do you ask for my card?", "You do not need a card for the assessment. After the report, BC-curriculum families can choose a plan and add a card. Other curricula can join the workbook waitlist without a card. The card lets your first workbook ship as soon as it is ready. Your first month is free, starting when the first workbook ships. On day 30 we charge the monthly price, then every month until you cancel. We email you before the first charge. Cancel before day 30 and you pay nothing."],
+  ["Why do you ask for my card?", "You do not need a card for the assessment. After the report, BC-curriculum families can choose a plan and add a card. Other curricula can join the workbook waitlist without a card. The card lets your first workbook ship as soon as it is ready. Your first month is free, starting when the first workbook arrives at your home. On day 30 we charge the monthly price, then every month until you cancel. We email you before the first charge. Cancel before day 30 and you pay nothing."],
   ["Can we cancel?", "Yes, anytime. Use the link in your reminder email, or contact us. If you cancel within your free first month, you pay nothing."],
   ["Where do you deliver?", "We deliver workbooks across Canada. Delivery is included in every plan."],
 ].map(([question, answer]) => ({ question, answer }));
