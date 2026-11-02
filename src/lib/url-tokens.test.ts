@@ -21,6 +21,8 @@ describe("QR token redaction", () => {
   });
   const view = (url: string) => scrubAnalyticsEvent({ type: "pageview", url } as Parameters<typeof scrubAnalyticsEvent>[0]);
   it("drops every Vercel Analytics event on a desk or QR page", () => {
+    expect(view("https://unicalearning.com/account/scan?child=private")).toBeNull();
+    expect(view("https://unicalearning.com/api/account/scans/private/image")).toBeNull();
     expect(view("https://unicalearning.com/tutor/p/abc123SECRET")).toBeNull();
     expect(view("https://unicalearning.com/%74utor/p/abc123SECRET")).toBeNull();
     expect(view("https://unicalearning.com/tutor")).toBeNull();
@@ -36,6 +38,7 @@ describe("QR token redaction", () => {
   });
   const vital = (url: string) => scrubSpeedEvent({ type: "vital", url });
   it("drops every Speed Insights event on a desk or QR page", () => {
+    expect(vital("https://unicalearning.com/account/scan")).toBeNull();
     expect(vital("https://unicalearning.com/tutor/p/abc123SECRET")).toBeNull();
     expect(vital("https://unicalearning.com/sign-in?next=%2Ftutor%2Fp%2Fabc123SECRET")).toBeNull();
   });

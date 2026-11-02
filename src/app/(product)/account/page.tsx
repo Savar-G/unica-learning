@@ -94,6 +94,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
           </li>
         ))}
       </ul>
+      <p><Link className="btn" href="/account/scan">Scan pages <span aria-hidden="true">→</span></Link></p>
       {minutes.size > 0 && <p className="small">Your &quot;Try Maya&quot; calls have a separate limit of {DEMO_DAILY_MINUTES} minutes a day for your account. They do not use your child&apos;s weekly minutes.</p>}
       {!parent.time_zone && <SaveTimeZone />}
       <AddChild province={children.at(-1)?.province ?? "BC"} />

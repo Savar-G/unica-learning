@@ -1,0 +1,6 @@
+{
+  "before": 200,
+  "replayedCookieAfterSignOut": 401,
+  "objectStillExists": true,
+  "check": "Old JWT cookie cannot view images after Auth session revocation; browser sign-out is not the only protection."
+}

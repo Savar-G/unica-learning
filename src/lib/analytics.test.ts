@@ -67,7 +67,7 @@ describe("the admin area sends nothing (#77)", () => {
   }
 
   it("does not load PostHog on an admin page, and drops its events", async () => {
-    for (const path of ["/admin", "/admin/assessments/1", "/%61dmin/parents", "/api/admin/families"]) {
+    for (const path of ["/account/scan", "/api/account/scans/private/image", "/admin", "/admin/assessments/1", "/%61dmin/parents", "/api/admin/families"]) {
       const { analytics, calls, loads } = onPage(path);
       analytics.begin();
       analytics.track("report_open", { src: "account" });

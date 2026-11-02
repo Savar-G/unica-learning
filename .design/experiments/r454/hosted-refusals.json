@@ -1,0 +1,10 @@
+{
+  "checks": [
+    "Unknown QR token refused before object creation",
+    "Other family QR refused before object creation",
+    "Duplicate page photo refused with no object",
+    "Unpublished workbook page refused",
+    "Forged selected child from another family refused at admission",
+    "Retry after saved response uses same photo; no duplicate attachment"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "checks": [
+    "Clock expiry denies owner/admin image route while object still exists",
+    "Owner/admin direct download and single/batch signed URLs denied at expiry",
+    "Scheduled expiry function records terminal state",
+    "Late Storage write refused",
+    "Physical cleanup reconciles byte accounting"
+  ],
+  "proofLimit": "No marks or crops exist in S1; their history/expiry contracts require later slices."
+}

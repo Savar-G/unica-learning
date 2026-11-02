@@ -31,7 +31,7 @@ export interface Deps {
 
 function adminPath(path: string): boolean {
   try { path = decodeURIComponent(path); } catch { return true; }
-  return /^\/(?:api\/)?admin(\/|$)/.test(path);
+  return /^\/(?:api\/)?admin(\/|$)/.test(path) || /^\/(?:account\/scan|api\/account\/scans)(\/|$)/.test(path);
 }
 
 function adminEvent(event: Scrubbable): boolean {

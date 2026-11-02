@@ -1896,6 +1896,121 @@ export type Database = {
           },
         ]
       }
+      scan_limits: {
+        Row: {
+          active_jobs: number
+          concurrent_uploads: number
+          decoded_pixels: number
+          family_bytes: number
+          input_bytes: number
+          output_bytes: number
+          per_day: number
+          per_ten_minutes: number
+          queued_jobs: number
+          singleton: boolean
+        }
+        Insert: {
+          active_jobs?: number
+          concurrent_uploads?: number
+          decoded_pixels?: number
+          family_bytes?: number
+          input_bytes?: number
+          output_bytes?: number
+          per_day?: number
+          per_ten_minutes?: number
+          queued_jobs?: number
+          singleton?: boolean
+        }
+        Update: {
+          active_jobs?: number
+          concurrent_uploads?: number
+          decoded_pixels?: number
+          family_bytes?: number
+          input_bytes?: number
+          output_bytes?: number
+          per_day?: number
+          per_ten_minutes?: number
+          queued_jobs?: number
+          singleton?: boolean
+        }
+        Relationships: []
+      }
+      scan_photos: {
+        Row: {
+          child_id: string
+          created_at: string
+          expires_at: string
+          height: number | null
+          id: string
+          lease_until: string
+          page_id: string | null
+          parent_id: string
+          printed_revision: string | null
+          reserved_bytes: number
+          state: string
+          stored_bytes: number
+          terminal_at: string | null
+          width: number | null
+          workbook_id: string | null
+        }
+        Insert: {
+          child_id: string
+          created_at?: string
+          expires_at?: string
+          height?: number | null
+          id: string
+          lease_until?: string
+          page_id?: string | null
+          parent_id: string
+          printed_revision?: string | null
+          reserved_bytes: number
+          state?: string
+          stored_bytes?: number
+          terminal_at?: string | null
+          width?: number | null
+          workbook_id?: string | null
+        }
+        Update: {
+          child_id?: string
+          created_at?: string
+          expires_at?: string
+          height?: number | null
+          id?: string
+          lease_until?: string
+          page_id?: string | null
+          parent_id?: string
+          printed_revision?: string | null
+          reserved_bytes?: number
+          state?: string
+          stored_bytes?: number
+          terminal_at?: string | null
+          width?: number | null
+          workbook_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_child_family"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "scan_page_family"
+            columns: ["page_id", "workbook_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_pages"
+            referencedColumns: ["id", "workbook_id", "parent_id"]
+          },
+          {
+            foreignKeyName: "scan_photos_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sign_in_links: {
         Row: {
           child_id: string
@@ -3638,6 +3753,15 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      admit_scan_photo: {
+        Args: {
+          p_bytes: number
+          p_child: string
+          p_id: string
+          p_parent: string
+        }
+        Returns: string
+      }
       advance_family_deletion_cursor: {
         Args: { p: string }
         Returns: undefined
@@ -3726,6 +3850,10 @@ export type Database = {
           p_work_text: string
         }
         Returns: Json
+      }
+      change_scan_photo: {
+        Args: { p_action: string; p_id: string; p_parent: string }
+        Returns: string
       }
       check_family_payment_lease: {
         Args: { p: string; token: string }
@@ -3881,6 +4009,7 @@ export type Database = {
         Args: { p_note: string; p_provider: string; p_run: string }
         Returns: boolean
       }
+      expire_scan_photos: { Args: never; Returns: undefined }
       fail_workbook_run: {
         Args: { p_error: string; p_lease: string; p_run: string }
         Returns: boolean
@@ -3918,6 +4047,10 @@ export type Database = {
           token: string
         }
         Returns: undefined
+      }
+      finish_scan_photo: {
+        Args: { p_bytes: number; p_id: string; p_parent: string }
+        Returns: string
       }
       finish_workbook_edit: {
         Args: {
@@ -3978,6 +4111,16 @@ export type Database = {
               used_before: number
             }[]
           }
+      identify_scan_photo: {
+        Args: {
+          p_height: number
+          p_id: string
+          p_parent: string
+          p_token: string
+          p_width: number
+        }
+        Returns: string
+      }
       is_admin: { Args: never; Returns: boolean }
       link_booking_family: {
         Args: { pid: string; sid: number }
@@ -4049,6 +4192,7 @@ export type Database = {
         Args: { customer: string; p: string; token: string }
         Returns: Json
       }
+      reconcile_scan_cleanup: { Args: { p_id: string }; Returns: boolean }
       record_maya_wordings: {
         Args: { p_child: string; p_heard: Json; p_max: number }
         Returns: number
@@ -4069,6 +4213,10 @@ export type Database = {
       recover_maya_chat_message: {
         Args: { p_child: string; p_parent: string }
         Returns: Json
+      }
+      recover_scan_photo: {
+        Args: { p_id: string; p_parent: string }
+        Returns: string
       }
       release_family_deletion: {
         Args: { p: string; token: string }
@@ -4202,6 +4350,10 @@ export type Database = {
         Args: { p_lease: string; p_logs: Json; p_run: string }
         Returns: boolean
       }
+      scan_session_active: {
+        Args: { p_session: string; p_user: string }
+        Returns: boolean
+      }
       send_workbook_comments: {
         Args: {
           p_by: string
@@ -4211,6 +4363,10 @@ export type Database = {
           p_runner: string
         }
         Returns: Json
+      }
+      start_scan_photo: {
+        Args: { p_id: string; p_parent: string }
+        Returns: string
       }
       start_workbook_run: {
         Args: {
