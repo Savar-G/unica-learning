@@ -1,3 +1,4 @@
+import { formatCalendarDate } from "@/lib/family-time";
 // Small helpers for the Resources and Blog sections. Kept apart from resources.ts and blog.ts so that
 // src/components/article.tsx does not import the registries (which import every content file).
 
@@ -37,5 +38,5 @@ export const articlePath = (section: ArticleSection, slug: string) => `${ARTICLE
 
 /** "2026-10-09" -> "October 9, 2026" (UTC, so the date never shifts by time zone). */
 export function formatResourceDate(iso: string): string {
-  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
+  return formatCalendarDate(iso, { year: "numeric", month: "long", day: "numeric" });
 }

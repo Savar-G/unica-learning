@@ -5,15 +5,15 @@ import { checkQuestionPackage, workedSteps, type QuestionPackage } from "@/lib/q
 import {
   createMinutesLedger,
   dayOf,
-  familyTimeZone,
   usageMinutes,
-  validTimeZone,
   weekOf,
   CALL_SECONDS,
   GRANT_CALL_WAIT_MS,
   WEEK_SECONDS,
 } from "@/lib/maya-minutes";
 import { memoryMinutesStore } from "@/lib/maya-minutes-memory";
+
+import { familyZone, validTimeZone, type FamilyZone } from "@/lib/family-time";
 
 const MIN = 60_000;
 const P = "11111111-1111-4111-8111-111111111111";
@@ -30,7 +30,7 @@ function setup(start: string) {
 }
 
 /** A child's call that is granted, made and ends with these connected seconds. */
-async function talk(t: ReturnType<typeof setup>, id: string, connected: number, timeZone = "America/Vancouver", childId = C) {
+async function talk(t: ReturnType<typeof setup>, id: string, connected: number, timeZone: FamilyZone = "America/Vancouver", childId = C) {
   const g = await t.ledger.grantChild({ callId: id, parentId: P, childId, timeZone });
   if (g.ok) {
     t.store.callMade(id);
@@ -41,33 +41,33 @@ async function talk(t: ReturnType<typeof setup>, id: string, connected: number, 
 
 describe("weeks start on Monday in the family's time zone", () => {
   it("gives the local Monday and the next Monday's midnight", () => {
-    // Sunday 2026-11-08 23:30 in Vancouver is Monday 07:30 UTC.
-    const at = Date.parse("2026-11-09T07:30:00Z");
-    expect(weekOf(at, "America/Vancouver")).toEqual({ start: "2026-11-02", resetsAt: Date.parse("2026-11-09T08:00:00Z") });
+    // Sunday 2026-11-08 23:30 in Vancouver is Monday 06:30 UTC.
+    const at = Date.parse("2026-11-09T06:30:00Z");
+    expect(weekOf(at, "America/Vancouver")).toEqual({ start: "2026-11-02", resetsAt: Date.parse("2026-11-09T07:00:00Z") });
     expect(weekOf(at, "America/Toronto")).toEqual({ start: "2026-11-09", resetsAt: Date.parse("2026-11-16T05:00:00Z") });
     // A Monday at 00:00 local is the new week; a second before is the old one.
-    expect(weekOf(Date.parse("2026-11-09T08:00:00Z"), "America/Vancouver").start).toBe("2026-11-09");
-    expect(weekOf(Date.parse("2026-11-09T07:59:59Z"), "America/Vancouver").start).toBe("2026-11-02");
+    expect(weekOf(Date.parse("2026-11-09T07:00:00Z"), "America/Vancouver").start).toBe("2026-11-09");
+    expect(weekOf(Date.parse("2026-11-09T06:59:59Z"), "America/Vancouver").start).toBe("2026-11-02");
     // Half-hour zone.
     expect(weekOf(Date.parse("2026-11-09T03:29:59Z"), "America/St_Johns").start).toBe("2026-11-02");
     expect(weekOf(Date.parse("2026-11-09T03:30:00Z"), "America/St_Johns").start).toBe("2026-11-09");
   });
 
   it("keeps the reset at local midnight across a clock change", () => {
-    // Clocks went back on Sunday 2026-11-01 in Vancouver: the week of 2026-10-26 ends at 2026-11-02 00:00 PST.
-    expect(weekOf(Date.parse("2026-10-31T12:00:00Z"), "America/Vancouver")).toEqual({ start: "2026-10-26", resetsAt: Date.parse("2026-11-02T08:00:00Z") });
-    // Clocks go forward on 2027-03-14: the week of 2027-03-08 ends at 2027-03-15 00:00 PDT.
+    // BC keeps permanent PDT after March 2026, including the November Monday boundary.
+    expect(weekOf(Date.parse("2026-10-31T12:00:00Z"), "America/Vancouver")).toEqual({ start: "2026-10-26", resetsAt: Date.parse("2026-11-02T07:00:00Z") });
+    // BC still keeps PDT in March 2027.
     expect(weekOf(Date.parse("2027-03-10T12:00:00Z"), "America/Vancouver").resetsAt).toBe(Date.parse("2027-03-15T07:00:00Z"));
-    expect(dayOf(Date.parse("2026-11-01T12:00:00Z"), "America/Vancouver")).toEqual({ start: "2026-11-01", resetsAt: Date.parse("2026-11-02T08:00:00Z") });
+    expect(dayOf(Date.parse("2026-11-01T12:00:00Z"), "America/Vancouver")).toEqual({ start: "2026-11-01", resetsAt: Date.parse("2026-11-02T07:00:00Z") });
   });
 
   it("gives back 30 minutes at the Monday reset, at each family's own midnight", async () => {
-    const t = setup("2026-11-08T20:00:00Z"); // Sunday noon in Vancouver, Sunday 15:00 in Toronto
+    const t = setup("2026-11-08T20:00:00Z"); // Sunday 13:00 in Vancouver, Sunday 15:00 in Toronto
     for (let i = 0; i < 3; i++) await talk(t, call(i), CALL_SECONDS, "America/Vancouver", C);
     for (let i = 3; i < 6; i++) await talk(t, call(i), CALL_SECONDS, "America/Toronto", C2);
     expect((await t.ledger.usage({ parentId: P, childId: C, timeZone: "America/Vancouver" })).leftSeconds).toBe(0);
     expect((await t.ledger.grantChild({ callId: call(9), parentId: P, childId: C, timeZone: "America/Vancouver" }))).toEqual({
-      ok: false, reason: "none_left", leftSeconds: 0, resetsAt: Date.parse("2026-11-09T08:00:00Z"),
+      ok: false, reason: "none_left", leftSeconds: 0, resetsAt: Date.parse("2026-11-09T07:00:00Z"),
     });
 
     // Monday 00:30 in Toronto (05:30 UTC) is still Sunday in Vancouver.
@@ -77,7 +77,7 @@ describe("weeks start on Monday in the family's time zone", () => {
     });
     expect((await t.ledger.usage({ parentId: P, childId: C, timeZone: "America/Vancouver" })).leftSeconds).toBe(0);
 
-    t.at("2026-11-09T08:00:00Z"); // Monday 00:00 in Vancouver
+    t.at("2026-11-09T07:00:00Z"); // Monday 00:00 in Vancouver
     expect((await t.ledger.usage({ parentId: P, childId: C, timeZone: "America/Vancouver" })).leftSeconds).toBe(WEEK_SECONDS);
   });
 });
@@ -131,7 +131,7 @@ describe("a call lasts at most 10 minutes, less when less remains", () => {
     await talk(t, call(2), 600);
     await talk(t, call(3), 541);
     expect(await t.ledger.grantChild({ callId: call(4), parentId: P, childId: C, timeZone: "America/Vancouver" })).toEqual({
-      ok: false, reason: "none_left", leftSeconds: 59, resetsAt: Date.parse("2026-11-09T08:00:00Z"),
+      ok: false, reason: "none_left", leftSeconds: 59, resetsAt: Date.parse("2026-11-09T07:00:00Z"),
     });
     expect(t.store.grants()).toHaveLength(3);
   });
@@ -199,7 +199,7 @@ describe("concurrent starts, retries and reconnects are counted once", () => {
     expect(await t.ledger.grantChild(input)).toMatchObject({ ok: false, leftSeconds: 0 });
     expect(() => t.store.callMade(call(3))).toThrow(/expired/);
     t.store.callMade(call(4));
-    expect(await t.store.used({ parentId: P, childId: C, kind: "child", period: "2026-11-02" })).toBe(1800);
+    expect(await t.store.used({ parentId: P, childId: C, kind: "child", periodStart: Date.parse("2026-11-02T07:00:00Z") })).toBe(1800);
   });
 
   it("checks delayed call creation even when the caller does not retry the grant", async () => {
@@ -212,7 +212,7 @@ describe("concurrent starts, retries and reconnects are counted once", () => {
     await t.ledger.grantChild({ ...input, callId: call(4) });
     expect(() => t.store.callMade(call(3))).toThrow(/expired/);
     t.store.callMade(call(4));
-    expect(await t.store.used({ parentId: P, childId: C, kind: "child", period: "2026-11-02" })).toBe(1800);
+    expect(await t.store.used({ parentId: P, childId: C, kind: "child", periodStart: Date.parse("2026-11-02T07:00:00Z") })).toBe(1800);
   });
 
   it("refuses a delayed call when its original limit exceeds the smaller remainder", async () => {
@@ -234,11 +234,11 @@ describe("concurrent starts, retries and reconnects are counted once", () => {
     t.advance(GRANT_CALL_WAIT_MS);
     t.store.callMade(call(1));
     t.advance(GRANT_CALL_WAIT_MS * 10);
-    expect(await t.store.used({ parentId: P, childId: C, kind: "child", period: "2026-11-02" })).toBe(600);
+    expect(await t.store.used({ parentId: P, childId: C, kind: "child", periodStart: Date.parse("2026-11-02T07:00:00Z") })).toBe(600);
   });
 
   it("counts on the server's clock", async () => {
-    const t = setup("2026-11-09T07:59:00Z"); // Sunday 23:59 in Vancouver
+    const t = setup("2026-11-09T06:59:00Z"); // Sunday 23:59 in Vancouver
     await talk(t, call(1), 600);
     await talk(t, call(2), 600);
     await talk(t, call(3), 600);
@@ -255,10 +255,10 @@ describe("a parent's Try Maya calls", () => {
     expect(await t.ledger.grantDemo({ callId: call(2), parentId: P, timeZone: "America/Vancouver" })).toMatchObject({ ok: true, seconds: 60, leftSeconds: 0 });
     t.store.callEnded(call(2), 60);
     expect(await t.ledger.grantDemo({ callId: call(3), parentId: P, timeZone: "America/Vancouver" })).toEqual({
-      ok: false, reason: "none_left", leftSeconds: 0, resetsAt: Date.parse("2026-11-05T08:00:00Z"),
+      ok: false, reason: "none_left", leftSeconds: 0, resetsAt: Date.parse("2026-11-05T07:00:00Z"),
     });
     expect(await t.ledger.usage({ parentId: P, childId: C, timeZone: "America/Vancouver" })).toMatchObject({ usedSeconds: 0, leftSeconds: WEEK_SECONDS });
-    t.at("2026-11-05T08:00:00Z"); // the next local day
+    t.at("2026-11-05T07:00:00Z"); // the next local day
     expect(await t.ledger.grantDemo({ callId: call(4), parentId: P, timeZone: "America/Vancouver" })).toMatchObject({ ok: true, seconds: 120 });
   });
 
@@ -273,10 +273,10 @@ describe("a parent's Try Maya calls", () => {
 
 describe("the family's time zone", () => {
   it("is the stored one, else the province's, else Vancouver", () => {
-    expect(familyTimeZone("America/Halifax", "BC")).toBe("America/Halifax");
-    expect(familyTimeZone(null, "ON")).toBe("America/Toronto");
-    expect(familyTimeZone("Not/AZone", "AB")).toBe("America/Edmonton");
-    expect(familyTimeZone(null, "other")).toBe("America/Vancouver");
+    expect(familyZone({ timeZone: "America/Halifax", province: "BC" })).toBe("America/Halifax");
+    expect(familyZone({ province: "ON" })).toBe("America/Toronto");
+    expect(familyZone({ timeZone: "Not/AZone", province: "AB" })).toBe("America/Edmonton");
+    expect(familyZone({ province: "other" })).toBe("America/Vancouver");
     expect(validTimeZone("America/St_Johns")).toBe(true);
     expect(validTimeZone("'; drop table")).toBe(false);
   });
@@ -284,5 +284,31 @@ describe("the family's time zone", () => {
   it("shows whole minutes that never promise more than is left", () => {
     expect(usageMinutes({ usedSeconds: 61, leftSeconds: 1739 })).toEqual({ used: 2, left: 28 });
     expect(usageMinutes({ usedSeconds: 0, leftSeconds: 1800 })).toEqual({ used: 0, left: 30 });
+  });
+});
+
+// The same resolved zone drives weekly grants and the separate daily demo cap.
+describe("family rule across the November changes", () => {
+  it.each([
+    ["BC browser", "America/Vancouver", "V3S 1A1", "BC", "2026-11-09T07:00:00Z"],
+    ["Alberta postal", null, "T2P 1J9", "BC", "2026-11-09T06:00:00Z"],
+    ["browser wins", "America/Toronto", "V3S 1A1", "BC", "2026-11-09T05:00:00Z"],
+    ["invalid browser", "Not/AZone", "T2P 1J9", "BC", "2026-11-09T06:00:00Z"],
+    ["province fallback", null, null, "AB", "2026-11-09T06:00:00Z"],
+  ])("resets weeks and demo days at midnight for %s", async (_, stored, postal, province, midnight) => {
+    const timeZone = familyZone({ timeZone: stored, postal, province });
+    const reset = Date.parse(midnight);
+    const t = setup(new Date(reset - 1000).toISOString());
+    for (let i = 0; i < 3; i++) await talk(t, call(i), 600, timeZone);
+    expect(await t.ledger.grantChild({ callId: call(4), parentId: P, childId: C, timeZone }))
+      .toMatchObject({ ok: false, resetsAt: reset });
+    expect(await t.ledger.grantDemo({ callId: call(5), parentId: P, timeZone })).toMatchObject({ ok: true, seconds: 120 });
+    t.store.callMade(call(5));
+    t.store.callEnded(call(5), 120);
+    expect(await t.ledger.grantDemo({ callId: call(6), parentId: P, timeZone }))
+      .toMatchObject({ ok: false, resetsAt: reset });
+    t.advance(1000);
+    expect(await t.ledger.usage({ parentId: P, childId: C, timeZone })).toMatchObject({ usedSeconds: 0, leftSeconds: 1800 });
+    expect(await t.ledger.grantDemo({ callId: call(7), parentId: P, timeZone })).toMatchObject({ ok: true, seconds: 120 });
   });
 });

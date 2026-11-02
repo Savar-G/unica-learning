@@ -18,6 +18,7 @@ import {
   type StoredTest,
 } from "@/lib/assessment";
 import type { ReportView } from "@/lib/report-view";
+import { familyZone } from "@/lib/family-time";
 import type { ReviewPiece } from "@/lib/work-review";
 
 // The report-loading module (spec #145). Server only. Two operations:
@@ -47,6 +48,10 @@ export interface ReportRecord {
   assessment: { completedAt: string; province: Province } | null;
   /** The child; null when the reader cannot find them. */
   child: { firstName: string } | null;
+  /** Present in database reads. Optional for older stored/demo inputs. */
+  postal?: string | null;
+  familyProvince?: string | null;
+  timeZone?: string | null;
 }
 
 /** A test as a reader finds it, with its stored test (the questions drawn for it, with their right answers). */
@@ -266,6 +271,7 @@ export async function loadReportView(reader: ReportReader, id: string): Promise<
       id: row.id,
       childName: row.child.firstName,
       province: row.assessment.province,
+      timeZone: familyZone({ timeZone: row.timeZone, postal: row.postal, province: row.familyProvince }),
       completedAt: row.assessment.completedAt,
       questions: row.questions,
       minutes: row.minutes,

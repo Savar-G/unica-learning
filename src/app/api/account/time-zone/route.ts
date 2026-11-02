@@ -1,5 +1,5 @@
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
-import { validTimeZone } from "@/lib/maya-minutes";
+import { validTimeZone } from "@/lib/family-time";
 
 // The family's time zone (#330): Parent home sends the browser's IANA time zone once, and the server stores it only
 // when none is stored yet, so Maya's weekly minutes start on the family's own Monday. The parent comes from the

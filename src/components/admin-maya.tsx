@@ -1,5 +1,7 @@
 "use client";
 
+import { formatInZone, PACIFIC_ZONE } from "@/lib/family-time";
+
 // Maya's admin test calls (#323): pick a supported question of a test family's child, type the child's turns, and see
 // Maya's replies while she writes on the board. The call runs on the server (src/lib/maya-call.ts); this screen sends
 // one input at a time and shows what came back. A finished call shows its outcome, the learning event, the versions and
@@ -69,7 +71,7 @@ const ERROR_TEXT: Record<string, string> = {
 };
 
 // Pacific time on the server and in the browser alike, so the server render and hydration agree (Vercel runs in UTC).
-const when = (iso: string) => new Date(iso).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Vancouver" });
+const when = (iso: string) => formatInZone(iso, PACIFIC_ZONE, { dateStyle: "medium", timeStyle: "short" });
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 const named = (text: string, name: string | null) => text.replaceAll("{name}", name ?? "the child");
 

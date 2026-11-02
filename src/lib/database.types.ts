@@ -680,6 +680,7 @@ export type Database = {
         Row: {
           assessment_id: string | null
           attempts: number
+          call_ids: string[] | null
           child_id: string | null
           clicks: number
           created_at: string
@@ -699,6 +700,7 @@ export type Database = {
         Insert: {
           assessment_id?: string | null
           attempts?: number
+          call_ids?: string[] | null
           child_id?: string | null
           clicks?: number
           created_at?: string
@@ -718,6 +720,7 @@ export type Database = {
         Update: {
           assessment_id?: string | null
           attempts?: number
+          call_ids?: string[] | null
           child_id?: string | null
           clicks?: number
           created_at?: string
@@ -1560,6 +1563,7 @@ export type Database = {
           kind: string
           parent_id: string
           period: string
+          period_start: string | null
           settled_at: string | null
           used_seconds: number | null
         }
@@ -1571,6 +1575,7 @@ export type Database = {
           kind: string
           parent_id: string
           period: string
+          period_start?: string | null
           settled_at?: string | null
           used_seconds?: number | null
         }
@@ -1582,6 +1587,7 @@ export type Database = {
           kind?: string
           parent_id?: string
           period?: string
+          period_start?: string | null
           settled_at?: string | null
           used_seconds?: number | null
         }
@@ -3249,16 +3255,27 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      _maya_minutes_used: {
-        Args: {
-          p_child: string
-          p_except: string
-          p_kind: string
-          p_parent: string
-          p_period: string
-        }
-        Returns: number
-      }
+      _maya_minutes_used:
+        | {
+            Args: {
+              p_child: string
+              p_except: string
+              p_kind: string
+              p_parent: string
+              p_period: string
+            }
+            Returns: number
+          }
+        | {
+            Args: {
+              p_child: string
+              p_except: string
+              p_kind: string
+              p_parent: string
+              p_period_start: string
+            }
+            Returns: number
+          }
       abandon_family_payment_operation: {
         Args: {
           p: string
@@ -3596,6 +3613,17 @@ export type Database = {
         Args: { p: string; subscription_ended_at: string; token: string }
         Returns: Json
       }
+      claim_maya_weekly: {
+        Args: {
+          p_attempts: number
+          p_calls: string[]
+          p_hash: string
+          p_parent: string
+          p_retry: string
+          p_week: string
+        }
+        Returns: string
+      }
       claim_pin_attempt: {
         Args: {
           p_lock_seconds: number
@@ -3760,22 +3788,41 @@ export type Database = {
         Args: { p_frame: Json; p_id: string; p_lease: string }
         Returns: Json
       }
-      grant_maya_minutes: {
-        Args: {
-          p_call: string
-          p_call_seconds: number
-          p_child: string
-          p_kind: string
-          p_min_seconds: number
-          p_parent: string
-          p_period: string
-          p_period_seconds: number
-        }
-        Returns: {
-          granted: number
-          used_before: number
-        }[]
-      }
+      grant_maya_minutes:
+        | {
+            Args: {
+              p_call: string
+              p_call_seconds: number
+              p_child: string
+              p_kind: string
+              p_min_seconds: number
+              p_parent: string
+              p_period: string
+              p_period_seconds: number
+            }
+            Returns: {
+              granted: number
+              used_before: number
+            }[]
+          }
+        | {
+            Args: {
+              p_call: string
+              p_call_seconds: number
+              p_child: string
+              p_kind: string
+              p_min_seconds: number
+              p_parent: string
+              p_period: string
+              p_period_seconds: number
+              p_period_start: string
+            }
+            Returns: {
+              granted: number
+              used_before: number
+            }[]
+          }
+
       is_admin: { Args: never; Returns: boolean }
       link_booking_family: {
         Args: { pid: string; sid: number }
@@ -3795,15 +3842,25 @@ export type Database = {
         }
         Returns: Json
       }
-      maya_minutes_used: {
-        Args: {
-          p_child: string
-          p_kind: string
-          p_parent: string
-          p_period: string
-        }
-        Returns: number
-      }
+      maya_minutes_used:
+        | {
+            Args: {
+              p_child: string
+              p_kind: string
+              p_parent: string
+              p_period: string
+            }
+            Returns: number
+          }
+        | {
+            Args: {
+              p_child: string
+              p_kind: string
+              p_parent: string
+              p_period_start: string
+            }
+            Returns: number
+          }
       parent_reads_workbook: { Args: { p_workbook: string }; Returns: boolean }
       parent_reads_workbook_folder: {
         Args: { p_folder: string }

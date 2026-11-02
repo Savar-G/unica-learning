@@ -96,6 +96,7 @@ type NullArgs = KnownArgs<{
   beat_workbook_worker: "p_build" | "p_run" | "p_note";
   change_answer: AnswerNulls | "p_work_path" | "p_strokes_path";
   change_answer_keep_drawing: AnswerNulls;
+  claim_maya_weekly: "p_retry";
   claim_family_retention: "subscription_ended_at";
   complete_test: "p_help";
   create_family: "p_postal";

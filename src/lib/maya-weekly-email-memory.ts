@@ -30,20 +30,21 @@ export function memoryWeeklyStore(data: { parents: WeeklyParent[]; children: Wee
         children: data.children.map(copy),
         calls: calls.map(copy),
         notes: data.notes.map(copy),
-        log: rows.filter((r) => parentIds.has(r.parentId)).map(({ id, kind, parentId, weekStart, status, attempts }) => ({ id, kind, parentId, weekStart, status, attempts })),
+        log: rows.filter((r) => parentIds.has(r.parentId)).map(({ id, kind, parentId, weekStart, status, attempts, callIds }) => ({ id, kind, parentId, weekStart, status, attempts, callIds })),
       };
     },
     ledger: {
       async claim(d: DueWeekly, { unsubscribe_hash }) {
+        if (rows.some((r) => r.parentId === d.parentId && (r.status === "claimed" || r.status === "sent") && r.callIds?.some((id) => d.callIds.includes(id)))) return null;
         if (d.retry) {
           const r = row(d.retry.logId);
           if (!r || r.status !== "failed" || r.attempts !== d.retry.attempts || r.attempts >= MAX_SEND_ATTEMPTS) return null;
-          Object.assign(r, { status: "claimed", attempts: r.attempts + 1, hash: unsubscribe_hash, error: null });
+          Object.assign(r, { status: "claimed", attempts: r.attempts + 1, hash: unsubscribe_hash, error: null, callIds: [...d.callIds] });
           return r.id;
         }
         if (rows.some((r) => r.kind === "maya_weekly" && r.parentId === d.parentId && r.weekStart === d.weekStart)) return null;
         const id = `log-${rows.length + 1}`;
-        rows.push({ id, kind: "maya_weekly", parentId: d.parentId, weekStart: d.weekStart, status: "claimed", attempts: 1, hash: unsubscribe_hash, emailId: null, error: null });
+        rows.push({ id, kind: "maya_weekly", parentId: d.parentId, weekStart: d.weekStart, status: "claimed", attempts: 1, hash: unsubscribe_hash, emailId: null, error: null, callIds: [...d.callIds] });
         return id;
       },
       async sent(id, emailId) {

@@ -67,9 +67,9 @@ function fakeDb(tables: Record<string, Row[]>, afterPage?: (table: string, page:
   return createClient<Database>("https://fixture.invalid", "synthetic-key", { global: { fetch }, auth: { persistSession: false } });
 }
 
-/** 2026-11-02 at hh:mm in Vancouver (PST, UTC-8). */
-const pst = (day: number, hh: number, mm = 0, ss = 0) => Date.UTC(2026, 10, day, hh + 8, mm, ss);
-const NOW = pst(9, 8);
+/** 2026-11-02 at hh:mm in Vancouver (permanent PDT, UTC-7). */
+const pdt = (day: number, hh: number, mm = 0, ss = 0) => Date.UTC(2026, 10, day, hh + 7, mm, ss);
+const NOW = pdt(9, 8);
 
 function noteRow(callId: string, parentId: string, childId: string, endedAt: number): Row {
   return {
@@ -87,16 +87,16 @@ describe("the weekly Maya email store under the 1,000-row limit", () => {
   it("sees a parent's Maya unsubscribe after more than 1,000 earlier email log rows", async () => {
     const log: Row[] = Array.from({ length: 1200 }, (_, i) => ({ id: `log-${String(i).padStart(5, "0")}`, kind: "maya_weekly", parent_id: "p1", week_start: dayBefore(i), status: "sent", attempts: 1 }));
     log.push({ id: "log-unsub", kind: "maya_unsubscribe", parent_id: "p1", week_start: null, status: null, attempts: 0 });
-    const db = fakeDb({ maya_call_notes: [noteRow("call-1", "p1", "c1", pst(2, 15))], parents: [parent("p1")], children: [child("c1", "p1")], email_log: log });
+    const db = fakeDb({ maya_call_notes: [noteRow("call-1", "p1", "c1", pdt(2, 15))], parents: [parent("p1")], children: [child("c1", "p1")], email_log: log });
     const state = await mayaWeeklyStore(db).load(NOW);
     expect(state.log.filter((e) => e.kind === "maya_unsubscribe").map((e) => e.parentId)).toEqual(["p1"]);
     expect(dueWeeklyEmails(state, NOW)).toEqual([]);
   });
 
   it("reads every note of a parent's week when more than 1,000 notes are in the window", async () => {
-    const notes: Row[] = [noteRow("call-a", "p1", "c1", pst(2, 8))];
-    for (let i = 0; i < 999; i++) notes.push(noteRow(`call-q${String(i).padStart(4, "0")}`, "p2", "c2", pst(2, 9, Math.floor(i / 60), i % 60)));
-    notes.push(noteRow("call-b", "p1", "c1", pst(2, 20)));
+    const notes: Row[] = [noteRow("call-a", "p1", "c1", pdt(2, 8))];
+    for (let i = 0; i < 999; i++) notes.push(noteRow(`call-q${String(i).padStart(4, "0")}`, "p2", "c2", pdt(2, 9, Math.floor(i / 60), i % 60)));
+    notes.push(noteRow("call-b", "p1", "c1", pdt(2, 20)));
     const db = fakeDb({ maya_call_notes: notes, parents: [parent("p1"), parent("p2")], children: [child("c1", "p1"), child("c2", "p2")], email_log: [] });
     const state = await mayaWeeklyStore(db).load(NOW);
     expect(state.notes).toHaveLength(1001);
@@ -106,7 +106,7 @@ describe("the weekly Maya email store under the 1,000-row limit", () => {
 
   it("reads a parent's weekly claim for a week in the window, so the week is not emailed twice", async () => {
     const db = fakeDb({
-      maya_call_notes: [noteRow("call-1", "p1", "c1", pst(2, 15))], parents: [parent("p1")], children: [child("c1", "p1")],
+      maya_call_notes: [noteRow("call-1", "p1", "c1", pdt(2, 15))], parents: [parent("p1")], children: [child("c1", "p1")],
       email_log: [{ id: "log-1", kind: "maya_weekly", parent_id: "p1", week_start: "2026-11-02", status: "sent", attempts: 1 }],
     });
     expect(dueWeeklyEmails(await mayaWeeklyStore(db).load(NOW), NOW)).toEqual([]);
@@ -115,38 +115,38 @@ describe("the weekly Maya email store under the 1,000-row limit", () => {
 
 describe("weekly store completeness and concurrent deletion", () => {
   it("R421W-1: defers when a completed call has a pending note, then includes the saved note", async () => {
-    const notes = [noteRow("saved", "p1", "c1", pst(2, 15))];
+    const notes = [noteRow("saved", "p1", "c1", pdt(2, 15))];
     const calls = [
-      { id: "saved", parent_id: "p1", child_id: "c1", status: "ended", kind: "family", ended_at: new Date(pst(2, 15)).toISOString(), note_pending: null },
-      { id: "late", parent_id: "p1", child_id: "c2", status: "ended", kind: "family", ended_at: new Date(pst(3, 15)).toISOString(), note_pending: {} },
+      { id: "saved", parent_id: "p1", child_id: "c1", status: "ended", kind: "family", ended_at: new Date(pdt(2, 15)).toISOString(), note_pending: null },
+      { id: "late", parent_id: "p1", child_id: "c2", status: "ended", kind: "family", ended_at: new Date(pdt(3, 15)).toISOString(), note_pending: {} },
     ];
     const db = fakeDb({ maya_call_notes: notes, maya_calls: calls, parents: [parent("p1")], children: [child("c1", "p1"), child("c2", "p1")], email_log: [] });
     expect(dueWeeklyEmails(await mayaWeeklyStore(db).load(NOW), NOW)).toEqual([]);
-    notes.push(noteRow("late", "p1", "c2", pst(3, 15)));
+    notes.push(noteRow("late", "p1", "c2", pdt(3, 15)));
     calls[1].note_pending = null;
     expect(dueWeeklyEmails(await mayaWeeklyStore(db).load(NOW), NOW)[0].callIds).toEqual(["late", "saved"]);
   });
 
   it("R421W-1: loads a family whose completed calls have no saved notes", async () => {
     const db = fakeDb({ maya_call_notes: [], maya_calls: [
-      { id: "late", parent_id: "p1", child_id: "c1", status: "ended", kind: "family", ended_at: new Date(pst(3, 15)).toISOString(), note_pending: {} },
+      { id: "late", parent_id: "p1", child_id: "c1", status: "ended", kind: "family", ended_at: new Date(pdt(3, 15)).toISOString(), note_pending: {} },
     ], parents: [parent("p1")], children: [child("c1", "p1")], email_log: [] });
-    const finalDay = pst(15, 8);
+    const finalDay = pdt(15, 8);
     expect(dueWeeklyEmails(await mayaWeeklyStore(db).load(finalDay), finalDay)).toHaveLength(1);
   });
 
   it("R421W-5: leaves admin test calls and test families out of the load's due weeks", async () => {
-    const at = new Date(pst(3, 15)).toISOString();
+    const at = new Date(pdt(3, 15)).toISOString();
     const db = fakeDb({ maya_call_notes: [], maya_calls: [
       { id: "admin", parent_id: "p1", child_id: "c1", status: "ended", kind: "admin_test", ended_at: at, note_pending: null },
       { id: "tested", parent_id: "p2", child_id: "c2", status: "ended", kind: "family", ended_at: at, note_pending: null },
     ], parents: [parent("p1"), parent("p2")], children: [child("c1", "p1"), child("c2", "p2")], test_accounts: [{ parent_id: "p2" }], email_log: [] });
-    const finalDay = pst(15, 8);
+    const finalDay = pdt(15, 8);
     expect(dueWeeklyEmails(await mayaWeeklyStore(db).load(finalDay), finalDay)).toEqual([]);
   });
 
   it.each([false, true])("R421W-2: keeps the last note after deletion from page one, same timestamp=%s", async (sameTime) => {
-    const notes = Array.from({ length: 1001 }, (_, i) => noteRow(`call-${String(i).padStart(4, "0")}`, "p1", "c1", sameTime ? pst(2, 15) : pst(2, 15) + i * 1000));
+    const notes = Array.from({ length: 1001 }, (_, i) => noteRow(`call-${String(i).padStart(4, "0")}`, "p1", "c1", sameTime ? pdt(2, 15) : pdt(2, 15) + i * 1000));
     let deleted = false;
     const db = fakeDb({ maya_call_notes: notes, parents: [parent("p1")], children: [child("c1", "p1")], email_log: [] }, (table, page) => {
       if (table === "maya_call_notes" && page.length === 1000 && !deleted) { deleted = true; notes.splice(0, 1); }
@@ -159,7 +159,7 @@ describe("weekly store completeness and concurrent deletion", () => {
   it.each(["maya_unsubscribe", "maya_weekly"] as const)("R421W-2: retains %s rows after deletion from page one", async (kind) => {
     const log = Array.from({ length: 1001 }, (_, i) => ({ id: `log-${String(i).padStart(4, "0")}`, parent_id: "p1", kind, week_start: kind === "maya_weekly" ? "2026-11-02" : null, status: "sent", attempts: 1 }));
     let deleted = false;
-    const db = fakeDb({ maya_call_notes: [noteRow("saved", "p1", "c1", pst(2, 15))], parents: [parent("p1")], children: [child("c1", "p1")], email_log: log }, (table, page) => {
+    const db = fakeDb({ maya_call_notes: [noteRow("saved", "p1", "c1", pdt(2, 15))], parents: [parent("p1")], children: [child("c1", "p1")], email_log: log }, (table, page) => {
       if (table === "email_log" && page.length === 1000 && !deleted) { deleted = true; log.splice(0, 1); }
     });
     const state = await mayaWeeklyStore(db).load(NOW);
@@ -172,7 +172,7 @@ describe("Maya and reminder unsubscribe scopes", () => {
   const reminderToken = "r".repeat(43);
   function scopedDb(mayaKind: "maya_weekly" | "maya_daily" = "maya_weekly") {
     return fakeDb({
-      maya_call_notes: [noteRow("call-1", "p1", "c1", pst(2, 15))], parents: [parent("p1")], children: [child("c1", "p1")],
+      maya_call_notes: [noteRow("call-1", "p1", "c1", pdt(2, 15))], parents: [parent("p1")], children: [child("c1", "p1")],
       email_log: [
         { id: "old-maya", kind: mayaKind, parent_id: "p1", unsubscribe_hash: hashToken(mayaToken), week_start: "2026-10-26", status: "sent", attempts: 1 },
         { id: "reminder", kind: "start", parent_id: "p1", unsubscribe_hash: hashToken(reminderToken), status: "sent", attempts: 1 },
@@ -194,5 +194,40 @@ describe("Maya and reminder unsubscribe scopes", () => {
     expect(await parentUnsubscribed(db, "p1")).toBe(false);
     expect(await unsubscribeState(db, reminderToken)).toEqual({ state: "subscribed", scope: "reminders" });
     expect(dueWeeklyEmails(await mayaWeeklyStore(db).load(NOW), NOW)).toEqual([]);
+  });
+});
+
+
+it("loads the browser zone and child's province for the shared rule", async () => {
+  const db = fakeDb({
+    maya_call_notes: [noteRow("call-zone", "p1", "c1", Date.parse("2026-11-08T20:00:00Z"))],
+    parents: [{ ...parent("p1"), time_zone: "America/Toronto" }],
+    children: [{ ...child("c1", "p1"), province: "AB" }],
+  }, (table, _, url) => {
+    if (table === "parents") expect(url.searchParams.get("select")).toContain("time_zone");
+    if (table === "children") expect(url.searchParams.get("select")).toContain("province");
+  });
+  const now = Date.parse("2026-11-09T12:00:00Z");
+  const state = await mayaWeeklyStore(db).load(now);
+  expect(state.parents[0].timeZone).toBe("America/Toronto");
+  expect(state.children[0].province).toBe("AB");
+  expect(dueWeeklyEmails(state, now)).toHaveLength(1);
+  expect(dueWeeklyEmails(state, now - 1)).toHaveLength(0);
+});
+
+describe("R425M-3 family fallback", () => {
+  it.each([false, true])("uses the oldest child even without their calls, reverse=%s", async (reverse) => {
+    const children = [
+      { ...child("c-old", "p1"), created_at: "2020-01-01T00:00:00Z", province: "ON" },
+      { ...child("c-new", "p1"), created_at: "2021-01-01T00:00:00Z", province: "BC" },
+    ];
+    if (reverse) children.reverse();
+    const db = fakeDb({
+      parents: [{ ...parent("p1"), postal: null }], children,
+      maya_call_notes: [noteRow("only-new-child-called", "p1", "c-new", pdt(4, 12))], email_log: [],
+    });
+    const at = Date.parse("2026-11-09T12:00:00Z");
+    const state = await mayaWeeklyStore(db).load(at);
+    expect(dueWeeklyEmails(state, at)).toMatchObject([{ zone: "America/Toronto", callIds: ["only-new-child-called"] }]);
   });
 });

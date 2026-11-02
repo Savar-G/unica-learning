@@ -1,7 +1,9 @@
+import { loadFamilyProvince } from "@/lib/family-time-server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
 import { DESK_COOKIE, DESK_HOME, deskView, questionCrop, readLock, tapAreas, type DeskView } from "@/lib/desk";
+import { formatInZone, familyZone, type FamilyZone } from "@/lib/family-time";
 import { questionBoard } from "@/lib/desk-board";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { WORKBOOK_FILES_BUCKET, type WorkbookSummary } from "@/lib/workbook-content";
@@ -18,9 +20,9 @@ export const metadata = pageMetadata({
 /** How long the link to a page image works. A new page view makes a new one. */
 const PAGE_URL_SECONDS = 15 * 60;
 
-const sentOn = (w: WorkbookSummary) =>
-  w.shippedAt ? `Sent ${new Date(w.shippedAt).toLocaleDateString("en-CA", { month: "long", day: "numeric", timeZone: "America/Vancouver" })}` : null;
-const book = (w: WorkbookSummary): DeskBook => ({ id: w.id, number: w.number, sent: sentOn(w) });
+const sentOn = (w: WorkbookSummary, timeZone: FamilyZone) =>
+  w.shippedAt ? `Sent ${formatInZone(w.shippedAt, timeZone, { month: "long", day: "numeric" })}` : null;
+const book = (w: WorkbookSummary, timeZone: FamilyZone): DeskBook => ({ id: w.id, number: w.number, sent: sentOn(w, timeZone) });
 const whole = (v: string | string[] | undefined) => (typeof v === "string" && /^\d{1,4}$/.test(v) ? Number(v) : undefined);
 
 // The child's desk (#301, D-184): open on this device for one child (the desk cookie, src/lib/desk.ts), read with the
@@ -35,8 +37,9 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
   if (!lock || lock.parentId !== parent) redirect("/account");
 
   const { w, p, q, pick, from } = await searchParams;
-  const [{ data: child }, view] = await Promise.all([
-    db.from("children").select("id, first_name").eq("id", lock.childId).maybeSingle(),
+  const [{ data: child }, { data: family }, view] = await Promise.all([
+    db.from("children").select("id, first_name, province").eq("id", lock.childId).maybeSingle(),
+    db.from("parents").select("postal, time_zone").maybeSingle(),
     // A failed read still shows the desk, with Leave, and says the workbook cannot be shown.
     deskView(workbookStore(db), {
       parentId: parent, childId: lock.childId, workbookId: typeof w === "string" ? w : undefined, page: whole(p), question: whole(q),
@@ -46,6 +49,8 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
     }),
   ]);
   const name = child?.first_name ?? null;
+  const province = await loadFamilyProvince(db, parent);
+  const timeZone = familyZone({ timeZone: family?.time_zone, postal: family?.postal, province });
 
   if (!child || !view || view.status === "no-workbook") {
     return (
@@ -70,8 +75,8 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
       key={`${workbook.id}-${page.number}`}
       name={name}
       notice={view.notice === "not-this-child" ? `That workbook is not on ${name}'s desk, so ${name}'s newest workbook is open.` : null}
-      books={view.workbooks.map(book)}
-      book={book(workbook)}
+      books={view.workbooks.map((w) => book(w, timeZone))}
+      book={book(workbook, timeZone)}
       page={{ number: page.number, dayLabel: page.dayLabel, pages }}
       image={image}
       areas={tapAreas(page)}
