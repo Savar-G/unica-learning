@@ -1,14 +1,18 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { ACTS, INTERRUPTS, MAIN_STATES, type Act, type SessionState } from "@/lib/maya";
 import { BEHAVIOURS, PENDING } from "./behaviours";
 import { fixtureProblems } from "./fixtures";
-import { HARD_FAILURES, judge, memoryTraceStore, runBehaviour, type Verdict } from "./gate";
+import { judgeSaved, runGateBehaviour } from "./call";
+import { callKey, flagLevelsOf, HARD_FAILURES, memoryTraceStore, runsOnCall, type SavedCall, type Verdict } from "./gate";
+
+vi.mock("server-only", () => ({}));
 
 // The scripted behaviour gate (#324): every behaviour of the teaching research runs through Maya's text adapter with a
 // scripted fake model; each run saves its trace and every check and count is read back from the saved trace. Any hard
-// failure (HARD_FAILURES, docs/maya-gate.md) fails this file. No network; the clock and seed are passed in.
+// failure (HARD_FAILURES, docs/maya-gate.md) fails this file. The safety behaviours run through the saved call, with the
+// in-memory alert ledger and mail transport (#395). No network and no email; the clock and seed are passed in.
 // MAYA_GATE_TRACES=<dir> also writes each saved trace there, to read.
 
 const store = memoryTraceStore();
@@ -18,8 +22,8 @@ let ms = 0;
 
 beforeAll(async () => {
   const t0 = performance.now();
-  for (const b of BEHAVIOURS) errors.set(b.id, (await runBehaviour(b, store)).error);
-  for (const b of BEHAVIOURS) verdicts.set(b.id, judge(b, store.load(b.id)));
+  for (const b of BEHAVIOURS) errors.set(b.id, (await runGateBehaviour(b, store)).error);
+  for (const b of BEHAVIOURS) verdicts.set(b.id, judgeSaved(b, store));
   ms = performance.now() - t0;
   const dir = process.env.MAYA_GATE_TRACES;
   if (dir) {
@@ -43,8 +47,9 @@ describe("the behaviour gate", () => {
   });
 
   it("saves one trace per run and counts the runs from the saved traces", () => {
-    expect(store.ids().sort()).toEqual(BEHAVIOURS.map((b) => b.id).sort());
-    const saved = store.ids().map((id) => JSON.parse(store.load(id)!) as { outcome: unknown; callId: string });
+    const traces = store.ids().filter((id) => !id.endsWith(".call"));
+    expect(traces.sort()).toEqual(BEHAVIOURS.map((b) => b.id).sort());
+    const saved = traces.map((id) => JSON.parse(store.load(id)!) as { outcome: unknown; callId: string });
     expect(saved.every((t) => t.outcome !== null)).toBe(true);
     expect(new Set(saved.map((t) => t.callId)).size).toBe(BEHAVIOURS.length);
   });
@@ -82,6 +87,20 @@ describe("the behaviour gate", () => {
     expect(total("fallbacks")).toBeGreaterThanOrEqual(2);
     expect(total("boardBatches")).toBeGreaterThanOrEqual(2);
     expect(total("safetyMessages")).toBe(BEHAVIOURS.filter((b) => b.expect.safety).length);
+  });
+
+  it("runs every flagged call through the saved call, with one alert for its flag (#395)", () => {
+    for (const b of BEHAVIOURS) {
+      const levels = flagLevelsOf(verdicts.get(b.id)!.trace!);
+      // A run that raises a flag must be a call run, so its alert is judged; a disclosure expects a safety flag.
+      if (levels.length > 0) expect(runsOnCall(b), b.id).toBe(true);
+      if (b.expect.safety) expect(b.expect.flag, b.id).toMatch(/^safety_/);
+      if (!runsOnCall(b)) continue;
+      const call = JSON.parse(store.load(callKey(b.id))!) as SavedCall;
+      expect(call.flag?.level, b.id).toBe(levels.at(-1));
+      expect(call.next.filter((a) => a.level === call.flag!.level), b.id).toHaveLength(1);
+    }
+    expect(BEHAVIOURS.filter(runsOnCall).map((b) => b.id)).toEqual(expect.arrayContaining(["C29", "C29b", "C30", "C31", "C32", "C33", "V1", "V1b"]));
   });
 
   it("runs fast enough for npm test", () => {

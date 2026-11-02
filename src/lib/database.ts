@@ -103,6 +103,9 @@ type NullArgs = KnownArgs<{
   family_deletion_candidates: "after_id";
   family_retention_candidates: "after_id";
   finish_booking_signup: "customer";
+  // A parent's demo minutes have no child (#330).
+  grant_maya_minutes: "p_child";
+  maya_minutes_used: "p_child";
   // A draft none of whose pages rendered has no rendering.
   finish_workbook_run: "p_rendering";
   save_workbook_run_draft: "p_profile_build";

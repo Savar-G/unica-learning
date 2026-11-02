@@ -311,6 +311,20 @@ export interface CallView {
   alerts: AlertState[];
 }
 
+/** A new call. */
+export interface StartInput {
+  kind: CallKind;
+  parentId: string;
+  childId: string;
+  childName: string | null;
+  package: unknown;
+  startedBy: string | null;
+  /** The call's id when the caller made it first: a minutes grant names the call before it exists (#330). */
+  id?: string;
+  /** The call's end when it is shorter than 10 minutes (ms): the minutes the grant gave (#330, src/lib/maya-minutes.ts). */
+  limitMs?: number;
+}
+
 export type CallResult =
   | { ok: true; view: CallView; output: { say: string[]; newBatches: number; safetyMessage: string | null } }
   | { ok: false; error: "not_found" | "not_test_family" | "invalid_question" | "invalid_input" | "conflict" | "model_unavailable" | "voice_call" };
@@ -361,9 +375,9 @@ export interface VoiceCall {
 export type OpenVoiceResult = { ok: true; call: VoiceCall } | { ok: false; error: "not_found" | "not_voice" | "ended" | "conflict" | "model_unavailable" | "unavailable" };
 
 export interface MayaCalls {
-  start(input: { kind: CallKind; parentId: string; childId: string; childName: string | null; package: unknown; startedBy: string | null }): Promise<CallResult>;
+  start(input: StartInput): Promise<CallResult>;
   /** Makes a voice call's record, not started: Maya's worker starts it when the child joins. */
-  startVoice(input: { kind: CallKind; parentId: string; childId: string; childName: string | null; package: unknown; startedBy: string | null }): Promise<CallResult>;
+  startVoice(input: StartInput): Promise<CallResult>;
   /** Opens a live voice call in the worker, with the providers that carry it. */
   openVoice(id: string, providers: { speechToText: string; voice: string }, childName: string | null): Promise<OpenVoiceResult>;
   input(id: string, revision: number, input: CallInput, childName: string | null): Promise<CallResult>;
@@ -544,9 +558,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   }
 
   /** A call's text session. Admin test calls have free talk on (D-197), with the model's review; a resumed call keeps its flag. */
-  function textSession(record: Pick<CallRecord, "id">, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory): TextSession {
+  function textSession(record: Pick<CallRecord, "id">, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number): TextSession {
     return createTextSession({
-      callId: record.id, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved,
+      callId: record.id, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs,
       freeTalk: freeTalkFor("admin_test"), reviewer: seams.reviewer?.(model.id) ?? null,
     });
   }
@@ -705,8 +719,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     const pkg = check.package;
     const model = seams.model(null);
     if (!model) return { ok: false, error: "model_unavailable" };
-    const id = seams.newId();
-    const session = textSession({ id }, pkg, model, mode === "voice" ? null : input.childName, undefined, seams.seed(), await readHistory(input.childId));
+    const id = input.id ?? seams.newId();
+    const session = textSession({ id }, pkg, model, mode === "voice" ? null : input.childName, undefined, seams.seed(), await readHistory(input.childId), input.limitMs);
     const empty = session.trace();
     const record: CallRecord = {
       id,

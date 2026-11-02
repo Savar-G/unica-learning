@@ -13,7 +13,7 @@ import { stt, voice, type llm, type tts } from "@livekit/agents";
 import type { AudioFrame } from "@livekit/rtc-node";
 import type { FinishOptions } from "@/lib/maya-text";
 import type { VoiceCall, VoiceTurn } from "@/lib/maya-call";
-import { TIME_LIMITS } from "@/lib/maya";
+import { limitsOf } from "@/lib/maya";
 import { CONNECTION_RENEW_MS, childTurnFrom, nextTickAt, RECONNECT_GRACE_MS, type Heard } from "@/lib/maya-voice";
 
 const userTexts = (ctx: llm.ChatContext) =>
@@ -224,7 +224,7 @@ export class VoiceCallRun {
     this.tickTimer = null;
     if (this.finishing) return;
     const started = this.call.session.startedAt;
-    if (started !== null && this.timers.now() >= started + TIME_LIMITS.endAtMs) return this.finish({}, true);
+    if (started !== null && this.timers.now() >= started + limitsOf(this.call.session).endAtMs) return this.finish({}, true);
     if (!this.childHere || this.call.ended) return;
     const busy = this.session.agentState === "speaking" || this.session.agentState === "thinking" || this.session.userState === "speaking";
     if (busy) { this.tickTimer = this.timers.set(1000, () => void this.tick()); return; }
@@ -257,7 +257,7 @@ export class VoiceCallRun {
 
   private scheduleLimit(startedAt = this.call.session.startedAt) {
     if (this.limitTimer !== null || this.finishing || startedAt === null) return;
-    this.limitTimer = this.timers.set(startedAt + TIME_LIMITS.endAtMs - this.timers.now(), () => void this.finish({}, true));
+    this.limitTimer = this.timers.set(startedAt + limitsOf(this.call.session).endAtMs - this.timers.now(), () => void this.finish({}, true));
   }
 
   private schedule() {
