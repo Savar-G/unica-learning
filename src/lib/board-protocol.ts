@@ -1,6 +1,6 @@
 // Maya's board batch protocol (#328, spec #297): how board batches travel from Maya's side (the sender, next to the
 // session) to the child's browser (the receiver, next to the renderer). Pure TypeScript: no React, network, clock or
-// randomness. The transport is a seam (LiveKit RPC later, #329; the in-memory transport in tests).
+// randomness. The transport is a seam (LiveKit RPC, #329; the in-memory transport in tests).
 //
 // The rules (LiveKit research, sections 3 and 4):
 // - Serial: the sender sends one request at a time and waits for its answer.
@@ -54,12 +54,14 @@ export type BoardRequest =
    * Cancels the staged batches numbered up to `through` in this epoch. The id makes it safe to deliver twice: the receiver
    * keeps what each cancel did, and a cancel it has seen changes nothing and gets the same answer.
    */
+  | { type: "stop"; sessionId: string; epoch: number; utteranceId: string }
+  | { type: "release"; sessionId: string; epoch: number; batchId: string }
   | { type: "cancel"; sessionId: string; epoch: number; cancelId: string; through: number }
   /** The log from event `since`. `part`: the next part of the event at `since`, when it travels in parts. */
   | { type: "status"; sessionId: string; since: number; part?: number }
   /**
    * Starts `epoch`, when the board is still on `observedEpoch`, the epoch the sender read before it claimed: a claim by
-   * another sender in between makes this one stale. Large snapshots in parts are #329.
+   * another sender in between makes this one stale. Large snapshots travel in bounded RPC parts.
    */
   | { type: "reset"; sessionId: string; senderId: string; epoch: number; observedEpoch: number; snapshot: BoardSnapshot };
 
@@ -106,6 +108,8 @@ export interface EventPart {
 export type BoardResponse =
   | ({ ok: true; type: "apply"; batchId: string; state: BatchState } & ReceiverStatus)
   /** `at`: where this cancel's `cancelled` event is in the log, or null when it found nothing to cancel. */
+  | ({ ok: true; type: "stop" } & ReceiverStatus)
+  | ({ ok: true; type: "release"; batchId: string; state: BatchState } & ReceiverStatus)
   | ({ ok: true; type: "cancel"; cancelId: string; at: number | null } & ReceiverStatus)
   /** Whole events from `since`, or one part of the event at `since`. */
   | ({ ok: true; type: "status"; log: BoardEvent[]; part?: EventPart } & ReceiverStatus)
@@ -218,6 +222,10 @@ function parseRequest(v: unknown): BoardRequest | null {
       return isCount(v.epoch, 1) && isCount(v.sequence, 1) && isCount(v.baseRevision) && isId(v.batchId) && (v.utteranceId === undefined || isId(v.utteranceId)) && Array.isArray(v.commands)
         ? (v as BoardRequest)
         : null;
+    case "stop":
+      return isCount(v.epoch, 1) && isId(v.utteranceId) ? (v as BoardRequest) : null;
+    case "release":
+      return isCount(v.epoch, 1) && isId(v.batchId) ? (v as BoardRequest) : null;
     case "cancel":
       return isCount(v.epoch, 1) && isId(v.cancelId) && isCount(v.through) ? (v as BoardRequest) : null;
     case "status":
@@ -255,6 +263,7 @@ export interface BoardReceiver {
   handle(request: unknown): BoardResponse;
   /** The board the child sees. */
   scene(): Scene;
+  snapshot(): BoardSnapshot;
   /** Accepted batches not shown yet, oldest first. */
   staged(): { batchId: string; utteranceId?: string }[];
   /** Shows this staged batch and every one staged before it, in order, and returns what to draw. */
@@ -276,20 +285,23 @@ type SceneOptions = { page?: PageSize; glyphs?: GlyphSet };
  * `epoch`: the epoch the page held before a reload (kept in the page's session storage, #329). The board starts empty and
  * is restored from the sender's log; the kept epoch keeps a sender that was replaced before the reload from taking it.
  */
-export function createBoardReceiver(options: { sessionId: string; epoch?: number } & SceneOptions): BoardReceiver {
+export function createBoardReceiver(options: { sessionId: string; epoch?: number; snapshot?: BoardSnapshot } & SceneOptions): BoardReceiver {
   let epoch = options.epoch ?? 0;
   /** The sender whose reset started this epoch: its retry of that reset changes nothing. */
   let epochSender: string | null = null;
   let revision = 0;
-  let shown = createScene(options);
+  const restored = options.snapshot ? restoreScene(options.snapshot, options) : createScene(options);
+  if (!restored) throw new Error("The saved board does not replay.");
+  let shown: Scene = restored;
   let staged: Staged[] = [];
-  let log: BoardEvent[] = [];
+  let log: BoardEvent[] = structuredClone(options.snapshot?.events ?? []);
   let states = new Map<string, BatchState>();
   /** Every batch id this epoch decided, with its sequence and the core's refusal when it refused it. */
   let decided = new Map<string, { sequence: number; refusal?: Refusal }>();
   /** Every cancel this epoch carried out, with where its event is in the log (null: it found nothing to cancel). */
   let cancels = new Map<string, { through: number; at: number | null }>();
   let nextSequence = 1;
+  const stoppedUtterances = new Set<string>();
   let pen: PenHolder = "maya";
   /** The parts of each large log event, cut once: an event in the log never changes. */
   const partsOf = new WeakMap<BoardEvent, { parts: string[]; digest: string }>();
@@ -322,6 +334,13 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
     if (req.baseRevision !== revision)
       return fail("stale_revision", `The board changed after this batch was planned (revision ${revision}, not ${req.baseRevision}): read it again.`, { batchId: req.batchId });
     nextSequence++;
+    if (req.utteranceId && stoppedUtterances.has(req.utteranceId)) {
+      decided.set(req.batchId, { sequence: req.sequence });
+      states.set(req.batchId, "cancelled");
+      log.push({ kind: "cancelled", batchIds: [req.batchId] });
+      revision++;
+      return { ok: true, type: "apply", batchId: req.batchId, state: "cancelled", ...status() };
+    }
     const result = applyBatch(planned(), { transactionId: req.batchId, commands: req.commands });
     if (!result.ok) {
       decided.set(req.batchId, { sequence: req.sequence, refusal: result.refusal });
@@ -400,6 +419,7 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
     decided = new Map();
     cancels = new Map();
     nextSequence = 1;
+    stoppedUtterances.clear();
     // The pen stays where it is: the child may be writing through a blip on the line.
     return { ok: true, type: "reset", ...status() };
   }
@@ -429,6 +449,19 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
     return { ok: true, type: "status", log: [], part: { index: part, count: cut.parts.length, digest: cut.digest, data: cut.parts[part] }, ...status() };
   }
 
+  const release = (batchId: string): Released[] => {
+    const upTo = staged.findIndex((s) => s.batchId === batchId);
+    if (upTo < 0) return [];
+    const out: Released[] = [];
+    for (const s of staged.splice(0, upTo + 1)) {
+      shown = s.result.scene;
+      states.set(s.batchId, "shown");
+      log.push({ kind: "batch", batchId: s.batchId, commands: s.commands });
+      out.push({ batchId: s.batchId, utteranceId: s.utteranceId, drawn: s.result.drawn, erased: s.result.erased, notices: s.result.notices });
+    }
+    return out;
+  };
+
   return {
     handle(raw) {
       const req = parseRequest(raw);
@@ -439,6 +472,20 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
           return byteSize(raw) > MAX_BATCH_BYTES ? fail("too_large", `A batch takes at most ${MAX_BATCH_BYTES} bytes.`, { batchId: req.batchId }) : apply(req);
         case "reset":
           return reset(req);
+        case "stop": {
+          if (req.epoch !== epoch) return fail("stale_epoch", "The interruption belongs to an older board connection.");
+          stoppedUtterances.add(req.utteranceId);
+          const through = Math.max(0, ...staged.filter(s => s.utteranceId === req.utteranceId).map(s => s.sequence));
+          if (through > 0) cancelStaged(through);
+          return { ok: true, type: "stop", ...status() };
+        }
+        case "release": {
+          if (req.epoch !== epoch) return fail("stale_epoch", "The speech belongs to an older board connection.");
+          const state = states.get(req.batchId);
+          if (!state) return fail("invalid_request", "The speech names an unknown batch.");
+          release(req.batchId);
+          return { ok: true, type: "release", batchId: req.batchId, state: states.get(req.batchId)!, ...status() };
+        }
         case "cancel":
           return cancel(req);
         case "status":
@@ -446,20 +493,10 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
       }
     },
     scene: () => shown,
+    snapshot: () => structuredClone({ events: log }),
     epoch: () => epoch,
     staged: () => staged.map(({ batchId, utteranceId }) => ({ batchId, utteranceId })),
-    release(batchId) {
-      const upTo = staged.findIndex((s) => s.batchId === batchId);
-      if (upTo < 0) return [];
-      const out: Released[] = [];
-      for (const s of staged.splice(0, upTo + 1)) {
-        shown = s.result.scene;
-        states.set(s.batchId, "shown");
-        log.push({ kind: "batch", batchId: s.batchId, commands: s.commands });
-        out.push({ batchId: s.batchId, utteranceId: s.utteranceId, drawn: s.result.drawn, erased: s.result.erased, notices: s.result.notices });
-      }
-      return out;
-    },
+    release,
     presented(batchId) {
       if (states.get(batchId) !== "shown") return;
       states.set(batchId, "presented");
@@ -542,7 +579,11 @@ export interface BoardSender {
    * it is refused with `stale_revision` until Maya reads the board again with `sync`.
    */
   send(batch: Batch, options?: { utteranceId?: string }): Promise<SendResult>;
-  /** An interruption: the receiver drops every staged batch the child has not seen. Shown strokes stay. Then it syncs. */
+  /** Releases a batch once its speech cue has played. Retries do not duplicate shown work. */
+  release(batchId: string): Promise<SendResult>;
+  /** Priority interruption, including requests still in flight. Does not wait for the serial request queue. */
+  interrupt(utteranceId: string): Promise<{ ok: true } | SenderFailure>;
+  /** Drops staged batches and reads the resulting log. Shown strokes stay. */
   cancel(): Promise<{ ok: true; cancelled: string[] } | SenderFailure>;
   /** Reads the board log since the last sync: what the child saw and wrote, and where each batch is. */
   sync(): Promise<boolean>;
@@ -745,6 +786,24 @@ export function createBoardSender(options: { sessionId: string; senderId: string
   return {
     connect: () => serial(connect),
     send: (batch, opts = {}) => serial(() => send(batch, opts)),
+    interrupt: async (utteranceId) => {
+      if (stopped) return SUPERSEDED;
+      if (!connected) return UNREACHABLE;
+      const r = await request({ type: "stop", sessionId, epoch, utteranceId });
+      if (!r) return UNREACHABLE;
+      if (!r.ok) return { ok: false, code: r.code, reason: r.reason };
+      return r.type === "stop" ? { ok: true } : WRONG_ANSWER;
+    },
+    release: (batchId) => serial(async () => {
+      if (stopped) return SUPERSEDED;
+      if (!connected) return UNREACHABLE;
+      const r = await request({ type: "release", sessionId, epoch, batchId });
+      if (!r) return UNREACHABLE;
+      if (!r.ok) return { ok: false, code: r.code, reason: r.reason };
+      if (r.type !== "release" || r.batchId !== batchId) return WRONG_ANSWER;
+      if (!(await pull())) return UNREACHABLE;
+      return { ok: true, batchId, state: r.state };
+    }),
     cancel: () => serial(cancel),
     sync: () => serial(async () => (await pull()) !== null),
     useTransport(next) {

@@ -3,6 +3,9 @@ import { EventEmitter } from "node:events";
 import { initializeLogger, llm, normalizeLanguage, stt, voice } from "@livekit/agents";
 import { AudioFrame } from "@livekit/rtc-node";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createBoardReceiver, createBoardSender } from "@/lib/board-protocol";
+import { createMemoryTransport } from "@/lib/board-protocol-memory";
+import { createBoardSpeech, type CueMeasurement } from "@/lib/board-speech";
 import { templateSkills } from "@/lib/assessment";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
@@ -119,7 +122,7 @@ afterEach(async () => {
   cleanup = null;
 });
 
-async function voiceCall(options: { speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel } = {}) {
+async function voiceCall(options: { speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean } = {}) {
   const clock = handTimers();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -146,16 +149,21 @@ async function voiceCall(options: { speech?: ProbeSTT; speaker?: Speaker; seed?:
   if (!config.ok) throw new Error("fake providers");
   const opened = await calls.openVoice(started.view.id, config.ids, "Leah");
   if (!opened.ok) throw new Error(opened.error);
-  const providers = await makeProviders(config, { fakeMsPerChar: 1 });
+  const providers = await makeProviders(config, { fakeMsPerChar: 1, fakeTimestamps: options.timestamps });
   const session = voiceSession({ ...providers, stt: options.speech ?? providers.stt }, { endpointingMs: 20, aecWarmupDuration: 0 });
   const microphone = new SilentMicrophone();
   session.input.audio = microphone;
   session.output.audio = options.speaker ?? new Speaker();
   const updates: CallUpdate[] = [];
   const closed = vi.fn(async () => {});
-  const run = new VoiceCallRun(session, opened.call, { timers: clock.timers, notify: (u) => updates.push(u), closed });
+  const receiver = createBoardReceiver({ sessionId: started.view.id });
+  const sender = createBoardSender({ sessionId: started.view.id, senderId: "worker", transport: createMemoryTransport(receiver) });
+  const samples: CueMeasurement[] = [];
+  const board = createBoardSpeech({ sender, now: clock.now, measure: s => samples.push(s) });
+  const run = new VoiceCallRun(session, opened.call, { ...(options.board ? { board } : {}), timers: clock.timers, notify: (u) => updates.push(u), closed });
   await run.agentJoined();
   await session.start({ agent: run.agent });
+  run.attachBoardAudio();
   microphone.push();
   cleanup = async () => {
     await run.finish({ detail: "test over" });
@@ -170,7 +178,7 @@ async function voiceCall(options: { speech?: ProbeSTT; speaker?: Speaker; seed?:
     await opened.call.settled();
     return said().slice(before).join(" ");
   };
-  return { id: started.view.id, calls, store, connections, rebuild, run, session, said, childSays, clock, updates, closed, call: opened.call, seams };
+  return { receiver, board, samples, id: started.view.id, calls, store, connections, rebuild, run, session, said, childSays, clock, updates, closed, call: opened.call, seams };
 }
 
 describe("a voice call through LiveKit with the fake providers", () => {
@@ -562,4 +570,19 @@ it("R408-12: bounds an unfinished opening before the first turn can be saved", a
     expect(c.store.rows()[0].learningEventId).toBeNull();
   } finally { release(); }
   expect(await opening).toBeNull();
+});
+
+
+it.each([true, false])("#329 carries accepted controller batches through AgentSession with fake timestamps %s", async timestamps => {
+  const c = await voiceCall({ board: true, timestamps });
+  await c.run.childJoined();
+  await waitFor(() => c.session.agentState === "listening" && c.said().length > 0, "opening playout");
+  await c.board.settled();
+  await c.childSays("I don't know.");
+  await waitFor(() => c.session.agentState === "listening", "example playout");
+  await c.board.settled();
+  expect(c.samples.length).toBeGreaterThan(1);
+  expect(c.samples.map(s => s.source)).toEqual(c.samples.map(() => timestamps ? "word" : "sentence"));
+  expect(c.samples.every(s => s.state === "shown")).toBe(true);
+  expect(c.receiver.staged()).toEqual([]);
 });

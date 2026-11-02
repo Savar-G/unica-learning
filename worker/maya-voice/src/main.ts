@@ -13,6 +13,10 @@
 // The child's screen calls two RPC methods on Maya: "maya.hang_up", and with the fake speech-to-text "maya.fake.say"
 // ({ text }: what the child "says"). Maya tells the screen on the "maya.call" data topic ({ revision, ended }) after
 // each saved turn; the screen reads the call from the web server then.
+import { randomUUID } from "node:crypto";
+import { createBoardSender } from "@/lib/board-protocol";
+import { boardRpcTransport } from "@/lib/board-rpc";
+import { createBoardSpeech, cueReport, type CueMeasurement } from "@/lib/board-speech";
 import { fileURLToPath } from "node:url";
 import { cli, defineAgent, ServerOptions, type JobContext } from "@livekit/agents";
 import { DisconnectReason, RoomEvent, RpcError, type RemoteParticipant, type Room } from "@livekit/rtc-node";
@@ -98,7 +102,16 @@ export default defineAgent({
     const notify = (update: CallUpdate) => {
       ctx.room.localParticipant?.publishData(encoder.encode(JSON.stringify(update)), { reliable: true, topic: "maya.call", destination_identities: [child.identity] }).catch(() => {});
     };
-    const run = new VoiceCallRun(session, opened.call, { notify, closed: async () => ctx.shutdown("call ended") });
+    const sender = createBoardSender({ sessionId: callId, senderId: randomUUID(), transport: boardRpcTransport(ctx.room.localParticipant!, child.identity, randomUUID) });
+    const samples: CueMeasurement[] = [];
+    const board = createBoardSpeech({ sender, now: () => Date.now(), measure: sample => {
+      samples.push(sample);
+      log("board cue", { callId, fakeAudio: made.tts.provider === "fake", ...sample });
+    } });
+    const run = new VoiceCallRun(session, opened.call, { board, notify, closed: async () => {
+      log("board cue report", { callId, fakeAudio: made.tts.provider === "fake", groups: cueReport(samples) });
+      await ctx.shutdown("call ended");
+    } });
     ctx.addShutdownCallback(() => run.finish({ detail: "the voice worker stopped" }));
 
     const local = ctx.room.localParticipant!;
@@ -136,6 +149,7 @@ export default defineAgent({
       // Disable session recording. Direct-provider retention needs separate verified settings (docs/maya-voice.md).
       record: false,
     });
+    run.attachBoardAudio();
     await run.childJoined();
     log("call running", callId, providers.ids.speechToText, providers.ids.voice);
   },

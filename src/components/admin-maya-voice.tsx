@@ -10,6 +10,8 @@
 // livekit-client loads only when the admin connects. Labels are plain: no provider errors, no ids.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type { Room as LkRoom } from "livekit-client";
+import { createBoardReceiver, type BoardSnapshot } from "@/lib/board-protocol";
+import { BOARD_RPC, boardRpcHandler } from "@/lib/board-rpc";
 import type { VoiceTicket } from "@/lib/maya-voice";
 
 type MicState = "idle" | "asking" | "working" | "blocked" | "none" | "failed";
@@ -95,7 +97,7 @@ function useMicCheck() {
   return { state, level, check, release };
 }
 
-export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCancel, busy }: {
+export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCancel, onBoard, busy }: {
   callId: string;
   childName: string | null;
   /** The call has started (Maya joined once). */
@@ -105,6 +107,7 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
   onEnded(): Promise<void>;
   /** Ends a call that never started (no Maya). */
   onCancel(): void;
+  onBoard?(snapshot: BoardSnapshot, restored: boolean): void;
   busy: boolean;
 }) {
   const mic = useMicCheck();
@@ -116,6 +119,8 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
   const [said, setSaid] = useState("");
   const [sending, setSending] = useState(false);
   const room = useRef<LkRoom | null>(null);
+  const boardChanged = useRef(onBoard);
+  useEffect(() => { boardChanged.current = onBoard; }, [onBoard]);
   const endNotification = useRef<{ room: LkRoom; notify(): Promise<void> } | null>(null);
   const agent = useRef<string | null>(null);
   const audioHost = useRef<HTMLDivElement>(null);
@@ -188,6 +193,23 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
           setCall("live");
         }
       };
+      const storageKey = `unica-voice-board:${callId}`;
+      let saved: { epoch?: number; snapshot?: BoardSnapshot } = {};
+      try { saved = JSON.parse(sessionStorage.getItem(storageKey) ?? "{}"); } catch {}
+      let receiver: ReturnType<typeof createBoardReceiver>;
+      try { receiver = createBoardReceiver({ sessionId: callId, epoch: saved.epoch, snapshot: saved.snapshot }); }
+      catch { receiver = createBoardReceiver({ sessionId: callId }); }
+      const changed = (restored = false) => {
+        const snapshot = receiver.snapshot();
+        try { sessionStorage.setItem(storageKey, JSON.stringify({ epoch: receiver.epoch(), snapshot })); } catch {}
+        boardChanged.current?.(snapshot, restored);
+      };
+      const handleBoard = boardRpcHandler(receiver, { changed, allowed: identity => {
+        const p = [...r.remoteParticipants.values()].find(p => p.identity === identity);
+        return room.current === r && !terminal && identity === agent.current && isMaya(p) && !!p && segmentOf(p) === newestSegment;
+      } });
+      r.localParticipant.registerRpcMethod(BOARD_RPC, async data => handleBoard(data.callerIdentity, data.payload));
+      changed(true);
       r.on(RoomEvent.TrackSubscribed, (track) => {
         if (track.kind !== Track.Kind.Audio) return;
         const el = track.attach();

@@ -9,7 +9,7 @@ vi.mock("livekit-client", () => {
   class Room {
     remoteParticipants = new Map();
     handlers = new Map<string, Array<(...args: unknown[]) => void>>();
-    localParticipant = { setMicrophoneEnabled: async () => {}, performRpc: async () => {} };
+    localParticipant = { registerRpcMethod: vi.fn(), setMicrophoneEnabled: async () => {}, performRpc: async () => {} };
     constructor() { rooms.push(this); }
     on(event: string, fn: (...args: unknown[]) => void) { this.handlers.set(event, [...this.handlers.get(event) ?? [], fn]); }
     emit(event: string, ...args: unknown[]) { for (const fn of this.handlers.get(event) ?? []) fn(...args); }

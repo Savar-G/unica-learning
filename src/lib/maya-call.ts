@@ -44,6 +44,7 @@
 // history (Supabase: src/lib/maya-wording-history-store.ts; memory: memoryWordingHistoryStore), the learning events, the
 // profile rebuild, the alerts, the parent's note (#331), the model by id, the clock, ids and the seed. Pure otherwise: no Next.js, React,
 // network or database; node:crypto through the trace's package hash.
+import { speechWords, type BoardCue } from "@/lib/board-speech";
 import { applyBatch, boardView, createScene, type Batch } from "@/lib/board";
 import { createHistory, mayaWrites, type BoardHistory } from "@/lib/board-history";
 import { fitView, type PlayStep } from "@/lib/board-svg";
@@ -335,6 +336,7 @@ export type CallResult =
 
 /** What reached the child after one input of a voice call. */
 export interface VoiceTurn {
+  boardCues?: BoardCue[];
   say: string[];
   newBatches: number;
   safetyMessage: string | null;
@@ -855,11 +857,22 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const inactive = () => lost || record.status === "ended";
       const turn = async (run: () => Promise<TextOutput>): Promise<VoiceTurn> => {
         if (inactive()) return none;
+        const before = session.trace().turns.length;
         const out = await run();
         persist(out);
         await queue;
         if (inactive()) return none;
-        return { say: out.say, newBatches: out.board.length, safetyMessage: out.safetyMessage, ended: out.ended !== null };
+        // Preserve the controller turn association. Do not spread batches evenly across an entire reply.
+        // Each current board offer follows the last word of its accepted controller turn.
+        let word = 0;
+        const ends = new Map<string, number>();
+        for (const t of session.trace().turns.slice(before)) {
+          if (t.kind !== "maya" || !t.output) continue;
+          word += speechWords(t.output.say.join(" ")).length;
+          for (const id of t.output.board) ends.set(id, word);
+        }
+        const boardCues = out.board.map(batch => ({ batch, word: ends.get(batch.transactionId) ?? speechWords(out.say.join(" ")).length }));
+        return { say: out.say, newBatches: out.board.length, boardCues, safetyMessage: out.safetyMessage, ended: out.ended !== null };
       };
       const call: VoiceCall = {
         id: record.id,
