@@ -129,7 +129,7 @@ const STANDARDS: ReadonlySet<string> = new Set(BC_SKILL_MAP.standards.map((s) =>
 /** The field names of an operation and its values, and the strings code writes in them. */
 const FIELDS = new Set(["kind", "operands", "denominator", "unit", "values", "type", "value", "numerator", "whole", "quotient", "remainder", "parts", "hours", "minutes", "period"]);
 const CODE_WORDS = new Set([
-  "add", "subtract", "multiply", "divide", "decimal-add", "decimal-subtract", "decimal-multiply",
+  "add", "subtract", "missing-addend", "multiply", "divide", "decimal-add", "decimal-subtract", "decimal-multiply",
   "fraction-add", "fraction-subtract", "fraction-multiply", "fraction-divide", "fraction-simplify", "fraction-equivalent",
   "convert", "quantity-add", "quantity-subtract", "quantity-multiply", "money-round", "elapsed-time", "time-add", "clock-convert", "evaluate", "solve",
   "number", "fraction", "mixed", "remainder", "quantity", "compound", "time", "a.m.", "p.m.", ...UNITS,
