@@ -76,4 +76,5 @@ export {
 } from "./talk-review";
 export { NAME_GAP, type WordingHistory, type WordingId } from "./variety";
 export { MAX_WORDINGS, memoryWordingHistoryStore, mergeHistory, type WordingHistoryStore } from "./wording-history";
-export { readAnswer, readNumbers, unreadableAnswer, valuesIn, type AnswerRead, type NumbersRead } from "./numbers";
+export { readAnswer, readNumbers, unreadableAnswer, valuesIn, writtenFractions, type AnswerRead, type NumbersRead, type ReadOptions } from "./numbers";
+export { asksSimplest, isEqualForm, readOptionsFor, rightForQuestion, teachSteps, TAUGHT_STEP_KINDS } from "./fractions";

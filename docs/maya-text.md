@@ -74,6 +74,35 @@ Practice runs on the Claude subscription (PR #401) found Maya asking for work th
 
 Every regroup wording is new and waits for Savar's approval. See [the line review](maya-practice-lines.md).
 
+## Fractions (D-204, #407)
+
+Maya teaches adding and subtracting two fractions (`fraction-add`, `fraction-subtract`), with like or unlike denominators. A question with a step Maya has no lines for stays held (`content_issue`): a mixed or whole number to add, multiplying, dividing, simplifying alone and equivalent fractions (`TEACHABLE_KINDS`, `TAUGHT_STEP_KINDS`).
+
+**Reading fractions.** In a fraction call only, `readAnswer` and the other readers take `{ fractions: true }` (`readOptionsFor`), which first writes the exact spoken forms code reads (`writtenFractions`, `src/lib/maya/numbers.ts`). Anything else stays unread, so Maya confirms it. In a whole-number call nothing changes: "three quarters" is still confirmed.
+
+| The child says | Read as |
+|---|---|
+| three quarters, three fourths, 3 over 4, 3/4 | 3/4 |
+| fourteen sixteenths, 7 eighths | 14/16, 7/8 |
+| a half, one eighth (at the end of a clause, or before "is", "plus", "because") | 1/2, 1/8 |
+| one and three eighths, 2 and a half, 1 and 3/4, 1 3/8 | 1 3/8, 2 1/2, 1 3/4, 1 3/8 |
+| three quarter, one quarters, 7 8ths, five twenty-fourths, three quarters of 8, six sixty sixteenths | unread: confirmed |
+| a third time, a quarter past 3 | not a fraction |
+
+Each fraction must be one complete expression. The operands must be next to the slash or "over". A sentence end or a new line cannot join them. Maya confirms incomplete or repeated fractions, zero denominators, signed fractions, and mixed forms with an improper fractional part. A separate numeric fragment in the same expression must belong to a supported mixed form. Other words cannot join the fragments; for example, "one whole three eighths" is confirmed without retaining either part. No number part of these forms is scored. Maya also confirms a fraction with an "of" phrase, including "of it", or an "and" inside its number words. Only a fraction call reads a mixed answer as one value.
+
+**Right answers.** `rightForQuestion` (`src/lib/maya/fractions.ts`): the package's rules (`isRightAnswer`: the answer or any simplest form, so 11/8 and 1 3/8 are both right), and an equal fraction in another form (14/16 for 7/8) unless the question asks for the simplest form or lowest terms, or the package lists that form as wrong. Maya says an accepted equal form back as the child said it ("Yes! 3/4 + 1/8 = 14/16.", "Please write 14/16 on your paper.") and does not bring up simplest form. When the question asks for it, an equal fraction is the right amount (`isEqualForm`): not a wrong final answer and not a failed attempt; every work step counts as done; Maya says `check.equal` in the question's own words, and the final step's help adds H1 and H2 lines to simplify the child's own fraction.
+
+For a mixed answer such as `1 2/8`, this help uses the fractional part (`2/8`) and keeps the whole part (`1`). A form listed as wrong does not enable `check.equal` unless the question asks for simplest form. These checks do not change which fraction questions Maya teaches. The fraction lines still need Savar's approval.
+
+Expression grouping uses the existing correction and explanation grammar. It preserves multiword corrections such as "I mean" and every supported explanation word, including "cuz" and "coz". Correction detection uses recognized fraction spans at their original text positions, so "actually a half" and "actually 1/2" follow the same rules. Ordinary connecting words do not become expression boundaries.
+
+An equal-form final answer must be committed before it completes any work step or receives `check.equal`. A doubtful answer such as "Maybe 14/16?" is confirmed first. This check also applies to code fallbacks. An ordinary wrong answer still follows the wrong-answer path.
+
+**Steps.** The package's steps: the common denominator (`3/4 = 6/8`; the child says 6/8 or 6, never 3/4), the numerators (`6 + 1 = 7`), and the simplest form only when the question asks for it (`teachSteps`). The mixed number is never a step. No help line, judged step or shown step says the final fraction: the child puts it together on the final step. Saying back an equal form the child said is not giving the answer away; the answer's own written form is.
+
+**Board.** `question.strips` draws each fraction as a strip (denominators up to 12), the second below the first; `question.common` draws them in the common denominator once that step is done or shown; `example.strips` draws the easier example.
+
 ## Free talk (D-197)
 
 With `freeTalk` on (the admin demo, the practice suite, this command line), the model may write its own words (`{ "talk": ... }`) in a turn with no math line. Math, answers, hints and steps never come from them. Each piece is said only when both checks pass:
@@ -104,7 +133,7 @@ Maya follows the plain-language rules of the workbooks (D-201), for children age
 
 Every code line (`TEMPLATES`, `src/lib/maya/lines.ts`) follows them, and `src/lib/maya/math-lines.test.ts` checks the banned phrases in every filled line and every shown step, and that no line joins two ideas with ", so", ", then" or ", because". One exception: Savar approved "Now put it all together. What is {expr}?" (`invite.result`) as it is. A changed wording stays at its place in its list, so its id (`key#index`) in the child's wording history (#375) stays. The existing warm-talk phrases keep the newer approved wording from PR #402. The three new reply groups wait for Savar's approval.
 
-For the model's own words, the rules are in the prompt (`SYSTEM_PROMPT`, `maya-text-11`; `maya-text-12` adds the reply groups, the regroup line and the example rule; `maya-text-13` adds the original ids for filtered phrase choices) and in the review (`plain_language` in `NEVER_SAY`, `maya-talk-review-5`). Code checks only the exact banned phrases (`plainLanguageProblem`): in free talk and in an echo, a phrase that holds one becomes the bank phrase of the same purpose, and the review is not asked. Most of them were already refused as math words ("in all", "altogether", "left"); "all together" was not.
+For the model's own words, the rules are in the prompt (`SYSTEM_PROMPT`, `maya-text-11`; `maya-text-12` adds the reply groups, the regroup line and the example rule; `maya-text-13` adds the original ids for filtered phrase choices; `maya-text-14` adds the fraction reading, the step forms and `check.equal`) and in the review (`plain_language` in `NEVER_SAY`, `maya-talk-review-5`). Code checks only the exact banned phrases (`plainLanguageProblem`): in free talk and in an echo, a phrase that holds one becomes the bank phrase of the same purpose, and the review is not asked. Most of them were already refused as math words ("in all", "altogether", "left"); "all together" was not.
 
 ## The trace
 
