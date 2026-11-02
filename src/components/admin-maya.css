@@ -58,6 +58,14 @@
 @keyframes mc-dot { 0%, 60%, 100% { opacity: 0.35; } 30% { opacity: 1; } }
 .mc-safety { margin: 0 16px 10px; padding: 10px 12px; border-left: 3px solid var(--tang); border-radius: 6px; background: var(--adm-bad); font-size: 14px; }
 
+/* The call's flag (#333) and its alert emails. */
+.mc-flag { display: grid; gap: 8px; padding: 12px 14px; border-left: 3px solid #c2410c; border-radius: 10px; background: var(--adm-bad); font-size: 14px; }
+.mc-flag p { margin: 0; }
+.mc-flag-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.mc-flag-head .adm-chip { background: #c2410c; color: #fff; font-weight: 600; }
+.mc-flag-alerts { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.mc-flag-why { color: var(--ink-2); overflow-wrap: anywhere; }
+
 .mc-say { display: grid; gap: 10px; padding: 12px 16px 14px; border-top: 1px solid var(--line); background: var(--soft); }
 .mc-say textarea { width: 100%; min-height: 52px; padding: 10px 12px; border: 1px solid #d4d4d8; border-radius: 10px; background: #fff; font: 400 16px/1.4 var(--sans); color: var(--ink); resize: vertical; }
 .mc-say-row { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -76,4 +84,45 @@
 .mc-note { margin: 0 0 8px; font-size: 14px; color: var(--ink-2); }
 .mc-talk { overflow-x: auto; }
 .mc-talk-why { margin-top: 4px; font-size: 13px; color: var(--ink-2); }
+.mc-tech { margin-top: 18px; }
+.mc-tech summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
 .mc-retry { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+/* Choosing how to talk to Maya (#326): two options as one control, 44 px tall. */
+.mc-mode { display: grid; gap: 6px; margin: 0; padding: 0; border: 0; }
+.mc-mode legend { padding: 0; margin-bottom: 4px; font: 400 12px/1.2 var(--mono); color: var(--ink-2); }
+.mc-mode-options { display: inline-flex; width: fit-content; padding: 3px; border-radius: 10px; background: var(--soft); }
+.mc-mode-options label { position: relative; display: grid; place-items: center; min-width: 96px; min-height: 44px; padding: 0 16px; border-radius: 8px; font: 500 15px/1 var(--sans); color: var(--ink-2); cursor: pointer; }
+.mc-mode-options label.is-on { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
+.mc-mode-options label[aria-disabled] { color: #a1a1aa; cursor: not-allowed; }
+.mc-mode-options input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: inherit; }
+.mc-mode-options label:has(input:focus-visible) { outline: 2px solid var(--sky); outline-offset: 2px; }
+.mc-mode .adm-note { margin: 0; }
+.mc-error-pad { margin: 0 16px 12px; }
+
+/* The voice call panel (#326): the microphone check, then the live call. */
+.mv { display: grid; gap: 10px; padding: 12px 16px 14px; border-top: 1px solid var(--line); background: var(--soft); }
+.mv-mic { display: grid; gap: 10px; }
+.mv-mic-row { display: flex; align-items: flex-start; gap: 10px; }
+.mv-mic-text { margin: 0; font-size: 15px; line-height: 1.4; }
+.mv-dot { flex: none; width: 10px; height: 10px; margin-top: 6px; border-radius: 50%; background: #a1a1aa; }
+.mv-dot.is-ok { background: #1f8a4c; }
+.mv-dot.is-bad { background: #b8410f; }
+.mv-meter { height: 10px; border-radius: 5px; background: #e4e4e7; overflow: hidden; }
+.mv-meter span { display: block; height: 100%; background: #1f8a4c; transform-origin: left center; }
+@media (prefers-reduced-motion: no-preference) { .mv-meter span { transition: transform 80ms linear; } }
+.mv-row, .mv-live-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mv .adm-btn { min-height: 44px; }
+.mv .mv-hang { margin-left: auto; color: #b8410f; }
+.mv-live { display: grid; gap: 10px; }
+.mv-live-chip { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 12px; border-radius: 16px; background: #fff; font: 500 14px/1 var(--sans); color: var(--ink-2); }
+.mv-live-chip.is-live { background: #fde8e1; color: #9a3412; }
+.mv-live-chip.is-live::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #dc2626; }
+.mv-maya { font-size: 14px; color: var(--ink-2); }
+.mv-maya.is-speaking { color: var(--ink); font-weight: 500; }
+.mv-hint { margin: 0; font-size: 13px; color: var(--ink-2); }
+.mv-say { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 8px; }
+.mv-say-box { display: grid; gap: 4px; font: 400 12px/1.2 var(--mono); color: var(--ink-2); }
+.mv-say input { min-height: 44px; padding: 8px 12px; border: 1px solid #d4d4d8; border-radius: 10px; background: #fff; font: 400 16px/1.3 var(--sans); color: var(--ink); }
+.mv-say .mv-hint { grid-column: 1 / -1; }
+.mv :focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }

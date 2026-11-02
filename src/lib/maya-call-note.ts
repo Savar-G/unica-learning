@@ -174,6 +174,8 @@ export function stepWords(step: WorkedStep): string {
       return "rounding to the nearest five cents";
     case "count-on":
       return "counting on the clock";
+    case "count-up":
+      return "counting on to find the missing part";
     case "add-durations":
       return "adding the times";
     case "clock-change":

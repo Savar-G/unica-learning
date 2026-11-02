@@ -106,6 +106,27 @@ describe("the never-say list", () => {
   });
 });
 
+describe("plain language in free talk (D-202)", () => {
+  it.each(["Wow, that's a lot of toys altogether!", "Oh, what a fun day in all!", "I hear you, it all together sounds hard.", "Oh, a total surprise!", "Yum, a left over cookie!"])(
+    "refuses %s in code, with no review, and says a bank phrase instead",
+    async (line) => {
+      const reviewer = fakeTalkReviewer();
+      const { said, talk } = await freeTalkCall(talkTurn(line), reviewer, { child: "I played with my toys today." });
+      expect(said).not.toContain(line);
+      expect(talk).toHaveLength(1);
+      expect(talk[0].code).toMatch(/^plain language: /);
+      expect(talk[0].review).toBe("not_run");
+      expect(reviewer.requests).toHaveLength(0);
+      expect(BANK).toContain(talk[0].shown);
+    },
+  );
+
+  it("tells the model and the review the rules", () => {
+    expect(TALK_REVIEW_SYSTEM).toContain("- plain_language: ");
+    expect(TALK_REVIEW_SYSTEM).toMatch(/Never "in all", "altogether", "all together", "total" or "left over"/);
+  });
+});
+
 describe("reading the review's answer", () => {
   it.each([
     [{ verdict: "pass", rules: [], reason: "" }, { verdict: "pass" }],

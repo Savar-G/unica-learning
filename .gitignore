@@ -57,6 +57,8 @@ ds-bundle/
 .claude/worktrees/
 supabase/.temp/
 /.workbook-sample/
+/.workbook-worker/
 
 # Maya text session traces (npm run maya:text)
 /traces/
+/worker/maya-voice/dist/

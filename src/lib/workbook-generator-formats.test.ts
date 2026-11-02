@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { fakeAiClient } from "@/lib/ai-client-fake";
+import { keySolver } from "@/lib/workbook-solve-check";
 import type { Grade } from "@/lib/assessment";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { curriculumFor } from "@/lib/workbook-curriculum";
@@ -60,12 +61,13 @@ function deps(answer: (s: SlotAsked, r: AiJsonRequest) => unknown) {
     fit: { fits: async () => ({ ok: true as const }) },
     store: memoryDraftStore({ [CHILD]: PARENT }),
     qrToken: () => `token-${String(++n).padStart(12, "0")}`,
+    solver: keySolver(),
   };
 }
 
 async function draft(p: WorkbookPlan, answer: (s: SlotAsked, r: AiJsonRequest) => unknown): Promise<GeneratedWorkbook> {
   const result = await generateWorkbook({ workbookId: WORKBOOK, childId: CHILD, number: 1, profileBuild: null, plan: p, curriculum: BC }, deps(answer));
-  if (result.status !== "stored") throw new Error(result.reason);
+  if (result.status !== "stored") throw new Error(result.status === "refused" ? result.reason : "paused");
   return result.draft;
 }
 
@@ -105,7 +107,8 @@ describe("places", () => {
     expect(blocks.check).toEqual({ status: "checked" });
     expect(blocks.package!.item!.figure).toEqual({ kind: "base-ten", hundreds: 0, tens: 4, ones: 7 });
     const frame = await first((s) => item(s, "places", { numbers: [num(14)], figure: "ten-frame" }));
-    expect(frame.package!.item!.figure).toEqual({ kind: "ten-frame", counters: [10, 4] });
+    // One number is one part, in one colour (round 6); the second frame fills past 10.
+    expect(frame.package!.item!.figure).toEqual({ kind: "ten-frame", counters: [14] });
     expect(regions(frame)).toEqual([box("tens", 1, "tens"), box("ones", 4, "ones")]);
   });
 });
@@ -277,7 +280,7 @@ describe("a full draft for the early levels", () => {
     if (is(/decompose|make-10|part-part-whole/)) return withOp(s, "write-number", op("add", 7, 3), 11, op("add", 2, 1), { figure: "ten-frame" });
     if (is(/two-more-less|number-line/)) return withOp(s, "number-line", op("add", 9, 5), 15, op("add", 3, 4));
     if (is(/ten-and-ones/)) return item(s, "places", { numbers: [num(14)], figure: "ten-frame" });
-    if (is(/order-numerals/)) return item(s, "order", { numbers: [num(7), num(2), num(9)], direction: "up" });
+    if (is(/order-numerals/)) return item(s, "order", { text: "Put them in order, least first.", numbers: [num(7), num(2), num(9)], direction: "up" });
     if (is(/compare|benchmarks/)) return item(s, "compare", { numbers: [num(3), num(8)], figure: "dots" });
     if (is(/rote-count|number-sequence|count-to-20|skip-count|count-by-ones|count-on-back/)) {
       return item(s, "sequence", { sequence: { start: num(5), step: num(is(/skip/) ? 2 : 1), terms: 5, blanks: [3] } });

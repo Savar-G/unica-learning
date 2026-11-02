@@ -8,6 +8,8 @@ import { blogPath, BLOG_POSTS } from "@/lib/blog";
 // Resources section (hub plus every article in src/lib/resources.ts) and the Blog (hub plus every post in src/lib/blog.ts) are indexable.
 const PATHS: { path: string; updated?: string }[] = [
   { path: "/" },
+  { path: "/pricing" },
+  { path: "/math-assessment" },
   { path: "/our-story" },
   { path: "/compare" },
   { path: "/rewards" },

@@ -64,6 +64,7 @@ async function endedTestCall(turns: string[], notes?: CallNotes, childName = "Le
   let ended: Ended | null = null;
   let seamResult: unknown = null;
   const calls = mayaCalls({
+    alerts: { send: async () => {}, list: async () => [] },
     store: memoryCallStore({ testFamilies: [TEST_PARENT] }),
     history: memoryWordingHistoryStore(),
     events: learningEvents(memoryLearningEventStore({ children: [{ id: TEST_CHILD, parentId: TEST_PARENT }], tests: [{ id: TEST, childId: TEST_CHILD }] })),
@@ -591,6 +592,7 @@ function callModule(note: CallSeams["note"], noteMs?: number, store: CallSeams["
   let n = 0;
   const events = memoryLearningEventStore({ children: [{ id: TEST_CHILD, parentId: TEST_PARENT }], tests: [{ id: TEST, childId: TEST_CHILD }] });
   const calls = mayaCalls({
+    alerts: { send: async () => {}, list: async () => [] },
     store,
     history: memoryWordingHistoryStore(),
     events: learningEvents(events),

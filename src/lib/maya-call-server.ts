@@ -1,49 +1,28 @@
 import "server-only";
-import { randomInt, randomUUID } from "node:crypto";
 import type { AdminSession } from "@/lib/admin-store";
-import { aiClient } from "@/lib/ai-client";
 import type { Question, Route, StoredTest } from "@/lib/assessment";
 import { assessmentQuestionReader } from "@/lib/assessment-questions";
 import { rebuildChildProfileNow } from "@/lib/child-profile-server";
-import { learningEvents } from "@/lib/learning-events";
-import { learningEventStore } from "@/lib/learning-events-store";
-import { mayaCalls, recordView, FAKE_MODEL_ID, type CallStatus, type CallView, type MayaCalls } from "@/lib/maya-call";
-import { writeNoteAfterCall } from "@/lib/maya-call-note-server";
-import { fromCallRow, mayaCallStore } from "@/lib/maya-call-store";
-import { wordingHistoryStore } from "@/lib/maya-wording-history-store";
-import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
-import { ruleMayaModel } from "@/lib/maya-model-fake";
-import { aiTalkReviewer, REVIEW_DEFAULT_MODEL, type TalkReviewer } from "@/lib/maya-talk-review";
+import { mayaCalls, recordView, FAKE_MODEL_ID, type CallStatus, type CallView, type FlagLevel, type MayaCalls } from "@/lib/maya-call";
+import { alertState } from "@/lib/maya-call-alert-store";
+import { callModel, callSeams } from "@/lib/maya-call-seams";
+import { fromCallRow } from "@/lib/maya-call-store";
 import type { Outcome } from "@/lib/maya";
-import { lookupStoredQuestion, SUPPORTED_ASSESSMENT_TEMPLATES } from "@/lib/question-package-assessment";
+import { livekitProject } from "@/lib/maya-voice";
+import { lookupStoredQuestion, SUPPORTED_ASSESSMENT_TEMPLATES, templateSkillName } from "@/lib/question-package-assessment";
 import { valueText } from "@/lib/question-package";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { adminClient } from "@/lib/supabase-auth";
 
-// Maya's admin test calls on the server (#323): the call module (src/lib/maya-call.ts) with its seams. Writes use the
-// secret key; the admin pages read with the admin's own session (row-level security: admins read public.maya_calls).
-// The model: Maya's model through OpenRouter when the server has OPENROUTER_API_KEY, else the fake rule player
-// (src/lib/maya-model-fake.ts). A call keeps the model it started with. Free talk is on (D-197), with its review
-// (callReviewer).
+// Maya's admin test calls on the server (#323): the call module (src/lib/maya-call.ts) with its seams
+// (src/lib/maya-call-seams.ts, shared with the voice worker). Writes use the secret key; the admin pages read with the
+// admin's own session (row-level security: admins read public.maya_calls). The model: Maya's model through OpenRouter
+// when the server has OPENROUTER_API_KEY, else the fake rule player (src/lib/maya-model-fake.ts). A call keeps the
+// model it started with. Free talk is on (D-197), with its review (callReviewer). Voice calls (#326) start here; Maya's
+// voice worker runs them (worker/maya-voice). A flagged call's internal alert (#333) goes to SIGNUP_NOTIFY_EMAIL through
+// Resend, with a link to the admin call page on the request's own site.
 
-/** The model a call uses: null asks for the one a new call uses now. */
-export function callModel(id: string | null): MayaModel | null {
-  const client = aiClient();
-  if (id === null) return client ? aiMayaModel(client) : ruleMayaModel();
-  if (id === FAKE_MODEL_ID) return ruleMayaModel();
-  return client && client.model === id ? aiMayaModel(client) : null;
-}
-
-/**
- * The free-talk review of a call (D-197): MAYA_REVIEW_MODEL (default Claude Haiku 5.5) through OpenRouter, a second
- * model beside Maya's. Null for the fake rule player (it says no free talk) and without OPENROUTER_API_KEY.
- */
-export function callReviewer(modelId: string): TalkReviewer | null {
-  if (modelId === FAKE_MODEL_ID) return null;
-  const client = aiClient(process.env, process.env.MAYA_REVIEW_MODEL?.trim() || REVIEW_DEFAULT_MODEL);
-  return client ? aiTalkReviewer(client) : null;
-}
+export { callModel, callReviewer } from "@/lib/maya-call-seams";
 
 /** The model a new call would use now, for the admin screen. */
 export function nextCallModel(): { id: string; fake: boolean } {
@@ -51,29 +30,23 @@ export function nextCallModel(): { id: string; fake: boolean } {
   return { id: model.id, fake: model.id === FAKE_MODEL_ID };
 }
 
-async function isTestFamily(db: SupabaseClient<Database>, parentId: string): Promise<boolean> {
-  const { data, error } = await db.from("test_accounts").select("parent_id").eq("parent_id", parentId).maybeSingle();
-  if (error) throw new Error(`test family check: ${error.message}`);
-  return data !== null;
-}
+/** Whether this server can start voice calls: it has its LiveKit project (LIVEKIT_URL, key and secret). */
+export const voiceReady = () => livekitProject(process.env) !== null;
 
-/** The call module with the secret key, or null without it. */
-export function serverMayaCalls(): MayaCalls | null {
+/** The call module with the secret key, or null without it. `origin`: the site the alert's admin link points to (see callSeams). */
+export function serverMayaCalls(origin?: string): MayaCalls | null {
   const db = adminClient();
   if (!db) return null;
-  return mayaCalls({
-    store: mayaCallStore(db),
-    history: wordingHistoryStore(db),
-    events: learningEvents(learningEventStore(db)),
-    rebuild: async (childId) => (await rebuildChildProfileNow(childId))?.built === true,
-    model: callModel,
-    reviewer: callReviewer,
-    isTestFamily: (parentId) => isTestFamily(db, parentId),
-    note: writeNoteAfterCall(db),
-    clock: () => Date.now(),
-    newId: () => randomUUID(),
-    seed: () => randomInt(0, 2 ** 32),
-  });
+  return mayaCalls(callSeams(db, { origin, rebuild: async (childId) => (await rebuildChildProfileNow(childId))?.built === true }));
+}
+
+/** The voice facts of a call for its token: its family, mode and status, read with the secret key. */
+export async function voiceCallFacts(id: string) {
+  const db = adminClient();
+  if (!db || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
+  const { data, error } = await db.from("maya_calls").select("id, parent_id, child_id, mode, status").eq("id", id.toLowerCase()).maybeSingle();
+  if (error) throw new Error(`voice call load: ${error.message}`);
+  return data && { id: data.id, parentId: data.parent_id, childId: data.child_id, mode: data.mode, status: data.status };
 }
 
 /** What a new call needs about a test question: the family, the child's first name and the package. */
@@ -106,6 +79,8 @@ export interface DemoQuestion {
   text: string;
   answer: string;
   templateId: string;
+  /** The skill the question tests, in plain words; null when the template has no skill tag. */
+  skill: string | null;
 }
 
 export interface DemoChild {
@@ -143,7 +118,7 @@ export async function demoChildren(a: AdminSession): Promise<DemoChild[]> {
             if (!supported.has(q.templateId)) return [];
             const found = lookupStoredQuestion({ source: "assessment", assessmentId: t.id, questionId: q.id }, { test: t.test, route: t.route });
             return found.status === "found"
-              ? [{ assessmentId: t.id, questionId: q.id, number: i + 1, text: found.package.text, answer: found.package.answer ? valueText(found.package.answer.value) : "", templateId: q.templateId }]
+              ? [{ assessmentId: t.id, questionId: q.id, number: i + 1, text: found.package.text, answer: found.package.answer ? valueText(found.package.answer.value) : "", templateId: q.templateId, skill: templateSkillName(q.templateId) }]
               : [];
           });
           return { assessmentId: t.id, startedAt: t.started_at, status: t.status, questions };
@@ -160,17 +135,26 @@ export interface CallListRow {
   childName: string | null;
   questionText: string | null;
   status: CallStatus;
-  model: string;
+  model: { id: string; fake: boolean };
   outcome: Outcome["reason"] | null;
   assistance: Outcome["assistance"] | null;
   seconds: number | null;
   learningEvent: boolean;
+  mode: "text" | "voice";
+  /** Voice calls: seconds the child and Maya were both connected. */
+  connectedSeconds: number | null;
+  /** Signs of mishearing: numbers Maya asked to confirm, and "no, I said" corrections. */
+  mishearing: { confirmations: number; corrections: number } | null;
+  flag: FlagLevel | null;
+  /** The outcome's own safety, for a call saved before flags existed (R393-L3). */
+  safetySeverity: Outcome["safetySeverity"];
+  safetyFlag: boolean;
 }
 
 /** The newest test calls. */
 export async function listCalls(a: AdminSession, limit = 50): Promise<CallListRow[]> {
-  const rows = must<{ id: string; created_at: string; child_id: string; question_text: string | null; status: CallStatus; model: string; outcome_reason: Outcome["reason"] | null; assistance: Outcome["assistance"] | null; call_seconds: number | null; learning_event_id: string | null }[]>(
-    await a.db.from("maya_calls").select("id, created_at, child_id, question_text, status, model, outcome_reason, assistance, call_seconds, learning_event_id").order("created_at", { ascending: false }).limit(limit),
+  const rows = must<{ id: string; created_at: string; child_id: string; question_text: string | null; status: CallStatus; model: string; outcome_reason: Outcome["reason"] | null; assistance: Outcome["assistance"] | null; call_seconds: number | null; learning_event_id: string | null; mode: "text" | "voice"; connected_seconds: number | null; mishearing_confirmations: number | null; mishearing_corrections: number | null; flag: FlagLevel | null; safety_severity: Outcome["safetySeverity"]; safety_flag: boolean }[]>(
+    await a.db.from("maya_calls").select("id, created_at, child_id, question_text, status, model, outcome_reason, assistance, call_seconds, learning_event_id, mode, connected_seconds, mishearing_confirmations, mishearing_corrections, flag, safety_severity, safety_flag").order("created_at", { ascending: false }).limit(limit),
     "maya calls",
   );
   const ids = [...new Set(rows.map((r) => r.child_id))];
@@ -182,11 +166,17 @@ export async function listCalls(a: AdminSession, limit = 50): Promise<CallListRo
     childName: names.find((n) => n.id === r.child_id)?.first_name ?? null,
     questionText: r.question_text,
     status: r.status,
-    model: r.model,
+    model: { id: r.model, fake: r.model === FAKE_MODEL_ID },
     outcome: r.outcome_reason,
     assistance: r.assistance,
     seconds: r.call_seconds,
     learningEvent: r.learning_event_id !== null,
+    mode: r.mode,
+    connectedSeconds: r.connected_seconds,
+    mishearing: r.mishearing_confirmations === null ? null : { confirmations: r.mishearing_confirmations, corrections: r.mishearing_corrections ?? 0 },
+    flag: r.flag,
+    safetySeverity: r.safety_severity,
+    safetyFlag: r.safety_flag,
   }));
 }
 
@@ -195,7 +185,10 @@ export async function readCall(a: AdminSession, id: string): Promise<{ view: Cal
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
   const row = must<Database["public"]["Tables"]["maya_calls"]["Row"] | null>(await a.db.from("maya_calls").select("*").eq("id", id.toLowerCase()).maybeSingle(), "maya call");
   if (!row) return null;
-  const view = recordView(fromCallRow(row));
+  const alerts = row.flag
+    ? must<Database["public"]["Tables"]["maya_call_alerts"]["Row"][]>(await a.db.from("maya_call_alerts").select("*").eq("call_id", row.id).order("created_at"), "maya call alerts").map(alertState)
+    : [];
+  const view = recordView(fromCallRow(row), alerts);
   if (!view) return null;
   const child = must<{ first_name: string } | null>(await a.db.rpc("admin_children").select("first_name").eq("id", row.child_id).maybeSingle(), "child");
   return { view, childName: child?.first_name ?? null };
