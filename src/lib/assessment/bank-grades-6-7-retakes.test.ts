@@ -43,4 +43,3 @@ describe("siblings and retakes in grades 6-7", () => {
     }
    }, 30_000);
 });
-
