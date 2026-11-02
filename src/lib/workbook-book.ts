@@ -13,6 +13,7 @@
 //
 // The words here are code's, never the AI's: headers, panel labels and explanations come from the plan and the
 // curriculum. Pure TypeScript: no Next.js, React, network, database, clock or randomness.
+import { SKILL_TITLES } from "@/lib/workbook-skill-titles";
 import {
   operationResult,
   operationText,
@@ -62,6 +63,7 @@ export function pageTopic(curriculum: Curriculum, skill: string | undefined, ste
   if (!skill) return "Review";
   const named = step ? curriculum.skillSteps(skill)?.[step - 1]?.name : undefined;
   if (named) return named;
+  if (SKILL_TITLES[skill]) return SKILL_TITLES[skill];
   const clause = (curriculum.skill(skill)?.text ?? skill).split(/,|;| \(/)[0].trim();
   return clause.length <= TOPIC_MAX ? clause : curriculum.levelOfSkill(skill)?.title ?? "Review";
 }
@@ -77,31 +79,31 @@ const NUMBER_STRANDS = new Set(["N", "O", "A"]);
 export function dayHeader(curriculum: Curriculum, page: PlannedPage, level: number): DayHeader {
   const main = page.parts.find((p) => p.step) ?? page.parts[0];
   const topic = pageTopic(curriculum, main?.step?.skill ?? main?.skills[0], main?.step?.step);
-  const early = level <= 9;
+  const early = level <= 3;
   // A parent-led page takes the subtitle of its first part.
   const first = page.parts[0]?.kind;
   const type = page.type !== "parent-led" ? page.type
     : first === "new-idea" ? "new-idea" : first === "picture-stories" ? "word-problems" : first === "remember-these" ? "remember-these" : first ?? "practice";
   const subtitles: Record<string, string> = {
     "warm-up": level >= 16 ? "Facts to 20. Beat your own count from last time." : "Facts to 20. Take your time: there is no timer.",
-    "new-idea": level >= 19 ? "Try it first. Then see how it works." : "Watch how it works. Then try it.",
-    practice: "Watch one. Finish two. Then do the rest on your own.",
+    "new-idea": level >= 19 ? "Try it first. Then see how it works." : "Read how it works, then try it.",
+    practice: "Read the example, then answer the questions.",
     "practice-2": "Each row is a little harder than the one before.",
     "word-problems": "Read it. Work it out in the box. Write the answer.",
     "math-in-the-world": "One real task. Plan it, then work it out.",
-    "unit-b": `Unit B: ${topic.toLowerCase()}.`,
+    "unit-b": "Answer the questions. Use the example if you need help.",
     "friday-5": "Things you learned before, then five with no hints.",
-    challenge: (page.parts.find((x) => x.kind === "challenge")?.items ?? 1) > 1 ? "Two to stretch you." : "One to stretch you.",
+    challenge: "Test yourself.",
     "show-what-you-know": "Ten days of work. Show what you learned!",
     "level-test": "Do this on your own.",
   };
-  const subtitle = subtitles[type] ?? "Things you learned before, so they stay fresh.";
-  const title = pageTitle(page, level, curriculumTitleSkills(curriculum, (skill) => {
+  const subtitle = subtitles[type] ?? "Answer the questions about what you learned before.";
+  const title = page.type === "challenge" ? "Challenge" : pageTitle(page, level, curriculumTitleSkills(curriculum, (skill) => {
     const strand = curriculum.unit(curriculum.skill(skill)?.unit ?? "")?.strand;
     return strand && NUMBER_STRANDS.has(strand) ? skillRange(curriculum, level, skill).max : null;
   }));
 
-  const parentLed = page.type === "parent-led";
+  const parentLed = level <= 3 && page.type === "parent-led";
   const grownUp = parentLed
     ? "Read each line aloud. Your child circles, colours or writes one number."
     : early && type === "new-idea" ? "Read the blue box aloud. Show both ways with a finger." : null;
@@ -295,6 +297,7 @@ export function pageFigure(f: ItemFigure | null | undefined): Figure | null {
     // Two parts ("2 and 6") in two colours, so the child sees each part (round 6); one part in one colour.
     case "ten-frame": {
       const filled = f.counters.reduce((a, b) => a + b, 0);
+      if (filled === 0 && f.counters.length === 2) return { kind: "ten-frame", filled, frames: 2 };
       return f.counters.filter((n) => n > 0).length > 1 ? { kind: "ten-frame", filled, parts: [...f.counters] } : { kind: "ten-frame", filled };
     }
     // A question's number line has no hop drawn: the hop lands on the answer, so the child draws it (#380).
@@ -913,14 +916,14 @@ export function dayPageContent(o: {
         const lines = ex?.lines ?? [];
         return {
           slot: s.slot, items: [], label: ex?.label,
-          note: part?.unit === "B" ? "Unit B · new step" : "Unit A · new step",
+          note: "Read how it works, then try it.",
           methods: lines.length ? [{ label: "Step by step", lines }] : [],
           explain: step?.change ?? "Work one step at a time. Then check your answer.",
         };
       }
       case "watch-one": {
         const ex = panel();
-        return { slot: s.slot, items: [], label: ex?.label, note: "Watch one worked out. Then finish two.", lines: ex?.lines ?? [] };
+        return { slot: s.slot, items: [], label: ex?.label, note: "Read the example, then try it.", lines: ex?.lines ?? [] };
       }
       case "reminder": {
         const ex = panel();
@@ -957,7 +960,7 @@ export function dayPageContent(o: {
 
 /** Each day's row on the plan page: Unit A's topic and the line under it. */
 export function planRow(curriculum: Curriculum, plan: WorkbookPlan, day: number): { topic: string; second: string } {
-  const d = plan.days[day - 1];
+  const d = plan.days.find((d) => d.day === day)!;
   const topicOf = (track: "A" | "B") => {
     const part = d.pages.flatMap((p) => p.parts).find((p) => p.unit === track && p.step);
     return part ? pageTopic(curriculum, part.step!.skill, part.step!.step) : null;
@@ -968,6 +971,36 @@ export function planRow(curriculum: Curriculum, plan: WorkbookPlan, day: number)
   const b = topicOf("B");
   const second = day === 10 ? "Show what you know" : day === 5 ? "Friday 5" : b ?? (d.kind === "mixed" ? "Mixed practice" : "Remember these?");
   return { topic: a ?? (d.kind === "mixed" ? "Mixed practice" : "Review"), second };
+}
+
+/** A skill title as a plain continuation of "will learn to" on the cover. */
+function learningSkill(title: string): string {
+  const verbs: Record<string, string> = { Counting: "Count", Adding: "Add", Subtracting: "Subtract", Comparing: "Compare", Making: "Make",
+    Finding: "Find", Measuring: "Measure", Reading: "Read", Writing: "Write", Using: "Use", Multiplying: "Multiply", Dividing: "Divide",
+    Solving: "Solve", Ordering: "Order", Rounding: "Round", Drawing: "Draw", Naming: "Name" };
+  const [first, ...rest] = title.split(" ");
+  if (verbs[first]) return [verbs[first], ...rest].join(" ");
+  if (/^(Read|Write|Count|Add|Subtract|Compare|Find|Make|Measure|Use|Draw|Name|Solve|See|Show|Multiply|Divide|Estimate|Describe|Sort|Choose|Order|Break|Change|Plot|Continue|Combine|Match|Skip-count|Predict|Share|Evaluate|Model|Check|Tell|Put|Spot|Take|Balance|Move|Build|Extend|Record|Recall|Link|Slide|Flip|Turn|Translate|Test|Convert|Regroup|Substitute|List|Simplify|Interpolate|Extrapolate|Collect|Save)\b/.test(title)) return title;
+  if (/^(What|How|Why)\b/.test(title)) return `Explain ${title.toLowerCase()}`;
+  if (/^Which\b/.test(title)) return `Choose ${title.toLowerCase()}`;
+  if (title === "Likelihood words") return "Use likelihood words";
+  if (title === "More, fewer or same") return "Compare amounts";
+  if (first === "Numbers") return `Read and write ${title.toLowerCase()}`;
+  if (first === "Ways") return `Find ${title.toLowerCase()}`;
+  return `Work with ${title.toLowerCase()}`;
+}
+
+/** Prefer the taught skills, then the skills practised in review, for the three cover lines. */
+function coverSkills(plan: WorkbookPlan): string[] {
+  const parts = plan.days.flatMap(d => d.pages.flatMap(p => p.parts));
+  const taught = ["A", "B"].flatMap(unit => parts.filter(p => p.unit === unit).flatMap(p => p.skills));
+  const skills = [...new Set([...taught, ...parts.flatMap(p => p.skills)])].slice(0, 3);
+  if (skills.length !== 3) throw new Error("The cover needs three planned skills.");
+  return skills.map(skill => {
+    const title = SKILL_TITLES[skill];
+    if (!title) throw new Error(`The cover has no title for ${skill}.`);
+    return learningSkill(title);
+  });
 }
 
 /** The content of a book page that is not a day page: the cover (1), How + Plan (2), the back cover and blanks. */
@@ -989,16 +1022,9 @@ export function bookPageContent(o: {
       return {
         kind: "cover", id: id("COVER"), level, child, workbook, levelTitle: title, title: coverTitleLines(title),
         madeFrom: workbook === 1 ? "assessment" : "last-workbook", pagesADay, minutes: { ...plan.timeTarget },
-        sentence: workbook === 1
-          ? `${child}'s assessment showed what is secure and what to build next at Level U${level}. So this workbook:`
-          : `${child}'s last workbook showed which steps stuck and which need another go. So this workbook:`,
-        bullets: [
-          plan.testWorkbook ? "Checks the whole level with a test on Day 7" : "Builds the next steps of this level, one small step at a time",
-          "Shows each new idea with a worked example first",
-          "Brings back earlier skills every day, so they stay fresh",
-          workbook === 1 ? "Ends each week with five questions and no hints" : "Fixes last time's mistakes with new questions",
-        ],
-        parentLine: `This fortnight, ask ${child} to show you one worked example and explain it in their own words.`,
+        sentence: `In this workbook, ${child} will learn to:`,
+        bullets: coverSkills(plan),
+        parentLine: "",
       };
     }
     case "how-plan": {

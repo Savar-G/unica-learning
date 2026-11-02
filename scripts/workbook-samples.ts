@@ -46,6 +46,7 @@ import { curriculumFor } from "@/lib/workbook-curriculum";
 import { workbookDraftStore } from "@/lib/workbook-draft-store";
 import { renderableDraft, renderFitCheck } from "@/lib/workbook-fit";
 import { generateWorkbook, type GeneratedWorkbook, type WorkbookDraftStore } from "@/lib/workbook-generator";
+import { reviewDays } from "@/lib/workbook-review-days";
 import { planWorkbook } from "@/lib/workbook-plan";
 import { renderWorkbook, reviewPrint, type PrintEngine, type RenderProblem } from "@/lib/workbook-render";
 import { sampleChild, samplePlanInput, type SampleBookKind, type SampleChild } from "@/lib/workbook-sample-profiles";
@@ -62,10 +63,11 @@ const NOTE = (level: string) => `Sample child for level ${level} (#363): made-up
 const { values } = parseArgs({
   options: {
     levels: { type: "string", default: "all" }, second: { type: "string", default: "" }, test: { type: "string", default: "" },
-    out: { type: "string", default: "/tmp/ui-review/samples" }, concurrency: { type: "string", default: "6" },
+    days: { type: "string" }, out: { type: "string", default: "/tmp/ui-review/samples" }, concurrency: { type: "string", default: "6" },
     fake: { type: "boolean", default: false }, api: { type: "boolean", default: false }, anthropic: { type: "boolean", default: false }, "family-only": { type: "boolean", default: false }, "no-store": { type: "boolean", default: false },
   },
 });
+if (values.days && (values.second || values.test)) throw new Error("--days is only for first review books.");
 const BC = curriculumFor("bc")!;
 const allLevels = BC.levels.map((l) => l.id);
 const list = (s: string) => (s === "all" ? allLevels : s.split(",").map((x) => x.trim()).filter(Boolean));
@@ -412,7 +414,7 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
   const t0 = Date.now();
   const solveLogs: SolveLog[] = [];
   const result = await generateWorkbook(
-    { workbookId, childId, number: input.workbook.number, profileBuild: null, plan: planned.plan, curriculum: BC, book: { child: child.name } },
+    { workbookId, childId, number: input.workbook.number, profileBuild: null, plan: reviewDays(planned.plan, values.days), curriculum: BC, book: { child: child.name } },
     {
       ai, fit: renderFitCheck({ template, engine, parentId }), concurrency: Number(values.concurrency),
       store: drafts ?? { save: async () => ({ status: "saved", draftId: workbookId }), draft: async () => null },
@@ -540,7 +542,7 @@ async function writeIndex() {
   const notChecked = ok.flatMap((r) => r.draft.pages.flatMap((p) => p.questions.filter((q) => q.check.status === "not-checked").map((q) => `- ${r.label} p${p.number} q${q.number}: ${(q.check as { reason: string }).reason}`)));
   const profiles = ok.filter((r) => r.kind === "first").map((r) => `- ${r.level} ${r.child.name}: unit A ${r.child.mainUnit}, Unit B gap ${r.child.unitB ?? "none"}, weak skills ${r.child.weakSkills.join(", ")}`);
   const md = [
-    `# Sample workbooks (#363)${values.fake ? " - FAKE AI DRY RUN, NOT SAMPLES" : ""}`,
+    `# Sample workbooks (#363)${values.days ? `: review days ${values.days} only` : ""}${values.fake ? " - FAKE AI DRY RUN, NOT SAMPLES" : ""}`,
     "",
     `Model: ${ai.model}; solve check: ${solver.model}. Books: ${ok.length}. Total AI cost (solve checks included): USD ${total.toFixed(2)}. Draft rows: public.workbook_drafts${store ? "" : " (not stored)"}.`,
     "Nothing is sent to print or shipped. Failed pages are drawn with a red banner in the PDF and the page images.",

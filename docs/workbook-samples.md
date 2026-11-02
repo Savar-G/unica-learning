@@ -44,3 +44,15 @@ the titles again. Code checks each batch and asks for corrections to invalid tit
 by unit, with any wording flags. The fit check prints every skill and unit title with the workbook's font, weight,
 size and column width. It fails if a title is absent, hidden, blank or too wide. Its measurements are in
 `/tmp/ui-review/wording-r2/skill-title-fit.json`.
+
+## Review selected days (#479)
+
+`--days 1,3,5,8,10` selects five days from the normal ten-day plan. It gives 40 practice pages for U4, plus the cover, plan and binding blanks, for a 44-page PDF. The original plan remains unchanged. This option is only for review samples and cannot be combined with second or test books.
+
+The #479 layout-only check uses:
+
+```sh
+env -u OPENROUTER_API_KEY -u OPENROUTER_API_KEY_FILE -u ANTHROPIC_API_KEY WORKBOOK_CLAUDE_CONFIG_DIR=/Users/savargupta/.claude_second npm run workbooks:samples -- --fake --levels U4 --days 1,3,5,8,10 --concurrency 4 --out /tmp/ui-review/samples-479-fake-final
+```
+
+See `docs/workbook-feedback-479.md` for the shared `dayDifficulty` API, the checks that the #480 writer must use, and the U26 checker limits. The fake run makes no subscription or API calls and stores nothing. It does not approve question quality.

@@ -25,6 +25,7 @@ import {
   type WorkbookTemplate,
 } from "@/lib/workbook-render";
 import type { TemplateFonts } from "@/lib/workbook-template-fixed";
+import { instructionProblem, feedbackItemProblem } from "@/lib/workbook-feedback-check";
 import { titleProblem } from "@/lib/workbook-titles";
 
 const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -51,9 +52,9 @@ interface Band {
 
 const BANDS: Record<Band["name"], Band> = {
   // U10 and up: the reference sizes.
-  mid: { name: "mid", title: 30, body: 15, small: 13, fact: 17, math: 15, column: 22, number: 14, story: 15, box: 40 },
+  mid: { name: "mid", title: 30, body: 15, small: 13, fact: 17, math: 15, column: 22, number: 14, story: 15, box: 48 },
   // U4 to U9: 18 px at least; bigger maths in facts (30 to 34).
-  early: { name: "early", title: 36, body: 20, small: 18, fact: 30, math: 20, column: 28, number: 18, story: 20, box: 48 },
+  early: { name: "early", title: 36, body: 20, small: 18, fact: 30, math: 20, column: 28, number: 18, story: 20, box: 56 },
   // U1 to U3: 20 px body, boxes at least 56.
   parent: { name: "parent", title: 36, body: 20, small: 18, fact: 32, math: 22, column: 30, number: 18, story: 20, box: 56 },
 };
@@ -66,7 +67,7 @@ const LINES = 2;
 /** The most lines a card's question text takes (D-201: a story card's 3 full sentences). */
 export const CARD_LINES = 3;
 /** The smallest work box: the inline Mixed set box. */
-const WORK_MIN = 44;
+const WORK_MIN = 64;
 /** The smallest answer box each way at any level (CONTEXT.md section 6). */
 export const ANSWER_MIN = 40;
 
@@ -75,9 +76,8 @@ export const ANSWER_MIN = 40;
 /** The most items a slot takes on a page. */
 export function slotMax(slot: SlotName, c: Pick<DayContent, "level" | "pages">): number {
   const band = bandOf(c.level);
-  const six = c.pages <= 6 && band.name === "mid";
   switch (slot) {
-    case "warm-up": return band.name === "mid" ? (six ? 27 : 30) : 8;
+    case "warm-up": return band.name === "mid" ? 12 : 8;
     case "fix-it": return 3;
     case "in-your-head": case "try-first": case "spot-the-error": case "solve-it-two-ways": case "how-do-you-know": return 1;
     case "remember-these": return band.name === "parent" ? 6 : 8;
@@ -93,8 +93,8 @@ export function slotMax(slot: SlotName, c: Pick<DayContent, "level" | "pages">):
     case "challenge": return 2;
     case "math-in-the-world": return 3;
     // Cards with a work area of at least 44 px: 5 rows of 2 from U10, 4 rows at U4 to U9.
-    case "show-what-you-know": return band.name === "mid" ? 10 : 8;
-    case "level-test": return band.name === "mid" ? 10 : 8;
+    case "show-what-you-know": return band.name === "mid" ? 8 : 6;
+    case "level-test": return band.name === "mid" ? 8 : 6;
     case "unit-check": return 4;
     case "mini-test": return 5;
     case "already-know-it": return 10;
@@ -221,8 +221,8 @@ const familyOf = (page: DraftPage, c: DayContent): Family =>
 const CSS = `
 *{box-sizing:border-box}
 .pg{position:absolute;inset:0;font-family:"Unica Sans",Helvetica,Arial,sans-serif;color:#0C0C0E;font-size:var(--body);line-height:1.4}
-.pg.mid{--title:30px;--body:15px;--small:13px;--fact:17px;--math:15px;--col:22px;--num:14px;--story:15px;--box:40px}
-.pg.early{--title:36px;--body:20px;--small:18px;--fact:30px;--math:20px;--col:28px;--num:18px;--story:20px;--box:48px}
+.pg.mid{--title:30px;--body:15px;--small:13px;--fact:17px;--math:15px;--col:22px;--num:14px;--story:15px;--box:48px}
+.pg.early{--title:36px;--body:20px;--small:18px;--fact:30px;--math:20px;--col:28px;--num:18px;--story:20px;--box:56px}
 .pg.parent{--title:36px;--body:20px;--small:18px;--fact:32px;--math:22px;--col:30px;--num:18px;--story:20px;--box:56px}
 .mono{font-family:"Unica Mono",ui-monospace,Menlo,monospace}
 .scan{position:absolute;width:18px;height:18px;border:0 solid #111111}
@@ -234,17 +234,17 @@ const CSS = `
 .frame>*{flex-shrink:0}
 .hd{display:flex;flex-direction:column;gap:8px}
 .pg.mid .hd{min-height:126px}
-.nd{display:flex;align-items:flex-end;gap:8px;height:18px;font-size:13px;line-height:18px}
+.nd{margin-bottom:18px;display:flex;align-items:flex-end;gap:8px;height:18px;font-size:13px;line-height:18px}
 .nd .r1{display:block;width:483px;border-bottom:1px solid #0C0C0E;height:14px}
 .nd .r2{display:block;flex:1;border-bottom:1px solid #0C0C0E;height:14px}
 .dl{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-weight:500;font-size:var(--small);line-height:1.2;letter-spacing:.04em;text-transform:uppercase;max-height:calc(var(--small)*2.4);overflow:hidden}
 .tt{margin:2px 0 0;font-weight:300;font-size:var(--title);line-height:1.25;padding-bottom:2px;white-space:nowrap;overflow:hidden}
-.st{margin:0;font-size:var(--body);color:#44444C;max-height:calc(var(--body)*2.8);overflow:hidden}
+.st{white-space:nowrap;margin:0;font-size:var(--body);color:#44444C;max-height:calc(var(--body)*1.4);overflow:hidden}
 .gu{margin:0;font-size:var(--body);color:#0C0C0E;background:#F4F4F5;border-radius:8px;padding:6px 12px;overflow:hidden}
 .gu b{font-weight:500}
 .ct{flex:1 1 auto;flex-shrink:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:12px}
 .ct>*{flex-shrink:0}
-.blk{display:flex;flex-direction:column;gap:8px}
+.blk{display:flex;flex:1 0 auto;flex-direction:column;gap:8px}
 .blk.grow{flex-grow:1}
 .ft{position:absolute;left:64px;top:950px;width:688px;height:58px;display:flex;align-items:center;gap:12px}
 .ft [data-measure="qr"]{width:58px;height:58px;flex:none}
@@ -290,7 +290,8 @@ const CSS = `
 .t1 i{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border:1.5px solid #0C0C0E;border-radius:2px;font-style:normal;font-size:12px;color:#0C0C0E;line-height:1}
 .circ{display:inline-flex;align-items:center;gap:36px;min-height:56px;padding:6px 18px;flex:none}
 .circ .co{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-size:var(--fact)}
-.circ.words{flex-direction:column;align-items:flex-start;gap:4px;min-height:0;padding:2px 8px}
+.circ.words{flex-direction:column;align-items:flex-start;gap:4px;min-height:48px;padding:2px 8px}
+.circ.words.likelihood{flex-direction:row;gap:16px}
 .circ.words .co{font-family:"Unica Sans",Helvetica,Arial,sans-serif;font-size:var(--body);line-height:1.3;white-space:nowrap}
 .wb{display:block;border:1px solid #D4D4DA;border-radius:8px;padding:10px 12px;background:#fff;flex:1 1 auto;min-width:120px}
 .wb .lab{font-weight:400;color:#44444C}
@@ -310,14 +311,15 @@ const CSS = `
 .q .qb{flex:1 1 0;min-width:min-content}
 .q .rgs{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .q .full{flex-basis:100%;display:flex;gap:12px}
-.list{display:flex;flex-direction:column;gap:6px}
-.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:6px}
-.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));column-gap:24px;row-gap:12px}
+.list{display:flex;flex:1;flex-direction:column;justify-content:space-evenly;gap:10px}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:12px;align-items:stretch;flex:1;grid-auto-rows:1fr}
+.two>.q{align-content:start;align-items:start}.two>.q>.n{padding-top:12px}.two>.q>.qb{padding-top:8px}
+.facts{flex:1;align-content:space-between;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));column-gap:24px;row-gap:12px}
 .pg.early .facts,.pg.parent .facts{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:48px;row-gap:22px}
 .facts .q{gap:10px;flex-wrap:nowrap}
 .facts .gn{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-size:var(--small);color:#44444C;min-width:22px;flex:none}
 .facts .qm{font-size:var(--fact);flex:1 1 auto;white-space:nowrap}
-.cols{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px 16px}
+.cols{flex:1;align-content:space-between;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px 16px}
 .col{display:flex;gap:10px;align-items:flex-start}
 .col .sum{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-size:var(--col);line-height:1.12;text-align:right;min-width:96px;display:flex;flex-direction:column;align-items:flex-end}
 .col .sum .rule{width:100%;border-top:2px solid #0C0C0E;margin-top:3px;padding-top:4px;display:flex;justify-content:flex-end}
@@ -331,7 +333,7 @@ const CSS = `
 .p-pr{background:#E3F5EC}.p-pr .lab{color:#064E32}
 .p-rv{background:#FFF6D6;border-radius:16px}.p-rv .lab{color:#5A4300}
 .p-fx{background:#FDECEC}.p-hd{background:#F1F1F4;border-radius:10px}
-.outl{border:1.5px solid #3366F0;border-radius:12px;padding:12px 20px 14px;background:#fff;display:flex;flex-direction:column;gap:8px}
+.outl{border:1.5px solid #3366F0;border-radius:12px;padding:12px 20px 12px;background:#fff;display:flex;flex-direction:column;gap:8px}
 .outl .lab{color:#1B3FA6}
 .wk{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-size:var(--math);line-height:1.5}
 .ways{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
@@ -346,7 +348,7 @@ const CSS = `
 .story .qt{font-size:16px}
 .pg.early .story .qt,.pg.parent .story .qt{font-size:var(--story)}
 .story .act{display:flex;gap:16px;align-items:flex-end}
-.story .act .wb{height:88px}
+.story .act .wb{height:110px}
 .mxs{display:flex;flex-direction:column;gap:6px}
 .mx{display:flex;flex-direction:column;gap:2px;padding-top:6px;border-top:1px solid #D4D4DA}
 .mx .qt{font-size:14px;line-height:1.3}
@@ -355,7 +357,7 @@ const CSS = `
 .mx .stp{display:flex;align-items:center;gap:12px}
 .mx .sb{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#0C0C0E;color:#fff;font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-size:13px;line-height:1;flex:none}
 .mx .sl{font-size:var(--body);min-width:150px}
-.mx .wb{height:44px;display:flex;align-items:center}
+.mx .wb{height:64px;display:flex;align-items:center}
 .chs{display:flex;flex-direction:column;gap:16px;flex:1 1 auto}
 .chs>*{flex:1 1 0}
 .chs.side2{flex-direction:row}
@@ -378,9 +380,9 @@ const CSS = `
 .info .ic .v{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-size:var(--math)}
 .parts{display:flex;flex-direction:column;gap:10px}
 .parts .rg{width:100%;justify-content:space-between}
-.pcards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.pcards{flex:1;grid-auto-rows:1fr;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .pcard{border:1px solid #D4D4DA;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
-.pcard .pb{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
+.pcard .pb{margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
 .pcard .pb>.pic{max-width:60%;height:auto}
 .pcard .draw{height:56px;width:150px}
 .pcard .ln{min-width:160px}
@@ -514,7 +516,7 @@ export function figureSvg(f: Figure, scale = 1): string {
     }
     case "ten-frame": {
       // A second frame beside the first when more than 10 are filled.
-      const frames = f.filled > 10 ? 2 : 1;
+      const frames = f.frames ?? (f.filled > 10 ? 2 : 1);
       // Each part in its own colour, as dots are (orange, then blue); with no parts, every counter blue.
       const colourAt = (i: number) => {
         if (!f.parts) return COUNTER[1];
@@ -674,7 +676,7 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
         // Choices in words ("less than 5", "not equal", "cats") stack in the body type: a card has no room for them in
         // a row at the size of a fact.
         const words = !shapes && r.choices.some((c) => /[a-z]{2}/i.test(c));
-        return `<span class="circ${words ? " words" : ""}" ${at}>${r.choices.map((c) => `<span class="co">${choice(c)}</span>`).join("")}</span>`;
+        return `<span class="circ${words ? " words" : ""}${r.choices.join(",") === "never,maybe,always" ? " likelihood" : ""}" ${at}>${r.choices.map((c) => `<span class="co">${choice(c)}</span>`).join("")}</span>`;
       }
       const choices = r.choices.map((c) => `<span class="ch"><i class="tb"></i><span>${escape(c)}</span></span>`).join("");
       return `<span class="rg">${r.label ? `<span class="rl">${escape(r.label)}</span>` : ""}<span class="strip" ${at}>${choices}</span>${o.noTick ? "" : `<span class="t1"><span>Tick one</span><i>✓</i></span>`}</span>`;
@@ -739,7 +741,7 @@ const isMath = (s: string) => /^[\d\s+−×÷=?.,()/$¢a-z]*$/i.test(s) && /\d/.
 const qtext = (q: DraftQuestion) => text(q, isMath(q.package.text) ? "qm" : "qt");
 
 /** A question in a line: its number, its text, its boxes at the right, then any work box or writing lines under it. */
-function lineItem(q: DraftQuestion, band: Band, hint?: WorkedLine | null, work = 60, figure?: Figure | null): string {
+function lineItem(q: DraftQuestion, band: Band, hint?: WorkedLine | null, work = 80, figure?: Figure | null): string {
   const pictured = packageItem(q.package).regions.some((r) => r.kind === "picture");
   const split = regionsSplit(q, { band, work, labels: true, bare: packageItem(q.package).format === "written-reason", figure: pictured ? figure : null });
   // A picture the child reads (dots to count, a pattern) sits under the question, before any work box.
@@ -806,7 +808,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
   const prev = c.blocks[i - 1]?.slot;
   const parent = band.name === "parent";
   const list = (render: (q: DraftQuestion, k: number) => string, cls = "list") => `<div class="${cls}">${qs.map(render).join("")}</div>`;
-  const line = (q: DraftQuestion, k: number) => (parent ? parentItem(q, band, b.figures?.[k]) : lineItem(q, band, b.hints?.[k], 60, b.figures?.[k]));
+  const line = (q: DraftQuestion, k: number) => (parent ? parentItem(q, band, b.figures?.[k]) : lineItem(q, band, b.hints?.[k], 80, b.figures?.[k]));
   const items = (cls = "list") => (parent ? list(line, "pcards") : list(line, cls));
   const chip = (fallback?: Chip, note?: string) => {
     const own = CHIPS[b.slot] ?? fallback;
@@ -819,14 +821,14 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       return chip() + list((q) => factItem(q, band), "facts");
     case "fix-it":
       if (parent) return chip() + items();
-      return chip() + `<div class="panel p-fx"><div class="inner">${qs.map((q, k) => cardItem(q, band, 60, "card", b.figures?.[k])).join("")}</div></div>`;
+      return chip() + `<div class="panel p-fx"><div class="inner">${qs.map((q, k) => cardItem(q, band, 80, "card", b.figures?.[k])).join("")}</div></div>`;
     case "in-your-head":
       return `<div class="panel p-hd"><div class="lab">${escape(b.label ?? "In your head")}</div><div class="list" style="margin-top:10px">${qs.map((q) => lineItem(q, band)).join("")}</div></div>`;
     case "remember-these":
       return (firstOfPage ? "" : chip()) + items(parent ? "pcards" : "two");
     case "try-first":
       return (prev === undefined ? chipHtml(NEW_IDEA, b.note) : "")
-        + `<div class="outl"><div class="lab">Try this first</div>${qs.map((q, k) => lineItem(q, band, null, 60, b.figures?.[k])).join("")}</div>`;
+        + `<div class="outl"><div class="lab">Try this first</div>${qs.map((q, k) => lineItem(q, band, null, 80, b.figures?.[k])).join("")}</div>`;
     case "worked-example": {
       const head = prev === "try-first" ? "" : chipHtml(NEW_IDEA, b.note);
       const label = `<div class="lab">Worked example${b.label ? ` · ${escape(b.label)}` : ""}</div>`;
@@ -841,33 +843,34 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     case "now-you":
       return parent
         ? items()
-        : `<div class="outl"><div class="lab">Now you${b.label ? `: ${escape(b.label)}` : ""}</div><div class="list">${qs.map((q, k) => lineItem(q, band, null, 60, b.figures?.[k])).join("")}</div></div>`;
+        : `<div class="outl"><div class="lab">Now you${b.label ? `: ${escape(b.label)}` : ""}</div><div class="list">${qs.map((q, k) => lineItem(q, band, null, 80, b.figures?.[k])).join("")}</div></div>`;
     case "spot-the-error": {
       // Full width at every level: Sam's work, the yes/no strip and the fix box do not fit a half-width parent card.
-      const who = b.who ?? "Sam";
-      return chip() + `<div class="outl"><div class="q" style="align-items:flex-start"><span class="lab">${escape(who)}'s work</span><span class="wk">${(b.lines ?? []).map(worked).join("<br>")}</span></div>`
+      return `<div class="lab">SPOT THE ERROR</div><div class="outl">`
         + qs.map((q) => {
-          const { inline, full } = regionsSplit(q, { band, labels: true });
-          // U1 to U9 leave out the "Tick one" hint (the grown-up reads Is it right? aloud): with it the sum had about 50
-          // px beside the big strip and broke across lines; without it, about 160 px (textRoom's 10 characters).
-          const early = band.name !== "mid";
-          const { inline: row, full: under } = early ? regionsSplit(q, { band, labels: true, noTick: true }) : { inline, full };
-          return `<div class="list" ${mark.question(q.number)}><div class="q"><span class="n">${q.number}</span><span class="qb">${early ? qtext(q) : text(q)}</span><span class="rgs">${row}</span></div>${under}</div>`;
+          const names = regionNames(q);
+          const choice = names.find(x => x.region.kind === "choice");
+          const box = names.find(x => x.region.kind === "box");
+          return `<div class="list" ${mark.question(q.number)}><div class="q"><span class="n">${q.number}</span>${text(q)}</div>`
+            + `<div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div>`
+            + `<div class="q"><span>Is it right?</span>${choice ? regionHtml(q, choice.region, choice.name, { band, noTick: true }) : `<span class="strip"><span class="ch"><i class="tb"></i>Yes</span><span class="ch"><i class="tb"></i>No</span></span>`}</div>`
+            + `<div>If it's not right, fix it:</div>${box ? regionHtml(q, box.region, box.name, { band }) : ""}</div>`;
         }).join("") + `</div>`;
     }
+
     case "watch-one":
-      return chipHtml(PRACTICE, b.note) + `<div class="panel p-pr" style="display:flex;flex-direction:column;gap:8px"><div class="lab">Watch one${b.label ? ` · ${escape(b.label)}` : ""}</div><div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div></div>`;
+      return chipHtml(PRACTICE, b.note) + `<div class="panel p-pr" style="display:flex;flex-direction:column;gap:8px"><div class="lab">Read the example${b.label ? ` · ${escape(b.label)}` : ""}</div><div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div></div>`;
     case "finish-these":
       return `<div class="lab">Finish these</div>` + items(ctx.six ? "two" : "list");
     case "on-your-own": {
       const head = prev === "finish-these" ? `<div class="lab">On your own</div>` : chipHtml(PRACTICE, b.note);
       // Column sums on the 8-page day; the 6-page practice page lists them, as in the sample (DESIGN.md 7.2).
-      const columns = !parent && !ctx.six && qs.length > 0 && !b.figures?.some(Boolean) && qs.every((q) => ["add", "subtract", "multiply"].includes(q.package.operation?.kind ?? "") && packageItem(q.package).regions.length === 1);
+      const columns = band.name === "mid" && !parent && !ctx.six && qs.length > 0 && !b.figures?.some(Boolean) && qs.every((q) => ["add", "subtract", "multiply"].includes(q.package.operation?.kind ?? "") && packageItem(q.package).regions.length === 1);
       return head + (columns ? list((q) => columnItem(q, band), "cols") : items(ctx.six ? "two" : "list"));
     }
     case "practice-row": {
       const head = prev === "practice-row" ? "" : chipHtml(PRACTICE, b.note);
-      const columns = !parent && !b.figures?.some(Boolean) && qs.every((q) => ["add", "subtract", "multiply"].includes(q.package.operation?.kind ?? "") && packageItem(q.package).regions.length === 1);
+      const columns = band.name === "mid" && !parent && !b.figures?.some(Boolean) && qs.every((q) => ["add", "subtract", "multiply"].includes(q.package.operation?.kind ?? "") && packageItem(q.package).regions.length === 1);
       return head + (b.label ? `<div class="lab">${escape(b.label)}</div>` : "") + (columns ? list((q) => columnItem(q, band), "cols") : items("two"));
     }
     case "unit-b-practice":
@@ -906,7 +909,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
         const choices = tick && tick.region.kind === "choice" ? tick.region.choices.map((c) => `<span class="ch"><i class="tb"></i><span>${escape(c)}</span></span>`).join("") : "";
         return `<div class="mx" ${mark.question(q.number)}><div class="q"><span class="n">${q.number}</span><span class="qb">${text(q)}</span></div>`
           + (tick ? `<div class="stp"><span class="sb">1</span><span class="sl">Tick the operation:</span><span class="strip" ${measureAttr(tick.name)}>${choices}</span><span class="t1"><span>Tick one</span><i>✓</i></span></div>` : "")
-          + (box ? `<div class="stp"><span class="sb">2</span><span class="sl">Write the answer:</span>${regionHtml(q, box.region, box.name, { band })}${work ? regionHtml(q, work.region, work.name, { band, work: 44 }) : ""}</div>` : "")
+          + (box ? `<div class="stp"><span class="sb">2</span><span class="sl">Write the answer:</span>${regionHtml(q, box.region, box.name, { band })}${work ? regionHtml(q, work.region, work.name, { band, work: 64 }) : ""}</div>` : "")
           + `</div>`;
       }).join("");
     case "picture-stories":
@@ -971,10 +974,10 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
     },
   };
   const label = dayLabel(c.day, c.page, c.pages);
-  const header = `<header class="hd"><div class="nd"><span>Name</span><i class="r1"></i><span>Date</span><i class="r2"></i></div>`
+  const header = `<header class="hd">${c.page === 1 ? `<div class="nd" ${mark.slot("name-date")}><span>Name</span><i class="r1"></i><span>Date</span><i class="r2"></i></div>` : ""}`
     + `<div class="dl" ${mark.slot("day-label")}>${escape(label)}</div><h1 class="tt" ${mark.slot("title")}>${escape(c.title)}</h1>`
     + `<p class="st" ${mark.slot("subtitle")}>${escape(c.subtitle)}</p>`
-    + (c.grownUp ? `<p class="gu" ${mark.slot("grown-up")}><b>For the grown-up:</b> ${escape(c.grownUp)}</p>` : "") + `</header>`;
+    + (c.level <= 3 && c.grownUp ? `<p class="gu" ${mark.slot("grown-up")}><b>For the grown-up:</b> ${escape(c.grownUp)}</p>` : "") + `</header>`;
   // A Challenge block takes the free room of its page: its work boxes grow into it (DESIGN.md section 4).
   const blocks = c.blocks.map((b, i) => `<section class="blk${GROW.has(b.slot) ? " grow" : ""}" data-measure="block-${i}">${blockHtml(b, i, ctx)}${missingHtml(b)}</section>`).join("");
   return `<div class="pg ${band.name} f-${familyOf(page, c)}">${scanMarks}<div class="frame">${header}<main class="ct" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
@@ -989,11 +992,9 @@ const UNICA_MARK = `<div class="mk"><i class="y"></i><i></i><i class="b"></i><i>
 function coverPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, { kind: "cover" }>): string {
   const label = c.madeFrom === "assessment" ? `Made from ${c.child}'s assessment` : `Made from ${c.child}'s last workbook`;
   return `<div class="pg mid">${scanMarks}<div class="cv" ${mark.slot("page")}><div class="top">${wordmark}<span class="wn">Workbook ${c.workbook} · 10 days</span></div>${UNICA_MARK}`
-    + `<div class="for" ${mark.slot("made-for")}>Made for ${escape(c.child)} · Level U${c.level} · ${escape(c.levelTitle)}</div>`
+    + `<div class="for" ${mark.slot("made-for")}>Made for ${escape(c.child)} · Level U${c.level}</div>`
     + `<h1 ${mark.slot("cover-title")}>${escape(c.title[0])}<br><span class="hl">${escape(c.title[1])}</span></h1>`
     + `<div class="made" ${mark.slot("made-from")}><span class="lab">${escape(label)}</span><p>${escape(c.sentence)}</p><ul>${c.bullets.map((x) => `<li><i></i><span>${escape(x)}</span></li>`).join("")}</ul></div>`
-    + `<p class="pl" ${mark.slot("parent-line")}>${escape(c.parentLine)}</p>`
-    + `<p class="nx" ${mark.slot("next")}>How this works and your plan are next. 10 days, ${c.pagesADay} pages a day, about ${c.minutes.min} to ${c.minutes.max} minutes a day.</p>`
     + `</div>${footer(page, parts, c.id)}</div>`;
 }
 
@@ -1001,21 +1002,15 @@ function howPlanPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, 
   const rows = c.rows.map((r) => `<tr><td class="d">Day ${r.day}</td><td><span class="tp" ${mark.slot(`day-${r.day}`)}><b>${escape(r.topic)}</b><span class="t2">${escape(r.second)}</span></span></td>`
     + `<td class="pp">${r.pages[0]}–${r.pages[1]}</td><td class="dn"><i class="tb"></i></td></tr>`).join("");
   const how = [
-    { chip: { label: "Every day", cls: "c-pr", icon: ICONS.target }, text: `${c.pagesADay} pages a day, ${c.minutes.min} to ${c.minutes.max} minutes.` },
-    { chip: { label: "Scan", cls: "c-mx", icon: ICONS.search }, text: "Scan each finished page in the Unica app." },
-    { chip: { label: "Stuck?", cls: "c-ni", icon: ICONS.book }, text: "Call the Teaching Assistant." },
-    { chip: { label: "Fix it", cls: "c-fx", icon: ICONS.wrench }, text: "Anything your child got wrong last time comes back as new questions." },
+    { chip: { label: "Every day", cls: "c-pr", icon: ICONS.target }, text: `${c.pagesADay} pages a day, ${c.minutes.min === c.minutes.max ? c.minutes.max : `${c.minutes.min} to ${c.minutes.max}`} minutes.` },
+    { chip: { label: "Scan", cls: "c-mx", icon: ICONS.search }, text: "Open unicalearning.com in your browser to scan each finished page." },
+    { chip: { label: "Stuck?", cls: "c-ni", icon: ICONS.book }, text: "Ask for help using Maya, the AI Teaching Assistant." },
+    { chip: { label: "Fix it", cls: "c-fx", icon: ICONS.wrench }, text: "Anything your child got wrong in the previous workbook comes back as new questions." },
   ];
   return `<div class="pg mid">${scanMarks}<div class="hp" ${mark.slot("page")}><div class="top"><span>HOW IT WORKS · ${escape(c.child.toUpperCase())}'S PLAN</span><span>WORKBOOK ${c.workbook}</span></div>`
     + `<table><thead><tr><th style="width:96px">DAY</th><th>TOPIC</th><th style="width:96px">PAGES</th><th style="width:56px;text-align:right">DONE</th></tr></thead><tbody>${rows}</tbody></table>`
-    + `<div class="how"><span class="lab">How it works</span><div class="hw">${how.map((h) => `<div>${chipHtml(h.chip)}<p>${escape(h.text)}</p></div>`).join("")}</div></div>`
+    + `<div class="how"><span class="lab">How it works</span><div class="hw">${how.map((h, i) => `<div>${chipHtml(h.chip)}<p ${mark.slot(`how-${i}`)}>${escape(h.text)}</p></div>`).join("")}</div></div>`
     + `</div>${footer(page, parts, c.id)}</div>`;
-}
-
-function backCoverPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, { kind: "back-cover" }>): string {
-  const map = Array.from({ length: 30 }, (_, i) => `<div class="lv${i + 1 === c.level ? " now" : ""}"><i></i><span class="ll">U${i + 1}</span></div>`).join("");
-  return `<div class="pg mid">${scanMarks}<div class="bk" ${mark.slot("page")}>${UNICA_MARK}<h2>My levels</h2><p>Colour the square of each level you reach. You are on Level U${c.level} now.</p>`
-    + `<div class="map">${map}</div><div class="key"><span><i></i>Not yet</span><span><i style="background:#FFD23F"></i>Coloured in: I reached it</span></div></div>${footer(page, parts, c.id)}</div>`;
 }
 
 function blankPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, { kind: "blank" }>): string {
@@ -1029,6 +1024,23 @@ const bottomOf = (m: MeasuredElement) => m.y + m.height;
 const overlap = (a: MeasuredElement, b: MeasuredElement) =>
   Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
 const where = (page: DraftPage, c: DayContent) => `day ${c.day} page ${c.page} (${page.type})`;
+
+/** Fraction of the content height used by questions, writing space and teaching panels. */
+export function pageFullness(page: DraftPage, measured: ReadonlyMap<string, MeasuredElement>): number | null {
+  const area = measured.get("slot-content");
+  const bounds = page.questions.map(q => measured.get(`question-${q.number}`));
+  if (!area?.visible || area.clientHeight <= 0 || bounds.length === 0 || bounds.some(m => !m?.visible)) return null;
+  const panels = page.content?.kind === "day" ? page.content.blocks.flatMap((b, i) => ["worked-example", "watch-one", "reminder"].includes(b.slot) ? [measured.get(`block-${i}`)] : []) : [];
+  if (panels.some(m => !m?.visible)) return null;
+  const rows = [...bounds, ...panels] as MeasuredElement[];
+  return Math.min(1, (Math.max(...rows.map(bottomOf)) - Math.min(...rows.map(m => m.y))) / area.clientHeight);
+}
+
+export function fullnessProblem(page: DraftPage, measured: ReadonlyMap<string, MeasuredElement>): string | null {
+  const fullness = pageFullness(page, measured);
+  if (fullness === null) return "The page fullness could not be measured.";
+  return fullness < .8 ? `Questions and teaching panels use ${Math.round(100 * fullness)}% of the page height; the target is at least 80%. Add questions or increase writing space.` : null;
+}
 
 /** The template's fit check of a laid-out day page (see the header). */
 export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, MeasuredElement>): FitProblem[] {
@@ -1068,6 +1080,12 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
     problems.push({ question: null, slot: "title", reason: `${at}: the page title "${c.title}" does not fit on one line` });
   }
 
+  const instruction = measured.get("slot-subtitle");
+  if (instructionProblem(c.subtitle) || !instruction?.visible || !instruction.textPrinted || instruction.scrollHeight > instruction.clientHeight + 1 || instruction.scrollWidth > instruction.clientWidth + 1)
+    problems.push({ question: null, slot: "subtitle", reason: `${at}: the page instruction is missing or does not fit` });
+  if (c.level > 3 && c.grownUp) problems.push({ question: null, slot: "grown-up", reason: `${at}: grown-up text is only for Kindergarten` });
+  if (c.page !== 1 && measured.has("slot-name-date")) problems.push({ question: null, slot: "name-date", reason: `${at}: name and date belong only on the first page` });
+
   // A card's question text (D-201): at most CARD_LINES lines, so a story in full sentences never runs over its card.
   for (const b of c.blocks) {
     if (!(band.name === "parent" || ["picture-stories", "fix-it", "show-what-you-know", "level-test", "challenge"].includes(b.slot))) continue;
@@ -1081,6 +1099,8 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
   // Writing space: answer boxes by the band, work boxes, writing lines; and no box or choice over its own text.
   const slotOf = (n: number) => c.blocks.find((b) => b.items.includes(n))?.slot ?? null;
   for (const q of page.questions) {
+    const feedback = feedbackItemProblem(q.package);
+    if (feedback) problems.push({ question: q.number, slot: slotOf(q.number), reason: `${at}: ${feedback}` });
     const content = measured.get(`question-${q.number}-content`);
     for (const { region, name } of regionNames(q)) {
       const m = measured.get(name);
@@ -1113,7 +1133,7 @@ export function workbookTemplate(fonts?: TemplateFonts): WorkbookTemplate {
         case "day": return dayPage(page, parts, c);
         case "cover": return coverPage(page, parts, c);
         case "how-plan": return howPlanPage(page, parts, c);
-        case "back-cover": return backCoverPage(page, parts, c);
+        case "back-cover": return blankPage(page, parts, { ...c, kind: "blank" });
         case "blank": return blankPage(page, parts, c);
       }
     },

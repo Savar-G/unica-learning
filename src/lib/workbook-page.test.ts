@@ -26,7 +26,7 @@ describe("assembleBook", () => {
 
     expect(types[0]).toBe("cover");
     expect(types[1]).toBe("how-plan");
-    expect(types[2 + dayPages]).toBe("back-cover");
+    expect(types[2 + dayPages]).toBe("blank");
     expect(types.slice(3 + dayPages).every((t) => t === "blank")).toBe(true);
     expect(draft.pages.length).toBe(total);
     expect(draft.pages.length % 4).toBe(0);
@@ -37,7 +37,7 @@ describe("assembleBook", () => {
     const { draft } = book("U12");
     const ids = draft.pages.map((p) => p.content!.id);
     expect(ids.slice(0, 4)).toEqual(["UL·LEAH·W02·COVER", "UL·LEAH·W02·HOW+PLAN", "UL·LEAH·W02·D01·P1", "UL·LEAH·W02·D01·P2"]);
-    expect(ids[82]).toBe("UL·LEAH·W02·BACK");
+    expect(ids[82]).toBe("UL·LEAH·W02·BLANK·P83");
     expect(ids[83]).toBe("UL·LEAH·W02·BLANK·P84");
 
     const plan = draft.pages[1].content!;
@@ -66,7 +66,7 @@ describe("assembleBook", () => {
   it("covers every page type of a day across the sample levels and a level's last book", () => {
     const types = new Set([book("U2"), book("U6"), book("U12"), book("U22"), book("U12", { testWorkbook: true })].flatMap((b) => b.draft.pages.map((p) => p.type)));
     expect([...types].sort()).toEqual([
-      "back-cover", "blank", "challenge", "cover", "friday-5", "how-plan", "level-test", "math-in-the-world", "new-idea", "parent-led",
+      "blank", "challenge", "cover", "friday-5", "how-plan", "level-test", "math-in-the-world", "new-idea", "parent-led",
       "practice", "practice-2", "remember-these", "remember-these-mixed-set", "show-what-you-know", "unit-b", "warm-up", "word-problems",
     ]);
   });
@@ -187,7 +187,7 @@ describe("pageSlots", () => {
     expect(names(pageSlots(unitB, 12, { headerGrowth: 92 }))).toEqual(["worked-example:0", "spot-the-error:1"]);
 
     const review = page("remember-these-mixed-set", [part("remember-these", 8), part("mixed-set", 4)]);
-    expect(names(pageSlots(review, 12, { headerGrowth: 38 }))).toEqual(["remember-these:6", "mixed-set:4"]);
+    expect(names(pageSlots(review, 12, { headerGrowth: 38 }))).toEqual(["remember-these:6", "mixed-set:2"]);
     // A parent-led page's card budget leaves 100 px spare, which a wrapped header uses before any card goes.
     const parent = page("parent-led", [part("remember-these", 6)]);
     expect(names(pageSlots(parent, 2, { headerGrowth: 67 }))).toEqual(["remember-these:6"]);
@@ -205,7 +205,7 @@ describe("pageSlots", () => {
 
   it("caps a slot at what the template takes, and says so", () => {
     const layout = pageSlots(page("show-what-you-know", [part("show-what-you-know", 17)]), 12);
-    expect(names(layout)).toEqual(["show-what-you-know:10"]);
-    expect(layout.omissions).toEqual([{ part: 0, kind: "show-what-you-know", requested: 17, placed: 10, reason: "the show-what-you-know slot takes at most 10 items" }]);
+    expect(names(layout)).toEqual(["show-what-you-know:8"]);
+    expect(layout.omissions).toEqual([{ part: 0, kind: "show-what-you-know", requested: 17, placed: 8, reason: "the show-what-you-know slot takes at most 8 items" }]);
   });
 });

@@ -1817,7 +1817,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
     }
   }
   const pages: GeneratedPage[] = [plain(1, "cover"), plain(2, "how-plan"), ...work.map((w) => finished.get(w.number)!)];
-  pages.push(plain(backCover, "back-cover"));
+  pages.push(plain(backCover, "blank"));
   for (let n = backCover + 1; n <= total; n++) pages.push(plain(n, "blank"));
 
   const questions = pages.flatMap((p) => p.questions);

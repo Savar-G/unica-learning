@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { mkdir, writeFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { chromiumPrintEngine, findChromium } from "@/lib/print-engine-chromium";
 import { proofPages, renderWorkbook, type DraftPage, type WorkbookDraft } from "@/lib/workbook-render";
@@ -52,6 +53,35 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
     },
     120_000,
   );
+
+  it("prints #479 headers, cover text and the error card with measured spacing", async () => {
+    const draft = book("U4", 2);
+    const pages = draft.pages.filter(p => [1,2,3,4,5,6,7].includes(p.number));
+    const printed: Awaited<ReturnType<typeof engine.print>>[] = [];
+    const html: string[] = [];
+    const result = await renderWorkbook({ draft: { ...draft, pages }, parentId: PARENT, template,
+      engine: { print: async job => { html.push(job.html); const out = await engine.print(job); printed.push(out); return out; } } });
+    expect(result.status === "failed" ? result.problems : []).toEqual([]);
+    expect(html[0]).toContain("SPOT THE ERROR");
+    expect(html[0]).toContain("Is it right?");
+    expect(html[0]).toContain("If it's not right, fix it:");
+    expect(html[0]).toContain(">Yes</span>");
+    expect(html[0]).toContain(">No</span>");
+    expect(html[0]).not.toContain("Sam's work");
+    const measured=printed[0].measured;
+    const first=measured.find(m=>m.sheet===2 && m.name==="slot-name-date")!;
+    const day=measured.find(m=>m.sheet===2 && m.name==="slot-day-label")!;
+    expect(day.y-first.y-first.height).toBeGreaterThanOrEqual(18);
+    expect(measured.some(m=>m.sheet===3 && m.name==="slot-name-date")).toBe(false);
+    const coverText=measured.filter(m=>m.sheet===0).map(m=>m.text).join(" ");
+    expect(coverText).toContain("In this workbook, Mateo will learn to:");
+    expect(coverText).not.toMatch(/This fortnight|How this works and your plan are next/);
+    const planText=measured.filter(m=>m.sheet===1).map(m=>m.text).join(" ");
+    expect(planText).toContain("Ask for help using Maya, the AI Teaching Assistant.");
+    expect(planText).toContain("browser");
+    await mkdir("/tmp/ui-review/479-layout",{recursive:true});
+    for (const [i,p] of pages.entries()) await writeFile(`/tmp/ui-review/479-layout/p${p.number}.png`,printed[0].images[i].png);
+  }, 60_000);
 
   it("fails a box over its own text: the Fix it cards before R371-4 let the sum run under the box", async () => {
     const draft = book("U12", 8);

@@ -101,7 +101,7 @@ describe("a full draft", () => {
     expect(draft.pages.map((p) => p.number)).toEqual(Array.from({ length: n }, (_, i) => i + 1));
     expect(draft.pages.slice(0, 2).map((p) => p.type)).toEqual(["cover", "how-plan"]);
     const backCover = 3 + DAY_PAGES.length;
-    expect(draft.pages[backCover - 1].type).toBe("back-cover");
+    expect(draft.pages[backCover - 1].type).toBe("blank");
     expect(draft.pages.slice(backCover).every((p) => p.type === "blank")).toBe(true);
     expect(n - backCover).toBeLessThan(4);
 

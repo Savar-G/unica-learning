@@ -69,7 +69,7 @@ describe("a book laid out for the templates", () => {
     const { draft } = await generate("U12", "first");
     expect(draft.pages.every((p) => p.content)).toBe(true);
     expect(draft.pages.map((p) => p.content!.kind).slice(0, 2)).toEqual(["cover", "how-plan"]);
-    expect(draft.pages.filter((p) => p.type === "back-cover")).toHaveLength(1);
+    expect(draft.pages.filter((p) => p.type === "back-cover")).toHaveLength(0);
     expect(draft.pages.length % 4).toBe(0);
     for (const p of dayPages(draft)) {
       expect(p.content!.kind).toBe("day");

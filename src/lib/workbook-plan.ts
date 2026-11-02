@@ -859,7 +859,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
       level: n,
       lead: level.lead,
       pagesADay: { ...level.pagesPerDay },
-      timeTarget: { ...level.dailyMinutes },
+      timeTarget: { min: Math.min(level.dailyMinutes.min, 30), max: Math.min(level.dailyMinutes.max, 30) },
       testWorkbook,
       units: { A: unitsA.filter((code) => code === firstA || sim.starts.some((s) => s.unit === code)), B: unitB, support },
       newSteps: sim.starts,

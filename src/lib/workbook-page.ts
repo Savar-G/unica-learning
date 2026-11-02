@@ -33,7 +33,7 @@ export type Figure =
    * One ten-frame, or two when more than 10 are filled. `parts` (round 6): the counters of each part in turn, each part
    * its own colour ("2 and 6": 2 orange, then 6 blue), adding up to `filled`; absent, every counter one colour.
    */
-  | { kind: "ten-frame"; filled: number; parts?: number[] }
+  | { kind: "ten-frame"; filled: number; parts?: number[]; frames?: number }
   | { kind: "number-line"; from: number; to: number; step: number; hops: [number, number][] }
   | { kind: "blocks"; hundreds?: number; tens: number; ones: number }
   | { kind: "array"; rows: number; columns: number }
@@ -205,8 +205,8 @@ function partSlots(part: PlannedPart, page: PlannedPage, level: number): { slots
         // Unit B: a reminder panel first when no New idea of B teaches on the page, then practice.
         const reminder = page.parts.some((p) => p.kind === "new-idea" && p.unit === "B") ? [] : [{ slot: "reminder" as const, items: 0 }];
         // Up to 8 items; 2 fewer beside a new step's worked example, 2 fewer beside a Spot the error card.
-        const room = 8 - (reminder.length === 0 ? 2 : 0) - (has("spot-the-error") ? 2 : 0) - (early || level >= 19 ? 2 : 0);
-        return laid([...reminder, { slot: "unit-b-practice", items: Math.min(part.items, room) }], `the Unit B page has room for ${room} practice items`);
+        const room = early && reminder.length === 0 && has("spot-the-error") ? 0 : 8 - (reminder.length === 0 ? 2 : 0) - (has("spot-the-error") ? 2 : 0) - (early || level >= 19 ? 2 : 0);
+        return laid([...reminder, ...(room > 0 ? [{ slot: "unit-b-practice" as const, items: Math.min(part.items, room) }] : [])], `the Unit B page has room for ${room} practice items`);
       }
       // Faded: one worked (Watch one), two partly done, the rest alone.
       const watch = part.faded?.watch ?? 0;
@@ -230,9 +230,9 @@ function partSlots(part: PlannedPart, page: PlannedPage, level: number): { slots
     // A spare Remember these? block on a page that is already full (the 6-page Practice page) gets no room.
     case "remember-these":
       if (page.parts.some((p) => p.kind === "practice" && p.faded) && has("solve-it-two-ways") && has("spot-the-error")) return laid([], "the 6-page Practice page has no room for a spare Remember these? block");
-      return laid([{ slot: "remember-these", items: early && !reviewPage ? Math.min(part.items, 2) : part.items }], "a spare Remember these? block takes 2 items at U1 to U9");
+      return laid([{ slot: "remember-these", items: early && !reviewPage ? Math.min(part.items, 2) : has("challenge") ? Math.min(part.items, 2) : part.items }], "a spare Remember these? block takes 2 items at U1 to U9");
     // The 6-page review page: 2 Mixed set items beside the Challenge cards (DESIGN.md 7.2).
-    case "mixed-set": return laid([{ slot: "mixed-set", items: Math.min(part.items, has("challenge") ? 2 : 4) }], "the Mixed set takes 2 items beside the Challenge cards");
+    case "mixed-set": return laid([{ slot: "mixed-set", items: Math.min(part.items, 2) }], "the Mixed set takes 2 items beside the Challenge cards");
     // Up to 30 facts; 27 (9 rows) beside the In your head box.
     case "warm-up": return laid([{ slot: "warm-up", items: Math.min(part.items, has("in-your-head") ? 27 : 30) }], "the warm-up takes 27 facts beside In your head");
     case "try-first": case "spot-the-error": case "solve-it-two-ways": case "in-your-head":
@@ -532,7 +532,7 @@ export function assembleBook(o: BookInput): AssembledBook {
       }, questions);
     }
   }
-  add("back-cover", null, { kind: "back-cover", id: id("BACK"), level });
+
   // Each blank page names its book page, so no two pages of a book share an ID.
   while (pages.length % 4 !== 0) add("blank", null, { kind: "blank", id: id(`BLANK·P${pages.length + 1}`), level });
   if (pages.length > BOOK_PAGES_MAX) throw new Error(`the book has ${pages.length} pages; at most ${BOOK_PAGES_MAX} can be stitched`);
