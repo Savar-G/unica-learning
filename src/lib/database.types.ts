@@ -401,6 +401,8 @@ export type Database = {
           report_id: string | null
           stripe_customer_id: string | null
           updated_at: string
+          workbook_email_checked_at: string | null
+          workbook_welcome_enabled: boolean
         }
         Insert: {
           card_saved_at?: string | null
@@ -413,6 +415,8 @@ export type Database = {
           report_id?: string | null
           stripe_customer_id?: string | null
           updated_at?: string
+          workbook_email_checked_at?: string | null
+          workbook_welcome_enabled?: boolean
         }
         Update: {
           card_saved_at?: string | null
@@ -425,6 +429,8 @@ export type Database = {
           report_id?: string | null
           stripe_customer_id?: string | null
           updated_at?: string
+          workbook_email_checked_at?: string | null
+          workbook_welcome_enabled?: boolean
         }
         Relationships: [
           {
@@ -2240,6 +2246,97 @@ export type Database = {
           },
         ]
       }
+      workbook_emails: {
+        Row: {
+          attempts: number
+          card_setup_id: string
+          child_id: string
+          claim_token: string | null
+          claimed_at: string | null
+          created_at: string
+          delivery: Json
+          email_id: string | null
+          error: string | null
+          html_body: string | null
+          id: string
+          kind: string
+          parent_id: string
+          sent_at: string | null
+          status: string
+          subject: string | null
+          text_body: string | null
+          to_address: string | null
+          updated_at: string
+          workbook_number: number
+        }
+        Insert: {
+          attempts?: number
+          card_setup_id: string
+          child_id: string
+          claim_token?: string | null
+          claimed_at?: string | null
+          created_at?: string
+          delivery?: Json
+          email_id?: string | null
+          error?: string | null
+          html_body?: string | null
+          id?: string
+          kind: string
+          parent_id: string
+          sent_at?: string | null
+          status?: string
+          subject?: string | null
+          text_body?: string | null
+          to_address?: string | null
+          updated_at?: string
+          workbook_number: number
+        }
+        Update: {
+          attempts?: number
+          card_setup_id?: string
+          child_id?: string
+          claim_token?: string | null
+          claimed_at?: string | null
+          created_at?: string
+          delivery?: Json
+          email_id?: string | null
+          error?: string | null
+          html_body?: string | null
+          id?: string
+          kind?: string
+          parent_id?: string
+          sent_at?: string | null
+          status?: string
+          subject?: string | null
+          text_body?: string | null
+          to_address?: string | null
+          updated_at?: string
+          workbook_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_emails_card_setup_id_fkey"
+            columns: ["card_setup_id"]
+            isOneToOne: false
+            referencedRelation: "card_setups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_emails_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_emails_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_pages: {
         Row: {
           created_at: string
@@ -2945,6 +3042,8 @@ export type Database = {
           report_id: string | null
           stripe_customer_id: string | null
           updated_at: string
+          workbook_email_checked_at: string | null
+          workbook_welcome_enabled: boolean
         }[]
         SetofOptions: {
           from: "*"
@@ -3124,6 +3223,10 @@ export type Database = {
         Args: { p: string }
         Returns: undefined
       }
+      append_maya_call_connection: {
+        Args: { p_call: string; p_kind: string; p_revision: number }
+        Returns: string
+      }
       assert_family_writable: { Args: { p: string }; Returns: undefined }
       beat_workbook_worker: {
         Args: {
@@ -3231,6 +3334,20 @@ export type Database = {
           out_attempts_left: number
           out_locked_until: string
           out_status: string
+        }[]
+      }
+      claim_workbook_email: {
+        Args: {
+          p_card_setup_id: string
+          p_delivery: Json
+          p_kind: string
+          p_message: Json
+          p_token: string
+          p_workbook_number: number
+        }
+        Returns: {
+          claim_token: string
+          id: string
         }[]
       }
       claim_workbook_run:

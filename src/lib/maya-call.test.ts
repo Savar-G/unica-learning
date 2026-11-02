@@ -49,6 +49,8 @@ function setup(options: { events?: LearningEventStore; model?: (id: string | nul
     rebuild,
     model: options.model ?? ((id) => (id === null || id === "fake" ? ruleMayaModel() : null)),
     isTestFamily: async (parentId) => parentId === PARENT,
+    // These calls raise no flag; the safety flag and its alert have their own tests (maya-call-safety.test.ts).
+    alerts: { send: async () => {}, list: async () => [] },
     clock: () => now,
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,
     seed: () => 42,
