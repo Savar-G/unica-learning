@@ -50,7 +50,7 @@ The seasonal Central entry uses `America/Chicago` with `override: false`. A runt
 | P0V | Winnipeg with the permanent-offset override | Pickle Lake and Mishkeegogamang keep UTC-5. Fort Severn uses Eastern. The eastern Central communities remain seasonal. |
 | S0M | Regina | The historical Battle River communities follow Alberta. |
 | S0P | Regina | Creighton and Denare Beach follow Manitoba. |
-| V0B | Edmonton | Creston Valley keeps UTC-7. The Kootenay Lake east shore follows Pacific. |
+| V0B | Edmonton | Creston Valley and the Kootenay Lake east shore keep UTC-7 all year. |
 | V0C | Dawson Creek | Dease Lake follows Pacific. Fort Nelson has a different historical zone. |
 | X0A | Iqaluit | Resolute uses seasonal Central. Eureka keeps UTC-6. |
 | X0C | Rankin Inlet | Coral Harbour keeps UTC-5. |

@@ -89,7 +89,7 @@ export const KNOWN_AMBIGUOUS_FSAS = {
   P0V: { zone: "America/Winnipeg", reason: "Most residents are west of 90 W; eastern Central communities remain seasonal, Fort Severn uses Eastern, Pickle Lake and Mishkeegogamang keep UTC-5.", sources: [TZ, FSA, ONTARIO, AIR] },
   S0M: { zone: "America/Regina", reason: "Most residents keep UTC-6; the Lloydminster border area followed Alberta before 2026 and now shares UTC-6.", sources: [TZ, FSA] },
   S0P: { zone: "America/Regina", reason: "Most residents keep UTC-6; Creighton and Denare Beach follow Manitoba.", sources: [TZ, FSA] },
-  V0B: { zone: "America/Edmonton", reason: "Most residents follow East Kootenay; Creston keeps UTC-7 and the Kootenay Lake east shore follows Pacific.", sources: [TZ, FSA, BC] },
+  V0B: { zone: "America/Edmonton", reason: "Most residents follow East Kootenay; Creston and the Kootenay Lake east shore keep UTC-7 all year.", sources: [TZ, FSA, BC] },
   V0C: { zone: "America/Dawson_Creek", reason: "Most residents are in the Peace region and keep UTC-7. Dease Lake follows Pacific; Fort Nelson has distinct history.", sources: [TZ, FSA, BC, BC_POSTAL] },
   X0A: { zone: "America/Iqaluit", reason: "Most residents use Eastern; Resolute uses seasonal Central; Eureka keeps UTC-6.", sources: [TZ, FSA, AIR] },
   X0C: { zone: "America/Rankin_Inlet", reason: "Most residents use seasonal Central; Coral Harbour keeps UTC-5.", sources: [TZ, FSA, AIR] },
