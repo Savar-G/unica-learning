@@ -14,7 +14,7 @@ vi.mock("server-only", () => ({}));
 // controller injected under the text adapter, and a broken alerts seam under the saved call (#395).
 
 /** The controller's `step`, sabotaged when `mode` is set: the text adapter imports it from "@/lib/maya". */
-const sabotage = vi.hoisted(() => ({ mode: "none" as "none" | "words" | "answer" | "no_safety" | "decline_extra" | "decline_space" | "no_auto_end", extra: "" }));
+const sabotage = vi.hoisted(() => ({ mode: "none" as "none" | "words" | "answer" | "no_safety" | "decline_extra" | "decline_space" | "no_auto_end" | "visual" | "long" | "short_warm" | "identity" | "grammar" | "area", extra: "" }));
 vi.mock("@/lib/maya", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/maya")>();
   return {
@@ -39,6 +39,20 @@ vi.mock("@/lib/maya", async (importOriginal) => {
       if (sabotage.mode === "decline_extra" && !r.refusal) {
         return { ...r, effects: r.effects.map((e): Effect => e.kind === "say" && e.act === "redirect"
           ? { ...e, text: `${e.text} ${sabotage.extra}` } : e) };
+      }
+      if (!r.refusal && ["visual", "long", "short_warm", "identity", "grammar", "area"].includes(sabotage.mode)) {
+        const mode = sabotage.mode;
+        return { ...r, effects: r.effects.map((e): Effect => {
+          if (e.kind !== "say") return e;
+          let text = e.text;
+          if (mode === "visual" && session.noBoard) text = `Look at the board. ${text}`;
+          if (mode === "long") text = `${text} ${"Thanks for telling me. ".repeat(12)}`;
+          if (mode === "short_warm" && text === "What part should we try again?") text = `Thanks for telling me. ${text}`;
+          if (mode === "identity" && text === "I'm not a real person. I'm an AI helper.") text += " Thanks for telling me.";
+          if (mode === "grammar" && e.act === "guide") text += " Your grammar is wrong.";
+          if (mode === "area" && e.act === "accept_answer") text = text.replace("square ", "");
+          return { ...e, text };
+        }) };
       }
       if (r.refusal || (sabotage.mode !== "words" && sabotage.mode !== "answer")) return r;
       // Rewrites an accepted guide's words after the controller checked them.
@@ -281,6 +295,13 @@ describe("a sabotaged controller makes the gate fail", () => {
       sabotage.mode = "none";
     }
   };
+
+  it.each([
+    ["visual", "C22"], ["long", "C19"], ["long", "C19c"], ["short_warm", "C23"],
+    ["identity", "C34"], ["grammar", "C20"], ["area", "C40"],
+  ] as const)("%s breaks %s and the exact gate check fails", async (mode, id) => {
+    expect(await run(mode, id)).toContain("flow_mismatch");
+  });
 
   it("the controller untouched: the gate passes", async () => {
     expect(await run("none", "C02")).toEqual([]);

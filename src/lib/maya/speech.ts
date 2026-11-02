@@ -47,6 +47,9 @@ const NUMBER_WORD = new Set([...ONES, ...TENS.filter(Boolean), "hundred", "thous
  */
 export function speechKey(text: string): string {
   let t = text.toLowerCase().replace(/[’‘`]/g, "'");
+  // Area symbols are units, not a bare exponent. Count both spoken words.
+  const units: Record<string, string> = { mm: "millimetres", cm: "centimetres", dm: "decimetres", m: "metres", km: "kilometres" };
+  t = t.replace(/\b(mm|cm|dm|km|m)²/g, (_, unit: string) => ` square ${units[unit]} `);
   // A remainder ("26 R 1") and the signs, as a voice says them.
   t = t.replace(/(\d)\s*r\s*(\d)/g, "$1 remainder $2");
   t = t.replace(/(\d)\s*[-−–]\s*(\d)/g, "$1 minus $2");
@@ -68,3 +71,6 @@ export function saidAsApproved(said: string, approved: string): boolean {
   for (let n = 0; n <= sentences.length; n++) if (key === speechKey(sentences.slice(0, n).join(" "))) return true;
   return false;
 }
+
+/** The word count used for every teaching turn, after speech normalisation. */
+export const speechWords = (text: string): number => speechKey(text).split(" ").filter(Boolean).length;

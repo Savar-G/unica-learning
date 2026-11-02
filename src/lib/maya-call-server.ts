@@ -53,12 +53,12 @@ export async function voiceCallFacts(id: string) {
 export async function testQuestion(assessmentId: string, questionId: string) {
   const db = adminClient();
   if (!db) return null;
-  const { data, error } = await db.from("assessments").select("id, parent_id, child_id, children(first_name)").eq("id", assessmentId).maybeSingle();
+  const { data, error } = await db.from("assessments").select("id, parent_id, child_id, children(first_name, grade)").eq("id", assessmentId).maybeSingle();
   if (error) throw new Error(`test question load: ${error.message}`);
   if (!data) return null;
   const found = await assessmentQuestionReader(db).question({ source: "assessment", assessmentId: data.id, questionId });
   if (found.status !== "found") return null;
-  return { parentId: data.parent_id, childId: data.child_id, childName: data.children?.first_name ?? null, package: found.package };
+  return { parentId: data.parent_id, childId: data.child_id, childName: data.children?.first_name ?? null, grade: data.children?.grade, package: found.package };
 }
 
 /** The child's first name for a call's next turn (Maya may say it). */
