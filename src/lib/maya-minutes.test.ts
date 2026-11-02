@@ -5,7 +5,6 @@ import { checkQuestionPackage, workedSteps, type QuestionPackage } from "@/lib/q
 import {
   createMinutesLedger,
   dayOf,
-  demoDailySeconds,
   familyTimeZone,
   usageMinutes,
   validTimeZone,
@@ -22,11 +21,11 @@ const C = "22222222-2222-4222-8222-222222222222";
 const C2 = "33333333-3333-4333-8333-333333333333";
 const call = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
-function setup(start: string, demoDailySeconds?: number) {
+function setup(start: string) {
   let now = Date.parse(start);
   const clock = () => now;
   const store = memoryMinutesStore({ clock });
-  const ledger = createMinutesLedger({ store, clock, demoDailySeconds });
+  const ledger = createMinutesLedger({ store, clock });
   return { store, ledger, at: (iso: string) => { now = Date.parse(iso); }, advance: (ms: number) => { now += ms; } };
 }
 
@@ -189,6 +188,55 @@ describe("concurrent starts, retries and reconnects are counted once", () => {
     expect((await t.ledger.usage({ parentId: P, childId: C, timeZone: "America/Vancouver" })).usedSeconds).toBe(0);
   });
 
+  it("refuses an expired grant after another call reserves the remaining minutes", async () => {
+    const t = setup("2026-11-04T18:00:00Z");
+    await talk(t, call(1), 600);
+    await talk(t, call(2), 600);
+    const input = { callId: call(3), parentId: P, childId: C, timeZone: "America/Vancouver" };
+    expect(await t.ledger.grantChild(input)).toMatchObject({ ok: true, seconds: 600 });
+    t.advance(GRANT_CALL_WAIT_MS);
+    expect(await t.ledger.grantChild({ ...input, callId: call(4) })).toMatchObject({ ok: true, seconds: 600 });
+    expect(await t.ledger.grantChild(input)).toMatchObject({ ok: false, leftSeconds: 0 });
+    expect(() => t.store.callMade(call(3))).toThrow(/expired/);
+    t.store.callMade(call(4));
+    expect(await t.store.used({ parentId: P, childId: C, kind: "child", period: "2026-11-02" })).toBe(1800);
+  });
+
+  it("checks delayed call creation even when the caller does not retry the grant", async () => {
+    const t = setup("2026-11-04T18:00:00Z");
+    await talk(t, call(1), 600);
+    await talk(t, call(2), 600);
+    const input = { callId: call(3), parentId: P, childId: C, timeZone: "America/Vancouver" };
+    await t.ledger.grantChild(input);
+    t.advance(GRANT_CALL_WAIT_MS);
+    await t.ledger.grantChild({ ...input, callId: call(4) });
+    expect(() => t.store.callMade(call(3))).toThrow(/expired/);
+    t.store.callMade(call(4));
+    expect(await t.store.used({ parentId: P, childId: C, kind: "child", period: "2026-11-02" })).toBe(1800);
+  });
+
+  it("refuses a delayed call when its original limit exceeds the smaller remainder", async () => {
+    const t = setup("2026-11-04T18:00:00Z");
+    await talk(t, call(1), 600);
+    await talk(t, call(2), 600);
+    const input = { callId: call(3), parentId: P, childId: C, timeZone: "America/Vancouver" };
+    await t.ledger.grantChild(input);
+    t.advance(GRANT_CALL_WAIT_MS);
+    await talk(t, call(4), 360);
+    expect(await t.ledger.grantChild(input)).toMatchObject({ ok: false, leftSeconds: 240 });
+    expect(() => t.store.callMade(call(3))).toThrow(/expired/);
+    expect(await t.ledger.grantChild({ ...input, callId: call(5) })).toMatchObject({ ok: true, seconds: 240, limitMs: 240_000 });
+  });
+
+  it("reserves a delayed call again when all its seconds are still available", async () => {
+    const t = setup("2026-11-04T18:00:00Z");
+    await t.ledger.grantChild({ callId: call(1), parentId: P, childId: C, timeZone: "America/Vancouver" });
+    t.advance(GRANT_CALL_WAIT_MS);
+    t.store.callMade(call(1));
+    t.advance(GRANT_CALL_WAIT_MS * 10);
+    expect(await t.store.used({ parentId: P, childId: C, kind: "child", period: "2026-11-02" })).toBe(600);
+  });
+
   it("counts on the server's clock", async () => {
     const t = setup("2026-11-09T07:59:00Z"); // Sunday 23:59 in Vancouver
     await talk(t, call(1), 600);
@@ -201,24 +249,25 @@ describe("concurrent starts, retries and reconnects are counted once", () => {
 
 describe("a parent's Try Maya calls", () => {
   it("use their own daily cap, never the child's minutes", async () => {
-    const t = setup("2026-11-04T18:00:00Z", 15 * 60);
-    expect(await t.ledger.grantDemo({ callId: call(1), parentId: P, timeZone: "America/Vancouver" })).toMatchObject({ ok: true, seconds: 600 });
-    t.store.callEnded(call(1), 600);
-    expect(await t.ledger.grantDemo({ callId: call(2), parentId: P, timeZone: "America/Vancouver" })).toMatchObject({ ok: true, seconds: 300, leftSeconds: 0 });
-    t.store.callEnded(call(2), 300);
+    const t = setup("2026-11-04T18:00:00Z");
+    expect(await t.ledger.grantDemo({ callId: call(1), parentId: P, timeZone: "America/Vancouver" })).toMatchObject({ ok: true, seconds: 120, limitMs: 120_000 });
+    t.store.callEnded(call(1), 60);
+    expect(await t.ledger.grantDemo({ callId: call(2), parentId: P, timeZone: "America/Vancouver" })).toMatchObject({ ok: true, seconds: 60, leftSeconds: 0 });
+    t.store.callEnded(call(2), 60);
     expect(await t.ledger.grantDemo({ callId: call(3), parentId: P, timeZone: "America/Vancouver" })).toEqual({
       ok: false, reason: "none_left", leftSeconds: 0, resetsAt: Date.parse("2026-11-05T08:00:00Z"),
     });
     expect(await t.ledger.usage({ parentId: P, childId: C, timeZone: "America/Vancouver" })).toMatchObject({ usedSeconds: 0, leftSeconds: WEEK_SECONDS });
     t.at("2026-11-05T08:00:00Z"); // the next local day
-    expect(await t.ledger.grantDemo({ callId: call(4), parentId: P, timeZone: "America/Vancouver" })).toMatchObject({ ok: true, seconds: 600 });
+    expect(await t.ledger.grantDemo({ callId: call(4), parentId: P, timeZone: "America/Vancouver" })).toMatchObject({ ok: true, seconds: 120 });
   });
 
-  it("read the cap from configuration", () => {
-    expect(demoDailySeconds({})).toBe(600);
-    expect(demoDailySeconds({ MAYA_DEMO_DAILY_MINUTES: "5" })).toBe(300);
-    expect(demoDailySeconds({ MAYA_DEMO_DAILY_MINUTES: "0" })).toBe(600);
-    expect(demoDailySeconds({ MAYA_DEMO_DAILY_MINUTES: "abc" })).toBe(600);
+  it("allows only 120 seconds across concurrent demo starts", async () => {
+    const t = setup("2026-11-04T18:00:00Z");
+    const grants = await Promise.all([1, 2, 3].map((n) => t.ledger.grantDemo({ callId: call(n), parentId: P, timeZone: "America/Vancouver" })));
+    expect(grants.filter((g) => g.ok)).toHaveLength(1);
+    expect(grants.reduce((sum, g) => sum + (g.ok ? g.seconds : 0), 0)).toBe(120);
+    expect(await t.ledger.grantDemo({ callId: call(4), parentId: C2, timeZone: "America/Vancouver" })).toMatchObject({ ok: true, seconds: 120 });
   });
 });
 

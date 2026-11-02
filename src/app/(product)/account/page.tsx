@@ -16,7 +16,7 @@ import { workbookStore } from "@/lib/workbook-store";
 import type { WorkbookSummary } from "@/lib/workbook-content";
 import { AddChild, SaveTimeZone, SendLink, SignOut, StartTest, TrackOnce } from "@/components/account";
 import { parentMinutes, type ChildMinutes } from "@/lib/maya-minutes-server";
-import { WEEK_SECONDS } from "@/lib/maya-minutes";
+import { DEMO_DAILY_MINUTES, WEEK_SECONDS } from "@/lib/maya-minutes";
 import { SupportPage } from "@/components/support-page";
 
 export const metadata = pageMetadata({
@@ -89,6 +89,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
           </li>
         ))}
       </ul>
+      {minutes.size > 0 && <p className="small">Your &quot;Try Maya&quot; calls have a separate limit of {DEMO_DAILY_MINUTES} minutes a day for your account. They do not use your child&apos;s weekly minutes.</p>}
       {!parent.time_zone && <SaveTimeZone />}
       <AddChild province={children.at(-1)?.province ?? "BC"} />
       <p className="small acct-out">Signed in. <Link href="/account/password">Add or change your password</Link>. <Link href="/account/pin">Set or change your PIN</Link>. <SignOut /></p>

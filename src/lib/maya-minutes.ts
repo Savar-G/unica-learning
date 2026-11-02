@@ -6,14 +6,14 @@
 // - A call may last CALL_SECONDS (10 minutes), or the minutes left this week when fewer. Under MIN_CALL_SECONDS left, no
 //   call starts. The grant's seconds are the call's time limit (`limitMs`, src/lib/maya/session.ts `limitsOf`): Maya
 //   closes in the last minute and the audio ends at the limit.
-// - A parent's "Try Maya" calls (#336) use a separate cap per parent and local day (MAYA_DEMO_DAILY_MINUTES, default
-//   DEMO_DAILY_MINUTES), never the child's minutes.
+// - A parent's "Try Maya" calls (#336) use a separate cap of 2 minutes per parent and local day, never the child's minutes.
 // - Counted on the server: the grant is made before the call, under a lock per child (or per parent for a demo), in one
 //   database transaction (`grant_maya_minutes`, migration add_maya_minutes), so two starts at once cannot both spend
 //   the same minutes. A retry with the same call id gets the same grant again. While the call is open, its whole grant
 //   counts. When the call ends, a trigger settles the grant at the call's connected seconds (the time the child and
 //   Maya were both in the room, src/lib/maya-voice.ts `connectedSeconds`, which joins every reconnect of the one call),
-//   at most the grant. A grant whose call was never made counts nothing after GRANT_CALL_WAIT_MS.
+//   at most the grant. A grant whose call was never made counts nothing after GRANT_CALL_WAIT_MS. An expired grant
+//   must reserve seconds again, against the current remainder. Call creation checks this under the same lock.
 //
 // Seams: the store (Supabase: src/lib/maya-minutes-store.ts; memory: src/lib/maya-minutes-memory.ts) and the clock. Pure
 // otherwise: no network, database or Next.js.
@@ -22,8 +22,8 @@ export const WEEK_SECONDS = 30 * 60;
 export const CALL_SECONDS = 10 * 60;
 /** Fewer seconds left than this: no call starts (a call needs time for its closing). */
 export const MIN_CALL_SECONDS = 60;
-/** The default daily cap of a parent's "Try Maya" calls, in minutes (configuration: MAYA_DEMO_DAILY_MINUTES). */
-export const DEMO_DAILY_MINUTES = 10;
+/** The daily cap of a parent's "Try Maya" calls, in minutes (Savar's decision, 2026-11-01). */
+export const DEMO_DAILY_MINUTES = 2;
 /** A grant with no call row after this long was never used (the start failed): it counts nothing. */
 export const GRANT_CALL_WAIT_MS = 2 * 60_000;
 /** The time zone of a family with none stored and no known province: the BC launch (D-126). */
@@ -55,13 +55,6 @@ export function validTimeZone(tz: unknown): tz is string {
 export function familyTimeZone(stored: string | null | undefined, province?: string | null): string {
   if (validTimeZone(stored)) return stored;
   return (province && PROVINCE_ZONES[province]) || DEFAULT_TIME_ZONE;
-}
-
-/** The daily cap of a parent's demo calls (seconds) from the environment: whole minutes 1 to 60, else the default. */
-export function demoDailySeconds(env: Readonly<Record<string, string | undefined>>): number {
-  const raw = env.MAYA_DEMO_DAILY_MINUTES?.trim();
-  const n = raw && /^\d+$/.test(raw) ? Number(raw) : NaN;
-  return (n >= 1 && n <= 60 ? n : DEMO_DAILY_MINUTES) * 60;
 }
 
 // ---------- weeks and days in a time zone ----------
@@ -138,7 +131,8 @@ export interface MinutesStore {
   /**
    * Grants the call min(callSeconds, periodSeconds - used) seconds, or 0 (and stores nothing) when that is under
    * minSeconds. Atomic per child (per parent for a demo): two grants at once never both spend the same seconds. A call
-   * that already has a grant gets it again. `usedSeconds`: the period's seconds used before this grant.
+   * that has an active grant gets it again. An expired grant must reserve seconds again against the current remainder.
+   * `usedSeconds`: the period's seconds used before this grant.
    */
   grant(request: GrantRequest): Promise<{ seconds: number; usedSeconds: number }>;
   /** The period's seconds used: settled calls at their seconds, open calls at their whole grant. */
@@ -158,7 +152,7 @@ export interface Usage {
 }
 
 export interface MinutesLedger {
-  /** The seconds a child's call may last, granted from this week's minutes. A retry with the same call id gets the same. */
+  /** The seconds a child's call may last. A retry keeps an active grant; an expired grant must reserve seconds again. */
   grantChild(input: { callId: string; parentId: string; childId: string; timeZone: string }): Promise<Grant>;
   /** The seconds a parent's "Try Maya" call may last, from today's demo cap. Never the child's minutes. */
   grantDemo(input: { callId: string; parentId: string; timeZone: string }): Promise<Grant>;
@@ -166,9 +160,9 @@ export interface MinutesLedger {
   usage(input: { parentId: string; childId: string; timeZone: string }): Promise<Usage>;
 }
 
-export function createMinutesLedger(seams: { store: MinutesStore; clock: () => number; demoDailySeconds?: number }): MinutesLedger {
+export function createMinutesLedger(seams: { store: MinutesStore; clock: () => number }): MinutesLedger {
   const { store, clock } = seams;
-  const demoCap = seams.demoDailySeconds ?? DEMO_DAILY_MINUTES * 60;
+  const demoCap = DEMO_DAILY_MINUTES * 60;
 
   async function grant(base: Omit<GrantRequest, "period" | "periodSeconds" | "callSeconds" | "minSeconds">, period: Period, periodSeconds: number): Promise<Grant> {
     const r = await store.grant({ ...base, period: period.start, periodSeconds, callSeconds: CALL_SECONDS, minSeconds: MIN_CALL_SECONDS });
