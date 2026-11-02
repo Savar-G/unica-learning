@@ -6,6 +6,8 @@ import {
   PROPOSAL_SCHEMA,
   step,
   freeTalkProblem,
+  PLAIN_LANGUAGE_BANNED,
+  plainLanguageProblem,
   PHRASE_ACTS,
   PHRASE_GROUPS,
   PHRASES,
@@ -355,6 +357,49 @@ describe("the line set", () => {
     const guideSteps = new Set(offers.guide!.flatMap((o) => (o.line.startsWith("step.") ? [o.slots.step] : [])));
     expect([...guideSteps]).toEqual(["ones", "tens", "result"]);
     expect(offers.guide!.every((o) => o.texts.length >= 2)).toBe(true);
+  });
+});
+
+// D-202: Maya follows the plain-language rules of the workbooks (D-201), for children aged 6 to 12.
+describe("the plain-language rules (D-202)", () => {
+  // Savar approved this wording of the final-step invite on 2026-11-01, "all together" included (D-202).
+  const APPROVED = new Set(["Now put it all together. What is {expr}?"]);
+
+  it("says no banned everyday phrase in any line's own words", () => {
+    for (const [key, variants] of Object.entries(TEMPLATES)) {
+      for (const v of variants) if (!APPROVED.has(v)) expect(plainLanguageProblem(v.replace(/\{\w+\}/g, "x")), `${key}: ${v}`).toBeNull();
+    }
+  });
+
+  it.each([ADD, SUB, ...MORE].map((p) => [p.text, p] as const))("says no banned everyday phrase in any filled line of %s, the shown steps included", (_text, pkg) => {
+    for (const text of allLineTexts(pkg, [num(15), num(50)])) {
+      if (text.startsWith("Now put it all together.")) continue;
+      expect(plainLanguageProblem(text), text).toBeNull();
+    }
+  });
+
+  it("gives one idea or action a sentence: no line joins two with \", so\", \", then\" or \", because\"", () => {
+    for (const [key, variants] of Object.entries(TEMPLATES)) {
+      for (const v of variants) expect(v, key).not.toMatch(/, (so|then|because|since) /);
+    }
+  });
+
+  it("asks for the whole answer on the final step in Savar's approved words", () => {
+    expect(TEMPLATES["invite.result"]).toEqual([
+      "Now put it all together. What is {expr}?", "Every part is done. So what is {expr}?", "So what is {expr}?",
+      "Now say the whole answer. What is {expr}?", "Put the parts together. What does {expr} make?", "You have all the pieces. What is {expr}?",
+    ]);
+  });
+
+  it("finds each banned phrase as whole words only", () => {
+    for (const phrase of PLAIN_LANGUAGE_BANNED) {
+      expect(plainLanguageProblem(`Wow, ${phrase} is a lot.`), phrase).toBe(`plain language: ${phrase}`);
+      expect(freeTalkProblem(`Wow, ${phrase} is a lot.`), phrase).toBe(`plain language: ${phrase}`);
+    }
+    expect(plainLanguageProblem("Wow, a left-over cookie!")).toBe("plain language: left over");
+    expect(plainLanguageProblem("Feeling unsure is totally normal.")).toBeNull();
+    expect(plainLanguageProblem("I like all of it together.")).toBeNull();
+    expect(plainLanguageProblem("I'm here to help with math.")).toBeNull();
   });
 });
 
