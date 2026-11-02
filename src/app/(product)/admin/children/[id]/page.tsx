@@ -1,18 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getChild, getChildRuns, getChildWorkbooks, requireAdmin } from "@/lib/admin-store";
+import { getChild, getChildRuns, getChildWorkbooks, getWorkbookWorker, requireAdmin } from "@/lib/admin-store";
+import { workbookRunner } from "@/lib/workbook-ai";
 import { adminChildProfilePath, adminParentPath, adminWorkbookPath, when } from "@/lib/admin-view";
 import { answerFacts, bookMix, fromRow, interestLabel, LEARNING_STYLES } from "@/lib/learning-style";
 import { AdminFrame, Table, TestsTable, gradeAndPlace } from "@/components/admin";
 import { RecordFacts } from "@/components/admin-records";
 import { WorkbookStatusChip } from "@/components/admin-workbook";
-import { ChildRunsTable } from "@/components/admin-workbook-runs";
+import { ChildRunsTable, WorkerLine } from "@/components/admin-workbook-runs";
 import { PrepareWorkbook } from "@/components/prepare-workbook";
 
 export default async function ChildPage({ params }: PageProps<"/admin/children/[id]">) {
   const admin = await requireAdmin();
   const id = (await params).id;
-  const [record, workbooks, runs] = await Promise.all([getChild(admin, id), getChildWorkbooks(admin, id), getChildRuns(admin, id)]);
+  // D-200: runs are made on Savar's Mac unless WORKBOOK_RUNNER is "server"; the worker's status shows beside the button.
+  const runner = workbookRunner();
+  const [record, workbooks, runs, worker] = await Promise.all([getChild(admin, id), getChildWorkbooks(admin, id), getChildRuns(admin, id), runner === "mac" ? getWorkbookWorker(admin) : null]);
   if (!record) notFound();
   const { child: c, family } = record;
   // #126: the parent's answers and the book mix they give. A child with no answer gets the default mix. #195 (D-107):
@@ -42,7 +45,8 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
     </Table>
     {/* #312: drafts made in the background, with their progress and check results. */}
     <h2>Workbook drafts</h2>
-    <PrepareWorkbook childId={c.id} child={c.first_name} />
+    <PrepareWorkbook childId={c.id} child={c.first_name} runner={runner} />
+    {runner === "mac" && <p className="adm-note"><WorkerLine worker={worker} /></p>}
     <ChildRunsTable runs={runs} now={new Date()} />
   </AdminFrame>;
 }

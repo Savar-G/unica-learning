@@ -6,14 +6,16 @@ import { adminWorkbookRunPath } from "@/lib/admin-view";
 
 /**
  * #312: "Prepare next workbook" on a child. One confirm, then the run starts in the background and the run's page opens
- * with its progress. When a run is active already, that run's page opens.
+ * with its progress. When a run is active already, that run's page opens. D-200: with the Mac runner the run is queued
+ * for the workbook worker on Savar's Mac.
  */
-export function PrepareWorkbook({ childId, child }: { childId: string; child: string }) {
+export function PrepareWorkbook({ childId, child, runner = "server" }: { childId: string; child: string; runner?: "mac" | "server" }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function start() {
-    if (busy || !window.confirm(`Prepare ${child}'s next workbook? The AI writes every page, so it takes a while and costs AI use.`)) return;
+    const where = runner === "mac" ? "It is made on Savar's Mac, on the Claude subscription (the paid API only if the subscription cannot)." : "It is made on the server with the paid API.";
+    if (busy || !window.confirm(`Prepare ${child}'s next workbook? The AI writes every page, so it takes a while. ${where}`)) return;
     setBusy(true);
     setError("");
     try {

@@ -52,10 +52,12 @@ const short = (s: unknown) => String(s ?? "").slice(0, 160);
 const retryableStatus = (status: number) => status === 408 || status === 429 || status >= 500;
 
 /** One try: the parsed JSON output, or an error. Error messages hold codes and OpenRouter's words, never the output. */
-async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: AbortSignal, timeout: number): Promise<unknown> {
+async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: AbortSignal, timeout: number, onDispatch?: () => void): Promise<unknown> {
   let res: Response;
   try {
-    res = await fetch(OPENROUTER_URL, { ...init, signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]) });
+    const options = { ...init, signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]) };
+    onDispatch?.();
+    res = await fetch(OPENROUTER_URL, options);
   } catch (e) {
     if (signal.aborted) throw new Error("time is up");
     const timedOut = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
@@ -96,6 +98,8 @@ export function openRouterClient({
   fetch = globalThis.fetch,
   maxRetries = 1,
   timeout = AI_REQUEST_TIMEOUT_MS,
+  onRequest,
+  onDispatch,
 }: {
   apiKey: string;
   model: string;
@@ -103,6 +107,9 @@ export function openRouterClient({
   fetch?: typeof globalThis.fetch;
   maxRetries?: number;
   timeout?: number;
+  onRequest?: () => Promise<void>;
+  /** Synchronous observation immediately before fetch, after the durable permission and abort check. */
+  onDispatch?: () => void;
 }): AiClient {
   return {
     model,
@@ -113,8 +120,11 @@ export function openRouterClient({
         body: JSON.stringify(body(model, request)),
       };
       for (let attempt = 0; ; attempt++) {
+        if (signal.aborted) throw new Error("time is up");
+        await onRequest?.();
+        if (signal.aborted) throw new Error("time is up");
         try {
-          return await once(fetch, init, signal, timeout);
+          return await once(fetch, init, signal, timeout, onDispatch);
         } catch (e) {
           if (!(e instanceof Retryable) || attempt >= maxRetries || signal.aborted) throw e instanceof Retryable ? new Error(e.message) : e;
         }
