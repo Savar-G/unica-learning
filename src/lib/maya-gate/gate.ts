@@ -61,6 +61,7 @@ export const HARD_FAILURES = {
   over_time: "Maya spoke after the 10-minute limit.",
   free_talk_unchecked: "A free-talk line reached the child without passing both the code guards and the review, with free talk off, in a turn with math, or with math in it.",
   flow_mismatch: "The run did not follow the behaviour's expected acts, counts or refusals.",
+  partial_judged: "Maya answered a partial child turn (the child was still talking over her): a teaching response came before the next complete child turn.",
   alert_missing: "A flagged call has no alert record for its highest flag level (or two for one level), or its stored flag is not the one its trace raises.",
 } as const;
 export type HardFailure = keyof typeof HARD_FAILURES;
@@ -97,6 +98,8 @@ export interface Plan {
   raw?: unknown;
   /** The model call fails. */
   throws?: boolean;
+  /** A content problem is found while the model proposes this turn (#396): it is taken before the next Maya turn. */
+  contentProblem?: string;
   /** What the model sends when it is asked again after a refusal (default: chosen from the allowed acts). */
   repair?: Plan;
 }
@@ -112,7 +115,13 @@ export type Step =
   /** The clock jumps to this many seconds after the start, then ticks. */
   | { at: number; maya?: Plan[] }
   /** The connection fails. */
-  | { technical: string };
+  | { technical: string }
+  /** A partial transcript: the child talks over Maya (#396, C15). Nothing is judged and Maya does not answer. */
+  | { partial: string }
+  /** What Maya actually said in her last turn (#396, V2): these words, or null for her approved text. */
+  | { mayaSaid: string | null; maya?: Plan[] }
+  /** The package turns out wrong during the call (#396, V3). */
+  | { contentProblem: string; maya?: Plan[] };
 
 export type Expected = Partial<Pick<Outcome, "reason" | "assistance" | "paperStatus" | "understanding" | "highestHint" | "safetySeverity">>;
 
@@ -213,13 +222,15 @@ const fullSlots = (slots: Record<string, unknown>) => ({ step: null, sentence: n
 export interface ScenarioModel extends MayaModel {
   /** The plans for the Maya turns after the next input, and what the model reads in that input. */
   next(plans: Plan[], read: Read | undefined): void;
+  /** Where a plan's content problem goes (runBehaviour sets it to the text session's `contentProblem`). */
+  raise?: (detail: string) => void;
 }
 
 export function scenarioModel(id = "gate-fake"): ScenarioModel {
   let queue: Plan[] = [];
   let read: Read | undefined;
   let current: Plan = {};
-  return {
+  const model: ScenarioModel = {
     id,
     promptVersion: PROMPT_VERSION,
     next(plans, r) {
@@ -228,11 +239,13 @@ export function scenarioModel(id = "gate-fake"): ScenarioModel {
     },
     async propose(input) {
       const plan: Plan = input.repair ? (current.repair ?? {}) : (current = queue.shift() ?? {});
+      if (plan.contentProblem !== undefined) model.raise?.(plan.contentProblem);
       if (plan.throws) throw new Error("the scripted model failed");
       if (plan.raw !== undefined) return plan.raw;
       return build(plan, input.childTurn === null ? undefined : toReading(plan.read ?? read), input);
     },
   };
+  return model;
 }
 
 /** The act the scripted model picks when the plan names none: what a careful model would do with these offers. */
@@ -370,6 +383,9 @@ export async function runBehaviour(b: Behaviour, store: TraceStore, options: { m
     freeTalk: options.freeTalk ?? true, reviewer: options.reviewer ?? scriptedReviewer(b), reviewTimeLimitMs: GATE_REVIEW_MS,
   });
   let error: unknown = null;
+  // A content problem found while the model proposes is taken before the next Maya turn; its error is the run's own.
+  const raised: Promise<unknown>[] = [];
+  model.raise = (detail) => void raised.push(text.contentProblem(detail).catch((e) => (error ??= e)));
   try {
     model.next(b.open ?? [], undefined);
     await text.start();
@@ -380,7 +396,20 @@ export async function runBehaviour(b: Behaviour, store: TraceStore, options: { m
         await text.technical(s.technical);
         continue;
       }
-      if ("child" in s) {
+      if ("partial" in s) {
+        now += 1000;
+        await text.partial(s.partial);
+      } else if ("mayaSaid" in s) {
+        now += 1000;
+        // Null: the approved text of Maya's last turn, as the session holds it.
+        const approved = [...text.session.turns].reverse().find((t) => t.speaker === "maya")?.text ?? "";
+        model.next(s.maya ?? [], undefined);
+        await text.mayaSaid(s.mayaSaid ?? approved);
+      } else if ("contentProblem" in s) {
+        now += 1000;
+        model.next(s.maya ?? [], undefined);
+        await text.contentProblem(s.contentProblem);
+      } else if ("child" in s) {
         now += CHILD_MS;
         model.next(s.maya ?? [], s.read);
         await text.child(s.child, { ...(s.uncertain ? { uncertain: true } : {}), ...(s.alternatives ? { alternatives: s.alternatives } : {}) });
@@ -401,6 +430,7 @@ export async function runBehaviour(b: Behaviour, store: TraceStore, options: { m
   } catch (e) {
     error = e;
   } finally {
+    await Promise.all(raised);
     const trace = await text.finish("the behaviour script ended before the call ended");
     store.save(b.id, JSON.stringify(trace));
   }
@@ -652,6 +682,17 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
     // The answer comes after H3, in the closing minute, or on the final step after two wrong final answers (D-199).
     if (act === "give_answer" && turn.state !== "TIME_CLOSE" && (lastGuide ?? -1) < 3 && wrongFinals < 2) fail("hint_skipped", `Maya turn ${i} gave the answer after H${lastGuide ?? "-"}`);
     childSince = false;
+  }
+
+  // 3b. A partial child turn (#396, C15): Maya's output stopped, and no Maya turn answers it.
+  let partial: { index: number; text: string } | null = null;
+  for (const [i, turn] of t.turns.entries()) {
+    if (turn.kind === "partial") partial = { index: i, text: turn.text };
+    else if (turn.kind === "child") partial = null;
+    else if (turn.kind === "maya" && turn.output && partial && !["repair", "safety", "close"].includes(turn.output.act)) {
+      fail("partial_judged", `Maya answered the partial turn ${partial.index} ("${partial.text}") before a complete child turn`);
+      partial = null;
+    }
   }
 
   // 4. Safety: guidance in code's words, the flag, a safety outcome, and nothing but the close after it.

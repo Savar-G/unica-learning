@@ -124,7 +124,7 @@ export type SessionEvent =
    * What Maya actually said (the speech transcript): a sentence with math in it that is not a line code gave her
    * starts REPAIR_MAYA.
    */
-  | { type: "maya_said"; at: number; text: string }
+  | { type: "maya_said"; at: number; text: string; approvedTurn?: number }
   /** The question's math turned out not to be trustworthy during the call. */
   | { type: "content_problem"; at: number; detail: string }
   /** The connection or a service failed: the call ends. */
@@ -651,7 +651,7 @@ interface Checked {
  */
 function gate(s: Session, reading: Reading): Allowed | null {
   if (s.outcome) return { acts: [], code: "ended", reason: "The call has ended." };
-  if (reading.safety || (s.safety.flagged && !s.safety.guided)) {
+  if ((reading.safety && (!s.safety.flagged || (s.safety.severity === "concern" && reading.safety === "immediate"))) || (s.safety.flagged && !s.safety.guided)) {
     return { acts: ["safety"], code: "safety_first", reason: "Safety comes first: give the safety guidance before anything else." };
   }
   if (s.state === "SAFETY") return { acts: ["close"], code: "safety_first", reason: "No math after a safety concern: close." };
@@ -880,12 +880,14 @@ export function step(session: Session, event: SessionEvent): StepResult {
     case "safety":
       break;
     case "maya_said":
-      // Nothing is repaired before the opening, after a safety concern or a content hold, or twice at once. What Maya
-      // said must be the approved text of her last turn (its lines and warm talk), after both are normalised the same
-      // way (speech.ts): any other words, with math or without ("Yes!" after a wrong answer), start a repair.
+      // Nothing is repaired before the opening, after a safety concern or a content hold, or twice at once.
+      // The adapter may identify the utterance being spoken in a batch. Without that index, use the last turn.
+      // An absent or non-Maya indexed turn approves no words. Both texts use the same speech normalization.
       if (typeof event.text !== "string") return refuse(session, "invalid_event", "What Maya said needs its text.");
+      const spokenTurn = event.approvedTurn === undefined ? null : s.turns[event.approvedTurn];
+      const approved = event.approvedTurn === undefined ? lastSaid(s) : spokenTurn?.speaker === "maya" ? spokenTurn.text : "";
       if (s.package && !["READY", "OPEN", "SAFETY", "CONTENT_HOLD", "REPAIR_MAYA"].includes(s.state) &&
-        !saidAsApproved(event.text, lastSaid(s))) {
+        !saidAsApproved(event.text, approved)) {
         effects.push({ kind: "cancel_output" });
         // The repair returns to the teaching state (an interrupt's saved one), or to the closing minute (no resume). The
         // child's pending turn and a stop stay for after the repair (a stop comes first).
@@ -1209,8 +1211,8 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     s.offeredOtherInput = false;
   }
   s.boardRoles = { ...s.boardRoles, ...roles };
-  // A repair answers Maya's own mistake: the child's pending turn still waits for an answer.
-  if (p.act !== "repair") s.turn = null;
+  // Repairs and the AI disclosure do not answer the child's pending turn.
+  if (p.act !== "repair" && p.act !== "open") s.turn = null;
 
   if (text !== "") {
     effects.push({ kind: "say", act: p.act, text, ...(spoken.replaced > 0 ? { talkReplaced: spoken.replaced } : {}), ...(spoken.talk.length > 0 ? { talk: spoken.talk } : {}) });
@@ -1226,7 +1228,8 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   } else if (p.act === "safety" || (p.act === "example_step" && s.exampleShown < pkg!.easierExample.steps.length)) {
     s.expect = "maya";
     s.silence = "none";
-  } else if (p.act === "repair" && s.turn) {
+  } else if ((p.act === "repair" || p.act === "open") && s.turn) {
+    if (p.act === "open") moveTo(s, "ASSESS");
     s.expect = "maya";
     s.silence = "none";
   } else if (p.act === "check_in") {
