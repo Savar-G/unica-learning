@@ -10,7 +10,7 @@ export interface ChatView {
   pending?: boolean;
   hint: number; safetyMessage: string | null;
 }
-export interface ChatReply { usage: ChatUsage; chat: ChatView | null; error?: string }
+export interface ChatReply { usage: ChatUsage; chat: ChatView | null; error?: string; admission?: "accepted" | "refused" }
 
 export function chatWindow(now: number, zone: FamilyZone) {
   const day = dayOf(now, zone);
@@ -21,7 +21,7 @@ export function chatUsage(used: number, now: number, zone: FamilyZone): ChatUsag
   return { used, left: Math.max(0, CHAT_MESSAGES - used), resetsAt: end, backAt: familyWhen(end, zone) };
 }
 /** The only new Maya line. Its time comes from the family's clock on the server. */
-export const chatCapLine = (usage: ChatUsage) => `You used your 60 messages today. We can chat again at ${usage.backAt}.`;
+export const chatCapLine = () => "You used all your messages for today. We can chat again tomorrow.";
 
 /** Children receive the conversation and board, never model diagnostics or saved teaching state. */
 export function childChatView(view: CallView): ChatView {

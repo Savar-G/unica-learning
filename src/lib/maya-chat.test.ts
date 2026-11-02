@@ -47,6 +47,20 @@ describe("desk chat through the shared call interface", () => {
     const s = setup();
     expect(await s.calls.start({ kind: "chat", parentId: parent, childId: child, childName: null, package: { ...pkg, ref: { source: "assessment", assessmentId: "55555555-5555-4555-8555-555555555555", questionId: "s1-1" } }, startedBy: parent })).toMatchObject({ ok: false, error: "invalid_question" });
   });
+  it("passes the profile grade into saved chat sessions and keeps it after resume", async () => {
+    const limits: number[] = [], base = ruleMayaModel();
+    const model = fakeMayaModel({ answer: (input) => { limits.push(input.wordLimit); return base.propose(input, new AbortController().signal); } });
+    const s = setup({ model: () => model });
+    const first = success(await s.calls.start({ kind: "chat", parentId: parent, childId: child, childName: "Leah", grade: 2, package: pkg, startedBy: parent }));
+    expect(s.store.rows()[0].live?.text.session.grade).toBe(2);
+    expect(s.store.rows()[0].live?.text.initial?.session.grade).toBe(2);
+    expect(s.store.rows()[0].live?.text.session.channel).toBe("chat");
+    expect(s.store.rows()[0].live?.text.session.freeTalk).toBe(false);
+    await s.calls.input(first.view.id, first.view.revision, { type: "child", text: "I need help." }, "Leah");
+    expect(s.store.rows()[0].live?.text.session.grade).toBe(2);
+    expect(limits.length).toBeGreaterThan(1);
+    expect([...new Set(limits)]).toEqual([25]);
+  });
   it("keeps admin tests out of a real family", async () => {
     const s = setup();
     expect(await s.calls.start({ kind: "admin_test", parentId: parent, childId: child, childName: null, package: pkg, startedBy: parent })).toMatchObject({ ok: false, error: "not_test_family" });
@@ -77,7 +91,7 @@ describe("family days and release switch", () => {
     expect(w.start).toBeLessThanOrEqual(now); expect(w.end).toBeGreaterThan(now);
     expect(chatUsage(60, now, zone).left).toBe(0);
     expect(chatUsage(0, w.end, zone).resetsAt).toBeGreaterThan(w.end);
-    expect(chatCapLine(chatUsage(60, now, zone))).toContain("chat again at");
+    expect(chatCapLine()).toBe("You used all your messages for today. We can chat again tomorrow.");
   });
   it("uses the confirmed Vancouver offset, not stale runtime tz data or UTC", () => {
     expect(chatWindow(Date.parse("2026-11-02T01:00:00Z"), "America/Vancouver")).toEqual({ start: Date.parse("2026-11-01T07:00:00Z"), end: Date.parse("2026-11-02T07:00:00Z") });

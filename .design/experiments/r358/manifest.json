@@ -3,7 +3,7 @@
   "route": "direct",
   "surface": "product",
   "constraint_mode": "existing-system",
-  "approval": "Savar must approve the look before merge.",
+  "approval": "Savar approved the four requested look changes. The refreshed screenshots are ready for his final look review before merge.",
   "browser": "Aside CLI, account u0",
   "model": "Only fake and scripted models. No paid AI calls.",
   "fixture": "A new marked test family with a shipped workbook containing the stored 27 + 39 question. The browser used the real desk and API. The cap fixture seeded 59 admitted messages; the browser sent message 60. The fixture family was removed after verification.",
@@ -25,57 +25,81 @@
     {
       "path": ".design/experiments/r358/cap-laptop.png",
       "state": "cap reached",
-      "viewport": "laptop"
+      "viewport": "laptop",
+      "sha256": "571a35a2cf9f257b265b55b0027350717ab5a688358412ce39bb426798b87043"
     },
     {
       "path": ".design/experiments/r358/cap-phone.png",
       "state": "cap reached",
-      "viewport": "phone"
+      "viewport": "phone",
+      "sha256": "18c7584fd6d88d79252a98a666bc013e1b1e79a4648f144e71622f3b209f7492"
     },
     {
       "path": ".design/experiments/r358/cap-tablet.png",
       "state": "cap reached",
-      "viewport": "tablet"
+      "viewport": "tablet",
+      "sha256": "0b08b7274b8945d373c3646441f7de3d9c6c62524f86912ba1a9114235892361"
     },
     {
       "path": ".design/experiments/r358/chat-laptop.png",
-      "state": "chat with Hint 1 of 3 and board",
-      "viewport": "laptop"
+      "state": "Chat in progress with Hint 1 of 3. Example sum and steps above the real question. Phone has separate conversation and board captures.",
+      "viewport": "laptop",
+      "sha256": "3604c189928b983e35ca48d238d60cd26409414f0d92c835e75c7d661d7c8984"
     },
     {
       "path": ".design/experiments/r358/chat-phone-board.png",
-      "state": "chat with Hint 1 of 3 and board",
-      "viewport": "phone"
+      "state": "Chat in progress with Hint 1 of 3. Example sum and steps above the real question. Phone has separate conversation and board captures.",
+      "viewport": "phone",
+      "sha256": "ceb97b97330013ce38b8a722b9f3c8cbf59a143e678f3868902e2d420b630c41"
     },
     {
       "path": ".design/experiments/r358/chat-phone.png",
-      "state": "chat with Hint 1 of 3 and board",
-      "viewport": "phone"
+      "state": "Chat in progress with Hint 1 of 3. Example sum and steps above the real question. Phone has separate conversation and board captures.",
+      "viewport": "phone",
+      "sha256": "dd603f0f408fefe99bdcc377489463371804d590f614b243f712666b01eb4eaa"
     },
     {
       "path": ".design/experiments/r358/chat-tablet.png",
-      "state": "chat with Hint 1 of 3 and board",
-      "viewport": "tablet"
+      "state": "Chat in progress with Hint 1 of 3. Example sum and steps above the real question. Phone has separate conversation and board captures.",
+      "viewport": "tablet",
+      "sha256": "5d127b37698b5a38cd0145bb25887fb75350c94e4b8d7f53e4036cbd2bcebfd6"
     },
     {
       "path": ".design/experiments/r358/parent-cap-laptop.png",
       "state": "parent cap",
-      "viewport": "laptop"
+      "viewport": "laptop",
+      "sha256": "13af1c22297e9b2fabbed46494250fc603db2bb7f4583c8daca4ae129cbd6518"
     },
     {
       "path": ".design/experiments/r358/parent-cap-phone.png",
       "state": "parent cap",
-      "viewport": "phone"
+      "viewport": "phone",
+      "sha256": "1fbee4a5a6fdde926274500e87822a58d37d76ae782a31f0ae63fe5a80527a77"
     },
     {
       "path": ".design/experiments/r358/parent-cap-tablet.png",
       "state": "parent cap",
-      "viewport": "tablet"
+      "viewport": "tablet",
+      "sha256": "662adc163557fd1d3c7fc0f98af36705cc67b1f32981bdf6769685402eed02e8"
     }
   ],
   "proof_limits": [
     "Local Next development server and hosted Supabase test data. No production chat enabled.",
     "No live-model, real-child, voice, native-device or release acceptance.",
-    "The builder inspected the screenshots. Independent review and Savar visual approval remain."
+    "The builder inspected all ten refreshed screenshots. Independent review of the new head and Savar final look review remain."
+  ],
+  "refreshed_at": "2026-11-02T18:24:40.962499+00:00",
+  "approved_changes": [
+    "Hide the composer, restart button and question picker at the cap.",
+    "Use the approved cap line with no child clock or date.",
+    "Keep the easier example and its steps together above the real question, with space between.",
+    "Put chat use beside voice minutes under Maya this week."
+  ],
+  "grade": "Grade 2 fixture. PR #443 is merged. Chat passes the profile grade to the shared session and preserves it on resume.",
+  "review_evidence": [
+    "supabase/tests/maya_chat_child_recovery.sql",
+    ".design/experiments/r358/review-fixes-hosted.json",
+    ".design/experiments/r358/review-cap.json",
+    ".design/experiments/r358/family-cascade.json"
   ]
 }

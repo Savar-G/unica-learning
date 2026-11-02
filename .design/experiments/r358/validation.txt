@@ -1,14 +1,16 @@
-Final full run: npm test, exit 0, 242 files and 11853 tests passed.
-Earlier full run: exit 0, 242 files and 11852 tests passed, before the added admin read-only test.
-First full run: documented same-PIN race failed. Isolated parent-pin rerun passed all 75 tests. No claim that this PR fixes that race.
+Final merged code: origin/main 1fa7a1d978150ace2800883999c2bc2954202334, including PR #443.
+npm test: exit 0, 249 files and 12247 tests passed.
 npx eslint src: exit 0.
-npm run build: exit 0.
-Final npx tsc --noEmit: exit 0.
+npm run build: exit 0, including TypeScript checks. Temporary fixture route removed before the build.
 npm run voice:test: exit 0, 3 files and 29 tests passed.
 npm run voice:typecheck: exit 0.
-Hosted SQL, concurrency, recovery, HTTP access and synthetic family cascade: passed.
-Desk, call module, notes and recap: public-interface tests passed with fake models.
-Database: the hosted probes exercised locks, RLS, receipt recovery, weekly claim and deletion. They did not send email.
-UI: the Aside checks exercised the real local desk and API. The hint used a scripted fake. The cap fixture seeded 59 admissions before the browser sent message 60.
-Voice: shared-call changes passed the existing fake-provider suite and typecheck. No real voice call was made.
-Paid AI calls: none. Production chat switch: not enabled. Visual approval: pending Savar.
+Database: new additive child-wide recovery migration applied live. Hosted tests proved original ID/text/revision recovery across calls and family days, one charge, exclusive leases, stale writer refusal, ownership checks and server-only RPC grants. The earlier family RLS and client-write denial probes still apply. No email was sent.
+Browser: Aside CLI checked 1440x900, 768x1024 and 390x844. All ten screenshots were refreshed and inspected. The cap hides the composer, restart button and question picker. Parent home keeps the exact reset time and date under Maya this week.
+Board: the new grade 2 regression first failed because the target moved to a second board page. The final regression proves the complete example and target fit on one page, in separate groups with a gap. Call playback and admin replay have equal geometry. The public text matrix also passes.
+Recovery UI: tests exercise refused revisions, unknown results, admitted retries, temporary read failures, capped backoff, enabled manual retry, initial resume failure, question changes and unmounts. They do not prove browser network infrastructure.
+Grade: the shared call interface sends a 25-word model limit for grade 2 on start and resume. PR #443 supplies the word-count enforcement.
+Cap: a test fixture seeded 59 admissions. The real browser sent message 60. A server request to start a new chat at 60 returned cap, used=60, left=0 and no chat.
+Deletion: the synthetic family and private image were removed. Parent, child, workbook, call and message counts are all zero.
+Voice: the fake-provider suite and typecheck passed. No real voice call was made.
+Paid AI calls: none. Production chat switch: not enabled.
+Savar approved the four requested changes. The refreshed evidence is ready for his final look review before merge. Independent review of this head remains.

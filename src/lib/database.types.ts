@@ -4057,6 +4057,10 @@ export type Database = {
         Args: { p_parent: string; p_report: string }
         Returns: undefined
       }
+      recover_maya_chat_message: {
+        Args: { p_child: string; p_parent: string }
+        Returns: Json
+      }
       release_family_deletion: {
         Args: { p: string; token: string }
         Returns: undefined

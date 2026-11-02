@@ -161,7 +161,7 @@ export function Desk(props: DeskProps) {
         </div>
 
         <footer className="desk-say">
-          {ready && (
+          {ready && chat.usage?.left !== 0 && (
             <button type="button" className="desk-pick" onClick={() => picker.current?.showModal()}>
               <Icon name="page" />{card ? "Pick another question" : "Pick from my page"}
             </button>

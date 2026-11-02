@@ -27,12 +27,12 @@ export async function POST(request: Request) {
     const lock = readLock((await cookies()).get(DESK_COOKIE)?.value);
     if (!lock || lock.parentId !== parent) return json({ error: "forbidden" }, 403);
     const [{ data: child }, { data: family }, province] = await Promise.all([
-      session.from("children").select("first_name").eq("id", lock.childId).eq("parent_id", parent).maybeSingle(),
+      session.from("children").select("first_name, grade").eq("id", lock.childId).eq("parent_id", parent).maybeSingle(),
       session.from("parents").select("time_zone, postal").eq("id", parent).maybeSingle(), loadFamilyProvince(session, parent),
     ]);
     const db = adminClient();
     if (!child || !family || !db || !await chatAccess(db, parent)) return json({ error: "unavailable" }, 403);
-    return json(await runChat({ db, parent, child: lock.childId, name: child.first_name, zone: familyZone({ timeZone: family.time_zone, postal: family.postal, province }) }, action));
+    return json(await runChat({ db, parent, child: lock.childId, name: child.first_name, grade: child.grade, zone: familyZone({ timeZone: family.time_zone, postal: family.postal, province }) }, action));
   } catch (error) {
     console.error("[desk chat] request failed", error instanceof Error ? error.message : "unknown");
     return json({ error: "unavailable" }, 503);

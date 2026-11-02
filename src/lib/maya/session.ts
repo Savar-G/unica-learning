@@ -2177,8 +2177,13 @@ interface BoardOffer {
 }
 
 /** The places Maya may put a new board object: code offers them; the model picks one by name. */
-function boardPlaces(s: Session, batch: readonly string[]): Record<string, Place> {
-  const out: Record<string, Place> = { main: { region: "main" } };
+function boardPlaces(s: Session, batch: readonly string[], exampleStep: boolean): Record<string, Place> {
+  // Keep the example's steps beside its sum, then put the target below that work.
+  const last = batch.at(-1) ?? Object.keys(s.boardRoles).at(-1);
+  const result = exampleStep && s.package?.easierExample.steps[s.exampleShown]?.kind === "result";
+  const main: Place = result && Object.hasOwn(s.boardRoles, "example") ? { below: "example" }
+    : exampleStep && last === "example" ? { rightOf: last } : last ? { below: last } : { region: "main" };
+  const out: Record<string, Place> = { main };
   for (const id of ["question", "example"]) if (Object.hasOwn(s.boardRoles, id) || batch.includes(id)) out[`below:${id}`] = { below: id };
   return out;
 }
@@ -2260,7 +2265,7 @@ function drawBoard(s: Session, p: Proposal, view: View, spoken: Spoken): Command
     const o = offers.find((x) => x.id === d.offer);
     if (!o) return `"${d.offer}" is not a board offer for ${p.act} now. Offered: ${offers.map((x) => x.id).join(", ") || "none"}.`;
     if (ids.includes(o.id)) return `"${o.id}" is drawn twice.`;
-    const places = boardPlaces(s, ids.map((id) => (id === "question.columns" ? "question" : id === "example.columns" ? "example" : id)));
+    const places = boardPlaces(s, out.flatMap((command) => "id" in command && ["columns", "write", "model"].includes(command.op) ? [command.id] : []), p.act === "example_step");
     const place = places[d.place ?? "main"];
     if (!place) return `"${d.place}" is not a board place now. Places: ${Object.keys(places).join(", ")}.`;
     ids.push(o.id);

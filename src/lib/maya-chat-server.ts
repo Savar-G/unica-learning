@@ -57,7 +57,7 @@ export async function parentChatUsage(session: DB, parent: string, children: rea
   } catch { return new Map(); }
 }
 
-export interface ChatContext { db: DB; parent: string; child: string; name: string; zone: FamilyZone }
+export interface ChatContext { db: DB; parent: string; child: string; name: string; grade?: number; zone: FamilyZone }
 export type ChatAction = { type: "start"; id: string; question: WorkbookQuestionRef } | { type: "read"; id: string } |
   { type: "child"; id: string; messageId: string; revision: number; text: string } | { type: "end"; id: string; revision: number };
 
@@ -70,19 +70,33 @@ export async function runChat(ctx: ChatContext, action: ChatAction): Promise<Cha
   const calls = mayaCalls({ ...seams, canChat: async (p, c) => p === parent && c === child });
   const usage = () => readChatUsage(db, parent, child, zone);
   const owned = (r: CallRecord | null): r is CallRecord => !!r && r.kind === "chat" && r.parentId === parent && r.childId === child;
-  const reply = async (r: CallRecord | null, error?: string): Promise<ChatReply> => {
+  let childPending = false;
+  /** Recovery claims the child's original request under the same lock, even from another question or day. */
+  const recoverChild = async () => {
+    const { data, error } = await db.rpc("recover_maya_chat_message", { p_parent: parent, p_child: child });
+    if (error) throw Error(error.message);
+    const recovered = data as { status: string; id?: string; callId?: string; revision?: number; text?: string };
+    childPending = recovered.status !== "none";
+    if (recovered.status !== "accepted" || !recovered.callId || recovered.revision === undefined || !recovered.text) return;
+    const result = await calls.input(recovered.callId, recovered.revision, { type: "child", text: recovered.text }, name);
+    if (!result.ok) throw Error(`Chat recovery: ${result.error}`);
+    const saved = await store.get(recovered.callId);
+    if (saved?.status === "live" && (await usage()).left === 0) await calls.input(saved.id, saved.revision, { type: "end" }, name);
+    childPending = false;
+  };
+  const reply = async (r: CallRecord | null, error?: string, admission?: ChatReply["admission"]): Promise<ChatReply> => {
     const view = r && recordView(r);
     const chat = view ? childChatView(view) : null;
     if (chat && r?.status === "live") {
       const { data, error } = await db.from("maya_chat_messages").select("id").eq("call_id", r.id).eq("claim_revision", r.revision).limit(1);
       if (error) throw Error(error.message);
-      chat.pending = !!data?.length;
+      chat.pending = childPending || !!data?.length;
     }
     if (chat && r?.live) chat.hint = Math.min(3, r.live.text.session.highestHint ?? 0);
-    return { usage: await usage(), chat, ...(error ? { error } : {}) };
+    return { usage: await usage(), chat, ...(error ? { error } : {}), ...(admission ? { admission } : {}) };
   };
   let record = await store.get(action.id);
-  if (record && !owned(record)) return reply(null, "not_found");
+  if (record && !owned(record)) return reply(null, "not_found", "refused");
   if (action.type === "start") {
     const ref = action.question;
     const books = workbookStore(db);
@@ -90,25 +104,22 @@ export async function runChat(ctx: ChatContext, action: ChatAction): Promise<Cha
     if (!book || book.childId !== child || book.parentId !== parent || book.status !== "shipped") return reply(null, "not_found");
     const question = await books.question(ref);
     if (question.status !== "found") return reply(null, "invalid_question");
+    await recoverChild();
     if (record) {
+      record = await store.get(record.id);
+      if (!record) return reply(null, "not_found");
       if (JSON.stringify(record.question) !== JSON.stringify(ref)) return reply(null, "conflict");
       return reply(record);
     }
     if ((await usage()).left === 0) return reply(null, "cap");
-    const result = await calls.start({ id: action.id, kind: "chat", parentId: parent, childId: child, childName: name, startedBy: parent, package: question.package });
+    const result = await calls.start({ id: action.id, kind: "chat", parentId: parent, childId: child, childName: name, grade: ctx.grade, startedBy: parent, package: question.package });
     return result.ok ? reply(await store.get(result.view.id)) : reply(null, result.error);
   }
-  if (!owned(record)) return reply(null, "not_found");
-  if (action.type === "read") {
-    if (record.status === "live") {
-      const { data, error } = await db.from("maya_chat_messages").select("id,input_revision,body,lease_until").eq("call_id", record.id).eq("claim_revision", record.revision).maybeSingle();
-      if (error) throw Error(error.message);
-      if (data?.body && Date.parse(data.lease_until) <= Date.now()) {
-        return runChat(ctx, { type: "child", id: record.id, messageId: data.id, revision: data.input_revision, text: data.body });
-      }
-    }
-    return reply(record);
-  }
+  if (!owned(record)) return reply(null, "not_found", "refused");
+  await recoverChild();
+  record = await store.get(action.id);
+  if (!owned(record)) return reply(null, "not_found", "refused");
+  if (action.type === "read") return reply(record);
   if (action.type === "child") {
     const now = Date.now(), window = chatWindow(now, zone);
     const { data, error } = await db.rpc("take_maya_chat_message", {
@@ -116,9 +127,12 @@ export async function runChat(ctx: ChatContext, action: ChatAction): Promise<Cha
       p_text: action.text, p_fingerprint: createHash("sha256").update(action.text).digest("hex"), p_start: new Date(window.start).toISOString(), p_end: new Date(window.end).toISOString(),
     });
     if (error) throw Error(error.message);
-    const claim = data as { status: string; revision?: number };
-    if (claim.status === "done") return reply(await store.get(record.id));
-    if (claim.status !== "accepted" || claim.revision === undefined) return reply(await store.get(record.id), claim.status);
+    const claim = data as { status: string; revision?: number; admitted?: boolean };
+    if (claim.status === "done") return reply(await store.get(record.id), undefined, "accepted");
+    if (claim.status !== "accepted" || claim.revision === undefined) {
+      childPending = claim.status === "busy" || claim.status === "recover";
+      return reply(await store.get(record.id), claim.status, claim.admitted ? "accepted" : "refused");
+    }
     const result = await calls.input(record.id, claim.revision, { type: "child", text: action.text }, name);
     record = await store.get(record.id);
     // At the cap, finish through the same path as a call, including learning, notes and alerts.
@@ -126,8 +140,9 @@ export async function runChat(ctx: ChatContext, action: ChatAction): Promise<Cha
       await calls.input(record.id, record.revision, { type: "end" }, name);
       record = await store.get(record.id);
     }
-    return reply(record, result.ok ? undefined : result.error);
+    return reply(record, result.ok ? undefined : result.error, "accepted");
   }
+  if (childPending) return reply(record, "busy");
   const { data: pending, error: pendingError } = await db.from("maya_chat_messages").select("id").eq("call_id", record.id).eq("claim_revision", record.revision).limit(1);
   if (pendingError) throw Error(pendingError.message);
   if (record.status === "live" && pending?.length) return reply(record, "busy");
