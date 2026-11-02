@@ -683,6 +683,7 @@ export type Database = {
           child_id: string | null
           clicks: number
           created_at: string
+          day: string | null
           email_id: string | null
           error: string | null
           first_clicked_at: string | null
@@ -693,6 +694,7 @@ export type Database = {
           sent_at: string | null
           status: string | null
           unsubscribe_hash: string | null
+          week_start: string | null
         }
         Insert: {
           assessment_id?: string | null
@@ -700,6 +702,7 @@ export type Database = {
           child_id?: string | null
           clicks?: number
           created_at?: string
+          day?: string | null
           email_id?: string | null
           error?: string | null
           first_clicked_at?: string | null
@@ -710,6 +713,7 @@ export type Database = {
           sent_at?: string | null
           status?: string | null
           unsubscribe_hash?: string | null
+          week_start?: string | null
         }
         Update: {
           assessment_id?: string | null
@@ -717,6 +721,7 @@ export type Database = {
           child_id?: string | null
           clicks?: number
           created_at?: string
+          day?: string | null
           email_id?: string | null
           error?: string | null
           first_clicked_at?: string | null
@@ -727,6 +732,7 @@ export type Database = {
           sent_at?: string | null
           status?: string | null
           unsubscribe_hash?: string | null
+          week_start?: string | null
         }
         Relationships: [
           {

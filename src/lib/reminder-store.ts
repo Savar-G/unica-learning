@@ -226,42 +226,51 @@ export function reminderMessage(r: DueReminder, token: string, state: LoadedStat
 }
 
 export type UnsubscribeState = "subscribed" | "unsubscribed" | "unknown";
+/**
+ * What a token's link turns off. "reminders": the reminders and emails about our plans (a reminder's or a report
+ * email's token). "maya": only the weekly Maya email (its own token, #332). Each link stops its own emails.
+ */
+export type UnsubscribeScope = "reminders" | "maya";
+
+const OFF_KIND: Record<UnsubscribeScope, "unsubscribe" | "maya_unsubscribe"> = { reminders: "unsubscribe", maya: "maya_unsubscribe" };
 
 /**
- * The parent an unsubscribe token belongs to, or null: a reminder's token (email_log), or a report email's (reports,
- * #80). Both stop the same thing: reminders and emails about our plans.
+ * The parent an unsubscribe token belongs to, and what it turns off, or null: a reminder's or a weekly Maya email's
+ * token (email_log), or a report email's (reports, #80).
  */
-async function tokenParent(admin: SupabaseClient<Database>, token: unknown): Promise<string | null> {
+async function tokenParent(admin: SupabaseClient<Database>, token: unknown): Promise<{ parentId: string; scope: UnsubscribeScope } | null> {
   const hash = hashToken(token);
   if (!hash) return null;
-  const { data, error } = await admin.from("email_log").select("parent_id").eq("unsubscribe_hash", hash).maybeSingle();
+  const { data, error } = await admin.from("email_log").select("parent_id, kind").eq("unsubscribe_hash", hash).maybeSingle();
   if (error) throw new Error(`unsubscribe lookup: ${error.message}`);
-  if (data) return data.parent_id;
+  if (data) return { parentId: data.parent_id, scope: (data.kind === "maya_daily" || data.kind === "maya_weekly") ? "maya" : "reminders" };
   const report = await admin.from("reports").select("parent_id").eq("unsubscribe_hash", hash).maybeSingle();
   if (report.error) throw new Error(`unsubscribe lookup: ${report.error.message}`);
-  return report.data?.parent_id ?? null;
+  return report.data ? { parentId: report.data.parent_id, scope: "reminders" } : null;
 }
 
-/** Whether this parent unsubscribed from reminders and emails about our plans. */
-export async function parentUnsubscribed(admin: SupabaseClient<Database>, parentId: string): Promise<boolean> {
-  const { count, error } = await admin.from("email_log").select("id", { count: "exact", head: true }).eq("parent_id", parentId).eq("kind", "unsubscribe");
+async function turnedOff(admin: SupabaseClient<Database>, parentId: string, scope: UnsubscribeScope): Promise<boolean> {
+  const { count, error } = await admin.from("email_log").select("id", { count: "exact", head: true }).eq("parent_id", parentId).eq("kind", OFF_KIND[scope]);
   if (error) throw new Error(`unsubscribe state: ${error.message}`);
   return (count ?? 0) > 0;
 }
 
-/** Whether the parent behind this token still gets reminders. */
-export async function unsubscribeState(admin: SupabaseClient<Database>, token: unknown): Promise<UnsubscribeState> {
-  const parent = await tokenParent(admin, token);
-  if (!parent) return "unknown";
-  return (await parentUnsubscribed(admin, parent)) ? "unsubscribed" : "subscribed";
+/** Whether this parent unsubscribed from reminders and emails about our plans. */
+export const parentUnsubscribed = (admin: SupabaseClient<Database>, parentId: string): Promise<boolean> => turnedOff(admin, parentId, "reminders");
+
+/** Whether the parent behind this token still gets the emails the token's link turns off, and which emails those are. */
+export async function unsubscribeState(admin: SupabaseClient<Database>, token: unknown): Promise<{ state: UnsubscribeState; scope: UnsubscribeScope | null }> {
+  const found = await tokenParent(admin, token);
+  if (!found) return { state: "unknown", scope: null };
+  return { state: (await turnedOff(admin, found.parentId, found.scope)) ? "unsubscribed" : "subscribed", scope: found.scope };
 }
 
-/** Stops every reminder to the parent behind this token. Doing it twice is fine. */
+/** Turns off the emails of this token's link for its parent. Doing it twice is fine. */
 export async function unsubscribe(admin: SupabaseClient<Database>, token: unknown): Promise<"unsubscribed" | "unknown"> {
-  const parent = await tokenParent(admin, token);
-  if (!parent) return "unknown";
-  const { error } = await admin.from("email_log").insert({ parent_id: parent, kind: "unsubscribe" });
-  // One unsubscribe row per parent (unique index): already done.
+  const found = await tokenParent(admin, token);
+  if (!found) return "unknown";
+  const { error } = await admin.from("email_log").insert({ parent_id: found.parentId, kind: OFF_KIND[found.scope] });
+  // One unsubscribe row of each kind per parent (unique index): already done.
   if (error && error.code !== "23505") throw new Error(`unsubscribe: ${error.message}`);
   return "unsubscribed";
 }

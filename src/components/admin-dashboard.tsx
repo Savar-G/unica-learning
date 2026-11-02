@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { DailyBars, Funnel, Spark } from "@/components/admin-charts";
 import { Card, Delta, Notes, RangeTabs, StageChip, TestMark, familyHref, href, type Ctx } from "@/components/admin-dashboard-parts";
-import { ALL_STAGES, EMAIL_LABEL, RANGES, deliveryLine, emailDot, STAGE_SHORT, ago, at, kidsText, since, type Dashboard } from "@/lib/admin-dashboard";
+import { ALL_STAGES, EMAIL_LABEL, RANGES, isUnsubscribe, deliveryLine, emailDot, STAGE_SHORT, ago, at, kidsText, since, type Dashboard } from "@/lib/admin-dashboard";
 import { ADMIN_PATH } from "@/lib/admin-view";
 import type { ProgressSnapshot } from "@/lib/admin-progress";
 import { ProgressCell } from "@/components/admin-progress";
@@ -107,7 +107,7 @@ export function DashboardView({ d, ctx, progress }: { d: Dashboard; ctx: Ctx; pr
         {rows.length > ROWS_MAX && <p className="dash-foot">Showing the {ROWS_MAX} most recently active of {rows.length}. Use a stage or the search to narrow the list.</p>}
       </Card>
 
-      <Card title="Emails" aside={<span className="dash-muted">{d.emails.filter((e) => e.status === "sent" && e.kind !== "unsubscribe").length} sent at any time</span>}>
+      <Card title="Emails" aside={<span className="dash-muted">{d.emails.filter((e) => e.status === "sent" && !isUnsubscribe(e.kind)).length} sent at any time</span>}>
         <div className="dash-scroll">
           <table className="dash-table">
             <thead><tr><th scope="col">Email</th><th scope="col">Subject</th><th scope="col">Goes to</th><th scope="col">Sends when</th><th scope="col" className="dash-num">Sent, {d.range === "all" ? "all time" : RANGES[d.range].label.toLowerCase()}</th><th scope="col" className="dash-num">Sent, all time</th><th scope="col" className="dash-num">Failed</th><th scope="col" className="dash-num">Clicked</th><th scope="col">Last sent</th></tr></thead>
@@ -117,7 +117,7 @@ export function DashboardView({ d, ctx, progress }: { d: Dashboard; ctx: Ctx; pr
                   <td><b>{e.label}</b></td><td className="dash-muted">{e.subject}</td><td>{e.to}</td><td>{e.trigger}</td>
                   <td className="dash-num">{e.sentInRange}</td><td className="dash-num">{e.sent}</td>
                   <td className="dash-num">{e.failed > 0 ? <b className="dash-bad-text">{e.failed}</b> : 0}</td>
-                  <td className="dash-num">{e.kind === "alert" || e.kind === "unsubscribe" || e.sent === 0 ? "-" : <>{e.clicked}<span className="dash-sub">{Math.round((100 * e.clicked) / e.sent)}% of sent</span></>}</td>
+                  <td className="dash-num">{e.kind === "alert" || e.kind === "maya_daily" || e.kind === "maya_weekly" || isUnsubscribe(e.kind) || e.sent === 0 ? "-" : <>{e.clicked}<span className="dash-sub">{Math.round((100 * e.clicked) / e.sent)}% of sent</span></>}</td>
                   <td className="dash-nowrap">{e.last ? <>{at(e.last)}<span className="dash-sub">{ago(e.last, d.now)}</span></> : "-"}</td>
                 </tr>
               ))}
@@ -130,8 +130,8 @@ export function DashboardView({ d, ctx, progress }: { d: Dashboard; ctx: Ctx; pr
             <li key={e.id}>
               <span className={`dash-dot is-${emailDot(e)}`} />
               <div>
-                <b>{EMAIL_LABEL[e.kind]}</b> {e.kind === "alert" ? "about" : e.kind === "unsubscribe" ? "by" : "to"} <Link href={familyHref(ctx, e.familyId)}>{e.familyName}</Link>
-                <span className="dash-sub">{e.status === "failed" ? `Failed: ${e.error ?? "unknown error"}` : e.status === "pending" ? "Waiting to send" : e.kind === "unsubscribe" ? "Reminders turned off" : deliveryLine(e)?.bad ? deliveryLine(e)!.text : e.subject} · {at(e.at)}</span>
+                <b>{EMAIL_LABEL[e.kind]}</b> {e.kind === "alert" ? "about" : isUnsubscribe(e.kind) ? "by" : "to"} <Link href={familyHref(ctx, e.familyId)}>{e.familyName}</Link>
+                <span className="dash-sub">{e.status === "failed" ? `Failed: ${e.error ?? "unknown error"}` : e.status === "pending" ? "Waiting to send" : e.kind === "unsubscribe" ? "Reminders turned off" : e.kind === "maya_unsubscribe" ? "Maya emails turned off" : deliveryLine(e)?.bad ? deliveryLine(e)!.text : e.subject} · {at(e.at)}</span>
               </div>
             </li>
           ))}
