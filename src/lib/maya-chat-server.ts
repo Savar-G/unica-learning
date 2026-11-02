@@ -1,0 +1,136 @@
+import "server-only";
+import { createHash } from "node:crypto";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database";
+import { adminClient } from "@/lib/supabase-auth";
+import { stripe } from "@/lib/stripe";
+import { readBookingCustomers } from "@/lib/retention-stripe";
+import { chatIsEnabled, chatUsage, chatWindow, childChatView, type ChatUsage, type ChatReply } from "@/lib/maya-chat";
+import { mayaCalls, recordView, type CallRecord } from "@/lib/maya-call";
+import { callSeams } from "@/lib/maya-call-seams";
+import { mayaCallStore } from "@/lib/maya-call-store";
+import { workbookStore } from "@/lib/workbook-store";
+import { type FamilyZone } from "@/lib/family-time";
+import type { WorkbookQuestionRef } from "@/lib/question-package";
+
+type DB = SupabaseClient<Database>;
+/** Stripe remains the plan authority. Unknown, canceled and past due fail closed. */
+export async function chatAccess(db: DB, parent: string): Promise<boolean> {
+  const { data: test, error } = await db.from("test_accounts").select("parent_id").eq("parent_id", parent).maybeSingle();
+  if (error) throw Error(error.message);
+  if (!chatIsEnabled(!!test, process.env)) return false;
+  if (test) return true;
+  const s = stripe();
+  if (!s) return false;
+  const { data, error: cardsError } = await db.rpc("family_retention_cards", { p: parent });
+  if (cardsError || !Array.isArray(data)) throw Error("Plan could not be read");
+  const customers = new Set<string>();
+  for (const value of data) {
+    const card = value as { customer?: string | null; booking?: { email: string; ref: string } | null };
+    if (card.customer) customers.add(card.customer);
+    if (card.booking) {
+      for (const id of await readBookingCustomers(s, card.booking, () => ({ timeout: 10_000, maxNetworkRetries: 0 }))) customers.add(id);
+    }
+  }
+  for (const customer of customers) {
+    for await (const sub of s.subscriptions.list({ customer, status: "all", limit: 100 }, { timeout: 10_000, maxNetworkRetries: 0 })) {
+      if ((typeof sub.customer === "string" ? sub.customer : sub.customer.id) !== customer) throw Error("Plan scope changed");
+      if (sub.status === "trialing" || sub.status === "active") return true;
+    }
+  }
+  return false;
+}
+
+export async function readChatUsage(db: DB, parent: string, child: string, zone: FamilyZone, now = Date.now()): Promise<ChatUsage> {
+  const window = chatWindow(now, zone);
+  const { count, error } = await db.from("maya_chat_messages").select("id", { count: "exact", head: true })
+    .eq("parent_id", parent).eq("child_id", child).gte("received_at", new Date(window.start).toISOString()).lt("received_at", new Date(window.end).toISOString());
+  if (error || count === null) throw Error("Chat usage could not be read");
+  return chatUsage(count, now, zone);
+}
+
+export async function parentChatUsage(session: DB, parent: string, children: readonly { id: string }[], zone: FamilyZone): Promise<Map<string, ChatUsage>> {
+  try {
+    const admin = adminClient();
+    if (!admin || !await chatAccess(admin, parent)) return new Map();
+    return new Map(await Promise.all(children.map(async (c) => [c.id, await readChatUsage(session, parent, c.id, zone)] as const)));
+  } catch { return new Map(); }
+}
+
+export interface ChatContext { db: DB; parent: string; child: string; name: string; zone: FamilyZone }
+export type ChatAction = { type: "start"; id: string; question: WorkbookQuestionRef } | { type: "read"; id: string } |
+  { type: "child"; id: string; messageId: string; revision: number; text: string } | { type: "end"; id: string; revision: number };
+
+/** One authorized desk request. The database serializes message admission before the shared call module runs. */
+export async function runChat(ctx: ChatContext, action: ChatAction): Promise<ChatReply> {
+  const { db, parent, child, name, zone } = ctx;
+  const store = mayaCallStore(db);
+  const seams = callSeams(db);
+  // The route rechecks plan and feature access before every request. The module keeps that authorization explicit.
+  const calls = mayaCalls({ ...seams, canChat: async (p, c) => p === parent && c === child });
+  const usage = () => readChatUsage(db, parent, child, zone);
+  const owned = (r: CallRecord | null): r is CallRecord => !!r && r.kind === "chat" && r.parentId === parent && r.childId === child;
+  const reply = async (r: CallRecord | null, error?: string): Promise<ChatReply> => {
+    const view = r && recordView(r);
+    const chat = view ? childChatView(view) : null;
+    if (chat && r?.status === "live") {
+      const { data, error } = await db.from("maya_chat_messages").select("id").eq("call_id", r.id).eq("claim_revision", r.revision).limit(1);
+      if (error) throw Error(error.message);
+      chat.pending = !!data?.length;
+    }
+    if (chat && r?.live) chat.hint = Math.min(3, r.live.text.session.highestHint ?? 0);
+    return { usage: await usage(), chat, ...(error ? { error } : {}) };
+  };
+  let record = await store.get(action.id);
+  if (record && !owned(record)) return reply(null, "not_found");
+  if (action.type === "start") {
+    const ref = action.question;
+    const books = workbookStore(db);
+    const book = await books.workbook(ref.workbookId);
+    if (!book || book.childId !== child || book.parentId !== parent || book.status !== "shipped") return reply(null, "not_found");
+    const question = await books.question(ref);
+    if (question.status !== "found") return reply(null, "invalid_question");
+    if (record) {
+      if (JSON.stringify(record.question) !== JSON.stringify(ref)) return reply(null, "conflict");
+      return reply(record);
+    }
+    if ((await usage()).left === 0) return reply(null, "cap");
+    const result = await calls.start({ id: action.id, kind: "chat", parentId: parent, childId: child, childName: name, startedBy: parent, package: question.package });
+    return result.ok ? reply(await store.get(result.view.id)) : reply(null, result.error);
+  }
+  if (!owned(record)) return reply(null, "not_found");
+  if (action.type === "read") {
+    if (record.status === "live") {
+      const { data, error } = await db.from("maya_chat_messages").select("id,input_revision,body,lease_until").eq("call_id", record.id).eq("claim_revision", record.revision).maybeSingle();
+      if (error) throw Error(error.message);
+      if (data?.body && Date.parse(data.lease_until) <= Date.now()) {
+        return runChat(ctx, { type: "child", id: record.id, messageId: data.id, revision: data.input_revision, text: data.body });
+      }
+    }
+    return reply(record);
+  }
+  if (action.type === "child") {
+    const now = Date.now(), window = chatWindow(now, zone);
+    const { data, error } = await db.rpc("take_maya_chat_message", {
+      p_id: action.messageId, p_parent: parent, p_child: child, p_call: record.id, p_revision: action.revision,
+      p_text: action.text, p_fingerprint: createHash("sha256").update(action.text).digest("hex"), p_start: new Date(window.start).toISOString(), p_end: new Date(window.end).toISOString(),
+    });
+    if (error) throw Error(error.message);
+    const claim = data as { status: string; revision?: number };
+    if (claim.status === "done") return reply(await store.get(record.id));
+    if (claim.status !== "accepted" || claim.revision === undefined) return reply(await store.get(record.id), claim.status);
+    const result = await calls.input(record.id, claim.revision, { type: "child", text: action.text }, name);
+    record = await store.get(record.id);
+    // At the cap, finish through the same path as a call, including learning, notes and alerts.
+    if (result.ok && record?.status === "live" && (await usage()).left === 0) {
+      await calls.input(record.id, record.revision, { type: "end" }, name);
+      record = await store.get(record.id);
+    }
+    return reply(record, result.ok ? undefined : result.error);
+  }
+  const { data: pending, error: pendingError } = await db.from("maya_chat_messages").select("id").eq("call_id", record.id).eq("claim_revision", record.revision).limit(1);
+  if (pendingError) throw Error(pendingError.message);
+  if (record.status === "live" && pending?.length) return reply(record, "busy");
+  const result = await calls.input(record.id, action.revision, { type: "end" }, name);
+  return reply(await store.get(record.id), result.ok ? undefined : result.error);
+}

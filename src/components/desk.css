@@ -215,3 +215,9 @@
   .desk-pick:active, .desk-pen button:active { transform: none; }
   .desk-pen.nudge { animation: none; }
 }
+
+/* The chat uses the desk's conversation, controls and board. */
+.desk-child-bubble { margin-left: 24px; background: var(--accent-soft); }
+.desk-chat-end { min-height: 44px; border: 0; background: transparent; color: var(--ink-2); text-decoration: underline; font: inherit; }
+.desk-chat-board > .desk-canvas { flex: 1; margin: 0 12px 12px; min-height: 280px; }
+.desk-say > .desk-bubble { font-size: 14px; margin-bottom: 12px; }

@@ -130,6 +130,7 @@ export async function demoChildren(a: AdminSession): Promise<DemoChild[]> {
 
 export interface CallListRow {
   id: string;
+  kind?: CallView["kind"];
   createdAt: string;
   childId: string;
   childName: string | null;
@@ -186,7 +187,7 @@ export async function listCalls(a: AdminSession, limit = 50, token?: string): Pr
       filter = `and(or(${filter}),or(created_at.${comparison}.${cursor.at},and(created_at.eq.${cursor.at},id.${comparison}.${cursor.id})))`;
     }
     const rows = must<Database["public"]["Tables"]["maya_calls"]["Row"][]>(
-      await a.db.from("maya_calls").select("id, created_at, child_id, question_text, status, model, outcome_reason, assistance, call_seconds, learning_event_id, mode, connected_seconds, mishearing_confirmations, mishearing_corrections, flag, safety_severity, safety_flag")
+      await a.db.from("maya_calls").select("id, kind, created_at, child_id, question_text, status, model, outcome_reason, assistance, call_seconds, learning_event_id, mode, connected_seconds, mishearing_confirmations, mishearing_corrections, flag, safety_severity, safety_flag")
         .or(filter).order("created_at", { ascending: backwards }).order("id", { ascending: backwards }).limit(limit + 1),
       "maya calls",
     );
@@ -207,6 +208,7 @@ export async function listCalls(a: AdminSession, limit = 50, token?: string): Pr
   const names = ids.length ? must<{ id: string; first_name: string }[]>(await a.db.rpc("admin_children").select("id, first_name").in("id", ids), "children") : [];
   const calls = rows.map((r) => ({
     id: r.id,
+    kind: r.kind,
     createdAt: r.created_at,
     childId: r.child_id,
     childName: names.find((n) => n.id === r.child_id)?.first_name ?? null,

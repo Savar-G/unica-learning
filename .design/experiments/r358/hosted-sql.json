@@ -1,0 +1,19 @@
+{
+  "result": "PASS",
+  "probe": "supabase/tests/desk_maya_chat.sql",
+  "checks": [
+    "60 accepted and message 61 refused",
+    "pending and committed retry",
+    "owner can read and another family cannot read",
+    "client writes and claim RPC denied",
+    "prior-day messages excluded",
+    "weekly chat claim accepted and duplicate coverage refused",
+    "delete cascade"
+  ],
+  "transaction": "All probe row changes rolled back.",
+  "migrations": [
+    "20261102171628 desk_maya_chat",
+    "20261102172552 desk_maya_chat_recovery",
+    "20261102173632 desk_maya_chat_recap"
+  ]
+}

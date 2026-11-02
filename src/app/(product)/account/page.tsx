@@ -16,6 +16,8 @@ import { pinIsSet } from "@/lib/parent-pin-server";
 import { workbookStore } from "@/lib/workbook-store";
 import type { WorkbookSummary } from "@/lib/workbook-content";
 import { AddChild, SaveTimeZone, SendLink, SignOut, StartTest, TrackOnce } from "@/components/account";
+import { parentChatUsage } from "@/lib/maya-chat-server";
+import { ChatUsageRow } from "@/components/chat-usage";
 import { parentMinutes, type ChildMinutes } from "@/lib/maya-minutes-server";
 import { DEMO_DAILY_MINUTES, WEEK_SECONDS } from "@/lib/maya-minutes";
 import { SupportPage } from "@/components/support-page";
@@ -55,7 +57,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   const timeZone = familyZone({ timeZone: parent.time_zone, postal: parent.postal, province: familyProvince(children) });
   // Parent home (#301): each child's current workbook (the newest shipped one) and the desk, which needs the PIN.
   // Maya's minutes this week (#330), for test families until Maya opens to families (#337).
-  const [current, pinSet, minutes] = await Promise.all([currentWorkbooks(db, children.map((c) => c.id)), pinIsSet(parentUser), parentMinutes(db, parentUser, timeZone, children)]);
+  const [current, pinSet, minutes, chats] = await Promise.all([currentWorkbooks(db, children.map((c) => c.id)), pinIsSet(parentUser), parentMinutes(db, parentUser, timeZone, children), parentChatUsage(db, parentUser, children, timeZone)]);
   return (
     <SupportPage label="Your account" title={`Hi, ${parent.name.split(" ")[0]}.`}>
       {password === "1" && <p role="status" className="acct-alert acct-saved">Your password is saved.</p>}
@@ -87,6 +89,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
               ? <SendLink childId={c.id} name={c.first_name} sent={sent === "1" && i === 0} />
               : <StartTest childId={c.id} name={c.first_name} state={stateFor(states, c.id)} when={startWhen(stateFor(states, c.id), timeZone)} report={reportFor(c.id, stateFor(states, c.id))} />}
             {current.has(c.id) && <DeskRow childId={c.id} name={c.first_name} workbook={current.get(c.id)!} pinSet={pinSet} />}
+            {chats.has(c.id) && <ChatUsageRow name={c.first_name} usage={chats.get(c.id)!} />}
             {minutes.has(c.id) && <MinutesRow name={c.first_name} minutes={minutes.get(c.id)!} />}
           </li>
         ))}

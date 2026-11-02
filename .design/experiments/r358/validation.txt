@@ -1,0 +1,14 @@
+Final full run: npm test, exit 0, 242 files and 11853 tests passed.
+Earlier full run: exit 0, 242 files and 11852 tests passed, before the added admin read-only test.
+First full run: documented same-PIN race failed. Isolated parent-pin rerun passed all 75 tests. No claim that this PR fixes that race.
+npx eslint src: exit 0.
+npm run build: exit 0.
+Final npx tsc --noEmit: exit 0.
+npm run voice:test: exit 0, 3 files and 29 tests passed.
+npm run voice:typecheck: exit 0.
+Hosted SQL, concurrency, recovery, HTTP access and synthetic family cascade: passed.
+Desk, call module, notes and recap: public-interface tests passed with fake models.
+Database: the hosted probes exercised locks, RLS, receipt recovery, weekly claim and deletion. They did not send email.
+UI: the Aside checks exercised the real local desk and API. The hint used a scripted fake. The cap fixture seeded 59 admissions before the browser sent message 60.
+Voice: shared-call changes passed the existing fake-provider suite and typecheck. No real voice call was made.
+Paid AI calls: none. Production chat switch: not enabled. Visual approval: pending Savar.

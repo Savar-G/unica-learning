@@ -1,0 +1,81 @@
+{
+  "issue": 358,
+  "route": "direct",
+  "surface": "product",
+  "constraint_mode": "existing-system",
+  "approval": "Savar must approve the look before merge.",
+  "browser": "Aside CLI, account u0",
+  "model": "Only fake and scripted models. No paid AI calls.",
+  "fixture": "A new marked test family with a shipped workbook containing the stored 27 + 39 question. The browser used the real desk and API. The cap fixture seeded 59 admitted messages; the browser sent message 60. The fixture family was removed after verification.",
+  "viewports": {
+    "laptop": [
+      1440,
+      900
+    ],
+    "tablet": [
+      768,
+      1024
+    ],
+    "phone": [
+      390,
+      844
+    ]
+  },
+  "screenshots": [
+    {
+      "path": ".design/experiments/r358/cap-laptop.png",
+      "state": "cap reached",
+      "viewport": "laptop"
+    },
+    {
+      "path": ".design/experiments/r358/cap-phone.png",
+      "state": "cap reached",
+      "viewport": "phone"
+    },
+    {
+      "path": ".design/experiments/r358/cap-tablet.png",
+      "state": "cap reached",
+      "viewport": "tablet"
+    },
+    {
+      "path": ".design/experiments/r358/chat-laptop.png",
+      "state": "chat with Hint 1 of 3 and board",
+      "viewport": "laptop"
+    },
+    {
+      "path": ".design/experiments/r358/chat-phone-board.png",
+      "state": "chat with Hint 1 of 3 and board",
+      "viewport": "phone"
+    },
+    {
+      "path": ".design/experiments/r358/chat-phone.png",
+      "state": "chat with Hint 1 of 3 and board",
+      "viewport": "phone"
+    },
+    {
+      "path": ".design/experiments/r358/chat-tablet.png",
+      "state": "chat with Hint 1 of 3 and board",
+      "viewport": "tablet"
+    },
+    {
+      "path": ".design/experiments/r358/parent-cap-laptop.png",
+      "state": "parent cap",
+      "viewport": "laptop"
+    },
+    {
+      "path": ".design/experiments/r358/parent-cap-phone.png",
+      "state": "parent cap",
+      "viewport": "phone"
+    },
+    {
+      "path": ".design/experiments/r358/parent-cap-tablet.png",
+      "state": "parent cap",
+      "viewport": "tablet"
+    }
+  ],
+  "proof_limits": [
+    "Local Next development server and hosted Supabase test data. No production chat enabled.",
+    "No live-model, real-child, voice, native-device or release acceptance.",
+    "The builder inspected the screenshots. Independent review and Savar visual approval remain."
+  ]
+}

@@ -268,6 +268,8 @@ interface Ladder {
 export interface Session {
   version: 4;
   callId: string;
+  /** A desk chat uses the workbook decline for an off-topic reading. */
+  channel?: "chat";
   /** Which wording of each line and phrase to say: the call's random seed, what was heard, the child's name (variety.ts). */
   variety: Variety;
   /** D-196, D-197: whether the model's own warm words may be said, after the code guards and the review. */
@@ -378,6 +380,7 @@ export interface Session {
  */
 export function createSession(input: {
   callId: string;
+  channel?: "chat";
   package: unknown;
   random?: number;
   history?: WordingHistory;
@@ -400,6 +403,7 @@ export function createSession(input: {
   return {
     version: 4,
     callId: input.callId,
+    ...(input.channel ? { channel: input.channel } : {}),
     variety: newVariety({ random: input.random ?? hashOf(input.callId), history: input.history, name: input.childName }),
     freeTalk: input.freeTalk === true,
     ...(input.modelBoard === true ? { modelBoard: true } : {}),
@@ -932,6 +936,10 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   const no = (code: RefusalCode, reason: string, allowed: Act[]): StepResult => ({ session: base, effects, refusal: { code, reason, allowed } });
   const s = structuredClone(base);
   const pkg = s.package;
+  // #358: code supplies the existing decline, without teaching the off-topic request or raising a safety flag.
+  if (s.channel === "chat" && p.reading?.offTopic && !p.reading.safety && !p.reading.stop) {
+    p = { version: PROPOSAL_VERSION, act: "redirect", parts: [{ line: "redirect.decline" }], reading: { offTopic: true } };
+  }
   // Once the child's right answer stands, a reading that says again what code already found right carries nothing new:
   // it is left out, never judged again (practice: "Yay, I got 66! I'm done." refused as not sure, then "I heard 66. Is that
   // right?"). A wrong answer is still judged: the child may change their answer.
@@ -1165,7 +1173,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       if (reading.unsafeRequest && !spoken.chosen.some((o) => o.line === "redirect.decline")) {
         return no("decline_first", "The child asked for content Maya never gives: say the decline line (redirect.decline).", allowedNow);
       }
-      if (!reading.unsafeRequest && spoken.chosen.some((o) => o.line === "redirect.decline")) {
+      if (!reading.unsafeRequest && !(s.channel === "chat" && reading.offTopic) && spoken.chosen.some((o) => o.line === "redirect.decline")) {
         return no("line_not_offered", "The decline line is only for a request for sexual, violent or other harmful content (reading.unsafeRequest).", allowedNow);
       }
       s.redirects += 1;

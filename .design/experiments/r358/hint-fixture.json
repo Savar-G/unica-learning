@@ -1,0 +1,8 @@
+{
+  "model": "scripted fake",
+  "childText": "Can you show me the first hint?",
+  "lines": [
+    "Let's look at the ones column: 7 and 9."
+  ],
+  "batches": 4
+}
