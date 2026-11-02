@@ -289,9 +289,11 @@ describe("flags and times in plain words (#77)", () => {
     expect(["yes", "a-little", "no", null].map((h) => helpAnswerText(h as never))).toEqual(["Yes", "A little", "No", "Not asked"]);
   });
 
-  it("writes a moment in Pacific time, summer and winter, and a dash for none", () => {
+  it("writes Pacific time with summer and historical winter offsets, and a dash for none", () => {
     expect(when("2026-10-11T17:55:09Z")).toBe("2026-10-11 10:55");
-    expect(when("2026-12-01T08:05:00Z")).toBe("2026-12-01 00:05");
+    // BC stays at UTC-7 after March 2026 (IANA tzdb 2026b).
+    // Use 2025 to test UTC-8 without depending on the runtime's tzdb version.
+    expect(when("2025-12-01T08:05:00Z")).toBe("2025-12-01 00:05");
     expect(when(null)).toBe("-");
   });
 
