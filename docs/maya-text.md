@@ -103,7 +103,7 @@ An equal-form final answer must be committed before it completes any work step o
 
 **Board.** `question.strips` draws each fraction as a strip (denominators up to 12), the second below the first; `question.common` draws them in the common denominator once that step is done or shown; `example.strips` draws the easier example.
 
-The scripted gate checks these outputs in C38, C38b and C38c. It reads the words and strips from each saved turn. Controller sabotage tests must fail if the child's accepted form changes, the equal-answer explanation is removed, or the strips have wrong values or placement. Separate sabotage tests check an early final answer and acceptance of a wrong answer. See `docs/maya-gate.md`. These checks use a fake model. A real-model run for fraction teaching and the AI review remains a separate check.
+The scripted gate checks these outputs in C38, C38b and C38c. It compares each complete turn exactly against its required code-line variants. The acceptance and writing lines must both use 14/16. The H1 simplification hint must use the `point.simplify` variants filled with 14 and 16. Extra text, substituted lines and changed spacing cannot pass. The gate also reads the strips from each saved turn. Controller sabotage tests cover changed answers, a missing equal-answer explanation, a wrong writing instruction, a repeated explanation instead of an H1 hint, and wrong strip values or placement. Separate sabotage tests check an early final answer and acceptance of a wrong answer. See `docs/maya-gate.md`. These checks use a fake model. A real-model run for fraction teaching and the AI review remains a separate check.
 
 ## Free talk (D-197)
 

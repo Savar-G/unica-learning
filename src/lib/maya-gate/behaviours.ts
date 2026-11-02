@@ -3,6 +3,9 @@
 // (a letter after the id), and the model and adapter branches (M1 to M15). PENDING lists what the controller or the
 // text adapter cannot run yet, with the reason; docs/maya-gate.md has the same table. A behaviour with `expect.flag` (a
 // disclosure, or a request for harmful content) runs through the saved call, so its flag and alert are judged too (#395).
+import { packageLines, type LineOffer, type TemplateKey } from "@/lib/maya/lines";
+import type { OperationPackage } from "@/lib/question-package";
+import { FIXTURES } from "./fixtures";
 import type { Behaviour, Pending, Plan, Read, Step } from "./gate";
 
 const child = (text: string, read?: Read, maya?: Plan[]): Step => ({ child: text, ...(read ? { read } : {}), ...(maya ? { maya } : {}) });
@@ -15,6 +18,10 @@ const solvedEnd = (understanding: "evidence_observed" | "uncertain" = "uncertain
 ];
 const OPEN = "open" as const;
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
+/** Exact approved variants for the required template, filled from the checked fixture or the child's fraction. */
+const variants = (offers: LineOffer[], key: TemplateKey): string[] => offers.filter((line) => line.key === key).flatMap((line) => line.texts);
+const fractionLines = packageLines(FIXTURES.D as OperationPackage);
+const simplestLines = packageLines(FIXTURES.D_SIMPLEST as OperationPackage);
 /** The decline line for a request for sexual or violent content (C29), in the wording Savar approved on 2026-11-01. */
 const DECLINE = "I can't talk about this. I'm here to help with math.";
 /** The answer to a free-talk turn: back to the question, solved. */
@@ -935,8 +942,8 @@ export const BEHAVIOURS: Behaviour[] = [
       acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
       counts: { refusals: 0, boardBatches: 2 },
       outputs: [
-        { mayaTurn: 1, includes: ["denominators", "4", "8"], strips: [{ parts: 4, shaded: 3 }, { parts: 8, shaded: 1 }] },
-        { mayaTurn: 2, includes: ["3/4 = 6/8"], strips: [{ parts: 8, shaded: 6 }, { parts: 8, shaded: 1 }] },
+        { mayaTurn: 1, lines: [variants(fractionLines.help("common"), "point.common")], strips: [{ parts: 4, shaded: 3 }, { parts: 8, shaded: 1 }] },
+        { mayaTurn: 2, lines: [variants(fractionLines.rightStep("common"), "check.right_step"), variants(fractionLines.help("combine"), "step.invite")], strips: [{ parts: 8, shaded: 6 }, { parts: 8, shaded: 1 }] },
       ],
       never: ["example_step", "give_answer"],
     },
@@ -957,8 +964,8 @@ export const BEHAVIOURS: Behaviour[] = [
       acts: [OPEN, "accept_answer", "ask_write", "close"],
       counts: { refusals: 0 },
       outputs: [
-        { mayaTurn: 1, includes: ["3/4 + 1/8 = 14/16"], excludes: ["simplest", "lowest terms", "simplify"] },
-        { mayaTurn: 2, includes: ["14/16"], excludes: ["simplest", "lowest terms", "simplify"] },
+        { mayaTurn: 1, lines: [variants(fractionLines.answerRight(frac(14, 16)), "answer.right")] },
+        { mayaTurn: 2, lines: [variants(fractionLines.writeAnswer(frac(14, 16)), "write.answer")] },
       ],
       never: ["guide", "give_answer"],
     },
@@ -981,8 +988,8 @@ export const BEHAVIOURS: Behaviour[] = [
       acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
       counts: { refusals: 0 },
       outputs: [
-        { mayaTurn: 1, includes: ["14/16", "simplest form"] },
-        { mayaTurn: 2, includes: ["14", "16"] },
+        { mayaTurn: 1, lines: [variants(simplestLines.equal(frac(14, 16), "simplest form"), "check.equal")] },
+        { mayaTurn: 2, lines: [variants(simplestLines.simplifyOwn(frac(14, 16)), "point.simplify")] },
       ],
       never: ["give_answer", "example_step"],
     },

@@ -53,13 +53,13 @@ Counts read from each saved trace: Maya turns, outputs, silent turns, refusals, 
 
 ### Fraction output checks (#407)
 
-The C38 cases also use `expect.outputs`. Each entry selects a Maya turn, with the opening numbered 0. The judge checks required and forbidden text without case sensitivity. It reads fraction strips from the saved board batches that reached that turn. It checks their exact parts and shaded parts in order. Each strip after the first must sit below the previous strip. A mismatch fails with `flow_mismatch`.
+The C38 cases also use `expect.outputs`. Each entry selects a Maya turn, with the opening numbered 0. Its `lines` lists the approved complete variants for each required line, in order. The variants come from `packageLines`, filled from the checked fixture or the child's fraction. The judge requires exactly one `say` entry that equals one allowed combination, joined with one space. It does not split, trim or change case. Extra text, another code line, or another `say` entry fails. An empty approved set cannot pass. The judge also reads fraction strips from the saved board batches that reached that turn. It checks their exact parts and shaded parts in order. Each strip after the first must sit below the previous strip. A mismatch fails with `flow_mismatch`.
 
-- C38 requires the denominator hint and the original strips, then `3/4 = 6/8` and both strips in eighths.
-- C38b requires `14/16` in the accepted equation and in the request to write. Neither turn can ask for simplest form.
-- C38c requires the equal answer `14/16` and the question's words `simplest form`. The next hint must use 14 and 16.
+- C38 requires a complete `point.common` variant and the original strips. The next turn requires `check.right_step` for `3/4 = 6/8`, then `step.invite` for the numerators, with both strips in eighths.
+- C38b requires a complete `answer.right` variant filled with `14/16`, then a complete `write.answer` variant filled with `14/16`. Neither turn can add a simplest-form request or an instruction to write 7/8.
+- C38c requires a complete `check.equal` variant filled with `14/16` and `simplest form`. The next turn must be a complete `point.simplify` variant filled with 14 and 16. Repeating `check.equal` is not an H1 factor hint.
 
-Six controller sabotage modes check these cases. Four preserve the expected acts, counts and outcome. The gate must still reject them. The other two check early disclosure of 7/8 and acceptance of 4/12. The unchanged C38, C38b, C38c and held C36b cases must pass. These are scripted checks. They do not prove speech recognition or real-model judgement.
+Eight controller sabotage modes check these cases. Six preserve the expected acts, counts and outcome. These include R439-1, acknowledging 14/16 but asking the child to write 7/8, and R439-2, repeating the equal-answer explanation instead of the H1 factor hint. The gate must reject them. The other two check early disclosure of 7/8 and acceptance of 4/12. The unchanged C38, C38b, C38c and held C36b cases must pass. Tests also accept every approved variant combination for all six text checks. They reject added, repeated and changed text, case changes, whitespace changes and extra output entries. These are scripted checks. They do not prove speech recognition or real-model judgement.
 
 ## Behaviours
 

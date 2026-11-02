@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Command } from "@/lib/board";
-import { allLineTexts, type Effect, type SessionEvent, type StepResult } from "@/lib/maya";
+import { allLineTexts, TEMPLATES, type Effect, type SessionEvent, type StepResult, type TemplateKey } from "@/lib/maya";
 import { checkTrace, type MayaTrace } from "@/lib/maya-trace";
 import type { OperationPackage } from "@/lib/question-package";
 import { BEHAVIOURS } from "./behaviours";
@@ -15,7 +15,7 @@ vi.mock("server-only", () => ({}));
 // controller injected under the text adapter, and a broken alerts seam under the saved call (#395).
 
 /** The controller's `step`, sabotaged when `mode` is set: the text adapter imports it from "@/lib/maya". */
-const sabotage = vi.hoisted(() => ({ mode: "none" as "none" | "words" | "answer" | "no_safety" | "decline_extra" | "decline_space" | "no_auto_end" | "fraction_rewrite" | "fraction_equal" | "fraction_strips" | "fraction_place" | "fraction_answer" | "fraction_wrong", extra: "" }));
+const sabotage = vi.hoisted(() => ({ mode: "none" as "none" | "words" | "answer" | "no_safety" | "decline_extra" | "decline_space" | "no_auto_end" | "fraction_rewrite" | "fraction_equal" | "fraction_strips" | "fraction_place" | "fraction_answer" | "fraction_wrong" | "fraction_mixed_write" | "fraction_repeat_equal", extra: "" }));
 vi.mock("@/lib/maya", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/maya")>();
   return {
@@ -42,6 +42,12 @@ vi.mock("@/lib/maya", async (importOriginal) => {
             return c;
           }) } };
           if (e.kind !== "say") return e;
+          // R439-1: the acknowledgement preserves 14/16, but the writing instruction changes it.
+          if (sabotage.mode === "fraction_mixed_write" && e.act === "ask_write") return { ...e, text: "Yes! 3/4 + 1/8 = 14/16. Please write 7/8 on your paper." };
+          // R439-2: repeat an equal-answer explanation instead of giving the H1 factor hint.
+          if (sabotage.mode === "fraction_repeat_equal" && e.act === "guide" && event.type === "proposal" && (event.proposal as { level?: number }).level === 1) {
+            return { ...e, text: "You found the right amount: 14/16. Now simplify it. The question asks for simplest form." };
+          }
           if (sabotage.mode === "fraction_rewrite" && ["accept_answer", "ask_write"].includes(e.act)) return { ...e, text: e.text.replaceAll("14/16", "7/8") };
           // Another valid code line preserves the acts and outcome, but loses the equal-answer explanation.
           if (sabotage.mode === "fraction_equal" && e.act === "guide" && e.text.includes("14/16")) return { ...e, text: "How did you work it out?" };
@@ -99,6 +105,70 @@ async function savedTrace(b: Behaviour): Promise<MayaTrace> {
 }
 const codes = (b: Behaviour, trace: unknown, call = calls.get(b.id)) => [...new Set(judge(b, JSON.stringify(trace), call).failures.map((f) => f.code))];
 const mayaAt = (t: MayaTrace, n: number) => t.turns.filter((x) => x.kind === "maya")[n] as Extract<MayaTrace["turns"][number], { kind: "maya" }>;
+
+describe("every C38 text check uses complete approved variants (R439-1, R439-2)", () => {
+  // Fill the public templates with the research case's literal values, independently of the behaviour's expectations.
+  const fill = (key: TemplateKey, slots: Record<string, string>): string[] => TEMPLATES[key].map((text) =>
+    text.replace(/\{(\w+)\}/g, (_, slot: string) => {
+      if (slots[slot] === undefined) throw new Error(`missing test slot: ${slot}`);
+      return slots[slot];
+    }));
+  const checks: [string, number, string[]][] = [
+    ["C38", 1, fill("point.common", { a: "4", b: "8" })],
+    ["C38", 2, fill("check.right_step", { eq: "3/4 = 6/8" }).flatMap((check) =>
+      fill("step.invite", { where: "the numerators" }).map((invite) => `${check} ${invite}`))],
+    ["C38b", 1, fill("answer.right", { expr: "3/4 + 1/8", answer: "14/16" })],
+    ["C38b", 2, fill("write.answer", { answer: "14/16" })],
+    ["C38c", 1, fill("check.equal", { heard: "14/16", form: "simplest form" })],
+    ["C38c", 2, fill("point.simplify", { n: "14", d: "16" })],
+  ];
+
+  it("covers every fraction text expectation", () => {
+    const expected = BEHAVIOURS.filter((b) => ["C38", "C38b", "C38c"].includes(b.id))
+      .flatMap((b) => (b.expect.outputs ?? []).filter((o) => o.lines).map((o) => [b.id, o.mayaTurn]));
+    expect(checks.map(([id, turn]) => [id, turn])).toEqual(expected);
+  });
+
+  it.each(checks)("%s turn %i accepts every complete approved variant", async (id, turn, texts) => {
+    const b = byId(id);
+    const trace = await savedTrace(b);
+    for (const text of texts) {
+      mayaAt(trace, turn).output!.say = [text];
+      expect(checkTrace(trace)).toMatchObject({ ok: true });
+      expect(codes(b, trace), text).toEqual([]);
+    }
+  });
+
+  it.each(checks)("%s turn %i rejects changed or additional text", async (id, turn, texts) => {
+    const b = byId(id);
+    const trace = await savedTrace(b);
+    const text = texts[0];
+    const wrong: string[][] = [
+      [`Yes! ${text}`],
+      [`${text} Please write 7/8 on your paper.`],
+      [text.toUpperCase()],
+      [` ${text}`],
+      [`${text} `],
+      [text.replace(" ", "\n")],
+      [text, text],
+      [`${text} ${text}`],
+    ];
+    for (const say of wrong) {
+      mayaAt(trace, turn).output!.say = say;
+      expect(checkTrace(trace)).toMatchObject({ ok: true });
+      expect(codes(b, trace), JSON.stringify(say)).toContain("flow_mismatch");
+    }
+  });
+
+  it("an empty approved set cannot pass a fraction output", async () => {
+    const b = byId("C38b");
+    const trace = await savedTrace(b);
+    for (const lines of [[], [[]]]) {
+      const empty: Behaviour = { ...b, expect: { ...b.expect, outputs: [{ mayaTurn: 1, lines }] } };
+      expect(codes(empty, trace)).toContain("flow_mismatch");
+    }
+  });
+});
 
 describe("each hard failure can fail the gate (a saved trace changed after the run)", () => {
   const seeds: [HardFailure, string, (t: MayaTrace) => unknown][] = [
@@ -326,6 +396,8 @@ describe("a sabotaged controller makes the gate fail", () => {
     ["fraction_place", "C38", "flow_mismatch"],
     ["fraction_answer", "C38", "answer_too_early"],
     ["fraction_wrong", "C38", "accepted_wrong_answer"],
+    ["fraction_mixed_write", "C38b", "flow_mismatch"],
+    ["fraction_repeat_equal", "C38c", "flow_mismatch"],
   ] as const)("%s: %s fails with %s", async (mode, id, code) => {
     const found = await run(mode, id);
     expect(found).not.toContain("trace_invalid");

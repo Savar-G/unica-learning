@@ -167,11 +167,11 @@ export interface Behaviour {
     /** The acts that reached the child, in order (null: a Maya turn with no output). */
     acts?: (Act | null)[];
     counts?: Partial<GateCounts>;
-    /** Words and fraction strips that must reach the child in a given Maya turn (opening = 0). */
+    /** Approved lines and fraction strips that must reach the child in a given Maya turn (opening = 0). */
     outputs?: {
       mayaTurn: number;
-      includes?: string[];
-      excludes?: string[];
+      /** Ordered lines, each with its approved complete variants. Code joins them with one space in one say entry. */
+      lines?: string[][];
       /** Exact strip values, in order. Each strip after the first must be below the previous one. */
       strips?: { parts: number; shaded: number }[];
     }[];
@@ -724,12 +724,14 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
       fail("flow_mismatch", `Maya turn ${expected.mayaTurn} has no expected output`);
       continue;
     }
-    const said = output.say.join(" ").toLowerCase();
-    for (const words of expected.includes ?? []) {
-      if (!said.includes(words.toLowerCase())) fail("flow_mismatch", `Maya turn ${expected.mayaTurn} did not say "${words}"`);
-    }
-    for (const words of expected.excludes ?? []) {
-      if (said.includes(words.toLowerCase())) fail("flow_mismatch", `Maya turn ${expected.mayaTurn} said forbidden words "${words}"`);
+    if (expected.lines) {
+      // Compare the complete output against only the requested lines' variants. Do not split, trim or change case.
+      // Empty groups give no approved output. A second say entry or extra code sentence cannot pass.
+      const approved = expected.lines.length === 0 ? [] : expected.lines.reduce<string[]>((prefixes, variants) =>
+        prefixes.flatMap((prefix) => variants.map((text) => prefix === "" ? text : `${prefix} ${text}`)), [""]);
+      if (output.say.length !== 1 || !approved.includes(output.say[0])) {
+        fail("flow_mismatch", `Maya turn ${expected.mayaTurn} said ${JSON.stringify(output.say)}, expected complete approved line variants in order`);
+      }
     }
     if (expected.strips) {
       // Read what reached this turn's board, not the model's requested offer or the package's strip values.
