@@ -178,12 +178,14 @@ export function weeklyEmail(e: WeeklyEmailInput): { subject: string; text: strin
   const why = "You get one Maya email each week when your family has calls with Maya. We send none for weeks without calls.";
   const footer = { why, unsubscribe: { url: e.unsubscribeUrl, label: "Turn off these Maya emails" } };
   const several = e.children.length > 1;
-  const callLabel = (c: WeeklyEmailCall, i: number, of: number) => `${of > 1 ? `Call ${i + 1}, ended` : "Ended"} on ${dayLabel(localDay(Date.parse(c.endedAt), e.zone))} at ${clock(c.endedAt, e.zone)}, ${plural(c.minutes, "minute")}`;
+  // Each call leads with its day, newest first, never a number: "Call 1" read backwards next to older calls (Savar,
+  // 2026-11-01). The time tells two calls of one day apart.
+  const callLabel = (c: WeeklyEmailCall) => `${dayLabel(localDay(Date.parse(c.endedAt), e.zone))} · ${clock(c.endedAt, e.zone)} · ${plural(c.minutes, "minute")}`;
 
   const textCalls = e.children.flatMap((child) => [
     ...(several ? [child.name.toUpperCase()] : []),
     ...child.calls.map((c, i) => [
-      callLabel(c, i, child.calls.length),
+      callLabel(c),
       c.sentences.join(" "),
       "What was said:",
       ...c.transcript.map((l) => (l.note ? `(${l.text})` : `${l.speaker}: ${l.text}`)),
@@ -199,7 +201,7 @@ export function weeklyEmail(e: WeeklyEmailInput): { subject: string; text: strin
 ${several ? `<tr><td style="padding:18px 24px 0"><h2 style="margin:0;font-size:18px;line-height:1.3;font-weight:600">${esc(child.name)}</h2></td></tr>` : ""}
 ${child.calls.map((c, i) => `<tr><td style="padding:14px 24px 0">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="border-top:1px solid ${RULE};padding:16px 0 0">
-${p(esc(callLabel(c, i, child.calls.length)), `margin:0 0 8px;font-size:14px;color:${INK_2}`)}
+${p(esc(callLabel(c)), `margin:0 0 8px;font-size:14px;color:${INK_2}`)}
 ${p(esc(c.sentences.join(" ")))}
 ${c.transcript.length ? `${p("What was said", `margin:0 0 8px;font-size:14px;font-weight:600;color:${INK_2}`)}
 <div style="border-left:3px solid ${RULE};padding:2px 0 2px 12px">${c.transcript.map(line).join("\n")}</div>` : ""}

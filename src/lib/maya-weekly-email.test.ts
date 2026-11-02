@@ -65,8 +65,8 @@ describe("one email per parent per week", () => {
     expect(m.text).toContain("Sam and Leah had 2 calls with Maya, our AI teaching assistant, from Monday, November 2 to Sunday, November 8.");
     expect(m.text).toContain("Leah called Maya about page 23, question 4. Leah got stuck on adding the tens and carrying.");
     expect(m.text).toContain("Sam called Maya about page 23, question 4.");
-    expect(m.text).toContain("Ended on Monday, November 2 at 3:30 p.m., 6 minutes");
-    expect(m.text).toContain("Ended on Sunday, November 8 at 6:05 p.m., 1 minute");
+    expect(m.text).toContain("Monday, November 2 · 3:30 p.m. · 6 minutes");
+    expect(m.text).toContain("Sunday, November 8 · 6:05 p.m. · 1 minute");
     expect(m.text).toContain("Maya: Hi Leah, I'm Maya, an AI teaching assistant.");
     expect(m.text).toContain("Leah: I don't get the tens <b>");
     expect(m.text).not.toContain("{child}");
@@ -82,14 +82,17 @@ describe("one email per parent per week", () => {
     expect(mail.delivered).toHaveLength(1);
   });
 
-  it("numbers the calls of one child and says how many in the intro", async () => {
+  it("labels each call by its day and time, newest first, and says how many in the intro", async () => {
     const { mail, run } = setup([note({ endedAt: pst(2, 9) }), note({ endedAt: pst(2, 16) })]);
     await run(pst(9, 8));
     const m = mail.delivered[0];
     expect(m.subject).toBe("Maya this week: Leah");
     expect(m.text).toContain("Leah had 2 calls with Maya");
-    expect(m.text).toContain("Call 1, ended on Monday, November 2 at 4:00 p.m.");
-    expect(m.text).toContain("Call 2, ended on Monday, November 2 at 9:00 a.m.");
+    const later = m.text.indexOf("Monday, November 2 · 4:00 p.m. · 6 minutes");
+    const earlier = m.text.indexOf("Monday, November 2 · 9:00 a.m. · 6 minutes");
+    expect(later).toBeGreaterThan(-1);
+    expect(earlier).toBeGreaterThan(later);
+    expect(m.text).not.toMatch(/Call \d/);
   });
 
   it("waits until Monday at 7 a.m. in the family's time zone", async () => {
