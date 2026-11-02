@@ -1,0 +1,92 @@
+{
+  "checks": [
+    "After the original four-day deadline passed, eight concurrent HTTP corrections append one correction/audit. Reload uses the new four/21-day anchors; original receipt and audit remain unchanged.",
+    "Short reason required. Invalid/future/before-shipment times, missing receipt, foreign child/number, changed retry and unchanged time refused through HTTP; direct RPC checks hold.",
+    "Two different corrections from the same version race: one wins, one is stale. A retry of the older correction or original confirmation returns the latest effective receipt and creates no extra audit.",
+    "Owner/admin readers use the effective correction; another family sees none. All browser direct writes and service updates are denied. The separate billing prerequisite reads the same effective receipt."
+  ],
+  "original": {
+    "workbookId": "4bdd90de-574d-4f8d-94b8-6b41c08a42ae",
+    "parentId": "0bcf10f9-22b6-4f78-8b47-66a28582951f",
+    "childId": "02ba0be4-4ce4-4695-a3f4-f7cb604ed28f",
+    "number": 1,
+    "deliveredAt": "2026-10-25T13:37:00.000Z",
+    "localTime": "2026-10-25T09:37",
+    "timeZone": "America/Toronto",
+    "recordedAt": "2026-11-02T23:00:26.634Z",
+    "actorId": "0ceb0bfb-8893-4ea7-961a-f20b4af8a80a",
+    "auditId": 101
+  },
+  "corrected": {
+    "workbookId": "4bdd90de-574d-4f8d-94b8-6b41c08a42ae",
+    "parentId": "0bcf10f9-22b6-4f78-8b47-66a28582951f",
+    "childId": "02ba0be4-4ce4-4695-a3f4-f7cb604ed28f",
+    "number": 1,
+    "deliveredAt": "2026-10-30T13:37:00.000Z",
+    "localTime": "2026-10-30T09:37",
+    "timeZone": "America/Toronto",
+    "recordedAt": "2026-11-02T23:00:26.634Z",
+    "actorId": "0ceb0bfb-8893-4ea7-961a-f20b4af8a80a",
+    "auditId": 101,
+    "originalDeliveredAt": "2026-10-25T13:37:00.000Z",
+    "correction": {
+      "id": "092c6b15-b1e8-4ec6-bab6-1f8df64e0142",
+      "reason": "Parent confirmed the arrival date",
+      "deliveredAt": "2026-10-30T13:37:00.000Z",
+      "recordedAt": "2026-11-02T23:00:51.345Z",
+      "actorId": "0ceb0bfb-8893-4ea7-961a-f20b4af8a80a",
+      "auditId": 103,
+      "previousDeliveredAt": "2026-10-25T13:37:00.000Z"
+    }
+  },
+  "latest": {
+    "workbookId": "4bdd90de-574d-4f8d-94b8-6b41c08a42ae",
+    "parentId": "0bcf10f9-22b6-4f78-8b47-66a28582951f",
+    "childId": "02ba0be4-4ce4-4695-a3f4-f7cb604ed28f",
+    "number": 1,
+    "deliveredAt": "2026-10-31T13:37:00.000Z",
+    "localTime": "2026-10-31T09:37",
+    "timeZone": "America/Toronto",
+    "recordedAt": "2026-11-02T23:00:26.634Z",
+    "actorId": "0ceb0bfb-8893-4ea7-961a-f20b4af8a80a",
+    "auditId": 101,
+    "originalDeliveredAt": "2026-10-25T13:37:00.000Z",
+    "correction": {
+      "id": "c9d377a9-b46f-4906-a090-e3598b596437",
+      "reason": "Parent confirmed the arrival date",
+      "deliveredAt": "2026-10-31T13:37:00.000Z",
+      "recordedAt": "2026-11-02T23:00:57.890Z",
+      "actorId": "0ceb0bfb-8893-4ea7-961a-f20b4af8a80a",
+      "auditId": 104,
+      "previousDeliveredAt": "2026-10-30T13:37:00.000Z"
+    }
+  },
+  "beforeDeadlines": {
+    "reminderAt": "2026-10-29T13:37:00.000Z",
+    "backstopAt": "2026-11-15T14:37:00.000Z"
+  },
+  "correctedDeadlines": {
+    "reminderAt": "2026-11-03T14:37:00.000Z",
+    "backstopAt": "2026-11-20T14:37:00.000Z"
+  },
+  "latestDeadlines": {
+    "reminderAt": "2026-11-04T14:37:00.000Z",
+    "backstopAt": "2026-11-21T14:37:00.000Z"
+  },
+  "audit": {
+    "actorId": "0ceb0bfb-8893-4ea7-961a-f20b4af8a80a",
+    "at": "2026-11-02T23:00:51.334016+00:00",
+    "detail": {
+      "number": 1,
+      "reason": "Parent confirmed the arrival date",
+      "timeZone": "America/Toronto",
+      "deliveredAt": "2026-10-30T13:37:00+00:00",
+      "zoneOverride": true,
+      "originalDeliveredAt": "2026-10-25T13:37:00+00:00",
+      "previousDeliveredAt": "2026-10-25T13:37:00+00:00"
+    }
+  },
+  "proofLimits": [
+    "No reminder email had been sent: S11b dispatch is not implemented. The original anchor was already due before correction. No Stripe/AI call."
+  ]
+}

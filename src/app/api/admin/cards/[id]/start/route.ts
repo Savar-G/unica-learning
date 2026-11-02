@@ -2,6 +2,9 @@ import { adminSession, type CardSetupRow } from "@/lib/admin-store";
 import { isUuid } from "@/lib/assessment-store";
 import { startPlan, stripe } from "@/lib/stripe";
 import { planPrice } from "@/lib/subscription-plan";
+import { firstDelivery } from "@/lib/workbook-delivery";
+import { workbookDeliveryStore } from "@/lib/workbook-delivery-store";
+import { workbookStore } from "@/lib/workbook-store";
 
 // D-139: an admin starts a saved card's paid plan when the child's first workbook arrives at your home. Stripe holds the result; the
 // dashboard reads it from there. Answers { ok, firstChargeAt } or { ok: false, error }.
@@ -19,14 +22,16 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
   if (!body || typeof body !== "object" || !("deliveryConfirmed" in body) || body.deliveryConfirmed !== true) {
     return Response.json({ ok: false, error: "not_delivered" }, { status: 409 });
   }
-  const s = stripe();
-  if (!s) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
   const { data, error } = await admin.db.rpc("admin_card_setups").select("*").eq("id", id.toLowerCase()).maybeSingle();
   if (error) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
   const card = data as CardSetupRow | null;
   if (!card) return new Response("Not found", { status: 404 });
   if (!card.card_saved_at || !card.stripe_customer_id) return Response.json({ ok: false, error: "no_card" }, { status: 409 });
   try {
+    const receipt = await firstDelivery(workbookDeliveryStore(admin.db), await workbookStore(admin.db).childWorkbooks(card.child_id), card.parent_id, card.child_id);
+    if (!receipt) return Response.json({ ok: false, error: "delivery_receipt_required" }, { status: 409 });
+    const s = stripe();
+    if (!s) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
     const result = await startPlan(s, { cardSetup: card.id, customer: card.stripe_customer_id, price: planPrice(Number(card.price), card.plan), deliveryConfirmed: true });
     return Response.json(result, { status: result.ok ? 200 : 409 });
   } catch (e) {

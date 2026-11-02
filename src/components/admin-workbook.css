@@ -56,3 +56,6 @@
 
 /* A skill's plain name: wide enough to read on one or two lines. */
 .adm-wb-skill { min-width: 14em; }
+.adm-wb-delivery { margin: 12px 0; }
+.adm-wb-delivery input { max-width: 100%; min-height: 44px; padding: 6px 8px; border: 1px solid #d4d4d8; border-radius: 6px; background: #fff; font: 400 14px/1.2 var(--sans); color: var(--ink); }
+.adm-wb-delivery button { min-height: 44px; white-space: normal; }

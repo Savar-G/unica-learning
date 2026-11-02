@@ -1,0 +1,45 @@
+{
+  "checks": [
+    "Anonymous, owning parent and other non-admin denied through HTTP and direct RPC.",
+    "Eight concurrent identical public HTTP confirms, reload in fresh session, retry: one receipt and one original actor/audit.",
+    "Book 2 has distinct persisted receipt/deadlines; book 1 and its four/21-day anchors unchanged.",
+    "Missing/not-shipped workbook, wrong child/number, future/calendar/gap time, and changed zone refused.",
+    "RLS: admin and owner read; other family sees none; anon denied. All browser roles denied direct writes; service update immutable.",
+    "Admin reload renders missing delivery work and the saved receipt. Direct RPC time checks hold."
+  ],
+  "first": {
+    "workbookId": "4bdd90de-574d-4f8d-94b8-6b41c08a42ae",
+    "parentId": "0bcf10f9-22b6-4f78-8b47-66a28582951f",
+    "childId": "02ba0be4-4ce4-4695-a3f4-f7cb604ed28f",
+    "number": 1,
+    "deliveredAt": "2026-10-25T13:37:00.000Z",
+    "localTime": "2026-10-25T09:37",
+    "timeZone": "America/Toronto",
+    "recordedAt": "2026-11-02T23:00:26.634Z",
+    "actorId": "0ceb0bfb-8893-4ea7-961a-f20b4af8a80a",
+    "auditId": 101
+  },
+  "second": {
+    "workbookId": "af086542-ce6b-4265-86b0-aa1a83632a4e",
+    "parentId": "0bcf10f9-22b6-4f78-8b47-66a28582951f",
+    "childId": "02ba0be4-4ce4-4695-a3f4-f7cb604ed28f",
+    "number": 2,
+    "deliveredAt": "2026-10-30T13:37:00.000Z",
+    "localTime": "2026-10-30T09:37",
+    "timeZone": "America/Toronto",
+    "recordedAt": "2026-11-02T23:00:28.764Z",
+    "actorId": "0ceb0bfb-8893-4ea7-961a-f20b4af8a80a",
+    "auditId": 102
+  },
+  "firstDeadlines": {
+    "reminderAt": "2026-10-29T13:37:00.000Z",
+    "backstopAt": "2026-11-15T14:37:00.000Z"
+  },
+  "secondDeadlines": {
+    "reminderAt": "2026-11-03T14:37:00.000Z",
+    "backstopAt": "2026-11-20T14:37:00.000Z"
+  },
+  "proofLimits": [
+    "Synthetic families only. No paid AI or real Stripe request. S11b progress/re-evaluation remains future work."
+  ]
+}

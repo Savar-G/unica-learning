@@ -2479,6 +2479,168 @@ export type Database = {
           },
         ]
       }
+      workbook_delivery_corrections: {
+        Row: {
+          actor_id: string
+          audit_id: number
+          child_id: string
+          delivered_at: string
+          id: string
+          local_time: string
+          number: number
+          parent_id: string
+          previous_audit_id: number
+          previous_delivered_at: string
+          reason: string
+          recorded_at: string
+          workbook_id: string
+        }
+        Insert: {
+          actor_id: string
+          audit_id: number
+          child_id: string
+          delivered_at: string
+          id: string
+          local_time: string
+          number: number
+          parent_id: string
+          previous_audit_id: number
+          previous_delivered_at: string
+          reason: string
+          recorded_at?: string
+          workbook_id: string
+        }
+        Update: {
+          actor_id?: string
+          audit_id?: number
+          child_id?: string
+          delivered_at?: string
+          id?: string
+          local_time?: string
+          number?: number
+          parent_id?: string
+          previous_audit_id?: number
+          previous_delivered_at?: string
+          reason?: string
+          recorded_at?: string
+          workbook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_delivery_corrections_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: true
+            referencedRelation: "workbook_audit"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_delivery_corrections_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_delivery_corrections_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_delivery_corrections_previous_audit_id_fkey"
+            columns: ["previous_audit_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_audit"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_delivery_corrections_workbook_id_fkey"
+            columns: ["workbook_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_delivery_receipts"
+            referencedColumns: ["workbook_id"]
+          },
+          {
+            foreignKeyName: "workbook_delivery_corrections_workbook_id_parent_id_child__fkey"
+            columns: ["workbook_id", "parent_id", "child_id", "number"]
+            isOneToOne: false
+            referencedRelation: "workbooks"
+            referencedColumns: ["id", "parent_id", "child_id", "number"]
+          },
+        ]
+      }
+      workbook_delivery_receipts: {
+        Row: {
+          actor_id: string
+          audit_id: number
+          child_id: string
+          delivered_at: string
+          local_time: string
+          number: number
+          parent_id: string
+          recorded_at: string
+          time_zone: string
+          workbook_id: string
+          zone_override: boolean
+        }
+        Insert: {
+          actor_id: string
+          audit_id: number
+          child_id: string
+          delivered_at: string
+          local_time: string
+          number: number
+          parent_id: string
+          recorded_at?: string
+          time_zone: string
+          workbook_id: string
+          zone_override: boolean
+        }
+        Update: {
+          actor_id?: string
+          audit_id?: number
+          child_id?: string
+          delivered_at?: string
+          local_time?: string
+          number?: number
+          parent_id?: string
+          recorded_at?: string
+          time_zone?: string
+          workbook_id?: string
+          zone_override?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_delivery_receipts_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: true
+            referencedRelation: "workbook_audit"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_delivery_receipts_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_delivery_receipts_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_delivery_receipts_workbook_id_parent_id_child_id__fkey"
+            columns: ["workbook_id", "parent_id", "child_id", "number"]
+            isOneToOne: false
+            referencedRelation: "workbooks"
+            referencedColumns: ["id", "parent_id", "child_id", "number"]
+          },
+        ]
+      }
       workbook_draft_revisions: {
         Row: {
           by_email: string | null
@@ -4003,6 +4165,33 @@ export type Database = {
       confirm_family_copies: {
         Args: { p: string; token: string }
         Returns: boolean
+      }
+      confirm_workbook_delivery: {
+        Args: {
+          p_child: string
+          p_delivered: string
+          p_local: string
+          p_number: number
+          p_override: boolean
+          p_workbook: string
+          p_zone: string
+        }
+        Returns: Json
+      }
+      correct_workbook_delivery: {
+        Args: {
+          p_child: string
+          p_delivered: string
+          p_expected_audit: number
+          p_local: string
+          p_number: number
+          p_override: boolean
+          p_reason: string
+          p_request: string
+          p_workbook: string
+          p_zone: string
+        }
+        Returns: Json
       }
       count_workbook_run_attempts: {
         Args: {
