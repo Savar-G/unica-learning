@@ -1,0 +1,74 @@
+{
+  "checked": "2026-11-01",
+  "method": "HTTP GET with redirects. 403 and transport failures do not establish a dead link. No admin URL requested.",
+  "results": [
+    {
+      "url": "https://www.mathusee.com/schools/teacher-resources/placement/placement-tests/",
+      "status": 200,
+      "finalUrl": "https://mathusee.com/digital-tools/placement-tool/classroom-placement/",
+      "bytes": 102219,
+      "seconds": 1.15
+    },
+    {
+      "url": "https://www.singaporemath.com/Placement_Test_s/86.htm",
+      "status": 200,
+      "finalUrl": "https://www.singaporemath.com/pages/placement-tests",
+      "bytes": 378359,
+      "seconds": 0.68
+    },
+    {
+      "url": "https://parcc.pearson.com/practice-tests/math/",
+      "error": "<urlopen error [Errno 8] nodename nor servname provided, or not known>",
+      "seconds": 0.3
+    },
+    {
+      "url": "http://www.txar.org/diagnostic/k2Assessments.htm",
+      "status": 200,
+      "finalUrl": "https://www.txar.org/diagnostic/k2Assessments.htm",
+      "bytes": 14768,
+      "seconds": 0.91
+    },
+    {
+      "url": "https://www.singaporemath.com/placement-tests/",
+      "status": 200,
+      "finalUrl": "https://www.singaporemath.com/pages/placement-tests",
+      "bytes": 378359,
+      "seconds": 0.87
+    },
+    {
+      "url": "http://teachingtextbooks.com/v/vspfiles/tt/Placement.htm",
+      "status": 404,
+      "finalUrl": "https://www.teachingtextbooks.com/v/vspfiles/tt/Placement.htm",
+      "bytes": 32553,
+      "seconds": 1.15
+    },
+    {
+      "url": "https://stressfreemathforkids.com/members-only/free-elementary-math-placement-tests/",
+      "status": 200,
+      "finalUrl": "https://stressfreemathforkids.com/members-only/free-elementary-math-placement-tests/",
+      "bytes": 748208,
+      "seconds": 0.69
+    },
+    {
+      "url": "https://handinhandhomeschool.com/teaching/math/math-placement-test/",
+      "status": 200,
+      "finalUrl": "https://handinhandhomeschool.com/teaching/math/math-placement-test/",
+      "bytes": 132267,
+      "seconds": 1.28
+    },
+    {
+      "url": "https://unicalearning.com/",
+      "status": 200,
+      "finalUrl": "https://unicalearning.com/",
+      "bytes": 199171,
+      "seconds": 0.12
+    },
+    {
+      "url": "https://unifysocial.ca/blog/unica-learning-math-help-newcomer-parents",
+      "status": 200,
+      "finalUrl": "https://unifysocial.ca/blog/unica-learning-math-help-newcomer-parents",
+      "bytes": 121744,
+      "seconds": 0.57
+    }
+  ]
+}
