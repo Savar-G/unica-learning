@@ -304,6 +304,8 @@ const SPACED_RUN = `(?:(?!${UNSPACED_LETTER})[\\p{L}\\p{M}])+`;
 const LETTER_RUN = new RegExp(SPACED_RUN, "gu");
 /** A run of letters of one kind: an unspaced run, or a spaced word. */
 const NAME_RUN = new RegExp(`${UNSPACED_LETTER}(?:${UNSPACED_LETTER}|\\p{M})*|${SPACED_RUN}`, "gu");
+/** Two or more single letters, each with its accents, joined by spaces, dots, hyphens or underscores: a name spelled out. */
+const SPELLED = new RegExp(`(?<![\\p{L}\\p{M}])${SPACED_RUN.replace("+", "")}(?:[\\s.\\-_]+(?:(?!${UNSPACED_LETTER})\\p{L}\\p{M}*))+(?![\\p{L}\\p{M}])`, "gu");
 /** One character with its accents. */
 const UNIT = /\P{M}\p{M}*|\p{M}+/gu;
 
@@ -312,8 +314,9 @@ const UNIT = /\P{M}\p{M}*|\p{M}+/gu;
  * name gets the same plain form first. For the spaced scripts a word is a run of letters (Unicode \p{L} with its
  * accents), compared without case or accents, so "Zoë", "ZOE" and "zoe" all match "Zoë", and "Élodie" matches "Elodie".
  * A name of several words ("Mary Ann") hides each word of it with two or more letters. A word matches when it is the
- * name, the name with "s" ("Zoës"), or the name with its last letter stretched ("Leahhh"); a possessive ("Zoë's",
- * "Zoë’s") is the name followed by an apostrophe, so it matches too. The name inside a longer word ("Ann" in "planning"
+ * name, or the name with its last letter stretched two or more times ("Leahhh"); a plural "s" or one extra letter
+ * makes ordinary words ("roses", "all") and does not match (R403-8). A possessive ("Zoë's", "Zoë’s") is the name
+ * followed by an apostrophe, so it matches too. A name spelled letter by letter ("L e a h", "L-E-A-H") matches (R403-7). The name inside a longer word ("Ann" in "planning"
  * or "Annual") is another word and stays. A name in an unspaced script (see UNSPACED_SCRIPTS) is hidden as a whole
  * wherever it is, also inside a longer run ("我叫小明", "민수가"), without case, and only where it ends on a whole
  * character; a part of it never matches ("ジョギング" stays for "ジョージ"). A Latin name written next to such letters
@@ -324,7 +327,12 @@ export function hideName(text: string, childName: string, token: string): string
   const parts = nameParts(plainText(childName));
   const spaced = parts.filter((p) => !p.unspaced).map((p) => p.folded);
   const unspaced = parts.filter((p) => p.unspaced).map((p) => p.folded);
-  const words = spaced.length === 0 ? plain : plain.replace(LETTER_RUN, (run) => {
+  // A name spelled letter by letter ("L e a h", "L-E-A-H", "L.e.a.h") is the name too (review R403-7).
+  const spelled = spaced.length === 0 ? plain : plain.replace(SPELLED, (run) => {
+    const letters = foldWord(run.replace(/[^\p{L}\p{M}]/gu, ""));
+    return spaced.includes(letters) ? token : run;
+  });
+  const words = spaced.length === 0 ? plain : spelled.replace(LETTER_RUN, (run) => {
     const word = foldWord(run);
     return spaced.some((p) => word === p || (word.startsWith(p) && isNameTail(word.slice(p.length), p))) ? token : run;
   });
@@ -347,9 +355,11 @@ function nameParts(childName: string): { folded: string; unspaced: boolean }[] {
 
 /** "s", or the name's last letter again ("hh" after "leah"). */
 function isNameTail(rest: string, part: string): boolean {
-  if (rest === "s") return true;
+  // Only a stretched last letter, two or more times ("Leahhh"). A single extra letter or a plural "s" makes ordinary
+  // words ("all" for Al, "roses" for Rose), so neither counts (review R403-8); a possessive ("Rose's") is still the
+  // name, because the apostrophe ends the word.
   const last = [...part].at(-1);
-  return last !== undefined && [...rest].every((c) => c === last);
+  return last !== undefined && [...rest].length >= 2 && [...rest].every((c) => c === last);
 }
 
 // ---------- The AI's warm sentence: picked from code's sentences ----------

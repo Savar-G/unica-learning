@@ -429,9 +429,9 @@ describe("the warm sentence is only ever a fact code checked (R403-1, round 2)",
 
 describe("hiding the child's name (R403-2)", () => {
   it.each([
-    ["Zoë", "Hi Zoë! zoe's turn. ZOË, Zoe’s idea, Zoës, Zoëëë.", "Hi {child}! {child}'s turn. {child}, {child}’s idea, {child}, {child}."],
+    ["Zoë", "Hi Zoë! zoe's turn. ZOË, Zoe’s idea, Zoëëë.", "Hi {child}! {child}'s turn. {child}, {child}’s idea, {child}."],
     ["Élodie", "Élodie and Elodie and élodie-Marie and ÉLODIE's.", "{child} and {child} and {child}-Marie and {child}'s."],
-    ["Leah", "Leahhh said Leah2 and (leah) — Leahs.", "{child} said {child}2 and ({child}) — {child}."],
+    ["Leah", "Leahhh said Leah2 and (leah).", "{child} said {child}2 and ({child})."],
     ["Ann", "Ann has an annual planning chart; Anna and Annie came, Ann's too.", "{child} has an annual planning chart; Anna and Annie came, {child}'s too."],
     ["Mary Ann", "Mary and Ann and Mary Ann.", "{child} and {child} and {child} {child}."],
     ["Łukasz", "Lukasz and łukasz and ŁUKASZ.", "{child} and {child} and {child}."],
@@ -454,6 +454,31 @@ describe("hiding the child's name (R403-2)", () => {
     ["Ann", "Ann has planning and ANNual, ann.", "{child} has planning and ANNual, {child}."],
   ])("%s in %s, written without spaces", (name, text, hidden) => {
     expect(hideName(text, name, "{child}")).toBe(hidden);
+  });
+
+  // Round 4: a name spelled out letter by letter is the name (R403-7); a plural "s" or one extra letter makes an
+  // ordinary word, which stays (R403-8).
+  it.each([
+    ["Leah", "My name is L e a h.", "My name is {child}."],
+    ["Leah", "L-E-A-H! and l.e.a.h and L_e_a_h", "{child}! and {child} and {child}"],
+    ["Zoë", "It is Z o ë", "It is {child}"],
+    ["Leah", "I a m here", "I a m here"],
+    ["Al", "We all did it. Al did it.", "We all did it. {child} did it."],
+    ["Rose", "I like roses. Rose's turn.", "I like roses. {child}'s turn."],
+    ["Leah", "Leahs and Leahhh", "Leahs and {child}"],
+  ])("%s in %s (R403-7, R403-8)", (name, text, hidden) => {
+    expect(hideName(text, name, "{child}")).toBe(hidden);
+  });
+
+  it("a name spelled out reaches neither the AI nor the stored note (R403-7)", async () => {
+    const { ended } = await endedTestCall(["My name is L e a h.", ...NO_START], undefined, "Leah");
+    const call = asFamily(ended);
+    const ai = fakeNoteAi("sure");
+    const s = setup(ai, [call], [TEST_PARENT], async () => "Leah");
+    const note = written(await s.notes.write({ call, package: ended.package, event: ended.event }));
+    expect(note.transcript.filter((l) => l.speaker === "child")[0].text).toBe("My name is {child}.");
+    expect(JSON.stringify(ai.requests)).not.toMatch(/L e a h/i);
+    expect(JSON.stringify(s.store.rows())).not.toMatch(/L e a h/i);
   });
 
   it("a Chinese name written without spaces reaches neither the AI nor the stored note (R403-2, round 2)", async () => {
