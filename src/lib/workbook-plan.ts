@@ -59,6 +59,29 @@ import type { ChildStandard } from "@/lib/child-profile";
 import type { QuestionRef } from "@/lib/question-package";
 import type { Curriculum, CurriculumLevel, Delivery, Range } from "@/lib/workbook-curriculum";
 
+/** Shared ten-day schedule (#479). Apply the range inside each skill's curriculum bound.
+ * Fixed benchmarks, measures and fractions keep their values; support and complexity still change.
+ * The time limit is a planning estimate, not a measured child completion time.
+ */
+export interface DayDifficulty {
+  numberRange: { min: number; max: number };
+  rangeFraction: number;
+  helpLevel: "pictures" | "new-ideas-only" | "none";
+  difficulty: 1 | 2 | 3;
+  storyShare: number;
+  maxMinutes: number;
+}
+export function dayDifficulty(level: number, day: number): DayDifficulty {
+  if (!Number.isInteger(level) || level < 1 || level > 30) throw new Error("A workbook level must be 1 to 30.");
+  if (!Number.isInteger(day) || day < 1 || day > 10) throw new Error("A workbook day must be 1 to 10.");
+  const top = level <= 3 ? 10 : level <= 6 ? 20 : level <= 9 ? 100 : level <= 12 ? 1000
+    : level <= 15 ? 10_000 : level <= 18 ? 1_000_000 : 1_000_000_000;
+  const rangeFraction = [.4, .45, .5, .6, .65, .7, .75, .85, .95, 1][day - 1];
+  return { numberRange: { min: 0, max: Math.max(5, Math.ceil(top * rangeFraction)) }, rangeFraction,
+    helpLevel: day <= 3 ? "pictures" : day <= 7 ? "new-ideas-only" : "none",
+    difficulty: day <= 3 ? 1 : day <= 7 ? 2 : 3, storyShare: day <= 7 ? .2 : .4, maxMinutes: 30 };
+}
+
 /**
  * The page types of a workbook day (DESIGN.md section 7), a closed list for the generator and the templates. The
  * renderer's fixed test template (#309) has "cover" and "practice": "practice" is this "practice"; the cover, the How +
