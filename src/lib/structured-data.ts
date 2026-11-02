@@ -11,11 +11,10 @@ export const ORG_ID = `${SITE_URL}/#organization`;
 const offer = (p: (typeof PLANS)[keyof typeof PLANS]) => ({
   "@type": "Offer",
   name: p.name,
-  description: p.note,
+  description: `${p.note}. Available for the BC curriculum.`,
   price: p.price,
   priceCurrency: "CAD",
   priceSpecification: { "@type": "UnitPriceSpecification", price: p.price, priceCurrency: "CAD", unitText: "MONTH", billingDuration: "P1M" },
-  eligibleRegion: { "@type": "Country", name: "Canada" },
   url: `${SITE_URL}/pricing`,
 });
 
