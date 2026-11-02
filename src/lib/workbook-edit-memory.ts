@@ -1,3 +1,5 @@
+import { EDIT_CALL_LIMIT, type EditCallKey } from "@/lib/workbook-edit-calls";
+import type { Json } from "@/lib/database.types";
 import type { EditSnapshot, ReviewComment, WorkbookEdit, WorkbookEditStore, EditResult, EditCheckpoint, EditFrame } from "@/lib/workbook-edit";
 import { EDIT_LEASE_MS } from "@/lib/workbook-edit";
 import type { RunRunner } from "@/lib/workbook-job";
@@ -15,7 +17,25 @@ export function memoryWorkbookReview(snapshot: EditSnapshot, options: { now?: ()
   const now = options.now ?? Date.now;
   const frames = new Map<string, EditFrame>();
   const owned = (id: string, lease: string) => { const b = batches.get(id); return b?.lease === lease && b.status === "running" && Date.parse(b.expiresAt!) > now(); };
+  const calls: { batch: string; lease: string; key: EditCallKey; attempt: number; result?: Json }[] = [];
   const store: WorkbookEditStore = {
+    async reserveCall(id, lease, key) {
+      if (!owned(id, lease)) return { status: "stopped" };
+      const scope = calls.filter(c => c.batch === id && c.key.page === key.page && c.key.question === key.question && c.key.kind === key.kind);
+      const saved = scope.find(c => c.key.hash === key.hash && c.result !== undefined);
+      if (saved) return { status: "saved", result: structuredClone(saved.result!) };
+      if (scope.length >= EDIT_CALL_LIMIT) return { status: "limit" };
+      const attempt = scope.length + 1;
+      calls.push({ batch: id, lease, key: structuredClone(key), attempt });
+      return { status: "dispatch", attempt };
+    },
+    async completeCall(id, lease, key, attempt, result) {
+      if (!owned(id, lease)) return false;
+      const row = calls.find(c => c.batch === id && c.lease === lease && c.attempt === attempt && JSON.stringify(c.key) === JSON.stringify(key));
+      if (!row) return false;
+      if (row.result === undefined) row.result = structuredClone(result);
+      return true;
+    },
     async frame(id, lease, frame) { if (!owned(id, lease)) return null; if (!frames.has(id)) frames.set(id, checkpoints.get(id)?.size ? {build: "unframed-edit", model: null, solveModel: "unknown"} : structuredClone(frame)); return structuredClone(frames.get(id)!); },
     async checkpoints(id) { return structuredClone([...(checkpoints.get(id)?.values() ?? [])]); },
     async checkpoint(id, lease, result) {
@@ -37,7 +57,7 @@ export function memoryWorkbookReview(snapshot: EditSnapshot, options: { now?: ()
       if ("error" in result) {
         b.status = "failed"; b.error = result.error;
         for (const c of comments.filter((c) => c.batchId === id && c.status === "sent")) {
-          c.status = result.pending ? "pending" : "failed"; c.error = result.problems?.find((p) => p.page === c.page)?.reason ?? result.error;
+          c.status = result.pending || checkpoints.get(id)?.get(c.page)?.pending ? "pending" : "failed"; c.error = result.problems?.find((p) => p.page === c.page)?.reason ?? result.error;
         }
         return refused(result.error);
       }
@@ -46,7 +66,7 @@ export function memoryWorkbookReview(snapshot: EditSnapshot, options: { now?: ()
       revisions.push(copy(current)); b.status = "done"; status = "draft";
       for (const c of comments.filter((c) => c.batchId === id && c.status === "sent")) {
         c.error = result.problems.find((p) => p.page === c.page)?.reason ?? null;
-        c.status = c.error ? "failed" : "done";
+        c.status = c.error ? checkpoints.get(id)?.get(c.page)?.pending ? "pending" : "failed" : "done";
         const bpage = before.draft.pages.find((p) => p.number === c.page), apage = current.draft.pages.find((p) => p.number === c.page);
         c.before = c.question === null ? bpage : bpage?.questions.find((q) => q.number === c.question);
         c.after = c.question === null ? apage : apage?.questions.find((q) => q.number === c.question);

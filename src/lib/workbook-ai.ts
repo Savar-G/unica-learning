@@ -57,6 +57,8 @@ export interface WorkbookAi {
 export interface WorkbookAiOptions {
   /** Whether `claude -p` may run here: true on the Mac (the worker, the sample script), false on the server. */
   subscription: boolean;
+  /** Exactly one provider request per ledger dispatch for edit batches. */
+  singleDispatch?: boolean;
   /** Overrides WORKBOOK_AI_PRIMARY (the sample script's --api). */
   primary?: AiProvider;
   /** For tests: the process seam of `claude -p`. */
@@ -90,13 +92,13 @@ export function workbookAi(env: Env, o: WorkbookAiOptions): WorkbookAi {
     ? claudeCliClient({ model, command: env.WORKBOOK_CLAUDE_COMMAND?.trim() || "claude", spawn: o.spawn, env, configDir: env.WORKBOOK_CLAUDE_CONFIG_DIR, timeout })
     : null;
   const api = (model: string, ms: number) => apiKey
-    ? (onCost: (usd: number) => void, onRequest: () => Promise<void>, onDispatch: () => void) => openRouterClient({ apiKey, model, fetch: costingFetch(onCost, base), timeout: ms, onRequest, onDispatch })
+    ? (onCost: (usd: number) => void, onRequest: () => Promise<void>, onDispatch: () => void) => openRouterClient({ apiKey, model, fetch: costingFetch(onCost, base), timeout: ms, maxRetries: o.singleDispatch ? 0 : 1, onRequest, onDispatch })
     : null;
   const writeCli = cli(models.cli);
   const writeApi = api(models.api, API_TIMEOUT_MS);
   if (!writeCli && !writeApi) return { ai: null, solve: null, gate };
   const ai = fallbackAiClient({
-    primary, subscription: writeCli, api: writeApi, model: models.write, gate, now: o.now,
+    primary, singleDispatch: o.singleDispatch, subscription: writeCli, api: writeApi, model: models.write, gate, now: o.now,
     onCall: (r) => o.onCall?.("write", r),
     ...(o.onStart ? { onStart: (r: AiCallRecord) => o.onStart!("write", r) } : {}),
     onExclude: o.onExclude,
@@ -112,7 +114,7 @@ export function workbookAi(env: Env, o: WorkbookAiOptions): WorkbookAi {
     async solve(request, signal) {
       let usd: number | null = null;
       const client = fallbackAiClient({
-        primary, subscription: solveCli, api: solveApi, model: models.solve, gate, now: o.now,
+        primary, singleDispatch: o.singleDispatch, subscription: solveCli, api: solveApi, model: models.solve, gate, now: o.now,
         ...(o.onStart ? { onStart: (r: AiCallRecord) => o.onStart!("solve", r) } : {}),
         onExclude: o.onExclude,
         onCall: async (r) => {

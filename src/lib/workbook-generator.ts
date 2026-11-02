@@ -1,3 +1,4 @@
+import type { EditCall } from "@/lib/workbook-edit-calls";
 // The workbook generator (#311, spec #296): a two-week plan (#308, src/lib/workbook-plan.ts) in, one coherent draft
 // workbook out, stored as one unit through the draft store. The plan fixes every page and part; the AI fills the
 // question slots of each page with content only (src/lib/workbook-generator-items.ts), one call per page; code
@@ -325,8 +326,8 @@ export class ResumeMismatch extends Error {}
 export class WriterPersistenceError extends Error {}
 
 export interface GenerateDeps {
-  /** Completed edit writer responses, saved before any solve or render work. */
-  writerResponses?: { load(): Promise<unknown[]>; save(response: unknown): Promise<void> };
+  /** Durable dispatches and results for edit writers and solves. */
+  editCall?: EditCall;
   ai: AiClient;
   fit: FitCheck;
   store: WorkbookDraftStore;
@@ -873,15 +874,10 @@ function roomOf(input: GenerateInput, place: SlotName, day: number) {
  * that is not JSON) is sent once more, the same; the second error is the one returned.
  */
 async function callAi(deps: GenerateDeps, name: string, request: unknown, ids: string[] = []): Promise<{ items: Map<string, unknown>; error: string | null }> {
-  const kept = await deps.writerResponses?.load() ?? [];
-  let cursor = 0;
   const ask = async () => {
-    if (cursor < kept.length) return kept[cursor++];
-    const response = await withTimeLimit(deps.timeLimitMs ?? TIME_LIMIT_MS, signal =>
-      deps.ai.json({ name, system: SYSTEM, content: [{ type: "text", text: JSON.stringify(request) }], schema: ITEMS_SCHEMA, effort: "medium" }, signal));
-    try { await deps.writerResponses?.save(response); }
-    catch (error) { throw new WriterPersistenceError(String(error)); }
-    cursor++;
+    const prompt = { name, system: SYSTEM, content: [{ type: "text" as const, text: JSON.stringify(request) }], schema: ITEMS_SCHEMA, effort: "medium" as const };
+    const dispatch = () => withTimeLimit(deps.timeLimitMs ?? TIME_LIMIT_MS, signal => deps.ai.json(prompt, signal));
+    const response = deps.editCall ? await deps.editCall("write", "", prompt, dispatch) : await dispatch();
     return response;
   };
   const read = (out: unknown, into: Map<string, unknown>) => {
@@ -1923,7 +1919,9 @@ export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDep
   }
   await Promise.all([...built, ...examples.filter((p): p is QuestionPackage => p !== null).map((p) => ({ package: p }))].map(async (b) => {
     if (!b.package) return;
-    const log = await solveCheck(deps.solver, b.package, deps.solveTimeLimitMs ?? SOLVE_TIME_LIMIT_MS, deps.now);
+    const pkg = b.package;
+    const dispatch = () => solveCheck(deps.solver, pkg, deps.solveTimeLimitMs ?? SOLVE_TIME_LIMIT_MS, deps.now);
+    const log = deps.editCall ? await deps.editCall("solve", pkg.id, pkg, dispatch) : await dispatch();
     if (log) {
       deps.onSolve?.(log);
       if (log.verdict.status !== "agreed") throw new Error(solveReason(log.verdict));

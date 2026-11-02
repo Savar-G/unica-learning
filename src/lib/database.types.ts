@@ -2410,6 +2410,53 @@ export type Database = {
           },
         ]
       }
+      workbook_edit_calls: {
+        Row: {
+          attempt: number
+          batch_id: string
+          completed_at: string | null
+          dispatched_at: string
+          kind: string
+          lease: string
+          page_number: number
+          question_id: string
+          request_hash: string
+          result: Json | null
+        }
+        Insert: {
+          attempt: number
+          batch_id: string
+          completed_at?: string | null
+          dispatched_at?: string
+          kind: string
+          lease: string
+          page_number: number
+          question_id: string
+          request_hash: string
+          result?: Json | null
+        }
+        Update: {
+          attempt?: number
+          batch_id?: string
+          completed_at?: string | null
+          dispatched_at?: string
+          kind?: string
+          lease?: string
+          page_number?: number
+          question_id?: string
+          request_hash?: string
+          result?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_edit_calls_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_edits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_edits: {
         Row: {
           action: string
@@ -3689,6 +3736,19 @@ export type Database = {
         }
         Returns: string
       }
+      complete_workbook_edit_call: {
+        Args: {
+          p_attempt: number
+          p_hash: string
+          p_id: string
+          p_kind: string
+          p_lease: string
+          p_page: number
+          p_question: string
+          p_result: Json
+        }
+        Returns: boolean
+      }
       confirm_family_copies: {
         Args: { p: string; token: string }
         Returns: boolean
@@ -3822,7 +3882,6 @@ export type Database = {
               used_before: number
             }[]
           }
-
       is_admin: { Args: never; Returns: boolean }
       link_booking_family: {
         Args: { pid: string; sid: number }
@@ -3934,6 +3993,17 @@ export type Database = {
       request_family_deletion: {
         Args: { confirmation: string; p: string }
         Returns: string
+      }
+      reserve_workbook_edit_call: {
+        Args: {
+          p_hash: string
+          p_id: string
+          p_kind: string
+          p_lease: string
+          p_page: number
+          p_question: string
+        }
+        Returns: Json
       }
       resume_workbook_run:
         | {

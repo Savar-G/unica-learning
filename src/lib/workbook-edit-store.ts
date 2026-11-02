@@ -1,3 +1,4 @@
+import type { EditCallReservation } from "@/lib/workbook-edit-calls";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { toJson, type Database } from "@/lib/database";
 import { curriculumFor } from "@/lib/workbook-curriculum";
@@ -20,6 +21,12 @@ const checked = <T>(r: { data: T; error: { message: string } | null }): T => { i
 
 export function workbookEditStore(db: SupabaseClient<Database>): WorkbookEditStore {
   return {
+    async reserveCall(id, lease, key) {
+      return checked(await db.rpc("reserve_workbook_edit_call", { p_id: id, p_lease: lease, p_page: key.page, p_question: key.question, p_kind: key.kind, p_hash: key.hash })) as unknown as EditCallReservation;
+    },
+    async completeCall(id, lease, key, attempt, result) {
+      return checked(await db.rpc("complete_workbook_edit_call", { p_id: id, p_lease: lease, p_page: key.page, p_question: key.question, p_kind: key.kind, p_hash: key.hash, p_attempt: attempt, p_result: result })) === true;
+    },
     async frame(id, lease, frame) { return checked(await db.rpc("frame_workbook_edit", { p_id: id, p_lease: lease, p_frame: toJson(frame) })) as unknown as EditFrame | null; },
     async checkpoints(id) {
       const row = checked(await db.from("workbook_edits").select("checkpoints").eq("id", id).single());

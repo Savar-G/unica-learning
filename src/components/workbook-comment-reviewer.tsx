@@ -1,4 +1,5 @@
 "use client";
+import { workbookEditMessage } from "@/lib/workbook-edit-message";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { RunDetail } from "@/lib/admin-store";
@@ -39,7 +40,7 @@ function commentReason(reason: string) {
   if (/story|person with a first name|counted thing/.test(reason)) return "Use a person's first name. Name the counted things in the question.";
   const plain = plainReason(reason);
   if (plain !== NEEDS_A_LOOK) return plain;
-  if (/Reload the page|no longer exists|unavailable|previous version is unchanged/.test(reason)) return reason;
+  if (/Reload the page|no longer exists|unavailable|previous version is unchanged|call limit of 5/.test(reason)) return reason;
   return "The check could not confirm this change. Edit the comment and try again.";
 }
 function preview(value: unknown): string {
@@ -60,6 +61,7 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
   const active = detail.editBatch?.status === "queued" || detail.editBatch?.status === "running";
   const stalled = active && detail.editBatch?.stalled;
   const working = active && !stalled;
+  const resultMessage = workbookEditMessage(detail.editBatch, detail.comments);
   const pending = detail.comments.filter((c) => c.status === "pending" || c.status === "failed");
   const page = pages.find((p) => p.number === selected)!;
   const rendered = draft.rendering?.pages.find((p) => p.number === selected);
@@ -103,7 +105,7 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
     {locked && <p className="wbr-message" role="note">This workbook is {detail.approved?.status}. It cannot change. You can read its comments.</p>}
     {stalled && <p role="alert" className="wbr-message">The edit stopped. Try again to continue with the saved responses.</p>}
     {working && <p className="wbr-message" role="status">{state} Your current workbook stays in place until the checked changes are ready.</p>}
-    {detail.editBatch?.status === "failed" && <p role="alert" className="wbr-message">{detail.editBatch.error}</p>}
+    {resultMessage && <p role="alert" className="wbr-message">{resultMessage}</p>}
     <div className="wbr-body">
       <nav className="wbr-thumbs" aria-label="Workbook pages">{pages.map((p) => {
         const count = detail.comments.filter((c) => c.page === p.number).length;

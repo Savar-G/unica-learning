@@ -20,9 +20,9 @@ const fit={fits:async()=>({ok:true as const})}, drafts=memoryDraftStore({[CHILD]
 const gen={ai:workbookFakeAi({NODE_ENV:"test",WORKBOOK_AI_FAKE:"on"})!,solver:keySolver(),fit,store:drafts,qrToken:()=>`token-${++serial}`.padEnd(22,"x")};
 let serial=0, original:GeneratedWorkbook;
 beforeAll(async()=>{ const result=await generateWorkbook(input,gen); if(result.status!=="stored") throw new Error(result.status); original=result.draft; });
-function setup(status:"draft"|"approved"|"printed"|"shipped"="draft") {
+function setup(status:"draft"|"approved"|"printed"|"shipped"="draft", now?: () => number) {
   const snapshot:EditSnapshot={draft:structuredClone(original),rendering:{pdfPath:"old.pdf",pages:original.pages.map(p=>({number:p.number,image:{path:`old-${p.number}.png`,width:816,height:1056},questions:[]}))},problems:[],revision:1,input,parentId:PARENT};
-  const review=memoryWorkbookReview(snapshot,{status});
+  const review=memoryWorkbookReview(snapshot,{status, now});
   const renderPage=vi.fn<EditJobDeps["renderPage"]>(async(s,d,n)=>({page:{number:n,image:{path:`new-${n}.png`,width:816,height:1056},questions:[]},paths:[`new-${n}.png`]}));
   const assemble=vi.fn<EditJobDeps["assemble"]>(async()=>({pdfPath:"new.pdf",paths:["new.pdf"]}));
   const remove=vi.fn(async()=>{});
@@ -140,6 +140,124 @@ describe("workbook comment batches",()=>{
       expect((await review.store.finish(sent.id, "old", {error: "late"})).status).toBe("refused");
       expect(id).toBeTruthy();
     });
+  }
+  for (const runner of ["mac", "server"] as const) {
+    it(`R428-7 ${runner} retries a writer response save without repeating the call`, async () => {
+      const s = setup(); s.deps.runner = runner; s.comment(); const id = s.send();
+      const complete = s.review.store.completeCall;
+      let fail = true;
+      s.review.store.completeCall = async (...args) => {
+        if (fail) { fail = false; throw new Error("response save before commit"); }
+        return complete(...args);
+      };
+      const json = vi.fn(gen.ai.json);
+      s.deps.generation = { ...gen, ai: { model: gen.ai.model, json } };
+      await runWorkbookEdit(id, s.deps);
+      s.review.store.completeCall = complete;
+      if (s.review.snapshot().revision === 1) await runWorkbookEdit(id, s.deps);
+      expect(json).toHaveBeenCalledTimes(1);
+      expect(s.review.snapshot().revision).toBe(2);
+    });
+    it(`R428-10 ${runner} reuses a solve after the image checkpoint fails`, async () => {
+      const s = setup(); s.deps.runner = runner;
+      const q = s.pages[0].questions.find(q => q.package?.operation)!;
+      s.comment(s.pages[0].number, q.number, workbookEditItem(q)); const id = s.send();
+      const checkpoint = s.review.store.checkpoint;
+      s.review.store.checkpoint = async (...args) => {
+        if (args[2].image) throw new Error("page checkpoint before commit");
+        return checkpoint(...args);
+      };
+      const solve = vi.fn(gen.solver.solve), json = vi.fn(gen.ai.json);
+      s.deps.generation = { ...gen, ai: { model: gen.ai.model, json }, solver: { model: gen.solver.model, solve } };
+      expect(await runWorkbookEdit(id, s.deps)).toBe("failed");
+      s.review.store.checkpoint = checkpoint;
+      expect(await runWorkbookEdit(id, s.deps)).toBe("done");
+      expect(solve).toHaveBeenCalledTimes(1);
+      expect(json).not.toHaveBeenCalled();
+      expect(s.review.snapshot().revision).toBe(2);
+    });
+  }
+  for (const runner of ["mac", "server"] as const) {
+    for (const kind of ["write", "solve"] as const) {
+      function counted(now?: () => number) {
+        const s = setup("draft", now); s.deps.runner = runner;
+        const q = s.pages[0].questions.find(q => q.package?.operation)!;
+        s.comment(s.pages[0].number, q.number, kind === "solve" ? workbookEditItem(q) : null);
+        const json = vi.fn(gen.ai.json), solve = vi.fn(gen.solver.solve);
+        s.deps.generation = { ...gen, ai: { model: gen.ai.model, json }, solver: { model: gen.solver.model, solve } };
+        return { ...s, calls: kind === "write" ? json : solve };
+      }
+      it(`${runner} ${kind}: eight result-save failures cannot spend more than five dispatches`, async () => {
+        const s = counted(), id = s.send(), complete = s.review.store.completeCall;
+        const reserve = vi.spyOn(s.review.store, "reserveCall");
+        s.review.store.completeCall = async () => { throw new Error("result not committed"); };
+        for (let n = 0; n < 8; n++) expect(await runWorkbookEdit(id, s.deps)).toBe(n < 6 ? "failed" : "not-claimed");
+        expect(s.calls).toHaveBeenCalledTimes(5);
+        expect(reserve.mock.results.filter(r => r.type === "return")).toHaveLength(6);
+        expect(s.review.comments[0]).toMatchObject({status: "pending", error: expect.stringContaining("limit of 5")});
+        expect(s.review.snapshot().revision).toBe(1);
+        expect(s.review.snapshot().draft).toEqual(original);
+        s.review.store.completeCall = complete;
+      });
+      it(`${runner} ${kind}: a lost dispatch response spends an attempt without sending a call`, async () => {
+        const s = counted(), id = s.send(), reserve = s.review.store.reserveCall;
+        let lost = true;
+        s.review.store.reserveCall = async (...args) => {
+          const row = await reserve(...args);
+          if (lost) { lost = false; throw new Error("crash after dispatch commit"); }
+          return row;
+        };
+        expect(await runWorkbookEdit(id, s.deps)).toBe("failed");
+        expect(s.calls).not.toHaveBeenCalled();
+        const rows: number[] = [];
+        s.review.store.reserveCall = async (...args) => {
+          const row = await reserve(...args); if (row.status === "dispatch") rows.push(row.attempt); return row;
+        };
+        expect(await runWorkbookEdit(id, s.deps)).toBe("done");
+        expect(rows).toContain(2);
+        expect(s.calls).toHaveBeenCalledTimes(1);
+      });
+      it(`${runner} ${kind}: recovery reuses a result committed before the process stopped`, async () => {
+        const s = counted(), id = s.send(), complete = s.review.store.completeCall;
+        s.review.store.completeCall = async (...args) => {
+          await complete(...args); throw new Error("crash after result commit");
+        };
+        expect(await runWorkbookEdit(id, s.deps)).toBe("failed");
+        s.review.store.completeCall = complete;
+        expect(await runWorkbookEdit(id, s.deps)).toBe("done");
+        expect(s.calls).toHaveBeenCalledTimes(1);
+        expect(s.review.snapshot().revision).toBe(2);
+      });
+      it(`${runner} ${kind}: a crash during the call spends an attempt and rejects the late holder`, async () => {
+        let now = 0;
+        const s = counted(() => now), id = s.send();
+        let called!: () => void, unblock!: () => void;
+        const started = new Promise<void>(resolve => { called = resolve; });
+        const blocked = new Promise<void>(resolve => { unblock = resolve; });
+        let calls = 0;
+        const before = async () => {
+          calls++;
+          if (calls === 1) { called(); await blocked; }
+        };
+        if (kind === "write") s.deps.generation.ai = { model: gen.ai.model, json: async (r, signal) => { await before(); return gen.ai.json(r, signal); } };
+        else s.deps.generation.solver = { model: gen.solver.model, solve: async (r, signal) => { await before(); return gen.solver.solve(r, signal); } };
+        const old = runWorkbookEdit(id, s.deps);
+        await started;
+        now = 6 * 60_000 + 1;
+        expect(await runWorkbookEdit(id, s.deps)).toBe("done");
+        unblock();
+        expect(await old).toBe("failed");
+        expect(calls).toBe(2);
+        expect(s.review.snapshot().revision).toBe(2);
+        expect(s.review.revisions).toHaveLength(2);
+      });
+      it(`${runner} ${kind}: no call starts when dispatch storage fails before commit`, async () => {
+        const s = counted(), id = s.send();
+        s.review.store.reserveCall = async () => { throw new Error("dispatch not committed"); };
+        expect(await runWorkbookEdit(id, s.deps)).toBe("failed");
+        expect(s.calls).not.toHaveBeenCalled();
+      });
+    }
   }
   it("R428-4 returns one saved comment for a repeated client request key", () => {
     const s = setup(); s.comment();

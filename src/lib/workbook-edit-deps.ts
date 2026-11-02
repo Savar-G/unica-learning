@@ -27,7 +27,7 @@ export async function runWorkbookEditWith(db: SupabaseClient<Database>, id: stri
   const log = runAiCallLog(saveRunAiCalls(db, run.data.id));
   const env = place.env ?? process.env;
   const fake = workbookFakeAi(env);
-  const live = fake ? null : workbookAi(env, { subscription: place.subscription, primary: place.primary, onStart: log.add, onCall: log.add });
+  const live = fake ? null : workbookAi(env, { subscription: place.subscription, primary: place.primary, singleDispatch: true, onStart: log.add, onCall: log.add });
   const template = workbookTemplate(await fixedTemplateFonts()), engine = chromiumPrintEngine(), files = workbookFiles(db);
   const solver = (fake ? workbookFakeSolver(env) : live?.solve?.solver) ?? {
     model: "unavailable", solve: async () => { throw new Error("The solve checker is unavailable."); },

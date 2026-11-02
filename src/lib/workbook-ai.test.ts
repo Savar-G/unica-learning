@@ -102,6 +102,30 @@ describe("workbookAi", () => {
   });
 });
 
+describe("edit batch provider dispatches", () => {
+  for (const subscription of [false, true]) {
+    it(`${subscription ? "Mac" : "server"} makes one API request per edit dispatch, including a 500 response`, async () => {
+      const c = cli(() => ({ items: [] }));
+      const fetch = vi.fn(async () => new Response('{"error":{"message":"unavailable"}}', {status: 500}));
+      const live = workbookAi({ OPENROUTER_API_KEY: "test" }, { subscription, primary: "api", singleDispatch: true, spawn: c.spawn, fetch });
+      await expect(live.ai!.json(page, signal())).rejects.toThrow(/500/);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(c.models).toHaveLength(0);
+      await expect(live.solve!.solver.solve(solveRequest, signal())).rejects.toThrow(/500/);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(c.models).toHaveLength(0);
+    });
+  }
+  it("uses the fallback only on the next ledger dispatch after a subscription limit", async () => {
+    const c = cli(() => "limit"), api = openRouter(() => ({items: []}));
+    const live = workbookAi({ OPENROUTER_API_KEY: "test" }, { subscription: true, singleDispatch: true, spawn: c.spawn, fetch: api.fetch });
+    await expect(live.ai!.json(page, signal())).rejects.toThrow(/usage limit/);
+    expect(c.models).toHaveLength(1); expect(api.models).toHaveLength(0);
+    expect(await live.ai!.json(page, signal())).toEqual({items: []});
+    expect(c.models).toHaveLength(1); expect(api.models).toHaveLength(1);
+  });
+});
+
 describe("summarizeAiCalls", () => {
   it("counts the calls on each provider, the API's cost, and the calls a provider could not take", () => {
     const s = summarizeAiCalls([
