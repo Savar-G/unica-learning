@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { EmailCopy } from "@/lib/email-delivery";
 import type { CallNote } from "@/lib/maya-call-note";
-import type { WeeklyChild, WeeklyLogEntry, WeeklyParent, WeeklyStore, DueWeekly } from "@/lib/maya-weekly-email";
+import type { WeeklyCall, WeeklyChild, WeeklyLogEntry, WeeklyParent, WeeklyStore, DueWeekly } from "@/lib/maya-weekly-email";
 import { MAX_SEND_ATTEMPTS } from "@/lib/reminders";
 
 // The weekly Maya email's store (src/lib/maya-weekly-email.ts, #332) in memory, for tests. It keeps the database's rules
@@ -12,7 +12,7 @@ import { MAX_SEND_ATTEMPTS } from "@/lib/reminders";
 
 type Row = WeeklyLogEntry & { hash: string | null; emailId: string | null; error: string | null };
 
-export function memoryWeeklyStore(data: { parents: WeeklyParent[]; children: WeeklyChild[]; notes: CallNote[] }): WeeklyStore & {
+export function memoryWeeklyStore(data: { parents: WeeklyParent[]; children: WeeklyChild[]; notes: CallNote[]; calls?: WeeklyCall[] }): WeeklyStore & {
   rows(): Row[];
   copies: { logId: string; parentId: string; copy: EmailCopy }[];
   unsubscribe(token: string): "unsubscribed" | "unknown";
@@ -23,10 +23,12 @@ export function memoryWeeklyStore(data: { parents: WeeklyParent[]; children: Wee
   const row = (id: string) => rows.find((r) => r.id === id);
   return {
     async load() {
-      const parentIds = new Set(data.notes.map((n) => n.parentId));
+      const calls = data.calls ?? data.notes.map((n) => ({ callId: n.callId, parentId: n.parentId, childId: n.childId, endedAt: n.callEndedAt, notePending: false }));
+      const parentIds = new Set(calls.map((c) => c.parentId));
       return {
         parents: data.parents.filter((p) => parentIds.has(p.id)).map(copy),
         children: data.children.map(copy),
+        calls: calls.map(copy),
         notes: data.notes.map(copy),
         log: rows.filter((r) => parentIds.has(r.parentId)).map(({ id, kind, parentId, weekStart, status, attempts }) => ({ id, kind, parentId, weekStart, status, attempts })),
       };

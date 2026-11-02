@@ -14,7 +14,8 @@ vi.mock("server-only", () => ({}));
 const MAX_ROWS = 1000;
 type Row = Record<string, unknown>;
 
-function fakeDb(tables: Record<string, Row[]>) {
+function fakeDb(tables: Record<string, Row[]>, afterPage?: (table: string, page: Row[], url: URL) => void) {
+  tables.maya_calls ??= (tables.maya_call_notes ?? []).map((n) => ({ id: n.call_id, parent_id: n.parent_id, child_id: n.child_id, ended_at: n.call_ended_at, status: "ended", note_pending: null }));
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
     const table = url.pathname.split("/").pop()!;
@@ -28,10 +29,18 @@ function fakeDb(tables: Record<string, Row[]>) {
     let rows = [...(tables[table] ?? [])];
     for (const [key, raw] of url.searchParams) {
       if (["select", "order", "offset", "limit"].includes(key)) continue;
+      if (key === "or") {
+        const match = /^\((\w+)\.gt\.([^,]+),and\(\1\.eq\.([^,]+),(\w+)\.gt\.([^)]+)\)\)$/.exec(raw);
+        if (!match) throw new Error(`fake db: unsupported or ${raw}`);
+        const [, time, after, equal, id, lastId] = match;
+        rows = rows.filter((r) => String(r[time]) > after || (String(r[time]) === equal && String(r[id]) > lastId));
+        continue;
+      }
       const dot = raw.indexOf(".");
       const op = raw.slice(0, dot);
       const value = raw.slice(dot + 1);
       if (op === "eq") rows = rows.filter((r) => String(r[key]) === value);
+      else if (op === "gt") rows = rows.filter((r) => r[key] != null && String(r[key]) > value);
       else if (op === "gte") rows = rows.filter((r) => r[key] != null && String(r[key]) >= value);
       else if (op === "in") {
         const set = new Set(value.slice(1, -1).split(",").map((v) => v.replace(/^"|"$/g, "")));
@@ -52,6 +61,7 @@ function fakeDb(tables: Record<string, Row[]>) {
     const offset = Number(url.searchParams.get("offset") ?? 0);
     const limit = Math.min(Number(url.searchParams.get("limit") ?? MAX_ROWS), MAX_ROWS);
     const page = rows.slice(offset, offset + limit);
+    afterPage?.(table, page, url);
     return new Response(init?.method === "HEAD" ? null : JSON.stringify(page), { headers: { "content-type": "application/json", "content-range": `${offset}-${offset + page.length - 1}/${rows.length}` } });
   };
   return createClient<Database>("https://fixture.invalid", "synthetic-key", { global: { fetch }, auth: { persistSession: false } });
@@ -100,6 +110,50 @@ describe("the weekly Maya email store under the 1,000-row limit", () => {
       email_log: [{ id: "log-1", kind: "maya_weekly", parent_id: "p1", week_start: "2026-11-02", status: "sent", attempts: 1 }],
     });
     expect(dueWeeklyEmails(await mayaWeeklyStore(db).load(NOW), NOW)).toEqual([]);
+  });
+});
+
+describe("weekly store completeness and concurrent deletion", () => {
+  it("R421W-1: defers when a completed call has a pending note, then includes the saved note", async () => {
+    const notes = [noteRow("saved", "p1", "c1", pst(2, 15))];
+    const calls = [
+      { id: "saved", parent_id: "p1", child_id: "c1", status: "ended", ended_at: new Date(pst(2, 15)).toISOString(), note_pending: null },
+      { id: "late", parent_id: "p1", child_id: "c2", status: "ended", ended_at: new Date(pst(3, 15)).toISOString(), note_pending: {} },
+    ];
+    const db = fakeDb({ maya_call_notes: notes, maya_calls: calls, parents: [parent("p1")], children: [child("c1", "p1"), child("c2", "p1")], email_log: [] });
+    expect(dueWeeklyEmails(await mayaWeeklyStore(db).load(NOW), NOW)).toEqual([]);
+    notes.push(noteRow("late", "p1", "c2", pst(3, 15)));
+    calls[1].note_pending = null;
+    expect(dueWeeklyEmails(await mayaWeeklyStore(db).load(NOW), NOW)[0].callIds).toEqual(["late", "saved"]);
+  });
+
+  it("R421W-1: loads a family whose completed calls have no saved notes", async () => {
+    const db = fakeDb({ maya_call_notes: [], maya_calls: [
+      { id: "late", parent_id: "p1", child_id: "c1", status: "ended", ended_at: new Date(pst(3, 15)).toISOString(), note_pending: {} },
+    ], parents: [parent("p1")], children: [child("c1", "p1")], email_log: [] });
+    const finalDay = pst(15, 8);
+    expect(dueWeeklyEmails(await mayaWeeklyStore(db).load(finalDay), finalDay)).toHaveLength(1);
+  });
+
+  it.each([false, true])("R421W-2: keeps the last note after deletion from page one, same timestamp=%s", async (sameTime) => {
+    const notes = Array.from({ length: 1001 }, (_, i) => noteRow(`call-${String(i).padStart(4, "0")}`, "p1", "c1", sameTime ? pst(2, 15) : pst(2, 15) + i * 1000));
+    let deleted = false;
+    const db = fakeDb({ maya_call_notes: notes, parents: [parent("p1")], children: [child("c1", "p1")], email_log: [] }, (table, page) => {
+      if (table === "maya_call_notes" && page.length === 1000 && !deleted) { deleted = true; notes.splice(0, 1); }
+    });
+    const state = await mayaWeeklyStore(db).load(NOW);
+    expect(state.notes.some((n) => n.callId === "call-1000")).toBe(true);
+    expect(new Set(state.notes.map((n) => n.callId)).size).toBe(1001);
+  });
+
+  it.each(["maya_unsubscribe", "maya_weekly"] as const)("R421W-2: retains %s rows after deletion from page one", async (kind) => {
+    const log = Array.from({ length: 1001 }, (_, i) => ({ id: `log-${String(i).padStart(4, "0")}`, parent_id: "p1", kind, week_start: kind === "maya_weekly" ? "2026-11-02" : null, status: "sent", attempts: 1 }));
+    let deleted = false;
+    const db = fakeDb({ maya_call_notes: [noteRow("saved", "p1", "c1", pst(2, 15))], parents: [parent("p1")], children: [child("c1", "p1")], email_log: log }, (table, page) => {
+      if (table === "email_log" && page.length === 1000 && !deleted) { deleted = true; log.splice(0, 1); }
+    });
+    const state = await mayaWeeklyStore(db).load(NOW);
+    expect(state.log.some((r) => r.id === "log-1000")).toBe(true);
   });
 });
 

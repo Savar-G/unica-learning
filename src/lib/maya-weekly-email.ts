@@ -34,6 +34,15 @@ export interface WeeklyChild {
   firstName: string;
 }
 
+/** A completed call, including one whose note is not saved yet. */
+export interface WeeklyCall {
+  callId: string;
+  parentId: string;
+  childId: string;
+  endedAt: string;
+  notePending: boolean;
+}
+
 /** A row of public.email_log that this email reads. */
 export interface WeeklyLogEntry {
   id: string;
@@ -49,6 +58,7 @@ export interface WeeklyLogEntry {
 export interface WeeklyState {
   parents: readonly WeeklyParent[];
   children: readonly WeeklyChild[];
+  calls: readonly WeeklyCall[];
   /** The notes of the calls that ended in the last LOOKBACK_DAYS days or so. */
   notes: readonly CallNote[];
   log: readonly WeeklyLogEntry[];
@@ -105,10 +115,10 @@ export function dueWeeklyEmails(state: WeeklyState, now: number): DueWeekly[] {
     const zone = familyZone(parent.postal);
     const today = localDay(now, zone);
     const hour = localHour(now, zone);
-    const byWeek = new Map<string, Map<string, CallNote>>();
-    for (const n of state.notes) {
+    const byWeek = new Map<string, Map<string, WeeklyCall>>();
+    for (const n of state.calls) {
       if (n.parentId !== parent.id) continue;
-      const weekStart = weekStartFor(localDay(Date.parse(n.callEndedAt), zone));
+      const weekStart = weekStartFor(localDay(Date.parse(n.endedAt), zone));
       const release = addDays(weekStart, 7);
       const expires = addDays(release, LATE_DAYS);
       // Compare local calendar dates and hours, not 168 elapsed hours, across DST changes.
@@ -118,8 +128,11 @@ export function dueWeeklyEmails(state: WeeklyState, now: number): DueWeekly[] {
       if (!byWeek.has(weekStart)) byWeek.set(weekStart, new Map());
       byWeek.get(weekStart)!.set(n.callId, n);
     }
-    for (const [weekStart, notes] of byWeek) {
-      const callIds = [...notes.values()].sort(byEnd).map((n) => n.callId);
+    for (const [weekStart, calls] of byWeek) {
+      const incomplete = [...calls.values()].some((c) => c.notePending || !state.notes.some((n) => n.callId === c.callId && n.parentId === c.parentId && n.childId === c.childId));
+      // Leave the week unclaimed while notes recover. The final local Sunday is the last send day.
+      if (incomplete && today < addDays(weekStart, 7 + LATE_DAYS - 1)) continue;
+      const callIds = [...calls.values()].sort((a, b) => Date.parse(b.endedAt) - Date.parse(a.endedAt) || a.callId.localeCompare(b.callId)).map((c) => c.callId);
       const logged = state.log.find((e) => e.kind === "maya_weekly" && e.parentId === parent.id && e.weekStart === weekStart);
       if (!logged) due.push({ parentId: parent.id, weekStart, zone, callIds, retry: null });
       else if (logged.status === "failed" && logged.attempts < MAX_SEND_ATTEMPTS) due.push({ parentId: parent.id, weekStart, zone, callIds, retry: { logId: logged.id, attempts: logged.attempts } });
@@ -149,6 +162,7 @@ export interface WeeklyEmailInput {
   unsubscribeUrl: string;
   /** Calls beyond the newest MAX_EMAIL_CALLS, across the whole family. */
   omittedCalls: number;
+  missingNotes: number;
   childNames?: string[];
 }
 
@@ -172,9 +186,11 @@ export function weeklyEmail(e: WeeklyEmailInput): { subject: string; text: strin
   const calls = e.children.reduce((n, c) => n + c.calls.length, 0);
   const subject = `Maya this week: ${joinNames(names)}`;
   const period = `${dayLabel(e.weekStart)} to ${dayLabel(addDays(e.weekStart, 6))}`;
-  const intro = `${joinNames(names)} had ${plural(calls + e.omittedCalls, "call")} with Maya, our AI teaching assistant, from ${period}. Here is a short note about each call, and what was said.`;
+  const noteIntro = !calls && !e.omittedCalls ? "No call notes are available yet." : e.missingNotes ? "Here are the available call notes and what was said." : "Here is a short note about each call, and what was said.";
+  const intro = `${joinNames(names)} had ${plural(calls + e.omittedCalls + e.missingNotes, "call")} with Maya, our AI teaching assistant, from ${period}. ${noteIntro}`;
   const more = e.omittedCalls ? `There ${e.omittedCalls === 1 ? "was" : "were"} ${plural(e.omittedCalls, "more call")} this week. This email shows the newest ${MAX_EMAIL_CALLS}.` : "";
-  const preview = `${joinNames(names)} had ${plural(calls + e.omittedCalls, "call")} with Maya this week.`;
+  const missing = e.missingNotes ? `${plural(e.missingNotes, "call")} this week ${e.missingNotes === 1 ? "has" : "have"} no note yet.` : "";
+  const preview = `${joinNames(names)} had ${plural(calls + e.omittedCalls + e.missingNotes, "call")} with Maya this week.`;
   const why = "You get one Maya email each week when your family has calls with Maya. We send none for weeks without calls.";
   const footer = { why, unsubscribe: { url: e.unsubscribeUrl, label: "Turn off these Maya emails" } };
   const several = e.children.length > 1;
@@ -184,14 +200,14 @@ export function weeklyEmail(e: WeeklyEmailInput): { subject: string; text: strin
 
   const textCalls = e.children.flatMap((child) => [
     ...(several ? [child.name.toUpperCase()] : []),
-    ...child.calls.map((c, i) => [
+    ...child.calls.map((c) => [
       callLabel(c),
       c.sentences.join(" "),
       "What was said:",
       ...c.transcript.map((l) => (l.note ? `(${l.text})` : `${l.speaker}: ${l.text}`)),
     ].join("\n")),
   ]);
-  const text = [`Hi ${firstName(e.parentName)},`, intro, ...(more ? [more] : []), ...textCalls, emailSignatureText(), emailFooterText(footer)].join("\n\n");
+  const text = [`Hi ${firstName(e.parentName)},`, intro, ...(more ? [more] : []), ...(missing ? [missing] : []), ...textCalls, emailSignatureText(), emailFooterText(footer)].join("\n\n");
 
   const p = (body: string, style = "") => `<p style="margin:0 0 14px;${style}">${body}</p>`;
   const line = (l: WeeklyEmailCall["transcript"][number]) => l.note
@@ -199,7 +215,7 @@ export function weeklyEmail(e: WeeklyEmailInput): { subject: string; text: strin
     : `<p style="margin:0 0 6px;font-size:14px"><strong style="font-weight:600">${esc(l.speaker)}:</strong> ${esc(l.text)}</p>`;
   const htmlCalls = e.children.map((child) => `
 ${several ? `<tr><td style="padding:18px 24px 0"><h2 style="margin:0;font-size:18px;line-height:1.3;font-weight:600">${esc(child.name)}</h2></td></tr>` : ""}
-${child.calls.map((c, i) => `<tr><td style="padding:14px 24px 0">
+${child.calls.map((c) => `<tr><td style="padding:14px 24px 0">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="border-top:1px solid ${RULE};padding:16px 0 0">
 ${p(esc(callLabel(c)), `margin:0 0 8px;font-size:14px;color:${INK_2}`)}
 ${p(esc(c.sentences.join(" ")))}
@@ -212,6 +228,7 @@ ${c.transcript.length ? `${p("What was said", `margin:0 0 8px;font-size:14px;fon
 ${p(`Hi ${esc(firstName(e.parentName))},`)}
 ${p(esc(intro))}
 ${more ? p(esc(more)) : ""}
+${missing ? p(esc(missing)) : ""}
 </td></tr>
 ${htmlCalls}
 ` });
@@ -226,16 +243,18 @@ export const weeklyLinks = (origin: string, token: string) => ({
 
 /**
  * The email for `due`, to the parent from EMAIL_FROM, with `token` in its unsubscribe link and in the one-click headers.
- * Null when the state lacks the parent, a child, or a note.
+ * Null when the state lacks the parent, a child, or a completed call.
  */
 export function weeklyMessage(due: DueWeekly, token: string, state: WeeklyState, origin: string): EmailMessage | null {
   const parent = state.parents.find((p) => p.id === due.parentId);
-  const notes = due.callIds.map((id) => state.notes.find((n) => n.callId === id));
-  if (!parent || notes.some((n) => !n)) return null;
+  const calls = due.callIds.map((id) => state.calls.find((c) => c.callId === id && c.parentId === due.parentId));
+  if (!parent || calls.some((c) => !c)) return null;
+  const completed = calls as WeeklyCall[];
+  const notes = completed.flatMap((c) => state.notes.filter((n) => n.callId === c.callId && n.parentId === c.parentId && n.childId === c.childId));
   const children: (WeeklyEmailInput["children"][number] & { id: string })[] = [];
   // TODO screen C (#331/#403): once the parent call-detail route exists, replace the transcript
   // below with a link to that route for note.callId. Keep the parent note. Do not link to an absent page.
-  const shown = [...notes as CallNote[]].sort(byEnd).slice(0, MAX_EMAIL_CALLS);
+  const shown = [...notes].sort(byEnd).slice(0, MAX_EMAIL_CALLS);
   for (const note of shown) {
     const child = state.children.find((c) => c.id === note.childId && c.parentId === parent.id);
     if (!child) return null;
@@ -251,14 +270,14 @@ export function weeklyMessage(due: DueWeekly, token: string, state: WeeklyState,
   }
   const childNames: string[] = [];
   const childIds = new Set<string>();
-  for (const note of notes as CallNote[]) {
-    const child = state.children.find((c) => c.id === note.childId && c.parentId === parent.id);
+  for (const call of completed) {
+    const child = state.children.find((c) => c.id === call.childId && c.parentId === parent.id);
     if (!child) return null;
     if (!childIds.has(child.id)) childNames.push(child.firstName.trim() || "Your child");
     childIds.add(child.id);
   }
   const links = weeklyLinks(origin, token);
-  const email = weeklyEmail({ parentName: parent.name, weekStart: due.weekStart, zone: due.zone, children, childNames, omittedCalls: notes.length - shown.length, unsubscribeUrl: links.unsubscribeUrl });
+  const email = weeklyEmail({ parentName: parent.name, weekStart: due.weekStart, zone: due.zone, children, childNames, omittedCalls: notes.length - shown.length, missingNotes: completed.length - notes.length, unsubscribeUrl: links.unsubscribeUrl });
   return {
     sender: { to: "parent" },
     to: parent.email,

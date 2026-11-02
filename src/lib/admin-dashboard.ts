@@ -121,7 +121,7 @@ export const EMAIL_KINDS: readonly EmailKindInfo[] = [
   { kind: "alert", label: "Report alert", subject: "Test finished: {child}, grade {grade}, working at ...", to: "You", trigger: "Test finished, report built" },
   { kind: "unsubscribe", label: "Unsubscribe", subject: "No email: the parent turned reminders off", to: "-", trigger: "Parent clicked unsubscribe" },
   { kind: "maya_daily", label: "Daily Maya email (retired)", subject: "{child} talked with Maya on ...", to: "Parent", trigger: "Replaced by the weekly Maya email" },
-  { kind: "maya_weekly", label: "Weekly Maya email", subject: "Maya this week: {children}", to: "Parent", trigger: "Monday at 7 a.m. family time, after a week with calls" },
+  { kind: "maya_weekly", label: "Weekly Maya email", subject: "Weekly Maya email", to: "Parent", trigger: "Monday at 7 a.m. family time, after a week with calls" },
   { kind: "maya_unsubscribe", label: "Maya unsubscribe", subject: "No email: the parent turned Maya emails off", to: "-", trigger: "Parent clicked unsubscribe in a Maya email" },
 ];
 /** An unsubscribe row: no email went. */

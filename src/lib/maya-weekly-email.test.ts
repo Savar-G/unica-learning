@@ -190,6 +190,53 @@ describe("one email per parent per week", () => {
 
 });
 
+describe("R421W-1: delayed notes", () => {
+  const completed = (n: CallNote, notePending = false) => ({ callId: n.callId, parentId: n.parentId, childId: n.childId, endedAt: n.callEndedAt, notePending });
+
+  it("does not claim ten notes for eleven calls, then sends once after the final note arrives", async () => {
+    const notes = Array.from({ length: 10 }, (_, i) => note({ endedAt: pst(2, i) }));
+    const late = note({ endedAt: pst(8, 18), sentences: ["The delayed note."] });
+    const calls = [...notes.map((n) => completed(n)), completed(late, true)];
+    const store = memoryWeeklyStore({ parents: [priya], children: [leah, sam], notes, calls });
+    const mail = memoryTransport();
+    const run = (now: number) => runWeeklyEmails(store, now, { origin: ORIGIN, newToken, transport: mail.transport });
+    expect(await run(pst(9, 7))).toMatchObject({ due: 0, sent: 0 });
+    expect(store.rows()).toEqual([]);
+    notes.push(late);
+    calls[10].notePending = false;
+    expect(await run(pst(9, 8))).toMatchObject({ due: 1, sent: 1 });
+    expect(mail.delivered[0].text).toContain("had 11 calls with Maya");
+    expect(mail.delivered[0].text).toContain("The delayed note.");
+    expect(await run(pst(9, 9))).toMatchObject({ due: 0 });
+  });
+
+  it.each([0, 1, 11])("on the last local day, counts two calls without notes alongside %s saved notes", async (savedCount) => {
+    const notes = Array.from({ length: savedCount }, (_, i) => note({ endedAt: pst(2, i) }));
+    const missing = [note({ endedAt: pst(8, 12), childId: "c2" }), note({ endedAt: pst(8, 13), childId: "c2" })];
+    const calls = [...notes.map((n) => completed(n)), ...missing.map((n) => completed(n, true))];
+    const store = memoryWeeklyStore({ parents: [priya], children: [leah, sam], notes, calls });
+    const mail = memoryTransport();
+    const run = (now: number) => runWeeklyEmails(store, now, { origin: ORIGIN, newToken, transport: mail.transport });
+    expect(await run(pst(14, 23, 59))).toMatchObject({ due: 0 });
+    expect(store.rows()).toEqual([]);
+    expect(await run(pst(15, 0))).toMatchObject({ sent: 1 });
+    const m = mail.delivered[0];
+    expect(m.subject).toContain("Sam");
+    expect(m.text).toContain(`had ${savedCount + 2} calls with Maya`);
+    expect(m.text).toContain("2 calls this week have no note yet.");
+    expect(m.html).toContain("2 calls this week have no note yet.");
+    if (savedCount > 10) expect(m.text).toContain("There was 1 more call this week.");
+    expect(await run(pst(16, 0))).toMatchObject({ due: 0 });
+  });
+
+  it("does not send an incomplete recap after expiry", async () => {
+    const missing = note({ endedAt: pst(2, 8) });
+    const store = memoryWeeklyStore({ parents: [priya], children: [leah], notes: [], calls: [completed(missing, true)] });
+    expect(await runWeeklyEmails(store, pst(16, 0), { origin: ORIGIN, newToken })).toMatchObject({ due: 0 });
+    expect(store.rows()).toEqual([]);
+  });
+});
+
 describe("no-call weeks", () => {
   it("send nothing", async () => {
     const { store, mail, run } = setup([note({ endedAt: pst(2, 15) })]);
@@ -291,7 +338,7 @@ describe("the decision", () => {
   it("lists every call of the week newest first", () => {
     const later = note({ endedAt: pst(2, 18) });
     const earlier = note({ endedAt: pst(2, 9) });
-    const due = dueWeeklyEmails({ parents: [priya], children: [leah], notes: [later, earlier], log: [] }, pst(9, 8));
+    const due = dueWeeklyEmails({ parents: [priya], children: [leah], calls: [later, earlier].map((n) => ({ callId: n.callId, parentId: n.parentId, childId: n.childId, endedAt: n.callEndedAt, notePending: false })), notes: [later, earlier], log: [] }, pst(9, 8));
     expect(due).toEqual([{ parentId: "p1", weekStart: "2026-11-02", zone: "America/Vancouver", callIds: [later.callId, earlier.callId], retry: null }]);
   });
 
