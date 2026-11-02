@@ -11,7 +11,7 @@
 // nothing of Maya's ever removes or covers it (the board core's rule).
 import { addChildInk, applyBatch, boardView, createScene, type Batch, type BoardPath, type Refusal, type Scene } from "@/lib/board";
 import { frameAt, type FrameStroke, type Timeline } from "@/lib/board-svg";
-import type { PenHolder } from "@/lib/board-protocol";
+import type { BoardSnapshot, PenHolder } from "@/lib/board-protocol";
 import type { StrokeRecording, TimedPoint } from "@/lib/strokes";
 
 export type { PenHolder } from "@/lib/board-protocol";
@@ -45,6 +45,8 @@ export type HistoryEvent =
  * is the newer. Read it only through the functions of this module.
  */
 export interface BoardHistory {
+  /** Voice calls keep the receiver outcomes, including cancellation and presentation times, with the replay. */
+  readonly delivery?: BoardSnapshot;
   readonly v: 1;
   readonly revision: number;
   readonly events: readonly HistoryEvent[];

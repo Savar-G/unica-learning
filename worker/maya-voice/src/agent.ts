@@ -14,6 +14,7 @@ import type { AudioFrame } from "@livekit/rtc-node";
 import type { FinishOptions } from "@/lib/maya-text";
 import type { VoiceCall, VoiceTurn } from "@/lib/maya-call";
 import type { BoardSpeech } from "@/lib/board-speech";
+import { CuePlaybackOutput } from "./cue-playback";
 import { boardAudio } from "./speech-audio";
 import { limitsOf } from "@/lib/maya";
 import { CONNECTION_RENEW_MS, childTurnFrom, nextTickAt, RECONNECT_GRACE_MS, type Heard } from "@/lib/maya-voice";
@@ -137,7 +138,7 @@ export class VoiceCallRun {
   private replayingFinal = false;
   private utterance = 0;
   private utteranceId = "";
-  private audioId = "";
+  private boardAudio: CuePlaybackOutput | null = null;
   readonly agent: MayaVoiceAgent;
   /** Immutable revision claimed when this worker opened the call. */
   readonly segment: number;
@@ -174,22 +175,25 @@ export class VoiceCallRun {
   attachBoardAudio() {
     const audio = this.session.output.audio;
     if (!audio || !this.options.board) return;
-    audio.on(voice.AudioOutput.EVENT_PLAYBACK_STARTED, () => { this.audioId = this.utteranceId; });
-    audio.on(voice.AudioOutput.EVENT_PLAYBACK_PROGRESSED, (ev: voice.PlaybackProgressedEvent) => {
-      this.boardTask(this.options.board!.played(this.audioId, ev.offset + ev.duration));
-    });
-    audio.on(voice.AudioOutput.EVENT_PLAYBACK_FINISHED, (ev: voice.PlaybackFinishedEvent) => {
-      if (ev.interrupted) this.stopBoard();
-      else this.boardTask(this.options.board!.played(this.audioId, ev.playbackPosition * 1000));
-    });
+    this.boardAudio = new CuePlaybackOutput(audio, this.options.board, this.timers, () => this.utteranceId,
+      work => this.boardTask(work), () => this.stopBoard());
+    this.session.output.audio = this.boardAudio;
   }
 
   private boardTask(task: Promise<unknown>) {
-    void task.catch(() => { void this.finish({ detail: "the speech board connection failed" }); });
+    const generation = this.generation;
+    void task.catch(() => {
+      // An absent peer cannot answer an RPC. Its snapshot is reconciled when it returns.
+      if (!this.finishing && (this.call.lost || (generation === this.generation && this.childHere))) void this.finish({ detail: "the speech board connection failed" });
+    });
   }
-  private stopBoard() {
-    if (this.options.board) this.boardTask(this.options.board.interrupt());
+  private stopBoard(remote = this.childHere) {
+    this.boardAudio?.cancelPending();
+    if (!this.options.board) return;
+    if (remote) this.boardTask(this.options.board.interrupt());
+    else this.options.board.detach();
   }
+
   private async stageBoard(turn: VoiceTurn) {
     if (!this.options.board) return;
     this.utteranceId = `speech-${this.segment}-${++this.utterance}`;
@@ -225,7 +229,7 @@ export class VoiceCallRun {
     if (this.graceTimer !== null) this.timers.clear(this.graceTimer);
     this.graceTimer = null;
     try { if (this.options.board) await this.options.board.reconnect(); }
-    catch { return this.finish({ detail: "the board reconnect failed" }); }
+    catch { if (generation === this.generation && this.childHere) return this.finish({ detail: "the board reconnect failed" }); return; }
     if (generation !== this.generation || !this.childHere || this.finishing) return;
     await this.call.connection("child_joined");
     if (generation !== this.generation || !this.childHere || this.finishing) return;
@@ -275,25 +279,28 @@ export class VoiceCallRun {
     const busy = this.session.agentState === "speaking" || this.session.agentState === "thinking" || this.session.userState === "speaking";
     if (busy) { this.tickTimer = this.timers.set(1000, () => void this.tick()); return; }
     this.lastTickAt = this.timers.now();
+    const generation = this.generation;
     try {
       const turn = await this.call.tick();
       if (this.call.lost) return this.finish({ detail: "the call could not be saved" });
       if (this.finishing) return;
       await this.stageBoard(turn);
+      if (generation !== this.generation || !this.childHere || this.finishing) return;
       const speech = turn.say.length ? this.session.say(turn.say.join(" "), { addToChatCtx: true }) : null;
       await this.after(turn, speech, false);
-    } catch { await this.finish({ detail: "the voice turn failed" }); }
+    } catch { if (generation === this.generation && this.childHere) await this.finish({ detail: "the voice turn failed" }); }
   }
 
   private async after(turn: VoiceTurn, handle = this.speech, stage = true): Promise<boolean> {
     await this.call.settled();
     if (this.call.lost) { void this.finish({ detail: "the call could not be saved" }); return false; }
-    if (this.finishing) return false;
+    if (this.finishing || !this.childHere) return false;
+    const generation = this.generation;
     if (stage) {
       try { await this.stageBoard(turn); }
-      catch { void this.finish({ detail: "the speech board could not be staged" }); return false; }
+      catch { if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return false; }
     }
-    if (this.finishing) return false;
+    if (this.finishing || generation !== this.generation || !this.childHere) return false;
     this.options.notify({ revision: this.call.revision, segment: this.segment, ended: false });
     this.scheduleLimit();
     if (turn.ended) {
@@ -330,6 +337,9 @@ export class VoiceCallRun {
       const closing = this.session.close().catch(() => {});
       let failed = this.call.lost;
       try {
+        if (this.childHere) {
+          try { await this.options.board?.settled(); } catch { /* Keep the last confirmed snapshot on transport failure. */ }
+        }
         // Store the media-close boundary before counting, using the database's clock.
         if (this.childHere) await this.call.connection("child_left");
         await this.call.connection("agent_left");

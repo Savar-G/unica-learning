@@ -1,9 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
+import { boardPaths } from "@/lib/board";
+import { boardScene, replayFrame } from "@/lib/board-history";
+import { createBoardReceiver, createBoardSender } from "@/lib/board-protocol";
+import { createMemoryTransport } from "@/lib/board-protocol-memory";
+import { createBoardSpeech } from "@/lib/board-speech";
+import { callReplay } from "@/lib/maya-call-review";
 import { templateSkills } from "@/lib/assessment";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { memoryWordingHistoryStore, TIME_LIMITS } from "@/lib/maya";
-import { mayaCalls, type CallResult, type CallSeams } from "@/lib/maya-call";
+import { mayaCalls, recordView, boardHistoryOf, type CallResult, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
@@ -269,4 +275,58 @@ describe("R408 recovery and privacy", () => {
     await second.connection("child_joined");
     expect(second.lost).toBe(false);
   });
+});
+
+
+it.each([false, true])("R450-3 voice replay follows the receiver after cancellation, shown prefix %s", async shownPrefix => {
+  const s = setup();
+  const view = await newVoiceCall(s);
+  const call = await open(s, view.id);
+  await call.start();
+  const turn = await call.child("I don't know.");
+  expect(turn.newBatches).toBeGreaterThan(1);
+  const receiver = createBoardReceiver({ sessionId: call.id, clock: s.now });
+  const sender = createBoardSender({ sessionId: call.id, senderId: "worker", transport: createMemoryTransport(receiver) });
+  const board = createBoardSpeech({ sender, now: s.now, observe: snapshot => call.observeBoard(snapshot) });
+  await board.reconnect();
+  await board.stage("speech", turn.boardCues!);
+  s.advance(2);
+  if (shownPrefix) {
+    const cue = turn.boardCues![0];
+    await board.timing("speech", cue.word, 100, "word");
+    await board.played("speech", 100);
+    s.advance(1);
+  }
+  await board.interrupt();
+  await board.settled();
+  const observed = receiver.snapshot();
+  expect(call.boardSnapshot).toEqual(observed);
+  // A replacement worker starts with the durable observed snapshot, without accepted but unshown plans.
+  const replacement = await open(s, view.id);
+  expect(replacement.boardSnapshot).toEqual(observed);
+  await replacement.end({ reason: "child_stopped" });
+  const saved = (await s.calls.view(view.id))!;
+  expect(boardPaths(boardScene(saved.boardHistory))).toEqual(boardPaths(receiver.scene()));
+  expect(replayFrame(callReplay(saved), Infinity).maya.map(s => s.path.id)).toEqual(boardPaths(receiver.scene()).map(p => p.id));
+  expect(saved.batches).toHaveLength(shownPrefix ? 1 : 0);
+  expect(saved.boardHistory.delivery?.events).toEqual(observed.events);
+  expect(s.store.rows()[0].trace!.board.length).toBe(turn.newBatches);
+  const cancelled = observed.events.find(e => e.kind === "cancelled");
+  expect(cancelled?.at).toBe(s.now());
+  if (shownPrefix) expect(saved.boardHistory.events[0]).toMatchObject({ kind: "maya", t: 2000 });
+});
+
+
+it("R450-3 does not reconstruct a legacy voice board from unobserved teaching plans", async () => {
+  const s = setup();
+  const view = await newVoiceCall(s);
+  const call = await open(s, view.id);
+  await call.start();
+  await call.child("I don't know.");
+  await call.end({ reason: "child_stopped" });
+  const row = s.store.rows()[0];
+  expect(row.trace!.board.length).toBeGreaterThan(0);
+  const legacy = recordView({ ...row, boardHistory: boardHistoryOf(row.trace!) })!;
+  expect(legacy.batches).toEqual([]);
+  expect(callReplay(legacy).maya.strokes).toEqual([]);
 });

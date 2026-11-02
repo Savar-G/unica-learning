@@ -156,10 +156,10 @@ async function voiceCall(options: { speech?: ProbeSTT; speaker?: Speaker; seed?:
   session.output.audio = options.speaker ?? new Speaker();
   const updates: CallUpdate[] = [];
   const closed = vi.fn(async () => {});
-  const receiver = createBoardReceiver({ sessionId: started.view.id });
+  const receiver = createBoardReceiver({ sessionId: started.view.id, clock: clock.now });
   const sender = createBoardSender({ sessionId: started.view.id, senderId: "worker", transport: createMemoryTransport(receiver) });
   const samples: CueMeasurement[] = [];
-  const board = createBoardSpeech({ sender, now: clock.now, measure: s => samples.push(s) });
+  const board = createBoardSpeech({ sender, now: clock.now, observe: snapshot => opened.call.observeBoard(snapshot), measure: s => samples.push(s) });
   const run = new VoiceCallRun(session, opened.call, { ...(options.board ? { board } : {}), timers: clock.timers, notify: (u) => updates.push(u), closed });
   await run.agentJoined();
   await session.start({ agent: run.agent });
@@ -178,7 +178,7 @@ async function voiceCall(options: { speech?: ProbeSTT; speaker?: Speaker; seed?:
     await opened.call.settled();
     return said().slice(before).join(" ");
   };
-  return { receiver, board, samples, id: started.view.id, calls, store, connections, rebuild, run, session, said, childSays, clock, updates, closed, call: opened.call, seams };
+  return { sender, receiver, board, samples, id: started.view.id, calls, store, connections, rebuild, run, session, said, childSays, clock, updates, closed, call: opened.call, seams };
 }
 
 describe("a voice call through LiveKit with the fake providers", () => {
@@ -585,4 +585,26 @@ it.each([true, false])("#329 carries accepted controller batches through AgentSe
   expect(c.samples.map(s => s.source)).toEqual(c.samples.map(() => timestamps ? "word" : "sentence"));
   expect(c.samples.every(s => s.state === "shown")).toBe(true);
   expect(c.receiver.staged()).toEqual([]);
+});
+
+
+it("R450-2 keeps a dropped call recoverable when the board stop cannot reach the child", async () => {
+  const c = await voiceCall({ board: true });
+  await c.run.childJoined();
+  await waitFor(() => c.session.agentState === "listening" && c.said().length > 0, "opening");
+  await c.board.settled();
+  await c.board.stage("pending", [{ word: 1, batch: { transactionId: "pending", commands: [{ op: "write", id: "pending", text: "1", place: { region: "main" } }] } }]);
+  c.sender.useTransport({ call: async () => { throw new Error("recipient disconnected"); } });
+  await c.run.childLeft("dropped");
+  await c.clock.advance(10);
+  expect(c.run.done).toBeNull();
+  expect((await c.calls.view(c.id))!.status).toBe("live");
+  c.sender.useTransport(createMemoryTransport(c.receiver));
+  await c.run.childJoined();
+  await c.board.played("pending", 1000);
+  await c.board.settled();
+  expect(c.receiver.staged()).toEqual([]);
+  expect(c.receiver.snapshot().events).toContainEqual(expect.objectContaining({ kind: "cancelled", batchIds: ["pending"] }));
+  expect(c.store.rows()[0].boardHistory?.delivery?.events).toEqual(c.receiver.snapshot().events);
+  expect(c.run.done).toBeNull();
 });

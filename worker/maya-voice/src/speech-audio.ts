@@ -24,25 +24,36 @@ export function boardAudio(
           if (abort.signal.aborted) return;
           const input = new ReadableStream<string>({ start(c) { c.enqueue(sentence); c.close(); } });
           const frames = await synthesize(input);
-          if (!frames) continue;
+          if (!frames) { await board.interrupt(); controller.close(); return; }
           current = frames.getReader();
           let durationMs = 0;
-          let aligned = "";
-          let matchedWords = 0;
+          const alignment = new Map<string, voice.TimedString>();
           const expectedWords = speechWords(sentence);
+          const prefixes = expectedWords.map((_, i) => speechKey(expectedWords.slice(0, i + 1).join(" ")));
           for (;;) {
             const { value: frame, done } = await current.read();
             if (done || abort.signal.aborted) break;
             const times = frame.userdata[USERDATA_TIMED_TRANSCRIPT] as voice.TimedString[] | undefined;
+            let changed = false;
             for (const t of times ?? []) {
-              aligned += ` ${t.text.trim()}`;
-              const heard = speechKey(aligned);
-              const before = matchedWords;
-              for (let n = matchedWords + 1; n <= expectedWords.length; n++) {
-                const expected = speechKey(expectedWords.slice(0, n).join(" "));
-                if (expected && (heard === expected || heard.startsWith(`${expected} `))) matchedWords = n;
+              if (t.endTime === undefined || !Number.isFinite(t.endTime) || t.endTime <= 0) continue;
+              const key = JSON.stringify([t.startTime, t.endTime, speechKey(t.text)]);
+              if (!alignment.has(key)) { alignment.set(key, t); changed = true; }
+            }
+            if (changed) {
+              let aligned = "";
+              let matchedWords = 0;
+              const ordered = [...alignment.values()].sort((a, b) => (a.startTime ?? a.endTime!) - (b.startTime ?? b.endTime!) || a.endTime! - b.endTime!);
+              for (const t of ordered) {
+                aligned += ` ${t.text.trim()}`;
+                const heard = speechKey(aligned);
+                const before = matchedWords;
+                for (let n = matchedWords + 1; n <= expectedWords.length; n++) {
+                  const expected = prefixes[n - 1];
+                  if (expected && (heard === expected || heard.startsWith(`${expected} `))) matchedWords = n;
+                }
+                if (matchedWords > before) await board.timing(utteranceId, words + matchedWords, offsetMs + t.endTime! * 1000, "word");
               }
-              if (matchedWords > before && t.endTime !== undefined) await board.timing(utteranceId, words + matchedWords, offsetMs + t.endTime * 1000, "word");
             }
             if (times?.length) frame.userdata[USERDATA_TIMED_TRANSCRIPT] = times.map(t => voice.createTimedString({ ...t,
               startTime: t.startTime === undefined ? undefined : t.startTime + offsetMs / 1000,
@@ -53,6 +64,12 @@ export function boardAudio(
           }
           current.releaseLock();
           current = null;
+          if (durationMs <= 0) {
+            // The sentence was never spoken. Retire its whole plan rather than borrowing a later sentence's boundary.
+            await board.interrupt();
+            if (!abort.signal.aborted) controller.close();
+            return;
+          }
           words += speechWords(sentence).length;
           offsetMs += durationMs;
           // If timestamps were missing, or incomplete, use this sentence's generated audio end.

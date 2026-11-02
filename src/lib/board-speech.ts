@@ -1,6 +1,6 @@
 // Speech controls delivery, while board-protocol owns order, retries and the visible snapshot.
 import type { Batch } from "@/lib/board";
-import type { BoardSender } from "@/lib/board-protocol";
+import type { BoardSender, BoardSnapshot } from "@/lib/board-protocol";
 
 export interface BoardCue {
   batch: Batch;
@@ -32,26 +32,28 @@ export function cueReport(samples: readonly CueMeasurement[]) {
 }
 
 /** The caller supplies TTS word ends and confirmed playback positions. Generated audio alone releases nothing. */
-export function createBoardSpeech(options: { sender: BoardSender; now(): number; measure?(sample: CueMeasurement): void }) {
+export function createBoardSpeech(options: { sender: BoardSender; now(): number; measure?(sample: CueMeasurement): void; observe?(snapshot: BoardSnapshot): Promise<void> }) {
   const { sender } = options;
   let generation = 0;
   let plannedId: string | null = null;
-  let active: { id: string; cues: BoardCue[]; timings: { word: number; audioMs: number; source: CueSource; reachedAt?: number }[]; position: number; playedAt: number; generation: number } | null = null;
+  let active: { id: string; cues: BoardCue[]; timings: { word: number; audioMs: number; source: CueSource; reachedAt?: number }[]; position: number | null; playedAt: number; anchorAt?: number; generation: number } | null = null;
+  let observation: Promise<unknown> = Promise.resolve();
   let queue: Promise<unknown> = Promise.resolve();
   const serial = <T>(op: () => Promise<T>) => { const run = queue.then(op); queue = run.catch(() => {}); return run; };
   const check = (r: { ok: boolean }) => { if (!r.ok) throw new Error("The board did not accept the speech operation."); };
   const release = async () => {
     const a = active;
-    if (!a || a.generation !== generation) return;
+    if (!a || a.generation !== generation || a.position === null) return;
     while (a.cues.length && a.generation === generation) {
       const cue = a.cues[0];
-      const timing = a.timings.find(t => t.word >= cue.word && t.audioMs <= a.position);
+      const timing = a.timings.find(t => t.word >= cue.word && t.audioMs <= (a.position ?? -1));
       if (!timing) break;
       a.cues.shift();
       const reachedAt = timing.reachedAt ?? options.now();
       const result = await sender.release(cue.batch.transactionId);
       check(result);
       const acknowledgedAt = options.now();
+      await options.observe?.(sender.snapshot());
       if (result.ok) options.measure?.({ utteranceId: a.id, batchId: cue.batch.transactionId, source: timing.source,
         audioMs: timing.audioMs, reachedAt, acknowledgedAt, acknowledgementMs: acknowledgedAt - reachedAt, state: result.state });
     }
@@ -66,8 +68,9 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
       if (copy.some((c, i) => !Number.isSafeInteger(c.word) || c.word < 1 || (i > 0 && c.word < copy[i - 1].word))) throw new Error("Speech cues must be ordered word positions.");
       return serial(async () => {
         check(await sender.cancel());
+        await options.observe?.(sender.snapshot());
         if (gen !== generation) return;
-        active = { id, cues: copy, timings: [], position: 0, playedAt: options.now(), generation: gen };
+        active = { id, cues: copy, timings: [], position: null, playedAt: options.now(), generation: gen };
         for (const cue of copy) {
           if (gen !== generation) return;
           check(await sender.send(cue.batch, { utteranceId: id }));
@@ -76,31 +79,47 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
     },
     timing(id: string, word: number, audioMs: number, source: CueSource) {
       if (active?.id !== id || active.generation !== generation || !Number.isFinite(audioMs) || audioMs < 0) return Promise.resolve();
-      active.timings.push({ word, audioMs, source, ...(audioMs <= active.position ? { reachedAt: active.playedAt } : {}) });
+      if (active.timings.some(t => t.word === word && t.audioMs === audioMs && t.source === source)) return Promise.resolve();
+      active.timings.push({ word, audioMs, source, ...(active.position !== null && audioMs <= active.position ? { reachedAt: active.anchorAt === undefined ? active.playedAt : active.anchorAt + audioMs } : {}) });
       return serial(release);
     },
-    played(id: string, audioMs: number) {
+    played(id: string, audioMs: number, anchorAt?: number) {
       if (active?.id !== id || active.generation !== generation || !Number.isFinite(audioMs) || audioMs < 0) return Promise.resolve();
-      active.position = Math.max(active.position, audioMs);
+      active.anchorAt = anchorAt;
+      active.position = Math.max(active.position ?? 0, audioMs);
       active.playedAt = options.now();
-      for (const t of active.timings) if (t.reachedAt === undefined && t.audioMs <= active.position) t.reachedAt = active.playedAt;
+      for (const t of active.timings) if (t.reachedAt === undefined && t.audioMs <= active.position) t.reachedAt = anchorAt === undefined ? active.playedAt : anchorAt + t.audioMs;
       return serial(release);
     },
     /** Invalidate first, before any await. A late timing or playout callback cannot release old work. */
+    /** A lost peer cannot receive a stop. Invalidate locally; reconnect will retire its staged work. */
+    detach() {
+      generation++;
+      active = null;
+    },
     interrupt() {
       generation++;
       active = null;
       // Send the stop outside the serial queue. A stalled release must not delay the interruption.
       const stopping = plannedId ? sender.interrupt(plannedId) : Promise.resolve({ ok: true });
+      // Keep priority acknowledgement independent of any release still in flight.
+      // The next serial observation waits for that release and then reads the receiver's decision.
+      const observed = stopping.then(async result => {
+        check(result);
+        await serial(async () => { check({ ok: await sender.sync() }); await options.observe?.(sender.snapshot()); });
+      });
+      observation = observed;
+      void observed.catch(() => {});
       return stopping.then(check);
     },
     reconnect() {
+      observation = Promise.resolve();
       plannedId = null;
       generation++;
       active = null;
-      return serial(async () => { check(await sender.connect()); });
+      return serial(async () => { check(await sender.connect()); await options.observe?.(sender.snapshot()); });
     },
-    settled: () => queue,
+    settled: async () => { await observation; await queue; },
   };
 }
 export type BoardSpeech = ReturnType<typeof createBoardSpeech>;

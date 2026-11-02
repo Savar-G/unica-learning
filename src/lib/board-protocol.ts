@@ -31,11 +31,12 @@ export interface Ink {
  * drawn, and staged batches cancelled before the child saw them. The first two make the board; the others are its
  * history.
  */
-export type BoardEvent =
+export type BoardEvent = (
   | { kind: "batch"; batchId: string; commands: unknown[] }
   | ({ kind: "ink" } & Ink)
   | { kind: "presented"; batchId: string }
-  | { kind: "cancelled"; batchIds: string[]; cancelId?: string };
+  | { kind: "cancelled"; batchIds: string[]; cancelId?: string }
+) & { /** Receiver clock, in epoch milliseconds, when this change became visible or was cancelled. */ at?: number };
 
 /** The board log. Replaying it on an empty board gives the same board: the core is deterministic. */
 export interface BoardSnapshot {
@@ -199,7 +200,7 @@ const isPoint = (v: unknown) => Array.isArray(v) && v.length === 2 && v.every((n
 const isStroke = (v: unknown) => isObject(v) && typeof v.erase === "boolean" && Number.isFinite(v.w) && Array.isArray(v.pts) && v.pts.every(isPoint);
 
 function isEvent(v: unknown): v is BoardEvent {
-  if (!isObject(v)) return false;
+  if (!isObject(v) || (v.at !== undefined && (!Number.isFinite(v.at) || (v.at as number) < 0))) return false;
   switch (v.kind) {
     case "batch":
       return isId(v.batchId) && Array.isArray(v.commands);
@@ -285,7 +286,7 @@ type SceneOptions = { page?: PageSize; glyphs?: GlyphSet };
  * `epoch`: the epoch the page held before a reload (kept in the page's session storage, #329). The board starts empty and
  * is restored from the sender's log; the kept epoch keeps a sender that was replaced before the reload from taking it.
  */
-export function createBoardReceiver(options: { sessionId: string; epoch?: number; snapshot?: BoardSnapshot } & SceneOptions): BoardReceiver {
+export function createBoardReceiver(options: { sessionId: string; epoch?: number; snapshot?: BoardSnapshot; clock?: () => number } & SceneOptions): BoardReceiver {
   let epoch = options.epoch ?? 0;
   /** The sender whose reset started this epoch: its retry of that reset changes nothing. */
   let epochSender: string | null = null;
@@ -306,6 +307,7 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
   /** The parts of each large log event, cut once: an event in the log never changes. */
   const partsOf = new WeakMap<BoardEvent, { parts: string[]; digest: string }>();
 
+  const append = (event: BoardEvent) => log.push(options.clock ? { ...event, at: options.clock() } : event);
   const status = (): ReceiverStatus => ({ epoch, revision, pen, logLength: log.length });
   const planned = () => staged.at(-1)?.result.scene ?? shown;
   const clip = (text: string) => (text.length > MAX_REASON ? `${text.slice(0, MAX_REASON - 1)}…` : text);
@@ -337,7 +339,7 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
     if (req.utteranceId && stoppedUtterances.has(req.utteranceId)) {
       decided.set(req.batchId, { sequence: req.sequence });
       states.set(req.batchId, "cancelled");
-      log.push({ kind: "cancelled", batchIds: [req.batchId] });
+      append({ kind: "cancelled", batchIds: [req.batchId] });
       revision++;
       return { ok: true, type: "apply", batchId: req.batchId, state: "cancelled", ...status() };
     }
@@ -379,7 +381,7 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
     const cancelled = [...dropped, ...rest].map((s) => s.batchId);
     for (const id of cancelled) states.set(id, "cancelled");
     staged = kept;
-    log.push(cancelId === undefined ? { kind: "cancelled", batchIds: cancelled } : { kind: "cancelled", batchIds: cancelled, cancelId });
+    append(cancelId === undefined ? { kind: "cancelled", batchIds: cancelled } : { kind: "cancelled", batchIds: cancelled, cancelId });
     revision++;
     return log.length - 1;
   }
@@ -413,8 +415,10 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
     epochSender = req.senderId;
     revision = 0;
     shown = scene;
-    staged = [];
     log = [...log, ...events.slice(log.length)];
+    // A reconnect retires speech that did not become visible. Preserve that outcome in the receiver log.
+    cancelStaged();
+    staged = [];
     states = new Map();
     decided = new Map();
     cancels = new Map();
@@ -456,7 +460,7 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
     for (const s of staged.splice(0, upTo + 1)) {
       shown = s.result.scene;
       states.set(s.batchId, "shown");
-      log.push({ kind: "batch", batchId: s.batchId, commands: s.commands });
+      append({ kind: "batch", batchId: s.batchId, commands: s.commands });
       out.push({ batchId: s.batchId, utteranceId: s.utteranceId, drawn: s.result.drawn, erased: s.result.erased, notices: s.result.notices });
     }
     return out;
@@ -500,7 +504,7 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
     presented(batchId) {
       if (states.get(batchId) !== "shown") return;
       states.set(batchId, "presented");
-      log.push({ kind: "presented", batchId });
+      append({ kind: "presented", batchId });
     },
     takePen() {
       if (pen === "child") return { cancelled: [] };
@@ -523,7 +527,7 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
       try {
         const added = addChildInk(shown, ink);
         shown = added.scene;
-        log.push(event);
+        append(event);
         revision++;
         return { ok: true, id: added.id };
       } catch (e) {

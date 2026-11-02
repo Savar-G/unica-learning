@@ -197,8 +197,8 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
       let saved: { epoch?: number; snapshot?: BoardSnapshot } = {};
       try { saved = JSON.parse(sessionStorage.getItem(storageKey) ?? "{}"); } catch {}
       let receiver: ReturnType<typeof createBoardReceiver>;
-      try { receiver = createBoardReceiver({ sessionId: callId, epoch: saved.epoch, snapshot: saved.snapshot }); }
-      catch { receiver = createBoardReceiver({ sessionId: callId }); }
+      try { receiver = createBoardReceiver({ sessionId: callId, epoch: saved.epoch, snapshot: saved.snapshot, clock: () => Date.now() }); }
+      catch { receiver = createBoardReceiver({ sessionId: callId, clock: () => Date.now() }); }
       const changed = (restored = false) => {
         const snapshot = receiver.snapshot();
         try { sessionStorage.setItem(storageKey, JSON.stringify({ epoch: receiver.epoch(), snapshot })); } catch {}

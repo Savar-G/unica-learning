@@ -102,9 +102,9 @@ export default defineAgent({
     const notify = (update: CallUpdate) => {
       ctx.room.localParticipant?.publishData(encoder.encode(JSON.stringify(update)), { reliable: true, topic: "maya.call", destination_identities: [child.identity] }).catch(() => {});
     };
-    const sender = createBoardSender({ sessionId: callId, senderId: randomUUID(), transport: boardRpcTransport(ctx.room.localParticipant!, child.identity, randomUUID) });
+    const sender = createBoardSender({ sessionId: callId, senderId: randomUUID(), snapshot: opened.call.boardSnapshot, transport: boardRpcTransport(ctx.room.localParticipant!, child.identity, randomUUID) });
     const samples: CueMeasurement[] = [];
-    const board = createBoardSpeech({ sender, now: () => Date.now(), measure: sample => {
+    const board = createBoardSpeech({ sender, now: () => Date.now(), observe: snapshot => opened.call.observeBoard(snapshot), measure: sample => {
       samples.push(sample);
       log("board cue", { callId, fakeAudio: made.tts.provider === "fake", ...sample });
     } });
