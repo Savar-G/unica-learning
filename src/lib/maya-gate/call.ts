@@ -83,10 +83,12 @@ export async function runCallBehaviour(b: Behaviour, store: TraceStore, options:
         now += 1000;
         model.next(s.maya ?? [], undefined);
         await send({ type: "writing", status: s.write });
-      } else {
+      } else if ("at" in s) {
         now = Math.max(now, GATE_T0 + s.at * 1000);
         model.next(s.maya ?? [], undefined);
         await send({ type: "tick" });
+      } else {
+        throw new Error("this input requires the text adapter runner");
       }
     }
   } catch (e) {

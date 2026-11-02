@@ -6,7 +6,7 @@
 //
 // Plain JSON. Pure TypeScript except `packageHash`, which uses node:crypto (server and scripts only).
 import { createHash } from "node:crypto";
-import { ACTS, ASSISTANCE, INTERRUPTS, MAIN_STATES, NEVER_SAY_IDS, PHRASES, type Act, type Outcome, type RefusalCode, type SessionState, type TalkCheck } from "@/lib/maya";
+import { ACTS, SAFETY_GUIDANCE, ASSISTANCE, INTERRUPTS, MAIN_STATES, NEVER_SAY_IDS, PHRASES, type Act, type Outcome, type RefusalCode, type SessionState, type TalkCheck } from "@/lib/maya";
 
 /** Why a proposal was refused: the session's refusal, or "board_refused" when the board core refused a batch the session built. */
 export interface TraceRefusal {
@@ -19,15 +19,35 @@ export interface TraceRefusal {
  * The version of the trace shape. Version 2 (#323) adds the `hang_up` turn: the child hung up on purpose and the call
  * ended as child_stopped. Version 3 (D-197) adds free talk: `reviewer` (the review's model and prompt version, or null)
  * and, on an accepted attempt, `talk` (each piece of the model's own words, both checks and what was said). Older
- * traces have neither; `checkTrace` reads all three.
+ * traces have neither. Version 4 (#396) adds three input turns the voice agent sends: `partial` (a partial transcript
+ * of the child talking over Maya: her output stops and nothing is judged), `maya_said` (what Maya actually said; other
+ * words than her approved text start a repair) and `content_problem` (the package turned out wrong during the call).
+ * Each records `cancelled`: whether Maya's output was stopped. Version 5 records input obligations and the
+ * delivered turn that served each one, or the reason it was dropped. Version 6 adds controller safety output on
+ * terminal events. `checkTrace` reads all six versions.
  */
-export const TRACE_VERSION = 3;
+export const TRACE_VERSION = 6;
 /** The trace versions `checkTrace` reads. */
-export const TRACE_VERSIONS = [1, 2, 3] as const;
+export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6] as const;
 export const TRACE_KIND = "maya-trace";
 
+export const OBLIGATION_KINDS = ["start_pending", "safety_due", "opening_due", "repair_due", "child_turn_pending", "content_problem"] as const;
+/** Version 5: input work survives cancellation. Only delivered output can serve it. */
+export interface TraceObligation {
+  id: number;
+  kind: (typeof OBLIGATION_KINDS)[number];
+  at: number;
+  text?: string;
+  uncertain?: boolean;
+  alternatives?: string[];
+  severity?: "concern" | "immediate";
+  status: "pending" | "served" | "dropped";
+  servedBy?: number;
+  reason?: string;
+}
+
 /** Where a proposal came from: the model, the model asked again with the refusal (one repair), or code's fallback. */
-export type AttemptSource = "model" | "repair" | "fallback";
+export type AttemptSource = "model" | "repair" | "fallback" | "controller";
 
 /**
  * Why a call failed, as a code with wording code wrote. A trace never stores an error's own text: a provider's or a
@@ -146,7 +166,16 @@ export type TraceTurn =
   /** `detail` is wording code wrote; `error` the failure's code when an error ended the call. */
   | { kind: "technical"; at: number; detail: string; error?: TraceError }
   /** Version 2: the child hung up on purpose; the call ended as child_stopped, unless safety, content or solved came first. */
-  | { kind: "hang_up"; at: number };
+  | { kind: "hang_up"; at: number }
+  /** Version 4: a partial transcript of the child (talking over Maya). Maya's output stopped; nothing was judged. */
+  | { kind: "partial"; at: number; text: string; cancelled: true }
+  /** Version 4: what Maya actually said. `cancelled`: it was not her approved text, so her output stopped and a repair started. */
+  | { kind: "maya_said"; at: number; text: string; cancelled: boolean }
+  /**
+   * Version 4: the package turned out wrong during the call (`detail` is wording code wrote). `cancelled`: the call
+   * went to the content hold and Maya's output stopped; false when the safety state kept the call.
+   */
+  | { kind: "content_problem"; at: number; detail: string; cancelled: boolean };
 
 export interface TraceBoardBatch {
   at: number;
@@ -174,6 +203,8 @@ export interface MayaTrace {
   /** Version 3: the free-talk review's model and prompt version, or null when the call had no reviewer. */
   reviewer?: { id: string; promptVersion: string } | null;
   turns: TraceTurn[];
+  /** Version 5: all obligations, including pending work and the reason for each explicit drop. */
+  obligations?: TraceObligation[];
   board: TraceBoardBatch[];
   outcome: Outcome | null;
   /** Counts over `turns`, for a quick read; the bench recounts them from `turns`. */
@@ -224,7 +255,7 @@ export function packageHash(pkg: unknown): string {
 // ---------- Reading a saved trace ----------
 
 const RUNNERS = ["text", "livekit-text", "voice"];
-const SOURCES = ["model", "repair", "fallback"];
+const SOURCES = ["model", "repair", "fallback", "controller"];
 const STATES: readonly string[] = [...MAIN_STATES, ...INTERRUPTS];
 const REASONS = ["solved", "child_stopped", "time_limit", "no_response", "technical_issue", "content_issue", "safety"];
 const PAPER = ["child_confirmed", "declined", "unknown"];
@@ -272,7 +303,7 @@ function checkRefusal(r: unknown, path: string) {
 function checkAttempt(a: unknown, path: string) {
   need(isObject(a), path, "an attempt");
   const x = a as Record<string, unknown>;
-  need(oneOf(SOURCES, x.source), `${path}.source`, "model, repair or fallback");
+  need(oneOf(SOURCES, x.source), `${path}.source`, "model, repair, fallback or controller");
   need("proposal" in x, `${path}.proposal`, "present (null when the model gave none)");
   need("refusal" in x, `${path}.refusal`, "present");
   checkRefusal(x.refusal, `${path}.refusal`);
@@ -319,7 +350,7 @@ const accepted = (a: Record<string, unknown>) => a.refusal === null && a.error =
  */
 function checkOrder(attempts: Record<string, unknown>[], path: string) {
   const sources = attempts.map((a) => a.source).join(",");
-  need(["model", "model,repair", "model,fallback", "model,repair,fallback"].includes(sources), path, `model, then at most one repair, then at most one fallback (got ${sources})`);
+  need(["controller", "model", "model,repair", "model,fallback", "model,repair,fallback"].includes(sources), path, `model, then at most one repair, then at most one fallback (got ${sources})`);
   attempts.slice(0, -1).forEach((a, i) => need(!accepted(a), `${path}[${i}]`, "refused or failed, because an attempt follows it"));
   if (attempts[1]?.source === "repair") need(attempts[0].refusal !== null, `${path}[1]`, "a repair only after a refusal, not after a model error");
 }
@@ -345,11 +376,27 @@ function checkTurn(t: unknown, path: string): Record<string, unknown> {
       break;
     case "hang_up":
       break;
+    case "partial":
+      need(isText(x.text), `${path}.text`, "text");
+      need(x.cancelled === true, `${path}.cancelled`, "true: a partial transcript always stops Maya's output");
+      break;
+    case "maya_said":
+      need(isText(x.text), `${path}.text`, "text");
+      need(typeof x.cancelled === "boolean", `${path}.cancelled`, "a boolean");
+      break;
+    case "content_problem":
+      need(isText(x.detail), `${path}.detail`, "text");
+      need(typeof x.cancelled === "boolean", `${path}.cancelled`, "a boolean");
+      break;
     case "maya": {
       need(oneOf(STATES, x.state), `${path}.state`, "a session state");
       need(oneOf(STATES, x.stateAfter), `${path}.stateAfter`, "a session state");
       need(Array.isArray(x.attempts) && x.attempts.length > 0 && x.attempts.length <= 3, `${path}.attempts`, "1 to 3 attempts");
       const attempts = x.attempts as Record<string, unknown>[];
+      if (attempts[0]?.source === "controller") {
+        const o = x.output as { act?: unknown; say?: unknown; board?: unknown } | null;
+        need(attempts.length === 1 && attempts[0].proposal === null && attempts[0].refusal === null && attempts[0].error === undefined && o?.act === "safety" && Array.isArray(o.say) && o.say.length === 1 && Object.values(SAFETY_GUIDANCE).some((text) => text === (o.say as unknown[])[0]) && Array.isArray(o.board) && o.board.length === 0, path, "controller output is exact safety guidance only");
+      }
       attempts.forEach((a, i) => checkAttempt(a, `${path}.attempts[${i}]`));
       checkOrder(attempts, `${path}.attempts`);
       need("output" in x, `${path}.output`, "present (null when nothing was output)");
@@ -407,7 +454,7 @@ function check(raw: unknown): MayaTrace {
   need(question.text === null || isText(question.text), "question.text", "text or null");
   need(isText(question.hash) && HASH.test(question.hash), "question.hash", "sha256: and 64 hex digits");
   need(typeof r.freeTalk === "boolean", "freeTalk", "a boolean");
-  if (r.version === 3) {
+  if ((r.version as number) >= 3) {
     const rv = r.reviewer;
     need(rv === null || (isObject(rv) && isName(rv.id) && isName(rv.promptVersion) && Object.keys(rv).length === 2), "reviewer", "null, or the review's model id and prompt version");
   } else need(r.reviewer === undefined, "reviewer", "absent before version 3");
@@ -416,7 +463,7 @@ function check(raw: unknown): MayaTrace {
   const turns = (r.turns as unknown[]).map((t, i) => checkTurn(t, `turns[${i}]`));
   turns.forEach((t, i) => need(i === 0 || (t.at as number) >= (turns[i - 1].at as number), `turns[${i}].at`, "not before the turn before it"));
   turns.forEach((t, i) => {
-    if (t.kind !== "maya" || r.version === 3) return;
+    if (t.kind !== "maya" || (r.version as number) >= 3) return;
     (t.attempts as Record<string, unknown>[]).forEach((a, k) => need(a.talk === undefined && a.reviewMs === undefined, `turns[${i}].attempts[${k}].talk`, "absent before version 3"));
   });
 
@@ -442,6 +489,55 @@ function check(raw: unknown): MayaTrace {
   checkOutcome(r.outcome, "outcome");
   need((r.outcome === null) === (r.endedAt === null), "endedAt", "set exactly when the call has an outcome");
   need(r.outcome === null || r.startedAt !== null, "startedAt", "set for a call that ended");
+  turns.forEach((t, i) => {
+    if (t.kind === "maya") need(!(t.attempts as Record<string, unknown>[]).some((a) => a.source === "controller") || (r.version as number) >= 6, `turns[${i}].attempts`, "controller safety output starts in version 6");
+  });
+  // The voice agent's input turns come in version 4.
+  turns.forEach((t, i) => need(!["partial", "maya_said", "content_problem"].includes(t.kind as string) || (r.version as number) >= 4, `turns[${i}].kind`, `not ${String(t.kind)} before version 4`));
+  if ((r.version as number) >= 5 || r.obligations !== undefined) {
+    need(Array.isArray(r.obligations), "obligations", "the obligation ledger");
+    const ids = new Set<number>();
+    let childCursor = -1;
+    const childResponses = new Set<number>();
+    (r.obligations as unknown[]).forEach((raw, i) => {
+      const path = `obligations[${i}]`;
+      need(isObject(raw), path, "an obligation");
+      const o = raw as Record<string, unknown>;
+      need(isCount(o.id) && !ids.has(o.id as number), `${path}.id`, "a unique non-negative integer");
+      ids.add(o.id as number);
+      need(OBLIGATION_KINDS.includes(o.kind as TraceObligation["kind"]), `${path}.kind`, "an obligation kind");
+      need(typeof o.at === "number" && Number.isFinite(o.at), `${path}.at`, "a finite time");
+      need(["pending", "served", "dropped"].includes(o.status as string), `${path}.status`, "pending, served or dropped");
+      const fields = ["id", "kind", "at", "status", "text", "uncertain", "alternatives", "severity", "servedBy", "reason"];
+      need(Object.keys(o).every((key) => fields.includes(key)), path, "only obligation fields");
+      const hasText = ["child_turn_pending", "content_problem"].includes(o.kind as string);
+      need(hasText ? isText(o.text) : o.kind === "repair_due" ? o.text === undefined || isText(o.text) : o.text === undefined, `${path}.text`, hasText ? "required text" : "text for a repair only");
+      need(o.uncertain === undefined || (o.kind === "child_turn_pending" && typeof o.uncertain === "boolean"), `${path}.uncertain`, "a child uncertainty boolean when present");
+      need(o.alternatives === undefined || (o.kind === "child_turn_pending" && strings(o.alternatives)), `${path}.alternatives`, "a child list of text alternatives when present");
+      need(o.kind === "safety_due" ? o.severity === "concern" || o.severity === "immediate" : o.severity === undefined, `${path}.severity`, "a severity for safety only");
+      need(o.status === "served" || o.servedBy === undefined, `${path}.servedBy`, "absent unless served");
+      need(o.status === "dropped" ? isName(o.reason) : o.reason === undefined, `${path}.reason`, "a non-empty reason only when dropped");
+      let childInput = -1;
+      if (o.kind === "child_turn_pending") {
+        childInput = turns.findIndex((t, index) => index > childCursor && t.kind === "child" && t.text === o.text && t.at === o.at);
+        need(childInput >= 0, path, "a distinct matching child input");
+        childCursor = childInput;
+      }
+      if (o.status === "served") {
+        need(isCount(o.servedBy) && (o.servedBy as number) < turns.length, `${path}.servedBy`, "the trace turn that served the obligation");
+        if (o.kind === "child_turn_pending") {
+          need((o.servedBy as number) > childInput && !childResponses.has(o.servedBy as number), `${path}.servedBy`, "a distinct response after this child input");
+          childResponses.add(o.servedBy as number);
+        }
+        const t = turns[o.servedBy as number];
+        const act = (t.output as { act?: unknown } | null)?.act;
+        const serves = o.kind === "start_pending" ? t.kind === "start" :
+          t.kind === "maya" && (o.kind === "safety_due" ? act === "safety" : o.kind === "opening_due" ? act === "open" : o.kind === "repair_due" ? act === "repair" : o.kind === "content_problem" ? act === "close" : act !== undefined && !["open", "repair", "safety"].includes(act as string));
+        need(serves, `${path}.servedBy`, "a delivered response for this obligation");
+      }
+      need(r.outcome === null || o.status !== "pending", `${path}.status`, "no pending work after the call ends");
+    });
+  }
   // A hang-up (version 2 only) is what ends the call: the last turn, and the call ended, never as a technical issue.
   turns.forEach((t, i) => {
     if (t.kind !== "hang_up") return;
@@ -516,7 +612,11 @@ export function redactTrace(trace: MayaTrace, childName: string | null): MayaTra
   const turns = trace.turns.map((t): TraceTurn => {
     switch (t.kind) {
       case "child":
+      case "partial":
+      case "maya_said":
         return { ...t, text: redactText(t.text, childName) };
+      case "content_problem":
+        return { ...t, detail: redactText(t.detail, childName) };
       case "technical":
         return { ...t, detail: redactText(t.detail, childName) };
       case "maya":
@@ -535,5 +635,5 @@ export function redactTrace(trace: MayaTrace, childName: string | null): MayaTra
         return t;
     }
   });
-  return { ...trace, turns };
+  return { ...trace, turns, ...(trace.obligations ? { obligations: trace.obligations.map((o) => ({ ...o, ...(o.text !== undefined ? { text: redactText(o.text, childName) } : {}), ...(o.alternatives ? { alternatives: o.alternatives.map((s) => redactText(s, childName)) } : {}) })) } : {}) };
 }
