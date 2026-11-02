@@ -71,14 +71,14 @@ export function memoryRunStore(o: {
       runs.set(id, {
         id, createdAt: iso(), parentId, childId, number, status: "queued", step: null, attempts: 0, maxAttempts: limits.maxAttempts,
         donePages: null, totalPages: null, heartbeatAt: null, startedAt: null, finishedAt: null, error: null, errors: [], draftId: null,
-        draftKey: o.newId(), resumes: 0, startedBy: { id: by.id, email: by.email }, lease: null,
+        draftKey: o.newId(), resumes: 0, startedBy: { id: by.id, email: by.email }, runner: "server", lease: null,
       });
       log(id, "run-started", { number }, by.email);
       return { status: "started", runId: id };
     },
-    async resume(id, lease, staleSeconds) {
+    async resume(id, lease, staleSeconds, runner = "server") {
       const r = runs.get(id);
-      if (!r || r.status !== "running") return null;
+      if (!r || r.status !== "running" || r.runner !== runner) return null;
       if (r.lease !== null && o.now().getTime() - Date.parse(r.heartbeatAt ?? r.createdAt) <= staleSeconds * 1000) return null;
       if (r.resumes >= 30) {
         Object.assign(r, { status: "failed", finishedAt: iso(), lease: null, error: "The run stopped and was taken up again 30 times without finishing." });
@@ -171,11 +171,17 @@ export function memoryRunStore(o: {
       if (!pages.get(id)!.has(page.number)) pages.get(id)!.set(page.number, structuredClone(page));
       return true;
     },
-    async claim(id, lease) {
+    async claim(id, lease, runner = "server") {
       const r = runs.get(id);
-      if (!r || r.status !== "queued") return null;
+      if (!r || r.status !== "queued" || r.runner !== runner) return null;
       Object.assign(r, { status: "running", lease, attempts: 1, step: "plan", heartbeatAt: iso(), startedAt: iso() });
       return view(r);
+    },
+    async renew(id, lease) {
+      const r = holding(id, lease);
+      if (!r) return false;
+      r.heartbeatAt = iso();
+      return true;
     },
     async progress(id, lease, p) {
       const r = holding(id, lease);

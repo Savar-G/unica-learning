@@ -24,6 +24,8 @@ import { workbookStore } from "@/lib/workbook-store";
 import { READABLE_DRAFT_VERSIONS, type GeneratedWorkbook } from "@/lib/workbook-generator";
 import { readPaged, type DraftRendering, type RunSolve, type WorkbookRun } from "@/lib/workbook-job";
 import { RUN_COLUMNS, runFromRow } from "@/lib/workbook-job-store";
+import { summarizeAiCalls, type AiCallSummary } from "@/lib/workbook-ai";
+import { workerOnline } from "@/lib/workbook-worker";
 import type { RenderProblem } from "@/lib/workbook-render";
 
 // The admin area's data (#77). The gate and every read are here, so no admin page reads the database on its own; the
@@ -671,6 +673,8 @@ export interface RunDetail {
   audit: AuditEntry[];
   /** The run's solve checks (#380 round 7), oldest first: each printed question the AI worded, read by a separate model. */
   solves: RunSolve[];
+  /** The run's AI calls by provider (D-200): the Claude subscription or the API, and the API's cost. */
+  aiCalls: AiCallSummary;
 }
 
 /** One run with its draft, page images and audit log, or null. */
@@ -679,7 +683,7 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
   const [row] = must<Parameters<typeof runFromRow>[0][]>(await a.db.from("workbook_runs").select(RUN_COLUMNS).eq("id", id).limit(1), "workbook run");
   if (!row) return null;
   const run = runFromRow(row);
-  const [children, draftRow, revision, audit, solveRows] = await Promise.all([
+  const [children, draftRow, revision, audit, solveRows, callRows] = await Promise.all([
     childrenById(a, [run.childId]),
     run.draftId
       ? a.db.from("workbook_drafts").select("schema_version, draft").eq("id", run.draftId).maybeSingle().then((r) => must<{ schema_version: number; draft: GeneratedWorkbook } | null>(r, "workbook draft"))
@@ -694,6 +698,8 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
     // Every check of the run, in pages of the database's row limit (a book has a few hundred to a few thousand).
     readPaged(async (from, to) => must<{ question_id: string; model: string; verdict: RunSolve["verdict"]; ms: number; usd: number | null; log: RunSolve["log"] }[]>(
       await a.db.from("workbook_run_solves").select("question_id, model, verdict, ms, usd, log").eq("run_id", run.id).order("id").range(from, to), "workbook solve checks")),
+    readPaged(async (from, to) => must<{ provider: "subscription" | "api"; outcome: "started" | "answered" | "failed" | "unavailable"; usd: number | null; note: string | null; requests: number | null }[]>(
+      await a.db.from("workbook_run_ai_calls").select("provider, outcome, usd, note, requests").eq("run_id", run.id).order("id").range(from, to), "workbook AI calls")),
   ]);
   // A draft of an older shape (before the page layouts) is shown as "old draft format", not read as this shape.
   const oldFormat = draftRow && oldDraft(draftRow.schema_version, draftRow.draft.pages[0]?.content) ? draftRow.schema_version : null;
@@ -705,8 +711,31 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
   for (const item of signed.data ?? []) if (item.path && item.signedUrl && !item.error) images[item.path] = item.signedUrl;
   return {
     run, child: children[0] ?? null, images, audit, oldFormat,
+    aiCalls: summarizeAiCalls(callRows.map((r) => ({ ...r, usd: r.usd === null ? null : Number(r.usd) }))),
     solves: solveRows.map((r) => ({ questionId: r.question_id, model: r.model, verdict: r.verdict, ms: r.ms, usd: r.usd === null ? null : Number(r.usd), log: r.log })),
     draft: current ? { workbook: current.draft, rendering: revision?.rendering ?? null, problems: revision?.render_problems ?? [], revision: revision?.revision ?? 1 } : null,
+  };
+}
+
+/** The workbook worker on Savar's Mac (D-200), as its last heartbeat shows it. */
+export interface WorkerStatus {
+  id: string;
+  online: boolean;
+  seenAt: string;
+  startedAt: string;
+  build: string | null;
+  runId: string | null;
+  primaryAi: "subscription" | "api";
+}
+
+/** The worker seen last, or null when no worker ever wrote a heartbeat. A worker that said it stopped is offline. */
+export async function getWorkbookWorker(a: AdminSession, now = new Date()): Promise<WorkerStatus | null> {
+  const [row] = must<{ id: string; seen_at: string; started_at: string; build: string | null; run_id: string | null; primary_ai: "subscription" | "api"; note: string | null }[]>(
+    await a.db.from("workbook_workers").select("id, seen_at, started_at, build, run_id, primary_ai, note").order("seen_at", { ascending: false }).limit(1), "workbook worker");
+  if (!row) return null;
+  return {
+    id: row.id, seenAt: row.seen_at, startedAt: row.started_at, build: row.build, runId: row.run_id, primaryAi: row.primary_ai,
+    online: row.note !== "stopped" && workerOnline(row.seen_at, now),
   };
 }
 

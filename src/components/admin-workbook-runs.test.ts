@@ -8,6 +8,7 @@ import { solveReason, toSolve } from "@/lib/workbook-solve-check";
 import { AdminWorkbookRun } from "@/components/admin-workbook-runs";
 import { buildQuestion } from "@/lib/workbook-generator-items";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
+import { summarizeAiCalls } from "@/lib/workbook-ai";
 
 // Navigation feedback is outside this server component's check and cost labels.
 vi.mock("server-only", () => ({}));
@@ -44,7 +45,7 @@ export function runDetail(state: "agreed" | "disagreed" | "failed" | "not-checke
   return {
     run: { id: "run", createdAt: at, parentId: "parent", childId: "child", number: 1, status: "done", step: null,
       attempts: 1, maxAttempts: 2, donePages: 1, totalPages: 1, heartbeatAt: at, startedAt: at, finishedAt: at,
-      error: null, errors: [], draftId: "draft", draftKey: "draft", resumes: 0, startedBy: { id: "admin", email: "admin@example.com" } },
+      error: null, errors: [], draftId: "draft", draftKey: "draft", resumes: 0, startedBy: { id: "admin", email: "admin@example.com" }, runner: "server" },
     child: null, oldFormat: null, images: {},
     draft: { workbook: { id: "draft", childId: "child", number: 1, levels: [10], profileBuild: null, model: "fake",
       pages: [{ number: 1, type: "practice", dayLabel: "Day 1", day: 1, pageOfDay: 1, qrToken: "private-qr", fit: { status: "fits" }, attempts: 1, questions: [question] }],
@@ -52,12 +53,13 @@ export function runDetail(state: "agreed" | "disagreed" | "failed" | "not-checke
       rendering: null, problems: [], revision: 1 },
     audit: [{ id: 1, at, actor_email: null, action: "draft-stored", detail: { pages: 1, rendered: false, renderProblems: 1, ignored_private_key: "private-value" } }],
     solves: state === "not-checked" ? [] : [solve],
+    aiCalls: summarizeAiCalls([]),
   };
 }
 // FIXTURE_END
 
 function markup(detail: RunDetail) {
-  return renderToStaticMarkup(createElement(AdminWorkbookRun, { email: "admin@example.com", detail, now: new Date("2026-11-01T20:00:00Z"), only: false }));
+  return renderToStaticMarkup(createElement(AdminWorkbookRun, { email: "admin@example.com", detail, now: new Date("2026-11-01T20:00:00Z"), only: false, worker: null }));
 }
 const visible = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&#x27;|&apos;/g, "'").replace(/&quot;/g, "\"").replace(/\s+/g, " ");
 

@@ -1,130 +1,136 @@
 import { describe, expect, it } from "vitest";
+import { claudeCliClient, claudeCliEnv, SubscriptionUnavailable, type SpawnResult, type Spawner } from "@/lib/ai-claude-cli";
+import { fallbackAiClient } from "@/lib/ai-fallback";
 import type { AiJsonRequest } from "@/lib/ai-client";
-import { claudeCliClient, UsageLimitReached, type ClaudeRun, type ClaudeSpawn } from "@/lib/ai-claude-cli";
 
 const request: AiJsonRequest = {
-  name: "maya_proposal",
-  system: "You are Maya.",
-  content: [{ type: "text", text: '{"turn":1}' }],
-  schema: { type: "object", additionalProperties: false, required: ["say"], properties: { say: { type: "string" } } },
-  effort: "low",
-  maxTokens: 4_000,
+  name: "workbook_page", system: "Write the page.", content: [{ type: "text", text: "day 1" }, { type: "text", text: "page 3" }],
+  schema: { type: "object", additionalProperties: false, properties: { items: { type: "array" } }, required: ["items"] }, effort: "low",
 };
 
-const envelope = (extra: Record<string, unknown> = {}) =>
-  JSON.stringify({ type: "result", subtype: "success", is_error: false, api_error_status: null, result: '{"say":"Hi"}', structured_output: { say: "Hi" }, total_cost_usd: 0.01, ...extra });
+const envelope = (e: Record<string, unknown>) => JSON.stringify({ type: "result", subtype: "success", is_error: false, api_error_status: null, ...e });
 
-function fake(reply: Partial<ClaudeRun> | (() => Partial<ClaudeRun>)) {
-  const calls: { args: string[]; input: string; env: Record<string, string | undefined>; cwd: string; timeoutMs: number }[] = [];
-  const spawn: ClaudeSpawn = async (args, o) => {
-    calls.push({ args, input: o.input, env: o.env, cwd: o.cwd, timeoutMs: o.timeoutMs });
-    const r = typeof reply === "function" ? reply() : reply;
-    return { stdout: "", stderr: "", status: 0, ...r };
+function fakeSpawn(answer: (args: string[]) => Partial<SpawnResult>) {
+  const calls: { command: string; args: string[]; input: string; env: Record<string, string>; timeoutMs: number }[] = [];
+  const spawn: Spawner = async (command, args, o) => {
+    calls.push({ command, args, input: o.input, env: o.env, timeoutMs: o.timeoutMs });
+    return { code: 0, stdout: "", stderr: "", ...answer(args) };
   };
   return { spawn, calls };
 }
 
+const fail = async (p: Promise<unknown>) => p.then(() => { throw new Error("no error"); }, (e: unknown) => e as Error);
 const signal = () => new AbortController().signal;
-const arg = (args: string[], flag: string) => args[args.indexOf(flag) + 1];
 
 describe("claudeCliClient", () => {
-  it("sends the request as one claude -p call with Maya's system prompt, the schema and no tools", async () => {
-    const { spawn, calls } = fake({ stdout: envelope() });
-    const client = claudeCliClient({ model: "claude-sonnet-5-5", spawn, cwd: "/tmp/x", timeoutMs: 1234, env: { PATH: "/bin" } });
-    expect(client.model).toBe("claude-sonnet-5-5");
-    await expect(client.json(request, signal())).resolves.toEqual({ say: "Hi" });
-    expect(calls).toHaveLength(1);
-    const { args, input, cwd, timeoutMs } = calls[0];
-    expect(args[0]).toBe("-p");
-    expect(arg(args, "--output-format")).toBe("json");
-    expect(arg(args, "--model")).toBe("claude-sonnet-5-5");
-    expect(arg(args, "--system-prompt")).toBe("You are Maya.");
-    expect(JSON.parse(arg(args, "--json-schema"))).toEqual(request.schema);
-    expect(arg(args, "--tools")).toBe("");
-    expect(arg(args, "--effort")).toBe("low");
-    expect(args).toContain("--safe-mode");
-    expect(args).toContain("--no-session-persistence");
-    expect(input).toBe('{"turn":1}');
-    expect(cwd).toBe("/tmp/x");
-    expect(timeoutMs).toBe(1234);
+  it("runs claude -p with the schema, the instructions and the text, and answers the structured output", async () => {
+    const f = fakeSpawn(() => ({ stdout: envelope({ result: "{\"items\":[1]}", structured_output: { items: [1] } }) }));
+    const ai = claudeCliClient({ model: "claude-sonnet-5-5", spawn: f.spawn, env: { PATH: "/bin", HOME: "/Users/s" } });
+    expect(await ai.json(request, signal())).toEqual({ items: [1] });
+    const { command, args, input } = f.calls[0];
+    expect(command).toBe("claude");
+    expect(args.slice(0, 7)).toEqual(["-p", "--output-format", "json", "--safe-mode", "--tools", "", "--no-session-persistence"]);
+    expect(args[args.indexOf("--model") + 1]).toBe("claude-sonnet-5-5");
+    expect(args[args.indexOf("--system-prompt") + 1]).toBe("Write the page.");
+    expect(JSON.parse(args[args.indexOf("--json-schema") + 1])).toEqual(request.schema);
+    expect(args[args.indexOf("--effort") + 1]).toBe("low");
+    expect(input).toBe("day 1\n\npage 3");
   });
 
-  it("removes the API key from the call's environment and passes MAYA_CLAUDE_CONFIG_DIR as CLAUDE_CONFIG_DIR", async () => {
-    const { spawn, calls } = fake({ stdout: envelope() });
-    await claudeCliClient({ model: "m", spawn, cwd: "/tmp/x", configDir: "/cfg", env: { PATH: "/bin", ANTHROPIC_API_KEY: "sk-ant-x", ANTHROPIC_AUTH_TOKEN: "t" } }).json(request, signal());
-    expect(calls[0].env.ANTHROPIC_API_KEY).toBeUndefined();
-    expect(calls[0].env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
-    expect(calls[0].env.CLAUDE_CONFIG_DIR).toBe("/cfg");
-    expect(calls[0].env.PATH).toBe("/bin");
-    expect(calls[0].env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe("1");
+  it("never passes an API key, and passes CLAUDE_CONFIG_DIR when a config folder is given", async () => {
+    const f = fakeSpawn(() => ({ stdout: envelope({ structured_output: { items: [] } }) }));
+    const env = { PATH: "/bin", HOME: "/Users/s", ANTHROPIC_API_KEY: "sk-ant", OPENROUTER_API_KEY: "sk-or", SUPABASE_SECRET_KEY: "sb", ANTHROPIC_AUTH_TOKEN: "t" };
+    await claudeCliClient({ spawn: f.spawn, env, configDir: "/Users/s/.claude-work", timeout: 1234 }).json(request, signal());
+    expect(f.calls[0].env).toEqual({ PATH: "/bin", HOME: "/Users/s", CLAUDE_CONFIG_DIR: "/Users/s/.claude-work" });
+    expect(f.calls[0].timeoutMs).toBe(1234);
+    expect(claudeCliEnv(env)).toEqual({ PATH: "/bin", HOME: "/Users/s" });
   });
 
-  it("removes every paid-route setting, so the call can only use the subscription (R401-1)", async () => {
-    const { spawn, calls } = fake({ stdout: envelope() });
-    const env = {
-      PATH: "/bin", CLAUDE_CODE_USE_BEDROCK: "1", CLAUDE_CODE_USE_VERTEX: "1", CLAUDE_CODE_USE_FOUNDRY: "1",
-      ANTHROPIC_BASE_URL: "https://proxy.example", ANTHROPIC_BEDROCK_BASE_URL: "https://b.example", ANTHROPIC_FOUNDRY_API_KEY: "k",
-      AWS_BEARER_TOKEN_BEDROCK: "t", CLAUDE_CODE_SKIP_BEDROCK_AUTH: "1", CLOUD_ML_REGION: "us-east5", HOME: "/home/x",
-    };
-    await claudeCliClient({ model: "m", spawn, cwd: "/tmp/x", env }).json(request, signal());
-    const sent = calls[0].env;
-    for (const k of Object.keys(env)) if (k !== "PATH" && k !== "HOME") expect(sent[k], k).toBeUndefined();
-    expect(sent.PATH).toBe("/bin");
-    expect(sent.HOME).toBe("/home/x");
+  it("parses the result text when there is no structured output, and refuses text that is not JSON", async () => {
+    const ok = fakeSpawn(() => ({ stdout: envelope({ result: " {\"items\":[2]} " }) }));
+    expect(await claudeCliClient({ spawn: ok.spawn }).json(request, signal())).toEqual({ items: [2] });
+    const bad = fakeSpawn(() => ({ stdout: envelope({ result: "Here you go" }) }));
+    const e = await fail(claudeCliClient({ spawn: bad.spawn }).json(request, signal()));
+    expect(e).not.toBeInstanceOf(SubscriptionUnavailable);
+    expect(e.message).toBe("the output is not valid JSON");
   });
 
-  it("leaves out --effort when the request has none, and CLAUDE_CONFIG_DIR when none is given", async () => {
-    const { spawn, calls } = fake({ stdout: envelope() });
-    await claudeCliClient({ model: "m", spawn, cwd: "/tmp/x", env: {} }).json({ ...request, effort: undefined }, signal());
-    expect(calls[0].args).not.toContain("--effort");
-    expect(calls[0].env.CLAUDE_CONFIG_DIR).toBeUndefined();
-  });
-
-  it("reads the JSON from the result text when there is no structured output", async () => {
-    const { spawn } = fake({ stdout: envelope({ structured_output: undefined, result: 'Here it is: {"say":"Yes"}' }) });
-    await expect(claudeCliClient({ model: "m", spawn, cwd: "/tmp/x" }).json(request, signal())).resolves.toEqual({ say: "Yes" });
-  });
-
-  it("throws UsageLimitReached and calls onLimit when the usage limit is met", async () => {
-    const limits: string[] = [];
-    const { spawn } = fake({ stdout: envelope({ is_error: true, subtype: "success", result: "Claude AI usage limit reached|1762000000", structured_output: undefined }) });
-    const client = claudeCliClient({ model: "m", spawn, cwd: "/tmp/x", onLimit: (d) => limits.push(d) });
-    await expect(client.json(request, signal())).rejects.toBeInstanceOf(UsageLimitReached);
-    expect(limits).toHaveLength(1);
-    expect(limits[0]).toContain("usage limit");
-  });
-
-  it("treats a 429 and a limit message outside the JSON as the usage limit", async () => {
-    const a = fake({ stdout: envelope({ is_error: true, api_error_status: 429, result: "Too many requests" }) });
-    await expect(claudeCliClient({ model: "m", spawn: a.spawn, cwd: "/tmp/x" }).json(request, signal())).rejects.toBeInstanceOf(UsageLimitReached);
-    const b = fake({ stdout: "You've hit your limit · resets 3pm", status: 1 });
-    await expect(claudeCliClient({ model: "m", spawn: b.spawn, cwd: "/tmp/x" }).json(request, signal())).rejects.toBeInstanceOf(UsageLimitReached);
-  });
-
-  it("fails other errors as ordinary errors, not as the usage limit", async () => {
-    const cases: Partial<ClaudeRun>[] = [
-      { stdout: envelope({ is_error: true, subtype: "error_during_execution", result: "boom" }) },
-      { stdout: "", stderr: "something broke", status: 1 },
-      { stdout: "not json", status: 0 },
-      { stdout: "", status: null, error: { code: "ENOENT", message: "spawn claude ENOENT" } },
+  it("answers a usage limit, a missing CLI, a lost login and a crash as unavailable, with whether it lasts", async () => {
+    const cases: [Partial<SpawnResult>, string, boolean][] = [
+      [{ stdout: envelope({ is_error: true, subtype: "error", result: "Claude AI usage limit reached|1762020000" }) }, "limit", true],
+      [{ stdout: envelope({ is_error: true, result: "You've hit your limit · resets 3pm" }) }, "limit", true],
+      [{ stdout: envelope({ is_error: true, api_error_status: 429, result: "Too busy" }) }, "limit", true],
+      [{ code: null, error: { code: "ENOENT", message: "spawn claude ENOENT" } }, "missing", true],
+      [{ code: 1, stdout: envelope({ is_error: true, result: "Invalid API key · Please run /login" }) }, "logged-out", true],
+      [{ code: 1, stderr: "Not logged in · Please run /login" }, "logged-out", true],
+      [{ code: 134, stderr: "Segmentation fault" }, "crash", false],
+      [{ code: 0, stdout: "not json" }, "crash", false],
+      [{ stdout: envelope({ is_error: true, api_error_status: 529, result: "Overloaded" }) }, "crash", false],
     ];
-    for (const reply of cases) {
-      const { spawn } = fake(reply);
-      const e = await claudeCliClient({ model: "m", spawn, cwd: "/tmp/x" }).json(request, signal()).catch((x: unknown) => x);
-      expect(e).toBeInstanceOf(Error);
-      expect(e).not.toBeInstanceOf(UsageLimitReached);
+    for (const [answer, reason, lasting] of cases) {
+      const e = await fail(claudeCliClient({ spawn: fakeSpawn(() => answer).spawn }).json(request, signal()));
+      expect(e, JSON.stringify(answer)).toBeInstanceOf(SubscriptionUnavailable);
+      expect((e as SubscriptionUnavailable).reason).toBe(reason);
+      expect((e as SubscriptionUnavailable).lasting).toBe(lasting);
     }
   });
 
-  it("says time is up when the call passes its time limit", async () => {
-    const { spawn } = fake({ stdout: "", status: null, error: { code: "ETIMEDOUT", message: "no answer in 1 s" } });
-    await expect(claudeCliClient({ model: "m", spawn, cwd: "/tmp/x" }).json(request, signal())).rejects.toThrow("time is up");
+  it("answers a schema miss, a refusal and the time limit as ordinary errors (the caller's retry handles them)", async () => {
+    const cases: [Partial<SpawnResult>, string][] = [
+      [{ stdout: envelope({ is_error: true, subtype: "error_max_structured_output_retries", result: "" }) }, "the output did not match the schema"],
+      [{ stdout: envelope({ stop_reason: "refusal", result: "" }) }, "the model refused"],
+      [{ code: null, timedOut: true }, "claude -p did not answer in time (300000 ms)"],
+    ];
+    for (const [answer, message] of cases) {
+      const e = await fail(claudeCliClient({ spawn: fakeSpawn(() => answer).spawn }).json(request, signal()));
+      expect(e).not.toBeInstanceOf(SubscriptionUnavailable);
+      expect(e.message).toBe(message);
+    }
   });
 
-  it("refuses an image part without starting a process", async () => {
-    const { spawn, calls } = fake({ stdout: envelope() });
-    const withImage: AiJsonRequest = { ...request, content: [...request.content, { type: "image", mediaType: "image/png", data: new Uint8Array([1]) }] };
-    await expect(claudeCliClient({ model: "m", spawn, cwd: "/tmp/x" }).json(withImage, signal())).rejects.toThrow("text only");
-    expect(calls).toHaveLength(0);
+  it("refuses a request with an image before any process starts, so the fallback takes it", async () => {
+    const f = fakeSpawn(() => ({ stdout: envelope({ structured_output: {} }) }));
+    const e = await fail(claudeCliClient({ spawn: f.spawn }).json({ ...request, content: [{ type: "image", mediaType: "image/png", data: new Uint8Array([1]) }] }, signal()));
+    expect((e as SubscriptionUnavailable).reason).toBe("images");
+    expect((e as SubscriptionUnavailable).lasting).toBe(false);
+    expect(f.calls).toHaveLength(0);
+  });
+
+  it("answers 'time is up' when the caller's signal stops the call", async () => {
+    const c = new AbortController();
+    const spawn: Spawner = async () => { c.abort(); return { code: null, stdout: "", stderr: "" }; };
+    const e = await fail(claudeCliClient({ spawn }).json(request, c.signal));
+    expect(e.message).toBe("time is up");
+    expect(e).not.toBeInstanceOf(SubscriptionUnavailable);
+  });
+});
+
+
+describe("R404-3 CLI error results", () => {
+  it.each([
+    ["error_during_execution", ["usage limit reached"], "limit"],
+    ["error_during_execution", ["not logged in, please run /login"], "logged-out"],
+    ["error_during_execution", ["execution worker crashed"], "crash"],
+    ["error_during_execution", ["x".repeat(500), "usage limit reached"], "limit"],
+  ])("falls back for %s with errors %j", async (subtype, errors, reason) => {
+    const sub = claudeCliClient({ spawn: fakeSpawn(() => ({ code: 1, stdout: envelope({ subtype, is_error: true, errors }) })).spawn });
+    const e = await fail(sub.json(request, signal()));
+    expect(e).toBeInstanceOf(SubscriptionUnavailable);
+    expect((e as SubscriptionUnavailable).reason).toBe(reason);
+    let apiCalls = 0;
+    const client = fallbackAiClient({ model: "m", primary: "subscription", subscription: sub, api: () => ({ model: "api", json: async () => { apiCalls++; return { items: [] }; } }) });
+    expect(await client.json(request, signal())).toEqual({ items: [] });
+    expect(apiCalls).toBe(1);
+  });
+
+  it.each([
+    { subtype: "error_max_structured_output_retries", errors: ["schema mismatch"] },
+    { subtype: "error_during_execution", stop_reason: "refusal", errors: ["refused"] },
+  ])("keeps schema errors and refusals out of fallback: %j", async (error) => {
+    const sub = claudeCliClient({ spawn: fakeSpawn(() => ({ code: 1, stdout: envelope({ ...error, is_error: true }) })).spawn });
+    let calls = 0;
+    const client = fallbackAiClient({ model: "m", primary: "subscription", subscription: sub, api: () => ({ model: "api", json: async () => { calls++; return {}; } }) });
+    await expect(client.json(request, signal())).rejects.toThrow();
+    expect(calls).toBe(0);
   });
 });
