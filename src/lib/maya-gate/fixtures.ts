@@ -2,9 +2,11 @@
 // (`.design/research/ta-pedagogy-2026-10/maya-teaching.md`, section 7), each a full question package built from the
 // worked-steps code, with its wrong answers and an easier example, checked by `checkQuestionPackage` like any package.
 // `A_BAD_KEY` is fixture A with a wrong answer key (56 while the checked steps total 66), for the content hold (C36).
+// `D_SIMPLEST` is fixture D with a question that asks for the simplest form (C38c, #407). `G` is a fraction kind Maya does
+// not teach yet (equivalent fractions, C36b).
 import { checkQuestionPackage, workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
 
-export type FixtureId = "A" | "B" | "C" | "D" | "E" | "F" | "A_BAD_KEY";
+export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY";
 
 const num = (value: number): AnswerValue => ({ type: "number", value });
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
@@ -35,6 +37,17 @@ function fixture(input: {
     easierExample: { ...input.easier, steps: workedSteps(input.easier.operation) },
   };
 }
+
+const D = fixture({
+  id: "gate-D-3/4+1/8",
+  text: "3/4 + 1/8 = ?",
+  operation: { kind: "fraction-add", operands: [frac(3, 4), frac(1, 8)] },
+  answer: frac(7, 8),
+  skill: "8.5-add-subtract-unlike",
+  level: 26,
+  wrong: [{ value: frac(4, 12), cause: "F2", description: "Adds the denominators", step: null }],
+  easier: { text: "1/5 + 2/5 = ?", operation: { kind: "fraction-add", operands: [frac(1, 5), frac(2, 5)] }, answer: frac(3, 5) },
+});
 
 const A = fixture({
   id: "gate-A-27-39",
@@ -69,16 +82,9 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
     wrong: [{ value: num(10), cause: "wrong-operation", description: "Adds instead of multiplying", step: null }],
     easier: { text: "3 × 2 = ?", operation: { kind: "multiply", operands: [3, 2] }, answer: num(6) },
   }),
-  D: fixture({
-    id: "gate-D-3/4+1/8",
-    text: "3/4 + 1/8 = ?",
-    operation: { kind: "fraction-add", operands: [frac(3, 4), frac(1, 8)] },
-    answer: frac(7, 8),
-    skill: "8.5-add-subtract-fractions",
-    level: 24,
-    wrong: [{ value: frac(4, 12), cause: "F2", description: "Adds the denominators", step: null }],
-    easier: { text: "1/5 + 2/5 = ?", operation: { kind: "fraction-add", operands: [frac(1, 5), frac(2, 5)] }, answer: frac(3, 5) },
-  }),
+  D,
+  // C38c: the same question, asking for the simplest form: an equal fraction (14/16) is simplified first.
+  D_SIMPLEST: { ...D, id: "gate-D-simplest", text: "3/4 + 1/8 = ? Write your answer in simplest form." },
   E: fixture({
     id: "gate-E-0.6+0.25",
     text: "0.6 + 0.25 = ?",
@@ -99,6 +105,17 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
     level: 11,
     wrong: [{ value: num(22), cause: "M2", description: "Finds the perimeter instead of the area", step: null }],
     easier: { text: "3 × 2 = ?", operation: { kind: "multiply", operands: [3, 2] }, answer: num(6) },
+  }),
+  // C36b: equivalent fractions, a kind Maya does not teach yet (#407): held.
+  G: fixture({
+    id: "gate-G-3/4=?/12",
+    text: "3/4 = ?/12",
+    operation: { kind: "fraction-equivalent", operands: [frac(3, 4)], denominator: 12 },
+    answer: frac(9, 12),
+    skill: "5.3-equivalent-fractions",
+    level: 17,
+    wrong: [{ value: frac(11, 12), cause: "F9", description: "Adds the same number to the top and the bottom", step: null }],
+    easier: { text: "1/2 = ?/4", operation: { kind: "fraction-equivalent", operands: [frac(1, 2)], denominator: 4 }, answer: frac(2, 4) },
   }),
   // C36: the package says 56 while its checked steps total 66. The package check refuses it, so the call is held.
   A_BAD_KEY: { ...A, id: "gate-A-bad-key", answer: { value: num(56), accepted: [], unit: null } },

@@ -2,7 +2,7 @@
 // gives it and records the requests. `ruleMayaModel` is a small rule player for the command line (`--model fake`): it
 // reads the offers and picks a line the way a careful model would, so a whole call runs with no AI. It is not a
 // teacher; the session still checks every proposal it makes.
-import { readNumbers, PROPOSAL_VERSION, type Act } from "@/lib/maya";
+import { readNumbers, writtenFractions, PROPOSAL_VERSION, type Act } from "@/lib/maya";
 import { valueText } from "@/lib/question-package";
 import { PROMPT_VERSION, type ActOffer, type MayaModel, type ModelInput } from "@/lib/maya-model";
 
@@ -43,7 +43,8 @@ export function ruleMayaModel(): MayaModel {
 function rulePropose(input: ModelInput): unknown {
   const text = input.childTurn ?? "";
   const answer = input.question?.answer ?? null;
-  const read = readNumbers(text);
+  // In a fraction call the child's spoken fractions are read, as the session reads them (D-204).
+  const read = readNumbers(answer?.includes("/") ? writtenFractions(text) : text);
   const last = read.values.at(-1);
   // The child's answer: the right one if they said it anywhere, else their last number.
   // A number in an explanation ("so I carried a ten") is not an answer: only a short turn or "I got ..." gives one.
