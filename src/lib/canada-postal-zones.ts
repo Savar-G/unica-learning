@@ -72,7 +72,10 @@ postalRule("America/Edmonton", "S0M1H0 S0M1M0 S0M1R0 S0M1P0 S0M2C0", "https://ww
 postalRule("America/Dawson_Creek", "V0C1H0 V0C1J0 V0C1V0 V0C1X0 V0C2C0 V0C2K0 V0C2L0 V0C2W0", BC, BC_POSTAL);
 postalRule("America/Fort_Nelson", "V0C1R0", BC, BC_POSTAL);
 postalRule(PACIFIC_ZONE, "V0C1L0", BC_POSTAL); // Dease Lake, outside the Peace region
-postalRule(PACIFIC_ZONE, "V0B1E0 V0B1S0 V0B1X0 V0B2B0", "https://www.rdck.ca/"); // Kootenay Lake east shore
+// Kootenay Lake east shore keeps UTC-7 all year, like Creston (R425-5).
+postalRule("America/Creston", "V0B1E0 V0B1S0 V0B1X0 V0B2B0", "https://www.rdck.ca/", "https://kootenaylake.bc.ca/wp3/wp-content/uploads/2018/12/2018-web-brochure.pdf");
+// Creston Valley communities with their own codes: Boswell area, Canyon, Kingsgate, Kitchener, Wynndel (R425-2 round 3).
+postalRule("America/Creston", "V0B1A1 V0B1A2 V0B1A3 V0B1A4 V0B1C1 V0B1V0 V0B1V1 V0B1W1 V0B2N1 V0B2N2", "https://canyon.sd8.bc.ca/sites/default/files/documents/2025-09/FSA%20Letter%20to%20Parents-Guardians%20with%20info%20sheets%209-23-2025.pdf", "https://www.kitchenerbc.ca/", "https://www.rdck.ca/wp-content/uploads/2025/03/Eligible-Submissions-for-Website-1.pdf");
 postalRule("America/Creston", "V0B1A0 V0B1C0 V0B1G0 V0B1G2 V0B1G3 V0B1G4 V0B1G5 V0B1G6 V0B1G7 V0B1G8 V0B1K0 V0B1W0 V0B2C0 V0B2N0 V0B2P0", "https://www.creston.ca/", BC_POSTAL);
 postalRule("America/Creston", "V0B1G1 V0B1G9", "https://rdck.ca/wp-content/uploads/2026/03/PRJ25030-2_ITT_ERK-Meter-Pits-ITT2_rev1.pdf");
 
