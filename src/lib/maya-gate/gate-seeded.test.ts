@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { allLineTexts, type Effect, type SessionEvent, type StepResult } from "@/lib/maya";
-import type { MayaTrace } from "@/lib/maya-trace";
+import { checkTrace, type MayaTrace } from "@/lib/maya-trace";
 import type { OperationPackage } from "@/lib/question-package";
 import { BEHAVIOURS } from "./behaviours";
 import { FIXTURES } from "./fixtures";
@@ -118,6 +118,17 @@ describe("each hard failure can fail the gate (a saved trace changed after the r
   it.each(seeds.map(([code, id, change], i) => [`${code} (${id}, seed ${i})`, code, id, change] as const))("%s", async (_, code, id, change) => {
     const b = byId(id);
     expect(codes(b, change(await savedTrace(b)))).toContain(code);
+  });
+
+  it("R424-5: an approved speech report does not hide an answered partial", async () => {
+    const b = byId("C15");
+    const t = await savedTrace(b);
+    const i = t.turns.findIndex((x) => x.kind === "partial");
+    const [partial] = t.turns.splice(i, 1);
+    t.turns.splice(i + 1, 0, { ...partial, at: t.turns[i].at });
+    t.turns.splice(i + 2, 0, { kind: "maya_said", at: t.turns[i + 2].at, text: "", cancelled: false });
+    expect(checkTrace(t)).toMatchObject({ ok: true });
+    expect(codes(b, t)).toContain("partial_judged");
   });
 
   it("missing_trace: a run with no saved trace fails", () => {

@@ -28,6 +28,7 @@ import {
   fallbacks,
   nextActs,
   step,
+  speechKey,
   LINES_VERSION,
   PROPOSAL_VERSION,
   type Act,
@@ -90,6 +91,8 @@ export interface SavedTextSession {
   endedAt: number | null;
   turns: TraceTurn[];
   board: TraceBoardBatch[];
+  /** Unspoken utterances in the current output batch. Absent in older saved sessions. */
+  approved?: string[];
 }
 
 /** How a call that has not ended yet ends when it is finished. */
@@ -125,7 +128,7 @@ export interface TextSession {
    */
   partial(text: string): Promise<TextOutput>;
   /**
-   * What Maya actually said in her last turn (the speech transcript). Words that are not her approved text stop her
+   * What Maya actually said in an unspoken utterance of the current batch. Words that are not her approved text stop her
    * output and start a repair, which comes first; then the teaching goes on.
    */
   mayaSaid(text: string): Promise<TextOutput>;
@@ -183,13 +186,54 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   let queue: Promise<unknown> = Promise.resolve();
   /** Content problems not taken yet: each is taken before the next Maya turn. */
   const problems: string[] = [];
+  let approved = [...(resume?.approved ?? (resume ? session.turns.filter((t) => t.speaker === "maya").slice(-1).map((t) => t.text) : []))];
+  type Run = { controller: AbortController; out: TextOutput; before: Session; scene: Scene; endedAt: number | null; turn: number; board: number };
+  let active: Run | null = null;
+  let inputVersion = 0;
+  const interrupted = Symbol("interrupted");
+
+  /** A provider may ignore abort. Stop waiting, and never let its late result commit. */
+  async function interruptible<T>(pending: Promise<T>, run: Run): Promise<T | typeof interrupted> {
+    const { signal } = run.controller;
+    if (signal.aborted) {
+      void pending.catch(() => undefined);
+      return interrupted;
+    }
+    let stop: () => void = () => {};
+    const cancelled = new Promise<typeof interrupted>((resolve) => { stop = () => resolve(interrupted); signal.addEventListener("abort", stop, { once: true }); });
+    try { return await Promise.race([pending, cancelled]); }
+    finally { signal.removeEventListener("abort", stop); }
+  }
+
+  /** Roll back unreturned output. Input records remain; unspoken Maya turns and board changes do not. */
+  function discard(run: Run) {
+    const safety = session.safety;
+    const held = turns.slice(run.turn).filter((t) => t.kind === "content_problem");
+    const inputs = turns.slice(run.turn).filter((t) => t.kind !== "maya");
+    const childTurns = session.turns.slice(run.before.turns.length).filter((t) => t.speaker === "child");
+    session = structuredClone(run.before);
+    session.turns.push(...childTurns);
+    scene = run.scene;
+    endedAt = run.endedAt;
+    turns.splice(run.turn, turns.length - run.turn, ...inputs);
+    board.splice(run.board);
+    run.out.say = [];
+    run.out.board = [];
+    run.out.ended = null;
+    run.out.safetyMessage = null;
+    run.out.cancelled = true;
+    approved = [];
+    // Safety and content holds survive the discarded teaching. Guidance still due is given on the next response or end.
+    if (safety.flagged && safety.severity) event({ type: "safety", at: safeNow(), severity: safety.severity }, run.out);
+    for (const t of held) if (t.kind === "content_problem") event({ type: "content_problem", at: safeNow(), detail: t.detail }, run.out);
+  }
 
   const newOutput = (): TextOutput => ({ say: [], board: [], ended: null, safetyMessage: null, cancelled: false });
 
   /** Takes the effects that are not Maya's words: a stop of Maya's output, and the end of the call. */
   function takeEnd(effects: Effect[], out: TextOutput) {
     for (const e of effects) {
-      if (e.kind === "cancel_output") out.cancelled = true;
+      if (e.kind === "cancel_output") { out.cancelled = true; approved = []; }
       if (e.kind === "end") {
         out.ended = e.outcome;
         out.safetyMessage = e.safetyMessage;
@@ -212,7 +256,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     while (problems.length > 0) {
       const detail = redactText(problems.shift()!);
       const at = Math.max(clock(), session.now ?? 0);
-      const r = event({ type: "content_problem", at, detail }, out);
+      // Keep required safety guidance. All buffered teaching belongs to the invalid package.
+      if (active && turns.slice(active.turn).some((t) => t.kind === "maya" && t.output && t.output.act !== "safety")) discard(active);
+      const r = event({ type: "content_problem", at: Math.max(at, session.now ?? 0), detail }, out);
       if (r) turns.push({ kind: "content_problem", at, detail, cancelled: r.cancelled });
     }
   }
@@ -222,8 +268,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
    * session would say; then, when there are some, with a review of each (in parallel, each with the time limit).
    */
   async function reviewed(proposal: unknown, turn: number): Promise<{ r: ReturnType<typeof step>; reviewMs?: number }> {
-    const at = Math.max(clock(), session.now ?? 0);
-    const first = step(session, { type: "proposal", at, proposal });
+    const before = session;
+    const at = Math.max(clock(), before.now ?? 0);
+    const first = step(before, { type: "proposal", at, proposal });
     const talk = first.refusal ? [] : first.effects.flatMap((e) => (e.kind === "say" ? e.talk ?? [] : []));
     const texts = [...new Set(talk.filter((t) => t.code === null && t.review === "not_run").map((t) => t.proposed))];
     if (texts.length === 0 || !options.reviewer) return { r: first };
@@ -231,18 +278,31 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const reviewer = options.reviewer;
     const talkReviews = await Promise.all(texts.map(async (text) => ({
       text,
-      result: await runReview(reviewer, reviewInput(session, text), options.reviewTimeLimitMs ?? REVIEW_TIME_LIMIT_MS, (e) => options.onError?.(e, { turn, source: "review" })),
+      result: await runReview(reviewer, reviewInput(before, text), options.reviewTimeLimitMs ?? REVIEW_TIME_LIMIT_MS, (e) => options.onError?.(e, { turn, source: "review" })),
     })));
     const reviewMs = clock() - t0;
-    return { r: step(session, { type: "proposal", at, proposal, talkReviews }), reviewMs };
+    return { r: step(before, { type: "proposal", at, proposal, talkReviews }), reviewMs };
   }
 
   /**
    * Tries one proposal: accepted when `step` accepts it and the board core accepts every batch it makes. A refused
    * proposal keeps what the session keeps from it (a safety flag, a stop, an unclear number); nothing of it is output.
    */
-  async function tryProposal(proposal: unknown, out: TextOutput, turn: number): Promise<{ refusal: TraceAttempt["refusal"]; said?: { act: Act; say: string[]; board: string[] }; talk?: TraceTalk[]; reviewMs?: number }> {
-    const { r, reviewMs } = await reviewed(proposal, turn);
+  async function tryProposal(proposal: unknown, out: TextOutput, turn: number, run: Run): Promise<{ interrupted?: boolean; refusal: TraceAttempt["refusal"]; said?: { act: Act; say: string[]; board: string[] }; talk?: TraceTalk[]; reviewMs?: number }> {
+    const result = await interruptible(reviewed(proposal, turn), run);
+    if (result === interrupted || run.controller.signal.aborted) return { interrupted: true, refusal: null };
+    const { r, reviewMs } = result;
+    // A pending content hold must precede a terminal proposal. Only safety guidance may commit ahead of it.
+    if (problems.length > 0 && !r.effects.some((e) => e.kind === "say" && e.act === "safety")) {
+      const reading = typeof proposal === "object" && proposal !== null ? (proposal as Record<string, unknown>).reading : undefined;
+      const priority = step(session, { type: "proposal", at: Math.max(clock(), session.now ?? 0), proposal: { reading } });
+      session = priority.session;
+      takeEnd(priority.effects, out);
+      // Remove the uncommitted Maya entry before the content event is recorded.
+      turns.splice(turn, 1);
+      takeProblems(out);
+      return { interrupted: true, refusal: null };
+    }
     if (r.refusal) {
       session = r.session;
       takeEnd(r.effects, out);
@@ -287,20 +347,23 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   }
 
   /** One Maya turn: the model, one repair, then code's fallback. */
-  async function mayaTurn(out: TextOutput) {
+  async function mayaTurn(out: TextOutput, run: Run) {
     const index = turns.length;
     const entry: Extract<TraceTurn, { kind: "maya" }> = { kind: "maya", at: clock(), state: session.state, stateAfter: session.state, attempts: [], output: null };
     turns.push(entry);
-    const controller = new AbortController();
+    const controller = run.controller;
 
-    const ask = async (source: "model" | "repair", repair: Parameters<typeof modelInput>[1]) => {
+    const ask = async (source: "model" | "repair", repair: Parameters<typeof modelInput>[1]): Promise<(Awaited<ReturnType<typeof tryProposal>> & { proposal: unknown }) | null> => {
       const t0 = clock();
       try {
-        const proposal = await model.propose(modelInput(session, repair), controller.signal);
-        const tried = await tryProposal(proposal, out, index);
+        const proposal = await interruptible(model.propose(modelInput(session, repair), controller.signal), run);
+        if (proposal === interrupted || controller.signal.aborted) return { interrupted: true, proposal: null, refusal: null };
+        const tried = await tryProposal(proposal, out, index, run);
+        if (tried.interrupted) return { interrupted: true, proposal: null, refusal: null };
         entry.attempts.push({ source, proposal, refusal: tried.refusal, ms: clock() - t0, ...(tried.talk ? { talk: tried.talk } : {}), ...(tried.reviewMs !== undefined ? { reviewMs: tried.reviewMs } : {}) });
         return { proposal, ...tried };
       } catch (e) {
+        if (controller.signal.aborted) return { interrupted: true, proposal: null, refusal: null };
         options.onError?.(e, { turn: index, source });
         entry.attempts.push({ source, proposal: null, refusal: null, error: classifyError(e, "model"), ms: clock() - t0 });
         return null;
@@ -308,16 +371,19 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     };
 
     let result = await ask("model", null);
+    if (result?.interrupted) return;
     if (result && result.refusal && !session.outcome && nextActs(session).expect === "maya") {
       result = await ask("repair", { proposal: result.proposal, refusal: { code: result.refusal.code, reason: result.refusal.reason, allowed: result.refusal.allowed } });
     }
+    if (result?.interrupted || controller.signal.aborted) return;
     if (result?.said) {
       entry.output = result.said;
     } else if (!session.outcome && nextActs(session).expect === "maya") {
       // The fallback keeps what code can check of the refused proposals' readings (#389).
       const refused = entry.attempts.filter((a) => a.refusal !== null).map((a) => a.proposal);
       for (const proposal of fallbacks(session, refused)) {
-        const tried = await tryProposal(proposal, out, index);
+        const tried = await tryProposal(proposal, out, index, run);
+        if (tried.interrupted) return;
         if (tried.said) {
           entry.attempts.push({ source: "fallback", proposal, refusal: null });
           entry.output = tried.said;
@@ -334,10 +400,12 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   }
 
   async function mayaTurns(out: TextOutput) {
+    const run = active!;
     for (let n = 0; n < MAX_MAYA_TURNS; n++) {
+      if (run.controller.signal.aborted) break;
       takeProblems(out);
       if (session.outcome || nextActs(session).expect !== "maya") break;
-      await mayaTurn(out);
+      await mayaTurn(out, run);
     }
     return out;
   }
@@ -376,14 +444,23 @@ export function createTextSession(options: TextSessionOptions): TextSession {
    * Runs inputs one at a time, in order. An input that throws ends the call as a technical issue, so the trace keeps
    * an outcome, and the error goes on to the caller.
    */
-  function serial(run: (out: TextOutput) => Promise<TextOutput>): Promise<TextOutput> {
+  function serial(run: (out: TextOutput) => Promise<TextOutput>, cancelPending = true): Promise<TextOutput> {
+    const version = inputVersion;
     const next = queue.then(async () => {
+      const out = newOutput();
+      if (cancelPending && version !== inputVersion) return { ...out, cancelled: true };
+      const current: Run = { controller: new AbortController(), out, before: structuredClone(session), scene, endedAt, turn: turns.length, board: board.length };
+      active = current;
       try {
-        return await run(newOutput());
+        const result = await run(out);
+        if (!current.controller.signal.aborted && result.say.length > 0) approved = [...result.say];
+        return result;
       } catch (e) {
         options.onError?.(e, "session");
         endNow("the session failed", classifyError(e, "local"));
         throw e;
+      } finally {
+        if (active === current) active = null;
       }
     });
     queue = next.catch(() => undefined);
@@ -422,6 +499,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         const at = clock();
         if (!event({ type: "start", at }, out)) return out;
         turns.push({ kind: "start", at });
+        // An interrupted opening still belongs to a started call.
+        active!.before = structuredClone(session);
+        active!.turn = turns.length;
         return mayaTurns(out);
       }),
     child: (text, opts = {}) =>
@@ -431,24 +511,33 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         turns.push({ kind: "child", at, text, ...(opts.uncertain ? { uncertain: true } : {}) });
         return mayaTurns(out);
       }),
-    partial: (text) =>
-      serial(async (out) => {
-        const at = clock();
-        // Nothing is judged and Maya does not answer: the full turn comes through `child`.
-        if (event({ type: "child_turn", at, text, final: false }, out)) turns.push({ kind: "partial", at, text, cancelled: true });
-        return out;
-      }),
+    partial: async (text) => {
+      inputVersion += 1;
+      // This signal must not wait behind the proposal it interrupts.
+      if (active && !active.controller.signal.aborted) {
+        active.controller.abort();
+        discard(active);
+      }
+      const out = newOutput();
+      const at = safeNow();
+      if (event({ type: "child_turn", at, text, final: false }, out)) turns.push({ kind: "partial", at, text, cancelled: true });
+      return out;
+    },
     mayaSaid: (text) =>
       serial(async (out) => {
         const at = clock();
-        const r = event({ type: "maya_said", at, text }, out);
+        // Match only an unspoken utterance from the current batch, with the controller's speech normalization.
+        const match = approved.findIndex((utterance) => utterance.split(/(?<=[.?!])\s+/).some((_sentence, i, all) => speechKey(text) === speechKey(all.slice(0, i + 1).join(" "))));
+        const approvedTurn = match < 0 ? -1 : session.turns.findLastIndex((t) => t.speaker === "maya" && t.text === approved[match]);
+        const r = event({ type: "maya_said", at, text, approvedTurn }, out);
+        if (match >= 0) approved.splice(match, 1);
         if (!r) return out;
         turns.push({ kind: "maya_said", at, text, cancelled: r.cancelled });
         return mayaTurns(out);
       }),
     contentProblem: (detail) => {
       problems.push(detail);
-      return serial(async (out) => mayaTurns(out));
+      return serial(async (out) => mayaTurns(out), false);
     },
     tick: () =>
       serial(async (out) => {
@@ -469,7 +558,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         const at = clock();
         if (event({ type: "technical", at, detail }, out)) turns.push({ kind: "technical", at, detail });
         return out;
-      }),
+      }, false),
     get session() {
       return session;
     },
@@ -486,7 +575,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     trace,
     saved: async () => {
       await queue;
-      return structuredClone({ v: 1 as const, session, endedAt, turns, board });
+      return structuredClone({ v: 1 as const, session, endedAt, turns, board, approved });
     },
   };
 }
