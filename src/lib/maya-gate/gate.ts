@@ -679,13 +679,16 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
   if (want.said) {
     // D-199: check the whole decline turn, not a substring. The approved sentences are fixed by the behaviour;
     // only a redirect.back line for this question may follow. Other code lines and checked free talk are forbidden.
-    const exactSentences = (text: string) => text.split(/(?<=[.!?])\s+/);
-    const decline = want.said.flatMap(exactSentences);
-    const allowed = [decline, ...(op ? packageLines(op).redirect().flatMap((line) => line.texts.map((text) => [...decline, ...exactSentences(text)])) : [])];
+    // Exact strings, as said: no splitting or whitespace normalising, so "this.  I'm" or a tab never passes (R423-1).
+    // The controller joins one turn's lines with exactly one space, so each allowed turn is listed both joined and as
+    // separate lines; nothing else is accepted.
+    const decline = [...want.said];
+    const backs = op ? packageLines(op).redirect().flatMap((line) => line.texts) : [];
+    const allowed = [decline, [decline.join(" ")], ...backs.flatMap((text) => [[...decline, text], [[...decline, text].join(" ")]])];
     const turns = maya.filter((m) => m.attempts.some((a) => (a.proposal as { reading?: { unsafeRequest?: unknown } } | null)?.reading?.unsafeRequest === true));
     if (turns.length === 0) fail("flow_mismatch", "no decline turn reached the child");
     for (const m of turns) {
-      const said = m.output?.say.flatMap(exactSentences) ?? [];
+      const said = m.output?.say ?? [];
       if (m.output?.act !== "redirect" || !allowed.some((words) => JSON.stringify(words) === JSON.stringify(said))) {
         fail("flow_mismatch", `the decline turn said ${JSON.stringify(said)}, expected only the approved decline and an optional code line back to the question`);
       }

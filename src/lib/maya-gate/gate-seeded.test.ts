@@ -14,7 +14,7 @@ vi.mock("server-only", () => ({}));
 // controller injected under the text adapter, and a broken alerts seam under the saved call (#395).
 
 /** The controller's `step`, sabotaged when `mode` is set: the text adapter imports it from "@/lib/maya". */
-const sabotage = vi.hoisted(() => ({ mode: "none" as "none" | "words" | "answer" | "no_safety" | "decline_extra" | "no_auto_end", extra: "" }));
+const sabotage = vi.hoisted(() => ({ mode: "none" as "none" | "words" | "answer" | "no_safety" | "decline_extra" | "decline_space" | "no_auto_end", extra: "" }));
 vi.mock("@/lib/maya", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/maya")>();
   return {
@@ -30,6 +30,11 @@ vi.mock("@/lib/maya", async (importOriginal) => {
         if (p.reading) event = { ...event, proposal: { ...p, reading: { ...p.reading, safety: null } } };
       }
       const r = real.step(session, event);
+      if (sabotage.mode === "decline_space" && !r.refusal) {
+        // Changes only whitespace in the decline turn: the exact check must still refuse it (R423-1).
+        const space = (t: string) => sabotage.extra === "trailing" ? `${t} ` : t.replace(". ", sabotage.extra === "double" ? ".  " : sabotage.extra === "tab" ? ".\t" : ".\n");
+        return { ...r, effects: r.effects.map((e): Effect => e.kind === "say" && e.act === "redirect" ? { ...e, text: space(e.text) } : e) };
+      }
       if (sabotage.mode === "decline_extra" && !r.refusal) {
         return { ...r, effects: r.effects.map((e): Effect => e.kind === "say" && e.act === "redirect"
           ? { ...e, text: `${e.text} ${sabotage.extra}` } : e) };
@@ -276,6 +281,12 @@ describe("a sabotaged controller makes the gate fail", () => {
     sabotage.extra = extra;
     expect(await run("decline_extra", id)).toContain("flow_mismatch");
   });
+
+  it.each(["C29", "C29b", "C29c"].flatMap((id) => ["double", "tab", "newline", "trailing"].map((how) => [id, how] as const)))(
+    "%s: the decline rejects changed whitespace: %s", async (id, how) => {
+      sabotage.extra = how;
+      expect(await run("decline_space", id)).toContain("flow_mismatch");
+    });
 
   it.each(BEHAVIOURS.filter((b) => b.expect.safety).map((b) => b.id))(
     "%s: cleanup cannot hide a safety call that did not end automatically", async (id) => {
