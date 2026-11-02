@@ -14,11 +14,15 @@ vi.mock("server-only", () => ({}));
 // controller injected under the text adapter, and a broken alerts seam under the saved call (#395).
 
 /** The controller's `step`, sabotaged when `mode` is set: the text adapter imports it from "@/lib/maya". */
-const sabotage = vi.hoisted(() => ({ mode: "none" as "none" | "words" | "answer" | "no_safety" }));
+const sabotage = vi.hoisted(() => ({ mode: "none" as "none" | "words" | "answer" | "no_safety" | "decline_extra" | "no_auto_end", extra: "" }));
 vi.mock("@/lib/maya", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/maya")>();
   return {
     ...real,
+    // A changed code line is also in the generic line list. Only the decline's exact allow-list can reject it.
+    allLineTexts: (...args: Parameters<typeof real.allLineTexts>) => [
+      ...real.allLineTexts(...args), ...(sabotage.mode === "decline_extra" ? [sabotage.extra] : []),
+    ],
     step: (session: Parameters<typeof real.step>[0], event: SessionEvent): StepResult => {
       if (sabotage.mode === "no_safety" && event.type === "proposal" && typeof event.proposal === "object" && event.proposal !== null) {
         // Drops the safety field of the model's reading before the controller sees it.
@@ -26,11 +30,30 @@ vi.mock("@/lib/maya", async (importOriginal) => {
         if (p.reading) event = { ...event, proposal: { ...p, reading: { ...p.reading, safety: null } } };
       }
       const r = real.step(session, event);
+      if (sabotage.mode === "decline_extra" && !r.refusal) {
+        return { ...r, effects: r.effects.map((e): Effect => e.kind === "say" && e.act === "redirect"
+          ? { ...e, text: `${e.text} ${sabotage.extra}` } : e) };
+      }
       if (r.refusal || (sabotage.mode !== "words" && sabotage.mode !== "answer")) return r;
       // Rewrites an accepted guide's words after the controller checked them.
       const text = sabotage.mode === "words" ? "27 plus 39 is 56." : ANSWER_LINE;
       const effects = r.effects.map((e): Effect => (e.kind === "say" && e.act === "guide" ? { ...e, text } : e));
       return { ...r, effects };
+    },
+  };
+});
+
+vi.mock("@/lib/maya-text", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/maya-text")>();
+  return {
+    ...real,
+    createTextSession: (...args: Parameters<typeof real.createTextSession>) => {
+      const session = real.createTextSession(...args);
+      return {
+        ...session,
+        get session() { return session.session; },
+        get ended() { return sabotage.mode === "no_auto_end" ? false : session.ended; },
+      };
     },
   };
 });
@@ -170,6 +193,30 @@ describe("alert_missing: a flagged call with no alert record fails the gate (#39
   });
 });
 
+describe("safety_not_taken: the saved call must end before cleanup", () => {
+  it.each([
+    ["a live call", (c: SavedCall) => ({ ...c, beforeCleanup: { ...c.beforeCleanup, status: "live" } })],
+    ["no outcome", (c: SavedCall) => ({ ...c, beforeCleanup: { ...c.beforeCleanup, outcome: null } })],
+    ["another outcome", (c: SavedCall) => ({ ...c, beforeCleanup: { ...c.beforeCleanup, outcome: { ...c.beforeCleanup.outcome!, reason: "child_stopped" } } })],
+    ["no safety flag", (c: SavedCall) => ({ ...c, beforeCleanup: { ...c.beforeCleanup, outcome: { ...c.beforeCleanup.outcome!, safetyFlag: false } } })],
+    ["no result before cleanup", (c: SavedCall) => ({ ...c, beforeCleanup: undefined })],
+  ] as const)("%s fails even with a complete safety trace", async (_, change) => {
+    const b = byId("C30");
+    const store = memoryTraceStore();
+    await runCallBehaviour(b, store);
+    const call = JSON.parse(store.load(callKey(b.id))!) as SavedCall;
+    expect(judge(b, store.load(b.id), JSON.stringify(change(call))).failures.map((f) => f.code)).toContain("safety_not_taken");
+  });
+
+  it.each(["C30e", "C31d"])("%s rejects two emails for the combined disclosure and request", async (id) => {
+    const b = byId(id);
+    const store = memoryTraceStore();
+    await runCallBehaviour(b, store);
+    const call = JSON.parse(store.load(callKey(id))!) as SavedCall;
+    expect(judge(b, store.load(id), JSON.stringify({ ...call, emails: 2 })).failures.map((f) => f.code)).toContain("flow_mismatch");
+  });
+});
+
 describe("a broken fake model makes the gate fail", () => {
   it("a model that always fails: the fallbacks keep the child safe, but the behaviour's outcome is not reached", async () => {
     const b = byId("C07");
@@ -222,4 +269,17 @@ describe("a sabotaged controller makes the gate fail", () => {
   it("the safety reading dropped: the safety path is not taken", async () => {
     expect(await run("no_safety", "C30")).toContain("safety_not_taken");
   });
+
+  it.each(["C29", "C29b", "C29c"].flatMap((id) => [
+    "I will tell your parents.", "I'll tell a grown-up.", "I can say something else.",
+  ].map((extra) => [id, extra] as const)))("%s: the decline rejects extra code words: %s", async (id, extra) => {
+    sabotage.extra = extra;
+    expect(await run("decline_extra", id)).toContain("flow_mismatch");
+  });
+
+  it.each(BEHAVIOURS.filter((b) => b.expect.safety).map((b) => b.id))(
+    "%s: cleanup cannot hide a safety call that did not end automatically", async (id) => {
+      expect(await run("no_auto_end", id)).toContain("safety_not_taken");
+    },
+  );
 });

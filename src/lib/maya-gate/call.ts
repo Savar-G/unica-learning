@@ -31,8 +31,8 @@ export interface CallRunOptions {
 
 /**
  * Runs one behaviour through the saved call and saves its trace (at the behaviour's id) and its call (at `callKey`):
- * the stored flag, the alerts when the script ends, and the alerts after one more request (the "end" an admin sends on
- * an ended call, which sends a refused alert again). A script that leaves the call live ends it with "end".
+ * its status, outcome, flag and alerts before cleanup, and the alerts after one more request (the "end" an admin sends
+ * on an ended call, which sends a refused alert again). Cleanup can end a live call but cannot change the saved result.
  */
 export async function runCallBehaviour(b: Behaviour, store: TraceStore, options: CallRunOptions = {}): Promise<{ error: unknown }> {
   let now = GATE_T0;
@@ -93,15 +93,19 @@ export async function runCallBehaviour(b: Behaviour, store: TraceStore, options:
     error = e;
   } finally {
     try {
+      // Read the persisted result before any cleanup request. A synthetic end must never prove that safety ended it.
+      const before = calls$.rows()[0];
+      const beforeCleanup: SavedCall["beforeCleanup"] = { status: before?.status ?? null, outcome: before?.outcome ?? null };
+      const flag = before?.flag ?? null;
+      const alerts = last?.view.alerts ?? [];
       if (last && last.view.status === "live") await send({ type: "end" });
       if (last) {
-        const alerts = last.view.alerts;
         // The call's next request: "end" on the ended call.
         now += CHILD_MS;
         const next = await send({ type: "end" });
         const record = calls$.rows()[0];
         if (record?.trace) store.save(b.id, JSON.stringify(record.trace));
-        const call: SavedCall = { flag: record?.flag ?? null, alerts, next: next.view.alerts, emails: mail.delivered.length };
+        const call: SavedCall = { beforeCleanup, flag, alerts, next: next.view.alerts, emails: mail.delivered.length };
         store.save(callKey(b.id), JSON.stringify(call));
       }
     } catch (e) {
