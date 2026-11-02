@@ -4,7 +4,7 @@
 // money spent, plus the next call's estimate, would pass it; the runs it cuts are saved as nothing, so the report
 // counts them missing and the suite fails.
 import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
-import { PROPOSAL_SCHEMA } from "@/lib/maya";
+import { PROPOSAL_SCHEMA, TALK_REVIEW_SCHEMA, TALK_REVIEW_SYSTEM } from "@/lib/maya";
 import { SYSTEM_PROMPT, type MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { DIMENSION_IDS, type PracticeCase } from "./cases";
@@ -18,25 +18,32 @@ export interface Price {
   input: number;
   output: number;
 }
-export type Role = "maya" | "simulator" | "validity" | "judge";
-export const ROLES: readonly Role[] = ["maya", "simulator", "validity", "judge"];
+/** The models of a suite. "reviewer" is Maya's free-talk review (D-197); a suite may run without one. */
+export type Role = "maya" | "simulator" | "validity" | "judge" | "reviewer";
+export const ROLES: readonly Role[] = ["maya", "simulator", "validity", "judge", "reviewer"];
+/** The roles every suite has. */
+type CoreRole = Exclude<Role, "reviewer">;
+/** Models (or prices) by role: the reviewer is optional. */
+export type ByRole<T> = Record<CoreRole, T> & { reviewer?: T };
 
 /** About 3.5 characters a token for JSON and English; rounded up so the estimate errs high. */
 export const tokensOf = (chars: number) => Math.ceil(chars / 3.5);
 
 /** Output tokens a call of each role is assumed to take, reasoning included. */
-export const OUTPUT_TOKENS: Record<Role, number> = { maya: 1_500, simulator: 150, validity: 400, judge: 4_000 };
+export const OUTPUT_TOKENS: Record<Role, number> = { maya: 1_500, simulator: 150, validity: 400, judge: 4_000, reviewer: 400 };
+/** The review's input besides its instructions: the line and the last turns (an upper bound). */
+const REVIEW_INPUT_CHARS = 2_000;
 /** The estimate assumes real calls are this much longer than the fake dry run (repairs, longer child turns). */
 export const MARGIN = 1.5;
 
 export interface CostEstimate {
-  roles: Record<Role, { model: string; calls: number; inputTokens: number; outputTokens: number; usd: number }>;
+  roles: Partial<Record<Role, { model: string; calls: number; inputTokens: number; outputTokens: number; usd: number }>>;
   usd: number;
 }
 
 /** Runs the suite with the fakes and measures every request: calls and input size per role. */
 export async function measureSuite(cases: readonly PracticeCase[], runs: number): Promise<Record<Role, { calls: number; inputChars: number }>> {
-  const m: Record<Role, { calls: number; inputChars: number }> = { maya: { calls: 0, inputChars: 0 }, simulator: { calls: 0, inputChars: 0 }, validity: { calls: 0, inputChars: 0 }, judge: { calls: 0, inputChars: 0 } };
+  const m: Record<Role, { calls: number; inputChars: number }> = { maya: { calls: 0, inputChars: 0 }, simulator: { calls: 0, inputChars: 0 }, validity: { calls: 0, inputChars: 0 }, judge: { calls: 0, inputChars: 0 }, reviewer: { calls: 0, inputChars: 0 } };
   const fixed = {
     maya: SYSTEM_PROMPT.length + JSON.stringify(PROPOSAL_SCHEMA).length,
     simulator: SIMULATOR_SYSTEM.length + JSON.stringify(SIMULATOR_SCHEMA).length,
@@ -65,20 +72,25 @@ export async function measureSuite(cases: readonly PracticeCase[], runs: number)
     m[role].inputChars = Math.round((m[role].inputChars / Math.max(1, m[role].calls)) * cases.length * runs);
     m[role].calls = cases.length * runs;
   }
+  // The fake Maya says no free talk, so the review is counted at its upper bound: one review for every Maya call.
+  m.reviewer = { calls: m.maya.calls, inputChars: m.maya.calls * (TALK_REVIEW_SYSTEM.length + JSON.stringify(TALK_REVIEW_SCHEMA).length + REVIEW_INPUT_CHARS) };
   return m;
 }
 
 /** The estimate for a real suite: the dry run's measures, the prices, the output assumptions and the margin. */
-export async function estimateCost(cases: readonly PracticeCase[], runs: number, models: Record<Role, string>, prices: Record<Role, Price>): Promise<CostEstimate> {
+export async function estimateCost(cases: readonly PracticeCase[], runs: number, models: ByRole<string>, prices: ByRole<Price>): Promise<CostEstimate> {
   const m = await measureSuite(cases, runs);
-  const roles = {} as CostEstimate["roles"];
+  const roles: CostEstimate["roles"] = {};
   let usd = 0;
   for (const role of ROLES) {
+    const model = models[role];
+    const price = prices[role];
+    if (model === undefined || price === undefined) continue;
     const calls = Math.ceil(m[role].calls * MARGIN);
     const inputTokens = tokensOf(m[role].inputChars * MARGIN);
     const outputTokens = calls * OUTPUT_TOKENS[role];
-    const cost = inputTokens * prices[role].input + outputTokens * prices[role].output;
-    roles[role] = { model: models[role], calls, inputTokens, outputTokens, usd: cost };
+    const cost = inputTokens * price.input + outputTokens * price.output;
+    roles[role] = { model, calls, inputTokens, outputTokens, usd: cost };
     usd += cost;
   }
   return { roles, usd };

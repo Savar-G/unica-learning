@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeAiClient } from "@/lib/ai-client-fake";
-import { allLineTexts, PHRASES, SAFETY_GUIDANCE, type Proposal } from "@/lib/maya";
+import { allLineTexts, LINE_IDS, LINES_VERSION, PHRASE_GROUPS, PHRASES, SAFETY_GUIDANCE, TEMPLATES, type Proposal } from "@/lib/maya";
 import { aiMayaModel, PROMPT_VERSION, SYSTEM_PROMPT, type ModelInput } from "@/lib/maya-model";
 import { fakeMayaModel, ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
@@ -70,7 +70,7 @@ describe("a text session with the fake model", () => {
       callId: "call-1",
       runner: "text",
       model: { id: "fake", promptVersion: PROMPT_VERSION },
-      versions: { proposal: 2, lines: 1 },
+      versions: { proposal: 2, lines: LINES_VERSION },
       question: { id: "add-27-39", text: "27 + 39 = ?", hash: packageHash(PKG) },
       freeTalk: false,
       outcome: { reason: "solved" },
@@ -142,8 +142,10 @@ describe("an unchecked number or board proposal never reaches the child", () => 
     expect(turn.attempts.map((a) => [a.source, a.refusal?.code ?? null])).toEqual([
       ["model", "free_talk_in_math_turn"], ["repair", "free_talk_in_math_turn"], ["fallback", null],
     ]);
-    // The fallback reads nothing, so it judges nothing: no answer is accepted on code's behalf.
-    expect(session.session.lastResult).toBeNull();
+    // The fallback keeps the answer code checks alone (#389): the child said 66 and kept it, and it is right. Only the
+    // words are code's.
+    expect(turn.attempts[2].proposal).toMatchObject({ act: "accept_answer", reading: { answers: [{ value: num(66), step: "result", verdict: "right" }] } });
+    expect(session.session.lastResult).toBe("right");
   });
 
   it("refuses board commands the model built, and board offers it was not given, then repairs", async () => {
@@ -190,6 +192,178 @@ describe("an unchecked number or board proposal never reaches the child", () => 
     const out = await session.child("Someone at home hurts me.");
     expect(said(out)).toContain(SAFETY_GUIDANCE.concern);
     expect(session.session.safety.flagged).toBe(true);
+  });
+});
+
+describe("a twice-refused proposal keeps what code can check of its reading (#389)", () => {
+  const answer = (value: number, step: string, verdict: "right" | "wrong", problem?: "target" | "example") => ({ value: num(value), step, verdict, ...(problem ? { problem } : {}) });
+  /** The Maya turn after the last child turn, from the trace. */
+  const lastMayaTurn = (session: ReturnType<typeof scripted>["session"]) => {
+    const turn = session.trace().turns.filter((t) => t.kind === "maya").at(-1);
+    if (!turn || turn.kind !== "maya") throw new Error("no Maya turn");
+    return turn;
+  };
+  const sources = (session: ReturnType<typeof scripted>["session"]) => lastMayaTurn(session).attempts.map((a) => a.source);
+
+  it("keeps a right step: the ones are recorded and said right, and the help goes on to the tens", async () => {
+    // Practice run 9, F06: the model read the ones right but proposed accepting the whole question, twice.
+    const refused = v2({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(16, "ones", "right")] } });
+    const { session, model } = scripted([OPEN, refused, refused, (input: ModelInput) => input]);
+    await session.start();
+    const out = await session.child("Seven plus nine is sixteen.");
+    expect(sources(session)).toEqual(["model", "repair", "fallback"]);
+    expect(session.session.done).toEqual(["ones"]);
+    expect(lastMayaTurn(session).output?.act).toBe("guide");
+    expect(lastMayaTurn(session).attempts[2].proposal).toMatchObject({ act: "guide", step: "tens", level: 0, reading: { answers: [answer(16, "ones", "right")] } });
+    // "Yes! 7 + 9 = 16." then the gentlest help on the tens; never the ones again, never the answer.
+    expect(said(out)).toContain("7 + 9 = 16");
+    expect(said(out)).toMatch(/\btens\b/);
+    expect(said(out)).not.toMatch(/\bones\b|\b66\b/);
+    expect(out.say.flatMap(sentences).every((x) => SAFE.has(x))).toBe(true);
+    // The next turn's offers start from the tens: the ones are done.
+    await session.child("Hmm.");
+    const input = model.requests[3];
+    expect(input.done).toEqual(["ones"]);
+    const guide = input.offers.find((o) => o.act === "guide")!;
+    expect(guide.lines.some((l) => l.line.startsWith("step.") && l.slots.step === "ones")).toBe(false);
+  });
+
+  it("never records a wrong step read as right during a refusal, and keeps the right one beside it", async () => {
+    // 2 + 3 = 5 is not the tens of 27 + 39 (the carried ten makes 6): code drops that answer, never turns it round.
+    const refused = v2({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(16, "ones", "right"), answer(5, "tens", "right")] } });
+    const { session } = scripted([OPEN, refused, refused]);
+    await session.start();
+    const out = await session.child("Seven plus nine is sixteen. Two plus three is five.");
+    expect(sources(session)).toEqual(["model", "repair", "fallback"]);
+    expect(session.session.done).toEqual(["ones"]);
+    expect(lastMayaTurn(session).attempts[2].proposal).toMatchObject({ reading: { answers: [answer(16, "ones", "right")] } });
+    expect(said(out)).not.toMatch(/2 \+ 3 = 5|\b66\b/);
+
+    // A reading with only a wrong step read as right keeps nothing: no reading, no step done, no "Yes".
+    const wrongOnly = v2({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(15, "ones", "right")] } });
+    const b = scripted([OPEN, wrongOnly, wrongOnly]);
+    await b.session.start();
+    const out2 = await b.session.child("Seven plus nine is fifteen.");
+    expect(lastMayaTurn(b.session).attempts.map((a) => a.source)).toEqual(["model", "repair", "fallback"]);
+    expect(lastMayaTurn(b.session).attempts[2].proposal).not.toHaveProperty("reading");
+    expect(b.session.session.done).toEqual([]);
+    expect(said(out2)).not.toMatch(/\byes\b|right|15/i);
+  });
+
+  it("does not start the easier example after the child has made progress", async () => {
+    // Practice run 9, F06: an earlier "no start" reading ran 18 + 5 after the child had done the ones.
+    const noStart = v2({ act: "clarify", parts: [{ line: "assess.ask" }], reading: { start: "no_start" } });
+    const example = v2({
+      act: "example_step", step: "ones", parts: [{ line: "example.intro" }, { line: "example.step", slots: { step: "ones" } }], reading: { answers: [answer(16, "ones", "right")] },
+    });
+    const { session, model } = scripted([OPEN, noStart, example, example]);
+    await session.start();
+    await session.child("I don't want to.");
+    expect(session.session.noStart).toBe(true);
+    const out = await session.child("Okay. Seven plus nine is sixteen.");
+    expect(lastMayaTurn(session).attempts.map((a) => a.refusal?.code ?? null)).toEqual(["act_not_allowed", "act_not_allowed", null]);
+    expect(model.requests[3].repair?.refusal.allowed).not.toContain("example_step");
+    expect(lastMayaTurn(session).output?.act).toBe("guide");
+    expect(session.session).toMatchObject({ noStart: false, exampleShown: 0, done: ["ones"] });
+    expect(said(out)).not.toMatch(/18 \+ 5|easier|smaller/i);
+
+    // A refused "no start" after that is not kept: the help stays on the child's question.
+    const refusedNoStart = v2({ act: "example_step", step: "ones", parts: [{ line: "example.intro" }, { line: "example.step", slots: { step: "ones" } }], reading: { start: "no_start" } });
+    const c = scripted([OPEN, v2({ act: "guide", step: "tens", level: 0, parts: [{ line: "check.right_step", slots: { step: "ones" } }, { line: "step.invite", slots: { step: "tens" } }], reading: { answers: [answer(16, "ones", "right")] } }), refusedNoStart, refusedNoStart]);
+    await c.session.start();
+    await c.session.child("Seven plus nine is sixteen.");
+    const out3 = await c.session.child("I don't know how to start.");
+    expect(c.session.session.noStart).toBe(false);
+    expect(lastMayaTurn(c.session).output?.act).toBe("guide");
+    expect(said(out3)).not.toMatch(/18 \+ 5/);
+  });
+
+  it("does not ask for a written answer the child already wrote", async () => {
+    // Practice run 9, F04: "Write 66 on your page, please." after the child wrote 66.
+    const accept = v2({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(66, "result", "right")] } });
+    const writeAgain = v2({ act: "ask_write", understanding: "uncertain", parts: [{ line: "write.answer" }], reading: { answers: [answer(66, "result", "right")] } });
+    const { session, model } = scripted([OPEN, accept, writeAgain, writeAgain]);
+    await session.start();
+    await session.child("I got 66!");
+    await session.writing("started");
+    await session.writing("done");
+    const out = await session.child("66");
+    expect(model.requests[2].offers.find((o) => o.act === "ask_write")!.lines.map((l) => l.line)).not.toContain("write.answer");
+    expect(lastMayaTurn(session).attempts.map((a) => a.refusal?.code ?? null)).toEqual(["line_not_offered", "line_not_offered", null]);
+    expect(lastMayaTurn(session).output?.act).toBe("ask_write");
+    expect(said(out)).not.toMatch(/write|paper|page/i);
+    expect(out.say.flatMap(sentences).every((x) => SAFE.has(x))).toBe(true);
+
+    // Before the child writes, the request to write is still offered and said.
+    const b = scripted([OPEN, accept, writeAgain]);
+    await b.session.start();
+    await b.session.child("I got 66!");
+    expect(said(await b.session.child("Yay."))).toMatch(/write 66/i);
+  });
+
+  it("uses the final-step help line once every column is done: no workaround with the question line", async () => {
+    const refused = v2({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(6, "tens", "right")] } });
+    const ones = v2({ act: "guide", step: "tens", level: 0, parts: [{ line: "check.right_step", slots: { step: "ones" } }, { line: "step.invite", slots: { step: "tens" } }], reading: { answers: [answer(16, "ones", "right")] } });
+    const { session } = scripted([OPEN, ones, refused, refused]);
+    await session.start();
+    await session.child("Seven plus nine is sixteen.");
+    const out = await session.child("Two plus three plus one is six.");
+    expect(sources(session)).toEqual(["model", "repair", "fallback"]);
+    expect(session.session.done).toEqual(["ones", "tens"]);
+    expect(lastMayaTurn(session).attempts[2].proposal).toMatchObject({
+      act: "guide", step: "result", level: 0, parts: [{ line: "check.right_step", slots: { step: "tens" } }, { line: "step.invite", slots: { step: "result" } }],
+    });
+    const finals = TEMPLATES["invite.result"].map((w) => w.replace("{expr}", "27 + 39"));
+    expect(finals.some((f) => said(out).endsWith(f))).toBe(true);
+    expect(said(out)).not.toMatch(/\b66\b/);
+  });
+});
+
+describe("the final answer and the final step (D-199)", () => {
+  const answer = (value: number, step: string, verdict: "right" | "wrong") => ({ value: num(value), step, verdict });
+  const lastMaya = (session: ReturnType<typeof scripted>["session"]) => {
+    const turn = session.trace().turns.filter((t) => t.kind === "maya").at(-1);
+    if (!turn || turn.kind !== "maya") throw new Error("no Maya turn");
+    return turn;
+  };
+
+  it("accepts a right final answer followed by its explanation, with no confirmation (practice runs 9 and 10, F02, F06)", async () => {
+    const accept = v2({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { start: "has_work", answers: [answer(66, "result", "right")] } });
+    const { session, model } = scripted([OPEN, accept]);
+    await session.start();
+    const out = await session.child("So I got 66, because six tens and six ones.");
+    // The model was offered the acceptance (the turn is not held for a confirmation), and it was not refused.
+    expect(model.requests[1].offers.map((o) => o.act)).toContain("accept_answer");
+    expect(lastMaya(session).attempts.map((a) => a.source)).toEqual(["model"]);
+    expect(said(out)).toMatch(/27 \+ 39 = 66/);
+    expect(session.session.lastResult).toBe("right");
+  });
+
+  it("gives the answer through code's fallback after two wrong final answers, when the model keeps asking the final question", async () => {
+    const final = (value: number) => v2({ act: "guide", step: "result", level: 0, parts: [{ line: "step.invite", slots: { step: "result" } }], reading: { answers: [answer(value, "result", "wrong")] } });
+    const { session } = scripted([
+      OPEN,
+      v2({ act: "guide", step: "tens", level: 0, parts: [{ line: "check.right_step", slots: { step: "ones" } }, { line: "step.invite", slots: { step: "tens" } }], reading: { answers: [answer(16, "ones", "right")] } }),
+      v2({ act: "guide", step: "result", level: 0, parts: [{ line: "check.right_step", slots: { step: "tens" } }, { line: "step.invite", slots: { step: "result" } }], reading: { answers: [answer(6, "tens", "right")] } }),
+      final(56),
+      final(65),
+      final(65),
+      v2({ act: "close", parts: [{ line: "close.together" }] }),
+    ]);
+    await session.start();
+    await session.child("Seven plus nine is sixteen.");
+    await session.child("Two plus three plus one is six.");
+    const once = await session.child("56?");
+    expect(said(once)).not.toMatch(/\b66\b/);
+    const out = await session.child("65?");
+    expect(lastMaya(session).attempts.map((a) => [a.source, a.refusal?.code ?? null])).toEqual([["model", "act_not_allowed"], ["repair", "act_not_allowed"], ["fallback", null]]);
+    expect(lastMaya(session).output?.act).toBe("give_answer");
+    expect(said(out)).toMatch(/6 tens and 6 ones make 66\./);
+    expect(said(out)).toMatch(/write 66 on your (paper|page)/i);
+    expect(out.say.flatMap(sentences).every((x) => SAFE.has(x))).toBe(true);
+    const end = await session.child("Okay.");
+    expect(end.ended).toMatchObject({ reason: "solved", assistance: "answer_given", understanding: "uncertain", highestHint: 4 });
+    expect(checkTrace(JSON.parse(JSON.stringify(session.trace()))).ok).toBe(true);
   });
 });
 
@@ -281,6 +455,8 @@ async function validTrace() {
   expect(checkTrace(trace)).toMatchObject({ ok: true });
   return trace;
 }
+/** A bank phrase with no slot: what a free-talk piece that failed a check becomes. */
+const BANK0 = Object.values(PHRASES).flat().find((p) => !p.includes("{"))!;
 const mayaAt = (t: { turns: Record<string, unknown>[] }) => t.turns.findIndex((x) => x.kind === "maya" && Array.isArray((x.output as { board?: unknown[] } | null)?.board) && (x.output as { board: unknown[] }).board.length > 0);
 
 describe("checkTrace refuses a trace that is not this version's shape", () => {
@@ -326,8 +502,15 @@ describe("checkTrace refuses a trace that is not this version's shape", () => {
     ["an error status the code does not allow", (t) => { t.turns.find((x) => x.kind === "maya")!.attempts = [{ source: "model", proposal: null, refusal: null, error: { code: "http_401", message: ERROR_MESSAGES.http_401, status: 500 } }, { source: "fallback", proposal: OPEN, refusal: null }]; }, /error\.status/],
     ["a technical turn whose error is text", (t) => { t.turns.push({ kind: "technical", at: Number(t.turns.at(-1)!.at), detail: "x", error: "ENOENT /home/key" }); }, /error/],
     ["a hang-up that is not the last turn", (t) => { const at = Number(t.turns.at(-1)!.at); t.turns[t.turns.length - 1] = { kind: "hang_up", at }; t.turns.push({ kind: "tick", at }); (t.outcome as Record<string, unknown>).reason = "child_stopped"; }, /hang-up only as the last turn/],
-    ["a hang-up in a version 1 trace", (t) => { t.version = 1; t.turns[t.turns.length - 1] = { kind: "hang_up", at: Number(t.turns.at(-1)!.at) }; (t.outcome as Record<string, unknown>).reason = "child_stopped"; }, /version 1/],
+    ["a hang-up in a version 1 trace", (t) => { t.version = 1; delete t.reviewer; t.turns[t.turns.length - 1] = { kind: "hang_up", at: Number(t.turns.at(-1)!.at) }; (t.outcome as Record<string, unknown>).reason = "child_stopped"; }, /version 1/],
     ["a hang-up that ended as a technical issue", (t) => { t.turns[t.turns.length - 1] = { kind: "hang_up", at: Number(t.turns.at(-1)!.at) }; }, /outcome\.reason/],
+    ["a reviewer in a version 2 trace", (t) => { t.version = 2; t.reviewer = { id: "x", promptVersion: "y" }; }, /reviewer/],
+    ["a reviewer with another field", (t) => { t.reviewer = { id: "x", promptVersion: "y", key: "sk-1" }; }, /reviewer/],
+    ["free talk on a refused attempt", (t) => { (t.turns[mayaAt(t)].attempts as Record<string, unknown>[])[0].talk = [{ proposed: "Hi!", code: null, review: "pass", shown: "Hi!" }]; (t.turns[mayaAt(t)].attempts as Record<string, unknown>[]).unshift({ source: "model", proposal: {}, refusal: { code: "x", reason: "y", allowed: [] }, talk: [{ proposed: "Hi!", code: null, review: "pass", shown: "Hi!" }] }); }, /talk|attempts/],
+    ["free talk shown after a failed review", (t) => { (t.turns[mayaAt(t)].attempts as Record<string, unknown>[])[0].talk = [{ proposed: "I have a dog!", code: null, review: "fail", rules: ["untrue_self"], reason: "no dog", shown: "I have a dog!" }]; }, /shown/],
+    ["free talk reviewed after the code guards failed", (t) => { (t.turns[mayaAt(t)].attempts as Record<string, unknown>[])[0].talk = [{ proposed: "Keep going.", code: "keep", review: "pass", shown: BANK0 }]; }, /review/],
+    ["a failed review with an unknown rule", (t) => { (t.turns[mayaAt(t)].attempts as Record<string, unknown>[])[0].talk = [{ proposed: "Hi!", code: null, review: "fail", rules: ["rude"], reason: "x", shown: BANK0 }]; }, /rules/],
+    ["free talk in a version 2 trace", (t) => { t.version = 2; delete t.reviewer; (t.turns[mayaAt(t)].attempts as Record<string, unknown>[])[0].talk = [{ proposed: "Hi!", code: null, review: "pass", shown: "Hi!" }]; }, /version 3/],
     ["no output after an accepted last attempt", (t) => { const m = t.turns.find((x) => x.kind === "maya" && x.output !== null && (x.output as { board: unknown[] }).board.length === 0)!; m.output = null; }, /output/],
   ];
   for (const [name, breakIt, path] of cases) {
@@ -342,7 +525,10 @@ describe("checkTrace refuses a trace that is not this version's shape", () => {
 
   it("reads a version 1 trace and a version 2 hang-up", async () => {
     const t = await validTrace();
-    expect(checkTrace({ ...t, version: 1 })).toMatchObject({ ok: true });
+    const { reviewer: _reviewer, ...old } = t;
+    void _reviewer;
+    expect(checkTrace({ ...old, version: 1 })).toMatchObject({ ok: true });
+    expect(checkTrace({ ...old, version: 2 })).toMatchObject({ ok: true });
     t.turns[t.turns.length - 1] = { kind: "hang_up", at: Number(t.turns.at(-1)!.at) };
     (t.outcome as Record<string, unknown>).reason = "child_stopped";
     expect(checkTrace(t)).toMatchObject({ ok: true });
@@ -567,5 +753,23 @@ describe("a text session saved and resumed between inputs (#323)", () => {
     await first.start();
     const saved = await first.saved();
     expect(() => createTextSession({ callId: "call-b", package: PKG, model: ruleMayaModel(), clock: () => T0, resume: saved })).toThrow(/not this call's/);
+  });
+});
+
+describe("the prompt names only real lines and groups (practice runs 6 and 7)", () => {
+  it("tells the model the act for a right step, the easier example's intro and the back phrase, by ids that exist", () => {
+    const lineIds = [...SYSTEM_PROMPT.matchAll(/"([a-z]+\.[a-z_]+)"/g)].map((m) => m[1]).filter((id) => !id.startsWith("reading."));
+    expect(lineIds).toEqual(expect.arrayContaining(["check.right_step", "example.intro", "redirect.decline"]));
+    for (const id of lineIds) expect(LINE_IDS as readonly string[], id).toContain(id);
+    expect(SYSTEM_PROMPT).toContain('{"warm": "back", "echo": null, "pick": null}');
+    expect(PHRASE_GROUPS).toContain("back");
+    expect(SYSTEM_PROMPT).toMatch(/"accept_answer" is only for a right final answer/);
+    expect(SYSTEM_PROMPT).toMatch(/Never guide a step the child has just done/);
+    expect(SYSTEM_PROMPT).toMatch(/the next step is "result": guide "result" at level 0/);
+    // The final step has its own help line (#389): the prompt no longer works around it with the question line.
+    expect(SYSTEM_PROMPT).toMatch(/then the "step\.invite" line for "result"/);
+    expect(SYSTEM_PROMPT).not.toMatch(/then a "question" line/);
+    // D-199: after two wrong final answers, the model gives the answer and leaves its words to code.
+    expect(SYSTEM_PROMPT).toMatch(/wrong a second time, code offers only "give_answer": use it with no line/);
   });
 });

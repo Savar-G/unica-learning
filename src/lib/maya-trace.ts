@@ -6,7 +6,7 @@
 //
 // Plain JSON. Pure TypeScript except `packageHash`, which uses node:crypto (server and scripts only).
 import { createHash } from "node:crypto";
-import { ACTS, ASSISTANCE, INTERRUPTS, MAIN_STATES, type Act, type Outcome, type RefusalCode, type SessionState } from "@/lib/maya";
+import { ACTS, ASSISTANCE, INTERRUPTS, MAIN_STATES, NEVER_SAY_IDS, PHRASES, type Act, type Outcome, type RefusalCode, type SessionState, type TalkCheck } from "@/lib/maya";
 
 /** Why a proposal was refused: the session's refusal, or "board_refused" when the board core refused a batch the session built. */
 export interface TraceRefusal {
@@ -17,11 +17,13 @@ export interface TraceRefusal {
 
 /**
  * The version of the trace shape. Version 2 (#323) adds the `hang_up` turn: the child hung up on purpose and the call
- * ended as child_stopped. Version 1 traces have no such turn; `checkTrace` reads both.
+ * ended as child_stopped. Version 3 (D-197) adds free talk: `reviewer` (the review's model and prompt version, or null)
+ * and, on an accepted attempt, `talk` (each piece of the model's own words, both checks and what was said). Older
+ * traces have neither; `checkTrace` reads all three.
  */
-export const TRACE_VERSION = 2;
+export const TRACE_VERSION = 3;
 /** The trace versions `checkTrace` reads. */
-export const TRACE_VERSIONS = [1, 2] as const;
+export const TRACE_VERSIONS = [1, 2, 3] as const;
 export const TRACE_KIND = "maya-trace";
 
 /** Where a proposal came from: the model, the model asked again with the refusal (one repair), or code's fallback. */
@@ -106,7 +108,17 @@ export interface TraceAttempt {
   error?: TraceError;
   /** How long the model took, by the passed-in clock. */
   ms?: number;
+  /**
+   * Version 3, on the accepted attempt only: each piece of the model's own words (D-197), in order, with the code
+   * guards' result, the review's, and what Maya said for it. Absent when the attempt had none.
+   */
+  talk?: TraceTalk[];
+  /** Version 3: how long the free-talk reviews of this attempt took, by the passed-in clock. */
+  reviewMs?: number;
 }
+
+/** One piece of the model's own words in a trace (D-197): the session's TalkCheck. */
+export type TraceTalk = TalkCheck;
 
 /** What reached the child in one Maya turn: only text and board batches the session accepted. */
 export interface TraceOutput {
@@ -157,8 +169,10 @@ export interface MayaTrace {
   /** The versions of the controller's contracts this session ran with. */
   versions: { proposal: number; lines: number; session: number };
   question: { id: string | null; ref: unknown; text: string | null; hash: string };
-  /** D-196: whether the model's own warm words were read. The text adapter always runs with it off. */
+  /** D-196, D-197: whether the model's own warm words were read (after the code guards and the review). */
   freeTalk: boolean;
+  /** Version 3: the free-talk review's model and prompt version, or null when the call had no reviewer. */
+  reviewer?: { id: string; promptVersion: string } | null;
   turns: TraceTurn[];
   board: TraceBoardBatch[];
   outcome: Outcome | null;
@@ -267,6 +281,33 @@ function checkAttempt(a: unknown, path: string) {
   need(!(x.error !== undefined && x.proposal !== null), `${path}`, "an attempt with an error has no proposal");
   need(!(x.error !== undefined && x.refusal !== null), `${path}`, "an attempt with an error has no refusal");
   need(!(x.source === "fallback" && x.refusal !== null), `${path}`, "a fallback attempt is recorded only when it was accepted");
+  need(x.reviewMs === undefined || (isNum(x.reviewMs) && x.reviewMs >= 0), `${path}.reviewMs`, "a duration");
+  if (x.talk !== undefined) {
+    need(Array.isArray(x.talk) && x.talk.length > 0, `${path}.talk`, "a list of free-talk checks");
+    need(x.refusal === null && x.error === undefined, `${path}.talk`, "only on an accepted attempt");
+    (x.talk as unknown[]).forEach((t, i) => checkTalk(t, `${path}.talk[${i}]`));
+  }
+}
+
+const REVIEWS = ["pass", "fail", "error", "not_run"];
+/** The bank phrases with no echo slot, with the name slot as a redacted trace writes it and without it. */
+const BANK: ReadonlySet<string> = new Set(Object.values(PHRASES).flat().filter((p) => !p.includes("{echo}")).flatMap((p) => [p, p.replace(/,? ?\{name\}/g, "")]));
+
+/** One free-talk check: the proposed words are shown only when both checks passed; else a bank phrase. */
+function checkTalk(t: unknown, path: string) {
+  need(isObject(t), path, "a free-talk check");
+  const x = t as Record<string, unknown>;
+  need(Object.keys(x).every((k) => ["proposed", "code", "review", "rules", "reason", "shown"].includes(k)), path, "only proposed, code, review, rules, reason and shown");
+  need(isText(x.proposed), `${path}.proposed`, "text");
+  need(x.code === null || isName(x.code), `${path}.code`, "null or why the code guards failed");
+  need(oneOf(REVIEWS, x.review), `${path}.review`, "pass, fail, error or not_run");
+  need(isName(x.shown), `${path}.shown`, "what Maya said");
+  need(!(x.code !== null && x.review !== "not_run"), `${path}.review`, "not_run when the code guards failed");
+  const both = x.code === null && x.review === "pass";
+  if (both) need(x.shown === x.proposed, `${path}.shown`, "the proposed words, because both checks passed");
+  else need(BANK.has(x.shown as string), `${path}.shown`, "a bank phrase, because a check did not pass");
+  need(x.review === "fail" ? Array.isArray(x.rules) && x.rules.length > 0 && x.rules.every((r) => oneOf(NEVER_SAY_IDS, r)) : x.rules === undefined, `${path}.rules`, "the rules of a failed review, and only then");
+  need(x.review === "fail" || x.review === "error" ? isName(x.reason) : x.reason === undefined, `${path}.reason`, "why a review failed, and only then");
 }
 
 const accepted = (a: Record<string, unknown>) => a.refusal === null && a.error === undefined;
@@ -366,10 +407,18 @@ function check(raw: unknown): MayaTrace {
   need(question.text === null || isText(question.text), "question.text", "text or null");
   need(isText(question.hash) && HASH.test(question.hash), "question.hash", "sha256: and 64 hex digits");
   need(typeof r.freeTalk === "boolean", "freeTalk", "a boolean");
+  if (r.version === 3) {
+    const rv = r.reviewer;
+    need(rv === null || (isObject(rv) && isName(rv.id) && isName(rv.promptVersion) && Object.keys(rv).length === 2), "reviewer", "null, or the review's model id and prompt version");
+  } else need(r.reviewer === undefined, "reviewer", "absent before version 3");
 
   need(Array.isArray(r.turns), "turns", "a list");
   const turns = (r.turns as unknown[]).map((t, i) => checkTurn(t, `turns[${i}]`));
   turns.forEach((t, i) => need(i === 0 || (t.at as number) >= (turns[i - 1].at as number), `turns[${i}].at`, "not before the turn before it"));
+  turns.forEach((t, i) => {
+    if (t.kind !== "maya" || r.version === 3) return;
+    (t.attempts as Record<string, unknown>[]).forEach((a, k) => need(a.talk === undefined && a.reviewMs === undefined, `turns[${i}].attempts[${k}].talk`, "absent before version 3"));
+  });
 
   need(Array.isArray(r.board), "board", "a list");
   const sent = new Set<string>();
@@ -437,7 +486,7 @@ const SECRETS: [RegExp, string][] = [
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Environment variables whose values are secrets: redacted wherever they appear, whatever their shape. */
-const SECRET_ENV = ["OPENROUTER_API_KEY", "SUPABASE_SECRET_KEY", "STRIPE_SECRET_KEY", "RESEND_API_KEY", "CRON_SECRET", "LIVEKIT_API_SECRET", "LIVEKIT_API_KEY"];
+const SECRET_ENV = ["OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "SUPABASE_SECRET_KEY", "STRIPE_SECRET_KEY", "RESEND_API_KEY", "CRON_SECRET", "LIVEKIT_API_SECRET", "LIVEKIT_API_KEY"];
 
 /** The configured secret values now (from the environment), longest first. */
 export function configuredSecrets(env: Record<string, string | undefined> = process.env): string[] {
@@ -477,6 +526,7 @@ export function redactTrace(trace: MayaTrace, childName: string | null): MayaTra
             ...a,
             proposal: redactDeep(a.proposal, childName),
             refusal: a.refusal ? { ...a.refusal, reason: redactText(a.refusal.reason, childName) } : null,
+            ...(a.talk ? { talk: a.talk.map((x) => redactDeep(x, childName) as TraceTalk) } : {}),
             // Errors are codes and fixed wording: nothing to redact.
           })),
           output: t.output ? { ...t.output, say: t.output.say.map((x) => redactText(x, childName)) } : null,
