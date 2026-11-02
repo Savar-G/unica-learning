@@ -443,6 +443,252 @@ describe("the clock and the end", () => {
   });
 });
 
+describe("inputs from the voice agent (#396)", () => {
+  const GUIDE = v2({ act: "guide", step: "ones", level: 0, parts: [{ line: "step.invite", slots: { step: "ones" } }], reading: { start: "has_work", answers: [{ value: num(56), step: "result", verdict: "wrong" }] } });
+  const ACCEPT = v2({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [{ value: num(66), step: "result", verdict: "right" }] } });
+  const CLOSE = v2({ act: "close", parts: [{ warm: "closing" }] });
+  const checked = (t: unknown) => expect(checkTrace(JSON.parse(JSON.stringify(t)))).toMatchObject({ ok: true });
+
+  it("a partial child turn stops Maya's output and is not judged; the full turn is", async () => {
+    const { session, model } = scripted([OPEN, GUIDE, ACCEPT]);
+    await session.start();
+    await session.child("I got 56.");
+    const partial = await session.partial("No, I meant");
+    expect(partial).toMatchObject({ say: [], board: [], ended: null, cancelled: true });
+    expect(model.requests).toHaveLength(2);
+    const full = await session.child("No, I meant 66.");
+    expect(full.cancelled).toBe(false);
+    expect(model.requests[2].childTurn).toBe("No, I meant 66.");
+    expect(said(full)).toMatch(/27 \+ 39 = 66/);
+    const trace = session.trace();
+    expect(trace.turns.map((t) => t.kind)).toEqual(["start", "maya", "child", "maya", "partial", "child", "maya"]);
+    expect(trace.turns[4]).toMatchObject({ kind: "partial", text: "No, I meant", cancelled: true });
+    checked(trace);
+  });
+
+  it("words Maya said that are not her text stop her output and start a repair, then the teaching goes on", async () => {
+    const REPAIR = v2({ act: "repair", parts: [{ line: "repair.sorry" }] });
+    const { session, model } = scripted([OPEN, GUIDE, REPAIR, ACCEPT]);
+    await session.start();
+    await session.child("I got 56.");
+    const out = await session.mayaSaid("Seven plus nine is fifteen.");
+    expect(out.cancelled).toBe(true);
+    expect(model.requests[2].state).toBe("REPAIR_MAYA");
+    expect(model.requests[2].offers.map((o) => o.act)).toEqual(["repair"]);
+    expect(out.say.flatMap(sentences).every((x) => SAFE.has(x))).toBe(true);
+    expect(session.session.state).toBe("GUIDE_TARGET");
+    expect(said(await session.child("66."))).toMatch(/27 \+ 39 = 66/);
+    const trace = session.trace();
+    expect(trace.turns.filter((t) => t.kind === "maya").map((t) => t.kind === "maya" && t.output?.act)).toEqual(["open", "guide", "repair", "accept_answer"]);
+    expect(trace.turns.find((t) => t.kind === "maya_said")).toMatchObject({ text: "Seven plus nine is fifteen.", cancelled: true });
+    checked(trace);
+  });
+
+  it("Maya's approved text changes nothing: no stop, no repair, no model call", async () => {
+    const { session, model } = scripted([OPEN, GUIDE]);
+    await session.start();
+    const guide = await session.child("I got 56.");
+    const out = await session.mayaSaid(said(guide));
+    expect(out).toMatchObject({ say: [], cancelled: false });
+    expect(model.requests).toHaveLength(2);
+    expect(session.trace().turns.at(-1)).toMatchObject({ kind: "maya_said", cancelled: false });
+    checked(session.trace());
+  });
+
+  it("a content problem in the middle of teaching: no more teaching, a close, content_issue", async () => {
+    const { session, model } = scripted([OPEN, GUIDE, CLOSE]);
+    await session.start();
+    await session.child("I got 56.");
+    const out = await session.contentProblem("the answer key and the worked steps disagree");
+    expect(out.cancelled).toBe(true);
+    expect(model.requests[2].offers.map((o) => o.act)).toEqual(["close"]);
+    expect(out.ended).toMatchObject({ reason: "content_issue" });
+    const trace = session.trace();
+    expect(trace.turns.find((t) => t.kind === "content_problem")).toMatchObject({ detail: "the answer key and the worked steps disagree", cancelled: true });
+    checked(trace);
+  });
+
+  it("a content problem found while Maya gives the safety guidance: taken before her next turn, and the outcome stays safety", async () => {
+    const SAFETY = v2({ act: "safety", parts: [], reading: { safety: "concern" } });
+    const { session } = scripted([OPEN, () => {
+      void session.contentProblem("the answer key and the worked steps disagree");
+      return SAFETY;
+    }, CLOSE]);
+    await session.start();
+    const out = await session.child("Someone at home hurts me.");
+    expect(said(out)).toContain(SAFETY_GUIDANCE.concern);
+    expect(out.ended).toMatchObject({ reason: "safety", safetyFlag: true });
+    const trace = session.trace();
+    // The content input arrived before the safety reading. Both inputs precede delivered guidance.
+    expect(trace.turns.map((x) => x.kind)).toEqual(["start", "maya", "child", "content_problem", "maya", "maya"]);
+    expect(trace.turns[3]).toMatchObject({ kind: "content_problem", cancelled: true });
+    checked(trace);
+  });
+
+  it("R424-1: drops teaching and board output when content fails during a guide proposal", async () => {
+    const { session } = scripted([OPEN, () => {
+      void session.contentProblem("the answer key and the worked steps disagree");
+      return { ...GUIDE, draw: [{ offer: "question.columns" }] };
+    }, CLOSE]);
+    await session.start();
+    const out = await session.child("I got 56.");
+    expect(out).toMatchObject({ cancelled: true, board: [], ended: { reason: "content_issue" } });
+    const trace = session.trace();
+    expect(out.say).toEqual(trace.turns.flatMap((t) => t.kind === "maya" && t.output?.act === "close" ? t.output.say : []));
+    expect(trace.turns.flatMap((t) => t.kind === "maya" ? [t.output?.act] : [])).toEqual(["open", "close"]);
+    expect(trace.board).toEqual([]);
+    checked(trace);
+  });
+
+  it("R424-1: removes earlier buffered example turns when a later proposal finds a content problem", async () => {
+    const base = ruleMayaModel();
+    let calls = 0;
+    const model = { ...base, propose: async (...args: Parameters<typeof base.propose>) => {
+      if (++calls === 3) void session.contentProblem("the worked example is wrong");
+      return base.propose(...args);
+    } };
+    const session = createTextSession({ callId: "buffered-example", package: PKG, model, clock: () => T0, random: 7 });
+    await session.start();
+    const out = await session.child("I don't know how to start.");
+    expect(out).toMatchObject({ cancelled: true, board: [], ended: { reason: "content_issue", assistance: "independent" } });
+    expect(session.trace().turns.flatMap((t) => t.kind === "maya" ? [t.output?.act] : [])).toEqual(["open", "close"]);
+    expect(session.trace().board).toEqual([]);
+    checked(session.trace());
+  });
+
+  it.each(["resolve", "reject"])("R424-2: a partial cancels a pending proposal before its late %s", async (settle) => {
+    const entered = Promise.withResolvers<void>();
+    const pending = Promise.withResolvers<unknown>();
+    const base = fakeMayaModel({ answer: (input) => input.offers.some((o) => o.act === "open") ? OPEN : ACCEPT });
+    let calls = 0;
+    const model = { ...base, propose: async (...args: Parameters<typeof base.propose>) => {
+      if (++calls === 2) { entered.resolve(); return pending.promise; }
+      return base.propose(...args);
+    } };
+    const options = { callId: "partial-pending", package: PKG, model, clock: () => T0, random: 7 };
+    const session = createTextSession(options);
+    await session.start();
+    const child = session.child("I got 56.");
+    await entered.promise;
+    // The model cannot finish until after both input results have returned. A queue wait fails this test.
+    try {
+      expect(await session.partial("No, I meant")).toMatchObject({ cancelled: true, say: [], board: [] });
+      expect(await child).toMatchObject({ cancelled: true, say: [], board: [] });
+      const saved = JSON.parse(JSON.stringify(await session.saved()));
+      const resumed = createTextSession({ ...options, resume: saved });
+      const next = await session.child("No, I meant 66.");
+      expect(await resumed.child("No, I meant 66.")).toEqual(next);
+      expect(said(next)).toContain("27 + 39 = 66");
+      expect(base.requests.at(-1)?.childTurn).toBe("No, I meant 66.");
+      expect(session.trace().turns.filter((t) => t.kind === "maya")).toHaveLength(2);
+      const before = session.trace();
+      if (settle === "resolve") pending.resolve({ ...GUIDE, draw: [{ offer: "question.columns" }] });
+      else pending.reject(new Error("late model error"));
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(session.trace()).toEqual(before);
+      expect(resumed.trace()).toEqual(before);
+      checked(before);
+    } finally { pending.resolve(GUIDE); }
+  }, 1000);
+
+  it("R424-2: cancels during a free-talk review, with no late turn or state change", async () => {
+    const entered = Promise.withResolvers<void>();
+    const pending = Promise.withResolvers<{ verdict: "pass" }>();
+    const { model } = scripted([OPEN, v2({ act: "redirect", reading: { offTopic: true }, parts: [{ talk: "Thanks for telling me." }] }), ACCEPT]);
+    const reviewer = { id: "held-review", promptVersion: "test", review: async () => { entered.resolve(); return pending.promise; } };
+    const session = createTextSession({ callId: "partial-review", package: PKG, model, reviewer, freeTalk: true, clock: () => T0 });
+    await session.start();
+    const child = session.child("I have a dog.");
+    await entered.promise;
+    try {
+      expect(await session.partial("No, I meant")).toMatchObject({ cancelled: true, say: [] });
+      expect(await child).toMatchObject({ cancelled: true, say: [], board: [] });
+      await session.child("66.");
+      const before = session.trace();
+      pending.resolve({ verdict: "pass" });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(session.trace()).toEqual(before);
+      expect(before.turns.filter((t) => t.kind === "maya")).toHaveLength(2);
+      checked(before);
+    } finally { pending.resolve({ verdict: "pass" }); }
+  }, 1000);
+
+  it("R424-2: a partial invalidates an input queued before it, with no delay", async () => {
+    const { session, model } = scripted([OPEN, ACCEPT]);
+    await session.start();
+    const child = session.child("56.");
+    expect(await session.partial("No, I meant")).toMatchObject({ cancelled: true });
+    expect(await child).toMatchObject({ cancelled: true, say: [], board: [] });
+    expect(model.requests).toHaveLength(1);
+    expect(said(await session.child("66."))).toContain("27 + 39 = 66");
+    checked(session.trace());
+  });
+
+  it("R424-2: a provider that signals the partial itself cannot commit or leak its rejection", async () => {
+    const model = fakeMayaModel({ answer: (_input, n) => {
+      if (n === 0) return OPEN;
+      void session.partial("No, I meant");
+      throw new Error("a cancelled provider error");
+    } });
+    const session = createTextSession({ callId: "provider-partial", package: PKG, model, clock: () => T0 });
+    await session.start();
+    expect(await session.child("56.")).toMatchObject({ cancelled: true, say: [], board: [] });
+    expect(session.trace().turns.filter((t) => t.kind === "maya")).toHaveLength(1);
+    checked(session.trace());
+  });
+
+  it.each([false, true])("R424-3: each approved example utterance is accepted once, with resume %s", async (resume) => {
+    const options = { callId: "approved-batch", package: PKG, model: ruleMayaModel(), clock: () => T0, random: 7 };
+    let session = createTextSession(options);
+    await session.start();
+    const out = await session.child("I don't know how to start.");
+    expect(out.say).toHaveLength(3);
+    const count = session.trace().turns.filter((t) => t.kind === "maya").length;
+    for (const text of out.say) {
+      const saved = JSON.parse(JSON.stringify(await session.saved()));
+      const before = JSON.stringify(saved);
+      if (resume) session = createTextSession({ ...options, resume: saved });
+      expect(await session.mayaSaid(text)).toMatchObject({ cancelled: false, say: [], board: [] });
+      expect(JSON.stringify(saved)).toBe(before);
+    }
+    expect(session.trace().turns.filter((t) => t.kind === "maya")).toHaveLength(count);
+    // Consumed speech is not an approval for another utterance.
+    expect((await session.mayaSaid(out.say.at(-1)!)).cancelled).toBe(true);
+    checked(session.trace());
+  });
+
+  it.each([false, true])("R424-4: records content raised during a close, safety %s", async (safety) => {
+    const { session } = scripted([OPEN, ...(safety ? [v2({ act: "safety", parts: [], reading: { safety: "concern" } })] : []), () => {
+      void session.contentProblem("the answer key and the worked steps disagree");
+      return { ...CLOSE, reading: { stop: true } };
+    }, CLOSE]);
+    await session.start();
+    const out = await session.child(safety ? "Someone at home hurts me." : "I want to stop.");
+    expect(out.ended).toMatchObject({ reason: safety ? "safety" : "content_issue", safetyFlag: safety });
+    if (safety) expect(out.say).toContain(SAFETY_GUIDANCE.concern);
+    const trace = session.trace();
+    expect(trace.turns.filter((t) => t.kind === "content_problem")).toEqual([
+      { kind: "content_problem", at: T0, detail: "the answer key and the worked steps disagree", cancelled: !safety },
+    ]);
+    checked(trace);
+  });
+
+  it("writes the child's name as {name} in partial turns and in what Maya said", async () => {
+    let now = T0;
+    const model = fakeMayaModel({ answer: (_input, n) => [OPEN, GUIDE, v2({ act: "repair", parts: [{ line: "repair.sorry" }] })][n] });
+    const session = createTextSession({ callId: "call-n", package: PKG, model, clock: () => now, random: 7, childName: "Ava" });
+    await session.start();
+    now += 1000;
+    await session.child("I got 56.");
+    await session.partial("Ava says no");
+    await session.mayaSaid("Ava, seven plus nine is fifteen.");
+    const kinds = session.trace().turns.flatMap((x) => (x.kind === "partial" || x.kind === "maya_said" ? [x.text] : []));
+    expect(kinds).toEqual(["{name} says no", "{name}, seven plus nine is fifteen."]);
+  });
+});
+
 /** A finished, valid trace with a board batch, to break one field at a time. */
 async function validTrace() {
   const { session } = scripted([
@@ -511,6 +757,10 @@ describe("checkTrace refuses a trace that is not this version's shape", () => {
     ["free talk reviewed after the code guards failed", (t) => { (t.turns[mayaAt(t)].attempts as Record<string, unknown>[])[0].talk = [{ proposed: "Keep going.", code: "keep", review: "pass", shown: BANK0 }]; }, /review/],
     ["a failed review with an unknown rule", (t) => { (t.turns[mayaAt(t)].attempts as Record<string, unknown>[])[0].talk = [{ proposed: "Hi!", code: null, review: "fail", rules: ["rude"], reason: "x", shown: BANK0 }]; }, /rules/],
     ["free talk in a version 2 trace", (t) => { t.version = 2; delete t.reviewer; (t.turns[mayaAt(t)].attempts as Record<string, unknown>[])[0].talk = [{ proposed: "Hi!", code: null, review: "pass", shown: "Hi!" }]; }, /version 3/],
+    ["a partial turn that did not stop Maya's output", (t) => { t.turns.push({ kind: "partial", at: Number(t.turns.at(-1)!.at), text: "No", cancelled: false }); }, /cancelled/],
+    ["what Maya said with no text", (t) => { t.turns.push({ kind: "maya_said", at: Number(t.turns.at(-1)!.at), cancelled: true }); }, /text/],
+    ["a content problem with no cancelled flag", (t) => { t.turns.push({ kind: "content_problem", at: Number(t.turns.at(-1)!.at), detail: "x" }); }, /cancelled/],
+    ["a partial turn in a version 3 trace", (t) => { t.version = 3; t.turns.push({ kind: "partial", at: Number(t.turns.at(-1)!.at), text: "No", cancelled: true }); }, /version 4/],
     ["no output after an accepted last attempt", (t) => { const m = t.turns.find((x) => x.kind === "maya" && x.output !== null && (x.output as { board: unknown[] }).board.length === 0)!; m.output = null; }, /output/],
   ];
   for (const [name, breakIt, path] of cases) {
@@ -523,8 +773,9 @@ describe("checkTrace refuses a trace that is not this version's shape", () => {
     });
   }
 
-  it("reads a version 1 trace and a version 2 hang-up", async () => {
+  it("reads a version 1 trace, a version 2 hang-up and a version 3 trace", async () => {
     const t = await validTrace();
+    expect(checkTrace({ ...t, version: 3 })).toMatchObject({ ok: true });
     const { reviewer: _reviewer, ...old } = t;
     void _reviewer;
     expect(checkTrace({ ...old, version: 1 })).toMatchObject({ ok: true });
