@@ -23,7 +23,7 @@ import type {
   Term,
   WrongAnswer,
 } from "@/lib/question-package";
-import { PATTERN_SHAPES } from "@/lib/question-package";
+import { PATTERN_SHAPES, relationChoices } from "@/lib/question-package";
 import {
   beyond,
   decimalDigits,
@@ -510,6 +510,27 @@ const RULES: { [K in ItemCheck["kind"]]: CheckRule<Extract<ItemCheck, { kind: K 
     },
   },
 
+  relation: {
+    region: "choice",
+    shape: (c) => {
+      const region = oneRegion(c);
+      if (region) return region;
+      if (!Array.isArray(c.labels)) return "a relation check needs its labels (none for less-than, closer and equal)";
+      const r = relationChoices(c as { relation: string; numbers: unknown; to: unknown; labels: unknown });
+      return typeof r === "string" ? r : null;
+    },
+    regions: (c) => [c.region],
+    verify: (c, read) => {
+      const r = relationChoices(c);
+      if (typeof r === "string") return fail(r);
+      const choice = choiceOf(read, c.region);
+      if (choice.choices.length !== 2 || !r.choices.every((x) => choice.choices.includes(x))) {
+        return fail(`the region "${c.region}" does not offer the relation's choices: ${r.choices.join(" and ")}`);
+      }
+      return choice.answer === r.answer ? null : fail(`the region "${c.region}" holds ${choice.answer}, but the answer is ${r.answer}`);
+    },
+  },
+
   "yes-no": {
     region: "choice",
     shape: (c, ctx) => {
@@ -639,6 +660,16 @@ function figureAgreement(f: Figure, checks: ItemCheck[], read: CheckInput): Item
   const computed = ctx.computed;
   if (computed) {
     const op = computed.operation;
+    if (op.kind === "missing-addend") {
+      // A missing part: dots or a ten-frame of the part given or of the total, or a number line through both.
+      // The part given or the total (the item says which: "Mia has 3" or "8 dots. 5 and how many more?").
+      const [part, total] = op.operands;
+      const what = `${part} + ? = ${total}`;
+      if (f.kind === "dots") return (sameList(f.groups, [part]) || sameList(f.groups, [total])) && f.takenAway === 0 ? null : differs(what);
+      if (f.kind === "ten-frame") return sameList(f.counters, [part]) || sameList(f.counters, [total]) ? null : differs(what);
+      if (f.kind === "number-line") return onLine([part, total], what);
+      return differs(what);
+    }
     if (op.kind !== "add" && op.kind !== "subtract" && op.kind !== "multiply") return unclear;
     const [a, b] = op.operands;
     const answer = wholes([computed.answer], ctx)?.[0];
@@ -676,6 +707,14 @@ function figureAgreement(f: Figure, checks: ItemCheck[], read: CheckInput): Item
     }
     case "order":
       return f.kind === "number-line" ? onLine(wholes(check.numbers, ctx), "the numbers to order") : unclear;
+    case "relation": {
+      const what = check.numbers.join(" and ");
+      if (f.kind === "number-line") return onLine([...check.numbers, ...check.to], what);
+      // One number: the picture shows it. Two: dots show each as a group.
+      if (check.numbers.length === 1) return figureCount(f) === check.numbers[0] ? null : differs(what);
+      if (f.kind === "dots") return sameList(f.groups, check.numbers) && f.takenAway === 0 ? null : differs(what);
+      return unclear;
+    }
     case "sequence": {
       if (f.kind !== "number-line") return unclear;
       const terms = check.terms.map((t) => (isRegionTerm(t) ? boxAnswer(read, t.region) : t));

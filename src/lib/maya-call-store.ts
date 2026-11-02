@@ -30,6 +30,10 @@ function changeColumns(c: CallChange): Update {
   if (c.boardHistory !== undefined) u.board_history = c.boardHistory;
   if (c.learningEventId !== undefined) u.learning_event_id = c.learningEventId;
   if (c.profileRebuiltAt !== undefined) u.profile_rebuilt_at = c.profileRebuiltAt;
+  if (c.flag !== undefined) {
+    u.flag = c.flag?.level ?? null;
+    u.flagged_at = c.flag?.at ?? null;
+  }
   if (c.counts !== undefined) {
     u.maya_turns = c.counts?.mayaTurns ?? null;
     u.child_turns = c.counts?.childTurns ?? null;
@@ -87,6 +91,7 @@ export function fromCallRow(r: Row): CallRecord {
     boardHistory: r.board_history,
     learningEventId: r.learning_event_id,
     profileRebuiltAt: r.profile_rebuilt_at,
+    flag: r.flag && r.flagged_at ? { level: r.flag, at: r.flagged_at } : null,
   };
 }
 

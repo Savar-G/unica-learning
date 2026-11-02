@@ -287,8 +287,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       }
       if (!entry.output) {
         const at = Math.max(clock(), session.now ?? 0);
-        turns.push({ kind: "technical", at, detail: "no safe fallback was accepted" });
-        event({ type: "technical", at, detail: "no safe fallback was accepted" }, out);
+        turns.push({ kind: "technical", at, detail: "Maya had no safe line to say" });
+        event({ type: "technical", at, detail: "Maya had no safe line to say" }, out);
       }
     }
     entry.stateAfter = session.state;
