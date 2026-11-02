@@ -50,7 +50,7 @@ export interface AiClient {
  * The client, or null when the AI is off (no OPENROUTER_API_KEY). The model comes from AI_MODEL, or `model` when a
  * feature uses its own (Maya's free-talk review, MAYA_REVIEW_MODEL).
  */
-export function aiClient(env: Record<string, string | undefined> = process.env, model?: string): AiClient | null {
+export function aiClient(env: Readonly<Record<string, string | undefined>> = process.env, model?: string): AiClient | null {
   const apiKey = env.OPENROUTER_API_KEY?.trim();
   if (!apiKey) return null;
   return openRouterClient({ apiKey, model: model?.trim() || env.AI_MODEL?.trim() || AI_DEFAULT_MODEL });

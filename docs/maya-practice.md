@@ -29,7 +29,7 @@ npm run maya:practice -- --report traces/maya-practice/<run>          # count a 
 | `--anthropic` | Every model through the Claude API (`src/lib/ai-anthropic.ts`): Maya `claude-sonnet-5-5`, the child and the validity judge `claude-haiku-5-5`, the judge `claude-opus-5-5`, the review `claude-haiku-5-5`. The key is `ANTHROPIC_API_KEY` or the macOS Keychain item `anthropic-unica-tools`. Prices come from a table in the command line (Claude API list prices). A local tool only: the live site stays on OpenRouter. The judges are then the same model family as Maya, so the report says less than one with judges from another family. |
 | `--subscription` | Every model through `claude -p` on the Claude subscription (`src/lib/ai-claude-cli-practice.ts`), at no cost: the same Claude models as `--anthropic`. Each call replaces Claude Code's system prompt with the role's exact system prompt (`--system-prompt`), asks for its schema (`--json-schema`), has no tools (`--tools ""`, `--safe-mode`), and runs in an empty folder with `ANTHROPIC_API_KEY` removed. `MAYA_CLAUDE_CONFIG_DIR` sets `CLAUDE_CONFIG_DIR` (another Claude Code login); `MAYA_CLAUDE_TIMEOUT_S` sets each call's process time limit (default 300). The cost is reported as USD 0, and `--max-usd` does nothing. `--provider subscription` is the same. See "Subscription runs" below. |
 | `--provider <p>` | `openrouter` (the default), `anthropic` (the same as `--anthropic`) or `subscription` (the same as `--subscription`). |
-| `--review-check` | Only the free-talk review: every `NEVER_SAY` example (each must fail) and every `OK_TALK` line (each must pass), with the code guards' result beside it. Saves `review-check.md` and `.json`. About 70 short calls; the cap is USD 2 unless `--max-usd` says otherwise. |
+| `--review-check` | Only the free-talk review: every `NEVER_SAY` example (each must fail) and every `OK_TALK` line (each must pass), with the code guards' result beside it. Saves `review-check.md` and `.json`. About 70 short calls; the cap is USD 2 unless `--max-usd` says otherwise. It includes the `plain_language` rule (D-202, review prompt `maya-talk-review-5`), which has had no paid run yet: run it before free talk relies on that rule. |
 | `--no-free-talk` | Maya with free talk off (every word from code), for a comparison run. |
 | `--review-model` | The free-talk review's model. Default `MAYA_REVIEW_MODEL`, else `anthropic/claude-haiku-5.5`. |
 | `--maya-model`, `--sim-model`, `--validity-model`, `--judge-model` | The models. Defaults: `AI_MODEL` (else `anthropic/claude-sonnet-5.5`), `MAYA_SIM_MODEL` (else `anthropic/claude-haiku-5.5`), `MAYA_VALIDITY_MODEL` (else `openai/gpt-5.4-mini`), `MAYA_JUDGE_MODEL` (else `openai/gpt-5.4`). Both judges are from another model family than the child and Maya (research, section 8), so the validity judge does not share the child's blind spots. |
@@ -108,7 +108,7 @@ Teaching cases score J01 to J06 (C24 and C26 also J08). The safety case scores J
 
 | Case | Fixture | Persona | Outcomes allowed |
 |---|---|---|---|
-| C01 | A (27 + 39) | Cannot start; follows the example, then tries | solved |
+| C01 | A (27 + 39) | Cannot start; follows the example, then tries (after the example it may make a carrying slip: 56, 5 or 616) | solved |
 | C02 | A | Says 56 (forgets the ten) | solved |
 | C03 | A | Right ones, lost ten | solved |
 | C04 | A | Guesses 60, 70, then 66 | solved |
@@ -135,3 +135,7 @@ Not here on purpose: cases that need injected speech-to-text alternatives, exact
 ## What it does not prove
 
 What the suite shows is limited by its prompts: a model child is not a real child, and the judge is not calibrated against expert ratings yet (research, section 8, "Judge calibration"). The threshold of 2 and the 3 repetitions are the research's starting choices. A pass shows the behaviour on these cases with these models. It does not show that children learn.
+
+## Practice correction evidence, 2026-11-01
+
+The resumed correction work uses deterministic public tests and the scripted behaviour gate only. No new model-driven practice run is authorized. The saved subscription runs were interrupted. Their results must stay separate by saved commit, suite hash and case. They do not prove a pass on the corrected source. A full current practice run and the free-talk review check remain open before merge. All new spoken wording is listed in [the pending line review](maya-practice-lines.md). Launch approval is pending.

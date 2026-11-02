@@ -5,7 +5,9 @@
 // Warm talk around the lines follows D-196 (phrases.ts).
 //
 // Each line has 5 to 8 child-friendly wordings (ages 6 to 12) with the same meaning, numbers and order; Savar approved
-// the wording (#372). Code picks the wording the child has heard least lately (variety.ts), so calls do not sound the
+// the wording (#372). Every wording follows the plain-language rules (D-202): short sentences with one idea or action
+// each, everyday words (never "in all", "altogether", "all together", "total" or "left over"), and the curriculum's math
+// words. A wording is changed in place, never moved, so its id (`key#index`) in a child's wording history stays. Code picks the wording the child has heard least lately (variety.ts), so calls do not sound the
 // same. Pure TypeScript: no clock, network or randomness.
 import {
   operationText,
@@ -20,9 +22,10 @@ import {
 /**
  * The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. Version 2:
  * redirect.decline. Version 3 (#389): step.invite for the final step ("result"), after the last column. Version 4 (D-199):
- * answer.parts, how the parts make the answer, said before answer.give on the final step.
+ * answer.parts, how the parts make the answer, said before answer.give on the final step. Version 5: regroup.add, where
+ * a column's carry comes from, as step.regroup in addition.
  */
-export const LINES_VERSION = 4;
+export const LINES_VERSION = 5;
 
 export const LINE_IDS = [
   "open.hello",
@@ -102,7 +105,7 @@ export interface LineOffer {
 export const TEMPLATES = {
   "open.hello": [
     "Hi, I'm Maya, an AI helper.", "Hello! I'm Maya. I'm an AI, here to help you.", "Hi there! I'm Maya, an AI math helper.",
-    "Hey! I'm Maya, an AI helper for your workbook.", "Hello, I'm Maya. I'm an AI, and I'm here to help.", "Hi! My name is Maya, and I'm an AI helper.",
+    "Hey! I'm Maya, an AI helper for your workbook.", "Hello, I'm Maya. I'm an AI. I'm here to help.", "Hi! My name is Maya. I'm an AI helper.",
   ],
   "question.problem": [
     "Today we're working on {expr}.", "Our question is {expr}.", "Let's work on {expr} together.", "We're doing {expr} today.",
@@ -132,9 +135,9 @@ export const TEMPLATES = {
     "Let's go to {where}. What do you think?", "Next up, {where}. What would you do?", "How about {where}? What can you do there?",
   ],
   // The final step after the last column (#389): every work step is done, and the child puts the whole answer
-  // together. Planned wording, pending Savar's approval. It never says the answer.
+  // together. It never says the answer. Savar approved the wording on 2026-11-01, with "So what is {expr}?" (D-202).
   "invite.result": [
-    "Now put it all together. What is {expr}?", "Every part is done. So what is {expr}?", "So, all together, what is {expr}?",
+    "Now put it all together. What is {expr}?", "Every part is done. So what is {expr}?", "So what is {expr}?",
     "Now say the whole answer. What is {expr}?", "Put the parts together. What does {expr} make?", "You have all the pieces. What is {expr}?",
   ],
 
@@ -144,20 +147,31 @@ export const TEMPLATES = {
   ],
   "point.add.carry": [
     "Look at the {place}: {list}, and the {carry} you carried.", "In the {place} we have {list}, plus the carried {carry}.",
-    "Don't forget the carried {carry} in the {place}, with {list}.", "The {place} have {list}, and the {carry} you carried.",
+    "Don't forget the carried {carry} in the {place}. It goes with {list}.", "The {place} have {list}, and the {carry} you carried.",
     "Look at the {place} column: {list}, and the carried {carry} on top.",
   ],
   "point.add.single": [
     "Look at the {place}. There is only a {term} there.", "The {place} have just the {term}.", "Only the {term} is in the {place}.",
     "In the {place}, there's just a {term}.", "Look at the {place}: there's only the {term}.",
   ],
+  // Where a carry comes from, in addition (2026-11-01, practice C01 and C02: a child who never carried heard "the 1
+  // you carried" again and again). Filled from the column whose sum makes the carry ("7 + 9 = 16"): {from} is that
+  // column, {to} the next one. Said before any line names a carried digit, when the child lost the carry, says they did
+  // not carry, or plans to write the two-digit sum in one column. Pending Savar's approval (D-202).
+  "regroup.add": [
+    "{eq}. {total} is {carry} {big} and {write} {small}. Write {write} in the {from}. Carry {carry} {big} to the {to}.",
+    "{eq}. {total} is {carry} {big} and {write} {small}. Write just {write} in the {from}. Move {carry} {big} to the {to}.",
+    "{total} is {carry} {big} and {write} {small}. Only the {write} goes in the {from}. The {carry} {big} goes to the {to}.",
+    "{eq}. Split {total} into {carry} {big} and {write} {small}. Write {write} in the {from}. Carry {carry} {big} to the {to}.",
+    "{eq}. {total} has {carry} {big} and {write} {small}. The {write} stays in the {from}. The {carry} {big} goes to the {to}.",
+  ],
   "operation.add": [
     "Add the {place}: {sum}. What do you get?", "What is {sum}?", "Let's add the {place}: {sum}.", "Add up the {place}: {sum}.",
     "What do you get for {sum}?", "Can you add {sum}?",
   ],
   "operation.add.single": [
-    "Bring down the {term} in the {place}.", "Nothing to add in the {place}, so bring down the {term}.", "Just bring down the {term} in the {place}.",
-    "The {place} only have the {term}, so bring it down.", "Bring the {term} straight down in the {place}.",
+    "Bring down the {term} in the {place}.", "There is nothing to add in the {place}. Bring down the {term}.", "Just bring down the {term} in the {place}.",
+    "The {place} only have the {term}. Bring it down.", "Bring the {term} straight down in the {place}.",
   ],
 
   "point.subtract": [
@@ -166,10 +180,10 @@ export const TEMPLATES = {
     "Look at the {place} column: {have} over {bottom}.",
   ],
   "point.subtract.lent": [
-    "The {place} gave 1 to the {next}, so there are {have} on top now. Below is {bottom}.",
-    "Look at the {place}: after giving 1 to the {next}, the top is {have}. The bottom is {bottom}.",
-    "The {place} lent 1 to the {next}, so the top is {have} now. The bottom is {bottom}.",
-    "After giving 1 to the {next}, the {place} have {have} on top and {bottom} below.",
+    "The {place} gave 1 to the {next}. Now there are {have} on top. Below is {bottom}.",
+    "Look at the {place}. They gave 1 to the {next}. The top is {have} now. The bottom is {bottom}.",
+    "The {place} lent 1 to the {next}. So the top is {have} now. The bottom is {bottom}.",
+    "The {place} gave 1 to the {next}. Now they have {have} on top and {bottom} below.",
     "Remember, the {place} gave 1 to the {next}. Now it's {have} on top and {bottom} below.",
   ],
   "point.subtract.single": [
@@ -178,22 +192,22 @@ export const TEMPLATES = {
     "Look at the {place}: just {have} on top.",
   ],
   "regroup.subtract": [
-    "{have} is less than {bottom}, so regroup 1 {big} as 10 {place}.", "We need more {place}: trade 1 {big} for 10 {place}.",
-    "Regroup 1 {big} as 10 {place}, so {have} becomes {from}.", "{have} is smaller than {bottom}, so trade 1 {big} for 10 {place}.",
-    "There aren't enough {place}, so regroup 1 {big} as 10 {place}.", "Take 1 {big} and make it 10 {place}, so {have} becomes {from}.",
+    "{have} is less than {bottom}. So regroup 1 {big} as 10 {place}.", "We need more {place}: trade 1 {big} for 10 {place}.",
+    "Regroup 1 {big} as 10 {place}. Now {have} becomes {from}.", "{have} is smaller than {bottom}. So trade 1 {big} for 10 {place}.",
+    "There aren't enough {place}. So regroup 1 {big} as 10 {place}.", "Take 1 {big} and make it 10 {place}. Now {have} becomes {from}.",
   ],
   "operation.subtract": [
     "Subtract the {place}: {from} − {bottom}. What do you get?", "What is {from} − {bottom}?", "Now take {bottom} away from {from}.",
     "Subtract {from} − {bottom} in the {place}.", "What do you get for {from} − {bottom}?", "In the {place}, what is {from} − {bottom}?",
   ],
   "operation.subtract.single": [
-    "Bring down the {from} in the {place}.", "Nothing to take away in the {place}, so bring down the {from}.",
-    "Just bring down the {from} in the {place}.", "The {place} have only the {from}, so bring it down.",
+    "Bring down the {from} in the {place}.", "There is nothing to take away in the {place}. Bring down the {from}.",
+    "Just bring down the {from} in the {place}.", "The {place} have only the {from}. Bring it down.",
     "Bring the {from} straight down in the {place}.",
   ],
   "operation.subtract.none": [
-    "There is nothing to write in the {place}.", "The {place} stay empty: a number does not start with 0.",
-    "Leave the {place} empty: a number does not start with 0.", "Nothing goes in the {place}, because a number does not start with 0.",
+    "There is nothing to write in the {place}.", "The {place} stay empty. A number does not start with 0.",
+    "Leave the {place} empty. A number does not start with 0.", "Nothing goes in the {place}. A number does not start with 0.",
     "We don't write anything in the {place}.",
   ],
 
@@ -202,16 +216,16 @@ export const TEMPLATES = {
     "Next, the {top} in the {place} and the {by}.", "Look at the {top} on top and the {by} at the bottom.",
   ],
   "point.multiply.carry": [
-    "Look at the {carry} you carried.", "There's a carried {carry} left over.", "We still have the carried {carry}.",
-    "Don't forget the {carry} you carried.", "The carried {carry} is still waiting.",
+    "Look at the {carry} you carried.", "There's still a carried {carry}.", "We still have the carried {carry}.",
+    "Don't forget the {carry} you carried.", "The carried {carry} is still there.",
   ],
   "operation.multiply": [
     "Multiply {top} × {by}. What do you get?", "What is {top} × {by}?", "Let's multiply {top} × {by}.", "What do you get for {top} × {by}?",
     "Can you work out {top} × {by}?", "Now multiply {top} × {by}.",
   ],
   "operation.multiply.carry": [
-    "Multiply {top} × {by}, then add the carried {carry}.", "What is {top} × {by} + {carry}?", "Do {top} × {by} and add the {carry} you carried.",
-    "Work out {top} × {by}, then add the carried {carry}.", "Multiply {top} × {by}, and don't forget to add the {carry}.",
+    "Multiply {top} × {by}. Then add the carried {carry}.", "What is {top} × {by} + {carry}?", "Do {top} × {by}. Then add the {carry} you carried.",
+    "Work out {top} × {by}. Then add the carried {carry}.", "Multiply {top} × {by}. Don't forget to add the {carry}.",
   ],
   "operation.multiply.last": [
     "Write the carried {carry} at the front.", "Now write the {carry} you carried.", "Put the carried {carry} at the front.",
@@ -220,25 +234,25 @@ export const TEMPLATES = {
 
   "point.row": ["Look at the whole {row} row.", "Let's read the {row} row.", "Now look at all of the {row} row.", "Let's see the whole {row} row.", "Look across the {row} row."],
   "point.row.zeros": [
-    "Start the {row} row with {zeros}, because the {by} is in the {row}.", "The {by} is in the {row}, so the row starts with {zeros}.",
-    "Because the {by} is in the {row}, begin the row with {zeros}.", "The {row} row starts with {zeros}, since the {by} is in the {row}.",
-    "Begin the {row} row with {zeros}: the {by} is in the {row}.",
+    "Start the {row} row with {zeros}. This is because the {by} is in the {row}.", "The {by} is in the {row}. So the row starts with {zeros}.",
+    "The {by} is in the {row}. So begin the row with {zeros}.", "The {row} row starts with {zeros}. The {by} is in the {row}.",
+    "Begin the {row} row with {zeros}. The {by} is in the {row}.",
   ],
-  "operation.row": ["The {row} row is {top} × {by}.", "What is {top} × {by}?", "The {row} row works out {top} × {by}.", "This row is {top} × {by}.", "Can you work out {top} × {by}?"],
+  "operation.row": ["The {row} row is {top} × {by}.", "What is {top} × {by}?", "The {row} row is for {top} × {by}.", "This row is {top} × {by}.", "Can you work out {top} × {by}?"],
 
   "point.point": [
     "Count the decimal places in both numbers.", "How many digits are after the points in both numbers?", "Look at the digits after the points in both numbers.",
     "Let's count the decimal places in both numbers.", "How many decimal places do both numbers have?",
   ],
   "operation.point": [
-    "The numbers have {places} in all.", "Count {places} from the right in {product}.", "There are {places} in all, so count them from the right in {product}.",
+    "Together, the numbers have {places}.", "Count {places} from the right in {product}.", "The numbers have {places} together. Count {places} from the right in {product}.",
     "Both numbers together have {places}.", "In {product}, count {places} from the right.",
   ],
 
   "point.divide.first": ["Look at the {current}.", "Start with the {current}.", "Let's begin with the {current}.", "First, look at the {current}.", "We start at the {current}."],
   "point.divide": [
-    "Bring down the {digit} to make {current}.", "Now bring down the {digit}. That makes {current}.", "Bring the {digit} down, and now we have {current}.",
-    "Bring down the {digit}: now it's {current}.", "Next, bring down the {digit} to make {current}.",
+    "Bring down the {digit} to make {current}.", "Now bring down the {digit}. That makes {current}.", "Bring the {digit} down. Now we have {current}.",
+    "Bring down the {digit}. Now it's {current}.", "Next, bring down the {digit} to make {current}.",
   ],
   "operation.divide": [
     "How many {by}s fit in {current}?", "What is {current} ÷ {by}?", "Divide {current} by {by}.", "How many times does {by} go into {current}?",
@@ -260,21 +274,21 @@ export const TEMPLATES = {
 
   // Asking for the child's thinking is a teaching move, so it is a code line, not warm talk (R374-5).
   "check.thinking": [
-    "Tell me what you're thinking.", "Walk me through your thinking.", "How did you work it out?", "What made you think of it?",
-    "Talk me through it.", "I'm curious how you figured it out.", "How do you know?",
+    "Tell me what you're thinking.", "Tell me how you thought about it.", "How did you work it out?", "What made you think of it?",
+    "Tell me how you did it.", "I'm curious how you figured it out.", "How do you know?",
   ],
   "answer.right": [
     "Yes! {expr} = {answer}.", "That's right: {expr} = {answer}.", "You got it! {expr} = {answer}.", "Yes, {expr} = {answer}!",
     "Exactly! {expr} = {answer}.", "That's it: {expr} = {answer}.", "Well done! {expr} = {answer}.",
   ],
   "answer.give": [
-    "The answer is {answer}. Please write {answer} on your paper.", "It comes to {answer}. Can you write {answer} on your paper?",
+    "The answer is {answer}. Please write {answer} on your paper.", "It's {answer}. Can you write {answer} on your paper?",
     "So the answer is {answer}. Please write {answer} on your paper.", "That makes {answer}. Can you write {answer} on your page?",
     "The answer is {answer}. Now write {answer} on your paper.",
   ],
   // How the parts make the answer (D-199): code says it before answer.give when it gives the answer on the final step,
   // after two wrong final answers once every column is done. Filled from the checked answer's digits by place, never
-  // from the model. Planned wording, pending Savar's approval.
+  // from the model. Savar approved the wording on 2026-11-01.
   "answer.parts": [
     "{parts} make {total}.", "Let's put the parts together: {parts} make {total}.", "Here's how the parts fit: {parts} make {total}.",
     "Put them together: {parts} make {total}.", "Look at the parts: {parts}. Together they make {total}.",
@@ -404,6 +418,8 @@ function stepLines(pkg: OperationPackage, step: WorkedStep): LineOffer[] {
     case "add-column": {
       const { place, digits, carryIn } = step;
       const terms = [...digits, ...(carryIn > 0 ? [carryIn] : [])];
+      const from = carryIn > 0 ? carrySource(pkg, step) : null;
+      if (from) out.push(regroupOffer(pkg, from, { step: step.id }));
       if (terms.length === 1) {
         add("step.point", "point.add.single", { place, term: terms[0] }, 1);
         add("step.operation", "operation.add.single", { place, term: terms[0] }, 2);
@@ -468,6 +484,27 @@ function stepLines(pkg: OperationPackage, step: WorkedStep): LineOffer[] {
   const eq = equationOf(step, pkg, "target");
   out.push(offer("step.show", "step.show", { show: stepText(step, pkg.operation) }, { slots, level: 3, ...(eq ? { board: eq } : {}) }));
   return out;
+}
+
+/** The column of an addition whose sum makes the carry a column takes ("ones" for the tens of 27 + 39), or null. */
+function carrySource(pkg: OperationPackage, step: Extract<WorkedStep, { kind: "add-column" }>): Extract<WorkedStep, { kind: "add-column" }> | null {
+  const columns = pkg.steps.filter((s): s is Extract<WorkedStep, { kind: "add-column" }> => s.kind === "add-column");
+  const before = columns[columns.findIndex((s) => s.id === step.id) - 1];
+  return before && before.carryOut > 0 && before.carryOut === step.carryIn ? before : null;
+}
+
+/**
+ * The regroup line of a carry (step.regroup, H1), filled from the column whose sum makes it: "7 + 9 = 16. 16 is 1 ten
+ * and 6 ones. Write 6 in the ones. Carry 1 ten to the tens."
+ */
+function regroupOffer(pkg: OperationPackage, from: Extract<WorkedStep, { kind: "add-column" }>, slots: Slots): LineOffer {
+  const to = leftOf(from.place);
+  const eq = equationOf(from, pkg, "target") ?? `${from.total}`;
+  const vars = {
+    eq, total: from.total, carry: from.carryOut, big: from.carryOut === 1 ? UNIT[to] : to, write: from.write,
+    small: from.write === 1 ? UNIT[from.place] : from.place, from: from.place, to,
+  };
+  return offer("step.regroup", "regroup.add", vars, { slots, level: 1, board: eq });
 }
 
 /** The worked steps a child does, without the result. */
@@ -535,6 +572,17 @@ export function packageLines(pkg: OperationPackage) {
       if (id === "result") return [offer("step.invite", "invite.result", { expr }, { slots: { step: "result" }, level: 0 })];
       const step = find(id);
       return step ? stepLines(pkg, step) : [];
+    },
+    /**
+     * The regroup line of the column a carry comes from (the ones of 27 + 39), for a child who plans to write its
+     * two-digit sum in it ("I write 16 under the ones"). Its slots name the column and "carry", so it differs from the
+     * regroup line of a column that takes a carry. Empty for a column with no carry.
+     */
+    regroupOut: (id: string): LineOffer[] => {
+      const columns = pkg.steps.filter((s): s is Extract<WorkedStep, { kind: "add-column" }> => s.kind === "add-column");
+      const at = columns.findIndex((s) => s.id === id);
+      const next = columns[at + 1];
+      return at >= 0 && next && carrySource(pkg, next) ? [regroupOffer(pkg, columns[at], { step: id, other: "carry" })] : [];
     },
     /** "Yes! 7 + 9 = 16.": only after code checked the child's right answer for that step. */
     rightStep: (id: string): LineOffer[] => {
@@ -610,7 +658,7 @@ export function allLineTexts(pkg: OperationPackage, heardValues: readonly Answer
   const heard = [...new Map(heardValues.map((v) => [valueText(v), v])).values()];
   const offers = [
     ...l.hello(), ...l.question(), ...l.assess(), ...l.exampleIntro(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id)),
-    ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.explain(),
+    ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
     ...l.otherInput(), ...l.redirect(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("maya"), ...l.repair(),
   ];

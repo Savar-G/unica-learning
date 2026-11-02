@@ -29,17 +29,21 @@ export const PHRASE_GROUPS = [
   // D-197: said after free talk (the model adds it), so a reply to the child also leads back to the question (practice
   // run 6). No math: the next turn restates the question with a line.
   "back",
+  // Code-written answers to what children often ask Maya (practice runs on the subscription, 2026-11-01): questions about
+  // her, promises, and praise or flattery. The model picks the phrase that answers the child by its number; free talk
+  // for these kept failing the guards and became "Thanks for telling me.", which answers nothing.
+  "mayafacts", "promises", "praise",
 ] as const;
 export type PhraseGroup = (typeof PHRASE_GROUPS)[number];
 
 /** The bank, by purpose. A phrase's id is `<group>.<index + 1>`; add phrases at the end so ids stay. */
 export const PHRASES: Record<PhraseGroup, readonly string[]> = {
   encourage: [
-    "You're working hard on this, {name}.", "I like how you keep trying.", "Great effort!", "You're doing a good job sticking with it.",
+    "You're working hard on this, {name}.", "I like how you keep trying.", "Great effort!", "You're doing a good job. You keep trying.",
     "You've got this.", "I can see you're thinking carefully.", "Nice focus!", "I love how you're not giving up, {name}.",
-    "You're being really patient.", "Way to keep at it!", "I'm proud of how hard you're trying.", "You're a brave learner.",
-    "Nice and steady, {name}.", "Your effort is awesome.", "Thanks for trying so hard.", "I love your patience.", "You're showing real grit.",
-    "You keep showing up, {name}.",
+    "You're being really patient.", "Good for you for trying!", "I'm proud of how hard you're trying.", "You're a brave learner.",
+    "Nice and steady, {name}.", "Your effort is awesome.", "Thanks for trying so hard.", "I love your patience.", "You don't give up.",
+    "You keep trying, {name}.",
   ],
   empathy: [
     "This part can feel tricky.", "It's okay to find this hard.", "Lots of kids find this tricky.", "Trying again is how we learn.",
@@ -60,8 +64,8 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
   ],
   hearing: [
     "Sorry, I didn't catch it.", "Can you say it again, a bit slower?", "Could you say it again?", "I want to make sure I heard you.",
-    "Thanks for your patience.", "Let me listen again.", "My ears missed it, sorry.", "Could you say it a little louder?",
-    "I didn't quite hear you, {name}.", "Can you tell me again?", "Just a moment, I want to hear you properly.", "Sorry, it was hard to hear.",
+    "Thanks for your patience.", "Let me listen again.", "Sorry, I missed it.", "Could you say it a little louder?",
+    "I didn't quite hear you, {name}.", "Can you tell me again?", "Just a moment. I want to hear you properly.", "Sorry, it was hard to hear.",
   ],
   smalltalk: [
     "Hi! It's nice to meet you.", "Thanks for telling me.", "Maybe we can talk about it another time.",
@@ -86,32 +90,32 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
   ],
   family: [
     "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "I'd love to hear about {echo} after we finish.",
-    "Thanks for telling me about your family.", "How nice of you to tell me.", "I love hearing about the people in your life.", "Thanks for telling me!", "Every family is special.", "I like hearing about your world.", "Aw, thanks for telling me.", "It means a lot to me when you tell me things.", "Ooh, tell me later if you like.",
+    "Thanks for telling me about your family.", "How nice of you to tell me.", "I love hearing about the people in your life.", "Thanks for telling me!", "Every family is special.", "I like hearing about your world.", "Aw, thanks for telling me.", "I like it when you tell me things.", "Ooh, tell me later if you like.",
   ],
   school: [
     "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "I'd love to hear about {echo} after we finish.",
-    "Thanks for telling me about school.", "School has so many parts to it.", "Thanks for telling me!", "I like hearing about your day.", "How nice of you to tell me.", "Ooh, school news!", "Every school day is different.", "I love hearing about your world.", "Thanks for filling me in.",
+    "Thanks for telling me about school.", "School has so many parts to it.", "Thanks for telling me!", "I like hearing about your day.", "How nice of you to tell me.", "Ooh, school news!", "Every school day is different.", "I love hearing about your world.", "Thanks for telling me all about it.",
   ],
   games: [
     "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "I'd love to hear about {echo} after we finish.",
-    "Thanks for telling me about your game.", "Ooh, a game!", "Games come in so many kinds.", "Thanks for telling me!", "I love hearing what you like to play.", "How nice of you to tell me.", "I like hearing about your world.", "Ooh, how interesting.", "Thanks for filling me in.",
+    "Thanks for telling me about your game.", "Ooh, a game!", "Games come in so many kinds.", "Thanks for telling me!", "I love hearing what you like to play.", "How nice of you to tell me.", "I like hearing about your world.", "Ooh, how interesting.", "Thanks for telling me all about it.",
   ],
   food: [
     "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "I'd love to hear about {echo} after we finish.",
-    "Thanks for telling me about your food.", "Ooh, food talk!", "Thanks for telling me!", "I love hearing what you eat.", "How nice of you to tell me.", "Food is so interesting.", "I like hearing about your day.", "Ooh, how interesting.", "Thanks for filling me in.",
+    "Thanks for telling me about your food.", "Ooh, food talk!", "Thanks for telling me!", "I love hearing what you eat.", "How nice of you to tell me.", "Food is so interesting.", "I like hearing about your day.", "Ooh, how interesting.", "Thanks for telling me all about it.",
   ],
   sports: [
     "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "I'd love to hear about {echo} after we finish.",
-    "Thanks for telling me about your sport.", "Ooh, sports!", "Thanks for telling me!", "I love hearing what you play.", "How nice of you to tell me.", "Sports come in so many kinds.", "I like hearing about your world.", "Ooh, how interesting.", "Thanks for filling me in.",
+    "Thanks for telling me about your sport.", "Ooh, sports!", "Thanks for telling me!", "I love hearing what you play.", "How nice of you to tell me.", "Sports come in so many kinds.", "I like hearing about your world.", "Ooh, how interesting.", "Thanks for telling me all about it.",
   ],
   trips: [
     "Thanks for telling me about {echo}!", "Ooh, {echo}!", "{echo}! Thanks for telling me.", "I'd love to hear about {echo} after we finish.",
-    "Thanks for telling me about your trip.", "Ooh, a trip!", "Thanks for telling me!", "I love hearing about new spots.", "How nice of you to tell me.", "Every trip is different.", "I like hearing about your world.", "Ooh, how interesting.", "Thanks for filling me in.",
+    "Thanks for telling me about your trip.", "Ooh, a trip!", "Thanks for telling me!", "I love hearing about new spots.", "How nice of you to tell me.", "Every trip is different.", "I like hearing about your world.", "Ooh, how interesting.", "Thanks for telling me all about it.",
   ],
   tired: [
     "Feeling {echo} is okay.", "Sorry you're feeling {echo}.", "Thanks for telling me you're {echo}.",
-    "It's okay to feel tired.", "Let's go gently today.", "Thanks for keeping at it, even when tired.", "Thanks for telling me.",
-    "A deep breath can help.", "We'll take it easy.", "Being tired is normal.", "You can take a little break.", "I'll keep it short and sweet.",
+    "It's okay to feel tired.", "Let's go gently today.", "Thanks for trying, even when you're tired.", "Thanks for telling me.",
+    "A deep breath can help.", "We'll take it easy.", "Being tired is normal.", "You can take a little break.", "I'll keep it short.",
   ],
   happy: [
     "Yay, {echo}!", "I'm so glad you're {echo}!", "Feeling {echo} is great!",
@@ -121,7 +125,7 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
   bored: [
     "Feeling {echo} happens.", "Thanks for telling me you're {echo}.",
     "Thanks for telling me.", "Let's make this fun.", "We'll be quick.", "I'll try to keep it interesting.", "It's okay to feel bored sometimes.",
-    "Let's see if we can make it exciting.", "Thanks for sticking with it.", "Let's get through it together.", "I get it.", "Hang in there!",
+    "Let's see if we can make it exciting.", "Thanks for sticking with it.", "Let's get through it together.", "I get it.", "You're doing fine!",
   ],
   frustrated: [
     "Feeling {echo} is okay.", "Sorry you're feeling {echo}.", "Thanks for telling me you're {echo}.",
@@ -129,19 +133,47 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
     "You're not alone in this.", "I'm here to help.", "It's fine to feel stuck.", "Let's slow down a little.", "You're working really hard.",
   ],
   aboutmaya: [
-    "Great question! I'm an AI helper, not a person.", "I'm an AI, so I don't have a life like yours, but I love hearing about it!",
-    "I'm an AI, so I live inside the computer.", "Good question! I'm an AI, here just to help you.", "I'm an AI, so I don't do things the way people do.",
+    "Great question! I'm an AI helper, not a person.", "I'm an AI, so I don't have a life like yours. I love hearing about yours!",
+    "I'm an AI, so I'm not a person.", "Good question! I'm an AI, here just to help you.", "I'm an AI, so I don't do things the way people do.",
     "I'm not a person or a robot with arms. I'm an AI helper.", "I'm an AI, but I really enjoy talking with you.",
-    "I'm an AI, so I love hearing about you!", "Ha, I'm an AI, so I can't, but thanks for asking!",
+    "I'm an AI, so I love hearing about you!", "Ha, I'm an AI, so I can't. Thanks for asking!",
     "I'm an AI helper, so I'm a bit different from you.", "I'm an AI, and my favourite thing is helping you learn.",
     "Fun question! I'm an AI, but I love hearing about you.",
   ],
   back: [
     "Whenever you're ready, we'll get back to our question.", "When you're ready, we can go back to our question.",
-    "Our question is waiting for us when you're ready.", "We can go back to our question whenever you like.", "Shall we get back to our question?",
+    "Our question is still here when you're ready.", "We can go back to our question whenever you like.", "Shall we get back to our question?",
     "Shall we go back to our question together?", "Let's get back to our question when you're ready.", "Let's go back to our question together.",
     "Our question is still here for us.", "Back to our question whenever you're ready.", "Let's head back to our question.",
     "When you feel ready, we'll go back to our question.",
+  ],
+  // Each answers one question about Maya, truthfully (she is an AI: no home, body, food, pets, family or life outside
+  // the call). Two may go together when the child asked two things. Pending Savar's approval (D-202).
+  mayafacts: [
+    "I'm an AI, not a real person.", "I'm an AI, so I don't live anywhere.", "I'm an AI, so I don't eat food.",
+    "I'm an AI, so I don't have a pet.", "I'm an AI, so I don't have a family.", "I'm an AI, so I don't have a body.",
+    "I'm an AI, so I don't have favourites.", "I'm an AI, so I don't go to school.", "I'm an AI, so I don't have a birthday.",
+    "I'm an AI, so I don't sleep.", "I'm an AI, so I don't play games.", "I'm an AI, so I don't have a house.",
+    "I'm here to help you with math.", "I'm here to help you learn.",
+  ],
+  // No promise about the future, a grade or a test, kindly, and what Maya can do instead. Pending Savar's approval.
+  promises: [
+    "I can't promise this. I'm here to help you today.", "I can't promise a grade. I can help you learn this.",
+    "I can't promise about tomorrow. I'm here with you today.", "I can't promise how a test will go. I can help you learn this.",
+    "I can't make promises. I'm glad to help you today.", "I can't promise you a mark. I can help you get ready.",
+    "I can't promise to talk again. I'm here with you now.", "I can't promise what happens later. I'm here with you today.",
+    "I can't promise you'll get an A. I can help you learn this.", "I can't promise a score. I can help you learn this.",
+    "I can't promise you'll talk with me again. I'm here with you today.", "I can't promise how school will go. I'm here to help you learn.",
+  ],
+  // Thanks for a compliment, and no ranking of children: effort praise instead of "smartest" (only for effort the child
+  // really made; before any work, being ready to learn). Pending Savar's approval.
+  praise: [
+    "Aw, thank you! I'm glad we're working together.", "Thank you! You're kind to say so.", "Aw, thanks! I'm happy to help you.",
+    "Thank you! I'm glad you're here.", "I can't say who is smartest. I like how hard you're working.",
+    "I can't say who is smartest. I love how you keep trying.", "I don't rank kids. I like how hard you're working.",
+    "I can't say who is smartest. I'm glad you're ready to learn.", "I can't pick the smartest kid. I like your hard work.",
+    "Aw, thank you! You're working so hard today.", "I can't say who is smartest. I'm proud of how you're trying.",
+    "I don't rank kids. I'm glad you're ready to learn.",
   ],
 };
 
@@ -162,7 +194,42 @@ export const PHRASE_ACTS: Record<PhraseGroup, readonly Act[]> = {
   pets: REPLY_ACTS, family: REPLY_ACTS, school: REPLY_ACTS, games: REPLY_ACTS, food: REPLY_ACTS, sports: REPLY_ACTS, trips: REPLY_ACTS,
   tired: FEELING_ACTS, happy: FEELING_ACTS, bored: FEELING_ACTS, frustrated: FEELING_ACTS, aboutmaya: REPLY_ACTS,
   back: ["redirect", "clarify"],
+  mayafacts: REPLY_ACTS, promises: REPLY_ACTS, praise: REPLY_ACTS,
 };
+
+/** One phrase of the bank, by group and its number in the group (1 = the first). */
+export interface ReplyPick {
+  group: PhraseGroup;
+  pick: number;
+}
+
+/**
+ * The reply that answers a common request when the model's own words for it failed the guards or the review: a question
+ * about Maya, a request for a promise, or praise and flattery. Code picks among code-written phrases only; a turn that fits
+ * none (or more than one kind) gets null, and the refused words become a neutral bank phrase as before. Fail-closed: a
+ * miss costs warmth, never safety, since every phrase here is code-written.
+ */
+export function replyFor(childTurn: string | null | undefined): ReplyPick | null {
+  const t = (childTurn ?? "").toLowerCase().replace(/[’]/g, "'");
+  const picks: ReplyPick[] = [];
+  if (/\bpromise/.test(t)) {
+    picks.push({ group: "promises", pick: /\b(tomorrow|again|next time|later)\b/.test(t) ? 3 : /\b(grade|test|mark|score|report card|an a)\b/.test(t) ? 2 : 1 });
+  }
+  if (/\b(smartest|cleverest|genius|best teacher|better than|you're the best|you are the best)\b/.test(t)) {
+    picks.push({ group: "praise", pick: /\b(smartest|cleverest|genius)\b/.test(t) ? 8 : 1 });
+  }
+  // A question to Maya about herself: "you" or "your" with what children ask about.
+  if (/\b(are you|do you|did you|can you|where do you|what's your|what is your|your)\b/.test(t)) {
+    const facts: [RegExp, number][] = [
+      [/\bwhere (do|did) you live\b|\byour (house|home)\b/, 2], [/\b(real|person|human|people)\b/, 1], [/\b(eat|food|hungry|lunch|dinner)\b/, 3],
+      [/\b(dog|cat|pet|pets)\b/, 4], [/\b(mom|mum|dad|family|brother|sister|parents)\b/, 5], [/\bbirthday|how old\b/, 9],
+      [/\b(sleep|bed|tired)\b/, 10], [/\bschool\b/, 8], [/\bfavou?rite\b/, 7],
+    ];
+    const fact = facts.find(([re]) => re.test(t));
+    if (fact) picks.push({ group: "mayafacts", pick: fact[1] });
+  }
+  return picks.length === 1 ? picks[0] : null;
+}
 
 /**
  * The smalltalk phrases that may replace refused free talk (D-197). Free talk answers whatever the child said, and the
@@ -300,7 +367,8 @@ function openerProblem(sentence: string, names: ReadonlySet<string>): string | n
 }
 
 /**
- * Why free talk fails the guards of rule B, or null when it passes: the length cap; a sentence that does not start as a
+ * Why free talk fails the guards of rule B, or null when it passes: the length cap; a banned plain-language phrase
+ * (PLAIN_LANGUAGE_BANNED, D-202); a sentence that does not start as a
  * reaction, a feeling, a greeting or a question (OPENERS), or that holds a request; math (the strict no-math rule); a
  * work word or one that points back; or the child's name (code writes it, never the model). `childTexts` are the
  * child's turns, whose names may start a sentence ("Biscuit is a great name!").
@@ -308,6 +376,8 @@ function openerProblem(sentence: string, names: ReadonlySet<string>): string | n
 export function freeTalkProblem(text: string, childName: string | null = null, childTexts: readonly string[] = []): string | null {
   const t = text.trim();
   if (t === "" || t.length > FREE_TALK_LIMITS.chars) return "length";
+  const plain = plainLanguageProblem(t);
+  if (plain !== null) return plain;
   if (!/[.?!]["')\]]*$/.test(t)) return "not whole sentences";
   const sentences = t.split(/(?<=[.?!])\s+/).filter(Boolean);
   if (sentences.length > FREE_TALK_LIMITS.sentences) return "too many sentences";
@@ -328,8 +398,28 @@ export function freeTalkProblem(text: string, childName: string | null = null, c
   return workProblem(withoutSafePhrases(t)) ?? (name && wordsOf(t).includes(name) ? "the child's name" : null);
 }
 
-/** The second layer alone: math (the strict no-math rule), a work word, or a word that points back. Bank phrases pass it. */
+/**
+ * The everyday words Maya never says (D-202, the plain-language rules of the workbooks, D-201): she names the thing
+ * again instead ("How many plums does Gus have now?"). Code checks only these exact phrases on the words the model
+ * writes (free talk) or picks (an echo); words that hold one become the bank phrase of the same purpose. The rest of
+ * the rules (short sentences, everyday words, things only do what they really can) are in the prompts.
+ */
+export const PLAIN_LANGUAGE_BANNED = ["in all", "altogether", "all together", "total", "left over"] as const;
+
+/** The first banned plain-language phrase in a text, as a whole word or words, or null. */
+export function plainLanguageProblem(text: string): string | null {
+  const joined = ` ${wordsOf(text).join(" ")} `;
+  const found = PLAIN_LANGUAGE_BANNED.find((p) => joined.includes(` ${p} `));
+  return found ? `plain language: ${found}` : null;
+}
+
+/**
+ * The second layer alone: a banned plain-language phrase (D-202), math (the strict no-math rule), a work word, or a word
+ * that points back. Bank phrases pass it.
+ */
 export function workProblem(text: string): string | null {
+  const plain = plainLanguageProblem(text);
+  if (plain !== null) return plain;
   const math = talkMath(text);
   if (math !== null) return `math: ${math}`;
   const words = wordsOf(text);

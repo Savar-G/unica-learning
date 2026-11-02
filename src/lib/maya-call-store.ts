@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import type { CallChange, CallRecord, CallStore } from "@/lib/maya-call";
+import type { CallChange, CallRecord, CallStore, ConnectionLog } from "@/lib/maya-call";
 import type { QuestionRef } from "@/lib/question-package";
 
 // The call store of Maya's calls (src/lib/maya-call.ts, #323) in Supabase: public.maya_calls with the secret key (only
@@ -30,6 +30,9 @@ function changeColumns(c: CallChange): Update {
   if (c.boardHistory !== undefined) u.board_history = c.boardHistory;
   if (c.learningEventId !== undefined) u.learning_event_id = c.learningEventId;
   if (c.profileRebuiltAt !== undefined) u.profile_rebuilt_at = c.profileRebuiltAt;
+  if (c.speechToText !== undefined) u.speech_to_text = c.speechToText;
+  if (c.voice !== undefined) u.voice = c.voice;
+  if (c.connectedSeconds !== undefined) u.connected_seconds = c.connectedSeconds;
   if (c.flag !== undefined) {
     u.flag = c.flag?.level ?? null;
     u.flagged_at = c.flag?.at ?? null;
@@ -91,6 +94,9 @@ export function fromCallRow(r: Row): CallRecord {
     boardHistory: r.board_history,
     learningEventId: r.learning_event_id,
     profileRebuiltAt: r.profile_rebuilt_at,
+    speechToText: r.speech_to_text,
+    voice: r.voice,
+    connectedSeconds: r.connected_seconds,
     flag: r.flag && r.flagged_at ? { level: r.flag, at: r.flagged_at } : null,
   };
 }
@@ -116,6 +122,9 @@ export function mayaCallStore(admin: SupabaseClient<Database>): CallStore {
         prompt_version: c.promptVersion,
         versions: c.versions,
         live: c.live,
+        speech_to_text: c.speechToText,
+        voice: c.voice,
+        connected_seconds: c.connectedSeconds,
       };
       const { error } = await admin.from("maya_calls").insert(row);
       if (error) throw new Error(`maya call insert: ${error.message}`);
@@ -135,6 +144,26 @@ export function mayaCallStore(admin: SupabaseClient<Database>): CallStore {
         .select("id");
       if (error) throw new Error(`maya call update: ${error.message}`);
       return (data ?? []).length === 1;
+    },
+  };
+}
+
+/**
+ * The connection events of voice calls (#326) in public.maya_call_connections: append only, with the secret key. The
+ * database checks the revision and appends in one transaction, with its own monotonic receipt time.
+ */
+export function mayaConnectionLog(admin: SupabaseClient<Database>): ConnectionLog {
+  return {
+    async append(e, revision) {
+      const { data, error } = await admin.rpc("append_maya_call_connection", { p_call: e.callId, p_revision: revision, p_kind: e.kind });
+      if (error) throw new Error(`maya call connection append: ${error.message}`);
+      return data === null ? null : Date.parse(data);
+    },
+    async read(callId) {
+      if (!UUID.test(callId)) return [];
+      const { data, error } = await admin.from("maya_call_connections").select("kind, at").eq("call_id", callId.toLowerCase()).order("at", { ascending: true }).order("id", { ascending: true });
+      if (error) throw new Error(`maya call connections read: ${error.message}`);
+      return (data ?? []).map((r) => ({ kind: r.kind, at: Date.parse(r.at) }));
     },
   };
 }

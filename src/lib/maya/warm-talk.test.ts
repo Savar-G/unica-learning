@@ -189,9 +189,10 @@ describe("rule B (freeTalk on): a turn with no math line", () => {
     expect(PHRASES.smalltalk.map(bare)).toContain(said.text);
   });
 
+  // A question about Maya gets the code-written reply that answers it (replyFor): "I'm an AI, so I don't have a pet."
   it("replaces refused free talk with a warm reply to a hard feeling that names no detail (D-197, practice runs 4 and 5: not \"I love hearing about it!\" or a cold \"I hear you.\" to a sad child)", () => {
     for (const n of [...NEUTRAL_SMALLTALK, ...FEELING_SMALLTALK]) expect(PHRASES.smalltalk).toContain(n);
-    for (const [child, want] of [["I'm sad today. My grandma is sick.", FEELING_SMALLTALK], ["This is dumb and you're dumb.", FEELING_SMALLTALK], ["I'm worried about my test.", FEELING_SMALLTALK], ["Can you tell me a secret?", NEUTRAL_SMALLTALK], ["Do you have a dog?", NEUTRAL_SMALLTALK]] as const) {
+    for (const [child, want] of [["I'm sad today. My grandma is sick.", FEELING_SMALLTALK], ["This is dumb and you're dumb.", FEELING_SMALLTALK], ["I'm worried about my test.", FEELING_SMALLTALK], ["Can you tell me a secret?", NEUTRAL_SMALLTALK], ["Do you have a dog?", [PHRASES.mayafacts[3]]]] as const) {
       expect(hardFeeling(child), child).toBe(want === FEELING_SMALLTALK);
       for (const act of ["clarify", "redirect"] as const) {
         for (let random = 1; random <= 12; random++) {
@@ -540,6 +541,15 @@ describe("R374-4-1: with freeTalk off (the default), every word Maya says comes 
         const said = c.say({ act: "clarify", parts: [{ warm: "frustrated", echo }] });
         expect(said.text, echo).not.toMatch(/dumb|stupid/i);
         expect(PHRASES.frustrated.filter((p) => !p.includes("{echo}")).map(bare)).toContain(said.text);
+      }
+    });
+
+    it("never echoes a banned plain-language phrase (D-202)", () => {
+      for (const echo of ["left over", "altogether", "in all"]) {
+        const c = call();
+        c.child("I had left over pizza, altogether it was the best in all the world.");
+        const said = c.say({ act: "clarify", parts: [{ warm: "food", echo }] });
+        expect(PHRASES.food.filter((p) => !p.includes("{echo}")).map(bare), echo).toContain(said.text);
       }
     });
   });
