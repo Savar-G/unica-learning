@@ -5,11 +5,11 @@ import { AssessmentCta, Callout, Cite, DataTable, KeyFacts, Section } from "@/co
 
 export const meta: ResourceMeta = {
   slug: "bc-proficiency-scale",
-  title: "BC proficiency scale: what Emerging, Developing, Proficient and Extending mean",
+  title: "BC proficiency scale: levels and percentages explained",
   description: "The BC proficiency scale for parents: what each level means on a K-9 report card, what you get and when, and why there is no official percentage chart.",
   category: "BC school guides",
   lead: "In BC, children in Kindergarten to Grade 9 get a four-level proficiency scale on their report card instead of letter grades or percentages.",
-  updated: "2026-10-09",
+  updated: "2026-11-01",
   faqs: [
     {
       q: "What is the BC proficiency scale?",
@@ -45,6 +45,8 @@ export const meta: ResourceMeta = {
 export default function Body() {
   return (
     <>
+      <p>The BC proficiency scale has four levels: <strong>Emerging, Developing, Proficient and Extending</strong>. Proficient means your child shows the expected learning consistently. It is the goal, not a perfect score.<Cite n={1} /><Cite n={3} /></p>
+      <p>Looking for a percentage conversion? <Link href="#percentages">There is no official K-9 percentage conversion chart</Link>. The levels describe learning, rather than a fixed test-score range.<Cite n={4} /></p>
       <KeyFacts
         items={[
           <>Kindergarten to Grade 9 report cards use four levels: Emerging, Developing, Proficient and Extending.<Cite n={1} /></>,
@@ -133,7 +135,7 @@ export default function Body() {
         </p>
       </Section>
 
-      <Section title="Can I convert the proficiency scale to a percentage or letter grade?">
+      <Section title="Can I convert the proficiency scale to a percentage or letter grade?" id="percentages">
         <p>
           Many parents search for a BC proficiency scale conversion chart. There is no official one. The ministry&apos;s reporting guidelines give a table of percentage ranges only for the letter grades used in Grades 10 to 12 (for example, B is 73 to 85 percent).<Cite n={4} /> For Kindergarten to Grade 9, the guidelines describe how a teacher places a child on the scale: they look at all the evidence of learning, give the most weight to recent work, and use professional judgment. They say averaging marks over a term does not give an accurate picture of learning.<Cite n={4} />
         </p>
@@ -146,6 +148,7 @@ export default function Body() {
       </Section>
 
       <Section title="If your child is at Emerging or Developing">
+        <p>For a math-specific next step, read <Link href="/blog/emerging-in-math-report-card">what to do when your child gets Emerging in math</Link>. You can also <Link href="/math-assessment">check their math level with the free assessment</Link> and <Link href="/sample-report">see what the parent report includes</Link>.</p>
         <p>
           The ministry says neither level means your child is failing. Emerging means they are beginning. Developing means they understand some things and have others to work on.<Cite n={1} /> Treat it as a sign of where to help next.
         </p>

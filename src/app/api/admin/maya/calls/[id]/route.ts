@@ -16,7 +16,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/maya/
   if (!isUuid(id)) return new Response("Not found", { status: 404 });
   const body = (await request.json().catch(() => null)) as { revision?: unknown; input?: CallInput } | null;
   if (!body || !Number.isInteger(body.revision) || typeof body.input !== "object" || body.input === null) return Response.json({ ok: false, error: "invalid_input" }, { status: 400 });
-  const calls = serverMayaCalls();
+  const calls = serverMayaCalls(new URL(request.url).origin);
   if (!calls) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
   try {
     const view = await calls.view(id.toLowerCase());

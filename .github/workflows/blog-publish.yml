@@ -53,6 +53,11 @@ jobs:
           git merge --no-ff --no-edit -m "Blog: publish $BRANCH" "$GITHUB_SHA"
       - run: npm ci
         timeout-minutes: 5
+      # Unpack @sparticuz/chromium to /tmp/chromium once, before the tests. Otherwise two Chromium test files unpack it at
+      # the same time in parallel workers, and one starts Chromium while the other still writes it (spawn ETXTBSY).
+      - name: Unpack Chromium
+        run: node -e 'import("@sparticuz/chromium").then(async (m) => console.log(await m.default.executablePath()))'
+        timeout-minutes: 2
       # The 2-core runner is slower than a laptop: the assessment bank tests pass the 5 s default locally but not here.
       - run: npm test -- --testTimeout=60000
         timeout-minutes: 10
