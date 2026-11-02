@@ -42,6 +42,10 @@ function fakeDb(tables: Record<string, Row[]>, afterPage?: (table: string, page:
       if (op === "eq") rows = rows.filter((r) => String(r[key]) === value);
       else if (op === "gt") rows = rows.filter((r) => r[key] != null && String(r[key]) > value);
       else if (op === "gte") rows = rows.filter((r) => r[key] != null && String(r[key]) >= value);
+      else if (op === "ov") {
+        const ids = value.slice(1, -1).split(",");
+        rows = rows.filter((r) => Array.isArray(r[key]) && (r[key] as string[]).some((id) => ids.includes(id)));
+      }
       else if (op === "in") {
         const set = new Set(value.slice(1, -1).split(",").map((v) => v.replace(/^"|"$/g, "")));
         rows = rows.filter((r) => set.has(String(r[key])));
@@ -84,6 +88,48 @@ const child = (id: string, parentId: string) => ({ id, parent_id: parentId, firs
 const dayBefore = (n: number) => new Date(Date.UTC(2026, 9, 31) - n * 24 * 60 * 60_000).toISOString().slice(0, 10);
 
 describe("the weekly Maya email store under the 1,000-row limit", () => {
+  it("reads only recent call coverage, the current slot and unsubscribe state, while keeping audit rows", async () => {
+    const log: Row[] = Array.from({ length: 1200 }, (_, i) => ({ id: `old-${i}`, parent_id: "p1", kind: "maya_weekly", week_start: dayBefore(i), status: "sent", attempts: 1, call_ids: [`old-call-${i}`] }));
+    log.push(
+      { id: "coverage", parent_id: "p1", kind: "maya_weekly", week_start: "2020-01-06", status: "claimed", attempts: 1, call_ids: ["call-1", "call-99"] },
+      { id: "slot", parent_id: "p1", kind: "maya_weekly", week_start: "2026-11-02", status: "failed", attempts: 2, call_ids: ["old-call"] },
+      { id: "refused", parent_id: "p1", kind: "maya_weekly", week_start: "2020-01-13", status: "failed", attempts: 1, call_ids: ["call-2"] },
+      { id: "unsubscribe", parent_id: "p1", kind: "maya_unsubscribe", week_start: null, status: null, attempts: 0 },
+    );
+    const returned: string[] = [];
+    const notes = Array.from({ length: 101 }, (_, i) => noteRow(`call-${i + 1}`, "p1", "c1", pdt(2, 15)));
+    const db = fakeDb({ maya_call_notes: notes, parents: [parent("p1")], children: [child("c1", "p1")], email_log: log }, (table, page) => {
+      if (table === "email_log") returned.push(...page.map((r) => String(r.id)));
+    });
+    const state = await mayaWeeklyStore(db).load(NOW);
+    expect(state.log.map((r) => r.id).sort()).toEqual(["coverage", "slot", "unsubscribe"]);
+    expect(returned.every((id) => ["coverage", "slot", "unsubscribe"].includes(id))).toBe(true);
+    expect(returned.filter((id) => id === "coverage")).toHaveLength(2);
+    expect(log).toHaveLength(1204);
+  });
+
+  it("keeps sent and unknown coverage across slot changes and retries only uncovered refused calls", async () => {
+    const db = fakeDb({
+      maya_call_notes: ["sent", "unknown", "refused"].map((id) => noteRow(id, "p1", "c1", pdt(2, 15))),
+      parents: [parent("p1")], children: [child("c1", "p1")],
+      email_log: [
+        { id: "sent", parent_id: "p1", kind: "maya_weekly", week_start: "2026-10-19", status: "sent", attempts: 1, call_ids: ["sent"] },
+        { id: "unknown", parent_id: "p1", kind: "maya_weekly", week_start: "2026-10-26", status: "claimed", attempts: 1, call_ids: ["unknown"] },
+        { id: "refused", parent_id: "p1", kind: "maya_weekly", week_start: "2026-10-12", status: "failed", attempts: 1, call_ids: ["refused"] },
+      ],
+    });
+    expect(dueWeeklyEmails(await mayaWeeklyStore(db).load(NOW), NOW)).toMatchObject([{ callIds: ["refused"], retry: null }]);
+  });
+
+  it.each([1, 3])("keeps the current slot's failed attempt count without overlapping calls: %s", async (attempts) => {
+    const db = fakeDb({
+      maya_call_notes: [noteRow("recent", "p1", "c1", pdt(2, 15))], parents: [parent("p1")], children: [child("c1", "p1")],
+      email_log: [{ id: "retry", parent_id: "p1", kind: "maya_weekly", week_start: "2026-11-02", status: "failed", attempts, call_ids: ["old-call"] }],
+    });
+    const due = dueWeeklyEmails(await mayaWeeklyStore(db).load(NOW), NOW);
+    if (attempts === 3) expect(due).toEqual([]);
+    else expect(due).toMatchObject([{ callIds: ["recent"], retry: { logId: "retry", attempts } }]);
+  });
   it("sees a parent's Maya unsubscribe after more than 1,000 earlier email log rows", async () => {
     const log: Row[] = Array.from({ length: 1200 }, (_, i) => ({ id: `log-${String(i).padStart(5, "0")}`, kind: "maya_weekly", parent_id: "p1", week_start: dayBefore(i), status: "sent", attempts: 1 }));
     log.push({ id: "log-unsub", kind: "maya_unsubscribe", parent_id: "p1", week_start: null, status: null, attempts: 0 });

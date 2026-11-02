@@ -3305,6 +3305,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _maya_family_window: {
+        Args: { p_at: string; p_kind: string; p_parent: string }
+        Returns: {
+          period: string
+          period_start: string
+        }[]
+      }
       _maya_minutes_used:
         | {
             Args: {

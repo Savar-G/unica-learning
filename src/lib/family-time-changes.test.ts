@@ -53,12 +53,13 @@ describe("R425M zone source matrix", () => {
         children[0].province = location.province ?? null;
       };
       if (reverse) apply(after);
-      await run("2026-11-15T20:00:00Z");
+      expect(await run("2026-11-15T20:00:00Z")).toEqual({ due: 1, sent: 1, failed: 0, busy: 0, unknown: 0 });
       apply(reverse ? before : after);
-      await run("2026-11-22T20:00:00Z");
+      // Toronto puts the boundary call in the following week. The other zones cover both on the first run.
+      const secondSend = time.familyZone(reverse ? after : before) === "America/Toronto" ? 1 : 0;
+      expect(await run("2026-11-22T20:00:00Z")).toEqual({ due: secondSend, sent: secondSend, failed: 0, busy: 0, unknown: 0 });
       const covered = store.rows().filter((r) => r.status === "sent").flatMap((r) => r.callIds ?? []);
-      expect(covered.filter((id) => id === "boundary")).toHaveLength(1);
-      expect(new Set(covered).size).toBe(covered.length);
+      expect(covered.sort()).toEqual(["boundary", "regular"]);
     }
   });
 });
