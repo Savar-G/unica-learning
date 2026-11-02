@@ -109,7 +109,12 @@ export interface WorkbookRun {
   /** How many times a new job call took the run up again. */
   resumes: number;
   startedBy: { id: string | null; email: string | null };
+  /** Where the run is made (D-200): on the server (Vercel, the API) or by the workbook worker on Savar's Mac. */
+  runner: RunRunner;
 }
+
+/** Where a run is made: "server" (the site, on Vercel) or "mac" (the workbook worker, src/lib/workbook-worker.ts). */
+export type RunRunner = "server" | "mac";
 
 /**
  * A draft revision's rendering: the PDF of the pages that rendered, and each page's image with its question boxes. A
@@ -142,9 +147,11 @@ export interface WorkbookRunStore {
   /** Adds a queued run, unless one is active ("busy") or stopped mid-way ("stalled"). Writes the audit entry. */
   start(childId: string, by: RunActor, o: { maxAttempts: number; staleSeconds: number }): Promise<StartResult>;
   /** Takes a queued run: running, attempt 1. Null when it is not queued. */
-  claim(runId: string, lease: string): Promise<WorkbookRun | null>;
+  claim(runId: string, lease: string, runner?: RunRunner): Promise<WorkbookRun | null>;
   /** Takes up a running run that no one holds, or whose holder made no progress for `staleSeconds`. Null otherwise. */
-  resume(runId: string, lease: string, staleSeconds: number): Promise<WorkbookRun | null>;
+  resume(runId: string, lease: string, staleSeconds: number, runner?: RunRunner): Promise<WorkbookRun | null>;
+  /** Renews only the current running lease. */
+  renew(runId: string, lease: string): Promise<boolean>;
   /** The holder lets go, to go on in a new job call. */
   yield(runId: string, lease: string): Promise<boolean>;
   /** The step and progress, with a heartbeat. */
@@ -263,6 +270,7 @@ export const SOLVE_BATCH = 500;
 
 export interface WorkbookJobDeps {
   runs: WorkbookRunStore;
+  runner?: RunRunner;
   source: WorkbookJobSource;
   drafts: WorkbookDraftStore;
   files: WorkbookFiles;
@@ -328,13 +336,17 @@ export async function readPaged<T>(page: (from: number, to: number) => Promise<T
 export const startWorkbookRun = (runs: WorkbookRunStore, childId: string, by: RunActor) =>
   runs.start(childId, by, { maxAttempts: RUN_ATTEMPTS, staleSeconds: STALE_SECONDS });
 
-/** What a run looks like now: a running run with no progress for STALE_SECONDS has stopped, even before a start marks it. */
+/**
+ * What a run looks like now: a running run with no progress for STALE_SECONDS has stopped, even before a start marks it.
+ * A queued run for the Mac (D-200) waits for the workbook worker however long that takes: it has not stopped.
+ */
 export type RunState = "waiting" | "preparing" | "stopped" | "failed" | "done";
 
-export function runState(run: Pick<WorkbookRun, "status" | "heartbeatAt" | "createdAt">, now: Date): RunState {
+export function runState(run: Pick<WorkbookRun, "status" | "heartbeatAt" | "createdAt"> & { runner?: RunRunner }, now: Date): RunState {
   if (run.status === "done") return "done";
   if (run.status === "failed") return "failed";
   if (run.status === "stale") return "stopped";
+  if (run.status === "queued" && run.runner === "mac") return "waiting";
   const last = Date.parse(run.heartbeatAt ?? run.createdAt);
   if (now.getTime() - last > STALE_SECONDS * 1000) return "stopped";
   return run.status === "queued" ? "waiting" : "preparing";
@@ -443,7 +455,7 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps, o: { 
   const budget = deps.budgetMs ?? CALL_BUDGET_MS;
   let run: WorkbookRun | null;
   try {
-    run = o.resume ? await runs.resume(runId, lease, STALE_SECONDS) : await runs.claim(runId, lease);
+    run = o.resume ? await runs.resume(runId, lease, STALE_SECONDS, deps.runner ?? "server") : await runs.claim(runId, lease, deps.runner ?? "server");
   } catch (e) {
     console.error("[workbook job] claim failed", runId, message(e));
     return "not-claimed";
@@ -451,16 +463,28 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps, o: { 
   if (!run) return "not-claimed";
   const claimed = run;
 
-  // The lease, as the last write saw it. Progress writes go one after another, and never fail the job.
+  // Renew throughout work. A failed renewal or progress write stops AI calls under this lease.
   let lost = false;
+  const stop = new AbortController();
+  const loseLease = () => { lost = true; stop.abort(); };
+  let renewing: Promise<void> | null = null;
+  const renew = () => renewing ??= (async () => {
+    try {
+      if (!(await runs.renew(runId, lease))) loseLease();
+    } catch {
+      loseLease();
+    }
+  })().finally(() => { renewing = null; });
+  const timer = setInterval(() => { void renew(); }, 30_000);
   let pending: Promise<void> = Promise.resolve();
   const progress = (p: Parameters<WorkbookRunStore["progress"]>[2]) => {
     pending = pending.then(async () => {
       if (lost) return;
       try {
-        if (!(await runs.progress(runId, lease, p))) lost = true;
+        if (!(await runs.progress(runId, lease, p))) loseLease();
       } catch (e) {
         console.error("[workbook job] progress failed", runId, message(e));
+        loseLease();
       }
     });
     return pending;
@@ -482,43 +506,48 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps, o: { 
   };
   const left = () => budget - (deps.now() - started);
 
-  for (;;) {
-    try {
-      let draft = await deps.drafts.draft(claimed.draftKey);
-      if (draft) {
-        // A call that only renders the stored draft renders it with the templates of the code the run started on.
-        const frame = await runs.frame(runId);
-        if (frame && frame.versions.build !== (deps.build ?? null)) throw changed("the site's code", frame.versions.build, deps.build ?? null);
-      } else {
-        const written = await write(claimed, deps, lease, progress, check, () => lost, (v) => { lost = v; }, () => left() < PAGE_MARGIN_MS);
-        if (written === "paused") return await handOn();
-        // The stored draft is the truth: an earlier attempt of this holder may have stored it ("used").
-        draft = (await deps.drafts.draft(claimed.draftKey)) ?? written;
-      }
-      if (left() < RENDER_MS) return await handOn();
-      await progress({ step: "render" });
-      await check();
-      const rendered = await renderDraft(draft, claimed.parentId, deps);
-      await progress({ step: "save" });
-      const finished = await runs.finish(runId, lease, { draftId: draft.id, rendering: rendered.rendering, problems: rendered.problems });
-      if (!finished) {
-        await deps.files.remove(rendered.paths).catch(() => undefined);
-        return "stale";
-      }
-      return "done";
-    } catch (e) {
-      if (e instanceof Stopped || lost) return "stale";
-      const error = e instanceof ResumeMismatch ? `The run cannot go on: ${e.message}. Start a new run.` : message(e);
+  try {
+    for (;;) {
       try {
-        if (e instanceof Refusal || e instanceof ResumeMismatch) return (await runs.fail(runId, lease, error)) ? "failed" : "stale";
-        console.error("[workbook job] attempt failed", runId, error);
-        if (await runs.retry(runId, lease, error)) continue;
-        return (await runs.fail(runId, lease, error)) ? "failed" : "stale";
-      } catch (e2) {
-        console.error("[workbook job] could not store the failure", runId, message(e2));
-        return "failed";
+        let draft = await deps.drafts.draft(claimed.draftKey);
+        if (draft) {
+          // A call that only renders the stored draft renders it with the templates of the code the run started on.
+          const frame = await runs.frame(runId);
+          if (frame && frame.versions.build !== (deps.build ?? null)) throw changed("the site's code", frame.versions.build, deps.build ?? null);
+        } else {
+          const written = await write(claimed, deps, lease, progress, check, () => lost, (v) => { if (v) loseLease(); }, () => left() < PAGE_MARGIN_MS, stop.signal, renew);
+          if (written === "paused") return await handOn();
+          // The stored draft is the truth: an earlier attempt of this holder may have stored it ("used").
+          draft = (await deps.drafts.draft(claimed.draftKey)) ?? written;
+        }
+        if (left() < RENDER_MS) return await handOn();
+        await progress({ step: "render" });
+        await check();
+        const rendered = await renderDraft(draft, claimed.parentId, deps);
+        await progress({ step: "save" });
+        const finished = await runs.finish(runId, lease, { draftId: draft.id, rendering: rendered.rendering, problems: rendered.problems });
+        if (!finished) {
+          await deps.files.remove(rendered.paths).catch(() => undefined);
+          return "stale";
+        }
+        return "done";
+      } catch (e) {
+        if (e instanceof Stopped || lost) return "stale";
+        const error = e instanceof ResumeMismatch ? `The run cannot go on: ${e.message}. Start a new run.` : message(e);
+        try {
+          if (e instanceof Refusal || e instanceof ResumeMismatch) return (await runs.fail(runId, lease, error)) ? "failed" : "stale";
+          console.error("[workbook job] attempt failed", runId, error);
+          if (await runs.retry(runId, lease, error)) continue;
+          return (await runs.fail(runId, lease, error)) ? "failed" : "stale";
+        } catch (e2) {
+          console.error("[workbook job] could not store the failure", runId, message(e2));
+          return "failed";
+        }
       }
     }
+  } finally {
+    clearInterval(timer);
+    await renewing;
   }
 }
 
@@ -574,11 +603,12 @@ async function write(
   run: WorkbookRun, deps: WorkbookJobDeps, lease: string,
   progress: (p: Parameters<WorkbookRunStore["progress"]>[2]) => Promise<void>, check: () => Promise<void>,
   isLost: () => boolean, setLost: (v: boolean) => void, outOfTime: () => boolean,
+  leaseSignal: AbortSignal, renew: () => Promise<void>,
 ): Promise<GeneratedWorkbook | "paused"> {
   await progress({ step: "plan" });
   await check();
-  if (!deps.ai) throw new Refusal("The AI is off: OPENROUTER_API_KEY is not set.");
-  if (!deps.solver) throw new Refusal("The solve check is off: OPENROUTER_API_KEY is not set.");
+  if (!deps.ai) throw new Refusal("The AI is off: no Claude subscription here and no OPENROUTER_API_KEY.");
+  if (!deps.solver) throw new Refusal("The solve check is off: no Claude subscription here and no OPENROUTER_API_KEY.");
   // The child is read for the name the pages print, and (on the first call only) for the plan.
   const inputs = await deps.source.inputs(run.childId);
   if (!inputs) throw new Refusal("The child is not known.");
@@ -588,8 +618,9 @@ async function write(
   const guardedAi: AiClient = {
     model: ai.model,
     json: async (request, signal) => {
+      await renew();
       if (isLost()) throw new Stopped("the run was taken up by another call");
-      return ai.json(request, signal);
+      return ai.json(request, AbortSignal.any([signal, leaseSignal]));
     },
   };
   // The draft is stored by the run's own lease-checked insert (R379-1): a call that lost the run stores nothing.
@@ -610,8 +641,9 @@ async function write(
   const guardedSolver: Solver = {
     model: solver.model,
     solve: async (request, signal) => {
+      await renew();
       if (isLost()) throw new Stopped("the run was taken up by another call");
-      return solver.solve(request, signal);
+      return solver.solve(request, AbortSignal.any([signal, leaseSignal]));
     },
   };
   const lose = () => {

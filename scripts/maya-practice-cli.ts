@@ -23,7 +23,7 @@
 //                            ANTHROPIC_API_KEY or the macOS Keychain item anthropic-unica-tools. Defaults: Maya
 //                            claude-sonnet-5-5, the child and the validity judge claude-haiku-5-5, the judge
 //                            claude-opus-5-5, the review claude-haiku-5-5. A local tool: the live site stays on OpenRouter.
-//   --subscription           every model through `claude -p` on the Claude subscription (src/lib/ai-claude-cli.ts),
+//   --subscription           every model through `claude -p` on the Claude subscription (src/lib/ai-claude-cli-practice.ts),
 //                            at no cost: the same Claude models as --anthropic, Maya's exact system prompt and schema,
 //                            no tools, ANTHROPIC_API_KEY removed. MAYA_CLAUDE_CONFIG_DIR sets CLAUDE_CONFIG_DIR for the
 //                            calls, MAYA_CLAUDE_TIMEOUT_S each call's time limit (default 300). At the usage limit the
@@ -39,7 +39,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { AI_DEFAULT_MODEL, type AiClient } from "@/lib/ai-client";
 import { anthropicClient } from "@/lib/ai-anthropic";
-import { claudeCliClient } from "@/lib/ai-claude-cli";
+import { claudeCliClient } from "@/lib/ai-claude-cli-practice";
 import { openRouterClient } from "@/lib/ai-openrouter";
 import { freeTalkProblem, NEVER_SAY, NOT_OK_TALK, OK_TALK, TALK_REVIEW_PROMPT_VERSION } from "@/lib/maya";
 import { aiMayaModel, type MayaModel } from "@/lib/maya-model";

@@ -1,13 +1,14 @@
 import "server-only";
-import { randomBytes, randomUUID } from "node:crypto";
-import { aiClient, aiSolveClient } from "@/lib/ai-client";
-import { chromiumPrintEngine } from "@/lib/print-engine-chromium";
+import { randomUUID } from "node:crypto";
 import { adminClient } from "@/lib/supabase-auth";
-import { workbookFakeAi, workbookFakeSolver } from "@/lib/workbook-ai-fake";
-import { workbookDraftStore } from "@/lib/workbook-draft-store";
-import { renderFitCheck } from "@/lib/workbook-fit";
-import { runWorkbookJob, type JobOutcome } from "@/lib/workbook-job";
-import { workbookJobSource, workbookRunStore } from "@/lib/workbook-job-store";
+import type { JobOutcome } from "@/lib/workbook-job";
+import { runWorkbookJobWith } from "@/lib/workbook-job-deps";
+
+// "Prepare next workbook" (#312) on the server: the job with the live deps (src/lib/workbook-job-deps.ts) and the API
+// only (OpenRouter; there is no `claude` on Vercel), within Vercel's time limit. Since D-200 the server makes a run only
+// when WORKBOOK_RUNNER is "server", or when the admin presses "Run on the server with the API" on a run that waits for
+// the Mac; else the workbook worker on Savar's Mac makes it. Near the time limit the job hands the run on to the resume
+// route (src/app/api/workbook-runs/[id]/resume), which runs the next call the same way.
 
 /**
  * This server's code, where no deploy commit names it (development): a new value each time this module loads, so a
@@ -15,20 +16,6 @@ import { workbookJobSource, workbookRunStore } from "@/lib/workbook-job-store";
  * is refused rather than resumed with results from two code versions (R379-9-1).
  */
 const CODE_LOAD = `load-${randomUUID()}`;
-import { workbookFiles } from "@/lib/workbook-store";
-import { costedSolver } from "@/lib/workbook-solve-cost";
-import { workbookTemplate } from "@/lib/workbook-template";
-import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
-
-// "Prepare next workbook" (#312) on the server: the job (src/lib/workbook-job.ts) with the secret key's stores, the AI
-// client and the solve check's (OpenRouter, both off with no OPENROUTER_API_KEY; the solve check on AI_SOLVE_MODEL with
-// each answer's cost; in development WORKBOOK_AI_FAKE gives the fakes, which cost nothing), headless Chromium, the real page templates (#310)
-// and their strict fit check through the renderer. The admin route runs it with after(), the report job's pattern;
-// near the time limit the job hands the run on to the resume route (src/app/api/workbook-runs/[id]/resume), which runs
-// the next call the same way.
-
-/** A QR token: 22 URL-safe characters from 16 random bytes. */
-const qrToken = () => randomBytes(16).toString("base64url");
 
 /** The resume route's path for a run. */
 export const resumePath = (runId: string) => `/api/workbook-runs/${runId}/resume`;
@@ -52,25 +39,8 @@ export async function runWorkbookJobNow(runId: string, o: { origin: string; resu
   const admin = adminClient();
   if (!admin) return null;
   try {
-    const template = workbookTemplate(await fixedTemplateFonts());
-    const engine = chromiumPrintEngine();
-    const fake = workbookFakeAi();
-    const solve = fake ? null : costedSolver((fetch) => aiSolveClient(process.env, { fetch }));
-    return await runWorkbookJob(runId, {
-      runs: workbookRunStore(admin),
-      source: workbookJobSource(admin),
-      drafts: workbookDraftStore(admin),
-      files: workbookFiles(admin),
-      ai: fake ?? aiClient(),
-      solver: fake ? workbookFakeSolver() : solve?.solver ?? null,
-      ...(solve ? { solveCost: solve.cost } : {}),
-      template,
-      fit: (parentId) => renderFitCheck({ template, engine, parentId }),
-      engine,
-      newId: randomUUID,
-      qrToken,
-      fileKey: () => randomBytes(6).toString("hex"),
-      now: () => Date.now(),
+    return await runWorkbookJobWith(admin, runId, {
+      subscription: false,
       // One AI call stops after 60 s (the OpenRouter adapter's own limit), so a page in flight ends inside the budget.
       timeLimitMs: 60_000,
       handOff: (id) => handOff(o.origin, id),

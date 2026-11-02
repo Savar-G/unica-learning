@@ -38,7 +38,7 @@
 // - Resumable runs (#312): with a page store (GenerateDeps.pages) each finished day page is kept as it is done, and a
 //   later call with the same input writes only the missing ones; with an attempt ledger (GenerateDeps.attempts) each
 //   AI attempt of a question or worked example is counted before its call, and a slot the ledger refuses is not asked
-//   again (the job's ledger allows 2: a question that had its check redo is not written again for the fit). The days
+//   again (the job's ledger allows 3, one per reason: the first call, the check redo and the fit rewrite). The days
 //   run in order; the pages of one day run at once (`concurrency`), and each of them reads what the days before asked
 //   (the book memory), never its own day's other pages, so the draft is the same at any concurrency and after a resume.
 //   With a call store (GenerateDeps.calls, R379-7-1) each AI call of a page is kept as it came back, built and
@@ -1424,7 +1424,7 @@ function shorterNote(input: GenerateInput, w: PageWork, questions: GeneratedQues
  * The shorter rewrite after a failed fit check: every question is written once more (its one try for a page that does
  * not fit). Of the two versions the page keeps the sound one, and of two sound (or two failed) ones the shorter text: a
  * rewrite never puts a failed question in place of a sound one, nor a longer one in place of a shorter. A question with
- * no attempt left (#312: the job allows 2) is not written again and keeps its version. Null: no question had one.
+ * no attempt left (#312: the job allows 3) is not written again and keeps its version. Null: no question had one.
  */
 async function shorterRewrite(input: GenerateInput, deps: GenerateDeps, w: PageWork, previous: GeneratedQuestion[], note: string, memory: BookMemory | null): Promise<GeneratedQuestion[] | null> {
   const all = previous.map((_, i) => i);

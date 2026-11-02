@@ -15,7 +15,8 @@
     "maya:text": "node scripts/maya-text.mjs",
     "maya:demo-child": "node scripts/maya-demo-child.mjs",
     "maya:practice": "node scripts/maya-practice.mjs",
-    "workbooks:samples": "node scripts/workbook-samples.mjs"
+    "workbooks:samples": "node scripts/workbook-samples.mjs",
+    "workbooks:worker": "node scripts/workbook-worker.mjs"
   },
   "dependencies": {
     "@sparticuz/chromium": "^153.0.0",
