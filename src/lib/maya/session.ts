@@ -630,7 +630,7 @@ interface Checked {
  */
 function gate(s: Session, reading: Reading): Allowed | null {
   if (s.outcome) return { acts: [], code: "ended", reason: "The call has ended." };
-  if (reading.safety || (s.safety.flagged && !s.safety.guided)) {
+  if ((reading.safety && (!s.safety.flagged || (s.safety.severity === "concern" && reading.safety === "immediate"))) || (s.safety.flagged && !s.safety.guided)) {
     return { acts: ["safety"], code: "safety_first", reason: "Safety comes first: give the safety guidance before anything else." };
   }
   if (s.state === "SAFETY") return { acts: ["close"], code: "safety_first", reason: "No math after a safety concern: close." };

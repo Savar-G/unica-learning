@@ -6,7 +6,7 @@
 //
 // Plain JSON. Pure TypeScript except `packageHash`, which uses node:crypto (server and scripts only).
 import { createHash } from "node:crypto";
-import { ACTS, ASSISTANCE, INTERRUPTS, MAIN_STATES, NEVER_SAY_IDS, PHRASES, type Act, type Outcome, type RefusalCode, type SessionState, type TalkCheck } from "@/lib/maya";
+import { ACTS, SAFETY_GUIDANCE, ASSISTANCE, INTERRUPTS, MAIN_STATES, NEVER_SAY_IDS, PHRASES, type Act, type Outcome, type RefusalCode, type SessionState, type TalkCheck } from "@/lib/maya";
 
 /** Why a proposal was refused: the session's refusal, or "board_refused" when the board core refused a batch the session built. */
 export interface TraceRefusal {
@@ -23,11 +23,12 @@ export interface TraceRefusal {
  * of the child talking over Maya: her output stops and nothing is judged), `maya_said` (what Maya actually said; other
  * words than her approved text start a repair) and `content_problem` (the package turned out wrong during the call).
  * Each records `cancelled`: whether Maya's output was stopped. Version 5 records input obligations and the
- * delivered turn that served each one, or the reason it was dropped. `checkTrace` reads all five versions.
+ * delivered turn that served each one, or the reason it was dropped. Version 6 adds controller safety output on
+ * terminal events. `checkTrace` reads all six versions.
  */
-export const TRACE_VERSION = 5;
+export const TRACE_VERSION = 6;
 /** The trace versions `checkTrace` reads. */
-export const TRACE_VERSIONS = [1, 2, 3, 4, 5] as const;
+export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6] as const;
 export const TRACE_KIND = "maya-trace";
 
 export const OBLIGATION_KINDS = ["start_pending", "safety_due", "opening_due", "repair_due", "child_turn_pending", "content_problem"] as const;
@@ -46,7 +47,7 @@ export interface TraceObligation {
 }
 
 /** Where a proposal came from: the model, the model asked again with the refusal (one repair), or code's fallback. */
-export type AttemptSource = "model" | "repair" | "fallback";
+export type AttemptSource = "model" | "repair" | "fallback" | "controller";
 
 /**
  * Why a call failed, as a code with wording code wrote. A trace never stores an error's own text: a provider's or a
@@ -254,7 +255,7 @@ export function packageHash(pkg: unknown): string {
 // ---------- Reading a saved trace ----------
 
 const RUNNERS = ["text", "livekit-text", "voice"];
-const SOURCES = ["model", "repair", "fallback"];
+const SOURCES = ["model", "repair", "fallback", "controller"];
 const STATES: readonly string[] = [...MAIN_STATES, ...INTERRUPTS];
 const REASONS = ["solved", "child_stopped", "time_limit", "no_response", "technical_issue", "content_issue", "safety"];
 const PAPER = ["child_confirmed", "declined", "unknown"];
@@ -302,7 +303,7 @@ function checkRefusal(r: unknown, path: string) {
 function checkAttempt(a: unknown, path: string) {
   need(isObject(a), path, "an attempt");
   const x = a as Record<string, unknown>;
-  need(oneOf(SOURCES, x.source), `${path}.source`, "model, repair or fallback");
+  need(oneOf(SOURCES, x.source), `${path}.source`, "model, repair, fallback or controller");
   need("proposal" in x, `${path}.proposal`, "present (null when the model gave none)");
   need("refusal" in x, `${path}.refusal`, "present");
   checkRefusal(x.refusal, `${path}.refusal`);
@@ -349,7 +350,7 @@ const accepted = (a: Record<string, unknown>) => a.refusal === null && a.error =
  */
 function checkOrder(attempts: Record<string, unknown>[], path: string) {
   const sources = attempts.map((a) => a.source).join(",");
-  need(["model", "model,repair", "model,fallback", "model,repair,fallback"].includes(sources), path, `model, then at most one repair, then at most one fallback (got ${sources})`);
+  need(["controller", "model", "model,repair", "model,fallback", "model,repair,fallback"].includes(sources), path, `model, then at most one repair, then at most one fallback (got ${sources})`);
   attempts.slice(0, -1).forEach((a, i) => need(!accepted(a), `${path}[${i}]`, "refused or failed, because an attempt follows it"));
   if (attempts[1]?.source === "repair") need(attempts[0].refusal !== null, `${path}[1]`, "a repair only after a refusal, not after a model error");
 }
@@ -392,6 +393,10 @@ function checkTurn(t: unknown, path: string): Record<string, unknown> {
       need(oneOf(STATES, x.stateAfter), `${path}.stateAfter`, "a session state");
       need(Array.isArray(x.attempts) && x.attempts.length > 0 && x.attempts.length <= 3, `${path}.attempts`, "1 to 3 attempts");
       const attempts = x.attempts as Record<string, unknown>[];
+      if (attempts[0]?.source === "controller") {
+        const o = x.output as { act?: unknown; say?: unknown; board?: unknown } | null;
+        need(attempts.length === 1 && attempts[0].proposal === null && attempts[0].refusal === null && attempts[0].error === undefined && o?.act === "safety" && Array.isArray(o.say) && o.say.length === 1 && Object.values(SAFETY_GUIDANCE).some((text) => text === (o.say as unknown[])[0]) && Array.isArray(o.board) && o.board.length === 0, path, "controller output is exact safety guidance only");
+      }
       attempts.forEach((a, i) => checkAttempt(a, `${path}.attempts[${i}]`));
       checkOrder(attempts, `${path}.attempts`);
       need("output" in x, `${path}.output`, "present (null when nothing was output)");
@@ -484,6 +489,9 @@ function check(raw: unknown): MayaTrace {
   checkOutcome(r.outcome, "outcome");
   need((r.outcome === null) === (r.endedAt === null), "endedAt", "set exactly when the call has an outcome");
   need(r.outcome === null || r.startedAt !== null, "startedAt", "set for a call that ended");
+  turns.forEach((t, i) => {
+    if (t.kind === "maya") need(!(t.attempts as Record<string, unknown>[]).some((a) => a.source === "controller") || (r.version as number) >= 6, `turns[${i}].attempts`, "controller safety output starts in version 6");
+  });
   // The voice agent's input turns come in version 4.
   turns.forEach((t, i) => need(!["partial", "maya_said", "content_problem"].includes(t.kind as string) || (r.version as number) >= 4, `turns[${i}].kind`, `not ${String(t.kind)} before version 4`));
   if ((r.version as number) >= 5 || r.obligations !== undefined) {

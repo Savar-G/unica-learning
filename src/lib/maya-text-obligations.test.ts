@@ -251,7 +251,8 @@ describe("cancellation keeps pending work", () => {
             expect(left.waiting.length).toBe(right.waiting.length);
             // Snapshot while the provider is pending, before cancelling. This must not wait for the model.
             const saved = JSON.parse(JSON.stringify(await session.saved()));
-            expect(saved).toEqual(await resumed.saved());
+            const other = JSON.parse(JSON.stringify(await resumed.saved()));
+            expect({ ...saved, initial: undefined, log: undefined }).toEqual({ ...other, initial: undefined, log: undefined });
             checkpoint = createTextSession({ ...options, model: right.model, resume: saved });
             expect(session.session).toEqual((await session.saved()).session);
             const stop = await session.partial("Wait");
@@ -290,7 +291,9 @@ describe("cancellation keeps pending work", () => {
         }
         expect(session.trace()).toEqual(resumed.trace());
         const saved = JSON.parse(JSON.stringify(await resumed.saved()));
-        expect(await session.saved()).toEqual(saved);
+        const live = JSON.parse(JSON.stringify(await session.saved()));
+        // A resumed process records recovery and replacement requests. Compare the fold, not transport history.
+        expect({ ...live, initial: undefined, log: undefined }).toEqual({ ...saved, initial: undefined, log: undefined });
         resumed = createTextSession({ ...options, model: right.model, resume: saved });
       }
       for (const release of late) release();

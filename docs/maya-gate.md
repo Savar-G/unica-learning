@@ -160,3 +160,9 @@ Add it to `BEHAVIOURS` with a fixture, the script and what it expects: the outco
 ## What the gate does not prove
 
 The gate covers the text policy for the scripted cases: what the controller allows, refuses and records. It does not test the AI child or the AI judge (the practice suite does: `docs/maya-practice.md`, #325), real audio, or whether a child learns (research, section 8).
+
+## Asynchronous input checks
+
+`maya-text-log.test.ts` runs 2,000 deterministic schedules. The schedules include technical events during safety, writing completion during a pending answer, stop readings during retries, repeated and escalating safety readings, partial turns, content holds, repairs, provider failures and late responses. Each input step and held request has a JSON save and replay check. Additional tests replay every log boundary and alter the saved cache to prove that the log controls state.
+
+The reference assertions derive obligations from test inputs and supplied provider readings. They check one delivery per duty or a permitted drop, response order, no teaching after a partial or priority reading, and guidance before a safety close. Five deliberately invalid records exercise the missing-duty, invalid-drop, post-partial teaching, duplicate-guidance and close-before-guidance checks. These checks prove local text behavior. They do not prove an audio stop or hosted delivery.
