@@ -97,6 +97,13 @@ describe("each hard failure can fail the gate (a saved trace changed after the r
       return t;
     }],
     ["free_talk_unchecked", "FT1", (t) => { const m = mayaAt(t, 1); m.output!.say = [...m.output!.say, BACK_LINE]; return t; }],
+    // #396: the partial turn moved to just before the Maya turn that answers the full one, as if Maya answered it.
+    ["partial_judged", "C15", (t) => {
+      const i = t.turns.findIndex((x) => x.kind === "partial");
+      const [partial] = t.turns.splice(i, 1);
+      t.turns.splice(i + 1, 0, { ...partial, at: t.turns[i].at });
+      return t;
+    }],
   ];
 
   it("lists every hard failure in the seeds", () => {

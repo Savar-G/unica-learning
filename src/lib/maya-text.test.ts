@@ -443,6 +443,101 @@ describe("the clock and the end", () => {
   });
 });
 
+describe("inputs from the voice agent (#396)", () => {
+  const GUIDE = v2({ act: "guide", step: "ones", level: 0, parts: [{ line: "step.invite", slots: { step: "ones" } }], reading: { start: "has_work", answers: [{ value: num(56), step: "result", verdict: "wrong" }] } });
+  const ACCEPT = v2({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [{ value: num(66), step: "result", verdict: "right" }] } });
+  const CLOSE = v2({ act: "close", parts: [{ warm: "closing" }] });
+  const checked = (t: unknown) => expect(checkTrace(JSON.parse(JSON.stringify(t)))).toMatchObject({ ok: true });
+
+  it("a partial child turn stops Maya's output and is not judged; the full turn is", async () => {
+    const { session, model } = scripted([OPEN, GUIDE, ACCEPT]);
+    await session.start();
+    await session.child("I got 56.");
+    const partial = await session.partial("No, I meant");
+    expect(partial).toMatchObject({ say: [], board: [], ended: null, cancelled: true });
+    expect(model.requests).toHaveLength(2);
+    const full = await session.child("No, I meant 66.");
+    expect(full.cancelled).toBe(false);
+    expect(model.requests[2].childTurn).toBe("No, I meant 66.");
+    expect(said(full)).toMatch(/27 \+ 39 = 66/);
+    const trace = session.trace();
+    expect(trace.turns.map((t) => t.kind)).toEqual(["start", "maya", "child", "maya", "partial", "child", "maya"]);
+    expect(trace.turns[4]).toMatchObject({ kind: "partial", text: "No, I meant", cancelled: true });
+    checked(trace);
+  });
+
+  it("words Maya said that are not her text stop her output and start a repair, then the teaching goes on", async () => {
+    const REPAIR = v2({ act: "repair", parts: [{ line: "repair.sorry" }] });
+    const { session, model } = scripted([OPEN, GUIDE, REPAIR, ACCEPT]);
+    await session.start();
+    await session.child("I got 56.");
+    const out = await session.mayaSaid("Seven plus nine is fifteen.");
+    expect(out.cancelled).toBe(true);
+    expect(model.requests[2].state).toBe("REPAIR_MAYA");
+    expect(model.requests[2].offers.map((o) => o.act)).toEqual(["repair"]);
+    expect(out.say.flatMap(sentences).every((x) => SAFE.has(x))).toBe(true);
+    expect(session.session.state).toBe("GUIDE_TARGET");
+    expect(said(await session.child("66."))).toMatch(/27 \+ 39 = 66/);
+    const trace = session.trace();
+    expect(trace.turns.filter((t) => t.kind === "maya").map((t) => t.kind === "maya" && t.output?.act)).toEqual(["open", "guide", "repair", "accept_answer"]);
+    expect(trace.turns.find((t) => t.kind === "maya_said")).toMatchObject({ text: "Seven plus nine is fifteen.", cancelled: true });
+    checked(trace);
+  });
+
+  it("Maya's approved text changes nothing: no stop, no repair, no model call", async () => {
+    const { session, model } = scripted([OPEN, GUIDE]);
+    await session.start();
+    const guide = await session.child("I got 56.");
+    const out = await session.mayaSaid(said(guide));
+    expect(out).toMatchObject({ say: [], cancelled: false });
+    expect(model.requests).toHaveLength(2);
+    expect(session.trace().turns.at(-1)).toMatchObject({ kind: "maya_said", cancelled: false });
+    checked(session.trace());
+  });
+
+  it("a content problem in the middle of teaching: no more teaching, a close, content_issue", async () => {
+    const { session, model } = scripted([OPEN, GUIDE, CLOSE]);
+    await session.start();
+    await session.child("I got 56.");
+    const out = await session.contentProblem("the answer key and the worked steps disagree");
+    expect(out.cancelled).toBe(true);
+    expect(model.requests[2].offers.map((o) => o.act)).toEqual(["close"]);
+    expect(out.ended).toMatchObject({ reason: "content_issue" });
+    const trace = session.trace();
+    expect(trace.turns.find((t) => t.kind === "content_problem")).toMatchObject({ detail: "the answer key and the worked steps disagree", cancelled: true });
+    checked(trace);
+  });
+
+  it("a content problem found while Maya gives the safety guidance: taken before her next turn, and the outcome stays safety", async () => {
+    const SAFETY = v2({ act: "safety", parts: [], reading: { safety: "concern" } });
+    const { session } = scripted([OPEN, () => {
+      void session.contentProblem("the answer key and the worked steps disagree");
+      return SAFETY;
+    }, CLOSE]);
+    await session.start();
+    const out = await session.child("Someone at home hurts me.");
+    expect(said(out)).toContain(SAFETY_GUIDANCE.concern);
+    expect(out.ended).toMatchObject({ reason: "safety", safetyFlag: true });
+    const trace = session.trace();
+    expect(trace.turns.map((x) => x.kind)).toEqual(["start", "maya", "child", "maya", "content_problem", "maya"]);
+    expect(trace.turns[4]).toMatchObject({ kind: "content_problem", cancelled: false });
+    checked(trace);
+  });
+
+  it("writes the child's name as {name} in partial turns and in what Maya said", async () => {
+    let now = T0;
+    const model = fakeMayaModel({ answer: (_input, n) => [OPEN, GUIDE, v2({ act: "repair", parts: [{ line: "repair.sorry" }] })][n] });
+    const session = createTextSession({ callId: "call-n", package: PKG, model, clock: () => now, random: 7, childName: "Ava" });
+    await session.start();
+    now += 1000;
+    await session.child("I got 56.");
+    await session.partial("Ava says no");
+    await session.mayaSaid("Ava, seven plus nine is fifteen.");
+    const kinds = session.trace().turns.flatMap((x) => (x.kind === "partial" || x.kind === "maya_said" ? [x.text] : []));
+    expect(kinds).toEqual(["{name} says no", "{name}, seven plus nine is fifteen."]);
+  });
+});
+
 /** A finished, valid trace with a board batch, to break one field at a time. */
 async function validTrace() {
   const { session } = scripted([
@@ -511,6 +606,10 @@ describe("checkTrace refuses a trace that is not this version's shape", () => {
     ["free talk reviewed after the code guards failed", (t) => { (t.turns[mayaAt(t)].attempts as Record<string, unknown>[])[0].talk = [{ proposed: "Keep going.", code: "keep", review: "pass", shown: BANK0 }]; }, /review/],
     ["a failed review with an unknown rule", (t) => { (t.turns[mayaAt(t)].attempts as Record<string, unknown>[])[0].talk = [{ proposed: "Hi!", code: null, review: "fail", rules: ["rude"], reason: "x", shown: BANK0 }]; }, /rules/],
     ["free talk in a version 2 trace", (t) => { t.version = 2; delete t.reviewer; (t.turns[mayaAt(t)].attempts as Record<string, unknown>[])[0].talk = [{ proposed: "Hi!", code: null, review: "pass", shown: "Hi!" }]; }, /version 3/],
+    ["a partial turn that did not stop Maya's output", (t) => { t.turns.push({ kind: "partial", at: Number(t.turns.at(-1)!.at), text: "No", cancelled: false }); }, /cancelled/],
+    ["what Maya said with no text", (t) => { t.turns.push({ kind: "maya_said", at: Number(t.turns.at(-1)!.at), cancelled: true }); }, /text/],
+    ["a content problem with no cancelled flag", (t) => { t.turns.push({ kind: "content_problem", at: Number(t.turns.at(-1)!.at), detail: "x" }); }, /cancelled/],
+    ["a partial turn in a version 3 trace", (t) => { t.version = 3; t.turns.push({ kind: "partial", at: Number(t.turns.at(-1)!.at), text: "No", cancelled: true }); }, /version 4/],
     ["no output after an accepted last attempt", (t) => { const m = t.turns.find((x) => x.kind === "maya" && x.output !== null && (x.output as { board: unknown[] }).board.length === 0)!; m.output = null; }, /output/],
   ];
   for (const [name, breakIt, path] of cases) {
@@ -523,8 +622,9 @@ describe("checkTrace refuses a trace that is not this version's shape", () => {
     });
   }
 
-  it("reads a version 1 trace and a version 2 hang-up", async () => {
+  it("reads a version 1 trace, a version 2 hang-up and a version 3 trace", async () => {
     const t = await validTrace();
+    expect(checkTrace({ ...t, version: 3 })).toMatchObject({ ok: true });
     const { reviewer: _reviewer, ...old } = t;
     void _reviewer;
     expect(checkTrace({ ...old, version: 1 })).toMatchObject({ ok: true });

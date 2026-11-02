@@ -61,18 +61,31 @@ describe("the behaviour gate", () => {
   it("covers every branch of the controller the text adapter can reach: states, acts and timed events", () => {
     const all = [...verdicts.values()];
     const states = new Set<SessionState>(all.flatMap((v) => v.states));
-    // READY is before the first Maya turn; REPAIR_MAYA needs what Maya said (pending V2).
-    const unreachable: SessionState[] = ["READY", "REPAIR_MAYA"];
+    // READY is before the first Maya turn.
+    const unreachable: SessionState[] = ["READY"];
     for (const s of [...MAIN_STATES, ...INTERRUPTS].filter((x) => !unreachable.includes(x))) expect(states.has(s), s).toBe(true);
-    // "repair" answers REPAIR_MAYA (pending V2).
     const acts = new Set<Act | null>(all.flatMap((v) => v.acts));
-    for (const a of ACTS.filter((x) => x !== "repair")) expect(acts.has(a), a).toBe(true);
+    for (const a of ACTS) expect(acts.has(a), a).toBe(true);
     const kinds = new Set(all.flatMap((v) => v.trace!.turns.map((t) => (t.kind === "writing" ? `writing:${t.status}` : t.kind))));
-    for (const k of ["start", "child", "tick", "writing:started", "writing:done", "technical", "maya"]) expect(kinds.has(k), k).toBe(true);
+    for (const k of ["start", "child", "tick", "writing:started", "writing:done", "technical", "maya", "partial", "maya_said", "content_problem"]) expect(kinds.has(k), k).toBe(true);
     const reasons = new Set(all.map((v) => v.trace!.outcome!.reason));
     expect([...reasons].sort()).toEqual(["child_stopped", "content_issue", "no_response", "safety", "solved", "technical_issue", "time_limit"]);
     const sources = new Set(all.flatMap((v) => v.trace!.turns.flatMap((t) => (t.kind === "maya" ? t.attempts.map((a) => a.source) : []))));
     expect([...sources].sort()).toEqual(["fallback", "model", "repair"]);
+  });
+
+  it("records the voice agent's inputs in the saved trace (#396), with whether each stopped Maya's output", () => {
+    const inputs = (id: string) => verdicts.get(id)!.trace!.turns.flatMap((t, i, all) =>
+      t.kind === "partial" || t.kind === "maya_said" || t.kind === "content_problem" ? [{ kind: t.kind, cancelled: t.cancelled, before: all[i - 1]?.kind === "maya" ? all[i - 1] : null }] : []);
+    expect(inputs("C15").map(({ kind, cancelled }) => [kind, cancelled])).toEqual([["partial", true]]);
+    expect(inputs("V2").map(({ kind, cancelled }) => [kind, cancelled])).toEqual([["maya_said", true]]);
+    expect(inputs("V2b").map(({ kind, cancelled }) => [kind, cancelled])).toEqual([["maya_said", false]]);
+    expect(inputs("V3").map(({ kind, cancelled }) => [kind, cancelled])).toEqual([["content_problem", true]]);
+    // V3b: the problem came after the safety guidance, in the safety state, and changed nothing.
+    const [held] = inputs("V3b");
+    expect(held).toMatchObject({ kind: "content_problem", cancelled: false, before: { stateAfter: "SAFETY", output: { act: "safety" } } });
+    expect(verdicts.get("V2")!.states).toContain("REPAIR_MAYA");
+    expect(verdicts.get("V3")!.states).toContain("CONTENT_HOLD");
   });
 
   it("totals the counts from the saved traces", () => {

@@ -19,11 +19,14 @@ export interface TraceRefusal {
  * The version of the trace shape. Version 2 (#323) adds the `hang_up` turn: the child hung up on purpose and the call
  * ended as child_stopped. Version 3 (D-197) adds free talk: `reviewer` (the review's model and prompt version, or null)
  * and, on an accepted attempt, `talk` (each piece of the model's own words, both checks and what was said). Older
- * traces have neither; `checkTrace` reads all three.
+ * traces have neither. Version 4 (#396) adds three input turns the voice agent sends: `partial` (a partial transcript
+ * of the child talking over Maya: her output stops and nothing is judged), `maya_said` (what Maya actually said; other
+ * words than her approved text start a repair) and `content_problem` (the package turned out wrong during the call).
+ * Each records `cancelled`: whether Maya's output was stopped. `checkTrace` reads all four versions.
  */
-export const TRACE_VERSION = 3;
+export const TRACE_VERSION = 4;
 /** The trace versions `checkTrace` reads. */
-export const TRACE_VERSIONS = [1, 2, 3] as const;
+export const TRACE_VERSIONS = [1, 2, 3, 4] as const;
 export const TRACE_KIND = "maya-trace";
 
 /** Where a proposal came from: the model, the model asked again with the refusal (one repair), or code's fallback. */
@@ -146,7 +149,16 @@ export type TraceTurn =
   /** `detail` is wording code wrote; `error` the failure's code when an error ended the call. */
   | { kind: "technical"; at: number; detail: string; error?: TraceError }
   /** Version 2: the child hung up on purpose; the call ended as child_stopped, unless safety, content or solved came first. */
-  | { kind: "hang_up"; at: number };
+  | { kind: "hang_up"; at: number }
+  /** Version 4: a partial transcript of the child (talking over Maya). Maya's output stopped; nothing was judged. */
+  | { kind: "partial"; at: number; text: string; cancelled: true }
+  /** Version 4: what Maya actually said. `cancelled`: it was not her approved text, so her output stopped and a repair started. */
+  | { kind: "maya_said"; at: number; text: string; cancelled: boolean }
+  /**
+   * Version 4: the package turned out wrong during the call (`detail` is wording code wrote). `cancelled`: the call
+   * went to the content hold and Maya's output stopped; false when the safety state kept the call.
+   */
+  | { kind: "content_problem"; at: number; detail: string; cancelled: boolean };
 
 export interface TraceBoardBatch {
   at: number;
@@ -345,6 +357,18 @@ function checkTurn(t: unknown, path: string): Record<string, unknown> {
       break;
     case "hang_up":
       break;
+    case "partial":
+      need(isText(x.text), `${path}.text`, "text");
+      need(x.cancelled === true, `${path}.cancelled`, "true: a partial transcript always stops Maya's output");
+      break;
+    case "maya_said":
+      need(isText(x.text), `${path}.text`, "text");
+      need(typeof x.cancelled === "boolean", `${path}.cancelled`, "a boolean");
+      break;
+    case "content_problem":
+      need(isText(x.detail), `${path}.detail`, "text");
+      need(typeof x.cancelled === "boolean", `${path}.cancelled`, "a boolean");
+      break;
     case "maya": {
       need(oneOf(STATES, x.state), `${path}.state`, "a session state");
       need(oneOf(STATES, x.stateAfter), `${path}.stateAfter`, "a session state");
@@ -407,7 +431,7 @@ function check(raw: unknown): MayaTrace {
   need(question.text === null || isText(question.text), "question.text", "text or null");
   need(isText(question.hash) && HASH.test(question.hash), "question.hash", "sha256: and 64 hex digits");
   need(typeof r.freeTalk === "boolean", "freeTalk", "a boolean");
-  if (r.version === 3) {
+  if ((r.version as number) >= 3) {
     const rv = r.reviewer;
     need(rv === null || (isObject(rv) && isName(rv.id) && isName(rv.promptVersion) && Object.keys(rv).length === 2), "reviewer", "null, or the review's model id and prompt version");
   } else need(r.reviewer === undefined, "reviewer", "absent before version 3");
@@ -416,7 +440,7 @@ function check(raw: unknown): MayaTrace {
   const turns = (r.turns as unknown[]).map((t, i) => checkTurn(t, `turns[${i}]`));
   turns.forEach((t, i) => need(i === 0 || (t.at as number) >= (turns[i - 1].at as number), `turns[${i}].at`, "not before the turn before it"));
   turns.forEach((t, i) => {
-    if (t.kind !== "maya" || r.version === 3) return;
+    if (t.kind !== "maya" || (r.version as number) >= 3) return;
     (t.attempts as Record<string, unknown>[]).forEach((a, k) => need(a.talk === undefined && a.reviewMs === undefined, `turns[${i}].attempts[${k}].talk`, "absent before version 3"));
   });
 
@@ -442,6 +466,8 @@ function check(raw: unknown): MayaTrace {
   checkOutcome(r.outcome, "outcome");
   need((r.outcome === null) === (r.endedAt === null), "endedAt", "set exactly when the call has an outcome");
   need(r.outcome === null || r.startedAt !== null, "startedAt", "set for a call that ended");
+  // The voice agent's input turns come in version 4.
+  turns.forEach((t, i) => need(!["partial", "maya_said", "content_problem"].includes(t.kind as string) || r.version === 4, `turns[${i}].kind`, `not ${String(t.kind)} before version 4`));
   // A hang-up (version 2 only) is what ends the call: the last turn, and the call ended, never as a technical issue.
   turns.forEach((t, i) => {
     if (t.kind !== "hang_up") return;
@@ -516,7 +542,11 @@ export function redactTrace(trace: MayaTrace, childName: string | null): MayaTra
   const turns = trace.turns.map((t): TraceTurn => {
     switch (t.kind) {
       case "child":
+      case "partial":
+      case "maya_said":
         return { ...t, text: redactText(t.text, childName) };
+      case "content_problem":
+        return { ...t, detail: redactText(t.detail, childName) };
       case "technical":
         return { ...t, detail: redactText(t.detail, childName) };
       case "maya":

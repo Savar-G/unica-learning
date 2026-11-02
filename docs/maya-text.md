@@ -135,13 +135,23 @@ Every code line (`TEMPLATES`, `src/lib/maya/lines.ts`) follows them, and `src/li
 
 For the model's own words, the rules are in the prompt (`SYSTEM_PROMPT`, `maya-text-11`; `maya-text-12` adds the reply groups, the regroup line and the example rule; `maya-text-13` adds the original ids for filtered phrase choices; `maya-text-14` adds the fraction reading, the step forms and `check.equal`) and in the review (`plain_language` in `NEVER_SAY`, `maya-talk-review-5`). Code checks only the exact banned phrases (`plainLanguageProblem`): in free talk and in an echo, a phrase that holds one becomes the bank phrase of the same purpose, and the review is not asked. Most of them were already refused as math words ("in all", "altogether", "left"); "all together" was not.
 
+## Inputs from the voice agent (#396)
+
+The text adapter takes three inputs that only speech brings. The admin demo and the command line do not send them.
+
+| Input | Session event | What happens |
+|---|---|---|
+| `partial(text)` | `child_turn` with `final: false` | The child talks over Maya. Her output stops (`cancelled` in the output: stop the audio and drop board batches not yet shown) and nothing is judged. Maya does not answer; the full turn comes through `child`. |
+| `mayaSaid(text)` | `maya_said` | What Maya actually said in her last turn. Words that are not her approved text stop her output and start `REPAIR_MAYA`: the repair comes first (`repair` act), then the teaching goes on. Her approved text changes nothing. |
+| `contentProblem(detail)` | `content_problem` | The package turns out wrong during the call: the content hold (`CONTENT_HOLD`), no more teaching, a close, outcome `content_issue`. In the safety state the safety path goes on and the outcome stays `safety`. A problem that comes while an input runs is taken before that input's next Maya turn. |
+
 ## The trace
 
-`src/lib/maya-trace.ts`, `TRACE_VERSION` 3. Read a saved trace with `checkTrace`; it reads versions 1 to 3. Version 3 (D-197) adds free talk: `reviewer` (the review's model and prompt version, or null), and on the accepted attempt `talk` (each piece of the model's own words: `proposed`, `code` (null when the code guards passed, else why not), `review` (`pass`, `fail`, `error` or `not_run`), the `rules` and `reason` of a failed review, and `shown`, what was said) and `reviewMs`. `checkTrace` refuses a piece shown as proposed unless both checks passed, a piece not shown as proposed unless it became a bank phrase, a review after failed code guards, and an unknown rule. The admin demo shows these pieces under "Free talk" in a saved call. Version 2 (#323) adds the `hang_up` turn: the child hung up on purpose. It is always the last turn, and the call's outcome is `child_stopped` (or safety, a content issue or solved, which come first), never `technical_issue`. A trace holds:
+`src/lib/maya-trace.ts`, `TRACE_VERSION` 4. Read a saved trace with `checkTrace`; it reads versions 1 to 4. Version 4 (#396) adds three turns for the voice agent's inputs, each with `cancelled` (whether Maya's output stopped): `partial` (a partial transcript of the child, always `cancelled`), `maya_said` (what Maya actually said; `cancelled` when it was not her approved text and a repair started) and `content_problem` (`detail`; `cancelled` when the call went to the content hold, false in the safety state). Version 3 (D-197) adds free talk: `reviewer` (the review's model and prompt version, or null), and on the accepted attempt `talk` (each piece of the model's own words: `proposed`, `code` (null when the code guards passed, else why not), `review` (`pass`, `fail`, `error` or `not_run`), the `rules` and `reason` of a failed review, and `shown`, what was said) and `reviewMs`. `checkTrace` refuses a piece shown as proposed unless both checks passed, a piece not shown as proposed unless it became a bank phrase, a review after failed code guards, and an unknown rule. The admin demo shows these pieces under "Free talk" in a saved call. Version 2 (#323) adds the `hang_up` turn: the child hung up on purpose. It is always the last turn, and the call's outcome is `child_stopped` (or safety, a content issue or solved, which come first), never `technical_issue`. A trace holds:
 
 - `model`: the model id and the prompt version. `versions`: the proposal, line set and session versions.
 - `question`: the package id, ref, text and `hash` (`sha256:` of its canonical JSON).
-- `turns`: start, child, tick, writing, technical and Maya turns. A Maya turn holds the state before and after, every attempt (`model`, `repair`, `fallback`) with its proposal and refusal or error, and the `output` that reached the child.
+- `turns`: start, child, tick, writing, technical, hang-up, partial, maya_said, content_problem and Maya turns. A Maya turn holds the state before and after, every attempt (`model`, `repair`, `fallback`) with its proposal and refusal or error, and the `output` that reached the child.
 - `board`: every batch sent, with its turn and commands.
 - `outcome`, and `counts` (refusals, repairs, fallbacks, model errors, silent turns). The bench takes its counts again from `turns`.
 

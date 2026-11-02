@@ -16,6 +16,11 @@
 // and steps it again with the reviews. A failed, late or missing review means a bank phrase of the same purpose. The
 // trace records each piece: what the model proposed, both checks and what was said.
 //
+// Three inputs come from the voice agent (#396): a partial transcript of the child talking over Maya (`partial`: her
+// output stops and nothing is judged), what Maya actually said (`mayaSaid`: other words than her approved text start a
+// repair) and a content problem found during the call (`contentProblem`: the content hold and a close). A content
+// problem that comes while an input runs is taken before the next Maya turn of that input.
+//
 // Every session writes a trace (src/lib/maya-trace.ts). The clock and the random seed are passed in.
 import { applyBatch, createScene, type Batch, type Scene } from "@/lib/board";
 import {
@@ -102,6 +107,11 @@ export interface TextOutput {
   ended: Outcome | null;
   /** The safety guidance to keep on screen after the call, or null. */
   safetyMessage: string | null;
+  /**
+   * Maya must stop talking now and drop board batches not yet shown (the session's `cancel_output`): the child talked
+   * over her, she said words that were not her text, or the content hold began. `say` and `board` come after the stop.
+   */
+  cancelled?: boolean;
 }
 
 export interface TextSession {
@@ -109,6 +119,22 @@ export interface TextSession {
   start(): Promise<TextOutput>;
   /** One child turn as text. */
   child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }): Promise<TextOutput>;
+  /**
+   * A partial transcript of the child, who talks over Maya (`child_turn` with `final: false`): Maya's output stops
+   * (`cancelled`) and nothing is judged. The full turn comes later through `child`.
+   */
+  partial(text: string): Promise<TextOutput>;
+  /**
+   * What Maya actually said in her last turn (the speech transcript). Words that are not her approved text stop her
+   * output and start a repair, which comes first; then the teaching goes on.
+   */
+  mayaSaid(text: string): Promise<TextOutput>;
+  /**
+   * The question package turned out wrong during the call: the content hold, no more teaching, a close (content_issue).
+   * In the safety state the safety path goes on. `detail` is wording the caller writes, never an error's text. Called
+   * while an input runs, it is taken before that input's next Maya turn.
+   */
+  contentProblem(detail: string): Promise<TextOutput>;
   /** The clock moved on with no input (the pause policy may make Maya check in). */
   tick(): Promise<TextOutput>;
   /** The child starts or stops writing. */
@@ -155,12 +181,15 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   const hash = packageHash(options.package);
   const raw = typeof options.package === "object" && options.package !== null ? (options.package as Record<string, unknown>) : {};
   let queue: Promise<unknown> = Promise.resolve();
+  /** Content problems not taken yet: each is taken before the next Maya turn. */
+  const problems: string[] = [];
 
-  const newOutput = (): TextOutput => ({ say: [], board: [], ended: null, safetyMessage: null });
+  const newOutput = (): TextOutput => ({ say: [], board: [], ended: null, safetyMessage: null, cancelled: false });
 
-  /** Takes the effects that are not Maya's words: the end of the call. */
+  /** Takes the effects that are not Maya's words: a stop of Maya's output, and the end of the call. */
   function takeEnd(effects: Effect[], out: TextOutput) {
     for (const e of effects) {
+      if (e.kind === "cancel_output") out.cancelled = true;
       if (e.kind === "end") {
         out.ended = e.outcome;
         out.safetyMessage = e.safetyMessage;
@@ -169,13 +198,23 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     }
   }
 
-  /** Steps a non-proposal event; Maya's words can only come from proposals. */
-  function event(e: SessionEvent, out: TextOutput): boolean {
+  /** Steps a non-proposal event; Maya's words can only come from proposals. Null when the session refused it. */
+  function event(e: SessionEvent, out: TextOutput): { cancelled: boolean } | null {
     const r = step(session, e);
-    if (r.refusal) return false;
+    if (r.refusal) return null;
     session = r.session;
     takeEnd(r.effects, out);
-    return true;
+    return { cancelled: r.effects.some((x) => x.kind === "cancel_output") };
+  }
+
+  /** Takes the content problems not taken yet, in order (none after the call ended). */
+  function takeProblems(out: TextOutput) {
+    while (problems.length > 0) {
+      const detail = redactText(problems.shift()!);
+      const at = Math.max(clock(), session.now ?? 0);
+      const r = event({ type: "content_problem", at, detail }, out);
+      if (r) turns.push({ kind: "content_problem", at, detail, cancelled: r.cancelled });
+    }
   }
 
   /**
@@ -295,7 +334,11 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   }
 
   async function mayaTurns(out: TextOutput) {
-    for (let n = 0; n < MAX_MAYA_TURNS && !session.outcome && nextActs(session).expect === "maya"; n++) await mayaTurn(out);
+    for (let n = 0; n < MAX_MAYA_TURNS; n++) {
+      takeProblems(out);
+      if (session.outcome || nextActs(session).expect !== "maya") break;
+      await mayaTurn(out);
+    }
     return out;
   }
 
@@ -388,6 +431,25 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         turns.push({ kind: "child", at, text, ...(opts.uncertain ? { uncertain: true } : {}) });
         return mayaTurns(out);
       }),
+    partial: (text) =>
+      serial(async (out) => {
+        const at = clock();
+        // Nothing is judged and Maya does not answer: the full turn comes through `child`.
+        if (event({ type: "child_turn", at, text, final: false }, out)) turns.push({ kind: "partial", at, text, cancelled: true });
+        return out;
+      }),
+    mayaSaid: (text) =>
+      serial(async (out) => {
+        const at = clock();
+        const r = event({ type: "maya_said", at, text }, out);
+        if (!r) return out;
+        turns.push({ kind: "maya_said", at, text, cancelled: r.cancelled });
+        return mayaTurns(out);
+      }),
+    contentProblem: (detail) => {
+      problems.push(detail);
+      return serial(async (out) => mayaTurns(out));
+    },
     tick: () =>
       serial(async (out) => {
         const at = clock();
