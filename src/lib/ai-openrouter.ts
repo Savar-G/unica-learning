@@ -122,3 +122,28 @@ export function openRouterClient({
     },
   };
 }
+
+/**
+ * A fetch that asks OpenRouter for each answer's cost (usage accounting) and passes it to `onCost` in US dollars, for a
+ * caller that keeps the cost of its calls (the workbook solve check, #312). An answer with no cost passes nothing.
+ */
+export function costingFetch(onCost: (usd: number) => void, base: typeof globalThis.fetch = globalThis.fetch): typeof globalThis.fetch {
+  return async (input, init) => {
+    let body = init?.body;
+    if (typeof body === "string") {
+      try {
+        body = JSON.stringify({ ...JSON.parse(body), usage: { include: true } });
+      } catch {
+        // Not JSON: sent as it is.
+      }
+    }
+    const res = await base(input, { ...init, body });
+    try {
+      const cost = (JSON.parse(await res.clone().text()) as { usage?: { cost?: unknown } }).usage?.cost;
+      if (typeof cost === "number" && Number.isFinite(cost) && cost >= 0) onCost(cost);
+    } catch {
+      // No JSON answer: no cost.
+    }
+    return res;
+  };
+}

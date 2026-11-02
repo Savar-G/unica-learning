@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { fakeAiClient } from "@/lib/ai-client-fake";
-import { keySolver, type SolveLog, type Solver } from "@/lib/workbook-solve-check";
+import { keySolver, type SolveLog, type Solver, type SolveVerdict } from "@/lib/workbook-solve-check";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
 import { operationResult } from "@/lib/question-package";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { renderFitCheck } from "@/lib/workbook-fit";
 import { curriculumFor } from "@/lib/workbook-curriculum";
-import { generateWorkbook, kindsOf, shapeOf, type FitCheck, type GenerateDeps, type GeneratedWorkbook } from "@/lib/workbook-generator";
+import { bookOutline, generateWorkbook, kindsOf, ResumeMismatch, shapeOf, type FitCheck, type GenerateDeps, type GeneratedPage, type GeneratedWorkbook, type StoredCall } from "@/lib/workbook-generator";
 import { planLevel, planWorkbook, type WorkbookPlan } from "@/lib/workbook-plan";
 import { skillRange } from "@/lib/workbook-book";
 import { buildQuestion, choiceAsked, pictureProblem, type SlotWording } from "@/lib/workbook-generator-items";
@@ -84,7 +84,7 @@ function deps(over: Partial<GenerateDeps> = {}): GenerateDeps & { store: ReturnT
 
 async function generate(d = deps()): Promise<GeneratedWorkbook> {
   const result = await generateWorkbook(input, d);
-  if (result.status !== "stored") throw new Error(result.reason);
+  if (result.status !== "stored") throw new Error(result.status === "refused" ? result.reason : "paused");
   return result.draft;
 }
 
@@ -524,6 +524,135 @@ describe("answers code computes beyond addition", () => {
   });
 });
 
+describe("pages in parallel (#312)", () => {
+  it("writes at most `concurrency` pages at a time and makes the same draft as one at a time", async () => {
+    let inFlight = 0;
+    let most = 0;
+    const ai = fakeAiClient({
+      answer: async (r) => {
+        inFlight++;
+        most = Math.max(most, inFlight);
+        await new Promise((done) => setTimeout(done, 1));
+        inFlight--;
+        return fill(r);
+      },
+    });
+    const parallel = await generate(deps({ ai, concurrency: 5 }));
+    expect(most).toBe(5);
+    const serial = await generate(deps());
+    expect(parallel.pages).toEqual(serial.pages);
+  });
+
+  it("keeps two AI attempts a question when pages run in parallel", async () => {
+    // Every first call fails slot 1.1; the redo fails it again: two attempts, never a third.
+    const bad = (s: SlotAsked) => goodItem(s, { wrongAnswers: [{ value: num(425), cause: "O3", description: "Right by mistake.", step: null }] });
+    const asked = new Map<string, number>();
+    const ai = fakeAiClient({
+      answer: (r) => fill(r, (s, req) => {
+        const key = `${req.day}:${req.pageType}:${s.slot}`;
+        asked.set(key, (asked.get(key) ?? 0) + 1);
+        return s.slot === "1.1" ? bad(s) : goodItem(s);
+      }),
+    });
+    const draft = await generate(deps({ ai, concurrency: 6 }));
+    const first = draft.pages.flatMap((p) => p.questions.filter((q) => q.slot === "1.1"));
+    expect(first.length).toBeGreaterThan(0);
+    expect(first.every((q) => q.check.status === "failed" && q.attempts === 2)).toBe(true);
+    // Each page: its first call, then one redo; the fit check passes, so no page retry.
+    expect(ai.requests.length).toBe(2 * draft.pages.filter((p) => p.questions.some((q) => q.slot === "1.1")).length
+      + draft.pages.filter((p) => p.questions.length > 0 && !p.questions.some((q) => q.slot === "1.1")).length);
+  });
+
+  it("with an attempt ledger of 2, writes no question a third time: the shorter rewrite asks only those with an attempt left", async () => {
+    const bad = (s: SlotAsked) => goodItem(s, { wrongAnswers: [{ value: num(425), cause: "O3", description: "Right by mistake.", step: null }] });
+    const ai = fakeAiClient({ answer: (r) => fill(r, (s) => (s.slot === "1.1" && r.name === "workbook_page" ? bad(s) : goodItem(s))) });
+    // Every page fails its first fit check, then fits.
+    const checked = new Map<number, number>();
+    const fit: FitCheck = { fits: async (p) => {
+      checked.set(p.number, (checked.get(p.number) ?? 0) + 1);
+      return checked.get(p.number) === 1 ? { ok: false, problems: [{ question: null, reason: "too tall" }] } : { ok: true };
+    } };
+    const counts = new Map<string, number>();
+    const attempts = {
+      max: 2,
+      load: async () => new Map(counts),
+      use: async (page: number, slots: string[]) => {
+        const refused = slots.filter((x) => (counts.get(`${page}:${x}`) ?? 0) >= 2);
+        for (const x of slots) if (!refused.includes(x)) counts.set(`${page}:${x}`, (counts.get(`${page}:${x}`) ?? 0) + 1);
+        return { refused };
+      },
+    };
+    const draft = await generate(deps({ ai, fit, attempts }));
+    expect(Math.max(...counts.values())).toBe(2);
+    const shorter = ai.requests.filter((r) => r.name === "workbook_page_shorter").map(read);
+    expect(shorter.length).toBeGreaterThan(0);
+    expect(shorter.every((r) => !r.slots.some((x) => x.slot === "1.1"))).toBe(true);
+    // 1.1 keeps its redo (sound, 2 attempts); the others were rewritten shorter (2 attempts).
+    const q = firstDayPage(draft).questions;
+    expect(q.find((x) => x.slot === "1.1")).toMatchObject({ attempts: 2, check: { status: "checked" } });
+    expect(q.every((x) => x.attempts === 2)).toBe(true);
+  });
+
+  it("resumes from its page store: a kept page is not written again", async () => {
+    const kept = new Map<number, GeneratedPage>();
+    const pages = { load: async () => [...kept.values()], save: async (p: GeneratedPage) => { kept.set(p.number, p); } };
+    let started = 0;
+    const paused = await generateWorkbook(input, deps({ pages, concurrency: 2, stop: () => started++ >= 6 }));
+    expect(paused).toEqual({ status: "paused", done: kept.size, total: DAY_PAGES.length });
+    expect(kept.size).toBeGreaterThan(0);
+    const ai = fakeAiClient({ answer: (r) => fill(r) });
+    const result = await generateWorkbook(input, deps({ ai, pages, concurrency: 2 }));
+    if (result.status !== "stored") throw new Error(result.status === "refused" ? result.reason : result.status);
+    expect(ai.requests.length).toBe(DAY_PAGES.length - (paused as { done: number }).done);
+    for (const p of kept.values()) expect(result.draft.pages[p.number - 1]).toEqual(p);
+  });
+
+  it("makes the same laid-out book (with the book memory) at any concurrency, and after a pause in the middle of a day", async () => {
+    const U3 = planWorkbook({
+      profile: { standards: [] }, grade: 0, level: planLevel(BC, "U3")!, passed: {}, workbook: { number: 1, inLevel: 0 },
+      reviews: [], missedReviews: [], misses: [], pausedWeeks: 0, support: null, unassessedUnits: [],
+    });
+    if (!U3.ok) throw new Error(U3.reason);
+    const laid = { ...input, plan: U3.plan, book: { child: "Zoe" } };
+    // An AI whose answer depends only on what it is asked (never on the order of calls): a repeat of the book or of
+    // the day's pages before it shows only through the memory each request carries.
+    const hash = (t: string) => [...t].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
+    const answer = (r: AiJsonRequest) => fill(r, (s) => {
+      const max = Math.min(10, ...Object.values(s.numbers ?? {}).map((n) => n.max));
+      const h = hash(`${(r.content[0] as { text: string }).text}|${s.slot}`);
+      const b = max >= 5 ? 2 : 1;
+      const a = 1 + (h % Math.max(1, max - b - 1));
+      return goodItem(s, {
+        text: `Kim ${tag(h % 40)} has ${a}. ${b} more come. How many now?`, operation: addOp(a, b),
+        wrongAnswers: [{ value: num(a + b + 1), cause: "count", description: "Counts one too many.", step: null }],
+        easier: { text: "Try a smaller sum.", operation: addOp(0, Math.min(a, b)) },
+      });
+    });
+    const run = (over: Partial<GenerateDeps>) => generateWorkbook(laid, deps({ ai: fakeAiClient({ answer: async (r) => {
+      await new Promise((done) => setTimeout(done, hash(JSON.stringify(r.content)) % 3));
+      return answer(r);
+    } }), ...over }));
+    // Tokens are random in live use: a resumed run makes new ones for the pages it writes.
+    const pagesOf = (r: Awaited<ReturnType<typeof generateWorkbook>>) => {
+      if (r.status !== "stored") throw new Error(r.status === "refused" ? r.reason : r.status);
+      return r.draft.pages.map((p) => ({ ...p, qrToken: "" }));
+    };
+    const one = pagesOf(await run({ concurrency: 1 }));
+    expect(pagesOf(await run({ concurrency: 5 }))).toEqual(one);
+
+    const kept = new Map<number, GeneratedPage>();
+    const pages = { load: async () => [...kept.values()], save: async (p: GeneratedPage) => { kept.set(p.number, p); } };
+    let started = 0;
+    const paused = await run({ pages, concurrency: 3, stop: () => started++ >= 5 });
+    expect(paused.status).toBe("paused");
+    const days = new Set([...kept.values()].map((p) => p.day));
+    const firstDay = one.filter((p) => p.day === 1).length;
+    expect(kept.size).toBeLessThan(firstDay);
+    expect(days).toEqual(new Set([1]));
+    expect(pagesOf(await run({ pages, concurrency: 4 }))).toEqual(one);
+  });
+});
+
 describe("a book laid out for the templates: room, rules and the content left", () => {
   const U3 = (() => {
     const result = planWorkbook({
@@ -569,7 +698,7 @@ describe("a book laid out for the templates: room, rules and the content left", 
 
   async function laidOut(d: GenerateDeps) {
     const result = await generateWorkbook(laid, d);
-    if (result.status !== "stored") throw new Error(result.reason);
+    if (result.status !== "stored") throw new Error(result.status === "refused" ? result.reason : result.status);
     return result.draft;
   }
 
@@ -767,7 +896,7 @@ describe("round 3 (#380): repeats, panel examples, items that do not match their
   }
   async function book(ai: ReturnType<typeof fakeAiClient>, concurrency = 1) {
     const result = await generateWorkbook(laid, deps({ ai, concurrency }));
-    if (result.status !== "stored") throw new Error(result.reason);
+    if (result.status !== "stored") throw new Error(result.status === "refused" ? result.reason : result.status);
     return result.draft;
   }
 
@@ -960,7 +1089,7 @@ describe("the shorter rewrite and repeats (round 3)", () => {
     });
     const fit: FitCheck = { fits: async (p) => (p.number === 3 && first ? ((first = false), { ok: false, problems: [{ question: null, reason: "too long" }] }) : { ok: true }) };
     const result = await generateWorkbook({ ...input, plan: U3.plan, book: { child: "Zoe" } }, deps({ ai, fit }));
-    if (result.status !== "stored") throw new Error(result.reason);
+    if (result.status !== "stored") throw new Error(result.status === "refused" ? result.reason : result.status);
     const page = result.draft.pages[2];
     const kept = page.questions.filter((q) => q.check.status !== "failed").map((q) => q.package!.text);
     expect(kept.filter((t) => t.startsWith("Ten-frame: 5 and")).length).toBeLessThanOrEqual(1);
@@ -1096,7 +1225,7 @@ describe("round 4 (#380): relations, explicit pictures, kinds in turn, question 
       }),
     });
     const result = await generateWorkbook({ ...input, plan: U3.plan, book: { child: "Zoe" } }, deps({ ai }));
-    if (result.status !== "stored") throw new Error(result.reason);
+    if (result.status !== "stored") throw new Error(result.status === "refused" ? result.reason : result.status);
     // Of the AI's shape (a repeat whose item is the planned one may take code's planned wording instead, round 6).
     const shaped = result.draft.pages.flatMap((p) => p.questions).filter((q) => q.check.status !== "failed" && q.place && !["warm-up", "finish-these", "on-your-own", "practice-row", "unit-b-practice", "now-you"].includes(q.place)
       && shapeOf(q.package!.text) === "has many more make");
@@ -1133,7 +1262,7 @@ describe("a panel of a relation skill (round 4)", () => {
       },
     });
     const result = await generateWorkbook({ ...input, plan: U3.plan, book: { child: "Zoe" } }, deps({ ai }));
-    if (result.status !== "stored") throw new Error(result.reason);
+    if (result.status !== "stored") throw new Error(result.status === "refused" ? result.reason : result.status);
     const page = result.draft.pages.find((p) => p.content?.kind === "day" && p.content.topic === BC.skillSteps("K3-benchmarks-5-10")?.[0]?.name && p.content.blocks.some((x) => x.slot === "watch-one"))
       ?? result.draft.pages.find((p) => p.content?.kind === "day" && p.content.blocks.some((x) => x.slot === "watch-one" && (x.lines ?? []).some((l) => l.includes("less than 5"))));
     const watch = page!.content!.kind === "day" ? page!.content!.blocks.find((x) => x.slot === "watch-one")! : null;
@@ -1169,7 +1298,7 @@ describe("round 5 (#380): code plans the book's numbers and names, rooms and row
   }
   async function book(ai: ReturnType<typeof fakeAiClient>, over: Partial<GenerateDeps> = {}) {
     const result = await generateWorkbook(laid, deps({ ai, ...over }));
-    if (result.status !== "stored") throw new Error(result.reason);
+    if (result.status !== "stored") throw new Error(result.status === "refused" ? result.reason : result.status);
     return result.draft;
   }
 
@@ -1315,7 +1444,7 @@ describe("round 5 (#380): code plans the book's numbers and names, rooms and row
       })),
     });
     const result = await generateWorkbook({ ...laid, plan: PLAN }, deps({ ai }));
-    if (result.status !== "stored") throw new Error(result.reason);
+    if (result.status !== "stored") throw new Error(result.status === "refused" ? result.reason : result.status);
     const draft = result.draft;
     const others = draft.pages.flatMap((p) => p.questions).filter((q) => q.package && q.place !== "spot-the-error" && q.package.operation);
     expect(others.length).toBeGreaterThan(50);
@@ -1625,7 +1754,7 @@ describe("round 6 (#380): what a parent sees on a page of stories", () => {
       }),
     });
     const result = await generateWorkbook(laid, deps({ ai }));
-    if (result.status !== "stored") throw new Error(result.reason);
+    if (result.status !== "stored") throw new Error(result.status === "refused" ? result.reason : result.status);
     const planned = new Map<string, string | undefined>(ai.requests.filter((r) => r.name === "workbook_page").map(body).flatMap((b) => b.slots.map((s) => [`${b.day}.${b.page}.${s.slot}`, s.planned?.say] as const)));
     const reworded = result.draft.pages.flatMap((p) => p.questions.filter((q) => q.package && q.package.text === planned.get(`${p.day}.${p.pageOfDay}.${q.slot}`) && !q.package.text.startsWith("Ava")));
     expect(reworded.length).toBeGreaterThan(20);
@@ -1817,6 +1946,213 @@ describe("round 7 (#380, R380-12-1): code writes the text where it can, a solve 
   });
 });
 
+describe("a page's AI calls kept for a resume (R379-7-1)", () => {
+  const U3 = (() => {
+    const result = planWorkbook({
+      profile: { standards: [] }, grade: 0, level: planLevel(BC, "U3")!, passed: {}, workbook: { number: 1, inLevel: 0 },
+      reviews: [], missedReviews: [], misses: [], pausedWeeks: 0, support: null, unassessedUnits: [],
+    });
+    if (!result.ok) throw new Error(result.reason);
+    return result.plan;
+  })();
+  const laid = { ...input, plan: U3, book: { child: "Zoe" } };
+  const hash = (t: string) => [...t].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
+
+  /**
+   * An AI whose answer depends only on what it is asked, except that a page's first call asked a second time answers
+   * every slot with an operation code cannot build (a failed check): what a lost first answer would cost. Slot 1.2 of
+   * every third page fails its first answer too, so pages have redos to keep.
+   */
+  function ai() {
+    const firsts = new Set<string>();
+    return fakeAiClient({
+      answer: async (r) => {
+        const req = read(r);
+        const again = r.name === "workbook_page" && firsts.has(`${req.day}:${req.page}`);
+        if (r.name === "workbook_page") firsts.add(`${req.day}:${req.page}`);
+        const text = (r.content[0] as { text: string }).text;
+        await new Promise((done) => setTimeout(done, hash(text) % 3));
+        return fill(r, (s) => {
+          const max = Math.min(10, ...Object.values(s.numbers ?? {}).map((n) => n.max));
+          const h = hash(`${text}|${s.slot}`);
+          const b = max >= 5 ? 2 : 1;
+          const a = 1 + (h % Math.max(1, max - b - 1));
+          const item = goodItem(s, {
+            text: `Kim ${tag(h % 40)} has ${a}. ${b} more come. How many now?`, operation: addOp(a, b),
+            wrongAnswers: [{ value: num(a + b + 1), cause: "count", description: "Counts one too many.", step: null }],
+            easier: { text: "Try a smaller sum.", operation: addOp(0, Math.min(a, b)) },
+          });
+          const bad = again || (r.name === "workbook_page" && s.slot === "1.2" && req.page % 3 === 0);
+          return bad ? { ...item, operation: { kind: "add", operands: [], expression: null, unit: null, denominator: null, values: [] } } : item;
+        });
+      },
+    });
+  }
+
+  /** The run's stores, kept between tries as the job's run keeps them: pages, the attempt ledger (2) and the calls. */
+  function stores() {
+    const pages = new Map<number, GeneratedPage>();
+    const counts = new Map<string, number>();
+    const calls = new Map<string, { page: number; seq: number; call: StoredCall }>();
+    // A store keeps JSON, as the database does.
+    const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
+    const solves = new Map<string, SolveVerdict>();
+    let failSave: number[] = [];
+    let saves = 0;
+    let failSolve: number[] = [];
+    let solveSaves = 0;
+    return {
+      pages, counts, calls, solves,
+      /** The page saves (counted over every try) that throw, as a database error or the function's end would stop it. */
+      failAt(...at: number[]) { failSave = at; },
+      /** The solve check saves (counted over every try) that throw: the try stops in the middle of a call's checks. */
+      failSolveAt(...at: number[]) { failSolve = at; },
+      deps: {
+        pages: {
+          load: async () => [...pages.values()].map(copy),
+          save: async (p: GeneratedPage) => {
+            if (failSave.includes(++saves)) throw new Error("the function stopped");
+            if (!pages.has(p.number)) pages.set(p.number, copy(p));
+          },
+        },
+        attempts: {
+          max: 2,
+          load: async () => new Map(counts),
+          use: async (page: number, slots: string[]) => {
+            const refused = slots.filter((x) => (counts.get(`${page}:${x}`) ?? 0) >= 2);
+            for (const x of slots) if (!refused.includes(x)) counts.set(`${page}:${x}`, (counts.get(`${page}:${x}`) ?? 0) + 1);
+            return { refused };
+          },
+        },
+        calls: {
+          load: async (wanted: number[]) => [...calls.values()].filter((c) => wanted.includes(c.page)).map(copy),
+          save: async (page: number, seq: number, call: StoredCall) => {
+            if (!calls.has(`${page}:${seq}`)) calls.set(`${page}:${seq}`, copy({ page, seq, call }));
+          },
+          solves: async (wanted: number[]) => new Map([...solves].filter(([k]) => wanted.includes(Number(k.split(":")[0]))).map(([k, v]) => [k, copy(v)])),
+          saveSolve: async (key: string, log: SolveLog) => {
+            if (failSolve.includes(++solveSaves)) throw new Error("the function stopped");
+            if (!solves.has(key)) solves.set(key, copy(log.verdict));
+          },
+        },
+      } satisfies Partial<GenerateDeps>,
+    };
+  }
+
+  const pagesOf = (r: Awaited<ReturnType<typeof generateWorkbook>>) => {
+    if (r.status !== "stored") throw new Error(r.status === "refused" ? r.reason : r.status);
+    // Tokens are random in live use: a resumed run makes new ones for the pages it writes.
+    return r.draft.pages.map((p) => ({ ...p, qrToken: "" }));
+  };
+
+  async function uninterrupted() {
+    const s = stores();
+    const a = ai();
+    const pages = pagesOf(await generateWorkbook(laid, deps({ ai: a, concurrency: 4, ...s.deps })));
+    return { pages, counts: s.counts, requests: a.requests.length, s };
+  }
+
+  it("resumes after a later page's first answer came back but before that page was stored: the same questions and attempts", async () => {
+    const one = await uninterrupted();
+    // Some question used its redo, so attempt counts of 2 are in the comparison.
+    expect([...one.counts.values()]).toContain(2);
+    expect(one.pages.flatMap((p) => p.questions).some((q) => q.attempts === 2)).toBe(true);
+
+    const s = stores();
+    const a = ai();
+    // The first page's save stops the try: the day's later pages have made their first call and are not stored.
+    s.failAt(1);
+    await expect(generateWorkbook(laid, deps({ ai: a, concurrency: 4, ...s.deps }))).rejects.toThrow("the function stopped");
+    expect(s.pages.size).toBe(0);
+    const firstDay = one.pages.filter((p) => p.day === 1 && p.questions.length > 0).map((p) => p.number);
+    const kept = new Set([...s.calls.values()].filter((c) => c.seq === 0).map((c) => c.page));
+    expect(firstDay.filter((n) => kept.has(n)).length).toBeGreaterThan(1);
+
+    const resumed = pagesOf(await generateWorkbook(laid, deps({ ai: a, concurrency: 4, ...s.deps })));
+    expect(resumed).toEqual(one.pages);
+    expect(s.counts).toEqual(one.counts);
+    // No call was asked twice: the AI answered as many calls as the run that was never stopped.
+    expect(a.requests.length).toBe(one.requests);
+  });
+
+  it("resumes after two stops in a row the same way", async () => {
+    const one = await uninterrupted();
+    const s = stores();
+    const a = ai();
+    // The first try stops at its first page save, the second at its second (a page further on); the third finishes.
+    s.failAt(1, 3);
+    await expect(generateWorkbook(laid, deps({ ai: a, concurrency: 4, ...s.deps }))).rejects.toThrow("the function stopped");
+    await expect(generateWorkbook(laid, deps({ ai: a, concurrency: 4, ...s.deps }))).rejects.toThrow("the function stopped");
+    expect(s.pages.size).toBe(1);
+    const resumed = pagesOf(await generateWorkbook(laid, deps({ ai: a, concurrency: 4, ...s.deps })));
+    expect(resumed).toEqual(one.pages);
+    expect(s.counts).toEqual(one.counts);
+    expect(a.requests.length).toBe(one.requests);
+    expect(Math.max(...s.counts.values())).toBe(2);
+  });
+
+  it("never tells the AI the child's name, so no kept call holds it", async () => {
+    const one = await uninterrupted();
+    expect(one.s.calls.size).toBeGreaterThan(0);
+    const a = ai();
+    await generateWorkbook(laid, deps({ ai: a, ...stores().deps }));
+    expect(a.requests.some((r) => JSON.stringify(r).includes("Zoe"))).toBe(false);
+    expect(JSON.stringify([...one.s.calls.values()])).not.toContain("Zoe");
+  });
+
+  it("stops with nothing more asked when a kept page, attempt or call does not fit the plan (R379-8-2)", async () => {
+    const s = stores();
+    const a = ai();
+    // A try stopped at its third page save: two pages are kept, and the first day's later pages have kept calls.
+    s.failAt(3);
+    await expect(generateWorkbook(laid, deps({ ai: a, concurrency: 4, ...s.deps }))).rejects.toThrow("the function stopped");
+    // Pages still in flight when the try stopped may keep their calls a moment later: let them settle first (R379-9-2).
+    for (let quiet = 0, seen = ""; quiet < 3; ) {
+      await new Promise((done) => setTimeout(done, 20));
+      const now = `${s.calls.size}:${s.solves.size}:${a.requests.length}`;
+      quiet = now === seen ? quiet + 1 : 0;
+      seen = now;
+    }
+    expect(s.pages.size).toBe(2);
+    const asked = a.requests.length;
+    const U4 = planWorkbook({
+      profile: { standards: [] }, grade: 0, level: planLevel(BC, "U4")!, passed: {}, workbook: { number: 1, inLevel: 0 },
+      reviews: [], missedReviews: [], misses: [], pausedWeeks: 0, support: null, unassessedUnits: [],
+    });
+    if (!U4.ok) throw new Error(U4.reason);
+    // Another plan: the kept pages are of another book.
+    await expect(generateWorkbook({ ...laid, plan: U4.plan }, deps({ ai: a, ...s.deps }))).rejects.toThrow(ResumeMismatch);
+    // The same plan for another name: the kept pages print the name they were made for.
+    await expect(generateWorkbook({ ...laid, book: { child: "Ava" } }, deps({ ai: a, ...s.deps }))).rejects.toThrow(/kept page \d+ was made for another name/);
+    // A kept call that asked other slots than the plan's page asks.
+    const c = [...s.calls.values()].find((x) => !s.pages.has(x.page) && x.seq === 0 && new Set(x.call.ask.slots).size >= 2)!;
+    expect(c).toBeDefined();
+    const ask = c.call.ask;
+    c.call.ask = { ...ask, slots: [...ask.slots].reverse() };
+    await expect(generateWorkbook(laid, deps({ ai: a, ...s.deps }))).rejects.toThrow(`page ${c.page}: its kept call 0 is workbook_page of`);
+    c.call.ask = ask;
+    // An attempt counted for a slot the plan's page does not have.
+    s.counts.set("3:9.9", 1);
+    await expect(generateWorkbook(laid, deps({ ai: a, ...s.deps }))).rejects.toThrow("the attempts kept for page 3, slot 9.9 name a slot the plan does not have");
+    s.counts.delete("3:9.9");
+    // None of them asked the AI anything; with what was kept as it was, the run goes on.
+    expect(a.requests.length).toBe(asked);
+    expect((await generateWorkbook(laid, deps({ ai: a, concurrency: 4, ...s.deps }))).status).toBe("stored");
+  });
+
+  it("fingerprints the planned book without the child's name, and another plan gives another (R379-8-2)", () => {
+    // Mia is one of the people the plan names: for a child called Mia the plan names others, yet the fingerprint is the same.
+    expect(bookOutline({ ...laid, book: { child: "Mia" } })).toBe(bookOutline(laid));
+    expect(bookOutline(laid)).toMatch(/^[0-9a-f]{28}$/);
+    const U4 = planWorkbook({
+      profile: { standards: [] }, grade: 0, level: planLevel(BC, "U4")!, passed: {}, workbook: { number: 1, inLevel: 0 },
+      reviews: [], missedReviews: [], misses: [], pausedWeeks: 0, support: null, unassessedUnits: [],
+    });
+    if (!U4.ok) throw new Error(U4.reason);
+    expect(bookOutline({ ...laid, plan: U4.plan })).not.toBe(bookOutline(laid));
+    expect(bookOutline({ ...laid, number: 2 })).not.toBe(bookOutline(laid));
+  });
+});
 
 describe("quantity card checks at every level (D-201)", () => {
   const raw = (text: string) => ({
@@ -1837,7 +2173,7 @@ describe("quantity card checks at every level (D-201)", () => {
       slot: s.slot, skill: s.skills[0], numbers: [num(2), num(3)],
     } : goodItem(s)) });
     const result = await generateWorkbook(input, deps({ ai }));
-    if (result.status !== "stored") throw new Error(result.reason);
+    if (result.status !== "stored") throw new Error(result.status === "refused" ? result.reason : result.status);
     const question = result.draft.pages.find((p) => p.questions.length)!.questions[0];
     expect(question.attempts).toBe(2);
     expect(question.check).toEqual({ status: "checked" });
