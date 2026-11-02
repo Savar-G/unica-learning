@@ -1,6 +1,8 @@
 // Resource article: /resources/kumon-cost-bc
 // Writers: replace `meta` and `Body` only. Blocks: see src/components/article.tsx.
 import Link from "next/link";
+import Image from "next/image";
+import feeData from "@/content/data/bc-centre-fees-2026-11-01.json";
 import type { ResourceMeta } from "@/lib/resources";
 import { AssessmentCta, Callout, Cite, DataTable, KeyFacts, Section } from "@/components/article";
 
@@ -11,11 +13,11 @@ export const meta: ResourceMeta = {
     "How much is Kumon per month in BC? Centre pages list $180-$260 per subject, plus an $80 enrolment fee. See prices by centre, two-subject totals and fees.",
   category: "Comparing options",
   lead: "Kumon prices in BC by centre, what two subjects cost, the extra fees, and the questions to ask before you enrol.",
-  updated: "2026-10-09",
+  updated: "2026-11-01",
   faqs: [
     {
       q: "How much is Kumon per month in BC?",
-      a: "At the 13 BC centres whose pages listed a price in October 2026, tuition was $180 to $260 per subject per month. Most were between $190 and $220. Each centre also listed an $80 enrolment fee, and most listed a $20 or $30 materials fee. Prices vary by centre, so ask your local centre.",
+      a: "On November 1, 2026, the 13 BC centre pages in our sample listed tuition of $180 to $260 per subject per month. All 13 listed an $80 enrolment fee. Eleven listed a $30 materials fee, one listed $20, and one did not list it. This sample does not cover every BC centre. Ask your centre for its current price.",
     },
     {
       q: "How much is Kumon for math and reading together?",
@@ -23,7 +25,7 @@ export const meta: ResourceMeta = {
     },
     {
       q: "Is there a cheaper online Kumon option?",
-      a: "Kumon's Canada Virtual centre listed $150 per subject per month and an $80 enrolment fee in October 2026. Classes happen online instead of at a centre.",
+      a: "Kumon's Canada Virtual centre listed $150 per subject per month and an $80 enrolment fee on November 1, 2026. Classes happen online instead of at a centre. This centre is based outside BC and is excluded from our BC price range.",
     },
     {
       q: "Is Kumon cheaper than Mathnasium?",
@@ -31,24 +33,15 @@ export const meta: ResourceMeta = {
     },
     {
       q: "Is Kumon expensive compared with a tutor?",
-      a: "It depends on how many hours of tutoring you buy. One hour a week with a tutor at $38 to $100 an hour is about $152 to $400 for 4 weeks. One Kumon subject at a BC centre was $180 to $260 a month in October 2026.",
+      a: "It depends on how many hours of tutoring you buy. One hour a week with a tutor at $38 to $100 an hour is about $152 to $400 for 4 weeks, using tutor rates checked in October 2026. The 13 BC Kumon centre pages in our sample listed $180 to $260 per subject per month on November 1, 2026.",
     },
   ],
   sources: [
-    { label: "Kumon Vancouver - Marpole, centre page (pricing and fees)", url: "https://www.kumon.com/vancouver-marpole/aboutcenter", accessed: "2026-10-09" },
-    { label: "Kumon Vancouver - First Avenue, centre page (pricing and fees)", url: "https://www.kumon.com/vancouver-first-avenue/aboutcenter", accessed: "2026-10-09" },
-    { label: "Kumon Vancouver - Cedar Cottage, centre page (pricing and fees)", url: "https://www.kumon.com/vancouver-cedar-cottage-bc/aboutcenter", accessed: "2026-10-09" },
-    { label: "Kumon Vancouver - Killarney, centre page (pricing and fees)", url: "https://www.kumon.com/vancouver-killarney/aboutcenter", accessed: "2026-10-09" },
-    { label: "Kumon Burnaby - Highgate, centre page (pricing and fees)", url: "https://www.kumon.com/burnaby-highgate-bc/aboutcenter", accessed: "2026-10-09" },
-    { label: "Kumon Burnaby - Burnaby Heights, centre page (pricing and fees)", url: "https://www.kumon.com/burnaby-burnaby-heights/aboutcenter", accessed: "2026-10-09" },
-    { label: "Kumon New Westminster - Queensborough Landing, centre page (pricing and fees)", url: "https://www.kumon.com/new-westminster-queensborough-landing/aboutcenter", accessed: "2026-10-09" },
-    { label: "Kumon North Vancouver - Capilano Mall, centre page (pricing and fees)", url: "https://www.kumon.com/north-vancouver-capilano-mall/aboutcenter", accessed: "2026-10-09" },
-    { label: "Kumon Richmond - Steveston, centre page (pricing and fees)", url: "https://www.kumon.com/richmond-steveston/aboutcenter", accessed: "2026-10-09" },
-    { label: "Kumon Surrey - Fraser Heights, centre page (pricing and fees)", url: "https://www.kumon.com/surrey-fraser-heights/aboutcenter", accessed: "2026-10-09" },
-    { label: "Kumon Coquitlam - Westwood, centre page (pricing and fees)", url: "https://www.kumon.com/coquitlam-westwood/aboutcenter", accessed: "2026-10-09" },
-    { label: "Kumon Langley - Willoughby Town Centre, centre page (pricing and fees)", url: "https://www.kumon.com/langley-willoughby-town-centre/aboutcenter", accessed: "2026-10-09" },
-    { label: "Kumon Victoria - Oak Bay, centre page (pricing and fees)", url: "https://www.kumon.com/victoria-oak-bay/aboutcenter", accessed: "2026-10-09" },
-    { label: "Kumon Canada Virtual, centre page (pricing and fees)", url: "https://www.kumon.com/canada-virtual/aboutcenter", accessed: "2026-10-09" },
+    ...feeData.centres.map((centre) => ({
+      label: `Kumon ${centre.centre}, centre page (pricing and fees)`,
+      url: centre.source,
+      accessed: centre.checked,
+    })),
     { label: "Kumon Canada, What is Kumon?", url: "https://www.kumon.com/resources/canadian_english/what-kumon/", accessed: "2026-10-09" },
     { label: "Kumon, How do Kumon's in-person and virtual classes work?", url: "https://www.kumon.com/resources/how-do-kumons-in-person-and-virtual-classes-work/", accessed: "2026-10-09" },
     { label: "Kumon Canada, Understanding student progress in Kumon", url: "https://www.kumon.com/resources/canadian_english/understanding-student-progress-in-kumon-what-to-look-for-and-where-to-find-it/", accessed: "2026-10-09" },
@@ -60,39 +53,25 @@ export const meta: ResourceMeta = {
   related: ["is-kumon-worth-it", "kumon-vs-mathnasium", "kumon-alternatives", "tutor-cost-bc"],
 };
 
-const CENTRES: [string, string, string, number][] = [
-  ["Vancouver - Marpole", "$230-$260", "$30", 1],
-  ["Vancouver - First Avenue", "$210", "$30", 2],
-  ["Vancouver - Cedar Cottage", "$190-$220", "$30", 3],
-  ["Vancouver - Killarney", "$180-$220", "$30", 4],
-  ["Burnaby - Highgate", "$190-$200", "$30", 5],
-  ["Burnaby - Burnaby Heights", "$185-$200", "Not listed", 6],
-  ["New Westminster - Queensborough Landing", "$190", "$30", 7],
-  ["North Vancouver - Capilano Mall", "$200-$220", "$30", 8],
-  ["Richmond - Steveston", "$200-$225", "$30", 9],
-  ["Surrey - Fraser Heights", "$180-$200", "$20", 10],
-  ["Coquitlam - Westwood", "$190", "$30", 11],
-  ["Langley - Willoughby Town Centre", "$195-$220", "$30", 12],
-  ["Victoria - Oak Bay", "$200", "$30", 13],
-  ["Canada Virtual (online, based in Calgary)", "$150", "Not listed", 14],
-];
+const BC_CENTRES = feeData.centres.filter((centre) => centre.market === "BC");
+const DOWNLOAD = "/resources/data/bc-centre-fees-2026-11-01";
 
 export default function Body() {
   return (
     <>
       <p>
-        <strong>How much is Kumon per month in BC?</strong> At the 13 BC Kumon centres whose pages listed a price in
-        October 2026, tuition was <strong>$180 to $260 per subject per month</strong>. Most centres were between $190
-        and $220. Every centre that listed fees also charged a one-time <strong>$80 enrolment fee</strong> per student,
-        and most listed a <strong>$20 or $30 materials fee</strong>.<Cite n={1} /><Cite n={10} /> Kumon&apos;s online
+        <strong>How much is Kumon per month in BC?</strong> On November 1, 2026, the 13 BC Kumon centre pages in
+        our sample listed <strong>$180 to $260 per subject per month</strong>. All 13 listed a one-time
+        <strong> $80 enrolment fee</strong> per student. Most listed a <strong>$20 or $30 materials fee</strong>.
+        <Cite n={1} /><Cite n={10} /> Kumon&apos;s online
         Canada Virtual centre listed $150 per subject.<Cite n={14} /> Each centre sets its own price, so check with the
         centre near you.
       </p>
 
       <KeyFacts
-        title="Kumon in BC at a glance (October 2026)"
+        title="Kumon in BC at a glance (checked November 1, 2026)"
         items={[
-          "One subject: $180-$260 a month at BC centres that list a price.",
+          "One subject: $180-$260 a month in our sample of 13 BC centre pages.",
           "Two subjects (math and reading): about $360-$520 a month.",
           "Enrolment: $80 per student, once. Materials: $20-$30 at most centres.",
           "Online (Canada Virtual): $150 per subject a month.",
@@ -102,29 +81,69 @@ export default function Body() {
 
       <Section title="Kumon prices by BC centre">
         <p>
-          We read the &quot;Pricing and Fees&quot; block on each BC centre page we could find on kumon.com. This is not
-          every centre in BC, and some centre pages we checked did not list a tuition price.
+          We rechecked the &quot;Pricing and Fees&quot; blocks on the 13 BC centre pages already listed in this guide.
+          This is a convenience sample, not every centre in BC. The online centre is shown separately below.
         </p>
         <DataTable
-          caption="Kumon tuition and fees at BC centres, as listed on centre pages in October 2026"
+          caption="Listed fees: 13 BC centres and one online centre, checked November 1, 2026"
           columns={["Centre", "Per subject a month", "Materials fee"]}
-          rows={CENTRES.map(([name, tuition, materials, n]) => [
+          rows={feeData.centres.map((centre, index) => [
             <>
-              {name}
-              <Cite n={n} />
+              {centre.centre}
+              <Cite n={index + 1} />
             </>,
-            tuition,
-            materials,
+            centre.tuitionLow === centre.tuitionHigh ? `$${centre.tuitionLow}` : `$${centre.tuitionLow}-$${centre.tuitionHigh}`,
+            centre.materials === null ? "Not listed" : `$${centre.materials}`,
           ])}
-          note="Prices as listed on centre pages in October 2026. Every centre listed a one-time $80 enrolment fee per student. Each centre sets its own price, and prices can change. The pages show prices with a $ sign; the centres are in Canada. A range means the page listed a range, not the price for a specific child."
+          note="Every page listed a one-time $80 enrolment fee per student. These are dollar figures from Canadian centre pages; some omit a currency label or dollar sign. We use $ consistently in this table. A range is the page's listed range, not a quote for your child. A missing fee does not mean zero."
         />
+      </Section>
+
+      <Section title="Download the data and chart" id="data-method">
+        <p>
+          The BC sample contains {BC_CENTRES.length} centres. All {BC_CENTRES.length} listed an $80 enrolment fee.
+          {" "}{BC_CENTRES.filter((centre) => centre.materials === 30).length} listed a $30 materials fee,
+          {" "}{BC_CENTRES.filter((centre) => centre.materials === 20).length} listed $20, and
+          {" "}{BC_CENTRES.filter((centre) => centre.materials === null).length} did not list a materials fee.
+          The pages do not say how often materials fees apply.
+        </p>
+        <p>
+          <strong>Method and limits.</strong> We read the published fee blocks on November 1, 2026.
+          We kept each page&apos;s tuition range and did not estimate an average. We did not call centres,
+          collect private quotes or measure learning results. The Canada Virtual row is based outside BC
+          and is excluded from the BC counts and chart. Prices can change.
+        </p>
+        <ul>
+          <li><a href={`${DOWNLOAD}.csv`} download>Download the centre data (CSV)</a></li>
+          <li><a href={`${DOWNLOAD}.json`} download>Download the data and method (JSON)</a></li>
+          <li><a href={`${DOWNLOAD}.png`} download>Download the chart (PNG, 1920 by 1440)</a></li>
+          <li><a href={`${DOWNLOAD}.svg`} download>Download the chart (SVG)</a></li>
+        </ul>
+        <figure style={{ margin: "24px 0" }}>
+          <a href={`${DOWNLOAD}.png`}>
+            <Image
+              src={`${DOWNLOAD}.png`}
+              width={1920}
+              height={1440}
+              sizes="(max-width: 768px) 100vw, 760px"
+              style={{ width: "100%", height: "auto" }}
+              alt="Listed monthly tuition per subject at 13 BC Kumon centres, from $180 to $260. Each centre's range is also in the table above."
+            />
+          </a>
+          <figcaption>Open the full-size chart to read the centre labels. The table above contains the same prices.</figcaption>
+        </figure>
+        <p>
+          You can reuse our chart with source credit. Suggested credit: Unica Learning, published centre fees,
+          checked November 1, 2026. Link to this method and the original centre pages so readers can check the figures.
+          Kumon has not endorsed this guide.
+        </p>
       </Section>
 
       <Section title="What two subjects cost">
         <p>
           Kumon charges per subject, so math and reading together cost twice the monthly tuition. At the BC centre
-          prices above, that comes to about <strong>$360 to $520 a month</strong> in tuition. At most centres
-          ($190-$220 per subject), two subjects come to $380-$440 a month.
+          prices above, that comes to about <strong>$360 to $520 a month</strong> in tuition. At a centre
+          that lists $190-$220 per subject, two subjects come to $380-$440 a month.
         </p>
         <Callout label="Worked example (arithmetic only)" tone="sun">
           <p>
@@ -160,7 +179,7 @@ export default function Body() {
       <Section title="The online option">
         <p>
           Kumon runs virtual classes as well as centre classes.<Cite n={16} /> The Canada Virtual centre listed
-          tuition of $150 per subject per month and an $80 enrolment fee in October 2026. Its page did not list a
+          tuition of $150 per subject per month and an $80 enrolment fee on November 1, 2026. Its page did not list a
           materials fee.<Cite n={14} /> That is $300 a month for math and reading in tuition. If your family is not
           near a centre, or the drive twice a week is hard, the virtual centre is the option to ask about.
         </p>
@@ -194,7 +213,7 @@ export default function Body() {
           way.
         </p>
         <DataTable
-          caption="Monthly prices for one child, BC, October 2026"
+          caption="Monthly prices for one child: published rates and worked examples"
           columns={["Option", "About one month"]}
           rows={[
             [<>Kumon centre, one subject<Cite n={1} /></>, "$180-$260, plus fees"],
@@ -204,7 +223,7 @@ export default function Body() {
             [<>Tutors in Vancouver, all types<Cite n={20} /></>, "$240-$400 for 1 hour a week ($60-$100 an hour)"],
             ["Unica, math", "CAD 79.99, delivery included"],
           ]}
-          note="Tutor monthly figures are arithmetic: the hourly rate x 1 hour a week x 4 weeks. Math Tutor Network lists starting rates and adds $5 for lessons shorter than 1.5 hours. Tutor sources are tutoring company pages."
+          note="Kumon fees checked November 1, 2026. Tutor rates checked October 9, 2026. Tutor monthly figures are arithmetic: the hourly rate x 1 hour a week x 4 weeks. Math Tutor Network lists starting rates and adds $5 for lessons shorter than 1.5 hours. Tutor sources are tutoring company pages."
         />
         <p>
           Mathnasium, another learning centre, teaches math only.<Cite n={21} /> Its North Vancouver centre page does

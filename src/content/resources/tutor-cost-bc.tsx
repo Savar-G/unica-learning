@@ -3,15 +3,16 @@
 import Link from "next/link";
 import type { ResourceMeta } from "@/lib/resources";
 import { AssessmentCta, Callout, Cite, DataTable, KeyFacts, Section } from "@/components/article";
+import { TutoringCostCalculator } from "@/components/tutoring-cost-calculator";
 
 export const meta: ResourceMeta = {
   slug: "tutor-cost-bc",
   title: "How much does a tutor cost in BC? Math and reading tutor rates",
   description:
-    "How much does a tutor cost in BC? K-7 math tutoring in Vancouver is listed from $38-$40 an hour; tutors commonly charge $60-$100. Rates and monthly totals.",
+    "Compare published BC tutor rates and calculate your own tutoring cost. Enter an hourly quote, weekly hours, weeks and fees in the free calculator.",
   category: "Comparing options",
   lead: "Hourly tutor rates for elementary math and reading in BC, what moves the price, and what a month of tutoring adds up to.",
-  updated: "2026-10-09",
+  updated: "2026-11-01",
   faqs: [
     {
       q: "How much does a math tutor cost per hour in Vancouver?",
@@ -138,6 +139,12 @@ export default function Body() {
           ]}
           note="This is arithmetic on published rates, not a quote. Some months have 5 weeks. Short-lesson fees, travel and materials can add to it."
         />
+      </Section>
+
+      <Section title="Free tutoring cost calculator" id="calculator">
+        <p>Use your tutor&apos;s current quote to estimate the cost for one child. The published rates above were checked in October 2026. Ask the tutor to confirm their current rate and fees.</p>
+        <TutoringCostCalculator />
+        <p>To compare formats, see <Link href="/compare">how a tutor, learning centre and Unica differ</Link>. For our current price, sibling discount and free first-month terms, see <Link href="/pricing">Unica math program pricing</Link>. The programs provide different kinds of support, so cost alone does not show which fits your child.</p>
       </Section>
 
       <Section title="Learning centre prices for comparison">

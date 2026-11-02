@@ -76,7 +76,7 @@ export function Hero() {
         highlight={HERO.highlight}
         after={HERO.after}
         lead={<><span className="nowrap">Miss <SwapWord words={TOPICS} /></span> {HERO.lead}</>}
-        meta={["Free assessment", "First month free", "Available across Canada", "Cancel anytime"]}
+        meta={["Free assessment", "First month free", "BC curriculum", "Cancel anytime"]}
         page={null}
         report={null}
         animate
@@ -94,7 +94,7 @@ export function Hero() {
 const STEP_SIZES = "(min-width: 1080px) 380px, (min-width: 700px) 45vw, 92vw";
 
 const STEPS = [
-  { n: "01", t: "Assess", d: "Your child takes the free online assessment. The report shows their level and gaps. You choose a plan after.",
+  { n: "01", t: "Assess", d: "Your child takes the free online assessment. The report shows their level and gaps. BC-curriculum families can choose a plan. Other curricula can join the waitlist.",
     v: <Image src={assessPhoto} alt="A girl and her mother sit at a laptop, with a workbook open on the table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "02", t: "Deliver", d: "We mail a workbook matched to their level and gaps, with practice built around the math skills they learn at school.", v: <Image src={deliverPhoto} alt="Two mailers waiting on a front step" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
   { n: "03", t: "Practice", d: <>Your child works on paper for 15 to 30 minutes a day, 5 days a week, with rewards for every page. <Link href="/rewards" className="more-link">See the rewards <span aria-hidden="true">→</span></Link></>,
@@ -274,7 +274,7 @@ export function ThreadEnd() {
 }
 
 const FOOTER_GROUPS: { title: string; links: { label: string; href: string }[] }[] = [
-  { title: "Learn", links: [{ label: "How it works", href: "/#how" }, { label: "What's included", href: "/whats-included" }, { label: "Pricing", href: "/#price" }, { label: "FAQ", href: "/#faq" }, { label: "How we compare", href: "/compare" }, { label: "Curriculum", href: "/curriculum" }] },
+  { title: "Learn", links: [{ label: "How it works", href: "/#how" }, { label: "What's included", href: "/whats-included" }, { label: "Pricing", href: "/pricing" }, { label: "Free math assessment", href: "/math-assessment" }, { label: "FAQ", href: "/#faq" }, { label: "How we compare", href: "/compare" }, { label: "Curriculum", href: "/curriculum" }] },
   { title: "Company", links: [{ label: "Our story", href: "/our-story" }, { label: "Rewards", href: "/rewards" }, { label: "Resources", href: "/resources" }, { label: "Blog", href: "/blog" }] },
   { title: "Help", links: [{ label: "Contact us", href: "/contact" }, { label: "Privacy", href: "/privacy" }, { label: "Terms", href: "/terms" }] },
 ];

@@ -1133,6 +1133,66 @@ export type Database = {
           },
         ]
       }
+      maya_call_alerts: {
+        Row: {
+          call_id: string
+          claimed_at: string
+          created_at: string
+          email_id: string | null
+          error: string | null
+          id: string
+          level: string
+          parent_id: string
+          status: string
+          subject: string | null
+          text_body: string | null
+          updated_at: string
+        }
+        Insert: {
+          call_id: string
+          claimed_at: string
+          created_at?: string
+          email_id?: string | null
+          error?: string | null
+          id?: string
+          level: string
+          parent_id: string
+          status: string
+          subject?: string | null
+          text_body?: string | null
+          updated_at?: string
+        }
+        Update: {
+          call_id?: string
+          claimed_at?: string
+          created_at?: string
+          email_id?: string | null
+          error?: string | null
+          id?: string
+          level?: string
+          parent_id?: string
+          status?: string
+          subject?: string | null
+          text_body?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maya_call_alerts_call_fkey"
+            columns: ["call_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "maya_calls"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "maya_call_alerts_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       maya_calls: {
         Row: {
           assessment_id: string | null
@@ -1147,6 +1207,8 @@ export type Database = {
           created_at: string
           ended_at: string | null
           fallbacks: number | null
+          flag: string | null
+          flagged_at: string | null
           highest_hint: number | null
           id: string
           kind: string
@@ -1196,6 +1258,8 @@ export type Database = {
           created_at?: string
           ended_at?: string | null
           fallbacks?: number | null
+          flag?: string | null
+          flagged_at?: string | null
           highest_hint?: number | null
           id: string
           kind: string
@@ -1245,6 +1309,8 @@ export type Database = {
           created_at?: string
           ended_at?: string | null
           fallbacks?: number | null
+          flag?: string | null
+          flagged_at?: string | null
           highest_hint?: number | null
           id?: string
           kind?: string
