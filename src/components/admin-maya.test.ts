@@ -3,7 +3,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-import { MayaCallList } from "@/components/admin-maya";
+import { MayaCall, MayaCallList } from "@/components/admin-maya";
+import { boardPlayback } from "@/lib/maya-call";
+import { reviewFixture } from "@/lib/maya-call-review-fixture";
 import type { CallListRow } from "@/lib/maya-call-server";
 
 // The admin Maya calls list (#333), through the component's public interface.
@@ -26,4 +28,23 @@ describe("the calls list's safety label", () => {
     const none = text([row({ outcome: "solved" })]);
     for (const label of ["Child may be in danger now", "Possible safety concern", "Child asked for harmful content"]) expect(none).not.toContain(label);
   });
+});
+
+it("uses the same number-check words on the list and the call page", async () => {
+  const fixture = await reviewFixture();
+  const list = text([row({ mishearing: fixture.text.outcome!.mishearing })]);
+  const call = renderToStaticMarkup(createElement(MayaCall, { initial: fixture.text, board: boardPlayback(fixture.text.batches), childName: "Iris" })).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  for (const shown of [list, call]) {
+    expect(shown).toContain("Numbers Maya checked");
+    expect(shown).toContain("0 checked, 0 fixed");
+    expect(shown).not.toContain("0 asked, 0 corrected");
+  }
+});
+
+it("shows plain links to both call pages, including a route back from an empty page", () => {
+  const markup = renderToStaticMarkup(createElement(MayaCallList, { calls: [], older: "next-token", newer: "start" }));
+  expect(markup).toContain("Older calls");
+  expect(markup).toContain("Newer calls");
+  expect(markup).toContain('/admin/maya?cursor=next-token');
+  expect(markup).toContain('href="/admin/maya"');
 });

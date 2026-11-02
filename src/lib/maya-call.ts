@@ -300,6 +300,10 @@ export interface CallView {
   freeTalk: { on: boolean; reviewer: string | null; lines: FreeTalkLine[] };
   /** Maya's board batches, in order. */
   batches: Batch[];
+  /** Saved board times and child ink, for the admin replay. Older calls rebuild this from their trace. */
+  boardHistory: BoardHistory;
+  /** Service diagnostics belong only in the closed technical details. */
+  technicalNotes: string[];
   outcome: Outcome | null;
   counts: CallRecord["counts"];
   learningEventId: string | null;
@@ -401,7 +405,7 @@ function transcriptOf(trace: MayaTrace): TranscriptLine[] {
     else if (t.kind === "maya" && t.output && t.output.say.length) lines.push({ speaker: "maya", text: t.output.say.join(" "), second: second(t.at) });
     else if (t.kind === "writing") lines.push({ speaker: "note", text: t.status === "started" ? "The child started writing." : "The child finished writing.", second: second(t.at) });
     else if (t.kind === "tick") lines.push({ speaker: "note", text: "The child stayed quiet.", second: second(t.at) });
-    else if (t.kind === "technical") lines.push({ speaker: "note", text: `The call stopped: ${t.detail}.`, second: second(t.at) });
+    else if (t.kind === "technical") lines.push({ speaker: "note", text: "The call stopped because of a connection or service problem.", second: second(t.at) });
     else if (t.kind === "hang_up") lines.push({ speaker: "note", text: "The child hung up.", second: second(t.at) });
   }
   return lines;
@@ -468,6 +472,8 @@ export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertStat
     transcript: transcriptOf(trace),
     freeTalk: freeTalkOf(trace),
     batches: batchesOf(trace.board),
+    boardHistory: record.boardHistory ?? boardHistoryOf(trace),
+    technicalNotes: trace.turns.flatMap((t) => t.kind === "technical" ? [t.detail] : []),
     outcome: record.outcome ?? trace.outcome,
     counts: record.counts,
     learningEventId: record.learningEventId,
