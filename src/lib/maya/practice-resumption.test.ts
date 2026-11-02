@@ -118,3 +118,30 @@ describe("carry selection after column progress", () => {
     c.child("Help."); expect(lineOffers(c.session).guide?.some((o) => o.line === "step.point" && o.slots.step === "hundreds")).toBe(true);
   });
 });
+
+describe("carry explanation after an accepted answer (R410-6)", () => {
+  const work = { ...accept, reading: { answers: [answer(16, "ones"), answer(6, "tens"), answer(66, "result")] } };
+
+  it("keeps the solved answer on the writing path after the explanation", () => {
+    const c = call(); c.child("7 plus 9 is 16. 2 plus 3 plus 1 is 6. I got 66."); c.ok(work);
+    c.child("I didn't carry from the ones to the tens."); expect(said(c.ok(regroup("tens")).effects)).toContain("1 ten");
+    expect(c.session.state).toBe("CHECK"); expect(c.session.solved).toBe("child"); expect(c.session.done).toEqual(["ones", "tens"]);
+    c.child("Okay."); c.ok(write); expect(c.session.state).toBe("WRITE_CLOSE");
+  });
+
+  it("writes the accepted answer through the text adapter across a saved restore", async () => {
+    let now = Date.UTC(2026, 10, 1);
+    const model = fakeMayaModel({ answer: (input) => ({ version: 2, ...(!input.childTurn
+      ? { act: "open", parts: [line("open.hello"), line("question.problem")] }
+      : input.childTurn.includes("didn't carry") ? regroup("tens")
+      : input.childTurn === "Okay." ? write : work) }) });
+    const options = { callId: "practice-resumption-solved-carry", package: FIXTURES.A, model, clock: () => now, random: 3 };
+    let c = createTextSession(options);
+    await c.start(); now += 4000; await c.child("7 plus 9 is 16. 2 plus 3 plus 1 is 6. I got 66.");
+    now += 4000; await c.child("I didn't carry from the ones to the tens.");
+    c = createTextSession({ ...options, resume: JSON.parse(JSON.stringify(await c.saved())) });
+    now += 4000; const output = await c.child("Okay.");
+    expect(output.say.join(" ")).toContain("66"); expect(c.session.state).toBe("WRITE_CLOSE"); expect(c.session.solved).toBe("child");
+    await c.finish(); const trace = c.trace(); expect(checkTrace(trace).ok).toBe(true); expect(trace.counts.refusals).toBe(0);
+  });
+});

@@ -1018,7 +1018,9 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
         s.stuckStep ??= ladder.step;
         s.assistance.push(p.level >= 3 ? "guided" : "hint");
       }
-      moveTo(s, "GUIDE_TARGET");
+      // Once the answer stands, a guide only explains (a carry at a completed column): the check, with its paper and
+      // close acts, goes on (R410-6). GUIDE_TARGET would ask for an answer the child already gave.
+      moveTo(s, s.solved !== null ? "CHECK" : "GUIDE_TARGET");
       break;
     }
     case "accept_answer":
