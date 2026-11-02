@@ -26,7 +26,7 @@ async function fixture() {
   const eventStore=memoryLearningEventStore({children:[{id:C,parentId:P}],tests:[{id:T,childId:C}]});
   const rebuild=vi.fn(async()=>true);
   const model=ruleMayaModel();
-  const seams:CallSeams={store,connections,history:memoryWordingHistoryStore(),events:learningEvents(eventStore),rebuild,model:()=>model,isTestFamily:async()=>true,clock:()=>now,newId:()=> '00000000-0000-4000-8000-000000000001',seed:()=>42};
+  const seams:CallSeams={store,connections,alerts:{send:async()=>{},list:async()=>[]},history:memoryWordingHistoryStore(),events:learningEvents(eventStore),rebuild,model:()=>model,isTestFamily:async()=>true,clock:()=>now,newId:()=> '00000000-0000-4000-8000-000000000001',seed:()=>42};
   const calls=mayaCalls(seams);
   const made=await calls.startVoice({kind:'admin_test',startedBy:null,parentId:P,childId:C,childName:'Leah',package:pkg});
   if(!made.ok)throw Error(made.error);

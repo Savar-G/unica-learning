@@ -1,0 +1,104 @@
+{
+  "checked": "2026-11-01",
+  "method": "Keenable live fetch. Direct shell GET of the first centre returned HTTP 403 and was not used as a price source.",
+  "observations": [
+    {
+      "slug": "vancouver-marpole",
+      "url": "https://www.kumon.com/vancouver-marpole/aboutcenter",
+      "checked": "2026-11-01",
+      "pricing": "#### Pricing and Fees\n\n#### Tuition\n\n$230-$260\nPer subject, per month\n\n#### Enrollment Fee\n\n$80\n Per student\n\n#### Materials Fee\n\n$30",
+      "available": true
+    },
+    {
+      "slug": "vancouver-first-avenue",
+      "url": "https://www.kumon.com/vancouver-first-avenue/aboutcenter",
+      "checked": "2026-11-01",
+      "pricing": "#### Pricing and Fees\n\n#### Tuition\n\n$210\nPer subject, per month\n\n#### Enrollment Fee\n\n$80\n Per student\n\n#### Materials Fee\n\n$30",
+      "available": true
+    },
+    {
+      "slug": "vancouver-cedar-cottage-bc",
+      "url": "https://www.kumon.com/vancouver-cedar-cottage-bc/aboutcenter",
+      "checked": "2026-11-01",
+      "pricing": "#### Pricing and Fees\n\n#### Tuition\n\n$190-220\nPer subject, per month\n\n#### Enrollment Fee\n\n$80\n Per student\n\n#### Materials Fee\n\n$30",
+      "available": true
+    },
+    {
+      "slug": "vancouver-killarney",
+      "url": "https://www.kumon.com/vancouver-killarney/aboutcenter",
+      "checked": "2026-11-01",
+      "pricing": "#### Pricing and Fees\n\n#### Tuition\n\n$ 180-220\nPer subject, per month\n\n#### Enrollment Fee\n\n$80\n Per student\n\n#### Materials Fee\n\n$30",
+      "available": true
+    },
+    {
+      "slug": "burnaby-highgate-bc",
+      "url": "https://www.kumon.com/burnaby-highgate-bc/aboutcenter",
+      "checked": "2026-11-01",
+      "pricing": "#### Pricing and Fees\n\n#### Tuition\n\n$190-200$\nPer subject, per month\n\n#### Enrollment Fee\n\n$80\n Per student\n\n#### Materials Fee\n\n$30",
+      "available": true
+    },
+    {
+      "slug": "burnaby-burnaby-heights",
+      "url": "https://www.kumon.com/burnaby-burnaby-heights/aboutcenter",
+      "checked": "2026-11-01",
+      "pricing": "#### Pricing and Fees\n\n#### Tuition\n\n$185-$200\nPer subject, per month\n\n#### Enrollment Fee\n\n$80\n Per student",
+      "available": true
+    },
+    {
+      "slug": "new-westminster-queensborough-landing",
+      "url": "https://www.kumon.com/new-westminster-queensborough-landing/aboutcenter",
+      "checked": "2026-11-01",
+      "pricing": "#### Pricing and Fees\n\n#### Tuition\n\n$190\nPer subject, per month\n\n#### Enrollment Fee\n\n$80\n Per student\n\n#### Materials Fee\n\n$30",
+      "available": true
+    },
+    {
+      "slug": "north-vancouver-capilano-mall",
+      "url": "https://www.kumon.com/north-vancouver-capilano-mall/aboutcenter",
+      "checked": "2026-11-01",
+      "pricing": "#### Pricing and Fees\n\n#### Tuition\n\n$200-220\nPer subject, per month\n\n#### Enrollment Fee\n\n$80\n Per student\n\n#### Materials Fee\n\n$30",
+      "available": true
+    },
+    {
+      "slug": "richmond-steveston",
+      "url": "https://www.kumon.com/richmond-steveston/aboutcenter",
+      "checked": "2026-11-01",
+      "pricing": "#### Pricing and Fees\n\n#### Tuition\n\n200-225\nPer subject, per month\n\n#### Enrollment Fee\n\n$80\n Per student\n\n#### Materials Fee\n\n$30",
+      "available": true
+    },
+    {
+      "slug": "surrey-fraser-heights",
+      "url": "https://www.kumon.com/surrey-fraser-heights/aboutcenter",
+      "checked": "2026-11-01",
+      "pricing": "#### Pricing and Fees\n\n#### Tuition\n\n$180-$200\nPer subject, per month\n\n#### Enrollment Fee\n\n$80\n Per student\n\n#### Materials Fee\n\n$20",
+      "available": true
+    },
+    {
+      "slug": "coquitlam-westwood",
+      "url": "https://www.kumon.com/coquitlam-westwood/aboutcenter",
+      "checked": "2026-11-01",
+      "pricing": "#### Pricing and Fees\n\n#### Tuition\n\n$190\nPer subject, per month\n\n#### Enrollment Fee\n\n$80\n Per student\n\n#### Materials Fee\n\n$30",
+      "available": true
+    },
+    {
+      "slug": "langley-willoughby-town-centre",
+      "url": "https://www.kumon.com/langley-willoughby-town-centre/aboutcenter",
+      "checked": "2026-11-01",
+      "pricing": "#### Pricing and Fees\n\n#### Tuition\n\n$195-$220\nPer subject, per month\n\n#### Enrollment Fee\n\n$80\n Per student\n\n#### Materials Fee\n\n$30",
+      "available": true
+    },
+    {
+      "slug": "victoria-oak-bay",
+      "url": "https://www.kumon.com/victoria-oak-bay/aboutcenter",
+      "checked": "2026-11-01",
+      "pricing": "#### Pricing and Fees\n\n#### Tuition\n\n$200\nPer subject, per month\n\n#### Enrollment Fee\n\n$80\n Per student\n\n#### Materials Fee\n\n$30",
+      "available": true
+    },
+    {
+      "slug": "canada-virtual",
+      "url": "https://www.kumon.com/canada-virtual/aboutcenter",
+      "checked": "2026-11-01",
+      "pricing": "#### Pricing and Fees\n\n#### Tuition\n\n$150\nPer subject, per month\n\n#### Enrollment Fee\n\n$80\n Per student",
+      "available": true
+    }
+  ]
+}

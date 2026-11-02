@@ -128,6 +128,8 @@ async function voiceCall(options: { speech?: ProbeSTT; speaker?: Speaker; seed?:
   const seams: CallSeams = {
     store,
     connections,
+    // These calls raise no flag; the safety flag and its alert have their own tests (src/lib/maya-call-safety.test.ts).
+    alerts: { send: async () => {}, list: async () => [] },
     history: memoryWordingHistoryStore(),
     events: learningEvents(memoryLearningEventStore({ children: [{ id: CHILD, parentId: PARENT }], tests: [{ id: TEST, childId: CHILD }] })),
     rebuild,

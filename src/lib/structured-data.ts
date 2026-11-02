@@ -16,7 +16,7 @@ const offer = (p: (typeof PLANS)[keyof typeof PLANS]) => ({
   priceCurrency: "CAD",
   priceSpecification: { "@type": "UnitPriceSpecification", price: p.price, priceCurrency: "CAD", unitText: "MONTH", billingDuration: "P1M" },
   eligibleRegion: { "@type": "Country", name: "Canada" },
-  url: `${SITE_URL}/#price`,
+  url: `${SITE_URL}/pricing`,
 });
 
 const ORGANIZATION = {
@@ -44,7 +44,7 @@ export function homeJsonLd() {
         description: SITE_DESCRIPTION,
         provider: { "@id": ORG_ID },
         areaServed: { "@type": "Country", name: "Canada" },
-        audience: { "@type": "PeopleAudience", suggestedMinAge: 6, suggestedMaxAge: 12 },
+        audience: { "@type": "PeopleAudience", suggestedMinAge: 5, suggestedMaxAge: 14 },
         offers: [offer(PLANS.one)],
       },
       {

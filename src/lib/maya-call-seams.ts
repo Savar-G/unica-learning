@@ -10,6 +10,8 @@ import type { Database } from "@/lib/database";
 import { learningEvents } from "@/lib/learning-events";
 import { learningEventStore } from "@/lib/learning-events-store";
 import { mayaCalls, FAKE_MODEL_ID, type CallSeams, type MayaCalls } from "@/lib/maya-call";
+import { callAlerts } from "@/lib/maya-call-alert";
+import { mayaAlertLedger } from "@/lib/maya-call-alert-store";
 import { mayaCallStore, mayaConnectionLog } from "@/lib/maya-call-store";
 import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
@@ -19,10 +21,13 @@ import { workbookStore } from "@/lib/workbook-store";
 
 // The seams of Maya's calls (src/lib/maya-call.ts) on a Supabase client with the secret key: the call store, the
 // connection log of voice calls, the wording history, the learning events, the profile rebuild, the model and the
-// free-talk review. The web server (src/lib/maya-call-server.ts) and Maya's voice worker (worker/maya-voice) both use
+// free-talk review and the internal safety alerts (#333). The web server (src/lib/maya-call-server.ts) and Maya's voice worker (worker/maya-voice) both use
 // it, so a voice call is stored exactly as a text call is. No Next.js import: the worker runs outside Next.
 
 type Env = Readonly<Record<string, string | undefined>>;
+
+/** The site a safety alert's admin link points to when the caller names none (the voice worker). */
+const siteOrigin = (env: Env) => env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/+$/, "") || "https://unicalearning.com";
 
 /**
  * The model a call uses: null asks for the one a new call uses now (Maya's model through OpenRouter, `AI_MODEL`, when
@@ -65,9 +70,11 @@ async function rebuild(db: SupabaseClient<Database>, childId: string): Promise<b
   }
 }
 
-export function callSeams(db: SupabaseClient<Database>, options: { env?: Env; rebuild?: (childId: string) => Promise<boolean> } = {}): CallSeams {
+/** `origin`: the site the safety alert's admin link points to; default NEXT_PUBLIC_SITE_URL, else the production site. */
+export function callSeams(db: SupabaseClient<Database>, options: { env?: Env; origin?: string; rebuild?: (childId: string) => Promise<boolean> } = {}): CallSeams {
   const env = options.env ?? process.env;
   return {
+    alerts: callAlerts({ ledger: mayaAlertLedger(db), to: env.SIGNUP_NOTIFY_EMAIL || null, origin: options.origin ?? siteOrigin(env) }),
     store: mayaCallStore(db),
     connections: mayaConnectionLog(db),
     history: wordingHistoryStore(db),

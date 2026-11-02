@@ -15,10 +15,9 @@ export default async function MayaCallsPage() {
   return (
     <AdminFrame email={admin.email} section="maya" title="Maya calls">
       <p className="adm-lead">
-        Try Maya, the Unica Teaching Assistant, on a real test question. Pick a question a test child was given, type
-        or say what the child says, and watch Maya answer and write on the board. Each call is saved with its transcript, board,
-        outcome and versions, and writes one learning event for that child. Only test families can be used: their
-        minutes and emails are never touched.
+        Try Maya, the Unica Teaching Assistant, on a real question from a test child. Type or say what the child says and watch
+        Maya answer and write on the board. Only test families can be used: no minutes are counted and no parents are
+        emailed.
       </p>
       <MayaPicker model={nextCallModel()} voice={voiceReady()}>{children}</MayaPicker>
       <h2>Test calls</h2>

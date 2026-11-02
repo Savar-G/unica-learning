@@ -38,6 +38,8 @@ function setup() {
   const seams: CallSeams = {
     store,
     connections,
+    // These calls raise no flag; the safety flag and its alert have their own tests (maya-call-safety.test.ts).
+    alerts: { send: async () => {}, list: async () => [] },
     history: memoryWordingHistoryStore(),
     events: learningEvents(eventStore),
     rebuild,

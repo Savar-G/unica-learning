@@ -33,6 +33,10 @@ function changeColumns(c: CallChange): Update {
   if (c.speechToText !== undefined) u.speech_to_text = c.speechToText;
   if (c.voice !== undefined) u.voice = c.voice;
   if (c.connectedSeconds !== undefined) u.connected_seconds = c.connectedSeconds;
+  if (c.flag !== undefined) {
+    u.flag = c.flag?.level ?? null;
+    u.flagged_at = c.flag?.at ?? null;
+  }
   if (c.counts !== undefined) {
     u.maya_turns = c.counts?.mayaTurns ?? null;
     u.child_turns = c.counts?.childTurns ?? null;
@@ -93,6 +97,7 @@ export function fromCallRow(r: Row): CallRecord {
     speechToText: r.speech_to_text,
     voice: r.voice,
     connectedSeconds: r.connected_seconds,
+    flag: r.flag && r.flagged_at ? { level: r.flag, at: r.flagged_at } : null,
   };
 }
 
