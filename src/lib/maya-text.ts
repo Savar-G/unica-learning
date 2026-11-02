@@ -232,6 +232,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const input = modelInput(folded.session, repair);
     const at = Math.max(clock(), now());
     append({ kind: "request", at, requestId, source });
+    if (folded.session.outcome || folded.request?.id !== requestId) return;
     // The handler logs even a late response from a provider that ignores abort.
     const response = Promise.resolve().then(() => model.propose(input, controller.signal)).then((proposal) => {
       append({ kind: "response", at: now(), requestId, proposal, ms: now() - at });

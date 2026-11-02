@@ -9,7 +9,7 @@
 // (`mayaFinished`); "Take the pen" moves it to the child at any time; giving it back moves it to Maya. A
 // stroke that ends after the pen moved to Maya is refused. The child's undo and clear touch the child's ink only, and
 // nothing of Maya's ever removes or covers it (the board core's rule).
-import { addChildInk, applyBatch, createScene, type Batch, type BoardPath, type Refusal, type Scene } from "@/lib/board";
+import { addChildInk, applyBatch, boardView, createScene, type Batch, type BoardPath, type Refusal, type Scene } from "@/lib/board";
 import { frameAt, type FrameStroke, type Timeline } from "@/lib/board-svg";
 import type { PenHolder } from "@/lib/board-protocol";
 import type { StrokeRecording, TimedPoint } from "@/lib/strokes";
@@ -309,6 +309,8 @@ function mayaTimeline(events: readonly HistoryEvent[]): Timeline {
       end = Math.max(end, offset + startMs + p.durationMs);
     }
     end = Math.max(end, offset);
+    // Every accepted batch sets the view, even a focus that draws no new strokes.
+    marks.push({ fromMs: end, page: boardView(scene).page });
   }
   // The page in view follows the pen: whoever wrote last, Maya or the child.
   for (const m of marks.sort((a, b) => a.fromMs - b.fromMs)) if (m.page !== pages.at(-1)!.page) pages.push(m);
