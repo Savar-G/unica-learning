@@ -70,7 +70,7 @@ export function MayaBoard({ steps, viewBox, label, instant = false, shown = 0, f
         return (
           <path
             key={path.id}
-            d={shapes.get(path.id) ?? pathData(path.pts)}
+            d={savedFrame ? pathData(path.pts) : shapes.get(path.id) ?? pathData(path.pts)}
             fill="none"
             stroke={INK[path.ink]}
             strokeOpacity={path.opacity}

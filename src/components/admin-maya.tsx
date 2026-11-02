@@ -167,13 +167,24 @@ export function MayaPicker({ children, model, voice }: { children: DemoChild[]; 
   );
 }
 
-export function MayaCallList({ calls }: { calls: CallListRow[] }) {
-  if (calls.length === 0) return <p className="adm-empty">No test calls yet.</p>;
+function CallPages({ older, newer }: { older?: string | null; newer?: string | null }) {
+  if (!older && !newer) return null;
+  const href = (cursor: string) => cursor === "start" ? `${ADMIN_PATH}/maya` : `${ADMIN_PATH}/maya?cursor=${encodeURIComponent(cursor)}`;
+  return <nav className="mc-pages" aria-label="Call pages">
+    {newer && <Link className="btn sm ghost adm-btn" href={href(newer)}>Newer calls</Link>}
+    {older && <Link className="btn sm ghost adm-btn" href={href(older)}>Older calls</Link>}
+  </nav>;
+}
+
+export function MayaCallList({ calls, older, newer }: { calls: CallListRow[]; older?: string | null; newer?: string | null }) {
   return (
+    <>
+    <CallPages older={older} newer={newer} />
+    {calls.length === 0 ? <p className="adm-empty">No calls on this page.</p> :
     <div className="adm-scroll mc-calls">
       <table className="adm-table">
         <thead>
-          <tr><th>Started and flag</th><th>Child and question</th><th>How</th><th>Outcome and help</th><th className="adm-num">Call time</th><th className="adm-num">Minutes used</th><th>Number checks</th></tr>
+          <tr><th>Started and flag</th><th>Child and question</th><th>How</th><th>Outcome and help</th><th className="adm-num">Call time</th><th className="adm-num">Minutes used</th><th>Numbers Maya checked</th></tr>
         </thead>
         <tbody>
           {calls.map((c) => (
@@ -190,12 +201,14 @@ export function MayaCallList({ calls }: { calls: CallListRow[] }) {
               </td>
               <td data-label="Call time" className="adm-num">{c.seconds === null ? "-" : clock(c.seconds)}</td>
               <td data-label="Minutes used" className="adm-num" title="Test calls do not use the child's minutes">0</td>
-              <td data-label="Number checks" title="Numbers Maya asked to confirm, and times the child said she heard wrong">{c.mishearing ? `${c.mishearing.confirmations} asked, ${c.mishearing.corrections} corrected` : "Not recorded"}</td>
+              <td data-label="Numbers Maya checked" title="Numbers Maya asked to confirm, and times the child said she heard wrong">{c.mishearing ? `${c.mishearing.confirmations} checked, ${c.mishearing.corrections} fixed` : "Not recorded"}</td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
+    </div>}
+    <CallPages older={older} newer={newer} />
+    </>
   );
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boardPaths, childInk, type Batch } from "@/lib/board";
+import { boardPaths, boardView, childInk, type Batch } from "@/lib/board";
 import {
   BOARD_DRAFT_ROOT,
   HARD_MAX_DRAFTS,
@@ -343,6 +343,24 @@ describe("ink kept by a tab that lost the board (R370-5-1)", () => {
 });
 
 describe("the replay of a saved board", () => {
+  it("R442-1: returns to the saved page after a focus batch with no new strokes", () => {
+    let h = createHistory();
+    for (const [i, id] of ["a", "b", "c", "d"].entries()) {
+      h = ok(mayaWrites(h, { transactionId: id, commands: [{
+        op: "columns", id, operation: "add", operands: [{ id: "top", value: "27" }, { id: "bottom", value: "39" }],
+        place: i ? { below: ["a", "b", "c"][i - 1] } : { region: "main" },
+      }] }, i * 10000));
+    }
+    const beforeFocus = replayOf(h);
+    expect(replayFrame(beforeFocus, Infinity).page).toBeGreaterThan(1);
+    h = ok(mayaWrites(h, { transactionId: "focus", commands: [{ op: "focus", target: { objectId: "a", part: "whole" } }] }, 40000));
+    const r = replayOf(h);
+    expect(replayFrame(r, 39999).page).toBe(replayFrame(beforeFocus, Infinity).page);
+    expect(replayFrame(r, 40000).page).toBe(1);
+    expect(replayFrame(r, Infinity).page).toBe(boardView(boardScene(h)).page);
+    expect(replayFrame(r, Infinity).maya.map((s) => s.path)).toEqual(boardPaths(boardScene(h)).filter((p) => p.page === 1));
+  });
+
   const saved = () => {
     let h = withPen();
     h = ok(drawStroke(h, stroke(0.1, 0.3, 2100)));

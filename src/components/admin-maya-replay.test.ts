@@ -1,12 +1,14 @@
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MayaBoard } from "./maya-board";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({}) }));
 import { MayaCall } from "./admin-maya";
 import { boardPlayback, recordView } from "@/lib/maya-call";
-import { historyFromRecording, replayFrame, type BoardHistory } from "@/lib/board-history";
+import { createHistory, mayaWrites, takePen, givePen, drawStroke, historyFromRecording, replayFrame, type Change, type BoardHistory } from "@/lib/board-history";
 import { pathData } from "@/lib/board-svg";
 import { callReplay } from "@/lib/maya-call-review";
 import { reviewFixture } from "@/lib/maya-call-review-fixture";
@@ -107,4 +109,21 @@ it("scrolls within the transcript when the board puts the transcript far down th
   const selected = host.querySelector<HTMLElement>('[aria-current="step"]')!;
   expect(scroll).toHaveBeenLastCalledWith({ top: selected.offsetTop - 12, behavior: "instant" });
   expect(selected.offsetTop).toBeLessThan(list.offsetTop);
+});
+
+it("R442-2: renders the saved geometry when child ink moves Maya's writing", () => {
+  const accepted = (change: Change) => { if (!change.ok) throw new Error(change.reason); return change.history; };
+  let history = accepted(takePen(createHistory(), 0));
+  history = accepted(drawStroke(history, { erase: false, w: 3.2, boardWidth: 800, page: 1, pts: [[0.06, 0.06, 10], [0.11, 0.08, 20]] }));
+  history = accepted(givePen(history, 30));
+  const batch = { transactionId: "sum", commands: [{ op: "columns", id: "sum", operation: "add", operands: [{ id: "top", value: "27" }, { id: "bottom", value: "39" }], place: { region: "main" } }] };
+  history = accepted(mayaWrites(history, batch, 40));
+  const saved = callReplay({ boardHistory: history, transcript: [], outcome: null });
+  const frame = replayFrame(saved, Infinity);
+  const board = boardPlayback([batch]);
+  expect(frame.maya[0].path.id).toBe(board.steps[0].drawn[0].id);
+  expect(pathData(frame.maya[0].path.pts)).not.toBe(pathData(board.steps[0].drawn[0].pts));
+  const host = document.createElement("div");
+  host.innerHTML = renderToStaticMarkup(createElement(MayaBoard, { steps: board.steps, viewBox: saved.viewBox, label: "Saved board", frame }));
+  expect([...host.querySelectorAll("svg > path")].map((p) => p.getAttribute("d"))).toEqual(frame.maya.map((s) => pathData(s.path.pts)));
 });

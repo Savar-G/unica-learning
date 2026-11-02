@@ -9,13 +9,14 @@ export const metadata = pageMetadata({ path: `${ADMIN_PATH}/maya`, title: "Admin
 
 // Maya's test calls (#323): start a text call on a supported question of a test family's child, and the calls so far.
 // Admins only; test families only (D-099), so no real family is touched.
-export default async function MayaCallsPage() {
+export default async function MayaCallsPage({ searchParams }: PageProps<"/admin/maya">) {
   const admin = await requireAdmin();
-  const [children, calls] = await Promise.all([demoChildren(admin), listCalls(admin)]);
+  const { cursor } = await searchParams;
+  const [children, calls] = await Promise.all([demoChildren(admin), listCalls(admin, 50, typeof cursor === "string" ? cursor : undefined)]);
   return (
     <AdminFrame email={admin.email} section="maya" title="Maya calls">
       <p className="adm-note">Safety calls come first, with the most urgent first. Calls within each group are newest first. Test calls do not use the child&apos;s minutes.</p>
-      <MayaCallList calls={calls} />
+      <MayaCallList calls={calls.calls} older={calls.older} newer={calls.newer} />
       <h2>Try Maya</h2>
       <p className="adm-lead">
         Try Maya, the Unica Teaching Assistant, on a real question from a test child. Type or say what the child says and watch

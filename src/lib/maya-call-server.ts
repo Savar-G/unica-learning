@@ -151,31 +151,61 @@ export interface CallListRow {
   safetyFlag: boolean;
 }
 
-/** The newest calls within each flag level. Apply the limit after priority, including older safety records. */
-export async function listCalls(a: AdminSession, limit = 50): Promise<CallListRow[]> {
+export interface CallListPage {
+  calls: CallListRow[];
+  older: string | null;
+  newer: string | null;
+}
+
+type CallCursor = { group: number; at: string; id: string; direction: "older" | "newer" };
+const callCursor = (value?: string): CallCursor | null => {
+  if (!value || value.length > 500) return null;
+  try {
+    const c = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+    return Number.isInteger(c.group) && c.group >= 0 && c.group < 4 &&
+      typeof c.at === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(c.at) && Number.isFinite(Date.parse(c.at)) &&
+      typeof c.id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.id) &&
+      (c.direction === "older" || c.direction === "newer") ? c : null;
+  } catch { return null; }
+};
+
+/** Calls by flag level, then newest, with a saved place for each direction. No database offset or total-size cap. */
+export async function listCalls(a: AdminSession, limit = 50, token?: string): Promise<CallListPage> {
+  const cursor = callCursor(token);
+  const backwards = cursor?.direction === "newer";
   const filters = [
     "flag.eq.safety_immediate,and(flag.is.null,safety_severity.eq.immediate)",
     "flag.eq.safety_concern,and(flag.is.null,safety_severity.eq.concern),and(flag.is.null,safety_severity.is.null,safety_flag.eq.true)",
     "flag.eq.unsafe_request",
     "and(flag.is.null,safety_severity.is.null,safety_flag.eq.false)",
   ];
-  // The groups are disjoint and already in priority order. Each reads at most `limit`, so an old flag cannot be
-  // lost behind newer ordinary calls. Each read uses the admin's session and the existing row-level security.
-  const groups = await Promise.all(filters.map(async (filter) => must<Database["public"]["Tables"]["maya_calls"]["Row"][]>(
-    await a.db.from("maya_calls").select("id, created_at, child_id, question_text, status, model, outcome_reason, assistance, call_seconds, learning_event_id, mode, connected_seconds, mishearing_confirmations, mishearing_corrections, flag, safety_severity, safety_flag")
-      .or(filter).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limit),
-    "maya calls",
-  )));
-  // A live call can move to a higher group while these reads run. Keep its highest-priority copy only.
-  const seen = new Set<string>();
-  const rows = groups.flat().filter((row) => {
-    if (seen.has(row.id)) return false;
-    seen.add(row.id);
-    return true;
-  }).slice(0, limit);
+  const groups = await Promise.all(filters.map(async (filter, group) => {
+    if (cursor && (backwards ? group > cursor.group : group < cursor.group)) return [];
+    if (cursor && group === cursor.group) {
+      const comparison = backwards ? "gt" : "lt";
+      filter = `and(or(${filter}),or(created_at.${comparison}.${cursor.at},and(created_at.eq.${cursor.at},id.${comparison}.${cursor.id})))`;
+    }
+    const rows = must<Database["public"]["Tables"]["maya_calls"]["Row"][]>(
+      await a.db.from("maya_calls").select("id, created_at, child_id, question_text, status, model, outcome_reason, assistance, call_seconds, learning_event_id, mode, connected_seconds, mishearing_confirmations, mishearing_corrections, flag, safety_severity, safety_flag")
+        .or(filter).order("created_at", { ascending: backwards }).order("id", { ascending: backwards }).limit(limit + 1),
+      "maya calls",
+    );
+    return rows.map((row) => ({ row, group }));
+  }));
+  // A live call can move between groups while the reads run. Keep its highest-priority copy only.
+  const preferred = new Map<string, (typeof groups)[number][number]>();
+  for (const item of groups.flat()) if (!preferred.has(item.row.id)) preferred.set(item.row.id, item);
+  const found = (backwards ? groups.toReversed() : groups).flat().filter((item) => preferred.get(item.row.id) === item);
+  const more = found.length > limit;
+  const picked = found.slice(0, limit);
+  if (backwards) picked.reverse();
+  const link = (item: (typeof picked)[number], direction: CallCursor["direction"]) => Buffer.from(JSON.stringify({ group: item.group, at: item.row.created_at, id: item.row.id, direction })).toString("base64url");
+  const older = picked.length ? (backwards || more ? link(picked.at(-1)!, "older") : null) : backwards ? "start" : null;
+  const newer = picked.length ? (backwards ? more : cursor !== null) ? link(picked[0], "newer") : null : cursor && !backwards ? "start" : null;
+  const rows = picked.map((item) => item.row);
   const ids = [...new Set(rows.map((r) => r.child_id))];
   const names = ids.length ? must<{ id: string; first_name: string }[]>(await a.db.rpc("admin_children").select("id, first_name").in("id", ids), "children") : [];
-  return rows.map((r) => ({
+  const calls = rows.map((r) => ({
     id: r.id,
     createdAt: r.created_at,
     childId: r.child_id,
@@ -194,6 +224,7 @@ export async function listCalls(a: AdminSession, limit = 50): Promise<CallListRo
     safetySeverity: r.safety_severity,
     safetyFlag: r.safety_flag,
   }));
+  return { calls, older, newer };
 }
 
 /** One call for the admin call page, with the child's first name. */

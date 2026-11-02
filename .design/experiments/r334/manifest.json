@@ -116,11 +116,11 @@
         1000
       ],
       "pixels": [
-        2880,
-        2000
+        1440,
+        1000
       ],
-      "sha256": "c7706ab2c244baaf11c7c84eca3c2e233b00ffaad49d4891c25eab8ca09b5e9c",
-      "state": "calls grouped by flag priority"
+      "sha256": "70ad78a9de29d60fd5f5b10e52f69cfd4893a0dc8b8b0e695b2532b85b4a8445",
+      "state": "Flag priority, Older calls control, and Numbers Maya checked with N checked, N fixed"
     },
     {
       "path": "calls-phone.png",
@@ -129,11 +129,11 @@
         844
       ],
       "pixels": [
-        780,
-        1688
+        390,
+        844
       ],
-      "sha256": "6f5ad17373096a8a5c9895d063a1453acc9ecbeea0c95d27535adab0fedf8842",
-      "state": "calls grouped by flag priority"
+      "sha256": "ea3a6fcf57d3ca8c16fb87201e3ff51756f0cf2dd6fd34d3c8d24fd81421d156",
+      "state": "Flag priority, Older calls control, and Numbers Maya checked with N checked, N fixed"
     },
     {
       "path": "calls-tablet.png",
@@ -142,11 +142,24 @@
         1112
       ],
       "pixels": [
-        1668,
-        2224
+        834,
+        1112
       ],
-      "sha256": "f5320a9404b5e7624e09e3d6eb88d18275a6fd978f07c586d51b6f56d490215c",
-      "state": "calls grouped by flag priority"
+      "sha256": "89f8b6441d8bf6a1b1443c035747fb6be1022947dfbcad6a2cf8283f19efa84a",
+      "state": "Flag priority, Older calls control, and Numbers Maya checked with N checked, N fixed"
+    },
+    {
+      "path": "calls-pagination-phone.png",
+      "viewport": [
+        390,
+        844
+      ],
+      "state": "Both Newer calls and Older calls controls on a synthetic later page",
+      "sha256": "444e32c72741031321d0788f72b457f64b30a042e606ebe7370e7066ec8a97c1",
+      "pixels": [
+        390,
+        844
+      ]
     }
   ],
   "browser_checks": {
@@ -162,5 +175,12 @@
     "live_admin_reads": "list and saved voice call, read only",
     "parent_session": "not tested with a separate live family"
   },
-  "fixture": "src/lib/maya-call-review-fixture.ts"
+  "fixture": "src/lib/maya-call-review-fixture.ts",
+  "review_fixes": {
+    "R442-1": "Shared history replay records the final view of every accepted batch, including focus with no strokes.",
+    "R442-2": "Saved frames render their own path geometry.",
+    "R442-3": "Older and Newer links use a cursor with flag level, date and id. Tested through 1055 calls in both directions.",
+    "number_labels": "Numbers Maya checked: N checked, N fixed on both list and call page.",
+    "database_probe": "Admin read only: first page 2 calls, next page 2 calls, previous page matches true."
+  }
 }

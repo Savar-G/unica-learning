@@ -23,7 +23,7 @@ The first tablet pass found that the selected turn did not scroll into view. The
 
 | Area | Score | Evidence |
 | --- | --- | --- |
-| Task fit | 8 | Flag priority is applied before the 50-call limit. Each turn can select its board time. |
+| Task fit | 8 | Flag priority is applied before the 50-call page limit. Older and Newer links reach the rest. Each turn can select its board time. |
 | Content and order | 8 | Safety labels are beside the call links. Outcome and help stay together. |
 | Existing styles | 8 | The admin frame, chips, table, facts, fonts and colours are reused. |
 | Controls and states | 8 | Play, pause, seek, speed, finished view, missing board and older records are covered. |
@@ -32,7 +32,7 @@ The first tablet pass found that the selected turn did not scroll into view. The
 | Detail | 7 | The tablet table needs side scrolling. The board stays first on small screens. |
 | Evidence | 8 | Screenshots, public-interface tests and a read-only check of the real admin list and a saved voice call. |
 
-Product weights from the design review rubric give 79/100. No implementation blocker remains in this review. The weakest area is the tablet table density.
+Product weights from the design review rubric give 79/100. The later Codex review found R442-1, R442-2 and R442-3. The fixes below pass local checks and await independent re-review. The weakest area is the tablet table density.
 
 Recommendation: Savar must approve the look before merge.
 
@@ -47,3 +47,17 @@ Recommendation: Savar must approve the look before merge.
 No migration was needed. No database row, alert or email was changed. No live call was started.
 
 The first preview build failed because Vercel excludes `.design`, and the replay test imported its fixture from that folder. The fixture now lives in `src/lib/maya-call-review-fixture.ts`, so the hosted type check can read it.
+
+
+## Codex review fixes
+
+- R442-1: the shared history replay records the final page of every accepted batch. A public history test writes onto page 2, focuses an object on page 1 without new strokes, and checks the page before and after focus and at the finished view.
+- R442-2: the shared SVG renderer uses the saved frame's geometry. The public renderer test puts child ink in Maya's writing area, confirms that it moves her paths, and checks the rendered paths against the saved frame.
+- R442-3: cursor pagination keeps flag level, date and id order. A 51-flag test reaches the last call. A 1,055-call test checks every call in both directions, including date ties and the old safety fields. Every read asks for at most 51 rows per group.
+- Labels: the list and call page both say Numbers Maya checked with N checked, N fixed. A public component test checks both.
+- Browser: refreshed calls-laptop.png, calls-tablet.png and calls-phone.png. Added calls-pagination-phone.png with Newer calls and Older calls. All images use synthetic data.
+- Database read: with the admin session, the first two calls, the next two calls and the previous page read successfully. The previous page matched the first page. No row changed.
+
+Gates after the fixes: 240 test files, 11,651 tests passed. ESLint and the production build passed. Three voice test files and 29 voice tests passed. The voice type check passed. Every command exited 0.
+
+Savar's approval of the look is still required before merge.
