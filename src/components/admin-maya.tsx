@@ -8,9 +8,11 @@ import { formatInZone, PACIFIC_ZONE } from "@/lib/family-time";
 // a board replay. Admins only; nothing here reaches a family.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { VoicePanel } from "@/components/admin-maya-voice";
 import { MayaBoard } from "@/components/maya-board";
+import { replayFrame } from "@/lib/board-history";
+import { callReplay } from "@/lib/maya-call-review";
 import type { PlayStep } from "@/lib/board-svg";
 import type { Outcome } from "@/lib/maya";
 import type { CallInput, CallView } from "@/lib/maya-call";
@@ -18,6 +20,7 @@ import { ALERT_TEXT, FLAG_TEXT, alertNote, modelName, noAlertNote, safetyText } 
 import type { CallListRow, DemoChild } from "@/lib/maya-call-server";
 import { ADMIN_PATH, adminChildProfilePath, adminTestPath } from "@/lib/admin-view";
 import "./admin-maya.css";
+import "./stroke-replay.css";
 
 export interface BoardView {
   steps: PlayStep[];
@@ -77,8 +80,8 @@ const named = (text: string, name: string | null) => text.replaceAll("{name}", n
 
 function ModelChip({ model }: { model: { id: string; fake: boolean } }) {
   return model.fake
-    ? <span className="adm-chip is-warn" title="The server has no OpenRouter key, so Maya's words come from a script in the code, not the AI.">Scripted Maya, not the AI</span>
-    : <span className="adm-chip is-info" title={model.id}>{modelName(model)}</span>;
+    ? <span className="adm-chip is-warn" title="Maya used saved test lines for this call.">Scripted Maya, not the AI</span>
+    : <span className="adm-chip is-info">{modelName(model)}</span>;
 }
 
 // ---------- the picker ----------
@@ -167,27 +170,27 @@ export function MayaPicker({ children, model, voice }: { children: DemoChild[]; 
 export function MayaCallList({ calls }: { calls: CallListRow[] }) {
   if (calls.length === 0) return <p className="adm-empty">No test calls yet.</p>;
   return (
-    <div className="adm-scroll">
+    <div className="adm-scroll mc-calls">
       <table className="adm-table">
         <thead>
-          <tr><th>Started</th><th>Child</th><th>Question</th><th>How</th><th>Outcome</th><th>Help</th><th className="adm-num">Time</th><th>Number checks</th><th>Maya</th><th>Saved to child&apos;s record</th></tr>
+          <tr><th>Started and flag</th><th>Child and question</th><th>How</th><th>Outcome and help</th><th className="adm-num">Call time</th><th className="adm-num">Minutes used</th><th>Number checks</th></tr>
         </thead>
         <tbody>
           {calls.map((c) => (
             <tr key={c.id}>
-              <td className="adm-nowrap"><Link href={`${ADMIN_PATH}/maya/${c.id}`}>{when(c.createdAt)}</Link></td>
-              <td>{c.childName ?? "Child"}</td>
-              <td>{c.questionText}</td>
-              <td>{c.mode === "voice" ? "Spoken" : "Typed"}</td>
-              <td>
-                {c.status === "live" ? <span className="adm-chip is-info">Live</span> : c.outcome ? <span className={`adm-chip ${c.outcome === "solved" ? "is-ok" : "is-muted"}`}>{REASON_TEXT[c.outcome]}</span> : "-"}
-                {(() => { const t = safetyText(c.flag, c.safetySeverity, c.safetyFlag); return t && <> <span className="adm-chip is-bad">{t}</span></>; })()}
+              <td data-label="Started and flag">
+                <Link href={`${ADMIN_PATH}/maya/${c.id}`}>{when(c.createdAt)}</Link>
+                {(() => { const t = safetyText(c.flag, c.safetySeverity, c.safetyFlag); return t && <span className="adm-chip is-bad mc-list-flag">{t}</span>; })()}
               </td>
-              <td>{c.assistance ? ASSISTANCE_TEXT[c.assistance] : "-"}</td>
-              <td className="adm-num">{c.seconds === null ? "-" : clock(c.seconds)}</td>
-              <td className="adm-nowrap" title="Numbers Maya asked to confirm, and times the child said she heard wrong">{c.mishearing ? `${c.mishearing.confirmations} asked, ${c.mishearing.corrections} corrected` : "-"}</td>
-              <td title={c.model.id}>{c.model.fake ? "Scripted" : "AI"}</td>
-              <td>{c.status === "live" ? "-" : c.learningEvent ? "Yes" : "Not yet"}</td>
+              <td data-label="Child and question">{c.childName ?? "Child"}<span className="adm-sub">{c.questionText}</span></td>
+              <td data-label="How">{c.mode === "voice" ? "Spoken" : "Typed"}</td>
+              <td data-label="Outcome and help">
+                {c.status === "live" ? <span className="adm-chip is-info">Live</span> : c.outcome ? <span className={`adm-chip ${c.outcome === "solved" ? "is-ok" : "is-muted"}`}>{REASON_TEXT[c.outcome]}</span> : "-"}
+                {c.assistance && <span className="adm-sub">{ASSISTANCE_TEXT[c.assistance]}</span>}
+              </td>
+              <td data-label="Call time" className="adm-num">{c.seconds === null ? "-" : clock(c.seconds)}</td>
+              <td data-label="Minutes used" className="adm-num" title="Test calls do not use the child's minutes">0</td>
+              <td data-label="Number checks" title="Numbers Maya asked to confirm, and times the child said she heard wrong">{c.mishearing ? `${c.mishearing.confirmations} asked, ${c.mishearing.corrections} corrected` : "Not recorded"}</td>
             </tr>
           ))}
         </tbody>
@@ -203,7 +206,13 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
   const [board, setBoard] = useState(firstBoard);
   /** Board steps already drawn before the last answer: only the new ones animate. */
   const [shown, setShown] = useState(initial.status === "ended" ? firstBoard.steps.length : 0);
-  const [replay, setReplay] = useState(0);
+  const saved = useMemo(() => callReplay(view), [view]);
+  const [position, setPosition] = useState(Infinity);
+  const cursor = useRef(Infinity);
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(1);
+  const [selectedLine, setSelectedLine] = useState(-1);
+  const seek = (ms: number, line = -1) => { cursor.current = ms; setPosition(ms); setSelectedLine(line); };
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -226,11 +235,40 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
     setView(body.view);
   }, [view.id, drawn]);
 
+  const activeLine = !live && position !== Infinity ? selectedLine >= 0 && !playing ? selectedLine : view.transcript.findLastIndex((l) => l.second * 1000 <= position) : -1;
   useEffect(() => {
+    if (!playing || reduced || live) return;
+    let last = performance.now();
+    let frame = requestAnimationFrame(function tick(now) {
+      const next = Math.min(saved.durationMs, cursor.current + (now - last) * speed);
+      last = now;
+      cursor.current = next;
+      setPosition(next);
+      if (next >= saved.durationMs) setPlaying(false);
+      else frame = requestAnimationFrame(tick);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [playing, speed, saved.durationMs, reduced, live]);
+
+  useEffect(() => {
+    if (activeLine < 0) return;
+    const list = talk.current;
+    const line = list?.children[activeLine] as HTMLElement | undefined;
+    if (!list || !line) return;
+    const scroll = () => list.scrollTo({ top: Math.max(0, line.offsetTop - 12), behavior: "instant" });
+    scroll();
+    const observer = new ResizeObserver(scroll);
+    observer.observe(list);
+    observer.observe(line);
+    return () => observer.disconnect();
+  }, [activeLine, playing]);
+
+  useEffect(() => {
+    if (!live) return;
     // The list scrolls, not the page: the newest line in view.
     const list = talk.current;
     list?.scrollTo({ top: list.scrollHeight, behavior: reduced ? "auto" : "smooth" });
-  }, [view.transcript.length, reduced]);
+  }, [view.transcript.length, reduced, live]);
 
   async function send(next: CallInput) {
     setBusy(true);
@@ -292,8 +330,12 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
 
           <ol ref={talk} className="mc-talk" aria-live="polite">
             {view.transcript.map((line, i) => (
-              <li key={i} className={`mc-line is-${line.speaker}`}>
-                {line.speaker !== "note" && <span className="mc-who">{line.speaker === "maya" ? "Maya" : childName ?? "Child"} · {clock(line.second)}</span>}
+              <li key={i} className={`mc-line is-${line.speaker}${activeLine === i ? " is-current" : ""}`} aria-current={activeLine === i ? "step" : undefined}>
+                {live ? line.speaker !== "note" && <span className="mc-who">{line.speaker === "maya" ? "Maya" : childName ?? "Child"} · {clock(line.second)}</span> :
+                  <button type="button" className="mc-who mc-jump" onClick={() => { setPlaying(false); seek(line.second * 1000, i); }} aria-label={`Show board at ${clock(line.second)}, turn ${i + 1}`}>
+                    {line.speaker === "maya" ? "Maya" : line.speaker === "child" ? childName ?? "Child" : "Note"} · {clock(line.second)}
+                  </button>}
+
                 <p>{named(line.text, childName)}</p>
               </li>
             ))}
@@ -351,16 +393,30 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
         <section className="mc-board" aria-label="Our board">
           <div className="mc-board-head">
             <h2>Our board</h2>
-            {!live && board.steps.length > 0 && (
-              <button type="button" className="btn sm ghost adm-btn" onClick={() => { setShown(0); setReplay((n) => n + 1); }}>Replay the board</button>
-            )}
           </div>
-          {board.steps.length === 0 ? (
+          {!live ? (
+            <>
+              <div className="replay-controls mc-play" role="group" aria-label="Call replay">
+                <button type="button" className="is-primary" disabled={reduced || saved.durationMs === 0} onClick={() => {
+                  if (playing) setPlaying(false);
+                  else { if (cursor.current >= saved.durationMs) seek(0); setSelectedLine(-1); setPlaying(true); }
+                }}>{playing && !reduced ? "Pause" : "Replay the call"}</button>
+                <button type="button" onClick={() => { setPlaying(false); seek(Infinity); }}>Show finished</button>
+                <label>Speed <select aria-label="Replay speed" value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
+                  <option value={1}>1x</option><option value={2}>2x</option><option value={4}>4x</option>
+                </select></label>
+                <input type="range" min={0} max={saved.durationMs} step={100} value={Math.min(position, saved.durationMs)} aria-label="Call replay position" aria-valuetext={`${clock(Math.floor(Math.min(position, saved.durationMs) / 1000))} of ${clock(Math.ceil(saved.durationMs / 1000))}`} onChange={(e) => seek(Number(e.target.value))} />
+                <span className="replay-time">{clock(Math.floor(Math.min(position, saved.durationMs) / 1000))} / {clock(Math.ceil(saved.durationMs / 1000))}</span>
+              </div>
+              {view.boardHistory.events.length === 0 ? <p className="mc-board-empty">No board work was saved for this call.</p> :
+                <MayaBoard steps={board.steps} viewBox={saved.viewBox} label={boardLabel} frame={replayFrame(saved, position)} />}
+              <p className="adm-note">{reduced ? "The board stays still because your device asks for less motion. Select a time or a transcript turn to review it." : "The board and the highlighted turn follow the same time. Select a turn to see the board then."}</p>
+            </>
+          ) : board.steps.length === 0 ? (
             <div className="mc-board-empty">Maya writes here when she works a step.</div>
           ) : (
-            <MayaBoard key={`${replay}`} steps={board.steps} viewBox={board.viewBox} label={boardLabel} instant={reduced} shown={shown} />
+            <MayaBoard steps={board.steps} viewBox={board.viewBox} label={boardLabel} instant={reduced} shown={shown} />
           )}
-          {reduced && <p className="adm-note">Your device asks for less motion, so the board shows the finished work.</p>}
         </section>
       </div>
 
@@ -373,14 +429,14 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
 const REVIEW_TEXT = { pass: "Passed", fail: "Failed", error: "Failed (no answer)", not_run: "Not asked" } as const;
 
 function FreeTalkChecks({ freeTalk }: { freeTalk: CallView["freeTalk"] }) {
-  if (!freeTalk.on) return <p className="mc-note">Free talk was off: every word came from code.</p>;
+  if (!freeTalk.on) return <p className="mc-note">Maya used saved phrases for this call.</p>;
   if (freeTalk.lines.length === 0) return <p className="mc-note">On, review {freeTalk.reviewer ?? "none"}. Maya used no words of her own in this call.</p>;
   return (
     <>
-      <p className="mc-note">On, review <span className="adm-mono">{freeTalk.reviewer ?? "none"}</span>. Maya&apos;s own words are said only when the code guards and the review pass; otherwise a bank phrase.</p>
+      <p className="mc-note">On, review <span className="adm-mono">{freeTalk.reviewer ?? "none"}</span>. Maya&apos;s own words are said only when the code guards and the review pass; otherwise a saved phrase.</p>
       <div className="mc-talk">
         <table className="adm-table">
-          <thead><tr><th>Time</th><th>Maya proposed</th><th>Code guards</th><th>Review</th><th>The child heard</th></tr></thead>
+          <thead><tr><th>Time</th><th>Maya proposed</th><th>Automatic checks</th><th>Review</th><th>The child heard</th></tr></thead>
           <tbody>
             {freeTalk.lines.map((l, i) => (
               <tr key={i} className={l.said ? undefined : "is-wrong"}>
@@ -392,7 +448,7 @@ function FreeTalkChecks({ freeTalk }: { freeTalk: CallView["freeTalk"] }) {
                   {l.rules.length > 0 && <> <span className="adm-mono">{l.rules.join(", ")}</span></>}
                   {l.reason && <div className="mc-talk-why">{l.reason}</div>}
                 </td>
-                <td>{l.shown}{l.said ? "" : " (bank phrase)"}</td>
+                <td>{l.shown}{l.said ? "" : " (saved phrase)"}</td>
               </tr>
             ))}
           </tbody>
@@ -404,8 +460,7 @@ function FreeTalkChecks({ freeTalk }: { freeTalk: CallView["freeTalk"] }) {
 
 /**
  * The call's flag (#333) and its alert emails to the team: sent, not sent, or not sure. A live call sends a missing or
- * refused alert again with its next turn; an ended call with the button. A failed send's provider answer shows only as a
- * tooltip.
+ * refused alert again with its next turn; an ended call with the button. A failed send's provider answer stays in the closed technical details.
  */
 function FlagStrip({ view, live, onRetry, busy }: { view: CallView; live: boolean; onRetry: () => void; busy: boolean }) {
   const flag = view.flag!;
@@ -422,7 +477,7 @@ function FlagStrip({ view, live, onRetry, busy }: { view: CallView; live: boolea
             <li key={a.level}>
               <span className={`adm-chip ${a.status === "sent" ? "is-ok" : a.status === "sending" ? "is-info" : "is-warn"}`}>{ALERT_TEXT[a.status]}</span>{" "}
               {FLAG_TEXT[a.level]} · {when(a.claimedAt)}
-              {note && <span className="mc-flag-why" title={a.error ?? undefined}> {note}</span>}
+              {note && <span className="mc-flag-why" > {note}</span>}
             </li>
           );
         })}
@@ -453,16 +508,10 @@ function CallRecordFacts({ view, childName, onRetry, busy, error }: { view: Call
         </dl>
       )}
 
-      {view.voice && (
-        <>
-          <h3 className="mc-sub">Spoken call</h3>
-          <dl className="adm-facts">
-            <div><dt>Connected</dt><dd>{view.voice.connectedSeconds === null ? "-" : clock(view.voice.connectedSeconds)}</dd></div>
-            <div><dt>Speech to text</dt><dd>{view.voice.speechToText === "fake" ? "Typed test speech (no account)" : view.voice.speechToText ? <span className="adm-mono">{view.voice.speechToText}</span> : "Maya never joined"}</dd></div>
-            <div><dt>Voice</dt><dd>{view.voice.voice === "fake" ? "Silent test voice (no account)" : view.voice.voice ? <span className="adm-mono">{view.voice.voice}</span> : "Maya never joined"}</dd></div>
-          </dl>
-        </>
-      )}
+      <dl className="adm-facts">
+        <div><dt>Minutes used</dt><dd>0 <span className="adm-sub">Test calls do not use the child&apos;s minutes.</span></dd></div>
+        {view.voice && <div><dt>Connected time</dt><dd>{view.voice.connectedSeconds === null ? "Not recorded" : clock(view.voice.connectedSeconds)}</dd></div>}
+      </dl>
 
       <h3 className="mc-sub">Child&apos;s record</h3>
       <dl className="adm-facts">
@@ -478,16 +527,23 @@ function CallRecordFacts({ view, childName, onRetry, busy, error }: { view: Call
         </p>
       )}
 
-      <h3 className="mc-sub">Free talk</h3>
-      <FreeTalkChecks freeTalk={view.freeTalk} />
-
       <details className="mc-tech">
         <summary>Technical details</summary>
+        <h3 className="mc-sub">Generated speech checks</h3>
+        <FreeTalkChecks freeTalk={view.freeTalk} />
         <dl className="adm-facts">
+          {view.voice && <>
+            <div><dt>Speech to text version</dt><dd className="adm-mono">{view.voice.speechToText ?? "Not recorded"}</dd></div>
+            <div><dt>Voice version</dt><dd className="adm-mono">{view.voice.voice ?? "Not recorded"}</dd></div>
+          </>}
+          {view.technicalNotes.map((note, i) => <div key={`note-${i}`}><dt>Service detail</dt><dd>{note}</dd></div>)}
+          {view.alerts.filter((a) => a.error).map((a) => <div key={a.level}><dt>Alert service detail</dt><dd>{a.error}</dd></div>)}
           <div><dt>Maya</dt><dd>{modelName(view.model)} <span className="adm-mono">{view.model.id}</span></dd></div>
-          <div><dt>Prompt</dt><dd className="adm-mono">{view.model.promptVersion}</dd></div>
-          <div><dt>Lines</dt><dd className="adm-mono">{String(view.versions.lines)}</dd></div>
-          <div><dt>Session · proposal · trace</dt><dd className="adm-mono">{view.versions.session} · {view.versions.proposal} · {view.versions.trace}</dd></div>
+          <div><dt>Instructions version</dt><dd className="adm-mono">{view.model.promptVersion}</dd></div>
+          <div><dt>Saved phrases version</dt><dd className="adm-mono">{String(view.versions.lines)}</dd></div>
+          <div><dt>Call rules version</dt><dd>{view.versions.session}</dd></div>
+          <div><dt>Suggested steps version</dt><dd>{view.versions.proposal}</dd></div>
+          <div><dt>Call record version</dt><dd>{view.versions.trace}</dd></div>
           <div><dt>Question package</dt><dd className="adm-mono" title={view.packageHash}>{view.packageHash.slice(0, 19)}…</dd></div>
           <div><dt>Call id</dt><dd className="adm-mono">{view.id}</dd></div>
         </dl>

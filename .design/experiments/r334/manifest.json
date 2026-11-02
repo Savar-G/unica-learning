@@ -1,0 +1,165 @@
+{
+  "issue": 334,
+  "parent": 297,
+  "date": "2026-11-02",
+  "route": "direct",
+  "surface": "product",
+  "constraint_mode": "existing-system",
+  "design_contract": "../../../DESIGN.md",
+  "references": [
+    "src/components/admin-maya.tsx",
+    "src/components/admin-maya.css",
+    "src/components/maya-board.tsx",
+    "src/lib/board-history.ts"
+  ],
+  "browser": "Aside CLI, account u0",
+  "server": "npm run dev -- --port 3434",
+  "data": "Synthetic saved call records from fixture.ts. The same components are used on the admin routes. The temporary local fixture route was removed. No database records, alerts or emails changed.",
+  "review": "review.md",
+  "merge_approval": "Savar must approve the look before merge.",
+  "screenshots": [
+    {
+      "path": "call-text-laptop.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "pixels": [
+        2880,
+        2000
+      ],
+      "sha256": "419b276680ae4dd100a3a9317c2e68969233adea345776a68d3a1738d87154d7",
+      "state": "playing at about 5.8 seconds"
+    },
+    {
+      "path": "call-text-phone.png",
+      "viewport": [
+        390,
+        844
+      ],
+      "pixels": [
+        780,
+        1688
+      ],
+      "sha256": "20a9eeb86731527e90625a5229615a0881173d4a502bbdda6e05c03915e5691c",
+      "state": "playing at about 5.8 seconds"
+    },
+    {
+      "path": "call-text-tablet.png",
+      "viewport": [
+        834,
+        1112
+      ],
+      "pixels": [
+        1668,
+        2224
+      ],
+      "sha256": "4ac6be48381741286f7e859d5b3e6b1dc6c6b550ee624cf7b8bf61e66e1c3030",
+      "state": "playing at about 5.8 seconds"
+    },
+    {
+      "path": "call-versions-laptop.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "pixels": [
+        2880,
+        2000
+      ],
+      "sha256": "40d7e5acd1919cacdf6d52fdcbc3a022512866faf94e12215a7f66174067a426",
+      "state": "technical details open"
+    },
+    {
+      "path": "call-voice-laptop.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "pixels": [
+        2880,
+        2000
+      ],
+      "sha256": "2b2878712f3e06bc97bb8afb59195a8d460b2aefe8bf7ec8b2d254850f083050",
+      "state": "playing at about 5.8 seconds"
+    },
+    {
+      "path": "call-voice-phone.png",
+      "viewport": [
+        390,
+        844
+      ],
+      "pixels": [
+        780,
+        1688
+      ],
+      "sha256": "0097bde01e9a233a3746c69c18b7aaef60b91f43f93d5e596ea9410490a4b259",
+      "state": "playing at about 5.8 seconds"
+    },
+    {
+      "path": "call-voice-tablet.png",
+      "viewport": [
+        834,
+        1112
+      ],
+      "pixels": [
+        1668,
+        2224
+      ],
+      "sha256": "6ec5455aa49ddede77e7334ad4475bb33401f39eb0cfb60893cee5b02bf96849",
+      "state": "playing at about 5.8 seconds"
+    },
+    {
+      "path": "calls-laptop.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "pixels": [
+        2880,
+        2000
+      ],
+      "sha256": "c7706ab2c244baaf11c7c84eca3c2e233b00ffaad49d4891c25eab8ca09b5e9c",
+      "state": "calls grouped by flag priority"
+    },
+    {
+      "path": "calls-phone.png",
+      "viewport": [
+        390,
+        844
+      ],
+      "pixels": [
+        780,
+        1688
+      ],
+      "sha256": "6f5ad17373096a8a5c9895d063a1453acc9ecbeea0c95d27535adab0fedf8842",
+      "state": "calls grouped by flag priority"
+    },
+    {
+      "path": "calls-tablet.png",
+      "viewport": [
+        834,
+        1112
+      ],
+      "pixels": [
+        1668,
+        2224
+      ],
+      "sha256": "f5320a9404b5e7624e09e3d6eb88d18275a6fd978f07c586d51b6f56d490215c",
+      "state": "calls grouped by flag priority"
+    }
+  ],
+  "browser_checks": {
+    "widths": [
+      1440,
+      834,
+      390
+    ],
+    "page_overflow": false,
+    "text_and_voice_selected_turn_visible": true,
+    "playing_position_ms": 5800,
+    "visible_maya_paths": 4,
+    "live_admin_reads": "list and saved voice call, read only",
+    "parent_session": "not tested with a separate live family"
+  }
+}

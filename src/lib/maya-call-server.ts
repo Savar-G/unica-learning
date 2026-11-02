@@ -151,12 +151,28 @@ export interface CallListRow {
   safetyFlag: boolean;
 }
 
-/** The newest test calls. */
+/** The newest calls within each flag level. Apply the limit after priority, including older safety records. */
 export async function listCalls(a: AdminSession, limit = 50): Promise<CallListRow[]> {
-  const rows = must<{ id: string; created_at: string; child_id: string; question_text: string | null; status: CallStatus; model: string; outcome_reason: Outcome["reason"] | null; assistance: Outcome["assistance"] | null; call_seconds: number | null; learning_event_id: string | null; mode: "text" | "voice"; connected_seconds: number | null; mishearing_confirmations: number | null; mishearing_corrections: number | null; flag: FlagLevel | null; safety_severity: Outcome["safetySeverity"]; safety_flag: boolean }[]>(
-    await a.db.from("maya_calls").select("id, created_at, child_id, question_text, status, model, outcome_reason, assistance, call_seconds, learning_event_id, mode, connected_seconds, mishearing_confirmations, mishearing_corrections, flag, safety_severity, safety_flag").order("created_at", { ascending: false }).limit(limit),
+  const filters = [
+    "flag.eq.safety_immediate,and(flag.is.null,safety_severity.eq.immediate)",
+    "flag.eq.safety_concern,and(flag.is.null,safety_severity.eq.concern),and(flag.is.null,safety_severity.is.null,safety_flag.eq.true)",
+    "flag.eq.unsafe_request",
+    "and(flag.is.null,safety_severity.is.null,safety_flag.eq.false)",
+  ];
+  // The groups are disjoint and already in priority order. Each reads at most `limit`, so an old flag cannot be
+  // lost behind newer ordinary calls. Each read uses the admin's session and the existing row-level security.
+  const groups = await Promise.all(filters.map(async (filter) => must<Database["public"]["Tables"]["maya_calls"]["Row"][]>(
+    await a.db.from("maya_calls").select("id, created_at, child_id, question_text, status, model, outcome_reason, assistance, call_seconds, learning_event_id, mode, connected_seconds, mishearing_confirmations, mishearing_corrections, flag, safety_severity, safety_flag")
+      .or(filter).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limit),
     "maya calls",
-  );
+  )));
+  // A live call can move to a higher group while these reads run. Keep its highest-priority copy only.
+  const seen = new Set<string>();
+  const rows = groups.flat().filter((row) => {
+    if (seen.has(row.id)) return false;
+    seen.add(row.id);
+    return true;
+  }).slice(0, limit);
   const ids = [...new Set(rows.map((r) => r.child_id))];
   const names = ids.length ? must<{ id: string; first_name: string }[]>(await a.db.rpc("admin_children").select("id, first_name").in("id", ids), "children") : [];
   return rows.map((r) => ({

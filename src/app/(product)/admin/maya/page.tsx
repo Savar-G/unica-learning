@@ -14,14 +14,15 @@ export default async function MayaCallsPage() {
   const [children, calls] = await Promise.all([demoChildren(admin), listCalls(admin)]);
   return (
     <AdminFrame email={admin.email} section="maya" title="Maya calls">
+      <p className="adm-note">Safety calls come first, with the most urgent first. Calls within each group are newest first. Test calls do not use the child&apos;s minutes.</p>
+      <MayaCallList calls={calls} />
+      <h2>Try Maya</h2>
       <p className="adm-lead">
         Try Maya, the Unica Teaching Assistant, on a real question from a test child. Type or say what the child says and watch
         Maya answer and write on the board. Only test families can be used: no minutes are counted and no parents are
         emailed.
       </p>
       <MayaPicker model={nextCallModel()} voice={voiceReady()}>{children}</MayaPicker>
-      <h2>Test calls</h2>
-      <MayaCallList calls={calls} />
     </AdminFrame>
   );
 }
