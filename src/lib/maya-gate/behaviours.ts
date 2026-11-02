@@ -934,6 +934,10 @@ export const BEHAVIOURS: Behaviour[] = [
       outcome: { reason: "solved", assistance: "hint", highestHint: 1, paperStatus: "child_confirmed" },
       acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
       counts: { refusals: 0, boardBatches: 2 },
+      outputs: [
+        { mayaTurn: 1, includes: ["denominators", "4", "8"], strips: [{ parts: 4, shaded: 3 }, { parts: 8, shaded: 1 }] },
+        { mayaTurn: 2, includes: ["3/4 = 6/8"], strips: [{ parts: 8, shaded: 6 }, { parts: 8, shaded: 1 }] },
+      ],
       never: ["example_step", "give_answer"],
     },
   },
@@ -952,6 +956,10 @@ export const BEHAVIOURS: Behaviour[] = [
       outcome: { reason: "solved", assistance: "independent", understanding: "evidence_observed" },
       acts: [OPEN, "accept_answer", "ask_write", "close"],
       counts: { refusals: 0 },
+      outputs: [
+        { mayaTurn: 1, includes: ["3/4 + 1/8 = 14/16"], excludes: ["simplest", "lowest terms", "simplify"] },
+        { mayaTurn: 2, includes: ["14/16"], excludes: ["simplest", "lowest terms", "simplify"] },
+      ],
       never: ["guide", "give_answer"],
     },
   },
@@ -972,6 +980,10 @@ export const BEHAVIOURS: Behaviour[] = [
       outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
       acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
       counts: { refusals: 0 },
+      outputs: [
+        { mayaTurn: 1, includes: ["14/16", "simplest form"] },
+        { mayaTurn: 2, includes: ["14", "16"] },
+      ],
       never: ["give_answer", "example_step"],
     },
   },

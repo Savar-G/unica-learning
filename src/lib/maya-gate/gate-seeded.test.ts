@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { Command } from "@/lib/board";
 import { allLineTexts, type Effect, type SessionEvent, type StepResult } from "@/lib/maya";
 import { checkTrace, type MayaTrace } from "@/lib/maya-trace";
 import type { OperationPackage } from "@/lib/question-package";
@@ -14,7 +15,7 @@ vi.mock("server-only", () => ({}));
 // controller injected under the text adapter, and a broken alerts seam under the saved call (#395).
 
 /** The controller's `step`, sabotaged when `mode` is set: the text adapter imports it from "@/lib/maya". */
-const sabotage = vi.hoisted(() => ({ mode: "none" as "none" | "words" | "answer" | "no_safety" | "decline_extra" | "decline_space" | "no_auto_end", extra: "" }));
+const sabotage = vi.hoisted(() => ({ mode: "none" as "none" | "words" | "answer" | "no_safety" | "decline_extra" | "decline_space" | "no_auto_end" | "fraction_rewrite" | "fraction_equal" | "fraction_strips" | "fraction_place" | "fraction_answer" | "fraction_wrong", extra: "" }));
 vi.mock("@/lib/maya", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/maya")>();
   return {
@@ -31,6 +32,24 @@ vi.mock("@/lib/maya", async (importOriginal) => {
         if (p.reading) event = { ...event, proposal: { ...p, reading: { ...p.reading, safety: null } } };
       }
       const r = real.step(session, event);
+      if (!r.refusal && sabotage.mode.startsWith("fraction_")) {
+        return { ...r, effects: r.effects.map((e): Effect => {
+          if (e.kind === "board") return { ...e, batch: { ...e.batch, commands: e.batch.commands.map((command) => {
+            const c = command as Command;
+            if (c.op !== "model" || c.model.kind !== "fraction_strip") return c;
+            if (sabotage.mode === "fraction_strips" && c.model.shaded === 6) return { ...c, model: { ...c.model, parts: 4, shaded: 3 } };
+            if (sabotage.mode === "fraction_place" && "below" in c.place) return { ...c, place: { region: "main" } };
+            return c;
+          }) } };
+          if (e.kind !== "say") return e;
+          if (sabotage.mode === "fraction_rewrite" && ["accept_answer", "ask_write"].includes(e.act)) return { ...e, text: e.text.replaceAll("14/16", "7/8") };
+          // Another valid code line preserves the acts and outcome, but loses the equal-answer explanation.
+          if (sabotage.mode === "fraction_equal" && e.act === "guide" && e.text.includes("14/16")) return { ...e, text: "How did you work it out?" };
+          if (sabotage.mode === "fraction_answer" && e.act === "guide") return { ...e, text: "Yes! 3/4 + 1/8 = 7/8." };
+          if (sabotage.mode === "fraction_wrong" && e.act === "guide") return { ...e, act: "accept_answer" };
+          return e;
+        }) };
+      }
       if (sabotage.mode === "decline_space" && !r.refusal) {
         // Changes only whitespace in the decline turn: the exact check must still refuse it (R423-1).
         const space = (t: string) => sabotage.extra === "trailing" ? `${t} ` : t.replace(". ", sabotage.extra === "double" ? ".  " : sabotage.extra === "tab" ? ".\t" : ".\n");
@@ -294,6 +313,23 @@ describe("a sabotaged controller makes the gate fail", () => {
 
   it("a real code line said too early: the answer before it was released", async () => {
     expect(await run("answer", "C02")).toContain("answer_too_early");
+  });
+
+  it.each(["C38", "C38b", "C38c", "C36b"])("%s: the fraction controller untouched passes", async (id) => {
+    expect(await run("none", id)).toEqual([]);
+  });
+
+  it.each([
+    ["fraction_rewrite", "C38b", "flow_mismatch"],
+    ["fraction_equal", "C38c", "flow_mismatch"],
+    ["fraction_strips", "C38", "flow_mismatch"],
+    ["fraction_place", "C38", "flow_mismatch"],
+    ["fraction_answer", "C38", "answer_too_early"],
+    ["fraction_wrong", "C38", "accepted_wrong_answer"],
+  ] as const)("%s: %s fails with %s", async (mode, id, code) => {
+    const found = await run(mode, id);
+    expect(found).not.toContain("trace_invalid");
+    expect(found).toContain(code);
   });
 
   it("the safety reading dropped: the safety path is not taken", async () => {

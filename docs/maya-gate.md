@@ -16,7 +16,7 @@ MAYA_GATE_TRACES=traces/maya-gate npx vitest run src/lib/maya-gate/gate.test.ts 
 | `src/lib/maya-gate/gate.ts` | `HARD_FAILURES` (the one list), the scripted model, `runBehaviour` (runs one behaviour through the text adapter and saves its trace) and `judge` (reads the saved trace, and a call run's saved call, and finds every hard failure). |
 | `src/lib/maya-gate/call.ts` | `runCallBehaviour` saves the call's status, outcome, flag and alerts before cleanup. It also saves the final trace, the alerts after the next request and the email count. `runGateBehaviour` selects the runner. `judgeSaved` checks the saved results. Tests mock `server-only` for the alert module. |
 | `src/lib/maya-gate/gate.test.ts` | Runs every behaviour and fails on any hard failure. Also checks branch coverage, that each research id is run or pending, and that this file lists every hard failure, behaviour and pending item. |
-| `src/lib/maya-gate/gate-seeded.test.ts` | Shows that each hard failure can fail the gate: tampered traces, a broken model and a sabotaged controller. |
+| `src/lib/maya-gate/gate-seeded.test.ts` | Shows that each hard failure can fail the gate: tampered traces, a broken model and a sabotaged controller. Fraction sabotage changes the accepted form, removes the equal-answer explanation, changes strip values or placement, reveals the answer early, or accepts a wrong answer. |
 
 ## How a run works
 
@@ -50,6 +50,16 @@ Any one of these, in any run, fails the gate. `HARD_FAILURES` in `src/lib/maya-g
 | `alert_missing` | A call run (or any run judged with its saved call) has no saved call, its stored flag is not the highest flag its trace raises (a disclosure by its severity, or a request for harmful content as `unsafe_request`), it has no alert record for that flag, or it has two records for one flag level. A call whose flag is not the behaviour's `expect.flag` is a `wrong_outcome`. |
 
 Counts read from each saved trace: Maya turns, outputs, silent turns, refusals, repairs, repairs accepted, fallbacks, model errors, board batches, safety messages, confirmations and hints.
+
+### Fraction output checks (#407)
+
+The C38 cases also use `expect.outputs`. Each entry selects a Maya turn, with the opening numbered 0. The judge checks required and forbidden text without case sensitivity. It reads fraction strips from the saved board batches that reached that turn. It checks their exact parts and shaded parts in order. Each strip after the first must sit below the previous strip. A mismatch fails with `flow_mismatch`.
+
+- C38 requires the denominator hint and the original strips, then `3/4 = 6/8` and both strips in eighths.
+- C38b requires `14/16` in the accepted equation and in the request to write. Neither turn can ask for simplest form.
+- C38c requires the equal answer `14/16` and the question's words `simplest form`. The next hint must use 14 and 16.
+
+Six controller sabotage modes check these cases. Four preserve the expected acts, counts and outcome. The gate must still reject them. The other two check early disclosure of 7/8 and acceptance of 4/12. The unchanged C38, C38b, C38c and held C36b cases must pass. These are scripted checks. They do not prove speech recognition or real-model judgement.
 
 ## Behaviours
 
