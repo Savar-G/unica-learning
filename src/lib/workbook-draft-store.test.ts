@@ -91,3 +91,19 @@ describe("the Supabase draft store", () => {
     expect(store.requests).toBe(before);
   });
 });
+
+describe("the Supabase draft store's shape versions (#380)", () => {
+  const stored = (version: number) => workbookDraftStore(createClient("https://fixture.invalid", "synthetic-key", {
+    auth: { persistSession: false },
+    global: { fetch: async () => Response.json({ schema_version: version, draft: draft() }) },
+  }));
+
+  it("reads a draft of version 1 and of version 2: version 1 is a version 2 draft too", async () => {
+    expect(await stored(1).draft(DRAFT)).toEqual(draft());
+    expect(await stored(2).draft(DRAFT)).toEqual(draft());
+  });
+
+  it("refuses a version it does not know", async () => {
+    await expect(stored(3).draft(DRAFT)).rejects.toThrow("shape version 3 is not one of 1, 2");
+  });
+});

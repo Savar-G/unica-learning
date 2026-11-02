@@ -27,11 +27,18 @@ export type SlotName = (typeof SLOTS)[number];
 
 /** A picture drawn by code from data, never an image (DESIGN.md section 4, visual models). */
 export type Figure =
-  | { kind: "dots"; groups: number[] }
-  | { kind: "ten-frame"; filled: number }
+  /** Dots in groups; the last `takenAway` dots are crossed out. */
+  | { kind: "dots"; groups: number[]; takenAway?: number }
+  /**
+   * One ten-frame, or two when more than 10 are filled. `parts` (round 6): the counters of each part in turn, each part
+   * its own colour ("2 and 6": 2 orange, then 6 blue), adding up to `filled`; absent, every counter one colour.
+   */
+  | { kind: "ten-frame"; filled: number; parts?: number[] }
   | { kind: "number-line"; from: number; to: number; step: number; hops: [number, number][] }
-  | { kind: "blocks"; tens: number; ones: number }
-  | { kind: "array"; rows: number; columns: number };
+  | { kind: "blocks"; hundreds?: number; tens: number; ones: number }
+  | { kind: "array"; rows: number; columns: number }
+  /** A repeating pattern of `length` shapes; the shape at `blank` (from 0) is an empty box to fill. */
+  | { kind: "pattern"; core: string[]; length: number; blank: number };
 
 /**
  * A worked line: plain text, with the given or worked numbers the child reads in blue between [ and ]
@@ -64,6 +71,11 @@ export interface Block {
   info?: { label: string; value: string }[];
   /** Spot the error: whose work it is ("Sam"). */
   who?: string;
+  /**
+   * Questions of the slot that failed with no package to print (#363): the template prints a red placeholder with the
+   * number and the reason in their place, so a missing question is never silent. Only a draft for review has them.
+   */
+  missing?: { number: number; reason: string }[];
 }
 
 /** A day page's content: its header and its slots. */
@@ -76,7 +88,7 @@ export interface DayContent {
   /** Its place in the day, from 1, and the day's page count. */
   page: number;
   pages: number;
-  /** The topic in the day label: "FACTORS AND FACTOR PAIRS". */
+  /** The page's topic ("Factors and factor pairs"): kept for the plan, no longer printed in the day label (D-201). */
   topic: string;
   title: string;
   subtitle: string;
@@ -230,8 +242,12 @@ function partSlots(part: PlannedPart, page: PlannedPage, level: number): { slots
 }
 
 /** Slots that are panels with no items of their own, and the room of cards each takes on a parent-led page. */
-const PANELS: Partial<Record<SlotName, number>> = { "worked-example": 4, "watch-one": 2, reminder: 3 };
-/** A parent-led page (U1 to U3) holds 6 item cards (2 columns, 3 rows); each slot after the first takes 1 more for its chip. */
+/** The reminder prints one row (its sum beside What's going on), as Watch one does: 2 cards. */
+const PANELS: Partial<Record<SlotName, number>> = { "worked-example": 4, "watch-one": 2, reminder: 2 };
+/**
+ * A parent-led page (U1 to U3) holds 6 item cards (2 columns, 3 rows); each slot after the first takes 1 more for its
+ * chip, except a slot headed by a small label (Finish these, and On your own after it).
+ */
 const PARENT_CARDS = 6;
 /** The room the 6-card budget leaves spare on a parent-led page (laid out: about 120 to 180 px), which a wrapped header uses first. */
 const PARENT_SPARE = 100;
@@ -257,7 +273,10 @@ function rowOf(x: PlannedSlot, level: number): number {
   }
 }
 
-/** A day page's header: its topic (in the day label), title, subtitle and the grown-up line. */
+/** A day page's label above its title: "DAY 4 · PAGE 4 OF 6" (D-201: the skill is no longer repeated there). */
+export const dayLabel = (day: number, page: number, pages: number) => `Day ${day} · Page ${page} of ${pages}`;
+
+/** A day page's header: its topic (the plan row's words), title, subtitle and the grown-up line. */
 export interface DayHeader {
   topic: string;
   title: string;
@@ -299,7 +318,7 @@ export function headerGrowth(h: DayHeader, level: number, day: number, page: num
     }
     return n;
   };
-  const label = lines(`Day ${day} · Page ${page} of ${pages} · ${h.topic}`, big ? 60 : 82) - 1;
+  const label = lines(dayLabel(day, page, pages), big ? 60 : 82) - 1;
   const title = lines(h.title, big ? 42 : 54) - 1;
   const subtitle = lines(h.subtitle, big ? 68 : 90) - 1;
   return label * (big ? 22 : 16) + title * (big ? 45 : 38) + subtitle * (big ? 28 : 21);
@@ -351,7 +370,11 @@ export function pageSlots(page: PlannedPage, level: number, o: { headerGrowth?: 
     const placed = new Map<PlannedSlot, number>();
     const order = [...slots.filter((x) => x.slot === "fix-it"), ...slots.filter((x) => x.slot !== "fix-it")];
     for (const x of order) {
-      const chip = slots.indexOf(x) > 0 ? 1 : 0;
+      // Finish these, and On your own after it, print a small label over their cards, not a chip: no card for it. So a
+      // parent-led practice page holds Watch one, two to finish and two on your own ("Then do the rest on your own").
+      const at = slots.indexOf(x);
+      const labelled = x.slot === "finish-these" || (x.slot === "on-your-own" && slots[at - 1]?.slot === "finish-these");
+      const chip = at > 0 && !labelled ? 1 : 0;
       const cost = PANELS[x.slot];
       if (cost !== undefined) {
         if (room >= cost + 1) {

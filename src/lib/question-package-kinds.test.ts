@@ -53,6 +53,16 @@ interface Kind {
 
 const KINDS: Kind[] = [
   {
+    name: "a missing part (a number bond), counted on from the part to the total",
+    operation: { kind: "missing-addend", operands: [7, 10] },
+    answer: num(3),
+    steps: [{ id: "count", kind: "count-up", from: 7, to: 10, said: [8, 9, 10] }],
+    easier: { kind: "missing-addend", operands: [9, 10] },
+    easierAnswer: num(1),
+    standard: "K2",
+    wrong: num(17),
+  },
+  {
     name: "whole-number multiplication with a two-digit multiplier",
     operation: { kind: "multiply", operands: [47, 23] },
     answer: num(1081),
@@ -670,3 +680,32 @@ function generatedOperations(): Operation[] {
   }
   return operations;
 }
+
+describe("a missing part (missing-addend)", () => {
+  const op = (part: number, total: number): Operation => ({ kind: "missing-addend", operands: [part, total] });
+
+  it("reads 2 + ? = 5, its answer is the missing part, and its words count on", () => {
+    expect(operationResult(op(2, 5))).toEqual(num(3));
+    const steps = workedSteps(op(2, 5));
+    expect(steps.map((s) => stepText(s, op(2, 5)))).toEqual(["Start at 2. Count on to 5: 3, 4, 5. That is 3 more.", "2 + 3 = 5"]);
+    expect(stepText(workedSteps(op(5, 5))[0], op(5, 5))).toBe("Start at 5. It is already 5, so 0 more.");
+  });
+
+  it("refuses a part more than the total, a total past 20, and numbers that are not whole", () => {
+    expect(operationProblem(op(6, 5))).toBe("the known part is more than the total");
+    expect(operationProblem(op(3, 21))).toBe("code checks missing parts only of totals up to 20");
+    expect(operationProblem({ kind: "missing-addend", operands: [2.5, 5] } as Operation)).not.toBeNull();
+  });
+
+  it("takes an easier example that counts fewer to a total no larger, never one that counts more", () => {
+    const check = (easier: Operation) => {
+      const p = packageOf(op(7, 10), num(3), easier, operationResult(easier), "K2");
+      return checkQuestionPackage(p).status === "checked" ? "checked" : (checkQuestionPackage(p) as { reason: string }).reason;
+    };
+    // How far is 7 from 10? counts 3; How far is 9 from 10? counts 1.
+    expect(check(op(9, 10))).toBe("checked");
+    expect(check(op(2, 4))).toBe("checked");
+    expect(check(op(5, 10))).toBe("the easier example is not smaller than the question");
+    expect(check(op(6, 9))).toBe("the easier example has the question's answer");
+  });
+});
