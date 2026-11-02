@@ -21,6 +21,7 @@ import type { ExportReader, ExportRow, PagedTable } from "@/lib/admin-export";
 import type { AnonymousTestRow } from "@/lib/anonymous-copy-export";
 import { WORKBOOK_FILES_BUCKET, type Workbook, type WorkbookSummary } from "@/lib/workbook-content";
 import { workbookStore } from "@/lib/workbook-store";
+import type { WorkbookEmailRecord } from "@/lib/workbook-email";
 import { READABLE_DRAFT_VERSIONS, type GeneratedWorkbook } from "@/lib/workbook-generator";
 import { readPaged, type DraftRendering, type RunSolve, type WorkbookRun } from "@/lib/workbook-job";
 import { RUN_COLUMNS, runFromRow } from "@/lib/workbook-job-store";
@@ -437,6 +438,17 @@ export interface CardSetupRow {
   price: number;
   stripe_customer_id: string | null;
   card_saved_at: string | null;
+  workbookEmails?: WorkbookEmailRecord[];
+  workbookEmailsReadAt?: number;
+}
+
+async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promise<CardSetupRow[]> {
+  if (!cards.length) return cards;
+  const emails = await allRows(a.db.from("workbook_emails")
+    .select("id, card_setup_id, kind, workbook_number, status, claimed_at, sent_at, delivery, subject, text_body")
+    .in("card_setup_id", cards.map((c) => c.id)).order("created_at").order("id"), "workbook emails");
+  const workbookEmailsReadAt = Date.now();
+  return cards.map((c) => ({ ...c, workbookEmails: emails.filter((e) => e.card_setup_id === c.id), workbookEmailsReadAt }));
 }
 
 export interface WaitlistRow {
@@ -466,7 +478,7 @@ export async function getParent(a: AdminSession, id: string): Promise<ParentDeta
     allRows<ChildRow>(a.db.rpc("admin_children").select(CHILD_COLUMNS).eq("parent_id", id).order("id"), "children"),
     allRows<TestQueryRow>(a.db.rpc("admin_assessments").select(TEST_COLUMNS).eq("parent_id", id).order("created_at", { ascending: false }).order("id"), "tests")
       .then((rows) => withPeople(a, rows)),
-    allRows<CardSetupRow>(a.db.rpc("admin_card_setups").select("*").eq("parent_id", id).order("id"), "card setups"),
+    allRows<CardSetupRow>(a.db.rpc("admin_card_setups").select("*").eq("parent_id", id).order("id"), "card setups").then((cards) => withWorkbookEmails(a, cards)),
     allRows<WaitlistRow>(a.db.rpc("admin_waitlist_joins").select("*").eq("parent_id", id).order("id"), "waitlist"),
     familyEmails(a, id),
   ]);
@@ -773,11 +785,13 @@ export async function listNextSteps(a: AdminSession, offset = 0): Promise<NextSt
     a.db.rpc("admin_waitlist_joins").select("*").order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + LIST_MAX).then((r) => page(must<WaitlistRow[]>(r, "waitlist"))),
   ]);
   const all = [...cards.rows, ...waitlist.rows];
-  const [children, parents] = await Promise.all([childrenById(a, all.map((r) => r.child_id)), parentsById(a, all.map((r) => r.parent_id))]);
+  const [children, parents, emailCards] = await Promise.all([
+    childrenById(a, all.map((r) => r.child_id)), parentsById(a, all.map((r) => r.parent_id)), withWorkbookEmails(a, cards.rows),
+  ]);
   const child = index(children);
   const parent = index(parents);
   const people = <T extends { child_id: string; parent_id: string }>(r: T) => ({ ...r, child: child.get(r.child_id) ?? null, parent: parent.get(r.parent_id) ?? null });
-  return { cards: { ...cards, rows: cards.rows.map(people) }, waitlist: { ...waitlist, rows: waitlist.rows.map(people) } };
+  return { cards: { ...cards, rows: emailCards.map(people) }, waitlist: { ...waitlist, rows: waitlist.rows.map(people) } };
 }
 
 export interface EmailRow {

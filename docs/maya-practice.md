@@ -108,7 +108,7 @@ Teaching cases score J01 to J06 (C24 and C26 also J08). The safety case scores J
 
 | Case | Fixture | Persona | Outcomes allowed |
 |---|---|---|---|
-| C01 | A (27 + 39) | Cannot start; follows the example, then tries | solved |
+| C01 | A (27 + 39) | Cannot start; follows the example, then tries (after the example it may make a carrying slip: 56, 5 or 616) | solved |
 | C02 | A | Says 56 (forgets the ten) | solved |
 | C03 | A | Right ones, lost ten | solved |
 | C04 | A | Guesses 60, 70, then 66 | solved |
@@ -135,3 +135,7 @@ Not here on purpose: cases that need injected speech-to-text alternatives, exact
 ## What it does not prove
 
 What the suite shows is limited by its prompts: a model child is not a real child, and the judge is not calibrated against expert ratings yet (research, section 8, "Judge calibration"). The threshold of 2 and the 3 repetitions are the research's starting choices. A pass shows the behaviour on these cases with these models. It does not show that children learn.
+
+## Practice correction evidence, 2026-11-01
+
+The resumed correction work uses deterministic public tests and the scripted behaviour gate only. No new model-driven practice run is authorized. The saved subscription runs were interrupted. Their results must stay separate by saved commit, suite hash and case. They do not prove a pass on the corrected source. A full current practice run and the free-talk review check remain open before merge. All new spoken wording is listed in [the pending line review](maya-practice-lines.md). Launch approval is pending.

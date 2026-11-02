@@ -19,6 +19,7 @@ import type { Outcome, WordingHistory } from "@/lib/maya";
 import type { AlertStatus, CallKind, CallRecord, CallStatus, FlagLevel } from "@/lib/maya-call";
 import type { CallNote, NoteFacts, NoteTranscriptLine } from "@/lib/maya-call-note";
 import type { MayaTrace } from "@/lib/maya-trace";
+import type { WorkbookDelivery, WorkbookEmailKind, WorkbookEmailStatus } from "@/lib/workbook-email";
 import type { ConnectionKind } from "@/lib/maya-voice";
 
 export type { Json };
@@ -56,6 +57,7 @@ type ColumnTypes = KnownColumns<{
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };
   workbooks: { status: WorkbookStatus };
   workbook_drafts: { draft: GeneratedWorkbook };
+  workbook_emails: { kind: WorkbookEmailKind; status: WorkbookEmailStatus; delivery: WorkbookDelivery | Record<string, never> };
   workbook_runs: { status: RunStatus; step: RunStep | null; errors: RunError[]; runner: RunRunner };
   workbook_draft_revisions: { kind: "generated" | "edit" | "redo-page"; content: GeneratedWorkbook | null; rendering: DraftRendering | null; render_problems: RenderProblem[] };
   workbook_audit: { detail: Record<string, Json | undefined> };

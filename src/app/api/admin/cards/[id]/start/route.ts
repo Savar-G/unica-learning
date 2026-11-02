@@ -3,15 +3,22 @@ import { isUuid } from "@/lib/assessment-store";
 import { startPlan, stripe } from "@/lib/stripe";
 import { planPrice } from "@/lib/subscription-plan";
 
-// D-139: an admin starts a saved card's paid plan when the child's first workbook ships. Stripe holds the result; the
+// D-139: an admin starts a saved card's paid plan when the child's first workbook arrives at your home. Stripe holds the result; the
 // dashboard reads it from there. Answers { ok, firstChargeAt } or { ok: false, error }.
 export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards/[id]/start">) {
   // Checks Auth and live admin membership for every request.
   const admin = await adminSession();
   if (!admin) return new Response("Not found", { status: 404 });
   if (request.headers.get("origin") !== new URL(request.url).origin) return new Response("Forbidden", { status: 403 });
+  if (!request.headers.get("content-type")?.startsWith("application/json")) return Response.json({ ok: false, error: "delivery_confirmation_required" }, { status: 415 });
   const { id } = await ctx.params;
   if (!isUuid(id)) return new Response("Not found", { status: 404 });
+  let body: unknown;
+  try { body = await request.json(); }
+  catch { return Response.json({ ok: false, error: "invalid" }, { status: 400 }); }
+  if (!body || typeof body !== "object" || !("deliveryConfirmed" in body) || body.deliveryConfirmed !== true) {
+    return Response.json({ ok: false, error: "not_delivered" }, { status: 409 });
+  }
   const s = stripe();
   if (!s) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
   const { data, error } = await admin.db.rpc("admin_card_setups").select("*").eq("id", id.toLowerCase()).maybeSingle();
@@ -20,7 +27,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
   if (!card) return new Response("Not found", { status: 404 });
   if (!card.card_saved_at || !card.stripe_customer_id) return Response.json({ ok: false, error: "no_card" }, { status: 409 });
   try {
-    const result = await startPlan(s, { cardSetup: card.id, customer: card.stripe_customer_id, price: planPrice(Number(card.price), card.plan) });
+    const result = await startPlan(s, { cardSetup: card.id, customer: card.stripe_customer_id, price: planPrice(Number(card.price), card.plan), deliveryConfirmed: true });
     return Response.json(result, { status: result.ok ? 200 : 409 });
   } catch (e) {
     console.error("[stripe] start plan failed", e instanceof Error ? e.message : "failed");

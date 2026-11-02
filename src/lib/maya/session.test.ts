@@ -252,6 +252,9 @@ describe("the easier example and the child's own question", () => {
   it("works the example step by step, in order, then hands the question back", () => {
     const c = opened();
     c.child("I don't know how to start.");
+    // The easier example is for a child who cannot start: the reading says so.
+    c.maya({ act: "clarify", parts: [ln("assess.ask")], reading: { start: "no_start" } });
+    c.child("I really don't know.");
     expect(c.refused({ act: "example_step", step: "tens", parts: [ln("example.step", { step: "tens" })] })).toMatchObject({ code: "wrong_step" });
     // Practice run 5 (F06): the child must hear that a new problem starts, so the first step needs the intro line.
     expect(c.refused({ act: "example_step", step: "ones", parts: [ln("example.step", { step: "ones" })] })).toMatchObject({ code: "line_not_offered" });
@@ -289,22 +292,23 @@ describe("the hint ladder", () => {
   it("rises one level per failed attempt, needs more help after two failures at one level, and gives the answer only at H4", () => {
     const c = afterExample();
     const wrong = (value: number, at: string) => ({ answers: [{ value: num(value), step: at, verdict: "wrong" as const }] });
-    c.child("I got 56.");
-    expect(c.refused({ act: "guide", step: "ones", level: 3, parts: [ln("step.show", { step: "ones" })], reading: wrong(56, "result") })).toMatchObject({ code: "hint_too_high" });
-    c.maya({ act: "guide", step: "ones", level: 1, parts: [ln("step.point", { step: "ones" })], reading: wrong(56, "result") });
+    // 57 and 4 are not the answers of a lost carry (56, 5): those get the regroup line first (tested below).
+    c.child("I got 57.");
+    expect(c.refused({ act: "guide", step: "ones", level: 3, parts: [ln("step.show", { step: "ones" })], reading: wrong(57, "result") })).toMatchObject({ code: "hint_too_high" });
+    c.maya({ act: "guide", step: "ones", level: 1, parts: [ln("step.point", { step: "ones" })], reading: wrong(57, "result") });
     c.child("16");
     // A right step moves on with less help: the tens start at H0.
     expect(c.refused({ act: "guide", step: "tens", level: 1, parts: [ln("step.point", { step: "tens" })], reading: { answers: [{ value: num(16), step: "ones", verdict: "right" }] } }))
       .toMatchObject({ code: "hint_too_high" });
     c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { answers: [{ value: num(16), step: "ones", verdict: "right" }] } });
-    c.child("Two plus three is 5.");
-    expect(c.refused({ act: "guide", step: "tens", level: 2, parts: [ln("step.operation", { step: "tens" })], reading: wrong(5, "tens") })).toMatchObject({ code: "hint_too_high" });
-    c.maya({ act: "guide", step: "tens", level: 1, parts: [ln("step.point", { step: "tens" })], reading: wrong(5, "tens") });
-    c.child("5?");
-    c.maya({ act: "guide", step: "tens", level: 1, parts: [ln("step.point", { step: "tens" })], reading: wrong(5, "tens") });
-    c.child("Still 5.");
-    expect(c.refused({ act: "guide", step: "tens", level: 1, parts: [ln("step.point", { step: "tens" })], reading: wrong(5, "tens") })).toMatchObject({ code: "same_hint_again" });
-    c.maya({ act: "guide", step: "tens", level: 2, parts: [ln("step.operation", { step: "tens" })], reading: wrong(5, "tens") });
+    c.child("Two plus three is 4.");
+    expect(c.refused({ act: "guide", step: "tens", level: 2, parts: [ln("step.operation", { step: "tens" })], reading: wrong(4, "tens") })).toMatchObject({ code: "hint_too_high" });
+    c.maya({ act: "guide", step: "tens", level: 1, parts: [ln("step.point", { step: "tens" })], reading: wrong(4, "tens") });
+    c.child("4?");
+    c.maya({ act: "guide", step: "tens", level: 1, parts: [ln("step.point", { step: "tens" })], reading: wrong(4, "tens") });
+    c.child("Still 4.");
+    expect(c.refused({ act: "guide", step: "tens", level: 1, parts: [ln("step.point", { step: "tens" })], reading: wrong(4, "tens") })).toMatchObject({ code: "same_hint_again" });
+    c.maya({ act: "guide", step: "tens", level: 2, parts: [ln("step.operation", { step: "tens" })], reading: wrong(4, "tens") });
     c.child("Can you show me?");
     expect(c.refused({ act: "give_answer", parts: [ln("step.show", { step: "tens" })], reading: { help: "show" } })).toMatchObject({ code: "hint_too_high" });
     c.maya({ act: "guide", step: "tens", level: 3, parts: [ln("step.show", { step: "tens" })], reading: { help: "show" } });
@@ -705,13 +709,15 @@ describe("board commands in a proposal (modelBoard)", () => {
   it("sends the board batch of an allowed act, with a call-scoped transaction id", () => {
     const c = opened(PACKAGE, true);
     c.child("I can't start.");
-    const { effects } = c.maya({ act: "example_step", step: "ones", parts: [ln("example.intro")], board: [columns(18, 5)] });
+    const { effects } = c.maya({ act: "example_step", step: "ones", parts: [ln("example.intro")], reading: { start: "no_start" }, board: [columns(18, 5)] });
     expect(effects).toContainEqual({ kind: "board", batch: { transactionId: "call-1-b1", commands: [columns(18, 5)] } });
   });
 
   it("refuses the child's question on the board during the easier example, and the example after it", () => {
     const c = opened(PACKAGE, true);
     c.child("I can't start.");
+    c.maya({ act: "clarify", parts: [ln("assess.ask")], reading: { start: "no_start" } });
+    c.child("I still can't.");
     expect(c.refused({ act: "example_step", step: "ones", parts: [ln("example.intro")], board: [columns(27, 39)] })).toMatchObject({ code: "board_wrong_problem" });
     const d = afterExample(true);
     d.child("I got 56.");
@@ -1036,7 +1042,7 @@ describe("the child's final answer, with an explanation after it (D-199)", () =>
 
   it("still confirms a number form it cannot read when it is the answer, not the explanation", () => {
     const c = opened();
-    c.child("Six tens because I added them.");
+    c.child("Three quarters because I added them.");
     expect(c.next.acts).toEqual(["confirm"]);
   });
 });
