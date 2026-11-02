@@ -53,12 +53,12 @@ export async function voiceCallFacts(id: string) {
 export async function testQuestion(assessmentId: string, questionId: string) {
   const db = adminClient();
   if (!db) return null;
-  const { data, error } = await db.from("assessments").select("id, parent_id, child_id, children(first_name)").eq("id", assessmentId).maybeSingle();
+  const { data, error } = await db.from("assessments").select("id, parent_id, child_id, children(first_name, grade)").eq("id", assessmentId).maybeSingle();
   if (error) throw new Error(`test question load: ${error.message}`);
   if (!data) return null;
   const found = await assessmentQuestionReader(db).question({ source: "assessment", assessmentId: data.id, questionId });
   if (found.status !== "found") return null;
-  return { parentId: data.parent_id, childId: data.child_id, childName: data.children?.first_name ?? null, package: found.package };
+  return { parentId: data.parent_id, childId: data.child_id, childName: data.children?.first_name ?? null, grade: data.children?.grade, package: found.package };
 }
 
 /** The child's first name for a call's next turn (Maya may say it). */
@@ -164,6 +164,8 @@ const callCursor = (value?: string): CallCursor | null => {
     const c = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
     return Number.isInteger(c.group) && c.group >= 0 && c.group < 4 &&
       typeof c.at === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(c.at) && Number.isFinite(Date.parse(c.at)) &&
+      // Check the written calendar date separately: offsets can move a valid timestamp to another UTC day.
+      new Date(c.at.slice(0, 10)).toISOString().slice(0, 10) === c.at.slice(0, 10) &&
       typeof c.id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.id) &&
       (c.direction === "older" || c.direction === "newer") ? c : null;
   } catch { return null; }

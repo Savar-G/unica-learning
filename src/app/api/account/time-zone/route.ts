@@ -1,5 +1,5 @@
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
-import { validTimeZone } from "@/lib/family-time";
+import { normalizeTimeZone } from "@/lib/family-time";
 
 // The family's time zone (#330): Parent home sends the browser's IANA time zone once, and the server stores it only
 // when none is stored yet, so Maya's weekly minutes start on the family's own Monday. The parent comes from the
@@ -15,8 +15,8 @@ export async function POST(request: Request) {
   } catch {
     return reply(400, { ok: false, error: "bad_json" });
   }
-  const tz = (body as { timeZone?: unknown } | null)?.timeZone;
-  if (!validTimeZone(tz)) return reply(400, { ok: false, error: "bad_time_zone" });
+  const tz = normalizeTimeZone((body as { timeZone?: unknown } | null)?.timeZone);
+  if (!tz) return reply(400, { ok: false, error: "bad_time_zone" });
   const db = adminClient();
   if (!db) return reply(503, { ok: false, error: "unavailable" });
   const { error } = await db.from("parents").update({ time_zone: tz }).eq("id", id).is("time_zone", null);

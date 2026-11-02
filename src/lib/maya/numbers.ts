@@ -101,7 +101,7 @@ export interface NumbersRead {
 export function readNumbers(text: string): NumbersRead {
   if (text.includes(UNREAD_MARK)) return { values: [], unreadable: true, lastInOperation: false, notAnswer: [], operand: [] };
   // A hyphen between words joins a number ("sixty-six"); elsewhere it is a minus sign.
-  const tokens = plainMinus(text).toLowerCase().replace(/([a-z])-(?=[a-z])/g, "$1 ").match(TOKEN) ?? [];
+  const tokens = plainMinus(text).toLowerCase().replace(/\b(mm|cm|dm|km|m)²(?![a-z0-9])/g, "$1").replace(/\b(?:square|squared)\s+(?=(?:(?:milli|centi|deci|kilo)?met(?:re|er)s?|mm|cm|dm|km|m)\b)/g, "").replace(/([a-z])-(?=[a-z])/g, "$1 ").match(TOKEN) ?? [];
   // First the numbers, with a fraction bar, a remainder mark or a mixed-number mark where one was said; then each "number
   // bar number" becomes a fraction, each "number mix number bar number" a mixed number and each "number R number" a
   // remainder answer.

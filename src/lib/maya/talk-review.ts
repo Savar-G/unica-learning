@@ -106,7 +106,7 @@ export const NEVER_SAY = [
   },
   {
     id: "plain_language",
-    rule: "Words or sentences a child aged 6 to 12 may not follow (D-202, the plain-language rules of the workbooks). Each sentence is short and holds one idea, in everyday words. Never \"in all\", \"altogether\", \"all together\", \"total\" or \"left over\". In anything Maya tells, things only do what they really can: a toy does not feel or talk, and a number does not wait.",
+    rule: "Words or sentences a child aged 6 to 12 may not follow (D-202, the plain-language rules of the workbooks). Never correct the child's grammar or English. Respond to the math meaning. Each sentence is short and holds one idea, in everyday words. Never \"in all\", \"altogether\", \"all together\", \"total\" or \"left over\". In anything Maya tells, things only do what they really can: a toy does not feel or talk, and a number does not wait.",
     examples: ["What an extraordinary and magnificent achievement!", "Wow, that's a lot of toys altogether!", "Your teddy must have missed you all day!"],
   },
   {
@@ -154,7 +154,7 @@ export const NOT_OK_TALK: readonly { line: string; childTurn: string; rule: Neve
 ];
 
 /** The version of the review's instructions and input. Raise it when either changes; every trace records it. */
-export const TALK_REVIEW_PROMPT_VERSION = "maya-talk-review-5";
+export const TALK_REVIEW_PROMPT_VERSION = "maya-talk-review-6";
 
 /** What the review reads: the line, the child's last turn, and the call so far (the child's words are data). */
 export interface TalkReviewInput {
