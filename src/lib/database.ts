@@ -9,7 +9,11 @@ import type { PlanId } from "@/lib/site";
 import type { TestDevice } from "@/lib/test-context";
 import type { StoredReview } from "@/lib/work-review";
 import type { WorkbookStatus } from "@/lib/workbook-content";
-import type { GeneratedWorkbook } from "@/lib/workbook-generator";
+import type { GeneratedPage, GeneratedWorkbook, StoredCall } from "@/lib/workbook-generator";
+import type { DraftRendering, RunError, RunFrame, RunRunner, RunSolve, RunStatus, RunStep } from "@/lib/workbook-job";
+import type { AiCallRecord, AiProvider } from "@/lib/ai-fallback";
+import type { AiCallKind } from "@/lib/workbook-ai";
+import type { RenderProblem } from "@/lib/workbook-render";
 import type { BoardHistory } from "@/lib/board-history";
 import type { Outcome, WordingHistory } from "@/lib/maya";
 import type { AlertStatus, CallKind, CallRecord, CallStatus, FlagLevel } from "@/lib/maya-call";
@@ -50,6 +54,15 @@ type ColumnTypes = KnownColumns<{
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };
   workbooks: { status: WorkbookStatus };
   workbook_drafts: { draft: GeneratedWorkbook };
+  workbook_runs: { status: RunStatus; step: RunStep | null; errors: RunError[]; runner: RunRunner };
+  workbook_draft_revisions: { kind: "generated" | "edit" | "redo-page"; content: GeneratedWorkbook | null; rendering: DraftRendering | null; render_problems: RenderProblem[] };
+  workbook_audit: { detail: Record<string, Json | undefined> };
+  workbook_run_pages: { page: GeneratedPage };
+  workbook_run_calls: { call: StoredCall };
+  workbook_run_solves: { verdict: RunSolve["verdict"]; log: RunSolve["log"] };
+  workbook_run_frames: { frame: RunFrame };
+  workbook_run_ai_calls: { kind: AiCallKind; provider: AiProvider; outcome: AiCallRecord["outcome"] };
+  workbook_workers: { primary_ai: AiProvider };
 }>;
 type Fits<T, Column> = Json extends Column ? T
   : (null extends T ? 1 : 0) extends (null extends Column ? 1 : 0) ? (NonNullable<T> extends NonNullable<Column> ? T : never) : never;
@@ -73,6 +86,8 @@ type KnownArgs<T extends { [F in keyof T]: F extends keyof Fns ? keyof Fns[F]["A
 type AnswerNulls = "p_misconception" | "p_read_aloud_count" | "p_read_aloud_at_ms" | "p_away_count" | "p_away_ms" | "p_work_text";
 type NullArgs = KnownArgs<{
   admin_template_stats_v2: "school_grade" | "curriculum";
+  // An idle worker has no run; a worker outside git has no build.
+  beat_workbook_worker: "p_build" | "p_run" | "p_note";
   change_answer: AnswerNulls | "p_work_path" | "p_strokes_path";
   change_answer_keep_drawing: AnswerNulls;
   claim_family_retention: "subscription_ended_at";
@@ -82,6 +97,9 @@ type NullArgs = KnownArgs<{
   family_deletion_candidates: "after_id";
   family_retention_candidates: "after_id";
   finish_booking_signup: "customer";
+  // A draft none of whose pages rendered has no rendering.
+  finish_workbook_run: "p_rendering";
+  save_workbook_run_draft: "p_profile_build";
   pending_family_payment_operations: "after_id";
   record_reminder_click: "p_assessment";
   save_family_payment_progress: "head_id" | "after_id";

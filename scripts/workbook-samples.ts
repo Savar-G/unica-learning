@@ -15,9 +15,13 @@
 //    key pages, failures first) and index.md with every count and the AI cost.
 //
 // Usage: npm run workbooks:samples -- [--levels U1,U2,...|all] [--second U5,U12] [--test U12] [--out <folder>]
-//          [--concurrency 6] [--fake] [--anthropic] [--no-store] [--family-only]
+//          [--concurrency 6] [--fake] [--api] [--anthropic] [--no-store] [--family-only]
 // --family-only makes (or finds) the test family and its children, prints them, and stops: no AI, no books.
-// The AI: OPENROUTER_API_KEY (or OPENROUTER_API_KEY_FILE) and AI_MODEL. --anthropic uses the Claude API directly
+// The AI (D-200): by default Savar's Claude subscription through `claude -p` (src/lib/workbook-ai.ts: WORKBOOK_CLAUDE_MODEL,
+// WORKBOOK_CLAUDE_SOLVE_MODEL, WORKBOOK_CLAUDE_CONFIG_DIR), with the API (OpenRouter: OPENROUTER_API_KEY or
+// OPENROUTER_API_KEY_FILE, AI_MODEL) as the fallback when the subscription cannot take a call; with no OpenRouter key
+// there is no fallback. WORKBOOK_AI_PRIMARY=api puts the API first. index.md counts the calls on each. --api uses the
+// API (OpenRouter) only, as before D-200. --anthropic uses the Claude API directly
 // (src/lib/ai-anthropic.ts) with ANTHROPIC_API_KEY, ANTHROPIC_API_KEY_FILE or the Keychain item "anthropic-unica-tools"
 // (the key on Savar's Max plan API credits), and ANTHROPIC_MODEL (default claude-sonnet-5-5). The solve check (round 7) reads
 // each printed question the AI wrote and answers it, through the same provider: AI_SOLVE_MODEL on OpenRouter (default
@@ -32,6 +36,8 @@ import { parseArgs } from "node:util";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import sharp from "sharp";
 import { AI_DEFAULT_MODEL, AI_SOLVE_DEFAULT_MODEL, type AiClient } from "@/lib/ai-client";
+import type { AiCallRecord } from "@/lib/ai-fallback";
+import { workbookAi, workbookAiPrimary, type AiCallKind } from "@/lib/workbook-ai";
 import { ANTHROPIC_DEFAULT_MODEL, anthropicClient, type AnthropicUsage } from "@/lib/ai-anthropic";
 import { openRouterClient } from "@/lib/ai-openrouter";
 import type { Database } from "@/lib/database";
@@ -57,7 +63,7 @@ const { values } = parseArgs({
   options: {
     levels: { type: "string", default: "all" }, second: { type: "string", default: "" }, test: { type: "string", default: "" },
     out: { type: "string", default: "/tmp/ui-review/samples" }, concurrency: { type: "string", default: "6" },
-    fake: { type: "boolean", default: false }, anthropic: { type: "boolean", default: false }, "family-only": { type: "boolean", default: false }, "no-store": { type: "boolean", default: false },
+    fake: { type: "boolean", default: false }, api: { type: "boolean", default: false }, anthropic: { type: "boolean", default: false }, "family-only": { type: "boolean", default: false }, "no-store": { type: "boolean", default: false },
   },
 });
 const BC = curriculumFor("bc")!;
@@ -122,6 +128,34 @@ const costs = new Map<string, { usd: number; calls: number; failed: number; inTo
 /** The solve checks' cost (round 7), by book, apart from the generator's. */
 const solveCosts: typeof costs = new Map();
 let costKey = "";
+
+/** The AI calls by provider (D-200), by book: calls that reached each provider, and calls one could not take. */
+const providerCounts = new Map<string, { subscription: number; api: number; unavailable: number; lastUnavailable: string | null }>();
+
+/** Counts one call of the subscription-first client into the book's cost and its provider counts. */
+function countCall(kind: AiCallKind, r: AiCallRecord) {
+  const p = providerCounts.get(costKey) ?? { subscription: 0, api: 0, unavailable: 0, lastUnavailable: null };
+  if (r.outcome === "unavailable") {
+    p.unavailable++;
+    p.lastUnavailable = `${r.provider}: ${r.note ?? ""}`;
+  } else {
+    p[r.provider]++;
+    const into = kind === "solve" ? solveCosts : costs;
+    const c = into.get(costKey) ?? { usd: 0, calls: 0, failed: 0, inTokens: 0, outTokens: 0 };
+    c.calls++;
+    c.usd += r.usd ?? 0;
+    if (r.outcome === "failed") c.failed++;
+    into.set(costKey, c);
+  }
+  providerCounts.set(costKey, p);
+}
+
+/** One book's calls by provider, as one line. */
+const providerLine = (label: string) => {
+  const p = providerCounts.get(label);
+  if (!p) return "no subscription-first calls";
+  return `${p.subscription} calls on the Claude subscription, ${p.api} on the API${p.unavailable ? `, ${p.unavailable} the subscription or the API could not take (last: ${p.lastUnavailable})` : ""}`;
+};
 
 function costingFetch(into = costs): typeof fetch {
   return async (input, init) => {
@@ -388,7 +422,7 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
     },
   );
   await writeFile(`${out}/${label}-solve.jsonl`, solveLogs.map((l) => `${JSON.stringify(l)}\n`).join(""));
-  if (result.status !== "stored") throw new Error(`${label}: ${result.reason}`);
+  if (result.status !== "stored") throw new Error(`${label}: ${result.status === "refused" ? result.reason : "paused"}`);
   const draft = result.draft;
   const renderable = renderableDraft(draft);
   const fileKey = randomBytes(6).toString("base64url");
@@ -451,6 +485,14 @@ if (values.fake) {
   solver = aiSolver(anthropicClient({
     apiKey: key, model: process.env.ANTHROPIC_SOLVE_MODEL || "claude-haiku-5-5", timeout: 60_000, fallbacks: false, onUsage: (u) => countAnthropic(u, solveCosts),
   }));
+} else if (!values.api) {
+  // D-200: the subscription first (WORKBOOK_AI_PRIMARY), the API as the fallback when there is a key.
+  const key = await openRouterKey();
+  const live = workbookAi({ ...process.env, ...(key ? { OPENROUTER_API_KEY: key } : {}) }, { subscription: true, onCall: countCall });
+  if (!live.ai || !live.solve) throw new Error("no AI: neither the Claude subscription nor an OpenRouter key");
+  ai = live.ai;
+  solver = live.solve.solver;
+  console.log(`AI: ${workbookAiPrimary() === "api" ? "the API first, then the Claude subscription" : "the Claude subscription (claude -p) first"}${key ? ", with the API as the fallback" : "; no OpenRouter key, so no API fallback"}.`);
 } else {
   const key = await openRouterKey();
   if (!key) throw new Error("no OpenRouter key: set OPENROUTER_API_KEY or OPENROUTER_API_KEY_FILE (or pass --fake for a layout dry run)");
@@ -476,6 +518,7 @@ for (const job of jobs) {
     results.push(r);
     console.log(`  ${r.label}: ${r.draft.counts.pages} pages, ${r.draft.counts.questions} questions, ${r.draft.counts.failed} failed, ${r.draft.counts.failedPages} pages do not fit, ${r.draft.pages.reduce((n, p) => n + (p.leftOut?.length ?? 0), 0)} left out for room, ${r.renderProblems.length} render problems (strict), USD ${r.usd.toFixed(2)}, ${r.minutes.toFixed(1)} min`);
     console.log(`  ${r.label}: ${r.solve.checks} solve checks (${solver.model}), ${r.solve.disagreed} read another way, ${r.solve.failed} failed or late, USD ${r.solve.usd.toFixed(4)}; log ${out}/${r.label}-solve.jsonl`);
+    if (providerCounts.has(r.label)) console.log(`  ${r.label}: ${providerLine(r.label)}`);
   } catch (e) {
     console.error(`  ${job.level} ${job.kind}: ERROR ${e instanceof Error ? e.message : String(e)}`);
     results.push({ label: `${job.level}-${job.kind}`, level: job.level, kind: job.kind, error: e instanceof Error ? e.message : String(e) } as BookResult);
@@ -506,6 +549,7 @@ async function writeIndex() {
     "|---|---|---|---|---|---|---|---|---|---|",
     ...rows,
     "",
+    ...(providerCounts.size ? ["## AI calls by provider (D-200)", "The Claude subscription costs nothing per call; the API's cost is in the table above.", ...ok.map((r) => `- ${r.label}: ${providerLine(r.label)}`), ""] : []),
     "## Solve checks (round 7)",
     "Each printed question the AI wrote is read and answered by a separate model; one it answers otherwise fails closed (written again once, then marked failed).",
     ...ok.map((r) => `- ${r.label}: ${r.solve.checks} checks, ${r.solve.disagreed} read another way, ${r.solve.failed} failed or late, USD ${r.solve.usd.toFixed(4)} ([log](${r.label}-solve.jsonl))`),

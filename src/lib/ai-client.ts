@@ -10,8 +10,8 @@ import { openRouterClient } from "@/lib/ai-openrouter";
 /** The model when AI_MODEL is not set: an OpenRouter model id with image input, structured output and reasoning. */
 export const AI_DEFAULT_MODEL = "anthropic/claude-sonnet-5.5";
 /**
- * The model of the workbook generator's solve check (round 7, src/lib/workbook-solve-check.ts) when AI_SOLVE_MODEL is
- * not set: the cheapest model that reads a short printed question and answers it, Claude Haiku 5.5.
+ * The model of the workbook generator's solve check (round 7, src/lib/workbook-solve-check.ts) on the API when
+ * AI_SOLVE_MODEL is not set (src/lib/workbook-ai.ts): the cheapest model that reads a short printed question and answers it, Claude Haiku 5.5.
  */
 export const AI_SOLVE_DEFAULT_MODEL = "anthropic/claude-haiku-5.5";
 
@@ -54,13 +54,6 @@ export function aiClient(env: Readonly<Record<string, string | undefined>> = pro
   const apiKey = env.OPENROUTER_API_KEY?.trim();
   if (!apiKey) return null;
   return openRouterClient({ apiKey, model: model?.trim() || env.AI_MODEL?.trim() || AI_DEFAULT_MODEL });
-}
-
-/** The solve check's client, or null when the AI is off. The model comes from AI_SOLVE_MODEL. */
-export function aiSolveClient(env: Record<string, string | undefined> = process.env): AiClient | null {
-  const apiKey = env.OPENROUTER_API_KEY?.trim();
-  if (!apiKey) return null;
-  return openRouterClient({ apiKey, model: env.AI_SOLVE_MODEL?.trim() || AI_SOLVE_DEFAULT_MODEL });
 }
 
 /**

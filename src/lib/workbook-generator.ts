@@ -35,6 +35,22 @@
 //   solve check (GenerateDeps.solver, src/lib/workbook-solve-check.ts): a separate model answers it from the printed words
 //   alone; a different answer, or a check that fails or is late, fails the question, which the redo writes once more.
 //   The check is not a generation attempt.
+// - Resumable runs (#312): with a page store (GenerateDeps.pages) each finished day page is kept as it is done, and a
+//   later call with the same input writes only the missing ones; with an attempt ledger (GenerateDeps.attempts) each
+//   AI attempt of a question or worked example is counted before its call, and a slot the ledger refuses is not asked
+//   again (the job's ledger allows 3, one per reason: the first call, the check redo and the fit rewrite). The days
+//   run in order; the pages of one day run at once (`concurrency`), and each of them reads what the days before asked
+//   (the book memory), never its own day's other pages, so the draft is the same at any concurrency and after a resume.
+//   With a call store (GenerateDeps.calls, R379-7-1) each AI call of a page is kept as it came back, built and
+//   checked, with the attempts it counted, before anything else happens; a later call replays a page's kept calls in
+//   order instead of asking again, so an attempt that was paid for is never lost or used twice, and a resumed page is
+//   the page an uninterrupted run would have made.
+//   R379-8-1: a call is kept as soon as the AI's answer is built, before its solve checks start; each solve check is
+//   kept as it comes back, keyed by the call (book page and place) and the question's slot or panel, and a replay runs
+//   only the checks that have no kept result. R379-8-2: a resume reads only what the run kept, checked against the book
+//   this input plans: a kept page, attempt or call that does not fit the plan's pages and slots stops the generation
+//   (ResumeMismatch), never mixing an old answer into a new plan. bookOutline gives the fingerprint of the planned book,
+//   so a caller can refuse a resume whose curriculum, layouts or rooms changed.
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness (the caller passes the QR token maker).
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { withTimeLimit, type AiClient } from "@/lib/ai-client";
@@ -43,13 +59,14 @@ import { isQrToken, isUuid } from "@/lib/workbook-content";
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import { buildQuestion, isCodeWorded, ITEMS_SCHEMA, kindProblem, relationWordings, type BuiltQuestion, type QuestionCheck, type SlotWording } from "@/lib/workbook-generator-items";
 import { isOneMoreLessSkill } from "@/lib/number-words";
-import { solveCheck, solveReason, type SolveLog, type Solver } from "@/lib/workbook-solve-check";
+import { solveCheck, solveReason, type SolveLog, type Solver, type SolveVerdict } from "@/lib/workbook-solve-check";
+import { digestOf } from "@/lib/workbook-digest";
 import { BOYS, fillFrame, frameDoes, framePair, framesFor, GIRLS, PEOPLE, THINGS, quantityStoryProblem, storyProblem, type Action, type WordingKind } from "@/lib/workbook-wording";
 import {
   bookPageContent, dayPageContent, layoutDayPage, mistakesFor, levelSigns, rangeProblem, samFix, samProblem, skillRange, slotRanges, PANEL_SLOTS, SLOT_FORMATS, STRICT_SLOTS,
   type DayLayout, type NumberRange,
 } from "@/lib/workbook-book";
-import type { Omission, PageContent, SlotName } from "@/lib/workbook-page";
+import { pageId, type Omission, type PageContent, type SlotName } from "@/lib/workbook-page";
 import type { PageType, PlannedPage, PlannedPart, WorkbookPlan } from "@/lib/workbook-plan";
 import type { DraftPage } from "@/lib/workbook-render";
 import { textRoom } from "@/lib/workbook-template";
@@ -232,6 +249,78 @@ export interface GenerateInput {
   book?: { child: string };
 }
 
+/**
+ * Where finished day pages are kept while a run works (#312), so a run that stops (a time limit) resumes without
+ * writing them again. `save` throws when the run may no longer write: the generation stops.
+ */
+export interface PageStore {
+  /** The day pages already finished for this draft. */
+  load(): Promise<GeneratedPage[]>;
+  save(page: GeneratedPage): Promise<void>;
+}
+
+/**
+ * The AI attempts each question slot and worked example has used, kept outside this call (#312, R379-2-1, R379-3-1).
+ * `use` asks to count one attempt of each slot before the AI call that makes it and answers the slots it refused (a
+ * slot that used `max`); a refused slot is not asked. So a later call that goes on after an error or a crash never gives
+ * a slot more than `max`, even when its page was never stored. Keys are "<book page>:<slot>" ("e1" for a worked
+ * example). `use` throws when the run may no longer write: the generation stops.
+ */
+export interface AttemptLedger {
+  /** The AI attempts a slot may use in all. */
+  readonly max: number;
+  load(): Promise<Map<string, number>>;
+  use(page: number, slots: string[]): Promise<{ refused: string[] }>;
+}
+
+/** What one AI call of a page asked (R379-8-2): its name, and the slots and panels it covered, in order. */
+export interface CallAsk {
+  name: string;
+  slots: string[];
+  panels: string[];
+}
+
+/**
+ * One AI call of a day page as it came back (#312, R379-7-1): what it asked (`ask`), its questions and worked examples
+ * built and checked by code, before the solve check (R379-8-1: the solve checks are kept one by one, see CallStore),
+ * the slots and panels it did not ask (refused), and the attempts each slot and panel it counted had used once counted.
+ * Holds only what the AI wrote and code built from it: the AI is never told the child's name (pageRequest), so no call
+ * holds it.
+ */
+export interface StoredCall {
+  ask: CallAsk;
+  built: BuiltQuestion[];
+  examples: BuiltQuestion[];
+  refused: string[];
+  tries: Record<string, number>;
+}
+
+/**
+ * Where each AI call of a day page is kept as soon as it comes back (#312, R379-7-1), keyed by its book page and its
+ * place in that page's calls (`seq`: 0 the first call, then the redo, then the shorter rewrite). A later call replays
+ * a page's kept calls instead of asking the AI again. The call is kept before its solve checks start, and each solve
+ * check as it comes back, under its key (solveKey: the call's key and the question's slot or panel; one check reads
+ * every box of its question at once), so a replay runs only the checks with no kept result (R379-8-1). `save` and
+ * `saveSolve` throw when the run may no longer write: the generation stops. The first call or check kept at a key stays.
+ */
+export interface CallStore {
+  /** The kept calls of these book pages. */
+  load(pages: number[]): Promise<{ page: number; seq: number; call: StoredCall }[]>;
+  save(page: number, seq: number, call: StoredCall): Promise<void>;
+  /** The kept solve checks' verdicts by key, of these book pages. */
+  solves(pages: number[]): Promise<Map<string, SolveVerdict>>;
+  saveSolve(key: string, log: SolveLog): Promise<void>;
+}
+
+/** A solve check's key (R379-8-1): "<book page>:<call seq>:<slot or panel>", as "14:0:1.2" or "14:1:e1". */
+export const solveKey = (page: number, seq: number, id: string) => `${page}:${seq}:${id}`;
+
+/**
+ * What a resume found kept that does not fit the book this input plans (R379-8-2): a page, an attempt, a call or its
+ * answers of another plan. The generation stops and writes nothing more; trying again gives the same answer.
+ */
+export class ResumeMismatch extends Error {}
+
 export interface GenerateDeps {
   ai: AiClient;
   fit: FitCheck;
@@ -251,13 +340,25 @@ export interface GenerateDeps {
   solver: Solver;
   /** The time limit of one solve check; 60 seconds when not given. A late check fails its question. */
   solveTimeLimitMs?: number;
-  /** Called after each solve check, to log and cost it. */
+  /** Called after each solve check that ran (a kept one replayed is not), to log it. */
   onSolve?(log: SolveLog): void;
   /** The time in milliseconds, for the solve log only; none when not given. */
   now?(): number;
+  /** Finished pages kept for a resume (#312); none when not given. */
+  pages?: PageStore;
+  /** The attempts used before this call (#312); none when not given (no limit past the generator's own). */
+  attempts?: AttemptLedger;
+  /** Each page's AI calls, kept for a resume (R379-7-1); none when not given (nothing is replayed). */
+  calls?: CallStore;
+  /** Asked before each day page starts: true stops starting pages (a time budget); the result is "paused". */
+  stop?(): boolean;
 }
 
-export type GenerateResult = { status: "stored"; draft: GeneratedWorkbook } | { status: "refused"; reason: string };
+export type GenerateResult =
+  | { status: "stored"; draft: GeneratedWorkbook }
+  /** `stop` said to stop before every day page was done: call again with the same input and page store to go on. */
+  | { status: "paused"; done: number; total: number }
+  | { status: "refused"; reason: string };
 
 const TIME_LIMIT_MS = 180_000;
 const SOLVE_TIME_LIMIT_MS = 60_000;
@@ -864,6 +965,11 @@ function duplicateProblem(p: QuestionPackage, place: SlotName | null, memory: Bo
 /** A relation item: its text is code's (round 6). */
 const isRelation = (p: QuestionPackage) => (p.item?.checks ?? []).some((c) => c.kind === "relation");
 
+/** A copy of the memory to add to: `remember` replaces each list, so the copy shares none it changes. */
+const cloneMemory = (m: BookMemory): BookMemory => ({
+  texts: new Map(m.texts), keys: new Map(m.keys), shapes: new Map(m.shapes), shapeText: new Map(m.shapeText), codeShapes: new Map(m.codeShapes),
+});
+
 /** Adds a finished page's questions to what the book has asked. */
 function remember(memory: BookMemory, page: number, questions: GeneratedQuestion[]) {
   for (const q of questions) {
@@ -887,18 +993,69 @@ interface PageWork {
   layout: DayLayout | null;
   /** The page's panels, each asked for a worked example of its own skill (#380). */
   panels: Panel[];
+  /** The AI attempts each slot and panel of the page used (#312), with those of earlier calls; shared by its redos. */
+  tries: Tries;
+  /** The page's AI calls in order (R379-7-1): the next call's place, and the calls an earlier try kept; shared too. */
+  calls: { next: number; kept: Map<number, StoredCall> };
+  /** The solve checks an earlier try kept of the page's calls, by solveKey (R379-8-1). */
+  solves: Map<string, SolveVerdict>;
 }
 
-/** Writes the page's slots at `which` (indexes) in one AI call and builds each; never throws. */
+/** A page's AI attempts by slot or panel id, and the most a slot may use (the ledger's; no limit without one). */
+interface Tries {
+  used: Map<string, number>;
+  max: number;
+}
+
+/** A question or worked example that used its AI attempts in an earlier try that stopped before its page was stored. */
+const EXHAUSTED: QuestionCheck = { status: "failed", reason: "it used its AI attempts in an earlier try that stopped before its page was stored" };
+const exhaustedBuild = (): BuiltQuestion => ({ check: EXHAUSTED, package: null, stepIds: [] });
+/** The attempts a slot has used, as a question stores them (1 to 3). */
+const triesOf = (w: PageWork, id: string) => Math.min(3, Math.max(1, w.tries.used.get(id) ?? 1)) as GeneratedQuestion["attempts"];
+/** Whether a slot or panel may be asked again. */
+const hasTry = (w: PageWork, id: string) => (w.tries.used.get(id) ?? 0) < w.tries.max;
+
+const askText = (a: CallAsk | undefined) => (a ? `${a.name} of ${[...a.slots, ...a.panels].join(", ") || "nothing"}` : "a call of an older shape");
+const sameAsk = (a: CallAsk | undefined, b: CallAsk) =>
+  !!a && a.name === b.name && JSON.stringify(a.slots) === JSON.stringify(b.slots) && JSON.stringify(a.panels) === JSON.stringify(b.panels);
+
 /** A slot's room for code's wordings: two thirds of it on a shorter rewrite. */
 const shorterRoom = (room: number | undefined, shorter: boolean) => (room !== undefined && shorter ? Math.floor((room * 2) / 3) : room);
 
-async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork, which: number[], note: string | null, name: string, panels: Panel[] = [], memory: BookMemory | null = null, pageTexts: string[] = []) {
-  const asked = which.map((i) => w.slots[i]);
-  const out = await callAi(deps, name, pageRequest(input, w, asked, note, panels, memory, pageTexts), [...asked.map((x) => x.id), ...panels.map((x) => x.id)]);
+/**
+ * Writes the page's slots at `which` (indexes) and its `panels` in one AI call and builds each. Each attempt is counted
+ * before the call (#312, R379-2-1); a slot or panel with no attempt left, or that the ledger refuses (R379-3-1), is not
+ * asked: it comes back failed with no package, and is in `refused`. Throws when the ledger or the call store does (the
+ * run was lost), and when a kept call asked other slots than this one does (ResumeMismatch).
+ */
+async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork, which: number[], note: string | null, name: string, panels: Panel[] = [], memory: BookMemory | null = null, pageTexts: string[] = [], o: { wordLater?: boolean } = {}) {
+  const seq = w.calls.next++;
+  const ask: CallAsk = { name, slots: which.map((i) => w.slots[i].id), panels: panels.map((x) => x.id) };
+  // A call an earlier try kept (R379-7-1): the same call of the same page, replayed as it came back, with the attempts
+  // it counted; no attempt is counted again and the AI is not asked. It must have asked what this call asks (R379-8-2).
+  const kept = w.calls.kept.get(seq);
+  if (kept) {
+    if (!sameAsk(kept.ask, ask) || kept.built.length !== which.length || kept.examples.length !== panels.length) {
+      throw new ResumeMismatch(`page ${w.number}: its kept call ${seq} is ${askText(kept.ask)}, and the plan now asks ${askText(ask)}`);
+    }
+    for (const [id, n] of Object.entries(kept.tries)) w.tries.used.set(id, n);
+    await solveChecks(deps, w, seq, ask, kept.built, kept.examples);
+    return { built: kept.built, examples: kept.examples, refused: new Set(kept.refused) };
+  }
+  const ids = [...ask.slots, ...ask.panels];
+  const open = ids.filter((id) => hasTry(w, id));
+  const denied = open.length > 0 && deps.attempts ? (await deps.attempts.use(w.number, open)).refused : [];
+  const refused = new Set([...ids.filter((id) => !open.includes(id)), ...denied]);
+  for (const id of open) w.tries.used.set(id, denied.includes(id) ? w.tries.max : (w.tries.used.get(id) ?? 0) + 1);
+  const asked = which.map((i) => w.slots[i]).filter((x) => !refused.has(x.id));
+  const askedPanels = panels.filter((x) => !refused.has(x.id));
+  const out = asked.length + askedPanels.length > 0
+    ? await callAi(deps, name, pageRequest(input, w, asked, note, askedPanels, memory, pageTexts), [...asked.map((x) => x.id), ...askedPanels.map((x) => x.id)])
+    : { items: new Map<string, unknown>(), error: null };
   const missing = (id: string) => (out.items.size ? ` (it answered slots ${[...out.items.keys()].join(", ")}, not ${id})` : " (its answer held no items)");
   // Each panel's worked example: of its own skill, one code can show worked out, in the level's numbers.
   const examples = panels.map((x) => {
+    if (refused.has(x.id)) return exhaustedBuild();
     const b = buildQuestion(shortSequence(out.items.get(x.id), input.plan.level), {
       id: `${input.workbookId}:d${w.day}p${w.page.number}${x.id}`, workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [x.skill],
       signs: levelSigns(input.curriculum, input.plan.level),
@@ -917,6 +1074,7 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
   });
   const built = which.map((i) => {
     const slot = w.slots[i];
+    if (refused.has(slot.id)) return exhaustedBuild();
     const b = buildQuestion(shortSequence(out.items.get(slot.id), input.plan.level), {
       id: `${input.workbookId}:d${w.day}p${w.page.number}s${slot.id}`,
       workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: slot.part.skills,
@@ -957,6 +1115,47 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
     }
     return b;
   });
+  if (!o.wordLater) chooseWordings(input, w, which, built, memory, pageTexts);
+  // The call is kept with the attempts it counted as soon as it is built, before its solve checks and anything else
+  // (R379-7-1, R379-8-1), so a try that stops later (a solve check, another page, the function's end) never loses an
+  // answer it paid for. A call that counted none is not kept: it asked nothing, and a replay makes the same.
+  if (open.length > 0 && deps.calls) {
+    await deps.calls.save(w.number, seq, { ask, built, examples, refused: [...refused], tries: Object.fromEntries(open.map((id) => [id, w.tries.used.get(id)!])) });
+  }
+  await solveChecks(deps, w, seq, ask, built, examples);
+  return { built, examples, refused };
+}
+
+/**
+ * The solve check (round 7) of a call's questions and worked examples: every sound one whose printed words the AI wrote
+ * is read and answered by a separate model; one it answers otherwise than the key, or a check that fails or is late,
+ * fails it. Each check is kept as it comes back, under its key (R379-8-1); a check an earlier try kept is not run
+ * again, its verdict is used. Every check settles before this returns or throws, so none is still writing after.
+ */
+async function solveChecks(deps: GenerateDeps, w: PageWork, seq: number, ask: CallAsk, built: BuiltQuestion[], examples: BuiltQuestion[]) {
+  const items = [...built.map((b, k) => ({ b, id: ask.slots[k] })), ...examples.map((b, k) => ({ b, id: ask.panels[k] }))];
+  const settled = await Promise.allSettled(items.map(async ({ b, id }) => {
+    if (b.check.status === "failed" || !b.package) return;
+    const key = solveKey(w.number, seq, id);
+    let verdict = w.solves.get(key);
+    if (!verdict) {
+      const log = await solveCheck(deps.solver, b.package, deps.solveTimeLimitMs ?? SOLVE_TIME_LIMIT_MS, deps.now);
+      if (!log) return;
+      deps.onSolve?.(log);
+      await deps.calls?.saveSolve(key, log);
+      verdict = log.verdict;
+    }
+    if (verdict.status !== "agreed") b.check = { status: "failed", reason: solveReason(verdict) };
+  }));
+  const failure = settled.find((x) => x.status === "rejected");
+  if (failure) throw (failure as PromiseRejectedResult).reason;
+}
+
+/**
+ * Code's wording of the built questions, chosen against the page's other texts (`pageTexts`, then each one chosen) and
+ * the book (`memory`); changes only their text, never their check.
+ */
+function chooseWordings(input: GenerateInput, w: PageWork, which: number[], built: BuiltQuestion[], memory: BookMemory | null, pageTexts: string[]) {
   // A relation's text is code's (round 6): of its wordings, one whose words no other question of the page has. So is a
   // whole-number question's at U1 to U9 (round 7): of code's sound wordings, one whose shape the page does not have yet
   // and the book has printed least (under 3 times when it can), so no slot runs out of wordings late in the book.
@@ -988,17 +1187,21 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
     }
     taken.add(formOf(b.package.text));
   });
-  // The solve check (round 7): every sound question and worked example whose printed words the AI wrote is read and
-  // answered by a separate model; one it answers otherwise than the key, or a check that fails or is late, fails it.
-  await Promise.all([...built, ...examples].map(async (b) => {
-    if (b.check.status === "failed" || !b.package) return;
-    const log = await solveCheck(deps.solver, b.package, deps.solveTimeLimitMs ?? SOLVE_TIME_LIMIT_MS, deps.now);
-    if (!log) return;
-    deps.onSolve?.(log);
-    if (log.verdict.status !== "agreed") b.check = { status: "failed", reason: solveReason(log.verdict) };
-  }));
-  return { built, examples };
 }
+
+type PageCall = Awaited<ReturnType<typeof writeSlots>>;
+
+/**
+ * A page's first call (#312): every slot and panel, told what the days before asked (`memory`), never this day's other
+ * pages, so the pages of a day make it at once and the same at any concurrency. Code's wording and the rest of the page
+ * (its repeats, the redo, the fit) are firstPass's, in page order. The solve check reads no code wording, so it runs here.
+ */
+const pageCall = (input: GenerateInput, deps: GenerateDeps, w: PageWork, memory: BookMemory | null) =>
+  writeSlots(input, deps, w, w.slots.map((_, i) => i), null, PAGE_CALL, w.panels, memory, [], { wordLater: true });
+
+/** The names of a page's AI calls: its first call, then the redo and the shorter rewrite. */
+const PAGE_CALL = "workbook_page";
+const LATER_CALLS: readonly string[] = ["workbook_page_redo", "workbook_page_shorter"];
 
 /** Places that print bare sums, and places that print stories: what code's wording of a whole-number question takes. */
 const BARE_PLACES: ReadonlySet<SlotName> = new Set<SlotName>(["warm-up", "in-your-head", "practice-row", "finish-these", "on-your-own", "unit-b-practice", "solve-it-two-ways"]);
@@ -1147,23 +1350,25 @@ const siblingsOf = (built: BuiltQuestion[], upTo: number, except = -1) =>
  * A sound question whose text runs past its room goes to the same redo to be written shorter (round 5): the page keeps
  * the redo only when it is sound and shorter, so a long question is never marked failed for its length.
  */
-async function firstPass(input: GenerateInput, deps: GenerateDeps, w: PageWork, memory: BookMemory | null): Promise<{ questions: GeneratedQuestion[]; examples: (QuestionPackage | null)[] }> {
+async function firstPass(input: GenerateInput, deps: GenerateDeps, w: PageWork, memory: BookMemory | null, first: PageCall): Promise<{ questions: GeneratedQuestion[]; examples: (QuestionPackage | null)[] }> {
   const all = w.slots.map((_, i) => i);
-  const first = await writeSlots(input, deps, w, all, null, "workbook_page", w.panels, memory);
   const built = first.built;
+  // The page call left code's wording to now (#312): it reads this day's pages before this one too.
+  chooseWordings(input, w, all, built, memory, []);
   built.forEach((b, i) => {
     markRepeat(b, w.slots[i].place, memory, siblingsOf(built, i));
     // A repeat whose item is the planned one takes the planned wording from code, with no AI call (round 6).
     built[i] = rewordRepeat(input, b, w.slots[i], memory, siblingsOf(built, i));
   });
   const examples = first.examples;
-  const questions = all.map((i) => generated(w, i, built[i], 1));
-  const failed = all.filter((i) => built[i].check.status === "failed");
+  const questions = all.map((i) => generated(w, i, built[i], triesOf(w, w.slots[i].id)));
+  // Only a slot or panel with an attempt left goes to the redo (#312): one that used them keeps what it has.
+  const failed = all.filter((i) => built[i].check.status === "failed" && hasTry(w, w.slots[i].id));
   const long = input.book ? all.flatMap((i) => {
-    const over = overRoom(input, w, i, built[i]);
+    const over = hasTry(w, w.slots[i].id) ? overRoom(input, w, i, built[i]) : null;
     return over ? [{ i, ...over }] : [];
   }) : [];
-  const failedPanels = w.panels.flatMap((_, k) => (examples[k].check.status === "failed" ? [k] : []));
+  const failedPanels = w.panels.flatMap((x, k) => (examples[k].check.status === "failed" && hasTry(w, x.id) ? [k] : []));
   if (failed.length > 0 || failedPanels.length > 0 || long.length > 0) {
     const note = [
       ...failed.map((i) => failNote(w.slots[i].id, built[i], w.slots[i])),
@@ -1176,19 +1381,24 @@ async function firstPass(input: GenerateInput, deps: GenerateDeps, w: PageWork, 
     const redoWork: PageWork = { ...w, slots: w.slots.map((x, i) => (failed.includes(i) ? redoSlot(x, (built[i].check as { reason: string }).reason) : x)) };
     const redo = await writeSlots(input, deps, redoWork, which, note, "workbook_page_redo", failedPanels.map((k) => w.panels[k]), memory, memory ? kept : []);
     which.forEach((i, k) => {
+      // The ledger refused it after all (#312): it keeps its first version.
+      if (redo.refused.has(w.slots[i].id)) {
+        questions[i] = generated(w, i, built[i], triesOf(w, w.slots[i].id));
+        return;
+      }
       let fresh = redo.built[k];
       markRepeat(fresh, w.slots[i].place, memory, siblingsOf(built, built.length, i));
       fresh = rewordRepeat(input, fresh, redoWork.slots[i], memory, siblingsOf(built, built.length, i));
       const wasLong = long.find((x) => x.i === i);
       // A long question keeps its first version unless the redo is sound and shorter.
       if (wasLong && (fresh.check.status === "failed" || !fresh.package || !!overRoom(input, w, i, fresh) && fresh.package.text.length >= wasLong.length)) {
-        questions[i] = generated(w, i, built[i], 2);
+        questions[i] = generated(w, i, built[i], triesOf(w, w.slots[i].id));
         return;
       }
       built[i] = fresh;
-      questions[i] = generated(w, i, built[i], 2);
+      questions[i] = generated(w, i, built[i], triesOf(w, w.slots[i].id));
     });
-    failedPanels.forEach((k, j) => { examples[k] = redo.examples[j]; });
+    failedPanels.forEach((k, j) => { if (!redo.refused.has(w.panels[k].id)) examples[k] = redo.examples[j]; });
   }
   return { questions, examples: examples.map((e) => (e.check.status === "failed" ? null : e.package)) };
 }
@@ -1213,22 +1423,27 @@ function shorterNote(input: GenerateInput, w: PageWork, questions: GeneratedQues
 /**
  * The shorter rewrite after a failed fit check: every question is written once more (its one try for a page that does
  * not fit). Of the two versions the page keeps the sound one, and of two sound (or two failed) ones the shorter text: a
- * rewrite never puts a failed question in place of a sound one, nor a longer one in place of a shorter.
+ * rewrite never puts a failed question in place of a sound one, nor a longer one in place of a shorter. A question with
+ * no attempt left (#312: the job allows 3) is not written again and keeps its version. Null: no question had one.
  */
-async function shorterRewrite(input: GenerateInput, deps: GenerateDeps, w: PageWork, previous: GeneratedQuestion[], note: string, memory: BookMemory | null): Promise<GeneratedQuestion[]> {
+async function shorterRewrite(input: GenerateInput, deps: GenerateDeps, w: PageWork, previous: GeneratedQuestion[], note: string, memory: BookMemory | null): Promise<GeneratedQuestion[] | null> {
   const all = previous.map((_, i) => i);
-  const { built } = await writeSlots(input, deps, w, all, note, "workbook_page_shorter", [], memory);
+  const open = all.filter((i) => hasTry(w, w.slots[i].id));
+  if (open.length === 0) return null;
+  const written = await writeSlots(input, deps, w, open, note, "workbook_page_shorter", [], memory);
+  const built = new Map(open.flatMap((i, k) => (written.refused.has(w.slots[i].id) ? [] : [[i, written.built[k]] as const])));
   // Each question is compared with the ones the page keeps before it (whichever version they keep), so two shorter
   // versions never come back as copies of each other.
   const chosen: GeneratedQuestion[] = [];
   for (const i of all) {
     const old = previous[i];
-    const attempts = (old.attempts + 1) as GeneratedQuestion["attempts"];
+    const attempts = triesOf(w, w.slots[i].id);
     const before = chosen.flatMap((q, j) => (q.package && q.check.status !== "failed" ? [{ number: j + 1, package: q.package }] : []));
-    markRepeat(built[i], w.slots[i].place, memory, before);
-    const fresh = generated(w, i, built[i], attempts);
-    const keepOld = sound(old) !== sound(fresh) ? sound(old) : textLength(fresh) > textLength(old);
-    let pick: GeneratedQuestion = keepOld ? { ...old, attempts } : fresh;
+    const again = built.get(i);
+    if (again) markRepeat(again, w.slots[i].place, memory, before);
+    const fresh = again ? generated(w, i, again, attempts) : null;
+    const keepOld = !fresh || (sound(old) !== sound(fresh) ? sound(old) : textLength(fresh) > textLength(old));
+    let pick: GeneratedQuestion = keepOld || !fresh ? { ...old, attempts } : fresh;
     // The old version may repeat one kept before it too (written before those changed): then it fails with the reason.
     if (pick === fresh || !pick.package || pick.check.status === "failed" || !memory) {
       chosen.push(pick);
@@ -1331,30 +1546,32 @@ const fitPage = (w: PageWork, qrToken: string, questions: GeneratedQuestion[], c
   ...(content ? { content } : {}),
 });
 
-/** Runs `run` on every item, at most `limit` at once; the results keep the items' order. */
-async function pool<T, R>(items: T[], limit: number, run: (item: T, index: number) => Promise<R>): Promise<R[]> {
-  const out = new Array<R>(items.length);
+/**
+ * Runs `run` on the items, at most `limit` at once, in item order, and stops taking items once `stop` says so. On the
+ * first error no new item starts, and every item in flight settles before the error is thrown (#312, R379-2), so
+ * nothing of this call is still writing when its caller tries again.
+ */
+async function pool<T>(items: T[], limit: number, run: (item: T) => Promise<void>, stop: () => boolean): Promise<void> {
   let next = 0;
+  let failure: { error: unknown } | null = null;
   const worker = async () => {
-    while (next < items.length) {
-      const i = next++;
-      out[i] = await run(items[i], i);
+    while (!failure && next < items.length && !stop()) {
+      try {
+        await run(items[next++]);
+      } catch (error) {
+        failure ??= { error };
+      }
     }
   };
   await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
-  return out;
+  if (failure) throw (failure as { error: unknown }).error;
 }
 
 /**
- * Generates a draft from a plan and stores it as one unit. Refused, with nothing stored and no AI call, when the input
- * is not sound; refused after generation when the store refuses the draft.
+ * The book's pages and their numbers, before any AI call: the cover, How + Plan, the days, the back cover, blanks. Each
+ * day page with its layout, slots and panels, and each slot planned (#380). The same input always gives the same.
  */
-export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps): Promise<GenerateResult> {
-  if (!isUuid(input.workbookId)) return { status: "refused", reason: "the workbook id is not a UUID" };
-  if (!isUuid(input.childId)) return { status: "refused", reason: "the child id is not a UUID" };
-  if (input.plan.days.length === 0) return { status: "refused", reason: "the plan has no days" };
-
-  // The book's pages and their numbers, before any AI call: the cover, How + Plan, the days, the back cover, blanks.
+function layOut(input: GenerateInput) {
   const work: PageWork[] = [];
   let number = 2;
   for (const day of input.plan.days) {
@@ -1365,41 +1582,145 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
         const skill = part?.step?.skill ?? part?.skills[0];
         return PANEL_SLOTS.includes(x.slot) && skill ? [{ id: `e${k + 1}`, layoutSlot: k, place: x.slot, skill }] : [];
       });
-      work.push({ number: ++number, day: day.day, page, layout, slots: layout ? layoutSlots(page, layout) : slotsOf(page), panels });
+      work.push({
+        number: ++number, day: day.day, page, layout, slots: layout ? layoutSlots(page, layout) : slotsOf(page), panels,
+        tries: { used: new Map(), max: Infinity }, calls: { next: 0, kept: new Map() }, solves: new Map(),
+      });
     }
   }
   // Each slot's skill, kind of question, numbers and person, planned in book order (#380), so the same skill is not
   // asked the same way page after page and no two questions of a page work one sum.
   if (input.book) planBook(input, work);
   const backCover = number + 1;
-  const total = Math.ceil(backCover / 4) * 4;
-  const tokens = Array.from({ length: total }, () => deps.qrToken());
+  return { work, backCover, total: Math.ceil(backCover / 4) * 4 };
+}
+
+/**
+ * The fingerprint of the book this input plans (#312, R379-8-2): every day page's number, day, type, layout, panels,
+ * and each slot with its place, room, skill, kind, numbers and planned wording. It changes when the curriculum, the
+ * layouts or the templates' rooms give another book. It says nothing of the child's name: it is taken with no name
+ * (the plan leaves the child's own name out of the people it names, so the real name would show in it).
+ */
+export function bookOutline(input: GenerateInput): string {
+  const { work, total } = layOut(input.book ? { ...input, book: { child: "" } } : input);
+  return digestOf({
+    number: input.number, level: input.plan.level, total, laidOut: !!input.book,
+    pages: work.map((w) => ({
+      number: w.number, day: w.day, page: w.page.number, type: w.page.type, layout: w.layout, panels: w.panels,
+      slots: w.slots.map((x) => ({
+        id: x.id, part: x.part.kind, skills: x.part.skills, place: x.place, layoutSlot: x.layoutSlot, aim: x.aim ?? null,
+        room: x.place ? roomOf(input, x.place, w.day) ?? null : null, planned: x.planned ?? null,
+      })),
+    })),
+  });
+}
+
+/** Why a kept day page does not fit the page the plan has at its number (R379-8-2), or null. */
+function keptPageProblem(input: GenerateInput, w: PageWork | undefined, p: GeneratedPage): string | null {
+  if (!w) return `kept page ${p.number} is not a day page of the plan`;
+  if (p.day !== w.day || p.pageOfDay !== w.page.number || p.type !== w.page.type) {
+    return `kept page ${p.number} is day ${p.day}, page ${p.pageOfDay} (${p.type}); the plan has day ${w.day}, page ${w.page.number} (${w.page.type}) there`;
+  }
+  const ids = new Set(w.slots.map((x) => x.id));
+  const stray = [...p.questions.map((q) => q.slot), ...(p.leftOut ?? []).map((x) => x.slot)].find((id) => !ids.has(id));
+  if (stray) return `kept page ${p.number} has slot ${stray}, which the plan's page does not have`;
+  if (!!input.book !== !!p.content) return `kept page ${p.number} ${p.content ? "is" : "is not"} laid out, and the plan's book ${input.book ? "is" : "is not"}`;
+  // The page's ID prints the child's name and the workbook number: a name changed since the page was kept would mix two.
+  const id = (p.content as { id?: string } | undefined)?.id;
+  if (input.book && id !== undefined && !id.startsWith(pageId(input.book.child, input.number, ""))) return `kept page ${p.number} was made for another name or workbook number`;
+  return null;
+}
+
+/**
+ * Generates a draft from a plan and stores it as one unit. Refused, with nothing stored and no AI call, when the input
+ * is not sound; refused after generation when the store refuses the draft. Throws ResumeMismatch when a kept page,
+ * attempt or call does not fit the plan (R379-8-2).
+ */
+export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps): Promise<GenerateResult> {
+  if (!isUuid(input.workbookId)) return { status: "refused", reason: "the workbook id is not a UUID" };
+  if (!isUuid(input.childId)) return { status: "refused", reason: "the child id is not a UUID" };
+  if (input.plan.days.length === 0) return { status: "refused", reason: "the plan has no days" };
+
+  const { work, backCover, total } = layOut(input);
+  const byNumber = new Map(work.map((w) => [w.number, w]));
+  // A resumed run (#312) keeps its stored pages and their tokens; a new token never repeats a kept one (a bounded
+  // number of tries; a maker that keeps repeating is caught by draftProblem). Each page starts with the attempts its
+  // slots used in earlier calls. Everything kept must fit the plan's pages and slots, else nothing goes on (R379-8-2).
+  const kept = new Map((await deps.pages?.load() ?? []).map((p) => [p.number, p]));
+  for (const p of kept.values()) {
+    const problem = keptPageProblem(input, byNumber.get(p.number), p);
+    if (problem) throw new ResumeMismatch(problem);
+  }
+  const spentBefore = await deps.attempts?.load() ?? new Map<string, number>();
+  for (const key of spentBefore.keys()) {
+    const [page, id] = [Number(key.slice(0, key.indexOf(":"))), key.slice(key.indexOf(":") + 1)];
+    const w = byNumber.get(page);
+    if (!w || ![...w.slots, ...w.panels].some((x) => x.id === id)) throw new ResumeMismatch(`the attempts kept for page ${page}, slot ${id} name a slot the plan does not have`);
+  }
+  for (const w of work) {
+    w.tries.max = deps.attempts?.max ?? Infinity;
+    for (const id of [...w.slots.map((x) => x.id), ...w.panels.map((x) => x.id)]) {
+      const n = spentBefore.get(`${w.number}:${id}`);
+      if (n) w.tries.used.set(id, n);
+    }
+  }
+  // The AI calls earlier tries kept of the pages still to write (R379-7-1): each page replays them in order, with
+  // their kept solve checks (R379-8-1).
+  const open = work.filter((w) => !kept.has(w.number) && w.slots.length > 0);
+  if (deps.calls && open.length > 0) {
+    const numbers = open.map((w) => w.number);
+    const openByNumber = new Map(open.map((w) => [w.number, w]));
+    for (const c of await deps.calls.load(numbers)) {
+      const w = openByNumber.get(c.page);
+      if (!w) throw new ResumeMismatch(`a call kept for page ${c.page} is of a page the plan does not have to write`);
+      // Checked before any AI call: a page's first call asks all its slots and panels; a later one some of them. Its
+      // exact slots are checked again when it is replayed (writeSlots).
+      const ids = new Set([...w.slots, ...w.panels].map((x) => x.id));
+      const first: CallAsk = { name: PAGE_CALL, slots: w.slots.map((x) => x.id), panels: w.panels.map((x) => x.id) };
+      const ask = c.call.ask as CallAsk | undefined;
+      const fits = c.seq === 0 ? sameAsk(ask, first) : !!ask && LATER_CALLS.includes(ask.name) && [...ask.slots, ...ask.panels].every((id) => ids.has(id));
+      if (!fits) throw new ResumeMismatch(`page ${w.number}: its kept call ${c.seq} is ${askText(ask)}, which the plan's page does not make`);
+      w.calls.kept.set(c.seq, c.call);
+    }
+    for (const [key, verdict] of await deps.calls.solves(numbers)) openByNumber.get(Number(key.slice(0, key.indexOf(":"))))?.solves.set(key, verdict);
+  }
+  const used = new Set([...kept.values()].map((p) => p.qrToken));
+  const tokens = Array.from({ length: total }, (_, i) => kept.get(i + 1)?.qrToken ?? (() => {
+    let t = deps.qrToken();
+    for (let tries = 0; used.has(t) && tries < 1000; tries++) t = deps.qrToken();
+    used.add(t);
+    return t;
+  })());
   const book: FitBook = { id: input.workbookId, childId: input.childId, number: input.number, levels: [input.plan.level], profileBuild: input.profileBuild };
 
   const plain = (n: number, type: BookPageType): GeneratedPage => ({
     number: n, type, dayLabel: null, day: null, pageOfDay: null, qrToken: tokens[n - 1], fit: { status: "not-needed" }, attempts: 0, questions: [],
     ...(input.book ? { content: bookPageContent({ curriculum: input.curriculum, plan: input.plan, child: input.book.child, workbook: input.number, type, number: n }) } : {}),
   });
-  let done = 0;
-  // What the book has asked so far, for a laid-out book: each page is told it, and a repeat goes to the redo.
-  const memory: BookMemory | null = input.book ? { texts: new Map(), keys: new Map(), shapes: new Map(), shapeText: new Map(), codeShapes: new Map() } : null;
-  const writePage = async (w: PageWork): Promise<GeneratedPage> => {
+  // What the days before have asked, for a laid-out book: each page is told it, and a repeat goes to the redo. It
+  // changes only between days (#312), so the pages of a day read the same memory however many run at once.
+  let memory: BookMemory | null = input.book ? { texts: new Map(), keys: new Map(), shapes: new Map(), shapeText: new Map(), codeShapes: new Map() } : null;
+  const finished = new Map<number, GeneratedPage>();
+  for (const w of work) if (kept.has(w.number)) finished.set(w.number, kept.get(w.number)!);
+  if (finished.size > 0) deps.progress?.(finished.size, work.length);
+  const writePage = async (w: PageWork, first: PageCall | null, memory: BookMemory | null): Promise<GeneratedPage> => {
     const qrToken = tokens[w.number - 1];
     const page = { number: w.number, type: w.page.type, dayLabel: `Day ${w.day}`, day: w.day, pageOfDay: w.page.number, qrToken };
     let examples: (QuestionPackage | null)[] = [];
     const check = (questions: GeneratedQuestion[]) => deps.fit.fits(fitPage(w, qrToken, questions, contentOf(input, w, questions, examples)), book);
     let result: GeneratedPage;
-    if (w.slots.length === 0) {
+    if (w.slots.length === 0 || !first) {
       const content = contentOf(input, w, []);
       result = { ...page, fit: { status: "not-needed" }, attempts: 0, questions: [], ...(content ? { content } : {}), ...(w.layout?.omissions.length ? { omissions: w.layout.omissions } : {}) };
     } else {
-      const pass = await firstPass(input, deps, w, memory);
+      const pass = await firstPass(input, deps, w, memory, first);
       let questions = pass.questions;
       examples = pass.examples;
       let fit = await check(questions);
       let attempts: 1 | 2 = 1;
-      if (!fit.ok) {
-        questions = await shorterRewrite(input, deps, w, questions, shorterNote(input, w, questions, fit.problems), memory);
+      const shorter = fit.ok ? null : await shorterRewrite(input, deps, w, questions, shorterNote(input, w, questions, fit.problems), memory);
+      if (shorter) {
+        questions = shorter;
         fit = await check(questions);
         attempts = 2;
       }
@@ -1429,20 +1750,62 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
       } else leftOut.length = 0;
       const content = contentOf(input, w, questions, examples);
       const omissions = omissionsWith(w, leftOut);
-      if (memory) remember(memory, w.number, questions);
       result = {
         ...page, fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems }, attempts, questions,
         ...(content ? { content } : {}), ...(omissions.length ? { omissions } : {}),
         ...(leftOut.length ? { leftOut: leftOut.map((x) => ({ slot: x.question.slot, part: x.question.part, text: x.question.package?.text ?? null, reason: x.reason })) } : {}),
       };
     }
-    deps.progress?.(++done, work.length);
     return result;
   };
-  // Day by day, in order, so each day's pages know what the days before asked; a day's pages run at once.
-  const dayPages: GeneratedPage[] = [];
-  for (const day of input.plan.days) dayPages.push(...await pool(work.filter((w) => w.day === day.day), deps.concurrency ?? 1, writePage));
-  const pages: GeneratedPage[] = [plain(1, "cover"), plain(2, "how-plan"), ...dayPages];
+  // Day by day, in order, so each day's pages know what the days before asked (#312). The first calls of a day's pages
+  // run at once (`concurrency`), each told what the days before asked; the rest of each page (its repeats against the
+  // book and this day's pages before it, the redo, the fit) runs in page order, and the page is stored then. So the
+  // draft is the same at any concurrency, and a resumed day reads what its stored pages asked.
+  for (const day of input.plan.days) {
+    const pagesOfDay = work.filter((w) => w.day === day.day);
+    const before = memory;
+    const seen = memory ? cloneMemory(memory) : null;
+    const turns = pagesOfDay.map(() => {
+      let settle!: (error?: unknown) => void;
+      const done = new Promise<void>((resolve, reject) => { settle = (error) => (error === undefined ? resolve() : reject(error)); });
+      done.catch(() => undefined);
+      return { done, settle };
+    });
+    await pool(pagesOfDay.map((w, k) => ({ w, k })), deps.concurrency ?? 1, async ({ w, k }) => {
+      try {
+        const kept = finished.get(w.number);
+        const first = kept || w.slots.length === 0 ? null : await pageCall(input, deps, w, before);
+        if (k > 0) await turns[k - 1].done;
+        const page = kept ?? await writePage(w, first, seen);
+        // Every call kept for the page was replayed: one the page never reached is of another plan (R379-8-2).
+        const unread = [...w.calls.kept.keys()].filter((seq) => seq >= w.calls.next);
+        if (!kept && unread.length > 0) throw new ResumeMismatch(`page ${w.number} has kept call ${unread.join(", ")}, which the plan's page does not make`);
+        if (!kept) {
+          await deps.pages?.save(page);
+          finished.set(w.number, page);
+          deps.progress?.(finished.size, work.length);
+        }
+        if (seen) remember(seen, w.number, page.questions);
+        turns[k].settle();
+      } catch (error) {
+        turns[k].settle(error ?? new Error("a page failed"));
+        throw error;
+      }
+    }, () => deps.stop?.() ?? false);
+    if (pagesOfDay.some((w) => !finished.has(w.number))) return { status: "paused", done: finished.size, total: work.length };
+    memory = seen;
+  }
+  // With a page store, the stored pages are the truth (#312, R379-2): the draft is built from them.
+  if (deps.pages) {
+    const stored = new Map((await deps.pages.load()).map((p) => [p.number, p]));
+    for (const w of work) {
+      const page = stored.get(w.number);
+      if (!page) throw new Error(`day page ${w.number} is not stored`);
+      finished.set(w.number, page);
+    }
+  }
+  const pages: GeneratedPage[] = [plain(1, "cover"), plain(2, "how-plan"), ...work.map((w) => finished.get(w.number)!)];
   pages.push(plain(backCover, "back-cover"));
   for (let n = backCover + 1; n <= total; n++) pages.push(plain(n, "blank"));
 

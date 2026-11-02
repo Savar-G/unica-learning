@@ -20,7 +20,8 @@
     "voice:test": "vitest run --config worker/maya-voice/vitest.config.mts",
     "voice:dev": "node worker/maya-voice/build.mjs && node --conditions=react-server worker/maya-voice/dist/main.mjs dev",
     "voice:start": "node --conditions=react-server worker/maya-voice/dist/main.mjs start",
-    "workbooks:samples": "node scripts/workbook-samples.mjs"
+    "workbooks:samples": "node scripts/workbook-samples.mjs",
+    "workbooks:worker": "node scripts/workbook-worker.mjs"
   },
   "dependencies": {
     "@sparticuz/chromium": "^153.0.0",

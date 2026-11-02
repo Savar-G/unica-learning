@@ -17,7 +17,8 @@ const DRAFT = "00000000-0000-4000-8000-0000000000d1";
 
 const page = (number: number, type: GeneratedWorkbook["pages"][number]["type"]) => ({
   number, type, dayLabel: null, day: null, pageOfDay: null, qrToken: `token-${String(number).padStart(12, "0")}`,
-  fit: { status: "not-needed" as const }, attempts: 0 as const, questions: [],
+  fit: { status: "not-needed" as const }, attempts: 0 as const, questions: [], omissions: [],
+  content: { kind: "blank" as const, id: `UL·LEAH·W01·BLANK·P${number}`, level: 10 },
 });
 const draft = (over: Partial<GeneratedWorkbook> = {}): GeneratedWorkbook => ({
   id: DRAFT, childId: CHILD, number: 1, levels: [10], profileBuild: null, model: "fake",
