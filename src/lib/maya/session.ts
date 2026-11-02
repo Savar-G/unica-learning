@@ -46,6 +46,16 @@ import type { TalkReviewResult } from "./talk-review";
 
 /** Closing starts 9 minutes into the call; the call ends at 10 minutes. */
 export const TIME_LIMITS = { closingAtMs: 9 * 60_000, endAtMs: 10 * 60_000 } as const;
+/** How long before a shorter call's end its closing starts (#330): the same last minute as a full call. */
+export const CLOSING_LEAD_MS = TIME_LIMITS.endAtMs - TIME_LIMITS.closingAtMs;
+
+/**
+ * A call's time limits: TIME_LIMITS, or a shorter end when the child's minutes left this week are fewer than 10 (#330,
+ * src/lib/maya-minutes.ts). Closing starts CLOSING_LEAD_MS before the end, or at the start of a call under a minute.
+ */
+export function limitsOf(s: Pick<Session, "limits">): { closingAtMs: number; endAtMs: number } {
+  return s.limits ?? TIME_LIMITS;
+}
 
 /**
  * The pause policy (proposals in the research, to test with children): a gentle check after this much silence while
@@ -357,6 +367,8 @@ export interface Session {
   batches: number;
   turns: TranscriptTurn[];
   outcome: Outcome | null;
+  /** A shorter call's limits (#330; see limitsOf). A full 10-minute call, and a saved session from before, has none. */
+  limits?: { closingAtMs: number; endAtMs: number };
 }
 
 /**
@@ -377,6 +389,8 @@ export function createSession(input: {
   freeTalk?: boolean;
   /** Read the model's own board commands (tests of the board core only; off by default). */
   modelBoard?: boolean;
+  /** The call's end when it is shorter than 10 minutes (ms from the start; #330, the minutes left this week). */
+  limitMs?: number;
 }): Session {
   const check = checkQuestionPackage(input.package);
   // An item with no operation (a place-value or a drawing item) has no worked steps to teach from: it is held.
@@ -429,7 +443,14 @@ export function createSession(input: {
     batches: 0,
     turns: [],
     outcome: null,
+    ...shorterLimits(input.limitMs),
   };
+}
+
+function shorterLimits(limitMs: number | undefined): Pick<Session, "limits"> {
+  if (limitMs === undefined || !Number.isFinite(limitMs) || limitMs >= TIME_LIMITS.endAtMs) return {};
+  const endAtMs = Math.max(1000, Math.round(limitMs));
+  return { limits: { closingAtMs: Math.max(0, endAtMs - CLOSING_LEAD_MS), endAtMs } };
 }
 
 // ---------- Reading the session ----------
@@ -778,12 +799,13 @@ export function step(session: Session, event: SessionEvent): StepResult {
 
   if (s.startedAt !== null) {
     const elapsed = event.at - s.startedAt;
-    if (elapsed >= TIME_LIMITS.endAtMs) {
+    const limits = limitsOf(s);
+    if (elapsed >= limits.endAtMs) {
       end(s, "time_limit", effects, true);
-      return { session: s, effects, refusal: event.type === "proposal" ? { code: "ended", reason: "The call reached its 10 minutes.", allowed: [] } : null };
+      return { session: s, effects, refusal: event.type === "proposal" ? { code: "ended", reason: "The call reached its time limit.", allowed: [] } : null };
     }
     // A repair Maya owes is made first; it returns to the closing minute.
-    if (elapsed >= TIME_LIMITS.closingAtMs && !["TIME_CLOSE", "SAFETY", "REPAIR_MAYA", "CLOSE", "CONTENT_HOLD"].includes(s.state)) {
+    if (elapsed >= limits.closingAtMs && !["TIME_CLOSE", "SAFETY", "REPAIR_MAYA", "CLOSE", "CONTENT_HOLD"].includes(s.state)) {
       moveTo(s, "TIME_CLOSE");
       s.expect = "maya";
       s.silence = "none";
@@ -1591,8 +1613,8 @@ function closeCause(before: Session): Reason {
   return "child_stopped";
 }
 
-/** When the call ended, or ends now: never after the 10-minute limit. */
-const endTime = (s: Session) => Math.min(s.now!, (s.startedAt ?? s.now!) + TIME_LIMITS.endAtMs);
+/** When the call ended, or ends now: never after the call's limit. */
+const endTime = (s: Session) => Math.min(s.now!, (s.startedAt ?? s.now!) + limitsOf(s).endAtMs);
 
 function outcomeOf(s: Session, cause: Reason): Outcome {
   const reason: Reason = s.safety.flagged ? "safety" : s.state === "CONTENT_HOLD" ? "content_issue" : s.solved !== null ? "solved" : cause;

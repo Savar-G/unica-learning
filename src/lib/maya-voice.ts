@@ -12,7 +12,7 @@
 //   time both were in the room, counted on the server's clock.
 // - When the worker gives the session a tick (`nextTickAt`): only when the session can act on it (the pause policy or
 //   the time limits), never while Maya is still speaking.
-import { PAUSES, TIME_LIMITS, type Session } from "@/lib/maya";
+import { limitsOf, PAUSES, TIME_LIMITS, type Session } from "@/lib/maya";
 
 /** The worker's agent name: LiveKit sends a job to this worker only when the token's room asks for it. */
 export const VOICE_AGENT_NAME = "maya-voice";
@@ -225,11 +225,12 @@ export function connectedSeconds(events: readonly ConnectionEvent[], endAt: numb
  * their fixed times from the start. A time at or before the last tick (`lastTickAt`) is left out: that tick covered it.
  */
 export function nextTickAt(
-  session: Pick<Session, "outcome" | "startedAt" | "expect" | "waitingSince" | "silence" | "state">,
+  session: Pick<Session, "outcome" | "startedAt" | "expect" | "waitingSince" | "silence" | "state" | "limits">,
   at: { speechEndedAt: number | null; lastTickAt: number | null },
 ): number | null {
   if (session.outcome || session.startedAt === null) return null;
-  const times: number[] = [session.startedAt + TIME_LIMITS.closingAtMs, session.startedAt + TIME_LIMITS.endAtMs];
+  const limits = limitsOf(session);
+  const times: number[] = [session.startedAt + limits.closingAtMs, session.startedAt + limits.endAtMs];
   if (session.expect === "child" && session.waitingSince !== null) {
     const quietFrom = Math.max(session.waitingSince, at.speechEndedAt ?? 0);
     if (session.silence === "none") times.push(quietFrom + (session.state === "WAIT_WRITE" ? PAUSES.writeCheckMs : PAUSES.thinkCheckMs));

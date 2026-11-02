@@ -14,7 +14,9 @@ import { fromRow, LEARNING_COLUMNS, learningPath } from "@/lib/learning-style";
 import { pinIsSet } from "@/lib/parent-pin-server";
 import { workbookStore } from "@/lib/workbook-store";
 import type { WorkbookSummary } from "@/lib/workbook-content";
-import { AddChild, SendLink, SignOut, StartTest, TrackOnce } from "@/components/account";
+import { AddChild, SaveTimeZone, SendLink, SignOut, StartTest, TrackOnce } from "@/components/account";
+import { parentMinutes, type ChildMinutes } from "@/lib/maya-minutes-server";
+import { DEMO_DAILY_MINUTES, WEEK_SECONDS } from "@/lib/maya-minutes";
 import { SupportPage } from "@/components/support-page";
 
 export const metadata = pageMetadata({
@@ -32,7 +34,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   const parentUser = await parentId(db);
   if (!parentUser) redirect("/sign-in");
   const [{ data: parent }, { data: kids }, states, { data: reports }] = await Promise.all([
-    db.from("parents").select("name, email").maybeSingle(),
+    db.from("parents").select("name, email, time_zone").maybeSingle(),
     db.from("children").select(`id, first_name, grade, province, ${LEARNING_COLUMNS}`).order("created_at"),
     // Start, continue, start again after 24 hours, or wait 30 days after a completed test (#72).
     parentStartStates(parentUser),
@@ -50,7 +52,8 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
 
   const children = kids ?? [];
   // Parent home (#301): each child's current workbook (the newest shipped one) and the desk, which needs the PIN.
-  const [current, pinSet] = await Promise.all([currentWorkbooks(db, children.map((c) => c.id)), pinIsSet(parentUser)]);
+  // Maya's minutes this week (#330), for test families until Maya opens to families (#337).
+  const [current, pinSet, minutes] = await Promise.all([currentWorkbooks(db, children.map((c) => c.id)), pinIsSet(parentUser), parentMinutes(db, parentUser, parent.time_zone, children)]);
   return (
     <SupportPage label="Your account" title={`Hi, ${parent.name.split(" ")[0]}.`}>
       {password === "1" && <p role="status" className="acct-alert acct-saved">Your password is saved.</p>}
@@ -82,9 +85,12 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
               ? <SendLink childId={c.id} name={c.first_name} sent={sent === "1" && i === 0} />
               : <StartTest childId={c.id} name={c.first_name} state={stateFor(states, c.id)} report={reportFor(c.id, stateFor(states, c.id))} />}
             {current.has(c.id) && <DeskRow childId={c.id} name={c.first_name} workbook={current.get(c.id)!} pinSet={pinSet} />}
+            {minutes.has(c.id) && <MinutesRow name={c.first_name} minutes={minutes.get(c.id)!} />}
           </li>
         ))}
       </ul>
+      {minutes.size > 0 && <p className="small">Your &quot;Try Maya&quot; calls have a separate limit of {DEMO_DAILY_MINUTES} minutes a day for your account. They do not use your child&apos;s weekly minutes.</p>}
+      {!parent.time_zone && <SaveTimeZone />}
       <AddChild province={children.at(-1)?.province ?? "BC"} />
       <p className="small acct-out">Signed in. <Link href="/account/password">Add or change your password</Link>. <Link href="/account/pin">Set or change your PIN</Link>. <SignOut /></p>
     </SupportPage>
@@ -121,6 +127,21 @@ function DeskRow({ childId, name, workbook, pinSet }: { childId: string; name: s
           <button type="submit" className="btn">Open the desk <span aria-hidden="true">→</span></button>
         </form>
       )}
+    </div>
+  );
+}
+
+/** The child's minutes with Maya this week (#330): used, left, and the day they come back. */
+function MinutesRow({ name, minutes }: { name: string; minutes: ChildMinutes }) {
+  const week = WEEK_SECONDS / 60;
+  return (
+    <div className="acct-desk">
+      <span>
+        <b>Maya this week</b>
+        <span className="small">{minutes.left > 0
+          ? `${name} used ${minutes.used} of ${week} minutes. ${minutes.left} ${minutes.left === 1 ? "minute" : "minutes"} left. The minutes start again on ${minutes.backOn}.`
+          : `${name} used all ${week} minutes. Maya is back on ${minutes.backOn}.`}</span>
+      </span>
     </div>
   );
 }

@@ -57,6 +57,8 @@ export interface TextSessionOptions {
    * the flag it started with.
    */
   freeTalk?: boolean;
+  /** The call's end when it is shorter than 10 minutes (ms; #330). A resumed call keeps the limits it started with. */
+  limitMs?: number;
   /** The free-talk review (src/lib/maya-talk-review.ts), or null. */
   reviewer?: TalkReviewer | null;
   /** The time limit of one review (default REVIEW_TIME_LIMIT_MS); a late review fails the line. */
@@ -141,7 +143,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   if (resume && (resume.v !== 1 || resume.session.callId !== options.callId)) throw new Error("maya text: the saved session is not this call's");
   let session = resume
     ? structuredClone(resume.session)
-    : createSession({ callId: options.callId, package: options.package, random: options.random, history: options.history, childName: options.childName, freeTalk: options.freeTalk === true });
+    : createSession({ callId: options.callId, package: options.package, random: options.random, history: options.history, childName: options.childName, freeTalk: options.freeTalk === true, limitMs: options.limitMs });
   let scene: Scene = createScene();
   let endedAt: number | null = resume?.endedAt ?? null;
   const turns: TraceTurn[] = resume ? structuredClone(resume.turns) : [];

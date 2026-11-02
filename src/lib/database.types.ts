@@ -1551,6 +1551,57 @@ export type Database = {
           },
         ]
       }
+      maya_minute_grants: {
+        Row: {
+          call_id: string
+          child_id: string | null
+          created_at: string
+          granted_seconds: number
+          kind: string
+          parent_id: string
+          period: string
+          settled_at: string | null
+          used_seconds: number | null
+        }
+        Insert: {
+          call_id: string
+          child_id?: string | null
+          created_at?: string
+          granted_seconds: number
+          kind: string
+          parent_id: string
+          period: string
+          settled_at?: string | null
+          used_seconds?: number | null
+        }
+        Update: {
+          call_id?: string
+          child_id?: string | null
+          created_at?: string
+          granted_seconds?: number
+          kind?: string
+          parent_id?: string
+          period?: string
+          settled_at?: string | null
+          used_seconds?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maya_minute_grants_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "maya_minute_grants_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       maya_wording_history: {
         Row: {
           child_id: string
@@ -1637,6 +1688,7 @@ export type Database = {
           name: string
           postal: string | null
           source: Json
+          time_zone: string | null
         }
         Insert: {
           created_at?: string
@@ -1646,6 +1698,7 @@ export type Database = {
           name: string
           postal?: string | null
           source?: Json
+          time_zone?: string | null
         }
         Update: {
           created_at?: string
@@ -1655,6 +1708,7 @@ export type Database = {
           name?: string
           postal?: string | null
           source?: Json
+          time_zone?: string | null
         }
         Relationships: []
       }
@@ -2994,6 +3048,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _maya_minutes_used: {
+        Args: {
+          p_child: string
+          p_except: string
+          p_kind: string
+          p_parent: string
+          p_period: string
+        }
+        Returns: number
+      }
       abandon_family_payment_operation: {
         Args: {
           p: string
@@ -3092,6 +3156,7 @@ export type Database = {
           name: string
           postal: string | null
           source: Json
+          time_zone: string | null
         }[]
         SetofOptions: {
           from: "*"
@@ -3471,6 +3536,22 @@ export type Database = {
         }
         Returns: boolean
       }
+      grant_maya_minutes: {
+        Args: {
+          p_call: string
+          p_call_seconds: number
+          p_child: string
+          p_kind: string
+          p_min_seconds: number
+          p_parent: string
+          p_period: string
+          p_period_seconds: number
+        }
+        Returns: {
+          granted: number
+          used_before: number
+        }[]
+      }
       is_admin: { Args: never; Returns: boolean }
       link_booking_family: {
         Args: { pid: string; sid: number }
@@ -3489,6 +3570,15 @@ export type Database = {
           p_workbook: string
         }
         Returns: Json
+      }
+      maya_minutes_used: {
+        Args: {
+          p_child: string
+          p_kind: string
+          p_parent: string
+          p_period: string
+        }
+        Returns: number
       }
       parent_reads_workbook: { Args: { p_workbook: string }; Returns: boolean }
       parent_reads_workbook_folder: {

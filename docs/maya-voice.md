@@ -112,3 +112,11 @@ Open `/admin/maya` as an admin, choose **Speak**, and start a call on a test que
 - The board appears when a turn is saved, not in time with the words. Word timing (Inworld timestamps are requested) is #330.
 
 Worker replacement also fences client messages. A confirmed revision conflict stops the old worker without a fatal client update. A save exception still reports a technical failure. Each worker publishes its immutable claim revision as `maya.segment`, both in room attributes and in call updates. The panel selects the highest segment and accepts fatal updates only from that worker with a matching segment. A delayed packet cannot close the replacement call. An agent leaving without a validated terminal message leaves recovery controls available.
+
+## Maya's minutes
+
+A child has 30 minutes each week, starting on Monday at midnight in the family's time zone. Each call lasts at most 10 minutes, or the remaining minutes when fewer remain. Under one minute left, no call starts. A parent's "Try Maya" calls have a separate limit of 2 minutes per local day for the account. This limit is fixed in the code and in `grant_maya_minutes`. Savar confirmed these limits on 2026-11-01 in PR #422.
+
+`grant_maya_minutes` reserves seconds under a lock per child, or per parent for a demo. An unused grant expires after two minutes. A retry must reserve its original seconds again against the current remainder. The `reserve_maya_minutes_on_call` trigger also checks call creation under that lock. If the original seconds no longer fit, it refuses the call. It does not shorten an old grant because a delayed caller can still hold its original call limit. A new call ID can receive a shorter grant. The check uses the current database clock after the lock, including when a transaction waited for the lock.
+
+Once a call row exists, its whole grant counts until the call ends. A crashed call keeps its minutes counted for that week until it is ended in admin. The settle trigger then counts the connected seconds, up to the grant. Admin test calls with no grant remain uncounted. Child calls and parent demos will use the ledger when #337 and #336 connect them.
