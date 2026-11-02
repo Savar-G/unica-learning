@@ -44,7 +44,7 @@ export default function Privacy() {
         <li>Resend sends sign-in codes, account links, reports, reminders, workbook welcome and delivery emails, and notices to our team.</li>
         <li>OpenRouter processes the assessment work and report facts described above when AI processing is enabled. It sends each request to the company that runs the AI model we choose.</li>
         <li>Stripe handles adding your card and payments.</li>
-        <li>Vercel makes the website available to you.</li>
+        <li>Vercel makes the website available to you and measures how fast our pages load.</li>
         <li>PostHog counts visits and signup steps only if you accept optional cookies.</li>
         <li>Meta (Facebook and Instagram) and Google Ads measure whether our ads lead to signups. They run only if you accept optional cookies, and they never send anything from the pages your child uses.</li>
       </ul>

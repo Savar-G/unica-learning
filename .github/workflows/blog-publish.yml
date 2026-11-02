@@ -73,6 +73,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: write
+      actions: write
     env:
       BRANCH: ${{ github.ref_name }}
       MAIN_SHA: ${{ needs.validate.outputs.main_sha }}
@@ -99,3 +100,9 @@ jobs:
           git merge --no-ff --no-edit -m "Blog: publish $BRANCH" "$GITHUB_SHA"
           git push origin HEAD:main
           git push origin --delete "$BRANCH"
+      # Vercel promotes a main commit only after its CI `test` check passes. This push used GITHUB_TOKEN, which starts no
+      # workflow, so start CI on main here (workflow_dispatch is allowed from GITHUB_TOKEN).
+      - name: Run CI on the published commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref main

@@ -1,6 +1,7 @@
 "use client";
 
 import { Analytics, type BeforeSendEvent } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { mayCarryQrToken, redactUrlTokens } from "@/lib/url-tokens";
 
 // Vercel Analytics for the whole site, with QR tokens kept out of every page view and event before it is sent
@@ -12,6 +13,29 @@ export function scrubAnalyticsEvent(event: BeforeSendEvent): BeforeSendEvent | n
   return { ...event, url: redactUrlTokens(event.url) };
 }
 
+type SpeedEvent = { type: "vital"; url: string; route?: string };
+
+// Vercel Speed Insights (page load times) gets the same rule, and never a query or hash: a load time needs only the
+// page, and a query can hold a Stripe session, a sign-in or unsubscribe token, or a reminder id.
+export function scrubSpeedEvent<T extends SpeedEvent>(event: T): T | null {
+  if (mayCarryQrToken(event.url)) return null;
+  let url = redactUrlTokens(event.url);
+  try {
+    const parsed = new URL(url);
+    parsed.search = "";
+    parsed.hash = "";
+    url = parsed.toString();
+  } catch {
+    url = url.replace(/[?#].*$/, "");
+  }
+  return { ...event, url };
+}
+
 export function SiteAnalytics() {
-  return <Analytics beforeSend={scrubAnalyticsEvent} />;
+  return (
+    <>
+      <Analytics beforeSend={scrubAnalyticsEvent} />
+      <SpeedInsights beforeSend={scrubSpeedEvent} />
+    </>
+  );
 }
