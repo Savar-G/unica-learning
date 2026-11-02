@@ -131,3 +131,24 @@ it("ignores an invalid cursor and lets an empty old page return to the start", a
   expect(empty).toEqual({ calls: [], older: null, newer: "start" });
   expect(await listCalls(s.admin, 50, empty.newer!)).toEqual(first);
 });
+
+it.each(["2026-02-30", "2026-02-29", "2026-04-31"])("returns the first page for the impossible cursor date %s", async (date) => {
+  const s = reader([row(uuid(1)), row(uuid(2))]);
+  const first = await listCalls(s.admin, 1);
+  const firstUrls = s.urls.map((u) => u.href);
+  for (const direction of ["older", "newer"]) {
+    s.urls.length = 0;
+    const token = Buffer.from(JSON.stringify({ group: 3, at: `${date}T00:00:00Z`, id: uuid(1), direction })).toString("base64url");
+    expect(await listCalls(s.admin, 1, token)).toEqual(first);
+    expect(s.urls.map((u) => u.href)).toEqual(firstUrls);
+  }
+});
+
+it.each(["2024-02-29T00:00:00Z", "2026-03-01T00:00:00.123456+14:00", "2026-02-28T23:59:59.123456-12:00"])("accepts the real calendar date in %s without changing its precision or offset", async (at) => {
+  const s = reader([row(uuid(1), { created_at: at }), row(uuid(2), { created_at: at })]);
+  const first = await listCalls(s.admin, 1);
+  expect(first.calls.map((r) => r.id)).toEqual([uuid(2)]);
+  const next = await listCalls(s.admin, 1, first.older!);
+  expect(next.calls.map((r) => r.id)).toEqual([uuid(1)]);
+  expect(s.urls.some((u) => u.searchParams.get("or")?.includes(`created_at.lt.${at}`))).toBe(true);
+});
