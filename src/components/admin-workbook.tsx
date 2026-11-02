@@ -4,12 +4,14 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { WorkbookDetail } from "@/lib/admin-store";
-import { when, workbookPdfPath } from "@/lib/admin-view";
+import { ADMIN_PATH, adminWorkbookRunPath, when, workbookPdfPath } from "@/lib/admin-view";
 import { checkQuestionPackage, hasOperation, packageItem, stepText, valueText, type AnswerRegion, type QuestionPackage } from "@/lib/question-package";
 import type { WorkbookPage, WorkbookQuestion, WorkbookStatus } from "@/lib/workbook-content";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import { AdminFrame, Chip, Table, type Tone } from "@/components/admin";
 import { RecordFacts, childPath } from "@/components/admin-records";
+import { AuditLog } from "@/components/admin-workbook-audit";
+import { MarkWorkbook } from "@/components/workbook-ship-actions";
 import "./admin-workbook.css";
 
 const STATUS: Record<WorkbookStatus, [string, Tone]> = {
@@ -121,21 +123,56 @@ function QuestionRow({ q }: { q: WorkbookQuestion }) {
   );
 }
 
+/** "1 Nov 2026, 10:04 by savar@..." from the status's time and its audit entry; "Not yet" before it. */
+function doneText(at: string | null, action: string, audit: WorkbookDetail["audit"]): string {
+  if (!at) return "Not yet";
+  const by = [...audit].reverse().find((e) => e.action === action)?.actor_email;
+  return `${when(at)}${by ? ` by ${by}` : ""}`;
+}
+
+/**
+ * #314: print and ship. Download the PDF for the print partner, then "Mark printed" (approved), then "Mark shipped"
+ * (printed). The child's first shipped workbook leads to "Workbook shipped: start plan" (D-140); no plan starts here.
+ */
+function PrintAndShip({ detail }: { detail: WorkbookDetail }) {
+  const { workbook: w, child } = detail;
+  const name = child?.first_name ?? "this child";
+  return <section className="adm-wb-section" aria-labelledby="print-and-ship">
+    <h2 id="print-and-ship">Print and ship</h2>
+    <div className="adm-row">
+      {w.pdfPath && <a className="btn adm-btn" href={`${workbookPdfPath(w.id)}?download=1`}>Download PDF for print</a>}
+      {w.status === "approved" && <MarkWorkbook workbookId={w.id} to="printed" number={w.number} />}
+      {w.status === "printed" && <MarkWorkbook workbookId={w.id} to="shipped" number={w.number} />}
+    </div>
+    {w.status === "draft" && <p className="adm-note">This workbook is not approved. Approve its draft first.</p>}
+    {(w.status === "printed" || w.status === "shipped") && <p className="adm-note">A printed workbook cannot change.</p>}
+    {w.status === "shipped" && detail.firstShipped && (
+      <p className="adm-note" role="note"><b>This is {name}&apos;s first shipped workbook.</b> Start the plan now: open{" "}
+        <Link href={`${ADMIN_PATH}/next-steps`}>Cards and waitlist</Link> and press &ldquo;Workbook shipped: start plan&rdquo; on {name}&apos;s card.</p>
+    )}
+  </section>;
+}
+
 export function AdminWorkbook({ email, detail }: { email: string; detail: WorkbookDetail }) {
-  const { workbook: w, child, images } = detail;
+  const { workbook: w, child, images, audit } = detail;
   const questions = w.pages.flatMap((p) => p.questions);
   return (
-    <AdminFrame email={email} section="children" title={`${child?.first_name ?? "Child"}: workbook ${w.number}`}>
+    <AdminFrame email={email} section="workbooks" title={`${child?.first_name ?? "Child"}: workbook ${w.number}`}>
       <RecordFacts facts={[
         ["Child", <Link key="child" href={childPath(w.childId)}>{child?.first_name ?? w.childId}</Link>],
         ["Status", <WorkbookStatusChip key="status" status={w.status} />],
         ["Levels", w.levels.map((l) => `U${l}`).join(", ")],
         ["Pages and questions", `${w.pages.length} pages · ${questions.length} questions`],
+        ["Approved (Pacific)", doneText(w.approvedAt, "workbook-approved", audit)],
+        ["Printed (Pacific)", doneText(w.printedAt, "workbook-printed", audit)],
+        ["Shipped (Pacific)", doneText(w.shippedAt, "workbook-shipped", audit)],
         ["Made (Pacific)", when(w.createdAt)],
         ["PDF", w.pdfPath ? <a key="pdf" href={workbookPdfPath(w.id)} target="_blank" rel="noopener">Open workbook PDF</a> : "No PDF yet"],
+        ...(detail.runId ? [["Draft review", <Link key="run" href={adminWorkbookRunPath(detail.runId)}>Open the draft&apos;s checks</Link>] as [string, ReactNode]] : []),
         ["Profile build", w.profileBuild ?? "None"],
         ["Workbook id", <span key="id" className="adm-mono">{w.id}</span>],
       ]} />
+      <PrintAndShip detail={detail} />
       {w.pages.map((p) => (
         <section key={p.number} className="adm-wb-section" aria-labelledby={`page-${p.number}`}>
           <h2 id={`page-${p.number}`}>{pageTitle(p)}</h2>
@@ -149,6 +186,8 @@ export function AdminWorkbook({ email, detail }: { email: string; detail: Workbo
           </div>
         </section>
       ))}
+      <h2>Audit log</h2>
+      <AuditLog entries={audit} />
     </AdminFrame>
   );
 }

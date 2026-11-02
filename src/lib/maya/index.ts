@@ -20,6 +20,8 @@ export {
   SAFETY_GUIDANCE,
   TEACHABLE_KINDS,
   TIME_LIMITS,
+  CLOSING_LEAD_MS,
+  limitsOf,
   type Assistance,
   type Effect,
   type Expect,

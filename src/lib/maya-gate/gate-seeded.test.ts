@@ -4,18 +4,25 @@ import { checkTrace, type MayaTrace } from "@/lib/maya-trace";
 import type { OperationPackage } from "@/lib/question-package";
 import { BEHAVIOURS } from "./behaviours";
 import { FIXTURES } from "./fixtures";
-import { HARD_FAILURES, judge, memoryTraceStore, runBehaviour, scenarioModel, type Behaviour, type HardFailure } from "./gate";
+import { judgeSaved, runCallBehaviour, runGateBehaviour } from "./call";
+import { callKey, HARD_FAILURES, judge, memoryTraceStore, runBehaviour, scenarioModel, type Behaviour, type HardFailure, type SavedCall } from "./gate";
 
-// The gate can fail (#324): a seeded bad behaviour makes it fail. Three kinds of seed: a saved trace changed after the
-// run (one per hard failure, so every check can fire), a broken fake model, and a sabotaged controller injected under
-// the text adapter.
+vi.mock("server-only", () => ({}));
+
+// The gate can fail (#324): a seeded bad behaviour makes it fail. Four kinds of seed: a saved trace (or a call run's
+// saved call) changed after the run (one per hard failure, so every check can fire), a broken fake model, a sabotaged
+// controller injected under the text adapter, and a broken alerts seam under the saved call (#395).
 
 /** The controller's `step`, sabotaged when `mode` is set: the text adapter imports it from "@/lib/maya". */
-const sabotage = vi.hoisted(() => ({ mode: "none" as "none" | "words" | "answer" | "no_safety" }));
+const sabotage = vi.hoisted(() => ({ mode: "none" as "none" | "words" | "answer" | "no_safety" | "decline_extra" | "decline_space" | "no_auto_end", extra: "" }));
 vi.mock("@/lib/maya", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/maya")>();
   return {
     ...real,
+    // A changed code line is also in the generic line list. Only the decline's exact allow-list can reject it.
+    allLineTexts: (...args: Parameters<typeof real.allLineTexts>) => [
+      ...real.allLineTexts(...args), ...(sabotage.mode === "decline_extra" ? [sabotage.extra] : []),
+    ],
     step: (session: Parameters<typeof real.step>[0], event: SessionEvent): StepResult => {
       if (sabotage.mode === "no_safety" && event.type === "safety") event = { type: "tick", at: event.at };
       if (sabotage.mode === "no_safety" && event.type === "proposal" && typeof event.proposal === "object" && event.proposal !== null) {
@@ -24,11 +31,35 @@ vi.mock("@/lib/maya", async (importOriginal) => {
         if (p.reading) event = { ...event, proposal: { ...p, reading: { ...p.reading, safety: null } } };
       }
       const r = real.step(session, event);
+      if (sabotage.mode === "decline_space" && !r.refusal) {
+        // Changes only whitespace in the decline turn: the exact check must still refuse it (R423-1).
+        const space = (t: string) => sabotage.extra === "trailing" ? `${t} ` : t.replace(". ", sabotage.extra === "double" ? ".  " : sabotage.extra === "tab" ? ".\t" : ".\n");
+        return { ...r, effects: r.effects.map((e): Effect => e.kind === "say" && e.act === "redirect" ? { ...e, text: space(e.text) } : e) };
+      }
+      if (sabotage.mode === "decline_extra" && !r.refusal) {
+        return { ...r, effects: r.effects.map((e): Effect => e.kind === "say" && e.act === "redirect"
+          ? { ...e, text: `${e.text} ${sabotage.extra}` } : e) };
+      }
       if (r.refusal || (sabotage.mode !== "words" && sabotage.mode !== "answer")) return r;
       // Rewrites an accepted guide's words after the controller checked them.
       const text = sabotage.mode === "words" ? "27 plus 39 is 56." : ANSWER_LINE;
       const effects = r.effects.map((e): Effect => (e.kind === "say" && e.act === "guide" ? { ...e, text } : e));
       return { ...r, effects };
+    },
+  };
+});
+
+vi.mock("@/lib/maya-text", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/maya-text")>();
+  return {
+    ...real,
+    createTextSession: (...args: Parameters<typeof real.createTextSession>) => {
+      const session = real.createTextSession(...args);
+      return {
+        ...session,
+        get session() { return session.session; },
+        get ended() { return sabotage.mode === "no_auto_end" ? false : session.ended; },
+      };
     },
   };
 });
@@ -39,12 +70,15 @@ const ANSWER_LINE = allLineTexts(FIXTURES.A as OperationPackage).find((t) => /\b
 /** A code line for fixture A that brings the child back to the question: a math line. */
 const BACK_LINE = allLineTexts(FIXTURES.A as OperationPackage).find((t) => /^Let's get back to /.test(t))!;
 
+/** The saved calls of the last runs, by behaviour id: a changed trace is judged with its run's call. */
+const calls = new Map<string, string | undefined>();
 async function savedTrace(b: Behaviour): Promise<MayaTrace> {
   const store = memoryTraceStore();
-  await runBehaviour(b, store);
+  await runGateBehaviour(b, store);
+  calls.set(b.id, store.load(callKey(b.id)));
   return JSON.parse(store.load(b.id)!) as MayaTrace;
 }
-const codes = (b: Behaviour, trace: unknown) => [...new Set(judge(b, JSON.stringify(trace)).failures.map((f) => f.code))];
+const codes = (b: Behaviour, trace: unknown, call = calls.get(b.id)) => [...new Set(judge(b, JSON.stringify(trace), call).failures.map((f) => f.code))];
 const mayaAt = (t: MayaTrace, n: number) => t.turns.filter((x) => x.kind === "maya")[n] as Extract<MayaTrace["turns"][number], { kind: "maya" }>;
 
 describe("each hard failure can fail the gate (a saved trace changed after the run)", () => {
@@ -108,7 +142,7 @@ describe("each hard failure can fail the gate (a saved trace changed after the r
   ];
 
   it("lists every hard failure in the seeds", () => {
-    const seeded = new Set([...seeds.map(([code]) => code), "missing_trace"]);
+    const seeded = new Set([...seeds.map(([code]) => code), "missing_trace", "alert_missing"]);
     expect([...seeded].sort()).toEqual(Object.keys(HARD_FAILURES).sort());
   });
 
@@ -139,14 +173,84 @@ describe("each hard failure can fail the gate (a saved trace changed after the r
   });
 });
 
+describe("alert_missing: a flagged call with no alert record fails the gate (#395)", () => {
+  const run = async (id: string) => {
+    const store = memoryTraceStore();
+    await runCallBehaviour(byId(id), store);
+    return { trace: store.load(id)!, call: JSON.parse(store.load(callKey(id))!) as SavedCall };
+  };
+  const found = (id: string, trace: string, call: unknown) => [...new Set(judge(byId(id), trace, call === undefined ? undefined : JSON.stringify(call)).failures.map((f) => f.code))];
+
+  it("passes the unchanged call runs", async () => {
+    for (const id of ["C29", "C30", "C31", "V1", "V1b"]) {
+      const { trace, call } = await run(id);
+      expect(found(id, trace, call), id).toEqual([]);
+    }
+  });
+
+  it.each([
+    ["the alert record removed", "C30", (c: SavedCall) => ({ ...c, alerts: [], next: [] })],
+    ["the alert record of a harmful request removed", "C29", (c: SavedCall) => ({ ...c, alerts: [], next: [] })],
+    ["the stored flag removed", "C31", (c: SavedCall) => ({ ...c, flag: null })],
+    ["the stored flag lower than the trace's", "C32", (c: SavedCall) => ({ ...c, flag: { ...c.flag!, level: "safety_concern" } })],
+    ["two records for one level", "C30", (c: SavedCall) => ({ ...c, next: [...c.next, ...c.next] })],
+    ["no saved call", "C30", () => undefined],
+  ] as const)("%s (%s)", async (_, id, change) => {
+    const { trace, call } = await run(id);
+    expect(found(id, trace, change(call))).toContain("alert_missing");
+  });
+
+  it("a text run of a flagged behaviour (no call, so no alert) fails", async () => {
+    const store = memoryTraceStore();
+    await runBehaviour(byId("C30"), store);
+    expect(judgeSaved(byId("C30"), store).failures.map((f) => f.code)).toContain("alert_missing");
+  });
+
+  it("an alerts seam that never sends: the flag is stored with no alert record", async () => {
+    const store = memoryTraceStore();
+    await runCallBehaviour(byId("C31"), store, { alerts: { send: async () => {}, list: async () => [] } });
+    expect(judgeSaved(byId("C31"), store).failures.map((f) => f.code)).toContain("alert_missing");
+  });
+
+  it("V1's alert sent at once, with no refusal: the run does not match V1", async () => {
+    const store = memoryTraceStore();
+    await runCallBehaviour({ ...byId("V1"), alert: undefined }, store);
+    expect(judgeSaved(byId("V1"), store).failures.map((f) => f.code)).toContain("flow_mismatch");
+  });
+});
+
+describe("safety_not_taken: the saved call must end before cleanup", () => {
+  it.each([
+    ["a live call", (c: SavedCall) => ({ ...c, beforeCleanup: { ...c.beforeCleanup, status: "live" } })],
+    ["no outcome", (c: SavedCall) => ({ ...c, beforeCleanup: { ...c.beforeCleanup, outcome: null } })],
+    ["another outcome", (c: SavedCall) => ({ ...c, beforeCleanup: { ...c.beforeCleanup, outcome: { ...c.beforeCleanup.outcome!, reason: "child_stopped" } } })],
+    ["no safety flag", (c: SavedCall) => ({ ...c, beforeCleanup: { ...c.beforeCleanup, outcome: { ...c.beforeCleanup.outcome!, safetyFlag: false } } })],
+    ["no result before cleanup", (c: SavedCall) => ({ ...c, beforeCleanup: undefined })],
+  ] as const)("%s fails even with a complete safety trace", async (_, change) => {
+    const b = byId("C30");
+    const store = memoryTraceStore();
+    await runCallBehaviour(b, store);
+    const call = JSON.parse(store.load(callKey(b.id))!) as SavedCall;
+    expect(judge(b, store.load(b.id), JSON.stringify(change(call))).failures.map((f) => f.code)).toContain("safety_not_taken");
+  });
+
+  it.each(["C30e", "C31d"])("%s rejects two emails for the combined disclosure and request", async (id) => {
+    const b = byId(id);
+    const store = memoryTraceStore();
+    await runCallBehaviour(b, store);
+    const call = JSON.parse(store.load(callKey(id))!) as SavedCall;
+    expect(judge(b, store.load(id), JSON.stringify({ ...call, emails: 2 })).failures.map((f) => f.code)).toContain("flow_mismatch");
+  });
+});
+
 describe("a broken fake model makes the gate fail", () => {
   it("a model that always fails: the fallbacks keep the child safe, but the behaviour's outcome is not reached", async () => {
     const b = byId("C07");
     const store = memoryTraceStore();
     const model = scenarioModel();
     const broken = { ...model, propose: async () => { throw new Error("the model is down"); } };
-    await runBehaviour(b, store, { model: broken });
-    const found = judge(b, store.load(b.id)).failures.map((f) => f.code);
+    await runGateBehaviour(b, store, { model: broken });
+    const found = judgeSaved(b, store).failures.map((f) => f.code);
     expect(found).toContain("wrong_outcome");
     expect(found).toContain("flow_mismatch");
     // Nothing unchecked reached the child: the fallbacks are code's.
@@ -157,8 +261,8 @@ describe("a broken fake model makes the gate fail", () => {
     const b = byId("C30");
     const blind: Behaviour = { ...b, steps: b.steps.map((s) => ("child" in s && s.read?.safety ? { ...s, read: {} } : s)) };
     const store = memoryTraceStore();
-    await runBehaviour(blind, store);
-    expect(judge(b, store.load(b.id)).failures.map((f) => f.code)).toContain("safety_not_taken");
+    await runGateBehaviour(blind, store);
+    expect(judgeSaved(b, store).failures.map((f) => f.code)).toContain("safety_not_taken");
   });
 });
 
@@ -167,8 +271,8 @@ describe("a sabotaged controller makes the gate fail", () => {
     sabotage.mode = mode;
     try {
       const store = memoryTraceStore();
-      await runBehaviour(byId(id), store);
-      return [...new Set(judge(byId(id), store.load(id)).failures.map((f) => f.code))];
+      await runGateBehaviour(byId(id), store);
+      return [...new Set(judgeSaved(byId(id), store).failures.map((f) => f.code))];
     } finally {
       sabotage.mode = "none";
     }
@@ -191,4 +295,23 @@ describe("a sabotaged controller makes the gate fail", () => {
   it("the safety reading dropped: the safety path is not taken", async () => {
     expect(await run("no_safety", "C30")).toContain("safety_not_taken");
   });
+
+  it.each(["C29", "C29b", "C29c"].flatMap((id) => [
+    "I will tell your parents.", "I'll tell a grown-up.", "I can say something else.",
+  ].map((extra) => [id, extra] as const)))("%s: the decline rejects extra code words: %s", async (id, extra) => {
+    sabotage.extra = extra;
+    expect(await run("decline_extra", id)).toContain("flow_mismatch");
+  });
+
+  it.each(["C29", "C29b", "C29c"].flatMap((id) => ["double", "tab", "newline", "trailing"].map((how) => [id, how] as const)))(
+    "%s: the decline rejects changed whitespace: %s", async (id, how) => {
+      sabotage.extra = how;
+      expect(await run("decline_space", id)).toContain("flow_mismatch");
+    });
+
+  it.each(BEHAVIOURS.filter((b) => b.expect.safety).map((b) => b.id))(
+    "%s: cleanup cannot hide a safety call that did not end automatically", async (id) => {
+      expect(await run("no_auto_end", id)).toContain("safety_not_taken");
+    },
+  );
 });

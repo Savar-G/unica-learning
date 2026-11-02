@@ -6,7 +6,7 @@
 // "Prepare next workbook" button are the only client parts.
 import Link from "next/link";
 import type { ReactNode } from "react";
-import type { AuditEntry, ChildRow, DraftCounts, RunDetail, RunListRow, WorkerStatus } from "@/lib/admin-store";
+import type { ChildRow, DraftCounts, RunDetail, RunListRow, WorkerStatus } from "@/lib/admin-store";
 import { ADMIN_WORKBOOKS_PATH, adminWorkbookPath, adminWorkbookRunPath, draftPdfPath, when } from "@/lib/admin-view";
 import type { WorkbookStatus, WorkbookSummary } from "@/lib/workbook-content";
 import type { GeneratedPage, GeneratedQuestion } from "@/lib/workbook-generator";
@@ -21,6 +21,9 @@ import { RecordFacts, childPath } from "@/components/admin-records";
 import { PackageCells, WorkbookStatusChip } from "@/components/admin-workbook";
 import { RunRefresh } from "@/components/admin-run-refresh";
 import { RunOnServer } from "@/components/run-on-server";
+import { AuditLog } from "@/components/admin-workbook-audit";
+import { ApproveDraft } from "@/components/workbook-ship-actions";
+import { approvalProblems } from "@/lib/workbook-ship";
 import type { AiCallSummary } from "@/lib/workbook-ai";
 import "./admin-workbook.css";
 
@@ -431,42 +434,34 @@ function DraftPageSection({ page, detail, solves }: { page: GeneratedPage; detai
 
 /** "Open workbook PDF", or with the page count when some pages are not in it; plain text when there is no PDF. */
 function DraftPdfLink({ runId, draft, rendering, pages }: { runId: string; draft: boolean; rendering: DraftRendering | null; pages: number }) {
-  if (!rendering?.pdfPath) return <p className="adm-note">{draft ? "No PDF: no page could be drawn." : "No PDF yet."}</p>;
+  if (!rendering?.pdfPath) return <p className="adm-note adm-wb-full">{draft ? "No PDF: no page could be drawn." : "No PDF yet."}</p>;
   const inPdf = rendering.pages.filter((p) => !p.proof).length;
-  return <p className="adm-row adm-wb-pdf">
-    <a className="btn adm-btn" href={draftPdfPath(runId)} target="_blank" rel="noopener">{inPdf < pages ? `Open PDF (${inPdf} of ${pages} pages)` : "Open workbook PDF"}</a>
-  </p>;
+  return <a className="btn adm-btn" href={draftPdfPath(runId)} target="_blank" rel="noopener">{inPdf < pages ? `Open PDF (${inPdf} of ${pages} pages)` : "Open workbook PDF"}</a>;
 }
 
-const ACTION: Record<string, string> = {
-  "run-started": "Started preparing", "run-retried": "Tried again after an error", "run-failed": "Failed", "run-stopped": "Stopped a run with no progress",
-  "draft-stored": "Saved the draft", "run-resumed": "Picked up again after a stop", "run-routed": "Set where the run is made",
-};
-
-/** An audit entry's details in plain words; the raw keys and values stay in the tooltip. */
-function auditDetail(detail: Record<string, unknown>): string {
-  const lines: string[] = [];
-  for (const [k, v] of Object.entries(detail)) {
-    if (k === "number" && typeof v === "number") lines.push(`Workbook ${v}`);
-    else if (k === "attempt" && typeof v === "number") lines.push(`After try ${v}`);
-    else if (k === "error" && typeof v === "string") lines.push(v);
-    else if (k === "pages" && typeof v === "number") lines.push(`${v} ${v === 1 ? "page" : "pages"} already written`);
-    else if (k === "after" && typeof v === "string") lines.push(v === "handover" ? "Another job had let it go" : "It had made no progress");
-    else if (k === "rendered" && typeof v === "boolean") lines.push(v ? "PDF made" : "No PDF");
-    else if (k === "renderProblems" && typeof v === "number" && v > 0) lines.push(`${v} ${v === 1 ? "problem" : "problems"} drawing the pages`);
+/**
+ * #314: approval of the draft's current version. When every check passes, "Approve for print" (the server checks
+ * again); else why it cannot be approved yet. Once approved, a link to the stored workbook, where it is printed and
+ * shipped.
+ */
+function Approval({ detail, name }: { detail: RunDetail; name: string }) {
+  const { run, draft, approved } = detail;
+  if (!draft) return null;
+  if (approved) {
+    return <>
+      <Link className="btn adm-btn" href={adminWorkbookPath(approved.id)}>Open workbook {run.number} to print and ship</Link>
+      <WorkbookStatusChip status={approved.status} />
+    </>;
   }
-  return lines.join(" · ");
-}
-
-function AuditLog({ entries }: { entries: AuditEntry[] }) {
-  return <Table label="Audit log" head={["When (Pacific)", "Who", "What", "Details"]} empty="Nothing logged yet.">
-    {entries.map((e) => <tr key={e.id}>
-      <td className="adm-nowrap">{when(e.at)}</td>
-      <td>{e.actor_email ?? <span className="adm-sub">The job</span>}</td>
-      <td>{ACTION[e.action] ?? e.action}</td>
-      <td className="adm-sub" title={Object.entries(e.detail).map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join("\n") || undefined}>{auditDetail(e.detail)}</td>
-    </tr>)}
-  </Table>;
+  const problems = approvalProblems({
+    runId: run.id, runDone: run.status === "done", draftId: draft.workbook.id, revision: draft.revision, oldFormat: false,
+    draft: draft.workbook, rendering: draft.rendering, renderProblems: draft.problems,
+  });
+  if (problems.length) {
+    return <div className="adm-note adm-wb-full" role="note"><b>Not ready to approve.</b> Every check must pass first:
+      <ul className="adm-wb-list">{problems.map((p) => <li key={p}>{p}</li>)}</ul></div>;
+  }
+  return <ApproveDraft runId={run.id} revision={draft.revision} workbookPath={adminWorkbookPath(draft.workbook.id)} child={name} />;
 }
 
 /** One run: its state, then its draft page by page, then the audit log. `only`: only the pages that need attention. */
@@ -507,7 +502,10 @@ export function AdminWorkbookRun({ email, detail, now, only, worker }: { email: 
           ["Writing AI", <span key="model" title={draft.workbook.model}>{plainModel(draft.workbook.model, "Scripted writer")}</span>] as [string, ReactNode],
         ] : []),
       ]} />
-      {detail.oldFormat === null && <DraftPdfLink runId={run.id} draft={!!draft} rendering={draft?.rendering ?? null} pages={pages.length} />}
+      {detail.oldFormat === null && <div className="adm-row adm-wb-pdf">
+        <DraftPdfLink runId={run.id} draft={!!draft} rendering={draft?.rendering ?? null} pages={pages.length} />
+        <Approval detail={detail} name={name} />
+      </div>}
 
       {(state === "failed" || state === "stopped") && (
         <div className="adm-wb-alert" role="alert">
