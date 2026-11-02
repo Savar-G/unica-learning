@@ -1237,7 +1237,11 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     // A wrong final answer the child gave outside an explanation may be judged wrong although a later number is the
     // final one ("I got 56. I did 7 plus 9 is 16, so I wrote the 6. Then 2 plus 3 is 5."): never when the final one is
     // right or the answer stands, and never as right.
-    const finalRight = read.final !== null && isRightAnswer(operation, answer, read.final);
+    // For the target, "right" follows the question's wording, and an equal fraction also stands ("14/16" for 7/8),
+    // so an earlier wrong number is never scored over it (review R409-M1).
+    const finalRight = read.final !== null && (problem === "target"
+      ? rightForQuestion(pkg, read.final) || isEqualForm(pkg, read.final)
+      : isRightAnswer(operation, answer, read.final));
     const loose = a.verdict === "wrong" && s.solved === null && !finalRight && read.outside.some((v) => saidAs(v, a.value));
     if (a.step === "result" && !saidAs(read.final ?? undefined, a.value) && !loose) {
       return { code: "answer_not_committed", reason: `${valueText(a.value)} is not the last answer the child kept (a number in their explanation is not their answer): ask which one they mean.` };

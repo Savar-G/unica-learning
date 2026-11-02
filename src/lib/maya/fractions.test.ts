@@ -419,6 +419,15 @@ describe("the controller teaches fractions (#407)", () => {
     expect(c.propose({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(mixed(1, 1, 4), "result", "right")] } }).refusal).toBeNull();
   });
 
+  it("never scores an earlier wrong number over a right equal final fraction (R409-M1)", () => {
+    for (const final of ["14/16", "7/8"]) {
+      const c = call(C38, `I got 4/12. Now I got ${final}.`);
+      const r = c.propose({ act: "guide", step: "common", level: 1, parts: [{ line: "step.point", slots: { step: "common" } }], reading: { answers: [answer(frac(4, 12), "result", "wrong")] } });
+      expect(r.refusal, final).toMatchObject({ code: "answer_not_committed" });
+      expect(c.s.lastResult, final).not.toBe("wrong");
+    }
+  });
+
   it("draws the fractions as strips, and the common denominator once that step is done", () => {
     const c = call(C38, "I got 4/12.");
     expect((drawOffers(c.s).guide ?? []).map((o) => o.id)).toContain("question.strips");
