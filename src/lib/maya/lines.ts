@@ -30,9 +30,13 @@ import { simplestWords, teachSteps } from "./fractions";
  * a column's carry comes from, as step.regroup in addition. Version 6 (#407): fraction steps (common denominator,
  * numerators, simplest form) and check.equal, an equal fraction when the question asks for the simplest form.
  */
-export const LINES_VERSION = 6;
+export const LINES_VERSION = 7;
 
 export const LINE_IDS = [
+  "about.ai",
+  "about.no_secret",
+  "shorter.prompt",
+  "answer.area",
   "open.hello",
   "question.problem",
   "question.read",
@@ -96,6 +100,8 @@ export interface LineOffer {
   requires?: { answer: "right" | "wrong" | "equal"; step: string; heard?: string };
   /** Every variant of the line, filled in. Code picks one (`key#index` is the wording's id, see variety.ts). */
   texts: string[];
+  /** Original wording ids when spoken help removes visual variants. */
+  wordingIds?: string[];
   /** The template the variants come from. */
   key: TemplateKey;
   /** The text Maya may write on the board with this line: its expression or its equation. */
@@ -109,6 +115,11 @@ export interface LineOffer {
  * review copy shows each wording once.
  */
 export const TEMPLATES = {
+  "about.ai": ["I'm not a real person. I'm an AI helper."],
+  "about.no_secret": ["I can't be a secret friend. I don't keep secrets. A grown-up you trust is a good person to talk to."],
+  "shorter.prompt": ["What part should we try again?"],
+  "answer.area": ["So the area is {answer} {unit}."],
+  "input.spoken": ["You can say your answer again."],
   "open.hello": [
     "Hi, I'm Maya, an AI helper.", "Hello! I'm Maya. I'm an AI, here to help you.", "Hi there! I'm Maya, an AI math helper.",
     "Hey! I'm Maya, an AI helper for your workbook.", "Hello, I'm Maya. I'm an AI. I'm here to help.", "Hi! My name is Maya. I'm an AI helper.",
@@ -822,5 +833,29 @@ export function allLineTexts(pkg: OperationPackage, heardValues: readonly Answer
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
     ...l.otherInput(), ...l.redirect(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("maya"), ...l.repair(),
   ];
-  return [...new Set(offers.flatMap((o) => o.texts.map(sentence)))];
+  const extra = [...fixedOffers(), ...areaOffers(pkg)];
+  return [...new Set([...offers, ...offers.map(spokenOffer), ...extra].flatMap((o) => o.texts.map(sentence)))];
+}
+
+/** Fixed replies. Each reply is its own turn so the grade 1 limit also holds. */
+export function fixedOffers(): LineOffer[] {
+  return [offer("about.ai", "about.ai", {}), offer("about.no_secret", "about.no_secret", {}), offer("shorter.prompt", "shorter.prompt", {})];
+}
+
+/** Area units come from the checked package, never from the model. */
+export function areaOffers(pkg: OperationPackage): LineOffer[] {
+  const units: Record<string, string> = { "mm²": "square millimetres", "cm²": "square centimetres", "m²": "square metres", "km²": "square kilometres" };
+  const unit = units[pkg.answer.unit ?? ""];
+  return unit ? [offer("answer.area", "answer.area", { answer: valueText(pkg.answer.value), unit })] : [];
+}
+
+/** Spoken versions keep the same checked math and require no visual action. */
+export function spokenOffer(o: LineOffer): LineOffer {
+  if (o.line === "input.other") return offer("input.other", "input.spoken", {});
+  const keep = o.texts.map((_, i) => i).filter((i) => !/\b(?:look|watch|see|show me|follow along|find|bring down|write|put|on top|below|underneath|at the bottom)\b/i.test(o.texts[i]));
+  // An equation says the same checked step aloud when every wording needs a visual action.
+  if (keep.length) return { ...o, texts: keep.map((i) => o.texts[i]), wordingIds: keep.map((i) => `${o.key}#${i}`) };
+  if (o.board) return { ...o, texts: [`${o.board}.`], wordingIds: [`spoken:${o.key}:${o.slots.step ?? ""}#0`] };
+  const safe = o.texts.map((_, i) => i).filter((i) => !/\b(?:board|look|watch|see|show me|follow along)\b/i.test(o.texts[i]));
+  return { ...o, texts: safe.map((i) => o.texts[i]), wordingIds: safe.map((i) => `${o.key}#${i}`) };
 }

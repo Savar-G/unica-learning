@@ -97,6 +97,10 @@ describe("the phrase bank", () => {
   it("gives every math line 5 to 8 wordings", () => {
     for (const [key, wordings] of Object.entries(TEMPLATES)) {
       if (key === "open.hello" || key.startsWith("question.") || key === "assess.ask" || key === "redirect.back") continue;
+      if (["about.ai", "about.no_secret", "shorter.prompt", "answer.area", "input.spoken"].includes(key)) {
+        expect(wordings).toHaveLength(1);
+        continue;
+      }
       // The decline has one fixed wording, approved by Savar (D-197, #383).
       if (key === "redirect.decline") {
         expect(wordings).toEqual(["I can't talk about this. I'm here to help with math."]);
