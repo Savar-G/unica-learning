@@ -16,7 +16,7 @@ export default async function EmailPage({ params, searchParams }: PageProps<"/ad
   const id = decodeURIComponent((await params).id);
   const { who, d, progress, query, demo } = await loadDashboard({ ...(await searchParams), tests: "1" });
   const e = d.emails.find((x) => x.id === id);
-  if (!e || e.kind === "unsubscribe") notFound();
+  if (!e || e.kind === "unsubscribe" || e.kind === "maya_unsubscribe") notFound();
   const copy = demo ? demoEmailCopy(e, d.families.find((f) => f.id === e.familyId)) : await getEmailCopy(await requireAdmin(), id);
   const path = adminEmailPath(id);
   const ctx = { path, query, demo };

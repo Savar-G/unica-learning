@@ -22,6 +22,7 @@ import {
   at,
   dayKey,
   dayLabel,
+  isUnsubscribe,
   kidsText,
   shiftDay,
   since,
@@ -112,7 +113,7 @@ function Today({ d }: { d: Dashboard }) {
       started: d.families.reduce((n, f) => n + f.tests.filter((t) => on(t.startedAt)).length, 0),
       finished: d.families.reduce((n, f) => n + f.tests.filter((t) => on(t.completedAt)).length, 0),
       cards: d.families.filter((f) => on(f.reached.card_saved)).length,
-      emails: d.emails.filter((e) => e.status === "sent" && e.kind !== "alert" && e.kind !== "unsubscribe" && on(e.at)).length,
+      emails: d.emails.filter((e) => e.status === "sent" && e.kind !== "alert" && !isUnsubscribe(e.kind) && on(e.at)).length,
     };
   };
   const t = count(today);
@@ -255,8 +256,8 @@ export function EmailLog({ d, ctx, filter, nav }: { d: Dashboard; ctx: Ctx; filt
                 <td className="dash-nowrap">{at(e.at)}<span className="dash-sub">{ago(e.at, d.now)}</span></td>
                 <td>{EMAIL_LABEL[e.kind]}</td>
                 <td><Link href={familyHref(ctx, e.familyId)}>{e.familyName}</Link></td>
-                <td className="dash-muted">{e.kind === "unsubscribe" ? "-" : <Link href={adminEmailPath(e.id, ctx.demo)}>{e.subject}</Link>}</td>
-                <td>{e.status === "failed" ? <span className="dash-bad-text">Failed after {e.attempts} {e.attempts === 1 ? "try" : "tries"}: {e.error ?? "unknown error"}</span> : e.status === "pending" ? "Waiting to send" : e.kind === "unsubscribe" ? "Reminders off" : <Delivered e={e} />}</td>
+                <td className="dash-muted">{isUnsubscribe(e.kind) ? "-" : <Link href={adminEmailPath(e.id, ctx.demo)}>{e.subject}</Link>}</td>
+                <td>{e.status === "failed" ? <span className="dash-bad-text">Failed after {e.attempts} {e.attempts === 1 ? "try" : "tries"}: {e.error ?? "unknown error"}</span> : e.status === "pending" ? "Waiting to send" : e.kind === "unsubscribe" ? "Reminders off" : e.kind === "maya_unsubscribe" ? "Maya emails off" : <Delivered e={e} />}</td>
                 <td className="dash-nowrap">{!clickable(e) || e.status !== "sent" ? "-" : e.clicks ? <>{clicksText(e)}<span className="dash-sub">first {at(e.clicks.first)}</span></> : <span className="dash-muted">Not yet</span>}</td>
               </tr>
             ))}

@@ -2,6 +2,8 @@ import { timingSafeEqual } from "node:crypto";
 import { linkOrigin } from "@/lib/account-server";
 import { emailConfigProblem, type MailTransport } from "@/lib/email-delivery";
 import { resendTransport } from "@/lib/email-resend";
+import { dueDailyEmails, runDailyEmails } from "@/lib/maya-daily-email";
+import { mayaDailyStore } from "@/lib/maya-daily-email-store";
 import { reminderMessage, reminderStore } from "@/lib/reminder-store";
 import { REMINDER_KINDS, dueReminders, runReminders, type DueReminder } from "@/lib/reminders";
 import { newToken } from "@/lib/sign-in-link";
@@ -10,6 +12,8 @@ import { adminClient } from "@/lib/supabase-auth";
 // The reminder job (#73, D-085). Supabase pg_cron calls it every 15 minutes through pg_net, with
 // "Authorization: Bearer <CRON_SECRET>" (the URL and the secret live in Supabase Vault; see
 // supabase/migrations/20261011_add_reminder_cron.sql). Vercel cron here runs only once a day, so it cannot.
+// After the reminders, the same run sends the daily Maya emails (#332, src/lib/maya-daily-email.ts) through the same
+// spaced transport.
 // ?dry=1 counts what is due and sends nothing.
 // The answer holds counts only, never a parent's details.
 
@@ -59,15 +63,26 @@ export async function POST(request: Request) {
   const origin = linkOrigin(request);
   try {
     if (new URL(request.url).searchParams.get("dry") === "1") {
-      return Response.json({ ok: true, dry: true, due: byKind(dueReminders(await store.load(now), now)) });
+      const maya = dueDailyEmails(await mayaDailyStore(admin).load(now), now).length;
+      return Response.json({ ok: true, dry: true, due: byKind(dueReminders(await store.load(now), now)), maya });
     }
+    const transport = spaced(resendTransport(), SEND_GAP_MS);
     const result = await runReminders(store, now, {
       newToken,
       message: (reminder, token, state) => reminderMessage(reminder, token, state, origin),
-      transport: spaced(resendTransport(), SEND_GAP_MS),
+      transport,
     });
     if (result.due > 0) console.info("[reminders] run", JSON.stringify(result));
-    return Response.json({ ok: true, ...result });
+    // A failed Maya run never hides the reminders' result.
+    let maya: Awaited<ReturnType<typeof runDailyEmails>> | { error: "run_failed" };
+    try {
+      maya = await runDailyEmails(mayaDailyStore(admin), now, { origin, newToken, transport });
+      if (maya.due > 0) console.info("[maya daily] run", JSON.stringify(maya));
+    } catch (e) {
+      console.error("[maya daily] run failed", e instanceof Error ? e.message : e);
+      maya = { error: "run_failed" };
+    }
+    return Response.json({ ok: true, ...result, maya });
   } catch (e) {
     console.error("[reminders] run failed", e instanceof Error ? e.message : e);
     return Response.json({ ok: false, error: "run_failed" }, { status: 500 });

@@ -800,7 +800,7 @@ export interface EmailRow {
   parent_id: string;
   child_id: string | null;
   assessment_id: string | null;
-  kind: "continue" | "come_back" | "start" | "start_followup" | "unsubscribe";
+  kind: "continue" | "come_back" | "start" | "start_followup" | "unsubscribe" | "maya_daily" | "maya_unsubscribe";
   status: "claimed" | "sent" | "failed" | null;
   attempts: number;
   sent_at: string | null;

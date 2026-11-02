@@ -50,11 +50,12 @@ const ZONE: Record<string, string> = {
   X: "America/Yellowknife",
   Y: "America/Whitehorse",
 };
-const zoneFor = (postal: string | null) => ZONE[(postal ?? "").trim().charAt(0).toUpperCase()] ?? "America/Vancouver";
+/** The family's time zone, from the postal code's first letter; Pacific when it is not known. */
+export const familyZone = (postal: string | null) => ZONE[(postal ?? "").trim().charAt(0).toUpperCase()] ?? "America/Vancouver";
 
 /** "4:15 p.m. PDT on Monday, October 12" in the family's time zone. */
 function deadline(at: number, postal: string | null): string {
-  const timeZone = zoneFor(postal);
+  const timeZone = familyZone(postal);
   const time = new Intl.DateTimeFormat("en-CA", { hour: "numeric", minute: "2-digit", timeZone, timeZoneName: "short" }).format(at);
   const day = new Intl.DateTimeFormat("en-CA", { weekday: "long", month: "long", day: "numeric", timeZone }).format(at);
   return `${time} on ${day}`;
