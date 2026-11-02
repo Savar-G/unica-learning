@@ -11,6 +11,7 @@ OPENROUTER_API_KEY_FILE=~/keys/openrouter npm run maya:practice -- --max-usd 20
 npm run maya:practice -- --anthropic --estimate                      # every model on the Claude API (local key)
 npm run maya:practice -- --anthropic --max-usd 25
 npm run maya:practice -- --anthropic --review-check                  # only the free-talk review over the never-say list
+npm run maya:practice -- --subscription --cases F01,C02             # every model through claude -p on the Claude subscription: USD 0
 npm run maya:practice -- --fake                                      # fake models: checks the plumbing, costs nothing
 npm run maya:practice -- --report traces/maya-practice/<run>          # count a saved run again
 ```
@@ -26,6 +27,8 @@ npm run maya:practice -- --report traces/maya-practice/<run>          # count a 
 | `--out <dir>` | Where to save the run. Default `traces/maya-practice/<time>` (not committed). |
 | `--report <dir>` | Rebuild `report.md` and `report.json` from a saved run. |
 | `--anthropic` | Every model through the Claude API (`src/lib/ai-anthropic.ts`): Maya `claude-sonnet-5-5`, the child and the validity judge `claude-haiku-5-5`, the judge `claude-opus-5-5`, the review `claude-haiku-5-5`. The key is `ANTHROPIC_API_KEY` or the macOS Keychain item `anthropic-unica-tools`. Prices come from a table in the command line (Claude API list prices). A local tool only: the live site stays on OpenRouter. The judges are then the same model family as Maya, so the report says less than one with judges from another family. |
+| `--subscription` | Every model through `claude -p` on the Claude subscription (`src/lib/ai-claude-cli.ts`), at no cost: the same Claude models as `--anthropic`. Each call replaces Claude Code's system prompt with the role's exact system prompt (`--system-prompt`), asks for its schema (`--json-schema`), has no tools (`--tools ""`, `--safe-mode`), and runs in an empty folder with `ANTHROPIC_API_KEY` removed. `MAYA_CLAUDE_CONFIG_DIR` sets `CLAUDE_CONFIG_DIR` (another Claude Code login); `MAYA_CLAUDE_TIMEOUT_S` sets each call's process time limit (default 300). The cost is reported as USD 0, and `--max-usd` does nothing. `--provider subscription` is the same. See "Subscription runs" below. |
+| `--provider <p>` | `openrouter` (the default), `anthropic` (the same as `--anthropic`) or `subscription` (the same as `--subscription`). |
 | `--review-check` | Only the free-talk review: every `NEVER_SAY` example (each must fail) and every `OK_TALK` line (each must pass), with the code guards' result beside it. Saves `review-check.md` and `.json`. About 70 short calls; the cap is USD 2 unless `--max-usd` says otherwise. |
 | `--no-free-talk` | Maya with free talk off (every word from code), for a comparison run. |
 | `--review-model` | The free-talk review's model. Default `MAYA_REVIEW_MODEL`, else `anthropic/claude-haiku-5.5`. |
@@ -39,6 +42,12 @@ Before a real run, the command runs the whole suite once with the fakes (no netw
 
 While it runs, each call first reserves its worst case against the cap, and is refused when that would pass the cap. OpenRouter's answer reports what each call cost (`usage.cost`; else its tokens at the list price; else the worst case). Calls already running when the cap is met may finish, so the cap can be passed by up to one call per run in flight. A run the cap cuts is not saved: the report counts it missing, and the suite fails.
 
+## Subscription runs
+
+A subscription run tests Maya's rules and wording: her exact system prompt, schema, controller, code guards and free-talk review, on the live model family. It does not test the exact live API connection. Claude Code checks the schema through its own structured-output step, not the API's constrained decoding; it has no output token limit like the live 4,000; and each call starts a process, about 3 s more than an API call. So a subscription run raises the time limits: 120 s for a Maya, child or validity call (240 s for the judge) and 60 s for a free-talk review, against the live 30 s and 8 s. A subscription pass is therefore not the final check: **run the full suite once on the API (`--anthropic` or OpenRouter) before real families use Maya.** Its report says "PASS on the Claude subscription (not the final API check)". Savar accepted a subscription pass as the merge gate for now (2026-11-01). The call's environment loses every `ANTHROPIC_*` and `CLAUDE_CODE_USE_*` setting and the Bedrock, Vertex and Foundry keys, so the run cannot reach a paid route.
+
+When the subscription's usage limit is met, the run stops: the calls in flight end, the runs already finished stay saved, and the report counts the rest missing. The run never falls back to the paid API. Run the missing cases again with `--cases` after the limit resets. If `claude -p` gives no output inside an agent session, run the command in your own terminal.
+
 ## Files
 
 | File | What it holds |
@@ -49,6 +58,7 @@ While it runs, each call first reserves its worst case against the cap, and is r
 | `src/lib/maya-practice/judge.ts` | The judge: its prompt (`JUDGE_PROMPT_VERSION`), strict JSON schema, `readJudgement` (the check), the OpenRouter judge and a fake. |
 | `src/lib/maya-practice/practice.ts` | `runPractice`, `runSuite`, `judgeRun` (one run from its saved files), `buildReport` and `reportMarkdown`. |
 | `src/lib/maya-practice/cost.ts` | The estimate (`estimateCost`) and the cap (`Spending`, `cappedClient`, `meteredFetch`). |
+| `src/lib/ai-claude-cli.ts` | The subscription client (`--subscription`): one `claude -p` call per request, behind a process seam its tests replace. |
 | `scripts/maya-practice-cli.ts` | The command line. |
 
 A run's folder: `plan.json` (the planned runs, every model and prompt version, the suite hash, the commit, the cap), then for each run `runs/<case>-r<n>.trace.json` (Maya's trace, with her model and prompt version and the question package hash), `.child.json` (each raw simulator turn, with the simulator's model and prompt version; errors keep only a code), `.validity.json` (the validity judge's raw output, its model and prompt version, an error code, or why it was skipped) and `.judge.json` (the judge's raw output, its model and prompt version, or an error code), and last `.record.json`: the sha256 of the exact text of each of those files and of `plan.json`. Then `report.md` and `report.json`, and `free-talk.md` and `free-talk.json`: every piece of Maya's own words in the required runs, what the code guards and the review made of it, what was said, and the pieces the review failed after the code guards passed them. The free-talk file is not a gate result; the gate's `free_talk_unchecked` hard failure is.
