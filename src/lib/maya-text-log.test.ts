@@ -442,6 +442,46 @@ describe("event log interleavings", () => {
 });
 
 describe("reported public-interface reproductions", () => {
+  it.each(["concern", "immediate"] as const)("returns %s safety guidance without waiting for a provider after the history limit", async (severity) => {
+    const base = ruleMayaModel();
+    let armed = false, calls = 0;
+    const model = { ...base, propose: async (...args: Parameters<typeof base.propose>) => {
+      calls++;
+      if (!armed) return base.propose(...args);
+      if (calls === 2) return safety(severity);
+      return new Promise<never>(() => {});
+    } };
+    const s = createTextSession({ callId: "history-no-wait", package: pkg, model, clock: () => T0, random: 7 });
+    await s.start();
+    const remaining = async () => {
+      const saved = await s.saved();
+      return 262144 - (saved.checkpoint?.historyBytes ?? 0) - saved.log!.reduce((bytes, e) => bytes + Buffer.byteLength(JSON.stringify(e)), 0);
+    };
+    const overhead = [
+      { kind: "input", at: T0, event: { type: "child_turn", at: T0, text: "", final: false } },
+      { kind: "cancelled", at: T0 },
+    ].reduce((bytes, event) => bytes + Buffer.byteLength(JSON.stringify(event)), 0);
+    while (await remaining() > 430) {
+      const padding = Math.min(1000, await remaining() - 430 - overhead);
+      expect(padding).toBeGreaterThanOrEqual(0);
+      await s.partial("x".repeat(padding));
+    }
+    expect(await remaining()).toBe(430);
+    expect(s.ended).toBe(false);
+    armed = true;
+
+    const out = await s.child("Someone hurts me right now.");
+
+    expect(out.say).toEqual([SAFETY_GUIDANCE[severity]]);
+    expect(out.board).toEqual([]);
+    expect(out.ended).toMatchObject({ reason: "safety", safetyFlag: true, safetySeverity: severity });
+    expect(out.safetyMessage).toBe(SAFETY_GUIDANCE[severity]);
+    expect(s.ended).toBe(true);
+    expect(calls).toBe(2);
+    expect(s.trace().obligations).toContainEqual(expect.objectContaining({ kind: "safety_due", status: "served" }));
+    expect(checkTrace(s.trace())).toMatchObject({ ok: true });
+  });
+
   it.each([0, 1])("R424-25: safety at the history limit, seed %i", async (seed) => {
     await historyLimitSeed(seed, new Map());
   });
