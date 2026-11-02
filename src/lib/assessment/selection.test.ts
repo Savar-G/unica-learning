@@ -1,15 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { checked } from "@/lib/assessment/scripted-child";
-import { REPORTED_STRAND, bankFor, bandFor, createSession, nextQuestion, submitAnswer, testStep, type Grade } from "@/lib/assessment";
+import { REPORTED_STRAND, bankFor, bandFor, createSession, nextQuestion, submitAnswer, testStep, type Grade, type Session, type Template } from "@/lib/assessment";
 
 // D-156: Kindergarten (0) to Grade 9. Each grade starts at its own level (D-158: Grade 9 at level 9).
 const GRADES: Grade[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 const ROUTES = ["up", "stay", "down"] as const;
 
-describe("BC selection through the public assessment interface", () => {
-  it.each(GRADES)("grade %i gives every reported strand six questions at or below grade on every route", (grade) => {
-    for (let seed = 0; seed < 200; seed++) {
-      const session = createSession({ grade, province: "BC" }, seed * 7919 + 3);
+describe.each(GRADES)("BC selection through the public assessment interface, grade %i", (grade) => {
+  let sessions: Session[];
+  beforeAll(() => {
+    // Both checks read the same 200 sessions. Neither check changes them.
+    sessions = Array.from({ length: 200 }, (_, seed) => createSession({ grade, province: "BC" }, seed * 7919 + 3));
+  });
+  afterAll(() => { sessions = []; });
+
+  it("gives every reported strand six questions at or below grade on every route", () => {
+    for (const [seed, session] of sessions.entries()) {
       for (const route of ROUTES) {
         const questions = [...session.stage1, ...session.stage2[route]];
         for (const strand of bandFor(grade).strands) {
@@ -19,14 +25,18 @@ describe("BC selection through the public assessment interface", () => {
       }
     }
   });
-});
-
-describe("BC template and standard coverage", () => {
-  it.each(GRADES)("grade %i uses each template once and rotates available standards across both stages", (grade) => {
+  it("uses each template once and rotates available standards across both stages", () => {
     const bank = bankFor(grade);
     const byId = new Map(bank.map((t) => [t.id, t]));
-    for (let seed = 0; seed < 200; seed++) {
-      const session = createSession({ grade, province: "BC" }, seed * 7919 + 3);
+    // The level and strand do not change while a route uses up its templates.
+    const pools = new Map<string, Template[]>();
+    for (const t of bank) {
+      const key = `${t.grades.BC}:${REPORTED_STRAND[t.strand]}`;
+      const pool = pools.get(key) ?? [];
+      pool.push(t);
+      pools.set(key, pool);
+    }
+    for (const [seed, session] of sessions.entries()) {
       for (const route of ROUTES) {
         const used = new Set<string>();
         const counts = new Map<string, number>();
@@ -34,7 +44,7 @@ describe("BC template and standard coverage", () => {
           const label = `grade ${grade} ${route} seed ${seed} ${q.templateId}`;
           expect(used.has(q.templateId), label).toBe(false);
           const template = byId.get(q.templateId)!;
-          const available = bank.filter((t) => t.grades.BC === q.level && REPORTED_STRAND[t.strand] === REPORTED_STRAND[q.strand] && !used.has(t.id));
+          const available = pools.get(`${q.level}:${REPORTED_STRAND[q.strand]}`)!.filter((t) => !used.has(t.id));
           const key = (standard: string) => `${REPORTED_STRAND[q.strand]}:${standard}`;
           const before = counts.get(key(template.standard)) ?? 0;
           expect(before, label).toBe(Math.min(...available.map((t) => counts.get(key(t.standard)) ?? 0)));
@@ -46,8 +56,8 @@ describe("BC template and standard coverage", () => {
   });
 });
 
-it("never repeats a BC template on any seeded route", () => {
-  for (const grade of GRADES) for (let seed = 0; seed < 200; seed++) {
+it.each(GRADES)("grade %i never repeats a BC template on any seeded route", (grade) => {
+  for (let seed = 0; seed < 200; seed++) {
     const session = createSession({ grade, province: "BC" }, seed);
     for (const route of ROUTES) {
       const questions = [...session.stage1, ...session.stage2[route]];

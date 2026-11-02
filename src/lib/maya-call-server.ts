@@ -165,6 +165,8 @@ const callCursor = (value?: string): CallCursor | null => {
     const c = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
     return Number.isInteger(c.group) && c.group >= 0 && c.group < 4 &&
       typeof c.at === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(c.at) && Number.isFinite(Date.parse(c.at)) &&
+      // Check the written calendar date separately: offsets can move a valid timestamp to another UTC day.
+      new Date(c.at.slice(0, 10)).toISOString().slice(0, 10) === c.at.slice(0, 10) &&
       typeof c.id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.id) &&
       (c.direction === "older" || c.direction === "newer") ? c : null;
   } catch { return null; }

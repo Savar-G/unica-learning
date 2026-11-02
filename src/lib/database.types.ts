@@ -3397,6 +3397,15 @@ export type Database = {
             }
             Returns: number
           }
+      _maya_normalize_zone: { Args: { p_zone: string }; Returns: string }
+      _maya_period_window: {
+        Args: { p_at: string; p_kind: string; p_zone: string }
+        Returns: {
+          period: string
+          period_start: string
+        }[]
+      }
+      _maya_zone_at: { Args: { p_at: string; p_zone: string }; Returns: string }
       abandon_family_payment_operation: {
         Args: {
           p: string
