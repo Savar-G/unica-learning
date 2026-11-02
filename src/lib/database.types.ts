@@ -694,6 +694,7 @@ export type Database = {
           sent_at: string | null
           status: string | null
           unsubscribe_hash: string | null
+          week_start: string | null
         }
         Insert: {
           assessment_id?: string | null
@@ -712,6 +713,7 @@ export type Database = {
           sent_at?: string | null
           status?: string | null
           unsubscribe_hash?: string | null
+          week_start?: string | null
         }
         Update: {
           assessment_id?: string | null
@@ -730,6 +732,7 @@ export type Database = {
           sent_at?: string | null
           status?: string | null
           unsubscribe_hash?: string | null
+          week_start?: string | null
         }
         Relationships: [
           {
@@ -3295,6 +3298,17 @@ export type Database = {
         Args: { p_call: string; p_kind: string; p_revision: number }
         Returns: string
       }
+      approve_workbook_draft: {
+        Args: {
+          p_by: string
+          p_by_email: string
+          p_draft: string
+          p_revision: number
+          p_schema_version: number
+          p_workbook: Json
+        }
+        Returns: Json
+      }
       assert_family_writable: { Args: { p: string }; Returns: undefined }
       beat_workbook_worker: {
         Args: {
@@ -3547,6 +3561,15 @@ export type Database = {
       lock_stage1: {
         Args: { p_answers: Json; p_assessment: string; p_route: string }
         Returns: string
+      }
+      mark_workbook: {
+        Args: {
+          p_by: string
+          p_by_email: string
+          p_to: string
+          p_workbook: string
+        }
+        Returns: Json
       }
       maya_minutes_used: {
         Args: {
