@@ -1,4 +1,4 @@
-// The weekly Maya family recap (#332, spec #297). Monday at 7 a.m. family time, for the previous Monday to Sunday.
+// The weekly Maya family recap (#332, spec #297). Monday at 7 a.m. family time, for uncovered completed calls.
 // No calls means no email. Claims in email_log use (parent, week_start). Refused sends can retry three times;
 // unknown sends stay claimed. The shared reminder job runs this through sendEmailOnce after the reminders.
 // The CASL footer and Maya unsubscribe are separate from the reminders. No AI call is made here.
@@ -6,15 +6,16 @@ import { SUPPORT_EMAIL } from "@/lib/contact";
 import { emailDocument, emailFooterText, emailSignatureText } from "@/lib/email-brand";
 import { sendEmailOnce, type EmailMessage, type MailTransport, type SendLedger } from "@/lib/email-delivery";
 import { NOTE_CALL_KINDS, noteSentences, noteTranscriptLines, type CallNote } from "@/lib/maya-call-note";
-import { familyZone } from "@/lib/reminder-email";
+import { addDays, familyTime, familyZone, familyProvince, formatCalendarDate, localDateTime, localDay, weekStartFor, type FamilyZone } from "@/lib/family-time";
+export { localDay, weekStartFor } from "@/lib/family-time";
 import { canGetEmail } from "@/lib/reminder-schedule";
 import { MAX_SEND_ATTEMPTS, type LogStatus } from "@/lib/reminders";
 
 /** Monday release hour in the family time zone. */
 export const SEND_HOUR = 7;
-/** A recap expires seven local days after its week ends, at the next Monday midnight. */
+/** A delivery slot expires at the next Monday midnight. */
 export const LATE_DAYS = 7;
-/** Load the whole week plus its late-send window. The store adds time-zone and DST slack. */
+/** Uncovered calls expire after this many elapsed days. The store loads wider for clock and zone slack. */
 export const LOOKBACK_DAYS = 7 + LATE_DAYS;
 export const MAX_EMAIL_CALLS = 10;
 /** Emails one run sends at most; the next run sends the rest. */
@@ -24,7 +25,8 @@ export interface WeeklyParent {
   id: string;
   name: string;
   email: string;
-  /** Picks the family's time zone (familyZone); null is Pacific. */
+  /** The stored browser zone takes precedence over postal and province. */
+  timeZone?: string | null;
   postal: string | null;
   /** A test family (public.test_accounts): never emailed (R421W-5). */
   test?: boolean;
@@ -34,6 +36,8 @@ export interface WeeklyChild {
   id: string;
   parentId: string;
   firstName: string;
+  province?: string | null;
+  created_at?: string;
 }
 
 /** A completed call, including one whose note is not saved yet. */
@@ -52,10 +56,12 @@ export interface WeeklyLogEntry {
   id: string;
   kind: "maya_weekly" | "maya_unsubscribe";
   parentId: string;
-  /** The Monday date of the calls' week in family time (YYYY-MM-DD); null for an unsubscribe. */
+  /** The Monday label of the delivery slot (the preceding family-local week) (YYYY-MM-DD); null for an unsubscribe. */
   weekStart: string | null;
   status: LogStatus | null;
   attempts: number;
+  /** All completed calls included in this recap, also those without a displayed note. */
+  callIds?: string[];
 }
 
 /** What the decision reads. The store may pass more than it needs; every rule is checked here. */
@@ -71,77 +77,44 @@ export interface WeeklyState {
 /** One email to send: the send key (parent, week start) and the calls in it. */
 export interface DueWeekly {
   parentId: string;
-  /** The Monday date of the calls' week in family time, YYYY-MM-DD. */
+  /** The Monday label of the delivery slot (the preceding family-local week), YYYY-MM-DD. */
   weekStart: string;
-  zone: string;
+  zone: FamilyZone;
   /** The calls in the email, newest first. */
   callIds: string[];
   /** A send that was refused before: the log row to take again. */
   retry: { logId: string; attempts: number } | null;
 }
 
-// ---------- Days in the family's time zone ----------
-
-function parts(at: number, zone: string): Record<string, string> {
-  const f = new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" });
-  return Object.fromEntries(f.formatToParts(at).map((p) => [p.type, p.value]));
-}
-
-/** The local date at `at` in `zone`, YYYY-MM-DD. */
-export function localDay(at: number, zone: string): string {
-  const p = parts(at, zone);
-  return `${p.year}-${p.month}-${p.day}`;
-}
-
-const localHour = (at: number, zone: string) => Number(parts(at, zone).hour);
-
-/** The date `n` days after `day` (YYYY-MM-DD). */
-function addDays(day: string, n: number): string {
-  const d = new Date(`${day}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-
-/** The Monday date of the week containing a local YYYY-MM-DD date. */
-export function weekStartFor(day: string): string {
-  const weekday = new Date(`${day}T12:00:00Z`).getUTCDay();
-  return addDays(day, -((weekday + 6) % 7));
-}
-
 // ---------- Who gets which email ----------
 
-/** One recap per parent and completed week, from Monday 7 a.m. until the next Monday midnight. */
+/** One recap per parent and delivery week, from Monday 7 a.m. until the next Monday midnight. */
 export function dueWeeklyEmails(state: WeeklyState, now: number): DueWeekly[] {
   const off = new Set(state.log.filter((e) => e.kind === "maya_unsubscribe").map((e) => e.parentId));
   const due: DueWeekly[] = [];
   for (const parent of state.parents) {
     if (parent.test || off.has(parent.id) || !canGetEmail(parent.email)) continue;
-    const zone = familyZone(parent.postal);
+    const zone = familyZone({ ...parent, province: familyProvince(state.children.filter((c) => c.parentId === parent.id)) });
     const today = localDay(now, zone);
-    const hour = localHour(now, zone);
-    const byWeek = new Map<string, Map<string, WeeklyCall>>();
-    for (const n of state.calls) {
-      // The same eligibility as the parent note (#403): family calls only, so an admin test call never makes a recap.
-      if (n.parentId !== parent.id || !(NOTE_CALL_KINDS as readonly string[]).includes(n.kind)) continue;
-      const weekStart = weekStartFor(localDay(Date.parse(n.endedAt), zone));
-      const release = addDays(weekStart, 7);
-      const expires = addDays(release, LATE_DAYS);
-      // Compare local calendar dates and hours, not 168 elapsed hours, across DST changes.
-      const ready = today > release || (today === release && hour >= SEND_HOUR);
-      const expired = today >= expires;
-      if (!ready || expired) continue;
-      if (!byWeek.has(weekStart)) byWeek.set(weekStart, new Map());
-      byWeek.get(weekStart)!.set(n.callId, n);
-    }
-    for (const [weekStart, calls] of byWeek) {
-      const incomplete = [...calls.values()].some((c) => c.notePending || !state.notes.some((n) => n.callId === c.callId && n.parentId === c.parentId && n.childId === c.childId));
-      // Leave the week unclaimed while notes recover. The final local Sunday is the last send day.
-      if (incomplete && today < addDays(weekStart, 7 + LATE_DAYS - 1)) continue;
-      const callIds = [...calls.values()].sort((a, b) => Date.parse(b.endedAt) - Date.parse(a.endedAt) || a.callId.localeCompare(b.callId)).map((c) => c.callId);
-      const logged = state.log.find((e) => e.kind === "maya_weekly" && e.parentId === parent.id && e.weekStart === weekStart);
-      if (!logged) due.push({ parentId: parent.id, weekStart, zone, callIds, retry: null });
-      else if (logged.status === "failed" && logged.attempts < MAX_SEND_ATTEMPTS) due.push({ parentId: parent.id, weekStart, zone, callIds, retry: { logId: logged.id, attempts: logged.attempts } });
-    }
+    const monday = weekStartFor(today);
+    const weekStart = addDays(monday, -7);
+    const release = localDateTime(monday, zone, SEND_HOUR);
+    const expires = localDateTime(addDays(monday, LATE_DAYS), zone);
+    if (now < release || now >= expires) continue;
+    const logs = state.log.filter((e) => e.kind === "maya_weekly" && e.parentId === parent.id);
+    const logged = logs.find((e) => e.weekStart === weekStart);
+    if (logged && (logged.status !== "failed" || logged.attempts >= MAX_SEND_ATTEMPTS)) continue;
+    // Call identity owns coverage. Week labels only set cadence and the displayed calendar grouping.
+    const covered = new Set(logs.filter((e) => e.status === "sent" || e.status === "claimed").flatMap((e) => e.callIds ?? []));
+    const calls = [...new Map(state.calls.filter((c) => c.parentId === parent.id
+      && (NOTE_CALL_KINDS as readonly string[]).includes(c.kind) && !covered.has(c.callId)
+      && Date.parse(c.endedAt) >= now - LOOKBACK_DAYS * 86_400_000
+      && Date.parse(c.endedAt) < localDateTime(monday, zone)).map((c) => [c.callId, c])).values()];
+    if (!calls.length) continue;
+    const incomplete = calls.some((c) => c.notePending || !state.notes.some((n) => n.callId === c.callId && n.parentId === c.parentId && n.childId === c.childId));
+    if (incomplete && today < addDays(monday, LATE_DAYS - 1)) continue;
+    const callIds = calls.sort((a, b) => Date.parse(b.endedAt) - Date.parse(a.endedAt) || a.callId.localeCompare(b.callId)).map((c) => c.callId);
+    due.push({ parentId: parent.id, weekStart, zone, callIds, retry: logged ? { logId: logged.id, attempts: logged.attempts } : null });
   }
   return due.sort((a, b) => a.weekStart.localeCompare(b.weekStart) || a.parentId.localeCompare(b.parentId));
 }
@@ -161,7 +134,8 @@ export interface WeeklyEmailCall {
 export interface WeeklyEmailInput {
   parentName: string;
   weekStart: string;
-  zone: string;
+  coveredWeeks?: string[];
+  zone: FamilyZone;
   /** Each child with calls that week, in the order of their newest call. */
   children: { name: string; calls: WeeklyEmailCall[] }[];
   unsubscribeUrl: string;
@@ -180,9 +154,9 @@ const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
 /** "Leah", "Leah and Sam", "Leah, Sam and Ava". */
 const joinNames = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
 /** "Sunday, November 1". */
-const dayLabel = (day: string) => new Intl.DateTimeFormat("en-CA", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" }).format(Date.parse(`${day}T12:00:00Z`));
+const dayLabel = (day: string) => formatCalendarDate(day, { weekday: "long", month: "long", day: "numeric" });
 /** "4:12 p.m." in the family's time zone. */
-const clock = (iso: string, zone: string) => new Intl.DateTimeFormat("en-CA", { hour: "numeric", minute: "2-digit", timeZone: zone }).format(Date.parse(iso));
+const clock = (iso: string, zone: FamilyZone) => familyTime(Date.parse(iso), zone);
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 /** The weekly Maya email: subject, text and HTML, with the CASL footer and the unsubscribe link. */
@@ -190,7 +164,8 @@ export function weeklyEmail(e: WeeklyEmailInput): { subject: string; text: strin
   const names = e.childNames ?? e.children.map((c) => c.name);
   const calls = e.children.reduce((n, c) => n + c.calls.length, 0);
   const subject = `Maya this week: ${joinNames(names)}`;
-  const period = `${dayLabel(e.weekStart)} to ${dayLabel(addDays(e.weekStart, 6))}`;
+  const weeks = e.coveredWeeks?.length ? [...e.coveredWeeks].sort() : [e.weekStart];
+  const period = `${dayLabel(weeks[0])} to ${dayLabel(addDays(weeks.at(-1)!, 6))}`;
   const noteIntro = !calls && !e.omittedCalls ? "No call notes are available yet." : e.missingNotes ? "Here are the available call notes and what was said." : "Here is a short note about each call, and what was said.";
   const intro = `${joinNames(names)} had ${plural(calls + e.omittedCalls + e.missingNotes, "call")} with Maya, our AI teaching assistant, from ${period}. ${noteIntro}`;
   const more = e.omittedCalls ? `There ${e.omittedCalls === 1 ? "was" : "were"} ${plural(e.omittedCalls, "more call")} this week. This email shows the newest ${MAX_EMAIL_CALLS}.` : "";
@@ -203,9 +178,14 @@ export function weeklyEmail(e: WeeklyEmailInput): { subject: string; text: strin
   // 2026-11-01). The time tells two calls of one day apart.
   const callLabel = (c: WeeklyEmailCall) => `${dayLabel(localDay(Date.parse(c.endedAt), e.zone))} · ${clock(c.endedAt, e.zone)} · ${plural(c.minutes, "minute")}`;
 
+  const weekHeading = (calls: WeeklyEmailCall[], index: number) => {
+    const week = (c: WeeklyEmailCall) => weekStartFor(localDay(c.endedAt, e.zone));
+    return weeks.length > 1 && (index === 0 || week(calls[index]) !== week(calls[index - 1])) ? `Week of ${dayLabel(week(calls[index]))}` : "";
+  };
   const textCalls = e.children.flatMap((child) => [
     ...(several ? [child.name.toUpperCase()] : []),
-    ...child.calls.map((c) => [
+    ...child.calls.map((c, i) => [
+      ...(weekHeading(child.calls, i) ? [weekHeading(child.calls, i)] : []),
       callLabel(c),
       c.sentences.join(" "),
       "What was said:",
@@ -220,7 +200,8 @@ export function weeklyEmail(e: WeeklyEmailInput): { subject: string; text: strin
     : `<p style="margin:0 0 6px;font-size:14px"><strong style="font-weight:600">${esc(l.speaker)}:</strong> ${esc(l.text)}</p>`;
   const htmlCalls = e.children.map((child) => `
 ${several ? `<tr><td style="padding:18px 24px 0"><h2 style="margin:0;font-size:18px;line-height:1.3;font-weight:600">${esc(child.name)}</h2></td></tr>` : ""}
-${child.calls.map((c) => `<tr><td style="padding:14px 24px 0">
+${child.calls.map((c, i) => `<tr><td style="padding:14px 24px 0">
+${weekHeading(child.calls, i) ? `<h3 style="font-size:16px">${esc(weekHeading(child.calls, i))}</h3>` : ""}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="border-top:1px solid ${RULE};padding:16px 0 0">
 ${p(esc(callLabel(c)), `margin:0 0 8px;font-size:14px;color:${INK_2}`)}
 ${p(esc(c.sentences.join(" ")))}
@@ -282,7 +263,7 @@ export function weeklyMessage(due: DueWeekly, token: string, state: WeeklyState,
     childIds.add(child.id);
   }
   const links = weeklyLinks(origin, token);
-  const email = weeklyEmail({ parentName: parent.name, weekStart: due.weekStart, zone: due.zone, children, childNames, omittedCalls: notes.length - shown.length, missingNotes: completed.length - notes.length, unsubscribeUrl: links.unsubscribeUrl });
+  const email = weeklyEmail({ parentName: parent.name, weekStart: due.weekStart, coveredWeeks: [...new Set(completed.map((c) => weekStartFor(localDay(c.endedAt, due.zone))))], zone: due.zone, children, childNames, omittedCalls: notes.length - shown.length, missingNotes: completed.length - notes.length, unsubscribeUrl: links.unsubscribeUrl });
   return {
     sender: { to: "parent" },
     to: parent.email,

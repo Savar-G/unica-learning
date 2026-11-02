@@ -1,8 +1,10 @@
+import { loadFamilyProvince } from "@/lib/family-time-server";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { after } from "next/server";
 import { notFound, redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
+import { startWhen, familyZone } from "@/lib/family-time";
 import { CURRICULA } from "@/lib/signup";
 import { stateFor } from "@/lib/test-attempt";
 import { parentStartStates } from "@/lib/test-attempt-server";
@@ -38,9 +40,10 @@ export default async function StartScreen({ params, searchParams }: PageProps<"/
   // Signed out (a reminder or another device): sign in, then come back to this child's start screen.
   if (!parent) redirect(`/sign-in?next=${encodeURIComponent(`${startPath(id)}${fromReminder ? `?reminder=${fromReminder}${reminderTest ? `&a=${reminderTest}` : ""}` : ""}`)}`);
   // Row-level security returns only this parent's children; an id that is not a uuid finds nothing.
-  const [{ data: child }, states] = await Promise.all([
+  const [{ data: child }, states, { data: family }] = await Promise.all([
     db.from("children").select("id, first_name, grade, province").eq("id", id).maybeSingle(),
     parentStartStates(parent, id),
+    db.from("parents").select("postal, time_zone").maybeSingle(),
   ]);
   if (!child) notFound();
   // The click on the reminder's button (D-105), counted after the page is sent, so it never slows or stops the page.
@@ -52,6 +55,7 @@ export default async function StartScreen({ params, searchParams }: PageProps<"/
   }
   // Start, continue, start again after 24 hours, or wait 30 days after a completed test (#72).
   const state = stateFor(states, child.id);
+  const province = await loadFamilyProvince(db, parent);
   const phone = isPhone(await headers());
 
   return (
@@ -71,7 +75,7 @@ export default async function StartScreen({ params, searchParams }: PageProps<"/
       ) : (
         <>
           {state.kind !== "wait" && <p className="lead">{child.first_name} takes the test alone, on this device, in one sitting. Start when {child.first_name} is ready.</p>}
-          <div className="acct-begin"><StartTest childId={child.id} name={child.first_name} state={state} /></div>
+          <div className="acct-begin"><StartTest childId={child.id} name={child.first_name} state={state} when={startWhen(state, familyZone({ timeZone: family?.time_zone, postal: family?.postal, province }))} /></div>
         </>
       )}
       <p className="small acct-out"><Link href="/account">Your account</Link></p>

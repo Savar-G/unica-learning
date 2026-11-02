@@ -99,7 +99,7 @@ describe("each answer's question and timeline in the admin (#184)", () => {
 
   it("writes a server time to the second, Pacific time", () => {
     expect(whenExact("2026-10-16T18:00:21.500Z")).toBe("2026-10-16 11:00:21");
-    expect(whenExact("2026-12-01T08:05:09.000Z")).toBe("2026-12-01 00:05:09");
+    expect(whenExact("2026-12-01T08:05:09.000Z")).toBe("2026-12-01 01:05:09");
     expect(whenExact(null)).toBe("-");
   });
 });

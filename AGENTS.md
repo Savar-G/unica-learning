@@ -14,6 +14,8 @@ Personalized, mailed math and reading workbooks for ages 5 to 14 (Kindergarten t
 
 ## Agent rules
 
+- Resolve family time through `src/lib/family-time.ts`: use a valid `parents.time_zone`, else the postal mapping, else the oldest child's province by `created_at` then `id`, else Pacific; use its dated overrides for every family time format and day or week calculation.
+
 - Apply database migrations yourself. Do not ask Savar first. Write the SQL to `supabase/migrations/<yyyymmdd>_<name>.sql`, apply it with the Supabase MCP `apply_migration` (project `cdjobwsyzndtltzfpyqa`), and verify it with `list_migrations` and a probe query. Apply it before the code that needs it ships. Keep migrations additive, so the live code keeps working in between.
 - After you apply a migration, run `npm run db:types` and commit the new `src/lib/database.types.ts` in the same PR. The script gives the Supabase CLI the access token in the macOS Keychain item `supabase-pagewise` (or `SUPABASE_ACCESS_TOKEN`), so it works when the CLI is signed in to another account; never run `supabase login`. If the script cannot get the types, write the output of the Supabase MCP `generate_typescript_types` to that file. Never edit the file by hand: put corrections in `src/lib/database.ts` (`ColumnTypes` for jsonb and check-constrained columns, `NullArgs` for function arguments a call sends as null). Do not add `overrideTypes`, `returns<T>()` or `maybeSingle<T>()` to a query: they hide a wrong column name from the build.
 - Open a pull request yourself when you finish building something. Do not ask first. Use a branch named `site/<topic>`, from a worktree based on `origin/main`. Merging to `main` deploys production, so leave the merge to Savar unless he asks.

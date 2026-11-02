@@ -8,6 +8,8 @@ import type { QuestionBoard } from "@/lib/desk-board";
 import type { ForgotPinResult } from "@/lib/parent-pin-server";
 import { track } from "@/lib/track";
 import { AnnounceDesk } from "@/components/desk-guard";
+import type { RetryTime } from "@/lib/family-time";
+import { FamilyTime } from "@/components/family-time";
 import { Avatar, Icon } from "@/components/desk-icons";
 import { OurBoard } from "@/components/our-board";
 import "./desk.css";
@@ -17,14 +19,6 @@ import "./desk.css";
 // and the picked question as a card cut from the printed page), the Chat / Call / Call + board tabs, and the shared
 // board. "Pick from my page" opens the page image with a tap area on each question. Chat (#358) and calls (#337) come
 // later: their controls are here, turned off, with one plain line that says so. Nothing on the desk shows an answer.
-
-const noSubscribe = () => () => {};
-
-/** A time as "3:05 p.m.", in the device's time zone (after hydration; the server renders nothing). */
-function Time({ at }: { at: number }) {
-  const text = useSyncExternalStore(noSubscribe, () => new Date(at).toLocaleTimeString("en-CA", { hour: "numeric", minute: "2-digit" }), () => "");
-  return <>{text || "a few minutes"}</>;
-}
 
 const subscribeMotion = (change: () => void) => {
   const q = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -315,10 +309,10 @@ export function LeaveDesk() {
     }
     setBusy(true);
     setError(null);
-    let answer: LeaveResult;
+    let answer: LeaveResult & RetryTime;
     try {
       const res = await fetch("/api/desk/leave", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin }) });
-      answer = (await res.json()) as LeaveResult;
+      answer = (await res.json()) as LeaveResult & RetryTime;
     } catch {
       answer = { ok: false, error: "unavailable" };
     }
@@ -335,7 +329,7 @@ export function LeaveDesk() {
         setError(`That is not the PIN. ${answer.attemptsLeft} ${answer.attemptsLeft === 1 ? "try" : "tries"} left.`);
         break;
       case "locked":
-        setError(<>Too many wrong tries. Try again after <Time at={answer.retryAt} />.</>);
+        setError(<>Too many wrong tries. Try again after <FamilyTime at={answer.retryAt} text={answer.retryTime ?? "a few minutes"} />.</>);
         break;
       case "not_set":
         setError(<>No PIN is set. <Link href="/tutor/forgot-pin">Set a new PIN</Link> with your account password.</>);
@@ -393,10 +387,10 @@ export function ForgotPinForm() {
     }
     setBusy(true);
     setError(null);
-    let answer: ForgotPinResult;
+    let answer: ForgotPinResult & RetryTime;
     try {
       const res = await fetch("/api/desk/forgot-pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password, pin }) });
-      answer = (await res.json()) as ForgotPinResult;
+      answer = (await res.json()) as ForgotPinResult & RetryTime;
     } catch {
       answer = { ok: false, error: "unavailable" };
     }
@@ -413,7 +407,7 @@ export function ForgotPinForm() {
         setError(`That password is not right. ${answer.attemptsLeft} ${answer.attemptsLeft === 1 ? "try" : "tries"} left.`);
         break;
       case "locked":
-        setError(<>Too many wrong tries. Try again after <Time at={answer.retryAt} />.</>);
+        setError(<>Too many wrong tries. Try again after <FamilyTime at={answer.retryAt} text={answer.retryTime ?? "a few minutes"} />.</>);
         break;
       case "invalid":
         setError("Enter your account password and a new PIN of exactly 4 digits.");

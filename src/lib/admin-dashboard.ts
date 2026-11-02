@@ -1,3 +1,4 @@
+import { formatCalendarDate, formatInZone, localDay, PACIFIC_ZONE } from "@/lib/family-time";
 // The admin dashboard and activity log (D-099) in plain data: every family with its stage, the KPIs of a date range,
 // the daily series, the email log and the activity events. Pure: no network, database or clock (the caller passes
 // `now`), so the pages only fetch (dashboardRows in admin-store) and show. Days are Pacific days.
@@ -386,9 +387,8 @@ export const RANGES = { today: { label: "Today", days: 1 }, "7d": { label: "7 da
 export type RangeKey = keyof typeof RANGES;
 export const pickRange = (raw: unknown): RangeKey => (typeof raw === "string" && Object.hasOwn(RANGES, raw) ? (raw as RangeKey) : "7d");
 
-const PACIFIC_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", year: "numeric", month: "2-digit", day: "2-digit" });
 /** The Pacific day of a time, as YYYY-MM-DD. */
-export const dayKey = (iso: string | Date) => PACIFIC_DAY.format(typeof iso === "string" ? new Date(iso) : iso);
+export const dayKey = (iso: string | Date) => localDay(iso, PACIFIC_ZONE);
 /** The day `n` days after `day` (n may be negative). Date arithmetic on the calendar day, so DST never skips one. */
 export function shiftDay(day: string, n: number): string {
   const d = new Date(`${day}T00:00:00Z`);
@@ -538,9 +538,8 @@ export function buildDashboard(rows: DashboardRows, range: RangeKey, now: Date, 
 
 // Words for the pages
 
-const PACIFIC_TIME = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 /** "Oct 12, 6:10 p.m." in Pacific time. */
-export const at = (iso: string | null | undefined) => (iso ? PACIFIC_TIME.format(new Date(iso)) : "-");
+export const at = (iso: string | null | undefined) => (iso ? formatInZone(iso, PACIFIC_ZONE, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "-");
 /** "Last start reminder for Kingston, Oct 18, 1:09 p.m.": a family's next start reminder, or "due now" once its time passed. */
 export const nextReminderText = (r: Family["nextReminders"][number], now: string) =>
   `${EMAIL_LABEL[r.kind]} for ${r.childName}, ${Date.parse(r.at) <= Date.parse(now) ? "due now (the job runs every 15 minutes)" : at(r.at)}`;
@@ -567,7 +566,7 @@ export function progressTestIds(families: readonly Family[], max: number): strin
 }
 export const since = (iso: string | null | undefined, now: string) => ago(iso, now).replace(/ ago$/, "");
 /** "Oct 12" for a YYYY-MM-DD day. */
-export const dayLabel = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString("en-CA", { month: "short", day: "numeric", timeZone: "UTC" });
+export const dayLabel = (day: string) => formatCalendarDate(day, { month: "short", day: "numeric" });
 /** The family's payment in words, for the family panel and page. */
 export function paymentText(f: Family): string {
   const s = f.subscription;

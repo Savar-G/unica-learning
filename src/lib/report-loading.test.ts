@@ -75,7 +75,7 @@ describe("the report view (#161)", () => {
       childId: "child-1",
       assessmentId: "test-1",
       // No learner profile is stored (#198).
-      view: { id: "report-1", childName: "Asha", province: "BC", completedAt: "2026-10-10T19:30:00Z", questions: 36, minutes: 34, model, findings: null },
+      view: { id: "report-1", childName: "Asha", province: "BC", timeZone: "America/Vancouver", completedAt: "2026-10-10T19:30:00Z", questions: 36, minutes: 34, model, findings: null },
     };
     for (const loaded of [asParent, asAdmin]) {
       const { workImages, ...view } = loaded!.view;

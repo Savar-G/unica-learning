@@ -2,7 +2,8 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { adminClient } from "@/lib/supabase-auth";
-import { createMinutesLedger, familyTimeZone, usageMinutes } from "@/lib/maya-minutes";
+import { createMinutesLedger, usageMinutes } from "@/lib/maya-minutes";
+import { formatInZone, type FamilyZone } from "@/lib/family-time";
 import { mayaMinutesStore } from "@/lib/maya-minutes-store";
 
 /** One child's Maya minutes this week, as Parent home shows them. */
@@ -18,7 +19,7 @@ export interface ChildMinutes {
  * (maya_minutes_used refuses another family). Shown only to test families (D-099) until Maya opens to families (#337):
  * an empty map for every other family, or when the minutes cannot be read.
  */
-export async function parentMinutes(db: SupabaseClient<Database>, parentId: string, timeZone: string | null, children: readonly { id: string; province: string }[]): Promise<Map<string, ChildMinutes>> {
+export async function parentMinutes(db: SupabaseClient<Database>, parentId: string, timeZone: FamilyZone, children: readonly { id: string }[]): Promise<Map<string, ChildMinutes>> {
   try {
     const admin = adminClient();
     if (!admin || children.length === 0) return new Map();
@@ -26,10 +27,9 @@ export async function parentMinutes(db: SupabaseClient<Database>, parentId: stri
     if (error) throw new Error(error.message);
     if (!test) return new Map();
     const ledger = createMinutesLedger({ store: mayaMinutesStore(db), clock: Date.now });
-    const tz = familyTimeZone(timeZone, children[0]?.province);
     const rows = await Promise.all(children.map(async (c) => {
-      const usage = await ledger.usage({ parentId, childId: c.id, timeZone: tz });
-      const backOn = new Intl.DateTimeFormat("en-CA", { timeZone: tz, weekday: "long", month: "long", day: "numeric" }).format(new Date(usage.resetsAt));
+      const usage = await ledger.usage({ parentId, childId: c.id, timeZone });
+      const backOn = formatInZone(usage.resetsAt, timeZone, { weekday: "long", month: "long", day: "numeric" });
       return [c.id, { ...usageMinutes(usage), backOn }] as const;
     }));
     return new Map(rows);

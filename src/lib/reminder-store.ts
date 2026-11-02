@@ -1,4 +1,6 @@
 import "server-only";
+import { loadFamilyChildren } from "@/lib/family-time-server";
+import { familyProvince } from "@/lib/family-time";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { bandFor, testLength, type Grade, type Route } from "@/lib/assessment";
@@ -25,12 +27,15 @@ import { hashToken, startPath } from "@/lib/sign-in-link";
 // loads every child and test that could be due, and keeps the claims in public.email_log (the email log ledger, #152).
 
 export interface LoadedParent extends ReminderParent {
+  province?: string | null;
   name: string;
   postal: string | null;
+  timeZone?: string | null;
 }
 export interface LoadedChild extends ReminderChild {
   firstName: string;
   grade: Grade;
+  province?: string | null;
 }
 /** A test, with how many questions it has and how many the child answered. */
 export type LoadedTest = ReminderTest & { answered: number; total: number };
@@ -91,19 +96,20 @@ export function reminderStore(admin: SupabaseClient<Database>): ReminderStore<Lo
 
       // Every test of those children: the start screen's rules read all of them.
       const [childRows, testRows] = await Promise.all([
-        inChunks(childIds, (ids) => admin.from("children").select("id, parent_id, first_name, grade, created_at").in("id", ids)),
+        inChunks(childIds, (ids) => admin.from("children").select("id, parent_id, first_name, grade, province, created_at").in("id", ids)),
         inChunks(childIds, (ids) => admin.from("assessments").select("id, child_id, grade, route, status, started_at, last_answer_at, resume_until, completed_at").in("child_id", ids)),
       ]);
       const parentIds = [...new Set(childRows.map((c) => c.parent_id))];
-      const [parentRows, logRows, tests] = await Promise.all([
-        inChunks(parentIds, (ids) => admin.from("parents").select("id, name, email, postal").in("id", ids)),
+      const [parentRows, logRows, tests, familyChildren] = await Promise.all([
+        inChunks(parentIds, (ids) => admin.from("parents").select("id, name, email, postal, time_zone").in("id", ids)),
         inChunks(parentIds, (ids) => admin.from("email_log").select("id, created_at, kind, parent_id, child_id, assessment_id, status, attempts").in("parent_id", ids)),
         Promise.all(testRows.map((row) => withAnswers(admin, row))),
+        loadFamilyChildren(admin, parentIds),
       ]);
       return {
-        parents: parentRows.map((p) => ({ id: p.id, name: p.name, email: p.email, postal: p.postal })),
+        parents: parentRows.map((p) => ({ id: p.id, name: p.name, email: p.email, postal: p.postal, timeZone: p.time_zone, province: familyProvince(familyChildren.filter((c) => c.parent_id === p.id)) })),
         // A check constraint limits grade to 0-9 (0 is Kindergarten, D-156; rows from before hold 1-7).
-        children: childRows.map((c) => ({ id: c.id, parentId: c.parent_id, firstName: c.first_name, grade: c.grade as Grade, createdAt: Date.parse(c.created_at) })),
+        children: childRows.map((c) => ({ id: c.id, parentId: c.parent_id, firstName: c.first_name, grade: c.grade as Grade, province: c.province, createdAt: Date.parse(c.created_at) })),
         tests,
         log: logRows.map((e) => ({ id: e.id, kind: e.kind, parentId: e.parent_id, childId: e.child_id, assessmentId: e.assessment_id, status: e.status, attempts: e.attempts, at: Date.parse(e.created_at) })),
       };
@@ -204,7 +210,7 @@ export function reminderMessage(r: DueReminder, token: string, state: LoadedStat
   if (!parent || !child) return null;
 
   const links = reminderLinks(origin, r, token);
-  const common = { parentName: parent.name, childName: child.firstName, url: links.url, unsubscribeUrl: links.unsubscribeUrl, postal: parent.postal };
+  const common = { parentName: parent.name, childName: child.firstName, url: links.url, unsubscribeUrl: links.unsubscribeUrl, postal: parent.postal, timeZone: parent.timeZone, province: parent.province };
   let email: ReturnType<typeof reminderEmail>;
   if (r.kind === "continue") {
     if (!test) return null;

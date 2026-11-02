@@ -24,12 +24,12 @@ export interface MemoryMinutesStore extends MinutesStore {
 export function memoryMinutesStore(options: { clock: () => number }): MemoryMinutesStore {
   const rows = new Map<string, Row>();
   const calls = new Set<string>();
-  const same = (r: Row, q: { parentId: string; childId: string | null; kind: MinutesKind; period: string }) =>
-    r.request.parentId === q.parentId && r.request.childId === q.childId && r.request.kind === q.kind && r.request.period === q.period;
+  const same = (r: Row, q: { parentId: string; childId: string | null; kind: MinutesKind; periodStart: number }) =>
+    r.request.parentId === q.parentId && r.request.childId === q.childId && r.request.kind === q.kind;
   const counted = (r: Row) =>
     r.used !== null ? r.used : calls.has(r.request.callId) || options.clock() - r.at < GRANT_CALL_WAIT_MS ? r.seconds : 0;
-  const used = (q: { parentId: string; childId: string | null; kind: MinutesKind; period: string }) =>
-    [...rows.values()].filter((r) => same(r, q)).reduce((sum, r) => sum + counted(r), 0);
+  const used = (q: { parentId: string; childId: string | null; kind: MinutesKind; periodStart: number }) =>
+    [...rows.values()].filter((r) => same(r, q) && r.at >= q.periodStart).reduce((sum, r) => sum + counted(r), 0);
   const expired = (r: Row) => r.used === null && !calls.has(r.request.callId) && options.clock() - r.at >= GRANT_CALL_WAIT_MS;
   const cap = (r: GrantRequest) => Math.min(r.periodSeconds, r.kind === "child" ? WEEK_SECONDS : DEMO_DAILY_MINUTES * 60);
   function callMade(callId: string) {
@@ -47,9 +47,9 @@ export function memoryMinutesStore(options: { clock: () => number }): MemoryMinu
       const found = rows.get(request.callId);
       if (found) {
         if (!same(found, request)) throw new Error("maya minutes: maya_minute_grant_mismatch");
-        if (!expired(found)) return { seconds: found.seconds, usedSeconds: used(request) - counted(found) };
+        if (!expired(found)) return { seconds: found.seconds, usedSeconds: used(request) - (found.at >= request.periodStart ? counted(found) : 0) };
       }
-      const before = used(request) - (found ? counted(found) : 0);
+      const before = used(request) - (found && found.at >= request.periodStart ? counted(found) : 0);
       const seconds = Math.min(found?.seconds ?? CALL_SECONDS, request.callSeconds, Math.max(0, cap(request) - before));
       if (seconds < Math.max(request.minSeconds, found?.seconds ?? 0)) return { seconds: 0, usedSeconds: before };
       rows.set(request.callId, { request: { ...request }, seconds, at: options.clock(), used: null });

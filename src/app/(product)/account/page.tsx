@@ -2,6 +2,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
+import { startWhen, familyZone, familyProvince } from "@/lib/family-time";
 import { CURRICULA } from "@/lib/signup";
 import { gradeLabel } from "@/lib/assessment/grades";
 import type { StartState } from "@/lib/assessment";
@@ -34,8 +35,8 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   const parentUser = await parentId(db);
   if (!parentUser) redirect("/sign-in");
   const [{ data: parent }, { data: kids }, states, { data: reports }] = await Promise.all([
-    db.from("parents").select("name, email, time_zone").maybeSingle(),
-    db.from("children").select(`id, first_name, grade, province, ${LEARNING_COLUMNS}`).order("created_at"),
+    db.from("parents").select("name, email, postal, time_zone").maybeSingle(),
+    db.from("children").select(`id, created_at, first_name, grade, province, ${LEARNING_COLUMNS}`).order("created_at").order("id"),
     // Start, continue, start again after 24 hours, or wait 30 days after a completed test (#72).
     parentStartStates(parentUser),
     // Reports (#65), oldest first, each with the time its test finished.
@@ -51,9 +52,10 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   const { sent, password, existing, pin, desk } = await searchParams;
 
   const children = kids ?? [];
+  const timeZone = familyZone({ timeZone: parent.time_zone, postal: parent.postal, province: familyProvince(children) });
   // Parent home (#301): each child's current workbook (the newest shipped one) and the desk, which needs the PIN.
   // Maya's minutes this week (#330), for test families until Maya opens to families (#337).
-  const [current, pinSet, minutes] = await Promise.all([currentWorkbooks(db, children.map((c) => c.id)), pinIsSet(parentUser), parentMinutes(db, parentUser, parent.time_zone, children)]);
+  const [current, pinSet, minutes] = await Promise.all([currentWorkbooks(db, children.map((c) => c.id)), pinIsSet(parentUser), parentMinutes(db, parentUser, timeZone, children)]);
   return (
     <SupportPage label="Your account" title={`Hi, ${parent.name.split(" ")[0]}.`}>
       {password === "1" && <p role="status" className="acct-alert acct-saved">Your password is saved.</p>}
@@ -83,7 +85,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
             {/* Inside the 30 days after a test there is nothing to open on the laptop: the phone shows the date too (#72). */}
             {phone && stateFor(states, c.id).kind !== "wait"
               ? <SendLink childId={c.id} name={c.first_name} sent={sent === "1" && i === 0} />
-              : <StartTest childId={c.id} name={c.first_name} state={stateFor(states, c.id)} report={reportFor(c.id, stateFor(states, c.id))} />}
+              : <StartTest childId={c.id} name={c.first_name} state={stateFor(states, c.id)} when={startWhen(stateFor(states, c.id), timeZone)} report={reportFor(c.id, stateFor(states, c.id))} />}
             {current.has(c.id) && <DeskRow childId={c.id} name={c.first_name} workbook={current.get(c.id)!} pinSet={pinSet} />}
             {minutes.has(c.id) && <MinutesRow name={c.first_name} minutes={minutes.get(c.id)!} />}
           </li>

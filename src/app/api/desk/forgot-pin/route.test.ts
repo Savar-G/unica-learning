@@ -13,6 +13,10 @@ const checked: string[] = [];
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase-auth", () => ({
   sessionClient: async () => ({
+    from: () => ({ select: () => {
+      const query = { order: () => query, limit: () => query, maybeSingle: async () => ({ data: { postal: "V3S 1A1", province: "BC", time_zone: "America/Vancouver" } }) };
+      return query;
+    } }),
     auth: {
       // A session whose password sign-in is 30 seconds old.
       getUser: async () => ({ data: { user: { id: PARENT, email: "parent@example.com" } } }),
