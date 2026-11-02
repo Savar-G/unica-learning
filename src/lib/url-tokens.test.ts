@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { redactPathTokens, redactUrlTokens } from "@/lib/url-tokens";
-import { scrubAnalyticsEvent } from "@/components/site-analytics";
+import { scrubAnalyticsEvent, scrubSpeedEvent } from "@/components/site-analytics";
 
 // QR tokens never leave the site in analytics addresses (#301, reviews R349-3 and R349-4).
 describe("QR token redaction", () => {
@@ -33,5 +33,15 @@ describe("QR token redaction", () => {
   it("keeps other page views as they are", () => {
     expect(view("https://unicalearning.com/account")?.url).toBe("https://unicalearning.com/account");
     expect(view("https://unicalearning.com/sign-in?next=/account")?.url).toBe("https://unicalearning.com/sign-in?next=/account");
+  });
+  const vital = (url: string) => scrubSpeedEvent({ type: "vital", url });
+  it("drops every Speed Insights event on a desk or QR page", () => {
+    expect(vital("https://unicalearning.com/tutor/p/abc123SECRET")).toBeNull();
+    expect(vital("https://unicalearning.com/sign-in?next=%2Ftutor%2Fp%2Fabc123SECRET")).toBeNull();
+  });
+  it("sends Speed Insights the page without its query or hash", () => {
+    expect(vital("https://unicalearning.com/thank-you?session_id=cs_live_SECRET#x")?.url).toBe("https://unicalearning.com/thank-you");
+    expect(vital("https://unicalearning.com/unsubscribe?token=SECRET")?.url).toBe("https://unicalearning.com/unsubscribe");
+    expect(vital("https://unicalearning.com/account")?.url).toBe("https://unicalearning.com/account");
   });
 });
