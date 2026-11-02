@@ -127,6 +127,8 @@ describe("each hard failure can fail the gate (a saved trace changed after the r
     const [partial] = t.turns.splice(i, 1);
     t.turns.splice(i + 1, 0, { ...partial, at: t.turns[i].at });
     t.turns.splice(i + 2, 0, { kind: "maya_said", at: t.turns[i + 2].at, text: "", cancelled: false });
+    // Keep version 5's delivery references valid after inserting the speech report.
+    for (const o of t.obligations ?? []) if (o.servedBy !== undefined && o.servedBy >= i + 2) o.servedBy += 1;
     expect(checkTrace(t)).toMatchObject({ ok: true });
     expect(codes(b, t)).toContain("partial_judged");
   });

@@ -1189,8 +1189,8 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     s.offeredOtherInput = false;
   }
   s.boardRoles = { ...s.boardRoles, ...roles };
-  // A repair answers Maya's own mistake: the child's pending turn still waits for an answer.
-  if (p.act !== "repair") s.turn = null;
+  // Repairs and the AI disclosure do not answer the child's pending turn.
+  if (p.act !== "repair" && p.act !== "open") s.turn = null;
 
   if (text !== "") {
     effects.push({ kind: "say", act: p.act, text, ...(spoken.replaced > 0 ? { talkReplaced: spoken.replaced } : {}), ...(spoken.talk.length > 0 ? { talk: spoken.talk } : {}) });
@@ -1206,7 +1206,8 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   } else if (p.act === "safety" || (p.act === "example_step" && s.exampleShown < pkg!.easierExample.steps.length)) {
     s.expect = "maya";
     s.silence = "none";
-  } else if (p.act === "repair" && s.turn) {
+  } else if ((p.act === "repair" || p.act === "open") && s.turn) {
+    if (p.act === "open") moveTo(s, "ASSESS");
     s.expect = "maya";
     s.silence = "none";
   } else if (p.act === "check_in") {

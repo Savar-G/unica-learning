@@ -31,6 +31,7 @@ import {
   speechKey,
   LINES_VERSION,
   PROPOSAL_VERSION,
+  TIME_LIMITS,
   type Act,
   type Effect,
   type Outcome,
@@ -40,7 +41,7 @@ import {
 } from "@/lib/maya";
 import { modelInput, type MayaModel } from "@/lib/maya-model";
 import { reviewInput, runReview, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
-import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceAttempt, type TraceBoardBatch, type TraceError, type TraceTalk, type TraceTurn } from "@/lib/maya-trace";
+import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceAttempt, type TraceBoardBatch, type TraceError, type TraceTalk, type TraceTurn, type TraceObligation } from "@/lib/maya-trace";
 
 /** At most this many Maya turns in a row without the child (the easier example is up to four). */
 export const MAX_MAYA_TURNS = 8;
@@ -93,6 +94,9 @@ export interface SavedTextSession {
   board: TraceBoardBatch[];
   /** Unspoken utterances in the current output batch. Absent in older saved sessions. */
   approved?: string[];
+  obligations?: TraceObligation[];
+  childState?: "listening" | "child_speaking";
+  problems?: string[];
 }
 
 /** How a call that has not ended yet ends when it is finished. */
@@ -159,7 +163,7 @@ export interface TextSession {
   readonly ended: boolean;
   /** The trace so far, with the child's name as {name} and secrets removed: complete once the call has ended. */
   trace(): MayaTrace;
-  /** The state to go on with later (`resume`), after the inputs so far have finished. */
+  /** The committed input state, including obligations for a response still in flight. */
   saved(): Promise<SavedTextSession>;
 }
 
@@ -173,8 +177,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     : createSession({ callId: options.callId, package: options.package, random: options.random, history: options.history, childName: options.childName, freeTalk: options.freeTalk === true });
   let scene: Scene = createScene();
   let endedAt: number | null = resume?.endedAt ?? null;
-  const turns: TraceTurn[] = resume ? structuredClone(resume.turns) : [];
-  const board: TraceBoardBatch[] = resume ? structuredClone(resume.board) : [];
+  let turns: TraceTurn[] = resume ? structuredClone(resume.turns) : [];
+  let board: TraceBoardBatch[] = resume ? structuredClone(resume.board) : [];
   // The board scene again, from the batches the board core accepted before.
   for (const b of board) {
     const applied = applyBatch(scene, { transactionId: b.transactionId, commands: b.commands });
@@ -184,10 +188,39 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   const hash = packageHash(options.package);
   const raw = typeof options.package === "object" && options.package !== null ? (options.package as Record<string, unknown>) : {};
   let queue: Promise<unknown> = Promise.resolve();
-  /** Content problems not taken yet: each is taken before the next Maya turn. */
-  const problems: string[] = [];
   let approved = [...(resume?.approved ?? (resume ? session.turns.filter((t) => t.speaker === "maya").slice(-1).map((t) => t.text) : []))];
-  type Run = { controller: AbortController; out: TextOutput; before: Session; scene: Scene; endedAt: number | null; turn: number; board: number };
+  let obligations: TraceObligation[] = structuredClone(resume?.obligations ?? []);
+  let childState = resume?.childState ?? "listening";
+  // Input state is durable. A run builds a separate draft. Only return to the caller commits that draft.
+  type State = { session: Session; scene: Scene; endedAt: number | null; turns: TraceTurn[]; board: TraceBoardBatch[]; approved: string[]; obligations: TraceObligation[] };
+  const state = (): State => ({ session, scene, endedAt, turns, board, approved, obligations });
+  const draftOf = ({ scene, ...data }: State): State => ({ ...structuredClone(data), scene });
+  function selectState(s: State) { ({ session, scene, endedAt, turns, board, approved, obligations } = s); }
+  const pending = (kind: TraceObligation["kind"]) => obligations.filter((o) => o.kind === kind && o.status === "pending");
+  function owe(kind: TraceObligation["kind"], text?: string, extra = {}) {
+    const obligation: TraceObligation = { id: (obligations.at(-1)?.id ?? -1) + 1, kind, at: safeNow(), ...(text !== undefined ? { text } : {}), ...extra, status: "pending" };
+    obligations.push(obligation);
+    return obligation;
+  }
+  function drop(o: TraceObligation, reason: string) { o.status = "dropped"; o.reason = reason; }
+  function finishObligations() {
+    if (session.outcome) for (const o of obligations) if (o.status === "pending") drop(o, `call ended: ${session.outcome.reason}`);
+  }
+  // Upgrade older saved sessions without treating an unspoken opening or repair as delivered.
+  if (resume && !resume.obligations && !session.outcome) {
+    if (session.startedAt !== null && !session.opened && session.package) owe("opening_due");
+    if (session.state === "REPAIR_MAYA") owe("repair_due");
+    if (session.turn) owe("child_turn_pending", session.turn.text, { uncertain: session.turn.uncertain });
+    if (session.contentProblem) owe("content_problem", session.contentProblem);
+  }
+  // A partial in a legacy trace remains binding through intervening feedback and ticks.
+  if (resume && !resume.childState) {
+    for (const t of turns) {
+      if (t.kind === "partial") childState = "child_speaking";
+      if (t.kind === "child") childState = "listening";
+    }
+  }
+  type Run = { controller: AbortController; out: TextOutput; base: State; appliedChild: number | null };
   let active: Run | null = null;
   let inputVersion = 0;
   const interrupted = Symbol("interrupted");
@@ -205,27 +238,22 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     finally { signal.removeEventListener("abort", stop); }
   }
 
-  /** Roll back unreturned output. Input records remain; unspoken Maya turns and board changes do not. */
-  function discard(run: Run) {
+  /** Drop the draft as a whole. No input or obligation belongs to the draft being cancelled. */
+  function cancelDraft(run: Run) {
     const safety = session.safety;
-    const held = turns.slice(run.turn).filter((t) => t.kind === "content_problem");
-    const inputs = turns.slice(run.turn).filter((t) => t.kind !== "maya");
-    const childTurns = session.turns.slice(run.before.turns.length).filter((t) => t.speaker === "child");
-    session = structuredClone(run.before);
-    session.turns.push(...childTurns);
-    scene = run.scene;
-    endedAt = run.endedAt;
-    turns.splice(run.turn, turns.length - run.turn, ...inputs);
-    board.splice(run.board);
+    selectState(run.base);
+    // A priority reading already received is an obligation. A stale request never reaches this path with a reading.
+    if (safety.flagged && safety.severity && !session.safety.guided) {
+      const due = pending("safety_due")[0] ?? owe("safety_due", undefined, { severity: safety.severity });
+      if (safety.severity === "immediate") due.severity = "immediate";
+    }
     run.out.say = [];
     run.out.board = [];
     run.out.ended = null;
     run.out.safetyMessage = null;
     run.out.cancelled = true;
+    run.appliedChild = null;
     approved = [];
-    // Safety and content holds survive the discarded teaching. Guidance still due is given on the next response or end.
-    if (safety.flagged && safety.severity) event({ type: "safety", at: safeNow(), severity: safety.severity }, run.out);
-    for (const t of held) if (t.kind === "content_problem") event({ type: "content_problem", at: safeNow(), detail: t.detail }, run.out);
   }
 
   const newOutput = (): TextOutput => ({ say: [], board: [], ended: null, safetyMessage: null, cancelled: false });
@@ -251,15 +279,33 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     return { cancelled: r.effects.some((x) => x.kind === "cancel_output") };
   }
 
-  /** Takes the content problems not taken yet, in order (none after the call ended). */
+  // Content signals can arrive during a model call. They are inputs, outside its draft.
+  const problems: string[] = [...(resume?.problems ?? [])];
   function takeProblems(out: TextOutput) {
+    if (problems.length === 0) return;
+    // Keep safety guidance, but discard every buffered teaching change from the invalid content.
+    if (active && turns.slice(active.base.turns.length).some((t) => t.kind === "maya" && t.output && t.output.act !== "safety")) {
+      cancelDraft(active);
+      selectState(draftOf(active.base));
+    }
     while (problems.length > 0) {
       const detail = redactText(problems.shift()!);
-      const at = Math.max(clock(), session.now ?? 0);
-      // Keep required safety guidance. All buffered teaching belongs to the invalid package.
-      if (active && turns.slice(active.turn).some((t) => t.kind === "maya" && t.output && t.output.act !== "safety")) discard(active);
-      const r = event({ type: "content_problem", at: Math.max(at, session.now ?? 0), detail }, out);
+      const at = safeNow();
+      const o = owe("content_problem", detail);
+      const r = event({ type: "content_problem", at, detail }, out);
       if (r) turns.push({ kind: "content_problem", at, detail, cancelled: r.cancelled });
+      else drop(o, "content signal refused after the call ended");
+      // Preserve the input in the run's base too. Cancellation can discard its close, never its hold.
+      if (active) {
+        const draft = state();
+        selectState(active.base);
+        const baseObligation = owe("content_problem", detail);
+        const baseResult = event({ type: "content_problem", at, detail }, newOutput());
+        if (baseResult) turns.push({ kind: "content_problem", at, detail, cancelled: baseResult.cancelled });
+        else drop(baseObligation, "content signal refused after the call ended");
+        active.base = state();
+        selectState(draft);
+      }
     }
   }
 
@@ -339,6 +385,15 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         board.push({ at: session.now ?? clock(), turn, transactionId: e.batch.transactionId, commands: e.batch.commands });
       }
     }
+    if (act === "open") for (const o of pending("opening_due")) { o.status = "served"; o.servedBy = turn; }
+    if (act === "safety") for (const o of pending("safety_due")) { o.status = "served"; o.servedBy = turn; }
+    if (act === "repair") for (const o of pending("repair_due")) { o.status = "served"; o.servedBy = turn; }
+    if (act !== "open" && act !== "repair" && act !== "safety" && run.appliedChild !== null && session.turn === null) {
+      const child = obligations.find((o) => o.id === run.appliedChild);
+      if (child?.status === "pending") { child.status = "served"; child.servedBy = turn; }
+      run.appliedChild = null;
+    }
+    if (act === "close") for (const o of pending("content_problem")) { o.status = "served"; o.servedBy = turn; }
     out.say.push(...said);
     takeEnd(r.effects, out);
     const proposedAct = typeof proposal === "object" && proposal !== null ? (proposal as { act?: Act }).act : undefined;
@@ -399,14 +454,28 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     entry.stateAfter = session.state;
   }
 
+  /** Fixed priority: safety, content, repair, opening, child. Nothing ordinary runs over a partial. */
   async function mayaTurns(out: TextOutput) {
     const run = active!;
     for (let n = 0; n < MAX_MAYA_TURNS; n++) {
       if (run.controller.signal.aborted) break;
       takeProblems(out);
-      if (session.outcome || nextActs(session).expect !== "maya") break;
+      for (const o of pending("safety_due")) event({ type: "safety", at: safeNow(), severity: o.severity! }, out);
+      if (session.outcome) break;
+      const urgent = session.state === "SAFETY" || session.state === "CONTENT_HOLD";
+      if (childState === "child_speaking" && !urgent) break;
+      // Supply the complete transcript to priority readings too. Safety may precede an opening or content close.
+      if (run.appliedChild === null) {
+        const child = pending("child_turn_pending")[0];
+        if (child) {
+          if (session.turn === null) event({ type: "child_turn", at: safeNow(), text: child.text!, ...(child.uncertain ? { uncertain: true } : {}), ...(child.alternatives ? { alternatives: child.alternatives } : {}) }, out);
+          run.appliedChild = child.id;
+        }
+      }
+      if (nextActs(session).expect !== "maya") break;
       await mayaTurn(out, run);
     }
+    finishObligations();
     return out;
   }
 
@@ -434,28 +503,35 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     if (session.startedAt === null && event({ type: "start", at }, out)) turns.push({ kind: "start", at });
     if (reason === "child_stopped" && event({ type: "hang_up", at }, out)) {
       turns.push({ kind: "hang_up", at });
+      finishObligations();
       return;
     }
     if (session.outcome) return;
     if (event({ type: "technical", at, detail }, out)) turns.push({ kind: "technical", at, detail, ...(error ? { error } : {}) });
+    finishObligations();
   }
 
   /**
    * Runs inputs one at a time, in order. An input that throws ends the call as a technical issue, so the trace keeps
    * an outcome, and the error goes on to the caller.
    */
-  function serial(run: (out: TextOutput) => Promise<TextOutput>, cancelPending = true): Promise<TextOutput> {
+  function serial(prepare: (out: TextOutput) => void = () => {}, respond = true, priority = false): Promise<TextOutput> {
     const version = inputVersion;
     const next = queue.then(async () => {
       const out = newOutput();
-      if (cancelPending && version !== inputVersion) return { ...out, cancelled: true };
-      const current: Run = { controller: new AbortController(), out, before: structuredClone(session), scene, endedAt, turn: turns.length, board: board.length };
+      prepare(out);
+      if (!priority && version !== inputVersion) return { ...out, cancelled: true };
+      const current: Run = { controller: new AbortController(), out, base: state(), appliedChild: null };
       active = current;
+      selectState(draftOf(current.base));
       try {
-        const result = await run(out);
-        if (!current.controller.signal.aborted && result.say.length > 0) approved = [...result.say];
-        return result;
+        if (respond) await mayaTurns(out);
+        if (current.controller.signal.aborted) return { ...newOutput(), cancelled: true };
+        if (out.say.length > 0) approved = [...out.say];
+        finishObligations();
+        return out;
       } catch (e) {
+        selectState(current.base);
         options.onError?.(e, "session");
         endNow("the session failed", classifyError(e, "local"));
         throw e;
@@ -468,6 +544,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   }
 
   function trace(): MayaTrace {
+    const { session, endedAt, turns, board, obligations } = active && !active.controller.signal.aborted ? active.base : state();
     const t: MayaTrace = {
       kind: TRACE_KIND,
       version: TRACE_VERSION,
@@ -485,6 +562,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       },
       freeTalk: session.freeTalk,
       reviewer: options.reviewer ? { id: options.reviewer.id, promptVersion: options.reviewer.promptVersion } : null,
+      obligations: structuredClone(obligations),
       turns: structuredClone(turns),
       board: structuredClone(board),
       outcome: session.outcome,
@@ -494,76 +572,84 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   }
 
   return {
-    start: () =>
-      serial(async (out) => {
-        const at = clock();
-        if (!event({ type: "start", at }, out)) return out;
-        turns.push({ kind: "start", at });
-        // An interrupted opening still belongs to a started call.
-        active!.before = structuredClone(session);
-        active!.turn = turns.length;
-        return mayaTurns(out);
-      }),
-    child: (text, opts = {}) =>
-      serial(async (out) => {
-        const at = clock();
-        if (!event({ type: "child_turn", at, text, ...(opts.uncertain ? { uncertain: true } : {}), ...(opts.alternatives ? { alternatives: opts.alternatives } : {}) }, out)) return out;
-        turns.push({ kind: "child", at, text, ...(opts.uncertain ? { uncertain: true } : {}) });
-        return mayaTurns(out);
-      }),
-    partial: async (text) => {
+    start: () => {
+      // Start is an input transition, not model work. A same-tick partial cannot invalidate it.
+      if (session.startedAt === null && !active) {
+        const o = owe("start_pending");
+        const at = safeNow();
+        if (event({ type: "start", at }, newOutput())) {
+          turns.push({ kind: "start", at });
+          o.status = "served";
+          o.servedBy = turns.length - 1;
+          if (session.package) owe("opening_due");
+        }
+      }
+      return serial();
+    },
+    child: (text, opts = {}) => {
       inputVersion += 1;
-      // This signal must not wait behind the proposal it interrupts.
       if (active && !active.controller.signal.aborted) {
         active.controller.abort();
-        discard(active);
+        cancelDraft(active);
+      }
+      if (session.outcome || session.startedAt === null) return Promise.resolve(newOutput());
+      // Record the input now, including when an earlier response is still being cancelled.
+      for (const o of pending("child_turn_pending")) drop(o, "replaced by the next complete transcript");
+      session.turn = null;
+      owe("child_turn_pending", text, opts);
+      turns.push({ kind: "child", at: safeNow(), text, ...(opts.uncertain ? { uncertain: true } : {}) });
+      childState = "listening";
+      return serial();
+    },
+    partial: async (text) => {
+      inputVersion += 1;
+      if (active && !active.controller.signal.aborted) {
+        active.controller.abort();
+        cancelDraft(active);
       }
       const out = newOutput();
+      if (session.startedAt === null || session.outcome) return out;
+      childState = "child_speaking";
       const at = safeNow();
       if (event({ type: "child_turn", at, text, final: false }, out)) turns.push({ kind: "partial", at, text, cancelled: true });
       return out;
     },
-    mayaSaid: (text) =>
-      serial(async (out) => {
-        const at = clock();
-        // Match only an unspoken utterance from the current batch, with the controller's speech normalization.
-        const match = approved.findIndex((utterance) => utterance.split(/(?<=[.?!])\s+/).some((_sentence, i, all) => speechKey(text) === speechKey(all.slice(0, i + 1).join(" "))));
-        const approvedTurn = match < 0 ? -1 : session.turns.findLastIndex((t) => t.speaker === "maya" && t.text === approved[match]);
-        const r = event({ type: "maya_said", at, text, approvedTurn }, out);
-        if (match >= 0) approved.splice(match, 1);
-        if (!r) return out;
-        turns.push({ kind: "maya_said", at, text, cancelled: r.cancelled });
-        return mayaTurns(out);
-      }),
+    mayaSaid: (text) => serial((out) => {
+      const at = safeNow();
+      const match = approved.findIndex((utterance) => utterance.split(/(?<=[.?!])\s+/).some((_sentence, i, all) => speechKey(text) === speechKey(all.slice(0, i + 1).join(" "))));
+      const approvedTurn = match < 0 ? -1 : session.turns.findLastIndex((t) => t.speaker === "maya" && t.text === approved[match]);
+      const r = event({ type: "maya_said", at, text, approvedTurn }, out);
+      if (match >= 0) approved.splice(match, 1);
+      if (!r) return;
+      turns.push({ kind: "maya_said", at, text, cancelled: r.cancelled });
+      if (r.cancelled && session.state === "REPAIR_MAYA" && pending("repair_due").length === 0) owe("repair_due", text);
+    }),
     contentProblem: (detail) => {
       problems.push(detail);
-      return serial(async (out) => mayaTurns(out), false);
+      return serial(undefined, true, true);
     },
-    tick: () =>
-      serial(async (out) => {
-        const at = clock();
-        if (!event({ type: "tick", at }, out)) return out;
+    tick: () => serial((out) => {
+      const at = safeNow();
+      // Do not run the controller's silence policy or closing-minute transition while the child speaks.
+      if (childState === "child_speaking" && session.startedAt !== null && at - session.startedAt < TIME_LIMITS.endAtMs) {
         turns.push({ kind: "tick", at });
-        return mayaTurns(out);
-      }),
-    writing: (status) =>
-      serial(async (out) => {
-        const at = clock();
-        if (!event({ type: "writing", at, status }, out)) return out;
-        turns.push({ kind: "writing", at, status });
-        return mayaTurns(out);
-      }),
-    technical: (detail) =>
-      serial(async (out) => {
-        const at = clock();
-        if (event({ type: "technical", at, detail }, out)) turns.push({ kind: "technical", at, detail });
-        return out;
-      }, false),
+        return;
+      }
+      if (event({ type: "tick", at }, out)) turns.push({ kind: "tick", at });
+    }),
+    writing: (status) => serial((out) => {
+      const at = safeNow();
+      if (event({ type: "writing", at, status }, out)) turns.push({ kind: "writing", at, status });
+    }),
+    technical: (detail) => serial((out) => {
+      const at = safeNow();
+      if (event({ type: "technical", at, detail }, out)) turns.push({ kind: "technical", at, detail });
+    }, false, true),
     get session() {
-      return session;
+      return active && !active.controller.signal.aborted ? active.base.session : session;
     },
     get ended() {
-      return session.outcome !== null;
+      return (active && !active.controller.signal.aborted ? active.base.session : session).outcome !== null;
     },
     finish: async (end = {}, oldFailed) => {
       const { reason = "technical_issue", detail = "the session was closed before the call ended", failed = false }: FinishOptions =
@@ -574,8 +660,11 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     },
     trace,
     saved: async () => {
-      await queue;
-      return structuredClone({ v: 1 as const, session, endedAt, turns, board, approved });
+      // Let a queued input record its obligation, but do not wait for a provider that may never answer.
+      await Promise.resolve();
+      const committed = active && !active.controller.signal.aborted ? active.base : state();
+      const { session, endedAt, turns, board, approved, obligations } = committed;
+      return structuredClone({ v: 1 as const, session, endedAt, turns, board, approved, obligations, childState, problems });
     },
   };
 }
