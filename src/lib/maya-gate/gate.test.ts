@@ -81,9 +81,12 @@ describe("the behaviour gate", () => {
     expect(inputs("V2").map(({ kind, cancelled }) => [kind, cancelled])).toEqual([["maya_said", true]]);
     expect(inputs("V2b").map(({ kind, cancelled }) => [kind, cancelled])).toEqual([["maya_said", false]]);
     expect(inputs("V3").map(({ kind, cancelled }) => [kind, cancelled])).toEqual([["content_problem", true]]);
-    // V3b: the problem came after the safety guidance, in the safety state, and changed nothing.
+    // V3b: the problem arrives during the safety proposal. Receipt precedes delivery.
     const [held] = inputs("V3b");
-    expect(held).toMatchObject({ kind: "content_problem", cancelled: false, before: { stateAfter: "SAFETY", output: { act: "safety" } } });
+    expect(held).toMatchObject({ kind: "content_problem", cancelled: true });
+    const trace = verdicts.get("V3b")!.trace!;
+    const receipt = trace.turns.findIndex((t) => t.kind === "content_problem");
+    expect(trace.turns.slice(receipt + 1).flatMap((t) => t.kind === "maya" && t.output ? [t.output.act] : [])).toEqual(["safety", "close"]);
     expect(verdicts.get("V2")!.states).toContain("REPAIR_MAYA");
     expect(verdicts.get("V3")!.states).toContain("CONTENT_HOLD");
   });

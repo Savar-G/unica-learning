@@ -486,7 +486,7 @@ function check(raw: unknown): MayaTrace {
   need(r.outcome === null || r.startedAt !== null, "startedAt", "set for a call that ended");
   // The voice agent's input turns come in version 4.
   turns.forEach((t, i) => need(!["partial", "maya_said", "content_problem"].includes(t.kind as string) || (r.version as number) >= 4, `turns[${i}].kind`, `not ${String(t.kind)} before version 4`));
-  if ((r.version as number) >= 5) {
+  if ((r.version as number) >= 5 || r.obligations !== undefined) {
     need(Array.isArray(r.obligations), "obligations", "the obligation ledger");
     const ids = new Set<number>();
     (r.obligations as unknown[]).forEach((raw, i) => {
@@ -498,9 +498,15 @@ function check(raw: unknown): MayaTrace {
       need(OBLIGATION_KINDS.includes(o.kind as TraceObligation["kind"]), `${path}.kind`, "an obligation kind");
       need(typeof o.at === "number" && Number.isFinite(o.at), `${path}.at`, "a finite time");
       need(["pending", "served", "dropped"].includes(o.status as string), `${path}.status`, "pending, served or dropped");
-      need(o.text === undefined || typeof o.text === "string", `${path}.text`, "text when present");
-      need(o.kind !== "safety_due" || o.severity === "concern" || o.severity === "immediate", `${path}.severity`, "a safety severity");
-      need(o.status !== "dropped" || (typeof o.reason === "string" && o.reason.length > 0), `${path}.reason`, "the reason work was dropped");
+      const fields = ["id", "kind", "at", "status", "text", "uncertain", "alternatives", "severity", "servedBy", "reason"];
+      need(Object.keys(o).every((key) => fields.includes(key)), path, "only obligation fields");
+      const hasText = ["child_turn_pending", "content_problem"].includes(o.kind as string);
+      need(hasText ? isText(o.text) : o.kind === "repair_due" ? o.text === undefined || isText(o.text) : o.text === undefined, `${path}.text`, hasText ? "required text" : "text for a repair only");
+      need(o.uncertain === undefined || (o.kind === "child_turn_pending" && typeof o.uncertain === "boolean"), `${path}.uncertain`, "a child uncertainty boolean when present");
+      need(o.alternatives === undefined || (o.kind === "child_turn_pending" && strings(o.alternatives)), `${path}.alternatives`, "a child list of text alternatives when present");
+      need(o.kind === "safety_due" ? o.severity === "concern" || o.severity === "immediate" : o.severity === undefined, `${path}.severity`, "a severity for safety only");
+      need(o.status === "served" || o.servedBy === undefined, `${path}.servedBy`, "absent unless served");
+      need(o.status === "dropped" ? isName(o.reason) : o.reason === undefined, `${path}.reason`, "a non-empty reason only when dropped");
       if (o.status === "served") {
         need(isCount(o.servedBy) && (o.servedBy as number) < turns.length, `${path}.servedBy`, "the trace turn that served the obligation");
         const t = turns[o.servedBy as number];

@@ -198,7 +198,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   function selectState(s: State) { ({ session, scene, endedAt, turns, board, approved, obligations } = s); }
   const pending = (kind: TraceObligation["kind"]) => obligations.filter((o) => o.kind === kind && o.status === "pending");
   function owe(kind: TraceObligation["kind"], text?: string, extra = {}) {
-    const obligation: TraceObligation = { id: (obligations.at(-1)?.id ?? -1) + 1, kind, at: safeNow(), ...(text !== undefined ? { text } : {}), ...extra, status: "pending" };
+    const obligation: TraceObligation = { id: (obligations.at(-1)?.id ?? -1) + 1, kind, at: safeNow(), ...(text !== undefined ? { text } : {}), ...structuredClone(extra), status: "pending" };
     obligations.push(obligation);
     return obligation;
   }
@@ -240,13 +240,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
 
   /** Drop the draft as a whole. No input or obligation belongs to the draft being cancelled. */
   function cancelDraft(run: Run) {
-    const safety = session.safety;
     selectState(run.base);
-    // A priority reading already received is an obligation. A stale request never reaches this path with a reading.
-    if (safety.flagged && safety.severity && !session.safety.guided) {
-      const due = pending("safety_due")[0] ?? owe("safety_due", undefined, { severity: safety.severity });
-      if (safety.severity === "immediate") due.severity = "immediate";
-    }
     run.out.say = [];
     run.out.board = [];
     run.out.ended = null;
@@ -279,33 +273,56 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     return { cancelled: r.effects.some((x) => x.kind === "cancel_output") };
   }
 
-  // Content signals can arrive during a model call. They are inputs, outside its draft.
-  const problems: string[] = [...(resume?.problems ?? [])];
-  function takeProblems(out: TextOutput) {
-    if (problems.length === 0) return;
-    // Keep safety guidance, but discard every buffered teaching change from the invalid content.
-    if (active && turns.slice(active.base.turns.length).some((t) => t.kind === "maya" && t.output && t.output.act !== "safety")) {
-      cancelDraft(active);
-      selectState(draftOf(active.base));
+  // Old saves may still hold content inputs in this queue. Upgrade them before any model call.
+  for (const detail of resume?.problems ?? []) recordProblem(detail, newOutput());
+  let contentChanged = false;
+  function recordProblem(detail: string, out: TextOutput) {
+    const at = safeNow();
+    const text = redactText(detail);
+    const o = owe("content_problem", text);
+    const r = event({ type: "content_problem", at, detail: text }, out);
+    if (r) turns.push({ kind: "content_problem", at, detail: text, cancelled: r.cancelled });
+    else drop(o, "content signal refused after the call ended");
+    finishObligations();
+  }
+  function takeProblems() {
+    if (!contentChanged || !active) return;
+    // All input is already committed. Discard unreturned words and restart from that state.
+    cancelDraft(active);
+    selectState(draftOf(active.base));
+    contentChanged = false;
+  }
+
+  /** A received safety reading is input, including when its proposal is refused or its speech is buffered. */
+  function acceptSafety(proposal: unknown, run: Run) {
+    if (run.controller.signal.aborted || typeof proposal !== "object" || proposal === null) return;
+    const reading = (proposal as { reading?: { safety?: unknown } | null }).reading;
+    const severity = reading?.safety;
+    if (severity !== "immediate" && severity !== "concern") return;
+    const at = safeNow();
+    const draft = state();
+    selectState(run.base);
+    const previousSeverity = session.safety.severity;
+    event({ type: "safety", at, severity }, newOutput());
+    let due = pending("safety_due")[0];
+    if (session.safety.flagged && !session.safety.guided && session.safety.severity) {
+      due ??= owe("safety_due", undefined, { severity: session.safety.severity });
+      due.severity = session.safety.severity!;
     }
-    while (problems.length > 0) {
-      const detail = redactText(problems.shift()!);
-      const at = safeNow();
-      const o = owe("content_problem", detail);
-      const r = event({ type: "content_problem", at, detail }, out);
-      if (r) turns.push({ kind: "content_problem", at, detail, cancelled: r.cancelled });
-      else drop(o, "content signal refused after the call ended");
-      // Preserve the input in the run's base too. Cancellation can discard its close, never its hold.
-      if (active) {
-        const draft = state();
-        selectState(active.base);
-        const baseObligation = owe("content_problem", detail);
-        const baseResult = event({ type: "content_problem", at, detail }, newOutput());
-        if (baseResult) turns.push({ kind: "content_problem", at, detail, cancelled: baseResult.cancelled });
-        else drop(baseObligation, "content signal refused after the call ended");
-        active.base = state();
-        selectState(draft);
-      }
+    run.base = state();
+    if (session.safety.severity !== previousSeverity && run.out.say.length > 0) {
+      // A new safety input supersedes every unreturned sentence, including lower-severity guidance.
+      cancelDraft(run);
+      selectState(draftOf(run.base));
+      contentChanged = false;
+      return true;
+    }
+    selectState(draft);
+    event({ type: "safety", at, severity }, run.out);
+    if (due) {
+      const existing = obligations.find((o) => o.id === due.id);
+      if (!existing) obligations.push(structuredClone(due));
+      else if (existing.status === "pending") existing.severity = due.severity;
     }
   }
 
@@ -337,18 +354,11 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   async function tryProposal(proposal: unknown, out: TextOutput, turn: number, run: Run): Promise<{ interrupted?: boolean; refusal: TraceAttempt["refusal"]; said?: { act: Act; say: string[]; board: string[] }; talk?: TraceTalk[]; reviewMs?: number }> {
     const result = await interruptible(reviewed(proposal, turn), run);
     if (result === interrupted || run.controller.signal.aborted) return { interrupted: true, refusal: null };
-    const { r, reviewMs } = result;
-    // A pending content hold must precede a terminal proposal. Only safety guidance may commit ahead of it.
-    if (problems.length > 0 && !r.effects.some((e) => e.kind === "say" && e.act === "safety")) {
-      const reading = typeof proposal === "object" && proposal !== null ? (proposal as Record<string, unknown>).reading : undefined;
-      const priority = step(session, { type: "proposal", at: Math.max(clock(), session.now ?? 0), proposal: { reading } });
-      session = priority.session;
-      takeEnd(priority.effects, out);
-      // Remove the uncommitted Maya entry before the content event is recorded.
-      turns.splice(turn, 1);
-      takeProblems(out);
+    if (contentChanged) {
+      takeProblems();
       return { interrupted: true, refusal: null };
     }
+    const { r, reviewMs } = result;
     if (r.refusal) {
       session = r.session;
       takeEnd(r.effects, out);
@@ -413,6 +423,11 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       try {
         const proposal = await interruptible(model.propose(modelInput(session, repair), controller.signal), run);
         if (proposal === interrupted || controller.signal.aborted) return { interrupted: true, proposal: null, refusal: null };
+        if (acceptSafety(proposal, run)) return { interrupted: true, proposal: null, refusal: null };
+        if (contentChanged) {
+          takeProblems();
+          return { interrupted: true, proposal: null, refusal: null };
+        }
         const tried = await tryProposal(proposal, out, index, run);
         if (tried.interrupted) return { interrupted: true, proposal: null, refusal: null };
         entry.attempts.push({ source, proposal, refusal: tried.refusal, ms: clock() - t0, ...(tried.talk ? { talk: tried.talk } : {}), ...(tried.reviewMs !== undefined ? { reviewMs: tried.reviewMs } : {}) });
@@ -459,8 +474,11 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const run = active!;
     for (let n = 0; n < MAX_MAYA_TURNS; n++) {
       if (run.controller.signal.aborted) break;
-      takeProblems(out);
-      for (const o of pending("safety_due")) event({ type: "safety", at: safeNow(), severity: o.severity! }, out);
+      takeProblems();
+      for (const o of pending("safety_due")) {
+        out.cancelled = true;
+        event({ type: "safety", at: safeNow(), severity: o.severity! }, out);
+      }
       if (session.outcome) break;
       const urgent = session.state === "SAFETY" || session.state === "CONTENT_HOLD";
       if (childState === "child_speaking" && !urgent) break;
@@ -515,15 +533,16 @@ export function createTextSession(options: TextSessionOptions): TextSession {
    * Runs inputs one at a time, in order. An input that throws ends the call as a technical issue, so the trace keeps
    * an outcome, and the error goes on to the caller.
    */
-  function serial(prepare: (out: TextOutput) => void = () => {}, respond = true, priority = false): Promise<TextOutput> {
+  function serial(input = newOutput(), respond = true, priority = false): Promise<TextOutput> {
     const version = inputVersion;
     const next = queue.then(async () => {
-      const out = newOutput();
-      prepare(out);
+      const out = input;
       if (!priority && version !== inputVersion) return { ...out, cancelled: true };
       const current: Run = { controller: new AbortController(), out, base: state(), appliedChild: null };
       active = current;
       selectState(draftOf(current.base));
+      // A resumed priority response must still stop the output that caused its obligation.
+      if (pending("repair_due").length > 0 || pending("content_problem").length > 0) out.cancelled = true;
       try {
         if (respond) await mayaTurns(out);
         if (current.controller.signal.aborted) return { ...newOutput(), cancelled: true };
@@ -541,6 +560,21 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     });
     queue = next.catch(() => undefined);
     return next;
+  }
+
+  /** Commit an input before scheduling its response. In-flight output has no authority over this input. */
+  function receive(prepare: (out: TextOutput) => void, respond = true, preserveApproved = false): Promise<TextOutput> {
+    const approvals = [...(active && !active.controller.signal.aborted ? active.base.approved : approved)];
+    inputVersion += 1;
+    if (active && !active.controller.signal.aborted) {
+      active.controller.abort();
+      cancelDraft(active);
+    }
+    if (preserveApproved) approved = approvals;
+    const out = newOutput();
+    prepare(out);
+    finishObligations();
+    return serial(out, respond);
   }
 
   function trace(): MayaTrace {
@@ -614,7 +648,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (event({ type: "child_turn", at, text, final: false }, out)) turns.push({ kind: "partial", at, text, cancelled: true });
       return out;
     },
-    mayaSaid: (text) => serial((out) => {
+    mayaSaid: (text) => receive((out) => {
       const at = safeNow();
       const match = approved.findIndex((utterance) => utterance.split(/(?<=[.?!])\s+/).some((_sentence, i, all) => speechKey(text) === speechKey(all.slice(0, i + 1).join(" "))));
       const approvedTurn = match < 0 ? -1 : session.turns.findLastIndex((t) => t.speaker === "maya" && t.text === approved[match]);
@@ -623,12 +657,20 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (!r) return;
       turns.push({ kind: "maya_said", at, text, cancelled: r.cancelled });
       if (r.cancelled && session.state === "REPAIR_MAYA" && pending("repair_due").length === 0) owe("repair_due", text);
-    }),
+    }, true, true),
     contentProblem: (detail) => {
-      problems.push(detail);
-      return serial(undefined, true, true);
+      const out = newOutput();
+      if (active && !active.controller.signal.aborted) {
+        const draft = state();
+        selectState(active.base);
+        recordProblem(detail, out);
+        active.base = state();
+        selectState(draft);
+        contentChanged = true;
+      } else recordProblem(detail, out);
+      return serial(out, true, true);
     },
-    tick: () => serial((out) => {
+    tick: () => receive((out) => {
       const at = safeNow();
       // Do not run the controller's silence policy or closing-minute transition while the child speaks.
       if (childState === "child_speaking" && session.startedAt !== null && at - session.startedAt < TIME_LIMITS.endAtMs) {
@@ -637,14 +679,14 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       }
       if (event({ type: "tick", at }, out)) turns.push({ kind: "tick", at });
     }),
-    writing: (status) => serial((out) => {
+    writing: (status) => receive((out) => {
       const at = safeNow();
       if (event({ type: "writing", at, status }, out)) turns.push({ kind: "writing", at, status });
     }),
-    technical: (detail) => serial((out) => {
+    technical: (detail) => receive((out) => {
       const at = safeNow();
       if (event({ type: "technical", at, detail }, out)) turns.push({ kind: "technical", at, detail });
-    }, false, true),
+    }, false),
     get session() {
       return active && !active.controller.signal.aborted ? active.base.session : session;
     },
@@ -660,11 +702,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     },
     trace,
     saved: async () => {
-      // Let a queued input record its obligation, but do not wait for a provider that may never answer.
-      await Promise.resolve();
+      // Capture at invocation. A microtask or provider response must not move the snapshot boundary.
       const committed = active && !active.controller.signal.aborted ? active.base : state();
       const { session, endedAt, turns, board, approved, obligations } = committed;
-      return structuredClone({ v: 1 as const, session, endedAt, turns, board, approved, obligations, childState, problems });
+      return structuredClone({ v: 1 as const, session, endedAt, turns, board, approved, obligations, childState });
     },
   };
 }

@@ -519,8 +519,9 @@ describe("inputs from the voice agent (#396)", () => {
     expect(said(out)).toContain(SAFETY_GUIDANCE.concern);
     expect(out.ended).toMatchObject({ reason: "safety", safetyFlag: true });
     const trace = session.trace();
-    expect(trace.turns.map((x) => x.kind)).toEqual(["start", "maya", "child", "maya", "content_problem", "maya"]);
-    expect(trace.turns[4]).toMatchObject({ kind: "content_problem", cancelled: false });
+    // The content input arrived before the safety reading. Both inputs precede delivered guidance.
+    expect(trace.turns.map((x) => x.kind)).toEqual(["start", "maya", "child", "content_problem", "maya", "maya"]);
+    expect(trace.turns[3]).toMatchObject({ kind: "content_problem", cancelled: true });
     checked(trace);
   });
 

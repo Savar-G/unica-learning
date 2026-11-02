@@ -17,6 +17,7 @@ vi.mock("@/lib/maya", async (importOriginal) => {
   return {
     ...real,
     step: (session: Parameters<typeof real.step>[0], event: SessionEvent): StepResult => {
+      if (sabotage.mode === "no_safety" && event.type === "safety") event = { type: "tick", at: event.at };
       if (sabotage.mode === "no_safety" && event.type === "proposal" && typeof event.proposal === "object" && event.proposal !== null) {
         // Drops the safety field of the model's reading before the controller sees it.
         const p = event.proposal as { reading?: Record<string, unknown> | null };
