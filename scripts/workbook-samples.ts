@@ -388,7 +388,7 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
     },
   );
   await writeFile(`${out}/${label}-solve.jsonl`, solveLogs.map((l) => `${JSON.stringify(l)}\n`).join(""));
-  if (result.status !== "stored") throw new Error(`${label}: ${result.reason}`);
+  if (result.status !== "stored") throw new Error(`${label}: ${result.status === "refused" ? result.reason : "paused"}`);
   const draft = result.draft;
   const renderable = renderableDraft(draft);
   const fileKey = randomBytes(6).toString("base64url");

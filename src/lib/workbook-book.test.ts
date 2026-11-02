@@ -58,7 +58,7 @@ async function generate(level: string, kind: "first" | "second" | "test", answer
       qrToken: () => `token-${String(++n).padStart(12, "0")}`, concurrency: 4, solver: keySolver(),
     },
   );
-  if (result.status !== "stored") throw new Error(result.reason);
+  if (result.status !== "stored") throw new Error(result.status === "refused" ? result.reason : "paused");
   return { draft: result.draft, checked, plan: planned.plan };
 }
 
