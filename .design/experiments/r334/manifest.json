@@ -14,7 +14,7 @@
   ],
   "browser": "Aside CLI, account u0",
   "server": "npm run dev -- --port 3434",
-  "data": "Synthetic saved call records from fixture.ts. The same components are used on the admin routes. The temporary local fixture route was removed. No database records, alerts or emails changed.",
+  "data": "Synthetic saved call records from src/lib/maya-call-review-fixture.ts. The same components are used on the admin routes. The temporary local fixture route was removed. No database records, alerts or emails changed.",
   "review": "review.md",
   "merge_approval": "Savar must approve the look before merge.",
   "screenshots": [
@@ -161,5 +161,6 @@
     "visible_maya_paths": 4,
     "live_admin_reads": "list and saved voice call, read only",
     "parent_session": "not tested with a separate live family"
-  }
+  },
+  "fixture": "src/lib/maya-call-review-fixture.ts"
 }

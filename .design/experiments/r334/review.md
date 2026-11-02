@@ -6,7 +6,7 @@ Review independence: self-review. The implementation agent did this review. The 
 
 ## Evidence
 
-`manifest.json` lists each screenshot, its width and its hash. All screenshot data is synthetic. `fixture.ts` creates a finished call through the public call module with in-memory stores and the rule model. The voice record uses the same saved trace with synthetic voice version fields. No model, audio, email or database write is needed.
+`manifest.json` lists each screenshot, its width and its hash. All screenshot data is synthetic. `src/lib/maya-call-review-fixture.ts` creates a finished call through the public call module with in-memory stores and the rule model. The voice record uses the same saved trace with synthetic voice version fields. No model, audio, email or database write is needed.
 
 The screenshots use the real AdminFrame, MayaCallList and MayaCall components. The temporary local fixture route was removed after the browser check.
 
@@ -45,3 +45,5 @@ Recommendation: Savar must approve the look before merge.
 - Build: the production build checks types and imports. It does not prove a hosted deployment.
 
 No migration was needed. No database row, alert or email was changed. No live call was started.
+
+The first preview build failed because Vercel excludes `.design`, and the replay test imported its fixture from that folder. The fixture now lives in `src/lib/maya-call-review-fixture.ts`, so the hosted type check can read it.

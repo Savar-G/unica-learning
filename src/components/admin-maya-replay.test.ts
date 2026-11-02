@@ -9,7 +9,7 @@ import { boardPlayback, recordView } from "@/lib/maya-call";
 import { historyFromRecording, replayFrame, type BoardHistory } from "@/lib/board-history";
 import { pathData } from "@/lib/board-svg";
 import { callReplay } from "@/lib/maya-call-review";
-import { reviewFixture } from "../../.design/experiments/r334/fixture";
+import { reviewFixture } from "@/lib/maya-call-review-fixture";
 
 let root: Root | undefined;
 let host: HTMLDivElement;
