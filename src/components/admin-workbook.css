@@ -51,6 +51,8 @@
 .adm-wb-wait { margin: 18px 0; padding: 14px 16px; border-radius: 8px; background: var(--adm-info); }
 .adm-wb-wait p { margin: 6px 0 10px; }
 .adm-main .adm-wb-pdf { margin-top: 16px; }
+/* A note or an error in a row of buttons: on its own line below them. */
+.adm-wb-full { flex-basis: 100%; margin: 0; }
 
 /* A skill's plain name: wide enough to read on one or two lines. */
 .adm-wb-skill { min-width: 14em; }
