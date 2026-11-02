@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
 import { packageItem } from "@/lib/question-package";
 import { workbookProblem } from "@/lib/workbook-content";
-import { renderWorkbook, type DraftPage, type WorkbookDraft } from "@/lib/workbook-render";
+import { renderWorkbook, type DraftPage, type PrintEngine, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleBook } from "@/lib/workbook-sample-book";
-import { workbookTemplate } from "@/lib/workbook-template";
+import { bandOf, workbookTemplate } from "@/lib/workbook-template";
 
 // The workbook templates (#310) through the renderer with the fake print engine: every page type of the sample books
 // has a layout and prints its number and QR code, the rendered book is one the store takes, and the template's fit
@@ -17,7 +17,7 @@ const CHILD = "22222222-2222-4222-8222-222222222222";
 const WORKBOOK = "55555555-5555-4555-8555-000000000002";
 const book = (level: string, testWorkbook = false) =>
   sampleBook({ level, workbookId: WORKBOOK, childId: CHILD, child: "Mateo", number: 2, testWorkbook }).draft;
-const render = (draft: WorkbookDraft, engine = fakePrintEngine()) => renderWorkbook({ draft, parentId: PARENT, template: workbookTemplate(), engine });
+const render = (draft: WorkbookDraft, engine: PrintEngine = fakePrintEngine()) => renderWorkbook({ draft, parentId: PARENT, template: workbookTemplate(), engine });
 /** A book of one page. */
 const only = (draft: WorkbookDraft, p: DraftPage): WorkbookDraft => ({ ...draft, pages: [p] });
 const first = (draft: WorkbookDraft, type: string) => draft.pages.find((p) => p.type === type)!;
@@ -47,6 +47,19 @@ describe("the workbook templates", () => {
       expect(html).toContain(p.content!.id);
       expect(html).toContain(`data-measure="qr"`);
       expect(html.match(/class="scan /g)).toHaveLength(4);
+    }
+  });
+
+  it("prints no read-aloud mark on a card, and a day label with no skill: 'Day 4 · Page 4 of 6' (D-201)", () => {
+    const early = book("U2");
+    const template = workbookTemplate();
+    const ear = "M5 6a3 3 0 1 1 6 0";
+    for (const p of early.pages.filter((x) => x.content?.kind === "day")) {
+      const c = p.content!;
+      if (c.kind !== "day") continue;
+      const html = template.page(p, { qr: `<div data-measure="qr"></div>`, qrUrl: "https://unicalearning.com/tutor/p/x" }, early)!;
+      expect(html).not.toContain(ear);
+      expect(html).toContain(`data-measure="slot-day-label">Day ${c.day} · Page ${c.page} of ${c.pages}</div>`);
     }
   });
 
@@ -132,6 +145,54 @@ describe("the fit check", () => {
     expect(result.status === "failed" && result.problems).toEqual([
       { page: warm.number, question: fix, slot: "fix-it", reason: `day 1 page 1 (warm-up): question ${fix}'s answer box covers its own text` },
     ]);
+  });
+
+  it("fails a title of more than 4 words, and one that does not fit on one line (D-201)", async () => {
+    const warm = first(draft, "warm-up");
+    const c = warm.content!;
+    if (c.kind !== "day") throw new Error("not a day page");
+    const wordy: DraftPage = { ...warm, content: { ...c, title: "Show and read a number on a ten-frame" } };
+    const result = await render(only(draft, wordy));
+    expect(result.status === "failed" && result.problems.filter((x) => x.slot === "title").map((x) => x.reason)).toEqual([
+      expect.stringMatching(/the page title "Show and read a number on a ten-frame" has 8 words; a title has at most 4$/),
+    ]);
+    const wide = await render(only(draft, warm), fakePrintEngine({ overflow: ["1 slot-title"] }));
+    expect(wide.status === "failed" && wide.problems.some((x) => x.slot === "title" && /does not fit on one line/.test(x.reason))).toBe(true);
+  });
+
+  it("refuses a banned title or a title that is missing, hidden or blank in the print measurement", async () => {
+    const warm = first(draft, "warm-up");
+    const c = warm.content!;
+    if (c.kind !== "day") throw new Error("not a day page");
+    const banned = await render(only(draft, { ...warm, content: { ...c, title: "Find the total" } }));
+    expect(banned.status === "failed" && banned.problems.some((p) => p.slot === "title" && /banned phrase/.test(p.reason))).toBe(true);
+    const missing = fakePrintEngine();
+    const engines = [fakePrintEngine({ hidden: ["1 slot-title"] }), fakePrintEngine({ blank: ["1 slot-title"] }), {
+      async print(job: Parameters<typeof missing.print>[0]) {
+        const out = await missing.print(job);
+        return { ...out, measured: out.measured.filter((m) => m.name !== "slot-title") };
+      },
+    }];
+    for (const engine of engines) {
+      const result = await render(only(draft, warm), engine);
+      expect(result.status === "failed" && result.problems.some((p) => p.slot === "title" && /not printed or measured/.test(p.reason))).toBe(true);
+    }
+  });
+
+  it.each(Array.from({ length: 30 }, (_, i) => i + 1))("enforces 3 lines on a card at U%i (D-201)", async (level) => {
+    const draft = book(`U${level}`);
+    const page = draft.pages.find((p) => p.questions.length && p.content?.kind === "day"
+      && p.content.blocks.some((b) => level <= 3 || ["picture-stories", "show-what-you-know"].includes(b.slot)))!;
+    const c = page.content!;
+    if (c.kind !== "day") throw new Error("not a day page");
+    const block = c.blocks.find((b) => b.items.length && (level <= 3 || ["picture-stories", "show-what-you-know"].includes(b.slot)))!;
+    const n = block.items[0];
+    const lineHeight = bandOf(level).body * 1.4;
+    const lines = (k: number) => fakePrintEngine({ rects: { ...AREA, [`1 question-${n}`]: { x: 64, y: 290, width: 330, height: 200 }, [`1 question-${n}-content`]: { x: 110, y: 300, width: 260, height: lineHeight * k }, [`1 question-${n}-answer`]: { x: 110, y: 420, width: 64, height: 56 } } });
+    const three = await render(only(draft, page), lines(3));
+    expect(three.status === "failed" ? three.problems.filter((x) => /lines on its card/.test(x.reason)) : []).toEqual([]);
+    const four = await render(only(draft, page), lines(4));
+    expect(four.status === "failed" && four.problems.filter((x) => /lines on its card/.test(x.reason)).map((x) => x.question)).toEqual([n]);
   });
 
   it("fails writing lines closer than 36 px under their prompt and 34 px apart, and a work box under 44 px", async () => {

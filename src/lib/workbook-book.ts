@@ -34,6 +34,7 @@ import { aiTextProblem, groupingWords, isCoin, readNumbers, signOperation, textO
 import { figureCount } from "@/lib/question-package-items";
 import { relationChoices } from "@/lib/question-package";
 import type { Curriculum } from "@/lib/workbook-curriculum";
+import { curriculumTitleSkills, pageTitle } from "@/lib/workbook-titles";
 import {
   headerGrowth,
   pageId,
@@ -65,37 +66,46 @@ export function pageTopic(curriculum: Curriculum, skill: string | undefined, ste
   return clause.length <= TOPIC_MAX ? clause : curriculum.levelOfSkill(skill)?.title ?? "Review";
 }
 
-/** The headline words of a day page: its topic, title, subtitle and the grown-up line. */
+/** Strands whose skills have a number range a story title can name ("Number stories to 10"). */
+const NUMBER_STRANDS = new Set(["N", "O", "A"]);
+
+/**
+ * The headline words of a day page: its topic (the plan row's words; the day label no longer prints it, D-201), its
+ * title (src/lib/workbook-titles.ts: at most 4 words, naming what every card of the page practises), subtitle and the
+ * grown-up line.
+ */
 export function dayHeader(curriculum: Curriculum, page: PlannedPage, level: number): DayHeader {
   const main = page.parts.find((p) => p.step) ?? page.parts[0];
   const topic = pageTopic(curriculum, main?.step?.skill ?? main?.skills[0], main?.step?.step);
   const early = level <= 9;
-  const t = (title: string, subtitle: string) => ({ title, subtitle });
-  let head: { title: string; subtitle: string };
-  // A parent-led page is titled by its first part.
+  // A parent-led page takes the subtitle of its first part.
   const first = page.parts[0]?.kind;
   const type = page.type !== "parent-led" ? page.type
     : first === "new-idea" ? "new-idea" : first === "picture-stories" ? "word-problems" : first === "remember-these" ? "remember-these" : first ?? "practice";
-  switch (type) {
-    case "warm-up": head = t("Warm-up", level >= 16 ? "Facts to 20. Beat your own count from last time." : "Facts to 20. Take your time: there is no timer."); break;
-    case "new-idea": head = t(topic, level >= 19 ? "Try it first. Then see how it works." : "Watch how it works. Then try it."); break;
-    case "practice": head = t(`Practice: ${topic}`, "Watch one. Finish two. Then do the rest on your own."); break;
-    case "practice-2": head = t(`More practice: ${topic}`, "Each row is a little harder than the one before."); break;
-    case "word-problems": head = t(`${topic} in stories`, "Read it. Work it out in the box. Write the answer."); break;
-    case "math-in-the-world": head = t("Math in the world", "One real task. Plan it, then work it out."); break;
-    case "unit-b": head = t(topic, `Unit B: ${topic.toLowerCase()}.`); break;
-    case "friday-5": head = t("Remember these? and Friday 5", "Things you learned before, then five with no hints."); break;
-    case "challenge": head = t("Challenge", (page.parts.find((x) => x.kind === "challenge")?.items ?? 1) > 1 ? "Two to stretch you." : "One to stretch you."); break;
-    case "show-what-you-know": head = t("Show what you know", "Ten days of work. Show what you learned!"); break;
-    case "level-test": head = t(`Level U${level} test`, "Do this on your own."); break;
-    default: head = t("Remember these?", "Things you learned before, so they stay fresh.");
-  }
+  const subtitles: Record<string, string> = {
+    "warm-up": level >= 16 ? "Facts to 20. Beat your own count from last time." : "Facts to 20. Take your time: there is no timer.",
+    "new-idea": level >= 19 ? "Try it first. Then see how it works." : "Watch how it works. Then try it.",
+    practice: "Watch one. Finish two. Then do the rest on your own.",
+    "practice-2": "Each row is a little harder than the one before.",
+    "word-problems": "Read it. Work it out in the box. Write the answer.",
+    "math-in-the-world": "One real task. Plan it, then work it out.",
+    "unit-b": `Unit B: ${topic.toLowerCase()}.`,
+    "friday-5": "Things you learned before, then five with no hints.",
+    challenge: (page.parts.find((x) => x.kind === "challenge")?.items ?? 1) > 1 ? "Two to stretch you." : "One to stretch you.",
+    "show-what-you-know": "Ten days of work. Show what you learned!",
+    "level-test": "Do this on your own.",
+  };
+  const subtitle = subtitles[type] ?? "Things you learned before, so they stay fresh.";
+  const title = pageTitle(page, level, curriculumTitleSkills(curriculum, (skill) => {
+    const strand = curriculum.unit(curriculum.skill(skill)?.unit ?? "")?.strand;
+    return strand && NUMBER_STRANDS.has(strand) ? skillRange(curriculum, level, skill).max : null;
+  }));
 
   const parentLed = page.type === "parent-led";
   const grownUp = parentLed
     ? "Read each line aloud. Your child circles, colours or writes one number."
     : early && type === "new-idea" ? "Read the blue box aloud. Show both ways with a finger." : null;
-  return { topic: type === "level-test" ? "Level test" : type === "show-what-you-know" ? "Show what you know" : topic, ...head, grownUp };
+  return { topic: type === "level-test" ? "Level test" : type === "show-what-you-know" ? "Show what you know" : topic, title, subtitle, grownUp };
 }
 
 /** The most characters a line of the 66 px cover title holds. */

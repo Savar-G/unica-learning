@@ -57,6 +57,15 @@ const SUPPORTED: Record<string, Supported> = {
   },
 };
 
+/**
+ * The skill a template tests, in plain words for the admin ("Subtract two-digit numbers within 100"): the first skill
+ * of its tag in the BC skill map, up to the first comma. Null when the template has no tag.
+ */
+export function templateSkillName(templateId: string): string | null {
+  const text = templateSkills(templateId)[0]?.text;
+  return text ? text.split(",")[0].trim() : null;
+}
+
 /** The assessment templates that have full packages. */
 export const SUPPORTED_ASSESSMENT_TEMPLATES: readonly string[] = Object.keys(SUPPORTED);
 

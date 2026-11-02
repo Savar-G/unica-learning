@@ -8,7 +8,7 @@
 //      at a time, and checks every answer and every page's fit against the real templates (#310). Each finished page
 //      is stored on the run (public.workbook_run_pages) as it is done; the run shows "12 of 80 day pages". Each AI
 //      attempt of a question is counted on the run before its call (public.workbook_run_attempts), so a retry or a
-//      resume never gives a question a third attempt, even when its page was never stored. Each AI call of a page is
+//      resume never gives a question a fourth attempt, even when its page was never stored. Each AI call of a page is
 //      stored on the run as soon as it comes back, built and checked, with the attempts it counted
 //      (public.workbook_run_calls, R379-7-1): a retry or a resume replays a page's stored calls instead of asking the
 //      AI again, so no paid attempt is lost and the draft is the one an uninterrupted run makes. The solve check (#380,
@@ -302,8 +302,12 @@ export interface WorkbookJobDeps {
 
 export type JobOutcome = "done" | "failed" | "stale" | "handed-on" | "not-claimed";
 
-/** The AI attempts a question slot may use: the generator's rule, which the runs' store enforces too. */
-export const SLOT_ATTEMPTS = 2;
+/**
+ * The AI attempts a question slot may use: the generator's rule (one per reason it is written: the first call, the redo
+ * of a failed check, the shorter rewrite of a page that did not fit; GeneratedQuestion.attempts is 1 to 3), which the
+ * runs' store enforces too (count_workbook_run_attempts takes it as p_max).
+ */
+export const SLOT_ATTEMPTS = 3;
 /** Rows a paged read asks for at a time: the database answers at most 1000 rows a request. */
 export const READ_PAGE = 1000;
 

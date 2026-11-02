@@ -172,7 +172,7 @@ function pageIssues(page: GeneratedPage, problems: RenderProblem[]) {
   const notChecked = page.questions.filter((q) => q.check.status === "not-checked");
   const fit = page.fit.status === "failed" ? page.fit.problems : [];
   // A draft made before the page layouts (shape version 1) has no omissions.
-  const omitted = (page.omissions ?? []).length > 0;
+  const omitted = (page.omissions ?? []).length > 0 || (page.leftOut ?? []).length > 0;
   return { failed, notChecked, fit, render: problems, bad: failed.length > 0 || fit.length > 0 || problems.length > 0, warn: notChecked.length > 0 || omitted };
 }
 
@@ -358,6 +358,7 @@ function DraftPageSection({ page, detail, solves }: { page: GeneratedPage; detai
       </p>
       <ProblemList problems={[...issues.fit.map((p) => ({ question: p.question, reason: `fit check: ${p.reason}` })), ...problems]} />
       {(page.omissions ?? []).length > 0 && <ul className="adm-wb-problems adm-sub">{(page.omissions ?? []).map((o, i) => <li key={`o${i}`}>{partText(o.kind)}: {o.placed} of {o.requested} placed ({o.reason})</li>)}</ul>}
+      {(page.leftOut ?? []).length > 0 && <ul className="adm-wb-problems adm-sub" aria-label={`Questions left out of page ${page.number}`}>{(page.leftOut ?? []).map((q) => <li key={`l${q.slot}`} title={`Slot ${q.slot}: ${q.reason}`}>Left out to make room: {partText(q.part)}, {q.text ? `"${q.text}"` : "a question with no text"}</li>)}</ul>}
       <div className={page.questions.length ? "adm-wb-grid" : "adm-wb-solo"}>
         {image ? (
           <div className="adm-wb-figure">

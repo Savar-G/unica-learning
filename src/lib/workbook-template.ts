@@ -5,15 +5,16 @@
 // wordmark) and four scan marks. Blank pages pad the book at the end.
 //
 // A page's content comes as data (src/lib/workbook-page.ts): its header and its named slots, each with its questions.
-// The template owns every position, size, colour and font. The day label, title and subtitle wrap to a second line at
-// a word break; a third line, or a word wider than the column, fails the render (never cut). The type ramp is fixed per level band (U1 to U3, U4 to U9,
+// The template owns every position, size, colour and font. The title is one line of at most 4 words (D-201); a longer
+// one fails the render. The day label and subtitle wrap to a second line at a word break; a third line, or a word wider
+// than the column, fails the render (never cut). The type ramp is fixed per level band (U1 to U3, U4 to U9,
 // U10 and up; DESIGN.md section 2); nothing is shrunk to fit. Its fit check (`fit`) fails a page whose content runs
 // past the content area (naming the slot and the first question pushed out), a slot holding more items than it takes,
 // an answer box smaller than the band allows, an answer box or choices over the question's own text, a work box under
 // 44 px or writing lines closer than 36 px under their prompt and 34 px apart.
 // Pure TypeScript: no Next.js, React, network, database or clock.
 import { packageItem, PATTERN_SHAPES, valueText, type AnswerRegion, type AnswerValue, type QuestionPackage } from "@/lib/question-package";
-import type { Block, DayContent, Figure, PageContent, SlotName, WorkedLine } from "@/lib/workbook-page";
+import { dayLabel, type Block, type DayContent, type Figure, type PageContent, type SlotName, type WorkedLine } from "@/lib/workbook-page";
 import {
   mark,
   type DraftPage,
@@ -24,6 +25,7 @@ import {
   type WorkbookTemplate,
 } from "@/lib/workbook-render";
 import type { TemplateFonts } from "@/lib/workbook-template-fixed";
+import { titleProblem } from "@/lib/workbook-titles";
 
 const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const fontFace = (family: string, weights: string, woff2: Uint8Array) =>
@@ -61,6 +63,8 @@ export const bandOf = (level: number): Band => BANDS[level <= 3 ? "parent" : lev
 const LINE_FIRST = 36;
 const LINE_NEXT = 34;
 const LINES = 2;
+/** The most lines a card's question text takes (D-201: a story card's 3 full sentences). */
+export const CARD_LINES = 3;
 /** The smallest work box: the inline Mixed set box. */
 const WORK_MIN = 44;
 /** The smallest answer box each way at any level (CONTEXT.md section 6). */
@@ -128,7 +132,8 @@ const textRoomOf = (width: number, font: number, lines: number, em = SANS_EM): T
 /**
  * A slot's text room at a level, from the template's own widths and type sizes (the CSS below):
  * - a card of two (.pcard, every item of a parent-led page, picture stories at every level): half the content width
- *   less the card's border and padding, its number badge and icon: 230 px, for 2 lines;
+ *   less the card's border and padding and its number badge: 268 px at U1 to U9, for 3 lines (D-201: a story in
+ *   full sentences). A card the child circles on also has a pencil (38 px), which the fit check measures;
  * - a line in a list (.list): the full width less the number, the gaps and an answer box: 1 line;
  * - a line in a grid of two (.two): half of that: 1 line;
  * - Spot the error: the sum beside Is it right? and the fix box: about 160 px of Geist Mono at U1 to U9 (no "Tick
@@ -143,8 +148,9 @@ export function textRoom(slot: SlotName, level: number, pages = 8): TextRoom | n
   const parent = band.name === "parent";
   const badge = band.name === "mid" ? 24 : 30;
   const box = Math.max(64, band.box);
-  // .pcard: (688 - 12) / 2, less its border (2) and padding (28), badge, icon (28) and two 10 px gaps.
-  const card = textRoomOf((CONTENT_W - 12) / 2 - 2 - 28 - badge - 28 - 20, band.body, 2);
+  // .pcard: (688 - 12) / 2, less its border (2) and padding (28), badge and one 10 px gap (no read-aloud mark, D-201).
+  const cardWidth = (CONTENT_W - 12) / 2 - 2 - 28 - badge - 10;
+  const card = textRoomOf(cardWidth, band.body, CARD_LINES);
   // .list: the number (22) and three 12 px gaps around the text and the box.
   const full = textRoomOf(CONTENT_W - 22 - 36 - box, band.body, 1);
   // .two: (688 - 32) / 2, the same.
@@ -232,7 +238,7 @@ const CSS = `
 .nd .r1{display:block;width:483px;border-bottom:1px solid #0C0C0E;height:14px}
 .nd .r2{display:block;flex:1;border-bottom:1px solid #0C0C0E;height:14px}
 .dl{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-weight:500;font-size:var(--small);line-height:1.2;letter-spacing:.04em;text-transform:uppercase;max-height:calc(var(--small)*2.4);overflow:hidden}
-.tt{margin:2px 0 0;font-weight:300;font-size:var(--title);line-height:1.25;padding-bottom:2px;max-height:calc(var(--title)*2.5 + 3px);overflow:hidden}
+.tt{margin:2px 0 0;font-weight:300;font-size:var(--title);line-height:1.25;padding-bottom:2px;white-space:nowrap;overflow:hidden}
 .st{margin:0;font-size:var(--body);color:#44444C;max-height:calc(var(--body)*2.8);overflow:hidden}
 .gu{margin:0;font-size:var(--body);color:#0C0C0E;background:#F4F4F5;border-radius:8px;padding:6px 12px;overflow:hidden}
 .gu b{font-weight:500}
@@ -378,7 +384,7 @@ const CSS = `
 .pcard .pb>.pic{max-width:60%;height:auto}
 .pcard .draw{height:56px;width:150px}
 .pcard .ln{min-width:160px}
-.pcard .head{display:flex;gap:10px;align-items:center}
+.pcard .head{display:flex;gap:10px;align-items:flex-start}
 .pcard .ico{width:28px;height:28px;flex:none}
 /* cover */
 .cv{position:absolute;left:64px;top:64px;width:688px;height:866px;display:flex;flex-direction:column;overflow:hidden}
@@ -443,7 +449,6 @@ const ICONS = {
   wrench: svg(`<path d="M10.5 2a3.5 3.5 0 0 0-3.3 4.6L2 11.8 4.2 14l5.2-5.2A3.5 3.5 0 0 0 14 5.5l-2 .5-1.5-1.5.5-2z"/>`),
   star: svg(`<path d="m8 1.8 1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.6l-3.8 2 .7-4.3-3.1-3 4.3-.6z"/>`),
   pencil: svg(`<path d="M10.5 2.5 13.5 5.5 5.5 13.5H2.5V10.5z"/>`),
-  ear: svg(`<path d="M5 6a3 3 0 1 1 6 0c0 2-2 2.5-2 4.5a2 2 0 0 1-3.5 1.3M7 6.5a1 1 0 1 1 2 0"/>`),
   check: svg(`<path d="m3 8.5 3 3 7-7"/>`),
 };
 
@@ -727,7 +732,9 @@ function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: 
 }
 
 /** The question's text, marked as its content. */
-const text = (q: DraftQuestion, cls = "qt") => `<span class="${cls}" ${mark.questionContent(q.number)}>${escape(q.package.text)}</span>`;
+/** A word with a hyphen ("ten-frame") never breaks at it: the line breaks before the word. */
+const keepHyphens = (html: string) => html.replace(/\b([A-Za-z]+(?:-[A-Za-z]+)+)\b/g, `<span style="white-space:nowrap">$1</span>`);
+const text = (q: DraftQuestion, cls = "qt") => `<span class="${cls}" ${mark.questionContent(q.number)}>${keepHyphens(escape(q.package.text))}</span>`;
 const isMath = (s: string) => /^[\d\s+−×÷=?.,()/$¢a-z]*$/i.test(s) && /\d/.test(s) && !/[a-z]{3,}/i.test(s);
 const qtext = (q: DraftQuestion) => text(q, isMath(q.package.text) ? "qm" : "qt");
 
@@ -769,13 +776,17 @@ function cardItem(q: DraftQuestion, band: Band, work: number | "fill" = 80, cls 
   return `<div class="${cls}" ${mark.question(q.number)}><div class="q"><span class="badge">${q.number}</span><span class="qb">${qtext(q)}</span><span class="rgs">${inline}</span></div>${full ? `<div class="q" style="margin-top:10px">${full}</div>` : ""}</div>`;
 }
 
-/** A parent-led item: an icon, the short instruction the parent reads, a picture, the big answer. */
+/**
+ * A parent-led item: the short instruction the parent reads (up to 3 lines, D-201), a picture, the big answer. A
+ * question the child answers by circling has a pencil; there is no read-aloud mark (D-201: the grown-up line already
+ * says to read each line aloud).
+ */
 function parentItem(q: DraftQuestion, band: Band, figure: Figure | null | undefined): string {
   // A picture region is the figure itself (squares to colour); any other figure sits beside the answer.
   const pictured = packageItem(q.package).regions.some((r) => r.kind === "picture");
   const { inline, full } = regionsSplit(q, { band, work: 80, noUnits: true, figure: pictured ? figure : null });
-  const icon = packageItem(q.package).regions.some((r) => r.kind === "choice") ? ICONS.pencil : ICONS.ear;
-  return `<div class="pcard" ${mark.question(q.number)}><div class="head"><span class="badge">${q.number}</span><span class="ico">${icon}</span>${text(q)}</div>`
+  const icon = packageItem(q.package).regions.some((r) => r.kind === "choice") ? `<span class="ico">${ICONS.pencil}</span>` : "";
+  return `<div class="pcard" ${mark.question(q.number)}><div class="head"><span class="badge">${q.number}</span>${icon}${text(q)}</div>`
     + `<div class="pb">${figure && !pictured ? figureSvg(figure) : ""}<div class="q">${inline}${full}</div></div></div>`;
 }
 
@@ -959,7 +970,7 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
       return q;
     },
   };
-  const label = `Day ${c.day} · Page ${c.page} of ${c.pages} · ${c.topic}`;
+  const label = dayLabel(c.day, c.page, c.pages);
   const header = `<header class="hd"><div class="nd"><span>Name</span><i class="r1"></i><span>Date</span><i class="r2"></i></div>`
     + `<div class="dl" ${mark.slot("day-label")}>${escape(label)}</div><h1 class="tt" ${mark.slot("title")}>${escape(c.title)}</h1>`
     + `<p class="st" ${mark.slot("subtitle")}>${escape(c.subtitle)}</p>`
@@ -1044,6 +1055,27 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
       const block = measured.get(`block-${i}`);
       if (block && bottomOf(block) > limit) problems.push({ question: null, slot: b.slot, reason: `${at}: the ${b.slot} slot runs ${Math.ceil(bottomOf(block) - limit)} px past the bottom of the content area` });
     });
+  }
+
+  // The title (D-201): at most 4 words, on one line, measured on the page. A title that breaks it is never printed.
+  const wordy = titleProblem(c.title);
+  if (wordy) problems.push({ question: null, slot: "title", reason: `${at}: ${wordy}` });
+  // It never wraps (white-space: nowrap), so a title too long for one line runs past the column's width.
+  const title = measured.get("slot-title");
+  if (!title || !title.visible || !title.textPrinted || title.clientWidth <= 0 || title.clientHeight <= 0) {
+    problems.push({ question: null, slot: "title", reason: `${at}: the page title was not printed or measured` });
+  } else if (title.scrollWidth > title.clientWidth + 1 || title.scrollHeight > title.clientHeight + 1) {
+    problems.push({ question: null, slot: "title", reason: `${at}: the page title "${c.title}" does not fit on one line` });
+  }
+
+  // A card's question text (D-201): at most CARD_LINES lines, so a story in full sentences never runs over its card.
+  for (const b of c.blocks) {
+    if (!(band.name === "parent" || ["picture-stories", "fix-it", "show-what-you-know", "level-test", "challenge"].includes(b.slot))) continue;
+    for (const n of b.items) {
+      const m = measured.get(`question-${n}-content`);
+      const lines = m ? Math.round(m.height / (band.body * 1.4)) : 0;
+      if (lines > CARD_LINES) problems.push({ question: n, slot: b.slot, reason: `${at}: question ${n}'s text takes ${lines} lines on its card; a card has room for ${CARD_LINES}` });
+    }
   }
 
   // Writing space: answer boxes by the band, work boxes, writing lines; and no box or choice over its own text.

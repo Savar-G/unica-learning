@@ -59,7 +59,7 @@ export function runDetail(state: "agreed" | "disagreed" | "failed" | "not-checke
 function markup(detail: RunDetail) {
   return renderToStaticMarkup(createElement(AdminWorkbookRun, { email: "admin@example.com", detail, now: new Date("2026-11-01T20:00:00Z"), only: false }));
 }
-const visible = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&#x27;|&apos;/g, "'").replace(/\s+/g, " ");
+const visible = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&#x27;|&apos;/g, "'").replace(/&quot;/g, "\"").replace(/\s+/g, " ");
 
 // All four labels must agree in the actual component, through its public interface.
 describe("admin workbook check labels (R379-1)", () => {
@@ -156,5 +156,20 @@ describe("admin workbook cost and plain labels", () => {
     expect(html).toContain('title="Region answer-7"');
     expect(html).toContain('title="Slot 1.7"');
     expect(text).toContain("1 problem drawing the pages");
+  });
+});
+
+describe("admin workbook questions left out for room (#380)", () => {
+  it("lists each question a page left out to fit, with its text, and marks the page to check", () => {
+    const d = runDetail("agreed");
+    const page = d.draft!.workbook.pages[0];
+    page.leftOut = [{ slot: "1.8", part: "practice", text: "Gus has 6 plums. He finds 2 more. How many plums does Gus have now?", reason: "the content does not fit the page" }];
+    page.omissions = [{ part: 0, kind: "practice", requested: 2, placed: 1, reason: "1 question left out: the page had no room for its text" }];
+    const html = markup(d);
+    const text = visible(html);
+    expect(text).toContain('Left out to make room: Practice, "Gus has 6 plums. He finds 2 more. How many plums does Gus have now?"');
+    expect(html).toContain('title="Slot 1.8: the content does not fit the page"');
+    expect(text).not.toContain("Left out to make room: Practice, a question");
+    expect(visible(markup(runDetail("agreed")))).not.toContain("Left out to make room");
   });
 });

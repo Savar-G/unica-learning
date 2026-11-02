@@ -1,0 +1,163 @@
+{
+  "title": "Published Kumon centre fees: a BC convenience sample",
+  "checked": "2026-11-01",
+  "currencyContext": "Dollar figures on Canadian centre pages. Individual pages may omit a currency label.",
+  "unit": "per subject per month",
+  "method": "Rechecked the 13 BC centre URLs already listed in the guide. This is a convenience sample, not a census or random sample. The Canada Virtual row is shown separately and excluded from BC statistics. Materials fees are recorded only when stated; missing is not zero. Materials fee frequency is not specified by these pages.",
+  "centres": [
+    {
+      "centre": "Vancouver - Marpole",
+      "market": "BC",
+      "tuitionLow": 230,
+      "tuitionHigh": 260,
+      "tuitionAsPublished": "$230-$260",
+      "enrollment": 80,
+      "materials": 30,
+      "source": "https://www.kumon.com/vancouver-marpole/aboutcenter",
+      "checked": "2026-11-01"
+    },
+    {
+      "centre": "Vancouver - First Avenue",
+      "market": "BC",
+      "tuitionLow": 210,
+      "tuitionHigh": 210,
+      "tuitionAsPublished": "$210",
+      "enrollment": 80,
+      "materials": 30,
+      "source": "https://www.kumon.com/vancouver-first-avenue/aboutcenter",
+      "checked": "2026-11-01"
+    },
+    {
+      "centre": "Vancouver - Cedar Cottage",
+      "market": "BC",
+      "tuitionLow": 190,
+      "tuitionHigh": 220,
+      "tuitionAsPublished": "$190-220",
+      "enrollment": 80,
+      "materials": 30,
+      "source": "https://www.kumon.com/vancouver-cedar-cottage-bc/aboutcenter",
+      "checked": "2026-11-01"
+    },
+    {
+      "centre": "Vancouver - Killarney",
+      "market": "BC",
+      "tuitionLow": 180,
+      "tuitionHigh": 220,
+      "tuitionAsPublished": "$ 180-220",
+      "enrollment": 80,
+      "materials": 30,
+      "source": "https://www.kumon.com/vancouver-killarney/aboutcenter",
+      "checked": "2026-11-01"
+    },
+    {
+      "centre": "Burnaby - Highgate",
+      "market": "BC",
+      "tuitionLow": 190,
+      "tuitionHigh": 200,
+      "tuitionAsPublished": "$190-200$",
+      "enrollment": 80,
+      "materials": 30,
+      "source": "https://www.kumon.com/burnaby-highgate-bc/aboutcenter",
+      "checked": "2026-11-01"
+    },
+    {
+      "centre": "Burnaby - Burnaby Heights",
+      "market": "BC",
+      "tuitionLow": 185,
+      "tuitionHigh": 200,
+      "tuitionAsPublished": "$185-$200",
+      "enrollment": 80,
+      "materials": null,
+      "source": "https://www.kumon.com/burnaby-burnaby-heights/aboutcenter",
+      "checked": "2026-11-01"
+    },
+    {
+      "centre": "New Westminster - Queensborough Landing",
+      "market": "BC",
+      "tuitionLow": 190,
+      "tuitionHigh": 190,
+      "tuitionAsPublished": "$190",
+      "enrollment": 80,
+      "materials": 30,
+      "source": "https://www.kumon.com/new-westminster-queensborough-landing/aboutcenter",
+      "checked": "2026-11-01"
+    },
+    {
+      "centre": "North Vancouver - Capilano Mall",
+      "market": "BC",
+      "tuitionLow": 200,
+      "tuitionHigh": 220,
+      "tuitionAsPublished": "$200-220",
+      "enrollment": 80,
+      "materials": 30,
+      "source": "https://www.kumon.com/north-vancouver-capilano-mall/aboutcenter",
+      "checked": "2026-11-01"
+    },
+    {
+      "centre": "Richmond - Steveston",
+      "market": "BC",
+      "tuitionLow": 200,
+      "tuitionHigh": 225,
+      "tuitionAsPublished": "200-225",
+      "enrollment": 80,
+      "materials": 30,
+      "source": "https://www.kumon.com/richmond-steveston/aboutcenter",
+      "checked": "2026-11-01"
+    },
+    {
+      "centre": "Surrey - Fraser Heights",
+      "market": "BC",
+      "tuitionLow": 180,
+      "tuitionHigh": 200,
+      "tuitionAsPublished": "$180-$200",
+      "enrollment": 80,
+      "materials": 20,
+      "source": "https://www.kumon.com/surrey-fraser-heights/aboutcenter",
+      "checked": "2026-11-01"
+    },
+    {
+      "centre": "Coquitlam - Westwood",
+      "market": "BC",
+      "tuitionLow": 190,
+      "tuitionHigh": 190,
+      "tuitionAsPublished": "$190",
+      "enrollment": 80,
+      "materials": 30,
+      "source": "https://www.kumon.com/coquitlam-westwood/aboutcenter",
+      "checked": "2026-11-01"
+    },
+    {
+      "centre": "Langley - Willoughby Town Centre",
+      "market": "BC",
+      "tuitionLow": 195,
+      "tuitionHigh": 220,
+      "tuitionAsPublished": "$195-$220",
+      "enrollment": 80,
+      "materials": 30,
+      "source": "https://www.kumon.com/langley-willoughby-town-centre/aboutcenter",
+      "checked": "2026-11-01"
+    },
+    {
+      "centre": "Victoria - Oak Bay",
+      "market": "BC",
+      "tuitionLow": 200,
+      "tuitionHigh": 200,
+      "tuitionAsPublished": "$200",
+      "enrollment": 80,
+      "materials": 30,
+      "source": "https://www.kumon.com/victoria-oak-bay/aboutcenter",
+      "checked": "2026-11-01"
+    },
+    {
+      "centre": "Canada Virtual (online, based in Calgary)",
+      "market": "online-outside-bc",
+      "tuitionLow": 150,
+      "tuitionHigh": 150,
+      "tuitionAsPublished": "$150",
+      "enrollment": 80,
+      "materials": null,
+      "source": "https://www.kumon.com/canada-virtual/aboutcenter",
+      "checked": "2026-11-01"
+    }
+  ]
+}
