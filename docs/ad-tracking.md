@@ -1,6 +1,6 @@
 # Ad test tracking (Meta and Google Search)
 
-A CAD 100 ad test (D-126): two Meta ads and two Google Search ads, each linking to the home page with UTM tags. The measure that decides the test is **cost per finished assessment**. A saved card is a customer.
+A CAD 100 ad test (D-126): two Meta ads and two Google Search ads, each linking to the home page with UTM tags. The measure that decides the test is **cost per finished assessment**. A saved card does not prove a payment.
 
 | Channel | Tags on the ad's link |
 |---|---|
@@ -51,23 +51,25 @@ The visit counter needs no new variable: it writes with `SUPABASE_SECRET_KEY`.
 Our own data decides the test, not the ad platforms: they see only visitors who accepted optional cookies, and a visitor who accepts on a later page (the click ID no longer in the address) may not be matched to the ad.
 
 - **Finished assessments per channel and ad:** families whose `parents.source` has `utm_source=meta` or `google`, split by `utm_content`, joined to their finished tests (the same stages as the admin dashboard). Cost per finished assessment = the ad's spend from Meta or Google Ads / that count.
-- **Customers:** the same families with a saved card.
-- **Visits per ad:** `select utm_source, utm_content, count(*) from public.ad_visits group by 1, 2;` (admins read the table). Visits that became a family: join `ad_visits.visit_id` to `parents.source->>'visit_id'`.
-- **Where each ad's visitors stop:** per `utm_source` and `utm_content`, the visits, then the visits that reached each step, then the visits that became a family:
+- **Saved cards:** the same families with a saved card. This is a separate step from a paid subscription or a payment.
+- **Paid customers:** verify an actual successful, nonzero payment in Stripe, accounting for refunds, and match it to the family only when the customer link is known. A free trial, saved card, or active subscription alone does not prove money was collected. If payment evidence is unavailable, the paid count is unknown.
+- **Tagged visits:** `select utm_source, utm_medium, utm_campaign, utm_content, count(*) from public.ad_visits group by 1, 2, 3, 4;` (admins read the table). Select the exact paid tags from the ad links for paid totals. Visits that became a family: join `ad_visits.visit_id` to `parents.source->>'visit_id'`.
+- **Where tagged visitors stop:** per source, medium, campaign and content, the visits, then the visits that reached each step, then the visits that became a family. Select the exact paid tags for an ad result:
 
   ```sql
-  select v.utm_source, v.utm_content, count(*) as visits,
+  select v.utm_source, v.utm_medium, v.utm_campaign, v.utm_content, count(*) as visits,
     count(*) filter (where exists (select 1 from public.ad_visit_steps s where s.visit_id = v.visit_id and s.step = 'start_open')) as start_open,
     count(*) filter (where exists (select 1 from public.ad_visit_steps s where s.visit_id = v.visit_id and s.step in ('form_start', 'google_start'))) as form_or_google,
     count(*) filter (where exists (select 1 from public.ad_visit_steps s where s.visit_id = v.visit_id and s.step = 'code_sent')) as code_sent,
     count(*) filter (where exists (select 1 from public.parents p where p.source->>'visit_id' = v.visit_id::text)) as families
   from public.ad_visits v
   where v.visited_at >= '2026-10-19' and coalesce(v.utm_source, '') <> 'reviewcheck' and coalesce(v.utm_content, '') <> 'pixel-check'
-  group by 1, 2 order by 1, 2;
+  group by 1, 2, 3, 4 order by 1, 2, 3, 4;
   ```
 
   Steps start on the day this counter shipped (2026-10-22); visits before it have no steps.
 - A visit is a raw count of browser tabs: one person who opens the ad in two tabs counts twice.
+- The table also includes other tagged links, including organic social posts. Filter by the exact source, medium and campaign before calling a visit paid traffic. A total of all `ad_visits` rows is not an ad-only total.
 - Leave test families out (`public.test_accounts`), as the dashboard does.
 
 ## Setup
