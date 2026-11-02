@@ -20,7 +20,7 @@
 // The parent's note (#331, src/lib/maya-call-note.ts): when a call ends, the same write that stores its outcome keeps
 // the note's inputs in `notePending` (the question package and the learning event as code built it). After the event
 // and the rebuild, the `note` seam writes the note within NOTE_STEP_MS; once it says "done" (stored, or refused for
-// good), `notePending` is cleared. A failed, refused-for-now or slow note leaves it, so a retried "end" of the call, or
+// good), `notePending` is cleared, without raising the call's revision (R403-5). A failed, refused-for-now or slow note leaves it, so a retried "end" of the call, or
 // the end of a later call of the same child, writes it from those inputs (R403-3, R403-4). The note never holds up the
 // learning event, and the call's answer waits for it at most NOTE_STEP_MS.
 //
@@ -98,6 +98,12 @@ export interface CallStore {
   update(id: string, revision: number, change: CallChange): Promise<boolean>;
   /** The child's ended calls whose note is pending, oldest end first, at most `limit`. */
   pendingNotes(childId: string, limit: number): Promise<CallRecord[]>;
+  /**
+   * Clears an ended call's pending note without raising its revision (review R403-5): the note is not part of the
+   * call's requests, so a clear that is still writing when the note time is up never makes the revision a request
+   * holds stale. True when the call had a pending note.
+   */
+  clearNote(id: string): Promise<boolean>;
 }
 
 export interface CallSeams {
@@ -396,7 +402,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   /**
    * The parent's notes after the event and the rebuild: this call's pending note, then (`sweep`, at a call's first end)
    * up to NOTE_SWEEP earlier calls of the child whose note is still pending. All of it within the note time limit: once
-   * it is up the call answers, and no late result changes a stored call (a written note is found on the next try).
+   * it is up the call answers, and no late result changes the call's revision (a written note is found on the next try).
    */
   async function notes(record: CallRecord, sweep: boolean): Promise<CallRecord> {
     const note = seams.note;
@@ -411,8 +417,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       } catch (e) {
         console.error("[maya call] note failed", r.id, e instanceof Error ? e.message : String(e));
       }
-      if (step !== "done" || late || !(await store.update(r.id, r.revision, { notePending: null }))) return r;
-      return { ...r, notePending: null, revision: r.revision + 1 };
+      if (step !== "done" || late || !(await store.clearNote(r.id))) return r;
+      return { ...r, notePending: null };
     };
     const work = (async () => {
       const done = await one(current);

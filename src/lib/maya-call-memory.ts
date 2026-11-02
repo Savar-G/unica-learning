@@ -36,6 +36,12 @@ export function memoryCallStore(options: { testFamilies: readonly string[] }): C
         .slice(0, limit)
         .map(copy);
     },
+    async clearNote(id) {
+      const r = rows.get(id);
+      if (!r || r.status !== "ended" || r.notePending === null) return false;
+      rows.set(id, { ...r, notePending: null });
+      return true;
+    },
     rows: () => [...rows.values()].map(copy),
   };
 }

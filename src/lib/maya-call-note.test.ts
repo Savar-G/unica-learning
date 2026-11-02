@@ -166,7 +166,7 @@ describe("a family call's note", () => {
     expect(note.sentences[0]).toBe("{child} called Maya about a question from the math test.");
     expect(note.writer).toBe("ai");
     expect(note.model).toBe(NOTE_FAKE_MODEL);
-    expect(note.warm).toBe("{child} asked good questions.");
+    expect(note.warm).toBe(WARM_BANK[0].text);
     // The note stores no name; the screen puts it in.
     expect(JSON.stringify([note.sentences, note.warm, note.facts])).not.toContain("Leah");
     const shown = noteSentences(note, "Leah");
@@ -354,27 +354,6 @@ describe("the warm sentence: the AI picks one of code's sentences, or none (R403
     for (const id of ids.slice(0, -1)) expect(WARM_BANK.map((w) => w.id)).toContain(id);
   });
 
-  it("never keeps a sentence whose condition code did not check: a call that was not finished cannot say 'to the end'", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    const { ended } = await endedTestCall(["I don't know.", "Bye."]);
-    const call = asFamily(ended);
-    const note1 = written(await setup(null, [call]).notes.write({ call, package: ended.package, event: ended.event }));
-    expect(note1.facts.finished).toBe("not_finished");
-    const ai = answering({ pick: "to_the_end" });
-    const note = written(await setup(ai, [call]).notes.write({ call, package: ended.package, event: ended.event }));
-    expect(offeredIds((ai as unknown as { requests: Parameters<typeof offeredIds>[0][] }).requests[0])).not.toContain("to_the_end");
-    expect(note.warm).toBeNull();
-  });
-
-  it("keeps the picked sentence word for word, from the bank", async () => {
-    const { ended } = await endedTestCall(ALONE);
-    const call = asFamily(ended);
-    const note = written(await setup(answering({ pick: "to_the_end" }), [call]).notes.write({ call, package: ended.package, event: ended.event }));
-    expect(note.facts.finished).toBe("on_own");
-    expect(note.warm).toBe(WARM_BANK.find((w) => w.id === "to_the_end")!.text);
-    expect(note.writer).toBe("ai");
-  });
-
   it("asks nothing when the child said nothing, so no sentence is offered", async () => {
     const { ended } = await endedTestCall([]);
     const call = asFamily(ended);
@@ -384,15 +363,65 @@ describe("the warm sentence: the AI picks one of code's sentences, or none (R403
     expect(note.model).toBeNull();
   });
 
-  it("every bank sentence is short, about effort, and says nothing about numbers, help, answers, working alone or grades", () => {
-    expect(WARM_BANK.length).toBeGreaterThanOrEqual(8);
-    expect(WARM_BANK.length).toBeLessThanOrEqual(15);
+  it("every bank sentence is short and claims no conduct that code cannot prove", () => {
     expect(new Set(WARM_BANK.map((w) => w.id)).size).toBe(WARM_BANK.length);
     for (const w of WARM_BANK) {
       expect(w.text.startsWith("{child} ")).toBe(true);
       expect(w.text.split(/\s+/).length).toBeLessThanOrEqual(12);
-      expect(w.text).not.toMatch(/\d|help|hint|answer|alone|\bown\b|correct|right\b|wrong|grade|score|solv|finish|show|gave|\bhe\b|\bshe\b|\bhis\b|\bher\b/i);
+      expect(w.text).not.toMatch(/\d|effort|hard|try|tried|trying|listen|calm|focus|patient|friendly|polite|ready|question|explain|thinking|whole call|alone|\bown\b|grade|score|\bhe\b|\bshe\b|\bhis\b|\bher\b/i);
     }
+  });
+});
+
+// ---------- Review R403-1, round 2: every offered sentence is proven by code ----------
+
+describe("the warm sentence is only ever a fact code checked (R403-1, round 2)", () => {
+  /** A fake AI that picks the given id, and records what it was offered. */
+  const picking = (id: string) => {
+    const offered: string[][] = [];
+    const ai = fakeAiClient({ model: "fixed", answer: (r) => { offered.push(offeredIds(r)); return { pick: id }; } });
+    return { ai, offered };
+  };
+
+  it("a rude child who refuses the work gets no warm sentence, whatever id the AI picks", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { ended } = await endedTestCall(["You are stupid.", "I refuse to listen.", "Why should I? Because I will not do any work."]);
+    const call = asFamily(ended);
+    const ids = [...WARM_BANK.map((w) => w.id), "ready", "effort", "friendly", "listened", "calm", "kept_trying", "patient", "asked", "explained", "whole_call", "to_the_end"];
+    for (const id of ids) {
+      const { ai, offered } = picking(id);
+      const note = written(await setup(ai, [call]).notes.write({ call, package: ended.package, event: ended.event }));
+      expect(note.facts.finished).toBe("not_finished");
+      expect(note.warm).toBeNull();
+      expect(offered.flat().filter((x) => x !== "none")).toEqual([]);
+    }
+  });
+
+  it("a finished call is offered only sentences that its checked facts prove", async () => {
+    for (const turns of [ALONE, NO_START]) {
+      const { ended } = await endedTestCall(turns);
+      const call = asFamily(ended);
+      const { ai, offered } = picking("none");
+      const note = written(await setup(ai, [call]).notes.write({ call, package: ended.package, event: ended.event }));
+      expect(["on_own", "with_help"]).toContain(note.facts.finished);
+      expect(note.facts.reason).toBe("solved");
+      expect(["right", "right_with_help"]).toContain(ended.event?.result);
+      const ids = offered.flat().filter((x) => x !== "none");
+      expect(ids.length).toBeGreaterThan(0);
+      for (const id of ids) {
+        const w = WARM_BANK.find((x) => x.id === id)!;
+        expect(w.text).toMatch(/right answer|answer was right/);
+      }
+    }
+  });
+
+  it("a finished call that the AI picks for keeps the bank sentence word for word", async () => {
+    const { ended } = await endedTestCall(ALONE);
+    const call = asFamily(ended);
+    const id = WARM_BANK[0].id;
+    const note = written(await setup(picking(id).ai, [call]).notes.write({ call, package: ended.package, event: ended.event }));
+    expect(note.warm).toBe(WARM_BANK[0].text);
+    expect(note.writer).toBe("ai");
   });
 });
 
@@ -409,6 +438,37 @@ describe("hiding the child's name (R403-2)", () => {
     ["Zoë", "Zoë written with a separate accent.", "{child} written with a separate accent."],
   ])("%s in %s", (name, text, hidden) => {
     expect(hideName(text, name, "{child}")).toBe(hidden);
+  });
+
+  // Round 2: scripts written without spaces between words, and a name glued to other letters.
+  it.each([
+    ["小明", "我叫小明", "我叫{child}"],
+    ["小明", "小明的作业。小明说：我是小明！", "{child}的作业。{child}说：我是{child}！"],
+    ["小明", "明天我不想做", "明天我不想做"],
+    ["ゆい", "ゆいちゃんです。わたしはゆい。", "{child}ちゃんです。わたしは{child}。"],
+    ["ﾕｲ", "ユイです", "{child}です"],
+    ["민수", "민수가 했어요. 저는 민수예요", "{child}가 했어요. 저는 {child}예요"],
+    ["สมชาย", "ผมชื่อสมชายครับ", "ผมชื่อ{child}ครับ"],
+    ["Zoe", "我叫ZOE，zoë来了", "我叫{child}，{child}来了"],
+    ["Zoe 小明", "Zoe和小明", "{child}和{child}"],
+    ["Ann", "Ann has planning and ANNual, ann.", "{child} has planning and ANNual, {child}."],
+  ])("%s in %s, written without spaces", (name, text, hidden) => {
+    expect(hideName(text, name, "{child}")).toBe(hidden);
+  });
+
+  it("a Chinese name written without spaces reaches neither the AI nor the stored note (R403-2, round 2)", async () => {
+    const turns = ["我叫小明", "I don't know how to start.", "小明的答案是66?", "Okay.", "16", "66", "Because the ones made a ten, so I carried it.", "I wrote it."];
+    const { ended } = await endedTestCall(turns, undefined, "小明");
+    const call = asFamily(ended);
+    const ai = fakeNoteAi("sure");
+    const s = setup(ai, [call], [TEST_PARENT], async () => "小明");
+    const note = written(await s.notes.write({ call, package: ended.package, event: ended.event }));
+    expect(ai.requests.length).toBeGreaterThan(0);
+    expect(JSON.stringify(ai.requests)).not.toContain("小明");
+    expect(JSON.stringify(s.store.rows())).not.toContain("小明");
+    const child = note.transcript.filter((l) => l.speaker === "child").map((l) => l.text);
+    expect(child[0]).toBe("我叫{child}");
+    expect(noteTranscriptLines(note, "小明").filter((l) => l.speaker === "child")[0].text).toBe("我叫小明");
   });
 
   it("folds case and accents", () => {
@@ -460,12 +520,12 @@ describe("hiding the child's name (R403-2)", () => {
 // ---------- Review R403-3 and R403-4: a note that fails or stalls stays pending ----------
 
 /** Maya's call module on memory seams with a note seam the test controls; calls of one child. */
-function callModule(note: CallSeams["note"], noteMs?: number) {
+function callModule(note: CallSeams["note"], noteMs?: number, store: CallSeams["store"] = memoryCallStore({ testFamilies: [TEST_PARENT] })) {
   let now = T0;
   let n = 0;
   const events = memoryLearningEventStore({ children: [{ id: TEST_CHILD, parentId: TEST_PARENT }], tests: [{ id: TEST, childId: TEST_CHILD }] });
   const calls = mayaCalls({
-    store: memoryCallStore({ testFamilies: [TEST_PARENT] }),
+    store,
     history: memoryWordingHistoryStore(),
     events: learningEvents(events),
     rebuild: async () => true,
@@ -590,5 +650,32 @@ describe("a stalled note never holds up the call (R403-4)", () => {
     expect(view.notePending).toBe(true);
     slow = false;
     expect((await m.retry(first.view.id)).view.notePending).toBe(false);
+  }, 3000);
+
+  it("a pending-note clear that is still writing when the time is up does not change the call's revision (R403-5)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const inner = memoryCallStore({ testFamilies: [TEST_PARENT] });
+    let release: () => void = () => {};
+    let held = false;
+    const hold = <T>(write: () => Promise<T>): Promise<T> => {
+      held = true;
+      return new Promise<void>((resolve) => (release = resolve)).then(write);
+    };
+    const store: CallSeams["store"] = {
+      ...inner,
+      update: (id, revision, change) => ("notePending" in change && change.notePending === null ? hold(() => inner.update(id, revision, change)) : inner.update(id, revision, change)),
+      ...("clearNote" in inner ? { clearNote: (id: string) => hold(() => (inner as unknown as { clearNote(id: string): Promise<boolean> }).clearNote(id)) } : {}),
+    };
+    const m = callModule(async () => "done", 30, store);
+    const first = await m.run(NO_START);
+    expect(held).toBe(true);
+    release();
+    await new Promise((r) => setTimeout(r, 20));
+    const view = (await m.calls.view(first.view.id))!;
+    expect(view.revision).toBe(first.view.revision);
+    expect(view.notePending).toBe(false);
+    // A request made with the revision the end returned is not refused as a conflict.
+    const again = await m.calls.input(first.view.id, first.view.revision, { type: "end" }, "Leah");
+    expect(again.ok).toBe(true);
   }, 3000);
 });

@@ -146,5 +146,17 @@ export function mayaCallStore(admin: SupabaseClient<Database>): CallStore {
       if (error) throw new Error(`maya call pending notes: ${error.message}`);
       return (data ?? []).map(fromCallRow);
     },
+    async clearNote(id) {
+      if (!UUID.test(id)) return false;
+      const { data, error } = await admin
+        .from("maya_calls")
+        .update({ note_pending: null, updated_at: new Date().toISOString() })
+        .eq("id", id.toLowerCase())
+        .eq("status", "ended")
+        .not("note_pending", "is", null)
+        .select("id");
+      if (error) throw new Error(`maya call clear note: ${error.message}`);
+      return (data ?? []).length === 1;
+    },
   };
 }
