@@ -14,7 +14,8 @@
     "import:curriculum": "node scripts/import-curriculum.mjs",
     "maya:text": "node scripts/maya-text.mjs",
     "maya:demo-child": "node scripts/maya-demo-child.mjs",
-    "maya:practice": "node scripts/maya-practice.mjs"
+    "maya:practice": "node scripts/maya-practice.mjs",
+    "workbooks:samples": "node scripts/workbook-samples.mjs"
   },
   "dependencies": {
     "@sparticuz/chromium": "^153.0.0",
@@ -34,6 +35,7 @@
     "stripe": "^23.0.0"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
     "@livekit/agents": "^1.9.5",
     "@livekit/rtc-node": "^1.2.1",
     "@types/node": "^20",

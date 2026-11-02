@@ -3,9 +3,10 @@ import { describe, expect, it } from "vitest";
 import { chromiumPrintEngine, findChromium } from "@/lib/print-engine-chromium";
 import { proofPages, renderWorkbook, type DraftPage, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleBook } from "@/lib/workbook-sample-book";
+import { titleProblem, UNIT_TITLES } from "@/lib/workbook-titles";
+import { SKILL_TITLES } from "@/lib/workbook-skill-titles";
 import { workbookTemplate } from "@/lib/workbook-template";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
-import { curriculumFor } from "@/lib/workbook-curriculum";
 
 // The workbook templates (#310) laid out in real Chromium: one page of each type from sample books at U2 (parent-led),
 // U6, U12, U22 and a level's last book fits its content area, prints its number and QR code, and stores a box for
@@ -64,28 +65,58 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
     expect((await renderWorkbook({ draft: { ...draft, pages: [warm] }, parentId: PARENT, template, engine })).status).toBe("rendered");
   }, 60_000);
 
-  it("wraps the longest step name to a second line on every day page type, and fails a title too long for two (R371-5)", async () => {
-    const bc = curriculumFor("bc")!;
-    const steps = bc.levels.flatMap((l) => (bc.levelSkills(l.id) ?? []).flatMap((k) => (bc.skillSteps(k.id) ?? []).map((x) => x.name)));
-    const longest = steps.reduce((a, b) => (b.length > a.length ? b : a));
-    const sentence = bc.levels.flatMap((l) => (bc.levelSkills(l.id) ?? []).map((k) => k.text)).reduce((a, b) => (b.length > a.length ? b : a));
-    // The title goes in when the book is planned, as the generator's will, so the page's layout knows it wraps.
+  it("fits the longest title code writes on one line on every day page type, and fails a title too long for one (D-201)", async () => {
+    // The separate catalogue print checks every skill and unit title. Here the longest string also visits every page type.
+    const titles = [...Object.values(SKILL_TITLES), ...Object.values(UNIT_TITLES), "Patterns and equations", "Fractions and decimals", "Shapes and measuring", "Number stories to 1000", "Review and Friday 5", "Show what you know", "Level U30 test"];
+    const longest = titles.reduce((a, b) => (b.length > a.length ? b : a));
+    expect(titleProblem(longest)).toBeNull();
+    // The title goes in when the book is planned, as the generator's will.
     const titled = (level: string, n: number, title: string): WorkbookDraft => {
       const draft = oneOfEach(book(level, n, false, title));
       return { ...draft, pages: draft.pages.filter((p) => p.content?.kind === "day") };
     };
-    const headerProblems = (r: Awaited<ReturnType<typeof renderWorkbook>>) =>
-      r.status === "failed" ? r.problems.filter((x) => x.slot === "title" || x.slot === "day-label") : [];
+    const titleProblems = (r: Awaited<ReturnType<typeof renderWorkbook>>) => (r.status === "failed" ? r.problems.filter((x) => x.slot === "title") : []);
 
     for (const [level, n] of [["U2", 1], ["U6", 2], ["U12", 3], ["U22", 4]] as const) {
-      const fits = await renderWorkbook({ draft: titled(level, n, `More practice: ${longest}`), parentId: PARENT, template, engine });
-      // The whole page must render, so a two-line header that pushes content out fails here too (review R371-2-1).
+      const fits = await renderWorkbook({ draft: titled(level, n, longest), parentId: PARENT, template, engine });
+      // The whole page must render (review R371-2-1).
       expect(fits.status === "failed" ? fits.problems : []).toEqual([]);
-      const long = titled(level, n, sentence);
+      // Four long words run past one line: the page fails, so the title is never printed.
+      const long = titled(level, n, "Multiplications Subtractions Measurements Probabilities");
       const fails = await renderWorkbook({ draft: long, parentId: PARENT, template, engine });
-      expect(new Set(headerProblems(fails).filter((x) => x.slot === "title").map((x) => x.page))).toEqual(new Set(long.pages.map((p) => p.number)));
+      expect(new Set(titleProblems(fails).map((x) => x.page))).toEqual(new Set(long.pages.map((p) => p.number)));
     }
   }, 240_000);
+
+  it("gives a written reason on a parent-led card its writing space when the question asks How do you know? itself (#380)", async () => {
+    const { buildQuestion } = await import("@/lib/workbook-generator-items");
+    const draft = book("U2", 1);
+    const page = draft.pages.find((p) => p.content?.kind === "day" && p.type === "parent-led" && p.questions.length > 1)!;
+    const q = page.questions[0];
+    const built = buildQuestion({
+      slot: "1.1", skill: "K1-how-many", difficulty: 1, text: "Do 3 and 3 make 5? How do you know?", format: "written-reason", operation: null, wrongAnswers: [], easier: null,
+      shownWrong: null, figure: null, numbers: [], places: null, direction: null, sequence: null, pattern: null,
+    }, { id: q.package.id, workbookId: draft.id, page: page.number, question: q.number, level: 2, skills: ["K1-how-many"] });
+    const reason: DraftPage = { ...page, questions: [{ number: q.number, package: { ...built.package!, ref: q.package.ref } }, ...page.questions.slice(1)] };
+    const result = await renderWorkbook({ draft: { ...draft, pages: [reason] }, parentId: PARENT, template, engine });
+    expect(result.status === "failed" ? result.problems.filter((x) => x.question === q.number) : []).toEqual([]);
+  }, 60_000);
+
+  it("fits a parent-led page of six relation cards whose choices are words (#380)", async () => {
+    const { buildQuestion } = await import("@/lib/workbook-generator-items");
+    const num = (value: number) => ({ type: "number", value, numerator: null, denominator: null, whole: null, unit: null, hours: null, minutes: null, period: null, parts: [], text: null });
+    const draft = book("U2", 1);
+    const page = draft.pages.find((p) => p.content?.kind === "day" && p.type === "parent-led" && p.questions.length >= 6)!;
+    const questions = page.questions.map((q, k) => {
+      const built = buildQuestion({
+        slot: "1.1", skill: "K3-benchmarks-5-10", difficulty: 1, text: `Is ${k + 6} close to 0 or 10?`, format: "relation", operation: null, wrongAnswers: [], easier: null,
+        shownWrong: null, figure: null, numbers: [num(k + 6)], places: null, direction: null, sequence: null, pattern: null, relation: { kind: k % 2 ? "closer" : "less-than", to: k % 2 ? [0, 10] : [5], labels: [] }, figureShows: null,
+      }, { id: q.package.id, workbookId: draft.id, page: page.number, question: q.number, level: 2, skills: ["K3-benchmarks-5-10"] });
+      return { number: q.number, package: { ...built.package!, ref: q.package.ref } };
+    });
+    const result = await renderWorkbook({ draft: { ...draft, pages: [{ ...page, questions }] }, parentId: PARENT, template, engine });
+    expect(result.status === "failed" ? result.problems : []).toEqual([]);
+  }, 60_000);
 
   it("fills the level test and Show what you know pages to the bottom of their content area", async () => {
     for (const [level, n] of [["U2", 5], ["U12", 6], ["U24", 7]] as const) {
