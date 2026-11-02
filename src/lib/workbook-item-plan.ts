@@ -66,7 +66,7 @@ export function itemExamples(type: QuestionType, level: number, source: ItemPlan
 }
 
 /** One slot's deterministic item, including the story's fixed math. */
-export function planItem(o: { skill: string; slot: string; level: number; day: number; ordinal: number; range: ItemDayRange; story?: boolean; explain?: boolean; format?: GeneratedFormat; attempt?: number }): ItemPlan | null {
+export function planItem(o: { skill: string; slot: string; level: number; day: number; ordinal: number; range: ItemDayRange; story?: boolean; explain?: boolean; format?: GeneratedFormat; attempt?: number; compact?: boolean }): ItemPlan | null {
   const type = approvedQuestionTypes(o.skill)[0];
   if (!type) return null;
   const r = o.range;
@@ -97,14 +97,14 @@ export function planItem(o: { skill: string; slot: string; level: number; day: n
     }
     case "sequence": {
       const stepSize = /skip-count/.test(o.skill) ? (seed % 2 || max < 10 ? 2 : 5) : 1;
-      const terms = Math.min(3 + seed % 3, Math.floor(max / stepSize) + 1);
+      const terms = Math.min(o.compact ? 3 : 3 + seed % 3, Math.floor(max / stepSize) + 1);
       const end = Math.min(max, Math.max(stepSize * (terms - 1), top));
       const first = Math.max(0, end - stepSize * (terms - 1));
       const down = Math.floor(seed / 3) % 2 === 1;
       item.format = "sequence";
-      item.text = down ? "Count back. Fill in the missing numbers." : "Fill in the missing numbers.";
+      item.text = down ? "Count back." : "Fill the gaps.";
       const mask = 1 + Math.floor(seed / 7) % ((1 << terms) - 2);
-      const blanks = Array.from({length: terms}, (_, i) => i).filter(i => mask & (1 << i));
+      const blanks = o.compact ? [seed % terms] : Array.from({length: terms}, (_, i) => i).filter(i => mask & (1 << i));
       item.sequence = { start: itemNumber(down ? end : first), step: itemNumber(down ? -stepSize : stepSize), terms, blanks };
       break;
     }

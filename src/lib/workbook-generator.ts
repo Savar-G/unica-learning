@@ -90,7 +90,7 @@ function contractFor(input: GenerateInput, w: PageWork, slot: Slot, attempt = 0)
   const format = slot.place === "spot-the-error" ? "spot-the-error" : slot.place === "solve-it-two-ways" ? "two-ways" : slot.place === "mixed-set" ? "tick-and-number" : "write-number";
   return planItem({ skill, slot: slot.id, level: input.plan.level, day: w.day, ordinal: w.number * 31 + (Number(slot.id.split(".")[1]) || 1),
     range: { min: slot.place === "challenge" ? cap : w.day >= 8 ? Math.floor(cap * 0.7) : 1, max: Math.min(max, cap), pictures, help: schedule.helpLevel === "pictures" ? "full" : schedule.helpLevel === "new-ideas-only" ? "partial" : "none" },
-    story: !!slot.place && STORY_CHECK_PLACES.has(slot.place), explain: slot.place === "how-do-you-know" || slot.place === "in-your-head", format, attempt });
+    story: !!slot.place && STORY_CHECK_PLACES.has(slot.place), explain: slot.place === "how-do-you-know" || slot.place === "in-your-head", format, attempt, compact: ["practice-row", "warm-up", "finish-these", "on-your-own"].includes(slot.place ?? "") });
 }
 const unapprovedBuild = (): BuiltQuestion => ({ package: null, stepIds: [], check: { status: "failed", reason: "this skill has no approved question type; add and review its item builder" } });
 
@@ -1599,7 +1599,7 @@ function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuesti
   if (!input.book || !w.layout) return null;
   const layoutSlot = (q: GeneratedQuestion) => w.slots.find((x) => x.id === q.slot)!.layoutSlot;
   const keep = w.layout.slots.flatMap((x, k) => (PANEL_SLOTS.includes(x.slot) || questions.some((q) => layoutSlot(q) === k) ? [k] : []));
-  return dayPageContent({
+  const content = dayPageContent({
     curriculum: input.curriculum, plan: input.plan, day: w.day, page: w.page, layout: { ...w.layout, slots: keep.map((k) => w.layout!.slots[k]) },
     child: input.book.child, workbook: input.number,
     questions: questions.map((q) => ({
@@ -1607,6 +1607,20 @@ function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuesti
     })),
     examples: w.panels.flatMap((x, k) => (examples[k] ? [{ slot: keep.indexOf(x.layoutSlot), package: examples[k]! }] : [])),
   });
+  if (input.itemPolicy === "approved-v1" && content.kind === "day") {
+    content.blocks.forEach((block, index) => {
+      const part = w.page.parts[w.layout!.slots[keep[index]]?.part];
+      if (["worked-example", "watch-one", "reminder"].includes(block.slot) && part?.skills.every(skill => /likelihood/.test(skill))) {
+        block.label = "Likelihood words";
+        block.methods = [];
+        block.figure = undefined;
+        block.lines = ["A stone cannot grow legs. Circle never."];
+        block.explain = "Never means it cannot happen. Maybe means it can happen. Always means it happens every time.";
+        if (block.slot !== "worked-example") block.lines.push(block.explain);
+      }
+    });
+  }
+  return content;
 }
 
 const fitPage = (w: PageWork, qrToken: string, questions: GeneratedQuestion[], content: PageContent | null): DraftPage => ({
@@ -1649,6 +1663,11 @@ function layOut(input: GenerateInput) {
   for (const day of input.plan.days) {
     for (const page of day.pages) {
       const layout = input.book ? layoutDayPage(input.curriculum, input.plan, day.day, page) : null;
+      // A likelihood skill has no numeric wrong solution. Use the existing
+      // practice block for its approved circle task, rather than an error strip.
+      if (layout && input.itemPolicy === "approved-v1") for (const slot of layout.slots) {
+        if (slot.slot === "spot-the-error" && page.parts[slot.part]?.skills.every(skill => /likelihood/.test(skill))) { slot.slot = "unit-b-practice"; slot.items = 4; }
+      }
       const panels = (layout?.slots ?? []).flatMap((x, k): Panel[] => {
         const part = page.parts[x.part];
         const skill = part?.step?.skill ?? part?.skills[0];
@@ -1834,7 +1853,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
         kept = renumbered(kept.filter((_, k) => k !== out.index));
         left = await check(kept);
       }
-      if (left.ok && leftOut.length > 0) {
+      if ((left.ok || left.problems.every(p => p.kind === "fullness")) && leftOut.length > 0) {
         questions = kept;
         fit = left;
       } else leftOut.length = 0;
