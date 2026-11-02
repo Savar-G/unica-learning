@@ -3,6 +3,7 @@
 // Same look as the report email
 // (src/lib/report-email.ts).
 // CASL: every reminder names the sender, gives the mailing address and the website, and has an unsubscribe link.
+import { familyWhen, zoneFor } from "@/lib/family-time";
 import { emailDocument, emailFooterText, emailSignatureText } from "@/lib/email-brand";
 import type { ReminderKind } from "@/lib/reminders";
 
@@ -29,37 +30,6 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ENTITY[c]);
 const INK_2 = "#44444c";
 const BUTTON = "#2b2622";
 
-/** The time zone of the province that a postal code's first letter belongs to. A guess for the few that span two zones. */
-const ZONE: Record<string, string> = {
-  A: "America/St_Johns",
-  B: "America/Halifax",
-  C: "America/Halifax",
-  E: "America/Moncton",
-  G: "America/Toronto",
-  H: "America/Toronto",
-  J: "America/Toronto",
-  K: "America/Toronto",
-  L: "America/Toronto",
-  M: "America/Toronto",
-  N: "America/Toronto",
-  P: "America/Toronto",
-  R: "America/Winnipeg",
-  S: "America/Regina",
-  T: "America/Edmonton",
-  V: "America/Vancouver",
-  X: "America/Yellowknife",
-  Y: "America/Whitehorse",
-};
-const zoneFor = (postal: string | null) => ZONE[(postal ?? "").trim().charAt(0).toUpperCase()] ?? "America/Vancouver";
-
-/** "4:15 p.m. PDT on Monday, October 12" in the family's time zone. */
-function deadline(at: number, postal: string | null): string {
-  const timeZone = zoneFor(postal);
-  const time = new Intl.DateTimeFormat("en-CA", { hour: "numeric", minute: "2-digit", timeZone, timeZoneName: "short" }).format(at);
-  const day = new Intl.DateTimeFormat("en-CA", { weekday: "long", month: "long", day: "numeric", timeZone }).format(at);
-  return `${time} on ${day}`;
-}
-
 const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
 
 /** What each reminder says: the subject, a line for the inbox preview, the paragraphs and the button. */
@@ -68,7 +38,7 @@ function content(e: ReminderEmailInput): { subject: string; preview: string; par
   const alone = `${name} takes it alone, in one sitting, on a laptop or tablet.`;
   switch (e.kind) {
     case "continue": {
-      const until = `${name} can continue from the same question until ${deadline(e.resumeUntil, e.postal)}.`;
+      const until = `${name} can continue from the same question until ${familyWhen(e.resumeUntil, zoneFor(e.postal))}.`;
       return {
         subject: `${name} can finish the math test`,
         preview: until,

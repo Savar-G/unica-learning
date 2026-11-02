@@ -2,6 +2,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
+import { startWhen, zoneFor } from "@/lib/family-time";
 import { CURRICULA } from "@/lib/signup";
 import { gradeLabel } from "@/lib/assessment/grades";
 import type { StartState } from "@/lib/assessment";
@@ -32,7 +33,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   const parentUser = await parentId(db);
   if (!parentUser) redirect("/sign-in");
   const [{ data: parent }, { data: kids }, states, { data: reports }] = await Promise.all([
-    db.from("parents").select("name, email").maybeSingle(),
+    db.from("parents").select("name, email, postal").maybeSingle(),
     db.from("children").select(`id, first_name, grade, province, ${LEARNING_COLUMNS}`).order("created_at"),
     // Start, continue, start again after 24 hours, or wait 30 days after a completed test (#72).
     parentStartStates(parentUser),
@@ -80,7 +81,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
             {/* Inside the 30 days after a test there is nothing to open on the laptop: the phone shows the date too (#72). */}
             {phone && stateFor(states, c.id).kind !== "wait"
               ? <SendLink childId={c.id} name={c.first_name} sent={sent === "1" && i === 0} />
-              : <StartTest childId={c.id} name={c.first_name} state={stateFor(states, c.id)} report={reportFor(c.id, stateFor(states, c.id))} />}
+              : <StartTest childId={c.id} name={c.first_name} state={stateFor(states, c.id)} when={startWhen(stateFor(states, c.id), zoneFor(parent.postal))} report={reportFor(c.id, stateFor(states, c.id))} />}
             {current.has(c.id) && <DeskRow childId={c.id} name={c.first_name} workbook={current.get(c.id)!} pinSet={pinSet} />}
           </li>
         ))}

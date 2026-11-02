@@ -2,7 +2,7 @@
 
 // Parent account screens for the online assessment (#62, D-082): signup, sign-in, the children list.
 // Server writes go through /api/account/*; the browser holds only the publishable key and the parent's own session.
-import { useEffect, useId, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { CURRICULA, EMAIL, POSTAL, curriculumFromPostal, type CurriculumId } from "@/lib/signup";
@@ -16,6 +16,8 @@ import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { markAdStep } from "@/lib/ad-visit-steps";
 import { SOURCE_STORAGE_KEY, VISIT_STORAGE_KEY, visitSource } from "@/lib/visit-source";
 import { mayActAsParent } from "@/components/desk-guard";
+import type { RetryTime } from "@/lib/family-time";
+import { FamilyTime as When } from "@/components/family-time";
 import { DESK_HOME } from "@/lib/desk";
 
 // The tags are kept for the tab on whichever page the visitor lands (VisitTags in the root layout), so a parent who
@@ -682,29 +684,11 @@ export function AddChild({ province }: { province: CurriculumId }) {
   );
 }
 
-const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const noSubscribe = () => () => {};
-
-/**
- * A moment in the reader's own time zone, for example "5:12 p.m. on Monday, November 9". The server does not know the
- * parent's zone, so the first paint (and a page without JavaScript) shows UTC, labelled; the browser then shows local time.
- */
-function When({ at }: { at: number }) {
-  const local = useSyncExternalStore(noSubscribe, () => true, () => false);
-  const d = new Date(at);
-  const [day, date, month, h, m] = local
-    ? [d.getDay(), d.getDate(), d.getMonth(), d.getHours(), d.getMinutes()]
-    : [d.getUTCDay(), d.getUTCDate(), d.getUTCMonth(), d.getUTCHours(), d.getUTCMinutes()];
-  const clock = `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "a.m." : "p.m."}${local ? "" : " UTC"}`;
-  return <time dateTime={d.toISOString()}>{clock} on {DAYS[day]}, {MONTHS[month]} {date}</time>;
-}
-
 /** The button and the line under it for each start state (#72). `status` goes with test_start_click. */
-function startView(state: Exclude<StartState, { kind: "wait" }>, name: string): { label: string; note: ReactNode; status: string } {
+function startView(state: Exclude<StartState, { kind: "wait" }>, name: string, when: string): { label: string; note: ReactNode; status: string } {
   switch (state.kind) {
     case "resume":
-      return { label: "Continue test", note: <>The answers are saved. {name} can continue until <When at={state.resumeUntil} />.</>, status: "in_progress" };
+      return { label: "Continue test", note: <>The answers are saved. {name} can continue until <When at={state.resumeUntil} text={when} />.</>, status: "in_progress" };
     case "finish":
       return { label: "Finish test", note: <>All of {name}&apos;s answers are in, but the test was not sent. Open it to finish. The report then comes by email.</>, status: "finish" };
     case "expired":
@@ -722,24 +706,24 @@ function startView(state: Exclude<StartState, { kind: "wait" }>, name: string): 
  * a completed test. `report` is the path of the child's newest report (#65): while the child waits it is the button,
  * and in every other state it stays reachable under the button (spec #54, story 32).
  */
-export function StartTest({ childId, name, state, report }: { childId: string; name: string; state: StartState; report?: string }) {
+export function StartTest({ childId, name, state, report, when }: { childId: string; name: string; state: StartState; report?: string; when: string }) {
   const noteId = useId();
   if (state.kind === "wait") {
     if (!report) {
       return (
         <span className="small acct-done">
-          Test done. The report comes by email. The next test opens at <When at={state.opensAt} />.
+          Test done. The report comes by email. The next test opens at <When at={state.opensAt} text={when} />.
         </span>
       );
     }
     return (
       <span className="acct-start">
         <Link className="btn ghost" href={report}>See the report <span className="sr-only">for {name}</span> <span className="arr">→</span></Link>
-        <span className="small">The next test opens at <When at={state.opensAt} />.</span>
+        <span className="small">The next test opens at <When at={state.opensAt} text={when} />.</span>
       </span>
     );
   }
-  const { label, note, status } = startView(state, name);
+  const { label, note, status } = startView(state, name, when);
   return (
     <span className="acct-start">
       <Link className="btn" href={`/account/test/${childId}`} aria-describedby={note ? noteId : undefined} onClick={() => track("test_start_click", { status })}>
@@ -1082,11 +1066,11 @@ export function PinForm({ isSet }: { isSet: boolean }) {
     }
     setBusy(true);
     setError(null);
-    let answer: PinFormResult;
+    let answer: PinFormResult & RetryTime;
     try {
       const res = await fetch("/api/account/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(isSet ? { pin, current } : { pin }) });
       if (res.status === 423) window.location.replace(DESK_HOME);
-      answer = (await res.json()) as PinFormResult;
+      answer = (await res.json()) as PinFormResult & RetryTime;
     } catch {
       answer = { ok: false, error: "unavailable" };
     }
@@ -1102,7 +1086,7 @@ export function PinForm({ isSet }: { isSet: boolean }) {
         setError(`That is not your current PIN. You have ${answer.attemptsLeft} ${answer.attemptsLeft === 1 ? "try" : "tries"} left.`);
         break;
       case "locked":
-        setError(<>Too many wrong tries. Try again after <When at={answer.retryAt} />.</>);
+        setError(<>Too many wrong tries. Try again after <When at={answer.retryAt} text={answer.retryWhen ?? "a few minutes"} />.</>);
         break;
       case "invalid":
         setError("Use exactly 4 digits.");

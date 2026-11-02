@@ -19,11 +19,11 @@ describe("the continue your test reminder", () => {
   });
   it("says where the child stopped and until when the test can continue, in the family's time zone", () => {
     expect(e.text).toContain("Maya stopped the free math placement test after 12 of 36 questions.");
-    expect(e.text).toContain("Maya can continue from the same question until 4:15 p.m. PDT on Monday, October 12.");
+    expect(e.text).toContain("Maya can continue from the same question until 4:15 p.m. on Monday, October 12.");
     const toronto = email({ kind: "continue", postal: "M5V 2T6" });
-    expect(toronto.text).toContain("until 7:15 p.m. EDT on Monday, October 12.");
+    expect(toronto.text).toContain("until 7:15 p.m. on Monday, October 12.");
     // The short phone signup gives no postal code (D-134): Pacific time.
-    expect(email({ kind: "continue", postal: null }).text).toContain("until 4:15 p.m. PDT on Monday, October 12.");
+    expect(email({ kind: "continue", postal: null }).text).toContain("until 4:15 p.m. on Monday, October 12.");
   });
   it("words a test with no answer yet", () => {
     expect(email({ kind: "continue", answered: 0 }).text).toContain("Maya opened the free math placement test but did not answer a question yet.");

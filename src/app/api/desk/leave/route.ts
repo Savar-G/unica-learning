@@ -1,3 +1,5 @@
+import { familyRetryTime } from "@/lib/family-time-server";
+import type { RetryTime } from "@/lib/family-time";
 import { NextResponse } from "next/server";
 import { closeDesk } from "@/lib/desk-server";
 import { checkParentPin } from "@/lib/parent-pin-server";
@@ -8,16 +10,17 @@ import type { LeaveResult } from "@/lib/desk";
 // comes from the session, never from the body. A right PIN ends desk mode on this device; a wrong one costs an attempt.
 // JSON only, so a form on another site cannot send it.
 export async function POST(request: Request) {
-  const reply = (status: number, body: LeaveResult) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
+  const reply = (status: number, body: LeaveResult & RetryTime) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
   if (!request.headers.get("content-type")?.startsWith("application/json")) return reply(415, { ok: false, error: "bad_json" });
-  const parent = await parentId(await sessionClient());
+  const db = await sessionClient();
+  const parent = await parentId(db);
   if (!parent) return reply(401, { ok: false, error: "signed_out" });
   const body = (await request.json().catch(() => null)) as { pin?: unknown } | null;
   if (typeof body?.pin !== "string") return reply(400, { ok: false, error: "invalid" });
   const result = await checkParentPin(parent, body.pin);
   if (!result.ok) {
     const status = result.error === "locked" ? 429 : result.error === "wrong" ? 403 : result.error === "unavailable" ? 503 : 400;
-    return reply(status, result);
+    return reply(status, { ...result, ...(result.error === "locked" ? await familyRetryTime(db, result.retryAt) : {}) });
   }
   const response = reply(200, { ok: true });
   closeDesk(response);
