@@ -507,6 +507,14 @@ describe("the docs", () => {
     expect(md).toContain("### C07-r1: pass");
     expect(md).toContain("Counted from the saved files.");
   });
+
+  it("a subscription run never shows as a plain PASS (R401-2)", async () => {
+    const { report } = await suite([C07], { runs: 1 });
+    const onSubscription = { ...report, passed: true, full: true, versions: { ...report.versions!, meta: { ...report.versions!.meta, mode: "subscription" } } };
+    const md = reportMarkdown(onSubscription);
+    expect(md).toContain("# Maya practice suite: PASS on the Claude subscription (not the final API check)");
+    expect(reportMarkdown({ ...report, passed: true, full: true })).toMatch(/^# Maya practice suite: PASS$/m);
+  });
 });
 
 describe("the practice child speaks like a child (practice run 5: too_long and turn_cap)", () => {

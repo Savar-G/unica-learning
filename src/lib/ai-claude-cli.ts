@@ -8,7 +8,8 @@
 //   API's constrained decoding, so the connection is not the live one: see docs/maya-practice.md);
 // - `--tools ""` and `--safe-mode`: no tools, hooks, MCP servers, skills or CLAUDE.md files;
 // - the call runs in an empty folder, with no session saved.
-// ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are removed from the call's environment, so it can never bill the API.
+// Every ANTHROPIC_* and CLAUDE_CODE_USE_* setting and the Bedrock, Vertex and Foundry keys are removed from the call's
+// environment, so it can never bill the API or a cloud provider (R401-1).
 // When the subscription's usage limit is met, the client throws UsageLimitReached and calls `onLimit`; it never sends the
 // request anywhere else. Text input only: an image part is refused.
 // The process runs behind a seam (`spawn`), so the tests never start the real CLI.
@@ -43,11 +44,17 @@ const short = (s: unknown, n = 300) => String(s ?? "").replace(/\s+/g, " ").trim
 /** Claude Code's words for a met usage limit ("Claude AI usage limit reached", "You've hit your limit · resets 3pm"). */
 const LIMIT_TEXT = /usage limit|hit your (usage |session |weekly )?limit|limit reached|limit will reset|out of (extra )?usage|rate[_ ]limit/i;
 
+/** Other environment names that select or pay for a non-subscription route. */
+const PAID_ROUTE_KEYS = new Set(["AWS_BEARER_TOKEN_BEDROCK", "CLAUDE_CODE_SKIP_BEDROCK_AUTH", "CLAUDE_CODE_SKIP_VERTEX_AUTH", "CLAUDE_CODE_SKIP_FOUNDRY_AUTH", "CLOUD_ML_REGION", "VERTEX_REGION_CLAUDE_CODE"]);
+
 /** The environment for `claude -p`: never an API key, so the call runs on the Claude subscription. Exported for tests. */
 export function claudeEnv(env: Record<string, string | undefined>, configDir?: string | null): Record<string, string | undefined> {
   const out = { ...env };
-  delete out.ANTHROPIC_API_KEY;
-  delete out.ANTHROPIC_AUTH_TOKEN;
+  // Every setting that points Claude Code at a paid route (an API key or token, another base URL, Bedrock, Vertex,
+  // Foundry, their keys) is removed, so the call can only use the subscription login (R401-1).
+  for (const k of Object.keys(out)) {
+    if (k.startsWith("ANTHROPIC_") || k.startsWith("CLAUDE_CODE_USE_") || PAID_ROUTE_KEYS.has(k)) delete out[k];
+  }
   // No update checks or other side traffic: a call starts in about 3 s instead of about 8 s (measured 2026-11-01).
   out.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
   if (configDir) out.CLAUDE_CONFIG_DIR = configDir;

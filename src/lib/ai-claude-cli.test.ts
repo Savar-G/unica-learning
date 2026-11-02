@@ -59,6 +59,20 @@ describe("claudeCliClient", () => {
     expect(calls[0].env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe("1");
   });
 
+  it("removes every paid-route setting, so the call can only use the subscription (R401-1)", async () => {
+    const { spawn, calls } = fake({ stdout: envelope() });
+    const env = {
+      PATH: "/bin", CLAUDE_CODE_USE_BEDROCK: "1", CLAUDE_CODE_USE_VERTEX: "1", CLAUDE_CODE_USE_FOUNDRY: "1",
+      ANTHROPIC_BASE_URL: "https://proxy.example", ANTHROPIC_BEDROCK_BASE_URL: "https://b.example", ANTHROPIC_FOUNDRY_API_KEY: "k",
+      AWS_BEARER_TOKEN_BEDROCK: "t", CLAUDE_CODE_SKIP_BEDROCK_AUTH: "1", CLOUD_ML_REGION: "us-east5", HOME: "/home/x",
+    };
+    await claudeCliClient({ model: "m", spawn, cwd: "/tmp/x", env }).json(request, signal());
+    const sent = calls[0].env;
+    for (const k of Object.keys(env)) if (k !== "PATH" && k !== "HOME") expect(sent[k], k).toBeUndefined();
+    expect(sent.PATH).toBe("/bin");
+    expect(sent.HOME).toBe("/home/x");
+  });
+
   it("leaves out --effort when the request has none, and CLAUDE_CONFIG_DIR when none is given", async () => {
     const { spawn, calls } = fake({ stdout: envelope() });
     await claudeCliClient({ model: "m", spawn, cwd: "/tmp/x", env: {} }).json({ ...request, effort: undefined }, signal());

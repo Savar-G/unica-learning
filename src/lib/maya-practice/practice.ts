@@ -806,7 +806,10 @@ export function buildReport(cases: readonly PracticeCase[], store: PracticeStore
 /** The report as markdown. */
 export function reportMarkdown(r: PracticeReport): string {
   const lines: string[] = [];
-  lines.push(`# Maya practice suite: ${r.passed && r.full ? "PASS" : r.passed ? "PASS (part of the suite only: not a gate result)" : "FAIL"}`, "");
+  // A subscription run is a gate result for now (Savar, 2026-11-01), but it is never shown as the final API check (R401-2).
+  const onSubscription = r.versions?.meta?.mode === "subscription";
+  const pass = onSubscription ? "PASS on the Claude subscription (not the final API check)" : "PASS";
+  lines.push(`# Maya practice suite: ${r.passed && r.full ? pass : r.passed ? `${pass} (part of the suite only: not a gate result)` : "FAIL"}`, "");
   if (r.problem) lines.push(`**The suite cannot be read:** ${r.problem}`, "");
   if (r.versions) {
     const v = r.versions;
