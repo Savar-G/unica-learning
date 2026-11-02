@@ -43,13 +43,13 @@ const NUMBER_WORD = new Set([...ONES, ...TENS.filter(Boolean), "hundred", "thous
 
 /**
  * The words of a text as it is spoken: lower case, numbers in words, signs as words, contractions expanded, and no
- * punctuation. Two texts with the same key say the same words.
+ * punctuation. Conjunctions stay here; only the equivalence key may omit them.
  */
-export function speechKey(text: string): string {
+function speechTokens(text: string): string[] {
   let t = text.toLowerCase().replace(/[’‘`]/g, "'");
   // Area symbols are units, not a bare exponent. Count both spoken words.
   const units: Record<string, string> = { mm: "millimetres", cm: "centimetres", dm: "decimetres", m: "metres", km: "kilometres" };
-  t = t.replace(/\b(mm|cm|dm|km|m)²/g, (_, unit: string) => ` square ${units[unit]} `);
+  t = t.replace(/(?<![a-z])(mm|cm|dm|km|m)²/g, (_, unit: string) => ` square ${units[unit]} `);
   // A remainder ("26 R 1") and the signs, as a voice says them.
   t = t.replace(/(\d)\s*r\s*(\d)/g, "$1 remainder $2");
   t = t.replace(/(\d)\s*[-−–]\s*(\d)/g, "$1 minus $2");
@@ -58,7 +58,12 @@ export function speechKey(text: string): string {
   t = t.replace(/\d+(?:\.\d+)?/g, (d) => ` ${numberWords(d)} `);
   for (const [from, to] of CONTRACTIONS) t = t.replace(from, to);
   const words = t.replace(/[^a-z0-9'\s]/g, " ").replace(/'/g, "").split(/\s+/).filter(Boolean);
-  return words.filter((w, i) => !(w === "and" && NUMBER_WORD.has(words[i - 1] ?? "") && NUMBER_WORD.has(words[i + 1] ?? ""))).join(" ");
+  return words;
+}
+
+/** A comparison key may omit a number's optional conjunction. It is never a word counter. */
+export function speechKey(text: string): string {
+  return speechTokens(text).filter((w, i, words) => !(w === "and" && NUMBER_WORD.has(words[i - 1] ?? "") && NUMBER_WORD.has(words[i + 1] ?? ""))).join(" ");
 }
 
 /**
@@ -73,4 +78,15 @@ export function saidAsApproved(said: string, approved: string): boolean {
 }
 
 /** The word count used for every teaching turn, after speech normalisation. */
-export const speechWords = (text: string): number => speechKey(text).split(" ").filter(Boolean).length;
+export function speechWords(text: string): number {
+  // A mixed number says "and" between its whole and fraction parts. A fraction's numerator and denominator
+  // each use their own number words ("three eighths"). No spoken conjunction is removed.
+  const explicit = text
+    .replace(/\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b/g, (digits) => digits.replace(/,/g, ""))
+    .replace(/(?<![\d./])(\d+)\s+(\d+)\s*\/\s*(\d+)(?![\d/])/g, "$1 and $2/$3")
+    .replace(/[−–-](?=\s*\d)/g, " minus ")
+    .replace(/(?<![\d.])\.(?=\d)/g, "0.")
+    .replace(/%/g, " percent ")
+    .replace(/\d{13,}/g, (digits) => [...digits].map((d) => ONES[Number(d)]).join(" "));
+  return speechTokens(explicit).length;
+}

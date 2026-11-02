@@ -176,6 +176,8 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 
 ## Spoken help and turn limits (#397, #398, #399)
 
+Word counts keep every spoken conjunction, including the "and" in a mixed number. They expand numbers, signs and contractions. Speech-equivalence matching has a separate key and cannot supply a word count. The saved-trace gate uses its own numeric-token counter in `word-count.ts`, with no production normaliser import. Boundary tests check 25/26 and 45/46 words. A sabotage test restores the conjunction-dropping defect in the controller and proves that the independent gate rejects the 26-word and 46-word outputs. All fixture line variants and bank wordings are counted with both implementations. Every behaviour is also replayed at both limits with seeds 1, 9 and 31 to check emitted teaching and fallback turns. Approved wording is unchanged.
+
 The profile grade sets the limit: grades 1 to 3 use 25 speech-normalised words; grades 4 to 7 use 45. Calls saved before profile limits keep the earlier 45-word limit. `shorter` keeps 25 for the rest of the call. An overlong assembled turn is refused with `turn_too_long`, including code-added answer lines. Code fallbacks pass the same check. Safety guidance keeps its required wording.
 
 `noBoard` keeps drawings off for the rest of the call. Code offers spoken versions of the same steps. The first `shorter` response is exactly "What part should we try again?" with no warm or free talk. C34 uses the approved AI line, then the approved secret-friend line when needed, then the usual question line. Each line is a separate turn so each meets the grade 1 limit. No child answer is needed between them. C20 follows the recorded decision: no language setting and no grammar correction.

@@ -15,7 +15,13 @@ vi.mock("server-only", () => ({}));
 // controller injected under the text adapter, and a broken alerts seam under the saved call (#395).
 
 /** The controller's `step`, sabotaged when `mode` is set: the text adapter imports it from "@/lib/maya". */
-const sabotage = vi.hoisted(() => ({ mode: "none" as "none" | "words" | "answer" | "no_safety" | "decline_extra" | "decline_space" | "no_auto_end" | "visual" | "long" | "short_warm" | "identity" | "grammar" | "area" | "fraction_rewrite" | "fraction_equal" | "fraction_strips" | "fraction_place" | "fraction_answer" | "fraction_wrong" | "fraction_mixed_write" | "fraction_repeat_equal", extra: "" }));
+const sabotage = vi.hoisted(() => ({ mode: "none" as "none" | "words" | "answer" | "no_safety" | "decline_extra" | "decline_space" | "no_auto_end" | "undercount" | "visual" | "long" | "short_warm" | "identity" | "grammar" | "area" | "fraction_rewrite" | "fraction_equal" | "fraction_strips" | "fraction_place" | "fraction_answer" | "fraction_wrong" | "fraction_mixed_write" | "fraction_repeat_equal", extra: "" }));
+// Restore the reviewed counter defect under the real controller. The gate must still reject its output.
+vi.mock("@/lib/maya/speech", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/maya/speech")>();
+  return { ...real, speechWords: (text: string) => real.speechWords(sabotage.mode === "undercount" ? text.replace(/\band\b/gi, "") : text) };
+});
+
 vi.mock("@/lib/maya", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/maya")>();
   return {
@@ -374,6 +380,26 @@ describe("a broken fake model makes the gate fail", () => {
 });
 
 describe("a sabotaged controller makes the gate fail", () => {
+  it.each([
+    [1, [10], 25], [1, [1], 26], [4, [1, 2, 1, 6], 45], [4, [1, 2, 1, 8], 46],
+  ] as const)("the independent gate counts grade %s output at the boundary (%s, %s words)", async (grade, picks, words) => {
+    sabotage.mode = "undercount";
+    try {
+      const b: Behaviour = { id: "R443-1", title: "Conjunction boundary", fixture: "A", grade, status: "passing",
+        open: [{ act: "open", lines: ["open.hello"] }],
+        steps: [{ child: "I tried it.", read: { start: "has_work" }, maya: [{ raw: { version: 2, act: "guide", step: "ones", level: 2,
+          parts: [...picks.map((pick) => ({ warm: "encourage", pick })), { line: "step.point", slots: { step: "ones" } }, { line: "step.operation", slots: { step: "ones" } }], reading: { start: "has_work" } } }] },
+          { child: "Stop.", read: { stop: true } }], expect: { outcome: { reason: "child_stopped" } } };
+      const store = memoryTraceStore();
+      await runBehaviour(b, store, { seed: 9 });
+      const verdict = judge(b, store.load(b.id));
+      const guide = verdict.trace!.turns.find((t) => t.kind === "maya" && t.output?.act === "guide");
+      expect(guide).toBeDefined(); // The sabotaged controller accepted the proposal, including 26 and 46 words.
+      if (words === 26 && guide?.kind === "maya") expect(guide.output?.say).toEqual(["You're working hard on this. Look at the ones column. It has 7 and 9. Add the ones: 7 + 9. What do you get?"]);
+      expect(verdict.failures).toEqual(words === 26 || words === 46 ? [{ code: "flow_mismatch", detail: "Maya exceeded the spoken word limit" }] : []);
+    } finally { sabotage.mode = "none"; }
+  });
+
   const run = async (mode: typeof sabotage.mode, id: string) => {
     sabotage.mode = mode;
     try {

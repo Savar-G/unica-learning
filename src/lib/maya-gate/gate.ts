@@ -11,7 +11,6 @@
 // in step. No network: the clock and the wording seed are passed in.
 import {
   allLineTexts,
-  speechWords,
   isEqualForm,
   readAnswer,
   readOptionsFor,
@@ -33,6 +32,7 @@ import {
   type SessionState,
   type TalkReviewResult,
 } from "@/lib/maya";
+import { gateWordCount } from "./word-count";
 import { packageLines } from "@/lib/maya/lines";
 import { FLAG_LEVELS, UNSAFE_REQUEST_FLAG, type AlertState, type AlertStatus, type CallFlag, type CallStatus, type FlagLevel } from "@/lib/maya-call";
 import { PROMPT_VERSION, type ActOffer, type MayaModel, type ModelInput } from "@/lib/maya-model";
@@ -567,7 +567,7 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
     }
     if (event.kind !== "maya" || !event.output || event.output.act === "safety") continue;
     const said = event.output.say.join(" ");
-    if (speechWords(said) > (shorter || (b.grade ?? 4) <= 3 ? 25 : 45)) fail("flow_mismatch", "Maya exceeded the spoken word limit");
+    if (gateWordCount(said) > (shorter || (b.grade ?? 4) <= 3 ? 25 : 45)) fail("flow_mismatch", "Maya exceeded the spoken word limit");
     if (noBoard && (event.output.board.length || /\b(?:board|look|watch|see|show me|follow along)\b/i.test(said))) fail("flow_mismatch", "Visual help after noBoard");
     if (shortNext) {
       if (said !== "What part should we try again?") fail("flow_mismatch", "The shorter reply was not the single code action");

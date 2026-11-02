@@ -2041,10 +2041,7 @@ function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview
   const pickFresh = (wordings: readonly string[], id: (i: number) => string) => {
     const used = new Set(texts.flatMap(openings));
     const fresh = wordings.map((w, i) => i).filter((i) => !openings(wordings[i]).some((o) => used.has(o)));
-    const remaining = turnWordLimit(s) - speechWords(texts.join(" "));
-    const fits = wordings.map((_, i) => i).filter((i) => speechWords(wordings[i]) <= remaining);
-    const available = fits.length ? fits : wordings.map((_, i) => i);
-    const pool = available.filter((i) => fresh.includes(i)).length ? available.filter((i) => fresh.includes(i)) : available;
+    const pool = fresh.length ? fresh : wordings.map((_, i) => i);
     return pool[chooseWording(s.variety, pool.map(id), s.now!)];
   };
   const phrase = (group: PhraseGroup, echoed: string | null = null, pick?: number, only?: readonly string[]) => {
