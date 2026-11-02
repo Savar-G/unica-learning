@@ -178,6 +178,21 @@ describe("workbook comment batches",()=>{
     });
   }
   for (const runner of ["mac", "server"] as const) {
+    it(`#435 ${runner} reuses a saved writer retry after a page checkpoint failure`, async () => {
+      const s = setup(); s.deps.runner = runner; s.comment(); const id = s.send();
+      const json = vi.fn(gen.ai.json).mockRejectedValueOnce(new Error("first writer failed"));
+      s.deps.generation = { ...gen, ai: { model: gen.ai.model, json } };
+      const checkpoint = s.review.store.checkpoint;
+      s.review.store.checkpoint = async () => { throw new Error("page checkpoint before commit"); };
+      expect(await runWorkbookEdit(id, s.deps)).toBe("failed");
+      expect(json).toHaveBeenCalledTimes(2);
+      expect(s.review.snapshot().revision).toBe(1);
+      s.review.store.checkpoint = checkpoint;
+      expect(await runWorkbookEdit(id, s.deps)).toBe("done");
+      expect(json).toHaveBeenCalledTimes(2);
+      expect(s.review.snapshot().revision).toBe(2);
+      expect(s.review.comments[0].status).toBe("done");
+    });
     for (const kind of ["write", "solve"] as const) {
       function counted(now?: () => number) {
         const s = setup("draft", now); s.deps.runner = runner;
@@ -266,6 +281,22 @@ describe("workbook comment batches",()=>{
     const two = s.review.save({ ...fields, requestKey: "stable-request" });
     expect(one).toEqual(two);
     expect(s.review.comments).toHaveLength(2);
+  });
+  it("#435 saves separate comments for two admins with the same client request key", () => {
+    const s = setup(); s.comment();
+    const fields = { ...s.review.comments[0], requestKey: "same-client-key" };
+    const first = s.review.save(fields);
+    const secondFields = { ...fields, note: "Use pears", actor: { id: "other-admin", email: "other@example.com" } };
+    const second = s.review.save(secondFields);
+    expect(first.status).toBe("saved");
+    expect(second.status).toBe("saved");
+    expect(second).not.toEqual(first);
+    expect(s.review.save(fields)).toEqual(first);
+    expect(s.review.save(secondFields)).toEqual(second);
+    expect(s.review.comments.slice(1).map(c => [c.actor.id, c.note])).toEqual([
+      [fields.actor.id, fields.note], [secondFields.actor.id, secondFields.note],
+    ]);
+    expect(s.review.comments).toHaveLength(3);
   });
   it("R428-5 refuses a resume on different code or models and returns comments to pending", async () => {
     for (const field of ["build", "model", "solveModel"] as const) {

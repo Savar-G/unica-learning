@@ -2184,6 +2184,7 @@ export type Database = {
           batch_id: string | null
           before_value: Json | null
           child_id: string
+          client_request_key: string | null
           created_at: string
           draft_id: string
           error: string | null
@@ -2206,6 +2207,7 @@ export type Database = {
           batch_id?: string | null
           before_value?: Json | null
           child_id: string
+          client_request_key?: string | null
           created_at?: string
           draft_id: string
           error?: string | null
@@ -2228,6 +2230,7 @@ export type Database = {
           batch_id?: string | null
           before_value?: Json | null
           child_id?: string
+          client_request_key?: string | null
           created_at?: string
           draft_id?: string
           error?: string | null
