@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BANKS, fillTemplate, type Question } from "@/lib/assessment";
 import { checkQuestionPackage } from "@/lib/question-package";
-import { SUPPORTED_ASSESSMENT_TEMPLATES, assessmentQuestionPackage } from "@/lib/question-package-assessment";
+import { SUPPORTED_ASSESSMENT_TEMPLATES, assessmentQuestionPackage, templateSkillName } from "@/lib/question-package-assessment";
 
 // The assessment adapter (#298): a stored assessment question becomes a question package only for the supported
 // templates; every other template is "content unavailable". Expected values are worked by hand.
@@ -135,5 +135,16 @@ describe("assessmentQuestionPackage", () => {
         status: "unavailable", reason: "unsupported-template",
       });
     }
+  });
+});
+
+describe("the plain skill name of a template", () => {
+  it("names the skill of each supported template, up to the first comma", () => {
+    expect(templateSkillName("2-subtract-2-digit")).toBe("Subtract two-digit numbers within 100");
+    expect(templateSkillName("2-add-2-digit")).toBe("Add two-digit numbers within 100");
+  });
+
+  it("is null for a template with no skill tag", () => {
+    expect(templateSkillName("no-such-template")).toBeNull();
   });
 });

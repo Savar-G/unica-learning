@@ -1,0 +1,70 @@
+{
+  "checked": "2026-11-01",
+  "results": [
+    {
+      "url": "https://www.teachingtextbooks.com/v/vspfiles/tt/Placement.htm",
+      "status": 404,
+      "finalUrl": "https://www.teachingtextbooks.com/v/vspfiles/tt/Placement.htm",
+      "bytes": 32553
+    },
+    {
+      "url": "https://www.teachingtextbooks.com/placement/",
+      "status": 200,
+      "finalUrl": "https://www.teachingtextbooks.com/placement",
+      "bytes": 35817,
+      "contactLinks": [
+        "https://www.teachingtextbooks.com/contact-us/"
+      ]
+    },
+    {
+      "url": "https://stressfreemathforkids.com/members-only/free-elementary-math-placement-tests/",
+      "status": 200,
+      "finalUrl": "https://stressfreemathforkids.com/members-only/free-elementary-math-placement-tests/",
+      "bytes": 748208,
+      "contactLinks": [
+        "https://stressfreemathforkids.com/contact-us/",
+        "mailto:?subject=%5BShared%20Post%5D%20Free%20Elementary%20Math%20Placement%20Tests&body=https%3A%2F%2Fstressfreemathforkids.com%2Fmembers-only%2Ffree-elementary-math-placement-tests%2F&share=email",
+        "mailto:amy@stressfreemathforkids.com?subject=Looking%20for%20answers"
+      ]
+    },
+    {
+      "url": "https://handinhandhomeschool.com/teaching/math/math-placement-test/",
+      "status": 200,
+      "finalUrl": "https://handinhandhomeschool.com/teaching/math/math-placement-test/",
+      "bytes": 132231,
+      "contactLinks": [
+        "https://handinhandhomeschool.com/contact",
+        "mailto:alessa.education@gmail.com",
+        "mailto:alessa.education@gmail.com?subject=Hand In Hand Question"
+      ]
+    },
+    {
+      "url": "https://ontariohomeschool.org/testing/",
+      "status": 200,
+      "finalUrl": "https://ontariohomeschool.org/testing/",
+      "bytes": 284725,
+      "contactLinks": [
+        "https://ontariohomeschool.org/contact-us/",
+        "mailto:davisfam@xcelco.on.ca",
+        "mailto:inquire@nelson.com",
+        "mailto:wces@bconnex.net"
+      ]
+    },
+    {
+      "url": "https://www.kuraplan.com/homeschool/placement-test",
+      "status": 429,
+      "finalUrl": "https://www.kuraplan.com/homeschool/placement-test",
+      "bytes": 40671
+    },
+    {
+      "url": "https://everyhomeschool.com/guides/placement-tests-2026",
+      "status": 200,
+      "finalUrl": "https://everyhomeschool.com/guides/placement-tests-2026",
+      "bytes": 139570,
+      "contactLinks": [
+        "mailto:editor@everyhomeschool.com",
+        "mailto:editor@everyhomeschool.com?subject=Correction%20%E2%80%94%20Homeschool%20Curriculum%20Placement%20Tests%3A%20The%20Directory%20(2026)"
+      ]
+    }
+  ]
+}

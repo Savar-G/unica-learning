@@ -11,6 +11,7 @@ import { MayaBoard } from "@/components/maya-board";
 import type { PlayStep } from "@/lib/board-svg";
 import type { Outcome } from "@/lib/maya";
 import type { CallInput, CallView } from "@/lib/maya-call";
+import { ALERT_TEXT, FLAG_TEXT, alertNote, modelName, noAlertNote, safetyText } from "@/lib/maya-flag-text";
 import type { CallListRow, DemoChild } from "@/lib/maya-call-server";
 import { ADMIN_PATH, adminChildProfilePath, adminTestPath } from "@/lib/admin-view";
 import "./admin-maya.css";
@@ -35,7 +36,7 @@ export const REASON_TEXT: Record<Outcome["reason"], string> = {
   no_response: "No answer from the child",
   technical_issue: "Technical issue",
   content_issue: "Question problem",
-  safety: "Safety flag",
+  safety: "Ended for safety",
 };
 export const ASSISTANCE_TEXT: Record<Outcome["assistance"], string> = {
   independent: "On their own",
@@ -45,25 +46,34 @@ export const ASSISTANCE_TEXT: Record<Outcome["assistance"], string> = {
   answer_given: "Maya gave the answer",
 };
 const PAPER_TEXT: Record<Outcome["paperStatus"], string> = { child_confirmed: "Child wrote it", declined: "Child said no", unknown: "Not known" };
+/** Maya's hint levels H0 to H4 (src/lib/maya/proposal.ts), in plain words. */
+const HINT_TEXT: Record<NonNullable<Outcome["highestHint"]>, string> = {
+  0: "Asked the child to try",
+  1: "Pointed to the step",
+  2: "Named the operation",
+  3: "Showed the step",
+  4: "Gave the answer with a reason",
+};
 const UNDERSTANDING_TEXT: Record<Outcome["understanding"], string> = { evidence_observed: "Showed understanding", uncertain: "Not sure" };
 const ERROR_TEXT: Record<string, string> = {
   conflict: "The call changed in another tab. Reload this page to see it.",
   invalid_input: "That turn could not be sent. Type up to 500 characters.",
   invalid_question: "Maya cannot work on that question.",
   not_test_family: "Only test families can have test calls.",
-  model_unavailable: "The model is not available.",
+  model_unavailable: "The AI is not available right now.",
   unavailable: "The server is missing its database key.",
   failed: "Something went wrong. Try again.",
 };
 
-const when = (iso: string) => new Date(iso).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" });
+// Pacific time on the server and in the browser alike, so the server render and hydration agree (Vercel runs in UTC).
+const when = (iso: string) => new Date(iso).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Vancouver" });
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 const named = (text: string, name: string | null) => text.replaceAll("{name}", name ?? "the child");
 
 function ModelChip({ model }: { model: { id: string; fake: boolean } }) {
   return model.fake
-    ? <span className="adm-chip is-warn" title="The server has no OpenRouter key: Maya's words come from code's rule player.">Fake model (no AI key)</span>
-    : <span className="adm-chip is-info">{model.id}</span>;
+    ? <span className="adm-chip is-warn" title="The server has no OpenRouter key, so Maya's words come from a script in the code, not the AI.">Scripted Maya, not the AI</span>
+    : <span className="adm-chip is-info" title={model.id}>{modelName(model)}</span>;
 }
 
 // ---------- the picker ----------
@@ -114,7 +124,7 @@ export function MayaPicker({ children, model }: { children: DemoChild[]; model: 
                 <li key={key}>
                   <div>
                     <p className="mc-q-text">{q.text}</p>
-                    <p className="adm-sub">Question {q.number} · answer {q.answer} · {q.templateId}</p>
+                    <p className="adm-sub">Question {q.number} · Answer {q.answer}{q.skill && <> · {q.skill}</>}</p>
                   </div>
                   <button type="button" className="btn sm adm-btn" disabled={busy !== null} onClick={() => start(q.assessmentId, q.questionId)}>
                     {busy === key ? "Starting…" : "Call Maya"}
@@ -136,7 +146,7 @@ export function MayaCallList({ calls }: { calls: CallListRow[] }) {
     <div className="adm-scroll">
       <table className="adm-table">
         <thead>
-          <tr><th>Started</th><th>Child</th><th>Question</th><th>Outcome</th><th>Help</th><th className="adm-num">Time</th><th>Model</th><th>Event</th></tr>
+          <tr><th>Started</th><th>Child</th><th>Question</th><th>Outcome</th><th>Help</th><th className="adm-num">Time</th><th>Maya</th><th>Saved to child&apos;s record</th></tr>
         </thead>
         <tbody>
           {calls.map((c) => (
@@ -144,11 +154,14 @@ export function MayaCallList({ calls }: { calls: CallListRow[] }) {
               <td className="adm-nowrap"><Link href={`${ADMIN_PATH}/maya/${c.id}`}>{when(c.createdAt)}</Link></td>
               <td>{c.childName ?? "Child"}</td>
               <td>{c.questionText}</td>
-              <td>{c.status === "live" ? <span className="adm-chip is-info">Live</span> : c.outcome ? <span className={`adm-chip ${c.outcome === "solved" ? "is-ok" : "is-muted"}`}>{REASON_TEXT[c.outcome]}</span> : "-"}</td>
+              <td>
+                {c.status === "live" ? <span className="adm-chip is-info">Live</span> : c.outcome ? <span className={`adm-chip ${c.outcome === "solved" ? "is-ok" : "is-muted"}`}>{REASON_TEXT[c.outcome]}</span> : "-"}
+                {(() => { const t = safetyText(c.flag, c.safetySeverity, c.safetyFlag); return t && <> <span className="adm-chip is-bad">{t}</span></>; })()}
+              </td>
               <td>{c.assistance ? ASSISTANCE_TEXT[c.assistance] : "-"}</td>
               <td className="adm-num">{c.seconds === null ? "-" : clock(c.seconds)}</td>
-              <td className="adm-mono">{c.model}</td>
-              <td>{c.status === "live" ? "-" : c.learningEvent ? "Written" : "None"}</td>
+              <td title={c.model.id}>{c.model.fake ? "Scripted" : "AI"}</td>
+              <td>{c.status === "live" ? "-" : c.learningEvent ? "Yes" : "Not yet"}</td>
             </tr>
           ))}
         </tbody>
@@ -220,9 +233,11 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
         <div className="mc-chips">
           {live ? <span className="adm-chip is-info">Live</span> : <span className="adm-chip is-muted">Finished</span>}
           <ModelChip model={view.model} />
-          <span className="adm-chip is-muted">Test family · no minutes, no emails</span>
+          <span className="adm-chip is-muted">Test family: no minutes used, no parent emails</span>
         </div>
       </header>
+
+      {view.flag && <FlagStrip view={view} live={live} onRetry={() => send({ type: "end" })} busy={busy} />}
 
       <div className="mc-grid">
         <section className="mc-maya" aria-label="The call">
@@ -331,6 +346,36 @@ function FreeTalkChecks({ freeTalk }: { freeTalk: CallView["freeTalk"] }) {
   );
 }
 
+/**
+ * The call's flag (#333) and its alert emails to the team: sent, not sent, or not sure. A live call sends a missing or
+ * refused alert again with its next turn; an ended call with the button. A failed send's provider answer shows only as a
+ * tooltip.
+ */
+function FlagStrip({ view, live, onRetry, busy }: { view: CallView; live: boolean; onRetry: () => void; busy: boolean }) {
+  const flag = view.flag!;
+  const current = view.alerts.find((a) => a.level === flag.level);
+  const retry = !live && (!current || current.status === "refused");
+  return (
+    <section className="mc-flag" aria-label="Safety flag">
+      <p className="mc-flag-head"><span className="adm-chip is-bad">{FLAG_TEXT[flag.level]}</span> <span>Raised {when(flag.at)} · Read the conversation below to see why.</span></p>
+      <ul className="mc-flag-alerts">
+        {!current && <li><span className="adm-chip is-warn">No alert email yet</span> <span className="mc-flag-why">{noAlertNote(live)}</span></li>}
+        {view.alerts.map((a) => {
+          const note = alertNote(a.status, live, a.level === flag.level);
+          return (
+            <li key={a.level}>
+              <span className={`adm-chip ${a.status === "sent" ? "is-ok" : a.status === "sending" ? "is-info" : "is-warn"}`}>{ALERT_TEXT[a.status]}</span>{" "}
+              {FLAG_TEXT[a.level]} · {when(a.claimedAt)}
+              {note && <span className="mc-flag-why" title={a.error ?? undefined}> {note}</span>}
+            </li>
+          );
+        })}
+      </ul>
+      {retry && <p className="mc-retry"><button type="button" className="btn sm ghost adm-btn" onClick={onRetry} disabled={busy}>{busy ? "Sending…" : current ? "Send the email again" : "Send the alert email"}</button></p>}
+    </section>
+  );
+}
+
 function CallRecordFacts({ view, childName, onRetry, busy, error }: { view: CallView; childName: string | null; onRetry: () => void; busy: boolean; error: string | null }) {
   const o = view.outcome;
   const question = view.question;
@@ -341,27 +386,27 @@ function CallRecordFacts({ view, childName, onRetry, busy, error }: { view: Call
         <dl className="adm-facts">
           <div><dt>Outcome</dt><dd><span className={`adm-chip ${o.reason === "solved" ? "is-ok" : "is-muted"}`}>{REASON_TEXT[o.reason]}</span></dd></div>
           <div><dt>Help</dt><dd>{ASSISTANCE_TEXT[o.assistance]}</dd></div>
-          <div><dt>Highest hint</dt><dd>{o.highestHint === null ? "None" : `H${o.highestHint}`}</dd></div>
+          <div><dt>Strongest hint</dt><dd>{o.highestHint === null ? "None" : HINT_TEXT[o.highestHint]}</dd></div>
           <div><dt>On paper</dt><dd>{PAPER_TEXT[o.paperStatus]}</dd></div>
           <div><dt>Understanding</dt><dd>{UNDERSTANDING_TEXT[o.understanding]}</dd></div>
           <div><dt>Call time</dt><dd>{clock(Math.round(o.seconds))}</dd></div>
           <div><dt>Turns</dt><dd>{view.counts ? `${view.counts.childTurns} from ${childName ?? "the child"}, ${view.counts.mayaTurns} from Maya` : "-"}</dd></div>
-          <div><dt>Code fallbacks</dt><dd>{view.counts?.fallbacks ?? "-"}</dd></div>
-          <div><dt>Safety</dt><dd>{o.safetyFlag ? <span className="adm-chip is-bad">Flagged{o.safetySeverity ? ` (${o.safetySeverity})` : ""}</span> : "No flag"}</dd></div>
-          <div><dt>Number checks</dt><dd>{o.mishearing.confirmations} asked, {o.mishearing.corrections} corrected</dd></div>
+          <div><dt>Backup lines used</dt><dd title="Times the AI's answer could not be used, so Maya said a line from the backup script">{view.counts?.fallbacks ?? "-"}</dd></div>
+          <div><dt>Safety</dt><dd>{(() => { const t = safetyText(view.flag?.level ?? null, o.safetySeverity, o.safetyFlag); return t ? <span className="adm-chip is-bad">{t}</span> : "No concern"; })()}</dd></div>
+          <div><dt>Numbers Maya checked</dt><dd>{o.mishearing.confirmations} checked, {o.mishearing.corrections} fixed</dd></div>
         </dl>
       )}
 
-      <h3 className="mc-sub">Learning record</h3>
+      <h3 className="mc-sub">Child&apos;s record</h3>
       <dl className="adm-facts">
-        <div><dt>Learning event</dt><dd>{view.learningEventId ? <span className="adm-chip is-ok">Written</span> : <span className="adm-chip is-warn">Not written</span>}</dd></div>
-        <div><dt>Profile rebuilt</dt><dd>{view.profileRebuiltAt ? when(view.profileRebuiltAt) : "Not yet"}</dd></div>
-        <div><dt>Child profile</dt><dd><Link href={adminChildProfilePath(view.childId)}>Open the profile</Link></dd></div>
-        <div><dt>Question</dt><dd>{question.source === "assessment" ? <Link href={adminTestPath(question.assessmentId)}>Test question {question.questionId}</Link> : `Workbook page ${question.page}, number ${question.question}`}</dd></div>
+        <div><dt>Saved to child&apos;s record</dt><dd>{view.learningEventId ? <span className="adm-chip is-ok">Yes</span> : <span className="adm-chip is-warn">Not yet</span>}</dd></div>
+        <div><dt>Child&apos;s profile updated</dt><dd>{view.profileRebuiltAt ? when(view.profileRebuiltAt) : "Not yet"}</dd></div>
+        <div><dt>Child&apos;s profile</dt><dd><Link href={adminChildProfilePath(view.childId)}>Open the profile</Link></dd></div>
+        <div><dt>Question</dt><dd>{question.source === "assessment" ? <Link href={adminTestPath(question.assessmentId)}>Open the test</Link> : `Workbook page ${question.page}, number ${question.question}`}</dd></div>
       </dl>
       {(!view.learningEventId || !view.profileRebuiltAt) && (
         <p className="mc-retry">
-          <button type="button" className="btn sm ghost adm-btn" onClick={onRetry} disabled={busy}>{busy ? "Trying…" : "Try the learning record again"}</button>
+          <button type="button" className="btn sm ghost adm-btn" onClick={onRetry} disabled={busy}>{busy ? "Trying…" : "Try saving again"}</button>
           {error && <span className="mc-error" role="alert">{error}</span>}
         </p>
       )}
@@ -369,15 +414,17 @@ function CallRecordFacts({ view, childName, onRetry, busy, error }: { view: Call
       <h3 className="mc-sub">Free talk</h3>
       <FreeTalkChecks freeTalk={view.freeTalk} />
 
-      <h3 className="mc-sub">Versions</h3>
-      <dl className="adm-facts">
-        <div><dt>Model</dt><dd className="adm-mono">{view.model.id}{view.model.fake ? " (rule player, no AI)" : ""}</dd></div>
-        <div><dt>Prompt</dt><dd className="adm-mono">{view.model.promptVersion}</dd></div>
-        <div><dt>Lines</dt><dd className="adm-mono">{String(view.versions.lines)}</dd></div>
-        <div><dt>Session · proposal · trace</dt><dd className="adm-mono">{view.versions.session} · {view.versions.proposal} · {view.versions.trace}</dd></div>
-        <div><dt>Question package</dt><dd className="adm-mono" title={view.packageHash}>{view.packageHash.slice(0, 19)}…</dd></div>
-        <div><dt>Call id</dt><dd className="adm-mono">{view.id}</dd></div>
-      </dl>
+      <details className="mc-tech">
+        <summary>Technical details</summary>
+        <dl className="adm-facts">
+          <div><dt>Maya</dt><dd>{modelName(view.model)} <span className="adm-mono">{view.model.id}</span></dd></div>
+          <div><dt>Prompt</dt><dd className="adm-mono">{view.model.promptVersion}</dd></div>
+          <div><dt>Lines</dt><dd className="adm-mono">{String(view.versions.lines)}</dd></div>
+          <div><dt>Session · proposal · trace</dt><dd className="adm-mono">{view.versions.session} · {view.versions.proposal} · {view.versions.trace}</dd></div>
+          <div><dt>Question package</dt><dd className="adm-mono" title={view.packageHash}>{view.packageHash.slice(0, 19)}…</dd></div>
+          <div><dt>Call id</dt><dd className="adm-mono">{view.id}</dd></div>
+        </dl>
+      </details>
     </section>
   );
 }

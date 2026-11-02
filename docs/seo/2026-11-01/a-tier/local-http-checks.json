@@ -1,0 +1,56 @@
+{
+  "mode": "production build on local server",
+  "results": [
+    {
+      "path": "/resources",
+      "status": 200,
+      "bytes": 48539,
+      "contentType": "text/html; charset=utf-8",
+      "dataMethodLink": true
+    },
+    {
+      "path": "/resources/kumon-cost-bc",
+      "status": 200,
+      "bytes": 102064,
+      "contentType": "text/html; charset=utf-8",
+      "canonical": "https://unicalearning.com/resources/kumon-cost-bc",
+      "noindex": false,
+      "sourceCount": 21,
+      "jsonLdBlocks": 1
+    },
+    {
+      "path": "/sitemap.xml",
+      "status": 200,
+      "bytes": 2867,
+      "contentType": "application/xml",
+      "guideLastModified": "2026-11-01"
+    },
+    {
+      "path": "/resources/data/bc-centre-fees-2026-11-01.csv",
+      "status": 200,
+      "bytes": 2023,
+      "contentType": "text/csv; charset=UTF-8",
+      "dataRows": 14
+    },
+    {
+      "path": "/resources/data/bc-centre-fees-2026-11-01.json",
+      "status": 200,
+      "bytes": 5144,
+      "contentType": "application/json; charset=UTF-8",
+      "dataRows": 14,
+      "matchesSource": true
+    },
+    {
+      "path": "/resources/data/bc-centre-fees-2026-11-01.png",
+      "status": 200,
+      "bytes": 171877,
+      "contentType": "image/png"
+    },
+    {
+      "path": "/resources/data/bc-centre-fees-2026-11-01.svg",
+      "status": 200,
+      "bytes": 19092,
+      "contentType": "image/svg+xml"
+    }
+  ]
+}
