@@ -2110,6 +2110,101 @@ export type Database = {
           },
         ]
       }
+      workbook_comments: {
+        Row: {
+          actor_email: string
+          actor_id: string
+          after_value: Json | null
+          batch_id: string | null
+          before_value: Json | null
+          child_id: string
+          created_at: string
+          draft_id: string
+          error: string | null
+          id: string
+          item: Json | null
+          note: string
+          page_number: number
+          parent_id: string
+          question_number: number | null
+          revision: number
+          status: string
+          x: number
+          y: number
+        }
+        Insert: {
+          actor_email: string
+          actor_id: string
+          after_value?: Json | null
+          batch_id?: string | null
+          before_value?: Json | null
+          child_id: string
+          created_at?: string
+          draft_id: string
+          error?: string | null
+          id?: string
+          item?: Json | null
+          note: string
+          page_number: number
+          parent_id: string
+          question_number?: number | null
+          revision: number
+          status?: string
+          x: number
+          y: number
+        }
+        Update: {
+          actor_email?: string
+          actor_id?: string
+          after_value?: Json | null
+          batch_id?: string | null
+          before_value?: Json | null
+          child_id?: string
+          created_at?: string
+          draft_id?: string
+          error?: string | null
+          id?: string
+          item?: Json | null
+          note?: string
+          page_number?: number
+          parent_id?: string
+          question_number?: number | null
+          revision?: number
+          status?: string
+          x?: number
+          y?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_comments_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_edits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_comments_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_comments_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_comments_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_draft_revisions: {
         Row: {
           by_email: string | null
@@ -2239,6 +2334,106 @@ export type Database = {
           },
           {
             foreignKeyName: "workbook_drafts_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workbook_edits: {
+        Row: {
+          action: string
+          actor_email: string
+          actor_id: string
+          after_page: Json | null
+          base_revision: number
+          before_page: Json | null
+          checkpoints: Json
+          child_id: string
+          created_at: string
+          draft_id: string
+          error: string | null
+          finished_at: string | null
+          heartbeat_at: string
+          id: string
+          item: Json | null
+          lease: string | null
+          note: string
+          page_number: number
+          parent_id: string
+          question_number: number | null
+          revision: number | null
+          runner: string
+          status: string
+        }
+        Insert: {
+          action: string
+          actor_email: string
+          actor_id: string
+          after_page?: Json | null
+          base_revision: number
+          before_page?: Json | null
+          checkpoints?: Json
+          child_id: string
+          created_at?: string
+          draft_id: string
+          error?: string | null
+          finished_at?: string | null
+          heartbeat_at?: string
+          id?: string
+          item?: Json | null
+          lease?: string | null
+          note: string
+          page_number: number
+          parent_id: string
+          question_number?: number | null
+          revision?: number | null
+          runner: string
+          status?: string
+        }
+        Update: {
+          action?: string
+          actor_email?: string
+          actor_id?: string
+          after_page?: Json | null
+          base_revision?: number
+          before_page?: Json | null
+          checkpoints?: Json
+          child_id?: string
+          created_at?: string
+          draft_id?: string
+          error?: string | null
+          finished_at?: string | null
+          heartbeat_at?: string
+          id?: string
+          item?: Json | null
+          lease?: string | null
+          note?: string
+          page_number?: number
+          parent_id?: string
+          question_number?: number | null
+          revision?: number | null
+          runner?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_edits_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_edits_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_edits_parent_id_fkey"
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "parents"
@@ -3312,6 +3507,10 @@ export type Database = {
         Args: { p: string; token: string }
         Returns: undefined
       }
+      checkpoint_workbook_edit: {
+        Args: { p_id: string; p_lease: string; p_page: number; p_result: Json }
+        Returns: boolean
+      }
       claim_family_deletion: {
         Args: { p: string; token: string }
         Returns: Json
@@ -3346,6 +3545,10 @@ export type Database = {
           out_locked_until: string
           out_status: string
         }[]
+      }
+      claim_workbook_edit: {
+        Args: { p_id: string; p_lease: string; p_runner: string }
+        Returns: boolean
       }
       claim_workbook_email: {
         Args: {
@@ -3455,6 +3658,17 @@ export type Database = {
         }
         Returns: undefined
       }
+      finish_workbook_edit: {
+        Args: {
+          p_content: Json
+          p_error: string
+          p_id: string
+          p_lease: string
+          p_problems: Json
+          p_rendering: Json
+        }
+        Returns: Json
+      }
       finish_workbook_run: {
         Args: {
           p_draft: string
@@ -3498,6 +3712,21 @@ export type Database = {
         }[]
       }
       ping: { Args: never; Returns: number }
+      queue_workbook_edit: {
+        Args: {
+          p_action: string
+          p_by: string
+          p_draft: string
+          p_email: string
+          p_item: Json
+          p_note: string
+          p_page: number
+          p_question: number
+          p_revision: number
+          p_runner: string
+        }
+        Returns: Json
+      }
       read_family_payment_progress: {
         Args: { customer: string; p: string; token: string }
         Returns: Json
@@ -3522,6 +3751,10 @@ export type Database = {
       release_family_deletion: {
         Args: { p: string; token: string }
         Returns: undefined
+      }
+      release_workbook_edit: {
+        Args: { p_id: string; p_lease: string }
+        Returns: boolean
       }
       renew_family_deletion: {
         Args: { p: string; token: string }
@@ -3576,6 +3809,17 @@ export type Database = {
         Args: { p: string; test_copy: Json; test_id: string; token: string }
         Returns: boolean
       }
+      save_workbook_comment: {
+        Args: {
+          p_by: string
+          p_comment: Json
+          p_delete?: boolean
+          p_draft: string
+          p_email: string
+          p_revision: number
+        }
+        Returns: Json
+      }
       save_workbook_rendering: { Args: { p_rendering: Json }; Returns: Json }
       save_workbook_run_ai_calls: {
         Args: { p_calls: Json; p_run: string }
@@ -3624,6 +3868,16 @@ export type Database = {
       save_workbook_run_solves: {
         Args: { p_lease: string; p_logs: Json; p_run: string }
         Returns: boolean
+      }
+      send_workbook_comments: {
+        Args: {
+          p_by: string
+          p_draft: string
+          p_email: string
+          p_revision: number
+          p_runner: string
+        }
+        Returns: Json
       }
       start_workbook_run: {
         Args: {

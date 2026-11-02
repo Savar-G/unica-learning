@@ -108,3 +108,21 @@ When there are many more customers, the API becomes the default again (D-200):
 ## What stays on the API
 
 The work review, the report text, the learner and child profiles and Maya run live for parents and children. They always use the API (`src/lib/ai-client.ts`). Only workbook generation uses the subscription.
+
+
+## Draft review comments (#313)
+
+The draft page has a comment reviewer. Click a question or a place on the page. You can also select a question from the list. Enter saves a comment. Esc cancels it. Saved comments survive a reload and do not change the workbook. Use **Edit myself** inside a question comment to change its exact fields. Code calculates its answer and worked steps.
+
+**Send all comments** queues one batch in `workbook_edits`. The saved comments are in `workbook_comments`. A batch uses the configured `WORKBOOK_RUNNER`, with `mac` as the default. The same Mac worker reads these batches as well as generation runs. On the Mac it uses the subscription first, with the API fallback. Server batches use the API. `WORKBOOK_AI_FAKE=on` or `slow` substitutes the fake writer and solve checker in development only.
+
+The batch groups comments by page. A page comment covers the page. Other comments change only their selected questions. Each group uses one writer request. Code checks the changed questions, then the solve checker reads them. Only changed pages enter the print engine. The PDF assembler embeds the saved PNGs in page order, including the new page images. It runs once per batch. The assembled PDF is an image PDF; it has no selectable text.
+
+A successful batch stores one new revision and resets approval to draft. Printed and shipped workbooks refuse comments and changes. The database checks the base revision and the batch lease when it commits. A late render cannot replace a newer revision. Each comment retains its before and after data. A failed page keeps its previous content and image. Its comments stay available to send again. Comments saved during a batch move to the new revision; a missing question location is flagged.
+
+A lost commit response has an unknown outcome. The job keeps its files because the database may already reference them. Reload the draft to read the stored result. Do not delete those files based only on the lost response.
+
+
+Each finished review page is checkpointed under the batch lease before the next page starts. A server call lets go after two minutes, then uses the existing protected resume route. The next call reuses those pages and their images. A worker restart can also read them. It does not ask the writer or render those pages again. Failed pages are checkpointed too; their comments can be edited and submitted in a later batch.
+
+The review schema was applied through the Management API in this order: `workbook_edit`, `workbook_comments`, `workbook_comment_checks`, `workbook_comment_results`, `workbook_comment_resume`, `workbook_comment_send`. The matching SQL files are under `supabase/migrations/`. Keep this order when setting up another database. The repository uses date-only migration filenames; alphabetical filename order is not the dependency order.

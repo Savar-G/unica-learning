@@ -1,3 +1,5 @@
+import { commentFromRow } from "@/lib/workbook-edit-store";
+import type { ReviewComment, WorkbookEdit, EditCheckpoint } from "@/lib/workbook-edit";
 import "server-only";
 import { connection } from "next/server";
 import { notFound } from "next/navigation";
@@ -695,6 +697,8 @@ export interface AuditEntry {
 }
 
 export interface RunDetail {
+  comments: ReviewComment[];
+  editBatch: WorkbookEdit | null;
   run: WorkbookRun;
   child: ChildRow | null;
   /** The draft the run stored, its revision 1's rendering and what did not render; null until the run is done. */
@@ -718,14 +722,14 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
   const [row] = must<Parameters<typeof runFromRow>[0][]>(await a.db.from("workbook_runs").select(RUN_COLUMNS).eq("id", id).limit(1), "workbook run");
   if (!row) return null;
   const run = runFromRow(row);
-  const [children, draftRow, revision, audit, solveRows, callRows, approved] = await Promise.all([
+  const [children, draftRow, revision, audit, solveRows, callRows, approved, comments, edits, editSolves] = await Promise.all([
     childrenById(a, [run.childId]),
     run.draftId
       ? a.db.from("workbook_drafts").select("schema_version, draft").eq("id", run.draftId).maybeSingle().then((r) => must<{ schema_version: number; draft: GeneratedWorkbook } | null>(r, "workbook draft"))
       : null,
     run.draftId
-      ? a.db.from("workbook_draft_revisions").select("revision, rendering, render_problems").eq("draft_id", run.draftId).order("revision", { ascending: false }).limit(1).maybeSingle()
-        .then((r) => must<{ revision: number; rendering: DraftRendering | null; render_problems: RenderProblem[] } | null>(r, "draft revision"))
+      ? a.db.from("workbook_draft_revisions").select("revision, content, rendering, render_problems").eq("draft_id", run.draftId).order("revision", { ascending: false }).limit(1).maybeSingle()
+        .then((r) => must<{ revision: number; content: GeneratedWorkbook | null; rendering: DraftRendering | null; render_problems: RenderProblem[] } | null>(r, "draft revision"))
       : null,
     a.db.from("workbook_audit").select("id, at, actor_email, action, detail")
       .or(run.draftId ? `run_id.eq.${run.id},draft_id.eq.${run.draftId}` : `run_id.eq.${run.id}`).order("at").order("id").range(0, 199)
@@ -738,6 +742,9 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
     run.draftId
       ? a.db.from("workbooks").select("id, status").eq("id", run.draftId).maybeSingle().then((r) => must<{ id: string; status: WorkbookSummary["status"] } | null>(r, "approved workbook"))
       : null,
+    run.draftId ? a.db.from("workbook_comments").select("*").eq("draft_id", run.draftId).order("created_at").limit(500).then((r) => must(r, "comments")) : [],
+    run.draftId ? a.db.from("workbook_edits").select("*").eq("draft_id", run.draftId).order("created_at", { ascending: false }).limit(1).maybeSingle().then((r) => must(r, "edit batch")) : null,
+    run.draftId ? readPaged(async (from, to) => must(await a.db.from("workbook_edits").select("checkpoints").eq("draft_id", run.draftId!).eq("status", "done").order("created_at").range(from, to), "edit solve checks")) : [],
   ]);
   // A draft of an older shape (before the page layouts) is shown as "old draft format", not read as this shape.
   const oldFormat = draftRow && oldDraft(draftRow.schema_version, draftRow.draft.pages[0]?.content) ? draftRow.schema_version : null;
@@ -749,9 +756,14 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
   for (const item of signed.data ?? []) if (item.path && item.signedUrl && !item.error) images[item.path] = item.signedUrl;
   return {
     run, child: children[0] ?? null, images, audit, oldFormat, approved,
+    comments: comments.map(commentFromRow),
+    editBatch: edits ? { id: edits.id, draftId: edits.draft_id, revision: edits.base_revision,
+      runner: edits.runner as WorkbookEdit["runner"], status: edits.status as WorkbookEdit["status"],
+      error: edits.error, createdAt: edits.created_at, lease: edits.lease } : null,
     aiCalls: summarizeAiCalls(callRows.map((r) => ({ ...r, usd: r.usd === null ? null : Number(r.usd) }))),
-    solves: solveRows.map((r) => ({ questionId: r.question_id, model: r.model, verdict: r.verdict, ms: r.ms, usd: r.usd === null ? null : Number(r.usd), log: r.log })),
-    draft: current ? { workbook: current.draft, rendering: revision?.rendering ?? null, problems: revision?.render_problems ?? [], revision: revision?.revision ?? 1 } : null,
+    solves: [...solveRows.map((r) => ({ questionId: r.question_id, model: r.model, verdict: r.verdict, ms: r.ms, usd: r.usd === null ? null : Number(r.usd), log: r.log })),
+      ...editSolves.flatMap((e) => Object.values(e.checkpoints as unknown as Record<string, EditCheckpoint>).flatMap((p) => p.solves ?? []))],
+    draft: current ? { workbook: revision?.content ?? current.draft, rendering: revision?.rendering ?? null, problems: revision?.render_problems ?? [], revision: revision?.revision ?? 1 } : null,
   };
 }
 
