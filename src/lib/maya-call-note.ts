@@ -44,7 +44,7 @@ const TRACE_NAME = "{name}";
  * The family call of the voice work (#326) is "family"; a later kind gets notes only when it is added here and to the
  * database check (migration add_maya_call_notes).
  */
-export const NOTE_CALL_KINDS = ["family"] as const;
+export const NOTE_CALL_KINDS = ["family", "chat"] as const;
 
 /** Whether the child finished the question, as code read it. */
 export type Finished = "on_own" | "with_help" | "answer_given" | "not_finished";

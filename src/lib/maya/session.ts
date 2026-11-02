@@ -35,8 +35,8 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import { talkMath } from "./claims";
-import { saidAsApproved } from "./speech";
-import { findOffer, normalSlots, packageLines, LINE_IDS, type LineOffer } from "./lines";
+import { speechWords, saidAsApproved } from "./speech";
+import { findOffer, normalSlots, packageLines, fixedOffers, areaOffers, spokenOffer, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { committedText, readAnswer, takenBack, unreadableAnswer, valuesIn } from "./numbers";
@@ -191,6 +191,8 @@ export type Effect =
   | { kind: "end"; at: number; outcome: Outcome; safetyMessage: string | null };
 
 export type RefusalCode =
+  | "turn_too_long"
+  | "fixed_reply_first"
   | "invalid_event"
   | "invalid_proposal"
   | "ended"
@@ -268,10 +270,17 @@ interface Ladder {
 export interface Session {
   version: 4;
   callId: string;
+  /** A desk chat uses the workbook decline for an off-topic reading. */
+  channel?: "chat";
   /** Which wording of each line and phrase to say: the call's random seed, what was heard, the child's name (variety.ts). */
   variety: Variety;
   /** D-196, D-197: whether the model's own warm words may be said, after the code guards and the review. */
   freeTalk: boolean;
+  grade?: number;
+  noBoard?: boolean;
+  shorter?: boolean;
+  /** Code replies still due, then the question. Survives refused proposals. */
+  replies?: ("about.ai" | "about.no_secret" | "question.problem" | "shorter.prompt")[];
   /**
    * Whether the model's own board commands are read (R374-6-1). Only the board core's tests set it: Maya draws through
    * code's board offers (`draw`), with free talk on or off (D-197). A saved session from before has no field (off).
@@ -298,6 +307,8 @@ export interface Session {
   noStart: boolean;
   /** Easier-example steps shown, in order. */
   exampleShown: number;
+  /** The easier example was named in a prior turn, before its first worked step. */
+  exampleIntroduced?: boolean;
   /** Maya handed the question back after the whole easier example. */
   retried: boolean;
   /** Target steps the child has done. */
@@ -378,8 +389,10 @@ export interface Session {
  */
 export function createSession(input: {
   callId: string;
+  channel?: "chat";
   package: unknown;
   random?: number;
+  grade?: number;
   history?: WordingHistory;
   childName?: string | null;
   /**
@@ -400,8 +413,10 @@ export function createSession(input: {
   return {
     version: 4,
     callId: input.callId,
+    ...(input.channel ? { channel: input.channel } : {}),
     variety: newVariety({ random: input.random ?? hashOf(input.callId), history: input.history, name: input.childName }),
     freeTalk: input.freeTalk === true,
+    grade: input.grade,
     ...(input.modelBoard === true ? { modelBoard: true } : {}),
     state: "READY",
     resume: null,
@@ -602,9 +617,10 @@ function proposalProblem(p: unknown): string | null {
   if (r === undefined) return null;
   if (!isObject(r)) return "the reading is an object";
   if (r.safety !== undefined && !SEVERITIES.includes(r.safety as Severity)) return "the reading's safety is concern or immediate";
-  for (const flag of ["stop", "unclear", "writing", "offTopic", "unsafeRequest", "correctsHearing"] as const) {
+  for (const flag of ["stop", "unclear", "writing", "offTopic", "unsafeRequest", "noBoard", "shorter", "correctsHearing"] as const) {
     if (r[flag] !== undefined && typeof r[flag] !== "boolean") return `the reading's ${flag} is true or false`;
   }
+  if (r.aboutMaya !== undefined && r.aboutMaya !== "identity" && r.aboutMaya !== "secret_friend") return "aboutMaya is identity or secret_friend";
   if (r.help !== undefined && r.help !== "more" && r.help !== "show") return "the reading's help is more or show";
   if (r.start !== undefined && r.start !== "has_work" && r.start !== "no_start") return "the reading's start is has_work or no_start";
   if (r.paper !== undefined && r.paper !== "written" && r.paper !== "declined") return "the reading's paper is written or declined";
@@ -621,11 +637,14 @@ function proposalProblem(p: unknown): string | null {
 }
 
 /** The priority fields of a proposal's reading, each checked alone: a malformed field elsewhere does not drop them. */
-function priorityOf(raw: unknown): Pick<Reading, "safety" | "stop" | "unclear" | "start"> {
+function priorityOf(raw: unknown): Pick<Reading, "safety" | "stop" | "unclear" | "start" | "noBoard" | "shorter" | "aboutMaya"> {
   const r = isObject(raw) && isObject(raw.reading) ? raw.reading : {};
   return {
     safety: SEVERITIES.includes(r.safety as Severity) ? (r.safety as Severity) : undefined,
     stop: r.stop === true,
+    noBoard: r.noBoard === true,
+    shorter: r.shorter === true,
+    aboutMaya: r.aboutMaya === "secret_friend" || r.aboutMaya === "identity" ? r.aboutMaya : undefined,
     unclear: r.unclear === true,
     start: r.start === "no_start" ? "no_start" : undefined,
   };
@@ -659,6 +678,7 @@ function gate(s: Session, reading: Reading): Allowed | null {
   if (s.expect !== "maya") return { acts: [], code: "not_mayas_turn", reason: "It is the child's turn: wait for them." };
   if (s.stopRequested || reading.stop) return { acts: ["close"], code: "stop_first", reason: "The child asked to stop: close kindly, with no more questions." };
   if (s.state === "REPAIR_MAYA") return { acts: ["repair"], code: "repair_first", reason: "Maya said something the checked math does not support: correct it first." };
+  if (s.replies?.length) return { acts: ["redirect"], code: "fixed_reply_first", reason: "Say only the next code reply, with no warm or free talk." };
   if (s.silence === "close_due") return { acts: ["close"], code: "act_not_allowed", reason: "No answer after the check-in: close." };
   if (s.silence === "check_due" && !s.turn) return { acts: ["check_in"], code: "act_not_allowed", reason: "The child has been quiet: one short check-in, with no new help." };
   // Once the answer stands, the model's unclear reading does not hold the turn (practice: "I heard 66. Is that right?"
@@ -792,6 +812,11 @@ export function step(session: Session, event: SessionEvent): StepResult {
 
   // The child's turn as the model read it: a stop, an unclear number and a no-start hold even if the proposal fails.
   if (priority.stop) s.stopRequested = true;
+  if (s.turn && priority.noBoard) s.noBoard = true;
+  if (s.turn && priority.shorter) s.shorter = true;
+  if (s.turn && !s.replies?.length && priority.aboutMaya) {
+    s.replies = ["about.ai", ...(priority.aboutMaya === "secret_friend" ? ["about.no_secret" as const] : []), "question.problem"];
+  } else if (s.turn && priority.shorter && !s.replies?.length) s.replies = ["shorter.prompt"];
   if (priority.unclear && s.turn && s.solved === null) s.turn.uncertain = true;
   // From ASSESS, or from an interrupt (such as a confirmation) that returns to ASSESS, and never after the child has
   // done a step of their question (#389: practice run 9, F06, ran the easier example after the child did the ones).
@@ -932,6 +957,10 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   const no = (code: RefusalCode, reason: string, allowed: Act[]): StepResult => ({ session: base, effects, refusal: { code, reason, allowed } });
   const s = structuredClone(base);
   const pkg = s.package;
+  // #358: code supplies the existing decline, without teaching the off-topic request or raising a safety flag.
+  if (s.channel === "chat" && p.reading?.offTopic && !p.reading.safety && !p.reading.stop) {
+    p = { version: PROPOSAL_VERSION, act: "redirect", parts: [{ line: "redirect.decline" }], reading: { offTopic: true } };
+  }
   // Once the child's right answer stands, a reading that says again what code already found right carries nothing new:
   // it is left out, never judged again (practice: "Yay, I got 66! I'm done." refused as not sure, then "I heard 66. Is that
   // right?"). A wrong answer is still judged: the child may change their answer.
@@ -1010,6 +1039,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   if ("code" in spoken) return no(spoken.code, spoken.reason, allowedNow);
   const say = spoken.text;
   if (say === "" && !["wait", "safety", "give_answer"].includes(p.act)) return no("invalid_proposal", "Maya needs words for this act.", allowedNow);
+  if (s.noBoard && (p.draw?.length || p.board?.length)) return no("board_not_allowed", "The child cannot see the board. Use spoken help.", allowedNow);
   const role: Problem = p.act === "example_step" ? "example" : "target";
   // The board (R374-6-1, D-197): Maya picks board offers by id (`draw`) and code builds every command from the checked
   // worked step; a command the model built is refused, with free talk on or off. Only the board core's tests read the
@@ -1052,9 +1082,18 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       if (p.step !== next.id) return no("wrong_step", `The next example step is "${next.id}".`, allowedNow);
       // The child must hear that a new, easier problem starts (practice run 5, F06: "Like this. Add the ones: 8 + 5 = 13."
       // with no word that 18 + 15 is another problem).
-      if (index === 0 && !spoken.chosen.some((o) => o.line === "example.intro")) {
+      const intro = spoken.chosen.some((o) => o.line === "example.intro");
+      const worked = spoken.chosen.some((o) => o.line === "example.step");
+      if (index === 0 && !s.exampleIntroduced && !intro) {
         return no("line_not_offered", "The easier example starts with its intro line (example.intro), before its first step.", allowedNow);
       }
+      if (!worked) {
+        if (index !== 0 || s.exampleIntroduced || !intro) return no("line_not_offered", "Say the next worked example step.", allowedNow);
+        s.exampleIntroduced = true;
+        moveTo(s, "MODEL_EXAMPLE");
+        break; // The introduction is not a worked step. The automatic first step is still owed.
+      }
+      s.exampleIntroduced = true;
       s.exampleShown = index + 1;
       s.assistance.push("worked_example");
       moveTo(s, "MODEL_EXAMPLE");
@@ -1088,6 +1127,10 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       break;
     }
     case "accept_answer":
+      if (pkg && areaOffers(pkg).length) {
+        // The number is accepted. Code supplies its square unit, even when the child used a length unit.
+        spoken.segments = [{ kind: "math", text: areaOffers(pkg)[0].texts[0] }];
+      }
       if (!rightResult) return no("accepts_wrong_answer", "Only a right final answer the child said and kept can be accepted.", allowedNow);
       s.solved ??= "child";
       if (s.state !== "TIME_CLOSE") moveTo(s, "CHECK");
@@ -1104,8 +1147,15 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       // the child did make the answer, from the checked answer (D-199, D-195).
       const l = packageLines(pkg!);
       // Code adds math lines, so this turn is a math turn whatever the parts are (CODE_MATH_ACTS).
-      for (const line of [...(final ? l.answerParts() : []), ...l.answerGive()]) {
-        spoken.segments.push({ kind: "math", text: line.texts[chooseWording(s.variety, line.texts.map((_, i) => `${line.key}#${i}`), s.now!)] });
+      const added = [...(final ? l.answerParts() : []), ...l.answerGive()];
+      for (const [index, rawLine] of added.entries()) {
+        const line = s.noBoard ? spokenOffer(rawLine) : rawLine;
+        const reserve = added.slice(index + 1).reduce((n, o) => n + Math.min(...o.texts.map(speechWords)), 0);
+        const remaining = turnWordLimit(s) - reserve - speechWords(spoken.segments.map((o) => o.text).join(" "));
+        const eligible = line.texts.map((_, i) => i).filter((i) => speechWords(line.texts[i]) <= remaining);
+        const pool = eligible.length ? eligible : line.texts.map((_, i) => i);
+        const pick = pool[chooseWording(s.variety, pool.map((i) => line.wordingIds?.[i] ?? `${line.key}#${i}`), s.now!)];
+        spoken.segments.push({ kind: "math", text: line.texts[pick] });
       }
       if (s.solved === null) {
         s.solved = "maya";
@@ -1165,7 +1215,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       if (reading.unsafeRequest && !spoken.chosen.some((o) => o.line === "redirect.decline")) {
         return no("decline_first", "The child asked for content Maya never gives: say the decline line (redirect.decline).", allowedNow);
       }
-      if (!reading.unsafeRequest && spoken.chosen.some((o) => o.line === "redirect.decline")) {
+      if (!reading.unsafeRequest && !(s.channel === "chat" && reading.offTopic) && spoken.chosen.some((o) => o.line === "redirect.decline")) {
         return no("line_not_offered", "The decline line is only for a request for sexual, violent or other harmful content (reading.unsafeRequest).", allowedNow);
       }
       s.redirects += 1;
@@ -1182,6 +1232,14 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     const order = assembledProblem(spoken.segments, CODE_MATH_ACTS.includes(p.act));
     if (order) return no(order.code, order.reason, allowedNow);
     text = spoken.segments.map((x) => x.text).join(" ");
+    if (s.noBoard && /\b(?:board|look|watch|see|show me|follow along)\b/i.test(text)) return no("board_not_allowed", "Use only spoken help. No visual action is available.", allowedNow);
+  }
+
+  if (p.act !== "safety" && speechWords(text) > turnWordLimit(s)) {
+    return no("turn_too_long", `This turn has ${speechWords(text)} spoken words. The limit is ${turnWordLimit(s)}.`, allowedNow);
+  }
+  if (s.replies?.length && p.act === "redirect") {
+    s.replies.shift();
   }
 
   // 7. Committed: the reading counts now (its answers only when they were judged).
@@ -1223,7 +1281,10 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     effects.push({ kind: "board", batch: { transactionId: `${s.callId}-b${s.batches}`, commands: pb.board } });
   }
 
-  if (p.act === "close") {
+  if (s.replies?.length && p.act === "redirect") {
+    s.expect = "maya";
+    s.silence = "none";
+  } else if (p.act === "close") {
     end(s, closeCause(base), effects, false);
   } else if (p.act === "safety" || (p.act === "example_step" && s.exampleShown < pkg!.easierExample.steps.length)) {
     s.expect = "maya";
@@ -1542,8 +1603,7 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
         break;
       }
       case "example_step": {
-        // The intro and the step together: the first step of the easier example is refused without its intro.
-        const at = offers.find((o) => o.line === "example.step");
+        const at = offers.find((o) => o.line === "example.step") ?? offers.find((o) => o.line === "example.intro");
         lineSets = at ? [make(act, offers, { step: at.slots.step })] : [];
         break;
       }
@@ -1794,7 +1854,7 @@ export function phraseOffers(session: Session, group: PhraseGroup): { pick: numb
 
 /** The warm-talk purposes each act Maya may take now can use (D-196), for the text adapter beside lineOffers. */
 export function warmGroups(session: Session): Partial<Record<Act, PhraseGroup[]>> {
-  return Object.fromEntries(nextActs(session).acts.map((act) => [act, PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(act))]));
+  return Object.fromEntries(nextActs(session).acts.map((act) => [act, session.replies?.length ? [] : PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(act))]));
 }
 
 /** "{echo}" filled with the child's words, a capital first at the start of a sentence. */
@@ -1867,9 +1927,30 @@ function heardIn(s: Session): [AnswerValue[], [AnswerValue, AnswerValue][]] {
  * step the ladder is on (to check a proposal), or every step not done yet (to offer, as a reading may finish steps).
  */
 function offersFor(s: Session, act: Act, view: View): LineOffer[] {
+  const offers = rawOffersFor(s, act, view);
+  const available = (s.noBoard ? offers.map(spokenOffer) : offers).filter((o) => o.texts.length > 0);
+  // The shorter setting needs to exclude the 26-word subtraction variants. Ordinary turns still receive
+  // the final assembly check; avoid recounting every available wording at the 45-word setting.
+  if (turnWordLimit(s) === 45) return available;
+  return available.flatMap((o) => {
+    // Some approved variants are longer than a younger child's limit. Keep their ids and choose among variants
+    // that fit individually. The final assembly check still refuses combinations that exceed the limit.
+    const indices = o.texts.map((_, i) => i).filter((i) => speechWords(o.texts[i]) <= turnWordLimit(s));
+    return indices.length ? [{ ...o, texts: indices.map((i) => o.texts[i]), wordingIds: indices.map((i) => o.wordingIds?.[i] ?? `${o.key}#${i}`) }] : [];
+  });
+}
+
+/** Calls saved before profile limits keep the earlier 45-word limit. */
+export const turnWordLimit = (s: Pick<Session, "grade" | "shorter">): number =>
+  !s.shorter && (s.grade === undefined || (Number.isInteger(s.grade) && s.grade >= 4 && s.grade <= 7)) ? 45 : 25;
+
+function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
   const pkg = s.package;
   if (!pkg) return [];
   const l = packageLines(pkg);
+  if (s.replies?.length && act === "redirect") {
+    return [...fixedOffers(), ...l.question()].filter((o) => o.line === s.replies![0]);
+  }
   const main = isTeaching(s.state) ? s.state : s.resume;
   const solved = s.solved ?? (view.rightResult ? "child" : null);
   const right = l.stepIds.flatMap(l.rightStep);
@@ -1881,7 +1962,10 @@ function offersFor(s: Session, act: Act, view: View): LineOffer[] {
     case "example_step": {
       const index = main === "ASSESS" ? 0 : s.exampleShown;
       const next = pkg.easierExample.steps[index];
-      return [...(index === 0 ? l.exampleIntro() : []), ...(next ? l.exampleStep(next.id) : [])];
+      if (index === 0 && !s.exampleIntroduced && turnWordLimit(s) === 25) {
+        return l.exampleIntro().map((o) => ({ ...o, slots: { step: next.id } }));
+      }
+      return [...(index === 0 && !s.exampleIntroduced ? l.exampleIntro() : []), ...(next ? l.exampleStep(next.id) : [])];
     }
     case "try_target":
       return [...l.tryTarget(), ...l.question()];
@@ -1968,6 +2052,9 @@ const isMathLine = (o: LineOffer) => o.texts.some((t) => talkMath(t) !== null);
  */
 function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview[]): Spoken | { code: RefusalCode; reason: string } {
   const offers = offersFor(s, p.act, view);
+  if (p.act === "redirect" && s.replies?.length && (p.parts.length !== 1 || !("line" in p.parts[0]) || p.parts[0].line !== s.replies[0])) {
+    return { code: "fixed_reply_first", reason: "Use only the next fixed code line." };
+  }
   const texts: string[] = [];
   const segments: Segment[] = [];
   const chosen: LineOffer[] = [];
@@ -1984,7 +2071,7 @@ function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview
   const pickFresh = (wordings: readonly string[], id: (i: number) => string) => {
     const used = new Set(texts.flatMap(openings));
     const fresh = wordings.map((w, i) => i).filter((i) => !openings(wordings[i]).some((o) => used.has(o)));
-    const pool = fresh.length > 0 ? fresh : wordings.map((_, i) => i);
+    const pool = fresh.length ? fresh : wordings.map((_, i) => i);
     return pool[chooseWording(s.variety, pool.map(id), s.now!)];
   };
   const phrase = (group: PhraseGroup, echoed: string | null = null, pick?: number, only?: readonly string[]) => {
@@ -2068,7 +2155,7 @@ function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview
     if (p.act === "guide" && o.level !== undefined && o.level > (p.level ?? 0)) {
       return { code: "hint_too_high", reason: `"${o.line}" is H${o.level} help, above this guide's level H${p.level ?? 0}.` };
     }
-    const text = o.texts[pickFresh(o.texts, (k) => `${o.key}#${k}`)];
+    const text = o.texts[pickFresh(o.texts, (k) => o.wordingIds?.[k] ?? `${o.key}#${k}`)];
     // The decline counts as math (D-197): a turn that declines holds no free talk, and nothing follows it but code.
     add(isMathLine(o) || o.line === "redirect.decline" ? "math" : "plain", text);
     lines.push(text);
@@ -2090,8 +2177,13 @@ interface BoardOffer {
 }
 
 /** The places Maya may put a new board object: code offers them; the model picks one by name. */
-function boardPlaces(s: Session, batch: readonly string[]): Record<string, Place> {
-  const out: Record<string, Place> = { main: { region: "main" } };
+function boardPlaces(s: Session, batch: readonly string[], exampleStep: boolean): Record<string, Place> {
+  // Keep the example's steps beside its sum, then put the target below that work.
+  const last = batch.at(-1) ?? Object.keys(s.boardRoles).at(-1);
+  const result = exampleStep && s.package?.easierExample.steps[s.exampleShown]?.kind === "result";
+  const main: Place = result && Object.hasOwn(s.boardRoles, "example") ? { below: "example" }
+    : exampleStep && last === "example" ? { rightOf: last } : last ? { below: last } : { region: "main" };
+  const out: Record<string, Place> = { main };
   for (const id of ["question", "example"]) if (Object.hasOwn(s.boardRoles, id) || batch.includes(id)) out[`below:${id}`] = { below: id };
   return out;
 }
@@ -2173,7 +2265,7 @@ function drawBoard(s: Session, p: Proposal, view: View, spoken: Spoken): Command
     const o = offers.find((x) => x.id === d.offer);
     if (!o) return `"${d.offer}" is not a board offer for ${p.act} now. Offered: ${offers.map((x) => x.id).join(", ") || "none"}.`;
     if (ids.includes(o.id)) return `"${o.id}" is drawn twice.`;
-    const places = boardPlaces(s, ids.map((id) => (id === "question.columns" ? "question" : id === "example.columns" ? "example" : id)));
+    const places = boardPlaces(s, out.flatMap((command) => "id" in command && ["columns", "write", "model"].includes(command.op) ? [command.id] : []), p.act === "example_step");
     const place = places[d.place ?? "main"];
     if (!place) return `"${d.place}" is not a board place now. Places: ${Object.keys(places).join(", ")}.`;
     ids.push(o.id);
@@ -2187,6 +2279,7 @@ function drawBoard(s: Session, p: Proposal, view: View, spoken: Spoken): Command
  * what it shows. `line.<line id>` offers appear in the turn a line with a board form is said.
  */
 export function drawOffers(session: Session): Partial<Record<Act, { id: string; shows: string }[]>> {
+  if (session.noBoard) return {};
   const pkg = session.package;
   const { acts } = nextActs(session);
   if (!pkg) return Object.fromEntries(acts.map((a) => [a, []]));

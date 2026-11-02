@@ -197,13 +197,13 @@ export function MayaCallList({ calls, older, newer }: { calls: CallListRow[]; ol
                 {(() => { const t = safetyText(c.flag, c.safetySeverity, c.safetyFlag); return t && <span className="adm-chip is-bad mc-list-flag">{t}</span>; })()}
               </td>
               <td data-label="Child and question">{c.childName ?? "Child"}<span className="adm-sub">{c.questionText}</span></td>
-              <td data-label="How">{c.mode === "voice" ? "Spoken" : "Typed"}</td>
+              <td data-label="How">{c.kind === "chat" ? "Chat" : c.mode === "voice" ? "Spoken" : "Typed"}</td>
               <td data-label="Outcome and help">
                 {c.status === "live" ? <span className="adm-chip is-info">Live</span> : c.outcome ? <span className={`adm-chip ${c.outcome === "solved" ? "is-ok" : "is-muted"}`}>{REASON_TEXT[c.outcome]}</span> : "-"}
                 {c.assistance && <span className="adm-sub">{ASSISTANCE_TEXT[c.assistance]}</span>}
               </td>
               <td data-label="Call time" className="adm-num">{c.seconds === null ? "-" : clock(c.seconds)}</td>
-              <td data-label="Minutes used" className="adm-num" title="Test calls do not use the child's minutes">0</td>
+              <td data-label="Minutes used" className="adm-num" title="Chat and test calls do not use voice minutes">0</td>
               <td data-label="Numbers Maya checked" title="Numbers Maya asked to confirm, and times the child said she heard wrong">{c.mishearing ? `${c.mishearing.confirmations} checked, ${c.mishearing.corrections} fixed` : "Not recorded"}</td>
             </tr>
           ))}
@@ -319,14 +319,14 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
     <div className="mc-call">
       <header className="mc-head">
         <div className="mc-head-q">
-          <p className="adm-crumb"><Link href={`${ADMIN_PATH}/maya`}>Maya calls</Link> · Test call · {childName ?? "Child"}</p>
+          <p className="adm-crumb"><Link href={`${ADMIN_PATH}/maya`}>Maya calls</Link> · {view.kind === "chat" ? "Chat" : "Test call"} · {childName ?? "Child"}</p>
           <h1>{view.questionText}</h1>
         </div>
         <div className="mc-chips">
           {live ? <span className="adm-chip is-info">Live</span> : <span className="adm-chip is-muted">Finished</span>}
           {voice && <span className="adm-chip is-muted">Spoken call</span>}
           <ModelChip model={view.model} />
-          <span className="adm-chip is-muted">Test family: no minutes used, no parent emails</span>
+          <span className="adm-chip is-muted">{view.kind === "chat" ? "Chat: no voice minutes used" : "Test family: no minutes used, no parent emails"}</span>
         </div>
       </header>
 
@@ -340,7 +340,7 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
             <img className="mc-avatar" src="/desk/maya.webp" alt="" width={40} height={40} />
             <div>
               <h2>Maya</h2>
-              <p>{live ? (voice ? `You speak as ${childName ?? "the child"}.` : busy ? "Maya is thinking…" : `You type as ${childName ?? "the child"}.`) : "The call has ended."}</p>
+              <p>{live && view.kind === "chat" ? "The child chats on the desk. This view is read-only." : live ? (voice ? `You speak as ${childName ?? "the child"}.` : busy ? "Maya is thinking…" : `You type as ${childName ?? "the child"}.`) : "The call has ended."}</p>
             </div>
           </header>
 
@@ -390,7 +390,7 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
               onCancel={() => void send({ type: "end" })}
               busy={busy}
             />
-          ) : live ? (
+          ) : live && view.kind !== "chat" ? (
             <form className="mc-say" onSubmit={submit}>
               <label className="mc-say-box">
                 <span className="sr-only">What {childName ?? "the child"} says</span>
@@ -540,7 +540,7 @@ function CallRecordFacts({ view, childName, onRetry, busy, error }: { view: Call
       )}
 
       <dl className="adm-facts">
-        <div><dt>Minutes used</dt><dd>0 <span className="adm-sub">Test calls do not use the child&apos;s minutes.</span></dd></div>
+        <div><dt>Minutes used</dt><dd>0 <span className="adm-sub">{view.kind === "chat" ? "Chat does not use voice minutes." : "Test calls do not use the child’s minutes."}</span></dd></div>
         {view.voice && <div><dt>Connected time</dt><dd>{view.voice.connectedSeconds === null ? "Not recorded" : clock(view.voice.connectedSeconds)}</dd></div>}
       </dl>
 

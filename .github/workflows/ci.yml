@@ -24,6 +24,20 @@ jobs:
   test:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    # Keep the SQL comparison inside the existing required test job.
+    # Supabase uses PostgreSQL 17. This database contains synthetic rows only.
+    services:
+      postgres:
+        image: postgres:17.11-bookworm@sha256:839fbb5a4942a7758dd93e18b42ea5649807491a0545b5eeeb8f0b8bb11857a5
+        env:
+          POSTGRES_PASSWORD: maya-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         timeout-minutes: 2
@@ -36,6 +50,16 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
         timeout-minutes: 5
+      - run: node scripts/generate-family-zones.mjs --check
+        timeout-minutes: 1
+      - name: Compare family windows and run concurrent quota probes
+        run: npm run test:family-zones
+        timeout-minutes: 10
+        env:
+          PGPORT: '5432'
+          PGDATABASE: postgres
+          PGUSER: postgres
+          PGPASSWORD: maya-ci-only
       # The 2-core runner is slower than a laptop: the assessment bank tests can pass the 5 s default locally but not here.
       - run: npm test -- --testTimeout=60000
         timeout-minutes: 10

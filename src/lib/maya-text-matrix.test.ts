@@ -117,7 +117,7 @@ function assertCell(s: TextSession, want: Expected, prefixBoard: MayaTrace["boar
   expect(trace.board).toHaveLength(want.boards);
   expect(trace.board.slice(0, prefixBoard.length)).toEqual(prefixBoard);
   for (const b of trace.board.slice(prefixBoard.length)) expect(b.commands).toEqual([
-    { op: "columns", id: "question", operation: "add", operands: [{ id: "top", value: "27" }, { id: "bottom", value: "39" }], place: { region: "main" } },
+    { op: "columns", id: "question", operation: "add", operands: [{ id: "top", value: "27" }, { id: "bottom", value: "39" }], place: prefixBoard.length === 3 ? { below: "note-3-0-example-step" } : { region: "main" } },
   ]);
   const debts = (kind: string) => trace.obligations!.filter(o => o.kind === kind).map(o => o.status === "dropped" ? `dropped: ${o.reason}` : o.status);
   expect(debts("start_pending")).toEqual(["served"]);

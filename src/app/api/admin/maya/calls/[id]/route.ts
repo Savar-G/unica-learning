@@ -39,6 +39,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/maya/
   try {
     const view = await calls.view(id.toLowerCase());
     if (!view) return new Response("Not found", { status: 404 });
+    // Child chat turns must pass the desk's locked message admission. Admin review cannot act as the child.
+    if (view.kind === "chat" && (view.status === "live" || body.input.type !== "end")) return Response.json({ ok: false, error: "read_only" }, { status: 403 });
     const result = await calls.input(view.id, body.revision as number, body.input, await childFirstName(view.childId));
     if (!result.ok) return Response.json(result, { status: result.error === "not_found" ? 404 : result.error === "invalid_input" ? 400 : 409 });
     return Response.json({ ...result, board: boardPlayback(result.view.batches) });

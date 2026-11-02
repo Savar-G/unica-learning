@@ -122,6 +122,18 @@ const written = (r: NoteResult) => {
   return r.note;
 };
 
+describe("chat parent notes", () => {
+  it("writes the ordinary note and transcript for a real-family chat", async () => {
+    const { ended } = await endedTestCall(NO_START);
+    const call = { ...asFamily(ended), kind: "chat" };
+    const s = setup(null, [call]);
+    const result = await s.notes.write({ call, package: ended.package, event: ended.event });
+    expect(result.ok).toBe(true);
+    expect(s.store.rows()).toHaveLength(1);
+    expect(s.store.rows()[0].transcript.some((t) => t.speaker === "child")).toBe(true);
+  });
+});
+
 describe("test calls never get a note", () => {
   it("an admin test call ends with no note, no AI request and no row", async () => {
     const ai = fakeNoteAi();

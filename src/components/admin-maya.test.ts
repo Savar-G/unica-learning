@@ -48,3 +48,13 @@ it("shows plain links to both call pages, including a route back from an empty p
   expect(markup).toContain('/admin/maya?cursor=next-token');
   expect(markup).toContain('href="/admin/maya"');
 });
+
+it("labels child chats correctly and keeps the live view read-only", async () => {
+  const fixture = await reviewFixture();
+  const initial = { ...fixture.text, kind: "chat" as const, status: "live" as const };
+  const markup = renderToStaticMarkup(createElement(MayaCall, { initial, board: boardPlayback(initial.batches), childName: "Iris" }));
+  expect(markup).toContain("Chat: no voice minutes used");
+  expect(markup).toContain("This view is read-only");
+  expect(markup).not.toContain("<textarea");
+  expect(markup).not.toContain("Test family: no minutes used, no parent emails");
+});

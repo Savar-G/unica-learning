@@ -1,0 +1,20 @@
+{
+  "R451_1": {
+    "otherCallReadRecovered": true,
+    "originalTurns": 1,
+    "previousDayUsage": 0,
+    "newCallAccepted": true,
+    "parallelRecovery": [
+      "accepted",
+      "busy"
+    ],
+    "staleWorkerWrites": 0
+  },
+  "R451_2": {
+    "refusedAdmission": "refused",
+    "newRevisionAccepted": true
+  },
+  "grade": 2,
+  "channel": "chat",
+  "freeTalk": false
+}

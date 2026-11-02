@@ -5,6 +5,7 @@ import { pageMetadata } from "@/lib/metadata";
 import { DESK_COOKIE, DESK_HOME, deskView, questionCrop, readLock, tapAreas, type DeskView } from "@/lib/desk";
 import { formatInZone, familyZone, type FamilyZone } from "@/lib/family-time";
 import { questionBoard } from "@/lib/desk-board";
+import { parentChatUsage } from "@/lib/maya-chat-server";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { WORKBOOK_FILES_BUCKET, type WorkbookSummary } from "@/lib/workbook-content";
 import { workbookStore } from "@/lib/workbook-store";
@@ -52,6 +53,8 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
   const province = await loadFamilyProvince(db, parent);
   const timeZone = familyZone({ timeZone: family?.time_zone, postal: family?.postal, province });
 
+  const chatUsage = child ? (await parentChatUsage(db, parent, [child], timeZone)).get(child.id) ?? null : null;
+
   if (!child || !view || view.status === "no-workbook") {
     return (
       <Desk
@@ -74,6 +77,7 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
       // A new workbook or page starts the desk again, with the question asked for.
       key={`${workbook.id}-${page.number}`}
       name={name}
+      chatUsage={chatUsage}
       notice={view.notice === "not-this-child" ? `That workbook is not on ${name}'s desk, so ${name}'s newest workbook is open.` : null}
       books={view.workbooks.map((w) => book(w, timeZone))}
       book={book(workbook, timeZone)}
