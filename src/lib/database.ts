@@ -18,6 +18,7 @@ import type { BoardHistory } from "@/lib/board-history";
 import type { Outcome, WordingHistory } from "@/lib/maya";
 import type { AlertStatus, CallKind, CallRecord, CallStatus, FlagLevel } from "@/lib/maya-call";
 import type { MayaTrace } from "@/lib/maya-trace";
+import type { ConnectionKind } from "@/lib/maya-voice";
 
 export type { Json };
 
@@ -44,6 +45,7 @@ type ColumnTypes = KnownColumns<{
     understanding: Outcome["understanding"] | null; safety_severity: Outcome["safetySeverity"]; live: NonNullable<CallRecord["live"]> | null;
     trace: MayaTrace | null; board_history: BoardHistory | null; flag: FlagLevel | null;
   };
+  maya_call_connections: { kind: ConnectionKind };
   maya_call_alerts: { level: FlagLevel; status: AlertStatus };
   maya_demo_children: { made_by: "maya-demo-child" };
   maya_wording_history: { heard: WordingHistory };

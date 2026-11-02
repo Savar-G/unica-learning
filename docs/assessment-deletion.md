@@ -263,3 +263,24 @@ Checked on the live database (1 November 2026), in one transaction that was roll
 | The Auth user is deleted (the deletion's last step) | 0 rows left for the family |
 
 Two writes for the same child sent together on the live database (1 November 2026, a test family's child; the row was removed afterwards): the second waited about 2.5 seconds for the first's lock, and the row kept both wordings.
+
+`public.maya_call_connections` (migration `add_maya_call_connections`, #326) holds when the child and Maya joined and left each voice call: an event kind and two times, no audio and no words (`src/lib/maya-call-store.ts`, `mayaConnectionLog`). `call_id` with `parent_id` and `child_id` references `public.maya_calls (id, parent_id, child_id)`, `parent_id` references `public.parents`, and `child_id` with `parent_id` references `public.children (id, parent_id)`, all `on delete cascade`. A row can only name its call's own family, and only a voice call (trigger `maya_call_connection_voice`). There are no files: no audio is stored anywhere (the voice worker starts LiveKit with recording off). The existing family deletion removes every row when it deletes the parent's Auth user; deleting a call removes its rows. The worker needs no code change and no table list. The retention rules need no change: today only admin test calls of test families have voice calls, and the rows add no activity of their own.
+
+The service role may only insert and read: no update or delete grant. The table has the family write fence trigger. Row-level security is on; the one policy lets admins read. A signed-in parent and anon read nothing.
+
+Checked on the live database (1 November 2026), in transactions that were rolled back, with a voice call of a test family (A) and one of a second test family (B):
+
+| Check | Result |
+|---|---|
+| Server (service role) appends 3 events (2 for A, 1 for B) | written |
+| A row naming A's call with B's family | refused (23503) |
+| A row for a text call | refused (55000, `maya_call_not_voice`) |
+| A time an hour ahead of the database's clock | refused (23514) |
+| Server update; server delete | refused (42501) both |
+| An admin reads | 3 rows |
+| Parent A (whose call it is) reads; inserts | 0 rows; refused (42501) |
+| Parent B reads A's call; reads any | 0 rows; 0 rows |
+| Anon reads | refused (42501) |
+| Family B's Auth user is deleted | 0 rows left for B; A's 2 rows stay |
+| A's call is deleted | 0 rows left for it |
+| A write after family A's deletion request | refused (55000, `family_unavailable`) |
