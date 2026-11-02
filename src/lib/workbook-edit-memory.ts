@@ -82,7 +82,7 @@ export function memoryWorkbookReview(snapshot: EditSnapshot, options: { now?: ()
     save(comment: Omit<ReviewComment, "id" | "status" | "error" | "before" | "after" | "batchId"> & { requestKey?: string }) {
       if (locked()) return refused("This workbook is printed or shipped. It cannot change.");
       if (comment.revision !== current.revision) return refused("This workbook changed. Reload the page.");
-      const existing = comments.find(c => c.requestKey && c.requestKey === comment.requestKey);
+      const existing = comments.find(c => c.requestKey && c.requestKey === comment.requestKey && c.actor.id === comment.actor.id);
       if (existing) return { status: "saved", id: existing.id };
       comments.push({ ...structuredClone(comment), id: `comment-${++serial}`, status: "pending", error: null, before: null, after: null, batchId: null });
       return { status: "saved", id: comments.at(-1)!.id };

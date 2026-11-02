@@ -2,9 +2,11 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { loadFamilyChildren } from "@/lib/family-time-server";
+import { addDays, familyProvince, familyZone, localDay, weekStartFor } from "@/lib/family-time";
 import { saveEmailCopy } from "@/lib/email-copies";
 import type { SendLedger } from "@/lib/email-delivery";
 import { fromNoteRow } from "@/lib/maya-call-note-store";
+import { NOTE_CALL_KINDS } from "@/lib/maya-call-note";
 import { LOOKBACK_DAYS, type WeeklyLogEntry, type WeeklyStore, type DueWeekly } from "@/lib/maya-weekly-email";
 
 // The weekly Maya email's store (#332): reads and writes with the secret key. The rules are in
@@ -63,8 +65,7 @@ export function mayaWeeklyStore(admin: SupabaseClient<Database>): WeeklyStore {
       const notes = noteRows.map(fromNoteRow);
       const calls = callRows.map((c) => ({ callId: c.id, parentId: c.parent_id, childId: c.child_id, endedAt: c.ended_at!, notePending: c.note_pending !== null, kind: c.kind }));
       const parentIds = [...new Set(calls.map((c) => c.parentId))];
-      // Only the log rows that matter: each parent's Maya unsubscribe, and all weekly claims, whose call coverage survives calendar changes.
-      const [parents, children, unsubscribes, weekly, tests] = await Promise.all([
+      const [parents, children, unsubscribes, tests] = await Promise.all([
         // Each id chunk has at most CHUNK rows, below the server page limit.
         inChunks(parentIds, async (ids) => {
           const { data, error } = await admin.from("parents").select("id, name, email, postal, time_zone").in("id", ids);
@@ -76,10 +77,6 @@ export function mayaWeeklyStore(admin: SupabaseClient<Database>): WeeklyStore {
           const query = admin.from("email_log").select("id, kind, parent_id, week_start, status, attempts, call_ids").eq("kind", "maya_unsubscribe").in("parent_id", ids).order("id").limit(PAGE);
           return after ? query.gt("id", after.id) : query;
         })),
-        inChunks(parentIds, (ids) => allPages<LogRow>((after) => {
-          const query = admin.from("email_log").select("id, kind, parent_id, week_start, status, attempts, call_ids").eq("kind", "maya_weekly").in("parent_id", ids).order("id").limit(PAGE);
-          return after ? query.gt("id", after.id) : query;
-        })),
         // Test families are never emailed (R421W-5).
         inChunks(parentIds, async (ids) => {
           const { data, error } = await admin.from("test_accounts").select("parent_id").in("parent_id", ids);
@@ -87,6 +84,29 @@ export function mayaWeeklyStore(admin: SupabaseClient<Database>): WeeklyStore {
           return data ?? [];
         }),
       ]);
+      // Coverage follows call IDs across zone changes. Read only claims that can cover a recent candidate.
+      const coverage = await inChunks(calls.filter((c) => (NOTE_CALL_KINDS as readonly string[]).includes(c.kind)).map((c) => c.callId), (ids) => allPages<LogRow>((after) => {
+        const query = admin.from("email_log").select("id, kind, parent_id, week_start, status, attempts, call_ids")
+          .eq("kind", "maya_weekly").in("status", ["claimed", "sent"]).overlaps("call_ids", ids).order("id").limit(PAGE);
+        return after ? query.gt("id", after.id) : query;
+      }));
+      // A current slot blocks a duplicate or supplies its failed retry even when its call IDs differ.
+      const slots = new Map<string, string[]>();
+      for (const p of parents) {
+        const province = familyProvince(children.filter((c) => c.parent_id === p.id));
+        const zone = familyZone({ timeZone: p.time_zone, postal: p.postal, province });
+        const week = addDays(weekStartFor(localDay(now, zone)), -7);
+        slots.set(week, [...(slots.get(week) ?? []), p.id]);
+      }
+      const current: LogRow[] = [];
+      for (const [week, parentIds] of slots) {
+        current.push(...await inChunks(parentIds, (ids) => allPages<LogRow>((after) => {
+          const query = admin.from("email_log").select("id, kind, parent_id, week_start, status, attempts, call_ids")
+            .eq("kind", "maya_weekly").eq("week_start", week).in("parent_id", ids).order("id").limit(PAGE);
+          return after ? query.gt("id", after.id) : query;
+        })));
+      }
+      const weekly = [...new Map([...coverage, ...current].map((e) => [e.id, e])).values()];
       const testIds = new Set(tests.map((t) => t.parent_id));
       return {
         parents: parents.map((p) => ({ id: p.id, name: p.name, email: p.email, postal: p.postal, timeZone: p.time_zone, test: testIds.has(p.id) })),

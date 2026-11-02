@@ -2184,6 +2184,7 @@ export type Database = {
           batch_id: string | null
           before_value: Json | null
           child_id: string
+          client_request_key: string | null
           created_at: string
           draft_id: string
           error: string | null
@@ -2206,6 +2207,7 @@ export type Database = {
           batch_id?: string | null
           before_value?: Json | null
           child_id: string
+          client_request_key?: string | null
           created_at?: string
           draft_id: string
           error?: string | null
@@ -2228,6 +2230,7 @@ export type Database = {
           batch_id?: string | null
           before_value?: Json | null
           child_id?: string
+          client_request_key?: string | null
           created_at?: string
           draft_id?: string
           error?: string | null
@@ -3302,6 +3305,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _maya_family_window: {
+        Args: { p_at: string; p_kind: string; p_parent: string }
+        Returns: {
+          period: string
+          period_start: string
+        }[]
+      }
       _maya_minutes_used:
         | {
             Args: {

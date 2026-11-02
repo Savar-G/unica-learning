@@ -167,6 +167,14 @@ export interface Behaviour {
     /** The acts that reached the child, in order (null: a Maya turn with no output). */
     acts?: (Act | null)[];
     counts?: Partial<GateCounts>;
+    /** Approved lines and fraction strips that must reach the child in a given Maya turn (opening = 0). */
+    outputs?: {
+      mayaTurn: number;
+      /** Ordered lines, each with its approved complete variants. Code joins them with one space in one say entry. */
+      lines?: string[][];
+      /** Exact strip values, in order. Each strip after the first must be below the previous one. */
+      strips?: { parts: number; shaded: number }[];
+    }[];
     /** Refusal codes that must appear in the trace, in this order (other refusals may come between). */
     refused?: (RefusalCode | "board_refused")[];
     /** Acts that must never reach the child. */
@@ -709,6 +717,34 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
   if (want.acts && JSON.stringify(want.acts) !== JSON.stringify(acts)) fail("flow_mismatch", `acts ${JSON.stringify(acts)}, expected ${JSON.stringify(want.acts)}`);
   for (const [k, v] of Object.entries(want.counts ?? {}) as [keyof GateCounts, number][]) {
     if (counts[k] !== v) fail("flow_mismatch", `count ${k} is ${counts[k]}, expected ${v}`);
+  }
+  for (const expected of want.outputs ?? []) {
+    const output = maya[expected.mayaTurn]?.output;
+    if (!output) {
+      fail("flow_mismatch", `Maya turn ${expected.mayaTurn} has no expected output`);
+      continue;
+    }
+    if (expected.lines) {
+      // Compare the complete output against only the requested lines' variants. Do not split, trim or change case.
+      // Empty groups give no approved output. A second say entry or extra code sentence cannot pass.
+      const approved = expected.lines.length === 0 ? [] : expected.lines.reduce<string[]>((prefixes, variants) =>
+        prefixes.flatMap((prefix) => variants.map((text) => prefix === "" ? text : `${prefix} ${text}`)), [""]);
+      if (output.say.length !== 1 || !approved.includes(output.say[0])) {
+        fail("flow_mismatch", `Maya turn ${expected.mayaTurn} said ${JSON.stringify(output.say)}, expected complete approved line variants in order`);
+      }
+    }
+    if (expected.strips) {
+      // Read what reached this turn's board, not the model's requested offer or the package's strip values.
+      const strips = t.board.filter((batch) => output.board.includes(batch.transactionId)).flatMap((batch) => batch.commands).flatMap((command) => {
+        const c = command as { op?: string; id?: string; model?: { kind?: string; parts?: number; shaded?: number }; place?: { below?: string } };
+        return c.op === "model" && c.model?.kind === "fraction_strip" ? [c] : [];
+      });
+      const values = strips.map((c) => ({ parts: c.model!.parts, shaded: c.model!.shaded }));
+      if (JSON.stringify(values) !== JSON.stringify(expected.strips)) fail("flow_mismatch", `Maya turn ${expected.mayaTurn} strips are ${JSON.stringify(values)}, expected ${JSON.stringify(expected.strips)}`);
+      if (strips.some((c, i) => i > 0 && (!strips[i - 1].id || c.place?.below !== strips[i - 1].id))) {
+        fail("flow_mismatch", `Maya turn ${expected.mayaTurn} fraction strips are not placed below each other`);
+      }
+    }
   }
   if (want.refused) {
     const codes = maya.flatMap((m) => m.attempts.flatMap((a) => (a.refusal ? [a.refusal.code] : [])));

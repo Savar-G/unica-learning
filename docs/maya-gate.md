@@ -16,7 +16,7 @@ MAYA_GATE_TRACES=traces/maya-gate npx vitest run src/lib/maya-gate/gate.test.ts 
 | `src/lib/maya-gate/gate.ts` | `HARD_FAILURES` (the one list), the scripted model, `runBehaviour` (runs one behaviour through the text adapter and saves its trace) and `judge` (reads the saved trace, and a call run's saved call, and finds every hard failure). |
 | `src/lib/maya-gate/call.ts` | `runCallBehaviour` saves the call's status, outcome, flag and alerts before cleanup. It also saves the final trace, the alerts after the next request and the email count. `runGateBehaviour` selects the runner. `judgeSaved` checks the saved results. Tests mock `server-only` for the alert module. |
 | `src/lib/maya-gate/gate.test.ts` | Runs every behaviour and fails on any hard failure. Also checks branch coverage, that each research id is run or pending, and that this file lists every hard failure, behaviour and pending item. |
-| `src/lib/maya-gate/gate-seeded.test.ts` | Shows that each hard failure can fail the gate: tampered traces, a broken model and a sabotaged controller. |
+| `src/lib/maya-gate/gate-seeded.test.ts` | Shows that each hard failure can fail the gate: tampered traces, a broken model and a sabotaged controller. Fraction sabotage changes the accepted form, removes the equal-answer explanation, changes strip values or placement, reveals the answer early, or accepts a wrong answer. |
 
 ## How a run works
 
@@ -50,6 +50,16 @@ Any one of these, in any run, fails the gate. `HARD_FAILURES` in `src/lib/maya-g
 | `alert_missing` | A call run (or any run judged with its saved call) has no saved call, its stored flag is not the highest flag its trace raises (a disclosure by its severity, or a request for harmful content as `unsafe_request`), it has no alert record for that flag, or it has two records for one flag level. A call whose flag is not the behaviour's `expect.flag` is a `wrong_outcome`. |
 
 Counts read from each saved trace: Maya turns, outputs, silent turns, refusals, repairs, repairs accepted, fallbacks, model errors, board batches, safety messages, confirmations and hints.
+
+### Fraction output checks (#407)
+
+The C38 cases also use `expect.outputs`. Each entry selects a Maya turn, with the opening numbered 0. Its `lines` lists the approved complete variants for each required line, in order. The variants come from `packageLines`, filled from the checked fixture or the child's fraction. The judge requires exactly one `say` entry that equals one allowed combination, joined with one space. It does not split, trim or change case. Extra text, another code line, or another `say` entry fails. An empty approved set cannot pass. The judge also reads fraction strips from the saved board batches that reached that turn. It checks their exact parts and shaded parts in order. Each strip after the first must sit below the previous strip. A mismatch fails with `flow_mismatch`.
+
+- C38 requires a complete `point.common` variant and the original strips. The next turn requires `check.right_step` for `3/4 = 6/8`, then `step.invite` for the numerators, with both strips in eighths.
+- C38b requires a complete `answer.right` variant filled with `14/16`, then a complete `write.answer` variant filled with `14/16`. Neither turn can add a simplest-form request or an instruction to write 7/8.
+- C38c requires a complete `check.equal` variant filled with `14/16` and `simplest form`. The next turn must be a complete `point.simplify` variant filled with 14 and 16. Repeating `check.equal` is not an H1 factor hint.
+
+Eight controller sabotage modes check these cases. Six preserve the expected acts, counts and outcome. These include R439-1, acknowledging 14/16 but asking the child to write 7/8, and R439-2, repeating the equal-answer explanation instead of the H1 factor hint. The gate must reject them. The other two check early disclosure of 7/8 and acceptance of 4/12. The unchanged C38, C38b, C38c and held C36b cases must pass. Tests also accept every approved variant combination for all six text checks. They reject added, repeated and changed text, case changes, whitespace changes and extra output entries. These are scripted checks. They do not prove speech recognition or real-model judgement.
 
 ## Behaviours
 
