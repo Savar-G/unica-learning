@@ -214,3 +214,20 @@ it("loads the browser zone and child's province for the shared rule", async () =
   expect(dueWeeklyEmails(state, now)).toHaveLength(1);
   expect(dueWeeklyEmails(state, now - 1)).toHaveLength(0);
 });
+
+describe("R425M-3 family fallback", () => {
+  it.each([false, true])("uses the oldest child even without their calls, reverse=%s", async (reverse) => {
+    const children = [
+      { ...child("c-old", "p1"), created_at: "2020-01-01T00:00:00Z", province: "ON" },
+      { ...child("c-new", "p1"), created_at: "2021-01-01T00:00:00Z", province: "BC" },
+    ];
+    if (reverse) children.reverse();
+    const db = fakeDb({
+      parents: [{ ...parent("p1"), postal: null }], children,
+      maya_call_notes: [noteRow("only-new-child-called", "p1", "c-new", pdt(4, 12))], email_log: [],
+    });
+    const at = Date.parse("2026-11-09T12:00:00Z");
+    const state = await mayaWeeklyStore(db).load(at);
+    expect(dueWeeklyEmails(state, at)).toMatchObject([{ zone: "America/Toronto", callIds: ["only-new-child-called"] }]);
+  });
+});

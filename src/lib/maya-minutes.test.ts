@@ -199,7 +199,7 @@ describe("concurrent starts, retries and reconnects are counted once", () => {
     expect(await t.ledger.grantChild(input)).toMatchObject({ ok: false, leftSeconds: 0 });
     expect(() => t.store.callMade(call(3))).toThrow(/expired/);
     t.store.callMade(call(4));
-    expect(await t.store.used({ parentId: P, childId: C, kind: "child", period: "2026-11-02" })).toBe(1800);
+    expect(await t.store.used({ parentId: P, childId: C, kind: "child", periodStart: Date.parse("2026-11-02T07:00:00Z") })).toBe(1800);
   });
 
   it("checks delayed call creation even when the caller does not retry the grant", async () => {
@@ -212,7 +212,7 @@ describe("concurrent starts, retries and reconnects are counted once", () => {
     await t.ledger.grantChild({ ...input, callId: call(4) });
     expect(() => t.store.callMade(call(3))).toThrow(/expired/);
     t.store.callMade(call(4));
-    expect(await t.store.used({ parentId: P, childId: C, kind: "child", period: "2026-11-02" })).toBe(1800);
+    expect(await t.store.used({ parentId: P, childId: C, kind: "child", periodStart: Date.parse("2026-11-02T07:00:00Z") })).toBe(1800);
   });
 
   it("refuses a delayed call when its original limit exceeds the smaller remainder", async () => {
@@ -234,7 +234,7 @@ describe("concurrent starts, retries and reconnects are counted once", () => {
     t.advance(GRANT_CALL_WAIT_MS);
     t.store.callMade(call(1));
     t.advance(GRANT_CALL_WAIT_MS * 10);
-    expect(await t.store.used({ parentId: P, childId: C, kind: "child", period: "2026-11-02" })).toBe(600);
+    expect(await t.store.used({ parentId: P, childId: C, kind: "child", periodStart: Date.parse("2026-11-02T07:00:00Z") })).toBe(600);
   });
 
   it("counts on the server's clock", async () => {

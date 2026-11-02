@@ -117,6 +117,16 @@ Worker replacement also fences client messages. A confirmed revision conflict st
 
 A child has 30 minutes each week, starting on Monday at midnight in the family's time zone. Each call lasts at most 10 minutes, or the remaining minutes when fewer remain. Under one minute left, no call starts. A parent's "Try Maya" calls have a separate limit of 2 minutes per local day for the account. This limit is fixed in the code and in `grant_maya_minutes`. Savar confirmed these limits on 2026-11-01 in PR #422.
 
+Usage follows grant timestamps. The server computes the current local period's start instant through `family-time.ts`. Both minutes RPCs sum grants at or after that instant. The saved local date is a label, so a zone change cannot select an empty ledger by changing that label. The old RPC signatures remain available during rollout. The call-insert guard uses the grant's saved start instant for the new signature.
+
+The family zone uses a valid stored browser zone, then the postal mapping, then the oldest child's province, then Pacific. The oldest child is the first by `created_at`, then `id`. A child's calls or tests do not affect this selection. Missing local times resolve to the first valid instant at or after the requested time. Repeated local times resolve to the earlier instant.
+
 `grant_maya_minutes` reserves seconds under a lock per child, or per parent for a demo. An unused grant expires after two minutes. A retry must reserve its original seconds again against the current remainder. The `reserve_maya_minutes_on_call` trigger also checks call creation under that lock. If the original seconds no longer fit, it refuses the call. It does not shorten an old grant because a delayed caller can still hold its original call limit. A new call ID can receive a shorter grant. The check uses the current database clock after the lock, including when a transaction waited for the lock.
 
 Once a call row exists, its whole grant counts until the call ends. A crashed call keeps its minutes counted for that week until it is ended in admin. The settle trigger then counts the connected seconds, up to the grant. Admin test calls with no grant remain uncounted. Child calls and parent demos will use the ledger when #337 and #336 connect them.
+
+## Weekly recap call coverage
+
+The recap claims all included completed call IDs in `email_log.call_ids`, including calls without notes and notes outside the displayed ten. A sent or claimed recap covers those IDs permanently. A refused send can retry. Unknown delivery stays claimed. `claim_maya_weekly` locks the parent before it checks both the weekly claim and overlapping call IDs. It stores the IDs and unsubscribe hash in the same transaction.
+
+The job releases one delivery slot per parent at Monday 7 a.m. family time. The slot ends at the next Monday midnight. It includes uncovered calls from the last 14 elapsed days that ended before the current local Monday. It defers pending or missing notes until the final local Sunday. Calls expire from the lookback window. Local week labels group the display and do not determine call coverage. A zone change can move a call to another displayed week without duplicating it or hiding it behind an earlier weekly claim.

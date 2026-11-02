@@ -1,3 +1,4 @@
+import { loadFamilyProvince } from "@/lib/family-time-server";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { after } from "next/server";
@@ -54,6 +55,7 @@ export default async function StartScreen({ params, searchParams }: PageProps<"/
   }
   // Start, continue, start again after 24 hours, or wait 30 days after a completed test (#72).
   const state = stateFor(states, child.id);
+  const province = await loadFamilyProvince(db, parent);
   const phone = isPhone(await headers());
 
   return (
@@ -73,7 +75,7 @@ export default async function StartScreen({ params, searchParams }: PageProps<"/
       ) : (
         <>
           {state.kind !== "wait" && <p className="lead">{child.first_name} takes the test alone, on this device, in one sitting. Start when {child.first_name} is ready.</p>}
-          <div className="acct-begin"><StartTest childId={child.id} name={child.first_name} state={state} when={startWhen(state, familyZone({ timeZone: family?.time_zone, postal: family?.postal, province: child.province }))} /></div>
+          <div className="acct-begin"><StartTest childId={child.id} name={child.first_name} state={state} when={startWhen(state, familyZone({ timeZone: family?.time_zone, postal: family?.postal, province }))} /></div>
         </>
       )}
       <p className="small acct-out"><Link href="/account">Your account</Link></p>

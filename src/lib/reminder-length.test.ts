@@ -35,6 +35,8 @@ function fakeAdmin(tables: Tables): SupabaseClient {
       gte(column: string, value: string) { rows = rows.filter((r) => String(r[column]) >= value); return query; },
       lte(column: string, value: string) { rows = rows.filter((r) => String(r[column]) <= value); return query; },
       order() { return query; },
+      limit(n: number) { rows = rows.slice(0, n); return query; },
+      gt(column: string, value: string) { rows = rows.filter((r) => String(r[column]) > value); return query; },
       range(a: number, b: number) { rows = rows.slice(a, b + 1); return query; },
       returns() { return query; },
       maybeSingle() {
@@ -96,4 +98,13 @@ describe("a stopped test, as the reminder job reads it", () => {
     expect(due).toMatchObject([{ kind: "continue" }]);
     expect(reminderMessage(due[0], "tok", state, ORIGIN)?.text).toContain("after 10 of 36 questions");
   });
+});
+
+it("R425M-3: a younger child's reminder uses the older inactive sibling's province", async () => {
+  const tables = mayaTables("up", 10);
+  tables.parents[0].postal = null;
+  tables.children[0].province = "BC";
+  tables.children.push({ id: "z-old", parent_id: "p1", first_name: "Older", grade: 5, province: "ON", created_at: "2020-01-01T00:00:00Z" });
+  const { state, due } = await remindersFor(tables);
+  expect(reminderMessage(due[0], "tok", state, ORIGIN)?.text).toContain("2:00 p.m. on Saturday, October 17");
 });

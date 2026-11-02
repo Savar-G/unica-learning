@@ -1,3 +1,4 @@
+import { loadFamilyProvince } from "@/lib/family-time-server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
@@ -48,7 +49,8 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
     }),
   ]);
   const name = child?.first_name ?? null;
-  const timeZone = familyZone({ timeZone: family?.time_zone, postal: family?.postal, province: child?.province });
+  const province = await loadFamilyProvince(db, parent);
+  const timeZone = familyZone({ timeZone: family?.time_zone, postal: family?.postal, province });
 
   if (!child || !view || view.status === "no-workbook") {
     return (

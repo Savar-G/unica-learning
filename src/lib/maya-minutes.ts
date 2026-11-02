@@ -18,7 +18,7 @@
 // Seams: the store (Supabase: src/lib/maya-minutes-store.ts; memory: src/lib/maya-minutes-memory.ts) and the clock. Pure
 // otherwise: no network, database or Next.js.
 
-import { dayOf, weekOf, type FamilyZone, type Period } from "@/lib/family-time";
+import { dayOf, weekOf, localDateTime, type FamilyZone, type Period } from "@/lib/family-time";
 export { dayOf, weekOf, type Period } from "@/lib/family-time";
 
 export const WEEK_SECONDS = 30 * 60;
@@ -41,6 +41,7 @@ export interface GrantRequest {
   childId: string | null;
   kind: MinutesKind;
   period: string;
+  periodStart: number;
   periodSeconds: number;
   callSeconds: number;
   minSeconds: number;
@@ -56,7 +57,7 @@ export interface MinutesStore {
    */
   grant(request: GrantRequest): Promise<{ seconds: number; usedSeconds: number }>;
   /** The period's seconds used: settled calls at their seconds, open calls at their whole grant. */
-  used(query: { parentId: string; childId: string | null; kind: MinutesKind; period: string }): Promise<number>;
+  used(query: { parentId: string; childId: string | null; kind: MinutesKind; periodStart: number }): Promise<number>;
 }
 
 export type Grant =
@@ -84,8 +85,8 @@ export function createMinutesLedger(seams: { store: MinutesStore; clock: () => n
   const { store, clock } = seams;
   const demoCap = DEMO_DAILY_MINUTES * 60;
 
-  async function grant(base: Omit<GrantRequest, "period" | "periodSeconds" | "callSeconds" | "minSeconds">, period: Period, periodSeconds: number): Promise<Grant> {
-    const r = await store.grant({ ...base, period: period.start, periodSeconds, callSeconds: CALL_SECONDS, minSeconds: MIN_CALL_SECONDS });
+  async function grant(base: Omit<GrantRequest, "period" | "periodStart" | "periodSeconds" | "callSeconds" | "minSeconds">, period: Period, timeZone: FamilyZone, periodSeconds: number): Promise<Grant> {
+    const r = await store.grant({ ...base, period: period.start, periodStart: localDateTime(period.start, timeZone), periodSeconds, callSeconds: CALL_SECONDS, minSeconds: MIN_CALL_SECONDS });
     const leftBefore = Math.max(0, periodSeconds - r.usedSeconds);
     if (r.seconds <= 0) return { ok: false, reason: "none_left", leftSeconds: leftBefore, resetsAt: period.resetsAt };
     return { ok: true, seconds: r.seconds, limitMs: r.seconds * 1000, leftSeconds: Math.max(0, leftBefore - r.seconds) };
@@ -93,12 +94,12 @@ export function createMinutesLedger(seams: { store: MinutesStore; clock: () => n
 
   return {
     grantChild: ({ callId, parentId, childId, timeZone }) =>
-      grant({ callId, parentId, childId, kind: "child" }, weekOf(clock(), timeZone), WEEK_SECONDS),
+      grant({ callId, parentId, childId, kind: "child" }, weekOf(clock(), timeZone), timeZone, WEEK_SECONDS),
     grantDemo: ({ callId, parentId, timeZone }) =>
-      grant({ callId, parentId, childId: null, kind: "parent_demo" }, dayOf(clock(), timeZone), demoCap),
+      grant({ callId, parentId, childId: null, kind: "parent_demo" }, dayOf(clock(), timeZone), timeZone, demoCap),
     async usage({ parentId, childId, timeZone }) {
       const week = weekOf(clock(), timeZone);
-      const usedSeconds = Math.min(WEEK_SECONDS, await store.used({ parentId, childId, kind: "child", period: week.start }));
+      const usedSeconds = Math.min(WEEK_SECONDS, await store.used({ parentId, childId, kind: "child", periodStart: localDateTime(week.start, timeZone) }));
       return { usedSeconds, leftSeconds: WEEK_SECONDS - usedSeconds, weekSeconds: WEEK_SECONDS, resetsAt: week.resetsAt };
     },
   };

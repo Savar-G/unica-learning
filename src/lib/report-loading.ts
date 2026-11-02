@@ -50,6 +50,7 @@ export interface ReportRecord {
   child: { firstName: string } | null;
   /** Present in database reads. Optional for older stored/demo inputs. */
   postal?: string | null;
+  familyProvince?: string | null;
   timeZone?: string | null;
 }
 
@@ -270,7 +271,7 @@ export async function loadReportView(reader: ReportReader, id: string): Promise<
       id: row.id,
       childName: row.child.firstName,
       province: row.assessment.province,
-      timeZone: familyZone({ timeZone: row.timeZone, postal: row.postal, province: row.assessment.province }),
+      timeZone: familyZone({ timeZone: row.timeZone, postal: row.postal, province: row.familyProvince }),
       completedAt: row.assessment.completedAt,
       questions: row.questions,
       minutes: row.minutes,

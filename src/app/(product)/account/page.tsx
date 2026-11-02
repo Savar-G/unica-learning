@@ -2,7 +2,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
-import { startWhen, familyZone } from "@/lib/family-time";
+import { startWhen, familyZone, familyProvince } from "@/lib/family-time";
 import { CURRICULA } from "@/lib/signup";
 import { gradeLabel } from "@/lib/assessment/grades";
 import type { StartState } from "@/lib/assessment";
@@ -36,7 +36,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   if (!parentUser) redirect("/sign-in");
   const [{ data: parent }, { data: kids }, states, { data: reports }] = await Promise.all([
     db.from("parents").select("name, email, postal, time_zone").maybeSingle(),
-    db.from("children").select(`id, first_name, grade, province, ${LEARNING_COLUMNS}`).order("created_at"),
+    db.from("children").select(`id, created_at, first_name, grade, province, ${LEARNING_COLUMNS}`).order("created_at").order("id"),
     // Start, continue, start again after 24 hours, or wait 30 days after a completed test (#72).
     parentStartStates(parentUser),
     // Reports (#65), oldest first, each with the time its test finished.
@@ -52,7 +52,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   const { sent, password, existing, pin, desk } = await searchParams;
 
   const children = kids ?? [];
-  const timeZone = familyZone({ timeZone: parent.time_zone, postal: parent.postal, province: children[0]?.province });
+  const timeZone = familyZone({ timeZone: parent.time_zone, postal: parent.postal, province: familyProvince(children) });
   // Parent home (#301): each child's current workbook (the newest shipped one) and the desk, which needs the PIN.
   // Maya's minutes this week (#330), for test families until Maya opens to families (#337).
   const [current, pinSet, minutes] = await Promise.all([currentWorkbooks(db, children.map((c) => c.id)), pinIsSet(parentUser), parentMinutes(db, parentUser, timeZone, children)]);

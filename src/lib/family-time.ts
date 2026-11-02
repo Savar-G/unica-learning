@@ -20,6 +20,11 @@ export interface FamilyLocation {
   province?: string | null;
 }
 
+/** The oldest child defines the family's province fallback, including children with no calls or tests. */
+export function familyProvince(children: readonly { id: string; created_at?: string; province?: string | null }[]): string | null {
+  return [...children].sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? "") || a.id.localeCompare(b.id))[0]?.province ?? null;
+}
+
 /** One family rule: valid browser zone, postal mapping, child's province, then Pacific. */
 export function familyZone({ timeZone, postal, province }: FamilyLocation): FamilyZone {
   // Resolve aliases too, so Canada/Pacific gets the same override as America/Vancouver.
@@ -97,16 +102,26 @@ export function localDateTime(day: string, zone: FamilyZone, hour = 0): number {
   const date = new Date(`${day}T00:00:00Z`);
   date.setUTCHours(hour);
   const wall = date.getTime();
-  let result = wall;
-  // Convert local calendar fields back to an instant. Re-evaluate the offset across DST.
-  for (let i = 0; i < 4; i++) {
-    const fields = partsInZone(result, zone, { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric", hourCycle: "h23" });
-    const represented = Date.UTC(Number(fields.year), Number(fields.month) - 1, Number(fields.day), Number(fields.hour), Number(fields.minute), Number(fields.second));
-    const next = result + wall - represented;
-    if (next === result) return result;
-    result = next;
+  const represented = (at: number) => {
+    const f = partsInZone(at, zone, { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric", hourCycle: "h23" });
+    return Date.UTC(+f.year, +f.month - 1, +f.day, +f.hour, +f.minute, +f.second);
+  };
+  // Include both offsets around a transition. Exact matches choose the earlier occurrence on fall back.
+  const candidates = [...new Set([-2, 0, 2].map((days) => {
+    const at = wall + days * 86_400_000;
+    return wall - (represented(at) - at);
+  }))].sort((a, b) => a - b);
+  const exact = candidates.find((at) => represented(at) === wall);
+  if (exact !== undefined) return exact;
+  // The requested wall time lies in a forward gap. Find the transition itself, not the same minute after the gap.
+  let low = candidates[0];
+  let high = candidates[candidates.length - 1];
+  while (high - low > 1000) {
+    const middle = Math.floor((low + high) / 2000) * 1000;
+    if (represented(middle) >= wall) high = middle;
+    else low = middle;
   }
-  throw new RangeError("Cannot resolve local date and hour");
+  return high;
 }
 
 /** Most recent Monday at the local hour (0 for a weekly reset, 7 for weekly email). */

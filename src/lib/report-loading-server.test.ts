@@ -30,6 +30,11 @@ it.each(["G0G 1W0", "V1C 3H8", null])("reads the parent's own postal code %s wit
       expect(select).toBe("postal,time_zone");
       return Response.json({ postal, time_zone: "America/Vancouver" }); // Parents read their own row through RLS.
     }
+    if (url.pathname === "/rest/v1/children") {
+      expect(url.searchParams.get("order")).toBe("created_at.asc,id.asc");
+      expect(url.searchParams.get("limit")).toBe("1");
+      return Response.json({ id: OTHER, created_at: "2020-01-01", province: "ON" });
+    }
     expect(url.pathname).toBe("/rest/v1/reports");
     expect(url.searchParams.get("id")).toBe(`eq.${TEST}`);
     // PostgREST needs SELECT on a join's foreign key as well as the returned columns.
@@ -50,17 +55,22 @@ it.each(["G0G 1W0", "V1C 3H8", null])("reads the parent's own postal code %s wit
       assessment: { completed_at: "2026-11-18T04:29:00Z", province: "BC" }, child: { first_name: "Asha" } });
   } } });
   expect(reportGrants.has("parent_id")).toBe(false);
-  expect(await parentReportReader(db).report(TEST)).toMatchObject({ postal });
-  expect(requests.map((url) => url.pathname)).toEqual(["/rest/v1/reports", "/rest/v1/parents"]);
+  expect(await parentReportReader(db).report(TEST)).toMatchObject({ postal, familyProvince: "ON" });
+  expect(requests.map((url) => url.pathname)).toEqual(["/rest/v1/reports", "/rest/v1/parents", "/rest/v1/children"]);
 });
 
 it("keeps the secret reader's parent join under its own access", async () => {
   const db = createClient("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input) => {
     const url = new URL(String(input));
+    if (url.pathname === "/rest/v1/children") {
+      expect(url.searchParams.get("order")).toBe("created_at.asc,id.asc");
+      expect(url.searchParams.get("limit")).toBe("1");
+      return Response.json({ id: OTHER, created_at: "2020-01-01", province: "ON" });
+    }
     expect(url.pathname).toBe("/rest/v1/reports");
-    expect(url.searchParams.get("select")).toContain("parent:parents(postal,time_zone)");
+    expect(url.searchParams.get("select")).toContain("parent:parents(id,postal,time_zone)");
     return Response.json({ id: TEST, assessment_id: TEST, child_id: OTHER, model: {}, questions: 36, minutes: 34,
-      assessment: null, child: null, parent: { postal: "M5V 2T6" } });
+      assessment: null, child: null, parent: { id: TEST, postal: "M5V 2T6" } });
   } } });
   expect(await secretKeyReportReader(db).report(TEST)).toMatchObject({ postal: "M5V 2T6" });
 });

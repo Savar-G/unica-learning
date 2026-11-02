@@ -135,7 +135,7 @@ describe("one email per parent per week", () => {
     ["spring", "2026-03-02T08:00:00Z", "2026-03-09T06:59:59Z", "2026-03-09T07:00:00Z", "2026-03-09T14:00:00Z"],
   ])("includes the whole week across the %s daylight saving change", async (_, start, end, next, release) => {
     const { run, mail } = setup([
-      note({ endedAt: Date.parse(start) - 1, sentences: ["Before week."] }),
+      note({ endedAt: Date.parse(release) - 14 * 86_400_000 - 1, sentences: ["Before week."] }),
       note({ endedAt: Date.parse(start), sentences: ["First call."] }),
       note({ endedAt: Date.parse(end), sentences: ["Last call."] }),
       note({ endedAt: Date.parse(next), sentences: ["Next week."] }),
@@ -150,14 +150,14 @@ describe("one email per parent per week", () => {
     expect(text.indexOf("Last call.")).toBeLessThan(text.indexOf("First call."));
   });
 
-  it("sends late recaps within seven days, but never sends an older week", async () => {
+  it("sends late recaps inside the lookback window, then expires uncovered calls", async () => {
     const calls = [note({ endedAt: pdt(2, 15) })];
     expect(await setup(calls).run(pdt(15, 23, 59))).toMatchObject({ sent: 1 });
-    expect(await setup(calls).run(pdt(16, 0))).toMatchObject({ due: 0, sent: 0 });
+    expect(await setup(calls).run(pdt(16, 15, 1))).toMatchObject({ due: 0, sent: 0 });
     const { run, mail } = setup(calls);
     mail.answerNext("refuse");
     expect(await run(pdt(9, 7))).toMatchObject({ failed: 1 });
-    expect(await run(pdt(16, 0))).toMatchObject({ due: 0 });
+    expect(await run(pdt(16, 15, 1))).toMatchObject({ due: 0 });
   });
 
   it("shows the newest ten calls across the family and counts every other call", async () => {
@@ -226,7 +226,7 @@ describe("R421W-1: delayed notes", () => {
     expect(m.text).toContain("2 calls this week have no note yet.");
     expect(m.html).toContain("2 calls this week have no note yet.");
     if (savedCount > 10) expect(m.text).toContain("There was 1 more call this week.");
-    expect(await run(pdt(16, 0))).toMatchObject({ due: 0 });
+    expect(await run(pdt(16, 15, 1))).toMatchObject({ due: 0 });
   });
 
   it("does not send an incomplete recap after expiry", async () => {
@@ -406,4 +406,16 @@ describe("shared family time for the weekly recap", () => {
     expect(await setup(previousWeekOnly, family, kids).run(Date.parse(expiry) - 1)).toMatchObject({ sent: 1 });
     expect(await setup(previousWeekOnly, family, kids).run(Date.parse(expiry))).toMatchObject({ sent: 0 });
   });
+});
+
+it("R425M-1: groups uncovered calls by displayed week and claims all call IDs", async () => {
+  const older = note({ endedAt: pdt(2, 15), sentences: ["An earlier uncovered call."] });
+  const newer = note({ endedAt: pdt(9, 15), sentences: ["A more recent call."] });
+  const { store, mail, run } = setup([older, newer]);
+  expect(await run(pdt(16, 7))).toMatchObject({ sent: 1 });
+  const text = mail.delivered[0].text;
+  expect(text).toContain("from Monday, November 2 to Sunday, November 15");
+  expect(text.indexOf("Week of Monday, November 9")).toBeLessThan(text.indexOf("A more recent call."));
+  expect(text.indexOf("Week of Monday, November 2")).toBeLessThan(text.indexOf("An earlier uncovered call."));
+  expect(store.rows()[0].callIds).toEqual([newer.callId, older.callId]);
 });
