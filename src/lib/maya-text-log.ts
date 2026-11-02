@@ -168,6 +168,19 @@ function syncSafety(s: TextFold, at: number) {
     else old.severity = severity;
   }
 }
+function receiveReading(s: TextFold, reading: unknown, at: number) {
+  // Invalid shape applies only the controller's priority reading. It cannot score or speak.
+  const r = controllerStep(s, { type: "proposal", at, proposal: { reading } });
+  const previous = s.session.safety.severity;
+  s.session = r.session;
+  syncSafety(s, at);
+  if (s.session.safety.severity !== previous) {
+    const request = s.request, candidate = s.candidate, attempts = s.attempts;
+    cancel(s, "superseded by safety", true);
+    s.request = request; s.candidate = candidate; s.attempts = attempts;
+  }
+  takeEffects(s, r.effects, at);
+}
 function takeEffects(s: TextFold, effects: Effect[], at: number, attempts: TraceAttempt[] = [], stateBefore = s.session.state) {
   for (const e of effects) {
     if (e.kind === "cancel_output") s.output.cancelled = true;
@@ -295,6 +308,11 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
   if (!s.session.outcome) {
     const bytes = new TextEncoder().encode(JSON.stringify(e)).byteLength;
     if (s.historyBytes + bytes > MAX_TEXT_HISTORY_BYTES) {
+      // A current response's safety duty survives the budget. Ordinary content is discarded.
+      if (e.kind === "response" && !e.error && s.request?.id === e.requestId) {
+        const reading = e.proposal && typeof e.proposal === "object" ? (e.proposal as { reading?: unknown }).reading : undefined;
+        if (reading && typeof reading === "object") receiveReading(s, { safety: (reading as { safety?: unknown }).safety }, e.at);
+      }
       cancel(s, "call record limit reached", true);
       applyInput(s, { type: "technical", at: e.at, detail: "the call record limit was reached" });
       commitControls(s); refreshOutput(s);
@@ -337,19 +355,8 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
         s.request = null;
       } else {
         s.candidate = { requestId: e.requestId, proposal: e.proposal, ms: e.ms, source };
-        // Invalid shape intentionally applies only the controller's priority reading. It cannot score or speak.
         const reading = e.proposal && typeof e.proposal === "object" ? (e.proposal as { reading?: unknown }).reading : undefined;
-        const r = controllerStep(s, { type: "proposal", at: e.at, proposal: { reading } });
-        const previous = s.session.safety.severity;
-        s.session = r.session;
-        syncSafety(s, e.at);
-        if (s.session.safety.severity !== previous) {
-          // Remove ordinary speech buffered before a newly received safety reading.
-          const request = s.request, candidate = s.candidate, attempts = s.attempts;
-          cancel(s, "superseded by safety", true);
-          s.request = request; s.candidate = candidate; s.attempts = attempts;
-        }
-        takeEffects(s, r.effects, e.at);
+        receiveReading(s, reading, e.at);
       }
       break;
     }
