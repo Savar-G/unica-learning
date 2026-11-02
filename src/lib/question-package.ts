@@ -117,6 +117,9 @@ export interface FractionParts {
 /**
  * A computable operation (question-package-math.ts has the limits of each kind):
  * - add, subtract: whole numbers from 0 to 9999; subtraction never goes below zero.
+ * - missing-addend: a known part and a total ("2 + ? = 5", "How far is 7 from 10?"), whole numbers to 20 with the part
+ *   no larger than the total; the answer is the missing part (3), worked by counting on from the part to the total. It
+ *   is a number bond, so it is not subtraction: a level that has not met subtraction may ask it.
  * - multiply: a whole number to 9999 times a whole number to 999 (long multiplication).
  * - divide: a whole number to 9999 divided by a whole number from 1 to 99 (long division, with a remainder).
  * - decimal-add, decimal-subtract, decimal-multiply: numbers to 9999.999 with at most 3 decimal places.
@@ -137,7 +140,7 @@ export interface FractionParts {
  *   both sides, then checked by putting the solution in.
  */
 export type Operation =
-  | KindsOf<"add" | "subtract" | "multiply" | "divide" | "decimal-add" | "decimal-subtract" | "decimal-multiply", [number, number]>
+  | KindsOf<"add" | "subtract" | "multiply" | "divide" | "decimal-add" | "decimal-subtract" | "decimal-multiply" | "missing-addend", [number, number]>
   | KindsOf<"fraction-add" | "fraction-subtract" | "fraction-multiply" | "fraction-divide", [FractionOperand, FractionOperand]>
   | { kind: "fraction-simplify"; operands: [Extract<AnswerValue, { type: "fraction" }>] }
   | { kind: "fraction-equivalent"; operands: [Extract<AnswerValue, { type: "fraction" }>]; denominator: number }
@@ -282,6 +285,14 @@ export type WorkedStep =
       from: ClockTime;
       to: ClockTime;
       minutes: number;
+    }
+  | {
+      /** A missing part found by counting on from the known part to the total: each number said, then how many. */
+      id: "count";
+      kind: "count-up";
+      from: number;
+      to: number;
+      said: number[];
     }
   | { id: "total"; kind: "add-durations"; minutes: number[]; total: number }
   | { id: "clock"; kind: "clock-change"; from: ClockTime; to: ClockTime }
@@ -470,6 +481,11 @@ export type Statement =
  * - sequence: the terms go up (or down) by `step` each time; each box holds its term (missing numbers).
  * - compare: the choice is <, > or = between `left` and `right`.
  * - yes-no: the choice is `yes` when the statement is true, else `no`.
+ * - relation (#380): the choice is the relation of whole numbers, in words, before the < and > signs are taught:
+ *   less-than (one number, one benchmark: "less than 5" or "not less than 5"), closer (one number, two benchmarks:
+ *   "close to 0" or "close to 10", never halfway), equal (two numbers: "equal" or "not equal"), more and fewer (two
+ *   numbers, each with its label: the label of the larger or the smaller, never a tie). Code writes the choices
+ *   (relationChoices) and the answer.
  * - count: the box holds the number the item's figure shows (dots, a ten-frame, base-ten blocks or an array).
  * - pattern: the choice is the shape in the blank of the item's pattern figure.
  */
@@ -482,8 +498,57 @@ export type ItemCheck =
   | { kind: "sequence"; terms: Term[]; step: NumberValue }
   | { kind: "compare"; left: NumberValue; right: NumberValue; region: string }
   | { kind: "yes-no"; statement: Statement; region: string; yes: string; no: string }
+  | { kind: "relation"; relation: Relation; numbers: number[]; to: number[]; labels: string[]; region: string }
   | { kind: "count"; region: string }
   | { kind: "pattern"; region: string };
+
+/** A relation a relation check asks, in words. */
+export const RELATIONS = ["less-than", "closer", "equal", "more", "fewer"] as const;
+export type Relation = (typeof RELATIONS)[number];
+
+/**
+ * A relation check's choices and its answer, or why there are none: the numbers and benchmarks a relation takes
+ * (whole numbers to 1000; one number and one benchmark for less-than, one number and two benchmarks for closer, two
+ * numbers for equal, two numbers with two different labels of letters, at most 16 characters, for more and fewer), and
+ * no tie where one answer is asked (halfway, or two equal numbers for more and fewer).
+ */
+export function relationChoices(r: { relation: string; numbers: unknown; to: unknown; labels: unknown }): { choices: string[]; answer: string } | string {
+  const whole = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0 && (v as number) <= 1000;
+  const ns = Array.isArray(r.numbers) && r.numbers.every(whole) ? (r.numbers as number[]) : null;
+  const to = Array.isArray(r.to) && r.to.every(whole) ? (r.to as number[]) : null;
+  if (!ns || !to) return "a relation check needs whole numbers from 0 to 1000";
+  switch (r.relation) {
+    case "less-than": {
+      if (ns.length !== 1 || to.length !== 1) return "a less-than relation needs one number and one benchmark";
+      const choices = [`less than ${to[0]}`, `not less than ${to[0]}`];
+      return { choices, answer: choices[ns[0] < to[0] ? 0 : 1] };
+    }
+    case "closer": {
+      if (ns.length !== 1 || to.length !== 2 || to[0] === to[1]) return "a closer relation needs one number and two different benchmarks";
+      const [a, b] = to;
+      const [da, db] = [Math.abs(ns[0] - a), Math.abs(ns[0] - b)];
+      if (da === db) return `${ns[0]} is halfway between ${a} and ${b}: it is close to neither`;
+      const choices = [`close to ${a}`, `close to ${b}`];
+      return { choices, answer: choices[da < db ? 0 : 1] };
+    }
+    case "equal": {
+      if (ns.length !== 2 || to.length !== 0) return "an equal relation needs two numbers";
+      return { choices: ["equal", "not equal"], answer: ns[0] === ns[1] ? "equal" : "not equal" };
+    }
+    case "more": case "fewer": {
+      const labels = Array.isArray(r.labels) ? r.labels : [];
+      if (ns.length !== 2 || to.length !== 0 || labels.length !== 2) return `a ${r.relation} relation needs two numbers, each with a label`;
+      if (!labels.every((l) => typeof l === "string" && /^[A-Za-z][A-Za-z ]{0,15}$/.test(l)) || labels[0] === labels[1]) {
+        return `a ${r.relation} relation's labels are two different words of letters, at most 16 characters`;
+      }
+      if (ns[0] === ns[1]) return `the two numbers are the same: neither has ${r.relation}`;
+      const bigger = ns[0] > ns[1] ? 0 : 1;
+      return { choices: labels as string[], answer: (labels as string[])[r.relation === "more" ? bigger : 1 - bigger] };
+    }
+    default:
+      return "the relation is not one code checks";
+  }
+}
 
 /** The shapes a pattern figure draws. */
 export const PATTERN_SHAPES = ["circle", "square", "triangle", "star", "heart", "diamond"] as const;
@@ -760,7 +825,10 @@ const carries = (s: WorkedStep) => ((s.kind === "add-column" || s.kind === "mult
 const WHOLE_KINDS: readonly string[] = ["add", "subtract", "multiply", "divide"];
 function size(operation: Operation): Size {
   const steps = workedSteps(operation);
-  const numbers = WHOLE_KINDS.includes(operation.kind) ? [...(operation.operands as number[])].sort((x, y) => x - y) : null;
+  // A missing part is counted on from the part to the total: its size is the count and the total (9 + ? = 10 counts
+  // 1 to 10, so it is easier than 7 + ? = 10, which counts 3).
+  const numbers = operation.kind === "missing-addend" ? [operation.operands[1] - operation.operands[0], operation.operands[1]].sort((x, y) => x - y)
+    : WHOLE_KINDS.includes(operation.kind) ? [...(operation.operands as number[])].sort((x, y) => x - y) : null;
   return { digits: (operationText(operation).match(/\d/g) ?? []).length, steps: steps.length, carries: steps.filter(carries).length, numbers };
 }
 /**
@@ -768,7 +836,7 @@ function size(operation: Operation): Size {
  * of both and fewer carries ($1.20 + $0.30 is easier than $4.75 + $2.50: every dollar amount is written to the cent), or
  * as many of all three and smaller whole numbers: each no larger, one smaller, from least to greatest (#377: a one-digit
  * picture story such as 3 + 4 has no example with fewer digits, steps or carries, but 2 + 1 is easier; 38 + 45 is not
- * easier than 48 + 37).
+ * easier than 48 + 37). A missing part's numbers are its count and its total: 9 + ? = 10 is easier than 7 + ? = 10.
  */
 const fewer = (a: number[] | null, b: number[] | null) =>
   a !== null && b !== null && a.length === b.length && a.every((x, i) => x <= b[i]) && a.some((x, i) => x < b[i]);

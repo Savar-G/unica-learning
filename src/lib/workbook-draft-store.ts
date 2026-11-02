@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { draftProblem, GENERATED_DRAFT_VERSION, type WorkbookDraftStore } from "@/lib/workbook-generator";
+import { draftProblem, GENERATED_DRAFT_VERSION, READABLE_DRAFT_VERSIONS, type WorkbookDraftStore } from "@/lib/workbook-generator";
 
 // The draft store (#311) in Supabase (migration add_workbook_drafts): one row per generator run, the whole draft as
 // jsonb with its counts beside it. Pass a client with the secret key: the service role may only read and insert; admins
@@ -32,7 +32,7 @@ export function workbookDraftStore(admin: SupabaseClient<Database>): WorkbookDra
       const { data, error } = await admin.from("workbook_drafts").select("schema_version, draft").eq("id", id).maybeSingle();
       if (error) throw new Error(`workbook draft load: ${error.message}`);
       if (!data) return null;
-      if (data.schema_version !== GENERATED_DRAFT_VERSION) throw new Error(`workbook draft load: shape version ${data.schema_version} is not ${GENERATED_DRAFT_VERSION}`);
+      if (!READABLE_DRAFT_VERSIONS.includes(data.schema_version)) throw new Error(`workbook draft load: shape version ${data.schema_version} is not one of ${READABLE_DRAFT_VERSIONS.join(", ")}`);
       return data.draft;
     },
   };
