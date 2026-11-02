@@ -2,16 +2,15 @@ import { ReadableStream } from "node:stream/web";
 import { USERDATA_TIMED_TRANSCRIPT, voice } from "@livekit/agents";
 import type { AudioFrame } from "@livekit/rtc-node";
 import { speechKey } from "@/lib/maya/speech";
-import { speechSentences, speechWords, type BoardSpeech } from "@/lib/board-speech";
+import { SPEECH_SCOPE_DATA, speechSentences, speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-speech";
 
 /** Synthesize separate sentences so a provider without word times still has real sentence audio boundaries. */
 export function boardAudio(
   text: ReadableStream<string> | AsyncIterable<string>,
   synthesize: (text: ReadableStream<string>) => Promise<ReadableStream<AudioFrame> | null>,
   board: BoardSpeech,
-  utteranceId: string,
+  scope: SpeechScope,
 ): ReadableStream<AudioFrame> {
-  const scope = board.capture(utteranceId);
   const abort = new AbortController();
   let current: ReadableStreamDefaultReader<AudioFrame> | null = null;
   return new ReadableStream<AudioFrame>({
@@ -37,7 +36,7 @@ export function boardAudio(
             void frames?.cancel().catch(() => {});
             return;
           }
-          if (!frames) { await board.interrupt(scope!); if (!abort.signal.aborted) controller.close(); return; }
+          if (!frames) { await board.interrupt(scope); if (!abort.signal.aborted) controller.close(); return; }
           const reader = frames.getReader();
           current = reader;
           let durationMs = 0;
@@ -69,7 +68,7 @@ export function boardAudio(
                     if (expected && (heard === expected || heard.startsWith(`${expected} `))) matchedWords = n;
                   }
                   if (matchedWords > before) {
-                    await board.timing(utteranceId, words + matchedWords, offsetMs + t.endTime! * 1000, "word");
+                    await board.timing(scope, words + matchedWords, offsetMs + t.endTime! * 1000, "word");
                     if (stale()) { void reader.cancel().catch(() => {}); return; }
                   }
                 }
@@ -79,6 +78,7 @@ export function boardAudio(
                 endTime: t.endTime === undefined ? undefined : t.endTime + offsetMs / 1000,
               }));
               durationMs += frame.samplesPerChannel / frame.sampleRate * 1000;
+              frame.userdata[SPEECH_SCOPE_DATA] = scope;
               controller.enqueue(frame);
             }
           } finally {
@@ -88,14 +88,14 @@ export function boardAudio(
           if (stale()) return;
           if (durationMs <= 0) {
             // The sentence was never spoken. Only this stream's current plan can be retired.
-            await board.interrupt(scope!);
+            await board.interrupt(scope);
             if (!abort.signal.aborted) controller.close();
             return;
           }
           words += speechWords(sentence).length;
           offsetMs += durationMs;
           // If timestamps were missing, or incomplete, use this sentence's generated audio end.
-          await board.timing(utteranceId, words, offsetMs, "sentence");
+          await board.timing(scope, words, offsetMs, "sentence");
           if (stale()) return;
         }
         if (!abort.signal.aborted) controller.close();

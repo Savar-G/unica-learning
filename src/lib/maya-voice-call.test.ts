@@ -288,16 +288,17 @@ it.each([false, true])("R450-3 voice replay follows the receiver after cancellat
   const receiver = createBoardReceiver({ sessionId: call.id, clock: s.now });
   const sender = createBoardSender({ sessionId: call.id, senderId: "worker", transport: createMemoryTransport(receiver) });
   const board = createBoardSpeech({ sender, now: s.now, observe: snapshot => call.observeBoard(snapshot) });
-  await board.reconnect();
+  await board.connect();
   await board.stage("speech", turn.boardCues!);
+  const scope = board.capture("speech")!;
   s.advance(2);
   if (shownPrefix) {
     const cue = turn.boardCues![0];
-    await board.timing("speech", cue.word, 100, "word");
-    await board.played("speech", 100);
+    await board.timing(scope, cue.word, 100, "word");
+    await board.played(scope, 100);
     s.advance(1);
   }
-  await board.interrupt();
+  await board.interrupt(scope);
   await board.settled();
   const observed = receiver.snapshot();
   expect(call.boardSnapshot).toEqual(observed);

@@ -1,7 +1,7 @@
 import { ReadableStream, type ReadableStreamDefaultController } from "node:stream/web";
 import { EventEmitter } from "node:events";
 import { initializeLogger, llm, normalizeLanguage, stt, voice } from "@livekit/agents";
-import { AudioFrame } from "@livekit/rtc-node";
+import { AudioFrame, TrackPublishOptions } from "@livekit/rtc-node";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createBoardReceiver, createBoardSender } from "@/lib/board-protocol";
 import { createMemoryTransport } from "@/lib/board-protocol-memory";
@@ -589,22 +589,66 @@ it.each([true, false])("#329 carries accepted controller batches through AgentSe
 
 
 it("R450-2 keeps a dropped call recoverable when the board stop cannot reach the child", async () => {
-  const c = await voiceCall({ board: true });
-  await c.run.childJoined();
-  await waitFor(() => c.session.agentState === "listening" && c.said().length > 0, "opening");
-  await c.board.settled();
-  await c.board.stage("pending", [{ word: 1, batch: { transactionId: "pending", commands: [{ op: "write", id: "pending", text: "1", place: { region: "main" } }] } }]);
+  const c = await voiceCall();
+  const session = controlSession();
+  const run = new VoiceCallRun(session as unknown as voice.AgentSession, c.call, { board: c.board, timers: c.clock.timers, notify() {} });
+  await run.childJoined();
+  await run.agent.llmNode(new llm.ChatContext(), {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+  const context = new llm.ChatContext();
+  context.addMessage({ role: "user", content: "I don't know." });
+  await run.agent.llmNode(context, {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+  const pending = c.receiver.staged();
+  expect(pending).toHaveLength(3);
+  const scope = c.board.capture(pending[0].utteranceId!)!;
   c.sender.useTransport({ call: async () => { throw new Error("recipient disconnected"); } });
-  await c.run.childLeft("dropped");
+  await run.childLeft("dropped");
   await c.clock.advance(10);
-  expect(c.run.done).toBeNull();
+  expect(run.done).toBeNull();
   expect((await c.calls.view(c.id))!.status).toBe("live");
   c.sender.useTransport(createMemoryTransport(c.receiver));
-  await c.run.childJoined();
-  await c.board.played("pending", 1000);
+  await run.childJoined();
+  await c.board.played(scope, 1000);
   await c.board.settled();
   expect(c.receiver.staged()).toEqual([]);
-  expect(c.receiver.snapshot().events).toContainEqual(expect.objectContaining({ kind: "cancelled", batchIds: ["pending"] }));
+  expect(c.receiver.snapshot().events).toContainEqual(expect.objectContaining({ kind: "cancelled", batchIds: pending.map(b => b.batchId) }));
   expect(c.store.rows()[0].boardHistory?.delivery?.events).toEqual(c.receiver.snapshot().events);
-  expect(c.run.done).toBeNull();
+  expect(run.done).toBeNull();
+  await run.hangUp();
+});
+
+
+it("R450-8 old playback completion cannot cancel the next controller turn", async () => {
+  const c = await voiceCall();
+  const native = new voice.ParticipantAudioOutput({ localParticipant: { publishTrack: async () => ({ sid: "local", waitForSubscription: async () => {} }) } } as unknown as ConstructorParameters<typeof voice.ParticipantAudioOutput>[0],
+    { sampleRate: 24000, numChannels: 1, queueSizeMs: 100, trackPublishOptions: new TrackPublishOptions() });
+  await native.start(new AbortController().signal);
+  const stages = vi.spyOn(c.board, "stage");
+  const session = Object.assign(controlSession(), { output: { audio: native } });
+  const run = new VoiceCallRun(session as unknown as voice.AgentSession, c.call, { board: c.board, timers: c.clock.timers, notify() {} });
+  run.attachBoardAudio();
+  try {
+    await run.childJoined();
+    await run.agent.llmNode(new llm.ChatContext(), {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+    const output = session.output.audio;
+    const oldScope = c.board.capture(stages.mock.calls.at(-1)![0])!;
+    const frame = new AudioFrame(new Int16Array(2400), 24000, 1, 2400);
+    frame.userdata["unica.maya.speechScope"] = oldScope;
+    await output.captureFrame(frame);
+    output.flush();
+    session.emit(voice.AgentSessionEventTypes.UserStateChanged, { newState: "speaking" });
+    const context = new llm.ChatContext();
+    context.addMessage({ role: "user", content: "I don't know." });
+    await run.agent.llmNode(context, {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+    const expected = c.receiver.staged().map(b => b.batchId);
+    expect(expected).toHaveLength(3);
+    const newScope = c.board.capture(stages.mock.calls.at(-1)![0])!;
+    output.clearBuffer();
+    await output.waitForPlayout();
+    await c.board.settled();
+    expect(c.receiver.staged().map(b => b.batchId)).toEqual(expected);
+    expect(c.board.owns(newScope)).toBe(true);
+    await c.board.timing(newScope, 1000, 100, "word");
+    await c.board.played(newScope, 100);
+    expect(c.receiver.staged()).toEqual([]);
+  } finally { await run.hangUp(); native.clearBuffer(); await native.close(); }
 });

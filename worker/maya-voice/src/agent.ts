@@ -13,7 +13,7 @@ import { stt, voice, type llm, type tts } from "@livekit/agents";
 import type { AudioFrame } from "@livekit/rtc-node";
 import type { FinishOptions } from "@/lib/maya-text";
 import type { VoiceCall, VoiceTurn } from "@/lib/maya-call";
-import type { BoardSpeech } from "@/lib/board-speech";
+import type { BoardSpeech, SpeechScope } from "@/lib/board-speech";
 import { CuePlaybackOutput } from "./cue-playback";
 import { boardAudio } from "./speech-audio";
 import { limitsOf } from "@/lib/maya";
@@ -53,7 +53,7 @@ export class MayaVoiceAgent extends voice.Agent {
   constructor(
     private readonly call: VoiceCall,
     private readonly onTurn: (turn: VoiceTurn) => Promise<boolean>,
-    private readonly board?: { sync: BoardSpeech; id(): string },
+    private readonly board?: { sync: BoardSpeech; scope(): SpeechScope | null },
   ) {
     super({ instructions: "Maya's words come from her session through the text adapter, not from these instructions." });
   }
@@ -77,7 +77,9 @@ export class MayaVoiceAgent extends voice.Agent {
 
   override async ttsNode(text: ReadableStream<string> | AsyncIterable<string>, settings: voice.ModelSettings) {
     if (!this.board) return voice.Agent.default.ttsNode(this, text, settings);
-    return boardAudio(text, input => voice.Agent.default.ttsNode(this, input, settings), this.board.sync, this.board.id());
+    const scope = this.board.scope();
+    if (!scope || !this.board.sync.owns(scope)) return null;
+    return boardAudio(text, input => voice.Agent.default.ttsNode(this, input, settings), this.board.sync, scope);
   }
 
   /** Opens the call (the first reply), then answers each finished child turn with what the call's session said. */
@@ -137,7 +139,7 @@ export class VoiceCallRun {
   private speech: voice.SpeechHandle | null = null;
   private replayingFinal = false;
   private utterance = 0;
-  private utteranceId = "";
+  private boardScope: SpeechScope | null = null;
   private boardAudio: CuePlaybackOutput | null = null;
   readonly agent: MayaVoiceAgent;
   /** Immutable revision claimed when this worker opened the call. */
@@ -154,9 +156,9 @@ export class VoiceCallRun {
     },
   ) {
     this.segment = call.revision;
-    this.agent = new MayaVoiceAgent(call, turn => this.after(turn), options.board ? { sync: options.board, id: () => this.utteranceId } : undefined);
+    this.agent = new MayaVoiceAgent(call, turn => this.after(turn), options.board ? { sync: options.board, scope: () => this.boardScope } : undefined);
     session.on(voice.AgentSessionEventTypes.UserStateChanged, ev => {
-      if (ev.newState === "speaking") this.stopBoard();
+      if (ev.newState === "speaking" && this.boardScope) this.stopBoard(this.boardScope);
     });
     session.on(voice.AgentSessionEventTypes.SpeechCreated, ev => { this.speech = ev.speechHandle; });
     session.on(voice.AgentSessionEventTypes.Close, () => { void this.finish({ detail: "the voice session closed unexpectedly" }); });
@@ -175,29 +177,32 @@ export class VoiceCallRun {
   attachBoardAudio() {
     const audio = this.session.output.audio;
     if (!audio || !this.options.board) return;
-    this.boardAudio = new CuePlaybackOutput(audio, this.options.board, this.timers, () => this.utteranceId,
-      work => this.boardTask(work), () => this.stopBoard());
+    this.boardAudio = new CuePlaybackOutput(audio, this.options.board, this.timers,
+      (work, scope) => this.boardTask(work, scope), scope => this.stopBoard(scope));
     this.session.output.audio = this.boardAudio;
   }
 
-  private boardTask(task: Promise<unknown>) {
+  private boardTask(task: Promise<unknown>, scope: SpeechScope) {
     const generation = this.generation;
     void task.catch(() => {
       // An absent peer cannot answer an RPC. Its snapshot is reconciled when it returns.
-      if (!this.finishing && (this.call.lost || (generation === this.generation && this.childHere))) void this.finish({ detail: "the speech board connection failed" });
+      if (!this.finishing && (this.call.lost || (generation === this.generation && this.childHere && this.options.board?.owns(scope)))) void this.finish({ detail: "the speech board connection failed" });
     });
   }
-  private stopBoard(remote = this.childHere) {
-    this.boardAudio?.cancelPending();
-    if (!this.options.board) return;
-    if (remote) this.boardTask(this.options.board.interrupt());
-    else this.options.board.detach();
+  private stopBoard(scope: SpeechScope) {
+    const board = this.options.board;
+    if (!board?.owns(scope)) return;
+    this.boardAudio?.cancelPending(scope);
+    if (this.childHere) this.boardTask(board.interrupt(scope), scope);
+    else board.detach(scope);
   }
 
   private async stageBoard(turn: VoiceTurn) {
     if (!this.options.board) return;
-    this.utteranceId = `speech-${this.segment}-${++this.utterance}`;
-    await this.options.board.stage(this.utteranceId, turn.boardCues ?? []);
+    const id = `speech-${this.segment}-${++this.utterance}`;
+    const staging = this.options.board.stage(id, turn.boardCues ?? []);
+    this.boardScope = this.options.board.capture(id);
+    await staging;
   }
 
   private get timers() { return this.options.timers ?? realTimers; }
@@ -228,7 +233,14 @@ export class VoiceCallRun {
     this.childHere = true;
     if (this.graceTimer !== null) this.timers.clear(this.graceTimer);
     this.graceTimer = null;
-    try { if (this.options.board) await this.options.board.reconnect(); }
+    const connectingScope = this.boardScope;
+    try {
+      if (this.options.board) {
+        if (connectingScope) await this.options.board.reconnect(connectingScope);
+        else await this.options.board.connect();
+        if (this.boardScope === connectingScope) this.boardScope = null;
+      }
+    }
     catch { if (generation === this.generation && this.childHere) return this.finish({ detail: "the board reconnect failed" }); return; }
     if (generation !== this.generation || !this.childHere || this.finishing) return;
     await this.call.connection("child_joined");
@@ -254,7 +266,7 @@ export class VoiceCallRun {
     if (this.finishing) return;
     const generation = ++this.generation;
     this.childHere = false;
-    this.stopBoard();
+    if (this.boardScope) this.stopBoard(this.boardScope);
     if (this.tickTimer !== null) this.timers.clear(this.tickTimer);
     this.tickTimer = null;
     await this.call.connection("child_left");
@@ -328,11 +340,12 @@ export class VoiceCallRun {
   }
 
   finish(how: FinishOptions, limit = false): Promise<void> {
+    const scope = this.boardScope;
     // Set the promise before calling close, whose event can call finish again.
     this.finishing ??= Promise.resolve().then(async () => {
       for (const t of [this.tickTimer, this.graceTimer, this.limitTimer, this.leaseTimer]) if (t !== null) this.timers.clear(t);
       this.tickTimer = this.graceTimer = this.limitTimer = this.leaseTimer = null;
-      this.stopBoard();
+      if (scope) this.stopBoard(scope);
       // Stop media immediately for a deadline, hang-up, failure or lost ownership.
       const closing = this.session.close().catch(() => {});
       let failed = this.call.lost;
