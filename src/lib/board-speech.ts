@@ -7,6 +7,11 @@ export interface BoardCue {
   /** Number of whitespace-separated words reached in the approved utterance, starting at 1. */
   word: number;
 }
+/** Ownership of one staged plan. Reusing an utterance ID does not reuse its generation. */
+export interface SpeechScope {
+  readonly utteranceId: string;
+  readonly generation: number;
+}
 export type CueSource = "word" | "sentence";
 export interface CueMeasurement {
   utteranceId: string;
@@ -40,6 +45,7 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
   let observation: Promise<unknown> = Promise.resolve();
   let queue: Promise<unknown> = Promise.resolve();
   const serial = <T>(op: () => Promise<T>) => { const run = queue.then(op); queue = run.catch(() => {}); return run; };
+  const owns = (scope: SpeechScope | null) => scope !== null && active?.id === scope.utteranceId && active.generation === scope.generation && generation === scope.generation;
   const check = (r: { ok: boolean }) => { if (!r.ok) throw new Error("The board did not accept the speech operation."); };
   const release = async () => {
     const a = active;
@@ -59,6 +65,10 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
     }
   };
   return {
+    capture(utteranceId: string): SpeechScope | null {
+      return active?.id === utteranceId && active.generation === generation ? { utteranceId, generation } : null;
+    },
+    owns,
     /** Plans must be staged before their speech starts. A new plan invalidates callbacks from the previous speech. */
     stage(id: string, cues: readonly BoardCue[]) {
       plannedId = id;
@@ -97,7 +107,8 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
       generation++;
       active = null;
     },
-    interrupt() {
+    interrupt(scope?: SpeechScope) {
+      if (scope && !owns(scope)) return Promise.resolve();
       generation++;
       active = null;
       // Send the stop outside the serial queue. A stalled release must not delay the interruption.

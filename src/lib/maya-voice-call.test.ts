@@ -317,7 +317,7 @@ it.each([false, true])("R450-3 voice replay follows the receiver after cancellat
 });
 
 
-it("R450-3 does not reconstruct a legacy voice board from unobserved teaching plans", async () => {
+it.each(["saved", "trace", "empty delivery"] as const)("R450-6 preserves the history contract for %s", async source => {
   const s = setup();
   const view = await newVoiceCall(s);
   const call = await open(s, view.id);
@@ -325,8 +325,13 @@ it("R450-3 does not reconstruct a legacy voice board from unobserved teaching pl
   await call.child("I don't know.");
   await call.end({ reason: "child_stopped" });
   const row = s.store.rows()[0];
-  expect(row.trace!.board.length).toBeGreaterThan(0);
-  const legacy = recordView({ ...row, boardHistory: boardHistoryOf(row.trace!) })!;
-  expect(legacy.batches).toEqual([]);
-  expect(callReplay(legacy).maya.strokes).toEqual([]);
+  const history = boardHistoryOf(row.trace!);
+  const expected = callReplay({ boardHistory: history, transcript: [], outcome: null }).maya.strokes;
+  expect(expected).toHaveLength(23);
+  expect(history.delivery).toBeUndefined();
+  const boardHistory = source === "saved" ? history : source === "trace" ? null : { v: 1 as const, revision: 0, events: [], delivery: { events: [] } };
+  const saved = recordView({ ...row, boardHistory })!;
+  expect(callReplay(saved).maya.strokes).toEqual(source === "empty delivery" ? [] : expected);
+  expect(saved.batches).toHaveLength(source === "empty delivery" ? 0 : row.trace!.board.length);
+  if (source === "saved") expect(saved.boardHistory).toEqual(history);
 });

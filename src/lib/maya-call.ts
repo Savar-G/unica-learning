@@ -459,7 +459,9 @@ export function boardPlayback(batches: readonly Batch[]): { steps: PlayStep[]; v
 }
 
 export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertState[] = []): CallView {
-  const observed = record.boardHistory?.delivery ? record.boardHistory : createHistory();
+  // A missing delivery field identifies the legacy contract. An explicit empty delivery is authoritative.
+  const observed = record.mode === "voice" && record.boardHistory?.delivery !== undefined;
+  const history = record.boardHistory ?? boardHistoryOf(trace);
   return {
     id: record.id,
     kind: record.kind,
@@ -479,8 +481,8 @@ export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertStat
     versions: record.versions,
     transcript: transcriptOf(trace),
     freeTalk: freeTalkOf(trace),
-    batches: record.mode === "voice" ? observed.events.flatMap(e => e.kind === "maya" ? [{ transactionId: e.batchId, commands: e.commands }] : []) : batchesOf(trace.board),
-    boardHistory: record.mode === "voice" ? observed : record.boardHistory ?? boardHistoryOf(trace),
+    batches: observed ? history.events.flatMap(e => e.kind === "maya" ? [{ transactionId: e.batchId, commands: e.commands }] : []) : batchesOf(trace.board),
+    boardHistory: history,
     technicalNotes: trace.turns.flatMap((t) => t.kind === "technical" ? [t.detail] : []),
     outcome: record.outcome ?? trace.outcome,
     counts: record.counts,
@@ -701,7 +703,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       // Kept until the parent's note is written (notes). A call Maya never joined has no learning event.
       notePending: seams.note ? { package: pkg, event: noEvent ? null : learningEvent(session.session, { parentId: record.parentId, childId: record.childId }) } : null,
       trace,
-      boardHistory: record.mode === "voice" ? record.boardHistory?.delivery ? record.boardHistory : { ...createHistory(), delivery: { events: [] } } : boardHistoryOf(trace),
+      boardHistory: record.mode === "voice" ? record.boardHistory ?? boardHistoryOf(trace) : boardHistoryOf(trace),
       outcome: trace.outcome,
       counts: countsOf(trace),
       startedAt: trace.startedAt,
@@ -813,7 +815,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const restored = structuredClone(found.live.text);
       restored.session.variety.name = null;
       restored.session.variety.nameAt = null;
-      const claim: CallChange = { speechToText: providers.speechToText, voice: providers.voice, boardHistory: found.boardHistory?.delivery ? found.boardHistory : { ...createHistory(), delivery: { events: [] } }, live: { ...found.live, text: restored } };
+      const claim: CallChange = { speechToText: providers.speechToText, voice: providers.voice, live: { ...found.live, text: restored } };
       if (!(await store.update(found.id, found.revision, claim))) return { ok: false, error: "conflict" };
       let record: CallRecord = { ...found, ...claim, revision: found.revision + 1 };
       const pkg = found.live.package;

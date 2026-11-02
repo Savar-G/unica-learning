@@ -1,7 +1,7 @@
 import { ReadableStream } from "node:stream/web";
 import { AudioFrame } from "@livekit/rtc-node";
 import { USERDATA_TIMED_TRANSCRIPT, voice } from "@livekit/agents";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { boardPaths, type Batch } from "@/lib/board";
 import { createBoardReceiver, createBoardSender } from "@/lib/board-protocol";
 import { createMemoryTransport } from "@/lib/board-protocol-memory";
@@ -114,4 +114,63 @@ it('positive: a 201-word sentence releases its final cue only at the final word'
  expect(boardPaths(c.receiver.scene()).length).toBe(0);
  await c.board.played('speech',2010);
  expect(boardPaths(c.receiver.scene()).length).toBeGreaterThan(0);
+});
+
+const input = () => new ReadableStream<string>({start(c){c.enqueue('Write.');c.close();}});
+const batch = (id:string) => ({transactionId:id,commands:[{op:'write',id,text:'1',place:{region:'main'}}]});
+async function raceSetup() {
+ const receiver=createBoardReceiver({sessionId:'call',clock:()=>10000});
+ const sender=createBoardSender({sessionId:'call',senderId:'worker',transport:createMemoryTransport(receiver)});
+ const observe=vi.fn(async()=>{});
+ const board=createBoardSpeech({sender,now:()=>10000,observe});
+ await board.reconnect();
+ await board.stage('old',[{word:1,batch:batch('old-batch')}]);
+ return {receiver,sender,board,observe};
+}
+
+it.each(['synthesis','read'])('R450-7 cancelled old TTS must not cancel the next utterance, %s pending',async phase=>{
+ const c=await raceSetup();
+ let resolveSynthesis!:(s:ReadableStream<AudioFrame>)=>void;
+ let started!:()=>void;
+ const ready=new Promise<void>(r=>started=r);
+ const oldAudio=boardAudio(input(),async()=>{
+   started();
+   if(phase==='synthesis') return await new Promise<ReadableStream<AudioFrame>>(r=>resolveSynthesis=r);
+   return new ReadableStream<AudioFrame>();
+ },c.board,'old');
+ await ready;
+ // Allow the adapter to take the current reader for the read-pending case.
+ await new Promise<void>(r=>setImmediate(r));
+ const cancelling=oldAudio.cancel();
+ const stopping=c.board.interrupt();
+ const staging=c.board.stage('new',[{word:1,batch:batch('new-batch')}]);
+ await Promise.all([cancelling,stopping,staging]);
+ if(phase==='synthesis') resolveSynthesis(new ReadableStream({start(o){o.close();}}));
+ await new Promise<void>(r=>setImmediate(r));
+ await c.board.settled();
+ expect(c.receiver.staged().map(b=>b.batchId)).toEqual(['new-batch']);
+ await c.board.timing('new',1,100,'word');
+ await c.board.played('new',100);
+ expect(boardPaths(c.receiver.scene()).length).toBeGreaterThan(0);
+});
+
+it.each(["null", "empty"] as const)("R450-7 late %s output cannot stop a replacement with the same utterance ID", async result => {
+  const c = await raceSetup();
+  let complete!: (stream: ReadableStream<AudioFrame> | null) => void;
+  let entered!: () => void;
+  const ready = new Promise<void>(resolve => { entered = resolve; });
+  const pending = new Promise<ReadableStream<AudioFrame> | null>(resolve => { complete = resolve; });
+  const oldAudio = boardAudio(input(), async () => { entered(); return pending; }, c.board, "old");
+  await ready;
+  const oldScope = c.board.capture("old")!;
+  await c.board.stage("old", [{ word: 1, batch: batch("replacement") }]);
+  complete(result === "null" ? null : new ReadableStream<AudioFrame>({ start(c) { c.close(); } }));
+  for await (const frame of oldAudio) void frame;
+  // The public scoped stop must also refuse the earlier generation when its text ID is reused.
+  await c.board.interrupt(oldScope);
+  await c.board.settled();
+  expect(c.receiver.staged().map(b => b.batchId)).toEqual(["replacement"]);
+  await c.board.timing("old", 1, 100, "word");
+  await c.board.played("old", 100);
+  expect(boardPaths(c.receiver.scene()).length).toBeGreaterThan(0);
 });
