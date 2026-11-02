@@ -19,7 +19,7 @@ const PAGE = 1000;
 /** Reads two days wider than the rules: a call's local day can be a day off its UTC date. */
 const SLACK_DAYS = 2;
 
-type CallRow = Pick<Database["public"]["Tables"]["maya_calls"]["Row"], "id" | "parent_id" | "child_id" | "ended_at" | "note_pending">;
+type CallRow = Pick<Database["public"]["Tables"]["maya_calls"]["Row"], "id" | "parent_id" | "child_id" | "ended_at" | "note_pending" | "kind">;
 type NoteRow = Database["public"]["Tables"]["maya_call_notes"]["Row"];
 type LogRow = Pick<Database["public"]["Tables"]["email_log"]["Row"], "id" | "kind" | "parent_id" | "week_start" | "status" | "attempts">;
 
@@ -52,7 +52,7 @@ export function mayaWeeklyStore(admin: SupabaseClient<Database>): WeeklyStore {
       // Completed calls are the count, including calls whose note is still pending (#403).
       // Read calls before notes so a note saved during this load can complete the already-read call.
       const callRows = await allPages<CallRow>((after) => {
-        const query = admin.from("maya_calls").select("id, parent_id, child_id, ended_at, note_pending")
+        const query = admin.from("maya_calls").select("id, parent_id, child_id, ended_at, note_pending, kind")
           .eq("status", "ended").gte("ended_at", since).order("ended_at").order("id").limit(PAGE);
         return after ? query.or(`ended_at.gt.${after.ended_at},and(ended_at.eq.${after.ended_at},id.gt.${after.id})`) : query;
       });
@@ -61,12 +61,12 @@ export function mayaWeeklyStore(admin: SupabaseClient<Database>): WeeklyStore {
         return after ? query.or(`call_ended_at.gt.${after.call_ended_at},and(call_ended_at.eq.${after.call_ended_at},call_id.gt.${after.call_id})`) : query;
       });
       const notes = noteRows.map(fromNoteRow);
-      const calls = callRows.map((c) => ({ callId: c.id, parentId: c.parent_id, childId: c.child_id, endedAt: c.ended_at!, notePending: c.note_pending !== null }));
+      const calls = callRows.map((c) => ({ callId: c.id, parentId: c.parent_id, childId: c.child_id, endedAt: c.ended_at!, notePending: c.note_pending !== null, kind: c.kind }));
       const parentIds = [...new Set(calls.map((c) => c.parentId))];
       const childIds = [...new Set(calls.map((c) => c.childId))];
       // Only the log rows that matter: each parent's Maya unsubscribe, and the weekly claims of the weeks in the window.
       const sinceDay = since.slice(0, 10);
-      const [parents, children, unsubscribes, weekly] = await Promise.all([
+      const [parents, children, unsubscribes, weekly, tests] = await Promise.all([
         // Each id chunk has at most CHUNK rows, below the server page limit.
         inChunks(parentIds, async (ids) => {
           const { data, error } = await admin.from("parents").select("id, name, email, postal").in("id", ids);
@@ -86,9 +86,16 @@ export function mayaWeeklyStore(admin: SupabaseClient<Database>): WeeklyStore {
           const query = admin.from("email_log").select("id, kind, parent_id, week_start, status, attempts").eq("kind", "maya_weekly").in("parent_id", ids).gte("week_start", sinceDay).order("id").limit(PAGE);
           return after ? query.gt("id", after.id) : query;
         })),
+        // Test families are never emailed (R421W-5).
+        inChunks(parentIds, async (ids) => {
+          const { data, error } = await admin.from("test_accounts").select("parent_id").in("parent_id", ids);
+          if (error) throw new Error(`maya weekly load: ${error.message}`);
+          return data ?? [];
+        }),
       ]);
+      const testIds = new Set(tests.map((t) => t.parent_id));
       return {
-        parents: parents.map((p) => ({ id: p.id, name: p.name, email: p.email, postal: p.postal })),
+        parents: parents.map((p) => ({ id: p.id, name: p.name, email: p.email, postal: p.postal, test: testIds.has(p.id) })),
         children: children.map((c) => ({ id: c.id, parentId: c.parent_id, firstName: c.first_name })),
         calls,
         notes,

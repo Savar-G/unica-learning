@@ -5,7 +5,7 @@
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { emailDocument, emailFooterText, emailSignatureText } from "@/lib/email-brand";
 import { sendEmailOnce, type EmailMessage, type MailTransport, type SendLedger } from "@/lib/email-delivery";
-import { noteSentences, noteTranscriptLines, type CallNote } from "@/lib/maya-call-note";
+import { NOTE_CALL_KINDS, noteSentences, noteTranscriptLines, type CallNote } from "@/lib/maya-call-note";
 import { familyZone } from "@/lib/reminder-email";
 import { canGetEmail } from "@/lib/reminder-schedule";
 import { MAX_SEND_ATTEMPTS, type LogStatus } from "@/lib/reminders";
@@ -26,6 +26,8 @@ export interface WeeklyParent {
   email: string;
   /** Picks the family's time zone (familyZone); null is Pacific. */
   postal: string | null;
+  /** A test family (public.test_accounts): never emailed (R421W-5). */
+  test?: boolean;
 }
 
 export interface WeeklyChild {
@@ -41,6 +43,8 @@ export interface WeeklyCall {
   childId: string;
   endedAt: string;
   notePending: boolean;
+  /** maya_calls.kind: only a family call counts (NOTE_CALL_KINDS), never an admin test call (R421W-5). */
+  kind: string;
 }
 
 /** A row of public.email_log that this email reads. */
@@ -111,13 +115,14 @@ export function dueWeeklyEmails(state: WeeklyState, now: number): DueWeekly[] {
   const off = new Set(state.log.filter((e) => e.kind === "maya_unsubscribe").map((e) => e.parentId));
   const due: DueWeekly[] = [];
   for (const parent of state.parents) {
-    if (off.has(parent.id) || !canGetEmail(parent.email)) continue;
+    if (parent.test || off.has(parent.id) || !canGetEmail(parent.email)) continue;
     const zone = familyZone(parent.postal);
     const today = localDay(now, zone);
     const hour = localHour(now, zone);
     const byWeek = new Map<string, Map<string, WeeklyCall>>();
     for (const n of state.calls) {
-      if (n.parentId !== parent.id) continue;
+      // The same eligibility as the parent note (#403): family calls only, so an admin test call never makes a recap.
+      if (n.parentId !== parent.id || !(NOTE_CALL_KINDS as readonly string[]).includes(n.kind)) continue;
       const weekStart = weekStartFor(localDay(Date.parse(n.endedAt), zone));
       const release = addDays(weekStart, 7);
       const expires = addDays(release, LATE_DAYS);
