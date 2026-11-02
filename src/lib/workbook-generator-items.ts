@@ -647,6 +647,8 @@ export interface SlotPlace {
   wording?: SlotWording;
   /** A place whose questions are stories (word problems, picture stories, the Mixed set): checked by storyProblem (D-201). */
   story?: boolean;
+  /** Keep contract-checked text instead of legacy code rewording. */
+  preserveText?: boolean;
 }
 
 /** What the plan gives code to word a slot's whole-number question with (round 7). */
@@ -671,7 +673,7 @@ const DEFAULT_NAMES = ["Mia", "Ben", "Ava", "Leo", "Lia", "Tom"];
 const DEFAULT_THINGS = ["shells", "apples", "cars", "stickers", "hats", "cups"];
 
 /** A question whose printed text code writes (round 7): a whole-number +, -, missing part, × or ÷ at U1 to U9. */
-export const isCodeWorded = (p: QuestionPackage) => p.textSource !== "human" && p.level <= 9 && isWorded(p.operation);
+export const isCodeWorded = (p: QuestionPackage) => (p.textSource === "code" || (p.textSource !== "human" && p.textSource !== "ai" && p.level <= 9 && isWorded(p.operation)));
 
 const fail = (reason: string, pkg: QuestionPackage | null = null, stepIds: string[] = []): BuiltQuestion => ({ check: { status: "failed", reason }, package: pkg, stepIds });
 
@@ -753,7 +755,7 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
   if (problem) return fail(`the operation: ${problem}`);
   const op = candidate as Operation;
   // Code writes the text of a whole-number question at U1 to U9 (round 7): the AI's words are not printed.
-  const worded = place.level <= 9 && isWorded(op);
+  const worded = !place.preserveText && place.level <= 9 && isWorded(op);
   // The box takes the operation's number, so the question must ask for that number, never yes or no or a choice.
   const asks = !worded && typeof raw.text === "string" ? choiceAsked(raw.text) : null;
   if (asks) return fail(`the question asks ${asks}, but its answer is the operation's number: ask for a number (How far is 8 from 10?), or use draw`);

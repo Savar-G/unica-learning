@@ -17,6 +17,7 @@ interface Planned {
   operation?: { kind: "add" | "subtract" | "missing-addend"; operands: [number, number] }; figure?: string | null; figureShows?: string | null;
 }
 interface AskedSlot {
+  contract?: { item: AiItem };
   slot: string; place?: string; skills: string[]; formats?: string[] | null; mistakes?: { name: string }[]; numbers?: Record<string, { max: number }>;
   aim?: { skill: string; kind: string }; planned?: Planned; room?: { characters: number };
 }
@@ -39,6 +40,7 @@ export function fakeWorkbookItems(r: AiJsonRequest) {
   const day = asked.day ?? 1;
   return {
     items: [...asked.slots, ...(asked.examples ?? [])].map((s, k) => {
+      if (s.contract) return s.contract.item;
       const current = asked.currentQuestions?.find(q => q.data?.slot === s.slot)?.data;
       if (current) return { ...current, ...(/apples/i.test(asked.note ?? "") ? { name: "Mia", thing: "apples" } : {}) };
       const seed = hash(`${r.name}|${day}|${asked.page ?? 0}|${s.slot}|${asked.note ?? ""}`);

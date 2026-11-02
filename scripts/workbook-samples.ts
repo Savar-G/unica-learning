@@ -46,6 +46,7 @@ import { curriculumFor } from "@/lib/workbook-curriculum";
 import { workbookDraftStore } from "@/lib/workbook-draft-store";
 import { renderableDraft, renderFitCheck } from "@/lib/workbook-fit";
 import { generateWorkbook, type GeneratedWorkbook, type WorkbookDraftStore } from "@/lib/workbook-generator";
+import { measuredPageUse, workbookQuality, type PageUse } from "@/lib/workbook-quality";
 import { planWorkbook } from "@/lib/workbook-plan";
 import { renderWorkbook, reviewPrint, type PrintEngine, type RenderProblem } from "@/lib/workbook-render";
 import { sampleChild, samplePlanInput, type SampleBookKind, type SampleChild } from "@/lib/workbook-sample-profiles";
@@ -63,7 +64,7 @@ const { values } = parseArgs({
   options: {
     levels: { type: "string", default: "all" }, second: { type: "string", default: "" }, test: { type: "string", default: "" },
     out: { type: "string", default: "/tmp/ui-review/samples" }, concurrency: { type: "string", default: "6" },
-    fake: { type: "boolean", default: false }, api: { type: "boolean", default: false }, anthropic: { type: "boolean", default: false }, "family-only": { type: "boolean", default: false }, "no-store": { type: "boolean", default: false },
+    fake: { type: "boolean", default: false }, api: { type: "boolean", default: false }, anthropic: { type: "boolean", default: false }, "family-only": { type: "boolean", default: false }, "no-store": { type: "boolean", default: false }, "subscription-only": { type: "boolean", default: false },
   },
 });
 const BC = curriculumFor("bc")!;
@@ -72,6 +73,7 @@ const list = (s: string) => (s === "all" ? allLevels : s.split(",").map((x) => x
 const levels = list(values.levels!);
 for (const l of [...levels, ...list(values.second!), ...list(values.test!)]) if (!allLevels.includes(l as never)) throw new Error(`no level ${l}`);
 const store = !values["no-store"] && !values.fake;
+if (values["subscription-only"] && (values.api || values.anthropic)) throw new Error("--subscription-only cannot use an API provider");
 
 // ---------- Keys ----------
 
@@ -350,6 +352,7 @@ interface BookResult {
   solve: { checks: number; disagreed: number; failed: number; usd: number };
   calls: number;
   minutes: number;
+  pageUse: PageUse[];
   error?: string;
 }
 
@@ -359,11 +362,14 @@ const template = workbookTemplate(await fixedTemplateFonts());
 // Chromium can fail to start when several start at once: each print gets up to 3 tries, so one failed launch does not
 // lose a whole book.
 const chromium = chromiumPrintEngine();
+let lastPageUse: PageUse[] = [];
 const engine: PrintEngine = {
   async print(job) {
     for (let attempt = 1; ; attempt++) {
       try {
-        return await chromium.print(job);
+        const printed = await chromium.print(job);
+        lastPageUse = measuredPageUse(printed.measured);
+        return printed;
       } catch (e) {
         if (attempt >= 3) throw e;
         await new Promise((r) => setTimeout(r, 1500 * attempt));
@@ -412,7 +418,7 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
   const t0 = Date.now();
   const solveLogs: SolveLog[] = [];
   const result = await generateWorkbook(
-    { workbookId, childId, number: input.workbook.number, profileBuild: null, plan: planned.plan, curriculum: BC, book: { child: child.name } },
+    { workbookId, childId, number: input.workbook.number, profileBuild: null, plan: planned.plan, curriculum: BC, book: { child: child.name }, itemPolicy: "approved-v1" },
     {
       ai, fit: renderFitCheck({ template, engine, parentId }), concurrency: Number(values.concurrency),
       store: drafts ?? { save: async () => ({ status: "saved", draftId: workbookId }), draft: async () => null },
@@ -440,6 +446,8 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
     : await reviewPrint({ draft: renderable, template, engine, problems });
   const pdf = `${out}/${label}.pdf`;
   const sheet = `${out}/${label}-contact.png`;
+  const pageUse = lastPageUse.filter(p => draft.pages[p.page - 1]?.day !== null);
+  await writeFile(`${out}/${label}-draft.json`, JSON.stringify(draft, null, 2));
   await writeFile(pdf, printed.pdf);
   await mkdir(`${out}/pages/${label}`, { recursive: true });
   await Promise.all(printed.images.map((png, i) => writeFile(`${out}/pages/${label}/p${String(i + 1).padStart(2, "0")}.png`, png)));
@@ -453,7 +461,7 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
   const c = costs.get(label);
   const sc = solveCosts.get(label);
   return {
-    label, level, kind, child, draftId: workbookId, stored: !!drafts, pdf, sheet, draft, renderProblems: strict.status === "failed" ? strict.problems : [],
+    label, level, kind, child, pageUse, draftId: workbookId, stored: !!drafts, pdf, sheet, draft, renderProblems: strict.status === "failed" ? strict.problems : [],
     omissions: draft.pages.reduce((n, p) => n + (p.omissions?.length ?? 0), 0), usd: c?.usd ?? 0, calls: c?.calls ?? 0, minutes: (Date.now() - t0) / 60000,
     solve: {
       checks: solveLogs.length, disagreed: solveLogs.filter((l) => l.verdict.status === "disagreed").length,
@@ -487,8 +495,8 @@ if (values.fake) {
   }));
 } else if (!values.api) {
   // D-200: the subscription first (WORKBOOK_AI_PRIMARY), the API as the fallback when there is a key.
-  const key = await openRouterKey();
-  const live = workbookAi({ ...process.env, ...(key ? { OPENROUTER_API_KEY: key } : {}) }, { subscription: true, onCall: countCall });
+  const key = values["subscription-only"] ? null : await openRouterKey();
+  const live = workbookAi({ ...process.env, OPENROUTER_API_KEY: key ?? undefined, ...(values["subscription-only"] ? { WORKBOOK_AI_PRIMARY: "subscription" } : {}) }, { subscription: true, onCall: countCall });
   if (!live.ai || !live.solve) throw new Error("no AI: neither the Claude subscription nor an OpenRouter key");
   ai = live.ai;
   solver = live.solve.solver;
@@ -549,6 +557,22 @@ async function writeIndex() {
     "|---|---|---|---|---|---|---|---|---|---|",
     ...rows,
     "",
+    "## Quality score (#480)",
+    "The failure limit is below 5%. Time is an estimate from the actual items, reading and work space. Page fullness is vertical use of the measured content area, including writing space. A score does not replace Savar's sample and example-bank approval.",
+    "| Level | Failed | Dropped for room | Page fullness min / mean | Minutes per day | AI calls | Ship gate |",
+    "|---|---|---|---|---|---|---|",
+    ...ok.map(r => {
+      const q = r.draft.quality ?? workbookQuality(r.draft.pages);
+      const uses = r.pageUse.flatMap(p => p.fraction === null ? [] : [p.fraction]);
+      const fullness = uses.length ? `${(Math.min(...uses) * 100).toFixed(1)}% / ${(uses.reduce((a,b)=>a+b,0) / uses.length * 100).toFixed(1)}%` : "not measured";
+      const calls = providerCounts.get(r.label);
+      const underfilled = r.pageUse.length === 0 || uses.length !== r.pageUse.length || uses.some(x => x < .8);
+      return `| ${r.label} | ${(q.failedRate * 100).toFixed(2)}% | ${q.dropped} | ${fullness} | ${q.days.map(d=>`${d.day}: ${d.minutes.toFixed(1)}`).join("; ")} | subscription ${calls?.subscription ?? 0}; API ${calls?.api ?? 0} | ${!values.fake && q.ready && !underfilled && r.renderProblems.length === 0 ? "technical checks pass; approval pending" : "HOLD"} |`;
+    }),
+    ...ok.map(r => `- ${r.label}: ${providerLine(r.label)}. API calls: ${providerCounts.get(r.label)?.api ?? (values.api || values.anthropic ? r.calls + r.solve.checks : 0)}.`),
+    ...ok.flatMap(r => (r.draft.quality?.issues ?? []).map(i => `- ${r.label} p${i.page}: ${i.kind}: ${i.reason}`)),
+    "",
+
     ...(providerCounts.size ? ["## AI calls by provider (D-200)", "The Claude subscription costs nothing per call; the API's cost is in the table above.", ...ok.map((r) => `- ${r.label}: ${providerLine(r.label)}`), ""] : []),
     "## Solve checks (round 7)",
     "Each printed question the AI wrote is read and answered by a separate model; one it answers otherwise fails closed (written again once, then marked failed).",

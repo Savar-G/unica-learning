@@ -221,6 +221,8 @@ export const RUN_FRAME_VERSION = 1;
  */
 export interface RunFrame {
   version: number;
+  /** Old frames retain the original item pipeline. New frames pin the approved policy. */
+  itemPolicy?: "approved-v1";
   /** The curriculum key ("bc"). */
   curriculum: string;
   grade: Grade;
@@ -269,6 +271,8 @@ export const SOLVE_ANSWERS_MOST = 4000;
 export const SOLVE_BATCH = 500;
 
 export interface WorkbookJobDeps {
+  /** Pin a new run to the old policy only for compatibility checks or rollback. */
+  itemPolicy?: "approved-v1" | "legacy";
   runs: WorkbookRunStore;
   runner?: RunRunner;
   source: WorkbookJobSource;
@@ -555,7 +559,7 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps, o: { 
 const generateInput = (run: WorkbookRun, frame: RunFrame, name: string): GenerateInput => ({
   workbookId: run.draftKey, childId: run.childId, book: { child: name }, number: run.number,
   profileBuild: frame.profileRevision !== null ? `child profile revision ${frame.profileRevision}` : null,
-  plan: frame.plan, curriculum: curriculumFor(frame.curriculum)!,
+  plan: frame.plan, curriculum: curriculumFor(frame.curriculum)!, itemPolicy: frame.itemPolicy,
 });
 
 /**
@@ -576,7 +580,7 @@ async function runFrame(run: WorkbookRun, deps: WorkbookJobDeps & { ai: AiClient
     const planned = planNextWorkbook({ curriculum, grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number });
     if (!planned.ok) throw new Refusal(`The plan could not be made: ${planned.reason}.`);
     const made: RunFrame = {
-      version: RUN_FRAME_VERSION, curriculum: key, grade: inputs.grade, profileRevision: inputs.profile?.revision ?? null, workbooks: inputs.workbooks,
+      version: RUN_FRAME_VERSION, ...(deps.itemPolicy === "legacy" ? {} : { itemPolicy: "approved-v1" as const }), curriculum: key, grade: inputs.grade, profileRevision: inputs.profile?.revision ?? null, workbooks: inputs.workbooks,
       plan: planned.plan, versions: { curriculum: "", outline: "", model: deps.ai.model, solveModel: deps.solver.model, build: deps.build ?? null },
     };
     made.versions.curriculum = curriculumVersion(key)!;
