@@ -368,6 +368,8 @@ export interface QuestionPackage {
   ref: QuestionRef;
   /** The assessment template the question came from, or null. */
   templateId: string | null;
+  /** Human edits require the solve check, including relations and low-level operations. */
+  textSource?: "human";
   /** The question as the child reads it. */
   text: string;
   /**

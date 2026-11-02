@@ -671,7 +671,7 @@ const DEFAULT_NAMES = ["Mia", "Ben", "Ava", "Leo", "Lia", "Tom"];
 const DEFAULT_THINGS = ["shells", "apples", "cars", "stickers", "hats", "cups"];
 
 /** A question whose printed text code writes (round 7): a whole-number +, -, missing part, × or ÷ at U1 to U9. */
-export const isCodeWorded = (p: QuestionPackage) => p.level <= 9 && isWorded(p.operation);
+export const isCodeWorded = (p: QuestionPackage) => p.textSource !== "human" && p.level <= 9 && isWorded(p.operation);
 
 const fail = (reason: string, pkg: QuestionPackage | null = null, stepIds: string[] = []): BuiltQuestion => ({ check: { status: "failed", reason }, package: pkg, stepIds });
 

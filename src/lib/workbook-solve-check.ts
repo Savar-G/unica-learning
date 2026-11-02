@@ -133,7 +133,7 @@ export function printedQuestion(p: QuestionPackage): { question: PrintedQuestion
  * code wrote its text) and its easier example (unless code wrote it). Empty when there is nothing to check.
  */
 export function toSolve(p: QuestionPackage): SolveRequest {
-  if (isCodeWorded(p) || (p.item?.checks ?? []).some((c) => c.kind === "relation")) return { questions: [], key: [] };
+  if (p.textSource !== "human" && (isCodeWorded(p) || (p.item?.checks ?? []).some((c) => c.kind === "relation"))) return { questions: [], key: [] };
   const main = printedQuestion(p);
   const questions = main ? [main.question] : [];
   const key = main ? [...main.key] : [];

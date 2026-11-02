@@ -1,4 +1,4 @@
-import { commentFromRow } from "@/lib/workbook-edit-store";
+import { commentFromRow, editFromRow } from "@/lib/workbook-edit-store";
 import type { ReviewComment, WorkbookEdit, EditCheckpoint } from "@/lib/workbook-edit";
 import "server-only";
 import { connection } from "next/server";
@@ -641,11 +641,12 @@ async function runRows(a: AdminSession, runs: WorkbookRun[]): Promise<RunListRow
   const drafts = runs.flatMap((r) => (r.draftId ? [r.draftId] : []));
   const [counts, revisions] = await Promise.all([
     byIds<DraftCountRow>(drafts, "workbook drafts", (chunk) => a.db.from("workbook_drafts").select(DRAFT_COUNT_COLUMNS).in("id", chunk)),
-    // Revision 1 of each draft: one row per draft, so each chunk is one short read (no `id` column to page by).
-    Promise.all(Array.from({ length: Math.ceil(drafts.length / CHUNK) }, (_, i) => drafts.slice(i * CHUNK, (i + 1) * CHUNK)).map((chunk) =>
-      a.db.from("workbook_draft_revisions").select("draft_id, render_problems").eq("revision", 1).in("draft_id", chunk)
-        .then((r) => must<{ draft_id: string; render_problems: RenderProblem[] }[]>(r, "draft revisions"))))
-      .then((parts) => parts.flat().map((r) => ({ id: r.draft_id, render_problems: r.render_problems }))),
+    // One bounded latest-revision read per draft. Do not fetch complete workbook content for a list.
+    Promise.all(drafts.map(id => a.db.from("workbook_draft_revisions")
+      .select("draft_id, counts:content->counts, render_problems").eq("draft_id", id)
+      .order("revision", { ascending: false }).limit(1)
+      .then(r => must<{ draft_id: string; counts: DraftCounts | null; render_problems: RenderProblem[] }[]>(r, "draft revisions"))))
+      .then(parts => parts.flat().map(r => ({ id: r.draft_id, counts: r.counts, render_problems: r.render_problems }))),
   ]);
   const byDraft = index(counts);
   const problems = index(revisions);
@@ -653,7 +654,7 @@ async function runRows(a: AdminSession, runs: WorkbookRun[]): Promise<RunListRow
     const d = run.draftId ? byDraft.get(run.draftId) : undefined;
     const p = run.draftId ? problems.get(run.draftId) : undefined;
     return {
-      run, counts: d ? countsOf(d) : null, notRendered: p ? new Set(p.render_problems.map((x) => x.page)).size : null,
+      run, counts: p?.counts ?? (d ? countsOf(d) : null), notRendered: p ? new Set(p.render_problems.map((x) => x.page)).size : null,
       oldFormat: !!d && oldDraft(d.schema_version, d.cover),
     };
   });
@@ -757,9 +758,7 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
   return {
     run, child: children[0] ?? null, images, audit, oldFormat, approved,
     comments: comments.map(commentFromRow),
-    editBatch: edits ? { id: edits.id, draftId: edits.draft_id, revision: edits.base_revision,
-      runner: edits.runner as WorkbookEdit["runner"], status: edits.status as WorkbookEdit["status"],
-      error: edits.error, createdAt: edits.created_at, lease: edits.lease } : null,
+    editBatch: edits ? editFromRow(edits) : null,
     aiCalls: summarizeAiCalls(callRows.map((r) => ({ ...r, usd: r.usd === null ? null : Number(r.usd) }))),
     solves: [...solveRows.map((r) => ({ questionId: r.question_id, model: r.model, verdict: r.verdict, ms: r.ms, usd: r.usd === null ? null : Number(r.usd), log: r.log })),
       ...editSolves.flatMap((e) => Object.values(e.checkpoints as unknown as Record<string, EditCheckpoint>).flatMap((p) => p.solves ?? []))],

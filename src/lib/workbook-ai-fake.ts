@@ -2,6 +2,7 @@
 // WORKBOOK_AI_FAKE=on fills every slot with a sound whole-number addition, so "Prepare next workbook" makes a draft
 // without an OpenRouter key; WORKBOOK_AI_FAKE=slow waits 1.5 s a page, to watch the progress. Its solve check
 // (workbookFakeSolver) answers from the key and reads a few questions another way.
+import type { AiItem } from "@/lib/workbook-generator-items";
 import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import type { SolveRequest, Solver } from "@/lib/workbook-solve-check";
@@ -34,10 +35,12 @@ const word = (n: number) => `q${(n % 17576).toString(26).split("").map((d) => St
  */
 export function fakeWorkbookItems(r: AiJsonRequest) {
   const text = (r.content[0] as { text: string }).text;
-  const asked = JSON.parse(text) as { day?: number; page?: number; slots: AskedSlot[]; examples?: AskedSlot[]; note?: string | null };
+  const asked = JSON.parse(text) as { day?: number; page?: number; slots: AskedSlot[]; examples?: AskedSlot[]; note?: string | null; currentQuestions?: {data: AiItem | null}[] };
   const day = asked.day ?? 1;
   return {
     items: [...asked.slots, ...(asked.examples ?? [])].map((s, k) => {
+      const current = asked.currentQuestions?.find(q => q.data?.slot === s.slot)?.data;
+      if (current) return { ...current, ...(/apples/i.test(asked.note ?? "") ? { name: "Mia", thing: "apples" } : {}) };
       const seed = hash(`${r.name}|${day}|${asked.page ?? 0}|${s.slot}|${asked.note ?? ""}`);
       const format = s.formats?.[0] ?? "write-number";
       const base = { slot: s.slot, skill: s.skills[0], difficulty: 2, format, numbers: [], places: null, direction: null, sequence: null, pattern: null, figure: null, figureShows: null, relation: null };

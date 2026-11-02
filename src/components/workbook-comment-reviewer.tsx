@@ -6,10 +6,11 @@ import type { ReviewComment } from "@/lib/workbook-edit";
 import { workbookEditItem } from "@/lib/workbook-edit-item";
 import { GENERATED_FORMATS, buildQuestion } from "@/lib/workbook-generator-items";
 import { valueText } from "@/lib/question-package";
+import { commentPosition } from "@/lib/workbook-comment-position";
 import { plainReason, NEEDS_A_LOOK } from "@/lib/workbook-reason";
 import "./workbook-comment-reviewer.css";
 
-type Anchor = { page: number; question: number | null; x: number; y: number; id?: string };
+type Anchor = { page: number; question: number | null; x: number; y: number; id?: string; requestKey?: string };
 const location = (c: { page: number; question: number | null }) => `Page ${c.page}${c.question === null ? "" : ` · Question ${c.question}`}`;
 const labels: Record<string, string> = { text: "Words", operation: "Calculation", operands: "Numbers", kind: "Operation",
   easier: "Easier example", wrongAnswers: "Expected wrong answers", value: "Number", numerator: "Top number", denominator: "Bottom number",
@@ -56,20 +57,22 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
   const [saving, setSaving] = useState(false), [error, setError] = useState("");
   const input = useRef<HTMLTextAreaElement>(null);
   const locked = detail.approved?.status === "printed" || detail.approved?.status === "shipped";
-  const working = detail.editBatch?.status === "queued" || detail.editBatch?.status === "running";
+  const active = detail.editBatch?.status === "queued" || detail.editBatch?.status === "running";
+  const stalled = active && detail.editBatch?.stalled;
+  const working = active && !stalled;
   const pending = detail.comments.filter((c) => c.status === "pending" || c.status === "failed");
   const page = pages.find((p) => p.number === selected)!;
   const rendered = draft.rendering?.pages.find((p) => p.number === selected);
   const comments = detail.comments.filter((c) => c.page === selected);
   useEffect(() => {
-    if (!working) return;
+    if (!active) return;
     const t = setInterval(() => router.refresh(), 2500);
     return () => clearInterval(t);
-  }, [working, router]);
+  }, [active, router]);
   useEffect(() => { if (anchor) input.current?.focus(); }, [anchor]);
   function select(a: Anchor, comment?: ReviewComment) {
     if (locked || working) return;
-    setSelected(a.page); setAnchor(a); setNote(comment?.note ?? ""); setExact(!!comment?.item); setItem(comment?.item ?? null); setError("");
+    setSelected(a.page); setAnchor({ ...a, requestKey: a.requestKey ?? crypto.randomUUID() }); setNote(comment?.note ?? ""); setExact(!!comment?.item); setItem(comment?.item ?? null); setError("");
   }
   async function post(body: object) {
     setSaving(true); setError("");
@@ -94,10 +97,11 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
   const state = working ? detail.editBatch?.status === "queued" && detail.editBatch.runner === "mac" ? "Waiting for your Mac" : `Rewriting ${workingPages.length === 1 ? `page ${workingPages[0]}` : `${workingPages.length} pages`}...` : "Comment mode";
   return <section className="wbr" aria-label="Workbook review">
     <header className="wbr-bar"><div><strong>Review workbook</strong><span>Version {draft.revision} · {state}</span></div>
-      <button className="btn adm-btn" disabled={locked || working || saving || !pending.length} onClick={() => post({ send: true })}>
-        {working ? "Applying comments..." : `Send all comments (${pending.length})`}</button>
+      <button className="btn adm-btn" disabled={locked || working || saving || (!pending.length && !stalled)} onClick={() => post({ send: true })}>
+        {stalled ? "Try again" : working ? "Applying comments..." : `Send all comments (${pending.length})`}</button>
     </header>
     {locked && <p className="wbr-message" role="note">This workbook is {detail.approved?.status}. It cannot change. You can read its comments.</p>}
+    {stalled && <p role="alert" className="wbr-message">The edit stopped. Try again to continue with the saved responses.</p>}
     {working && <p className="wbr-message" role="status">{state} Your current workbook stays in place until the checked changes are ready.</p>}
     {detail.editBatch?.status === "failed" && <p role="alert" className="wbr-message">{detail.editBatch.error}</p>}
     <div className="wbr-body">
@@ -114,7 +118,7 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {rendered && detail.images[rendered.image.path] && <img src={detail.images[rendered.image.path]} alt={`Workbook page ${selected}`} />}
           <button className="wbr-page-hit" disabled={locked || working} aria-label={`Comment on page ${selected}`} onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect(); select({ page: selected, question: null, x: (e.clientX - r.left) / r.width || .5, y: (e.clientY - r.top) / r.height || .5 });
+            const r = e.currentTarget.getBoundingClientRect(); select({ page: selected, question: null, ...commentPosition(e.detail, e.clientX, e.clientY, r) });
           }} />
           {rendered?.questions.map((q) => <button key={q.number} disabled={locked || working} aria-label={`Comment on question ${q.number} on page ${selected}`}
             className={`wbr-question${changed.has(q.number) || changed.has(null) ? " wbr-changed" : ""}`}

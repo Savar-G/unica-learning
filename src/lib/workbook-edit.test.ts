@@ -3,7 +3,8 @@ import { curriculumFor } from "@/lib/workbook-curriculum";
 import { generateWorkbook, type GeneratedWorkbook, type GenerateInput } from "@/lib/workbook-generator";
 import { planLevel, planWorkbook } from "@/lib/workbook-plan";
 import { fakeWorkbookItems, workbookFakeAi } from "@/lib/workbook-ai-fake";
-import { keySolver } from "@/lib/workbook-solve-check";
+import { isCodeWorded } from "@/lib/workbook-generator-items";
+import { keySolver, toSolve } from "@/lib/workbook-solve-check";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { memoryWorkbookReview } from "@/lib/workbook-edit-memory";
 import { runWorkbookEdit, type EditJobDeps, type EditSnapshot } from "@/lib/workbook-edit";
@@ -46,7 +47,8 @@ describe("workbook comment batches",()=>{
     const s=setup();const q=s.pages[0].questions.find(q=>q.package?.operation)!;const item=workbookEditItem(q)!;
     item.text=q.package!.text; const ai=vi.spyOn(gen.ai,"json");ai.mockClear();s.comment(s.pages[0].number,q.number,{...item,answer:{value:999}});
     expect(await runWorkbookEdit(s.send(),s.deps)).toBe("done");expect(ai).not.toHaveBeenCalled();
-    expect(s.review.snapshot().draft.pages.find(p=>p.number===s.pages[0].number)!.questions.find(x=>x.number===q.number)!.package!.answer).toEqual(q.package!.answer);ai.mockRestore();
+    const edited = s.review.snapshot().draft.pages.find(p=>p.number===s.pages[0].number)!.questions.find(x=>x.number===q.number)!.package!;
+    expect(edited.answer).toEqual(q.package!.answer); expect(edited.textSource).toBe("human"); expect(isCodeWorded(edited)).toBe(false); expect(toSolve(edited).questions.length).toBeGreaterThan(0); ai.mockRestore();
   });
   it("lets a page comment cover the whole page and resets approval",async()=>{const s=setup("approved");s.comment(s.pages[0].number,null);expect(await runWorkbookEdit(s.send(),s.deps)).toBe("done");expect(s.review.status()).toBe("draft");expect(s.review.revisions).toHaveLength(2);});
   for(const status of ["printed","shipped"] as const) it(`refuses comments on ${status} workbooks`,()=>{const s=setup(status);expect(s.comment().status).toBe("refused");expect(s.review.send(1,"mac").status).toBe("refused");});
@@ -74,6 +76,114 @@ describe("workbook comment batches",()=>{
     const s=setup();s.comment();s.deps.generation={...gen,ai:fakeAiClient({answer:r=>({items:fakeWorkbookItems(r).items.map(x=>({...x,name:"Mia",thing:"apples"}))})})};
     expect(await runWorkbookEdit(s.send(),s.deps)).toBe("done");
     const q=s.review.comments[0].after as {package:{text:string}};expect(q.package.text).toContain("apples");
+  });
+
+  it("R428-1 refuses manual wording whose answer differs from the code key", async () => {
+    const s = setup();
+    const q = s.pages[0].questions.find(q => q.package?.operation)!;
+    const item = workbookEditItem(q)!;
+    item.text = "Mia has 8 apples. She gives 2 apples to Ben. How many apples does Mia have now?";
+    item.operation = { ...item.operation!, kind: "add", operands: item.operation!.operands.map((v, i) => ({ ...v, value: i ? 2 : 8 })) };
+    s.comment(s.pages[0].number, q.number, item);
+    const solve = vi.fn(async () => ({ answers: [{ question: "question", box: "answer", answer: "6" }], problem: null }));
+    s.deps.generation = { ...gen, solver: { model: gen.solver.model, solve } };
+    expect(await runWorkbookEdit(s.send(), s.deps)).toBe("failed");
+    expect(solve).toHaveBeenCalledTimes(1);
+    expect(s.review.comments[0]).toMatchObject({ status: "failed", error: expect.stringMatching(/solve check/) });
+    expect(s.renderPage).not.toHaveBeenCalled();
+    expect(s.review.snapshot().revision).toBe(1);
+  });
+  it("R428-3 sends the current wording and data and keeps numbers for an apples-only note", async () => {
+    const s = setup(); s.comment();
+    const q = s.pages[0].questions.find(q => q.package?.operation)!;
+    const ai = fakeAiClient({ answer: r => {
+      const request = JSON.parse((r.content[0] as {text:string}).text);
+      expect(request.currentQuestions).toContainEqual({ number: q.number, text: q.package!.text, data: workbookEditItem(q) });
+      expect(request.note).toContain("Keep the numbers; use apples instead");
+      return fakeWorkbookItems(r);
+    }});
+    s.review.comments[0].note = "Keep the numbers; use apples instead";
+    s.deps.generation = { ...gen, ai };
+    expect(await runWorkbookEdit(s.send(), s.deps)).toBe("done");
+    const after = s.review.snapshot().draft.pages.find(p => p.number === s.pages[0].number)!.questions.find(x => x.number === q.number)!;
+    expect(after.package!.operation).toEqual(q.package!.operation);
+  });
+  for (const runner of ["mac", "server"] as const) {
+    it(`R428-2/R428-7 resumes ${runner} after a lost page checkpoint without another writer request`, async () => {
+      const s = setup(); s.deps.runner = runner; s.comment();
+      const id = s.send(), checkpoint = s.review.store.checkpoint;
+      const ai = vi.spyOn(gen.ai, "json"); ai.mockClear();
+      s.review.store.checkpoint = async (...args) => {
+        if (args[2].image) throw new Error("transient checkpoint error");
+        return checkpoint(...args);
+      };
+      expect(await runWorkbookEdit(id, s.deps)).toBe("failed");
+      s.review.store.checkpoint = checkpoint;
+      expect(await runWorkbookEdit(id, s.deps)).toBe("done");
+      expect(ai).toHaveBeenCalledTimes(1);
+      expect(s.review.snapshot().revision).toBe(2);
+      ai.mockRestore();
+    });
+    it(`R428-2 expires a ${runner} lease and rejects its late writes`, async () => {
+      const s = setup(); s.deps.runner = runner; s.comment(); const id = s.send();
+      let now = 0;
+      // The store's clock is supplied at its public construction boundary.
+      const review = memoryWorkbookReview(s.review.snapshot(), { now: () => now });
+      review.save(s.review.comments[0]);
+      const sent = review.send(1, runner); if (sent.status !== "queued") throw new Error(sent.reason);
+      expect(await review.store.claim(sent.id, "old", runner)).toBeTruthy();
+      expect(await review.store.claim(sent.id, "early", runner)).toBeNull();
+      now = 6 * 60_000 + 1;
+      expect(review.send(1, runner)).toEqual({ status: "queued", id: sent.id });
+      expect(await review.store.claim(sent.id, "new", runner)).toBeTruthy();
+      expect(await review.store.checkpoint(sent.id, "old", {number: 3, error: "late"})).toBe(false);
+      expect((await review.store.finish(sent.id, "old", {error: "late"})).status).toBe("refused");
+      expect(id).toBeTruthy();
+    });
+  }
+  it("R428-4 returns one saved comment for a repeated client request key", () => {
+    const s = setup(); s.comment();
+    const fields = s.review.comments[0];
+    const one = s.review.save({ ...fields, requestKey: "stable-request" });
+    const two = s.review.save({ ...fields, requestKey: "stable-request" });
+    expect(one).toEqual(two);
+    expect(s.review.comments).toHaveLength(2);
+  });
+  it("R428-5 refuses a resume on different code or models and returns comments to pending", async () => {
+    for (const field of ["build", "model", "solveModel"] as const) {
+      const s = setup(); s.comment(); const id = s.send();
+      s.deps.shouldYield = () => true; s.deps.handOff = vi.fn(async () => {});
+      expect(await runWorkbookEdit(id, s.deps)).toBe("handed-on");
+      s.deps.shouldYield = () => false;
+      if (field === "build") s.deps.build = "other-build";
+      else if (field === "model") s.deps.generation = { ...gen, ai: { ...gen.ai, model: "other-model" } };
+      else s.deps.generation = { ...gen, solver: { ...gen.solver, model: "other-solver" } };
+      expect(await runWorkbookEdit(id, s.deps)).toBe("failed");
+      expect(s.review.comments[0].status).toBe("pending");
+      expect(s.renderPage).not.toHaveBeenCalled();
+    }
+  });
+
+  it("R428-3 refuses a writer that changes a sequence's numbers for a wording-only comment", async () => {
+    const s = setup();
+    const page = s.pages.find(p => p.questions.some(q => q.package?.item?.checks.some(c => c.kind === "sequence")))!;
+    const q = page.questions.find(q => q.package?.item?.checks.some(c => c.kind === "sequence"))!;
+    s.comment(page.number, q.number);
+    s.deps.generation = { ...gen, ai: fakeAiClient({ answer: r => ({items: fakeWorkbookItems(r).items.map(item => ({ ...item,
+      sequence: item.sequence ? { ...item.sequence, start: { ...item.sequence.start, value: Number(item.sequence.start.value) + 1 } } : item.sequence,
+    }))}) }) };
+    expect(await runWorkbookEdit(s.send(), s.deps)).toBe("failed");
+    expect(s.review.snapshot().revision).toBe(1);
+  });
+
+  it("R428-5 refuses legacy partial results without a stored build and model frame", async () => {
+    const s = setup(); s.comment(); const id = s.send();
+    await s.review.store.claim(id, "legacy", "mac");
+    await s.review.store.checkpoint(id, "legacy", {number: 3, responses: [{items: []}]});
+    await s.review.store.release(id, "legacy");
+    expect(await runWorkbookEdit(id, s.deps)).toBe("failed");
+    expect(s.review.comments[0].status).toBe("pending");
+    expect(s.renderPage).not.toHaveBeenCalled();
   });
 
 });

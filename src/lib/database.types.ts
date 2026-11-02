@@ -2187,6 +2187,7 @@ export type Database = {
           page_number: number
           parent_id: string
           question_number: number | null
+          request_key: string | null
           revision: number
           status: string
           x: number
@@ -2208,6 +2209,7 @@ export type Database = {
           page_number: number
           parent_id: string
           question_number?: number | null
+          request_key?: string | null
           revision: number
           status?: string
           x: number
@@ -2229,6 +2231,7 @@ export type Database = {
           page_number?: number
           parent_id?: string
           question_number?: number | null
+          request_key?: string | null
           revision?: number
           status?: string
           x?: number
@@ -2415,6 +2418,7 @@ export type Database = {
           draft_id: string
           error: string | null
           finished_at: string | null
+          frame: Json | null
           heartbeat_at: string
           id: string
           item: Json | null
@@ -2440,6 +2444,7 @@ export type Database = {
           draft_id: string
           error?: string | null
           finished_at?: string | null
+          frame?: Json | null
           heartbeat_at?: string
           id?: string
           item?: Json | null
@@ -2465,6 +2470,7 @@ export type Database = {
           draft_id?: string
           error?: string | null
           finished_at?: string | null
+          frame?: Json | null
           heartbeat_at?: string
           id?: string
           item?: Json | null
@@ -3749,6 +3755,10 @@ export type Database = {
           p_run: string
         }
         Returns: boolean
+      }
+      frame_workbook_edit: {
+        Args: { p_frame: Json; p_id: string; p_lease: string }
+        Returns: Json
       }
       grant_maya_minutes: {
         Args: {

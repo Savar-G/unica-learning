@@ -24,7 +24,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/workb
     ? await db.rpc("send_workbook_comments", { p_draft: run.data.draft_id, p_revision: body.revision, p_by: actor.userId, p_email: actor.email, p_runner: runner })
     : await db.rpc("save_workbook_comment", { p_draft: run.data.draft_id, p_revision: body.revision, p_comment: body.comment as Json, p_by: actor.userId, p_email: actor.email, p_delete: !!body.delete });
   if (result.error) return Response.json({ reason: "The comments could not be saved. Reload the page and try again." }, { status: 409 });
-  const data = result.data as { status?: string; id?: string; reason?: string };
-  if (data.status === "queued" && runner === "server") after(async () => { await runWorkbookJobNow(data.id!, { origin: new URL(request.url).origin }); });
+  const data = result.data as { status?: string; id?: string; runner?: string; reason?: string };
+  if (data.status === "queued" && (data.runner ?? runner) === "server") after(async () => { await runWorkbookJobNow(data.id!, { origin: new URL(request.url).origin }); });
   return Response.json(data, { status: data.status === "refused" ? 409 : body.send ? 202 : 200 });
 }

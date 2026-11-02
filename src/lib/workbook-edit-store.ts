@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { toJson, type Database } from "@/lib/database";
 import { curriculumFor } from "@/lib/workbook-curriculum";
-import type { WorkbookEditStore, WorkbookEdit, ReviewComment, EditCheckpoint } from "@/lib/workbook-edit";
+import type { WorkbookEditStore, WorkbookEdit, ReviewComment, EditCheckpoint, EditFrame } from "@/lib/workbook-edit";
 import type { GeneratedWorkbook } from "@/lib/workbook-generator";
 import type { DraftRendering } from "@/lib/workbook-job";
 import type { RenderProblem } from "@/lib/workbook-render";
@@ -10,7 +10,7 @@ import { workbookRunStore } from "@/lib/workbook-job-store";
 type Row = Database["public"]["Tables"]["workbook_edits"]["Row"];
 export const editFromRow = (r: Row): WorkbookEdit => ({ id: r.id, draftId: r.draft_id, revision: r.base_revision,
   runner: r.runner as WorkbookEdit["runner"], status: r.status as WorkbookEdit["status"],
-  error: r.error, createdAt: r.created_at, lease: r.lease });
+  error: r.error, createdAt: r.created_at, lease: r.lease, stalled: Date.parse(r.heartbeat_at) + 6 * 60_000 <= Date.now(), expiresAt: new Date(Date.parse(r.heartbeat_at) + 6 * 60_000).toISOString() });
 export const commentFromRow = (r: Database["public"]["Tables"]["workbook_comments"]["Row"]): ReviewComment => ({
   id: r.id, draftId: r.draft_id, revision: r.revision, page: r.page_number, question: r.question_number,
   x: r.x, y: r.y, note: r.note, item: r.item, actor: { id: r.actor_id, email: r.actor_email }, createdAt: r.created_at,
@@ -20,11 +20,12 @@ const checked = <T>(r: { data: T; error: { message: string } | null }): T => { i
 
 export function workbookEditStore(db: SupabaseClient<Database>): WorkbookEditStore {
   return {
+    async frame(id, lease, frame) { return checked(await db.rpc("frame_workbook_edit", { p_id: id, p_lease: lease, p_frame: toJson(frame) })) as unknown as EditFrame | null; },
     async checkpoints(id) {
       const row = checked(await db.from("workbook_edits").select("checkpoints").eq("id", id).single());
       return Object.values(row?.checkpoints ?? {}) as unknown as EditCheckpoint[];
     },
-    async checkpoint(id, lease, result) { return checked(await db.rpc("checkpoint_workbook_edit", { p_id: id, p_lease: lease, p_page: result.number, p_result: toJson(result) })) === true; },
+    async checkpoint(id, lease, result) { return checked(await db.rpc("checkpoint_workbook_edit", { p_id: id, p_lease: lease, p_page: result.number, p_result: JSON.parse(JSON.stringify(result)) })) === true; },
     async release(id, lease) { return checked(await db.rpc("release_workbook_edit", { p_id: id, p_lease: lease })) === true; },
     async comments(id) {
       return checked(await db.from("workbook_comments").select("*").eq("batch_id", id).eq("status", "sent").order("created_at"))?.map(commentFromRow) ?? [];

@@ -251,7 +251,7 @@ function ProblemList({ problems }: { problems: { question: number | null; reason
 
 /** Who wrote a question's printed words: code (a relation, or a whole-number operation at U1 to U9) or the AI. */
 export const wordedBy = (q: GeneratedQuestion): "code" | "AI" | null =>
-  !q.package ? null : isCodeWorded(q.package) || (q.package.item?.checks ?? []).some((c) => c.kind === "relation") ? "code" : "AI";
+  !q.package ? null : q.package.textSource !== "human" && (isCodeWorded(q.package) || (q.package.item?.checks ?? []).some((c) => c.kind === "relation")) ? "code" : "AI";
 
 /** A question that failed because the solve check read it otherwise than the key, or could not confirm it. */
 const failedSolve = (q: GeneratedQuestion) => failedBySolve(q.check) !== null;

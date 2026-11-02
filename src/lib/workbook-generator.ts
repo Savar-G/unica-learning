@@ -68,6 +68,7 @@ import {
 } from "@/lib/workbook-book";
 import { pageId, type Omission, type PageContent, type SlotName } from "@/lib/workbook-page";
 import type { PageType, PlannedPage, PlannedPart, WorkbookPlan } from "@/lib/workbook-plan";
+import { workbookEditItem } from "@/lib/workbook-edit-item";
 import type { DraftPage } from "@/lib/workbook-render";
 import { textRoom } from "@/lib/workbook-template";
 
@@ -321,7 +322,11 @@ export const solveKey = (page: number, seq: number, id: string) => `${page}:${se
  */
 export class ResumeMismatch extends Error {}
 
+export class WriterPersistenceError extends Error {}
+
 export interface GenerateDeps {
+  /** Completed edit writer responses, saved before any solve or render work. */
+  writerResponses?: { load(): Promise<unknown[]>; save(response: unknown): Promise<void> };
   ai: AiClient;
   fit: FitCheck;
   store: WorkbookDraftStore;
@@ -868,8 +873,17 @@ function roomOf(input: GenerateInput, place: SlotName, day: number) {
  * that is not JSON) is sent once more, the same; the second error is the one returned.
  */
 async function callAi(deps: GenerateDeps, name: string, request: unknown, ids: string[] = []): Promise<{ items: Map<string, unknown>; error: string | null }> {
-  const ask = () => withTimeLimit(deps.timeLimitMs ?? TIME_LIMIT_MS, (signal) =>
-    deps.ai.json({ name, system: SYSTEM, content: [{ type: "text", text: JSON.stringify(request) }], schema: ITEMS_SCHEMA, effort: "medium" }, signal));
+  const kept = await deps.writerResponses?.load() ?? [];
+  let cursor = 0;
+  const ask = async () => {
+    if (cursor < kept.length) return kept[cursor++];
+    const response = await withTimeLimit(deps.timeLimitMs ?? TIME_LIMIT_MS, signal =>
+      deps.ai.json({ name, system: SYSTEM, content: [{ type: "text", text: JSON.stringify(request) }], schema: ITEMS_SCHEMA, effort: "medium" }, signal));
+    try { await deps.writerResponses?.save(response); }
+    catch (error) { throw new WriterPersistenceError(String(error)); }
+    cursor++;
+    return response;
+  };
   const read = (out: unknown, into: Map<string, unknown>) => {
     const list = (out as { items?: unknown } | null)?.items;
     if (!Array.isArray(list)) return;
@@ -880,14 +894,15 @@ async function callAi(deps: GenerateDeps, name: string, request: unknown, ids: s
   };
   try {
     let resent = false;
-    const out = await ask().catch(() => { resent = true; return ask(); });
+    const out = await ask().catch((error) => { if (error instanceof WriterPersistenceError) throw error; resent = true; return ask(); });
     const items = new Map<string, unknown>();
     read(out, items);
     // An answer that leaves out slots it was asked for is incomplete, like one that is not JSON: sent once more (if it
     // was not already), and the slots it gave are kept.
-    if (!resent && ids.some((id) => !items.has(id))) read(await ask().catch(() => null), items);
+    if (!resent && ids.some((id) => !items.has(id))) read(await ask().catch((error) => { if (error instanceof WriterPersistenceError) throw error; return null; }), items);
     return { items, error: null };
   } catch (e) {
+    if (e instanceof WriterPersistenceError) throw e;
     return { items: new Map(), error: e instanceof Error ? e.message : String(e) };
   }
 }
@@ -1827,6 +1842,14 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
   return saved.status === "saved" ? { status: "stored", draft } : saved;
 }
 
+/** Numeric data of items without an operation, including their pictures. Ignore editable words and labels. */
+function editNumbers(value: unknown): number[] {
+  if (typeof value === "number") return [value];
+  if (Array.isArray(value)) return value.flatMap(editNumbers);
+  if (value && typeof value === "object") return Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).flatMap(([, v]) => editNumbers(v));
+  return [];
+}
+
 /** Replace only the selected questions of a stored day page. The plan, checks and templates stay binding. */
 export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDeps, page: GeneratedPage,
   change: { question: number | number[] | null; note: string; item?: unknown; items?: Record<number, unknown> }): Promise<GeneratedPage> {
@@ -1836,13 +1859,24 @@ export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDep
   if (!targets.length) throw new Error("This question is unavailable. Reload the page.");
   const which = targets.map((q) => w.slots.findIndex((s) => s.id === q.slot));
   if (which.some((i) => i < 0)) throw new Error("The page plan changed. Prepare a new workbook.");
-  // A review note replaces the original choice of numbers and wording, within the same skill and level.
-  for (const i of which) {
-    const old = w.slots[i].planned;
-    w.slots[i].planned = { use: null, spare: null, name: old?.name ?? "Mia", thing: old?.thing ?? "apples",
-      names: PEOPLE.filter((name) => name !== input.book?.child), things: [...THINGS] };
-    delete w.slots[i].aim;
+  const note = change.note.replace(/(?:Whole page|Question \d+): /g, "");
+  const keepNumbers = /keep (?:the )?numbers/i.test(note) || !(/\d|\b(?:change|replace|different|new)\b.{0,25}\b(?:numbers|operands|calculation)\b/i.test(note));
+  // Keep the current data, including edits from earlier revisions. The note can change its nouns and wording.
+  for (let k = 0; k < which.length; k++) {
+    const slot = w.slots[which[k]], old = slot.planned;
+    const op = targets[k].package?.operation;
+    const operands = op && "operands" in op && op.operands.every(v => typeof v === "number") ? op.operands as number[] : null;
+    const numbers = operands && op?.kind === "subtract" ? [operands[0] - operands[1], operands[1]] : operands;
+    slot.planned = { use: keepNumbers ? numbers : null, spare: null, name: old?.name ?? "Mia", thing: old?.thing ?? "apples",
+      names: PEOPLE.filter(name => name !== input.book?.child), things: [...THINGS] };
+    delete slot.aim;
   }
+  const currentQuestions = targets.map(q => ({ number: q.number, text: q.package?.text ?? null, data: workbookEditItem(q) }));
+  const writer = deps.ai;
+  deps = { ...deps, ai: { model: writer.model, json: (request, signal) => writer.json({ ...request,
+    system: `${request.system} For an edit, read currentQuestions. Keep each question's numbers, operation and data unless the comment explicitly asks to change them.`,
+    content: request.content.map(part => part.type === "text" ? { ...part, text: JSON.stringify({ ...JSON.parse(part.text), currentQuestions }) } : part),
+  }, signal) } };
   const built: BuiltQuestion[] = [];
   let examples: (QuestionPackage | null)[] = [];
   const manual = change.items ?? (change.item !== undefined ? { [targets[0].number]: change.item } : {});
@@ -1863,7 +1897,10 @@ export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDep
       skills: slot.part.skills, signs: levelSigns(input.curriculum, input.plan.level), story: !!slot.place && STORY_CHECK_PLACES.has(slot.place) });
     if (b.package && typeof raw.text === "string") {
       b.package.text = raw.text;
+      b.package.textSource = "human";
       if (b.package.easierExample && typeof raw.easier?.text === "string") b.package.easierExample.text = raw.easier.text;
+      const codeCheck = checkQuestionPackage(b.package);
+      if (codeCheck.status !== "checked") throw new Error("The code cannot derive and check every answer from these fields.");
       const problem = kindProblem(b.package, raw as Record<string, unknown>)
         ?? (slot.place && STORY_CHECK_PLACES.has(slot.place) ? storyProblem(raw.text) : quantityStoryProblem(raw.text));
       if (problem) b.check = { status: "failed", reason: problem };
@@ -1875,6 +1912,9 @@ export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDep
     if (b.check.status === "failed" || !b.package) throw new Error(b.check.status === "failed" ? b.check.reason : "The question could not be made.");
     b.package = { ...b.package, id: q.package?.id ?? b.package.id,
       ref: { source: "workbook", workbookId: input.workbookId, page: page.number, question: q.number } };
+    if (Object.hasOwn(manual, q.number) && b.check.status !== "checked") throw new Error("The code cannot derive every answer from these fields.");
+    if (!Object.hasOwn(manual, q.number) && keepNumbers && JSON.stringify(b.package.operation) !== JSON.stringify(q.package?.operation)) throw new Error("The rewrite changed the numbers. Try again and ask to keep the calculation.");
+    if (!Object.hasOwn(manual, q.number) && keepNumbers && !q.package?.operation && JSON.stringify(editNumbers([b.package.item?.checks, b.package.item?.figure])) !== JSON.stringify(editNumbers([q.package?.item?.checks, q.package?.item?.figure]))) throw new Error("The rewrite changed the numbers. Try again and ask to keep the calculation.");
     const format = b.package.item?.format;
     if (slot.place && STRICT_SLOTS.includes(slot.place) && format && !SLOT_FORMATS[slot.place]?.includes(format)) throw new Error("The question does not fit this part of the page.");
     const problem = rangeProblem(b.package, input.curriculum, input.plan.level)

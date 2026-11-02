@@ -36,10 +36,10 @@ export async function runWorkbookEditWith(db: SupabaseClient<Database>, id: stri
     store: workbookDraftStore(db), qrToken: () => randomBytes(16).toString("base64url"), timeLimitMs: place.timeLimitMs };
   const started = Date.now(), lease = randomUUID();
   const timer = setInterval(() => { void db.from("workbook_edits").update({ heartbeat_at: new Date().toISOString() })
-    .eq("id", id).eq("status", "running").eq("lease", lease).then(() => undefined); }, 30_000);
+    .eq("id", id).eq("status", "running").eq("lease", lease).gt("heartbeat_at", new Date(Date.now() - 6 * 60_000).toISOString()).then(() => undefined); }, 30_000);
   try {
     return await runWorkbookEdit(id, {
-      store: workbookEditStore(db), runner: place.subscription ? "mac" : "server", newId: () => lease, generation,
+      store: workbookEditStore(db), build: place.build, runner: place.subscription ? "mac" : "server", newId: () => lease, generation,
       remove: (paths) => files.remove(paths),
       shouldYield: place.subscription ? undefined : () => Date.now() - started > 120_000,
       handOff: place.handOff,
