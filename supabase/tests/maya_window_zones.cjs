@@ -1,7 +1,7 @@
-// #444. Run from the repository root against an EMPTY local database with the Maya migrations.
-// npm install --prefix /tmp/maya-zone-test pg
-// NODE_PATH=/tmp/maya-zone-test/node_modules PGPORT=55444 PGPASSWORD=... node --expose-gc supabase/tests/maya_window_zones.cjs
-// --baseline reproduces both 2,400-second failures with #441 SQL. Default applies #444.
+// #444 / R448. Run npm run test:family-zones against an EMPTY PostgreSQL 17 database.
+// PGPORT=55447 PGPASSWORD=... npm run test:family-zones
+// --baseline reproduces all three 2,400-second failures with #441 SQL.
+// --mutate-canadian-offset must exit nonzero. It proves that the CI driver rejects drift.
 // No remote connection is supported. Function changes are restored; parity rows are rolled back.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -14,8 +14,12 @@ esbuild.buildSync({ entryPoints: ['src/lib/family-time.ts'], bundle: true, platf
 esbuild.buildSync({ entryPoints: ['src/lib/canada-postal-zones.ts'], bundle: true, platform: 'node', format: 'cjs', outfile: path.join(tmp, 'postal.cjs') });
 const t = require(path.join(tmp, 'time.cjs'));
 const z = require(path.join(tmp, 'postal.cjs'));
+esbuild.buildSync({ entryPoints: ['src/lib/supported-time-zones.ts'], bundle: true, platform: 'node', format: 'cjs', outfile: path.join(tmp, 'supported.cjs') });
+const { SUPPORTED_TIME_ZONES } = require(path.join(tmp, 'supported.cjs'));
+const supportedMigration = 'supabase/migrations/20261102172026_supported_family_zones.sql';
 const config = { host: '127.0.0.1', port: Number(process.env.PGPORT || 5432), user: process.env.PGUSER || 'postgres', password: process.env.PGPASSWORD, database: process.env.PGDATABASE || 'postgres', statement_timeout: 15000 };
 const baseline = process.argv.includes('--baseline');
+const r448Baseline = process.argv.includes('--r448-baseline');
 const parent = 'ff444000-0000-4000-8000-000000000001';
 const child = 'ff444000-0000-4000-8000-000000000002';
 const id = n => 'ff444000-0000-4000-8000-' + String(n).padStart(12, '0');
@@ -46,8 +50,12 @@ const helpers = ['_maya_normalize_zone', '_maya_zone_at', '_maya_period_window']
 const modified = ['grant_maya_minutes', '_maya_minutes_used', 'reserve_maya_minutes_on_call', '_maya_family_window', ...helpers];
 async function family(c, zone) {
   await c.query(`insert into auth.users(id,email) values($1,'zone-probe@example.invalid')`, [parent]);
-  await c.query(`insert into public.parents(id,name,email,time_zone) values($1,'Probe','zone-probe@example.invalid',$2)`, [parent, zone]);
-  await c.query(`insert into public.children(id,parent_id,first_name,grade,province) values($1,$2,'Probe',3,'MB')`, [child, parent]);
+  // Model a legacy saved value. Production writes are canonicalized by the trigger.
+  await c.query('alter table public.parents disable trigger normalize_parent_time_zone');
+  try {
+    await c.query(`insert into public.parents(id,name,email,time_zone) values($1,'Probe','zone-probe@example.invalid',$2)`, [parent, zone]);
+  } finally { await c.query('alter table public.parents enable trigger normalize_parent_time_zone'); }
+  await c.query(`insert into public.children(id,parent_id,first_name,grade,province) values($1,$2,'Probe',3,'BC')`, [child, parent]);
   await c.query(`insert into public.test_accounts(parent_id,marked_by) values($1,$1)`, [parent]);
 }
 async function removeFamily(c) {
@@ -61,18 +69,23 @@ async function quota(a, b) {
   for (const test of [
     { zone: 'America/Rainy_River', now: '2026-11-09T06:33Z', period: '2026-11-09', start: '2026-11-09T05:00Z', spent: '2026-11-09T05:30Z' },
     { zone: 'Africa/Cairo', now: '2027-10-31T20:00Z', period: '2027-10-25', start: '2027-10-24T21:00Z', spent: '2027-10-24T21:30Z' },
-  ]) {
+    { zone: 'Canada/East-Saskatchewan', now: '2026-11-09T08:33Z', period: '2026-11-09', start: '2026-11-09T06:00Z', spent: '2026-11-09T06:30Z' },
+  ]) for (const race of ['child_lock', 'competing_grant']) {
     for (const conn of [a, b]) await conn.query(`select set_config('probe.now',$1,false),set_config('request.jwt.claim.role','service_role',false)`, [test.now]);
     await family(a, test.zone); // Keep the raw alias in the saved family row.
     await a.query(`select set_config('probe.now',$1,false)`, [test.start]);
     assert.equal((await a.query(`select * from public.grant_maya_minutes($1,$2,$3,'child',$4,1800,600,60,$5::timestamptz)`, [id(20), parent, child, test.period, test.start])).rows[0].granted, 600);
-    for (let n = 10; n < 13; n++) await a.query(`insert into public.maya_minute_grants(call_id,parent_id,child_id,kind,period,granted_seconds,used_seconds,settled_at,created_at,period_start) values($1,$2,$3,'child',$4,600,600,$5,$5,$6)`, [id(n), parent, child, test.period, test.spent, test.start]);
+    for (let n = 10; n < (race === 'competing_grant' ? 12 : 13); n++) await a.query(`insert into public.maya_minute_grants(call_id,parent_id,child_id,kind,period,granted_seconds,used_seconds,settled_at,created_at,period_start) values($1,$2,$3,'child',$4,600,600,$5,$5,$6)`, [id(n), parent, child, test.period, test.spent, test.start]);
     await a.query(`select set_config('probe.now',$1,false)`, [test.now]);
     const usage = async () => (await b.query(`select public.maya_minutes_used($1,$2,'child',$3::timestamptz) used`, [parent, child, test.start])).rows[0].used;
     const before = await usage();
-    assert.equal(before, 1800);
+    assert.equal(before, race === 'competing_grant' ? 1200 : 1800);
     await b.query('begin');
-    await b.query(`select pg_advisory_xact_lock(hashtextextended('maya_minutes:child:'||$1,0))`, [child]);
+    if (race === 'competing_grant') {
+      const competing = (await b.query(`select * from public.grant_maya_minutes($1,$2,$3,'child',$4,1800,600,60,$5::timestamptz)`, [id(99), parent, child, test.period, test.start])).rows[0];
+      assert.equal(competing.granted, 600);
+      assert.equal(competing.used_before, 1200);
+    } else await b.query(`select pg_advisory_xact_lock(hashtextextended('maya_minutes:child:'||$1,0))`, [child]);
     const pending = a.query(callInsert, [id(20), parent, child]).then(() => null, e => e.message);
     let blocked = false;
     for (let i = 0; i < 100; i++) {
@@ -83,12 +96,13 @@ async function quota(a, b) {
     const error = await pending;
     assert.equal(blocked, true, 'insertion must wait on the child lock');
     const after = await usage();
+    if (r448Baseline) console.log(JSON.stringify({ mode: '3955adc', zone: test.zone, race, before, after, insertion: error ?? 'accepted' }));
     assert.equal(after, baseline ? 2400 : 1800);
     assert.equal(error, baseline ? null : 'maya_minute_grant_expired');
-    console.log(JSON.stringify({ mode: baseline ? 'baseline' : 'fixed', zone: test.zone, connections: 2, childLockWait: blocked, before, after, insertion: error ?? 'accepted' }));
+    console.log(JSON.stringify({ mode: baseline ? 'baseline' : 'fixed', zone: test.zone, race, connections: 2, childLockWait: blocked, before, after, insertion: error ?? 'accepted' }));
     if (!baseline) {
       // The same full grant fits after 600 seconds are removed. No blanket refusal.
-      await a.query('delete from public.maya_minute_grants where call_id=$1', [id(12)]);
+      await a.query('delete from public.maya_minute_grants where call_id=$1', [id(race === 'competing_grant' ? 99 : 12)]);
       await a.query(callInsert, [id(20), parent, child]);
       assert.equal(await usage(), 1800);
       const grant = (await a.query('select period::text,period_start from public.maya_minute_grants where call_id=$1', [id(20)])).rows[0];
@@ -100,13 +114,44 @@ async function quota(a, b) {
   for (const { def } of defs) await a.query(def);
   await a.query('drop function public.issue444_clock()');
 }
+async function canonicalWritesAndBackfill(c) {
+  await c.query('begin');
+  try {
+    await family(c, 'Canada/East-Saskatchewan');
+    // family() models a historical raw value. Normal writes must canonicalize it.
+    await c.query("update public.parents set time_zone='Canada/East-Saskatchewan' where id=$1", [parent]);
+    assert.equal((await c.query('select time_zone from public.parents where id=$1', [parent])).rows[0].time_zone, 'America/Regina');
+    await c.query("update public.parents set time_zone='Future/Accepted' where id=$1", [parent]);
+    assert.equal((await c.query('select time_zone from public.parents where id=$1', [parent])).rows[0].time_zone, null);
+  } finally { await c.query('rollback'); }
+  await c.query('begin');
+  try {
+    await c.query('alter table public.parents disable trigger normalize_parent_time_zone');
+    const values = ['Canada/East-Saskatchewan', 'America/Regina', 'Future/Accepted', null];
+    for (let i = 0; i < values.length; i++) {
+      await c.query("insert into auth.users(id,email) values($1,'backfill@example.invalid')", [id(100 + i)]);
+      await c.query("insert into public.parents(id,name,email,time_zone) values($1,'Probe','backfill@example.invalid',$2)", [id(100 + i), values[i]]);
+    }
+    await c.query('alter table public.parents enable trigger normalize_parent_time_zone');
+    const untouched = (await c.query('select id,xmin::text,cmin::text from public.parents where id=any($1::uuid[]) order by id', [[id(101), id(103)]])).rows;
+    await c.query("select set_config('unica.expected_time_zone_updates','2',true)");
+    await c.query(fs.readFileSync(supportedMigration, 'utf8'));
+    assert.deepEqual((await c.query('select time_zone from public.parents order by id')).rows.map(r => r.time_zone), ['America/Regina', 'America/Regina', null, null]);
+    assert.deepEqual((await c.query('select id,xmin::text,cmin::text from public.parents where id=any($1::uuid[]) order by id', [[id(101), id(103)]])).rows, untouched);
+    const once = (await c.query('select id,xmin::text,cmin::text from public.parents order by id')).rows;
+    await c.query("select set_config('unica.expected_time_zone_updates','0',true)");
+    await c.query(fs.readFileSync(supportedMigration, 'utf8'));
+    assert.deepEqual((await c.query('select id,xmin::text,cmin::text from public.parents order by id')).rows, once);
+    console.log('PASS canonical writes and backfill: two rows changed; canonical/null rows untouched; rerun changes zero');
+  } finally { await c.query('rollback'); }
+}
 async function parity(c) {
   await c.query('begin');
   try {
     await family(c, null);
-    // Enumerate IANA primary names plus every database link accepted by the runtime.
-    // Case variants also belong to validTimeZone's accepted input set.
-    const names = [...new Set([...(await c.query('select name from pg_timezone_names')).rows.map(r => r.name), ...Intl.supportedValuesOf('timeZone')])].filter(t.validTimeZone).sort();
+    // The source allow-list defines the entire accepted input set, independent of runtime inventories.
+    const names = Object.keys(SUPPORTED_TIME_ZONES).sort();
+    await c.query('alter table public.parents disable trigger normalize_parent_time_zone');
     const at = [];
     for (let day = '2026-01-05'; day < '2029-01-01'; day = t.addDays(day, 7)) {
       at.push(day + 'T12:00:00Z', t.addDays(day, 6) + 'T20:00:00Z');
@@ -134,13 +179,13 @@ async function parity(c) {
         const e = expected.get(zone)[i];
         if (CANADIAN_ZONES.includes(zone)) canadianComparisons++;
         if (row.period !== e.period || row.period_start.getTime() !== e.start) {
-          const allowed = Object.hasOwn(TZDATA_EXCEPTIONS, name)
+          const allowed = Object.hasOwn(TZDATA_EXCEPTIONS, zone)
             && !CANADIAN_ZONES.includes(zone)
             && row.period === e.period
             && TZDATA_EXCEPTION_WEEKS.some(([from, to]) => e.period >= from && e.period <= to)
             && row.period_start.getTime() === e.start + 3_600_000
             && row.period_start.toISOString() === e.period + 'T00:00:00.000Z';
-          if (allowed) excepted[name] = (excepted[name] || 0) + 1;
+          if (allowed) excepted[zone] = (excepted[zone] || 0) + 1;
           else mismatches.push({ name, at: at[i], expected: new Date(e.start).toISOString(), actual: row.period_start.toISOString(), period: row.period, expectedPeriod: e.period });
         }
         checked++;
@@ -177,7 +222,10 @@ async function parity(c) {
       edges++;
     }
     // Preserve postal/province fallbacks, including opt-outs from Canadian overrides.
-    const locations = [{}, ...Object.keys(z.POSTAL_ZONES).map(postal => ({ postal })), ...Object.keys(z.FSA_ZONES).map(fsa => ({ postal: fsa + '1A1' })), ...['BC', 'AB', 'SK', 'MB', 'ON', 'other'].map(province => ({ province })), { timeZone: 'bad-zone', postal: 'P0V 1G0' }];
+    const locations = [{ timeZone: 'Future/Accepted', postal: 'P9N 1A1', province: 'BC' }, { timeZone: 'Future/Accepted', province: 'ON' }, { timeZone: 'Future/Accepted' }, {}, ...Object.keys(z.POSTAL_ZONES).map(postal => ({ postal })), ...Object.keys(z.FSA_ZONES).map(fsa => ({ postal: fsa + '1A1' })), ...['BC', 'AB', 'SK', 'MB', 'ON', 'other'].map(province => ({ province })), { timeZone: 'bad-zone', postal: 'P0V 1G0' }];
+    for (const unknown of ['Future/Accepted', 'constructor', '__proto__', ' America/Regina', 'İtc/UTC']) {
+      assert.equal((await c.query('select public._maya_normalize_zone($1) zone', [unknown])).rows[0].zone, null);
+    }
     let fallbacks = 0;
     for (const loc of locations) {
       await c.query('update public.parents set time_zone=$2,postal=$3 where id=$1', [parent, loc.timeZone ?? null, loc.postal ?? null]);
@@ -197,12 +245,23 @@ async function parity(c) {
 (async () => {
   const a = new pg.Client(config), b = new pg.Client(config);
   await a.connect(); await b.connect();
+  if (process.argv.includes('--bootstrap')) await require('./maya_window_bootstrap.cjs')(a);
+  assert.equal((await a.query('show server_version_num')).rows[0].server_version_num.slice(0, 2), '17', 'CI and Supabase use PostgreSQL 17');
   const saved = (await a.query(`select proname, pg_get_functiondef(oid) def from pg_proc where pronamespace='public'::regnamespace and proname = any($1::text[])`, [modified])).rows;
   try {
     assert.equal((await a.query('select count(*)::int n from public.parents')).rows[0].n, 0, 'requires an empty local test database');
     await a.query(fs.readFileSync('supabase/migrations/20261102155713_current_maya_minute_window.sql', 'utf8'));
-    if (!baseline) await a.query(fs.readFileSync(migration, 'utf8'));
+    if (!baseline) {
+      await a.query(fs.readFileSync(migration, 'utf8'));
+      if (!r448Baseline) await a.query(fs.readFileSync(supportedMigration, 'utf8'));
+    }
+    if (process.argv.includes('--mutate-canadian-offset')) {
+      const def = (await a.query("select pg_get_functiondef('public._maya_zone_at(text,timestamptz)'::regprocedure) def")).rows[0].def;
+      await a.query(def.replace("then 'Etc/GMT+7'", "then 'Etc/GMT+8'"));
+      console.log('INJECTED Canadian offset mismatch: Vancouver UTC-8 after the 2026 cutoff');
+    }
     await quota(a, b);
+    if (!baseline && !process.argv.includes('--mutate-canadian-offset')) await canonicalWritesAndBackfill(a);
     if (!baseline) await parity(a);
   } finally {
     await b.query('rollback'); await a.query('rollback');

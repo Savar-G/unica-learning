@@ -1,17 +1,13 @@
 import type { Province, StartState } from "@/lib/assessment";
+import { normalizeTimeZone } from "@/lib/supported-time-zones";
+export { normalizeTimeZone } from "@/lib/supported-time-zones";
 
 import { PACIFIC_ZONE, PROVINCE_ZONES, postalZone, type FamilyZone } from "@/lib/canada-postal-zones";
 export { PACIFIC_ZONE, zoneFor, type FamilyZone } from "@/lib/canada-postal-zones";
 
-/** Whether the runtime accepts a stored browser IANA zone. */
+/** Whether the shared allow-list accepts a stored browser zone. */
 export function validTimeZone(tz: unknown): tz is string {
-  if (typeof tz !== "string" || tz.length < 1 || tz.length > 64 || !/^[A-Za-z][A-Za-z0-9_+/-]*$/.test(tz)) return false;
-  try {
-    new Intl.DateTimeFormat("en-CA", { timeZone: tz });
-    return true;
-  } catch {
-    return false;
-  }
+  return normalizeTimeZone(tz) !== null;
 }
 
 export interface FamilyLocation {
@@ -27,8 +23,8 @@ export function familyProvince(children: readonly { id: string; created_at?: str
 
 /** One family rule: valid browser zone, postal mapping, child's province, then Pacific. */
 export function familyZone({ timeZone, postal, province }: FamilyLocation): FamilyZone {
-  // Resolve aliases too, so Canada/Pacific gets the same override as America/Vancouver.
-  if (validTimeZone(timeZone)) return new Intl.DateTimeFormat("en-CA", { timeZone }).resolvedOptions().timeZone;
+  const canonical = normalizeTimeZone(timeZone);
+  if (canonical) return canonical;
   return postalZone(postal) ?? (province ? PROVINCE_ZONES[province] : undefined) ?? PACIFIC_ZONE;
 }
 
@@ -56,8 +52,9 @@ const OVERRIDES = [
 
 /** Applies the confirmed rule even when the runtime still has older tz data. */
 export function effectiveZone(at: number, zone: FamilyZone): string {
-  if (typeof zone !== "string") return zone.zone;
-  return OVERRIDES.find((rule) => at >= rule.from && rule.zones.some((name) => name === zone))?.zone ?? zone;
+  if (typeof zone !== "string") return normalizeTimeZone(zone.zone) ?? effectiveZone(at, PACIFIC_ZONE);
+  const canonical = normalizeTimeZone(zone) ?? PACIFIC_ZONE;
+  return OVERRIDES.find((rule) => at >= rule.from && rule.zones.some((name) => name === canonical))?.zone ?? canonical;
 }
 
 type FormatOptions = Omit<Intl.DateTimeFormatOptions, "timeZone">;
