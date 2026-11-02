@@ -306,7 +306,7 @@ function build(plan: Plan, reading: Reading | undefined, input: ModelInput): unk
   const act = plan.act ?? autoAct(input, reading);
   const offer: ActOffer | undefined = input.offers.find((o) => o.act === act);
   const lines = offer?.lines ?? [];
-  const step = act === "guide" ? (plan.step ?? nextStep(input, reading)) : act === "example_step" ? lines.find((l) => l.line === "example.step")?.slots.step as string | undefined : undefined;
+  const step = act === "guide" ? (plan.step ?? nextStep(input, reading)) : act === "example_step" ? (lines.find((l) => l.line === "example.step") ?? lines.find((l) => l.line === "example.intro"))?.slots.step as string | undefined : undefined;
   const level = act === "guide" ? (plan.level ?? 0) : undefined;
   const pick = (id: LineId) => {
     const same = lines.filter((l) => l.line === id);

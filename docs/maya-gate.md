@@ -160,6 +160,8 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | M14 | A | passing | Two wrong final answers once every column is done: Maya says how the parts make the answer, then the answer, then closes | solved, answer_given |  |
 | M15 | A | passing | One wrong final answer once every column is done: no answer yet, the final question again, then the right answer is accepted | solved, independent |  |
 
+| C19e | B | passing | Grade 1 subtraction: separate introduction and first step, complete the example and question | solved, worked_example | |
+| C19f | B | passing | Shorter subtraction at grade 7: separate introduction and first step, complete the example and question | solved, worked_example | |
 | C19b | A | passing | Grade 3, age 8: a long turn is refused; the fallback obeys 25 words | solved | |
 | C19c | A | passing | Grade 5, age 10: a long turn is refused; the fallback obeys 45 words | solved | |
 | C19d | A | passing | Grade 7, age 12: a long turn is refused; the fallback obeys 45 words | solved | |
@@ -177,6 +179,10 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 ## Spoken help and turn limits (#397, #398, #399)
 
 Word counts keep every spoken conjunction, including the "and" in a mixed number. They expand numbers, signs and contractions. Speech-equivalence matching has a separate key and cannot supply a word count. The saved-trace gate uses its own numeric-token counter in `word-count.ts`, with no production normaliser import. Boundary tests check 25/26 and 45/46 words. A sabotage test restores the conjunction-dropping defect in the controller and proves that the independent gate rejects the 26-word and 46-word outputs. All fixture line variants and bank wordings are counted with both implementations. Every behaviour is also replayed at both limits with seeds 1, 9 and 31 to check emitted teaching and fallback turns. Approved wording is unchanged.
+
+At the 25-word limit the easier example's introduction is a separate automatic turn. Its saved `exampleIntroduced` flag does not advance `exampleShown`. The first worked step remains owed, including after checkpoint and resume. Code excludes individual approved variants that exceed the limit, without changing their words or wording-history ids. The final assembly check still refuses overlong combinations.
+
+`example-flow.test.ts` requires every teachable fixture to complete its entire example and finish the question at grades 1 to 7, with and without `shorter`, through both the scripted model and forced code fallbacks, at seeds 1, 9 and 31. The unsupported-kind fixture and bad-key fixture must remain content holds. These are completion assertions, in addition to output-length checks. Unicode boundary tests cover Chinese, accented Latin, hyphenated and apostrophe names, Arabic, combining marks and non-ASCII digits. The production and gate counters remain separate implementations.
 
 The profile grade sets the limit: grades 1 to 3 use 25 speech-normalised words; grades 4 to 7 use 45. Calls saved before profile limits keep the earlier 45-word limit. `shorter` keeps 25 for the rest of the call. An overlong assembled turn is refused with `turn_too_long`, including code-added answer lines. Code fallbacks pass the same check. Safety guidance keeps its required wording.
 

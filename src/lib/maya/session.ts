@@ -305,6 +305,8 @@ export interface Session {
   noStart: boolean;
   /** Easier-example steps shown, in order. */
   exampleShown: number;
+  /** The easier example was named in a prior turn, before its first worked step. */
+  exampleIntroduced?: boolean;
   /** Maya handed the question back after the whole easier example. */
   retried: boolean;
   /** Target steps the child has done. */
@@ -1072,9 +1074,18 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       if (p.step !== next.id) return no("wrong_step", `The next example step is "${next.id}".`, allowedNow);
       // The child must hear that a new, easier problem starts (practice run 5, F06: "Like this. Add the ones: 8 + 5 = 13."
       // with no word that 18 + 15 is another problem).
-      if (index === 0 && !spoken.chosen.some((o) => o.line === "example.intro")) {
+      const intro = spoken.chosen.some((o) => o.line === "example.intro");
+      const worked = spoken.chosen.some((o) => o.line === "example.step");
+      if (index === 0 && !s.exampleIntroduced && !intro) {
         return no("line_not_offered", "The easier example starts with its intro line (example.intro), before its first step.", allowedNow);
       }
+      if (!worked) {
+        if (index !== 0 || s.exampleIntroduced || !intro) return no("line_not_offered", "Say the next worked example step.", allowedNow);
+        s.exampleIntroduced = true;
+        moveTo(s, "MODEL_EXAMPLE");
+        break; // The introduction is not a worked step. The automatic first step is still owed.
+      }
+      s.exampleIntroduced = true;
       s.exampleShown = index + 1;
       s.assistance.push("worked_example");
       moveTo(s, "MODEL_EXAMPLE");
@@ -1584,8 +1595,7 @@ export function fallbacks(session: Session, refused: readonly unknown[] = []): P
         break;
       }
       case "example_step": {
-        // The intro and the step together: the first step of the easier example is refused without its intro.
-        const at = offers.find((o) => o.line === "example.step");
+        const at = offers.find((o) => o.line === "example.step") ?? offers.find((o) => o.line === "example.intro");
         lineSets = at ? [make(act, offers, { step: at.slots.step })] : [];
         break;
       }
@@ -1910,7 +1920,16 @@ function heardIn(s: Session): [AnswerValue[], [AnswerValue, AnswerValue][]] {
  */
 function offersFor(s: Session, act: Act, view: View): LineOffer[] {
   const offers = rawOffersFor(s, act, view);
-  return (s.noBoard ? offers.map(spokenOffer) : offers).filter((o) => o.texts.length > 0);
+  const available = (s.noBoard ? offers.map(spokenOffer) : offers).filter((o) => o.texts.length > 0);
+  // The shorter setting needs to exclude the 26-word subtraction variants. Ordinary turns still receive
+  // the final assembly check; avoid recounting every available wording at the 45-word setting.
+  if (turnWordLimit(s) === 45) return available;
+  return available.flatMap((o) => {
+    // Some approved variants are longer than a younger child's limit. Keep their ids and choose among variants
+    // that fit individually. The final assembly check still refuses combinations that exceed the limit.
+    const indices = o.texts.map((_, i) => i).filter((i) => speechWords(o.texts[i]) <= turnWordLimit(s));
+    return indices.length ? [{ ...o, texts: indices.map((i) => o.texts[i]), wordingIds: indices.map((i) => o.wordingIds?.[i] ?? `${o.key}#${i}`) }] : [];
+  });
 }
 
 /** Calls saved before profile limits keep the earlier 45-word limit. */
@@ -1935,7 +1954,10 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
     case "example_step": {
       const index = main === "ASSESS" ? 0 : s.exampleShown;
       const next = pkg.easierExample.steps[index];
-      return [...(index === 0 ? l.exampleIntro() : []), ...(next ? l.exampleStep(next.id) : [])];
+      if (index === 0 && !s.exampleIntroduced && turnWordLimit(s) === 25) {
+        return l.exampleIntro().map((o) => ({ ...o, slots: { step: next.id } }));
+      }
+      return [...(index === 0 && !s.exampleIntroduced ? l.exampleIntro() : []), ...(next ? l.exampleStep(next.id) : [])];
     }
     case "try_target":
       return [...l.tryTarget(), ...l.question()];

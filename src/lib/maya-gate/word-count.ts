@@ -16,11 +16,13 @@ function integerCount(digits: string): number {
 
 /** Count every spoken word, including conjunctions, expanded contractions, signs and mixed-number "and". */
 export function gateWordCount(text: string): number {
-  const expanded = text.toLowerCase().replace(/[’‘`]/g, "'")
+  const expanded = text.normalize("NFC").toLowerCase().replace(/[’‘`]/g, "'")
     .replace(/(?<![a-z])(?:mm|cm|dm|km|m)²/g, "square unit")
     .replace(/(?<![\d./])(\d+)\s+(\d+)\s*\/\s*(\d+)(?![\d/])/g, "$1 and $2/$3")
-    .replace(/(?<=[a-z])-(?=[a-z])/g, " ");
-  const tokens = expanded.match(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+|[a-z]+(?:'[a-z]+)?|[+×*÷=−–%/-]/g) ?? [];
+    .replace(/(?<=[\p{L}\p{M}])-(?=[\p{L}\p{M}])/gu, " ");
+  // Isolate ASCII numbers before scanning Unicode words, including numbers beside a unit or name.
+  const separated = expanded.replace(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+/g, " $& ");
+  const tokens = separated.match(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+|[\p{L}\p{N}][\p{L}\p{N}\p{M}]*(?:'[\p{L}\p{N}][\p{L}\p{N}\p{M}]*)*|[+×*÷=−–%/-]/gu) ?? [];
   return tokens.reduce((count, token) => {
     if (/^[\d.]/.test(token)) {
       const [whole, decimals] = token.replace(/,/g, "").split(".");

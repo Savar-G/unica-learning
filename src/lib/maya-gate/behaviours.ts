@@ -33,6 +33,19 @@ const TALK_SOLVED = [OPEN, "redirect", "accept_answer", "ask_write", "close"] as
 const failWith = (rule: string, reason: string) => ({ verdict: "fail" as const, rules: [rule as never], reason });
 
 export const BEHAVIOURS: Behaviour[] = [
+  ...([false, true] as const).map((shorter): Behaviour => ({
+    id: shorter ? "C19f" : "C19e", title: shorter ? "Shorter subtraction: the introduction and first example step are separate turns" : "Grade 1 subtraction: every example step fits, then the question is solved",
+    fixture: "B", grade: shorter ? 7 : 1, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      ...(shorter ? [child("Please talk less.", { shorter: true })] : []),
+      child("I don't know how to start.", { start: "no_start" }, [{ act: "example_step" }]),
+      child("Let me try.", undefined, [{ act: "try_target" }]),
+      child("24.", { answers: [[24, "result", "right"]] }), ...solvedEnd(),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "worked_example" }, acts: [OPEN, ...(shorter ? ["redirect" as const] : []), "example_step", "example_step", "example_step", "example_step", "try_target", "accept_answer", "ask_write", "close"] },
+  })),
+
   ...([3, 5, 7] as const).map((grade, i): Behaviour => ({
     id: ["C19b", "C19c", "C19d"][i], title: `Grade ${grade}: the spoken word limit refuses a long turn`,
     fixture: "A", grade, status: "passing",

@@ -46,7 +46,7 @@ const NUMBER_WORD = new Set([...ONES, ...TENS.filter(Boolean), "hundred", "thous
  * punctuation. Conjunctions stay here; only the equivalence key may omit them.
  */
 function speechTokens(text: string): string[] {
-  let t = text.toLowerCase().replace(/[’‘`]/g, "'");
+  let t = text.normalize("NFC").toLowerCase().replace(/[’‘`]/g, "'");
   // Area symbols are units, not a bare exponent. Count both spoken words.
   const units: Record<string, string> = { mm: "millimetres", cm: "centimetres", dm: "decimetres", m: "metres", km: "kilometres" };
   t = t.replace(/(?<![a-z])(mm|cm|dm|km|m)²/g, (_, unit: string) => ` square ${units[unit]} `);
@@ -57,7 +57,7 @@ function speechTokens(text: string): string[] {
   t = t.replace(/(\d),(\d{3})\b/g, "$1$2");
   t = t.replace(/\d+(?:\.\d+)?/g, (d) => ` ${numberWords(d)} `);
   for (const [from, to] of CONTRACTIONS) t = t.replace(from, to);
-  const words = t.replace(/[^a-z0-9'\s]/g, " ").replace(/'/g, "").split(/\s+/).filter(Boolean);
+  const words = t.replace(/[^\p{L}\p{N}\p{M}'\s]/gu, " ").replace(/'/g, "").split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word));
   return words;
 }
 
