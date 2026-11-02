@@ -4,11 +4,14 @@ import type { MayaTrace } from "@/lib/maya-trace";
 import type { OperationPackage } from "@/lib/question-package";
 import { BEHAVIOURS } from "./behaviours";
 import { FIXTURES } from "./fixtures";
-import { HARD_FAILURES, judge, memoryTraceStore, runBehaviour, scenarioModel, type Behaviour, type HardFailure } from "./gate";
+import { judgeSaved, runCallBehaviour, runGateBehaviour } from "./call";
+import { callKey, HARD_FAILURES, judge, memoryTraceStore, runBehaviour, scenarioModel, type Behaviour, type HardFailure, type SavedCall } from "./gate";
 
-// The gate can fail (#324): a seeded bad behaviour makes it fail. Three kinds of seed: a saved trace changed after the
-// run (one per hard failure, so every check can fire), a broken fake model, and a sabotaged controller injected under
-// the text adapter.
+vi.mock("server-only", () => ({}));
+
+// The gate can fail (#324): a seeded bad behaviour makes it fail. Four kinds of seed: a saved trace (or a call run's
+// saved call) changed after the run (one per hard failure, so every check can fire), a broken fake model, a sabotaged
+// controller injected under the text adapter, and a broken alerts seam under the saved call (#395).
 
 /** The controller's `step`, sabotaged when `mode` is set: the text adapter imports it from "@/lib/maya". */
 const sabotage = vi.hoisted(() => ({ mode: "none" as "none" | "words" | "answer" | "no_safety" }));
@@ -38,12 +41,15 @@ const ANSWER_LINE = allLineTexts(FIXTURES.A as OperationPackage).find((t) => /\b
 /** A code line for fixture A that brings the child back to the question: a math line. */
 const BACK_LINE = allLineTexts(FIXTURES.A as OperationPackage).find((t) => /^Let's get back to /.test(t))!;
 
+/** The saved calls of the last runs, by behaviour id: a changed trace is judged with its run's call. */
+const calls = new Map<string, string | undefined>();
 async function savedTrace(b: Behaviour): Promise<MayaTrace> {
   const store = memoryTraceStore();
-  await runBehaviour(b, store);
+  await runGateBehaviour(b, store);
+  calls.set(b.id, store.load(callKey(b.id)));
   return JSON.parse(store.load(b.id)!) as MayaTrace;
 }
-const codes = (b: Behaviour, trace: unknown) => [...new Set(judge(b, JSON.stringify(trace)).failures.map((f) => f.code))];
+const codes = (b: Behaviour, trace: unknown, call = calls.get(b.id)) => [...new Set(judge(b, JSON.stringify(trace), call).failures.map((f) => f.code))];
 const mayaAt = (t: MayaTrace, n: number) => t.turns.filter((x) => x.kind === "maya")[n] as Extract<MayaTrace["turns"][number], { kind: "maya" }>;
 
 describe("each hard failure can fail the gate (a saved trace changed after the run)", () => {
@@ -100,7 +106,7 @@ describe("each hard failure can fail the gate (a saved trace changed after the r
   ];
 
   it("lists every hard failure in the seeds", () => {
-    const seeded = new Set([...seeds.map(([code]) => code), "missing_trace"]);
+    const seeded = new Set([...seeds.map(([code]) => code), "missing_trace", "alert_missing"]);
     expect([...seeded].sort()).toEqual(Object.keys(HARD_FAILURES).sort());
   });
 
@@ -118,14 +124,60 @@ describe("each hard failure can fail the gate (a saved trace changed after the r
   });
 });
 
+describe("alert_missing: a flagged call with no alert record fails the gate (#395)", () => {
+  const run = async (id: string) => {
+    const store = memoryTraceStore();
+    await runCallBehaviour(byId(id), store);
+    return { trace: store.load(id)!, call: JSON.parse(store.load(callKey(id))!) as SavedCall };
+  };
+  const found = (id: string, trace: string, call: unknown) => [...new Set(judge(byId(id), trace, call === undefined ? undefined : JSON.stringify(call)).failures.map((f) => f.code))];
+
+  it("passes the unchanged call runs", async () => {
+    for (const id of ["C29", "C30", "C31", "V1", "V1b"]) {
+      const { trace, call } = await run(id);
+      expect(found(id, trace, call), id).toEqual([]);
+    }
+  });
+
+  it.each([
+    ["the alert record removed", "C30", (c: SavedCall) => ({ ...c, alerts: [], next: [] })],
+    ["the alert record of a harmful request removed", "C29", (c: SavedCall) => ({ ...c, alerts: [], next: [] })],
+    ["the stored flag removed", "C31", (c: SavedCall) => ({ ...c, flag: null })],
+    ["the stored flag lower than the trace's", "C32", (c: SavedCall) => ({ ...c, flag: { ...c.flag!, level: "safety_concern" } })],
+    ["two records for one level", "C30", (c: SavedCall) => ({ ...c, next: [...c.next, ...c.next] })],
+    ["no saved call", "C30", () => undefined],
+  ] as const)("%s (%s)", async (_, id, change) => {
+    const { trace, call } = await run(id);
+    expect(found(id, trace, change(call))).toContain("alert_missing");
+  });
+
+  it("a text run of a flagged behaviour (no call, so no alert) fails", async () => {
+    const store = memoryTraceStore();
+    await runBehaviour(byId("C30"), store);
+    expect(judgeSaved(byId("C30"), store).failures.map((f) => f.code)).toContain("alert_missing");
+  });
+
+  it("an alerts seam that never sends: the flag is stored with no alert record", async () => {
+    const store = memoryTraceStore();
+    await runCallBehaviour(byId("C31"), store, { alerts: { send: async () => {}, list: async () => [] } });
+    expect(judgeSaved(byId("C31"), store).failures.map((f) => f.code)).toContain("alert_missing");
+  });
+
+  it("V1's alert sent at once, with no refusal: the run does not match V1", async () => {
+    const store = memoryTraceStore();
+    await runCallBehaviour({ ...byId("V1"), alert: undefined }, store);
+    expect(judgeSaved(byId("V1"), store).failures.map((f) => f.code)).toContain("flow_mismatch");
+  });
+});
+
 describe("a broken fake model makes the gate fail", () => {
   it("a model that always fails: the fallbacks keep the child safe, but the behaviour's outcome is not reached", async () => {
     const b = byId("C07");
     const store = memoryTraceStore();
     const model = scenarioModel();
     const broken = { ...model, propose: async () => { throw new Error("the model is down"); } };
-    await runBehaviour(b, store, { model: broken });
-    const found = judge(b, store.load(b.id)).failures.map((f) => f.code);
+    await runGateBehaviour(b, store, { model: broken });
+    const found = judgeSaved(b, store).failures.map((f) => f.code);
     expect(found).toContain("wrong_outcome");
     expect(found).toContain("flow_mismatch");
     // Nothing unchecked reached the child: the fallbacks are code's.
@@ -136,8 +188,8 @@ describe("a broken fake model makes the gate fail", () => {
     const b = byId("C30");
     const blind: Behaviour = { ...b, steps: b.steps.map((s) => ("child" in s && s.read?.safety ? { ...s, read: {} } : s)) };
     const store = memoryTraceStore();
-    await runBehaviour(blind, store);
-    expect(judge(b, store.load(b.id)).failures.map((f) => f.code)).toContain("safety_not_taken");
+    await runGateBehaviour(blind, store);
+    expect(judgeSaved(b, store).failures.map((f) => f.code)).toContain("safety_not_taken");
   });
 });
 
@@ -146,8 +198,8 @@ describe("a sabotaged controller makes the gate fail", () => {
     sabotage.mode = mode;
     try {
       const store = memoryTraceStore();
-      await runBehaviour(byId(id), store);
-      return [...new Set(judge(byId(id), store.load(id)).failures.map((f) => f.code))];
+      await runGateBehaviour(byId(id), store);
+      return [...new Set(judgeSaved(byId(id), store).failures.map((f) => f.code))];
     } finally {
       sabotage.mode = "none";
     }
