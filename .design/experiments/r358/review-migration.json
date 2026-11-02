@@ -1,0 +1,18 @@
+{
+  "project": "cdjobwsyzndtltzfpyqa",
+  "migration": "maya_chat_child_recovery",
+  "registryVersion": "20261102175950",
+  "source": "supabase/migrations/20261102175552_maya_chat_child_recovery.sql",
+  "appliedLive": true,
+  "typesRegenerated": true,
+  "privileges": {
+    "securityInvoker": true,
+    "searchPathEmpty": true,
+    "authenticatedExecute": false,
+    "anonExecute": false,
+    "serviceRoleExecute": true
+  },
+  "rollbackProbe": "supabase/tests/maya_chat_child_recovery.sql",
+  "rollbackProbePassed": true,
+  "proof": "Child lock, original request ID and text, replacement revision, prior-day recovery across calls, stale-writer refusal, refused versus admitted status, and family ownership. Hosted parallel recovery accepted one worker and returned busy to the other."
+}

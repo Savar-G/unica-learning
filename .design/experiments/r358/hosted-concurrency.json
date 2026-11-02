@@ -1,0 +1,8 @@
+{
+  "concurrentStatuses": [
+    "accepted",
+    "busy"
+  ],
+  "count": 60,
+  "proof": "Two simultaneous RPC claims from different chat sessions of one synthetic test child. Exactly one accepted at 59 used. The synthetic family and its data were removed after the browser checks."
+}

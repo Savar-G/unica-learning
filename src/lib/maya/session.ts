@@ -270,6 +270,8 @@ interface Ladder {
 export interface Session {
   version: 4;
   callId: string;
+  /** A desk chat uses the workbook decline for an off-topic reading. */
+  channel?: "chat";
   /** Which wording of each line and phrase to say: the call's random seed, what was heard, the child's name (variety.ts). */
   variety: Variety;
   /** D-196, D-197: whether the model's own warm words may be said, after the code guards and the review. */
@@ -387,6 +389,7 @@ export interface Session {
  */
 export function createSession(input: {
   callId: string;
+  channel?: "chat";
   package: unknown;
   random?: number;
   grade?: number;
@@ -410,6 +413,7 @@ export function createSession(input: {
   return {
     version: 4,
     callId: input.callId,
+    ...(input.channel ? { channel: input.channel } : {}),
     variety: newVariety({ random: input.random ?? hashOf(input.callId), history: input.history, name: input.childName }),
     freeTalk: input.freeTalk === true,
     grade: input.grade,
@@ -953,6 +957,10 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   const no = (code: RefusalCode, reason: string, allowed: Act[]): StepResult => ({ session: base, effects, refusal: { code, reason, allowed } });
   const s = structuredClone(base);
   const pkg = s.package;
+  // #358: code supplies the existing decline, without teaching the off-topic request or raising a safety flag.
+  if (s.channel === "chat" && p.reading?.offTopic && !p.reading.safety && !p.reading.stop) {
+    p = { version: PROPOSAL_VERSION, act: "redirect", parts: [{ line: "redirect.decline" }], reading: { offTopic: true } };
+  }
   // Once the child's right answer stands, a reading that says again what code already found right carries nothing new:
   // it is left out, never judged again (practice: "Yay, I got 66! I'm done." refused as not sure, then "I heard 66. Is that
   // right?"). A wrong answer is still judged: the child may change their answer.
@@ -1207,7 +1215,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       if (reading.unsafeRequest && !spoken.chosen.some((o) => o.line === "redirect.decline")) {
         return no("decline_first", "The child asked for content Maya never gives: say the decline line (redirect.decline).", allowedNow);
       }
-      if (!reading.unsafeRequest && spoken.chosen.some((o) => o.line === "redirect.decline")) {
+      if (!reading.unsafeRequest && !(s.channel === "chat" && reading.offTopic) && spoken.chosen.some((o) => o.line === "redirect.decline")) {
         return no("line_not_offered", "The decline line is only for a request for sexual, violent or other harmful content (reading.unsafeRequest).", allowedNow);
       }
       s.redirects += 1;
@@ -2169,8 +2177,13 @@ interface BoardOffer {
 }
 
 /** The places Maya may put a new board object: code offers them; the model picks one by name. */
-function boardPlaces(s: Session, batch: readonly string[]): Record<string, Place> {
-  const out: Record<string, Place> = { main: { region: "main" } };
+function boardPlaces(s: Session, batch: readonly string[], exampleStep: boolean): Record<string, Place> {
+  // Keep the example's steps beside its sum, then put the target below that work.
+  const last = batch.at(-1) ?? Object.keys(s.boardRoles).at(-1);
+  const result = exampleStep && s.package?.easierExample.steps[s.exampleShown]?.kind === "result";
+  const main: Place = result && Object.hasOwn(s.boardRoles, "example") ? { below: "example" }
+    : exampleStep && last === "example" ? { rightOf: last } : last ? { below: last } : { region: "main" };
+  const out: Record<string, Place> = { main };
   for (const id of ["question", "example"]) if (Object.hasOwn(s.boardRoles, id) || batch.includes(id)) out[`below:${id}`] = { below: id };
   return out;
 }
@@ -2252,7 +2265,7 @@ function drawBoard(s: Session, p: Proposal, view: View, spoken: Spoken): Command
     const o = offers.find((x) => x.id === d.offer);
     if (!o) return `"${d.offer}" is not a board offer for ${p.act} now. Offered: ${offers.map((x) => x.id).join(", ") || "none"}.`;
     if (ids.includes(o.id)) return `"${o.id}" is drawn twice.`;
-    const places = boardPlaces(s, ids.map((id) => (id === "question.columns" ? "question" : id === "example.columns" ? "example" : id)));
+    const places = boardPlaces(s, out.flatMap((command) => "id" in command && ["columns", "write", "model"].includes(command.op) ? [command.id] : []), p.act === "example_step");
     const place = places[d.place ?? "main"];
     if (!place) return `"${d.place}" is not a board place now. Places: ${Object.keys(places).join(", ")}.`;
     ids.push(o.id);

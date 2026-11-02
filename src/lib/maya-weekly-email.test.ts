@@ -51,6 +51,17 @@ function setup(notes: CallNote[], parents: WeeklyParent[] = [priya], children: W
 
 const tokenOf = (text: string) => /\/unsubscribe\?t=([A-Za-z0-9_-]+)/.exec(text)![1];
 
+describe("chat recap coverage", () => {
+  it("counts a chat only under the existing family, note, coverage and time rules", () => {
+    const n = note({ endedAt: pdt(8, 16) });
+    const call = { callId: n.callId, parentId: n.parentId, childId: n.childId, endedAt: n.callEndedAt, notePending: false, kind: "chat" };
+    const state = { parents: [priya], children: [leah], notes: [n], calls: [call], log: [] };
+    expect(dueWeeklyEmails(state, pdt(9, 8))).toHaveLength(1);
+    expect(dueWeeklyEmails({ ...state, parents: [{ ...priya, test: true }] }, pdt(9, 8))).toHaveLength(0);
+    expect(dueWeeklyEmails({ ...state, notes: [], calls: [{ ...call, notePending: true }] }, pdt(9, 8))).toHaveLength(0);
+  });
+});
+
 describe("one email per parent per week", () => {
   it("sends one email for two calls across two children and days, on the next Monday", async () => {
     const { store, mail, run } = setup([note({ endedAt: pdt(2, 15, 30) }), note({ childId: "c2", endedAt: pdt(8, 18, 5), facts: { ...note({ endedAt: 0 }).facts, minutes: 1 } })]);

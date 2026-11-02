@@ -66,7 +66,7 @@ export const NOTE_SWEEP = 3;
 /** The version of the call record's shape (record_version). */
 export const CALL_RECORD_VERSION = 1;
 
-export type CallKind = "admin_test";
+export type CallKind = "admin_test" | "chat";
 export type CallStatus = "live" | "ended";
 
 /**
@@ -224,6 +224,8 @@ export interface CallSeams {
   reviewer?(modelId: string): TalkReviewer | null;
   /** True when the family is marked as a test family (public.test_accounts). */
   isTestFamily(parentId: string): Promise<boolean>;
+  /** Server authorization for a child chat. Absent means refused. */
+  canChat?(parentId: string, childId: string): Promise<boolean>;
   /**
    * The parent's note of an ended call (#331, src/lib/maya-call-note.ts), run after the learning event. Optional.
    * "done" when the note is stored or refused for good (the note module refuses test calls and test families itself);
@@ -565,10 +567,10 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   }
 
   /** A call's text session. Admin test calls have free talk on (D-197), with the model's review; a resumed call keeps its flag. */
-  function textSession(record: Pick<CallRecord, "id">, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number): TextSession {
+  function textSession(record: Pick<CallRecord, "id"> & { kind?: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number): TextSession {
     return createTextSession({
-      callId: record.id, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs, grade,
-      freeTalk: freeTalkFor("admin_test"), reviewer: seams.reviewer?.(model.id) ?? null,
+      callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs, grade,
+      freeTalk: record.kind === "chat" ? false : freeTalkFor("admin_test"), reviewer: seams.reviewer?.(model.id) ?? null,
     });
   }
 
@@ -720,14 +722,17 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
 
   /** Checks a new call's family and question, and stores its record with the session not started. */
   async function newCall(input: Parameters<MayaCalls["start"]>[0], mode: CallRecord["mode"]): Promise<{ ok: true; record: CallRecord; session: TextSession; pkg: QuestionPackage } | Extract<CallResult, { ok: false }>> {
-    if (!(await seams.isTestFamily(input.parentId))) return { ok: false, error: "not_test_family" };
+    if (input.kind === "chat") {
+      if (mode !== "text" || !(await seams.canChat?.(input.parentId, input.childId))) return { ok: false, error: "not_test_family" };
+    } else if (!(await seams.isTestFamily(input.parentId))) return { ok: false, error: "not_test_family" };
     const check = checkQuestionPackage(input.package);
     if (!check.ok) return { ok: false, error: "invalid_question" };
     const pkg = check.package;
+    if (input.kind === "chat" && pkg.ref.source !== "workbook") return { ok: false, error: "invalid_question" };
     const model = seams.model(null);
     if (!model) return { ok: false, error: "model_unavailable" };
     const id = input.id ?? seams.newId();
-    const session = textSession({ id }, pkg, model, mode === "voice" ? null : input.childName, undefined, seams.seed(), await readHistory(input.childId), input.limitMs, input.grade);
+    const session = textSession({ id, kind: input.kind }, pkg, model, mode === "voice" ? null : input.childName, undefined, seams.seed(), await readHistory(input.childId), input.limitMs, input.grade);
     const empty = session.trace();
     const record: CallRecord = {
       id,

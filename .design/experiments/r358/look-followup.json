@@ -1,0 +1,90 @@
+{
+  "browser": "Aside CLI, account u0",
+  "environment": "Local Next development server with hosted synthetic test family and fake or scripted models.",
+  "chat": [
+    {
+      "viewport": "laptop",
+      "width": 1440,
+      "height": 900,
+      "noteGapBelowCanvasPixels": 8,
+      "noteOverlapsSvg": false,
+      "captionPosition": "static",
+      "horizontalOverflow": false,
+      "hintVisible": true
+    },
+    {
+      "viewport": "tablet",
+      "width": 768,
+      "height": 1024,
+      "noteGapBelowCanvasPixels": 8,
+      "noteOverlapsSvg": false,
+      "captionPosition": "static",
+      "horizontalOverflow": false,
+      "hintVisible": true
+    },
+    {
+      "viewport": "phone",
+      "width": 390,
+      "height": 844,
+      "noteGapBelowCanvasPixels": 8,
+      "noteOverlapsSvg": false,
+      "captionPosition": "static",
+      "horizontalOverflow": false,
+      "hintVisible": true
+    }
+  ],
+  "cap": [
+    {
+      "viewport": "laptop",
+      "width": 1440,
+      "height": 900,
+      "chatAreaButtons": 0,
+      "chatAreaFormsOrInputs": 0,
+      "conversationVisible": false,
+      "chatTabsVisible": false,
+      "boardStrokes": 40,
+      "noteGapBelowCanvasPixels": 8,
+      "horizontalOverflow": false,
+      "capLine": "You used all your messages for today. We can chat again tomorrow."
+    },
+    {
+      "viewport": "tablet",
+      "width": 768,
+      "height": 1024,
+      "chatAreaButtons": 0,
+      "chatAreaFormsOrInputs": 0,
+      "conversationVisible": false,
+      "chatTabsVisible": false,
+      "boardStrokes": 40,
+      "noteGapBelowCanvasPixels": 8,
+      "horizontalOverflow": false,
+      "capLine": "You used all your messages for today. We can chat again tomorrow."
+    },
+    {
+      "viewport": "phone",
+      "width": 390,
+      "height": 844,
+      "chatAreaButtons": 0,
+      "chatAreaFormsOrInputs": 0,
+      "conversationVisible": false,
+      "chatTabsVisible": false,
+      "boardStrokes": 40,
+      "noteGapBelowCanvasPixels": 8,
+      "horizontalOverflow": false,
+      "capLine": "You used all your messages for today. We can chat again tomorrow."
+    }
+  ],
+  "screenshotsRefreshed": [
+    ".design/experiments/r358/chat-laptop.png",
+    ".design/experiments/r358/chat-tablet.png",
+    ".design/experiments/r358/chat-phone.png",
+    ".design/experiments/r358/chat-phone-board.png",
+    ".design/experiments/r358/cap-laptop.png",
+    ".design/experiments/r358/cap-tablet.png",
+    ".design/experiments/r358/cap-phone.png"
+  ],
+  "proofLimits": [
+    "No real child, paid AI call, email, real voice call or production release check.",
+    "Parent home is unchanged. Its prior screenshots remain."
+  ]
+}

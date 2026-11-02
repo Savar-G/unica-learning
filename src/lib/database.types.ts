@@ -1337,6 +1337,7 @@ export type Database = {
           assistance: string | null
           board_history: Json | null
           call_seconds: number | null
+          channel: string | null
           child_id: string
           child_turns: number | null
           connected_seconds: number | null
@@ -1389,6 +1390,7 @@ export type Database = {
           assistance?: string | null
           board_history?: Json | null
           call_seconds?: number | null
+          channel?: string | null
           child_id: string
           child_turns?: number | null
           connected_seconds?: number | null
@@ -1441,6 +1443,7 @@ export type Database = {
           assistance?: string | null
           board_history?: Json | null
           call_seconds?: number | null
+          channel?: string | null
           child_id?: string
           child_turns?: number | null
           connected_seconds?: number | null
@@ -1511,6 +1514,67 @@ export type Database = {
           },
           {
             foreignKeyName: "maya_calls_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      maya_chat_messages: {
+        Row: {
+          body: string | null
+          call_id: string
+          child_id: string
+          claim_revision: number
+          fingerprint: string
+          id: string
+          input_revision: number
+          lease_until: string
+          parent_id: string
+          received_at: string
+        }
+        Insert: {
+          body?: string | null
+          call_id: string
+          child_id: string
+          claim_revision: number
+          fingerprint: string
+          id: string
+          input_revision: number
+          lease_until: string
+          parent_id: string
+          received_at?: string
+        }
+        Update: {
+          body?: string | null
+          call_id?: string
+          child_id?: string
+          claim_revision?: number
+          fingerprint?: string
+          id?: string
+          input_revision?: number
+          lease_until?: string
+          parent_id?: string
+          received_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maya_chat_messages_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "maya_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maya_chat_messages_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "maya_chat_messages_parent_id_fkey"
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "parents"
@@ -3679,6 +3743,19 @@ export type Database = {
         Args: { p: string; subscription_ended_at: string; token: string }
         Returns: Json
       }
+      claim_maya_chat_message: {
+        Args: {
+          p_call: string
+          p_child: string
+          p_end: string
+          p_fingerprint: string
+          p_id: string
+          p_parent: string
+          p_revision: number
+          p_start: string
+        }
+        Returns: Json
+      }
       claim_maya_weekly: {
         Args: {
           p_attempts: number
@@ -3989,6 +4066,10 @@ export type Database = {
         Args: { p_parent: string; p_report: string }
         Returns: undefined
       }
+      recover_maya_chat_message: {
+        Args: { p_child: string; p_parent: string }
+        Returns: Json
+      }
       release_family_deletion: {
         Args: { p: string; token: string }
         Returns: undefined
@@ -4138,6 +4219,20 @@ export type Database = {
           p_child: string
           p_max_attempts: number
           p_stale_seconds: number
+        }
+        Returns: Json
+      }
+      take_maya_chat_message: {
+        Args: {
+          p_call: string
+          p_child: string
+          p_end: string
+          p_fingerprint: string
+          p_id: string
+          p_parent: string
+          p_revision: number
+          p_start: string
+          p_text: string
         }
         Returns: Json
       }
