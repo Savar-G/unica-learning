@@ -652,3 +652,44 @@ it("R450-8 old playback completion cannot cancel the next controller turn", asyn
     expect(c.receiver.staged()).toEqual([]);
   } finally { await run.hangUp(); native.clearBuffer(); await native.close(); }
 });
+
+it("R450-9 an interrupt before native forwarding leaves no unmatched playback segment", async () => {
+  const c = await voiceCall();
+  const native = new voice.ParticipantAudioOutput({ localParticipant: { publishTrack: async () => ({ sid: "local", waitForSubscription: async () => {} }) } } as unknown as ConstructorParameters<typeof voice.ParticipantAudioOutput>[0],
+    { sampleRate: 24000, numChannels: 1, queueSizeMs: 100, trackPublishOptions: new TrackPublishOptions() });
+  await native.start(new AbortController().signal);
+  const stages = vi.spyOn(c.board, "stage");
+  const session = Object.assign(controlSession(), { output: { audio: native } });
+  const run = new VoiceCallRun(session as unknown as voice.AgentSession, c.call, { board: c.board, timers: c.clock.timers, notify() {} });
+  run.attachBoardAudio();
+  try {
+    await run.childJoined();
+    await run.agent.llmNode(new llm.ChatContext(), {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+    const output = session.output.audio;
+    const frame = new AudioFrame(new Int16Array(2400), 24000, 1, 2400);
+    frame.userdata["unica.maya.speechScope"] = c.board.capture(stages.mock.calls.at(-1)![0])!;
+    const capture = output.captureFrame(frame);
+    session.emit(voice.AgentSessionEventTypes.UserStateChanged, { newState: "speaking" });
+    await capture;
+    output.clearBuffer();
+    expect(native.capturedPlayoutSegments).toBe(0);
+    expect(output.capturedPlayoutSegments).toBe(native.capturedPlayoutSegments);
+    expect(output.pendingPlayoutSegments).toBe(0);
+    await output.waitForPlayout();
+    const context = new llm.ChatContext();
+    context.addMessage({ role: "user", content: "I don't know." });
+    await run.agent.llmNode(context, {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+    expect(c.receiver.staged()).toHaveLength(3);
+    const scope = c.board.capture(stages.mock.calls.at(-1)![0])!;
+    const next = new AudioFrame(new Int16Array(2400), 24000, 1, 2400);
+    next.userdata["unica.maya.speechScope"] = scope;
+    await output.captureFrame(next);
+    output.flush();
+    await native.waitForPlayout();
+    expect(output.capturedPlayoutSegments).toBe(native.capturedPlayoutSegments);
+    expect(output.pendingPlayoutSegments).toBe(native.pendingPlayoutSegments);
+    expect(output.pendingPlayoutSegments).toBe(0);
+    await output.waitForPlayout();
+    expect(c.board.owns(scope)).toBe(true);
+  } finally { await run.hangUp(); native.clearBuffer(); await native.close(); }
+});

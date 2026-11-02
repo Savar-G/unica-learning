@@ -33,7 +33,7 @@ export function boardAudio(
           const frames = await synthesize(input);
           if (stale()) {
             // A provider can return after cancellation. Retire its stream without touching a newer board plan.
-            void frames?.cancel().catch(() => {});
+            void frames?.cancel(scope).catch(() => {});
             return;
           }
           if (!frames) { await board.interrupt(scope); if (!abort.signal.aborted) controller.close(); return; }
@@ -46,7 +46,7 @@ export function boardAudio(
           try {
             for (;;) {
               const { value: frame, done } = await reader.read();
-              if (stale()) { void reader.cancel().catch(() => {}); return; }
+              if (stale()) { void reader.cancel(scope).catch(() => {}); return; }
               if (done) break;
               const times = frame.userdata[USERDATA_TIMED_TRANSCRIPT] as voice.TimedString[] | undefined;
               let changed = false;
@@ -69,7 +69,7 @@ export function boardAudio(
                   }
                   if (matchedWords > before) {
                     await board.timing(scope, words + matchedWords, offsetMs + t.endTime! * 1000, "word");
-                    if (stale()) { void reader.cancel().catch(() => {}); return; }
+                    if (stale()) { void reader.cancel(scope).catch(() => {}); return; }
                   }
                 }
               }
@@ -106,6 +106,6 @@ export function boardAudio(
         }
       }
     },
-    async cancel() { abort.abort(); await current?.cancel().catch(() => {}); },
+    async cancel() { abort.abort(); await current?.cancel(scope).catch(() => {}); },
   });
 }

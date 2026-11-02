@@ -147,3 +147,46 @@ it.each([true, false])("R450-8 an obsolete completion cannot stop a newer cue ti
   c.output.cancelPending(scope);
   expect(c.timers.count()).toBe(0);
 });
+
+it("R450-10 scoped media cleanup refuses an obsolete segment owner", async () => {
+  const c = await setup();
+  await c.output.captureFrame(frame(200, c.scope));
+  c.output.flush();
+  c.audio.onPlaybackFinished({ playbackPosition: 0.2, interrupted: false });
+  await c.board.stage("next", [{ word: 1, batch: { transactionId: "next", commands: [{ op: "write", id: "next", text: "3", place: { region: "main" } }] } }]);
+  const scope = c.board.capture("next")!;
+  await c.board.timing(scope, 1, 100, "word");
+  await c.output.captureFrame(frame(200, scope));
+  c.output.clearBuffer(c.scope);
+  c.output.pause(c.scope);
+  c.output.cancelPending(c.scope);
+  expect(c.output.pendingPlayoutSegments).toBe(1);
+  expect(c.timers.count()).toBe(1);
+  await c.timers.advance(100);
+  expect(c.shown()).toContain("next");
+  c.output.clearBuffer(scope);
+  expect(c.output.pendingPlayoutSegments).toBe(0);
+  expect(c.timers.count()).toBe(0);
+});
+
+it("R450-9 cancellation while native admission waits for startup creates no segment", async () => {
+  const c = await setup();
+  const native = new voice.ParticipantAudioOutput({ localParticipant: { publishTrack: async () => ({ sid: "local", waitForSubscription: async () => {} }) } } as unknown as ConstructorParameters<typeof voice.ParticipantAudioOutput>[0],
+    { sampleRate: 24000, numChannels: 1, queueSizeMs: 100, trackPublishOptions: new TrackPublishOptions() });
+  const output = new CuePlaybackOutput(native, c.board, c.timers, p => { void p.catch(c.failure); }, scope => { void c.board.interrupt(scope); });
+  try {
+    const captured = output.captureFrame(frame(100, c.scope));
+    await Promise.resolve();
+    output.cancelPending(c.scope);
+    const stopping = c.board.interrupt(c.scope);
+    output.clearBuffer(c.scope);
+    await native.start(new AbortController().signal);
+    await Promise.all([captured, stopping]);
+    output.flush();
+    expect(output.capturedPlayoutSegments).toBe(0);
+    expect(output.capturedPlayoutSegments).toBe(native.capturedPlayoutSegments);
+    expect(output.pendingPlayoutSegments).toBe(0);
+    await output.waitForPlayout();
+    expect(c.failure).not.toHaveBeenCalled();
+  } finally { native.clearBuffer(); await native.close(); }
+});

@@ -179,7 +179,7 @@ export class VoiceCallRun {
     if (!audio || !this.options.board) return;
     this.boardAudio = new CuePlaybackOutput(audio, this.options.board, this.timers,
       (work, scope) => this.boardTask(work, scope), scope => this.stopBoard(scope));
-    this.session.output.audio = this.boardAudio;
+    this.session.output.audio = this.boardAudio.audio;
   }
 
   private boardTask(task: Promise<unknown>, scope: SpeechScope) {

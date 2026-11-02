@@ -83,7 +83,7 @@ describe("board speech through the real receiver and fake transport", () => {
     await c.speech.reconnect(one);
     expect(boardPaths(replacement.scene())).toEqual(boardPaths(c.receiver.scene()));
     expect(replacement.staged()).toEqual([]);
-    expect(replacement.handle({ type: "release", sessionId: "call", epoch: oldEpoch, batchId: "answer" })).toMatchObject({ ok: false, code: "stale_epoch" });
+    expect(replacement.handle({ type: "release", sessionId: "call", epoch: oldEpoch, batchId: "answer", scope: one })).toMatchObject({ ok: false, code: "stale_epoch" });
     await c.speech.played(one, 1000);
     expect(replacement.snapshot().events.filter(e => e.kind === "batch")).toHaveLength(1);
   });
@@ -120,7 +120,7 @@ it("carries a large reconnect snapshot through bounded LiveKit RPC parts and rej
   const one = c.speech.capture("one")!;
   await c.speech.timing(one, 1, 1, "word");
   await c.speech.played(one, 1);
-  c.receiver.takePen();
+  c.receiver.takePen(one);
   for (let i = 0; i < 150; i++) expect(c.receiver.addInk({ page: 1, boardWidth: 1000, stroke: { erase: false, w: 5, pts: [[0.1, i / 1000], [0.2, i / 1000]] } }).ok).toBe(true);
   await c.sender.sync();
   expect(JSON.stringify(c.sender.snapshot()).length).toBeGreaterThan(15 * 1024);
@@ -200,7 +200,7 @@ it("R450-8 obsolete planner and wire operations cannot affect a reused utterance
   await c.speech.reconnect(old);
   await expect(c.speech.connect()).rejects.toThrow("requires the previous speech scope");
   expect(c.sender.epoch()).toBe(epoch);
-  expect(await c.sender.interrupt(old)).toEqual({ ok: true });
+  expect(await c.sender.interrupt(old)).toMatchObject({ ok: false, code: "invalid_request" });
   expect(await c.transport.call({ type: "release", sessionId: "call", epoch, batchId: "new-generation", scope: old })).toMatchObject({ ok: false, code: "invalid_request" });
   expect(c.receiver.staged().map(b => b.batchId)).toEqual(["new-generation"]);
   await c.speech.timing(old, 1, 100, "word");

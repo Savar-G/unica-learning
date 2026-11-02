@@ -42,6 +42,8 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
   const { sender } = options;
   let generation = 0;
   let plannedScope: SpeechScope | null = null;
+  let deliveryScope: SpeechScope | null = null;
+  let cancellation: ReturnType<BoardSender["interrupt"]> | null = null;
   let retired = false;
   let active: { scope: SpeechScope; id: string; cues: BoardCue[]; timings: { word: number; audioMs: number; source: CueSource; reachedAt?: number }[]; position: number | null; playedAt: number; anchorAt?: number; generation: number } | null = null;
   let observation: Promise<unknown> = Promise.resolve();
@@ -76,6 +78,8 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
     return serial(async () => {
       // Plans queued after this connection must wait for its epoch, even if they already own a new scope.
       check(await sender.connect());
+      deliveryScope = null;
+      cancellation = null;
       await options.observe?.(sender.snapshot());
     });
   };
@@ -96,12 +100,15 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
       if (copy.some((c, i) => !Number.isSafeInteger(c.word) || c.word < 1 || (i > 0 && c.word < copy[i - 1].word))) throw new Error("Speech cues must be ordered word positions.");
       return serial(async () => {
         if (!owns(scope)) return;
-        check(await sender.cancel());
+        if (cancellation) check(await cancellation);
+        if (!owns(scope)) return;
+        if (deliveryScope) check(await sender.cancel(deliveryScope));
         await options.observe?.(sender.snapshot());
         if (!owns(scope)) return;
         active = { scope, id, cues: copy, timings: [], position: null, playedAt: options.now(), generation: gen };
         for (const cue of copy) {
           if (!owns(scope)) return;
+          deliveryScope = scope;
           check(await sender.send(cue.batch, { scope }));
         }
       });
@@ -132,7 +139,13 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
       retired = true;
       active = null;
       // Send the stop outside the serial queue. A stalled release must not delay the interruption.
-      const stopping = sender.interrupt(scope);
+      const previous = deliveryScope;
+      deliveryScope = scope;
+      const stop = () => previous && (previous.generation !== scope.generation || previous.utteranceId !== scope.utteranceId)
+        ? sender.interrupt(previous).then(result => { check(result); return sender.interrupt(scope); })
+        : sender.interrupt(scope);
+      const stopping = cancellation ? cancellation.then(result => { check(result); return stop(); }) : stop();
+      cancellation = stopping;
       // Keep priority acknowledgement independent of any release still in flight.
       // The next serial observation waits for that release and then reads the receiver's decision.
       const observed = stopping.then(async result => {

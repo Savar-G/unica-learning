@@ -51,25 +51,27 @@ export type BatchState = "accepted" | "shown" | "presented" | "cancelled";
 export type PenHolder = "maya" | "child";
 
 export type BoardRequest =
-  | { type: "apply"; sessionId: string; epoch: number; sequence: number; baseRevision: number; batchId: string; utteranceId?: string; scope?: SpeechScope; commands: unknown[] }
+  | { type: "apply"; sessionId: string; epoch: number; sequence: number; baseRevision: number; batchId: string; utteranceId?: string; scope: SpeechScope; commands: unknown[] }
   /**
    * Cancels the staged batches numbered up to `through` in this epoch. The id makes it safe to deliver twice: the receiver
    * keeps what each cancel did, and a cancel it has seen changes nothing and gets the same answer.
    */
   | { type: "stop"; sessionId: string; epoch: number; scope: SpeechScope }
-  | { type: "release"; sessionId: string; epoch: number; batchId: string; scope?: SpeechScope }
-  | { type: "cancel"; sessionId: string; epoch: number; cancelId: string; through: number }
+  | { type: "release"; sessionId: string; epoch: number; batchId: string; scope: SpeechScope }
+  | { type: "cancel"; sessionId: string; epoch: number; cancelId: string; through: number; scope: SpeechScope }
   /** The log from event `since`. `part`: the next part of the event at `since`, when it travels in parts. */
   | { type: "status"; sessionId: string; since: number; part?: number }
   /**
    * Starts `epoch`, when the board is still on `observedEpoch`, the epoch the sender read before it claimed: a claim by
    * another sender in between makes this one stale. Large snapshots travel in bounded RPC parts.
    */
-  | { type: "reset"; sessionId: string; senderId: string; epoch: number; observedEpoch: number; snapshot: BoardSnapshot };
+  | { type: "reset"; sessionId: string; senderId: string; epoch: number; observedEpoch: number; scope: SpeechScope | null; snapshot: BoardSnapshot };
 
 /** The receiver's state, carried by every answer. */
 export interface ReceiverStatus {
   epoch: number;
+  /** The plan observed in this epoch. A reset must claim this same plan. */
+  scope: SpeechScope | null;
   /**
    * Counts changes to the board Maya plans on: accepted and cancelled batches, the child's ink, the pen. A batch planned
    * on another revision is refused.
@@ -155,7 +157,7 @@ function digest(text: string): string {
 
 // The largest status answer frame, with every number at its widest: the bounds below hold whatever the state is.
 const WIDEST = Number.MAX_SAFE_INTEGER;
-const WIDEST_STATUS: ReceiverStatus = { epoch: WIDEST, revision: WIDEST, pen: "child", logLength: WIDEST };
+const WIDEST_STATUS: ReceiverStatus = { epoch: WIDEST, scope: { utteranceId: "\u0000".repeat(64), generation: WIDEST }, revision: WIDEST, pen: "child", logLength: WIDEST };
 /** A status answer with no events. */
 const STATUS_FRAME_BYTES = byteSize({ ok: true, type: "status", log: [], ...WIDEST_STATUS });
 /** An event of at most this many bytes travels whole; a larger one always travels in parts. */
@@ -217,7 +219,7 @@ function isEvent(v: unknown): v is BoardEvent {
 }
 
 const isScope = (v: unknown): v is SpeechScope => isObject(v) && isId(v.utteranceId) && isCount(v.generation, 1);
-const sameScope = (a: SpeechScope | undefined, b: SpeechScope) => a?.utteranceId === b.utteranceId && a.generation === b.generation;
+const sameScope = (a: SpeechScope | null | undefined, b: SpeechScope) => a?.utteranceId === b.utteranceId && a.generation === b.generation;
 const scopeKey = (scope: SpeechScope) => JSON.stringify([scope.utteranceId, scope.generation]);
 
 /** The request's shape, checked: the board core checks the commands themselves. */
@@ -225,19 +227,19 @@ function parseRequest(v: unknown): BoardRequest | null {
   if (!isObject(v) || typeof v.sessionId !== "string") return null;
   switch (v.type) {
     case "apply":
-      return isCount(v.epoch, 1) && isCount(v.sequence, 1) && isCount(v.baseRevision) && isId(v.batchId) && (v.utteranceId === undefined || isId(v.utteranceId)) && (v.scope === undefined || isScope(v.scope)) && Array.isArray(v.commands)
+      return isCount(v.epoch, 1) && isCount(v.sequence, 1) && isCount(v.baseRevision) && isId(v.batchId) && (v.utteranceId === undefined || isId(v.utteranceId)) && isScope(v.scope) && Array.isArray(v.commands)
         ? (v as BoardRequest)
         : null;
     case "stop":
       return isCount(v.epoch, 1) && isScope(v.scope) ? (v as BoardRequest) : null;
     case "release":
-      return isCount(v.epoch, 1) && isId(v.batchId) && (v.scope === undefined || isScope(v.scope)) ? (v as BoardRequest) : null;
+      return isCount(v.epoch, 1) && isId(v.batchId) && isScope(v.scope) ? (v as BoardRequest) : null;
     case "cancel":
-      return isCount(v.epoch, 1) && isId(v.cancelId) && isCount(v.through) ? (v as BoardRequest) : null;
+      return isCount(v.epoch, 1) && isId(v.cancelId) && isCount(v.through) && isScope(v.scope) ? (v as BoardRequest) : null;
     case "status":
       return isCount(v.since) && (v.part === undefined || isCount(v.part)) ? (v as BoardRequest) : null;
     case "reset":
-      return isId(v.senderId) && isCount(v.epoch, 1) && isCount(v.observedEpoch) && isObject(v.snapshot) && Array.isArray(v.snapshot.events) && v.snapshot.events.every(isEvent)
+      return isId(v.senderId) && isCount(v.epoch, 1) && isCount(v.observedEpoch) && (v.scope === null || isScope(v.scope)) && isObject(v.snapshot) && Array.isArray(v.snapshot.events) && v.snapshot.events.every(isEvent)
         ? (v as BoardRequest)
         : null;
     default:
@@ -256,7 +258,7 @@ export interface Released {
 }
 
 interface Staged {
-  scope?: SpeechScope;
+  scope: SpeechScope;
   batchId: string;
   sequence: number;
   utteranceId?: string;
@@ -273,12 +275,13 @@ export interface BoardReceiver {
   snapshot(): BoardSnapshot;
   /** Accepted batches not shown yet, oldest first. */
   staged(): { batchId: string; utteranceId?: string }[];
+  scope(): SpeechScope | null;
   /** Shows this staged batch and every one staged before it, in order, and returns what to draw. */
-  release(batchId: string): Released[];
+  release(batchId: string, scope: SpeechScope): Released[];
   /** The renderer has drawn this batch: the child has seen it. */
   presented(batchId: string): void;
   /** The child takes the pen: Maya's staged batches are cancelled, and new ones are refused until the pen comes back. */
-  takePen(): { cancelled: string[] };
+  takePen(scope: SpeechScope | null): { cancelled: string[] };
   givePen(): void;
   /** A finished stroke of the child's. Only the child holding the pen writes. */
   addInk(ink: Ink): { ok: true; id: string } | { ok: false; reason: string };
@@ -294,6 +297,7 @@ type SceneOptions = { page?: PageSize; glyphs?: GlyphSet };
  */
 export function createBoardReceiver(options: { sessionId: string; epoch?: number; snapshot?: BoardSnapshot; clock?: () => number } & SceneOptions): BoardReceiver {
   let epoch = options.epoch ?? 0;
+  let currentScope: SpeechScope | null = null;
   /** The sender whose reset started this epoch: its retry of that reset changes nothing. */
   let epochSender: string | null = null;
   let revision = 0;
@@ -304,9 +308,9 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
   let log: BoardEvent[] = structuredClone(options.snapshot?.events ?? []);
   let states = new Map<string, BatchState>();
   /** Every batch id this epoch decided, with its sequence and the core's refusal when it refused it. */
-  let decided = new Map<string, { sequence: number; scope?: SpeechScope; refusal?: Refusal }>();
+  let decided = new Map<string, { sequence: number; scope: SpeechScope; refusal?: Refusal }>();
   /** Every cancel this epoch carried out, with where its event is in the log (null: it found nothing to cancel). */
-  let cancels = new Map<string, { through: number; at: number | null }>();
+  let cancels = new Map<string, { through: number; scope: SpeechScope; at: number | null }>();
   let nextSequence = 1;
   const stoppedUtterances = new Set<string>();
   let pen: PenHolder = "maya";
@@ -314,7 +318,7 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
   const partsOf = new WeakMap<BoardEvent, { parts: string[]; digest: string }>();
 
   const append = (event: BoardEvent) => log.push(options.clock ? { ...event, at: options.clock() } : event);
-  const status = (): ReceiverStatus => ({ epoch, revision, pen, logLength: log.length });
+  const status = (): ReceiverStatus => ({ epoch, scope: currentScope ? { ...currentScope } : null, revision, pen, logLength: log.length });
   const planned = () => staged.at(-1)?.result.scene ?? shown;
   const clip = (text: string) => (text.length > MAX_REASON ? `${text.slice(0, MAX_REASON - 1)}…` : text);
   const fail = (code: ProtocolCode, reason: string, extra: { batchId?: string; refusal?: Refusal } = {}): BoardResponse => {
@@ -332,6 +336,7 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
     if (req.epoch !== epoch) return fail("stale_epoch", `This batch is from epoch ${req.epoch}; the board is on epoch ${epoch}.`, { batchId: req.batchId });
     const before = decided.get(req.batchId);
     if (before) {
+      if (!sameScope(before.scope, req.scope)) return fail("invalid_request", "The batch belongs to another speech generation.");
       if (before.sequence !== req.sequence) return fail("duplicate_batch", `Batch "${req.batchId}" was already sent as number ${before.sequence}.`, { batchId: req.batchId });
       // A retry: the answer to the first try was lost. Answer again with where the batch is now; never apply it twice.
       if (before.refusal) return fail("refused", before.refusal.reason, { batchId: req.batchId, refusal: before.refusal });
@@ -341,8 +346,11 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
     if (pen === "child") return fail("pen_with_child", "The child has the pen: Maya waits until it comes back.", { batchId: req.batchId });
     if (req.baseRevision !== revision)
       return fail("stale_revision", `The board changed after this batch was planned (revision ${revision}, not ${req.baseRevision}): read it again.`, { batchId: req.batchId });
+    if (currentScope && !sameScope(currentScope, req.scope) && (req.scope.generation <= currentScope.generation || staged.length > 0))
+      return fail("invalid_request", "Cancel the previous speech plan before staging its replacement.");
+    currentScope = { ...req.scope };
     nextSequence++;
-    if (req.scope && stoppedUtterances.has(scopeKey(req.scope))) {
+    if (stoppedUtterances.has(scopeKey(req.scope))) {
       decided.set(req.batchId, { sequence: req.sequence, scope: req.scope });
       states.set(req.batchId, "cancelled");
       append({ kind: "cancelled", batchIds: [req.batchId] });
@@ -370,8 +378,9 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
    * core now refuses (it built on a cancelled batch) is dropped with every batch after it, since those were planned on
    * it: they go in the same `cancelled` event, so the sender reads them as cancelled too.
    */
-  function cancelStaged(through = Infinity, cancelId?: string): number | null {
-    const dropped = staged.filter((s) => s.sequence <= through);
+  function cancelStaged(scope: SpeechScope, through = Infinity, cancelId?: string): number | null {
+    if (!sameScope(currentScope, scope)) return null;
+    const dropped = staged.filter((s) => sameScope(s.scope, scope) && s.sequence <= through);
     if (dropped.length === 0) return null;
     const kept: Staged[] = [];
     let scene = shown;
@@ -394,11 +403,12 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
 
   function cancel(req: Extract<BoardRequest, { type: "cancel" }>): BoardResponse {
     if (req.epoch !== epoch) return fail("stale_epoch", `This cancel is from epoch ${req.epoch}; the board is on epoch ${epoch}.`);
+    if (!sameScope(currentScope, req.scope)) return fail("invalid_request", "The cancellation belongs to another speech generation.");
     let done = cancels.get(req.cancelId);
-    if (done && done.through !== req.through) return fail("invalid_request", `Cancel "${req.cancelId}" was already sent for batches up to ${done.through}.`);
+    if (done && (done.through !== req.through || !sameScope(done.scope, req.scope))) return fail("invalid_request", `Cancel "${req.cancelId}" belongs to another request.`);
     // A cancel seen before (a retry, or a late copy): the same answer, and nothing changes.
     if (!done) {
-      done = { through: req.through, at: cancelStaged(req.through, req.cancelId) };
+      done = { through: req.through, scope: { ...req.scope }, at: cancelStaged(req.scope, req.through, req.cancelId) };
       cancels.set(req.cancelId, done);
     }
     return { ok: true, type: "cancel", cancelId: req.cancelId, at: done.at, ...status() };
@@ -410,6 +420,8 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
     if (req.epoch <= epoch) return fail("stale_epoch", `The board is already on epoch ${epoch}.`);
     // Another sender claimed the board after this one read it.
     if (req.observedEpoch !== epoch) return fail("stale_epoch", `The board moved to epoch ${epoch} after epoch ${req.observedEpoch} was read.`);
+    if (currentScope ? !req.scope || !sameScope(currentScope, req.scope) : req.scope !== null)
+      return fail("invalid_request", "The reconnect observed another speech plan.");
     const events = req.snapshot.events;
     if (events.length < log.length) return fail("behind", `The board log has ${log.length} events; this reset has ${events.length}.`);
     // The reset may only add to the log: every event the receiver holds must be in it, unchanged and in its place.
@@ -423,7 +435,8 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
     shown = scene;
     log = [...log, ...events.slice(log.length)];
     // A reconnect retires speech that did not become visible. Preserve that outcome in the receiver log.
-    cancelStaged();
+    if (req.scope) cancelStaged(req.scope);
+    currentScope = null;
     staged = [];
     states = new Map();
     decided = new Map();
@@ -459,7 +472,8 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
     return { ok: true, type: "status", log: [], part: { index: part, count: cut.parts.length, digest: cut.digest, data: cut.parts[part] }, ...status() };
   }
 
-  const release = (batchId: string): Released[] => {
+  const release = (batchId: string, scope: SpeechScope): Released[] => {
+    if (!isScope(scope) || !sameScope(currentScope, scope) || !sameScope(decided.get(batchId)?.scope, scope)) return [];
     const upTo = staged.findIndex((s) => s.batchId === batchId);
     if (upTo < 0) return [];
     const out: Released[] = [];
@@ -484,17 +498,20 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
           return reset(req);
         case "stop": {
           if (req.epoch !== epoch) return fail("stale_epoch", "The interruption belongs to an older board connection.");
+          // A stop may overtake the first apply. It may never retire a newer plan.
+          if (currentScope && !sameScope(currentScope, req.scope) && (req.scope.generation <= currentScope.generation || staged.length > 0))
+            return fail("invalid_request", "The interruption belongs to another speech generation.");
+          currentScope = { ...req.scope };
           stoppedUtterances.add(scopeKey(req.scope));
-          const through = Math.max(0, ...staged.filter(s => sameScope(s.scope, req.scope)).map(s => s.sequence));
-          if (through > 0) cancelStaged(through);
+          cancelStaged(req.scope);
           return { ok: true, type: "stop", ...status() };
         }
         case "release": {
           if (req.epoch !== epoch) return fail("stale_epoch", "The speech belongs to an older board connection.");
-          if (req.scope && !sameScope(decided.get(req.batchId)?.scope, req.scope)) return fail("invalid_request", "The release belongs to another speech generation.");
+          if (!sameScope(currentScope, req.scope) || !sameScope(decided.get(req.batchId)?.scope, req.scope)) return fail("invalid_request", "The release belongs to another speech generation.");
           const state = states.get(req.batchId);
           if (!state) return fail("invalid_request", "The speech names an unknown batch.");
-          release(req.batchId);
+          release(req.batchId, req.scope);
           return { ok: true, type: "release", batchId: req.batchId, state: states.get(req.batchId)!, ...status() };
         }
         case "cancel":
@@ -506,6 +523,7 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
     scene: () => shown,
     snapshot: () => structuredClone({ events: log }),
     epoch: () => epoch,
+    scope: () => currentScope ? { ...currentScope } : null,
     staged: () => staged.map(({ batchId, utteranceId }) => ({ batchId, utteranceId })),
     release,
     presented(batchId) {
@@ -513,9 +531,10 @@ export function createBoardReceiver(options: { sessionId: string; epoch?: number
       states.set(batchId, "presented");
       append({ kind: "presented", batchId });
     },
-    takePen() {
+    takePen(scope) {
+      if (currentScope ? !scope || !isScope(scope) || !sameScope(currentScope, scope) : scope !== null) return { cancelled: [] };
       if (pen === "child") return { cancelled: [] };
-      const at = cancelStaged();
+      const at = scope ? cancelStaged(scope) : null;
       pen = "child";
       revision++;
       const event = at === null ? undefined : log[at];
@@ -589,13 +608,13 @@ export interface BoardSender {
    * board as last read (connect, sync, cancel) plus Maya's own accepted batches: when the child changed the board since,
    * it is refused with `stale_revision` until Maya reads the board again with `sync`.
    */
-  send(batch: Batch, options?: { utteranceId?: string; scope?: SpeechScope }): Promise<SendResult>;
+  send(batch: Batch, options: { utteranceId?: string; scope: SpeechScope }): Promise<SendResult>;
   /** Releases a batch once its speech cue has played. Retries do not duplicate shown work. */
-  release(batchId: string, scope?: SpeechScope): Promise<SendResult>;
+  release(batchId: string, scope: SpeechScope): Promise<SendResult>;
   /** Priority interruption, including requests still in flight. Does not wait for the serial request queue. */
   interrupt(scope: SpeechScope): Promise<{ ok: true } | SenderFailure>;
   /** Drops staged batches and reads the resulting log. Shown strokes stay. */
-  cancel(): Promise<{ ok: true; cancelled: string[] } | SenderFailure>;
+  cancel(scope: SpeechScope): Promise<{ ok: true; cancelled: string[] } | SenderFailure>;
   /** Reads the board log since the last sync: what the child saw and wrote, and where each batch is. */
   sync(): Promise<boolean>;
   batchState(batchId: string): BatchState | undefined;
@@ -733,7 +752,7 @@ export function createBoardSender(options: { sessionId: string; senderId: string
         pending = { epoch: Math.max(claimed, seen) + 1, observedEpoch: seen };
         claimed = pending.epoch;
       }
-      const r = await request({ type: "reset", sessionId, senderId, epoch: pending.epoch, observedEpoch: pending.observedEpoch, snapshot: { events: [...log] } });
+      const r = await request({ type: "reset", sessionId, senderId, epoch: pending.epoch, observedEpoch: pending.observedEpoch, scope: read.scope, snapshot: { events: [...log] } });
       if (!r) return UNREACHABLE;
       if (!r.ok) {
         if (r.code === "behind") continue;
@@ -758,10 +777,10 @@ export function createBoardSender(options: { sessionId: string; senderId: string
     return { ok: false, code: "behind", reason: "The board kept changing while the connect was under way." };
   }
 
-  async function send(batch: Batch, opts: { utteranceId?: string; scope?: SpeechScope }): Promise<SendResult> {
+  async function send(batch: Batch, opts: { utteranceId?: string; scope: SpeechScope }): Promise<SendResult> {
     if (stopped) return SUPERSEDED;
     if (!connected) return UNREACHABLE;
-    const req: BoardRequest = { type: "apply", sessionId, epoch, sequence, baseRevision: revision, batchId: batch.transactionId, utteranceId: opts.scope?.utteranceId ?? opts.utteranceId, scope: opts.scope, commands: [...batch.commands] };
+    const req: BoardRequest = { type: "apply", sessionId, epoch, sequence, baseRevision: revision, batchId: batch.transactionId, utteranceId: opts.utteranceId ?? opts.scope.utteranceId, scope: opts.scope, commands: [...batch.commands] };
     if (byteSize(req) > MAX_BATCH_BYTES) return { ok: false, code: "too_large", reason: `A batch takes at most ${MAX_BATCH_BYTES} bytes: split it.` };
     const r = await request(req);
     if (!r) return UNREACHABLE;
@@ -777,12 +796,12 @@ export function createBoardSender(options: { sessionId: string; senderId: string
     return { ok: true, batchId: r.batchId, state: r.state };
   }
 
-  async function cancel(): Promise<{ ok: true; cancelled: string[] } | SenderFailure> {
+  async function cancel(scope: SpeechScope): Promise<{ ok: true; cancelled: string[] } | SenderFailure> {
     if (stopped) return SUPERSEDED;
     if (!connected) return UNREACHABLE;
     // The batches sent so far, under one id: a late copy of this cancel never touches a batch sent after it.
     const cancelId = `cancel-${++cancels}`;
-    const r = await request({ type: "cancel", sessionId, epoch, cancelId, through: sequence - 1 });
+    const r = await request({ type: "cancel", sessionId, epoch, cancelId, through: sequence - 1, scope });
     if (!r) return UNREACHABLE;
     if (!r.ok) return { ok: false, code: r.code, reason: r.reason };
     if (r.type !== "cancel" || r.cancelId !== cancelId) return WRONG_ANSWER;
@@ -796,7 +815,7 @@ export function createBoardSender(options: { sessionId: string; senderId: string
 
   return {
     connect: () => serial(connect),
-    send: (batch, opts = {}) => serial(() => send(batch, opts)),
+    send: (batch, opts) => serial(() => send(batch, opts)),
     interrupt: async (scope) => {
       if (stopped) return SUPERSEDED;
       if (!connected) return UNREACHABLE;
@@ -815,7 +834,7 @@ export function createBoardSender(options: { sessionId: string; senderId: string
       if (!(await pull())) return UNREACHABLE;
       return { ok: true, batchId, state: r.state };
     }),
-    cancel: () => serial(cancel),
+    cancel: scope => serial(() => cancel(scope)),
     sync: () => serial(async () => (await pull()) !== null),
     useTransport(next) {
       transport = next;

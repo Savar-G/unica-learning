@@ -6,6 +6,7 @@ import { createBoardSender, type BoardSnapshot } from "@/lib/board-protocol";
 import { boardRpcTransport } from "@/lib/board-rpc";
 import { VoicePanel } from "./admin-maya-voice";
 
+const SCOPE = { utteranceId: "plan", generation: 1 };
 type FakeRoom = {
   remoteParticipants: Map<string, unknown>;
   emit(event: string, ...args: unknown[]): void;
@@ -63,9 +64,9 @@ it("renders only released board state, restores it on remount, and refuses the r
   const transport = () => boardRpcTransport({ performRpc: args => r.rpc.get(args.method)!({ callerIdentity: "worker", payload: args.payload }) }, "child", () => String(++id));
   const sender = createBoardSender({ sessionId: "board-call", senderId: "worker", transport: transport() });
   await act(async () => { expect(await sender.connect()).toEqual({ ok: true }); });
-  await act(async () => { expect((await sender.send({ transactionId: "columns", commands: [{ op: "columns", id: "sum", operation: "add", operands: [{ id: "top", value: "27" }, { id: "bottom", value: "39" }], place: { region: "main" } }] })).ok).toBe(true); });
+  await act(async () => { expect((await sender.send({ transactionId: "columns", commands: [{ op: "columns", id: "sum", operation: "add", operands: [{ id: "top", value: "27" }, { id: "bottom", value: "39" }], place: { region: "main" } }] }, { scope: SCOPE })).ok).toBe(true); });
   expect(snapshot.events).toEqual([]);
-  await act(async () => { expect((await sender.release("columns")).ok).toBe(true); });
+  await act(async () => { expect((await sender.release("columns", SCOPE)).ok).toBe(true); });
   expect(snapshot.events.filter(e => e.kind === "batch")).toHaveLength(1);
   const shown = structuredClone(snapshot);
   await act(async () => root.unmount()); host.remove();
