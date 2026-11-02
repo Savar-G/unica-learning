@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { notFound } from "next/navigation";
 vi.mock("server-only", () => ({}));
 const fake = vi.hoisted(() => ({ active: true, signedIn: true, frozen: false, delivered: false, revokeOnDownload: false }));
 const dispatch = vi.hoisted(() => vi.fn(() => { throw new Error("AI must not run in S1"); }));
@@ -9,7 +10,7 @@ vi.mock("@/lib/scan-photo-server", () => ({
   scanPath: () => "family/revision/photo.jpg",
   scanJson: (data: unknown, status = 200) => Response.json(data, { status }),
   scanSession: async () => {
-    if (!fake.signedIn) return null;
+    if (!fake.signedIn) notFound();
     const photo = () => fake.active ? { id: "00000000-0000-4000-8000-000000000001", parent_id: "family", state: "saved", created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 86400000).toISOString() } : null;
     return {
       parent: "family",
@@ -41,7 +42,7 @@ describe("authenticated scan image delivery", () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
   it("does not read Storage for signed-out, denied, terminal or family-frozen requests", async () => {
-    fake.signedIn = false; expect((await request()).status).toBe(401); expect(fake.delivered).toBe(false);
+    fake.signedIn = false; await expect(request()).rejects.toMatchObject({ digest: "NEXT_HTTP_ERROR_FALLBACK;404" }); expect(fake.delivered).toBe(false);
     fake.signedIn = true; fake.active = false; expect((await request()).status).toBe(404); expect(fake.delivered).toBe(false);
     fake.active = true; fake.frozen = true; expect((await request()).status).toBe(404); expect(fake.delivered).toBe(false);
   });

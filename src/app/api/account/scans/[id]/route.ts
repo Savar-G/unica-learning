@@ -5,21 +5,19 @@ import { scanSession, scanJson, scanView, scanPath, SCAN_BUCKET, cleanupScanPhot
 export const maxDuration = 60;
 
 export async function GET(_request: Request, { params }: RouteContext<"/api/account/scans/[id]">) {
+  const session = await scanSession();
   const { id } = await params;
   if (!isUuid(id)) return scanJson({ error: "refused" }, 404);
-  const session = await scanSession();
-  if (!session) return scanJson({ error: "signed_out" }, 401);
   await session.admin.rpc("recover_scan_photo", { p_parent: session.parent, p_id: id });
   const photo = await scanView(session.admin, session.parent, id);
   return photo ? scanJson({ photo }) : scanJson({ error: "refused" }, 404);
 }
 
 export async function PUT(request: Request, { params }: RouteContext<"/api/account/scans/[id]">) {
+  const session = await scanSession();
   if (request.headers.get("origin") !== new URL(request.url).origin) return scanJson({ error: "refused" }, 403);
   const { id } = await params;
   if (!isUuid(id)) return scanJson({ error: "refused" }, 404);
-  const session = await scanSession();
-  if (!session) return scanJson({ error: "signed_out" }, 401);
   const { admin, parent } = session;
   const start = await admin.rpc("start_scan_photo", { p_parent: parent, p_id: id });
   if (start.error) return scanJson({ error: "unavailable" }, 503);
@@ -49,22 +47,20 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
 }
 
 export async function POST(request: Request, { params }: RouteContext<"/api/account/scans/[id]">) {
+  const session = await scanSession();
   if (request.headers.get("origin") !== new URL(request.url).origin) return scanJson({ error: "refused" }, 403);
   const { id } = await params;
   if (!isUuid(id)) return scanJson({ error: "refused" }, 404);
-  const session = await scanSession();
-  if (!session) return scanJson({ error: "signed_out" }, 401);
   const result = await session.admin.rpc("change_scan_photo", { p_parent: session.parent, p_id: id, p_action: "save" });
   if (result.error || result.data !== "saved") return scanJson({ error: "refused" }, 409);
   return scanJson({ photo: await scanView(session.admin, session.parent, id) });
 }
 
 export async function DELETE(request: Request, { params }: RouteContext<"/api/account/scans/[id]">) {
+  const session = await scanSession();
   if (request.headers.get("origin") !== new URL(request.url).origin) return scanJson({ error: "refused" }, 403);
   const { id } = await params;
   if (!isUuid(id)) return scanJson({ error: "refused" }, 404);
-  const session = await scanSession();
-  if (!session) return scanJson({ error: "signed_out" }, 401);
   const result = await session.admin.rpc("change_scan_photo", { p_parent: session.parent, p_id: id, p_action: "delete" });
   if (result.error || !["deleted", "expired", "rejected"].includes(result.data)) return scanJson({ error: "refused" }, 409);
   await cleanupScanPhoto(session.admin, session.parent, id);

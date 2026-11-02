@@ -3,6 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import type { Database } from "@/lib/database";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/lib/supabase-public";
 import { DESK_COOKIE, DESK_HOME, deskGate } from "@/lib/desk";
+import { scanPagesAccess } from "@/lib/scan-pages-access";
 
 // Refreshes an expired Supabase session before account pages render, because Server Components cannot set cookies.
 // Runs only on the account paths, so the public site is untouched. While the child's desk is open on this device
@@ -24,7 +25,11 @@ export async function proxy(request: NextRequest) {
   // An Auth error (not a signed-out visitor) keeps an open desk closed to the account.
   const known = !error || error.name === "AuthSessionMissingError";
   const gate = deskGate(request.nextUrl.pathname, request.cookies.get(DESK_COOKIE)?.value, data?.claims.sub ?? null, known);
-  if (gate === "pass") {
+  // A disabled scan route must reach its server not-found check even when the desk is open.
+  // Permitted scanners still use the desk lock. The scan handler independently verifies the live session and release.
+  const scanRoute = /^\/(?:account\/scan|api\/account\/scans)(?:\/|$)/.test(request.nextUrl.pathname);
+  const hiddenScan = gate !== "pass" && scanRoute && (!data?.claims.sub || !await scanPagesAccess(data.claims.sub));
+  if (gate === "pass" || hiddenScan) {
     // Parent pages are never kept for the back button (#301): the desk guard checks any page the browser restores.
     if (/^\/(?:account|admin)(?:\/|$)/.test(request.nextUrl.pathname)) response.headers.set("Cache-Control", "private, no-store, max-age=0");
     return response;

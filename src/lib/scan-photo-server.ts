@@ -2,6 +2,8 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { sessionClient, adminClient } from "@/lib/supabase-auth";
+import { notFound } from "next/navigation";
+import { scanPagesAccess } from "@/lib/scan-pages-access";
 
 export const SCAN_BUCKET = "scan-photos";
 export const scanPath = (parent: string, id: string) => `${parent}/${id}/photo.jpg`;
@@ -12,15 +14,18 @@ export async function scanSession() {
   // getUser checks Auth on every request, including after sign-out/revocation.
   const [{ data, error }, claims] = await Promise.all([db.auth.getUser(), db.auth.getClaims()]);
   const admin = adminClient();
-  if (error || !data.user || !admin) return null;
+  if (error || !data.user || !admin) notFound();
   const sessionId = claims.data?.claims.session_id;
-  if (claims.error || typeof sessionId !== "string" || claims.data?.claims.sub !== data.user.id) return null;
+  if (claims.error || typeof sessionId !== "string" || claims.data?.claims.sub !== data.user.id) notFound();
   const parent = data.user.id;
   const active = async () => {
-    const result = await admin.rpc("scan_session_active", { p_user: parent, p_session: sessionId });
-    return !result.error && result.data === true;
+    const [result, released] = await Promise.all([
+      admin.rpc("scan_session_active", { p_user: parent, p_session: sessionId }),
+      scanPagesAccess(parent, admin),
+    ]);
+    return !result.error && result.data === true && released;
   };
-  if (!await active()) return null;
+  if (!await active()) notFound();
   return { db, admin, parent, active };
 }
 

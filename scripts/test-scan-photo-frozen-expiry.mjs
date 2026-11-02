@@ -25,6 +25,7 @@ if (process.argv.includes('--bootstrap')) {
   await sql.query(fence.slice(fence.indexOf('create function public.assert_family_writable'), fence.indexOf('\ndo $$\ndeclare t text;')));
   const admin = file('20261011_add_admin_area');
   await sql.query(admin.slice(admin.indexOf('create table public.admin_users'), admin.indexOf('-- Tables parents cannot read')));
+  await sql.query(file('20261012_add_test_accounts'));
   await sql.query(file('20261029_add_workbooks'));
   await sql.query(`create trigger fence_work_upload before insert or update on storage.objects for each row execute function public.fence_work_upload(); create extension if not exists pg_cron;`);
   for (const name of ['20261102_scan_page_photos','20261102_scan_photo_abandonment_margin','20261102_scan_photo_active_session','20261102_scan_photo_notice']) await sql.query(file(name));
@@ -36,6 +37,7 @@ const browser = createClient(cfg.API_URL, cfg.ANON_KEY, { auth: { persistSession
 const email = `frozen477-${randomUUID()}@example.test`, password = randomUUID()+'aA!7';
 const user = ok(await admin.auth.admin.createUser({ email, password, email_confirm: true })).user;
 ok(await admin.from('parents').insert({ id: user.id, name: 'Synthetic QA', email, postal: 'V3S 0A1' }));
+ok(await admin.from('test_accounts').insert({ parent_id: user.id, marked_by: user.id }));
 const child = randomUUID(), book = randomUUID();
 ok(await admin.from('children').insert({ id: child, parent_id: user.id, first_name: 'Alex', grade: 3, province: 'BC' }));
 ok(await admin.from('workbooks').insert({ id: book, parent_id: user.id, child_id: child, number: 1, levels: [4], status: 'draft', approved_at: new Date().toISOString(), printed_at: new Date().toISOString() }));

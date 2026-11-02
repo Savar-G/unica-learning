@@ -2,10 +2,9 @@ import { isUuid } from "@/lib/workbook-content";
 import { scanSession, scanJson, scanPath, SCAN_BUCKET, SCAN_HEADERS } from "@/lib/scan-photo-server";
 
 export async function GET(_request: Request, { params }: RouteContext<"/api/account/scans/[id]/image">) {
+  const session = await scanSession();
   const { id } = await params;
   if (!isUuid(id)) return scanJson({ error: "refused" }, 404);
-  const session = await scanSession();
-  if (!session) return scanJson({ error: "signed_out" }, 401);
   // RLS scopes this read to the owner or authorized admin. No object path or signed URL reaches the browser.
   const { data: photo } = await session.db.from("scan_photos").select("id,parent_id,state,created_at,expires_at").eq("id", id).maybeSingle();
   const active = (p: typeof photo) => p && ["saved", "pending"].includes(p.state) && Date.parse(p.expires_at) > Date.now()

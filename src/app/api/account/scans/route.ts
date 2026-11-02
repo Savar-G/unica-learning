@@ -2,9 +2,8 @@ import { isUuid } from "@/lib/workbook-content";
 import { scanSession, scanJson, scanView } from "@/lib/scan-photo-server";
 
 export async function POST(request: Request) {
-  if (request.headers.get("origin") !== new URL(request.url).origin) return scanJson({ error: "refused" }, 403);
   const session = await scanSession();
-  if (!session) return scanJson({ error: "signed_out" }, 401);
+  if (request.headers.get("origin") !== new URL(request.url).origin) return scanJson({ error: "refused" }, 403);
   try {
     const { id, child, bytes } = await request.json();
     if (!isUuid(id) || !isUuid(child) || !Number.isSafeInteger(bytes)) return scanJson({ error: "refused" }, 400);
@@ -17,7 +16,6 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   const session = await scanSession();
-  if (!session) return scanJson({ error: "signed_out" }, 401);
   const child = new URL(request.url).searchParams.get("child");
   if (!child || !isUuid(child)) return scanJson({ error: "refused" }, 400);
   const { data, error } = await session.admin.from("scan_photos").select("id").eq("parent_id", session.parent).eq("child_id", child)
