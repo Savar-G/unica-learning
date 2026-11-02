@@ -76,7 +76,7 @@ export function planItem(o: { skill: string; slot: string; level: number; day: n
   const a = 1 + (Math.floor(seed / Math.max(1, max - 2)) + seed * 7) % (top - 1);
   const b = top - a;
   const arithmetic = ["sequence", "bond", "step", "add", "subtract", "multiply", "divide"].includes(type);
-  const source = o.explain ? "explain" : o.story && arithmetic ? "story" : "code";
+  const source = o.explain && type !== "likelihood" ? "explain" : o.story && arithmetic ? "story" : "code";
   const item: AiItem = { slot: o.slot, skill: o.skill, difficulty: o.day <= 3 ? 1 : o.day <= 7 ? 2 : 3,
     text: "", format: "write-number", operation: null, wrongAnswers: [], easier: null, shownWrong: null,
     figure: null, numbers: [], places: null, direction: null, sequence: null, pattern: null, relation: null, figureShows: null, name: "Mia", thing: "shells" };
@@ -89,7 +89,7 @@ export function planItem(o: { skill: string; slot: string; level: number; day: n
       break;
     }
     case "count":
-      item.text = seed % 2 && top <= 10 ? `Fill a ten-frame to show ${top}.` : `Colour ${top} dots in the row.`;
+      item.text = `Fill the ten-frame boxes to show ${top}.`;
       item.format = "draw";
       numbers = [top];
       break;
@@ -198,7 +198,7 @@ export function buildPlannedItem(plan: ItemPlan, raw: unknown, place: SlotPlace)
     p.item = plan.type === "likelihood" ? { format: "circle", scorable: false, parentChecked: true,
       regions: [{ id: "answer", kind: "choice", mark: "circle", label: null, choices: ["never", "maybe", "always"], answer: null }], checks: [], error: null }
       : { format: "draw", scorable: false, parentChecked: true, regions: [{ id: "drawing", kind: "picture", label: null }], checks: [], error: null,
-        figure: item.text.startsWith("Colour") || plan.numbers[0] > 10 ? { kind: "dots", groups: [Math.min(20, plan.dayRange.max)], takenAway: 0 } : { kind: "ten-frame", counters: [0] } };
+        figure: { kind: "ten-frame", counters: plan.numbers[0] > 10 ? [0, 0] : [0] } };
     built.check = { status: "not-checked", reason: "a parent checks the circle or coloured drawing" };
   }
   built.package.textSource = plan.source === "code" ? "code" : "ai";

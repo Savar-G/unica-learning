@@ -30,7 +30,7 @@ import {
   type PlannedSlot,
 } from "@/lib/workbook-page";
 import { DEFAULT_STEPS, planLevel, planWorkbook, type PlanInput, type PlannedPage, type WorkbookPlan } from "@/lib/workbook-plan";
-import { coverTitleLines, dayHeader, pageTopic } from "@/lib/workbook-book";
+import { bookPageContent, coverTitleLines, dayHeader, pageTopic } from "@/lib/workbook-book";
 import type { WorkbookDraft } from "@/lib/workbook-render";
 
 const BC = curriculumFor("bc")!;
@@ -558,19 +558,11 @@ export function sampleBook(o: SampleBookOptions): SampleBook {
   };
   const { draft, omissions } = assembleBook({
     workbookId: o.workbookId, childId: o.childId, child: o.child, number, levelTitle: title, profileBuild: null, plan,
-    cover: {
-      title: coverTitle,
-      sentence: number === 1
-        ? `${o.child}'s assessment showed what is secure and what to build next at Level U${level.number}. So this workbook:`
-        : `${o.child}'s last workbook showed which steps stuck and which need another go. So this workbook:`,
-      bullets: [
-        "Builds the next steps of this level, one small step at a time",
-        "Shows each new idea with a worked example first",
-        "Brings back earlier skills every day, so they stay fresh",
-        number === 1 ? "Ends each week with five questions and no hints" : "Fixes last time's mistakes with new questions",
-      ],
-      parentLine: `This fortnight, ask ${o.child} to show you one worked example and explain it in their own words.`,
-    },
+    cover: (() => {
+      const c = bookPageContent({ curriculum: BC, plan, child: o.child, workbook: number, type: "cover", number: 1 });
+      if (c.kind !== "cover") throw new Error("Missing cover content");
+      return { ...c, title: coverTitle };
+    })(),
     planRow: (day) => {
       const d = plan.days[day - 1];
       const a = dayTopic(day, "A");

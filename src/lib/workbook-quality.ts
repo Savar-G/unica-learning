@@ -1,4 +1,5 @@
 import type { GeneratedPage } from "./workbook-generator";
+import { dayTimeProblem, estimatedDayMinutes } from "./workbook-feedback-check";
 import { printedNumbers } from "./workbook-book";
 
 export interface BookIssue { page: number; kind: "repeat" | "progress" | "variety" | "time"; reason: string }
@@ -41,10 +42,12 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     const questions = ofDay.flatMap(p => p.questions);
     const formats = new Set(questions.flatMap(q => q.package?.item ? [q.package.item.format] : []));
     // Include time to read worked examples and move between pages.
-    const minutes = questions.reduce((n, q) => n + questionMinutes(q), 0) + ofDay.length * .35;
+    const packages = questions.flatMap(q => q.package ? [q.package] : []);
+    const panels = ofDay.reduce((n,p)=>n + (p.content?.kind === "day" ? p.content.blocks.filter(b => ["worked-example", "watch-one", "reminder"].includes(b.slot)).length : 0),0);
+    const minutes = Math.max(questions.reduce((n, q) => n + questionMinutes(q), 0) + ofDay.length * .35, estimatedDayMinutes(packages, panels));
     const largestNumber = Math.max(0, ...questions.flatMap(q => q.package ? printedNumbers({...q.package, wrongAnswers: [], easierExample: null}).map(Math.abs) : []));
     days.push({ day, minutes: Math.round(minutes * 10) / 10, formats: formats.size, largestNumber });
-    if (minutes >= 30) for (const p of ofDay) issues.push({ page: p.number, kind: "time", reason: `Day ${day} is estimated at ${minutes.toFixed(1)} minutes; keep it below 30` });
+    if (minutes >= 30 || dayTimeProblem(packages, panels)) for (const p of ofDay) issues.push({ page: p.number, kind: "time", reason: `Day ${day} is estimated at ${minutes.toFixed(1)} minutes; keep it below 30` });
     if (questions.length >= 8 && formats.size < 2) for (const p of ofDay) issues.push({ page: p.number, kind: "variety", reason: `Day ${day} uses only ${formats.size} answer format` });
   }
   // Compare the numbers of the same skills, so changing Unit B does not hide a
@@ -52,6 +55,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
   const skills = new Set(pages.flatMap(p => p.questions.flatMap(q => q.package?.skill.skills ?? [])));
   for (const skill of skills) {
     // An earlier skill's fixed review range need not grow with the new unit.
+    if (/make-10|partners-of-10/.test(skill)) continue;
     if (skill.startsWith("K") && pages.some(p => p.questions.some(q => (q.package?.level ?? 0) > 3))) continue;
     const largest = (late: boolean) => Math.max(0, ...pages.filter(p => p.day !== null && (late ? p.day >= 8 : p.day <= 3)).flatMap(p => p.questions.flatMap(q => q.package?.skill.skills.includes(skill) ? printedNumbers({...q.package, wrongAnswers: [], easierExample: null}).map(Math.abs) : [])));
     const early = largest(false), late = largest(true);

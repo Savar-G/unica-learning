@@ -820,6 +820,7 @@ interface Size {
   carries: number;
   /** The numbers of a whole-number +, −, × or ÷, from least to greatest; null for any other kind. */
   numbers: number[] | null;
+  expressionShape: string | null;
 }
 /** A step that carries, regroups or changes the hours of a clock time: the harder part of a method. */
 const carries = (s: WorkedStep) => ((s.kind === "add-column" || s.kind === "multiply-digit") && s.carryOut > 0)
@@ -831,7 +832,10 @@ function size(operation: Operation): Size {
   // 1 to 10, so it is easier than 7 + ? = 10, which counts 3).
   const numbers = operation.kind === "missing-addend" ? [operation.operands[1] - operation.operands[0], operation.operands[1]].sort((x, y) => x - y)
     : WHOLE_KINDS.includes(operation.kind) ? [...(operation.operands as number[])].sort((x, y) => x - y) : null;
-  return { digits: (operationText(operation).match(/\d/g) ?? []).length, steps: steps.length, carries: steps.filter(carries).length, numbers };
+  const expression = operation.kind === "evaluate" || operation.kind === "solve" ? operation.operands[0] : null;
+  const literals = expression ? operationText(operation).match(/\d+(?:\.\d+)?/g)?.map(Number).sort((a, b) => a - b) ?? null : null;
+  return { digits: (operationText(operation).match(/\d/g) ?? []).length, steps: steps.length, carries: steps.filter(carries).length,
+    numbers: numbers ?? literals, expressionShape: expression?.replace(/\d+(?:\.\d+)?/g, "#").replace(/\s/g, "") ?? null };
 }
 /**
  * An easier example has fewer digits, or as many digits and fewer steps (1/5 + 2/5 is easier than 2/3 + 3/4), or as many
@@ -843,7 +847,7 @@ function size(operation: Operation): Size {
 const fewer = (a: number[] | null, b: number[] | null) =>
   a !== null && b !== null && a.length === b.length && a.every((x, i) => x <= b[i]) && a.some((x, i) => x < b[i]);
 const smaller = (a: Size, b: Size) => a.digits < b.digits || (a.digits === b.digits && (a.steps < b.steps || (a.steps === b.steps
-  && (a.carries < b.carries || (a.carries === b.carries && fewer(a.numbers, b.numbers))))));
+  && (a.carries < b.carries || (a.carries === b.carries && (a.expressionShape === b.expressionShape && fewer(a.numbers, b.numbers)))))));
 
 type Problem = ItemProblem;
 const failed = (reason: string | null): Problem | null => (reason ? { status: "failed", reason } : null);

@@ -68,7 +68,8 @@ import {
   type DayLayout, type NumberRange,
 } from "@/lib/workbook-book";
 import { pageId, type Omission, type PageContent, type SlotName } from "@/lib/workbook-page";
-import type { PageType, PlannedPage, PlannedPart, WorkbookPlan } from "@/lib/workbook-plan";
+import { dayDifficulty, type PageType, type PlannedPage, type PlannedPart, type WorkbookPlan } from "@/lib/workbook-plan";
+import { scheduledItemProblem } from "@/lib/workbook-feedback-check";
 import { workbookEditItem } from "@/lib/workbook-edit-item";
 import type { DraftPage } from "@/lib/workbook-render";
 import { textRoom } from "@/lib/workbook-template";
@@ -76,16 +77,19 @@ import { textRoom } from "@/lib/workbook-template";
 import { checkWholeBook, type BookQuality } from "@/lib/workbook-quality";
 import { buildPlannedItem, planItem, itemExamples, ITEM_EXAMPLES, type ItemPlan } from "@/lib/workbook-item-plan";
 
-/** The item pipeline uses the day schedule; the public schedule replaces this adapter after #479. */
+/** The shared schedule bounds every code-picked item in its skill's range. */
 function contractFor(input: GenerateInput, w: PageWork, slot: Slot, attempt = 0): ItemPlan | null {
   if (attempt === 0 && slot.contract !== undefined) return slot.contract;
   const skill = slot.aim?.skill ?? slot.part.skills[((Number(slot.id.split(".")[1]) || 1) - 1) % slot.part.skills.length];
   if (!skill) return null;
   const max = skillRange(input.curriculum, input.plan.level, skill).max;
-  const cap = Math.max(5, Math.floor(max * (w.day <= 3 ? 0.5 : w.day <= 7 ? 0.75 : 1)));
+  const schedule = dayDifficulty(input.plan.level, w.day);
+  const fixed = /make-10|partners-of-10/.test(skill) ? 10 : 0;
+  const cap = Math.max(fixed, 5, Math.ceil(max * schedule.rangeFraction));
+  const pictures = schedule.helpLevel === "pictures" || schedule.helpLevel === "new-ideas-only" && ["worked-example", "now-you", "try-first"].includes(slot.place ?? "");
   const format = slot.place === "spot-the-error" ? "spot-the-error" : slot.place === "solve-it-two-ways" ? "two-ways" : slot.place === "mixed-set" ? "tick-and-number" : "write-number";
   return planItem({ skill, slot: slot.id, level: input.plan.level, day: w.day, ordinal: w.number * 31 + (Number(slot.id.split(".")[1]) || 1),
-    range: { min: slot.place === "challenge" ? cap : w.day >= 8 ? Math.floor(cap * 0.7) : 1, max: Math.min(max, cap), pictures: w.day <= 3, help: w.day <= 3 ? "full" : w.day <= 7 ? "partial" : "none" },
+    range: { min: slot.place === "challenge" ? cap : w.day >= 8 ? Math.floor(cap * 0.7) : 1, max: Math.min(max, cap), pictures, help: schedule.helpLevel === "pictures" ? "full" : schedule.helpLevel === "new-ideas-only" ? "partial" : "none" },
     story: !!slot.place && STORY_CHECK_PLACES.has(slot.place), explain: slot.place === "how-do-you-know" || slot.place === "in-your-head", format, attempt });
 }
 const unapprovedBuild = (): BuiltQuestion => ({ package: null, stepIds: [], check: { status: "failed", reason: "this skill has no approved question type; add and review its item builder" } });
@@ -1176,7 +1180,7 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
     }
     // Every number fits the level and slot: the range of the item's skill (an earlier skill's under review).
     if (slot.place && b.check.status !== "failed" && b.package) {
-      const problem = rangeProblem(b.package, input.curriculum, input.plan.level);
+      const problem = rangeProblem(b.package, input.curriculum, input.plan.level) ?? (input.itemPolicy === "approved-v1" ? scheduledItemProblem(b.package, input.curriculum, w.day, slot.place ?? "") : null);
       if (problem) b.check = { status: "failed", reason: problem };
     }
     return b;
@@ -1891,7 +1895,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
     }
   }
   let pages: GeneratedPage[] = [plain(1, "cover"), plain(2, "how-plan"), ...work.map((w) => finished.get(w.number)!)];
-  pages.push(plain(backCover, "back-cover"));
+  pages.push(plain(backCover, "blank"));
   for (let n = backCover + 1; n <= total; n++) pages.push(plain(n, "blank"));
 
   let quality: BookQuality | undefined;
