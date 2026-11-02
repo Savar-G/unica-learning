@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { FAQ } from "@/lib/faq";
 import { llmsTxt, pricingMarkdown } from "@/lib/ai-summary";
 import { SITE_DESCRIPTION } from "@/lib/metadata";
+import { homeJsonLd } from "@/lib/structured-data";
 import { PARENT_LEAD, PARENT_NOT_YOURS, PARENT_NOTE, PARENT_TITLE, PARENT_YOURS } from "@/lib/parent";
 import { renderToStaticMarkup } from "react-dom/server";
 import Terms from "@/app/(site)/terms/page";
@@ -118,5 +119,15 @@ describe("page metadata", () => {
   it("the site description names the free online math assessment and keeps the price", () => {
     expect(SITE_DESCRIPTION).toMatch(/Free online math assessment\./);
     expect(SITE_DESCRIPTION).toMatch(/CAD 79\.99\/month/);
+  });
+
+  it("distinguishes nationwide assessment access from the BC curriculum plan", () => {
+    expect(SITE_DESCRIPTION).toMatch(/assessment.*across Canada/i);
+    expect(SITE_DESCRIPTION).toMatch(/BC curriculum/i);
+    const service = homeJsonLd()["@graph"].find((item) => item["@type"] === "Service");
+    expect(service).toBeDefined();
+    if (!service || !("offers" in service) || !service.offers?.length) throw new Error("Missing program offer");
+    expect(service.offers[0].description).toMatch(/BC curriculum/i);
+    expect(service.offers[0]).not.toHaveProperty("eligibleRegion");
   });
 });
