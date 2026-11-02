@@ -86,7 +86,7 @@ Every run makes a **draft**. A team member reviews it in admin, fixes or redoes 
 1. **First workbook:** drafted automatically when the parent saves a card after the free assessment report; an admin
    button "Prepare first workbook" also works for any child with a finished test. Built from the assessment, the
    placement rule above and the child profile.
-2. **Every next workbook:** drafted automatically from a **snapshot on calendar day 7** of the current cycle (about 70
+2. **Every next workbook:** drafted automatically from a **snapshot when the required printed Day 7 pages are scanned (D-213)** of the current cycle (about 70
    to 75% through), so it ships before the current one runs out. It reads:
    - **Markings:** scanned and marked pages so far (the first try is the score; errors the child already fixed in the
      app don't carry over to Fix it). Unfinished pages are scanned whenever they are done; unfinished steps carry over.
@@ -293,7 +293,7 @@ practice 2, word problems, unit B, remember these + mixed set, challenge).
    builds them from the skeleton's rules and DESIGN.md, and Savar reviews them in the generated books.
 5. **Markings (decided, D-193):** scanning is a "Scan pages" section of the web app on the parent's phone, not a native
    app. The AI marks each numbered item; the parent confirms the items it is unsure of; after a scan the parent picks
-   "Fix mistakes with Maya" or "Just show results". Built after the sample book for every level is reviewed (spec #368). Until
+   "Fix mistakes with Maya" or "Just show results". Layout-dependent work starts after Savar approves U4, U14 and U26 samples (D-207, spec #368). S1 private photo storage does not need that approval. Until
    it ships, book 2 has no markings to read.
 6. **Pages vs minutes:** decide from real children's timing (skeleton open question 1).
 7. **First Peoples context:** who writes or checks the one-per-level context, never AI alone.
@@ -313,3 +313,7 @@ practice 2, word problems, unit B, remember these + mixed set, challenge).
 | Level, unit, skill and step data | not in code | the skeleton's Levels and Units & skills tabs become code (with importance, difficulty, delivery, response type, scorable, pages); steps for every grade (only Grade 3 drafted) |
 | Item templates and tags | not in code | number ranges per step, strategy tags, context templates |
 | Placement | partly | the start-level rule (section 2); the Kindergarten "Already know it?" check; the 4-item checks for thin evidence |
+
+## Scan decisions, 2026-11-02
+
+D-207 to D-213 replace earlier sample, marking, retention and calendar defaults. Days follow printed-page progress. A four-day scan gap can produce a reminder. Confirmed delivery plus 21 local calendar days provides the next-book snapshot backstop. Whole-page marking runs on the website server through the API. S1 stores one private normalized photo and makes no model request. Keep answer history until family deletion after photos expire at 90 days.

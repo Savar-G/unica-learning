@@ -22,6 +22,7 @@ import { parentMinutes, type ChildMinutes } from "@/lib/maya-minutes-server";
 import type { ChatUsage } from "@/lib/maya-chat";
 import { DEMO_DAILY_MINUTES, WEEK_SECONDS } from "@/lib/maya-minutes";
 import { SupportPage } from "@/components/support-page";
+import { scanPagesAccess } from "@/lib/scan-pages-access";
 
 export const metadata = pageMetadata({
   path: "/account",
@@ -58,7 +59,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   const timeZone = familyZone({ timeZone: parent.time_zone, postal: parent.postal, province: familyProvince(children) });
   // Parent home (#301): each child's current workbook (the newest shipped one) and the desk, which needs the PIN.
   // Maya's minutes this week (#330), for test families until Maya opens to families (#337).
-  const [current, pinSet, minutes, chats] = await Promise.all([currentWorkbooks(db, children.map((c) => c.id)), pinIsSet(parentUser), parentMinutes(db, parentUser, timeZone, children), parentChatUsage(db, parentUser, children, timeZone)]);
+  const [current, pinSet, minutes, chats, scansEnabled] = await Promise.all([currentWorkbooks(db, children.map((c) => c.id)), pinIsSet(parentUser), parentMinutes(db, parentUser, timeZone, children), parentChatUsage(db, parentUser, children, timeZone), scanPagesAccess(parentUser)]);
   return (
     <SupportPage label="Your account" title={`Hi, ${parent.name.split(" ")[0]}.`}>
       {password === "1" && <p role="status" className="acct-alert acct-saved">Your password is saved.</p>}
@@ -94,6 +95,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
           </li>
         ))}
       </ul>
+      {scansEnabled && <p><Link className="btn" href="/account/scan">Scan pages <span aria-hidden="true">→</span></Link></p>}
       {minutes.size > 0 && <p className="small">Your &quot;Try Maya&quot; calls have a separate limit of {DEMO_DAILY_MINUTES} minutes a day for your account. They do not use your child&apos;s weekly minutes.</p>}
       {!parent.time_zone && <SaveTimeZone />}
       <AddChild province={children.at(-1)?.province ?? "BC"} />

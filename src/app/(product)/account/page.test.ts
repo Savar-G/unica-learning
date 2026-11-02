@@ -10,6 +10,8 @@ vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 vi.mock("@/lib/maya-minutes-server", () => ({ parentMinutes: async () => new Map() }));
 vi.mock("@/lib/parent-pin-server", () => ({ pinIsSet: async () => false }));
 vi.mock("@/lib/workbook-store", () => ({ workbookStore: () => ({ childWorkbooks: async () => [] }) }));
+const scanning = vi.hoisted(() => ({ enabled: false }));
+vi.mock("@/lib/scan-pages-access", () => ({ scanPagesAccess: async () => scanning.enabled }));
 
 const family = vi.hoisted(() => ({ postal: "V3S 1A1" as string | null, timeZone: null as string | null, olderChild: false }));
 const opensAt = Date.parse("2026-11-18T04:29:00Z");
@@ -41,7 +43,14 @@ vi.mock("@/lib/supabase-auth", () => ({
   }),
 }));
 
-beforeEach(() => { family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; });
+beforeEach(() => { family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; scanning.enabled = false; });
+
+it.each([false, true])("shows the Scan pages link only when the server permits it: %s", async (enabled) => {
+  scanning.enabled = enabled;
+  const page = await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) });
+  const html = renderToStaticMarkup(createElement("div", null, page));
+  expect(html.includes('href="/account/scan"')).toBe(enabled);
+});
 
 it.each([
   ["V3S 1A1", "9:29 p.m. on Tuesday, November 17"],

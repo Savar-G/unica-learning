@@ -36,7 +36,7 @@ export function mayCarryQrToken(url: string): boolean {
   let parsed: URL;
   try { parsed = new URL(url, "https://unicalearning.com"); } catch { return true; }
   const decode = (v: string) => { let d = v; for (let i = 0; i < 3; i += 1) { try { const n = decodeURIComponent(d); if (n === d) break; d = n; } catch { break; } } return d; };
-  if (/^\/+tutor(\/|$)/i.test(decode(parsed.pathname))) return true;
+  if (/^\/+tutor(\/|$)/i.test(decode(parsed.pathname)) || /^\/(?:account\/scan|api\/account\/scans)(\/|$)/i.test(decode(parsed.pathname))) return true;
   for (const value of parsed.searchParams.values()) if (/\/+tutor\/+p\//i.test(decode(value))) return true;
   return /\/+tutor\/+p\//i.test(decode(parsed.hash));
 }

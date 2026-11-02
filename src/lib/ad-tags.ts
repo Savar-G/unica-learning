@@ -56,7 +56,7 @@ export function adConfig(
 
 // The pages a child uses: the start screen the parent hands over (/account/start/<child>), the test
 // (/account/test/<child>), and the desk with its Forgot PIN screen and page QR codes (/tutor, /tutor/p/<token>, #301).
-const CHILD_PAGES = /^\/(?:account\/(?:start|test)|tutor)(?:\/|$)/i;
+const CHILD_PAGES = /^\/(?:account\/(?:start|test|scan)|tutor)(?:\/|$)/i;
 // Pages whose address can hold a sign-in or unsubscribe token, and the admin area: no ad tags there either.
 const PRIVATE_PAGES = /^\/(?:admin|api|auth|sign-in|unsubscribe)(?:\/|$)/i;
 

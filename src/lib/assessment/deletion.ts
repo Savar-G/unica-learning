@@ -52,7 +52,7 @@ export interface ImageEntry { name: string; folder: boolean }
  * workbook page images and PDFs (#299). A deletion empties the family's folder in each; complete_family_deletion checks
  * the same buckets.
  */
-export const FAMILY_BUCKETS = ["shown-work", "workbook-pages"] as const;
+export const FAMILY_BUCKETS = ["shown-work", "workbook-pages", "scan-photos"] as const;
 export type FamilyBucket = (typeof FAMILY_BUCKETS)[number];
 
 /**

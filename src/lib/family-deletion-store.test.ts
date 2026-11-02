@@ -97,6 +97,7 @@ describe("the copy without names before a deletion", () => {
             return json(true);
           case "confirm_family_copies": return json(copied);
           case "POST /storage/v1/object/list/shown-work": return json([]);
+          case "POST /storage/v1/object/list/scan-photos": return json([]);
           // #299: the workbook pages and PDFs, one page image left in a workbook folder.
           case "POST /storage/v1/object/list/workbook-pages":
             return json(args.prefix === parent && !workbookRemoved ? [{ name: "book", id: null }]

@@ -1,0 +1,9 @@
+{
+  "checks": [
+    "ten-minute frequency boundary: six simultaneous requests, one accepted and five refused",
+    "daily frequency boundary: six simultaneous requests, one accepted and five refused",
+    "stored-byte accounting: exact final reservation admitted once; full quota refuses all six requests; no objects",
+    "six simultaneous oversized admissions refused"
+  ],
+  "proofLimit": "The quota test uses outstanding reservations, not 2 GiB of physical QA files. Default concurrent uploads (2) binds before queued jobs (8)."
+}
