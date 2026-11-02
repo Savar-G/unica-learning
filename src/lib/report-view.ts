@@ -24,7 +24,7 @@ import {
   type StrandStatus,
 } from "@/lib/assessment";
 import type { ReportSrc } from "@/lib/next-step";
-import { formatInZone, zoneForProvince } from "@/lib/family-time";
+import { formatInZone, zoneForProvince, type FamilyZone } from "@/lib/family-time";
 import { CURRICULA } from "@/lib/signup";
 import { PLANS, cad, type PlanId } from "@/lib/site";
 
@@ -34,7 +34,7 @@ export interface ReportView {
   childName: string;
   province: Province;
   /** The family's postal zone. Older saved/demo inputs may have only a province. */
-  timeZone?: string;
+  timeZone?: FamilyZone;
   /** When the test finished (ISO). */
   completedAt: string;
   /** Questions the child answered. */

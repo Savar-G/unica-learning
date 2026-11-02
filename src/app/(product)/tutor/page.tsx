@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
 import { DESK_COOKIE, DESK_HOME, deskView, questionCrop, readLock, tapAreas, type DeskView } from "@/lib/desk";
-import { formatInZone, zoneFor } from "@/lib/family-time";
+import { formatInZone, zoneFor, type FamilyZone } from "@/lib/family-time";
 import { questionBoard } from "@/lib/desk-board";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { WORKBOOK_FILES_BUCKET, type WorkbookSummary } from "@/lib/workbook-content";
@@ -19,9 +19,9 @@ export const metadata = pageMetadata({
 /** How long the link to a page image works. A new page view makes a new one. */
 const PAGE_URL_SECONDS = 15 * 60;
 
-const sentOn = (w: WorkbookSummary, timeZone: string) =>
+const sentOn = (w: WorkbookSummary, timeZone: FamilyZone) =>
   w.shippedAt ? `Sent ${formatInZone(w.shippedAt, timeZone, { month: "long", day: "numeric" })}` : null;
-const book = (w: WorkbookSummary, timeZone: string): DeskBook => ({ id: w.id, number: w.number, sent: sentOn(w, timeZone) });
+const book = (w: WorkbookSummary, timeZone: FamilyZone): DeskBook => ({ id: w.id, number: w.number, sent: sentOn(w, timeZone) });
 const whole = (v: string | string[] | undefined) => (typeof v === "string" && /^\d{1,4}$/.test(v) ? Number(v) : undefined);
 
 // The child's desk (#301, D-184): open on this device for one child (the desk cookie, src/lib/desk.ts), read with the

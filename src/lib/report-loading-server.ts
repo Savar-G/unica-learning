@@ -143,7 +143,17 @@ async function answerRows(db: SupabaseClient<Database>, assessmentId: string, wh
  */
 export function parentReportReader(db: SupabaseClient<Database>, profiles?: { admin: SupabaseClient<Database> | null; parentId: string }): ReportReader {
   return {
-    report: (id) => embeddedReport(db, id, "parent report load"),
+    async report(id) {
+      if (!isUuid(id)) return null;
+      // reports.parent_id has no parent SELECT grant. Even an embedded parents join needs that grant.
+      const row = must(await db.from("reports")
+        .select(`${REPORT_COLUMNS}, assessment:assessments(completed_at, province), child:children(first_name)`)
+        .eq("id", id).maybeSingle(), "parent report load");
+      if (!row) return null;
+      // RLS restricts this separate session read to the signed-in parent's own row.
+      const parent = must(await db.from("parents").select("postal").maybeSingle(), "parent report postal load");
+      return record(row, row.assessment, row.child, parent?.postal ?? null);
+    },
     // A parent may not read the stored test (its right answers) or the answers: there is no grant, so nothing is read.
     assessment: async () => null,
     answers: async () => [],

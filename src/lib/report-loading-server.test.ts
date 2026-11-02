@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 import { parentReportReader, secretKeyReportReader } from "@/lib/report-loading-server";
@@ -8,23 +9,71 @@ import { parentReportReader, secretKeyReportReader } from "@/lib/report-loading-
 // eq filters, as Postgres would.
 vi.mock("server-only", () => ({}));
 
-it.each(["G0G 1W0", "V1C 3H8", null])("reads the report family's postal code %s for the page and email", async (postal) => {
+// Use the real column grants, not a fixed successful answer for every SELECT.
+const reportMigration = readFileSync("supabase/migrations/20261011_add_reports.sql", "utf8");
+const assessmentMigration = readFileSync("supabase/migrations/20261010_add_assessments.sql", "utf8");
+function grantedColumns(sql: string, table: string): Set<string> {
+  const grant = sql.match(new RegExp(`grant select \\(([^)]+)\\)\\s+on table public\\.${table} to authenticated`, "i"));
+  if (!grant) throw new Error(`Missing SELECT grant for ${table}`);
+  return new Set(grant[1].split(",").map((c) => c.trim()));
+}
+const reportGrants = grantedColumns(reportMigration, "reports");
+const assessmentGrants = grantedColumns(assessmentMigration, "assessments");
+
+it.each(["G0G 1W0", "V1C 3H8", null])("reads the parent's own postal code %s within the database grants", async (postal) => {
   const requests: URL[] = [];
   const db = createClient("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input) => {
     const url = new URL(String(input));
     requests.push(url);
-    return Response.json({ id: TEST, assessment_id: TEST, child_id: OTHER, model: {}, questions: 36, minutes: 34,
-      assessment: { completed_at: "2026-11-18T04:29:00Z", province: "BC" }, child: { first_name: "Asha" }, parent: { postal } });
-  } } });
-  for (const reader of [parentReportReader(db), secretKeyReportReader(db)]) {
-    expect(await reader.report(TEST)).toMatchObject({ postal });
-  }
-  expect(requests).toHaveLength(2);
-  for (const url of requests) {
+    const select = url.searchParams.get("select") ?? "";
+    if (url.pathname === "/rest/v1/parents") {
+      expect(select).toBe("postal");
+      return Response.json({ postal }); // Parents read their own row through RLS.
+    }
     expect(url.pathname).toBe("/rest/v1/reports");
     expect(url.searchParams.get("id")).toBe(`eq.${TEST}`);
+    // PostgREST needs SELECT on a join's foreign key as well as the returned columns.
+    const joins: Record<string, [string, Set<string>]> = {
+      "assessment:assessments": ["assessment_id", assessmentGrants],
+      "child:children": ["child_id", new Set(["first_name"])],
+      "parent:parents": ["parent_id", new Set(["postal"])],
+    };
+    let permitted = true;
+    const columns = select.replace(/([^,()]+)\(([^()]*)\)/g, (_, relation: string, fields: string) => {
+      const join = joins[relation];
+      if (!join || !reportGrants.has(join[0]) || fields.split(",").some((c) => !join[1].has(c))) permitted = false;
+      return "";
+    }).split(",").filter(Boolean);
+    if (columns.some((c) => !reportGrants.has(c))) permitted = false;
+    if (!permitted) return Response.json({ code: "42501", message: "permission denied for table reports" }, { status: 403 });
+    return Response.json({ id: TEST, assessment_id: TEST, child_id: OTHER, model: {}, questions: 36, minutes: 34,
+      assessment: { completed_at: "2026-11-18T04:29:00Z", province: "BC" }, child: { first_name: "Asha" } });
+  } } });
+  expect(reportGrants.has("parent_id")).toBe(false);
+  expect(await parentReportReader(db).report(TEST)).toMatchObject({ postal });
+  expect(requests.map((url) => url.pathname)).toEqual(["/rest/v1/reports", "/rest/v1/parents"]);
+});
+
+it("keeps the secret reader's parent join under its own access", async () => {
+  const db = createClient("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input) => {
+    const url = new URL(String(input));
+    expect(url.pathname).toBe("/rest/v1/reports");
     expect(url.searchParams.get("select")).toContain("parent:parents(postal)");
-  }
+    return Response.json({ id: TEST, assessment_id: TEST, child_id: OTHER, model: {}, questions: 36, minutes: 34,
+      assessment: null, child: null, parent: { postal: "M5V 2T6" } });
+  } } });
+  expect(await secretKeyReportReader(db).report(TEST)).toMatchObject({ postal: "M5V 2T6" });
+});
+
+it("does not read a postal code for an invalid or inaccessible report", async () => {
+  const fetch = vi.fn(async (input) => {
+    expect(new URL(String(input)).pathname).toBe("/rest/v1/reports");
+    return Response.json([]);
+  });
+  const db = createClient("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch } });
+  expect(await parentReportReader(db).report("invalid")).toBeNull();
+  expect(await parentReportReader(db).report(OTHER)).toBeNull();
+  expect(fetch).toHaveBeenCalledTimes(1);
 });
 
 const TEST = "00000000-0000-4000-8000-000000000001";

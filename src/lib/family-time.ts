@@ -1,62 +1,11 @@
 import type { Province, StartState } from "@/lib/assessment";
 
-export const PACIFIC_ZONE = "America/Vancouver";
-const ZONE: Record<string, string> = {
-  A: "America/St_Johns",
-  B: "America/Halifax",
-  C: "America/Halifax",
-  E: "America/Moncton",
-  G: "America/Toronto",
-  H: "America/Toronto",
-  J: "America/Toronto",
-  K: "America/Toronto",
-  L: "America/Toronto",
-  M: "America/Toronto",
-  N: "America/Toronto",
-  P: "America/Toronto",
-  R: "America/Winnipeg",
-  S: "America/Regina",
-  T: "America/Edmonton",
-  V: PACIFIC_ZONE,
-  X: "America/Yellowknife",
-  Y: "America/Whitehorse",
-};
-// Boundaries: https://raw.githubusercontent.com/eggert/tz/main/northamerica
-// Remote postal locations (including FlexDelivery):
-// https://origin-www.canadapost.ca/cpc/en/support/articles/air-stage-offices/find-an-air-stage-office.page
-// Full postal codes and rural delivery prefixes take precedence over an FSA.
-const POSTAL_ZONES: Record<string, string> = {};
-function postalZones(zone: string, codes: string) {
-  for (const code of codes.split(" ")) POSTAL_ZONES[code] = zone;
-}
-postalZones("America/Iqaluit", "X0A");
-postalZones("America/Resolute", "X0A0V0 X0A0A2 X0A0G0"); // Resolute and Eureka
-postalZones("America/Rankin_Inlet", "X0C");
-postalZones("America/Atikokan", "X0C0C0 X0C0A2"); // Coral Harbour: no DST
-postalZones("America/Cambridge_Bay", "X0B"); // Nunavut still observes seasonal Mountain time
-postalZones("America/Inuvik", "X0E");
-postalZones("America/Goose_Bay", "A0P A0R A2V A0K1N0 A0K0B5"); // Southeast Labrador stays Newfoundland time
-postalZones("America/Winnipeg", "P0V P0W P0X P0Y P8N P8T P8V P9A P9N P0T1T0");
-postalZones("America/Atikokan", "P0T1C0 P0V2V0 P0V2H0"); // Atikokan, Pickle Lake, Mishkeegogamang
-postalZones("America/Toronto", "P0V1W0 P0V0B8"); // Fort Severn, east of the Central-time communities
-postalZones("America/Edmonton", "V1A V1C V0A V0B"); // East Kootenay and Golden
-postalZones(PACIFIC_ZONE, "V0B1E V0B1S V0B1X V0B2B"); // Crawford Bay, Gray Creek, Kootenay Bay, Riondel
-postalZones("America/Creston", "V0B1A V0B1C V0B1G V0B1K V0B1W V0B2C V0B2N V0B2P V0B3G"); // Creston Valley: no DST
-postalZones("America/Dawson_Creek", "V1G V1J V0C1J0 V0C1V0 V0C2K0 V0C2W0");
-postalZones("America/Fort_Nelson", "V0C1R0");
-// Lower north shore: Atlantic time without DST. The rest of G0G stays Eastern.
-postalZones("America/Blanc-Sablon", "G0G1C0 G0G1E0 G0G1G0 G0G1M0 G0G1N0 G0G1S0 G0G1T0 G0G1W0 G0G1Z0 G0G2C0 G0G2G0 G0G2P0 G0G2R0 G0G2W0 G0G0B5 G0G0C7 G0G0A6 G0G0B3 G0G0A2 G0G0A3");
-postalZones("America/Halifax", "G4T"); // Magdalen Islands: Atlantic with DST
-
-/** Postal code -> named zone. Missing and unrecognised codes use BC time. */
-export function zoneFor(postal: string | null): string {
-  const code = (postal ?? "").replace(/\s/g, "").toUpperCase();
-  return POSTAL_ZONES[code] ?? POSTAL_ZONES[code.slice(0, 5)] ?? POSTAL_ZONES[code.slice(0, 3)] ?? ZONE[code[0]] ?? PACIFIC_ZONE;
-}
+import { PACIFIC_ZONE, PROVINCE_ZONES, type FamilyZone } from "@/lib/canada-postal-zones";
+export { PACIFIC_ZONE, zoneFor, type FamilyZone } from "@/lib/canada-postal-zones";
 
 /** Only for older report inputs that have a curriculum province but no postal field. */
 export function zoneForProvince(province: Province): string {
-  return { BC: PACIFIC_ZONE, AB: ZONE.T, SK: ZONE.S, MB: ZONE.R, ON: ZONE.M, other: ZONE.M }[province];
+  return PROVINCE_ZONES[province] ?? PROVINCE_ZONES.ON;
 }
 
 // Keep named zones before each cutoff, preserving historical offsets.
@@ -79,29 +28,30 @@ const OVERRIDES = [
 ] as const;
 
 /** Applies the confirmed rule even when the runtime still has older tz data. */
-export function effectiveZone(at: number, zone: string): string {
+export function effectiveZone(at: number, zone: FamilyZone): string {
+  if (typeof zone !== "string") return zone.zone;
   return OVERRIDES.find((rule) => at >= rule.from && rule.zones.some((name) => name === zone))?.zone ?? zone;
 }
 
 type FormatOptions = Omit<Intl.DateTimeFormatOptions, "timeZone">;
 type Instant = number | string | Date;
 const instant = (at: Instant) => typeof at === "number" ? at : new Date(at).getTime();
-const formatter = (at: number, zone: string, options: FormatOptions) =>
+const formatter = (at: number, zone: FamilyZone, options: FormatOptions) =>
   new Intl.DateTimeFormat("en-CA", { ...options, timeZone: effectiveZone(at, zone) });
 
 /** All instant formatting uses the same rule layer, on both server and browser. */
-export function formatInZone(at: Instant, zone: string, options: FormatOptions): string {
+export function formatInZone(at: Instant, zone: FamilyZone, options: FormatOptions): string {
   const ms = instant(at);
   return formatter(ms, zone, options).format(ms);
 }
 
-export function partsInZone(at: Instant, zone: string, options: FormatOptions): Record<string, string> {
+export function partsInZone(at: Instant, zone: FamilyZone, options: FormatOptions): Record<string, string> {
   const ms = instant(at);
   return Object.fromEntries(formatter(ms, zone, options).formatToParts(ms).map((p) => [p.type, p.value]));
 }
 
 /** YYYY-MM-DD for grouping events by the same local day that the display uses. */
-export const localDay = (at: Instant, zone: string): string =>
+export const localDay = (at: Instant, zone: FamilyZone): string =>
   formatInZone(at, zone, { year: "numeric", month: "2-digit", day: "2-digit" });
 
 /** Calendar dates have no instant or zone. Keep article dates and chart labels on that date. */
@@ -109,7 +59,7 @@ export const formatCalendarDate = (day: string, options: FormatOptions): string 
   formatInZone(`${day}T12:00:00Z`, "UTC", options);
 
 /** Most recent Monday at the local hour (0 for a weekly reset, 7 for weekly email). */
-export function localWeekStart(at: number, zone: string, hour = 0): number {
+export function localWeekStart(at: number, zone: FamilyZone, hour = 0): number {
   if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw new RangeError("Hour must be between 0 and 23");
   const p = partsInZone(at, zone, { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", hourCycle: "h23" });
   const date = new Date(Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day)));
@@ -143,17 +93,17 @@ export function warnIfTimeZoneDataIsOld(warn: (message: string) => void = consol
 }
 
 /** The family's clock time, with no zone abbreviation. Format on the server and pass the text to the browser. */
-export const familyTime = (at: number, timeZone: string): string =>
+export const familyTime = (at: number, timeZone: FamilyZone): string =>
   formatInZone(at, timeZone, { hour: "numeric", minute: "2-digit" });
 
 /** For example, "4:15 p.m. on Monday, October 12", in the family's time zone. */
-export function familyWhen(at: number, timeZone: string): string {
+export function familyWhen(at: number, timeZone: FamilyZone): string {
   const day = formatInZone(at, timeZone, { weekday: "long", month: "long", day: "numeric" });
   return `${familyTime(at, timeZone)} on ${day}`;
 }
 
 /** The account and start pages compute this once on the server, including its time-zone data. */
-export const startWhen = (state: StartState, timeZone: string): string =>
+export const startWhen = (state: StartState, timeZone: FamilyZone): string =>
   state.kind === "wait" ? familyWhen(state.opensAt, timeZone)
     : state.kind === "resume" ? familyWhen(state.resumeUntil, timeZone) : "";
 
