@@ -88,7 +88,7 @@ export interface DayContent {
   /** Its place in the day, from 1, and the day's page count. */
   page: number;
   pages: number;
-  /** The topic in the day label: "FACTORS AND FACTOR PAIRS". */
+  /** The page's topic ("Factors and factor pairs"): kept for the plan, no longer printed in the day label (D-201). */
   topic: string;
   title: string;
   subtitle: string;
@@ -273,7 +273,10 @@ function rowOf(x: PlannedSlot, level: number): number {
   }
 }
 
-/** A day page's header: its topic (in the day label), title, subtitle and the grown-up line. */
+/** A day page's label above its title: "DAY 4 · PAGE 4 OF 6" (D-201: the skill is no longer repeated there). */
+export const dayLabel = (day: number, page: number, pages: number) => `Day ${day} · Page ${page} of ${pages}`;
+
+/** A day page's header: its topic (the plan row's words), title, subtitle and the grown-up line. */
 export interface DayHeader {
   topic: string;
   title: string;
@@ -315,7 +318,7 @@ export function headerGrowth(h: DayHeader, level: number, day: number, page: num
     }
     return n;
   };
-  const label = lines(`Day ${day} · Page ${page} of ${pages} · ${h.topic}`, big ? 60 : 82) - 1;
+  const label = lines(dayLabel(day, page, pages), big ? 60 : 82) - 1;
   const title = lines(h.title, big ? 42 : 54) - 1;
   const subtitle = lines(h.subtitle, big ? 68 : 90) - 1;
   return label * (big ? 22 : 16) + title * (big ? 45 : 38) + subtitle * (big ? 28 : 21);

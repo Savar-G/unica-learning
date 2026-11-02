@@ -46,11 +46,14 @@ export interface AiClient {
   json(request: AiJsonRequest, signal: AbortSignal): Promise<unknown>;
 }
 
-/** The client, or null when the AI is off (no OPENROUTER_API_KEY). The model comes from AI_MODEL. */
-export function aiClient(env: Record<string, string | undefined> = process.env): AiClient | null {
+/**
+ * The client, or null when the AI is off (no OPENROUTER_API_KEY). The model comes from AI_MODEL, or `model` when a
+ * feature uses its own (Maya's free-talk review, MAYA_REVIEW_MODEL).
+ */
+export function aiClient(env: Record<string, string | undefined> = process.env, model?: string): AiClient | null {
   const apiKey = env.OPENROUTER_API_KEY?.trim();
   if (!apiKey) return null;
-  return openRouterClient({ apiKey, model: env.AI_MODEL?.trim() || AI_DEFAULT_MODEL });
+  return openRouterClient({ apiKey, model: model?.trim() || env.AI_MODEL?.trim() || AI_DEFAULT_MODEL });
 }
 
 /**

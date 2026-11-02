@@ -304,7 +304,8 @@ describe("the line set", () => {
 
   it("has a few child-friendly variants for every line, with no math in a variant's own words", () => {
     for (const [key, variants] of Object.entries(TEMPLATES)) {
-      expect(variants.length, key).toBeGreaterThanOrEqual(2);
+      // The decline has one fixed wording, approved by Savar (D-197, #383).
+      expect(variants.length, key).toBeGreaterThanOrEqual(key === "redirect.decline" ? 1 : 2);
       for (const v of variants) expect(v.split(/\s+/).length, v).toBeLessThanOrEqual(22);
     }
   });
@@ -347,12 +348,12 @@ describe("the line set", () => {
     expect(c.refusal({ act: "guide", step: "ones", level: 0, parts: [{ line: "step.invite", slots: { step: "tens" } }] })).toMatchObject({ code: "line_not_offered" });
   });
 
-  it("offers the model every act's lines, and only the steps not done yet", () => {
+  it("offers the model every act's lines, and only the steps not done yet, then the final step", () => {
     const c = call();
     const offers = lineOffers(c.s);
     expect(Object.keys(offers).sort()).toEqual(["accept_answer", "clarify", "confirm", "example_step", "guide", "try_target"].sort());
     const guideSteps = new Set(offers.guide!.flatMap((o) => (o.line.startsWith("step.") ? [o.slots.step] : [])));
-    expect([...guideSteps]).toEqual(["ones", "tens"]);
+    expect([...guideSteps]).toEqual(["ones", "tens", "result"]);
     expect(offers.guide!.every((o) => o.texts.length >= 2)).toBe(true);
   });
 });

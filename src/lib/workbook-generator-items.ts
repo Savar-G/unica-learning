@@ -28,7 +28,7 @@
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { readNumbers } from "@/lib/number-words";
 import { defaultItem, figureCount } from "@/lib/question-package-items";
-import { codeWordings, isWorded, operationQuestion, type WordingKind } from "@/lib/workbook-wording";
+import { codeWordings, isWorded, operationQuestion, quantityStoryProblem, storyProblem, type WordingKind } from "@/lib/workbook-wording";
 import { PLACE_ORDER, written } from "@/lib/question-package-columns";
 import {
   checkQuestionPackage,
@@ -645,6 +645,8 @@ export interface SlotPlace {
   variant?: number;
   /** What code words a whole-number question with at U1 to U9 (round 7); absent: code's defaults. */
   wording?: SlotWording;
+  /** A place whose questions are stories (word problems, picture stories, the Mixed set): checked by storyProblem (D-201). */
+  story?: boolean;
 }
 
 /** What the plan gives code to word a slot's whole-number question with (round 7). */
@@ -685,13 +687,18 @@ export function buildQuestion(raw: unknown, place: SlotPlace): BuiltQuestion {
     const built = build(raw, place);
     if (built.check.status === "failed" || !built.package || !isObject(raw)) return built;
     const pkg = built.package;
+    // Every quantity question, including practice and review pictures, follows D-201 at every level.
+    const labels = pkg.item?.checks.flatMap((c) => c.kind === "relation" && (c.relation === "more" || c.relation === "fewer")
+      ? c.labels.filter((label) => /^[a-z]+$/.test(label)) : []) ?? [];
+    const facts = { thing: place.wording?.thing ?? null, things: labels };
+    const story = (text: string) => place.story ? storyProblem(text, facts) : quantityStoryProblem(text, facts);
     if (built.wordings) {
-      // Code's wordings that pass every text check, the first printed (one always does: the bare sum).
-      const sound = built.wordings.filter((w) => !kindProblem({ ...pkg, text: w }, raw));
-      if (sound.length === 0) return fail(kindProblem(pkg, raw)!, pkg, built.stepIds);
+      // Code's wordings that pass every text check, the first printed (one always does off a story place: the bare sum).
+      const sound = built.wordings.filter((w) => !kindProblem({ ...pkg, text: w }, raw) && !story(w));
+      if (sound.length === 0) return fail(kindProblem(pkg, raw) ?? story(pkg.text) ?? "no wording of code's fits this story place", pkg, built.stepIds);
       return { ...built, package: { ...pkg, text: sound[0] }, wordings: sound };
     }
-    const problem = kindProblem(pkg, raw);
+    const problem = kindProblem(pkg, raw) ?? story(pkg.text);
     return problem ? fail(problem, pkg, built.stepIds) : built;
   } catch (e) {
     return fail(`code could not build the question: ${e instanceof Error ? e.message : String(e)}`);
@@ -871,9 +878,13 @@ function wordingsOf(c: Extract<ItemCheck, { kind: "relation" }>): string[] {
       const word = c.relation;
       // Two names (capitalised) are people; else two things to count.
       if (/^[A-Z]/.test(l) && /^[A-Z]/.test(m)) {
-        return [`${l} has ${x}. ${m} has ${y}. Who has ${word}?`, `${l}: ${x}. ${m}: ${y}. Who has ${word}?`, `${l} has ${x} and ${m} has ${y}. Who has ${word}?`];
+        return [`${l} has ${counted(x, "counters")}. ${m} has ${y}. Who has ${word} counters?`,
+          `${l} sees ${counted(x, "counters")}. ${m} sees ${y}. Who sees ${word} counters?`,
+          `${l} counts ${counted(x, "counters")}. ${m} counts ${y}. Who counts ${word} counters?`];
       }
-      return [`${counted(x, l)} and ${counted(y, m)}. Which group has ${word}?`, `${counted(x, l)}, ${counted(y, m)}. Circle the ${word}.`, `Look: ${counted(x, l)} and ${counted(y, m)}. Which has ${word}?`];
+      return [`Mia sees ${counted(x, l)} and ${counted(y, m)}. Are there ${word} ${l} or ${m}?`,
+        `Ben sees ${counted(x, l)} and ${counted(y, m)}. Which are ${word}, ${l} or ${m}?`,
+        `Ava has ${counted(x, l)} and ${counted(y, m)}. Are there ${word} ${l} or ${m}?`];
     }
   }
 }
@@ -1009,6 +1020,14 @@ export function choiceAsked(text: string): string | null {
 export function pictureProblem(text: string, f: Figure | null): string | null {
   if (!f || (f.kind !== "dots" && f.kind !== "ten-frame")) return null;
   const groups = f.kind === "dots" ? f.groups : f.counters;
+  // Dots use orange, blue, then green. A ten-frame with only one part uses blue.
+  if (/\bred\b/i.test(text)) return "the text says red, but the picture draws orange, blue and green: name the printed colour";
+  const colours = ["orange", "blue", "green"];
+  const parts = f.kind === "ten-frame" && groups.filter((n) => n > 0).length <= 1 ? [0, groups.reduce((a, b) => a + b, 0)] : groups;
+  for (const match of text.matchAll(/\b(\d+) (orange|blue|green)(?= (?:dots?|counters?)\b| and \d+ (?:orange|blue|green) (?:dots?|counters?)\b)/gi)) {
+    const part = parts[colours.indexOf(match[2].toLowerCase())] ?? 0;
+    if (Number(match[1]) !== part) return `the text says ${match[1]} ${match[2]} dots or counters, but the picture shows ${part}`;
+  }
   const shown = new Set([...groups, groups.reduce((a, b) => a + b, 0)]);
   const said = [
     ...[...text.matchAll(/\b(\d+)\s+(?:dots?|counters?|filled)\b/gi)].map((m) => Number(m[1])),

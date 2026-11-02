@@ -7,7 +7,7 @@ import { fakePrintEngine } from "@/lib/print-engine-fake";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { memoryRunStore } from "@/lib/workbook-job-memory";
-import { runState, runWorkbookJob, startWorkbookRun, STALE_SECONDS, type ChildInputs, type WorkbookJobDeps } from "@/lib/workbook-job";
+import { runState, runWorkbookJob, startWorkbookRun, SLOT_ATTEMPTS, STALE_SECONDS, type ChildInputs, type WorkbookJobDeps } from "@/lib/workbook-job";
 import { generateWorkbook, type FitCheck, type GeneratedWorkbook } from "@/lib/workbook-generator";
 import { placeChild, planNextWorkbook } from "@/lib/workbook-placement";
 import { memoryWorkbookFiles } from "@/lib/workbook-store-memory";
@@ -403,7 +403,7 @@ describe("stale runs", () => {
     for (const p of s.runs.pageStore.get(id)!.values()) expect(draft.pages[p.number - 1]).toEqual(p);
   });
 
-  it("never gives a question a third AI attempt when its page save fails after the second, and the job retries (R379-2-1)", async () => {
+  it("never asks the AI again for a question when its page save fails after its redo, and the job retries (R379-2-1)", async () => {
     // Slot 1.1 of every page fails the check, so each page uses its second attempt on it (the redo).
     // An operation with no operands: code cannot build it, so the check fails.
     const bad = (sl: { slot: string; skills: string[] }) => ({ slot: sl.slot, skill: sl.skills[0], difficulty: 2, text: "? + ? = ?", format: "write-number", operation: { kind: "add", operands: [], expression: null, unit: null, denominator: null, values: [] }, wrongAnswers: [], easier: null, shownWrong: null });
@@ -549,7 +549,25 @@ describe("stale runs", () => {
     expect(counts.get("37:1.9")).toBe(2);
   });
 
-  it("makes no AI call for a slot the store refuses, and stores it as failed with two attempts (R379-3-1)", async () => {
+  it("gives a question its third AI attempt, the shorter rewrite, within the run's cap (SLOT_ATTEMPTS)", async () => {
+    // Slot 1.1 fails the check on every call, and page 3 never fits: the first call, the redo and the shorter rewrite.
+    const bad = (sl: { slot: string; skill: string }) => ({ slot: sl.slot, skill: sl.skill, difficulty: 2, text: "? + ? = ?", format: "write-number", operation: { kind: "add", operands: [], expression: null, unit: null, denominator: null, values: [] }, wrongAnswers: [], easier: null, shownWrong: null });
+    const ai = fakeAiClient({ answer: (r) => ({ items: answer(r).items.map((it) => (it.slot === "1.1" ? bad(it) : it)) }) });
+    const s = setup({ ai });
+    s.deps.concurrency = 1;
+    s.deps.fit = () => ({ fits: async (page) => (page.number === 3 ? { ok: false, problems: [{ question: null, reason: "the content does not fit the page" }] } : { ok: true }) });
+    const id = await started(s);
+    expect(await runWorkbookJob(id, s.deps)).toBe("done");
+    const run = (await s.runs.run(id))!;
+    const draft = (await s.drafts.draft(run.draftId!))!;
+    expect(draft.pages[2].questions.find((x) => x.slot === "1.1")).toMatchObject({ attempts: 3, check: { status: "failed" } });
+    expect((await s.runs.attempts(id)).get("3:1.1")).toBe(3);
+    const shorter = ai.requests.filter((r) => r.name === "workbook_page_shorter");
+    expect(shorter).toHaveLength(1);
+    expect((JSON.parse((shorter[0].content[0] as { text: string }).text) as { slots: { slot: string }[] }).slots.map((x) => x.slot)).toContain("1.1");
+  });
+
+  it("makes no AI call for a slot the store refuses, and stores it as failed with all its attempts used (R379-3-1)", async () => {
     const s = setup();
     s.deps.concurrency = 1;
     const id = await started(s);
@@ -572,7 +590,7 @@ describe("stale runs", () => {
     expect(await runWorkbookJob(id, s.deps)).toBe("done");
     const draft = (await s.drafts.draft((await s.runs.run(id))!.draftId!))!;
     const q = draft.pages[2].questions.find((x) => x.slot === "1.1")!;
-    expect(q).toMatchObject({ attempts: 2, package: null, check: { status: "failed" } });
+    expect(q).toMatchObject({ attempts: SLOT_ATTEMPTS, package: null, check: { status: "failed" } });
     // Page 3 is the first page written: its first call asked for every slot but 1.1.
     expect(asked.slice(0, draft.pages[2].questions.length - 1)).not.toContain("1.1");
   });

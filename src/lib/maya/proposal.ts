@@ -26,8 +26,9 @@ export type Severity = "concern" | "immediate";
 export const PART_LIMITS = { parts: 6, talkChars: 400 } as const;
 
 /**
- * The model's own warm words (D-196 rule B): read only when the session's `freeTalk` flag is on (off by default), only
- * in a turn with no math line, and checked by the guards in phrases.ts. Otherwise they are replaced by a bank phrase.
+ * The model's own warm words (D-196 rule B, D-197): read only when the session's `freeTalk` flag is on, only in a turn
+ * with no math line, and said only when they pass both the code guards (phrases.ts) and the review (talk-review.ts).
+ * Otherwise they are replaced by a bank phrase of the same purpose.
  */
 export interface Talk {
   talk: string;
@@ -76,6 +77,11 @@ export interface Reading {
   writing?: boolean;
   /** A harmless off-topic request, or a request for another question. */
   offTopic?: boolean;
+  /**
+   * A request for sexual, violent or other harmful content (#383, C29): Maya says the decline line
+   * (redirect.decline), with no free talk, then goes back to the question.
+   */
+  unsafeRequest?: boolean;
   /** An explicit request for more help, or for Maya to show the step. */
   help?: "more" | "show";
   /** At the opening: the child has work to show, or has not started (then the easier example comes first). */
@@ -105,12 +111,12 @@ export interface Proposal {
   understanding?: "evidence_observed" | "uncertain";
   /**
    * Board offers to draw, by id (R374-6-1): code builds each command from the checked worked step. `place` is one of
-   * the places code offers ("main", "below:question" ...). The only way to draw with the freeTalk flag off.
+   * the places code offers ("main", "below:question" ...). The only way Maya draws (D-197: free talk does not change it).
    */
   draw?: { offer: string; place?: string }[];
   /**
-   * Board commands the model built (the board core's vocabulary). Read only with the freeTalk flag on; refused
-   * (`board_not_code`) with it off.
+   * Board commands the model built (the board core's vocabulary). Refused (`board_not_code`) unless the session's
+   * `modelBoard` flag is on, which only the board core's tests set.
    */
   board?: unknown[];
 }
@@ -175,13 +181,14 @@ export const PROPOSAL_SCHEMA = {
     reading: nullable({
       type: "object",
       additionalProperties: false,
-      required: ["safety", "stop", "unclear", "writing", "offTopic", "help", "start", "answers", "paper", "correctsHearing"],
+      required: ["safety", "stop", "unclear", "writing", "offTopic", "unsafeRequest", "help", "start", "answers", "paper", "correctsHearing"],
       properties: {
         safety: nullable({ enum: ["concern", "immediate"] }),
         stop: nullable({ type: "boolean" }),
         unclear: nullable({ type: "boolean" }),
         writing: nullable({ type: "boolean" }),
         offTopic: nullable({ type: "boolean" }),
+        unsafeRequest: nullable({ type: "boolean" }),
         help: nullable({ enum: ["more", "show"] }),
         start: nullable({ enum: ["has_work", "no_start"] }),
         answers: nullable({

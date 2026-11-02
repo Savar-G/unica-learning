@@ -9,12 +9,15 @@ npm run maya:text -- --list
 npm run maya:text -- --question add-27-39 --script scripts/maya-text/no-start.txt
 npm run maya:text -- --question subtract-83-46            # type the child's turns
 npm run maya:text -- --question my-package.json --model openrouter
+npm run maya:text -- --anthropic --script scripts/maya-text/no-start.txt   # Claude API, local key
 ```
 
 | Option | Meaning |
 |---|---|
 | `--question <id\|file>` | A sample id (`--list`) or a question package JSON file. Default `add-27-39`. |
 | `--model fake\|openrouter` | `fake` (default): a rule player, no AI. `openrouter`: `AI_MODEL` through OpenRouter. It needs `OPENROUTER_API_KEY` in the environment or in `.env.local`. Without the key the AI is off and the command stops. |
+| `--model anthropic`, `--anthropic` | Maya on `claude-sonnet-5-5` and the free-talk review on `claude-haiku-5-5`, through the Claude API (`src/lib/ai-anthropic.ts`). The key is `ANTHROPIC_API_KEY` or the macOS Keychain item `anthropic-unica-tools`. A local tool only. |
+| `--no-free-talk` | Every word Maya says from code. Free talk is on by default here, as in the admin demo (D-197). |
 | `--script <file>` | Child turns, one per line. Without it, turns come from stdin. |
 | `--runner livekit\|plain` | `livekit` (default): LiveKit Agents for Node in text mode, with no room. `plain`: the text adapter alone. |
 | `--trace <file>` | The trace path. Default `traces/maya/<call id>.json` (not committed). |
@@ -31,14 +34,52 @@ Nothing reaches the child unless the session's `step` accepts it (`src/lib/maya-
 1. The model gets the session's offers for this turn: the allowed acts, their code-written lines, the warm groups with their phrases, and the board offers. It returns a version 2 proposal (`src/lib/maya-model.ts`, prompt `PROMPT_VERSION`).
 2. `step` checks the proposal. The board core (`applyBatch`) then checks each board batch the session builds from it.
 3. If either refuses, the model is asked again once, with the refusal's code and reason.
-4. If the second proposal is refused too, or the model fails, code replaces it with a fallback. A fallback is a code line or a bank phrase from the session's own offers, with no reading and no board, and `step` checks it.
+4. If the second proposal is refused too, or the model fails, code replaces it with a fallback (`fallbacks` in `src/lib/maya/session.ts`). A fallback is code lines or a bank phrase from the session's own offers, with no free talk and no board, and `step` checks it like any proposal.
 5. If no fallback is accepted, the call ends as a technical issue and Maya says nothing.
 
-`freeTalk` stays off.
+**The fallback keeps what code can check (#389).** Only the model's words are replaced. The fallback carries each answer of the refused proposals' readings that code checks alone, as it checks the answers of an accepted proposal: the child said the number in this turn and kept it, the step is a worked step, a final answer is the last number the child kept outside their explanation (D-199), and the model's verdict is the one the answer key and the worked steps give. An answer whose verdict code does not confirm is dropped, never turned round. So a right step is recorded and said ("Yes! 7 + 9 = 16."), and the help goes on from the first step still not done; a right final answer is accepted. No other field of a refused reading is kept: `paper`, `help`, `writing`, `offTopic`, `unsafeRequest` and `correctsHearing` are the model's word only, and would change the outcome or the help allowed. As before, `step` keeps a refused reading's safety, stop, unclear and no-start fields, which only make Maya more careful (the safety guidance, a close, a confirmation, the easier example).
+
+Three rules of the controller go with it. A checked right answer on the child's question shows they have started: a no-start no longer holds, and the easier example does not start after it. Writing that ends after the answer is solved is the child writing it (`wrote`): the request to write is no longer offered, and neither is it after the reading `paper` was accepted. The final step after the last column ("result") has its own help line, an H0 invite to put the whole answer together (`step.invite` with the step `result`).
+
+## The child's final answer and the final step (D-199)
+
+**Reading the final answer.** Code reads the child's final answer without the answer key (`readAnswer`, `src/lib/maya/numbers.ts`). First the last word that takes something back wins ("no", "wait", "I mean", "actually", "oops"): "65, no, 66" is 66. Then the child's explanation is left out: it runs from "because", "since", "cause" ("'cause"), "cuz" or "coz" to the end of that turn, or to a word that takes something back. The final answer is the last number left, unless it is inside an operation ("27 plus 39") or offered as a choice ("66 or 56?").
+
+| The child says | Final answer |
+|---|---|
+| So I got 66, because six tens and six ones. | 66 |
+| I think it's sixty-six because seven and nine make sixteen. | 66 |
+| 65, no, 66. | 66 |
+| 66 because six tens and six ones. No wait, 65. | 65 |
+| I got 56 because 27 and 39 make 66. | 56 |
+| I got 66 because I added them. | 66 |
+| Because seven and nine make sixteen. | none |
+| Because 7 + 9 is 16, it's 66. | none: Maya asks again |
+
+A number in an explanation is never the final answer, so an explanation that comes first leaves no answer, and Maya asks rather than guess. A step answer may still come from the explanation ("seven and nine make sixteen" is the ones). A number form code cannot read ("six tens") holds the turn for a confirmation only when it is outside the explanation. The behaviour gate judges an accepted answer by the same rule.
+
+**The final step.** Once every work step is done, the final step has one help line, the H0 invite (`step.invite` for "result"). Each checked wrong final answer after that counts (`finalMisses`). After the second, Maya may only give the answer (`give_answer`, or a confirmation): the gentlest help again is refused. Code says two lines: how the parts make the answer (`answer.parts`, filled from the checked answer's digits by place: "6 tens and 6 ones make 66."), then the answer and the request to write it (`answer.give`). Neither comes from the model, and the model may add only a warm phrase before them. The call then goes on as after any given answer: the answer is solved by Maya, the assistance is answer_given, the highest hint is H4, understanding stays uncertain, and the next turn closes. A right final answer is still accepted after one wrong one. Code's fallback gives the answer first on this step. Wrong final answers before every column is done do not count.
+
+## Free talk (D-197)
+
+With `freeTalk` on (the admin demo, the practice suite, this command line), the model may write its own words (`{ "talk": ... }`) in a turn with no math line. Math, answers, hints and steps never come from them. Each piece is said only when both checks pass:
+
+1. The code guards (`freeTalkProblem`, `src/lib/maya/phrases.ts`): an allowed opener, no request, no math, no work word, no pointing back, at most three short sentences (`FREE_TALK_LIMITS`), not the child's name. A few everyday phrases about the conversation pass although a word in them is on a list (`SAFE_PHRASES`: "keep secrets", "secrets to share", "you told me", "thanks for sharing", "you shared it", "right here", "feel that way"), and "I want to" or "I don't want to" is a statement, not a request. The word alone stays refused ("Keep going.", "I told you.", "Share them.", "That's right!").
+2. The review (`src/lib/maya-talk-review.ts`): a separate small AI call (`MAYA_REVIEW_MODEL`, default Claude Haiku 5.5) that judges the line against `NEVER_SAY` (`src/lib/maya/talk-review.ts`): what Maya must never say to a child. It reads the line, the child's last turn and the last turns of the call. A failed call, a time-out (8 seconds) or an answer outside its schema counts as a fail. Brief empathy that names what the child told ("I'm sorry your grandma is sick. That sounds really hard.") passes; asking more about it fails. "A grown-up you trust can help", naming no person, passes only for a child who says they are sad, worried, scared or unsafe; to any other child, or with a named person, it fails (`NOT_OK_TALK`). Check the review with `npm run maya:practice -- --anthropic --review-check`: each `NEVER_SAY` and `NOT_OK_TALK` line must fail and each `OK_TALK` line must pass.
+
+The adapter steps the proposal once with no reviews, to learn which words the session would say. It reviews those (in parallel), then steps the proposal again with the reviews. A piece that fails a check, or has no review, is replaced by a bank phrase of the same purpose (for small talk, a reply that fits any child turn: `FEELING_SMALLTALK` when the child's turn tells a hard feeling, such as "Aw, it sounds hard. I'm glad you told me.", else `NEUTRAL_SMALLTALK`, such as "Thanks for telling me."; neither names a detail of what the child said); the turn never fails for it. A refused proposal (free talk beside a math line, for example) is never reviewed.
+
+The model ends a free-talk reply with a phrase from the `back` group ("Shall we get back to our question?"), code-written and with no math, so the reply also leads back to the question; the next turn restates it with a line. Maya confirms what she heard at most twice in a row, and never after the answer is accepted. An echo frame never repeats an insult ("dumb", "stupid" ...): code picks a frame with no slot. The easier example starts with its intro line (`example.intro`) in the turn of its first step; a first step without it is refused.
+
+A request for sexual, violent or other harmful content (`reading.unsafeRequest`) gets the decline line `redirect.decline` ("I can't talk about this. I'm here to help with math.", one fixed wording, approved by Savar on 2026-11-01) and no free talk, then the question again.
+
+Board commands do not change with free talk: Maya draws only through code's board offers (`draw`). Only the board core's tests read the model's own commands (`modelBoard`).
+
+For children's calls, free talk follows one setting: `MAYA_FREE_TALK` (`src/lib/maya-free-talk.ts`, on unless it is `off`).
 
 ## The trace
 
-`src/lib/maya-trace.ts`, `TRACE_VERSION` 2. Read a saved trace with `checkTrace`; it reads versions 1 and 2. Version 2 (#323) adds the `hang_up` turn: the child hung up on purpose. It is always the last turn, and the call's outcome is `child_stopped` (or safety, a content issue or solved, which come first), never `technical_issue`. A trace holds:
+`src/lib/maya-trace.ts`, `TRACE_VERSION` 3. Read a saved trace with `checkTrace`; it reads versions 1 to 3. Version 3 (D-197) adds free talk: `reviewer` (the review's model and prompt version, or null), and on the accepted attempt `talk` (each piece of the model's own words: `proposed`, `code` (null when the code guards passed, else why not), `review` (`pass`, `fail`, `error` or `not_run`), the `rules` and `reason` of a failed review, and `shown`, what was said) and `reviewMs`. `checkTrace` refuses a piece shown as proposed unless both checks passed, a piece not shown as proposed unless it became a bank phrase, a review after failed code guards, and an unknown rule. The admin demo shows these pieces under "Free talk" in a saved call. Version 2 (#323) adds the `hang_up` turn: the child hung up on purpose. It is always the last turn, and the call's outcome is `child_stopped` (or safety, a content issue or solved, which come first), never `technical_issue`. A trace holds:
 
 - `model`: the model id and the prompt version. `versions`: the proposal, line set and session versions.
 - `question`: the package id, ref, text and `hash` (`sha256:` of its canonical JSON).

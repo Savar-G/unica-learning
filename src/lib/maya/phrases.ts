@@ -8,7 +8,7 @@
 // B. Only with the session's `freeTalk` flag on (off by default, R374-4-1): a turn with no math line may use the
 //    model's own words. Each sentence must start like a reaction, a feeling, a greeting or a question about the
 //    child's life (an allowlist of openers, R374-3-2), with no command or request, no math, no work word and no
-//    pointing back, in at most two short sentences. Words that fail, and all of them with the flag off, are replaced by
+//    pointing back, in at most three short sentences (D-197). Words that fail, and all of them with the flag off, are replaced by
 //    a bank phrase of the same purpose; the turn never fails. Not airtight: any guard on open text has another gap.
 //
 // The default keeps Maya human without open text: echo frames. A phrase with "{echo}" holds 1 to 3 words copied in a
@@ -26,6 +26,9 @@ export const PHRASE_GROUPS = [
   "encourage", "empathy", "checkin", "pacing", "hearing", "smalltalk", "opening", "closing",
   // Replies to what children say between the math (D-196 echo frames): "{echo}" is 1 to 3 of the child's own words.
   "pets", "family", "school", "games", "food", "sports", "trips", "tired", "happy", "bored", "frustrated", "aboutmaya",
+  // D-197: said after free talk (the model adds it), so a reply to the child also leads back to the question (practice
+  // run 6). No math: the next turn restates the question with a line.
+  "back",
 ] as const;
 export type PhraseGroup = (typeof PHRASE_GROUPS)[number];
 
@@ -64,7 +67,8 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
     "Hi! It's nice to meet you.", "Thanks for telling me.", "Maybe we can talk about it another time.",
     "I'm only able to help with your workbook today.", "Oh, thanks for telling me!", "I'd love to hear about it later.", "I love hearing about it, {name}!",
     "What a nice thing to tell me.", "Let's save the stories for later.", "Ha, I like it!", "Good to know, {name}.", "Oh, cool!",
-    "How interesting!",
+    "How interesting!", "I hear you.", "Thank you for telling me.", "Okay, I hear you.", "I'm glad you told me.",
+    "Aw, it sounds hard. I'm glad you told me.", "I'm sorry you're feeling this way. I'm here with you.", "Thanks for telling me how you feel. I'm here with you.",
   ],
   opening: [
     "Our team may review this call to make me better.", "Ready to get started?", "I'm happy to help you today.", "Let's do this together.",
@@ -132,6 +136,13 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
     "I'm an AI helper, so I'm a bit different from you.", "I'm an AI, and my favourite thing is helping you learn.",
     "Fun question! I'm an AI, but I love hearing about you.",
   ],
+  back: [
+    "Whenever you're ready, we'll get back to our question.", "When you're ready, we can go back to our question.",
+    "Our question is waiting for us when you're ready.", "We can go back to our question whenever you like.", "Shall we get back to our question?",
+    "Shall we go back to our question together?", "Let's get back to our question when you're ready.", "Let's go back to our question together.",
+    "Our question is still here for us.", "Back to our question whenever you're ready.", "Let's head back to our question.",
+    "When you feel ready, we'll go back to our question.",
+  ],
 };
 
 /** The acts each purpose fits. */
@@ -150,7 +161,29 @@ export const PHRASE_ACTS: Record<PhraseGroup, readonly Act[]> = {
   closing: ["close", "ask_write"],
   pets: REPLY_ACTS, family: REPLY_ACTS, school: REPLY_ACTS, games: REPLY_ACTS, food: REPLY_ACTS, sports: REPLY_ACTS, trips: REPLY_ACTS,
   tired: FEELING_ACTS, happy: FEELING_ACTS, bored: FEELING_ACTS, frustrated: FEELING_ACTS, aboutmaya: REPLY_ACTS,
+  back: ["redirect", "clarify"],
 };
+
+/**
+ * The smalltalk phrases that may replace refused free talk (D-197). Free talk answers whatever the child said, and the
+ * practice runs showed the rest of the group can be worse than the refused line: "I love hearing about it!" to a child
+ * whose grandma is sick, "Hi! It's nice to meet you." after a secret, "I'd love to hear about it later." (a later chat
+ * that will not happen). These fit any child turn: sad, rude, a question or news.
+ */
+export const NEUTRAL_SMALLTALK: readonly string[] = ["Thanks for telling me.", "I hear you.", "Thank you for telling me.", "I'm glad you told me."];
+
+/**
+ * The smalltalk phrases that replace refused free talk when the child just told a hard feeling (sad, worried, sick,
+ * angry, rude). Practice run 5 judged "I hear you." cold for a child whose grandma is sick. They name no detail of what
+ * the child said, so they fit any hard feeling.
+ */
+export const FEELING_SMALLTALK: readonly string[] = [
+  "Aw, it sounds hard. I'm glad you told me.", "I'm sorry you're feeling this way. I'm here with you.", "Thanks for telling me how you feel. I'm here with you.",
+];
+/** Words that mark a child's turn as a hard feeling, for FEELING_SMALLTALK. */
+const HARD_FEELING = /\b(sad|sadder|upset|unhappy|worried|worry|worries|scared|afraid|frightened|nervous|angry|mad|cry|crying|cried|sick|ill|hurt|hurts|lonely|miss|missing|died|dead|tired|sleepy|frustrated|frustrating|annoyed|annoying|hate|dumb|stupid|bored|boring|awful|terrible|horrible|bad day|don'?t want|do not want|ugh)\b/iu;
+/** Whether the child's words tell a hard feeling: refused free talk then falls back to FEELING_SMALLTALK. */
+export const hardFeeling = (childTurn: string | null | undefined): boolean => HARD_FEELING.test(childTurn ?? "");
 
 /** The purpose of a bank phrase that replaces free words that fail the guards, by act. */
 export const FALLBACK_GROUP: Partial<Record<Act, PhraseGroup>> = {
@@ -168,16 +201,16 @@ export const FALLBACK_GROUP: Partial<Record<Act, PhraseGroup>> = {
  * warmth; a false accept could instruct the work. The work words below are a second layer.
  */
 const OPENERS: ReadonlySet<string> = new Set([
-  "i", "im", "ive", "id", "ill", "me", "my", "we", "were", "weve", "our", "you", "youre", "youve", "your", "he", "hes", "she", "shes",
+  "that", "thats", "i", "im", "ive", "id", "ill", "me", "my", "we", "were", "weve", "our", "you", "youre", "youve", "your", "he", "hes", "she", "shes",
   "they", "theyre", "their", "it", "its", "there", "theres", "this", "what", "whats", "who", "whos", "where", "wheres", "when", "why", "how",
   "hows", "which", "wow", "oh", "ooh", "aw", "aww", "hi", "hello", "hey", "thanks", "thank", "nice", "cool", "yay", "ha", "haha", "hmm",
   "okay", "ok", "yes", "yeah", "no", "sure", "well", "sounds", "a", "an", "happy", "good", "great", "lovely", "awesome", "amazing", "fun",
-  "bye", "goodbye", "welcome", "congratulations", "sorry", "poor", "lucky", "so",
+  "bye", "goodbye", "welcome", "congratulations", "sorry", "poor", "lucky", "so", "wonderful", "fantastic", "neat", "yum", "yummy",
 ]);
 /** Interjections that may stand before a comma; the words after the comma must start like a sentence again. */
 const INTERJECTIONS: ReadonlySet<string> = new Set([
   "wow", "oh", "ooh", "aw", "aww", "hi", "hello", "hey", "thanks", "nice", "cool", "yay", "ha", "haha", "hmm", "okay", "ok", "yes", "yeah",
-  "no", "sure", "well", "so", "great", "awesome", "amazing", "good",
+  "no", "sure", "well", "so", "great", "awesome", "amazing", "good", "wonderful", "fantastic", "neat", "yum", "yummy",
 ]);
 /** "Have a great day!": the only command a sentence may start with. */
 const HAVE_A = /^have an? (great|nice|good|lovely|fun|wonderful|happy|super)\b/;
@@ -198,14 +231,42 @@ const WORK_VERBS = [
   "start", "stop", "repeat", "skip", "ignore", "forget", "cancel", "scratch", "practice", "practise",
 ];
 const BACK_OR_WORK: ReadonlySet<string> = new Set([
-  ...WORK_VERBS.flatMap(forms), "that", "those", "opposite", "opposites", "instead", "undone", "forgot", "forgotten", "nevermind",
+  ...WORK_VERBS.flatMap(forms), "those", "opposite", "opposites", "instead", "undone", "forgot", "forgotten", "nevermind",
   "backwards", "backward", "previous", "earlier", "rather", "actually", "step", "steps", "said", "told", "meant", "column", "columns",
   "digit", "digits", "sum", "total", "difference", "product", "quotient", "remainder", "answer", "again", "next", "then",
 ]);
-const BANNED_PAIRS: ReadonlySet<string> = new Set(["never mind", "not really", "just kidding", "work out", "go on", "carry on", "one more"]);
+/**
+ * Word pairs free talk may not hold. "that" alone is allowed since D-197 ("That sounds hard.", "I'm sorry to hear
+ * that."): the review fails any line about the work; these pairs are the ways "that" points back at it or confirms it.
+ */
+const BANNED_PAIRS: ReadonlySet<string> = new Set([
+  "never mind", "not really", "just kidding", "work out", "go on", "carry on", "one more", "thats it", "do that",
+  "that way", "that part", "that bit", "that line", "that box", "that page", "thats how", "thats why", "like that", "that was",
+]);
 
-/** Free talk is at most this many sentences, words in a sentence, and characters. */
-export const FREE_TALK_LIMITS = { sentences: 2, words: 16, chars: 160 } as const;
+/**
+ * Free talk is at most this many sentences, words in a sentence, and characters. D-197 raised them from 2, 16 and 160:
+ * with the review reading every piece, the cap only keeps a reply short, and the practice runs showed a truthful answer
+ * to "do you have a dog? where do you live?" needs three short sentences ("I'm an AI helper, so I'm not a real person.").
+ */
+export const FREE_TALK_LIMITS = { sentences: 3, words: 20, chars: 220 } as const;
+
+/**
+ * Everyday phrases free talk may hold although a word in them is on a list (practice run 5: 11 of the 28 code-guard
+ * refusals were these). Each says something about the conversation, never about the work: "I can't keep secrets"
+ * ("keep" as in "keep going"), "I'm glad you told me" ("told" as in "like I told you"), "it's okay to feel that way"
+ * ("that way" as pointing back). Only these exact phrases are taken out before the work check; the word alone stays
+ * refused ("Keep going.", "I told you.", "Do it that way."). Words of the strict no-math rule (claims.ts: "share",
+ * "right") are never taken out here: the behaviour gate checks every said sentence with that rule alone ("right here"
+ * is one of its allowed pairs).
+ */
+const SAFE_PHRASES: readonly RegExp[] = [
+  /\bkeep(s|ing)?( a| any| your| my| the| it| this| that)? secrets?\b/giu,
+  /\byou told me\b/giu,
+  /\b(feel|feels|feeling|felt) that way\b/giu,
+];
+/** The text with SAFE_PHRASES taken out, for the work check of free talk. */
+const withoutSafePhrases = (text: string) => SAFE_PHRASES.reduce((t, re) => t.replace(re, "okay"), text);
 
 /** The words of a text, lower case, apostrophes dropped ("what's" is "whats"). */
 const wordsOf = (text: string) => (text.toLowerCase().match(/[\p{L}'’]+/gu) ?? []).map((w) => w.replace(/['’]/g, ""));
@@ -249,18 +310,22 @@ export function freeTalkProblem(text: string, childName: string | null = null, c
   if (t === "" || t.length > FREE_TALK_LIMITS.chars) return "length";
   if (!/[.?!]["')\]]*$/.test(t)) return "not whole sentences";
   const sentences = t.split(/(?<=[.?!])\s+/).filter(Boolean);
-  if (sentences.length > FREE_TALK_LIMITS.sentences) return "more than two sentences";
+  if (sentences.length > FREE_TALK_LIMITS.sentences) return "too many sentences";
   if (sentences.some((x) => x.split(/\s+/).length > FREE_TALK_LIMITS.words)) return "a long sentence";
   const name = childName?.trim().toLowerCase().replace(/['’]/g, "") || null;
   const names = new Set([...namesSaid(childTexts)].filter((n) => n !== name && !BACK_OR_WORK.has(n) && talkMath(n) === null));
   for (const x of sentences) {
     const opener = openerProblem(x, names);
     if (opener) return opener;
-    const joined = ` ${wordsOf(x).join(" ")} `;
+    // "I don't have a dog" says something about the speaker; "don't" after any other word asks the child.
+    // "I want to" and "I don't want to" are a wish of the speaker; "want to" after any other word asks the child.
+    const joined = ` ${wordsOf(x).join(" ")} `
+      .replace(/ (i|we|it|they|he|she) (dont|do not|doesnt|does not) /g, " $1 not ")
+      .replace(/ (i|we|id|wed|i would|we would) (not )?(want|wanted|like|love|loved) to /g, " $1 $2wish ");
     const request = REQUESTS.find((r) => joined.includes(` ${r} `));
     if (request) return `a request: ${request}`;
   }
-  return workProblem(t) ?? (name && wordsOf(t).includes(name) ? "the child's name" : null);
+  return workProblem(withoutSafePhrases(t)) ?? (name && wordsOf(t).includes(name) ? "the child's name" : null);
 }
 
 /** The second layer alone: math (the strict no-math rule), a work word, or a word that points back. Bank phrases pass it. */
