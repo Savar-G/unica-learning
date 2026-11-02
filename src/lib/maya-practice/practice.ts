@@ -131,6 +131,8 @@ export interface PracticeDeps {
   /** Free talk for Maya (D-197; default on, as in the admin demo) and its review (null: every piece becomes a bank phrase). */
   freeTalk?: boolean;
   reviewer?: TalkReviewer | null;
+  /** The time limit of one free-talk review (default the live REVIEW_TIME_LIMIT_MS); `claude -p` needs longer. */
+  reviewTimeLimitMs?: number;
   simulator: ChildSimulator;
   /** The validity judge: a run it does not clear is invalid, and the main judge never sees it. */
   validity: ValidityJudge;
@@ -158,7 +160,7 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
   let now = PRACTICE_T0;
   const text = createTextSession({
     callId: `practice-${id}`, package: pkg, model: deps.maya, clock: () => now, random: seed, childName: c.persona.name,
-    freeTalk: deps.freeTalk ?? true, reviewer: deps.reviewer ?? null,
+    freeTalk: deps.freeTalk ?? true, reviewer: deps.reviewer ?? null, ...(deps.reviewTimeLimitMs ? { reviewTimeLimitMs: deps.reviewTimeLimitMs } : {}),
     onError: (e, where) => deps.onError?.(e, `${id} maya ${typeof where === "string" ? where : `turn ${where.turn} ${where.source}`}`),
   });
   const log: SimulatorLog = { kind: "maya-practice-child", version: PRACTICE_VERSION, run: id, caseId: c.id, simulator: { model: deps.simulator.id, promptVersion: deps.simulator.promptVersion }, turns: [], cut: null };
@@ -804,7 +806,10 @@ export function buildReport(cases: readonly PracticeCase[], store: PracticeStore
 /** The report as markdown. */
 export function reportMarkdown(r: PracticeReport): string {
   const lines: string[] = [];
-  lines.push(`# Maya practice suite: ${r.passed && r.full ? "PASS" : r.passed ? "PASS (part of the suite only: not a gate result)" : "FAIL"}`, "");
+  // A subscription run is a gate result for now (Savar, 2026-11-01), but it is never shown as the final API check (R401-2).
+  const onSubscription = r.versions?.meta?.mode === "subscription";
+  const pass = onSubscription ? "PASS on the Claude subscription (not the final API check)" : "PASS";
+  lines.push(`# Maya practice suite: ${r.passed && r.full ? pass : r.passed ? `${pass} (part of the suite only: not a gate result)` : "FAIL"}`, "");
   if (r.problem) lines.push(`**The suite cannot be read:** ${r.problem}`, "");
   if (r.versions) {
     const v = r.versions;

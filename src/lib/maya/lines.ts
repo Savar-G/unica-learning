@@ -26,11 +26,11 @@ import { simplestWords, teachSteps } from "./fractions";
 /**
  * The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. Version 2:
  * redirect.decline. Version 3 (#389): step.invite for the final step ("result"), after the last column. Version 4 (D-199):
- * answer.parts, how the parts make the answer, said before answer.give on the final step. Version 5 (#407): fraction
- * steps (common denominator, numerators, simplest form) and check.equal, an equal fraction when the
- * question asks for the simplest form.
+ * answer.parts, how the parts make the answer, said before answer.give on the final step. Version 5: regroup.add, where
+ * a column's carry comes from, as step.regroup in addition. Version 6 (#407): fraction steps (common denominator,
+ * numerators, simplest form) and check.equal, an equal fraction when the question asks for the simplest form.
  */
-export const LINES_VERSION = 5;
+export const LINES_VERSION = 6;
 
 export const LINE_IDS = [
   "open.hello",
@@ -159,6 +159,17 @@ export const TEMPLATES = {
   "point.add.single": [
     "Look at the {place}. There is only a {term} there.", "The {place} have just the {term}.", "Only the {term} is in the {place}.",
     "In the {place}, there's just a {term}.", "Look at the {place}: there's only the {term}.",
+  ],
+  // Where a carry comes from, in addition (2026-11-01, practice C01 and C02: a child who never carried heard "the 1
+  // you carried" again and again). Filled from the column whose sum makes the carry ("7 + 9 = 16"): {from} is that
+  // column, {to} the next one. Said before any line names a carried digit, when the child lost the carry, says they did
+  // not carry, or plans to write the two-digit sum in one column. Pending Savar's approval (D-202).
+  "regroup.add": [
+    "{eq}. {total} is {carry} {big} and {write} {small}. Write {write} in the {from}. Carry {carry} {big} to the {to}.",
+    "{eq}. {total} is {carry} {big} and {write} {small}. Write just {write} in the {from}. Move {carry} {big} to the {to}.",
+    "{total} is {carry} {big} and {write} {small}. Only the {write} goes in the {from}. The {carry} {big} goes to the {to}.",
+    "{eq}. Split {total} into {carry} {big} and {write} {small}. Write {write} in the {from}. Carry {carry} {big} to the {to}.",
+    "{eq}. {total} has {carry} {big} and {write} {small}. The {write} stays in the {from}. The {carry} {big} goes to the {to}.",
   ],
   "operation.add": [
     "Add the {place}: {sum}. What do you get?", "What is {sum}?", "Let's add the {place}: {sum}.", "Add up the {place}: {sum}.",
@@ -521,6 +532,8 @@ function stepLines(pkg: OperationPackage, step: WorkedStep): LineOffer[] {
     case "add-column": {
       const { place, digits, carryIn } = step;
       const terms = [...digits, ...(carryIn > 0 ? [carryIn] : [])];
+      const from = carryIn > 0 ? carrySource(pkg, step) : null;
+      if (from) out.push(regroupOffer(pkg, from, { step: step.id }));
       if (terms.length === 1) {
         add("step.point", "point.add.single", { place, term: terms[0] }, 1);
         add("step.operation", "operation.add.single", { place, term: terms[0] }, 2);
@@ -620,7 +633,26 @@ function simplifyLines(from: FractionParts, slots: Slots): LineOffer[] {
 
 const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b));
 
+/** The column of an addition whose sum makes the carry a column takes ("ones" for the tens of 27 + 39), or null. */
+function carrySource(pkg: OperationPackage, step: Extract<WorkedStep, { kind: "add-column" }>): Extract<WorkedStep, { kind: "add-column" }> | null {
+  const columns = pkg.steps.filter((s): s is Extract<WorkedStep, { kind: "add-column" }> => s.kind === "add-column");
+  const before = columns[columns.findIndex((s) => s.id === step.id) - 1];
+  return before && before.carryOut > 0 && before.carryOut === step.carryIn ? before : null;
+}
 
+/**
+ * The regroup line of a carry (step.regroup, H1), filled from the column whose sum makes it: "7 + 9 = 16. 16 is 1 ten
+ * and 6 ones. Write 6 in the ones. Carry 1 ten to the tens."
+ */
+function regroupOffer(pkg: OperationPackage, from: Extract<WorkedStep, { kind: "add-column" }>, slots: Slots): LineOffer {
+  const to = leftOf(from.place);
+  const eq = equationOf(from, pkg, "target") ?? `${from.total}`;
+  const vars = {
+    eq, total: from.total, carry: from.carryOut, big: from.carryOut === 1 ? UNIT[to] : to, write: from.write,
+    small: from.write === 1 ? UNIT[from.place] : from.place, from: from.place, to,
+  };
+  return offer("step.regroup", "regroup.add", vars, { slots, level: 1, board: eq });
+}
 
 /**
  * The answer's digits by place, highest first, and the number they make (D-199): "6 tens and 6 ones" make 66, "3 ones,
@@ -684,6 +716,17 @@ export function packageLines(pkg: OperationPackage) {
       if (id === "result") return [offer("step.invite", "invite.result", { expr }, { slots: { step: "result" }, level: 0 })];
       const step = find(id);
       return step ? stepLines(pkg, step) : [];
+    },
+    /**
+     * The regroup line of the column a carry comes from (the ones of 27 + 39), for a child who plans to write its
+     * two-digit sum in it ("I write 16 under the ones"). Its slots name the column and "carry", so it differs from the
+     * regroup line of a column that takes a carry. Empty for a column with no carry.
+     */
+    regroupOut: (id: string): LineOffer[] => {
+      const columns = pkg.steps.filter((s): s is Extract<WorkedStep, { kind: "add-column" }> => s.kind === "add-column");
+      const at = columns.findIndex((s) => s.id === id);
+      const next = columns[at + 1];
+      return at >= 0 && next && carrySource(pkg, next) ? [regroupOffer(pkg, columns[at], { step: id, other: "carry" })] : [];
     },
     /** "Yes! 7 + 9 = 16.": only after code checked the child's right answer for that step. */
     rightStep: (id: string): LineOffer[] => {
@@ -775,7 +818,7 @@ export function allLineTexts(pkg: OperationPackage, heardValues: readonly Answer
   const offers = [
     ...equalForms.flatMap((v) => [...l.answerRight(v), ...l.writeAnswer(v), ...l.equal(v, simplestWords(pkg)), ...l.simplifyOwn(v)]),
     ...l.hello(), ...l.question(), ...l.assess(), ...l.exampleIntro(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id)),
-    ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.explain(),
+    ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
     ...l.otherInput(), ...l.redirect(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("maya"), ...l.repair(),
   ];

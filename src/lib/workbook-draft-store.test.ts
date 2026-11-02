@@ -17,7 +17,8 @@ const DRAFT = "00000000-0000-4000-8000-0000000000d1";
 
 const page = (number: number, type: GeneratedWorkbook["pages"][number]["type"]) => ({
   number, type, dayLabel: null, day: null, pageOfDay: null, qrToken: `token-${String(number).padStart(12, "0")}`,
-  fit: { status: "not-needed" as const }, attempts: 0 as const, questions: [],
+  fit: { status: "not-needed" as const }, attempts: 0 as const, questions: [], omissions: [],
+  content: { kind: "blank" as const, id: `UL·LEAH·W01·BLANK·P${number}`, level: 10 },
 });
 const draft = (over: Partial<GeneratedWorkbook> = {}): GeneratedWorkbook => ({
   id: DRAFT, childId: CHILD, number: 1, levels: [10], profileBuild: null, model: "fake",
@@ -89,5 +90,21 @@ describe("the Supabase draft store", () => {
     const before = store.requests;
     await store.save(draft({ id: "nope" }));
     expect(store.requests).toBe(before);
+  });
+});
+
+describe("the Supabase draft store's shape versions (#380)", () => {
+  const stored = (version: number) => workbookDraftStore(createClient("https://fixture.invalid", "synthetic-key", {
+    auth: { persistSession: false },
+    global: { fetch: async () => Response.json({ schema_version: version, draft: draft() }) },
+  }));
+
+  it("reads a draft of version 1 and of version 2: version 1 is a version 2 draft too", async () => {
+    expect(await stored(1).draft(DRAFT)).toEqual(draft());
+    expect(await stored(2).draft(DRAFT)).toEqual(draft());
+  });
+
+  it("refuses a version it does not know", async () => {
+    await expect(stored(3).draft(DRAFT)).rejects.toThrow("shape version 3 is not one of 1, 2");
   });
 });

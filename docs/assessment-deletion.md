@@ -178,6 +178,12 @@ Checked on the live database (29 October 2026), in transactions that were rolled
 
 The migration went live on 29 October 2026, before the worker code of #299 merged. In that time the worker on `main` did not empty `workbook-pages`, so a deletion of the one test family with the sample workbook would stop before it completed and keep its request for a later run.
 
+## Workbook runs, revisions and the audit log (#312)
+
+`public.workbook_runs`, `public.workbook_draft_revisions`, `public.workbook_audit` (migration `add_workbook_runs`) `public.workbook_run_pages` (migration `workbook_run_resume`), `public.workbook_run_attempts` (migration `workbook_run_attempts`) `public.workbook_run_solves` (migration `workbook_run_solves`), `public.workbook_run_calls` (migration `workbook_run_calls`), `public.workbook_run_frames` (migration `workbook_run_frames`) and `public.workbook_run_ai_calls` (migration `workbook_mac_runner`, D-200: each AI call with its provider and cost) carry the family's `parent_id` and reference the parent and the child with `on delete cascade`, so the family deletion removes every row. The nine tables have the family write fence trigger, and the run functions write through it: `start_workbook_run` for a family with a deletion request fails with `family_unavailable`. A draft's page images, proof images and PDF are in `workbook-pages` at `<parent id>/<draft id>/<name>`, inside the family's folder, so the worker empties them with the other workbook files; the retention worker runs the same deletion and needs no change.
+
+Checked on the live database (31 October 2026), in transactions that were rolled back: deleting the test family's parent row left 0 rows in the five tables (`workbook_run_pages` and `workbook_run_attempts` checked in later probes the same day, with `save_workbook_run_page` and `use_workbook_run_attempts` refused by the fence; `workbook_run_solves` on 1 November 2026, with `save_workbook_run_solves` refused by the fence; `workbook_run_calls` on 1 November 2026, with `save_workbook_run_call` refused by the fence; `workbook_run_frames` on 1 November 2026, with `save_workbook_run_frame` and keyed `save_workbook_run_solves` refused by the fence; `workbook_run_ai_calls` on 1 November 2026, with `save_workbook_run_ai_calls` and `route_workbook_run` refused by the fence, and the worker heartbeat's run cleared by the deletion); with a deletion request, `start_workbook_run` failed with `family_unavailable`; the admin read the family's rows, while the family's own parent, another parent and `anon` read nothing.
+
 ## Learning events (#302)
 
 `public.learning_events` (migration `add_learning_events`) holds the append-only learning events of each child: from calls, marked pages and assessment answers (`src/lib/learning-events.ts`). Every row has `parent_id` (references `public.parents`), `child_id` with `parent_id` (references `public.children (id, parent_id)`), and for an assessment question `assessment_id` with `child_id` (references `public.assessments (id, child_id)`), all `on delete cascade`. The existing family deletion removes every row when it deletes the parent's Auth user, and a test deletion removes that test's events. The worker needs no code change and no table list. The retention rules need no change: a free-test family has events only from its tests, so its last test is still its last activity; a family with calls is a customer, and the worker keeps it.
@@ -257,3 +263,24 @@ Checked on the live database (1 November 2026), in one transaction that was roll
 | The Auth user is deleted (the deletion's last step) | 0 rows left for the family |
 
 Two writes for the same child sent together on the live database (1 November 2026, a test family's child; the row was removed afterwards): the second waited about 2.5 seconds for the first's lock, and the row kept both wordings.
+
+`public.maya_call_connections` (migration `add_maya_call_connections`, #326) holds when the child and Maya joined and left each voice call: an event kind and two times, no audio and no words (`src/lib/maya-call-store.ts`, `mayaConnectionLog`). `call_id` with `parent_id` and `child_id` references `public.maya_calls (id, parent_id, child_id)`, `parent_id` references `public.parents`, and `child_id` with `parent_id` references `public.children (id, parent_id)`, all `on delete cascade`. A row can only name its call's own family, and only a voice call (trigger `maya_call_connection_voice`). There are no files: no audio is stored anywhere (the voice worker starts LiveKit with recording off). The existing family deletion removes every row when it deletes the parent's Auth user; deleting a call removes its rows. The worker needs no code change and no table list. The retention rules need no change: today only admin test calls of test families have voice calls, and the rows add no activity of their own.
+
+The service role may only insert and read: no update or delete grant. The table has the family write fence trigger. Row-level security is on; the one policy lets admins read. A signed-in parent and anon read nothing.
+
+Checked on the live database (1 November 2026), in transactions that were rolled back, with a voice call of a test family (A) and one of a second test family (B):
+
+| Check | Result |
+|---|---|
+| Server (service role) appends 3 events (2 for A, 1 for B) | written |
+| A row naming A's call with B's family | refused (23503) |
+| A row for a text call | refused (55000, `maya_call_not_voice`) |
+| A time an hour ahead of the database's clock | refused (23514) |
+| Server update; server delete | refused (42501) both |
+| An admin reads | 3 rows |
+| Parent A (whose call it is) reads; inserts | 0 rows; refused (42501) |
+| Parent B reads A's call; reads any | 0 rows; 0 rows |
+| Anon reads | refused (42501) |
+| Family B's Auth user is deleted | 0 rows left for B; A's 2 rows stay |
+| A's call is deleted | 0 rows left for it |
+| A write after family A's deletion request | refused (55000, `family_unavailable`) |

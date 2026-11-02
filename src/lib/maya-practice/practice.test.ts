@@ -185,6 +185,14 @@ describe("an invalid simulation never counts as a pass", () => {
     expect(report.runs[0].status).toBe("pass");
   });
 
+  it.each([56, 616])("allows C01's carry slip %s only after the easier example", async (value) => {
+    const after = await suite([C01], { runs: 1, simulator: () => sayEach(C01.fakeScript.map((text, i) => i === 4 ? `I got ${value}.` : text)) });
+    expect(after.report.runs[0].invalid.filter((x) => x.code === "number_not_allowed")).toEqual([]);
+    const before = await suite([C01], { runs: 1, simulator: () => sayEach([`I don't know how to start. I got ${value}.`, ...C01.fakeScript.slice(1)]) });
+    expect(before.report.runs[0].invalid.map((x) => x.code)).toContain("number_not_allowed");
+    expect(before.report.passed).toBe(false);
+  });
+
   it("every case's right answer is behind a stage: never a single digit or an operand, and not open at the start unless the persona solves it", () => {
     for (const c of PRACTICE_CASES) {
       const pkg = FIXTURES[c.fixture];
@@ -506,6 +514,14 @@ describe("the docs", () => {
     expect(md).toContain("PASS");
     expect(md).toContain("### C07-r1: pass");
     expect(md).toContain("Counted from the saved files.");
+  });
+
+  it("a subscription run never shows as a plain PASS (R401-2)", async () => {
+    const { report } = await suite([C07], { runs: 1 });
+    const onSubscription = { ...report, passed: true, full: true, versions: { ...report.versions!, meta: { ...report.versions!.meta, mode: "subscription" } } };
+    const md = reportMarkdown(onSubscription);
+    expect(md).toContain("# Maya practice suite: PASS on the Claude subscription (not the final API check)");
+    expect(reportMarkdown({ ...report, passed: true, full: true })).toMatch(/^# Maya practice suite: PASS$/m);
   });
 });
 

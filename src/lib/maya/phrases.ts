@@ -29,6 +29,10 @@ export const PHRASE_GROUPS = [
   // D-197: said after free talk (the model adds it), so a reply to the child also leads back to the question (practice
   // run 6). No math: the next turn restates the question with a line.
   "back",
+  // Code-written answers to what children often ask Maya (practice runs on the subscription, 2026-11-01): questions about
+  // her, promises, and praise or flattery. The model picks the phrase that answers the child by its number; free talk
+  // for these kept failing the guards and became "Thanks for telling me.", which answers nothing.
+  "mayafacts", "promises", "praise",
 ] as const;
 export type PhraseGroup = (typeof PHRASE_GROUPS)[number];
 
@@ -143,6 +147,34 @@ export const PHRASES: Record<PhraseGroup, readonly string[]> = {
     "Our question is still here for us.", "Back to our question whenever you're ready.", "Let's head back to our question.",
     "When you feel ready, we'll go back to our question.",
   ],
+  // Each answers one question about Maya, truthfully (she is an AI: no home, body, food, pets, family or life outside
+  // the call). Two may go together when the child asked two things. Pending Savar's approval (D-202).
+  mayafacts: [
+    "I'm an AI, not a real person.", "I'm an AI, so I don't live anywhere.", "I'm an AI, so I don't eat food.",
+    "I'm an AI, so I don't have a pet.", "I'm an AI, so I don't have a family.", "I'm an AI, so I don't have a body.",
+    "I'm an AI, so I don't have favourites.", "I'm an AI, so I don't go to school.", "I'm an AI, so I don't have a birthday.",
+    "I'm an AI, so I don't sleep.", "I'm an AI, so I don't play games.", "I'm an AI, so I don't have a house.",
+    "I'm here to help you with math.", "I'm here to help you learn.",
+  ],
+  // No promise about the future, a grade or a test, kindly, and what Maya can do instead. Pending Savar's approval.
+  promises: [
+    "I can't promise this. I'm here to help you today.", "I can't promise a grade. I can help you learn this.",
+    "I can't promise about tomorrow. I'm here with you today.", "I can't promise how a test will go. I can help you learn this.",
+    "I can't make promises. I'm glad to help you today.", "I can't promise you a mark. I can help you get ready.",
+    "I can't promise to talk again. I'm here with you now.", "I can't promise what happens later. I'm here with you today.",
+    "I can't promise you'll get an A. I can help you learn this.", "I can't promise a score. I can help you learn this.",
+    "I can't promise you'll talk with me again. I'm here with you today.", "I can't promise how school will go. I'm here to help you learn.",
+  ],
+  // Thanks for a compliment, and no ranking of children: effort praise instead of "smartest" (only for effort the child
+  // really made; before any work, being ready to learn). Pending Savar's approval.
+  praise: [
+    "Aw, thank you! I'm glad we're working together.", "Thank you! You're kind to say so.", "Aw, thanks! I'm happy to help you.",
+    "Thank you! I'm glad you're here.", "I can't say who is smartest. I like how hard you're working.",
+    "I can't say who is smartest. I love how you keep trying.", "I don't rank kids. I like how hard you're working.",
+    "I can't say who is smartest. I'm glad you're ready to learn.", "I can't pick the smartest kid. I like your hard work.",
+    "Aw, thank you! You're working so hard today.", "I can't say who is smartest. I'm proud of how you're trying.",
+    "I don't rank kids. I'm glad you're ready to learn.",
+  ],
 };
 
 /** The acts each purpose fits. */
@@ -162,7 +194,42 @@ export const PHRASE_ACTS: Record<PhraseGroup, readonly Act[]> = {
   pets: REPLY_ACTS, family: REPLY_ACTS, school: REPLY_ACTS, games: REPLY_ACTS, food: REPLY_ACTS, sports: REPLY_ACTS, trips: REPLY_ACTS,
   tired: FEELING_ACTS, happy: FEELING_ACTS, bored: FEELING_ACTS, frustrated: FEELING_ACTS, aboutmaya: REPLY_ACTS,
   back: ["redirect", "clarify"],
+  mayafacts: REPLY_ACTS, promises: REPLY_ACTS, praise: REPLY_ACTS,
 };
+
+/** One phrase of the bank, by group and its number in the group (1 = the first). */
+export interface ReplyPick {
+  group: PhraseGroup;
+  pick: number;
+}
+
+/**
+ * The reply that answers a common request when the model's own words for it failed the guards or the review: a question
+ * about Maya, a request for a promise, or praise and flattery. Code picks among code-written phrases only; a turn that fits
+ * none (or more than one kind) gets null, and the refused words become a neutral bank phrase as before. Fail-closed: a
+ * miss costs warmth, never safety, since every phrase here is code-written.
+ */
+export function replyFor(childTurn: string | null | undefined): ReplyPick | null {
+  const t = (childTurn ?? "").toLowerCase().replace(/[’]/g, "'");
+  const picks: ReplyPick[] = [];
+  if (/\bpromise/.test(t)) {
+    picks.push({ group: "promises", pick: /\b(tomorrow|again|next time|later)\b/.test(t) ? 3 : /\b(grade|test|mark|score|report card|an a)\b/.test(t) ? 2 : 1 });
+  }
+  if (/\b(smartest|cleverest|genius|best teacher|better than|you're the best|you are the best)\b/.test(t)) {
+    picks.push({ group: "praise", pick: /\b(smartest|cleverest|genius)\b/.test(t) ? 8 : 1 });
+  }
+  // A question to Maya about herself: "you" or "your" with what children ask about.
+  if (/\b(are you|do you|did you|can you|where do you|what's your|what is your|your)\b/.test(t)) {
+    const facts: [RegExp, number][] = [
+      [/\bwhere (do|did) you live\b|\byour (house|home)\b/, 2], [/\b(real|person|human|people)\b/, 1], [/\b(eat|food|hungry|lunch|dinner)\b/, 3],
+      [/\b(dog|cat|pet|pets)\b/, 4], [/\b(mom|mum|dad|family|brother|sister|parents)\b/, 5], [/\bbirthday|how old\b/, 9],
+      [/\b(sleep|bed|tired)\b/, 10], [/\bschool\b/, 8], [/\bfavou?rite\b/, 7],
+    ];
+    const fact = facts.find(([re]) => re.test(t));
+    if (fact) picks.push({ group: "mayafacts", pick: fact[1] });
+  }
+  return picks.length === 1 ? picks[0] : null;
+}
 
 /**
  * The smalltalk phrases that may replace refused free talk (D-197). Free talk answers whatever the child said, and the

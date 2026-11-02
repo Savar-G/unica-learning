@@ -14,7 +14,14 @@
     "import:curriculum": "node scripts/import-curriculum.mjs",
     "maya:text": "node scripts/maya-text.mjs",
     "maya:demo-child": "node scripts/maya-demo-child.mjs",
-    "maya:practice": "node scripts/maya-practice.mjs"
+    "maya:practice": "node scripts/maya-practice.mjs",
+    "voice:build": "node worker/maya-voice/build.mjs",
+    "voice:typecheck": "tsc -p worker/maya-voice/tsconfig.json",
+    "voice:test": "vitest run --config worker/maya-voice/vitest.config.mts",
+    "voice:dev": "node worker/maya-voice/build.mjs && node --conditions=react-server worker/maya-voice/dist/main.mjs dev",
+    "voice:start": "node --conditions=react-server worker/maya-voice/dist/main.mjs start",
+    "workbooks:samples": "node scripts/workbook-samples.mjs",
+    "workbooks:worker": "node scripts/workbook-worker.mjs"
   },
   "dependencies": {
     "@sparticuz/chromium": "^153.0.0",
@@ -22,6 +29,8 @@
     "@supabase/supabase-js": "^2.117.2",
     "@vercel/analytics": "^2.0.1",
     "jsqr": "^1.4.0",
+    "livekit-client": "2.23.0",
+    "livekit-server-sdk": "2.19.2",
     "next": "16.3.8",
     "perfect-freehand": "^1.2.3",
     "posthog-js": "^1.435.8",
@@ -35,7 +44,9 @@
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
-    "@livekit/agents": "^1.9.5",
+    "@livekit/agents": "1.9.5",
+    "@livekit/agents-plugin-assemblyai": "1.9.5",
+    "@livekit/agents-plugin-inworld": "1.9.5",
     "@livekit/rtc-node": "^1.2.1",
     "@types/node": "^20",
     "@types/qrcode": "^1.5.6",
@@ -44,6 +55,7 @@
     "esbuild": "^0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
+    "happy-dom": "^21.0.4",
     "read-excel-file": "^9.3.14",
     "typescript": "^5",
     "vitest": "^4.1.11"

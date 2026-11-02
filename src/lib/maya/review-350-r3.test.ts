@@ -169,7 +169,7 @@ describe("N1-R3: a taken-back answer is no longer solved, even when no reading n
   it("keeps the assistance history", () => {
     const c = call();
     c.child("I don't know.");
-    expect(c.propose({ act: "example_step", step: "ones", parts: [ln("example.intro"), ln("example.step", { step: "ones" })] }).refusal).toBeNull();
+    expect(c.propose({ act: "example_step", step: "ones", parts: [ln("example.intro"), ln("example.step", { step: "ones" })], reading: { start: "no_start" } }).refusal).toBeNull();
     c.child("66");
     expect(c.propose({ act: "accept_answer", parts: [t("How did you get it?")], reading: { answers: [right66] } }).refusal).toBeNull();
     c.child("Actually 56. Stop.");
