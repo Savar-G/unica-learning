@@ -1,6 +1,7 @@
 import type { Viewport } from "next";
 import localFont from "next/font/local";
 import { Caveat, Geist, Geist_Mono, Gochi_Hand } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { SiteAnalytics } from "@/components/site-analytics";
 import { rootMetadata } from "@/lib/metadata";
 import { CookieConsent } from "@/components/cookie-consent";
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <VisitTags />
         {children}
         <SiteAnalytics />
+        <SpeedInsights />
       </body>
     </html>
   );
