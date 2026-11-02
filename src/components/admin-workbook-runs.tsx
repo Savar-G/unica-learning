@@ -5,6 +5,7 @@
 // separate reader answered otherwise than the key, with both answers, and who wrote each printed text). Server components; the refresh while a run works and the
 // "Prepare next workbook" button are the only client parts.
 import Link from "next/link";
+import { WorkbookCommentReviewer } from "@/components/workbook-comment-reviewer";
 import type { ReactNode } from "react";
 import type { ChildRow, DraftCounts, RunDetail, RunListRow, WorkerStatus } from "@/lib/admin-store";
 import { ADMIN_WORKBOOKS_PATH, adminWorkbookPath, adminWorkbookRunPath, draftPdfPath, when } from "@/lib/admin-view";
@@ -250,7 +251,7 @@ function ProblemList({ problems }: { problems: { question: number | null; reason
 
 /** Who wrote a question's printed words: code (a relation, or a whole-number operation at U1 to U9) or the AI. */
 export const wordedBy = (q: GeneratedQuestion): "code" | "AI" | null =>
-  !q.package ? null : isCodeWorded(q.package) || (q.package.item?.checks ?? []).some((c) => c.kind === "relation") ? "code" : "AI";
+  !q.package ? null : q.package.textSource !== "human" && (isCodeWorded(q.package) || (q.package.item?.checks ?? []).some((c) => c.kind === "relation")) ? "code" : "AI";
 
 /** A question that failed because the solve check read it otherwise than the key, or could not confirm it. */
 const failedSolve = (q: GeneratedQuestion) => failedBySolve(q.check) !== null;
@@ -447,7 +448,7 @@ function DraftPdfLink({ runId, draft, rendering, pages }: { runId: string; draft
 function Approval({ detail, name }: { detail: RunDetail; name: string }) {
   const { run, draft, approved } = detail;
   if (!draft) return null;
-  if (approved) {
+  if (approved && approved.status !== "draft") {
     return <>
       <Link className="btn adm-btn" href={adminWorkbookPath(approved.id)}>Open workbook {run.number} to print and ship</Link>
       <WorkbookStatusChip status={approved.status} />
@@ -484,6 +485,10 @@ export function AdminWorkbookRun({ email, detail, now, only, worker }: { email: 
   const solveResult = draft ? draftSolveSummary(questions, solves) : null;
   const byCode = questions.filter((q) => wordedBy(q) === "code").length;
   const byAi = questions.filter((q) => wordedBy(q) === "AI").length;
+  // Format history on the server. Browser and server timezone data can differ after a clock-rule change.
+  const history = detail.audit.filter((e) => e.action === "workbook-comments-sent").map((e) => ({ id: e.id,
+    text: `${e.actor_email ?? "An admin"} applied ${String(e.detail.comments)} comments on pages ${Array.isArray(e.detail.pages) ? e.detail.pages.join(", ") : ""} · ${when(e.at)} Pacific · Version ${String(e.detail.revision)}`,
+  }));
   return (
     <AdminFrame email={email} section="workbooks" title={`${name}: draft of workbook ${run.number}`}>
       {(state === "preparing" || state === "waiting") && <RunRefresh />}
@@ -522,6 +527,7 @@ export function AdminWorkbookRun({ email, detail, now, only, worker }: { email: 
         <p className="adm-note" role="note"><Chip tone="muted">Old draft format</Chip> This draft was stored in an older format (version {detail.oldFormat}), so its pages are not shown here. Prepare a new draft to review the pages.</p>
       )}
       {draft && counts && <>
+        <WorkbookCommentReviewer detail={detail} history={history} />
         <h2>Check results</h2>
         <p><ChecksCell counts={{ pages: counts.pages, questions: counts.questions, failed: counts.failed, notChecked: counts.notChecked, failedPages: counts.failedPages }} notRendered={notRendered} /></p>
         <p className="adm-wb-checks">
@@ -535,7 +541,7 @@ export function AdminWorkbookRun({ email, detail, now, only, worker }: { email: 
             {only ? <Link href={adminWorkbookRunPath(run.id)}>Show every page</Link> : <Link href={`${adminWorkbookRunPath(run.id)}?only=attention`}>Show only the {attention.length} pages that need attention</Link>}
           </nav>
         </> : <p className="adm-note">Every question passed its checks, and every page fits and is in the PDF.</p>}
-        {shown.map((p) => <DraftPageSection key={p.number} page={p} detail={{ ...draft, images: detail.images }} solves={solves} />)}
+        <details><summary>Question data and check details</summary>{shown.map((p) => <DraftPageSection key={p.number} page={p} detail={{ ...draft, images: detail.images }} solves={solves} />)}</details>
       </>}
 
       <h2>Audit log</h2>

@@ -7,6 +7,7 @@ import { Table } from "@/components/admin";
 const ACTION: Record<string, string> = {
   "run-started": "Started preparing", "run-retried": "Tried again after an error", "run-failed": "Failed", "run-stopped": "Stopped a run with no progress",
   "draft-stored": "Saved the draft", "run-resumed": "Picked up again after a stop", "run-routed": "Set where the run is made",
+  "workbook-comments-sent": "Applied review comments",
   "workbook-approved": "Approved for print", "workbook-printed": "Marked printed", "workbook-shipped": "Marked shipped",
 };
 
@@ -14,7 +15,9 @@ const ACTION: Record<string, string> = {
 function auditDetail(detail: Record<string, unknown>): string {
   const lines: string[] = [];
   for (const [k, v] of Object.entries(detail)) {
-    if (k === "number" && typeof v === "number") lines.push(`Workbook ${v}`);
+    if (k === "comments" && typeof v === "number") lines.push(`${v} comments`);
+    else if (k === "pages" && Array.isArray(v)) lines.push(`Pages ${v.join(", ")}`);
+    else if (k === "number" && typeof v === "number") lines.push(`Workbook ${v}`);
     else if (k === "attempt" && typeof v === "number") lines.push(`After try ${v}`);
     else if (k === "error" && typeof v === "string") lines.push(v);
     else if (k === "pages" && typeof v === "number") lines.push(`${v} ${v === 1 ? "page" : "pages"} already written`);

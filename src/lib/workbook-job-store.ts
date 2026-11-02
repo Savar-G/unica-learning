@@ -191,15 +191,24 @@ export function workbookWorkerQueue(admin: SupabaseClient<Database>, worker: { i
       const rows = must(await admin.from("workbook_runs").select("id, status, lease, heartbeat_at, created_at").eq("runner", "mac")
         .in("status", ["queued", "running"]).order("created_at").limit(50), "worker queue") ?? [];
       const cutoff = Date.now() - staleSeconds * 1000;
-      return rows.flatMap((r): WorkerCandidate[] => {
+      const edits = must(await admin.from("workbook_edits").select("id,status,heartbeat_at").eq("runner", "mac")
+        .in("status", ["queued", "running"]).order("created_at").limit(50), "worker edit queue") ?? [];
+      return [...edits.filter((e) => e.status === "queued" || Date.parse(e.heartbeat_at) < cutoff)
+        .map((e) => ({ id: e.id, resume: e.status === "running" })), ...rows.flatMap((r): WorkerCandidate[] => {
         if (r.status === "queued") return [{ id: r.id, resume: false }];
         const quiet = r.lease === null || !r.heartbeat_at || Date.parse(r.heartbeat_at) < cutoff;
         return quiet ? [{ id: r.id, resume: true }] : [];
-      });
+      })];
     },
     async beat({ runId, started, note }) {
+      // The heartbeat's foreign key names a generation run. A review batch keeps that run as its owner.
+      let ownerRun = runId;
+      if (runId) {
+        const edit = must(await admin.from("workbook_edits").select("draft_id").eq("id", runId).maybeSingle(), "worker edit owner");
+        if (edit) ownerRun = must(await admin.from("workbook_runs").select("id").eq("draft_id", edit.draft_id).maybeSingle(), "worker generation owner")?.id ?? null;
+      }
       must(await admin.rpc("beat_workbook_worker", {
-        p_id: worker.id, p_build: worker.build, p_run: runId, p_primary_ai: worker.primary, p_note: note, p_started: started,
+        p_id: worker.id, p_build: worker.build, p_run: ownerRun, p_primary_ai: worker.primary, p_note: note, p_started: started,
       }), "worker heartbeat");
     },
   };

@@ -1,3 +1,4 @@
+import type { EditCall } from "@/lib/workbook-edit-calls";
 // The workbook generator (#311, spec #296): a two-week plan (#308, src/lib/workbook-plan.ts) in, one coherent draft
 // workbook out, stored as one unit through the draft store. The plan fixes every page and part; the AI fills the
 // question slots of each page with content only (src/lib/workbook-generator-items.ts), one call per page; code
@@ -68,6 +69,7 @@ import {
 } from "@/lib/workbook-book";
 import { pageId, type Omission, type PageContent, type SlotName } from "@/lib/workbook-page";
 import type { PageType, PlannedPage, PlannedPart, WorkbookPlan } from "@/lib/workbook-plan";
+import { workbookEditItem } from "@/lib/workbook-edit-item";
 import type { DraftPage } from "@/lib/workbook-render";
 import { textRoom } from "@/lib/workbook-template";
 
@@ -321,7 +323,11 @@ export const solveKey = (page: number, seq: number, id: string) => `${page}:${se
  */
 export class ResumeMismatch extends Error {}
 
+export class WriterPersistenceError extends Error {}
+
 export interface GenerateDeps {
+  /** Durable dispatches and results for edit writers and solves. */
+  editCall?: EditCall;
   ai: AiClient;
   fit: FitCheck;
   store: WorkbookDraftStore;
@@ -868,8 +874,12 @@ function roomOf(input: GenerateInput, place: SlotName, day: number) {
  * that is not JSON) is sent once more, the same; the second error is the one returned.
  */
 async function callAi(deps: GenerateDeps, name: string, request: unknown, ids: string[] = []): Promise<{ items: Map<string, unknown>; error: string | null }> {
-  const ask = () => withTimeLimit(deps.timeLimitMs ?? TIME_LIMIT_MS, (signal) =>
-    deps.ai.json({ name, system: SYSTEM, content: [{ type: "text", text: JSON.stringify(request) }], schema: ITEMS_SCHEMA, effort: "medium" }, signal));
+  const ask = async () => {
+    const prompt = { name, system: SYSTEM, content: [{ type: "text" as const, text: JSON.stringify(request) }], schema: ITEMS_SCHEMA, effort: "medium" as const };
+    const dispatch = () => withTimeLimit(deps.timeLimitMs ?? TIME_LIMIT_MS, signal => deps.ai.json(prompt, signal));
+    const response = deps.editCall ? await deps.editCall("write", "", prompt, dispatch) : await dispatch();
+    return response;
+  };
   const read = (out: unknown, into: Map<string, unknown>) => {
     const list = (out as { items?: unknown } | null)?.items;
     if (!Array.isArray(list)) return;
@@ -880,14 +890,15 @@ async function callAi(deps: GenerateDeps, name: string, request: unknown, ids: s
   };
   try {
     let resent = false;
-    const out = await ask().catch(() => { resent = true; return ask(); });
+    const out = await ask().catch((error) => { if (error instanceof WriterPersistenceError) throw error; resent = true; return ask(); });
     const items = new Map<string, unknown>();
     read(out, items);
     // An answer that leaves out slots it was asked for is incomplete, like one that is not JSON: sent once more (if it
     // was not already), and the slots it gave are kept.
-    if (!resent && ids.some((id) => !items.has(id))) read(await ask().catch(() => null), items);
+    if (!resent && ids.some((id) => !items.has(id))) read(await ask().catch((error) => { if (error instanceof WriterPersistenceError) throw error; return null; }), items);
     return { items, error: null };
   } catch (e) {
+    if (e instanceof WriterPersistenceError) throw e;
     return { items: new Map(), error: e instanceof Error ? e.message : String(e) };
   }
 }
@@ -1028,7 +1039,7 @@ const shorterRoom = (room: number | undefined, shorter: boolean) => (room !== un
  * asked: it comes back failed with no package, and is in `refused`. Throws when the ledger or the call store does (the
  * run was lost), and when a kept call asked other slots than this one does (ResumeMismatch).
  */
-async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork, which: number[], note: string | null, name: string, panels: Panel[] = [], memory: BookMemory | null = null, pageTexts: string[] = [], o: { wordLater?: boolean } = {}) {
+async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork, which: number[], note: string | null, name: string, panels: Panel[] = [], memory: BookMemory | null = null, pageTexts: string[] = [], o: { wordLater?: boolean; skipSolve?: boolean } = {}) {
   const seq = w.calls.next++;
   const ask: CallAsk = { name, slots: which.map((i) => w.slots[i].id), panels: panels.map((x) => x.id) };
   // A call an earlier try kept (R379-7-1): the same call of the same page, replayed as it came back, with the attempts
@@ -1122,7 +1133,7 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
   if (open.length > 0 && deps.calls) {
     await deps.calls.save(w.number, seq, { ask, built, examples, refused: [...refused], tries: Object.fromEntries(open.map((id) => [id, w.tries.used.get(id)!])) });
   }
-  await solveChecks(deps, w, seq, ask, built, examples);
+  if (!o.skipSolve) await solveChecks(deps, w, seq, ask, built, examples);
   return { built, examples, refused };
 }
 
@@ -1825,4 +1836,131 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
   };
   const saved = await deps.store.save(draft);
   return saved.status === "saved" ? { status: "stored", draft } : saved;
+}
+
+/** Numeric data of items without an operation, including their pictures. Ignore editable words and labels. */
+function editNumbers(value: unknown): number[] {
+  if (typeof value === "number") return [value];
+  if (Array.isArray(value)) return value.flatMap(editNumbers);
+  if (value && typeof value === "object") return Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).flatMap(([, v]) => editNumbers(v));
+  return [];
+}
+
+/** Replace only the selected questions of a stored day page. The plan, checks and templates stay binding. */
+export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDeps, page: GeneratedPage,
+  change: { question: number | number[] | null; note: string; item?: unknown; items?: Record<number, unknown> }): Promise<GeneratedPage> {
+  const w = layOut(input).work.find((x) => x.number === page.number);
+  if (!w || !page.content || page.content.kind !== "day") throw new Error("This page has no questions to rewrite.");
+  const targets = page.questions.filter((q) => change.question === null || (Array.isArray(change.question) ? change.question.includes(q.number) : q.number === change.question));
+  if (!targets.length) throw new Error("This question is unavailable. Reload the page.");
+  const which = targets.map((q) => w.slots.findIndex((s) => s.id === q.slot));
+  if (which.some((i) => i < 0)) throw new Error("The page plan changed. Prepare a new workbook.");
+  const note = change.note.replace(/(?:Whole page|Question \d+): /g, "");
+  const keepNumbers = /keep (?:the )?numbers/i.test(note) || !(/\d|\b(?:change|replace|different|new)\b.{0,25}\b(?:numbers|operands|calculation)\b/i.test(note));
+  // Keep the current data, including edits from earlier revisions. The note can change its nouns and wording.
+  for (let k = 0; k < which.length; k++) {
+    const slot = w.slots[which[k]], old = slot.planned;
+    const op = targets[k].package?.operation;
+    const operands = op && "operands" in op && op.operands.every(v => typeof v === "number") ? op.operands as number[] : null;
+    const numbers = operands && op?.kind === "subtract" ? [operands[0] - operands[1], operands[1]] : operands;
+    slot.planned = { use: keepNumbers ? numbers : null, spare: null, name: old?.name ?? "Mia", thing: old?.thing ?? "apples",
+      names: PEOPLE.filter(name => name !== input.book?.child), things: [...THINGS] };
+    delete slot.aim;
+  }
+  const currentQuestions = targets.map(q => ({ number: q.number, text: q.package?.text ?? null, data: workbookEditItem(q) }));
+  const writer = deps.ai;
+  deps = { ...deps, ai: { model: writer.model, json: (request, signal) => writer.json({ ...request,
+    system: `${request.system} For an edit, read currentQuestions. Keep each question's numbers, operation and data unless the comment explicitly asks to change them.`,
+    content: request.content.map(part => part.type === "text" ? { ...part, text: JSON.stringify({ ...JSON.parse(part.text), currentQuestions }) } : part),
+  }, signal) } };
+  const built: BuiltQuestion[] = [];
+  let examples: (QuestionPackage | null)[] = [];
+  const manual = change.items ?? (change.item !== undefined ? { [targets[0].number]: change.item } : {});
+  const aiWhich = which.filter((_, k) => !Object.hasOwn(manual, targets[k].number));
+  const result = aiWhich.length ? await writeSlots(input, deps, w, aiWhich, change.note, "workbook_page_redo",
+    change.question === null ? w.panels : [], null,
+    page.questions.filter((q) => !targets.includes(q)).flatMap((q) => q.package ? [q.package.text] : []), { skipSolve: true }) : null;
+  if (result) examples = result.examples.map((b) => {
+    if (b.check.status === "failed") throw new Error(b.check.reason);
+    return b.package;
+  });
+  for (let k = 0; k < targets.length; k++) {
+    const q = targets[k], slot = w.slots[which[k]];
+    if (!Object.hasOwn(manual, q.number)) { built.push(result!.built[aiWhich.indexOf(which[k])]); continue; }
+    const raw = manual[q.number] as { text?: unknown; easier?: { text?: unknown } };
+    const b = buildQuestion(raw, { id: q.package?.id ?? `${input.workbookId}:p${page.number}q${q.number}`,
+      workbookId: input.workbookId, page: page.number, question: q.number, level: input.plan.level,
+      skills: slot.part.skills, signs: levelSigns(input.curriculum, input.plan.level), story: !!slot.place && STORY_CHECK_PLACES.has(slot.place) });
+    if (b.package && typeof raw.text === "string") {
+      b.package.text = raw.text;
+      b.package.textSource = "human";
+      if (b.package.easierExample && typeof raw.easier?.text === "string") b.package.easierExample.text = raw.easier.text;
+      const codeCheck = checkQuestionPackage(b.package);
+      if (codeCheck.status !== "checked") throw new Error("The code cannot derive and check every answer from these fields.");
+      const problem = kindProblem(b.package, raw as Record<string, unknown>)
+        ?? (slot.place && STORY_CHECK_PLACES.has(slot.place) ? storyProblem(raw.text) : quantityStoryProblem(raw.text));
+      if (problem) b.check = { status: "failed", reason: problem };
+    }
+    built.push(b);
+  }
+  for (let k = 0; k < built.length; k++) {
+    const b = built[k], q = targets[k], slot = w.slots[which[k]];
+    if (b.check.status === "failed" || !b.package) throw new Error(b.check.status === "failed" ? b.check.reason : "The question could not be made.");
+    b.package = { ...b.package, id: q.package?.id ?? b.package.id,
+      ref: { source: "workbook", workbookId: input.workbookId, page: page.number, question: q.number } };
+    if (Object.hasOwn(manual, q.number) && b.check.status !== "checked") throw new Error("The code cannot derive every answer from these fields.");
+    if (!Object.hasOwn(manual, q.number) && keepNumbers && JSON.stringify(b.package.operation) !== JSON.stringify(q.package?.operation)) throw new Error("The rewrite changed the numbers. Try again and ask to keep the calculation.");
+    if (!Object.hasOwn(manual, q.number) && keepNumbers && !q.package?.operation && JSON.stringify(editNumbers([b.package.item?.checks, b.package.item?.figure])) !== JSON.stringify(editNumbers([q.package?.item?.checks, q.package?.item?.figure]))) throw new Error("The rewrite changed the numbers. Try again and ask to keep the calculation.");
+    const format = b.package.item?.format;
+    if (slot.place && STRICT_SLOTS.includes(slot.place) && format && !SLOT_FORMATS[slot.place]?.includes(format)) throw new Error("The question does not fit this part of the page.");
+    const problem = rangeProblem(b.package, input.curriculum, input.plan.level)
+      ?? (slot.place === "spot-the-error" ? samProblem(b.package, input.plan.level) : null);
+    if (problem) throw new Error(problem);
+  }
+  await Promise.all([...built, ...examples.filter((p): p is QuestionPackage => p !== null).map((p) => ({ package: p }))].map(async (b) => {
+    if (!b.package) return;
+    const pkg = b.package;
+    const dispatch = () => solveCheck(deps.solver, pkg, deps.solveTimeLimitMs ?? SOLVE_TIME_LIMIT_MS, deps.now);
+    const log = deps.editCall ? await deps.editCall("solve", pkg.id, pkg, dispatch) : await dispatch();
+    if (log) {
+      deps.onSolve?.(log);
+      if (log.verdict.status !== "agreed") throw new Error(solveReason(log.verdict));
+    }
+  }));
+  const questions = page.questions.map((q) => {
+    const k = targets.indexOf(q);
+    return k < 0 ? q : { ...q, package: built[k].package, check: built[k].check };
+  });
+  // Keep the original slot positions and panels on a question edit. Rebuild only its dependent picture and hints.
+  const content = structuredClone(page.content);
+  if (change.question === null) {
+    const made = contentOf(input, w, questions, examples);
+    if (!made || made.kind !== "day") throw new Error("The page could not be laid out.");
+    content.blocks = made.blocks;
+  } else {
+    const { pageFigure } = await import("@/lib/workbook-book");
+    for (const block of content.blocks) {
+      for (let k = 0; k < targets.length; k++) {
+        const number = targets[k].number;
+        const at = block.items.indexOf(number);
+        if (at < 0) continue;
+        const pkg = built[k].package!;
+        const figure = pageFigure(pkg.item?.figure);
+        if (!block.figures && figure) block.figures = block.items.map(() => null);
+        if (block.figures) block.figures[at] = figure;
+        if (block.hints) block.hints[at] = null;
+        if (block.missing) block.missing = block.missing.filter((m) => m.number !== number);
+        if (block.slot === "spot-the-error") {
+          const made = contentOf(input, w, questions);
+          if (made?.kind === "day") Object.assign(block, made.blocks.find((b) => b.slot === block.slot));
+        }
+      }
+    }
+  }
+  const next = { ...page, questions, content, fit: { status: "fits" } as PageFit };
+  const fit = await deps.fit.fits(fitPage(w, page.qrToken, questions, content), {
+    id: input.workbookId, childId: input.childId, number: input.number, levels: [input.plan.level], profileBuild: input.profileBuild,
+  });
+  if (!fit.ok) throw new Error(`The page does not fit: ${fit.problems.map((p) => p.reason).join(" ")}`);
+  return next;
 }

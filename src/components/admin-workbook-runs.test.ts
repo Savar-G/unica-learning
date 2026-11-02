@@ -12,7 +12,7 @@ import { summarizeAiCalls } from "@/lib/workbook-ai";
 
 // Navigation feedback is outside this server component's check and cost labels.
 vi.mock("server-only", () => ({}));
-vi.mock("next/navigation", () => ({ usePathname: () => "/admin/workbooks", useSearchParams: () => new URLSearchParams() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => undefined, push: () => undefined }), usePathname: () => "/admin/workbooks", useSearchParams: () => new URLSearchParams() }));
 
 // FIXTURE_START: copied into a temporary local route for the browser check.
 export function runDetail(state: "agreed" | "disagreed" | "failed" | "not-checked"): RunDetail {
@@ -54,7 +54,7 @@ export function runDetail(state: "agreed" | "disagreed" | "failed" | "not-checke
     audit: [{ id: 1, at, actor_email: null, action: "draft-stored", detail: { pages: 1, rendered: false, renderProblems: 1, ignored_private_key: "private-value" } }],
     solves: state === "not-checked" ? [] : [solve],
     aiCalls: summarizeAiCalls([]),
-    approved: null,
+    approved: null, comments: [], editBatch: null,
   };
 }
 // FIXTURE_END

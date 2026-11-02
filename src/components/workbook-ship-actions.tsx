@@ -19,7 +19,7 @@ export function ApproveDraft({ runId, revision, workbookPath, child }: { runId: 
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   async function approve() {
-    if (busy || !window.confirm(`Approve this version of ${child}'s workbook for print? It is stored as the workbook to print, and this draft can no longer be approved again.`)) return;
+    if (busy || !window.confirm(`Approve this version of ${child}'s workbook for print? It is stored as the workbook to print, and any later edit needs approval again.`)) return;
     setBusy(true);
     setErrors([]);
     try {

@@ -56,6 +56,8 @@ const note = (e: unknown) => message(e).slice(0, 300);
 export interface FallbackOptions {
   /** Which provider goes first. */
   primary: AiProvider;
+  /** Edit batches own retries in their durable ledger. */
+  singleDispatch?: boolean;
   /** The subscription client; null where there is none (the server). */
   subscription: AiClient | null;
   /** Makes the API client for one call, reporting that call's cost; null with no API key. */
@@ -129,7 +131,7 @@ export function fallbackAiClient(o: FallbackOptions): AiClient {
           await o.onExclude?.(provider, note(error));
         }
         await o.onCall?.(entry(down ? "unavailable" : "failed", signal.aborted ? "time is up" : note(error)));
-        if (!down) throw error;
+        if (!down || o.singleDispatch) throw error;
         if (last) {
           const other = provider === "subscription" ? "the API (no API key, or it is off for this run)" : "the subscription (none here, or it is off for this run)";
           throw new Error(`${message(error)}; no fallback: ${other}`);
