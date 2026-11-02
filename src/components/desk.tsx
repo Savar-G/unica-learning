@@ -146,7 +146,7 @@ export function Desk(props: DeskProps) {
           </dl>
         </header>
 
-        <div ref={talk} className="desk-talk" aria-live="polite">
+        {chat.usage?.left !== 0 && <div ref={talk} className="desk-talk" aria-live="polite">
           {props.notice && <p className="desk-event warn">{props.notice}</p>}
           {ready?.fromQr && <p className="desk-event"><Icon name="qr" size={15} />Opened from Workbook {ready.book.number} · QR code</p>}
           {props.problem ? (
@@ -158,7 +158,7 @@ export function Desk(props: DeskProps) {
           {chat.chat?.transcript.map((line, i) => <p key={`${chat.chat!.id}-${i}`} className={`desk-bubble${line.speaker === "child" ? " desk-child-bubble" : ""}`}><span className="sr-only">{line.speaker === "child" ? "You" : "Maya"}: </span>{line.text}</p>)}
           {!!chat.chat?.hint && <p className="desk-event">Hint {chat.chat.hint} of 3</p>}
           {!!chat.chat?.batches.length && <button className="desk-pick" type="button" onClick={() => document.getElementById("chat-board")?.scrollIntoView({ behavior: still ? "instant" : "smooth", block: "center" })}>Show me on the board</button>}
-        </div>
+        </div>}
 
         <footer className="desk-say">
           {ready && chat.usage?.left !== 0 && (
@@ -176,11 +176,11 @@ export function Desk(props: DeskProps) {
       </section>
 
       <div className="desk-main">
-        <div className="desk-modes" role="group" aria-label="How Maya helps">
+        {chat.usage?.left !== 0 && <div className="desk-modes" role="group" aria-label="How Maya helps">
           <button type="button" disabled={!props.chatUsage} aria-pressed={!!props.chatUsage}><Icon name="chat" size={18} />Chat</button>
           <button type="button" disabled><Icon name="phone" size={18} />Call</button>
           <button type="button" disabled aria-pressed={!props.chatUsage}><Icon name="board" size={18} />Call + board</button>
-        </div>
+        </div>}
 
         {chat.chat ? <ChatBoard chat={chat.chat} still={still} /> : <OurBoard
           key={`${ready?.book.id ?? "none"}:${ready?.page.number ?? 0}:${card?.number ?? "none"}`}

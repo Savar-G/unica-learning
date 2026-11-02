@@ -155,7 +155,7 @@ export function ChatBoard({ chat, still }: { chat: ChatView; still: boolean }) {
     <header><h2 id="desk-board-title">Our board</h2><p>Maya draws here</p></header>
     <div className="desk-canvas">
       <MayaBoard steps={playback.steps} viewBox={playback.viewBox} instant={still} label="Maya's drawing for your question" />
-      <p className="desk-caption">Follow each step. Then write on your paper.</p>
     </div>
+    <p className="desk-caption">Follow each step. Then write on your paper.</p>
   </section>;
 }

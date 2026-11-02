@@ -5,12 +5,15 @@ npm run build: exit 0, including TypeScript checks. Temporary fixture route remo
 npm run voice:test: exit 0, 3 files and 29 tests passed.
 npm run voice:typecheck: exit 0.
 Database: new additive child-wide recovery migration applied live. Hosted tests proved original ID/text/revision recovery across calls and family days, one charge, exclusive leases, stale writer refusal, ownership checks and server-only RPC grants. The earlier family RLS and client-write denial probes still apply. No email was sent.
-Browser: Aside CLI checked 1440x900, 768x1024 and 390x844. All ten screenshots were refreshed and inspected. The cap hides the composer, restart button and question picker. Parent home keeps the exact reset time and date under Maya this week.
+Browser: Aside CLI checked 1440x900, 768x1024 and 390x844. This follow-up refreshed seven chat and cap screenshots. The three Parent home screenshots are unchanged. At the cap, the chat area has no buttons, inputs, conversation or tabs. It keeps the exact Maya cap line and all 40 saved board strokes. Parent home keeps its prior exact reset time and date under Maya this week.
 Board: the new grade 2 regression first failed because the target moved to a second board page. The final regression proves the complete example and target fit on one page, in separate groups with a gap. Call playback and admin replay have equal geometry. The public text matrix also passes.
 Recovery UI: tests exercise refused revisions, unknown results, admitted retries, temporary read failures, capped backoff, enabled manual retry, initial resume failure, question changes and unmounts. They do not prove browser network infrastructure.
 Grade: the shared call interface sends a 25-word model limit for grade 2 on start and resume. PR #443 supplies the word-count enforcement.
 Cap: a test fixture seeded 59 admissions. The real browser sent message 60. A server request to start a new chat at 60 returned cap, used=60, left=0 and no chat.
 Deletion: the synthetic family and private image were removed. Parent, child, workbook, call and message counts are all zero.
-Voice: the fake-provider suite and typecheck passed. No real voice call was made.
+Voice: the fake-provider suite and typecheck passed on 4a3ec04. This follow-up does not change voice or teaching code. No real voice call was made.
 Paid AI calls: none. Production chat switch: not enabled.
-Savar approved the four requested changes. The refreshed evidence is ready for his final look review before merge. Independent review of this head remains.
+Savar approved the PR look with two final changes. This follow-up hides all chat controls at the cap and puts the board note below the canvas at every width. Independent review of this head remains.
+
+Look follow-up: npm test exit 0, 249 files and 12247 tests passed. ESLint exit 0. The first build found a stale generated development type for the removed test fixture route. The generated development type cache was cleared before the final build. The final build passed with exit 0, including TypeScript checks.
+Board note: static flow below the canvas. Aside measured an 8-pixel gap at all three widths. No overlap with the SVG and no horizontal overflow. See look-followup.json.
