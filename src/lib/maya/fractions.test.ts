@@ -237,6 +237,31 @@ describe("fraction expression and explanation boundaries", () => {
     expect(c.propose({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(frac(1, 2), "result", "right")] } }).refusal).not.toBeNull();
     expect(c.s.solved).toBeNull();
   });
+
+  it.each([
+    "1/2 +", "a half +", "two fourths +", "1/2 + because 3 - 1 is 2", "1/2 plus", "plus 1/2", "+ 1/2",
+    "a half times", "1/2 + 1/4", "1/2 x",
+  ])("does not score an unfinished calculation (R409-R7-1): %s", (said) => {
+    const value = said.startsWith("two fourths") ? frac(2, 4) : frac(1, 2);
+    const read = readAnswer(said, READ);
+    expect(read.final === null || !read.sure).toBe(true);
+    const pkg = pkgOf("3/4 - 1/4 = ?", sub(frac(3, 4), frac(1, 4)), sub(frac(3, 5), frac(1, 5)));
+    const proposal = { version: 2, act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(value, "result", "right")] } };
+    const c = call(pkg, said);
+    expect(c.propose(proposal).refusal).not.toBeNull();
+    expect(c.s.solved).toBeNull();
+    const fallback = call(pkg, said);
+    for (const offer of fallbacks(fallback.s, [proposal, proposal])) {
+      fallback.send({ type: "proposal", at: 2, proposal: offer });
+      expect(fallback.s.solved).toBeNull();
+    }
+  });
+
+  // A restated question ("3/4 - 1/4 is 1/2", "3/4 take away 1/4 is 1/2") asks for confirmation, as "-" did before.
+  it.each(["1/2 because 3 plus 1 is 4", "a half because 3 + 1 is 4"])(
+    "still reads the answer before arithmetic in its explanation: %s", (said) => {
+      expect(readAnswer(said, READ)).toMatchObject({ final: frac(1, 2), sure: true });
+    });
 });
 
 describe("right answers follow the question's wording (#407, research C38)", () => {

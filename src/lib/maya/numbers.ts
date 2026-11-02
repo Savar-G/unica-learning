@@ -396,7 +396,12 @@ export function writtenFractions(text: string): string {
     const expression = words.slice(expressionFrom, expressionTo + 1);
     const ofPhrase = expression.some((w) => w.t === "of");
     const signed = expression.some((w) => /^(?:minus|negative|dash|[+\-])$/.test(w.t));
-    if (unconsumedNumber || ofPhrase || signed) {
+    // An operation word is an expression boundary, so it is not in `expression`. One that touches the expression
+    // ("1/2 +", "plus 1/2") makes it an unfinished calculation, which Maya must confirm (R409-R7-1). An operation
+    // after a result or explanation word ("is", "because") does not touch it.
+    const operand = [expressionFrom - 1, expressionTo + 1]
+      .some((at) => at >= 0 && at < words.length && OPERATION.test(words[at].t));
+    if (unconsumedNumber || ofPhrase || signed || operand) {
       span.from = span.to = span.anchor;
       span.text = UNREAD_MARK;
     }
