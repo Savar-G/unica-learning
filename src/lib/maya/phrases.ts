@@ -376,6 +376,7 @@ function openerProblem(sentence: string, names: ReadonlySet<string>): string | n
 export function freeTalkProblem(text: string, childName: string | null = null, childTexts: readonly string[] = []): string | null {
   const t = text.trim();
   if (t === "" || t.length > FREE_TALK_LIMITS.chars) return "length";
+  if (/\b(?:grammar|grammatical|ungrammatical|correct English|proper English|should (?:say|speak))\b/i.test(t)) return "grammar correction";
   const plain = plainLanguageProblem(t);
   if (plain !== null) return plain;
   if (!/[.?!]["')\]]*$/.test(t)) return "not whole sentences";
