@@ -19,7 +19,7 @@ export interface RawCard {
   saved_in_stripe_only?: boolean;
 }
 export interface RawWaitlist { id: string; created_at: string; parent_id: string; child_id: string; province: Province }
-export interface RawEmail { id: string; created_at: string; parent_id: string; child_id: string | null; assessment_id: string | null; kind: "continue" | "come_back" | "start" | "start_followup" | "unsubscribe" | "maya_daily" | "maya_unsubscribe"; status: "claimed" | "sent" | "failed" | null; attempts: number; sent_at: string | null; error: string | null; clicks: number; first_clicked_at: string | null }
+export interface RawEmail { id: string; created_at: string; parent_id: string; child_id: string | null; assessment_id: string | null; kind: "continue" | "come_back" | "start" | "start_followup" | "unsubscribe" | "maya_daily" | "maya_weekly" | "maya_unsubscribe"; status: "claimed" | "sent" | "failed" | null; attempts: number; sent_at: string | null; error: string | null; clicks: number; first_clicked_at: string | null }
 /** A Stripe subscription of a saved card's customer. Times are ISO. `amount`: the price per unit, in cents. */
 export interface RawSubscription {
   id: string;
@@ -109,7 +109,7 @@ export function monthlyAmount(s: RawSubscription): number {
 
 // Emails
 
-export type EmailKind = "start" | "start_followup" | "continue" | "come_back" | "report" | "alert" | "unsubscribe" | "maya_daily" | "maya_unsubscribe";
+export type EmailKind = "start" | "start_followup" | "continue" | "come_back" | "report" | "alert" | "unsubscribe" | "maya_daily" | "maya_weekly" | "maya_unsubscribe";
 export interface EmailKindInfo { kind: EmailKind; label: string; subject: string; to: string; trigger: string }
 /** Every email the site logs. The subjects follow reminder-email.ts and report-email.ts. */
 export const EMAIL_KINDS: readonly EmailKindInfo[] = [
@@ -120,7 +120,8 @@ export const EMAIL_KINDS: readonly EmailKindInfo[] = [
   { kind: "report", label: "Report email", subject: "{child}'s math report is ready", to: "Parent", trigger: "Test finished, report built" },
   { kind: "alert", label: "Report alert", subject: "Test finished: {child}, grade {grade}, working at ...", to: "You", trigger: "Test finished, report built" },
   { kind: "unsubscribe", label: "Unsubscribe", subject: "No email: the parent turned reminders off", to: "-", trigger: "Parent clicked unsubscribe" },
-  { kind: "maya_daily", label: "Daily Maya email", subject: "{child} talked with Maya on ...", to: "Parent", trigger: "The morning after a day with Maya calls" },
+  { kind: "maya_daily", label: "Daily Maya email (retired)", subject: "{child} talked with Maya on ...", to: "Parent", trigger: "Replaced by the weekly Maya email" },
+  { kind: "maya_weekly", label: "Weekly Maya email", subject: "Maya this week: {children}", to: "Parent", trigger: "Monday at 7 a.m. family time, after a week with calls" },
   { kind: "maya_unsubscribe", label: "Maya unsubscribe", subject: "No email: the parent turned Maya emails off", to: "-", trigger: "Parent clicked unsubscribe in a Maya email" },
 ];
 /** An unsubscribe row: no email went. */
@@ -144,8 +145,8 @@ export function deliveryLine(e: EmailEvent): { text: string; bad: boolean } | nu
 }
 /** "Clicked 2 times" for an email the parent clicked (D-105), else null. */
 export const clicksText = (e: EmailEvent) => (e.clicks ? `Clicked ${e.clicks.count === 1 ? "once" : `${e.clicks.count} times`}` : null);
-/** The emails a parent can click: every one to the parent with a button (not the alert to Savar, not an unsubscribe, not the daily Maya email, which has no button). */
-export const clickable = (e: EmailEvent) => e.kind !== "alert" && e.kind !== "maya_daily" && !isUnsubscribe(e.kind);
+/** The emails a parent can click: every one to the parent with a button (not the alert to Savar, not an unsubscribe, not the Maya recap, which has no button). */
+export const clickable = (e: EmailEvent) => e.kind !== "alert" && e.kind !== "maya_daily" && e.kind !== "maya_weekly" && !isUnsubscribe(e.kind);
 /** The dot of an email in the lists: failed when it did not reach the parent. */
 export const emailDot = (e: EmailEvent) => (emailFailed(e) ? "failed" : e.status);
 

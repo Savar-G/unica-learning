@@ -23,7 +23,7 @@ const OFF = (
 const MAYA_OFF = (
   <>
     <h1>Maya emails are off.</h1>
-    <p className="lead">We will not send you more daily emails about your child&apos;s calls with Maya. Other emails from us do not change.</p>
+    <p className="lead">We will not send you more weekly emails about your child&apos;s calls with Maya. Other emails from us do not change.</p>
   </>
 );
 const MAYA_FAILED = (
@@ -62,7 +62,7 @@ export default async function UnsubscribePage({ searchParams }: PageProps<"/unsu
         <Unsubscribe token={token} done={MAYA_OFF} failed={MAYA_FAILED} working="Turning off Maya emails…" />
         <noscript>
           <h1>Turn off Maya emails.</h1>
-          <p className="lead">We will not send you more daily emails about your child&apos;s calls with Maya. Other emails from us do not change.</p>
+          <p className="lead">We will not send you more weekly emails about your child&apos;s calls with Maya. Other emails from us do not change.</p>
           <form method="post" action="/api/unsubscribe">
             <input type="hidden" name="t" value={token} />
             <input type="hidden" name="page" value="1" />

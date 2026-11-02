@@ -1,16 +1,7 @@
-// The daily Maya email (#332, spec #297): one email per parent on each day with Maya calls, grouped across the
-// family's children, with the parent note of each call (src/lib/maya-call-note.ts) and what was said. No-call days send
-// nothing. The email for a day goes the next morning (from SEND_HOUR in the family's time zone), so it holds every call
-// of that day. The reminder job (/api/reminders, every 15 minutes) runs it after the reminders.
-//
-// Each email goes through the parent email delivery module (src/lib/email-delivery.ts) with the send key "parent P, day
-// D", claimed in public.email_log (kind maya_daily, one row per parent per day). Refused: a later run tries again, up to
-// MAX_SEND_ATTEMPTS; unknown: the claim stays and nothing sends it again. Parent email design A (D-122), from
-// EMAIL_FROM, with the CASL footer and an unsubscribe link that turns off only this email (kind maya_unsubscribe).
-//
-// The child's first name is put into the note here, in the parent's own email; nothing here asks an AI.
-// Seams: the store (Supabase: src/lib/maya-daily-email-store.ts; memory: src/lib/maya-daily-email-memory.ts), the mail
-// transport and the clock (`now`). Pure otherwise.
+// The weekly Maya family recap (#332, spec #297). Monday at 7 a.m. family time, for the previous Monday to Sunday.
+// No calls means no email. Claims in email_log use (parent, week_start). Refused sends can retry three times;
+// unknown sends stay claimed. The shared reminder job runs this through sendEmailOnce after the reminders.
+// The CASL footer and Maya unsubscribe are separate from the reminders. No AI call is made here.
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { emailDocument, emailFooterText, emailSignatureText } from "@/lib/email-brand";
 import { sendEmailOnce, type EmailMessage, type MailTransport, type SendLedger } from "@/lib/email-delivery";
@@ -19,14 +10,17 @@ import { familyZone } from "@/lib/reminder-email";
 import { canGetEmail } from "@/lib/reminder-schedule";
 import { MAX_SEND_ATTEMPTS, type LogStatus } from "@/lib/reminders";
 
-/** The hour (family time) from which the email for the day before goes. */
+/** Monday release hour in the family time zone. */
 export const SEND_HOUR = 7;
-/** Days with calls older than this many days are never emailed (a job that was down does not send old news). */
-export const LOOKBACK_DAYS = 3;
+/** A recap expires seven local days after its week ends, at the next Monday midnight. */
+export const LATE_DAYS = 7;
+/** Load the whole week plus its late-send window. The store adds time-zone and DST slack. */
+export const LOOKBACK_DAYS = 7 + LATE_DAYS;
+export const MAX_EMAIL_CALLS = 10;
 /** Emails one run sends at most; the next run sends the rest. */
 export const RUN_LIMIT = 20;
 
-export interface DailyParent {
+export interface WeeklyParent {
   id: string;
   name: string;
   email: string;
@@ -34,39 +28,39 @@ export interface DailyParent {
   postal: string | null;
 }
 
-export interface DailyChild {
+export interface WeeklyChild {
   id: string;
   parentId: string;
   firstName: string;
 }
 
 /** A row of public.email_log that this email reads. */
-export interface DailyLogEntry {
+export interface WeeklyLogEntry {
   id: string;
-  kind: "maya_daily" | "maya_unsubscribe";
+  kind: "maya_weekly" | "maya_unsubscribe";
   parentId: string;
-  /** The family's local date of the calls (YYYY-MM-DD); null for an unsubscribe. */
-  day: string | null;
+  /** The Monday date of the calls' week in family time (YYYY-MM-DD); null for an unsubscribe. */
+  weekStart: string | null;
   status: LogStatus | null;
   attempts: number;
 }
 
 /** What the decision reads. The store may pass more than it needs; every rule is checked here. */
-export interface DailyState {
-  parents: readonly DailyParent[];
-  children: readonly DailyChild[];
+export interface WeeklyState {
+  parents: readonly WeeklyParent[];
+  children: readonly WeeklyChild[];
   /** The notes of the calls that ended in the last LOOKBACK_DAYS days or so. */
   notes: readonly CallNote[];
-  log: readonly DailyLogEntry[];
+  log: readonly WeeklyLogEntry[];
 }
 
-/** One email to send: the send key (parent, day) and the calls in it. */
-export interface DueDaily {
+/** One email to send: the send key (parent, week start) and the calls in it. */
+export interface DueWeekly {
   parentId: string;
-  /** The family's local date of the calls, YYYY-MM-DD. */
-  day: string;
+  /** The Monday date of the calls' week in family time, YYYY-MM-DD. */
+  weekStart: string;
   zone: string;
-  /** The calls in the email, in the order they ended. */
+  /** The calls in the email, newest first. */
   callIds: string[];
   /** A send that was refused before: the log row to take again. */
   retry: { logId: string; attempts: number } | null;
@@ -94,44 +88,51 @@ function addDays(day: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** The Monday date of the week containing a local YYYY-MM-DD date. */
+export function weekStartFor(day: string): string {
+  const weekday = new Date(`${day}T12:00:00Z`).getUTCDay();
+  return addDays(day, -((weekday + 6) % 7));
+}
+
 // ---------- Who gets which email ----------
 
-/**
- * The emails to send at `now`, oldest day first: one per parent per day with calls, once the day is over and it is
- * SEND_HOUR or later the next day in the family's time zone. None for a parent who turned the email off, for an address
- * that cannot get email, or for a day already sent or held by a run.
- */
-export function dueDailyEmails(state: DailyState, now: number): DueDaily[] {
+/** One recap per parent and completed week, from Monday 7 a.m. until the next Monday midnight. */
+export function dueWeeklyEmails(state: WeeklyState, now: number): DueWeekly[] {
   const off = new Set(state.log.filter((e) => e.kind === "maya_unsubscribe").map((e) => e.parentId));
-  const due: DueDaily[] = [];
+  const due: DueWeekly[] = [];
   for (const parent of state.parents) {
     if (off.has(parent.id) || !canGetEmail(parent.email)) continue;
     const zone = familyZone(parent.postal);
     const today = localDay(now, zone);
-    const yesterday = addDays(today, -1);
-    const earliest = addDays(today, -LOOKBACK_DAYS);
-    const byDay = new Map<string, CallNote[]>();
+    const hour = localHour(now, zone);
+    const byWeek = new Map<string, Map<string, CallNote>>();
     for (const n of state.notes) {
       if (n.parentId !== parent.id) continue;
-      const day = localDay(Date.parse(n.callEndedAt), zone);
-      const over = day < yesterday || (day === yesterday && localHour(now, zone) >= SEND_HOUR);
-      if (over && day >= earliest) byDay.set(day, [...(byDay.get(day) ?? []), n]);
+      const weekStart = weekStartFor(localDay(Date.parse(n.callEndedAt), zone));
+      const release = addDays(weekStart, 7);
+      const expires = addDays(release, LATE_DAYS);
+      // Compare local calendar dates and hours, not 168 elapsed hours, across DST changes.
+      const ready = today > release || (today === release && hour >= SEND_HOUR);
+      const expired = today >= expires;
+      if (!ready || expired) continue;
+      if (!byWeek.has(weekStart)) byWeek.set(weekStart, new Map());
+      byWeek.get(weekStart)!.set(n.callId, n);
     }
-    for (const [day, notes] of byDay) {
-      const callIds = [...notes].sort(byEnd).map((n) => n.callId);
-      const logged = state.log.find((e) => e.kind === "maya_daily" && e.parentId === parent.id && e.day === day);
-      if (!logged) due.push({ parentId: parent.id, day, zone, callIds, retry: null });
-      else if (logged.status === "failed" && logged.attempts < MAX_SEND_ATTEMPTS) due.push({ parentId: parent.id, day, zone, callIds, retry: { logId: logged.id, attempts: logged.attempts } });
+    for (const [weekStart, notes] of byWeek) {
+      const callIds = [...notes.values()].sort(byEnd).map((n) => n.callId);
+      const logged = state.log.find((e) => e.kind === "maya_weekly" && e.parentId === parent.id && e.weekStart === weekStart);
+      if (!logged) due.push({ parentId: parent.id, weekStart, zone, callIds, retry: null });
+      else if (logged.status === "failed" && logged.attempts < MAX_SEND_ATTEMPTS) due.push({ parentId: parent.id, weekStart, zone, callIds, retry: { logId: logged.id, attempts: logged.attempts } });
     }
   }
-  return due.sort((a, b) => a.day.localeCompare(b.day) || a.parentId.localeCompare(b.parentId));
+  return due.sort((a, b) => a.weekStart.localeCompare(b.weekStart) || a.parentId.localeCompare(b.parentId));
 }
 
-const byEnd = (a: CallNote, b: CallNote) => a.callEndedAt.localeCompare(b.callEndedAt) || a.callId.localeCompare(b.callId);
+const byEnd = (a: CallNote, b: CallNote) => Date.parse(b.callEndedAt) - Date.parse(a.callEndedAt) || a.callId.localeCompare(b.callId);
 
 // ---------- The email ----------
 
-export interface DailyEmailCall {
+export interface WeeklyEmailCall {
   endedAt: string;
   minutes: number;
   /** The note's sentences, with the child's name in. */
@@ -139,13 +140,16 @@ export interface DailyEmailCall {
   transcript: { speaker: string; text: string; note: boolean }[];
 }
 
-export interface DailyEmailInput {
+export interface WeeklyEmailInput {
   parentName: string;
-  day: string;
+  weekStart: string;
   zone: string;
-  /** Each child with calls that day, in the order of their first call. */
-  children: { name: string; calls: DailyEmailCall[] }[];
+  /** Each child with calls that week, in the order of their newest call. */
+  children: { name: string; calls: WeeklyEmailCall[] }[];
   unsubscribeUrl: string;
+  /** Calls beyond the newest MAX_EMAIL_CALLS, across the whole family. */
+  omittedCalls: number;
+  childNames?: string[];
 }
 
 const ENTITY: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
@@ -158,24 +162,23 @@ const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
 const joinNames = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
 /** "Sunday, November 1". */
 const dayLabel = (day: string) => new Intl.DateTimeFormat("en-CA", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" }).format(Date.parse(`${day}T12:00:00Z`));
-const weekday = (day: string) => new Intl.DateTimeFormat("en-CA", { weekday: "long", timeZone: "UTC" }).format(Date.parse(`${day}T12:00:00Z`));
 /** "4:12 p.m." in the family's time zone. */
 const clock = (iso: string, zone: string) => new Intl.DateTimeFormat("en-CA", { hour: "numeric", minute: "2-digit", timeZone: zone }).format(Date.parse(iso));
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
-/** The daily Maya email: subject, text and HTML, with the CASL footer and the unsubscribe link. */
-export function dailyEmail(e: DailyEmailInput): { subject: string; text: string; html: string } {
-  const names = e.children.map((c) => c.name);
+/** The weekly Maya email: subject, text and HTML, with the CASL footer and the unsubscribe link. */
+export function weeklyEmail(e: WeeklyEmailInput): { subject: string; text: string; html: string } {
+  const names = e.childNames ?? e.children.map((c) => c.name);
   const calls = e.children.reduce((n, c) => n + c.calls.length, 0);
-  const subject = `${joinNames(names)} talked with Maya on ${weekday(e.day)}`;
-  const intro = e.children.length === 1
-    ? `${names[0]} had ${plural(calls, "call")} with Maya, our AI teaching assistant, on ${dayLabel(e.day)}. Here is a short note about ${calls === 1 ? "the call" : "each call"}, and what was said.`
-    : `${joinNames(names)} had calls with Maya, our AI teaching assistant, on ${dayLabel(e.day)}. Here is a short note about each call, and what was said.`;
-  const preview = e.children.length === 1 ? `${names[0]} had ${plural(calls, "call")} with Maya.` : `${joinNames(names)} had calls with Maya.`;
-  const why = "You get this email on days when your child has a call with Maya. We send one email a day, and none on days without calls.";
+  const subject = `Maya this week: ${joinNames(names)}`;
+  const period = `${dayLabel(e.weekStart)} to ${dayLabel(addDays(e.weekStart, 6))}`;
+  const intro = `${joinNames(names)} had ${plural(calls + e.omittedCalls, "call")} with Maya, our AI teaching assistant, from ${period}. Here is a short note about each call, and what was said.`;
+  const more = e.omittedCalls ? `There ${e.omittedCalls === 1 ? "was" : "were"} ${plural(e.omittedCalls, "more call")} this week. This email shows the newest ${MAX_EMAIL_CALLS}.` : "";
+  const preview = `${joinNames(names)} had ${plural(calls + e.omittedCalls, "call")} with Maya this week.`;
+  const why = "You get one Maya email each week when your family has calls with Maya. We send none for weeks without calls.";
   const footer = { why, unsubscribe: { url: e.unsubscribeUrl, label: "Turn off these Maya emails" } };
   const several = e.children.length > 1;
-  const callLabel = (c: DailyEmailCall, i: number, of: number) => `${of > 1 ? `Call ${i + 1}, ended` : "Ended"} at ${clock(c.endedAt, e.zone)}, ${plural(c.minutes, "minute")}`;
+  const callLabel = (c: WeeklyEmailCall, i: number, of: number) => `${of > 1 ? `Call ${i + 1}, ended` : "Ended"} on ${dayLabel(localDay(Date.parse(c.endedAt), e.zone))} at ${clock(c.endedAt, e.zone)}, ${plural(c.minutes, "minute")}`;
 
   const textCalls = e.children.flatMap((child) => [
     ...(several ? [child.name.toUpperCase()] : []),
@@ -186,10 +189,10 @@ export function dailyEmail(e: DailyEmailInput): { subject: string; text: string;
       ...c.transcript.map((l) => (l.note ? `(${l.text})` : `${l.speaker}: ${l.text}`)),
     ].join("\n")),
   ]);
-  const text = [`Hi ${firstName(e.parentName)},`, intro, ...textCalls, emailSignatureText(), emailFooterText(footer)].join("\n\n");
+  const text = [`Hi ${firstName(e.parentName)},`, intro, ...(more ? [more] : []), ...textCalls, emailSignatureText(), emailFooterText(footer)].join("\n\n");
 
   const p = (body: string, style = "") => `<p style="margin:0 0 14px;${style}">${body}</p>`;
-  const line = (l: DailyEmailCall["transcript"][number]) => l.note
+  const line = (l: WeeklyEmailCall["transcript"][number]) => l.note
     ? `<p style="margin:0 0 6px;font-size:14px;color:${INK_2};font-style:italic">${esc(l.text)}</p>`
     : `<p style="margin:0 0 6px;font-size:14px"><strong style="font-weight:600">${esc(l.speaker)}:</strong> ${esc(l.text)}</p>`;
   const htmlCalls = e.children.map((child) => `
@@ -206,6 +209,7 @@ ${c.transcript.length ? `${p("What was said", `margin:0 0 8px;font-size:14px;fon
 <tr><td style="padding:0 24px 4px">
 ${p(`Hi ${esc(firstName(e.parentName))},`)}
 ${p(esc(intro))}
+${more ? p(esc(more)) : ""}
 </td></tr>
 ${htmlCalls}
 ` });
@@ -213,7 +217,7 @@ ${htmlCalls}
 }
 
 /** Where the email's unsubscribe links go: the page, and the RFC 8058 one-click address for mail apps. */
-export const dailyLinks = (origin: string, token: string) => ({
+export const weeklyLinks = (origin: string, token: string) => ({
   unsubscribeUrl: `${origin}/unsubscribe?t=${token}`,
   oneClickUrl: `${origin}/api/unsubscribe?t=${token}`,
 });
@@ -222,12 +226,15 @@ export const dailyLinks = (origin: string, token: string) => ({
  * The email for `due`, to the parent from EMAIL_FROM, with `token` in its unsubscribe link and in the one-click headers.
  * Null when the state lacks the parent, a child, or a note.
  */
-export function dailyMessage(due: DueDaily, token: string, state: DailyState, origin: string): EmailMessage | null {
+export function weeklyMessage(due: DueWeekly, token: string, state: WeeklyState, origin: string): EmailMessage | null {
   const parent = state.parents.find((p) => p.id === due.parentId);
   const notes = due.callIds.map((id) => state.notes.find((n) => n.callId === id));
   if (!parent || notes.some((n) => !n)) return null;
-  const children: (DailyEmailInput["children"][number] & { id: string })[] = [];
-  for (const note of notes as CallNote[]) {
+  const children: (WeeklyEmailInput["children"][number] & { id: string })[] = [];
+  // TODO screen C (#331/#403): once the parent call-detail route exists, replace the transcript
+  // below with a link to that route for note.callId. Keep the parent note. Do not link to an absent page.
+  const shown = [...notes as CallNote[]].sort(byEnd).slice(0, MAX_EMAIL_CALLS);
+  for (const note of shown) {
     const child = state.children.find((c) => c.id === note.childId && c.parentId === parent.id);
     if (!child) return null;
     const name = child.firstName.trim() || "Your child";
@@ -240,8 +247,16 @@ export function dailyMessage(due: DueDaily, token: string, state: DailyState, or
       transcript: noteTranscriptLines(note, name).map((l) => ({ speaker: l.speaker === "maya" ? "Maya" : name, text: l.text, note: l.speaker === "note" })),
     });
   }
-  const links = dailyLinks(origin, token);
-  const email = dailyEmail({ parentName: parent.name, day: due.day, zone: due.zone, children, unsubscribeUrl: links.unsubscribeUrl });
+  const childNames: string[] = [];
+  const childIds = new Set<string>();
+  for (const note of notes as CallNote[]) {
+    const child = state.children.find((c) => c.id === note.childId && c.parentId === parent.id);
+    if (!child) return null;
+    if (!childIds.has(child.id)) childNames.push(child.firstName.trim() || "Your child");
+    childIds.add(child.id);
+  }
+  const links = weeklyLinks(origin, token);
+  const email = weeklyEmail({ parentName: parent.name, weekStart: due.weekStart, zone: due.zone, children, childNames, omittedCalls: notes.length - shown.length, unsubscribeUrl: links.unsubscribeUrl });
   return {
     sender: { to: "parent" },
     to: parent.email,
@@ -256,13 +271,13 @@ export function dailyMessage(due: DueDaily, token: string, state: DailyState, or
 // ---------- The run ----------
 
 /** The store the run uses. The real one keeps its claims in public.email_log, whose unique index is the guard. */
-export interface DailyStore {
-  load(now: number): Promise<DailyState>;
-  /** The send ledger, keyed by (parent, day). A claim stores the unsubscribe token hash in its own write. */
-  ledger: SendLedger<DueDaily, string>;
+export interface WeeklyStore {
+  load(now: number): Promise<WeeklyState>;
+  /** The send ledger, keyed by (parent, week start). A claim stores the unsubscribe token hash in its own write. */
+  ledger: SendLedger<DueWeekly, string>;
 }
 
-export interface DailyRunResult {
+export interface WeeklyRunResult {
   due: number;
   sent: number;
   /** Refused, or the email could not be built: a later run tries again, up to MAX_SEND_ATTEMPTS. */
@@ -274,19 +289,19 @@ export interface DailyRunResult {
 }
 
 /** One run at `now`: decides, then sends each email once through the delivery module. */
-export async function runDailyEmails(
-  store: DailyStore,
+export async function runWeeklyEmails(
+  store: WeeklyStore,
   now: number,
   deps: { origin: string; newToken(): { token: string; hash: string }; transport?: MailTransport; limit?: number },
-): Promise<DailyRunResult> {
+): Promise<WeeklyRunResult> {
   const state = await store.load(now);
-  const due = dueDailyEmails(state, now);
-  const result: DailyRunResult = { due: due.length, sent: 0, failed: 0, busy: 0, unknown: 0 };
+  const due = dueWeeklyEmails(state, now);
+  const result: WeeklyRunResult = { due: due.length, sent: 0, failed: 0, busy: 0, unknown: 0 };
   for (const d of due.slice(0, deps.limit ?? RUN_LIMIT)) {
     const { token, hash } = deps.newToken();
-    const message = dailyMessage(d, token, state, deps.origin);
+    const message = weeklyMessage(d, token, state, deps.origin);
     if (!message) {
-      console.error("[maya daily] email not built: parent, child or note not loaded", d.day);
+      console.error("[maya weekly] email not built: parent, child or note not loaded", d.weekStart);
       result.failed++;
       continue;
     }
@@ -295,7 +310,7 @@ export async function runDailyEmails(
     else if (outcome.status === "refused") result.failed++;
     else if (outcome.status === "busy") result.busy++;
     else {
-      console.error("[maya daily] delivery unknown; the row stays claimed", d.day, outcome.error);
+      console.error("[maya weekly] delivery unknown; the row stays claimed", d.weekStart, outcome.error);
       result.unknown++;
     }
   }

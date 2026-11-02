@@ -117,7 +117,7 @@ export function DashboardView({ d, ctx, progress }: { d: Dashboard; ctx: Ctx; pr
                   <td><b>{e.label}</b></td><td className="dash-muted">{e.subject}</td><td>{e.to}</td><td>{e.trigger}</td>
                   <td className="dash-num">{e.sentInRange}</td><td className="dash-num">{e.sent}</td>
                   <td className="dash-num">{e.failed > 0 ? <b className="dash-bad-text">{e.failed}</b> : 0}</td>
-                  <td className="dash-num">{e.kind === "alert" || e.kind === "maya_daily" || isUnsubscribe(e.kind) || e.sent === 0 ? "-" : <>{e.clicked}<span className="dash-sub">{Math.round((100 * e.clicked) / e.sent)}% of sent</span></>}</td>
+                  <td className="dash-num">{e.kind === "alert" || e.kind === "maya_daily" || e.kind === "maya_weekly" || isUnsubscribe(e.kind) || e.sent === 0 ? "-" : <>{e.clicked}<span className="dash-sub">{Math.round((100 * e.clicked) / e.sent)}% of sent</span></>}</td>
                   <td className="dash-nowrap">{e.last ? <>{at(e.last)}<span className="dash-sub">{ago(e.last, d.now)}</span></> : "-"}</td>
                 </tr>
               ))}

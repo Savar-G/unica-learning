@@ -1,18 +1,18 @@
 import { createHash } from "node:crypto";
 import type { EmailCopy } from "@/lib/email-delivery";
 import type { CallNote } from "@/lib/maya-call-note";
-import type { DailyChild, DailyLogEntry, DailyParent, DailyStore, DueDaily } from "@/lib/maya-daily-email";
+import type { WeeklyChild, WeeklyLogEntry, WeeklyParent, WeeklyStore, DueWeekly } from "@/lib/maya-weekly-email";
 import { MAX_SEND_ATTEMPTS } from "@/lib/reminders";
 
-// The daily Maya email's store (src/lib/maya-daily-email.ts, #332) in memory, for tests. It keeps the database's rules
-// (migration add_maya_daily_email): one maya_daily row per parent per day, so a second claim is refused; a retry takes a
+// The weekly Maya email's store (src/lib/maya-weekly-email.ts, #332) in memory, for tests. It keeps the database's rules
+// (migration add_maya_weekly_email): one maya_weekly row per parent per week, so a second claim is refused; a retry takes a
 // failed row back only once and only before MAX_SEND_ATTEMPTS; refused marks the row failed, unknown keeps it claimed.
-// `unsubscribe(token)` does what the unsubscribe link does (src/lib/reminder-store.ts): the token of a daily Maya
+// `unsubscribe(token)` does what the unsubscribe link does (src/lib/reminder-store.ts): the token of a weekly Maya
 // email turns off only that email.
 
-type Row = DailyLogEntry & { hash: string | null; emailId: string | null; error: string | null };
+type Row = WeeklyLogEntry & { hash: string | null; emailId: string | null; error: string | null };
 
-export function memoryDailyStore(data: { parents: DailyParent[]; children: DailyChild[]; notes: CallNote[] }): DailyStore & {
+export function memoryWeeklyStore(data: { parents: WeeklyParent[]; children: WeeklyChild[]; notes: CallNote[] }): WeeklyStore & {
   rows(): Row[];
   copies: { logId: string; parentId: string; copy: EmailCopy }[];
   unsubscribe(token: string): "unsubscribed" | "unknown";
@@ -28,20 +28,20 @@ export function memoryDailyStore(data: { parents: DailyParent[]; children: Daily
         parents: data.parents.filter((p) => parentIds.has(p.id)).map(copy),
         children: data.children.map(copy),
         notes: data.notes.map(copy),
-        log: rows.filter((r) => parentIds.has(r.parentId)).map(({ id, kind, parentId, day, status, attempts }) => ({ id, kind, parentId, day, status, attempts })),
+        log: rows.filter((r) => parentIds.has(r.parentId)).map(({ id, kind, parentId, weekStart, status, attempts }) => ({ id, kind, parentId, weekStart, status, attempts })),
       };
     },
     ledger: {
-      async claim(d: DueDaily, { unsubscribe_hash }) {
+      async claim(d: DueWeekly, { unsubscribe_hash }) {
         if (d.retry) {
           const r = row(d.retry.logId);
           if (!r || r.status !== "failed" || r.attempts !== d.retry.attempts || r.attempts >= MAX_SEND_ATTEMPTS) return null;
           Object.assign(r, { status: "claimed", attempts: r.attempts + 1, hash: unsubscribe_hash, error: null });
           return r.id;
         }
-        if (rows.some((r) => r.kind === "maya_daily" && r.parentId === d.parentId && r.day === d.day)) return null;
+        if (rows.some((r) => r.kind === "maya_weekly" && r.parentId === d.parentId && r.weekStart === d.weekStart)) return null;
         const id = `log-${rows.length + 1}`;
-        rows.push({ id, kind: "maya_daily", parentId: d.parentId, day: d.day, status: "claimed", attempts: 1, hash: unsubscribe_hash, emailId: null, error: null });
+        rows.push({ id, kind: "maya_weekly", parentId: d.parentId, weekStart: d.weekStart, status: "claimed", attempts: 1, hash: unsubscribe_hash, emailId: null, error: null });
         return id;
       },
       async sent(id, emailId) {
@@ -66,7 +66,7 @@ export function memoryDailyStore(data: { parents: DailyParent[]; children: Daily
       const r = rows.find((x) => x.hash === hash);
       if (!r) return "unknown";
       if (!rows.some((x) => x.kind === "maya_unsubscribe" && x.parentId === r.parentId)) {
-        rows.push({ id: `log-${rows.length + 1}`, kind: "maya_unsubscribe", parentId: r.parentId, day: null, status: null, attempts: 0, hash: null, emailId: null, error: null });
+        rows.push({ id: `log-${rows.length + 1}`, kind: "maya_unsubscribe", parentId: r.parentId, weekStart: null, status: null, attempts: 0, hash: null, emailId: null, error: null });
       }
       return "unsubscribed";
     },
