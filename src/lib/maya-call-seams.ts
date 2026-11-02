@@ -12,6 +12,7 @@ import { learningEventStore } from "@/lib/learning-events-store";
 import { mayaCalls, FAKE_MODEL_ID, type CallSeams, type MayaCalls } from "@/lib/maya-call";
 import { callAlerts } from "@/lib/maya-call-alert";
 import { mayaAlertLedger } from "@/lib/maya-call-alert-store";
+import { writeNoteAfterCall } from "@/lib/maya-call-note-server";
 import { mayaCallStore, mayaConnectionLog } from "@/lib/maya-call-store";
 import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
@@ -21,7 +22,7 @@ import { workbookStore } from "@/lib/workbook-store";
 
 // The seams of Maya's calls (src/lib/maya-call.ts) on a Supabase client with the secret key: the call store, the
 // connection log of voice calls, the wording history, the learning events, the profile rebuild, the model and the
-// free-talk review and the internal safety alerts (#333). The web server (src/lib/maya-call-server.ts) and Maya's voice worker (worker/maya-voice) both use
+// free-talk review, the internal safety alerts (#333) and the parent's call note (#331). The web server (src/lib/maya-call-server.ts) and Maya's voice worker (worker/maya-voice) both use
 // it, so a voice call is stored exactly as a text call is. No Next.js import: the worker runs outside Next.
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -83,6 +84,7 @@ export function callSeams(db: SupabaseClient<Database>, options: { env?: Env; or
     model: (id) => callModel(id, env),
     reviewer: (modelId) => callReviewer(modelId, env),
     isTestFamily: (parentId) => isTestFamily(db, parentId),
+    note: writeNoteAfterCall(db),
     clock: () => Date.now(),
     newId: () => randomUUID(),
     seed: () => randomInt(0, 2 ** 32),

@@ -1,0 +1,49 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>r331 C · Latest note on Parent home, the rest on a calls page</title><link rel="stylesheet" href="shared.css"><script src="data.js"></script>
+<style>
+.latest { background: var(--card); border-radius: 10px; padding: 20px 22px; position: relative; margin-top: 4px; }
+.latest::before { content: ""; position: absolute; top: 0; left: 0; width: 12px; height: 12px; background: var(--sky); border-radius: 10px 0 4px 0; }
+.latest-head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 10px; }
+.links { display: flex; flex-wrap: wrap; gap: 10px 24px; margin-top: 14px; font-weight: 500; font-size: 15px; }
+.links a { text-underline-offset: 3px; }
+.back { font-size: 15px; display: inline-block; margin-bottom: 28px; }
+.page h1 { font-size: 48px; }
+.summary { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; border: 1px solid var(--line); border-radius: 12px; padding: 24px 28px; margin: 8px 0 36px; }
+.facts dt { font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); }
+.facts dd { margin: 2px 0 12px; }
+@media (max-width: 700px) { .summary { grid-template-columns: 1fr; padding: 18px; gap: 6px; } .page h1 { font-size: 36px; } }
+</style></head><body>
+<header class="nav"><span class="brand">Unica Learning</span><a href="#">Back to home</a></header>
+<main id="m"></main>
+<script>
+const c = CALLS[0];
+const m = document.getElementById("m");
+if (location.hash === "#call") {
+  m.className = "page";
+  m.innerHTML = `<a class="back" href="#">← Back to your account</a>
+  <div class="kicker">Call with Maya · ${c.when}</div>
+  <h1>Leah · page ${c.page}, question ${c.number}</h1>
+  <div class="summary">
+    <div>${noteHtml(c)}</div>
+    <dl class="facts"><dt>Question</dt><dd><span class="q">${c.question}</span></dd><dt>Result</dt><dd><span class="chip ${c.finished}">${c.chip}</span></dd><dt>Call length</dt><dd>${c.minutes} minutes</dd></dl>
+  </div>
+  <h2 style="margin-bottom:18px">What Leah and Maya said</h2>${txHtml()}
+  <p class="footnote">Maya is an AI teaching assistant. We keep the words of the call, never a recording.</p>
+  <div style="display:flex;justify-content:space-between;margin-top:32px;font-weight:500;font-size:15px"><a href="#">← Newer call</a><a href="#">Older call →</a></div>`;
+} else {
+  m.innerHTML = `<div class="kicker">Your account</div><h1>Hi, Priya.</h1>
+  <div class="child">
+    <div class="child-top"><div><h2>Leah</h2><div class="muted small">Grade 3 · British Columbia</div></div><a class="btn" href="#">See the report →</a></div>
+    <hr class="rule"><h3>Workbook 2</h3>
+    <p class="muted small" style="margin:4px 0 16px">On the desk, Leah sees this workbook. Leaving the desk needs your PIN.</p>
+    <a class="btn dark" href="#">Open the desk →</a>
+    <hr class="rule">
+    <h3 style="margin-bottom:10px">Latest call with Maya</h3>
+    <div class="latest">
+      <div class="latest-head"><span style="font-weight:500">${c.when}</span><span class="chip ${c.finished}">${c.chip}</span><span class="small muted">Page ${c.page}, question ${c.number} · ${c.minutes} min</span></div>
+      ${noteHtml(c)}
+      <div class="links"><a href="#call">Read the call</a><a href="#">All calls (3)</a></div>
+    </div>
+  </div>`;
+}
+</script></body></html>
