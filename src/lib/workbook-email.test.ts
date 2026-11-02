@@ -33,7 +33,7 @@ describe("workbook emails", () => {
     expect(message.text).toContain("when it is on its way");
     expect(message.text).toContain("local hand delivery");
     expect(message.text).toContain("Nothing was charged");
-    expect(message.text).toContain("free first month starts when your first workbook ships");
+    expect(message.text).toContain("free first month starts when your first workbook arrives at your home");
     expect(message.text).not.toContain("Tracking number:");
   });
   it("includes mail tracking in text and HTML", () => {

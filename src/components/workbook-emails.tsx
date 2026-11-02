@@ -70,7 +70,7 @@ export function WorkbookEmails({ cardId, parentName, parentEmail, childName, rec
     <p className="adm-note">The welcome email sends after the card is confirmed. For an earlier signup, you can send it here.</p>
     <button className="btn adm-btn" type="button" disabled={!canWelcome || busy || uncertain} onClick={() => { setPreview("welcome"); setNotice(""); }}>Preview welcome email</button>
     <form onSubmit={(event) => { event.preventDefault(); if (delivery && Number.isInteger(number) && number >= 1 && number <= 10000) setPreview("dispatch"); }}>
-      <p className="adm-note">Send a delivery email only after the workbook leaves you. This button sends the email. Use &quot;Workbook shipped: start plan&quot; separately for the first workbook.</p>
+      <p className="adm-note">Send a delivery email only after the workbook leaves you. This button sends the email. After the first workbook arrives at the family&apos;s home, use &quot;Workbook delivered: start free month&quot; separately.</p>
       <label>Workbook number<input type="number" min={1} max={10000} required value={number} onChange={(e) => { setNumber(Number(e.target.value)); changed(); }} /></label>
       <label>Delivery method<select value={method} onChange={(e) => { setMethod(e.target.value); changed(); }}>
         <option value="mail">Mail with tracking</option><option value="hand">Hand delivery</option>

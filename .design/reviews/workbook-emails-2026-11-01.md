@@ -43,3 +43,11 @@ Weighted score: 76.5/100. Recommendation: ready for code review after final lint
 Final gate: ESLint over src and the production build passed after the timestamp correction and removal of stale development types. The temporary route is absent from the production build.
 
 Stored text logs omit trailing whitespace. The original failure log remains at /tmp/unica-workbook-email-deletion-red.log in the development workspace.
+
+## Home delivery correction
+
+The free month starts only after an admin confirms that the first workbook reached the family's home. The button, confirmation, API, Stripe metadata and current customer text use that rule. Card setup and delivery emails do not start a subscription. The old bodyless shipment request is rejected.
+
+An independent read-only review of this correction against 5029b6b80340f907483fe287a9dc745c9d316d66 returned PASS with no P1 or P2 findings. Its fresh checks used fake dependencies. Nine invalid confirmations made no provider calls. Twelve rejected API requests made no Stripe calls. A confirmed delivery produced a 30-day trial with stable retry parameters and delivery metadata. Cancel made no request. Confirm sent deliveryConfirmed true. The reviewer did not repeat the full test suite or test hosted billing.
+
+The root agent's focused run passed 122 tests in nine files. Two guard assertions failed before the correction. Aside showed the actual button and home-delivery confirmation in a temporary local fixture. Cancel produced zero requests. The fixture was removed. The screenshot is ../evidence/home-delivery/admin-button.png. No customer billing request or email was sent during these checks.

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { firstChargeAt, planPrice, planTerms } from "@/lib/subscription-plan";
 
-describe("the plan a saved card starts when the first workbook ships (D-139)", () => {
+describe("the plan a saved card starts when the first workbook arrives at your home (D-139)", () => {
   it("charges the full CAD 79.99 a month after a free first month of 30 days", () => {
     expect(planTerms(79.99)).toEqual({ monthlyCents: 7999, trialDays: 30 });
   });

@@ -8,7 +8,7 @@ In **Admin > Cards and waitlist**, open **Workbook emails** on the child's saved
 2. After a workbook leaves you, enter its workbook number. Keep the same number for the same workbook.
 3. Select **Mail with tracking** or **Hand delivery**. Mail requires a carrier and tracking number. An HTTPS tracking link is optional. Hand delivery has no tracking fields.
 4. Select **Preview delivery email**. Review the recipient and details. Select **Send delivery email**.
-5. For the first workbook, use the existing **Workbook shipped: start plan** action separately. Sending an email does not start a subscription or change workbook status.
+5. Only after the first workbook arrives at the family's home, use **Workbook delivered: start free month** and confirm delivery. The full 30-day free month begins at that confirmation. Sending an email does not start a subscription or change workbook status.
 
 The delivery email says that the workbook is on its way. It does not claim that it has arrived. A separate workbook-ready email is unnecessary. The existing promised reminder before the first charge remains separate.
 

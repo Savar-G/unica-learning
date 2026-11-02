@@ -32,11 +32,11 @@ export interface CardSetup {
 
 /** What the parent agrees to on Stripe's page. Stripe requires the amount, timing and how to cancel. */
 export const cardTerms = (price: number) =>
-  `Nothing is charged today. Your first month is free, starting when your first workbook ships. On day 30 we charge CAD ${cad(price)}, then CAD ${cad(price)} every month until you cancel. We email you a reminder 7 days before the first charge, with a link to manage or cancel your plan. Cancel before day 30 and you pay nothing.`;
+  `Nothing is charged today. Your first month is free, starting when your first workbook arrives at your home. On day 30 we charge CAD ${cad(price)}, then CAD ${cad(price)} every month until you cancel. We email you a reminder 7 days before the first charge, with a link to manage or cancel your plan. Cancel before day 30 and you pay nothing.`;
 
 /**
  * Creates the Stripe customer and a hosted Checkout page in setup mode: it saves the card and charges nothing.
- * When the first workbook ships, start a CAD `price` monthly subscription on this customer with the free first month
+ * When the first workbook arrives at your home, start a CAD `price` monthly subscription on this customer with the free first month
  * (a 30-day trial, TRIAL_DAYS; D-053, D-139). Stripe emails the reminder 7 days before the trial ends, with the link to manage or cancel the plan (Billing settings, 2026-10-24).
  * Returns the customer and Checkout page URL so the booking can durably release its hold.
  */
@@ -162,7 +162,7 @@ export function stripeCustomerUrl(customer: string): string | null {
 
 export type StartPlanOutcome =
   | { ok: true; subscription: string; firstChargeAt: string }
-  | { ok: false; error: "no_card" | "already" };
+  | { ok: false; error: "no_card" | "already" | "not_delivered" };
 
 /** True when Stripe has no object with this id (a 404), so the caller creates it. */
 const missing = (e: unknown) => e instanceof Stripe.errors.StripeError && e.statusCode === 404;
@@ -178,13 +178,14 @@ async function planProduct(s: Stripe) {
 }
 
 /**
- * D-139: starts the paid plan of a saved card when the first workbook ships. A monthly subscription at the card's
+ * D-139: starts the paid plan of a saved card when the first workbook arrives at your home. A monthly subscription at the card's
  * price on the child's customer, charged to the saved card: the free first month first (a 30-day trial, nothing
  * charged), then the full price on day 30 and each month after until the parent cancels. Refuses when the
  * customer already has a subscription that is not over, or no saved card. The card setup's id keys the create, so a
  * double click starts one subscription.
  */
-export async function startPlan(s: Stripe, p: { cardSetup: string; customer: string; price: number }, now = new Date()): Promise<StartPlanOutcome> {
+export async function startPlan(s: Stripe, p: { cardSetup: string; customer: string; price: number; deliveryConfirmed: boolean }, now = new Date()): Promise<StartPlanOutcome> {
+  if (p.deliveryConfirmed !== true) return { ok: false, error: "not_delivered" };
   const current = await s.subscriptions.list({ customer: p.customer, status: "all", limit: 20 });
   if (current.data.some((x) => x.status !== "canceled" && x.status !== "incomplete_expired")) return { ok: false, error: "already" };
   const cards = await s.paymentMethods.list({ customer: p.customer, type: "card", limit: 1 });
@@ -197,7 +198,7 @@ export async function startPlan(s: Stripe, p: { cardSetup: string; customer: str
     items: [{ price_data: { currency: "cad", product: PLAN_PRODUCT.id, unit_amount: terms.monthlyCents, recurring: { interval: "month" } } }],
     trial_period_days: terms.trialDays,
     default_payment_method: card,
-    metadata: { card_setup: p.cardSetup, price: cad(p.price) },
+    metadata: { card_setup: p.cardSetup, price: cad(p.price), trial_start_reason: "workbook_delivered", delivery_confirmed: "true" },
   }, { idempotencyKey: `start-plan-${p.cardSetup}` });
   const end = created.trial_end ? new Date(created.trial_end * 1000) : firstChargeAt(now, terms.trialDays);
   return { ok: true, subscription: created.id, firstChargeAt: end.toISOString() };
