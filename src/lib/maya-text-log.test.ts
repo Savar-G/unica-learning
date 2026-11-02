@@ -373,18 +373,78 @@ async function seedRun(seed: number, counts: Map<string, number>) {
   expect(log.some((e) => e.kind === "response")).toBe(true);
 }
 
+// Fill the real public event history, without changing a saved record or a fold field.
+async function historyLimitSeed(seed: number, counts: Map<string, number>) {
+  let now = T0, armed = false, received = false;
+  const severity = (seed + Math.floor(seed / 100)) % 2 ? "immediate" : "concern";
+  const base = ruleMayaModel(), oracle = new InputOracle();
+  const model = { ...base, propose: async (...args: Parameters<typeof base.propose>) => {
+    if (!armed) return base.propose(...args);
+    received = true;
+    return safety(severity);
+  } };
+  const options = { callId: `history-${seed}`, package: pkg, model, clock: () => now, random: seed };
+  let s = createTextSession(options);
+  oracle.add({ kind: "start" }); await s.start();
+  const remaining = async () => {
+    const saved = await s.saved();
+    return 262144 - (saved.checkpoint?.historyBytes ?? 0) - saved.log!.reduce((bytes, e) => bytes + Buffer.byteLength(JSON.stringify(e)), 0);
+  };
+  while (await remaining() > 430 && !s.ended) {
+    now += 250;
+    await s.partial("I think we need to add the tens and the ones");
+    oracle.add({ kind: "partial" });
+  }
+  expect(s.ended).toBe(false);
+  const before = await remaining();
+  armed = true;
+  oracle.add({ kind: "child", text: "Someone hurts me right now." });
+  oracle.add({ kind: "safety", severity, at: now });
+  const response = s.child("Someone hurts me right now.");
+  let receipt = await s.saved();
+  for (let i = 0; i < 200 && !receipt.log?.some(e => e.kind === "response"); i++) receipt = await s.saved();
+  // The current response, rather than the child input or request, crosses the budget.
+  const responseIndex = receipt.log!.findLastIndex(e => e.kind === "response");
+  expect(responseIndex).toBeGreaterThanOrEqual(0);
+  const newEvents = receipt.log!.slice(receipt.log!.findLastIndex(e => e.kind === "input" && e.event.type === "child_turn"));
+  const prefixBytes = newEvents.filter(e => e.kind !== "response").reduce((bytes, e) => bytes + Buffer.byteLength(JSON.stringify(e)), 0);
+  expect(before).toBeGreaterThan(prefixBytes);
+  expect(await remaining()).toBeLessThan(0);
+  expect(received).toBe(true);
+  expect(s.session.safety.flagged, "received safety must survive the history limit").toBe(true);
+  const out = await response;
+  expect(out.say).toEqual([SAFETY_GUIDANCE[severity]]);
+  expect(out.board).toEqual([]);
+  expect(out.ended).toMatchObject({ reason: "safety", safetyFlag: true, safetySeverity: severity });
+  expect(out.safetyMessage).toBe(SAFETY_GUIDANCE[severity]);
+  oracle.assert(s.trace()); expect(checkTrace(s.trace())).toMatchObject({ ok: true });
+  // Resume independently at receipt with a failed provider. The guidance must still be delivered once.
+  let resumedCalls = 0;
+  s = createTextSession({ ...options, resume: json(receipt), model: { ...base, propose: async () => { resumedCalls++; throw new Error("offline"); } } });
+  expect((await s.start()).say).toEqual([SAFETY_GUIDANCE[severity]]);
+  expect((await s.start()).say).toEqual([]);
+  expect(s.session.outcome).toEqual(out.ended);
+  expect(resumedCalls).toBe(0);
+  oracle.assert(s.trace()); expect(checkTrace(s.trace())).toMatchObject({ ok: true });
+  counts.set("R424-25", (counts.get("R424-25") ?? 0) + 1);
+}
+
 describe("event log interleavings", () => {
   it.each(Array.from({ length: 20 }, (_, i) => i * 100 + 1))("100 deterministic seeds from %i", async (first) => {
     const counts = new Map<string, number>();
+    await historyLimitSeed(first, counts);
     for (let seed = first; seed < first + 100; seed++) {
       try { await seedRun(seed, counts); await round7Seed(seed, counts); } catch (error) { throw new Error(`seed ${seed}`, { cause: error }); }
     }
-    for (const key of ["save_resume", "provider_failure", "partial_tick", "R424-13", "R424-14", "R424-15", "R424-17", "escalation", "safety_content_partial", "repair_partial_terminal", "R424-16-causal", "R424-18", "R424-19", "R424-20", "R424-21", "round7_save_resume"]) expect(counts.get(key), key).toBeGreaterThan(0);
+    for (const key of ["R424-25", "save_resume", "provider_failure", "partial_tick", "R424-13", "R424-14", "R424-15", "R424-17", "escalation", "safety_content_partial", "repair_partial_terminal", "R424-16-causal", "R424-18", "R424-19", "R424-20", "R424-21", "round7_save_resume"]) expect(counts.get(key), key).toBeGreaterThan(0);
     process.stdout.write(JSON.stringify({ first, seeds: 100, counts: Object.fromEntries(counts) }) + "\n");
   }, 60000);
 });
 
 describe("reported public-interface reproductions", () => {
+  it.each([0, 1])("R424-25: safety at the history limit, seed %i", async (seed) => {
+    await historyLimitSeed(seed, new Map());
+  });
   it.each([
     { finding: "R424-13: technical failure retains pending safety speech", seed: 8 },
     { finding: "R424-14: writing completion follows the pending correct answer", seed: 1 },
