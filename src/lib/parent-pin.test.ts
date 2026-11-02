@@ -87,11 +87,30 @@ describe.each(stores)("the PIN module over the %s store", (_, open) => {
     });
 
     it("lets only one of two changes made with the same current PIN replace it", async () => {
-      const { pins } = setup();
-      await pins.set(PARENT, "4821");
+      const { store, now } = setup();
+      await parentPins(open(store), { now }).set(PARENT, "4821");
+      const inner = open(store);
+      let arrivals = 0;
+      let release!: () => void;
+      const ready = new Promise<void>((resolve) => { release = resolve; });
+      const pins = parentPins({
+        ...inner,
+        async replace(...args) {
+          // Both requests must verify the old PIN before either can replace its hash.
+          arrivals++;
+          if (arrivals === 2) release();
+          await ready;
+          return inner.replace(...args);
+        },
+      }, { now });
       const results = await Promise.all([pins.set(PARENT, "1111", "4821"), pins.set(PARENT, "2222", "4821")]);
+      expect(arrivals).toBe(2);
       expect(results.filter((r) => r.ok)).toHaveLength(1);
       expect(results.filter((r) => !r.ok)).toEqual([{ ok: false, error: "current_required" }]);
+      const kept = results[0].ok ? "1111" : "2222";
+      const refused = results[0].ok ? "2222" : "1111";
+      expect(await pins.check(PARENT, kept)).toEqual({ ok: true });
+      expect(await pins.check(PARENT, refused)).toMatchObject({ ok: false, error: "wrong" });
       expect(await pins.check(PARENT, "4821")).toMatchObject({ ok: false, error: "wrong" });
     });
 

@@ -54,6 +54,7 @@ export interface TextSessionOptions {
   history?: WordingHistory;
   childName?: string | null;
   channel?: "chat";
+  grade?: number;
   runner?: MayaTrace["runner"];
   /**
    * D-197: read the model's own warm words in turns with no math line (off by default). Each is said only when it
@@ -181,7 +182,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   if (resume?.v === 6 && (!resume.initial || !Array.isArray(resume.log))) throw new Error("maya text: the saved event log is missing");
   if (resume && (![1, 6].includes(resume.v) || (resume.v === 6 ? resume.initial!.session.callId : resume.session.callId) !== options.callId)) throw new Error("maya text: the saved session is not this call's");
   const initial: TextLogInitial = resume?.v === 6 && resume.initial ? structuredClone(resume.initial) : {
-    session: resume ? structuredClone(resume.session) : createSession({ callId: options.callId, channel: options.channel, package: options.package, random: options.random, history: options.history, childName: options.childName, freeTalk: options.freeTalk === true, limitMs: options.limitMs }),
+    session: resume ? structuredClone(resume.session) : createSession({ callId: options.callId, channel: options.channel, package: options.package, random: options.random, grade: options.grade, history: options.history, childName: options.childName, freeTalk: options.freeTalk === true, limitMs: options.limitMs }),
     endedAt: resume?.endedAt ?? null, turns: resume?.turns ?? [], board: resume?.board ?? [],
     approved: resume?.approved, obligations: resume?.obligations, childState: resume?.childState, problems: resume?.problems,
   };
@@ -232,6 +233,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const input = modelInput(folded.session, repair);
     const at = Math.max(clock(), now());
     append({ kind: "request", at, requestId, source });
+    if (folded.session.outcome || folded.request?.id !== requestId) return;
     // The handler logs even a late response from a provider that ignores abort.
     const response = Promise.resolve().then(() => model.propose(input, controller.signal)).then((proposal) => {
       append({ kind: "response", at: now(), requestId, proposal, ms: now() - at });

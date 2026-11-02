@@ -323,6 +323,7 @@ export interface StartInput {
   parentId: string;
   childId: string;
   childName: string | null;
+  grade?: number;
   package: unknown;
   startedBy: string | null;
   /** The call's id when the caller made it first: a minutes grant names the call before it exists (#330). */
@@ -566,9 +567,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   }
 
   /** A call's text session. Admin test calls have free talk on (D-197), with the model's review; a resumed call keeps its flag. */
-  function textSession(record: Pick<CallRecord, "id"> & { kind?: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number): TextSession {
+  function textSession(record: Pick<CallRecord, "id"> & { kind?: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number): TextSession {
     return createTextSession({
-      callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs,
+      callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs, grade,
       freeTalk: record.kind === "chat" ? false : freeTalkFor("admin_test"), reviewer: seams.reviewer?.(model.id) ?? null,
     });
   }
@@ -731,7 +732,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     const model = seams.model(null);
     if (!model) return { ok: false, error: "model_unavailable" };
     const id = input.id ?? seams.newId();
-    const session = textSession({ id, kind: input.kind }, pkg, model, mode === "voice" ? null : input.childName, undefined, seams.seed(), await readHistory(input.childId), input.limitMs);
+    const session = textSession({ id, kind: input.kind }, pkg, model, mode === "voice" ? null : input.childName, undefined, seams.seed(), await readHistory(input.childId), input.limitMs, input.grade);
     const empty = session.trace();
     const record: CallRecord = {
       id,

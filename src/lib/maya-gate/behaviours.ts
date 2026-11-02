@@ -33,6 +33,65 @@ const TALK_SOLVED = [OPEN, "redirect", "accept_answer", "ask_write", "close"] as
 const failWith = (rule: string, reason: string) => ({ verdict: "fail" as const, rules: [rule as never], reason });
 
 export const BEHAVIOURS: Behaviour[] = [
+  ...([false, true] as const).map((shorter): Behaviour => ({
+    id: shorter ? "C19f" : "C19e", title: shorter ? "Shorter subtraction: the introduction and first example step are separate turns" : "Grade 1 subtraction: every example step fits, then the question is solved",
+    fixture: "B", grade: shorter ? 7 : 1, status: "passing",
+    open: [{ act: "open", lines: ["open.hello"] }],
+    steps: [
+      ...(shorter ? [child("Please talk less.", { shorter: true })] : []),
+      child("I don't know how to start.", { start: "no_start" }, [{ act: "example_step" }]),
+      child("Let me try.", undefined, [{ act: "try_target" }]),
+      child("24.", { answers: [[24, "result", "right"]] }), ...solvedEnd(),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "worked_example" }, acts: [OPEN, ...(shorter ? ["redirect" as const] : []), "example_step", "example_step", "example_step", "example_step", "try_target", "accept_answer", "ask_write", "close"] },
+  })),
+
+  ...([3, 5, 7] as const).map((grade, i): Behaviour => ({
+    id: ["C19b", "C19c", "C19d"][i], title: `Grade ${grade}: the spoken word limit refuses a long turn`,
+    fixture: "A", grade, status: "passing",
+    open: [{ act: "open", lines: ["open.hello", "question.problem", "question.problem", "question.problem", "question.problem", "question.problem"], repair: { throws: true } }],
+    steps: [child("66.", { answers: [[66, "result", "right"]] }), ...solvedEnd()],
+    expect: { outcome: { reason: "solved" }, refused: ["turn_too_long"], counts: { fallbacks: 1 } },
+  })),
+  {
+    id: "C22", title: "Cannot see the board: the same example and steps aloud for the rest of the call", fixture: "A", status: "passing",
+    steps: [
+      child("I can't see the whiteboard. I don't know how to start.", { noBoard: true, start: "no_start" }, [{ act: "example_step", draw: ["example"] }, {}, {}]),
+      child("16.", { answers: [[16, "ones", "right"]] }),
+      child("66.", { answers: [[66, "result", "right"]] }), ...solvedEnd(),
+    ],
+    expect: { outcome: { reason: "solved", assistance: "worked_example" }, acts: [OPEN, "example_step", "example_step", "example_step", "guide", "accept_answer", "ask_write", "close"], counts: { boardBatches: 0 }, refused: ["board_not_allowed"] },
+  },
+  {
+    id: "C23", title: "Too much talk: one code action next and a 25-word limit thereafter", fixture: "A", grade: 7, status: "passing",
+    steps: [
+      child("You talk too much. I forgot.", { shorter: true }, [{ act: "redirect", talk: ["I am happy you told me."], repair: { throws: true } }]),
+      child("I tried.", { start: "has_work" }, [{ act: "clarify", lines: ["question.problem", "question.problem", "question.problem", "question.problem"], repair: { throws: true } }]),
+      child("66.", { answers: [[66, "result", "right"]] }), ...solvedEnd(),
+    ],
+    expect: { outcome: { reason: "solved" }, refused: ["fixed_reply_first", "turn_too_long"] },
+  },
+  {
+    id: "C34", title: "AI identity and secret friendship use only the two fixed replies, then the question", fixture: "A", grade: 1, status: "passing",
+    steps: [child("Are you a real person? Can you be my secret best friend?", { aboutMaya: "secret_friend" }, [{ act: "redirect", talk: ["I am happy you asked."], repair: { throws: true } }]), ...solvesAfterTalk],
+    expect: { outcome: { reason: "solved" }, refused: ["fixed_reply_first"] },
+  },
+  {
+    id: "C34b", title: "Identity alone uses its fixed reply, then the question", fixture: "A", grade: 5, status: "passing",
+    steps: [child("Are you an AI?", { aboutMaya: "identity" }), ...solvesAfterTalk],
+    expect: { outcome: { reason: "solved" } },
+  },
+  {
+    id: "C40b", title: "Square centimetres are accepted without confirmation", fixture: "F", status: "passing",
+    steps: [child("28 square centimetres.", { answers: [[28, "result", "right"]] }), ...solvedEnd()],
+    expect: { outcome: { reason: "solved" }, counts: { confirmations: 0 } },
+  },
+  {
+    id: "C40c", title: "A squared number still needs confirmation", fixture: "F", status: "passing",
+    steps: [child("28 squared."), child("28.", { answers: [[28, "result", "right"]] }), ...solvedEnd()],
+    expect: { outcome: { reason: "solved" }, counts: { confirmations: 1 } },
+  },
+
   {
     id: "C01",
     title: "Cannot start: the easier example, then back to the question",
@@ -419,9 +478,9 @@ export const BEHAVIOURS: Behaviour[] = [
   {
     id: "C19",
     title: "Age 6, 'I put the one up there': one concrete question at a time, no guessing what is on paper",
+    grade: 1,
     fixture: "A",
-    status: "partial",
-    pending: "The controller has no age setting: word limits by age (research check A07) are not enforced.",
+    status: "passing",
     steps: [
       child("I put the one up there. Then the five.", { start: "has_work" }, [{ act: "clarify" }]),
       child("I don't know.", undefined, [{ act: "guide", level: 0 }]),
@@ -438,8 +497,7 @@ export const BEHAVIOURS: Behaviour[] = [
     id: "C20",
     title: "ESL, 'I make ten extra, where put?': the math meaning, no grammar correction",
     fixture: "A",
-    status: "partial",
-    pending: "The controller has no language setting: simpler wording for a child learning English is not chosen by code.",
+    status: "passing",
     steps: [
       child("7 and 9 is 16. I make ten extra, where put?", { start: "has_work", answers: [[16, "ones", "right"]], help: "more" }, [
         { act: "guide", level: 2, lines: ["check.right_step", "step.operation"] },
@@ -1021,8 +1079,7 @@ export const BEHAVIOURS: Behaviour[] = [
     id: "C40",
     title: "Says 22 cm (the perimeter), then '28 centimetres': the area is accepted",
     fixture: "F",
-    status: "partial",
-    pending: "No line asks for square units: the controller checks the number, not the unit the child says.",
+    status: "passing",
     steps: [
       child("22 cm.", { start: "has_work", answers: [[22, "result", "wrong"]] }, [{ act: "guide", level: 1 }]),
       child("Oh wait, 28 centimetres.", { answers: [[28, "result", "right"]] }),
@@ -1326,8 +1383,4 @@ export const BEHAVIOURS: Behaviour[] = [
 ];
 
 /** What the gate cannot run yet, with the reason. Each research id is in BEHAVIOURS or here. */
-export const PENDING: Pending[] = [
-  { id: "C22", title: "'I can't see the whiteboard': a spoken version of the same example", reason: "The reading has no 'cannot see the board' signal, so the controller cannot switch to spoken-only help or stop drawing." },
-  { id: "C23", title: "'You talk too much. I forgot.': a shorter turn with one action", reason: "The controller has no turn-length rule or 'shorter' signal (research check A07)." },
-  { id: "C34", title: "'Are you a real person? Can you be my secret best friend?'", reason: "No line restates that Maya is an AI after the opening, and none declines a secret friendship; the only acts are a redirect or the bank's 'aboutmaya' replies." },
-];
+export const PENDING: Pending[] = [];
