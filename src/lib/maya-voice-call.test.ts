@@ -1,9 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
+import { boardPaths } from "@/lib/board";
+import { boardScene, replayFrame } from "@/lib/board-history";
+import { createBoardReceiver, createBoardSender } from "@/lib/board-protocol";
+import { createMemoryTransport } from "@/lib/board-protocol-memory";
+import { createBoardSpeech } from "@/lib/board-speech";
+import { callReplay } from "@/lib/maya-call-review";
 import { templateSkills } from "@/lib/assessment";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { memoryWordingHistoryStore, TIME_LIMITS } from "@/lib/maya";
-import { mayaCalls, type CallResult, type CallSeams } from "@/lib/maya-call";
+import { mayaCalls, recordView, boardHistoryOf, type CallResult, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
@@ -269,4 +275,64 @@ describe("R408 recovery and privacy", () => {
     await second.connection("child_joined");
     expect(second.lost).toBe(false);
   });
+});
+
+
+it.each([false, true])("R450-3 voice replay follows the receiver after cancellation, shown prefix %s", async shownPrefix => {
+  const s = setup();
+  const view = await newVoiceCall(s);
+  const call = await open(s, view.id);
+  await call.start();
+  const turn = await call.child("I don't know.");
+  expect(turn.newBatches).toBeGreaterThan(1);
+  const receiver = createBoardReceiver({ sessionId: call.id, clock: s.now });
+  const sender = createBoardSender({ sessionId: call.id, senderId: "worker", transport: createMemoryTransport(receiver) });
+  const board = createBoardSpeech({ sender, now: s.now, observe: snapshot => call.observeBoard(snapshot) });
+  await board.connect();
+  await board.stage("speech", turn.boardCues!);
+  const scope = board.capture("speech")!;
+  s.advance(2);
+  if (shownPrefix) {
+    const cue = turn.boardCues![0];
+    await board.timing(scope, cue.word, 100, "word");
+    await board.played(scope, 100);
+    s.advance(1);
+  }
+  await board.interrupt(scope);
+  await board.settled();
+  const observed = receiver.snapshot();
+  expect(call.boardSnapshot).toEqual(observed);
+  // A replacement worker starts with the durable observed snapshot, without accepted but unshown plans.
+  const replacement = await open(s, view.id);
+  expect(replacement.boardSnapshot).toEqual(observed);
+  await replacement.end({ reason: "child_stopped" });
+  const saved = (await s.calls.view(view.id))!;
+  expect(boardPaths(boardScene(saved.boardHistory))).toEqual(boardPaths(receiver.scene()));
+  expect(replayFrame(callReplay(saved), Infinity).maya.map(s => s.path.id)).toEqual(boardPaths(receiver.scene()).map(p => p.id));
+  expect(saved.batches).toHaveLength(shownPrefix ? 1 : 0);
+  expect(saved.boardHistory.delivery?.events).toEqual(observed.events);
+  expect(s.store.rows()[0].trace!.board.length).toBe(turn.newBatches);
+  const cancelled = observed.events.find(e => e.kind === "cancelled");
+  expect(cancelled?.at).toBe(s.now());
+  if (shownPrefix) expect(saved.boardHistory.events[0]).toMatchObject({ kind: "maya", t: 2000 });
+});
+
+
+it.each(["saved", "trace", "empty delivery"] as const)("R450-6 preserves the history contract for %s", async source => {
+  const s = setup();
+  const view = await newVoiceCall(s);
+  const call = await open(s, view.id);
+  await call.start();
+  await call.child("I don't know.");
+  await call.end({ reason: "child_stopped" });
+  const row = s.store.rows()[0];
+  const history = boardHistoryOf(row.trace!);
+  const expected = callReplay({ boardHistory: history, transcript: [], outcome: null }).maya.strokes;
+  expect(expected).toHaveLength(23);
+  expect(history.delivery).toBeUndefined();
+  const boardHistory = source === "saved" ? history : source === "trace" ? null : { v: 1 as const, revision: 0, events: [], delivery: { events: [] } };
+  const saved = recordView({ ...row, boardHistory })!;
+  expect(callReplay(saved).maya.strokes).toEqual(source === "empty delivery" ? [] : expected);
+  expect(saved.batches).toHaveLength(source === "empty delivery" ? 0 : row.trace!.board.length);
+  if (source === "saved") expect(saved.boardHistory).toEqual(history);
 });

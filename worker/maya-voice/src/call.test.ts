@@ -1,8 +1,11 @@
 import { ReadableStream, type ReadableStreamDefaultController } from "node:stream/web";
 import { EventEmitter } from "node:events";
 import { initializeLogger, llm, normalizeLanguage, stt, voice } from "@livekit/agents";
-import { AudioFrame } from "@livekit/rtc-node";
+import { AudioFrame, TrackPublishOptions } from "@livekit/rtc-node";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createBoardReceiver, createBoardSender } from "@/lib/board-protocol";
+import { createMemoryTransport } from "@/lib/board-protocol-memory";
+import { createBoardSpeech, type CueMeasurement } from "@/lib/board-speech";
 import { templateSkills } from "@/lib/assessment";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
@@ -119,7 +122,7 @@ afterEach(async () => {
   cleanup = null;
 });
 
-async function voiceCall(options: { speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel } = {}) {
+async function voiceCall(options: { speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean } = {}) {
   const clock = handTimers();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -146,16 +149,21 @@ async function voiceCall(options: { speech?: ProbeSTT; speaker?: Speaker; seed?:
   if (!config.ok) throw new Error("fake providers");
   const opened = await calls.openVoice(started.view.id, config.ids, "Leah");
   if (!opened.ok) throw new Error(opened.error);
-  const providers = await makeProviders(config, { fakeMsPerChar: 1 });
+  const providers = await makeProviders(config, { fakeMsPerChar: 1, fakeTimestamps: options.timestamps });
   const session = voiceSession({ ...providers, stt: options.speech ?? providers.stt }, { endpointingMs: 20, aecWarmupDuration: 0 });
   const microphone = new SilentMicrophone();
   session.input.audio = microphone;
   session.output.audio = options.speaker ?? new Speaker();
   const updates: CallUpdate[] = [];
   const closed = vi.fn(async () => {});
-  const run = new VoiceCallRun(session, opened.call, { timers: clock.timers, notify: (u) => updates.push(u), closed });
+  const receiver = createBoardReceiver({ sessionId: started.view.id, clock: clock.now });
+  const sender = createBoardSender({ sessionId: started.view.id, senderId: "worker", transport: createMemoryTransport(receiver) });
+  const samples: CueMeasurement[] = [];
+  const board = createBoardSpeech({ sender, now: clock.now, observe: snapshot => opened.call.observeBoard(snapshot), measure: s => samples.push(s) });
+  const run = new VoiceCallRun(session, opened.call, { ...(options.board ? { board } : {}), timers: clock.timers, notify: (u) => updates.push(u), closed });
   await run.agentJoined();
   await session.start({ agent: run.agent });
+  run.attachBoardAudio();
   microphone.push();
   cleanup = async () => {
     await run.finish({ detail: "test over" });
@@ -170,7 +178,7 @@ async function voiceCall(options: { speech?: ProbeSTT; speaker?: Speaker; seed?:
     await opened.call.settled();
     return said().slice(before).join(" ");
   };
-  return { id: started.view.id, calls, store, connections, rebuild, run, session, said, childSays, clock, updates, closed, call: opened.call, seams };
+  return { sender, receiver, board, samples, id: started.view.id, calls, store, connections, rebuild, run, session, said, childSays, clock, updates, closed, call: opened.call, seams };
 }
 
 describe("a voice call through LiveKit with the fake providers", () => {
@@ -562,4 +570,126 @@ it("R408-12: bounds an unfinished opening before the first turn can be saved", a
     expect(c.store.rows()[0].learningEventId).toBeNull();
   } finally { release(); }
   expect(await opening).toBeNull();
+});
+
+
+it.each([true, false])("#329 carries accepted controller batches through AgentSession with fake timestamps %s", async timestamps => {
+  const c = await voiceCall({ board: true, timestamps });
+  await c.run.childJoined();
+  await waitFor(() => c.session.agentState === "listening" && c.said().length > 0, "opening playout");
+  await c.board.settled();
+  await c.childSays("I don't know.");
+  await waitFor(() => c.session.agentState === "listening", "example playout");
+  await c.board.settled();
+  expect(c.samples.length).toBeGreaterThan(1);
+  expect(c.samples.map(s => s.source)).toEqual(c.samples.map(() => timestamps ? "word" : "sentence"));
+  expect(c.samples.every(s => s.state === "shown")).toBe(true);
+  expect(c.receiver.staged()).toEqual([]);
+});
+
+
+it("R450-2 keeps a dropped call recoverable when the board stop cannot reach the child", async () => {
+  const c = await voiceCall();
+  const session = controlSession();
+  const run = new VoiceCallRun(session as unknown as voice.AgentSession, c.call, { board: c.board, timers: c.clock.timers, notify() {} });
+  await run.childJoined();
+  await run.agent.llmNode(new llm.ChatContext(), {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+  const context = new llm.ChatContext();
+  context.addMessage({ role: "user", content: "I don't know." });
+  await run.agent.llmNode(context, {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+  const pending = c.receiver.staged();
+  expect(pending).toHaveLength(3);
+  const scope = c.board.capture(pending[0].utteranceId!)!;
+  c.sender.useTransport({ call: async () => { throw new Error("recipient disconnected"); } });
+  await run.childLeft("dropped");
+  await c.clock.advance(10);
+  expect(run.done).toBeNull();
+  expect((await c.calls.view(c.id))!.status).toBe("live");
+  c.sender.useTransport(createMemoryTransport(c.receiver));
+  await run.childJoined();
+  await c.board.played(scope, 1000);
+  await c.board.settled();
+  expect(c.receiver.staged()).toEqual([]);
+  expect(c.receiver.snapshot().events).toContainEqual(expect.objectContaining({ kind: "cancelled", batchIds: pending.map(b => b.batchId) }));
+  expect(c.store.rows()[0].boardHistory?.delivery?.events).toEqual(c.receiver.snapshot().events);
+  expect(run.done).toBeNull();
+  await run.hangUp();
+});
+
+
+it("R450-8 old playback completion cannot cancel the next controller turn", async () => {
+  const c = await voiceCall();
+  const native = new voice.ParticipantAudioOutput({ localParticipant: { publishTrack: async () => ({ sid: "local", waitForSubscription: async () => {} }) } } as unknown as ConstructorParameters<typeof voice.ParticipantAudioOutput>[0],
+    { sampleRate: 24000, numChannels: 1, queueSizeMs: 100, trackPublishOptions: new TrackPublishOptions() });
+  await native.start(new AbortController().signal);
+  const stages = vi.spyOn(c.board, "stage");
+  const session = Object.assign(controlSession(), { output: { audio: native } });
+  const run = new VoiceCallRun(session as unknown as voice.AgentSession, c.call, { board: c.board, timers: c.clock.timers, notify() {} });
+  run.attachBoardAudio();
+  try {
+    await run.childJoined();
+    await run.agent.llmNode(new llm.ChatContext(), {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+    const output = session.output.audio;
+    const oldScope = c.board.capture(stages.mock.calls.at(-1)![0])!;
+    const frame = new AudioFrame(new Int16Array(2400), 24000, 1, 2400);
+    frame.userdata["unica.maya.speechScope"] = oldScope;
+    await output.captureFrame(frame);
+    output.flush();
+    session.emit(voice.AgentSessionEventTypes.UserStateChanged, { newState: "speaking" });
+    const context = new llm.ChatContext();
+    context.addMessage({ role: "user", content: "I don't know." });
+    await run.agent.llmNode(context, {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+    const expected = c.receiver.staged().map(b => b.batchId);
+    expect(expected).toHaveLength(3);
+    const newScope = c.board.capture(stages.mock.calls.at(-1)![0])!;
+    output.clearBuffer();
+    await output.waitForPlayout();
+    await c.board.settled();
+    expect(c.receiver.staged().map(b => b.batchId)).toEqual(expected);
+    expect(c.board.owns(newScope)).toBe(true);
+    await c.board.timing(newScope, 1000, 100, "word");
+    await c.board.played(newScope, 100);
+    expect(c.receiver.staged()).toEqual([]);
+  } finally { await run.hangUp(); native.clearBuffer(); await native.close(); }
+});
+
+it("R450-9 an interrupt before native forwarding leaves no unmatched playback segment", async () => {
+  const c = await voiceCall();
+  const native = new voice.ParticipantAudioOutput({ localParticipant: { publishTrack: async () => ({ sid: "local", waitForSubscription: async () => {} }) } } as unknown as ConstructorParameters<typeof voice.ParticipantAudioOutput>[0],
+    { sampleRate: 24000, numChannels: 1, queueSizeMs: 100, trackPublishOptions: new TrackPublishOptions() });
+  await native.start(new AbortController().signal);
+  const stages = vi.spyOn(c.board, "stage");
+  const session = Object.assign(controlSession(), { output: { audio: native } });
+  const run = new VoiceCallRun(session as unknown as voice.AgentSession, c.call, { board: c.board, timers: c.clock.timers, notify() {} });
+  run.attachBoardAudio();
+  try {
+    await run.childJoined();
+    await run.agent.llmNode(new llm.ChatContext(), {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+    const output = session.output.audio;
+    const frame = new AudioFrame(new Int16Array(2400), 24000, 1, 2400);
+    frame.userdata["unica.maya.speechScope"] = c.board.capture(stages.mock.calls.at(-1)![0])!;
+    const capture = output.captureFrame(frame);
+    session.emit(voice.AgentSessionEventTypes.UserStateChanged, { newState: "speaking" });
+    await capture;
+    output.clearBuffer();
+    expect(native.capturedPlayoutSegments).toBe(0);
+    expect(output.capturedPlayoutSegments).toBe(native.capturedPlayoutSegments);
+    expect(output.pendingPlayoutSegments).toBe(0);
+    await output.waitForPlayout();
+    const context = new llm.ChatContext();
+    context.addMessage({ role: "user", content: "I don't know." });
+    await run.agent.llmNode(context, {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {});
+    expect(c.receiver.staged()).toHaveLength(3);
+    const scope = c.board.capture(stages.mock.calls.at(-1)![0])!;
+    const next = new AudioFrame(new Int16Array(2400), 24000, 1, 2400);
+    next.userdata["unica.maya.speechScope"] = scope;
+    await output.captureFrame(next);
+    output.flush();
+    await native.waitForPlayout();
+    expect(output.capturedPlayoutSegments).toBe(native.capturedPlayoutSegments);
+    expect(output.pendingPlayoutSegments).toBe(native.pendingPlayoutSegments);
+    expect(output.pendingPlayoutSegments).toBe(0);
+    await output.waitForPlayout();
+    expect(c.board.owns(scope)).toBe(true);
+  } finally { await run.hangUp(); native.clearBuffer(); await native.close(); }
 });

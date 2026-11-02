@@ -44,6 +44,9 @@
 // history (Supabase: src/lib/maya-wording-history-store.ts; memory: memoryWordingHistoryStore), the learning events, the
 // profile rebuild, the alerts, the parent's note (#331), the model by id, the clock, ids and the seed. Pure otherwise: no Next.js, React,
 // network or database; node:crypto through the trace's package hash.
+import { voiceBoardHistory } from "@/lib/voice-board-history";
+import type { BoardSnapshot } from "@/lib/board-protocol";
+import { speechWords, type BoardCue } from "@/lib/board-speech";
 import { applyBatch, boardView, createScene, type Batch } from "@/lib/board";
 import { createHistory, mayaWrites, type BoardHistory } from "@/lib/board-history";
 import { fitView, type PlayStep } from "@/lib/board-svg";
@@ -338,6 +341,7 @@ export type CallResult =
 
 /** What reached the child after one input of a voice call. */
 export interface VoiceTurn {
+  boardCues?: BoardCue[];
   say: string[];
   newBatches: number;
   safetyMessage: string | null;
@@ -362,6 +366,9 @@ export interface VoiceCall {
   readonly revision: number;
   /** Saved accepted final words when this handle restored a controller that had already ended. */
   readonly pendingFinal: VoiceTurn | null;
+  readonly boardSnapshot: BoardSnapshot;
+  /** Persist receiver outcomes with their presentation times, under this worker's revision. */
+  observeBoard(snapshot: BoardSnapshot): Promise<void>;
   start(): Promise<VoiceTurn>;
   child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }): Promise<VoiceTurn>;
   tick(): Promise<VoiceTurn>;
@@ -455,6 +462,9 @@ export function boardPlayback(batches: readonly Batch[]): { steps: PlayStep[]; v
 }
 
 export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertState[] = []): CallView {
+  // A missing delivery field identifies the legacy contract. An explicit empty delivery is authoritative.
+  const observed = record.mode === "voice" && record.boardHistory?.delivery !== undefined;
+  const history = record.boardHistory ?? boardHistoryOf(trace);
   return {
     id: record.id,
     kind: record.kind,
@@ -474,8 +484,8 @@ export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertStat
     versions: record.versions,
     transcript: transcriptOf(trace),
     freeTalk: freeTalkOf(trace),
-    batches: batchesOf(trace.board),
-    boardHistory: record.boardHistory ?? boardHistoryOf(trace),
+    batches: observed ? history.events.flatMap(e => e.kind === "maya" ? [{ transactionId: e.batchId, commands: e.commands }] : []) : batchesOf(trace.board),
+    boardHistory: history,
     technicalNotes: trace.turns.flatMap((t) => t.kind === "technical" ? [t.detail] : []),
     outcome: record.outcome ?? trace.outcome,
     counts: record.counts,
@@ -696,7 +706,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       // Kept until the parent's note is written (notes). A call Maya never joined has no learning event.
       notePending: seams.note ? { package: pkg, event: noEvent ? null : learningEvent(session.session, { parentId: record.parentId, childId: record.childId }) } : null,
       trace,
-      boardHistory: boardHistoryOf(trace),
+      boardHistory: record.mode === "voice" ? record.boardHistory ?? boardHistoryOf(trace) : boardHistoryOf(trace),
       outcome: trace.outcome,
       counts: countsOf(trace),
       startedAt: trace.startedAt,
@@ -758,7 +768,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       counts: null,
       live: { package: pkg, text: await session.saved() },
       trace: null,
-      boardHistory: null,
+      boardHistory: mode === "voice" ? { ...createHistory(), delivery: { events: [] } } : null,
       learningEventId: null,
       profileRebuiltAt: null,
       notePending: null,
@@ -861,11 +871,22 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const inactive = () => lost || record.status === "ended";
       const turn = async (run: () => Promise<TextOutput>): Promise<VoiceTurn> => {
         if (inactive()) return none;
+        const before = session.trace().turns.length;
         const out = await run();
         persist(out);
         await queue;
         if (inactive()) return none;
-        return { say: out.say, newBatches: out.board.length, safetyMessage: out.safetyMessage, ended: out.ended !== null };
+        // Preserve the controller turn association. Do not spread batches evenly across an entire reply.
+        // Each current board offer follows the last word of its accepted controller turn.
+        let word = 0;
+        const ends = new Map<string, number>();
+        for (const t of session.trace().turns.slice(before)) {
+          if (t.kind !== "maya" || !t.output) continue;
+          word += speechWords(t.output.say.join(" ")).length;
+          for (const id of t.output.board) ends.set(id, word);
+        }
+        const boardCues = out.board.map(batch => ({ batch, word: ends.get(batch.transactionId) ?? speechWords(out.say.join(" ")).length }));
+        return { say: out.say, newBatches: out.board.length, boardCues, safetyMessage: out.safetyMessage, ended: out.ended !== null };
       };
       const call: VoiceCall = {
         id: record.id,
@@ -886,6 +907,19 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         },
         get pendingFinal() {
           return pendingFinal ? structuredClone(pendingFinal) : null;
+        },
+        get boardSnapshot() { return structuredClone(record.boardHistory?.delivery ?? { events: [] }); },
+        async observeBoard(snapshot) {
+          const copy = structuredClone(snapshot);
+          later(async () => {
+            if (lost || record.status === "ended") return;
+            const boardHistory = voiceBoardHistory(copy, record.live?.text.session.startedAt ?? seams.clock(), seams.clock(), record.boardHistory);
+            const change: CallChange = { boardHistory };
+            if (!(await store.update(record.id, record.revision, change))) { lost = true; replaced = true; return; }
+            record = { ...record, ...change, revision: record.revision + 1 };
+          });
+          await queue;
+          if (lost) throw new Error("The observed board could not be saved.");
         },
         start: () => turn(() => session.start()),
         child: (text, options) => turn(() => session.child(text.trim().slice(0, MAX_CHILD_TEXT), options)),

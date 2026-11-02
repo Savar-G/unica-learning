@@ -11,6 +11,9 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { VoicePanel } from "@/components/admin-maya-voice";
 import { MayaBoard } from "@/components/maya-board";
+import { applyBatch, createScene, boardView } from "@/lib/board";
+import type { BoardSnapshot } from "@/lib/board-protocol";
+import { fitView } from "@/lib/board-svg";
 import { replayFrame } from "@/lib/board-history";
 import { callReplay } from "@/lib/maya-call-review";
 import type { PlayStep } from "@/lib/board-svg";
@@ -216,8 +219,9 @@ export function MayaCallList({ calls, older, newer }: { calls: CallListRow[]; ol
 
 export function MayaCall({ initial, board: firstBoard, childName }: { initial: CallView; board: BoardView; childName: string | null }) {
   const [view, setView] = useState(initial);
-  const [board, setBoard] = useState(firstBoard);
+  const [board, setBoard] = useState(initial.mode === "voice" && initial.status === "live" ? { steps: [], viewBox: "0 0 1000 1000" } as BoardView : firstBoard);
   /** Board steps already drawn before the last answer: only the new ones animate. */
+  const voiceShown = useRef(-1);
   const [shown, setShown] = useState(initial.status === "ended" ? firstBoard.steps.length : 0);
   const saved = useMemo(() => callReplay(view), [view]);
   const [position, setPosition] = useState(Infinity);
@@ -243,10 +247,9 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
     const res = await fetch(`/api/admin/maya/calls/${view.id}`, { cache: "no-store" }).catch(() => null);
     const body = await res?.json().catch(() => null);
     if (!body?.ok) return;
-    setShown(drawn);
-    setBoard(body.board);
+    if (!voice) { setShown(drawn); setBoard(body.board); }
     setView(body.view);
-  }, [view.id, drawn]);
+  }, [view.id, drawn, voice]);
 
   const activeLine = !live && position !== Infinity ? selectedLine >= 0 && !playing ? selectedLine : view.transcript.findLastIndex((l) => l.second * 1000 <= position) : -1;
   useEffect(() => {
@@ -361,6 +364,21 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
               callId={view.id}
               childName={childName}
               started={view.startedAt !== null}
+              onBoard={(snapshot: BoardSnapshot, restored: boolean) => {
+                let scene = createScene();
+                const steps: PlayStep[] = [];
+                for (const event of snapshot.events) {
+                  if (event.kind !== "batch") continue;
+                  const r = applyBatch(scene, { transactionId: event.batchId, commands: event.commands });
+                  if (!r.ok) return;
+                  scene = r.scene;
+                  steps.push({ drawn: r.drawn, erased: r.erased, view: boardView(scene) });
+                }
+                if (!restored && steps.length === voiceShown.current) return;
+                setShown(restored ? steps.length : Math.max(0, voiceShown.current));
+                voiceShown.current = steps.length;
+                setBoard({ steps, viewBox: fitView(steps.flatMap(s => s.drawn), 0.03) });
+              }}
               onUpdate={refresh}
               onEnded={async () => {
                 // The worker stores the end a moment after the room closes.

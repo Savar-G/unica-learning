@@ -8,7 +8,7 @@
 // - FakeTTS speaks silence: 24 kHz mono frames, `msPerChar` of audio per character (60 ms by default, about a calm
 //   speaking pace), and records each text it was given in `spoken`.
 import { AudioFrame } from "@livekit/rtc-node";
-import { normalizeLanguage, stt, tts, type APIConnectOptions } from "@livekit/agents";
+import { normalizeLanguage, stt, tts, voice, type APIConnectOptions } from "@livekit/agents";
 
 export interface Utterance {
   text: string;
@@ -88,8 +88,8 @@ export class FakeTTS extends tts.TTS {
   label = "fake.TTS";
   /** Every text spoken, in order. */
   readonly spoken: string[] = [];
-  constructor(readonly msPerChar = 60) {
-    super(FAKE_SAMPLE_RATE, 1, { streaming: true });
+  constructor(readonly msPerChar = 60, readonly timestamps = true) {
+    super(FAKE_SAMPLE_RATE, 1, { streaming: true, alignedTranscript: timestamps });
   }
   override get model() {
     return "fake";
@@ -119,7 +119,10 @@ class FakeSynthesizeStream extends tts.SynthesizeStream {
     const samples = (FAKE_SAMPLE_RATE * FRAME_MS) / 1000;
     const frames = Math.max(1, Math.ceil((text.length * this.fake.msPerChar) / FRAME_MS));
     for (let i = 0; i < frames; i++) {
-      this.queue.put({ requestId: id, segmentId: id, frame: new AudioFrame(new Int16Array(samples), FAKE_SAMPLE_RATE, 1, samples), final: i === frames - 1, ...(i === 0 ? { deltaText: text } : {}) });
+      this.queue.put({ requestId: id, segmentId: id, frame: new AudioFrame(new Int16Array(samples), FAKE_SAMPLE_RATE, 1, samples), final: i === frames - 1, ...(i === 0 ? { deltaText: text, ...(this.fake.timestamps ? {
+        timedTranscripts: [...text.matchAll(/\S+/g)].map(m => voice.createTimedString({ text: `${m[0]} `,
+          startTime: m.index * this.fake.msPerChar / 1000, endTime: (m.index + m[0].length) * this.fake.msPerChar / 1000 })),
+      } : {}) } : {}) });
     }
   }
   protected async run(): Promise<void> {

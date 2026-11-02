@@ -130,3 +130,46 @@ Once a call row exists, its whole grant counts until the call ends. A crashed ca
 The recap claims all included completed call IDs in `email_log.call_ids`, including calls without notes and notes outside the displayed ten. A sent or claimed recap covers those IDs permanently. A refused send can retry. Unknown delivery stays claimed. `claim_maya_weekly` locks the parent before it checks both the weekly claim and overlapping call IDs. It stores the IDs and unsubscribe hash in the same transaction.
 
 The job releases one delivery slot per parent at Monday 7 a.m. family time. The slot ends at the next Monday midnight. It includes uncovered calls from the last 14 elapsed days that ended before the current local Monday. It defers pending or missing notes until the final local Sunday. Calls expire from the lookback window. Local week labels group the display and do not determine call coverage. A zone change can move a call to another displayed week without duplicating it or hiding it behind an earlier weekly claim.
+
+## Board timing, code portion of #329
+
+The worker stages accepted controller batches before speech starts. Each current offer uses the last word of its controller turn as the cue. `BoardCue.word` can name an earlier word when a more detailed plan is available. The worker keeps separate sentence synthesis streams. TTS word end times are relative to each sentence. The adapter adds the preceding audio duration to each time. A cue clock starts with actual audio output. It advances only through samples forwarded to that output. It releases batches through `maya.board` RPC before the final audio drain. Generating audio does not release a batch. The output adapter uses small frames to bound buffering. It stops its clock on interruption and disconnect. It accounts for gaps when the output runs out of audio.
+
+When a sentence has no word times, its final audio sample supplies the sentence boundary. This also handles a provider that omits only some word times. Child speech invalidates pending timing callbacks before cancellation starts. The receiver cancels staged work and keeps shown work. An absent child cannot receive a stop RPC. The worker invalidates local cues without ending the call during its 30-second reconnect period. The new epoch cancels the old staged work when the receiver returns. A late release from an older epoch is refused. The browser follows the newest worker segment. An older worker cannot send board RPC parts.
+
+The browser keeps the shown event log and epoch in session storage under the call ID. A reconnect reads that log before it starts a new epoch. A replacement worker can read the same receiver log. A page reload can restore it from session storage. Large reset requests travel in ordered RPC parts, each below the LiveKit payload limit. Snapshot storage is best effort if browser storage is unavailable. The worker saves observed receiver events and their times in the existing `board_history` JSON column. This includes shown batches, presentation acknowledgements when available, and cancellations. A replacement worker restores this observed snapshot. The admin voice replay and board view use only this history. The teaching trace keeps accepted plans separately. Voice records with a delivery field use observed history, including an empty log. Records without that field keep their saved board history or the legacy trace fallback. Text calls and old assessment recordings keep their existing replay rules. If a peer stays unavailable, the server keeps the last confirmed observation. It does not turn accepted plans into shown work.
+
+### Timing measurements
+
+The worker writes one structured `board cue` log per released batch. It records the call, utterance and batch IDs, `word` or `sentence` source, audio position in milliseconds, worker time when the cue was due on the output clock, worker time when the browser acknowledged, acknowledgement delay, and returned batch state. It stores no speech text or audio in these logs. The closing `board cue report` groups the samples by source and reports counts, shown counts, and p50/p95 acknowledgement delay. The `fakeAudio` field identifies simulated output. Acknowledgement delay uses one worker clock. It does not measure browser paint or the speaker-to-screen delay on a device.
+
+Local public-interface tests use the fake speech provider, fake voice provider and memory transport with the real board receiver. They cover word release, an interruption, obsolete callbacks, a lost release answer, snapshot recovery, bounded large snapshot transfer, and sentence fallback with fake timestamps disabled. AgentSession tests cover the controller-to-synthesis connection with both timestamp modes. No paid call is needed.
+
+After keys exist, verify these issue criteria in a real call:
+
+- Drawing follows Maya's words in a real call.
+- Cue timing is measured and reported.
+
+For that check, compare the actual speaker output and first visible stroke on Chrome and Safari on an iPad. Include interruption and reconnect cases. Save the worker logs and device observations separately. Report word and sentence results separately. Do not report the local fake timings as real audio results.
+
+### PR #450 review corrections
+
+- R450-1: a cancellation-aware output clock replaces completed-run progress events as the cue source. Continuous fake output and the SDK native audio output release intermediate cues before final drain. The native test uses a local AudioSource and a fake track publication, with no room or provider request.
+- R450-2: disconnect invalidates local cues immediately. Expected transport failures from an old connection cannot end a reconnected call. Reconnect cancels staged work under a new epoch and saves the receiver snapshot.
+- R450-3: voice calls persist the receiver log with event times. Cancelled work stays out of both board views and admin replay. Tests compare the saved replay with the receiver after cancellation and after a worker replacement.
+- R450-4: an empty sentence stream cancels its plan. No fallback cue is registered for zero audio. A timing entry alone cannot release a batch before playback starts.
+- R450-5: alignment entries are ordered and deduplicated before prefix matching. Repeated approved words with distinct times keep their positions.
+
+- R450-6: legacy voice records keep their saved board history or trace fallback. New records retain the explicit delivery marker from creation, so an empty observed board stays empty.
+- R450-7: each audio stream captures its utterance ID and generation. Cancellation returns before empty-output handling. Late synthesis and read results cannot stop a newer plan, even when an utterance ID is reused.
+
+- R450-8: planner interrupt, local detach, and reconnect require a SpeechScope. Timing and playback callbacks require the same token. The output captures each segment's original scope, and TTS labels each frame with it. An obsolete completion or pause cannot stop the current plan or its timer. Stop and release RPCs carry the generation, so a delayed stop cannot cancel a reused utterance ID. Initial connect refuses to clear an existing plan. A serial connection barrier supports an immediate first plan without a delay.
+
+The compile-only checks in `worker/maya-voice/src/speech-scope.types.ts` must fail if an unscoped cancellation API becomes callable. The voice typecheck includes those checks. Production callback tests retain all three newly staged batches when old native output reports an interruption. A separate output test retains the newer cue timer.
+
+- R450-9: the output counts a segment only when the native sink admits it. An interruption before forwarding creates no segment. The production worker test interrupts between capture entry and native forwarding. Old cleanup and the next turn both finish with zero pending segments. A second test cancels while native admission waits for startup.
+- R450-10: sender cancellation and every cancel or stop RPC require the original SpeechScope. The receiver rejects missing and obsolete scopes before it changes the plan. Apply and release also require a scope. Reconnect reset carries the plan scope from its status read and rejects a different current plan. Taking the pen requires the receiver's observed scope, or explicit null when no plan exists. The planner cancels its recorded delivery scope before it stages the next plan. A new plan waits for pending priority stops, including when the next turn starts without a delay.
+
+Application audio clear and pause require a SpeechScope. A private adapter implements the SDK's required no-argument media methods. It captures the admitted or in-flight segment's original scope and passes it to the application controller. The controller checks that owner before it clears the native buffer. Native completion retains that same scope. Stream cancellation passes the stream's captured scope as its reason. It acts only on that stream's reader.
+
+The negative type checks now cover sender cancel, receiver pen cancellation, cancel and reset wire shapes, and application audio clear and pause. RPC tests send malformed and obsolete requests through the real browser handler. They retain the newer plan. A delayed priority-stop test also retains and releases the next plan.

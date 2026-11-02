@@ -7,6 +7,7 @@ import { createMemoryTransport, type MemoryTransport } from "@/lib/board-protoco
 // stages, shows and acknowledges them. These tests drive both sides only through their public interface, over the
 // in-memory transport, with the real board core behind the receiver.
 
+const SCOPE = { utteranceId: "plan", generation: 1 };
 const SESSION = "call-1";
 
 const sum = (id: string, a: string, b: string, below?: string): Batch => ({
@@ -56,12 +57,12 @@ describe("one batch", () => {
     const { receiver, sender } = await setup();
     const batch = sum("a", "27", "39");
 
-    expect(await sender.send(batch)).toMatchObject({ ok: true, state: "accepted" });
+    expect(await sender.send(batch, { scope: SCOPE })).toMatchObject({ ok: true, state: "accepted" });
     // Accepted is not shown: the child's board is still empty until the speech reaches the step.
     expect(boardPaths(receiver.scene())).toEqual([]);
     expect(receiver.staged().map((s) => s.batchId)).toEqual(["a"]);
 
-    const [released] = receiver.release("a");
+    const [released] = receiver.release("a", SCOPE);
     expect(released.batchId).toBe("a");
     expect(released.drawn.map((p) => p.id)).toEqual(ids(direct(batch)));
     expect(ids(receiver.scene())).toEqual(ids(direct(batch)));
@@ -81,28 +82,28 @@ describe("a lost acknowledgement", () => {
     const second = put("b", "a", "ones", "6");
 
     transport.loseNextAnswer();
-    expect(await sender.send(first)).toMatchObject({ ok: true, state: "accepted" });
+    expect(await sender.send(first, { scope: SCOPE })).toMatchObject({ ok: true, state: "accepted" });
     // The receiver saw the batch twice (the lost one and the retry) and staged it once.
     expect(transport.delivered.filter((r) => r.type === "apply").map((r) => r.type === "apply" && r.batchId)).toEqual(["a", "a"]);
     expect(receiver.staged().map((s) => s.batchId)).toEqual(["a"]);
 
     // The next batch still lines up: its sequence and revision follow the first one.
-    expect(await sender.send(second)).toMatchObject({ ok: true, state: "accepted" });
-    receiver.release("b");
+    expect(await sender.send(second, { scope: SCOPE })).toMatchObject({ ok: true, state: "accepted" });
+    receiver.release("b", SCOPE);
     expect(ids(receiver.scene())).toEqual(ids(direct(first, second)));
   });
 
   it("for a batch already shown answers with what the child has seen", async () => {
     const { receiver, transport, sender } = await setup();
     transport.hold();
-    const sent = sender.send(sum("a", "27", "39"));
+    const sent = sender.send(sum("a", "27", "39"), { scope: SCOPE });
     await settle();
     transport.loseNextAnswer();
     transport.flush();
     // The answer is lost; the speech reaches the step and the child sees it before the retry arrives.
     transport.hold();
     await settle();
-    receiver.release("a");
+    receiver.release("a", SCOPE);
     receiver.presented("a");
     transport.flush();
     expect(await sent).toMatchObject({ ok: true, state: "presented" });
@@ -112,15 +113,15 @@ describe("a lost acknowledgement", () => {
   it("gives up after its retries and needs a new connect", async () => {
     const { transport, sender } = await setup();
     transport.cut();
-    expect(await sender.send(sum("a", "27", "39"))).toMatchObject({ ok: false, code: "unreachable" });
-    expect(await sender.send(sum("b", "1", "2"))).toMatchObject({ ok: false, code: "unreachable" });
+    expect(await sender.send(sum("a", "27", "39"), { scope: SCOPE })).toMatchObject({ ok: false, code: "unreachable" });
+    expect(await sender.send(sum("b", "1", "2"), { scope: SCOPE })).toMatchObject({ ok: false, code: "unreachable" });
   });
 });
 
 describe("order", () => {
   it("sends one batch at a time, numbered in order, even when the caller does not wait", async () => {
     const { receiver, transport, sender } = await setup();
-    const results = await Promise.all([sender.send(sum("a", "27", "39")), sender.send(put("b", "a", "ones", "6")), sender.send(put("c", "a", "tens", "6"))]);
+    const results = await Promise.all([sender.send(sum("a", "27", "39"), { scope: SCOPE }), sender.send(put("b", "a", "ones", "6"), { scope: SCOPE }), sender.send(put("c", "a", "tens", "6"), { scope: SCOPE })]);
     expect(results.map((r) => r.ok)).toEqual([true, true, true]);
     expect(transport.maxInFlight).toBe(1);
     const applies = transport.delivered.flatMap((r) => (r.type === "apply" ? [[r.batchId, r.sequence]] : []));
@@ -135,29 +136,29 @@ describe("order", () => {
   it("refuses a batch out of order or under a used id, and keeps the board as it was", async () => {
     const receiver = createBoardReceiver({ sessionId: SESSION });
     const base = { sessionId: SESSION, epoch: 1, baseRevision: 0 };
-    expect(receiver.handle({ type: "reset", sessionId: SESSION, senderId: "agent-1", epoch: 1, observedEpoch: 0, snapshot: { events: [] } })).toMatchObject({ ok: true });
-    expect(receiver.handle({ type: "apply", ...base, sequence: 2, ...sum("a", "1", "2"), batchId: "a" })).toMatchObject({ ok: false, code: "out_of_order" });
-    expect(receiver.handle({ type: "apply", ...base, sequence: 1, batchId: "a", commands: sum("a", "1", "2").commands })).toMatchObject({ ok: true, revision: 1 });
-    expect(receiver.handle({ type: "apply", ...base, baseRevision: 1, sequence: 2, batchId: "a", commands: sum("a", "1", "2").commands })).toMatchObject({ ok: false, code: "duplicate_batch" });
+    expect(receiver.handle({ scope: receiver.scope(), type: "reset", sessionId: SESSION, senderId: "agent-1", epoch: 1, observedEpoch: 0, snapshot: { events: [] } })).toMatchObject({ ok: true });
+    expect(receiver.handle({ scope: SCOPE, type: "apply", ...base, sequence: 2, ...sum("a", "1", "2"), batchId: "a" })).toMatchObject({ ok: false, code: "out_of_order" });
+    expect(receiver.handle({ scope: SCOPE, type: "apply", ...base, sequence: 1, batchId: "a", commands: sum("a", "1", "2").commands })).toMatchObject({ ok: true, revision: 1 });
+    expect(receiver.handle({ scope: SCOPE, type: "apply", ...base, baseRevision: 1, sequence: 2, batchId: "a", commands: sum("a", "1", "2").commands })).toMatchObject({ ok: false, code: "duplicate_batch" });
     expect(receiver.staged().map((s) => s.batchId)).toEqual(["a"]);
   });
 
   it("refuses a batch planned on an older revision of the board", async () => {
     const receiver = createBoardReceiver({ sessionId: SESSION });
-    receiver.handle({ type: "reset", sessionId: SESSION, senderId: "agent-1", epoch: 1, observedEpoch: 0, snapshot: { events: [] } });
-    receiver.handle({ type: "apply", sessionId: SESSION, epoch: 1, sequence: 1, baseRevision: 0, batchId: "a", commands: sum("a", "1", "2").commands });
-    const stale = receiver.handle({ type: "apply", sessionId: SESSION, epoch: 1, sequence: 2, baseRevision: 0, batchId: "b", commands: put("b", "a", "ones", "3").commands });
+    receiver.handle({ scope: receiver.scope(), type: "reset", sessionId: SESSION, senderId: "agent-1", epoch: 1, observedEpoch: 0, snapshot: { events: [] } });
+    receiver.handle({ scope: SCOPE, type: "apply", sessionId: SESSION, epoch: 1, sequence: 1, baseRevision: 0, batchId: "a", commands: sum("a", "1", "2").commands });
+    const stale = receiver.handle({ scope: SCOPE, type: "apply", sessionId: SESSION, epoch: 1, sequence: 2, baseRevision: 0, batchId: "b", commands: put("b", "a", "ones", "3").commands });
     expect(stale).toMatchObject({ ok: false, code: "stale_revision", revision: 1 });
     // A stale revision is not a decision about the batch: sent again on the current revision, it is accepted.
-    expect(receiver.handle({ type: "apply", sessionId: SESSION, epoch: 1, sequence: 2, baseRevision: 1, batchId: "b", commands: put("b", "a", "ones", "3").commands })).toMatchObject({ ok: true });
+    expect(receiver.handle({ scope: SCOPE, type: "apply", sessionId: SESSION, epoch: 1, sequence: 2, baseRevision: 1, batchId: "b", commands: put("b", "a", "ones", "3").commands })).toMatchObject({ ok: true });
   });
 
   it("keeps the core's refusal for a batch, so a retry gets the same answer and the next batch follows it", async () => {
     const { receiver, sender } = await setup();
     const wrong = put("w", "nothing", "ones", "1");
-    const first = await sender.send(wrong);
+    const first = await sender.send(wrong, { scope: SCOPE });
     expect(first).toMatchObject({ ok: false, code: "refused", refusal: { code: "unknown_target" } });
-    expect(await sender.send(sum("a", "1", "2"))).toMatchObject({ ok: true, state: "accepted" });
+    expect(await sender.send(sum("a", "1", "2"), { scope: SCOPE })).toMatchObject({ ok: true, state: "accepted" });
     expect(receiver.staged().map((s) => s.batchId)).toEqual(["a"]);
   });
 });
@@ -167,9 +168,9 @@ describe("reconnect", () => {
     const { receiver, sender } = await setup();
     const first = sum("a", "27", "39");
     const second = put("b", "a", "ones", "6");
-    await sender.send(first);
-    await sender.send(second);
-    receiver.release("b");
+    await sender.send(first, { scope: SCOPE });
+    await sender.send(second, { scope: SCOPE });
+    receiver.release("b", SCOPE);
     receiver.presented("b");
     await sender.sync();
 
@@ -181,21 +182,21 @@ describe("reconnect", () => {
     expect(boardPaths(reloaded.scene())).toEqual(boardPaths(receiver.scene()));
 
     // Maya carries on from the restored board.
-    expect(await sender.send(put("c", "a", "tens", "6"))).toMatchObject({ ok: true });
-    reloaded.release("c");
+    expect(await sender.send(put("c", "a", "tens", "6"), { scope: SCOPE })).toMatchObject({ ok: true });
+    reloaded.release("c", SCOPE);
     expect(ids(reloaded.scene())).toEqual(ids(direct(first, second, put("c", "a", "tens", "6"))));
   });
 
   it("refuses a batch from before the reconnect that arrives late, and keeps the restored board", async () => {
     const { receiver, transport, sender } = await setup();
-    await sender.send(sum("a", "27", "39"));
-    receiver.release("a");
+    await sender.send(sum("a", "27", "39"), { scope: SCOPE });
+    receiver.release("a", SCOPE);
     await sender.sync();
     const before = ids(receiver.scene());
 
     // The agent's process stops with a batch stuck in flight. A new process starts from the stored snapshot and connects.
     transport.hold();
-    const late = sender.send(put("b", "a", "ones", "6"));
+    const late = sender.send(put("b", "a", "ones", "6"), { scope: SCOPE });
     await settle();
     const restarted = createBoardSender({ sessionId: SESSION, senderId: "agent-2", transport: createMemoryTransport(receiver), snapshot: sender.snapshot() });
     expect(await restarted.connect()).toMatchObject({ ok: true });
@@ -205,20 +206,20 @@ describe("reconnect", () => {
     expect(await late).toMatchObject({ ok: false, code: "stale_epoch" });
     expect(receiver.staged()).toEqual([]);
     expect(ids(receiver.scene())).toEqual(before);
-    expect(await restarted.send(put("c", "a", "ones", "6"))).toMatchObject({ ok: true });
+    expect(await restarted.send(put("c", "a", "ones", "6"), { scope: SCOPE })).toMatchObject({ ok: true });
 
     // The old process is still alive and connects again: it cannot take the board back from the new one.
     transport.flush();
     expect(await sender.connect()).toMatchObject({ ok: false, code: "superseded" });
     expect(receiver.staged().map((s) => s.batchId)).toEqual(["c"]);
-    expect(await restarted.send(put("d", "a", "tens", "6"))).toMatchObject({ ok: true });
+    expect(await restarted.send(put("d", "a", "tens", "6"), { scope: SCOPE })).toMatchObject({ ok: true });
   });
 
   it("keeps what the child saw while the reconnect was under way", async () => {
     const { receiver, transport, sender } = await setup();
-    await sender.send(sum("a", "27", "39"));
-    await sender.send(put("b", "a", "ones", "6"));
-    receiver.release("a");
+    await sender.send(sum("a", "27", "39"), { scope: SCOPE });
+    await sender.send(put("b", "a", "ones", "6"), { scope: SCOPE });
+    receiver.release("a", SCOPE);
 
     // The connect reads the log; then the speech reaches "b" before the reset arrives.
     transport.hold();
@@ -227,7 +228,7 @@ describe("reconnect", () => {
     transport.flush();
     transport.hold();
     await settle();
-    receiver.release("b");
+    receiver.release("b", SCOPE);
     transport.flush();
     // Every later request goes straight through.
     expect(await connecting).toMatchObject({ ok: true });
@@ -239,8 +240,8 @@ describe("reconnect", () => {
 
   it("survives a lost answer to the reset", async () => {
     const { receiver, transport, sender } = await setup();
-    await sender.send(sum("a", "27", "39"));
-    receiver.release("a");
+    await sender.send(sum("a", "27", "39"), { scope: SCOPE });
+    receiver.release("a", SCOPE);
     const epoch = sender.epoch();
     transport.loseNextAnswer("reset");
     // The reset acts; its answer is lost and the retry answers the same.
@@ -248,12 +249,12 @@ describe("reconnect", () => {
     expect(transport.delivered.filter((r) => r.type === "reset").map((r) => r.type === "reset" && r.epoch)).toEqual([1, 2, 2]);
     expect(sender.epoch()).toBe(epoch + 1);
     expect(ids(receiver.scene())).toEqual(ids(direct(sum("a", "27", "39"))));
-    expect(await sender.send(put("b", "a", "ones", "6"))).toMatchObject({ ok: true });
+    expect(await sender.send(put("b", "a", "ones", "6"), { scope: SCOPE })).toMatchObject({ ok: true });
   });
 
   it("never goes back to an older epoch", () => {
     const receiver = createBoardReceiver({ sessionId: SESSION });
-    const reset = (epoch: number, observedEpoch: number, senderId = "agent-1") => receiver.handle({ type: "reset", sessionId: SESSION, senderId, epoch, observedEpoch, snapshot: { events: [] } });
+    const reset = (epoch: number, observedEpoch: number, senderId = "agent-1") => receiver.handle({ scope: receiver.scope(), type: "reset", sessionId: SESSION, senderId, epoch, observedEpoch, snapshot: { events: [] } });
     expect(reset(2, 0)).toMatchObject({ ok: true, epoch: 2 });
     expect(reset(1, 0)).toMatchObject({ ok: false, code: "stale_epoch", epoch: 2 });
     expect(reset(2, 0, "agent-2")).toMatchObject({ ok: false, code: "stale_epoch", epoch: 2 });
@@ -261,16 +262,16 @@ describe("reconnect", () => {
     expect(reset(3, 1, "agent-2")).toMatchObject({ ok: false, code: "stale_epoch", epoch: 2 });
     // The same sender's reset again (its answer was lost) changes nothing.
     expect(reset(2, 0)).toMatchObject({ ok: true, epoch: 2 });
-    const old = { type: "apply", sessionId: SESSION, epoch: 1, sequence: 1, baseRevision: 0, batchId: "a", commands: sum("a", "1", "2").commands };
+    const old = { scope: SCOPE, type: "apply", sessionId: SESSION, epoch: 1, sequence: 1, baseRevision: 0, batchId: "a", commands: sum("a", "1", "2").commands };
     expect(receiver.handle(old)).toMatchObject({ ok: false, code: "stale_epoch" });
-    expect(receiver.handle({ type: "cancel", sessionId: SESSION, epoch: 1, cancelId: "c", through: 1 })).toMatchObject({ ok: false, code: "stale_epoch" });
+    expect(receiver.handle({ scope: SCOPE, type: "cancel", sessionId: SESSION, epoch: 1, cancelId: "c", through: 1 })).toMatchObject({ ok: false, code: "stale_epoch" });
   });
 
   it("drops staged batches the child never saw, and the sender counts them as cancelled", async () => {
     const { receiver, sender } = await setup();
-    await sender.send(sum("a", "27", "39"));
-    receiver.release("a");
-    await sender.send(put("b", "a", "ones", "6"));
+    await sender.send(sum("a", "27", "39"), { scope: SCOPE });
+    receiver.release("a", SCOPE);
+    await sender.send(put("b", "a", "ones", "6"), { scope: SCOPE });
     // The line blips; the same browser answers the new connect.
     expect(await sender.connect()).toMatchObject({ ok: true });
     expect(receiver.staged()).toEqual([]);
@@ -281,11 +282,11 @@ describe("reconnect", () => {
 
   it("refuses a snapshot that does not replay and keeps the board", async () => {
     const { receiver, sender } = await setup();
-    await sender.send(sum("a", "27", "39"));
-    receiver.release("a");
+    await sender.send(sum("a", "27", "39"), { scope: SCOPE });
+    receiver.release("a", SCOPE);
     await sender.sync();
     const events = [...sender.snapshot().events, { kind: "batch", batchId: "x", commands: [{ op: "remove", objectId: "nothing" }] }];
-    const bad = { type: "reset", sessionId: SESSION, senderId: "agent-1", epoch: 9, observedEpoch: 1, snapshot: { events } };
+    const bad = { scope: receiver.scope(), type: "reset", sessionId: SESSION, senderId: "agent-1", epoch: 9, observedEpoch: 1, snapshot: { events } };
     expect(receiver.handle(bad)).toMatchObject({ ok: false, code: "invalid_request", epoch: 1 });
     expect(ids(receiver.scene())).toEqual(ids(direct(sum("a", "27", "39"))));
   });
@@ -295,21 +296,21 @@ describe("an interruption", () => {
   it("cancels the staged batches the child has not seen and keeps the strokes already shown", async () => {
     const { receiver, transport, sender } = await setup();
     const first = sum("a", "27", "39");
-    await sender.send(first, { utteranceId: "u1" });
-    await sender.send(put("b", "a", "ones", "6"), { utteranceId: "u1" });
-    await sender.send(put("c", "a", "tens", "6"), { utteranceId: "u2" });
+    await sender.send(first, { scope: SCOPE, utteranceId: "u1" });
+    await sender.send(put("b", "a", "ones", "6"), { scope: SCOPE, utteranceId: "u1" });
+    await sender.send(put("c", "a", "tens", "6"), { scope: SCOPE, utteranceId: "u2" });
     expect(receiver.staged()).toEqual([
       { batchId: "a", utteranceId: "u1" },
       { batchId: "b", utteranceId: "u1" },
       { batchId: "c", utteranceId: "u2" },
     ]);
-    receiver.release("a");
+    receiver.release("a", SCOPE);
 
     // The child starts talking over Maya.
-    expect(await sender.cancel()).toEqual({ ok: true, cancelled: ["b", "c"] });
+    expect(await sender.cancel(SCOPE)).toEqual({ ok: true, cancelled: ["b", "c"] });
     expect(receiver.staged()).toEqual([]);
     expect(ids(receiver.scene())).toEqual(ids(direct(first)));
-    expect(receiver.release("b")).toEqual([]);
+    expect(receiver.release("b", SCOPE)).toEqual([]);
     expect(sender.batchState("a")).toBe("shown");
     expect(sender.batchState("b")).toBe("cancelled");
 
@@ -319,17 +320,17 @@ describe("an interruption", () => {
     expect(receiver.staged()).toEqual([]);
 
     // Maya carries on from the board the child sees: the same step under its own new id.
-    expect(await sender.send(put("b2", "a", "ones", "6"))).toMatchObject({ ok: true, state: "accepted" });
-    receiver.release("b2");
+    expect(await sender.send(put("b2", "a", "ones", "6"), { scope: SCOPE })).toMatchObject({ ok: true, state: "accepted" });
+    receiver.release("b2", SCOPE);
     expect(ids(receiver.scene())).toEqual(ids(direct(first, put("b2", "a", "ones", "6"))));
   });
 
   it("with nothing staged changes nothing", async () => {
     const { receiver, sender } = await setup();
-    await sender.send(sum("a", "27", "39"));
-    receiver.release("a");
-    expect(await sender.cancel()).toEqual({ ok: true, cancelled: [] });
-    expect(await sender.send(put("b", "a", "ones", "6"))).toMatchObject({ ok: true });
+    await sender.send(sum("a", "27", "39"), { scope: SCOPE });
+    receiver.release("a", SCOPE);
+    expect(await sender.cancel(SCOPE)).toEqual({ ok: true, cancelled: [] });
+    expect(await sender.send(put("b", "a", "ones", "6"), { scope: SCOPE })).toMatchObject({ ok: true });
   });
 });
 
@@ -339,13 +340,13 @@ describe("the pen", () => {
 
   it("taken by the child while a batch is in flight: the batch is refused when it arrives and sent again after", async () => {
     const { receiver, transport, sender } = await setup();
-    await sender.send(sum("a", "27", "39"));
-    receiver.release("a");
+    await sender.send(sum("a", "27", "39"), { scope: SCOPE });
+    receiver.release("a", SCOPE);
 
     transport.hold();
-    const inFlight = sender.send(put("b", "a", "ones", "6"));
+    const inFlight = sender.send(put("b", "a", "ones", "6"), { scope: SCOPE });
     await settle();
-    expect(receiver.takePen()).toEqual({ cancelled: [] });
+    expect(receiver.takePen(receiver.scope())).toEqual({ cancelled: [] });
     transport.flush();
     expect(await inFlight).toMatchObject({ ok: false, code: "pen_with_child" });
     expect(receiver.staged()).toEqual([]);
@@ -353,24 +354,24 @@ describe("the pen", () => {
     expect(receiver.addInk(stroke)).toMatchObject({ ok: true });
     receiver.givePen();
     // The child wrote on the board: Maya's plan is from before, so it is refused until Maya reads the board again.
-    expect(await sender.send(put("b", "a", "ones", "6"))).toMatchObject({ ok: false, code: "stale_revision" });
-    expect(await sender.send(put("b", "a", "ones", "6"))).toMatchObject({ ok: false, code: "stale_revision" });
+    expect(await sender.send(put("b", "a", "ones", "6"), { scope: SCOPE })).toMatchObject({ ok: false, code: "stale_revision" });
+    expect(await sender.send(put("b", "a", "ones", "6"), { scope: SCOPE })).toMatchObject({ ok: false, code: "stale_revision" });
     await sender.sync();
     expect(sender.snapshot().events.map((e) => e.kind)).toEqual(["batch", "ink"]);
-    expect(await sender.send(put("b", "a", "ones", "6"))).toMatchObject({ ok: true, state: "accepted" });
-    receiver.release("b");
+    expect(await sender.send(put("b", "a", "ones", "6"), { scope: SCOPE })).toMatchObject({ ok: true, state: "accepted" });
+    receiver.release("b", SCOPE);
     expect(childInk(receiver.scene())).toHaveLength(1);
     expect(boardPaths(receiver.scene()).filter((p) => p.objectId === "a").length).toBeGreaterThan(boardPaths(direct(sum("a", "27", "39"))).length);
   });
 
   it("taken while batches are staged: the unshown ones are cancelled, the one being drawn stays", async () => {
     const { receiver, sender } = await setup();
-    await sender.send(sum("a", "27", "39"));
-    await sender.send(put("b", "a", "ones", "6"));
-    await sender.send(put("c", "a", "tens", "6"));
-    receiver.release("a");
+    await sender.send(sum("a", "27", "39"), { scope: SCOPE });
+    await sender.send(put("b", "a", "ones", "6"), { scope: SCOPE });
+    await sender.send(put("c", "a", "tens", "6"), { scope: SCOPE });
+    receiver.release("a", SCOPE);
 
-    expect(receiver.takePen()).toEqual({ cancelled: ["b", "c"] });
+    expect(receiver.takePen(receiver.scope())).toEqual({ cancelled: ["b", "c"] });
     // The renderer finishes drawing what was released before the pen moved.
     receiver.presented("a");
     expect(ids(receiver.scene())).toEqual(ids(direct(sum("a", "27", "39"))));
@@ -387,9 +388,9 @@ describe("the pen", () => {
 
   it("the child's ink comes back after a reconnect", async () => {
     const { receiver, sender } = await setup();
-    await sender.send(sum("a", "27", "39"));
-    receiver.release("a");
-    receiver.takePen();
+    await sender.send(sum("a", "27", "39"), { scope: SCOPE });
+    receiver.release("a", SCOPE);
+    receiver.takePen(receiver.scope());
     receiver.addInk(stroke);
     await sender.sync();
 
@@ -406,8 +407,8 @@ describe("the pen", () => {
 describe("untrusted requests", () => {
   it("are checked before anything changes", async () => {
     const { receiver } = await setup();
-    const apply = { type: "apply", sessionId: SESSION, epoch: 1, sequence: 1, baseRevision: 0, batchId: "a", commands: sum("a", "1", "2").commands };
-    for (const bad of [null, 7, "apply", {}, { type: "draw" }, { ...apply, sequence: "1" }, { ...apply, batchId: "" }, { ...apply, commands: "x" }, { type: "status", sessionId: SESSION, since: -1 }, { type: "reset", sessionId: SESSION, epoch: 5, snapshot: { events: [{ kind: "ink", page: 1 }] } }])
+    const apply = { scope: SCOPE, type: "apply", sessionId: SESSION, epoch: 1, sequence: 1, baseRevision: 0, batchId: "a", commands: sum("a", "1", "2").commands };
+    for (const bad of [null, 7, "apply", {}, { type: "draw" }, { ...apply, sequence: "1" }, { ...apply, batchId: "" }, { ...apply, commands: "x" }, { type: "status", sessionId: SESSION, since: -1 }, { scope: receiver.scope(), type: "reset", sessionId: SESSION, epoch: 5, snapshot: { events: [{ kind: "ink", page: 1 }] } }])
       expect(receiver.handle(bad)).toMatchObject({ ok: false, code: "invalid_request", epoch: 1, revision: 0 });
     expect(receiver.handle({ ...apply, sessionId: "call-2" })).toMatchObject({ ok: false, code: "wrong_session" });
     expect(receiver.staged()).toEqual([]);
@@ -417,18 +418,18 @@ describe("untrusted requests", () => {
   it("a batch over the size limit is refused on both sides", async () => {
     const { receiver, transport, sender } = await setup();
     const big: Batch = { transactionId: "big", commands: [{ op: "write", id: "w", text: "x".repeat(9000), place: { region: "main" } }] };
-    expect(await sender.send(big)).toMatchObject({ ok: false, code: "too_large" });
+    expect(await sender.send(big, { scope: SCOPE })).toMatchObject({ ok: false, code: "too_large" });
     expect(transport.delivered.some((r) => r.type === "apply")).toBe(false);
-    const raw = { type: "apply", sessionId: SESSION, epoch: 1, sequence: 1, baseRevision: 0, batchId: "big", commands: big.commands };
+    const raw = { scope: SCOPE, type: "apply", sessionId: SESSION, epoch: 1, sequence: 1, baseRevision: 0, batchId: "big", commands: big.commands };
     expect(receiver.handle(raw)).toMatchObject({ ok: false, code: "too_large" });
-    expect(await sender.send(sum("a", "1", "2"))).toMatchObject({ ok: true });
+    expect(await sender.send(sum("a", "1", "2"), { scope: SCOPE })).toMatchObject({ ok: true });
   });
 });
 
 describe("sync", () => {
   it("reads a long board log in pages small enough for one answer", async () => {
     const { receiver, transport, sender } = await setup();
-    receiver.takePen();
+    receiver.takePen(receiver.scope());
     const long = { erase: false, w: 3, pts: Array.from({ length: 120 }, (_, i) => [0.05 + i * 0.007, 0.6] as [number, number]) };
     for (let i = 0; i < 12; i++) expect(receiver.addInk({ page: 1, boardWidth: 800, stroke: long })).toMatchObject({ ok: true });
     expect(await sender.sync()).toBe(true);
@@ -441,15 +442,15 @@ describe("sync", () => {
 describe("batch states", () => {
   it("reach the sender through the paged log, however many batches the call has", async () => {
     const { receiver, transport, sender } = await setup();
-    await sender.send(sum("a", "27", "39"));
-    receiver.release("a");
+    await sender.send(sum("a", "27", "39"), { scope: SCOPE });
+    receiver.release("a", SCOPE);
     for (let i = 0; i < 200; i++) {
-      expect(await sender.send({ transactionId: `m${i}`, commands: [{ op: "focus", target: { objectId: "a", part: "whole" } }] })).toMatchObject({ ok: true });
-      receiver.release(`m${i}`);
+      expect(await sender.send({ transactionId: `m${i}`, commands: [{ op: "focus", target: { objectId: "a", part: "whole" } }] }, { scope: SCOPE })).toMatchObject({ ok: true });
+      receiver.release(`m${i}`, SCOPE);
       receiver.presented(`m${i}`);
     }
-    await sender.send(put("x", "a", "ones", "6"));
-    await sender.cancel();
+    await sender.send(put("x", "a", "ones", "6"), { scope: SCOPE });
+    await sender.cancel(SCOPE);
     expect(await sender.sync()).toBe(true);
     expect([sender.batchState("a"), sender.batchState("m0"), sender.batchState("m199"), sender.batchState("x")]).toEqual(["shown", "presented", "presented", "cancelled"]);
     expect(transport.largestAnswerBytes).toBeLessThan(15 * 1024);
@@ -460,24 +461,24 @@ describe("a lost acknowledgement while the child writes", () => {
   it("does not let Maya plan past the child's ink", async () => {
     const { receiver, transport, sender } = await setup();
     const stroke = { page: 1, boardWidth: 800, stroke: { erase: false, w: 3, pts: [[0.85, 0.55], [0.9, 0.58]] as [number, number][] } };
-    await sender.send(sum("a", "27", "39"));
+    await sender.send(sum("a", "27", "39"), { scope: SCOPE });
     transport.hold();
-    const sent = sender.send(put("b", "a", "ones", "6"));
+    const sent = sender.send(put("b", "a", "ones", "6"), { scope: SCOPE });
     await settle();
     transport.loseNextAnswer();
     transport.flush();
     transport.hold();
     await settle();
     // Before the retry arrives, "b" is shown, and the child takes the pen, writes and gives it back.
-    receiver.release("b");
-    receiver.takePen();
+    receiver.release("b", SCOPE);
+    receiver.takePen(receiver.scope());
     receiver.addInk(stroke);
     receiver.givePen();
     transport.flush();
     expect(await sent).toMatchObject({ ok: true, state: "shown" });
-    expect(await sender.send(put("c", "a", "tens", "6"))).toMatchObject({ ok: false, code: "stale_revision" });
+    expect(await sender.send(put("c", "a", "tens", "6"), { scope: SCOPE })).toMatchObject({ ok: false, code: "stale_revision" });
     await sender.sync();
-    expect(await sender.send(put("c", "a", "tens", "6"))).toMatchObject({ ok: true });
+    expect(await sender.send(put("c", "a", "tens", "6"), { scope: SCOPE })).toMatchObject({ ok: true });
   });
 });
 
@@ -489,15 +490,15 @@ const focus = (id: string): Batch => ({ transactionId: id, commands: [{ op: "foc
 describe("a reset", () => {
   it("never replaces the receiver's log: a snapshot that differs in an existing event is refused and the child's ink stays", async () => {
     const { receiver, sender } = await setup();
-    await sender.send(sum("a", "27", "39"));
-    receiver.release("a");
-    receiver.takePen();
+    await sender.send(sum("a", "27", "39"), { scope: SCOPE });
+    receiver.release("a", SCOPE);
+    receiver.takePen(receiver.scope());
     receiver.addInk(shortStroke);
     receiver.givePen();
     await sender.sync();
     const log = sender.snapshot().events;
     expect(log.map((e) => e.kind)).toEqual(["batch", "ink"]);
-    const reset = (events: unknown[]) => receiver.handle({ type: "reset", sessionId: SESSION, senderId: "other", epoch: 2, observedEpoch: 1, snapshot: { events } });
+    const reset = (events: unknown[]) => receiver.handle({ scope: receiver.scope(), type: "reset", sessionId: SESSION, senderId: "other", epoch: 2, observedEpoch: 1, snapshot: { events } });
 
     // The same length, the ink replaced; longer, the ink replaced; the shown batch left out.
     for (const events of [[log[0], { kind: "presented", batchId: "a" }], [log[0], { kind: "presented", batchId: "a" }, { kind: "presented", batchId: "a" }], [log[1], log[1]]])
@@ -516,38 +517,38 @@ describe("a reset", () => {
 describe("a cancel", () => {
   it("delivered late, after its retry and the next plan, changes nothing", async () => {
     const { receiver, transport, sender } = await setup();
-    await sender.send(sum("a", "27", "39"));
-    receiver.release("a");
-    await sender.send(focus("old-plan"));
+    await sender.send(sum("a", "27", "39"), { scope: SCOPE });
+    receiver.release("a", SCOPE);
+    await sender.send(focus("old-plan"), { scope: SCOPE });
 
     // The first cancel times out before it reaches the board; its retry gets through.
     transport.delayNext("cancel");
-    expect(await sender.cancel()).toEqual({ ok: true, cancelled: ["old-plan"] });
-    expect(await sender.send(focus("new-plan"))).toMatchObject({ ok: true, state: "accepted" });
+    expect(await sender.cancel(SCOPE)).toEqual({ ok: true, cancelled: ["old-plan"] });
+    expect(await sender.send(focus("new-plan"), { scope: SCOPE })).toMatchObject({ ok: true, state: "accepted" });
     // The first cancel arrives now: the board keeps the new plan.
-    expect(transport.deliverDelayed()).toMatchObject([{ ok: true, type: "cancel" }]);
+    expect(transport.deliverDelayed()).toMatchObject([{ scope: SCOPE, ok: true, type: "cancel" }]);
     expect(receiver.staged().map((s) => s.batchId)).toEqual(["new-plan"]);
     expect(sender.batchState("new-plan")).toBe("accepted");
   });
 
   it("answers its retry after a lost answer with what it cancelled the first time", async () => {
     const { receiver, transport, sender } = await setup();
-    await sender.send(sum("a", "27", "39"));
-    receiver.release("a");
-    await sender.send(focus("old-plan"));
+    await sender.send(sum("a", "27", "39"), { scope: SCOPE });
+    receiver.release("a", SCOPE);
+    await sender.send(focus("old-plan"), { scope: SCOPE });
     transport.loseNextAnswer("cancel");
-    expect(await sender.cancel()).toEqual({ ok: true, cancelled: ["old-plan"] });
+    expect(await sender.cancel(SCOPE)).toEqual({ ok: true, cancelled: ["old-plan"] });
     expect(transport.delivered.filter((r) => r.type === "cancel")).toHaveLength(2);
   });
 
   it("cancels only the batches sent before it", async () => {
     const { receiver, sender } = await setup();
-    await sender.send(sum("a", "27", "39"));
-    receiver.release("a");
-    await sender.send(focus("b"));
-    await sender.send(focus("c"));
+    await sender.send(sum("a", "27", "39"), { scope: SCOPE });
+    receiver.release("a", SCOPE);
+    await sender.send(focus("b"), { scope: SCOPE });
+    await sender.send(focus("c"), { scope: SCOPE });
     // A cancel that names batches 1 and 2 of this epoch: "c" (number 3) stays.
-    expect(receiver.handle({ type: "cancel", sessionId: SESSION, epoch: 1, cancelId: "x", through: 2 })).toMatchObject({ ok: true, type: "cancel" });
+    expect(receiver.handle({ scope: SCOPE, type: "cancel", sessionId: SESSION, epoch: 1, cancelId: "x", through: 2 })).toMatchObject({ scope: SCOPE, ok: true, type: "cancel" });
     expect(receiver.staged().map((s) => s.batchId)).toEqual(["c"]);
     await sender.sync();
     expect([sender.batchState("b"), sender.batchState("c")]).toEqual(["cancelled", "accepted"]);
@@ -555,11 +556,11 @@ describe("a cancel", () => {
 
   it("of the earlier batches only: a batch kept after it is shown without the cancelled ones", async () => {
     const { receiver, sender } = await setup();
-    await sender.send(sum("a", "27", "39"));
-    await sender.send(sum("b", "12", "34"));
-    expect(receiver.handle({ type: "cancel", sessionId: SESSION, epoch: sender.epoch(), cancelId: "x", through: 1 })).toMatchObject({ ok: true, at: 0 });
+    await sender.send(sum("a", "27", "39"), { scope: SCOPE });
+    await sender.send(sum("b", "12", "34"), { scope: SCOPE });
+    expect(receiver.handle({ scope: SCOPE, type: "cancel", sessionId: SESSION, epoch: sender.epoch(), cancelId: "x", through: 1 })).toMatchObject({ ok: true, at: 0 });
     expect(receiver.staged().map((s) => s.batchId)).toEqual(["b"]);
-    expect(receiver.release("b").map((r) => r.batchId)).toEqual(["b"]);
+    expect(receiver.release("b", SCOPE).map((r) => r.batchId)).toEqual(["b"]);
     // The board the child sees is the board its log restores: "a" is not on it.
     await sender.sync();
     expect(boardPaths(receiver.scene())).toEqual(boardPaths(restoreScene(sender.snapshot())!));
@@ -568,10 +569,10 @@ describe("a cancel", () => {
 
   it("of a batch a kept batch builds on: the kept batch is cancelled with it, on both sides", async () => {
     const { receiver, sender } = await setup();
-    await sender.send(sum("a", "27", "39"));
-    await sender.send(put("w", "a", "ones", "6"));
-    await sender.send(focus("f"));
-    receiver.handle({ type: "cancel", sessionId: SESSION, epoch: sender.epoch(), cancelId: "x", through: 1 });
+    await sender.send(sum("a", "27", "39"), { scope: SCOPE });
+    await sender.send(put("w", "a", "ones", "6"), { scope: SCOPE });
+    await sender.send(focus("f"), { scope: SCOPE });
+    receiver.handle({ scope: SCOPE, type: "cancel", sessionId: SESSION, epoch: sender.epoch(), cancelId: "x", through: 1 });
     // "w" writes in "a", which the child never sees; "f" was planned on "w": both go with "a".
     expect(receiver.staged()).toEqual([]);
     await sender.sync();
@@ -584,7 +585,7 @@ describe("a cancel", () => {
 describe("answers", () => {
   it("stay under the size limit when one stroke of the child's is larger than an answer", async () => {
     const { receiver, transport, sender } = await setup();
-    receiver.takePen();
+    receiver.takePen(receiver.scope());
     const stroke = { erase: false, w: 3, pts: Array.from({ length: 1200 }, (_, i) => [0.5 + i / 10000, 0.6 + Math.sin(i) / 100] as [number, number]) };
     expect(receiver.addInk({ page: 1, boardWidth: 800, stroke })).toMatchObject({ ok: true });
     receiver.addInk(shortStroke);
@@ -603,15 +604,15 @@ describe("answers", () => {
 
   it("stay under the size limit for a large cancellation and a refusal", async () => {
     const { receiver, transport, sender } = await setup();
-    await sender.send(sum("a", "27", "39"));
-    receiver.release("a");
+    await sender.send(sum("a", "27", "39"), { scope: SCOPE });
+    receiver.release("a", SCOPE);
     const long = (i: number) => `${String(i).padStart(3, "0")}-${"x".repeat(60)}`;
-    for (let i = 0; i < 150; i++) expect(await sender.send(focus(long(i)))).toMatchObject({ ok: true });
-    const cancelled = await sender.cancel();
+    for (let i = 0; i < 150; i++) expect(await sender.send(focus(long(i)), { scope: SCOPE })).toMatchObject({ ok: true });
+    const cancelled = await sender.cancel(SCOPE);
     expect(cancelled).toMatchObject({ ok: true });
     expect(cancelled.ok && cancelled.cancelled).toHaveLength(150);
     expect(sender.batchState(long(149))).toBe("cancelled");
-    const refused = await sender.send({ transactionId: "w", commands: [{ op: "remove", objectId: "y".repeat(7800) }] });
+    const refused = await sender.send({ transactionId: "w", commands: [{ op: "remove", objectId: "y".repeat(7800) }] }, { scope: SCOPE });
     expect(refused).toMatchObject({ ok: false, code: "refused" });
     expect(transport.largestAnswerBytes).toBeLessThanOrEqual(MAX_BATCH_BYTES);
   });
@@ -621,13 +622,13 @@ describe("answers", () => {
     const id = (i: number) => `o${String(i).padStart(2, "0")}-${"x".repeat(56)}`;
     let placed = 0;
     for (let i = 0; i < 80; i++) {
-      const sent = await sender.send(sum(id(i), "27", "39", i > 0 ? id(placed - 1) : undefined));
+      const sent = await sender.send(sum(id(i), "27", "39", i > 0 ? id(placed - 1) : undefined), { scope: SCOPE });
       if (!sent.ok) break;
-      receiver.release(id(i));
+      receiver.release(id(i), SCOPE);
       placed++;
     }
     expect(placed).toBeGreaterThan(40);
-    const refused = await sender.send({ transactionId: "w", commands: [{ op: "remove", objectId: "nope" }] });
+    const refused = await sender.send({ transactionId: "w", commands: [{ op: "remove", objectId: "nope" }] }, { scope: SCOPE });
     expect(refused).toMatchObject({ ok: false, code: "refused", refusal: { code: "unknown_target" } });
     expect(refused.ok === false && refused.refusal?.valid?.length).toBeGreaterThan(0);
     expect(transport.largestAnswerBytes).toBeLessThanOrEqual(MAX_BATCH_BYTES);
@@ -637,7 +638,7 @@ describe("answers", () => {
 describe("the child's ink", () => {
   it("is refused when the stroke would not travel, so the sender can always read the log", async () => {
     const { receiver, sender } = await setup();
-    receiver.takePen();
+    receiver.takePen(receiver.scope());
     expect(receiver.addInk({ page: 1, boardWidth: 800, stroke: { erase: false, w: 3, pts: [[NaN, 0.5], [0.6, 0.5]] } })).toMatchObject({ ok: false });
     expect(receiver.addInk(shortStroke)).toMatchObject({ ok: true });
     expect(await sender.sync()).toBe(true);
@@ -667,8 +668,8 @@ describe("ownership", () => {
       },
     });
     expect(await original.connect()).toMatchObject({ ok: false, code: "superseded" });
-    expect(await original.send(sum("o", "1", "2"))).toMatchObject({ ok: false });
-    expect(await replacement!.send(sum("a", "27", "39"))).toMatchObject({ ok: true, state: "accepted" });
+    expect(await original.send(sum("o", "1", "2"), { scope: SCOPE })).toMatchObject({ ok: false });
+    expect(await replacement!.send(sum("a", "27", "39"), { scope: SCOPE })).toMatchObject({ ok: true, state: "accepted" });
     expect(receiver.staged().map((s) => s.batchId)).toEqual(["a"]);
   });
 
@@ -682,7 +683,7 @@ describe("ownership", () => {
     const replacement = createBoardSender({ sessionId: SESSION, senderId: "replacement", transport: createMemoryTransport(receiver) });
     expect(await replacement.connect()).toMatchObject({ ok: true });
     expect(await original.connect()).toMatchObject({ ok: false, code: "superseded" });
-    expect(await replacement.send(sum("a", "27", "39"))).toMatchObject({ ok: true, state: "accepted" });
+    expect(await replacement.send(sum("a", "27", "39"), { scope: SCOPE })).toMatchObject({ ok: true, state: "accepted" });
   });
 });
 
@@ -693,9 +694,9 @@ describe("a reloaded browser", () => {
     expect(await old.connect()).toMatchObject({ ok: true });
     const replacement = createBoardSender({ sessionId: SESSION, senderId: "replacement", transport: createMemoryTransport(receiver), snapshot: old.snapshot() });
     expect(await replacement.connect()).toMatchObject({ ok: true });
-    await replacement.send(sum("a", "27", "39"));
-    receiver.release("a");
-    receiver.takePen();
+    await replacement.send(sum("a", "27", "39"), { scope: SCOPE });
+    receiver.release("a", SCOPE);
+    receiver.takePen(receiver.scope());
     receiver.addInk(shortStroke);
     receiver.givePen();
     expect(await replacement.sync()).toBe(true);
@@ -713,8 +714,8 @@ describe("a reloaded browser", () => {
 describe("a reconnect with a lost reset answer", () => {
   it("reads the child's ink written before the retry before Maya plans again", async () => {
     const { receiver, transport, sender } = await setup();
-    await sender.send(sum("a", "27", "39"));
-    receiver.release("a");
+    await sender.send(sum("a", "27", "39"), { scope: SCOPE });
+    receiver.release("a", SCOPE);
     await sender.sync();
     let lost = false;
     sender.useTransport({
@@ -723,7 +724,7 @@ describe("a reconnect with a lost reset answer", () => {
         if (req.type === "reset" && r.ok && !lost) {
           lost = true;
           // The reset acted; the child takes the pen, writes and gives it back before the retry.
-          receiver.takePen();
+          receiver.takePen(receiver.scope());
           receiver.addInk(shortStroke);
           receiver.givePen();
           throw new Error("The answer was lost.");
@@ -733,7 +734,7 @@ describe("a reconnect with a lost reset answer", () => {
     });
     expect(await sender.connect()).toMatchObject({ ok: true });
     expect(sender.snapshot().events.map((e) => e.kind)).toEqual(["batch", "ink"]);
-    expect(await sender.send(focus("next"))).toMatchObject({ ok: true, state: "accepted" });
+    expect(await sender.send(focus("next"), { scope: SCOPE })).toMatchObject({ ok: true, state: "accepted" });
   });
 });
 
@@ -806,13 +807,13 @@ describe("random interleavings", () => {
 
     /** The child takes the pen, writes and gives it back. */
     const childTurn = () => {
-      receiver.takePen();
+      receiver.takePen(receiver.scope());
       if (receiver.addInk({ page: 1, boardWidth: 800, stroke: { erase: false, w: 3, pts: [[0.85, 0.6], [0.9, 0.62]] } }).ok) inkAdded++;
       receiver.givePen();
     };
     const child = () => {
       const r = rand();
-      if (r < 0.15) receiver.takePen();
+      if (r < 0.15) receiver.takePen(receiver.scope());
       else if (r < 0.4) receiver.givePen();
       else if (r < 0.6) {
         const long = rand() < 0.15;
@@ -822,7 +823,7 @@ describe("random interleavings", () => {
       } else {
         const staged = receiver.staged();
         if (staged.length > 0)
-          for (const out of receiver.release(pick(staged).batchId)) {
+          for (const out of receiver.release(pick(staged).batchId, SCOPE)) {
             expect(released.has(out.batchId), `${out.batchId} released twice`).toBe(false);
             released.add(out.batchId);
           }
@@ -843,7 +844,7 @@ describe("random interleavings", () => {
       if (r < 0.45) {
         const id = `${agent.name}.${batches++}`;
         const batch: Batch = rand() < 0.3 ? { ...sum("a", "27", "39"), transactionId: id } : { transactionId: id, commands: [{ op: "focus", target: { objectId: "a", part: "whole" } }] };
-        const sent = await sender.send(batch);
+        const sent = await sender.send(batch, { scope: SCOPE });
         trace.push(`${agent.name} send ${id}: ${sent.ok ? sent.state : sent.code}`);
         if (sent.ok && sent.state === "accepted") {
           // Planned on the whole board: Maya had read every stroke of the child's when the batch was taken.
@@ -858,7 +859,7 @@ describe("random interleavings", () => {
         const wire = rand();
         if (wire < 0.25) agent.line.loseNextAnswer("cancel");
         else if (wire < 0.4) agent.line.delayNext("cancel");
-        const c = await sender.cancel();
+        const c = await sender.cancel(SCOPE);
         trace.push(`${agent.name} cancel: ${c.ok ? c.cancelled.join(",") : c.code}`);
         if (c.ok) {
           // The answer names every batch of this sender's a cancel dropped, even when it came on a retry; a batch the
@@ -909,7 +910,7 @@ describe("random interleavings", () => {
         if (ink >= 0) {
           const corrupt = [...events.slice(0, ink), ...events.slice(ink + 1), { kind: "presented", batchId: "none" }];
           const at = receiver.handle({ type: "status", sessionId: SESSION, since: Number.MAX_SAFE_INTEGER }).epoch;
-          expect(receiver.handle({ type: "reset", sessionId: SESSION, senderId: "forger", epoch: at + 1, observedEpoch: at, snapshot: { events: corrupt } })).toMatchObject({ ok: false });
+          expect(receiver.handle({ scope: receiver.scope(), type: "reset", sessionId: SESSION, senderId: "forger", epoch: at + 1, observedEpoch: at, snapshot: { events: corrupt } })).toMatchObject({ ok: false });
         }
       } else if (r < 0.7) {
         // The child acts while the request is on the wire.

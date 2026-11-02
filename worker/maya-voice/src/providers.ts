@@ -15,7 +15,7 @@ export interface Providers {
   fake: boolean;
 }
 
-export async function makeProviders(config: { speechToText: SpeechToTextConfig; voice: VoiceConfig }, options: { fakeMsPerChar?: number } = {}): Promise<Providers> {
+export async function makeProviders(config: { speechToText: SpeechToTextConfig; voice: VoiceConfig }, options: { fakeMsPerChar?: number; fakeTimestamps?: boolean } = {}): Promise<Providers> {
   let speech: stt.STT;
   let fakeSpeech: FakeSpeech | null = null;
   if (config.speechToText.provider === "assemblyai") {
@@ -29,10 +29,10 @@ export async function makeProviders(config: { speechToText: SpeechToTextConfig; 
   let voice: tts.TTS;
   if (config.voice.provider === "inworld") {
     const inworld = await import("@livekit/agents-plugin-inworld");
-    // Word timestamps, for the board in time with speech (#330).
+    // Word timestamps, for the board in time with speech (#329).
     voice = new inworld.TTS({ apiKey: config.voice.apiKey, model: config.voice.model, voice: config.voice.voice, timestampType: "WORD" });
   } else {
-    voice = new FakeTTS(options.fakeMsPerChar);
+    voice = new FakeTTS(options.fakeMsPerChar, options.fakeTimestamps);
   }
   return { stt: speech, tts: voice, fakeSpeech, fake: config.speechToText.provider === "fake" && config.voice.provider === "fake" };
 }
