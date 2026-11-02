@@ -5,19 +5,24 @@
 // One rule: nothing reaches the child unless the session's `step` accepts it. For each Maya turn the model proposes
 // (src/lib/maya-model.ts); `step` checks the proposal, and the board core (`applyBatch`) checks every board batch the
 // session builds from it. A refused proposal is asked for again once, with the refusal's reason; a second refusal, or
-// a model that fails, is replaced by a safe code fallback: a proposal code builds from the session's own offers (a
-// code-written line or a bank phrase, no reading, no board), which `step` checks like any other. When no fallback is
-// accepted, the call ends as a technical issue and Maya says nothing. `freeTalk` stays off (D-196): every word is a
-// code line or a bank phrase.
+// a model that fails, is replaced by a safe code fallback: a proposal the controller builds from the session's own
+// offers (`fallbacks`: code-written lines or a bank phrase, no free talk, no board), which `step` checks like any
+// other. It keeps what code can check of the refused proposals' readings, the child's answers (#389), so only the
+// words are replaced. When no fallback is accepted, the call ends as a technical issue and Maya says nothing.
+//
+// Free talk (D-196 rule B, D-197): with `freeTalk` on, the model's own words in a turn with no math line are said only
+// when they pass the session's code guards and a separate review (`reviewer`, src/lib/maya-talk-review.ts) with a time
+// limit. The adapter steps the proposal once with no reviews to learn which words the session would say, reviews those,
+// and steps it again with the reviews. A failed, late or missing review means a bank phrase of the same purpose. The
+// trace records each piece: what the model proposed, both checks and what was said.
 //
 // Every session writes a trace (src/lib/maya-trace.ts). The clock and the random seed are passed in.
 import { applyBatch, createScene, type Batch, type Scene } from "@/lib/board";
 import {
   createSession,
-  lineOffers,
+  fallbacks,
   nextActs,
   step,
-  warmGroups,
   LINES_VERSION,
   PROPOSAL_VERSION,
   type Act,
@@ -28,7 +33,8 @@ import {
   type WordingHistory,
 } from "@/lib/maya";
 import { modelInput, type MayaModel } from "@/lib/maya-model";
-import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceAttempt, type TraceBoardBatch, type TraceError, type TraceTurn } from "@/lib/maya-trace";
+import { reviewInput, runReview, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
+import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceAttempt, type TraceBoardBatch, type TraceError, type TraceTalk, type TraceTurn } from "@/lib/maya-trace";
 
 /** At most this many Maya turns in a row without the child (the easier example is up to four). */
 export const MAX_MAYA_TURNS = 8;
@@ -46,10 +52,20 @@ export interface TextSessionOptions {
   childName?: string | null;
   runner?: MayaTrace["runner"];
   /**
+   * D-197: read the model's own warm words in turns with no math line (off by default). Each is said only when it
+   * passes the code guards and `reviewer`; without a reviewer every piece becomes a bank phrase. A resumed call keeps
+   * the flag it started with.
+   */
+  freeTalk?: boolean;
+  /** The free-talk review (src/lib/maya-talk-review.ts), or null. */
+  reviewer?: TalkReviewer | null;
+  /** The time limit of one review (default REVIEW_TIME_LIMIT_MS); a late review fails the line. */
+  reviewTimeLimitMs?: number;
+  /**
    * For local debugging only: each raw error, with where it happened. The trace keeps only an error code and its
    * fixed wording (R382-3-1); the command line prints these to stderr. Never write them to a stored record.
    */
-  onError?: (error: unknown, where: { turn: number; source: "model" | "repair" } | "session") => void;
+  onError?: (error: unknown, where: { turn: number; source: "model" | "repair" | "review" } | "session") => void;
   /**
    * Goes on with a call saved by `saved()` on an earlier request (the admin demo, #323, runs one request per child
    * turn). The saved state must come from this adapter with the same package; it is the server's own record, never
@@ -118,34 +134,6 @@ export interface TextSession {
   saved(): Promise<SavedTextSession>;
 }
 
-/** Safe acts first; then the gentlest teaching; giving or accepting the answer and closing come last. */
-const FALLBACK_ORDER: readonly Act[] = [
-  "safety", "repair", "open", "guide", "example_step", "try_target", "ask_write", "clarify", "confirm", "check_in", "wait", "redirect",
-  "offer_other_input", "give_answer", "accept_answer", "close",
-];
-
-/** The fallback proposals for the session now, safest first: code-written lines and bank phrases, no reading, no board. */
-function fallbacks(session: Session): unknown[] {
-  const { acts } = nextActs(session);
-  const lines = lineOffers(session);
-  const warm = warmGroups(session);
-  const order = [...acts].sort((a, b) => FALLBACK_ORDER.indexOf(a) - FALLBACK_ORDER.indexOf(b));
-  return order.flatMap((act) => {
-    // The gentlest line first; for a confirmation, the number the child said last.
-    const free = (lines[act] ?? []).filter((o) => !o.requires);
-    const offers = act === "confirm" ? free.reverse() : free.sort((a, b) => (a.level ?? 0) - (b.level ?? 0));
-    const group = warm[act]?.[0];
-    return [
-      ...offers.map((o) => ({
-        version: PROPOSAL_VERSION, act, parts: [{ line: o.line, slots: o.slots }],
-        ...(o.slots.step ? { step: o.slots.step } : {}), ...(act === "guide" ? { level: o.level ?? 0 } : {}),
-      })),
-      ...(group ? [{ version: PROPOSAL_VERSION, act, parts: [{ warm: group }] }] : []),
-      { version: PROPOSAL_VERSION, act, parts: [] },
-    ];
-  });
-}
-
 const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
 
 export function createTextSession(options: TextSessionOptions): TextSession {
@@ -153,7 +141,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   if (resume && (resume.v !== 1 || resume.session.callId !== options.callId)) throw new Error("maya text: the saved session is not this call's");
   let session = resume
     ? structuredClone(resume.session)
-    : createSession({ callId: options.callId, package: options.package, random: options.random, history: options.history, childName: options.childName, freeTalk: false });
+    : createSession({ callId: options.callId, package: options.package, random: options.random, history: options.history, childName: options.childName, freeTalk: options.freeTalk === true });
   let scene: Scene = createScene();
   let endedAt: number | null = resume?.endedAt ?? null;
   const turns: TraceTurn[] = resume ? structuredClone(resume.turns) : [];
@@ -191,11 +179,31 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   }
 
   /**
+   * Steps a proposal with its free-talk reviews (D-197): first with none, to learn which of the model's own words the
+   * session would say; then, when there are some, with a review of each (in parallel, each with the time limit).
+   */
+  async function reviewed(proposal: unknown, turn: number): Promise<{ r: ReturnType<typeof step>; reviewMs?: number }> {
+    const at = Math.max(clock(), session.now ?? 0);
+    const first = step(session, { type: "proposal", at, proposal });
+    const talk = first.refusal ? [] : first.effects.flatMap((e) => (e.kind === "say" ? e.talk ?? [] : []));
+    const texts = [...new Set(talk.filter((t) => t.code === null && t.review === "not_run").map((t) => t.proposed))];
+    if (texts.length === 0 || !options.reviewer) return { r: first };
+    const t0 = clock();
+    const reviewer = options.reviewer;
+    const talkReviews = await Promise.all(texts.map(async (text) => ({
+      text,
+      result: await runReview(reviewer, reviewInput(session, text), options.reviewTimeLimitMs ?? REVIEW_TIME_LIMIT_MS, (e) => options.onError?.(e, { turn, source: "review" })),
+    })));
+    const reviewMs = clock() - t0;
+    return { r: step(session, { type: "proposal", at, proposal, talkReviews }), reviewMs };
+  }
+
+  /**
    * Tries one proposal: accepted when `step` accepts it and the board core accepts every batch it makes. A refused
    * proposal keeps what the session keeps from it (a safety flag, a stop, an unclear number); nothing of it is output.
    */
-  function tryProposal(proposal: unknown, out: TextOutput, turn: number): { refusal: TraceAttempt["refusal"]; said?: { act: Act; say: string[]; board: string[] } } {
-    const r = step(session, { type: "proposal", at: Math.max(clock(), session.now ?? 0), proposal });
+  async function tryProposal(proposal: unknown, out: TextOutput, turn: number): Promise<{ refusal: TraceAttempt["refusal"]; said?: { act: Act; say: string[]; board: string[] }; talk?: TraceTalk[]; reviewMs?: number }> {
+    const { r, reviewMs } = await reviewed(proposal, turn);
     if (r.refusal) {
       session = r.session;
       takeEnd(r.effects, out);
@@ -235,7 +243,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     out.say.push(...said);
     takeEnd(r.effects, out);
     const proposedAct = typeof proposal === "object" && proposal !== null ? (proposal as { act?: Act }).act : undefined;
-    return { refusal: null, said: { act: act ?? proposedAct ?? "close", say: said, board: ids } };
+    const talk = r.effects.flatMap((e) => (e.kind === "say" ? e.talk ?? [] : []));
+    return { refusal: null, said: { act: act ?? proposedAct ?? "close", say: said, board: ids }, ...(talk.length > 0 ? { talk } : {}), ...(reviewMs !== undefined ? { reviewMs } : {}) };
   }
 
   /** One Maya turn: the model, one repair, then code's fallback. */
@@ -249,8 +258,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const t0 = clock();
       try {
         const proposal = await model.propose(modelInput(session, repair), controller.signal);
-        const tried = tryProposal(proposal, out, index);
-        entry.attempts.push({ source, proposal, refusal: tried.refusal, ms: clock() - t0 });
+        const tried = await tryProposal(proposal, out, index);
+        entry.attempts.push({ source, proposal, refusal: tried.refusal, ms: clock() - t0, ...(tried.talk ? { talk: tried.talk } : {}), ...(tried.reviewMs !== undefined ? { reviewMs: tried.reviewMs } : {}) });
         return { proposal, ...tried };
       } catch (e) {
         options.onError?.(e, { turn: index, source });
@@ -266,8 +275,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     if (result?.said) {
       entry.output = result.said;
     } else if (!session.outcome && nextActs(session).expect === "maya") {
-      for (const proposal of fallbacks(session)) {
-        const tried = tryProposal(proposal, out, index);
+      // The fallback keeps what code can check of the refused proposals' readings (#389).
+      const refused = entry.attempts.filter((a) => a.refusal !== null).map((a) => a.proposal);
+      for (const proposal of fallbacks(session, refused)) {
+        const tried = await tryProposal(proposal, out, index);
         if (tried.said) {
           entry.attempts.push({ source: "fallback", proposal, refusal: null });
           entry.output = tried.said;
@@ -353,6 +364,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         hash,
       },
       freeTalk: session.freeTalk,
+      reviewer: options.reviewer ? { id: options.reviewer.id, promptVersion: options.reviewer.promptVersion } : null,
       turns: structuredClone(turns),
       board: structuredClone(board),
       outcome: session.outcome,

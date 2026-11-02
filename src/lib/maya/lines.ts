@@ -17,8 +17,12 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 
-/** The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. */
-export const LINES_VERSION = 1;
+/**
+ * The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. Version 2:
+ * redirect.decline. Version 3 (#389): step.invite for the final step ("result"), after the last column. Version 4 (D-199):
+ * answer.parts, how the parts make the answer, said before answer.give on the final step.
+ */
+export const LINES_VERSION = 4;
 
 export const LINE_IDS = [
   "open.hello",
@@ -39,12 +43,14 @@ export const LINE_IDS = [
   "check.thinking",
   "answer.right",
   "answer.give",
+  "answer.parts",
   "write.answer",
   "write.yours",
   "confirm.heard",
   "confirm.which",
   "input.other",
   "redirect.back",
+  "redirect.decline",
   "close.solved",
   "close.together",
   "repair.sorry",
@@ -124,6 +130,12 @@ export const TEMPLATES = {
   "step.invite": [
     "Let's look at {where}. What can you do there?", "Now {where}. What do you think comes next?", "What could you try for {where}?",
     "Let's go to {where}. What do you think?", "Next up, {where}. What would you do?", "How about {where}? What can you do there?",
+  ],
+  // The final step after the last column (#389): every work step is done, and the child puts the whole answer
+  // together. Planned wording, pending Savar's approval. It never says the answer.
+  "invite.result": [
+    "Now put it all together. What is {expr}?", "Every part is done. So what is {expr}?", "So, all together, what is {expr}?",
+    "Now say the whole answer. What is {expr}?", "Put the parts together. What does {expr} make?", "You have all the pieces. What is {expr}?",
   ],
 
   "point.add": [
@@ -260,6 +272,14 @@ export const TEMPLATES = {
     "So the answer is {answer}. Please write {answer} on your paper.", "That makes {answer}. Can you write {answer} on your page?",
     "The answer is {answer}. Now write {answer} on your paper.",
   ],
+  // How the parts make the answer (D-199): code says it before answer.give when it gives the answer on the final step,
+  // after two wrong final answers once every column is done. Filled from the checked answer's digits by place, never
+  // from the model. Planned wording, pending Savar's approval.
+  "answer.parts": [
+    "{parts} make {total}.", "Let's put the parts together: {parts} make {total}.", "Here's how the parts fit: {parts} make {total}.",
+    "Put them together: {parts} make {total}.", "Look at the parts: {parts}. Together they make {total}.",
+    "We have {parts}. Together they make {total}.",
+  ],
   "write.answer": [
     "Please write {answer} on your paper.", "Can you write {answer} on your paper?", "Now write {answer} on your page.",
     "Go ahead and write {answer} on your paper.", "Let's put {answer} on your paper.", "Write {answer} on your page, please.",
@@ -275,6 +295,9 @@ export const TEMPLATES = {
     "You can write your answer on the board instead.", "If it's easier, write your number on the board.", "Try writing it on the board for me.",
     "You can also write it on the board.", "Would you like to write it on the board instead?",
   ],
+  // The decline (#383, C29): for a request for sexual, violent or other harmful content. One fixed wording,
+  // approved by Savar on 2026-11-01 (D-197). No detail, no echo of the request.
+  "redirect.decline": ["I can't talk about this. I'm here to help with math."],
   "redirect.back": ["Let's get back to {expr}.", "Back to our question: {expr}.", "Let's keep going with {expr}.", "Now, back to {expr}.", "Let's return to {expr}.", "Okay, back to {expr}."],
   "close.solved": [
     "You worked out {expr} today!", "Great job on {expr} today!", "You solved {expr}. Well done!", "Nice work finishing {expr}!",
@@ -450,6 +473,30 @@ function stepLines(pkg: OperationPackage, step: WorkedStep): LineOffer[] {
 /** The worked steps a child does, without the result. */
 const workSteps = (steps: WorkedStep[]) => steps.filter((s) => s.kind !== "result");
 
+/**
+ * The answer's digits by place, highest first, and the number they make (D-199): "6 tens and 6 ones" make 66, "3 ones,
+ * 2 tenths and 5 hundredths" make 3.25, and for 21 R 1 the quotient's "2 tens and 1 one" make 21. They are the digits
+ * the done columns wrote in the answer row. Null for an answer with fewer than two places (nothing to put together), a
+ * negative one, a fraction, or more places than the place names.
+ */
+function placeParts(value: AnswerValue): { parts: string; total: string } | null {
+  const n = value.type === "number" ? value.value : value.type === "remainder" ? value.quotient : null;
+  if (n === null || !Number.isFinite(n) || n < 0) return null;
+  const total = String(n);
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(total);
+  if (!match) return null;
+  const [, whole, fraction = ""] = match;
+  const ones = PLACE_ORDER.indexOf("ones");
+  const digits = [
+    // A whole part of 0 before a point has no parts to name ("8 tenths and 5 hundredths" make 0.85).
+    ...(whole === "0" && fraction !== "" ? [] : [...whole].map((d, i) => [Number(d), PLACE_ORDER[ones + whole.length - 1 - i]] as const)),
+    ...[...fraction].map((d, i) => [Number(d), PLACE_ORDER[ones - 1 - i]] as const),
+  ];
+  if (digits.length < 2 || digits.some(([, place]) => place === undefined)) return null;
+  const named = digits.map(([d, place]) => `${d} ${d === 1 ? UNIT[place] : place}`);
+  return { parts: `${named.slice(0, -1).join(", ")} and ${named[named.length - 1]}`, total };
+}
+
 /** The sentences of a question text, each with its own end mark. */
 const sentencesOf = (text: string) => text.split(/(?<=[.?!])\s+/).map((s) => s.trim()).filter(Boolean);
 
@@ -480,8 +527,12 @@ export function packageLines(pkg: OperationPackage) {
       return [offer("example.step", step.kind === "result" ? "example.result" : "example.step", { show }, { slots: { step: id }, ...(eq ? { board: eq } : {}) })];
     },
     tryTarget: (): LineOffer[] => [offer("try.target", "try.target", { expr }, { slots: {}, board: expr })],
-    /** The help lines of the child's question's step, H0 to H3. */
+    /**
+     * The help lines of the child's question's step, H0 to H3. The final step ("result", once every work step is done)
+     * has one line, an H0 invite to put the whole answer together (#389).
+     */
     help: (id: string): LineOffer[] => {
+      if (id === "result") return [offer("step.invite", "invite.result", { expr }, { slots: { step: "result" }, level: 0 })];
       const step = find(id);
       return step ? stepLines(pkg, step) : [];
     },
@@ -504,6 +555,11 @@ export function packageLines(pkg: OperationPackage) {
     thinking: (): LineOffer[] => [offer("check.thinking", "check.thinking", {})],
     answerRight: (): LineOffer[] => [offer("answer.right", "answer.right", { expr, answer }, { slots: {}, board: `${expr} = ${answer}` })],
     answerGive: (): LineOffer[] => [offer("answer.give", "answer.give", { answer })],
+    /** How the parts make the answer ("6 tens and 6 ones make 66."), said before answer.give on the final step (D-199). */
+    answerParts: (): LineOffer[] => {
+      const parts = placeParts(pkg.answer.value);
+      return parts ? [offer("answer.parts", "answer.parts", parts)] : [];
+    },
     writeAnswer: (): LineOffer[] => [offer("write.answer", "write.answer", { answer })],
     writeYours: (): LineOffer[] => [offer("write.yours", "write.yours", {})],
     /** "Did you say 15?" for each number Maya may have heard, and "15 or 50?" for each pair that sound alike. */
@@ -516,6 +572,7 @@ export function packageLines(pkg: OperationPackage) {
     ],
     otherInput: (): LineOffer[] => [offer("input.other", "input.other", {})],
     redirect: (): LineOffer[] => [offer("redirect.back", "redirect.back", { expr })],
+    decline: (): LineOffer[] => [offer("redirect.decline", "redirect.decline", {})],
     closeSolved: (by: "child" | "maya"): LineOffer[] => [by === "child" ? offer("close.solved", "close.solved", { expr }) : offer("close.together", "close.together", { expr })],
     repair: (): LineOffer[] => [offer("repair.sorry", "repair.sorry", {})],
     /** The ids of the child's question's work steps, in order. */
@@ -553,9 +610,9 @@ export function allLineTexts(pkg: OperationPackage, heardValues: readonly Answer
   const heard = [...new Map(heardValues.map((v) => [valueText(v), v])).values()];
   const offers = [
     ...l.hello(), ...l.question(), ...l.assess(), ...l.exampleIntro(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id)),
-    ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.explain(),
-    ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
-    ...l.otherInput(), ...l.redirect(), ...l.closeSolved("child"), ...l.closeSolved("maya"), ...l.repair(),
+    ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.explain(),
+    ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
+    ...l.otherInput(), ...l.redirect(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("maya"), ...l.repair(),
   ];
   return [...new Set(offers.flatMap((o) => o.texts.map(sentence)))];
 }

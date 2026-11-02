@@ -35,7 +35,9 @@ import { createHistory, mayaWrites, type BoardHistory } from "@/lib/board-histor
 import { fitView, type PlayStep } from "@/lib/board-svg";
 import type { LearningEvents } from "@/lib/learning-events";
 import { heardWordings, learningEvent, type Outcome, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
+import { freeTalkFor } from "@/lib/maya-free-talk";
 import type { MayaModel } from "@/lib/maya-model";
+import type { TalkReviewer } from "@/lib/maya-talk-review";
 import { createTextSession, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession } from "@/lib/maya-text";
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
 import { checkQuestionPackage, type QuestionPackage, type QuestionRef } from "@/lib/question-package";
@@ -164,6 +166,11 @@ export interface CallSeams {
    * the fake); an id asks for that model again, or null when it is no longer available.
    */
   model(id: string | null): MayaModel | null;
+  /**
+   * The free-talk review (D-197) for a call on this model, or null (then every free-talk piece becomes a bank phrase).
+   * Optional: without it a call has no review.
+   */
+  reviewer?(modelId: string): TalkReviewer | null;
   /** True when the family is marked as a test family (public.test_accounts). */
   isTestFamily(parentId: string): Promise<boolean>;
   /** The internal safety alerts (#333). */
@@ -193,6 +200,20 @@ export interface TranscriptLine {
   second: number;
 }
 
+/** One piece of Maya's own words in a call (D-197), as the admin reads it: both checks and what was said. */
+export interface FreeTalkLine {
+  /** Seconds from the start of the call. */
+  second: number;
+  proposed: string;
+  /** The code guards: null when they passed, else why not. */
+  code: string | null;
+  review: "pass" | "fail" | "error" | "not_run";
+  rules: string[];
+  reason: string | null;
+  shown: string;
+  said: boolean;
+}
+
 /** What the admin screens show of a call: no saved session state. */
 export interface CallView {
   id: string;
@@ -210,6 +231,8 @@ export interface CallView {
   model: { id: string; fake: boolean; promptVersion: string };
   versions: CallRecord["versions"];
   transcript: TranscriptLine[];
+  /** D-197: whether free talk was on, the review's model, and every piece of Maya's own words with both checks. */
+  freeTalk: { on: boolean; reviewer: string | null; lines: FreeTalkLine[] };
   /** Maya's board batches, in order. */
   batches: Batch[];
   outcome: Outcome | null;
@@ -254,6 +277,22 @@ function transcriptOf(trace: MayaTrace): TranscriptLine[] {
   return lines;
 }
 
+/** Every piece of Maya's own words in a trace, with both checks and what was said (D-197). */
+function freeTalkOf(trace: MayaTrace): CallView["freeTalk"] {
+  const start = trace.turns.find((t) => t.kind === "start")?.at ?? trace.turns[0]?.at ?? 0;
+  const lines: FreeTalkLine[] = [];
+  for (const t of trace.turns) {
+    if (t.kind !== "maya" || !t.output) continue;
+    for (const x of t.attempts.at(-1)?.talk ?? []) {
+      lines.push({
+        second: Math.max(0, Math.round((t.at - start) / 1000)), proposed: x.proposed, code: x.code, review: x.review, rules: x.rules ?? [],
+        reason: x.reason ?? null, shown: x.shown, said: x.code === null && x.review === "pass",
+      });
+    }
+  }
+  return { on: trace.freeTalk, reviewer: trace.reviewer?.id ?? null, lines };
+}
+
 /** The board history of a finished call: Maya's batches at their times from the start (no child ink in a text call). */
 export function boardHistoryOf(trace: MayaTrace): BoardHistory {
   const start = trace.turns.find((t) => t.kind === "start")?.at ?? 0;
@@ -295,6 +334,7 @@ export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertStat
     model: { id: record.model, fake: record.model === FAKE_MODEL_ID, promptVersion: record.promptVersion },
     versions: record.versions,
     transcript: transcriptOf(trace),
+    freeTalk: freeTalkOf(trace),
     batches: batchesOf(trace.board),
     outcome: record.outcome ?? trace.outcome,
     counts: record.counts,
@@ -384,8 +424,12 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     }
   }
 
+  /** A call's text session. Admin test calls have free talk on (D-197), with the model's review; a resumed call keeps its flag. */
   function textSession(record: Pick<CallRecord, "id">, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory): TextSession {
-    return createTextSession({ callId: record.id, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved });
+    return createTextSession({
+      callId: record.id, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved,
+      freeTalk: freeTalkFor("admin_test"), reviewer: seams.reviewer?.(model.id) ?? null,
+    });
   }
 
   /** The child's wording history before a new call; an empty one when it cannot be read. */

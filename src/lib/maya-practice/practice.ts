@@ -9,12 +9,13 @@
 //
 // No network or clock of its own: the models, the store and the clock are passed in.
 import { createHash } from "node:crypto";
-import { valuesIn } from "@/lib/maya";
+import { valuesIn, TALK_REVIEW_PROMPT_VERSION } from "@/lib/maya";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { judge as gateJudge, HARD_FAILURES, type Behaviour, type HardFailure } from "@/lib/maya-gate/gate";
 import type { MayaModel } from "@/lib/maya-model";
+import type { TalkReviewer } from "@/lib/maya-talk-review";
 import { createTextSession } from "@/lib/maya-text";
-import { checkTrace, classifyError, packageHash, redactText, type MayaTrace, type TraceError } from "@/lib/maya-trace";
+import { checkTrace, classifyError, packageHash, redactText, type MayaTrace, type TraceError, type TraceTalk } from "@/lib/maya-trace";
 import type { AnswerValue } from "@/lib/question-package";
 import { DIMENSION_IDS, DIMENSIONS, PASS_SCORE, PRACTICE_CASES, RUNS_PER_CASE, type Dimension, type PracticeCase, type StageOpens } from "./cases";
 import { judgeInput, readJudgement, type AiJudge, type DimensionResult, JUDGE_PROMPT_VERSION } from "./judge";
@@ -22,7 +23,7 @@ import { readValidity, VALIDITY_PROMPT_VERSION, type ValidityInput, type Validit
 import { maxWords, readSimulatorTurn, SIMULATOR_PROMPT_VERSION, type ChildSimulator, type SimulatorInput, type SimulatorTurn } from "./simulator";
 
 /** The report format. Raise it when the files or the report change. */
-export const PRACTICE_VERSION = 3;
+export const PRACTICE_VERSION = 4;
 /** A run that reaches this many child turns without the call ending is cut off (and invalid). */
 export const MAX_CHILD_TURNS = 24;
 /** The simulated start of every run, and the time a spoken child turn takes. */
@@ -56,6 +57,8 @@ export interface PracticeVersions {
   /** The validity judge (R386-2-1): reads the child's turns and persona card only. */
   validity: { model: string; promptVersion: string };
   judge: { model: string; promptVersion: string };
+  /** The free-talk review (D-197), or null when Maya ran without one (free talk then always becomes bank phrases). */
+  reviewer?: { model: string; promptVersion: string } | null;
   /** sha256 of the cases and the prompts' versions, so two reports on different suites are never compared. */
   suite: string;
   /** Anything the caller adds: the git commit, the date. */
@@ -111,7 +114,7 @@ export interface JudgeLog {
 
 export function suiteHash(cases: readonly PracticeCase[]): string {
   const plain = cases.map((c) => ({ ...c, validity: { ...c.validity, mustSay: c.validity.mustSay?.map((m) => ({ ...m, pattern: String(m.pattern) })) } }));
-  return packageHash({ cases: plain, simulator: SIMULATOR_PROMPT_VERSION, judge: JUDGE_PROMPT_VERSION, version: PRACTICE_VERSION });
+  return packageHash({ cases: plain, simulator: SIMULATOR_PROMPT_VERSION, judge: JUDGE_PROMPT_VERSION, review: TALK_REVIEW_PROMPT_VERSION, version: PRACTICE_VERSION });
 }
 
 // ---------- Running ----------
@@ -125,6 +128,11 @@ export class BudgetReached extends Error {
 
 export interface PracticeDeps {
   maya: MayaModel;
+  /** Free talk for Maya (D-197; default on, as in the admin demo) and its review (null: every piece becomes a bank phrase). */
+  freeTalk?: boolean;
+  reviewer?: TalkReviewer | null;
+  /** The time limit of one free-talk review (default the live REVIEW_TIME_LIMIT_MS); `claude -p` needs longer. */
+  reviewTimeLimitMs?: number;
   simulator: ChildSimulator;
   /** The validity judge: a run it does not clear is invalid, and the main judge never sees it. */
   validity: ValidityJudge;
@@ -152,6 +160,7 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
   let now = PRACTICE_T0;
   const text = createTextSession({
     callId: `practice-${id}`, package: pkg, model: deps.maya, clock: () => now, random: seed, childName: c.persona.name,
+    freeTalk: deps.freeTalk ?? true, reviewer: deps.reviewer ?? null, ...(deps.reviewTimeLimitMs ? { reviewTimeLimitMs: deps.reviewTimeLimitMs } : {}),
     onError: (e, where) => deps.onError?.(e, `${id} maya ${typeof where === "string" ? where : `turn ${where.turn} ${where.source}`}`),
   });
   const log: SimulatorLog = { kind: "maya-practice-child", version: PRACTICE_VERSION, run: id, caseId: c.id, simulator: { model: deps.simulator.id, promptVersion: deps.simulator.promptVersion }, turns: [], cut: null };
@@ -168,7 +177,8 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
       }
       let raw: unknown;
       try {
-        raw = await deps.simulator.next({ promptVersion: SIMULATOR_PROMPT_VERSION, persona: c.persona, maxWords: maxWords(c.persona.age), transcript: structuredClone(transcript) }, new AbortController().signal);
+        // A case's opener is the child's exact first words, said by code (C29: the simulator will not say them).
+        raw = i === 0 && c.opener ? { action: "say", text: c.opener, seconds: null, stop: false } : await deps.simulator.next({ promptVersion: SIMULATOR_PROMPT_VERSION, persona: c.persona, maxWords: maxWords(c.persona.age), transcript: structuredClone(transcript) }, new AbortController().signal);
       } catch (e) {
         if (e instanceof BudgetReached) {
           budget = true;
@@ -627,6 +637,73 @@ const median = (xs: number[]) => {
   return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
 };
 
+/** One piece of Maya's own words in a saved run (D-197). */
+export interface FreeTalkPiece extends TraceTalk {
+  run: string;
+}
+
+/** Every free-talk piece of a saved suite, and how each check judged them (D-197). Not a gate result. */
+export interface FreeTalkReport {
+  pieces: number;
+  said: number;
+  codeRefused: number;
+  reviewFailed: number;
+  reviewErrors: number;
+  notReviewed: number;
+  /** Failed reviews by rule. */
+  rules: Record<string, number>;
+  /** The pieces the code guards passed and the review failed: what the review caught that code did not. */
+  caught: FreeTalkPiece[];
+  all: FreeTalkPiece[];
+}
+
+/** The free-talk pieces of the required runs, read from their saved traces. */
+export function freeTalkReport(cases: readonly PracticeCase[], store: PracticeStore, runsPerCase: number = RUNS_PER_CASE): FreeTalkReport {
+  const all: FreeTalkPiece[] = [];
+  for (const r of requiredRuns(cases, runsPerCase)) {
+    const raw = store.load(traceFile(r.id));
+    if (raw === undefined) continue;
+    let read: ReturnType<typeof checkTrace>;
+    try {
+      read = checkTrace(JSON.parse(raw));
+    } catch {
+      continue;
+    }
+    if (!read.ok) continue;
+    for (const t of read.trace.turns) {
+      if (t.kind !== "maya" || !t.output) continue;
+      for (const x of t.attempts.at(-1)?.talk ?? []) all.push({ run: r.id, ...x });
+    }
+  }
+  const rules: Record<string, number> = {};
+  for (const x of all) for (const rule of x.rules ?? []) rules[rule] = (rules[rule] ?? 0) + 1;
+  return {
+    pieces: all.length,
+    said: all.filter((x) => x.code === null && x.review === "pass").length,
+    codeRefused: all.filter((x) => x.code !== null).length,
+    reviewFailed: all.filter((x) => x.review === "fail").length,
+    reviewErrors: all.filter((x) => x.review === "error").length,
+    notReviewed: all.filter((x) => x.code === null && x.review === "not_run").length,
+    rules,
+    caught: all.filter((x) => x.code === null && x.review === "fail"),
+    all,
+  };
+}
+
+/** The free-talk report as Markdown. */
+export function freeTalkMarkdown(r: FreeTalkReport): string {
+  const cell = (x: string) => x.replace(/\|/g, "\\|").replace(/\n/g, " ");
+  const lines = [
+    "# Maya free talk (D-197)", "",
+    `${r.pieces} pieces of Maya's own words: ${r.said} said; ${r.codeRefused} refused by the code guards; ${r.reviewFailed} failed by the review; ${r.reviewErrors} review errors; ${r.notReviewed} not reviewed.`, "",
+    "## Caught by the review only (the code guards passed them)", "",
+    ...(r.caught.length === 0 ? ["None."] : ["| Run | Proposed | Rules | Reason |", "|---|---|---|---|", ...r.caught.map((x) => `| ${x.run} | ${cell(x.proposed)} | ${(x.rules ?? []).join(", ")} | ${cell(x.reason ?? "")} |`)]),
+    "", "## Every piece", "", "| Run | Proposed | Code guards | Review | Said |", "|---|---|---|---|---|",
+    ...r.all.map((x) => `| ${x.run} | ${cell(x.proposed)} | ${x.code === null ? "pass" : cell(x.code)} | ${x.review}${x.rules ? ` (${x.rules.join(", ")})` : ""} | ${cell(x.shown)} |`),
+  ];
+  return lines.join("\n");
+}
+
 /** The report, counted from the saved plan and run files alone. */
 /** The runs a suite requires, from code: each case, `runs` times, with its id and seed. Never read from a saved file. */
 export function requiredRuns(cases: readonly PracticeCase[], runs: number = RUNS_PER_CASE): PracticePlan["runs"] {
@@ -729,7 +806,10 @@ export function buildReport(cases: readonly PracticeCase[], store: PracticeStore
 /** The report as markdown. */
 export function reportMarkdown(r: PracticeReport): string {
   const lines: string[] = [];
-  lines.push(`# Maya practice suite: ${r.passed && r.full ? "PASS" : r.passed ? "PASS (part of the suite only: not a gate result)" : "FAIL"}`, "");
+  // A subscription run is a gate result for now (Savar, 2026-11-01), but it is never shown as the final API check (R401-2).
+  const onSubscription = r.versions?.meta?.mode === "subscription";
+  const pass = onSubscription ? "PASS on the Claude subscription (not the final API check)" : "PASS";
+  lines.push(`# Maya practice suite: ${r.passed && r.full ? pass : r.passed ? `${pass} (part of the suite only: not a gate result)` : "FAIL"}`, "");
   if (r.problem) lines.push(`**The suite cannot be read:** ${r.problem}`, "");
   if (r.versions) {
     const v = r.versions;

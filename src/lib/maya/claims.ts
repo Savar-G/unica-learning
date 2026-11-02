@@ -76,10 +76,11 @@ const ALL_WORDS: ReadonlySet<string> = new Set([...WORDS, ...VERBS.flatMap(forms
 
 /**
  * Word pairs on the list as a pair: "in all", "take away", "count on" and "count back" are operation words. A few
- * everyday pairs are fine talk although a word in them is on the list: "all right", "right now", "more time", "more help".
+ * everyday pairs are fine talk although a word in them is on the list: "all right", "right now", "right here", "more time",
+ * "more help".
  */
 const PAIRS: ReadonlySet<string> = new Set(["in all", "take away", "count on", "count back", "line up"]);
-const ALLOWED_PAIRS: ReadonlySet<string> = new Set(["all right", "right now", "more time", "more help"]);
+const ALLOWED_PAIRS: ReadonlySet<string> = new Set(["all right", "right now", "right here", "more time", "more help"]);
 
 /** A word made only of number words, with an ordinal or plural ending: "seventeen", "twentyseven", "sixths". */
 const NUMBER_WORD = new RegExp(

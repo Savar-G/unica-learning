@@ -3,8 +3,13 @@
 //
 // Options:
 //   --question <id|file>     a sample id (default add-27-39; see --list) or a question package JSON file
-//   --model fake|openrouter  fake: the rule player, no AI (default). openrouter: AI_MODEL through OpenRouter; needs
-//                            OPENROUTER_API_KEY (read from the environment, or from .env.local when it is not set)
+//   --model fake|openrouter|anthropic
+//                            fake: the rule player, no AI (default). openrouter: AI_MODEL through OpenRouter; needs
+//                            OPENROUTER_API_KEY (read from the environment, or from .env.local when it is not set).
+//                            anthropic: claude-sonnet-5-5 through the Claude API (src/lib/ai-anthropic.ts), with the key
+//                            in ANTHROPIC_API_KEY or the macOS Keychain item anthropic-unica-tools; local only
+//   --anthropic              the same as --model anthropic
+//   --no-free-talk           every word Maya says from code (D-197 turns free talk on by default here, as in the demo)
 //   --script <file>          child turns, one per line; without it, turns come from stdin (typed when it is a terminal)
 //   --runner livekit|plain   livekit: LiveKit Agents text mode, no room (default). plain: the text adapter alone
 //   --trace <file>           where to write the trace (default traces/maya/<call id>.json)
@@ -18,10 +23,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
+import { execFileSync } from "node:child_process";
 import { aiClient } from "@/lib/ai-client";
+import { anthropicClient } from "@/lib/ai-anthropic";
 import { livekitTextSession } from "@/lib/maya-livekit-text";
 import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { aiTalkReviewer, fakeTalkReviewer, REVIEW_DEFAULT_MODEL, type TalkReviewer } from "@/lib/maya-talk-review";
 import { redactText } from "@/lib/maya-trace";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { createTextSession } from "@/lib/maya-text";
@@ -29,7 +37,8 @@ import { runTextSession } from "@/lib/maya-text-run";
 
 interface Options {
   question: string;
-  model: "fake" | "openrouter";
+  model: "fake" | "openrouter" | "anthropic";
+  freeTalk: boolean;
   script: string | null;
   runner: "livekit" | "plain";
   trace: string | null;
@@ -39,7 +48,7 @@ interface Options {
 }
 
 function parse(argv: string[]): Options {
-  const o: Options = { question: "add-27-39", model: "fake", script: null, runner: "livekit", trace: null, seed: 1, name: null, list: false };
+  const o: Options = { question: "add-27-39", model: "fake", freeTalk: true, script: null, runner: "livekit", trace: null, seed: 1, name: null, list: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const v = () => {
@@ -50,9 +59,11 @@ function parse(argv: string[]): Options {
     if (a === "--question") o.question = v();
     else if (a === "--model") {
       const m = v();
-      if (m !== "fake" && m !== "openrouter") throw new Error("--model is fake or openrouter");
+      if (m !== "fake" && m !== "openrouter" && m !== "anthropic") throw new Error("--model is fake, openrouter or anthropic");
       o.model = m;
-    } else if (a === "--script") o.script = v();
+    } else if (a === "--anthropic") o.model = "anthropic";
+    else if (a === "--no-free-talk") o.freeTalk = false;
+    else if (a === "--script") o.script = v();
     else if (a === "--runner") {
       const r = v();
       if (r !== "livekit" && r !== "plain") throw new Error("--runner is livekit or plain");
@@ -74,6 +85,33 @@ function readEnvFile(path: string): Record<string, string> {
     if (m) out[m[1]] = m[2].replace(/^"(.*)"$/, "$1").replace(/\\n/g, "\n");
   }
   return out;
+}
+
+/** The Claude API key: ANTHROPIC_API_KEY, else the Keychain item anthropic-unica-tools. In process.env so traces redact it. */
+function anthropicKey(): string {
+  let key = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!key) {
+    try {
+      key = execFileSync("security", ["find-generic-password", "-s", "anthropic-unica-tools", "-w"], { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+    } catch {
+      key = "";
+    }
+  }
+  if (!key) throw new Error("--model anthropic needs ANTHROPIC_API_KEY or the Keychain item anthropic-unica-tools.");
+  process.env.ANTHROPIC_API_KEY = key;
+  return key;
+}
+
+/** Maya's model and the free-talk review (D-197) for the chosen model. */
+function models(o: Options, root: string): { maya: MayaModel; reviewer: TalkReviewer } {
+  if (o.model === "fake") return { maya: ruleMayaModel(), reviewer: fakeTalkReviewer() };
+  if (o.model === "anthropic") {
+    const key = anthropicKey();
+    return { maya: aiMayaModel(anthropicClient({ apiKey: key })), reviewer: aiTalkReviewer(anthropicClient({ apiKey: key, model: "claude-haiku-5-5" })) };
+  }
+  const maya = model(o, root);
+  const review = aiClient(process.env, process.env.MAYA_REVIEW_MODEL?.trim() || REVIEW_DEFAULT_MODEL);
+  return { maya, reviewer: review ? aiTalkReviewer(review) : fakeTalkReviewer(() => ({ verdict: "error", reason: "no review client" })) };
 }
 
 function model(o: Options, root: string): MayaModel {
@@ -101,7 +139,7 @@ async function main() {
   }
   const pkg = SAMPLE_PACKAGES[o.question] ?? (existsSync(o.question) ? JSON.parse(readFileSync(o.question, "utf8")) : undefined);
   if (pkg === undefined) throw new Error(`no sample "${o.question}" and no such file (see --list)`);
-  const m = model(o, root);
+  const { maya: m, reviewer } = models(o, root);
 
   const typed = !o.script && process.stdin.isTTY;
   let simulated = Date.now();
@@ -109,9 +147,10 @@ async function main() {
   const callId = `text-${new Date().toISOString().replace(/[:.]/g, "-")}`;
   const text = createTextSession({
     callId, package: pkg, model: m, clock, random: o.seed, childName: o.name, runner: o.runner === "livekit" ? "livekit-text" : "text",
+    freeTalk: o.freeTalk, reviewer: o.freeTalk ? reviewer : null,
     onError: (e, where) => console.error(`[maya-text] ${typeof where === "string" ? where : `turn ${where.turn} ${where.source}`}: ${e instanceof Error ? e.message : String(e)}`),
   });
-  console.log(`-- Maya text session ${callId}: ${typeof pkg.text === "string" ? pkg.text : o.question} (model ${m.id}, runner ${o.runner})`);
+  console.log(`-- Maya text session ${callId}: ${typeof pkg.text === "string" ? pkg.text : o.question} (model ${m.id}, runner ${o.runner}, free talk ${o.freeTalk ? `on, review ${reviewer.id}` : "off"})`);
   const path = resolve(o.trace ?? join(root, "traces/maya", `${callId}.json`));
   const { trace, error } = await runTextSession({
     text,
@@ -132,6 +171,11 @@ async function main() {
     },
   });
   console.log(`-- counts: ${JSON.stringify(trace.counts)}`);
+  // Each piece of Maya's own words, both checks and what was said (D-197).
+  for (const t of trace.turns) {
+    if (t.kind !== "maya" || !t.output) continue;
+    for (const x of t.attempts.at(-1)?.talk ?? []) console.log(`-- free talk: "${x.proposed}" code ${x.code ?? "pass"}, review ${x.review}${x.rules ? ` (${x.rules.join(", ")})` : ""} -> "${x.shown}"`);
+  }
   if (error) throw error;
 }
 

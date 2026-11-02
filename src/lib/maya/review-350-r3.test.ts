@@ -70,7 +70,7 @@ describe("N2-R3: no word reaches an inherited property of a lookup table", () =>
     const c = call();
     c.child("56");
     const put = { op: "put", target: { objectId: name, part: "cell", rowId: "answer", column: "ones" }, value: "6" };
-    // With freeTalk off, a command the model built is refused before it is read (R374-6-1).
+    // A command the model built is refused before it is read (R374-6-1, D-197).
     expect(c.propose(guide({ board: [put] })).refusal).toMatchObject({ code: "board_not_code" });
     expect(valuesIn(name)).toEqual([]);
   });
@@ -169,7 +169,7 @@ describe("N1-R3: a taken-back answer is no longer solved, even when no reading n
   it("keeps the assistance history", () => {
     const c = call();
     c.child("I don't know.");
-    expect(c.propose({ act: "example_step", step: "ones", parts: [ln("example.step", { step: "ones" })] }).refusal).toBeNull();
+    expect(c.propose({ act: "example_step", step: "ones", parts: [ln("example.intro"), ln("example.step", { step: "ones" })] }).refusal).toBeNull();
     c.child("66");
     expect(c.propose({ act: "accept_answer", parts: [t("How did you get it?")], reading: { answers: [right66] } }).refusal).toBeNull();
     c.child("Actually 56. Stop.");
