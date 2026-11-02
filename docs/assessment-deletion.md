@@ -290,3 +290,11 @@ Checked on the live database (1 November 2026), in transactions that were rolled
 | Family B's Auth user is deleted | 0 rows left for B; A's 2 rows stay |
 | A's call is deleted | 0 rows left for it |
 | A write after family A's deletion request | refused (55000, `family_unavailable`) |
+
+### Numbered workbook delivery receipts (#474)
+
+`workbook_delivery_receipts` has one immutable delivery receipt per workbook. It stores the workbook, child, number, actual delivery time, local input, family time zone, server record time, admin actor, and audit link. Composite foreign keys bind the receipt to the workbook's family, child, and number. The parent, child, workbook, and audit foreign keys use `on delete cascade`. The family write fence covers inserts and updates. The confirmation RPC checks the fence before returning an existing receipt too.
+
+Parents can read their own receipts. Admins can read all receipts and confirm delivery through the authenticated RPC. Browser sessions cannot insert, update, or delete receipt rows directly. The RPC gets the actor from the session and checks live admin membership. The existing workbook audit stays admin-only.
+
+These rows add no retention activity and no storage objects. The existing family deletion worker removes the receipt and its audit row when it deletes Auth. The customer, saved-card, former-customer, free-test, unknown-payment, and parent-request rules remain unchanged. Do not add receipts or admin identities to copies without names. Hosted verification with a dedicated synthetic family and the existing `retention_worker` key is recorded in `.design/experiments/r474/hosted-deletion.json`.

@@ -12,6 +12,7 @@ import { AdminFrame, Chip, Table, type Tone } from "@/components/admin";
 import { RecordFacts, childPath } from "@/components/admin-records";
 import { AuditLog } from "@/components/admin-workbook-audit";
 import { MarkWorkbook } from "@/components/workbook-ship-actions";
+import { WorkbookDelivery } from "@/components/workbook-delivery";
 import "./admin-workbook.css";
 
 const STATUS: Record<WorkbookStatus, [string, Tone]> = {
@@ -146,9 +147,9 @@ function PrintAndShip({ detail }: { detail: WorkbookDetail }) {
     </div>
     {w.status === "draft" && <p className="adm-note">This workbook is not approved. Approve its draft first.</p>}
     {(w.status === "printed" || w.status === "shipped") && <p className="adm-note">A printed workbook cannot change.</p>}
-    {w.status === "shipped" && detail.firstShipped && (
-      <p className="adm-note" role="note"><b>This is {name}&apos;s first shipped workbook.</b> Start the plan now: open{" "}
-        <Link href={`${ADMIN_PATH}/next-steps`}>Cards and waitlist</Link> and press &ldquo;Workbook shipped: start plan&rdquo; on {name}&apos;s card.</p>
+    {w.status === "shipped" && w.number === 1 && detail.delivery && (
+      <p className="adm-note" role="note"><b>Workbook 1 delivery is confirmed.</b> To start {name}&apos;s free month, open{" "}
+        <Link href={`${ADMIN_PATH}/next-steps`}>Cards and waitlist</Link> and press &ldquo;Workbook delivered: start free month&rdquo; on {name}&apos;s card.</p>
     )}
   </section>;
 }
@@ -173,6 +174,8 @@ export function AdminWorkbook({ email, detail }: { email: string; detail: Workbo
         ["Workbook id", <span key="id" className="adm-mono">{w.id}</span>],
       ]} />
       <PrintAndShip detail={detail} />
+      {w.status === "shipped" && <WorkbookDelivery workbookId={w.id} childId={w.childId} number={w.number}
+        timeZone={detail.deliveryZone} receipt={detail.delivery} actor={audit.find((e) => e.id === detail.delivery?.auditId)?.actor_email} />}
       {w.pages.map((p) => (
         <section key={p.number} className="adm-wb-section" aria-labelledby={`page-${p.number}`}>
           <h2 id={`page-${p.number}`}>{pageTitle(p)}</h2>

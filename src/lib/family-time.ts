@@ -94,10 +94,11 @@ export function weekStartFor(day: string): string {
 }
 
 /** An instant at a local calendar date and hour, using the dated override at the resulting instant. */
-export function localDateTime(day: string, zone: FamilyZone, hour = 0): number {
+export function localDateTime(day: string, zone: FamilyZone, hour = 0, minute = 0, second = 0): number {
   if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw new RangeError("Hour must be between 0 and 23");
+  if (!Number.isInteger(minute) || minute < 0 || minute > 59 || !Number.isInteger(second) || second < 0 || second > 59) throw new RangeError("Invalid minute or second");
   const date = new Date(`${day}T00:00:00Z`);
-  date.setUTCHours(hour);
+  date.setUTCHours(hour, minute, second);
   const wall = date.getTime();
   const represented = (at: number) => {
     const f = partsInZone(at, zone, { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric", hourCycle: "h23" });

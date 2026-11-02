@@ -4,6 +4,8 @@ const state = vi.hoisted(() => ({ admin: true, start: vi.fn(), stripe: vi.fn(), 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/admin-store", () => ({ adminSession: async () => state.admin ? { db: { rpc: () => ({ select: () => ({ eq: () => ({ maybeSingle: state.read }) }) }) } } : null }));
 vi.mock("@/lib/stripe", () => ({ startPlan: state.start, stripe: state.stripe }));
+vi.mock("@/lib/workbook-store", () => ({ workbookStore: () => ({ childWorkbooks: async () => [{ id: "book", childId: "child", parentId: "parent", number: 1, status: "shipped" }] }) }));
+vi.mock("@/lib/workbook-delivery-store", () => ({ workbookDeliveryStore: () => ({ receipt: async () => ({ workbookId: "book", childId: "child", parentId: "parent", number: 1 }) }) }));
 const { POST } = await import("@/app/api/admin/cards/[id]/start/route");
 const id = "11111111-1111-4111-8111-111111111111";
 const ctx = { params: Promise.resolve({ id }) };
@@ -14,7 +16,7 @@ beforeEach(() => {
   state.admin = true;
   state.start.mockReset().mockResolvedValue({ ok: true, subscription: "sub_1", firstChargeAt: "2026-12-05T00:00:00Z" });
   state.stripe.mockReset().mockReturnValue({});
-  state.read.mockReset().mockResolvedValue({ data: { id, card_saved_at: "2026-11-01T00:00:00Z", stripe_customer_id: "cus_real", price: 79.99, plan: "one" }, error: null });
+  state.read.mockReset().mockResolvedValue({ data: { id, child_id: "child", parent_id: "parent", card_saved_at: "2026-11-01T00:00:00Z", stripe_customer_id: "cus_real", price: 79.99, plan: "one" }, error: null });
 });
 
 describe("the admin delivery confirmation route", () => {

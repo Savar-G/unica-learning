@@ -9,6 +9,7 @@ const ACTION: Record<string, string> = {
   "draft-stored": "Saved the draft", "run-resumed": "Picked up again after a stop", "run-routed": "Set where the run is made",
   "workbook-comments-sent": "Applied review comments",
   "workbook-approved": "Approved for print", "workbook-printed": "Marked printed", "workbook-shipped": "Marked shipped",
+  "workbook-delivered": "Confirmed workbook delivered",
 };
 
 /** An audit entry's details in plain words; the raw keys and values stay in the tooltip. */

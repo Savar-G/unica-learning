@@ -9,6 +9,6 @@ export default async function WorkbooksPage({ searchParams }: PageProps<"/admin/
   await connection();
   const status = (await searchParams).status;
   const filter: ListFilter = typeof status === "string" && (LIST_FILTERS as readonly string[]).includes(status) ? (status as ListFilter) : "all";
-  const { runs, workbooks, children } = await listWorkbookArea(admin);
-  return <AdminWorkbookList email={admin.email} runs={runs.rows} more={runs.more} workbooks={workbooks} childNames={children} filter={filter} now={new Date()} />;
+  const { runs, workbooks, children, deliveredIds } = await listWorkbookArea(admin);
+  return <AdminWorkbookList email={admin.email} runs={runs.rows} more={runs.more} workbooks={workbooks} deliveredIds={deliveredIds} childNames={children} filter={filter} now={new Date()} />;
 }

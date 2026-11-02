@@ -30,6 +30,9 @@ import { RUN_COLUMNS, runFromRow } from "@/lib/workbook-job-store";
 import { summarizeAiCalls, type AiCallSummary } from "@/lib/workbook-ai";
 import { workerOnline } from "@/lib/workbook-worker";
 import type { RenderProblem } from "@/lib/workbook-render";
+import { familyProvince, familyZone, type FamilyZone } from "@/lib/family-time";
+import type { DeliveryReceipt } from "@/lib/workbook-delivery";
+import { workbookDeliveryStore } from "@/lib/workbook-delivery-store";
 
 // The admin area's data (#77). The gate and every read are here, so no admin page reads the database on its own; the
 // report view is read by the report-loading module with the admin's session (src/lib/report-loading-server.ts, #161).
@@ -542,6 +545,8 @@ export async function getChildWorkbooks(a: AdminSession, childId: string): Promi
 
 export interface WorkbookDetail {
   workbook: Workbook;
+  delivery: DeliveryReceipt | null;
+  deliveryZone: FamilyZone;
   child: ChildRow | null;
   /** Short-lived URLs of the page images, by path, signed with the admin's session under the bucket's admin policy. */
   images: Record<string, string>;
@@ -558,7 +563,7 @@ export async function getWorkbook(a: AdminSession, id: string): Promise<Workbook
   const workbook = await workbookStore(a.db).workbook(id);
   if (!workbook) return null;
   const paths = workbook.pages.flatMap((p) => (p.image ? [p.image.path] : []));
-  const [children, signed, audit, runs, shipped] = await Promise.all([
+  const [children, signed, audit, runs, shipped, delivery, parents, familyChildren] = await Promise.all([
     childrenById(a, [workbook.childId]),
     paths.length ? a.db.storage.from(WORKBOOK_FILES_BUCKET).createSignedUrls(paths, WORKBOOK_URL_SECONDS) : Promise.resolve({ data: [], error: null }),
     a.db.from("workbook_audit").select("id, at, actor_email, action, detail").or(`workbook_id.eq.${workbook.id},draft_id.eq.${workbook.id}`)
@@ -567,6 +572,11 @@ export async function getWorkbook(a: AdminSession, id: string): Promise<Workbook
       .then((r) => must<{ id: string }[]>(r, "workbook run")),
     a.db.from("workbooks").select("id, shipped_at").eq("child_id", workbook.childId).eq("status", "shipped")
       .then((r) => must<{ id: string; shipped_at: string | null }[]>(r, "shipped workbooks")),
+    workbookDeliveryStore(a.db).receipt(workbook.id),
+    a.db.rpc("admin_parents").select("time_zone, postal").eq("id", workbook.parentId)
+      .then((r) => must<{ time_zone: string | null; postal: string | null }[]>(r, "delivery family")),
+    a.db.rpc("admin_children").select("id, province, created_at").eq("parent_id", workbook.parentId)
+      .then((r) => must<{ id: string; province: string; created_at: string }[]>(r, "family province")),
   ]);
   if (signed.error) console.error("[admin] workbook images sign failed", signed.error.message);
   const images: Record<string, string> = {};
@@ -574,7 +584,9 @@ export async function getWorkbook(a: AdminSession, id: string): Promise<Workbook
   const at = (w: { shipped_at: string | null }) => (w.shipped_at ? new Date(w.shipped_at).getTime() : Infinity);
   const mine = shipped.find((w) => w.id === workbook.id);
   const firstShipped = !!mine && shipped.every((w) => w.id === workbook.id || at(w) > at(mine));
-  return { workbook, child: children[0] ?? null, images, audit, runId: runs[0]?.id ?? null, firstShipped };
+  const parent = parents[0];
+  const deliveryZone = delivery?.timeZone ?? familyZone({ timeZone: parent?.time_zone, postal: parent?.postal, province: familyProvince(familyChildren) });
+  return { workbook, delivery, deliveryZone, child: children[0] ?? null, images, audit, runId: runs[0]?.id ?? null, firstShipped };
 }
 
 /** A fresh short-lived URL of a stored workbook PDF, signed with the admin's session, or null when there is none. */
@@ -661,7 +673,7 @@ async function runRows(a: AdminSession, runs: WorkbookRun[]): Promise<RunListRow
 }
 
 /** Everything in the Workbooks list: the newest runs, the stored workbooks, and their children. */
-export async function listWorkbookArea(a: AdminSession): Promise<{ runs: Page<RunListRow>; workbooks: WorkbookSummary[]; children: Map<string, ChildRow> }> {
+export async function listWorkbookArea(a: AdminSession): Promise<{ runs: Page<RunListRow>; workbooks: WorkbookSummary[]; children: Map<string, ChildRow>; deliveredIds: string[] }> {
   const [runs, books] = await Promise.all([
     a.db.from("workbook_runs").select(RUN_COLUMNS).order("created_at", { ascending: false }).range(0, LIST_MAX)
       .then((r) => must<Parameters<typeof runFromRow>[0][]>(r, "workbook runs")),
@@ -678,7 +690,13 @@ export async function listWorkbookArea(a: AdminSession): Promise<{ runs: Page<Ru
     runRows(a, cut.rows),
     childrenById(a, [...cut.rows.map((r) => r.childId), ...workbooks.map((w) => w.childId)]),
   ]);
-  return { runs: { rows, more: cut.more || books.length > LIST_MAX }, workbooks, children: index(children) };
+  const deliveredIds: string[] = [];
+  for (let i = 0; i < workbooks.length; i += CHUNK) {
+    const result = await a.db.from("workbook_delivery_receipts").select("workbook_id").in("workbook_id", workbooks.slice(i, i + CHUNK).map((w) => w.id));
+    if (result.error) throw new Error(`[admin] delivery receipts: ${result.error.message}`);
+    deliveredIds.push(...result.data.map((r) => r.workbook_id));
+  }
+  return { runs: { rows, more: cut.more || books.length > LIST_MAX }, workbooks, children: index(children), deliveredIds };
 }
 
 /** A child's runs, newest first, with their check results. */

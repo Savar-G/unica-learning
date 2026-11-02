@@ -8,6 +8,7 @@ const ERRORS: Record<string, string> = {
   already: "This family already has a plan in Stripe. Open it in Stripe to check.",
   no_card: "No saved card was found for this family.",
   not_delivered: "Confirm that the first workbook has arrived at the family's home before starting the free month.",
+  delivery_receipt_required: "Open this child's workbook 1 and confirm its delivery. Then return here to start the free month.",
   unavailable: "Stripe is unavailable. Try again later.",
   failed: "Stripe could not start the plan. Check Stripe before trying again.",
 };

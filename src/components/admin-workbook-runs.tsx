@@ -102,8 +102,8 @@ function keep(row: Row, filter: ListFilter): boolean {
 }
 
 /** The Workbooks list: every run's draft and every stored workbook, by child, newest first in each child. */
-export function AdminWorkbookList({ email, runs, more, workbooks, childNames: children, filter, now }: {
-  email: string; runs: RunListRow[]; more: boolean; workbooks: WorkbookSummary[]; childNames: Map<string, ChildRow>; filter: ListFilter; now: Date;
+export function AdminWorkbookList({ email, runs, more, workbooks, childNames: children, filter, now, deliveredIds = [] }: {
+  email: string; runs: RunListRow[]; more: boolean; workbooks: WorkbookSummary[]; childNames: Map<string, ChildRow>; filter: ListFilter; now: Date; deliveredIds?: string[];
 }) {
   const rows: Row[] = [
     ...runs.map((row): Row => ({ kind: "run", childId: row.run.childId, at: row.run.createdAt, row, state: runState(row.run, now) })),
@@ -137,7 +137,9 @@ export function AdminWorkbookList({ email, runs, more, workbooks, childNames: ch
           <tr key={r.workbook.id}>
             <td><Link href={childPath(r.childId)}>{childName(children, r.childId)}</Link></td>
             <td className="adm-nowrap"><Link href={adminWorkbookPath(r.workbook.id)}>Workbook {r.workbook.number}</Link><span className="adm-sub">{levelsText(r.workbook.levels)}</span></td>
-            <td><WorkbookStatusChip status={r.workbook.status as WorkbookStatus} /></td>
+            <td><WorkbookStatusChip status={r.workbook.status as WorkbookStatus} />
+              {r.workbook.status === "shipped" && <span className="adm-sub">{deliveredIds.includes(r.workbook.id) ? "Delivery confirmed" : <Link href={adminWorkbookPath(r.workbook.id)}>Confirm workbook delivered</Link>}</span>}
+            </td>
             <td><span className="adm-sub">Stored for print</span></td>
             <td className="adm-nowrap">{when(r.workbook.createdAt)}</td>
             <td className="adm-sub">-</td>
