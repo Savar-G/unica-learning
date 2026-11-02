@@ -82,6 +82,12 @@ export interface Reading {
    * (redirect.decline), with no free talk, then goes back to the question.
    */
   unsafeRequest?: boolean;
+  /** Spoken help for the rest of the call. */
+  noBoard?: boolean;
+  /** One action next, then at most 25 spoken words per turn. */
+  shorter?: boolean;
+  /** A question about being real, or a secret or exclusive friendship. */
+  aboutMaya?: "identity" | "secret_friend";
   /** An explicit request for more help, or for Maya to show the step. */
   help?: "more" | "show";
   /** At the opening: the child has work to show, or has not started (then the easier example comes first). */
@@ -182,7 +188,7 @@ export const PROPOSAL_SCHEMA = {
     reading: nullable({
       type: "object",
       additionalProperties: false,
-      required: ["safety", "stop", "unclear", "writing", "offTopic", "unsafeRequest", "help", "start", "answers", "paper", "correctsHearing"],
+      required: ["safety", "stop", "unclear", "writing", "offTopic", "unsafeRequest", "noBoard", "shorter", "aboutMaya", "help", "start", "answers", "paper", "correctsHearing"],
       properties: {
         safety: nullable({ enum: ["concern", "immediate"] }),
         stop: nullable({ type: "boolean" }),
@@ -190,6 +196,9 @@ export const PROPOSAL_SCHEMA = {
         writing: nullable({ type: "boolean" }),
         offTopic: nullable({ type: "boolean" }),
         unsafeRequest: nullable({ type: "boolean" }),
+        noBoard: nullable({ type: "boolean" }),
+        shorter: nullable({ type: "boolean" }),
+        aboutMaya: nullable({ enum: ["identity", "secret_friend"] }),
         help: nullable({ enum: ["more", "show"] }),
         start: nullable({ enum: ["has_work", "no_start"] }),
         answers: nullable({

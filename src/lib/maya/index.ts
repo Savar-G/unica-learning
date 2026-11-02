@@ -22,6 +22,7 @@ export {
   TIME_LIMITS,
   CLOSING_LEAD_MS,
   limitsOf,
+  turnWordLimit,
   type Assistance,
   type Effect,
   type Expect,
@@ -60,7 +61,7 @@ export {
 } from "./proposal";
 export { allLineTexts, LINE_IDS, LINES_VERSION, TEMPLATES, type LineChoice, type LineId, type LineOffer, type Slots, type TemplateKey } from "./lines";
 export { talkMath } from "./claims";
-export { speechKey } from "./speech";
+export { speechKey, speechWords } from "./speech";
 export { FEELING_SMALLTALK, FREE_TALK_LIMITS, hardFeeling, NEUTRAL_SMALLTALK, replyFor, type ReplyPick, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, freeTalkProblem, plainLanguageProblem, PLAIN_LANGUAGE_BANNED, workProblem, type PhraseGroup } from "./phrases";
 export {
   NEVER_SAY,
