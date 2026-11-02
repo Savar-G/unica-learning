@@ -1,0 +1,11 @@
+.adm-workbook-emails { width: max-content; max-width: calc(100vw - 64px); }
+.adm-workbook-emails[open] { width: min(360px, calc(100vw - 64px)); min-width: 250px; }
+.adm-workbook-emails > summary, .adm-workbook-history > summary { cursor: pointer; padding: 10px 0; }
+.adm-workbook-emails p { margin: 10px 0; line-height: 1.5; }
+.adm-workbook-emails form { display: grid; gap: 12px; margin-top: 16px; }
+.adm-workbook-emails label { display: grid; gap: 5px; }
+.adm-workbook-emails input, .adm-workbook-emails select { box-sizing: border-box; width: 100%; min-height: 44px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); font: inherit; }
+.adm-workbook-emails :focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
+.adm-workbook-emails pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.6; }
+.adm-workbook-preview { border: 1px solid var(--line); border-radius: 6px; padding: 12px; margin-top: 16px; }
+.adm-workbook-history { border-top: 1px solid var(--line); margin-top: 12px; }

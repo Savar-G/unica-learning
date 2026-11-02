@@ -1,0 +1,8 @@
+
+ RUN  v4.1.11 /Users/savargupta/Github/pagewise-landing-page/.claude/worktrees/workbook-delivery-emails
+
+
+ Test Files  4 passed (4)
+      Tests  33 passed (33)
+   Start at  15:37:57
+   Duration  1.04s (transform 585ms, setup 0ms, import 829ms, tests 648ms, environment 0ms)

@@ -30,6 +30,7 @@ function changeColumns(c: CallChange): Update {
   if (c.boardHistory !== undefined) u.board_history = c.boardHistory;
   if (c.learningEventId !== undefined) u.learning_event_id = c.learningEventId;
   if (c.profileRebuiltAt !== undefined) u.profile_rebuilt_at = c.profileRebuiltAt;
+  if (c.notePending !== undefined) u.note_pending = c.notePending;
   if (c.speechToText !== undefined) u.speech_to_text = c.speechToText;
   if (c.voice !== undefined) u.voice = c.voice;
   if (c.connectedSeconds !== undefined) u.connected_seconds = c.connectedSeconds;
@@ -94,6 +95,7 @@ export function fromCallRow(r: Row): CallRecord {
     boardHistory: r.board_history,
     learningEventId: r.learning_event_id,
     profileRebuiltAt: r.profile_rebuilt_at,
+    notePending: r.note_pending,
     speechToText: r.speech_to_text,
     voice: r.voice,
     connectedSeconds: r.connected_seconds,
@@ -143,6 +145,31 @@ export function mayaCallStore(admin: SupabaseClient<Database>): CallStore {
         .eq("revision", revision)
         .select("id");
       if (error) throw new Error(`maya call update: ${error.message}`);
+      return (data ?? []).length === 1;
+    },
+    async pendingNotes(childId, limit) {
+      if (!UUID.test(childId)) return [];
+      const { data, error } = await admin
+        .from("maya_calls")
+        .select("*")
+        .eq("child_id", childId.toLowerCase())
+        .eq("status", "ended")
+        .not("note_pending", "is", null)
+        .order("ended_at", { ascending: true })
+        .limit(Math.max(1, Math.min(limit, 20)));
+      if (error) throw new Error(`maya call pending notes: ${error.message}`);
+      return (data ?? []).map(fromCallRow);
+    },
+    async clearNote(id) {
+      if (!UUID.test(id)) return false;
+      const { data, error } = await admin
+        .from("maya_calls")
+        .update({ note_pending: null, updated_at: new Date().toISOString() })
+        .eq("id", id.toLowerCase())
+        .eq("status", "ended")
+        .not("note_pending", "is", null)
+        .select("id");
+      if (error) throw new Error(`maya call clear note: ${error.message}`);
       return (data ?? []).length === 1;
     },
   };

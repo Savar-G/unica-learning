@@ -1,0 +1,44 @@
+
+ RUN  v4.1.11 /Users/savargupta/Github/pagewise-landing-page/.claude/worktrees/workbook-delivery-emails
+
+ ❯ src/lib/workbook-email-worker.test.ts (5 tests | 2 failed) 14ms
+     × excludes blocked families before the batch limit so they cannot occupy each run 2ms
+     × continues when a family becomes blocked after the queue was selected 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/lib/workbook-email-worker.test.ts > welcome queue progress during family deletion > excludes blocked families before the batch limit so they cannot occupy each run
+Error: family_unavailable
+ ❯ Object.claim src/lib/workbook-email-server.ts:37:24
+     35|         p_message: { to: message.to, subject: message.subject, text: m…
+     36|       });
+     37|       if (error) throw Error(error.message);
+       |                        ^
+     38|       const row = data?.[0];
+     39|       return row ? { id: row.id, token: row.claim_token } : null;
+ ❯ sendEmailOnce src/lib/email-delivery.ts:89:18
+ ❯ Module.runWorkbookWelcomes src/lib/workbook-email-server.ts:109:20
+ ❯ src/lib/workbook-email-worker.test.ts:128:14
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/lib/workbook-email-worker.test.ts > welcome queue progress during family deletion > continues when a family becomes blocked after the queue was selected
+Error: family_unavailable
+ ❯ Object.claim src/lib/workbook-email-server.ts:37:24
+     35|         p_message: { to: message.to, subject: message.subject, text: m…
+     36|       });
+     37|       if (error) throw Error(error.message);
+       |                        ^
+     38|       const row = data?.[0];
+     39|       return row ? { id: row.id, token: row.claim_token } : null;
+ ❯ sendEmailOnce src/lib/email-delivery.ts:89:18
+ ❯ Module.runWorkbookWelcomes src/lib/workbook-email-server.ts:109:20
+ ❯ src/lib/workbook-email-worker.test.ts:138:14
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 3 passed (5)
+   Start at  15:37:47
+   Duration  498ms (transform 266ms, setup 0ms, import 418ms, tests 14ms, environment 0ms)
