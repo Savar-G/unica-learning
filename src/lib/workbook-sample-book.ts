@@ -26,11 +26,11 @@ import {
   assembleBook,
   type BookOmission,
   type FilledBlock,
-  type DayHeader,
   type Figure,
   type PlannedSlot,
 } from "@/lib/workbook-page";
 import { DEFAULT_STEPS, planLevel, planWorkbook, type PlanInput, type PlannedPage, type WorkbookPlan } from "@/lib/workbook-plan";
+import { coverTitleLines, dayHeader, pageTopic } from "@/lib/workbook-book";
 import type { WorkbookDraft } from "@/lib/workbook-render";
 
 const BC = curriculumFor("bc")!;
@@ -225,23 +225,6 @@ function mixedOf(band: Band, r: Rand): { op: Operation; text: string } {
 
 const box = (id: string, label: string | null, answer: AnswerValue | null) => ({ id, kind: "box" as const, label, answer });
 const opCheck = (region: string) => ({ kind: "operation" as const, region });
-
-// ---------- Topics ----------
-
-/** The longest topic a sample page prints: the longest drafted step name is 45 characters. */
-const TOPIC_MAX = 45;
-
-/**
- * A topic for a skill and step, never cut inside a phrase: the drafted step's name, else the skill's text up to its
- * first clause when that is short enough, else the level's title.
- */
-function topicOf(skill: string | undefined, step: number | undefined): string {
-  if (!skill) return "Review";
-  const named = step ? BC.skillSteps(skill)?.[step - 1]?.name : undefined;
-  if (named) return named;
-  const clause = (BC.skill(skill)?.text ?? skill).split(/,|;| \(/)[0].trim();
-  return clause.length <= TOPIC_MAX ? clause : BC.levelOfSkill(skill)?.title ?? "Review";
-}
 
 // ---------- Filling slots ----------
 
@@ -513,64 +496,6 @@ function fillSlot(s: PlannedSlot, index: number, ctx: FillCtx): FilledBlock {
   }
 }
 
-/** The headline words of a day page. */
-function headerOf(page: PlannedPage, level: number): DayHeader {
-  const main = page.parts.find((p) => p.step) ?? page.parts[0];
-  const topic = topicOf(main?.step?.skill ?? main?.skills[0], main?.step?.step);
-  const early = level <= 9;
-  const t = (title: string, subtitle: string) => ({ title, subtitle });
-  let head: { title: string; subtitle: string };
-  // A parent-led page is titled by its first part.
-  const first = page.parts[0]?.kind;
-  const type = page.type !== "parent-led" ? page.type
-    : first === "new-idea" ? "new-idea" : first === "picture-stories" ? "word-problems" : first === "remember-these" ? "remember-these" : first ?? "practice";
-  switch (type) {
-    case "warm-up": head = t("Warm-up", level >= 16 ? "Facts to 20. Beat your own count from last time." : "Facts to 20. Take your time: there is no timer."); break;
-    case "new-idea": head = t(topic, level >= 19 ? "Try it first. Then see how it works." : "Watch how it works. Then try it."); break;
-    case "practice": head = t(`Practice: ${topic}`, "Watch one. Finish two. Then do the rest on your own."); break;
-    case "practice-2": head = t(`More practice: ${topic}`, "Each row is a little harder than the one before."); break;
-    case "word-problems": head = t(`${topic} in stories`, "Read it. Work it out in the box. Write the answer."); break;
-    case "math-in-the-world": head = t("Math in the world", "One real task: a garden bed. Plan it, then work it out."); break;
-    case "unit-b": head = t(topic, `Unit B: ${topic.toLowerCase()}.`); break;
-    case "friday-5": head = t("Remember these? and Friday 5", "Things you learned before, then five with no hints."); break;
-    case "challenge": head = t("Challenge", (page.parts.find((x) => x.kind === "challenge")?.items ?? 1) > 1 ? "Two to stretch you." : "One to stretch you."); break;
-    case "show-what-you-know": head = t("Show what you know", "Ten days of work. Show what you learned!"); break;
-    case "level-test": head = t(`Level U${level} test`, "Do this on your own."); break;
-    default: head = t("Remember these?", "Things you learned before, so they stay fresh.");
-  }
-
-  const parentLed = page.type === "parent-led";
-  const grownUp = parentLed
-    ? "Read each line aloud. Your child circles, colours or writes one number."
-    : early && type === "new-idea" ? "Read the blue box aloud. Show both ways with a finger." : null;
-  return { topic: type === "level-test" ? "Level test" : type === "show-what-you-know" ? "Show what you know" : topic, ...head, grownUp };
-}
-
-/** The most characters a line of the 66 px cover title holds. */
-const COVER_LINE = 19;
-
-/** A level title as two cover lines: the whole title when it wraps into two, else its part before " and " or a comma. */
-function coverLines(title: string): [string, string] {
-  const wrap = (text: string) => {
-    const lines: string[] = [];
-    for (const word of text.split(" ")) {
-      const last = lines.at(-1);
-      if (last !== undefined && `${last} ${word}`.length <= COVER_LINE) lines[lines.length - 1] = `${last} ${word}`;
-      else lines.push(word);
-    }
-    return lines;
-  };
-  for (const text of [title, title.split(" and ")[0], title.split(",")[0]]) {
-    const lines = wrap(text);
-    if (lines.length === 2 && lines.every((l) => l.length <= COVER_LINE)) return [lines[0], lines[1]];
-    if (lines.length === 1) {
-      const words = text.split(" ");
-      if (words.length > 1) return [words.slice(0, -1).join(" "), words.at(-1)!];
-    }
-  }
-  return [title, ""];
-}
-
 // ---------- The book ----------
 
 export interface SampleBookOptions {
@@ -626,10 +551,10 @@ export function sampleBook(o: SampleBookOptions): SampleBook {
   const band = bandOf(level.number);
   const title = BC.level(o.level)!.title;
   // The cover title is two lines of at most COVER_LINE characters (66 px type): the level's title, else its first part.
-  const coverTitle = coverLines(title);
+  const coverTitle = coverTitleLines(title);
   const dayTopic = (day: number, track: "A" | "B") => {
     const part = plan.days[day - 1].pages.flatMap((p) => p.parts).find((p) => p.unit === track && p.step);
-    return part ? topicOf(part.step!.skill, part.step!.step) : null;
+    return part ? pageTopic(BC, part.step!.skill, part.step!.step) : null;
   };
   const { draft, omissions } = assembleBook({
     workbookId: o.workbookId, childId: o.childId, child: o.child, number, levelTitle: title, profileBuild: null, plan,
@@ -656,7 +581,7 @@ export function sampleBook(o: SampleBookOptions): SampleBook {
       return { topic: a ?? (d.kind === "mixed" ? "Mixed practice" : "Review"), second };
     },
     header(_day, page) {
-      const h = headerOf(page, level.number);
+      const h = dayHeader(BC, page, level.number);
       return o.title ? { ...h, title: o.title, topic: o.title } : h;
     },
     fill(day, page, slots) {

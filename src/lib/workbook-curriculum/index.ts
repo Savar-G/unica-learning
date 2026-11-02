@@ -1,6 +1,7 @@
 // The workbook curriculum (#361): levels U1 to U30, their units and skills, and the steps inside a skill, per
 // curriculum. The data comes from the curriculum skeleton (D-192) through `npm run import:curriculum`. Pure: no
 // network, database or clock. The planner and the generator read the content from here.
+import { digestOf } from "@/lib/workbook-digest";
 import { BC_CURRICULUM } from "./bc";
 import type { CurriculumData, CurriculumKey, CurriculumLevel, CurriculumSkill, CurriculumStep, CurriculumUnit } from "./types";
 
@@ -64,4 +65,17 @@ const CURRICULA: Record<CurriculumKey, Curriculum> = { bc: curriculum(BC_CURRICU
 /** The curriculum with this key, or null when there is no map for it (only BC today): the caller refuses the child. */
 export function curriculumFor(key: string): Curriculum | null {
   return Object.hasOwn(CURRICULA, key) ? CURRICULA[key as CurriculumKey] : null;
+}
+
+const DATA: Record<CurriculumKey, CurriculumData> = { bc: BC_CURRICULUM };
+const versions = new Map<string, string>();
+
+/**
+ * The fingerprint of a curriculum's data (#312, R379-8-2), or null for an unknown key: a workbook run stores it when it
+ * starts, and a resumed run refuses to go on when the curriculum changed since.
+ */
+export function curriculumVersion(key: string): string | null {
+  if (!Object.hasOwn(DATA, key)) return null;
+  if (!versions.has(key)) versions.set(key, digestOf(DATA[key as CurriculumKey]));
+  return versions.get(key)!;
 }

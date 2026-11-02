@@ -87,6 +87,7 @@ export function anthropicClient({
   maxRetries = 2,
   timeout = 200_000,
   onUsage,
+  fallbacks = true,
 }: {
   apiKey: string;
   model?: string;
@@ -97,6 +98,8 @@ export function anthropicClient({
   timeout?: number;
   /** Called once for each answer that has usage, also when its output is refused or cut off. */
   onUsage?: (usage: AnthropicUsage) => void;
+  /** Ask for the server-side fallback on a decline (default). Off for a model that has none, such as Claude Haiku 5.5. */
+  fallbacks?: boolean;
 }): AiClient {
   const client = new Anthropic({ apiKey, maxRetries, timeout, ...(fetch ? { fetch } : {}) });
   /** Request names whose schema the API refused: they go with the schema in the instructions. */
@@ -113,8 +116,7 @@ export function anthropicClient({
           ...(constrained ? { format: { type: "json_schema" as const, schema: request.schema } } : {}),
           ...(request.effort ? { effort: request.effort } : {}),
         },
-        betas: ["server-side-fallback-2026-07-01"],
-        fallbacks: "default",
+        ...(fallbacks ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
       },
       { signal },
     );

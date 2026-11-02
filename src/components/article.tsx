@@ -72,7 +72,7 @@ export function ArticleLayout({ meta, section, related, children }: { meta: Arti
           <Eyebrow>{meta.category}</Eyebrow>
           <h1>{meta.title}</h1>
           <p className="res-lead">{meta.lead}</p>
-          <p className="res-updated">{dates}</p>
+          <p className="res-updated">Published by <Link href="/our-story">{BRAND}</Link> · {dates}</p>
         </header>
 
         <article className="res-body">{children}</article>

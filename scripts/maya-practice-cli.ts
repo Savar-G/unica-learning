@@ -23,6 +23,12 @@
 //                            ANTHROPIC_API_KEY or the macOS Keychain item anthropic-unica-tools. Defaults: Maya
 //                            claude-sonnet-5-5, the child and the validity judge claude-haiku-5-5, the judge
 //                            claude-opus-5-5, the review claude-haiku-5-5. A local tool: the live site stays on OpenRouter.
+//   --subscription           every model through `claude -p` on the Claude subscription (src/lib/ai-claude-cli.ts),
+//                            at no cost: the same Claude models as --anthropic, Maya's exact system prompt and schema,
+//                            no tools, ANTHROPIC_API_KEY removed. MAYA_CLAUDE_CONFIG_DIR sets CLAUDE_CONFIG_DIR for the
+//                            calls, MAYA_CLAUDE_TIMEOUT_S each call's time limit (default 300). At the usage limit the
+//                            run stops and keeps the runs it finished; it never falls back to the paid API.
+//   --provider <p>           openrouter (default), anthropic or subscription: the same as the flags above
 //   --review-check           run only the review over every NEVER_SAY and NOT_OK_TALK example (each must fail) and every OK_TALK
 //                            line (each must pass), and save review-check.md and .json
 //
@@ -33,6 +39,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { AI_DEFAULT_MODEL, type AiClient } from "@/lib/ai-client";
 import { anthropicClient } from "@/lib/ai-anthropic";
+import { claudeCliClient } from "@/lib/ai-claude-cli";
 import { openRouterClient } from "@/lib/ai-openrouter";
 import { freeTalkProblem, NEVER_SAY, NOT_OK_TALK, OK_TALK, TALK_REVIEW_PROMPT_VERSION } from "@/lib/maya";
 import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
@@ -62,10 +69,15 @@ const ANTHROPIC_PRICES: Record<string, Price> = {
 };
 /** The fewest output tokens a Claude API request gets: adaptive thinking counts in them, and a short limit cuts it off. */
 const ANTHROPIC_MIN_TOKENS = 6_000;
+/** With --subscription: the time limit of a Maya, child or validity call (the judge gets twice it), and of a review. */
+const SUBSCRIPTION_MAYA_MS = 120_000;
+const SUBSCRIPTION_REVIEW_MS = 60_000;
+
+type Provider = "openrouter" | "anthropic" | "subscription";
 
 interface Options {
   fake: boolean;
-  anthropic: boolean;
+  provider: Provider;
   freeTalk: boolean;
   reviewCheck: boolean;
   estimate: boolean;
@@ -79,7 +91,7 @@ interface Options {
 }
 
 function parse(argv: string[]): Options {
-  const o: Options = { fake: false, anthropic: false, freeTalk: true, reviewCheck: false, estimate: false, maxUsd: null, cases: null, runs: RUNS_PER_CASE, concurrency: 3, out: null, report: null, models: {} };
+  const o: Options = { fake: false, provider: "openrouter", freeTalk: true, reviewCheck: false, estimate: false, maxUsd: null, cases: null, runs: RUNS_PER_CASE, concurrency: 3, out: null, report: null, models: {} };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const v = () => {
@@ -93,7 +105,13 @@ function parse(argv: string[]): Options {
       return y;
     };
     if (a === "--fake") o.fake = true;
-    else if (a === "--anthropic") o.anthropic = true;
+    else if (a === "--anthropic") o.provider = "anthropic";
+    else if (a === "--subscription") o.provider = "subscription";
+    else if (a === "--provider") {
+      const p = v();
+      if (p !== "openrouter" && p !== "anthropic" && p !== "subscription") throw new Error("--provider must be openrouter, anthropic or subscription");
+      o.provider = p;
+    }
     else if (a === "--no-free-talk") o.freeTalk = false;
     else if (a === "--review-check") o.reviewCheck = true;
     else if (a === "--review-model") o.models.reviewer = v();
@@ -183,7 +201,7 @@ function anthropicRole(key: string, model: string, spending: Spending, price: Pr
  * must pass), with the code guards' result beside it. Saves review-check.json and .md; true when every line came out
  * as it must.
  */
-async function reviewCheck(reviewer: TalkReviewer, dir: string, concurrency: number): Promise<boolean> {
+async function reviewCheck(reviewer: TalkReviewer, dir: string, concurrency: number, timeLimitMs = 30_000): Promise<boolean> {
   const lines = [
     ...NEVER_SAY.flatMap((e) => e.examples.map((line) => ({ line, childTurn: null as string | null, want: "fail" as const, rule: e.id as string }))),
     ...OK_TALK.map((x) => ({ line: x.line, childTurn: x.childTurn || null, want: "pass" as const, rule: null as string | null })),
@@ -193,7 +211,7 @@ async function reviewCheck(reviewer: TalkReviewer, dir: string, concurrency: num
   let next = 0;
   const results: ({ code: string | null; result: Awaited<ReturnType<typeof runReview>>; ok: boolean } & (typeof lines)[number])[] = new Array(lines.length);
   const one = async (x: (typeof lines)[number]) => {
-    const result = await runReview(reviewer, { promptVersion: TALK_REVIEW_PROMPT_VERSION, line: x.line, childTurn: x.childTurn, transcript: x.childTurn ? [{ speaker: "child" as const, text: x.childTurn }] : [] }, 30_000,
+    const result = await runReview(reviewer, { promptVersion: TALK_REVIEW_PROMPT_VERSION, line: x.line, childTurn: x.childTurn, transcript: x.childTurn ? [{ speaker: "child" as const, text: x.childTurn }] : [] }, timeLimitMs,
       (e) => console.error(`[review-check] ${redactText(e instanceof Error ? e.message : String(e))}`));
     const code = freeTalkProblem(x.line, null, x.childTurn ? [x.childTurn] : []);
     // An error is not a judgement: it fails a line in a call, but here it makes the check incomplete.
@@ -272,6 +290,8 @@ function writeReport(cases: readonly PracticeCase[], runs: number, dir: string):
 }
 
 const usd = (x: number) => `$${x.toFixed(2)}`;
+/** What the run cost: USD 0 on the subscription and with the fakes. */
+const spent = (o: Options, s: Spending) => (o.fake || o.provider === "subscription" ? `cost USD 0${o.provider === "subscription" && !o.fake ? " (claude -p on the Claude subscription)" : ""}` : `spent about ${usd(s.spent)}`);
 function printEstimate(e: CostEstimate, cases: number, runs: number) {
   console.log(`-- cost estimate for ${cases} cases × ${runs} runs (a dry run with the fakes, ×1.5 margin, worst-case output; the review at one call per Maya call):`);
   for (const [role, r] of Object.entries(e.roles)) if (r) console.log(`   ${role.padEnd(9)} ${r.model.padEnd(28)} ${String(r.calls).padStart(5)} calls ${String(r.inputTokens).padStart(9)} in ${String(r.outputTokens).padStart(8)} out  ${usd(r.usd)}`);
@@ -294,7 +314,7 @@ async function main() {
 
   const models: Record<Role, string> = o.fake
     ? { maya: "fake", simulator: "fake-child", validity: "fake-validity", judge: "fake-judge", reviewer: "fake-review" }
-    : o.anthropic
+    : o.provider !== "openrouter"
       ? { ...ANTHROPIC_MODELS, ...o.models }
       : {
           maya: o.models.maya ?? (process.env.AI_MODEL?.trim() || AI_DEFAULT_MODEL),
@@ -314,6 +334,9 @@ async function main() {
   let judge: AiJudge;
   let reviewer: TalkReviewer | null = null;
   let spending = new Spending(null);
+  // Set when a `claude -p` call met the subscription's usage limit: the suite stops as at the spending cap.
+  let usageLimit: string | null = null;
+  const stopped = () => spending.reached || usageLimit !== null;
   if (o.reviewCheck && o.fake) throw new Error("--review-check needs a real review model: drop --fake.");
   if (o.fake) {
     maya = ruleMayaModel();
@@ -326,8 +349,31 @@ async function main() {
       console.log("-- --fake costs nothing.");
       return;
     }
+  } else if (o.provider === "subscription") {
+    if (o.maxUsd !== null) console.log("-- --max-usd does nothing with --subscription: the calls cost USD 0.");
+    if (o.estimate) {
+      console.log("-- --subscription costs USD 0 (claude -p on the Claude subscription); it uses the subscription's usage limit.");
+      return;
+    }
+    const timeoutS = Number(process.env.MAYA_CLAUDE_TIMEOUT_S ?? 300);
+    const client = (role: Role): AiClient => claudeCliClient({
+      model: models[role], configDir: process.env.MAYA_CLAUDE_CONFIG_DIR?.trim() || null,
+      timeoutMs: (Number.isFinite(timeoutS) && timeoutS > 0 ? timeoutS : 300) * 1000,
+      onLimit: (detail) => {
+        if (usageLimit === null) console.error(`[maya-practice] the Claude subscription's usage limit is reached (${role}): ${redactText(detail)}. Stopping; finished runs are kept.`);
+        usageLimit ??= detail;
+      },
+    });
+    // Each call starts a Claude Code process (about 3 s more than an API call), so Maya's 30 s limit and the review's 8 s
+    // live limit are raised: this run checks her rules and words, not the live time limits.
+    maya = aiMayaModel(client("maya"), { timeoutMs: SUBSCRIPTION_MAYA_MS });
+    simulator = aiChildSimulator(client("simulator"), { timeoutMs: SUBSCRIPTION_MAYA_MS });
+    validity = aiValidityJudge(client("validity"), { timeoutMs: SUBSCRIPTION_MAYA_MS });
+    judge = aiJudge(client("judge"), { timeoutMs: 2 * SUBSCRIPTION_MAYA_MS });
+    reviewer = o.freeTalk || o.reviewCheck ? aiTalkReviewer(client("reviewer")) : null;
   } else {
-    const price = o.anthropic ? anthropicPrices(models) : await prices(models);
+    const anthropic = o.provider === "anthropic";
+    const price = anthropic ? anthropicPrices(models) : await prices(models);
     if (o.reviewCheck) {
       // About 70 short review calls: a cap of USD 2 is far above them.
       spending = new Spending(o.maxUsd ?? 2);
@@ -341,7 +387,7 @@ async function main() {
       spending = new Spending(cap);
     }
     let client: (role: Role) => AiClient;
-    if (o.anthropic) {
+    if (anthropic) {
       const key = anthropicKey();
       client = (role) => anthropicRole(key, models[role], spending, price[role]);
     } else {
@@ -357,8 +403,9 @@ async function main() {
 
   if (o.reviewCheck) {
     const dir = resolve(o.out ?? join(root, "traces/maya-practice", `review-check-${new Date().toISOString().replace(/[:.]/g, "-")}`));
-    const ok = await reviewCheck(reviewer!, dir, o.concurrency);
-    console.log(`-- spent about ${usd(spending.spent)}`);
+    const ok = await reviewCheck(reviewer!, dir, o.concurrency, o.provider === "subscription" ? SUBSCRIPTION_REVIEW_MS : 30_000);
+    console.log(`-- provider: ${o.provider}; ${spent(o, spending)}`);
+    if (usageLimit !== null) console.log("-- the Claude subscription's usage limit was reached: the check is incomplete. Run it again after the limit resets.");
     process.exit(ok ? 0 : 1);
   }
 
@@ -372,21 +419,24 @@ async function main() {
     reviewer: reviewer ? { model: reviewer.id, promptVersion: reviewer.promptVersion } : null,
     meta: {
       commit: git("rev-parse HEAD"), changes: git("status --porcelain") ? "uncommitted changes" : "clean", date: new Date().toISOString(),
-      mode: o.fake ? "fake" : o.anthropic ? "anthropic" : "openrouter", freeTalk: o.freeTalk ? "on" : "off",
+      mode: o.fake ? "fake" : o.provider, freeTalk: o.freeTalk ? "on" : "off",
     },
   }, { runs: o.runs, maxUsd: spending.maxUsd });
   console.log(`-- ${plan.runs.length} runs into ${dir}`);
   let done = 0;
   await runSuite(cases, plan, {
     maya, simulator, validity, judge, store, concurrency: o.concurrency, freeTalk: o.freeTalk, reviewer,
-    capped: () => spending.reached,
-    onRun: (id) => console.log(`   ${++done}/${plan.runs.length} ${id}${o.fake ? "" : ` (spent ${usd(spending.spent)})`}`),
+    ...(o.provider === "subscription" && !o.fake ? { reviewTimeLimitMs: SUBSCRIPTION_REVIEW_MS } : {}),
+    capped: stopped,
+    onRun: (id) => console.log(`   ${++done}/${plan.runs.length} ${id}${o.fake || o.provider === "subscription" ? "" : ` (spent ${usd(spending.spent)})`}`),
     // Raw errors on stderr for local debugging; the saved files keep only codes.
     onError: (e, where) => console.error(`[maya-practice] ${where}: ${redactText(e instanceof Error ? e.message : String(e))}`),
   });
-  if (spending.reached) console.log(`-- the spending cap was reached at ${usd(spending.spent)}: the runs left are missing.`);
-  else if (!o.fake) console.log(`-- spent about ${usd(spending.spent)}`);
-  process.exit(writeReport(cases, o.runs, dir) ? 0 : 1);
+  if (usageLimit !== null) console.log(`-- the Claude subscription's usage limit was reached: the runs left are missing. The finished runs are saved in ${dir}. Run the missing cases again after the limit resets (--cases).`);
+  else if (spending.reached) console.log(`-- the spending cap was reached at ${usd(spending.spent)}: the runs left are missing.`);
+  const passed = writeReport(cases, o.runs, dir);
+  console.log(`-- provider: ${o.fake ? "fake" : o.provider}; ${spent(o, spending)}`);
+  process.exit(passed ? 0 : 1);
 }
 
 main().catch((e) => {
