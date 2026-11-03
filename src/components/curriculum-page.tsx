@@ -1,6 +1,7 @@
 // /curriculum (public since Oct 29, 2026): how the program is built, for parents. 30 levels from the BC curriculum,
 // Kindergarten to Grade 9. Grades appear only as a rough range per group of levels, never next to a single level.
 // Level content lives in src/lib/curriculum.ts. Uses the site nav and footer, like /compare.
+import type React from "react";
 import Link from "next/link";
 import { BRAND } from "@/lib/site";
 import { CURRICULUM_GROUPS } from "@/lib/curriculum";
@@ -12,14 +13,14 @@ import { CurriculumPath } from "./curriculum-path";
 import { Rise } from "./drawn";
 import "./curriculum-page.css";
 
-const LINKS = [
+export const LINKS = [
   { label: "How it works", href: "/#how" },
   { label: "Curriculum", href: "/curriculum" },
   { label: "Pricing", href: "/#price" },
   { label: "FAQ", href: "/#faq" },
 ];
 
-const HOW: [string, string][] = [
+export const HOW: [string, string][] = [
   ["A workbook every two weeks", "A new paper workbook arrives in the mail every two weeks, built from your child's last one."],
   ["About 15 to 30 minutes a day*", "Five days a week."],
   ["Shown first, then small steps", "Each new idea starts with a worked example. Practice then builds from easy to harder, one small change at a time."],
@@ -46,15 +47,7 @@ export function CurriculumPage() {
             <CurriculumPath groups={CURRICULUM_GROUPS} />
           </Rise>
 
-          <section className="curp-part" aria-labelledby="curpHowT">
-            <h2 className="curp-kicker" id="curpHowT">How a level works</h2>
-            <Rise>
-              <ul className="curp-how">
-                {HOW.map(([title, text]) => <li key={title}><b>{title}</b><span>{text}</span></li>)}
-              </ul>
-              <p className="curp-note">*A typical target. Every child works at their own pace, so some days take a little more or less time.</p>
-            </Rise>
-          </section>
+          <CurriculumHow />
 
           <section className="curp-part" aria-labelledby="curpLevelsT">
             <h2 className="curp-kicker" id="curpLevelsT">What each level covers</h2>
@@ -79,16 +72,50 @@ export function CurriculumPage() {
             ))}
           </section>
 
-          <Rise className="curp-end">
-            <h2>Find out which level your child starts at.</h2>
-            <p>The math assessment and report are free. The first month of workbooks is free too.</p>
-            <div>
-              <StartLink src="curriculum">{START_LABEL} <span className="arr">→</span></StartLink>
-              <StartNote />
-            </div>
-            <Link href="/sample-report" className="curp-more">See a sample report</Link>
-          </Rise>
+          <CurriculumEnd />
         </main>
+        <Footer />
+      </div>
+      <Motion />
+    </div>
+  );
+}
+
+export function CurriculumHow() {
+  return (
+    <section className="curp-part" aria-labelledby="curpHowT">
+      <h2 className="curp-kicker" id="curpHowT">How a level works</h2>
+      <Rise>
+        <ul className="curp-how">
+          {HOW.map(([title, text]) => <li key={title}><b>{title}</b><span>{text}</span></li>)}
+        </ul>
+        <p className="curp-note">*A typical target. Every child works at their own pace, so some days take a little more or less time.</p>
+      </Rise>
+    </section>
+  );
+}
+
+export function CurriculumEnd() {
+  return (
+    <Rise className="curp-end">
+      <h2>Find out which level your child starts at.</h2>
+      <p>The math assessment and report are free. The first month of workbooks is free too.</p>
+      <div>
+        <StartLink src="curriculum">{START_LABEL} <span className="arr">→</span></StartLink>
+        <StartNote />
+      </div>
+      <Link href="/sample-report" className="curp-more">See a sample report</Link>
+    </Rise>
+  );
+}
+
+/** Nav, frame and footer around a variant of the page (PROTOTYPE switcher uses it). */
+export function CurriculumShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="look-root" data-look="warm" id="top">
+      <NavBar brand={BRAND} home="/" links={LINKS} cta={<StartLink className="btn sm" src="curriculum-nav">Free assessment</StartLink>} />
+      <div className="frame">
+        {children}
         <Footer />
       </div>
       <Motion />
