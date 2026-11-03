@@ -7,6 +7,8 @@ import { Section, SectionHeader } from "@/ds";
 import { DemoVideo } from "./demo-video";
 import { Knot, Rise } from "./drawn";
 import "@/ds/styles/guidance.css";
+import { Suspense } from "react";
+import { GuidancePrototype } from "./guidance-prototype";
 
 const POINTS: [string, string][] = [
   ["A real conversation", "Your child talks, listens and can ask why at any step."],
@@ -16,7 +18,17 @@ const POINTS: [string, string][] = [
 
 const LABEL = "Demo of a voice call: the Unica Teaching Assistant explains 27 + 39 out loud and draws it on a shared board, showing how to carry the 1 to get 66. Captions show what is said.";
 
+// PROTOTYPE ONLY: in development, ?variant= swaps this section for the layout variants in guidance-prototype.tsx.
 export function Guidance() {
+  if (process.env.NODE_ENV === "production") return <GuidanceLive />;
+  return (
+    <Suspense fallback={<GuidanceLive />}>
+      <GuidancePrototype live={<GuidanceLive />} />
+    </Suspense>
+  );
+}
+
+function GuidanceLive() {
   return (
     <Section id="guidance" aria-labelledby="guidanceT" className="gd">
       <Knot />
