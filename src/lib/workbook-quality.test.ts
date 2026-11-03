@@ -55,3 +55,40 @@ it("checks rejected wording in teaching panels as well as in question text",()=>
   p.content.blocks[0].methods![0].lines=["Look at the printed triangle."];
   expect(workbookQuality([p]).issues.some(i=>i.reason.includes("rejected workbook wording"))).toBe(false);
 });
+
+// #482 review at 2b73e8a, finding 1: a task is its mathematical data, so moving the printed "?" is still a repeat.
+it("rejects the same arithmetic task in another printed form outside warm-up, and keeps warm-up facts", () => {
+  const first = page(3, 1, 1), second = page(4, 1, 1);
+  const pkg = first.questions[0].package!;
+  expect(pkg.operation).not.toBeNull();
+  const moved = /= \?$/.test(pkg.text) ? `? = ${pkg.text.replace(/ = \?$/, "")}` : `${pkg.text.replace(/^\? = /, "")} = ?`;
+  expect(moved).not.toBe(pkg.text);
+  second.questions[0] = { ...second.questions[0], package: { ...pkg, id: "moved", text: moved, ref: { source: "workbook", workbookId: "00000000-0000-4000-8000-0000000000a1", page: 4, question: 1 } } };
+  expect(workbookQuality([first, second]).issues).toContainEqual(expect.objectContaining({ page: 4, kind: "repeat" }));
+  const warm = (p: GeneratedPage) => ({ ...p, questions: p.questions.map(q => ({ ...q, place: "warm-up" as const })) });
+  expect(workbookQuality([warm(first), warm(second)]).issues.filter(i => i.kind === "repeat")).toEqual([]);
+});
+
+// Finding 2: Cedric's section 9, at least three contexts or formats on a printed page, and no sentence frame twice.
+it("requires three contexts or formats on a printed page and no repeated sentence frame", () => {
+  const sequences = (n: number, offset = 0) => Array.from({ length: n }, (_, i) => {
+    const p = planItem({ skill: "1.1-count-to-20", slot: `1.${i + 1}`, day: 1, level: 4, ordinal: 3 * i, attempt: offset, range: { min: 1, max: 20, help: "none", pictures: false } })!;
+    return buildPlannedItem(p, p.item, { id: `s${i}`, workbookId: "00000000-0000-4000-8000-0000000000a1", page: 5, question: i + 1, level: 4, skills: [p.item.skill] }).package!;
+  });
+  const onlySequences = sequences(10).filter(p => p.item?.checks[0]?.kind === "sequence");
+  expect(onlySequences.length).toBeGreaterThanOrEqual(3);
+  const p = page(5, 1, onlySequences.length);
+  p.questions = p.questions.map((q, i) => ({ ...q, package: onlySequences[i] }));
+  expect(workbookQuality([p]).issues).toContainEqual(expect.objectContaining({ page: 5, kind: "variety", reason: expect.stringMatching(/needs at least 3/) }));
+  // A third form (a bare question of the number just after) makes the page pass the rule.
+  const after = sequences(4, 2).find(x => /Count on 1|1 after|count 1 more/.test(x.text))!;
+  const facts = page(5, 1, 3).questions.map(q => q.package!).find(x => !/after/.test(x.text))!;
+  p.questions[0] = { ...p.questions[0], package: after };
+  p.questions[1] = { ...p.questions[1], package: facts };
+  expect(workbookQuality([p]).issues.filter(i => /needs at least 3/.test(i.reason))).toEqual([]);
+  // The same sentence frame twice on one page: a story about a person, only the name and numbers changed.
+  const twice = page(6, 1, 3);
+  twice.questions[1] = { ...twice.questions[1], package: { ...after, id: "a1", text: "Mia has 3 shells. She gets 1 more. How many shells does Mia have now?", operation: { kind: "add", operands: [3, 1] } } };
+  twice.questions[2] = { ...twice.questions[2], package: { ...after, id: "a2", text: "Ben has 7 shells. He gets 1 more. How many shells does Ben have now?", operation: { kind: "add", operands: [7, 1] } } };
+  expect(workbookQuality([twice]).issues).toContainEqual(expect.objectContaining({ page: 6, reason: expect.stringMatching(/sentence frame .* a second time/) }));
+});

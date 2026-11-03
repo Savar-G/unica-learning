@@ -117,6 +117,18 @@ export function planItem(o: { skill: string; slot: string; level: number; day: n
       break;
     }
     case "sequence": {
+      // A third form beside counting on and back (Cedric's section 9): count on 1 from a number, in three wordings.
+      // Only on a later attempt, so a page takes it when the planner needs a third form, not by default.
+      if ((o.attempt ?? 0) % 3 === 2 && !/skip-count/.test(o.skill) && max >= 4) {
+        const n = Math.max(1, Math.min(max - 1, top - 1));
+        item.operation = operation("add", n, 1);
+        item.text = [`Count on 1 from ${n}. Which number is it?`, `Start at ${n}. Count on 1. Write the number.`, `What number is 1 after ${n}?`,
+          `Count on 1 from ${n}. Write where you land.`, `Begin at ${n} and count 1 more. Write it.`][Math.floor((o.attempt ?? 0) / 3) % 5];
+        item.format = o.format === "spot-the-error" || o.format === "two-ways" || o.format === "tick-and-number" ? "write-number" : o.format ?? "write-number";
+        item.wrongAnswers = [{ value: itemNumber(n + 2), cause: "careless", description: "Counts one too many.", step: null }];
+        numbers = [n];
+        break;
+      }
       const stepSize = /skip-count/.test(o.skill) ? (seed % 2 || max < 10 ? 2 : 5) : 1;
       const terms = Math.min(o.compact ? max >= 10 ? 4 : 4 + seed % 2 : 3 + seed % 3, Math.floor(max / stepSize) + 1);
       const end = Math.min(max, Math.max(stepSize * (terms - 1), top));

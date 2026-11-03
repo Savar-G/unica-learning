@@ -444,14 +444,14 @@ const CSS = `
 .pg.consistent .frame{height:856px;gap:8px}
 .pg.consistent .hd{max-height:150px}
 .pg.consistent.mid .hd{min-height:112px}
-.pg.consistent .nd{margin-bottom:0}
+.pg.consistent .nd{margin-bottom:10px}
 .pg.consistent .ct{gap:calc(8px + var(--extra-gap,0px))}
 .pg.consistent .blk{flex:0 0 auto;gap:calc(6px + var(--extra-gap,0px))}
 .pg.consistent .blk.grow{flex:1 0 auto}
 .pg.consistent .ft{top:939px;height:48px}
 .pg.consistent .list{flex:none;justify-content:flex-start;gap:calc(12px + var(--extra-gap,0px))}
 .pg.consistent .two{flex:none;grid-auto-rows:auto;row-gap:calc(12px + var(--extra-gap,0px))}
-.pg.consistent .facts{flex:none;align-content:start;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:calc(12px + var(--extra-gap,0px))}
+.pg.consistent .facts{flex:none;align-content:start;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:calc(10px + var(--extra-gap,0px))}
 .pg.consistent .pcards{flex:none;grid-auto-rows:auto;column-gap:32px;row-gap:calc(12px + var(--extra-gap,0px))}
 .pg.consistent .cols{flex:none;align-content:start;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:calc(12px + var(--extra-gap,0px))}
 .pg.consistent .cols .ab{height:48px}

@@ -75,6 +75,14 @@ The report does not establish a child's completion time or real-model teaching
 quality. The fake solver reads the supplied key. No real family, print order,
 shipment, database row, subscription call or API call was used by these runs.
 
+## Fourth review repair (2b73e8a)
+
+| Finding | Fix and check |
+|---|---|
+| The same task in another printed form passed (`6978 + 17 = ?` and `? = 6978 + 17`) | `taskIdentity` keys a task by its mathematical data: the operation and operands, or the checks and picture without region ids, with its format family. Where the `?` or `=` sits is not part of it. Planning, page filling, whole-book repair and the book check use it. During generation, code-written questions use it too; the AI's stories keep their frame and shape rules. Warm-up facts stay exempt. Regression: both printed forms of one operation fail outside warm-up. |
+| Fewer than three contexts or formats per page passed | The book check reads the printed questions, existing-path ones included. A page of three or more needs at least three contexts or formats (`printedForm`: a story's frame, a picture, a sequence direction, a missing number, a bare fact, true or false, ...). A sentence frame (a sentence about a person or thing, with names and numbers taken out) may appear once a page and twice a day. Worded drills with no context fall under the three-forms rule. The planner meets this before any writer call. The sequence builder adds "Count on 1 from N" (five wordings) as a third form, used only when a page needs it. The repair pass swaps a shared form for a new one. The fake writer follows each slot's planned kind. |
+| 8 px below Name and Date on approved-v1 pages | `.pg.consistent .nd` keeps 10 px below the row, 18 px with the header gap. The full U4 review-run test measures the first two generated day-start pages in Chromium. |
+
 ## Template integration hand-off
 
 `TEMPLATE_INTEGRATION_PENDING`
