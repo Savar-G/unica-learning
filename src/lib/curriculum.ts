@@ -3,13 +3,18 @@
 // (Unica Learning - Curriculum Skeleton.xlsx), built from the skill map in src/lib/assessment/skill-map.
 
 export interface CurriculumLevel { n: number; title: string; points: string[] }
-/** `about`: the rough school-grade range of the whole group, for parents. Never shown per level. */
-export interface CurriculumGroup { name: string; about: string; levels: CurriculumLevel[] }
+/**
+ * One grade band. `grades`: the rough school-grade range of the whole band, the title parents see first; never shown
+ * per level. `short`: the same range for the band's colour square. `gist`: one line on what the band covers.
+ */
+export interface CurriculumGroup { name: string; grades: string; short: string; gist: string; levels: CurriculumLevel[] }
 
 export const CURRICULUM_GROUPS: CurriculumGroup[] = [
   {
-    "name": "Levels U1–U9",
-    "about": "About Kindergarten to Grade 2",
+    "name": "Levels U1-U9",
+    "grades": "Kindergarten to Grade 2",
+    "short": "K-2",
+    "gist": "Counting, adding and subtracting to 100, first shapes, measuring and money.",
     "levels": [
       {
         "n": 1,
@@ -104,8 +109,10 @@ export const CURRICULUM_GROUPS: CurriculumGroup[] = [
     ]
   },
   {
-    "name": "Levels U10–U18",
-    "about": "About Grades 3 to 5",
+    "name": "Levels U10-U18",
+    "grades": "Grades 3 to 5",
+    "short": "3-5",
+    "gist": "Big numbers, times tables, long multiplying and dividing, fractions and decimals.",
     "levels": [
       {
         "n": 10,
@@ -200,8 +207,10 @@ export const CURRICULUM_GROUPS: CurriculumGroup[] = [
     ]
   },
   {
-    "name": "Levels U19–U30",
-    "about": "About Grades 6 to 9",
+    "name": "Levels U19-U30",
+    "grades": "Grades 6 to 9",
+    "short": "6-9",
+    "gist": "Ratios and percents, negative numbers, equations, geometry and graphing lines.",
     "levels": [
       {
         "n": 19,

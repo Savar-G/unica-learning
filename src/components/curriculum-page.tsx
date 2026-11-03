@@ -1,5 +1,7 @@
 // /curriculum (public since Oct 29, 2026): how the program is built, for parents. 30 levels from the BC curriculum,
-// Kindergarten to Grade 9. Grades appear only as a rough range per group of levels, never next to a single level.
+// Kindergarten to Grade 9, in three grade bands (D-217). Each band is a drop-down, closed until the parent opens it; the
+// grade range is its title and the level numbers come second. Grades appear only as a rough range per band, never next
+// to a single level.
 // Level content lives in src/lib/curriculum.ts. Uses the site nav and footer, like /compare.
 import Link from "next/link";
 import { BRAND } from "@/lib/site";
@@ -8,7 +10,6 @@ import { Eyebrow, Nav as NavBar } from "@/ds";
 import { Motion } from "@/components/motion";
 import { StartLink, StartNote } from "@/components/start-link";
 import { Footer, START_LABEL } from "@/components/sections";
-import { CurriculumPath } from "./curriculum-path";
 import { Rise } from "./drawn";
 import "./curriculum-page.css";
 
@@ -38,34 +39,22 @@ export function CurriculumPage() {
         <main id="main" className="curp">
           <Rise className="curp-head">
             <Eyebrow>Our curriculum</Eyebrow>
-            <h1><span className="curp-hl">30 levels,</span> built from the BC curriculum.</h1>
-            <p className="lead">From counting to 10 to graphing equations, Kindergarten to Grade 9. Your child starts at the level the free assessment finds, not a level set by age, and moves up when they&apos;re ready.</p>
+            <h1>What your child learns, <span className="curp-hl">grade by grade.</span></h1>
+            <p className="lead">The program follows the BC math curriculum from Kindergarten to Grade 9, in 30 short levels. Your child starts at the level the free assessment finds, not a level set by age, and moves up when they&apos;re ready.</p>
           </Rise>
 
-          <Rise className="curp-path" aria-label="Levels U1 to U30">
-            <CurriculumPath groups={CURRICULUM_GROUPS} />
-          </Rise>
-
-          <section className="curp-part" aria-labelledby="curpHowT">
-            <h2 className="curp-kicker" id="curpHowT">How a level works</h2>
-            <Rise>
-              <ul className="curp-how">
-                {HOW.map(([title, text]) => <li key={title}><b>{title}</b><span>{text}</span></li>)}
-              </ul>
-              <p className="curp-note">*A typical target. Every child works at their own pace, so some days take a little more or less time.</p>
-            </Rise>
-          </section>
-
-          <section className="curp-part" aria-labelledby="curpLevelsT">
-            <h2 className="curp-kicker" id="curpLevelsT">What each level covers</h2>
-            <p className="curp-intro">Your child starts at the level the free assessment finds. Many children start below or above their school grade, and that&apos;s normal.</p>
-            <p className="curp-intro">The first levels are done together with a parent, on short pages, and children take over as they go.</p>
+          <section className="curp-bands" aria-label="What each grade band covers">
             {CURRICULUM_GROUPS.map((g, gi) => (
-              <details key={g.name} className={`curp-group g${gi + 1}`} open={gi === 0}>
+              <details key={g.name} className={`curp-band g${gi + 1}`}>
                 <summary>
-                  <span className="curp-group-name">{g.name}</span>
-                  <span className="curp-group-sub"><b>{g.about}</b> · {g.levels[0].title} → {g.levels[g.levels.length - 1].title}</span>
+                  <span className="curp-band-chip" aria-hidden="true">{g.short}</span>
+                  <span className="curp-band-title">
+                    <span className="curp-band-grades">{g.grades}</span>
+                    <span className="curp-band-sub"><b>{g.name}</b><span> · {g.levels[0].title} → {g.levels[g.levels.length - 1].title}</span></span>
+                  </span>
+                  <span className="curp-band-toggle" aria-hidden="true" />
                 </summary>
+                <p className="curp-band-gist">{g.gist}</p>
                 <div className="curp-levels">
                   {g.levels.map((l) => (
                     <article key={l.n} id={`level-${l.n}`} className="curp-level">
@@ -77,6 +66,17 @@ export function CurriculumPage() {
                 </div>
               </details>
             ))}
+            <p className="curp-intro">Many children start below or above their school grade, and that&apos;s normal. The first levels are done together with a parent, on short pages, and children take over as they go.</p>
+          </section>
+
+          <section className="curp-part" aria-labelledby="curpHowT">
+            <h2 className="curp-kicker" id="curpHowT">How a level works</h2>
+            <Rise>
+              <ul className="curp-how">
+                {HOW.map(([title, text]) => <li key={title}><b>{title}</b><span>{text}</span></li>)}
+              </ul>
+              <p className="curp-note">*A typical target. Every child works at their own pace, so some days take a little more or less time.</p>
+            </Rise>
           </section>
 
           <Rise className="curp-end">
