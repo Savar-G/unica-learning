@@ -2128,3 +2128,1019 @@ After:
 ```json
 "Number 1 is {a}. Take away {d} each time. True or false: number {n} is {shown}."
 ```
+
+## 4.4-add-within-10000 step 5 template 2 difficulty
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"medium"
+```
+After:
+```json
+"easy"
+```
+
+## 4.4-add-within-10000 step 5 template 3 difficulty
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"easy"
+```
+After:
+```json
+"medium"
+```
+
+## 4.4-add-within-10000 step 5 template 3 text
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"{name} has {a} {things}. {name} gets {b} more. How many {things} does {name} have now?"
+```
+After:
+```json
+"{name} has {a} {things}. {They} gets {b} more. How many {things} does {name} have now?"
+```
+
+## 4.4-add-within-10000 step 5 template 5 text
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"{name} had some {things}. After getting {b} more, {name} had {s}. How many did {name} have at first?"
+```
+After:
+```json
+"{name} counts {a} {things} on Monday and {b} {things} on Friday. How many {things} in all?"
+```
+
+## 4.4-add-within-10000 step 5 template 5 answer
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"a"
+```
+After:
+```json
+"a + b"
+```
+
+## 4.4-add-within-10000 step 5 template 5 slots
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+{
+  "u1": "u1",
+  "u2": "u2",
+  "u3": "u3",
+  "u5": "u5",
+  "u6": "u6",
+  "u7": "u7",
+  "flip": "flip"
+}
+```
+After:
+```json
+{
+  "u1": "u1",
+  "u2": "u2",
+  "u3": "u3",
+  "u4": "u4",
+  "u5": "u5",
+  "u6": "u6",
+  "u7": "u7",
+  "u8": "u8",
+  "flip": "flip"
+}
+```
+
+## 4.4-add-within-10000 step 5 template 5 derived
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+{
+  "A": "3000 + u1 * 250 + u2 * 25 + u3 * 2",
+  "B": "2000 + u5 * 250 + u6 * 25 + u7 * 2",
+  "a": "A",
+  "b": "B",
+  "s": "A + B",
+  "tot": "s",
+  "shown": "s if flip == 0 else s + 10",
+  "sh": "shown",
+  "w": "s - 10 * 10 ** (u1 % 3)"
+}
+```
+After:
+```json
+{
+  "A": "1000 + u1 * 400 + u2 * 40 + u3 * 4 + u4",
+  "B": "1000 + u5 * 300 + u6 * 30 + u7 * 3 + u8",
+  "a": "A",
+  "b": "B",
+  "s": "A + B",
+  "tot": "s",
+  "shown": "s if flip == 0 else s + 10",
+  "sh": "shown"
+}
+```
+
+## 4.4-add-within-10000 step 5 template 5 check
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+undefined
+```
+After:
+```json
+"A + B <= 9999"
+```
+
+## 4.4-subtract-within-10000 step 5 template 1 text
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"{ak} - {b} = __"
+```
+After:
+```json
+"{a} - {b} = __"
+```
+
+## 4.4-subtract-within-10000 step 5 template 1 derived
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+{
+  "A": "10000",
+  "B": "1 + (u1 * 1000 + u2 * 100 + u3 * 10 + u4) % 9999",
+  "a": "A",
+  "b": "B",
+  "d": "A - B",
+  "shown": "d if flip == 0 else d + 10",
+  "ak": "'10 000'"
+}
+```
+After:
+```json
+{
+  "A": "10000",
+  "B": "1 + (u1 * 1000 + u2 * 100 + u3 * 10 + u4) % 9999",
+  "a": "A",
+  "b": "B",
+  "d": "A - B",
+  "shown": "d if flip == 0 else d + 10"
+}
+```
+
+## 4.4-subtract-within-10000 step 5 template 2 text
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"Missing number: {ak} - __ = {d}"
+```
+After:
+```json
+"Missing number: {a} - __ = {d}"
+```
+
+## 4.4-subtract-within-10000 step 5 template 2 derived
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+{
+  "A": "10000",
+  "B": "1 + (u1 * 1000 + u2 * 100 + u3 * 10 + u4) % 9999",
+  "a": "A",
+  "b": "B",
+  "d": "A - B",
+  "shown": "d if flip == 0 else d + 10",
+  "ak": "'10 000'"
+}
+```
+After:
+```json
+{
+  "A": "10000",
+  "B": "1 + (u1 * 1000 + u2 * 100 + u3 * 10 + u4) % 9999",
+  "a": "A",
+  "b": "B",
+  "d": "A - B",
+  "shown": "d if flip == 0 else d + 10"
+}
+```
+
+## 4.4-subtract-within-10000 step 5 template 3 text
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"{name} has {ak} {things} and gives {b} away. How many {things} are left?"
+```
+After:
+```json
+"{name} has {a} {things} and gives {b} away. How many {things} are left?"
+```
+
+## 4.4-subtract-within-10000 step 5 template 3 derived
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+{
+  "A": "10000",
+  "B": "1 + (u1 * 1000 + u2 * 100 + u3 * 10 + u4) % 9999",
+  "a": "A",
+  "b": "B",
+  "d": "A - B",
+  "shown": "d if flip == 0 else d + 10",
+  "ak": "'10 000'"
+}
+```
+After:
+```json
+{
+  "A": "10000",
+  "B": "1 + (u1 * 1000 + u2 * 100 + u3 * 10 + u4) % 9999",
+  "a": "A",
+  "b": "B",
+  "d": "A - B",
+  "shown": "d if flip == 0 else d + 10"
+}
+```
+
+## 4.4-subtract-within-10000 step 5 template 4 text
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"True or false: {ak} - {b} = {shown}."
+```
+After:
+```json
+"True or false: {a} - {b} = {shown}."
+```
+
+## 4.4-subtract-within-10000 step 5 template 4 derived
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+{
+  "A": "10000",
+  "B": "1 + (u1 * 1000 + u2 * 100 + u3 * 10 + u4) % 9999",
+  "a": "A",
+  "b": "B",
+  "d": "A - B",
+  "shown": "d if flip == 0 else d + 10",
+  "ak": "'10 000'"
+}
+```
+After:
+```json
+{
+  "A": "10000",
+  "B": "1 + (u1 * 1000 + u2 * 100 + u3 * 10 + u4) % 9999",
+  "a": "A",
+  "b": "B",
+  "d": "A - B",
+  "shown": "d if flip == 0 else d + 10"
+}
+```
+
+## 4.4-subtract-within-10000 step 5 template 5 text
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"{name} has 10 000 {things}. {name} gives away {b} and then {c} more. How many are left?"
+```
+After:
+```json
+"A {container} holds {a} {things}. {name} takes out {b}. How many {things} are left in the {container}?"
+```
+
+## 4.4-subtract-within-10000 step 5 template 5 answer
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"10000 - b - c"
+```
+After:
+```json
+"a - b"
+```
+
+## 4.4-subtract-within-10000 step 5 template 5 slots
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+{
+  "b0": "template_b0",
+  "c0": "template_c0"
+}
+```
+After:
+```json
+{
+  "u1": "u1",
+  "u2": "u2",
+  "u3": "u3",
+  "u4": "u4",
+  "flip": "flip"
+}
+```
+
+## 4.4-subtract-within-10000 step 5 template 5 derived
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+{
+  "b": "1 + b0 % 5000",
+  "c": "1 + c0 % 4000"
+}
+```
+After:
+```json
+{
+  "A": "10000",
+  "B": "1 + (u1 * 1000 + u2 * 100 + u3 * 10 + u4) % 9999",
+  "a": "A",
+  "b": "B",
+  "d": "A - B",
+  "shown": "d if flip == 0 else d + 10"
+}
+```
+
+## 4.9-table-pattern step 3 template 2 text
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"{name} puts {m} {things} in each {container} and fills {p} of them. How many {things} in all?"
+```
+After:
+```json
+"{name} puts {m} {things} in each {container}. How many {things} in {p} {container}s?"
+```
+
+## 4.9-table-pattern step 3 template 5 format
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"bare"
+```
+After:
+```json
+"explain"
+```
+
+## 4.9-table-pattern step 3 template 5 text
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"The rule is multiply the position by {r}. How much bigger is the value at position {p} than the value at position {q}?"
+```
+After:
+```json
+"The rule is multiply by {m}. Why is the value at position {p} bigger than the value at position 1?"
+```
+
+## 4.9-table-pattern step 3 template 5 answer
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"r * (p - q)"
+```
+After:
+```json
+"'Each position gives ' + str(m) + ' more'"
+```
+
+## 4.9-table-pattern step 3 template 5 slots
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+{
+  "r": "template_r",
+  "p": "template_p",
+  "q": "template_q"
+}
+```
+After:
+```json
+{
+  "m": "multiplier",
+  "p": "position"
+}
+```
+
+## 4.9-table-pattern step 3 template 5 check
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+undefined
+```
+After:
+```json
+"p > 1"
+```
+
+## 5.1-place-value-million step 1 template 4 format
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"bare"
+```
+After:
+```json
+"true-false"
+```
+
+## 5.1-place-value-million step 1 template 4 text
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"Write the number with {a} in the ten thousands place, {b} in the hundreds place and {c} in the ones place. Every other place is 0."
+```
+After:
+```json
+"True or false: in {n}, the digit in the ten thousands place is bigger than the digit in the hundreds place."
+```
+
+## 5.1-place-value-million step 1 template 4 answer
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"a * 10000 + b * 100 + c"
+```
+After:
+```json
+"'true' if n // 10000 % 10 > n // 100 % 10 else 'false'"
+```
+
+## 5.1-place-value-million step 1 template 4 slots
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+{
+  "a": "template_a",
+  "b": "template_b",
+  "c": "template_c"
+}
+```
+After:
+```json
+{
+  "n0": "value"
+}
+```
+
+## 5.1-place-value-million step 1 template 4 derived
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+undefined
+```
+After:
+```json
+{
+  "n": "n0"
+}
+```
+
+## 5.1-place-value-million step 1 template 4 check
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+undefined
+```
+After:
+```json
+"'0' not in str(n)"
+```
+
+## 5.1-place-value-million step 1 template 5 text
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"True or false: in {n}, the digit in the ten thousands place is bigger than the digit in the hundreds place."
+```
+After:
+```json
+"True or false: in {n}, the digit in the thousands place is bigger than the digit in the hundreds place."
+```
+
+## 5.1-place-value-million step 1 template 5 answer
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"'true' if n // 10000 % 10 > n // 100 % 10 else 'false'"
+```
+After:
+```json
+"'true' if n // 1000 % 10 > n // 100 % 10 else 'false'"
+```
+
+## 5.1-place-value-million step 2 template 4 format
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"bare"
+```
+After:
+```json
+"true-false"
+```
+
+## 5.1-place-value-million step 2 template 4 text
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"Write the number with {a} in the hundred thousands place, {b} in the thousands place and {c} in the tens place. Every other place is 0."
+```
+After:
+```json
+"True or false: in {n}, the digit in the ten thousands place is bigger than the digit in the thousands place."
+```
+
+## 5.1-place-value-million step 2 template 4 answer
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"a * 100000 + b * 1000 + c * 10"
+```
+After:
+```json
+"'true' if n // 10000 % 10 > n // 1000 % 10 else 'false'"
+```
+
+## 5.1-place-value-million step 2 template 4 slots
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+{
+  "a": "template_a",
+  "b": "template_b",
+  "c": "template_c"
+}
+```
+After:
+```json
+{
+  "n0": "value"
+}
+```
+
+## 5.1-place-value-million step 2 template 4 derived
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+undefined
+```
+After:
+```json
+{
+  "n": "n0"
+}
+```
+
+## 5.1-place-value-million step 2 template 4 check
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+undefined
+```
+After:
+```json
+"'0' not in str(n)"
+```
+
+## 5.1-place-value-million step 2 template 5 text
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"True or false: in {n}, the digit in the ten thousands place is bigger than the digit in the thousands place."
+```
+After:
+```json
+"True or false: in {n}, the digit in the thousands place is bigger than the digit in the hundreds place."
+```
+
+## 5.1-place-value-million step 2 template 5 answer
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"'true' if n // 10000 % 10 > n // 1000 % 10 else 'false'"
+```
+After:
+```json
+"'true' if n // 1000 % 10 > n // 100 % 10 else 'false'"
+```
+
+## 5.9-multiply-tens step 1 template 1 check
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"b0 >= 10 and a0 >= 2"
+```
+After:
+```json
+"b0 >= 10"
+```
+
+## 5.9-multiply-tens step 1 template 2 check
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"b0 >= 10 and a >= 2 and b >= 2"
+```
+After:
+```json
+"b0 >= 10"
+```
+
+## 5.9-multiply-tens step 1 template 3 check
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"b0 >= 10 and a0 >= 2"
+```
+After:
+```json
+"b0 >= 10"
+```
+
+## 5.9-multiply-tens step 1 template 4 check
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"b0 >= 10 and a0 >= 2"
+```
+After:
+```json
+"b0 >= 10"
+```
+
+## 5.9-multiply-tens step 1 template 5 format
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"story"
+```
+After:
+```json
+"true-false"
+```
+
+## 5.9-multiply-tens step 1 template 5 text
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"A school orders {a} boxes of {b} pencils in the fall and {c} boxes of {b} pencils in the spring. How many pencils is that in all?"
+```
+After:
+```json
+"True or false: {a} × {b} = {c}."
+```
+
+## 5.9-multiply-tens step 1 template 5 answer
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"(a + c) * b"
+```
+After:
+```json
+"'true' if f == 0 else 'false'"
+```
+
+## 5.9-multiply-tens step 1 template 5 slots
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+{
+  "a": "template_a",
+  "c": "template_c",
+  "b1": "template_b1"
+}
+```
+After:
+```json
+{
+  "a0": "operand1",
+  "b0": "operand2",
+  "f": "flip"
+}
+```
+
+## 5.9-multiply-tens step 1 template 5 derived
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+{
+  "b": "b1 * 10"
+}
+```
+After:
+```json
+{
+  "a": "a0",
+  "b": "b0 // 10 * 10",
+  "c": "a * b if f == 0 else a * b + a"
+}
+```
+
+## 5.9-multiply-tens step 1 template 5 check
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+undefined
+```
+After:
+```json
+"b0 >= 10"
+```
+
+## 5.9-multiply-tens step 2 template 2 check
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"a0 >= 10 and b0 >= 10 and a >= 2 and b >= 2"
+```
+After:
+```json
+"a0 >= 10 and b0 >= 10"
+```
+
+## 5.9-multiply-tens step 2 template 5 format
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"story"
+```
+After:
+```json
+"true-false"
+```
+
+## 5.9-multiply-tens step 2 template 5 text
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"A stadium has {a} rows of {b} seats in the lower bowl and {c} rows of {d} seats in the upper bowl. How many seats is that in all?"
+```
+After:
+```json
+"True or false: {a} × {b} = {c}."
+```
+
+## 5.9-multiply-tens step 2 template 5 answer
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+"a * b + c * d"
+```
+After:
+```json
+"'true' if f == 0 else 'false'"
+```
+
+## 5.9-multiply-tens step 2 template 5 slots
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+{
+  "a1": "template_a1",
+  "b1": "template_b1",
+  "c1": "template_c1",
+  "d1": "template_d1"
+}
+```
+After:
+```json
+{
+  "a0": "operand1",
+  "b0": "operand2",
+  "f": "flip"
+}
+```
+
+## 5.9-multiply-tens step 2 template 5 derived
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+{
+  "a": "a1 * 10",
+  "b": "b1 * 10",
+  "c": "c1 * 10",
+  "d": "d1 * 10"
+}
+```
+After:
+```json
+{
+  "a": "a0 // 10 * 10",
+  "b": "b0 // 10 * 10",
+  "c": "a * b if f == 0 else a * b + a"
+}
+```
+
+## 5.9-multiply-tens step 2 template 5 check
+
+Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.
+
+Before:
+```json
+undefined
+```
+After:
+```json
+"a0 >= 10 and b0 >= 10"
+```
+
+## 8.2-square-root step 1 template 4 text
+
+Shorten the prompt to fit the three-line card or practice row. Keep every mathematical quantity, unit, answer, format and difficulty. The public U26 diagnostic removed a valid Challenge because another card used four lines; the shortened prompt retains that card.
+
+Before:
+```json
+"True or false: a square with sides of {s} m has an area bigger than {a} m²."
+```
+After:
+```json
+"Square side {s} m. True or false: its area > {a} m²."
+```
+
+## 8.2-cube-root step 1 template 4 text
+
+Shorten the prompt to fit the three-line card or practice row. Keep every mathematical quantity, unit, answer, format and difficulty. The public U26 diagnostic removed a valid Challenge because another card used four lines; the shortened prompt retains that card.
+
+Before:
+```json
+"True or false: a cube with edges of {e} cm has a volume bigger than {v} cm³."
+```
+After:
+```json
+"Cube edge {e} cm. True or false: its volume > {v} cm³."
+```
+
+## 8.10-model step 1 template 3 text
+
+Shorten the prompt to fit the three-line card or practice row. Keep every mathematical quantity, unit, answer, format and difficulty. The public U26 diagnostic removed a valid Challenge because another card used four lines; the shortened prompt retains that card.
+
+Before:
+```json
+"{name} cuts a right triangle from paper with sides {x}, {y} and {z} cm. Which side is the shortest? Write its length."
+```
+After:
+```json
+"{name}'s paper right triangle: {x}, {y}, {z} cm. Shortest side length?"
+```
+
+## 8.10-model step 1 template 4 format
+
+Restore the original v2 walk calculation after shortening its prompt. Keep the valid triangle dimensions, original story format, p + q answer and hard difficulty. The interim v1 hypotenuse fallback is no longer active.
+
+Before:
+```json
+"choose"
+```
+After:
+```json
+"story"
+```
+
+## 8.10-model step 1 template 4 text
+
+Restore the original v2 walk calculation after shortening its prompt. Keep the valid triangle dimensions, original story format, p + q answer and hard difficulty. The interim v1 hypotenuse fallback is no longer active.
+
+Before:
+```json
+"Which side is across from the right angle in a right triangle with sides {x}, {y} and {z}? Write its length."
+```
+After:
+```json
+"A right-angle walk has legs {p} m and {q} m. Total distance?"
+```
+
+## 8.10-model step 1 template 4 answer
+
+Restore the original v2 walk calculation after shortening its prompt. Keep the valid triangle dimensions, original story format, p + q answer and hard difficulty. The interim v1 hypotenuse fallback is no longer active.
+
+Before:
+```json
+"h"
+```
+After:
+```json
+"p + q"
+```

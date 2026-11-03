@@ -5045,5 +5045,956 @@
     "after": "Number 1 is {a}. Take away {d} each time. True or false: number {n} is {shown}.",
     "why": "The U10 full-book estimate remains 30.2 minutes after shortening estimation prompts. State the first pattern position directly and remove repeated wording. Keep the start, increment, target position, answer, format and difficulty. This preserves the one-based pattern rule and reduces reading time.",
     "kind": "wording-rewrite"
+  },
+  {
+    "skill": "4.4-add-within-10000",
+    "step": 5,
+    "template": 2,
+    "path": [
+      "difficulty"
+    ],
+    "before": "medium",
+    "after": "easy",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.4-add-within-10000",
+    "step": 5,
+    "template": 3,
+    "path": [
+      "difficulty"
+    ],
+    "before": "easy",
+    "after": "medium",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.4-add-within-10000",
+    "step": 5,
+    "template": 3,
+    "path": [
+      "text"
+    ],
+    "before": "{name} has {a} {things}. {name} gets {b} more. How many {things} does {name} have now?",
+    "after": "{name} has {a} {things}. {They} gets {b} more. How many {things} does {name} have now?",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.4-add-within-10000",
+    "step": 5,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "{name} had some {things}. After getting {b} more, {name} had {s}. How many did {name} have at first?",
+    "after": "{name} counts {a} {things} on Monday and {b} {things} on Friday. How many {things} in all?",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.4-add-within-10000",
+    "step": 5,
+    "template": 5,
+    "path": [
+      "answer"
+    ],
+    "before": "a",
+    "after": "a + b",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.4-add-within-10000",
+    "step": 5,
+    "template": 5,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "u1": "u1",
+      "u2": "u2",
+      "u3": "u3",
+      "u5": "u5",
+      "u6": "u6",
+      "u7": "u7",
+      "flip": "flip"
+    },
+    "after": {
+      "u1": "u1",
+      "u2": "u2",
+      "u3": "u3",
+      "u4": "u4",
+      "u5": "u5",
+      "u6": "u6",
+      "u7": "u7",
+      "u8": "u8",
+      "flip": "flip"
+    },
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.4-add-within-10000",
+    "step": 5,
+    "template": 5,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "A": "3000 + u1 * 250 + u2 * 25 + u3 * 2",
+      "B": "2000 + u5 * 250 + u6 * 25 + u7 * 2",
+      "a": "A",
+      "b": "B",
+      "s": "A + B",
+      "tot": "s",
+      "shown": "s if flip == 0 else s + 10",
+      "sh": "shown",
+      "w": "s - 10 * 10 ** (u1 % 3)"
+    },
+    "after": {
+      "A": "1000 + u1 * 400 + u2 * 40 + u3 * 4 + u4",
+      "B": "1000 + u5 * 300 + u6 * 30 + u7 * 3 + u8",
+      "a": "A",
+      "b": "B",
+      "s": "A + B",
+      "tot": "s",
+      "shown": "s if flip == 0 else s + 10",
+      "sh": "shown"
+    },
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.4-add-within-10000",
+    "step": 5,
+    "template": 5,
+    "path": [
+      "check"
+    ],
+    "after": "A + B <= 9999",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback",
+    "beforeAbsent": true
+  },
+  {
+    "skill": "4.4-subtract-within-10000",
+    "step": 5,
+    "template": 1,
+    "path": [
+      "text"
+    ],
+    "before": "{ak} - {b} = __",
+    "after": "{a} - {b} = __",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.4-subtract-within-10000",
+    "step": 5,
+    "template": 1,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "A": "10000",
+      "B": "1 + (u1 * 1000 + u2 * 100 + u3 * 10 + u4) % 9999",
+      "a": "A",
+      "b": "B",
+      "d": "A - B",
+      "shown": "d if flip == 0 else d + 10",
+      "ak": "'10 000'"
+    },
+    "after": {
+      "A": "10000",
+      "B": "1 + (u1 * 1000 + u2 * 100 + u3 * 10 + u4) % 9999",
+      "a": "A",
+      "b": "B",
+      "d": "A - B",
+      "shown": "d if flip == 0 else d + 10"
+    },
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.4-subtract-within-10000",
+    "step": 5,
+    "template": 2,
+    "path": [
+      "text"
+    ],
+    "before": "Missing number: {ak} - __ = {d}",
+    "after": "Missing number: {a} - __ = {d}",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.4-subtract-within-10000",
+    "step": 5,
+    "template": 2,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "A": "10000",
+      "B": "1 + (u1 * 1000 + u2 * 100 + u3 * 10 + u4) % 9999",
+      "a": "A",
+      "b": "B",
+      "d": "A - B",
+      "shown": "d if flip == 0 else d + 10",
+      "ak": "'10 000'"
+    },
+    "after": {
+      "A": "10000",
+      "B": "1 + (u1 * 1000 + u2 * 100 + u3 * 10 + u4) % 9999",
+      "a": "A",
+      "b": "B",
+      "d": "A - B",
+      "shown": "d if flip == 0 else d + 10"
+    },
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.4-subtract-within-10000",
+    "step": 5,
+    "template": 3,
+    "path": [
+      "text"
+    ],
+    "before": "{name} has {ak} {things} and gives {b} away. How many {things} are left?",
+    "after": "{name} has {a} {things} and gives {b} away. How many {things} are left?",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.4-subtract-within-10000",
+    "step": 5,
+    "template": 3,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "A": "10000",
+      "B": "1 + (u1 * 1000 + u2 * 100 + u3 * 10 + u4) % 9999",
+      "a": "A",
+      "b": "B",
+      "d": "A - B",
+      "shown": "d if flip == 0 else d + 10",
+      "ak": "'10 000'"
+    },
+    "after": {
+      "A": "10000",
+      "B": "1 + (u1 * 1000 + u2 * 100 + u3 * 10 + u4) % 9999",
+      "a": "A",
+      "b": "B",
+      "d": "A - B",
+      "shown": "d if flip == 0 else d + 10"
+    },
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.4-subtract-within-10000",
+    "step": 5,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "True or false: {ak} - {b} = {shown}.",
+    "after": "True or false: {a} - {b} = {shown}.",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.4-subtract-within-10000",
+    "step": 5,
+    "template": 4,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "A": "10000",
+      "B": "1 + (u1 * 1000 + u2 * 100 + u3 * 10 + u4) % 9999",
+      "a": "A",
+      "b": "B",
+      "d": "A - B",
+      "shown": "d if flip == 0 else d + 10",
+      "ak": "'10 000'"
+    },
+    "after": {
+      "A": "10000",
+      "B": "1 + (u1 * 1000 + u2 * 100 + u3 * 10 + u4) % 9999",
+      "a": "A",
+      "b": "B",
+      "d": "A - B",
+      "shown": "d if flip == 0 else d + 10"
+    },
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.4-subtract-within-10000",
+    "step": 5,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "{name} has 10 000 {things}. {name} gives away {b} and then {c} more. How many are left?",
+    "after": "A {container} holds {a} {things}. {name} takes out {b}. How many {things} are left in the {container}?",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.4-subtract-within-10000",
+    "step": 5,
+    "template": 5,
+    "path": [
+      "answer"
+    ],
+    "before": "10000 - b - c",
+    "after": "a - b",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.4-subtract-within-10000",
+    "step": 5,
+    "template": 5,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "b0": "template_b0",
+      "c0": "template_c0"
+    },
+    "after": {
+      "u1": "u1",
+      "u2": "u2",
+      "u3": "u3",
+      "u4": "u4",
+      "flip": "flip"
+    },
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.4-subtract-within-10000",
+    "step": 5,
+    "template": 5,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "b": "1 + b0 % 5000",
+      "c": "1 + c0 % 4000"
+    },
+    "after": {
+      "A": "10000",
+      "B": "1 + (u1 * 1000 + u2 * 100 + u3 * 10 + u4) % 9999",
+      "a": "A",
+      "b": "B",
+      "d": "A - B",
+      "shown": "d if flip == 0 else d + 10"
+    },
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.9-table-pattern",
+    "step": 3,
+    "template": 2,
+    "path": [
+      "text"
+    ],
+    "before": "{name} puts {m} {things} in each {container} and fills {p} of them. How many {things} in all?",
+    "after": "{name} puts {m} {things} in each {container}. How many {things} in {p} {container}s?",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.9-table-pattern",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "format"
+    ],
+    "before": "bare",
+    "after": "explain",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.9-table-pattern",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "The rule is multiply the position by {r}. How much bigger is the value at position {p} than the value at position {q}?",
+    "after": "The rule is multiply by {m}. Why is the value at position {p} bigger than the value at position 1?",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.9-table-pattern",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "answer"
+    ],
+    "before": "r * (p - q)",
+    "after": "'Each position gives ' + str(m) + ' more'",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.9-table-pattern",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "r": "template_r",
+      "p": "template_p",
+      "q": "template_q"
+    },
+    "after": {
+      "m": "multiplier",
+      "p": "position"
+    },
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.9-table-pattern",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "check"
+    ],
+    "after": "p > 1",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback",
+    "beforeAbsent": true
+  },
+  {
+    "skill": "5.1-place-value-million",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "format"
+    ],
+    "before": "bare",
+    "after": "true-false",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.1-place-value-million",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "Write the number with {a} in the ten thousands place, {b} in the hundreds place and {c} in the ones place. Every other place is 0.",
+    "after": "True or false: in {n}, the digit in the ten thousands place is bigger than the digit in the hundreds place.",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.1-place-value-million",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "answer"
+    ],
+    "before": "a * 10000 + b * 100 + c",
+    "after": "'true' if n // 10000 % 10 > n // 100 % 10 else 'false'",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.1-place-value-million",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "a": "template_a",
+      "b": "template_b",
+      "c": "template_c"
+    },
+    "after": {
+      "n0": "value"
+    },
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.1-place-value-million",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "derived"
+    ],
+    "after": {
+      "n": "n0"
+    },
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback",
+    "beforeAbsent": true
+  },
+  {
+    "skill": "5.1-place-value-million",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "check"
+    ],
+    "after": "'0' not in str(n)",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback",
+    "beforeAbsent": true
+  },
+  {
+    "skill": "5.1-place-value-million",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "True or false: in {n}, the digit in the ten thousands place is bigger than the digit in the hundreds place.",
+    "after": "True or false: in {n}, the digit in the thousands place is bigger than the digit in the hundreds place.",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.1-place-value-million",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "answer"
+    ],
+    "before": "'true' if n // 10000 % 10 > n // 100 % 10 else 'false'",
+    "after": "'true' if n // 1000 % 10 > n // 100 % 10 else 'false'",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.1-place-value-million",
+    "step": 2,
+    "template": 4,
+    "path": [
+      "format"
+    ],
+    "before": "bare",
+    "after": "true-false",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.1-place-value-million",
+    "step": 2,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "Write the number with {a} in the hundred thousands place, {b} in the thousands place and {c} in the tens place. Every other place is 0.",
+    "after": "True or false: in {n}, the digit in the ten thousands place is bigger than the digit in the thousands place.",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.1-place-value-million",
+    "step": 2,
+    "template": 4,
+    "path": [
+      "answer"
+    ],
+    "before": "a * 100000 + b * 1000 + c * 10",
+    "after": "'true' if n // 10000 % 10 > n // 1000 % 10 else 'false'",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.1-place-value-million",
+    "step": 2,
+    "template": 4,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "a": "template_a",
+      "b": "template_b",
+      "c": "template_c"
+    },
+    "after": {
+      "n0": "value"
+    },
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.1-place-value-million",
+    "step": 2,
+    "template": 4,
+    "path": [
+      "derived"
+    ],
+    "after": {
+      "n": "n0"
+    },
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback",
+    "beforeAbsent": true
+  },
+  {
+    "skill": "5.1-place-value-million",
+    "step": 2,
+    "template": 4,
+    "path": [
+      "check"
+    ],
+    "after": "'0' not in str(n)",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback",
+    "beforeAbsent": true
+  },
+  {
+    "skill": "5.1-place-value-million",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "True or false: in {n}, the digit in the ten thousands place is bigger than the digit in the thousands place.",
+    "after": "True or false: in {n}, the digit in the thousands place is bigger than the digit in the hundreds place.",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.1-place-value-million",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "answer"
+    ],
+    "before": "'true' if n // 10000 % 10 > n // 1000 % 10 else 'false'",
+    "after": "'true' if n // 1000 % 10 > n // 100 % 10 else 'false'",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-multiply-tens",
+    "step": 1,
+    "template": 1,
+    "path": [
+      "check"
+    ],
+    "before": "b0 >= 10 and a0 >= 2",
+    "after": "b0 >= 10",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-multiply-tens",
+    "step": 1,
+    "template": 2,
+    "path": [
+      "check"
+    ],
+    "before": "b0 >= 10 and a >= 2 and b >= 2",
+    "after": "b0 >= 10",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-multiply-tens",
+    "step": 1,
+    "template": 3,
+    "path": [
+      "check"
+    ],
+    "before": "b0 >= 10 and a0 >= 2",
+    "after": "b0 >= 10",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-multiply-tens",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "check"
+    ],
+    "before": "b0 >= 10 and a0 >= 2",
+    "after": "b0 >= 10",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-multiply-tens",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "format"
+    ],
+    "before": "story",
+    "after": "true-false",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-multiply-tens",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "A school orders {a} boxes of {b} pencils in the fall and {c} boxes of {b} pencils in the spring. How many pencils is that in all?",
+    "after": "True or false: {a} × {b} = {c}.",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-multiply-tens",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "answer"
+    ],
+    "before": "(a + c) * b",
+    "after": "'true' if f == 0 else 'false'",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-multiply-tens",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "a": "template_a",
+      "c": "template_c",
+      "b1": "template_b1"
+    },
+    "after": {
+      "a0": "operand1",
+      "b0": "operand2",
+      "f": "flip"
+    },
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-multiply-tens",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "b": "b1 * 10"
+    },
+    "after": {
+      "a": "a0",
+      "b": "b0 // 10 * 10",
+      "c": "a * b if f == 0 else a * b + a"
+    },
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-multiply-tens",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "check"
+    ],
+    "after": "b0 >= 10",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback",
+    "beforeAbsent": true
+  },
+  {
+    "skill": "5.9-multiply-tens",
+    "step": 2,
+    "template": 2,
+    "path": [
+      "check"
+    ],
+    "before": "a0 >= 10 and b0 >= 10 and a >= 2 and b >= 2",
+    "after": "a0 >= 10 and b0 >= 10",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-multiply-tens",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "format"
+    ],
+    "before": "story",
+    "after": "true-false",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-multiply-tens",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "A stadium has {a} rows of {b} seats in the lower bowl and {c} rows of {d} seats in the upper bowl. How many seats is that in all?",
+    "after": "True or false: {a} × {b} = {c}.",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-multiply-tens",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "answer"
+    ],
+    "before": "a * b + c * d",
+    "after": "'true' if f == 0 else 'false'",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-multiply-tens",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "a1": "template_a1",
+      "b1": "template_b1",
+      "c1": "template_c1",
+      "d1": "template_d1"
+    },
+    "after": {
+      "a0": "operand1",
+      "b0": "operand2",
+      "f": "flip"
+    },
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-multiply-tens",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "a": "a1 * 10",
+      "b": "b1 * 10",
+      "c": "c1 * 10",
+      "d": "d1 * 10"
+    },
+    "after": {
+      "a": "a0 // 10 * 10",
+      "b": "b0 // 10 * 10",
+      "c": "a * b if f == 0 else a * b + a"
+    },
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-multiply-tens",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "check"
+    ],
+    "after": "a0 >= 10 and b0 >= 10",
+    "why": "Quality fallback from matched U16 runs at base 6d20e5ab. V2 lowered selected-day mean fullness from 73.04% to 72.36%. Keep the v1 content for this affected step. Retain all template positions and easy/hard coverage. In the two place-value steps, retain a distinct medium v2 comparison of thousands and hundreds beside the restored hard comparison. The combined seven-step fallback passes the selected-day comparison at 73.06%, with no failures, omissions or variety errors. Full-book and real checks remain required.",
+    "kind": "quality-fallback",
+    "beforeAbsent": true
+  },
+  {
+    "skill": "8.2-square-root",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "True or false: a square with sides of {s} m has an area bigger than {a} m².",
+    "after": "Square side {s} m. True or false: its area > {a} m².",
+    "why": "Shorten the prompt to fit the three-line card or practice row. Keep every mathematical quantity, unit, answer, format and difficulty. The public U26 diagnostic removed a valid Challenge because another card used four lines; the shortened prompt retains that card.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "8.2-cube-root",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "True or false: a cube with edges of {e} cm has a volume bigger than {v} cm³.",
+    "after": "Cube edge {e} cm. True or false: its volume > {v} cm³.",
+    "why": "Shorten the prompt to fit the three-line card or practice row. Keep every mathematical quantity, unit, answer, format and difficulty. The public U26 diagnostic removed a valid Challenge because another card used four lines; the shortened prompt retains that card.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "8.10-model",
+    "step": 1,
+    "template": 3,
+    "path": [
+      "text"
+    ],
+    "before": "{name} cuts a right triangle from paper with sides {x}, {y} and {z} cm. Which side is the shortest? Write its length.",
+    "after": "{name}'s paper right triangle: {x}, {y}, {z} cm. Shortest side length?",
+    "why": "Shorten the prompt to fit the three-line card or practice row. Keep every mathematical quantity, unit, answer, format and difficulty. The public U26 diagnostic removed a valid Challenge because another card used four lines; the shortened prompt retains that card.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "8.10-model",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "format"
+    ],
+    "before": "choose",
+    "after": "story",
+    "why": "Restore the original v2 walk calculation after shortening its prompt. Keep the valid triangle dimensions, original story format, p + q answer and hard difficulty. The interim v1 hypotenuse fallback is no longer active.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "8.10-model",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "Which side is across from the right angle in a right triangle with sides {x}, {y} and {z}? Write its length.",
+    "after": "A right-angle walk has legs {p} m and {q} m. Total distance?",
+    "why": "Restore the original v2 walk calculation after shortening its prompt. Keep the valid triangle dimensions, original story format, p + q answer and hard difficulty. The interim v1 hypotenuse fallback is no longer active.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "8.10-model",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "answer"
+    ],
+    "before": "h",
+    "after": "p + q",
+    "why": "Restore the original v2 walk calculation after shortening its prompt. Keep the valid triangle dimensions, original story format, p + q answer and hard difficulty. The interim v1 hypotenuse fallback is no longer active.",
+    "kind": "quality-fallback"
   }
 ]

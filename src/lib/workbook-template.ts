@@ -457,8 +457,9 @@ const CSS = `
 .pg.consistent .pcards{flex:none;grid-auto-rows:auto;column-gap:32px;row-gap:calc(12px + var(--extra-gap,0px))}
 .pg.consistent .cols{flex:none;align-content:start;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:calc(12px + var(--extra-gap,0px))}
 .pg.consistent .cols .ab{height:48px}
-.pg.consistent .places-item .rgs{display:grid;grid-template-columns:repeat(var(--places),minmax(0,1fr));gap:8px;flex-basis:100%;width:100%;margin-left:0}
+.pg.consistent .places-item .rgs{display:grid;grid-template-columns:repeat(var(--places),minmax(0,1fr));gap:8px;flex-basis:100%;width:100%;margin-left:0;align-items:stretch}
 .pg.consistent .places-item .rg{display:flex;flex-direction:column;gap:6px}
+.pg.consistent .places-wide .rg{justify-content:flex-end}
 .pg.consistent .places-item .rl{font-size:var(--small);white-space:normal;text-align:center}
 .pg.consistent .col .sum{margin-left:auto}
 .pg.consistent.mid .col .sum{font-size:20px}
@@ -470,6 +471,7 @@ const CSS = `
 .pg.consistent .seq-item .qt{font-size:18px}
 .pg.consistent .seq-below .rgs{flex-basis:100%;margin-left:0;padding-left:34px}
 .pg.consistent .two>.seq-wide,.pg.consistent .cols>.seq-wide{grid-column:1/-1}
+.pg.consistent .two>.places-wide,.pg.consistent .cols>.places-wide{grid-column:1/-1}
 .pg.consistent .outl{padding:6px 16px;gap:6px}
 .pg.consistent .error-item{display:flex;flex-direction:column;gap:6px}
 .pg.consistent .error-item>.q:first-child{flex-wrap:nowrap;align-items:flex-start}.pg.consistent .error-item>.q:first-child .wk{flex:1 1 0}
@@ -831,7 +833,8 @@ function lineItem(q: DraftQuestion, band: Band, hint?: WorkedLine | null, work =
   const pictured = packageItem(q.package).regions.some((r) => r.kind === "picture");
   const sequence = packageItem(q.package).checks.some(c=>c.kind === "sequence");
   const places = packageItem(q.package).checks.some(c=>c.kind === "places");
-  const columns = Math.min(4,packageItem(q.package).regions.length);
+  const placesWide = band.consistentLayout && places && packageItem(q.package).regions.length > 4;
+  const columns = Math.min(placesWide ? 9 : 4,packageItem(q.package).regions.length);
   const split = regionsSplit(q, { band, work, labels: true, bare: packageItem(q.package).format === "written-reason", figure: pictured ? figure : null });
   // A picture the child reads (dots to count, a pattern) sits under the question, before any work box.
   const inline = split.inline;
@@ -841,7 +844,7 @@ function lineItem(q: DraftQuestion, band: Band, hint?: WorkedLine | null, work =
   const below = sequence && band.consistentLayout && q.package.text.length > 16;
   // Four boxes or more do not fit half a page's width: the count takes the whole row.
   const wide = below && wideSequence(q);
-  return `<div class="q${sequence ? " seq-item" : ""}${below ? " seq-below" : ""}${wide ? " seq-wide" : ""}${places ? " places-item" : ""}" ${mark.question(q.number)}><span class="n">${questionNumber(q.number)}</span><span class="qb">${qtext(q)}${hint ? ` <span class="qm">${worked(hint)}</span>` : ""}</span>`
+  return `<div class="q${sequence ? " seq-item" : ""}${below ? " seq-below" : ""}${wide ? " seq-wide" : ""}${places ? " places-item" : ""}${placesWide ? " places-wide" : ""}" ${mark.question(q.number)}><span class="n">${questionNumber(q.number)}</span><span class="qb">${qtext(q)}${hint ? ` <span class="qm">${worked(hint)}</span>` : ""}</span>`
     + `<span class="rgs"${places ? ` style="--places:${columns}"` : ""}>${inline}</span>${full ? `<div class="full">${full}</div>` : ""}</div>`;
 }
 

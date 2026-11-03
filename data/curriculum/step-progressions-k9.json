@@ -104367,7 +104367,7 @@
     },
     {
      "format": "missing",
-     "difficulty": "medium",
+     "difficulty": "easy",
      "text": "Missing number: {a} + __ = {s}",
      "answer": "b",
      "slots": {
@@ -104395,8 +104395,8 @@
     },
     {
      "format": "story",
-     "difficulty": "easy",
-     "text": "{name} has {a} {things}. {name} gets {b} more. How many {things} does {name} have now?",
+     "difficulty": "medium",
+     "text": "{name} has {a} {things}. {They} gets {b} more. How many {things} does {name} have now?",
      "answer": "a + b",
      "slots": {
       "u1": "u1",
@@ -104452,28 +104452,30 @@
     {
      "format": "story",
      "difficulty": "hard",
-     "text": "{name} had some {things}. After getting {b} more, {name} had {s}. How many did {name} have at first?",
-     "answer": "a",
+     "text": "{name} counts {a} {things} on Monday and {b} {things} on Friday. How many {things} in all?",
+     "answer": "a + b",
      "slots": {
       "u1": "u1",
       "u2": "u2",
       "u3": "u3",
+      "u4": "u4",
       "u5": "u5",
       "u6": "u6",
       "u7": "u7",
+      "u8": "u8",
       "flip": "flip"
      },
      "derived": {
-      "A": "3000 + u1 * 250 + u2 * 25 + u3 * 2",
-      "B": "2000 + u5 * 250 + u6 * 25 + u7 * 2",
+      "A": "1000 + u1 * 400 + u2 * 40 + u3 * 4 + u4",
+      "B": "1000 + u5 * 300 + u6 * 30 + u7 * 3 + u8",
       "a": "A",
       "b": "B",
       "s": "A + B",
       "tot": "s",
       "shown": "s if flip == 0 else s + 10",
-      "sh": "shown",
-      "w": "s - 10 * 10 ** (u1 % 3)"
-     }
+      "sh": "shown"
+     },
+     "check": "A + B <= 9999"
     }
    ],
    "calibration": {
@@ -105670,7 +105672,7 @@
     {
      "format": "bare",
      "difficulty": "easy",
-     "text": "{ak} - {b} = __",
+     "text": "{a} - {b} = __",
      "answer": "a - b",
      "slots": {
       "u1": "u1",
@@ -105685,14 +105687,13 @@
       "a": "A",
       "b": "B",
       "d": "A - B",
-      "shown": "d if flip == 0 else d + 10",
-      "ak": "'10 000'"
+      "shown": "d if flip == 0 else d + 10"
      }
     },
     {
      "format": "missing",
      "difficulty": "easy",
-     "text": "Missing number: {ak} - __ = {d}",
+     "text": "Missing number: {a} - __ = {d}",
      "answer": "b",
      "slots": {
       "u1": "u1",
@@ -105707,14 +105708,13 @@
       "a": "A",
       "b": "B",
       "d": "A - B",
-      "shown": "d if flip == 0 else d + 10",
-      "ak": "'10 000'"
+      "shown": "d if flip == 0 else d + 10"
      }
     },
     {
      "format": "story",
      "difficulty": "medium",
-     "text": "{name} has {ak} {things} and gives {b} away. How many {things} are left?",
+     "text": "{name} has {a} {things} and gives {b} away. How many {things} are left?",
      "answer": "a - b",
      "slots": {
       "u1": "u1",
@@ -105729,14 +105729,13 @@
       "a": "A",
       "b": "B",
       "d": "A - B",
-      "shown": "d if flip == 0 else d + 10",
-      "ak": "'10 000'"
+      "shown": "d if flip == 0 else d + 10"
      }
     },
     {
      "format": "true-false",
      "difficulty": "medium",
-     "text": "True or false: {ak} - {b} = {shown}.",
+     "text": "True or false: {a} - {b} = {shown}.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "u1": "u1",
@@ -105751,22 +105750,28 @@
       "a": "A",
       "b": "B",
       "d": "A - B",
-      "shown": "d if flip == 0 else d + 10",
-      "ak": "'10 000'"
+      "shown": "d if flip == 0 else d + 10"
      }
     },
     {
      "format": "story",
      "difficulty": "hard",
-     "text": "{name} has 10 000 {things}. {name} gives away {b} and then {c} more. How many are left?",
-     "answer": "10000 - b - c",
+     "text": "A {container} holds {a} {things}. {name} takes out {b}. How many {things} are left in the {container}?",
+     "answer": "a - b",
      "slots": {
-      "b0": "template_b0",
-      "c0": "template_c0"
+      "u1": "u1",
+      "u2": "u2",
+      "u3": "u3",
+      "u4": "u4",
+      "flip": "flip"
      },
      "derived": {
-      "b": "1 + b0 % 5000",
-      "c": "1 + c0 % 4000"
+      "A": "10000",
+      "B": "1 + (u1 * 1000 + u2 * 100 + u3 * 10 + u4) % 9999",
+      "a": "A",
+      "b": "B",
+      "d": "A - B",
+      "shown": "d if flip == 0 else d + 10"
      }
     }
    ],
@@ -107797,7 +107802,7 @@
     {
      "format": "story",
      "difficulty": "easy",
-     "text": "{name} puts {m} {things} in each {container} and fills {p} of them. How many {things} in all?",
+     "text": "{name} puts {m} {things} in each {container}. How many {things} in {p} {container}s?",
      "answer": "m * p",
      "slots": {
       "m": "multiplier",
@@ -107832,15 +107837,15 @@
      }
     },
     {
-     "format": "bare",
+     "format": "explain",
      "difficulty": "hard",
-     "text": "The rule is multiply the position by {r}. How much bigger is the value at position {p} than the value at position {q}?",
-     "answer": "r * (p - q)",
+     "text": "The rule is multiply by {m}. Why is the value at position {p} bigger than the value at position 1?",
+     "answer": "'Each position gives ' + str(m) + ' more'",
      "slots": {
-      "r": "template_r",
-      "p": "template_p",
-      "q": "template_q"
-     }
+      "m": "multiplier",
+      "p": "position"
+     },
+     "check": "p > 1"
     }
    ],
    "calibration": {
@@ -126173,21 +126178,23 @@
      "check": "'0' not in str(n)"
     },
     {
-     "format": "bare",
+     "format": "true-false",
      "difficulty": "hard",
-     "text": "Write the number with {a} in the ten thousands place, {b} in the hundreds place and {c} in the ones place. Every other place is 0.",
-     "answer": "a * 10000 + b * 100 + c",
+     "text": "True or false: in {n}, the digit in the ten thousands place is bigger than the digit in the hundreds place.",
+     "answer": "'true' if n // 10000 % 10 > n // 100 % 10 else 'false'",
      "slots": {
-      "a": "template_a",
-      "b": "template_b",
-      "c": "template_c"
-     }
+      "n0": "value"
+     },
+     "derived": {
+      "n": "n0"
+     },
+     "check": "'0' not in str(n)"
     },
     {
      "format": "true-false",
      "difficulty": "medium",
-     "text": "True or false: in {n}, the digit in the ten thousands place is bigger than the digit in the hundreds place.",
-     "answer": "'true' if n // 10000 % 10 > n // 100 % 10 else 'false'",
+     "text": "True or false: in {n}, the digit in the thousands place is bigger than the digit in the hundreds place.",
+     "answer": "'true' if n // 1000 % 10 > n // 100 % 10 else 'false'",
      "slots": {
       "n0": "value"
      },
@@ -126326,21 +126333,23 @@
      "check": "'0' not in str(n)"
     },
     {
-     "format": "bare",
+     "format": "true-false",
      "difficulty": "hard",
-     "text": "Write the number with {a} in the hundred thousands place, {b} in the thousands place and {c} in the tens place. Every other place is 0.",
-     "answer": "a * 100000 + b * 1000 + c * 10",
+     "text": "True or false: in {n}, the digit in the ten thousands place is bigger than the digit in the thousands place.",
+     "answer": "'true' if n // 10000 % 10 > n // 1000 % 10 else 'false'",
      "slots": {
-      "a": "template_a",
-      "b": "template_b",
-      "c": "template_c"
-     }
+      "n0": "value"
+     },
+     "derived": {
+      "n": "n0"
+     },
+     "check": "'0' not in str(n)"
     },
     {
      "format": "true-false",
      "difficulty": "medium",
-     "text": "True or false: in {n}, the digit in the ten thousands place is bigger than the digit in the thousands place.",
-     "answer": "'true' if n // 10000 % 10 > n // 1000 % 10 else 'false'",
+     "text": "True or false: in {n}, the digit in the thousands place is bigger than the digit in the hundreds place.",
+     "answer": "'true' if n // 1000 % 10 > n // 100 % 10 else 'false'",
      "slots": {
       "n0": "value"
      },
@@ -129301,7 +129310,7 @@
       "a": "a0",
       "b": "b0 // 10 * 10"
      },
-     "check": "b0 >= 10 and a0 >= 2"
+     "check": "b0 >= 10"
     },
     {
      "format": "story",
@@ -129316,7 +129325,7 @@
       "a": "a0",
       "b": "b0 // 10 * 10"
      },
-     "check": "b0 >= 10 and a >= 2 and b >= 2"
+     "check": "b0 >= 10"
     },
     {
      "format": "missing",
@@ -129332,7 +129341,7 @@
       "b": "b0 // 10 * 10",
       "c": "a * b"
      },
-     "check": "b0 >= 10 and a0 >= 2"
+     "check": "b0 >= 10"
     },
     {
      "format": "true-false",
@@ -129349,21 +129358,24 @@
       "b": "b0 // 10 * 10",
       "c": "a * b - a if f == 0 else a * b + a"
      },
-     "check": "b0 >= 10 and a0 >= 2"
+     "check": "b0 >= 10"
     },
     {
-     "format": "story",
+     "format": "true-false",
      "difficulty": "hard",
-     "text": "A school orders {a} boxes of {b} pencils in the fall and {c} boxes of {b} pencils in the spring. How many pencils is that in all?",
-     "answer": "(a + c) * b",
+     "text": "True or false: {a} × {b} = {c}.",
+     "answer": "'true' if f == 0 else 'false'",
      "slots": {
-      "a": "template_a",
-      "c": "template_c",
-      "b1": "template_b1"
+      "a0": "operand1",
+      "b0": "operand2",
+      "f": "flip"
      },
      "derived": {
-      "b": "b1 * 10"
-     }
+      "a": "a0",
+      "b": "b0 // 10 * 10",
+      "c": "a * b if f == 0 else a * b + a"
+     },
+     "check": "b0 >= 10"
     }
    ],
    "calibration": {
@@ -129495,7 +129507,7 @@
       "a": "a0 // 10 * 10",
       "b": "b0 // 10 * 10"
      },
-     "check": "a0 >= 10 and b0 >= 10 and a >= 2 and b >= 2"
+     "check": "a0 >= 10 and b0 >= 10"
     },
     {
      "format": "missing",
@@ -129531,22 +129543,21 @@
      "check": "a0 >= 10 and b0 >= 10"
     },
     {
-     "format": "story",
+     "format": "true-false",
      "difficulty": "hard",
-     "text": "A stadium has {a} rows of {b} seats in the lower bowl and {c} rows of {d} seats in the upper bowl. How many seats is that in all?",
-     "answer": "a * b + c * d",
+     "text": "True or false: {a} × {b} = {c}.",
+     "answer": "'true' if f == 0 else 'false'",
      "slots": {
-      "a1": "template_a1",
-      "b1": "template_b1",
-      "c1": "template_c1",
-      "d1": "template_d1"
+      "a0": "operand1",
+      "b0": "operand2",
+      "f": "flip"
      },
      "derived": {
-      "a": "a1 * 10",
-      "b": "b1 * 10",
-      "c": "c1 * 10",
-      "d": "d1 * 10"
-     }
+      "a": "a0 // 10 * 10",
+      "b": "b0 // 10 * 10",
+      "c": "a * b if f == 0 else a * b + a"
+     },
+     "check": "a0 >= 10 and b0 >= 10"
     }
    ],
    "calibration": {
@@ -159746,7 +159757,7 @@
     },
     "template_h0": {
      "min": 4.5,
-     "max": 9.0
+     "max": 9
     },
     "template_f": {
      "min": 0,
@@ -160208,7 +160219,7 @@
     },
     "template_b": {
      "min": 2.5,
-     "max": 7.0
+     "max": 7
     },
     "template_k": {
      "min": 0,
@@ -161174,7 +161185,7 @@
      "max": 9
     },
     "template_h0": {
-     "min": 4.0,
+     "min": 4,
      "max": 8.99
     },
     "template_b_2": {
@@ -161198,8 +161209,8 @@
      "max": 15
     },
     "template_h0_3": {
-     "min": 8.0,
-     "max": 14.0
+     "min": 8,
+     "max": 14
     }
    },
    "practice": [
@@ -170352,7 +170363,7 @@
     },
     "template_a": {
      "min": 2.5,
-     "max": 13.0
+     "max": 13
     },
     "template_k": {
      "min": 0,
@@ -192224,7 +192235,7 @@
     },
     "operand3": {
      "min": 0.2,
-     "max": 4.0,
+     "max": 4,
      "decimal_places": 1
     },
     "flip": {
@@ -192262,7 +192273,7 @@
     },
     "operand3_high": {
      "min": 2.73,
-     "max": 4.0,
+     "max": 4,
      "decimal_places": 1
     },
     "A": {
@@ -192497,7 +192508,7 @@
     },
     "operand3": {
      "min": 0.2,
-     "max": 4.0,
+     "max": 4,
      "decimal_places": 1
     },
     "flip": {
@@ -192535,7 +192546,7 @@
     },
     "operand3_high": {
      "min": 2.73,
-     "max": 4.0,
+     "max": 4,
      "decimal_places": 1
     },
     "A1": {
@@ -192783,7 +192794,7 @@
     },
     "operand3": {
      "min": 0.2,
-     "max": 4.0,
+     "max": 4,
      "decimal_places": 1
     },
     "flip": {
@@ -192821,7 +192832,7 @@
     },
     "operand3_high": {
      "min": 2.73,
-     "max": 4.0,
+     "max": 4,
      "decimal_places": 1
     },
     "w": {
@@ -212099,7 +212110,7 @@
     },
     "base_area_low": {
      "min": 0.5,
-     "max": 17.0,
+     "max": 17,
      "decimal_places": 2
     },
     "height_low": {
@@ -228129,7 +228140,7 @@
     {
      "format": "true-false",
      "difficulty": "hard",
-     "text": "True or false: a square with sides of {s} m has an area bigger than {a} m².",
+     "text": "Square side {s} m. True or false: its area > {a} m².",
      "answer": "'true' if s * s > a else 'false'",
      "slots": {
       "s": "side",
@@ -228565,7 +228576,7 @@
     {
      "format": "true-false",
      "difficulty": "hard",
-     "text": "True or false: a cube with edges of {e} cm has a volume bigger than {v} cm³.",
+     "text": "Cube edge {e} cm. True or false: its volume > {v} cm³.",
      "answer": "'true' if e ** 3 > v else 'false'",
      "slots": {
       "e": "edge",
@@ -229406,7 +229417,7 @@
     {
      "format": "story",
      "difficulty": "medium",
-     "text": "{name} cuts a right triangle from paper with sides {x}, {y} and {z} cm. Which side is the shortest? Write its length.",
+     "text": "{name}'s paper right triangle: {x}, {y}, {z} cm. Shortest side length?",
      "answer": "min(p, q)",
      "slots": {
       "m0": "leg",
@@ -229424,10 +229435,10 @@
      "check": "h <= 41 and h * h == p * p + q * q"
     },
     {
-     "format": "choose",
+     "format": "story",
      "difficulty": "hard",
-     "text": "Which side is across from the right angle in a right triangle with sides {x}, {y} and {z}? Write its length.",
-     "answer": "h",
+     "text": "A right-angle walk has legs {p} m and {q} m. Total distance?",
+     "answer": "p + q",
      "slots": {
       "m0": "leg",
       "n0": "leg",

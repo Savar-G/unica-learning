@@ -16,16 +16,17 @@ const raw = parseStepProgressions;
 const active = raw(JSON.parse(read("step-progressions-k9.json")));
 // The raw v2 deliberately fails admission. Read it only as the known data shape for patch replay.
 const original = JSON.parse(read("step-progressions-k9.v2.original.json")) as typeof active;
+const originalCounts = new Map(original.steps.map(s => [`${s.skill}#${s.number}`, s.templates!.length]));
 const BC = curriculumFor("bc")!;
 
 describe("v2 data and answer contracts", () => {
-  it("replays every recorded change and keeps all template positions and difficulty tags", () => {
+  it("replays every recorded change and keeps all template positions with easy and hard coverage", () => {
     const patches = JSON.parse(read("author-changes.json")) as { skill: string; step: number; template: number | null; path: string[]; before: unknown; after: unknown; why: string; kind?: "quality-fallback" | "wording-rewrite"; beforeAbsent?: boolean }[];
     for (const patch of patches) {
       const step = original.steps.find(s => s.skill === patch.skill && s.number === patch.step)!;
       const target = (patch.template === null ? step : step.templates![patch.template - 1]) as unknown as Record<string, unknown>;
       expect(patch.path).toHaveLength(1);
-      expect(patch.path[0]).not.toBe("difficulty");
+      if (patch.kind !== "quality-fallback") expect(patch.path[0]).not.toBe("difficulty");
       if (patch.kind !== "quality-fallback") expect(patch.path[0]).not.toBe("format");
       if (!patch.kind) expect(patch.path[0]).not.toBe("text");
       if (patch.beforeAbsent) expect(Object.hasOwn(target, patch.path[0])).toBe(false);
@@ -37,6 +38,7 @@ describe("v2 data and answer contracts", () => {
     expect(active.steps).toEqual(BC_CURRICULUM.steps);
     expect(active.steps.flatMap(s => s.templates!)).toHaveLength(7999);
     for (const step of active.steps) {
+      expect(step.templates!.length).toBe(originalCounts.get(`${step.skill}#${step.number}`));
       expect(step.templates!.some(t => t.difficulty === "easy"), `${step.skill}#${step.number}`).toBe(true);
       expect(step.templates!.some(t => t.difficulty === "hard"), `${step.skill}#${step.number}`).toBe(true);
     }
@@ -94,9 +96,9 @@ describe("v2 data and answer contracts", () => {
     expect(sameAnswer("33 m²", [whole.answer], false)).toBe(true);
   });
 
-  it("keeps every triangle dimension valid while it uses a shorter hard question", () => {
+  it("keeps every triangle dimension valid with the original hard walk calculation", () => {
     const step = BC.skillSteps("8.10-model")!.find(s => s.number === 1)!;
-    expect(step.templates![3]).toMatchObject({ format: "choose", difficulty: "hard", answer: "h" });
+    expect(step.templates![3]).toMatchObject({ format: "story", difficulty: "hard", answer: "p + q" });
     for (const template of step.templates!) {
       const fill = prepareTemplate(step, template, BC.contexts!);
       for (let seed = 1; seed <= 40; seed++) {
@@ -150,7 +152,8 @@ describe("v2 data and answer contracts", () => {
   });
 
   it("keeps number construction out of a two-method arithmetic area", () => {
-    const step = BC.skillSteps("5.1-place-value-million")!.find(s => s.number === 2)!;
+    const author = (JSON.parse(read("step-progressions-k9.v2.original.json")) as typeof active).steps.find(s => s.skill === "5.1-place-value-million" && s.number === 2)!;
+    const step = { ...BC.skillSteps(author.skill)!.find(s => s.number === author.number)!, numbers: author.numbers, templates: author.templates };
     const hard = step.templates!.find(t => /every other place/i.test(t.text))!;
     expect(hard).toBeDefined();
     const curriculum = { ...BC, skillSteps: (id: string) => id === step.skill ? [{ ...step, templates: [hard] }] : BC.skillSteps(id) };
