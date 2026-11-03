@@ -1,4 +1,4 @@
-/* /curriculum on the warm look: head, three grade-band drop-downs of level cards (closed until opened, D-217),
+/* /curriculum on the warm look: head, three grade-band drop-downs of level cards (closed until opened, D-218),
    then "How a level works" cards. Follows /compare's spacing and kickers. */
 .curp { padding: clamp(48px, 8vw, 104px) var(--pad-x) clamp(56px, 8vw, 112px); }
 .curp-head h1 { margin: 18px 0 22px; max-width: 18ch; font-size: clamp(38px, 5.4vw, 68px); line-height: 1.04; }

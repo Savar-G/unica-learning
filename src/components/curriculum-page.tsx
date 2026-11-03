@@ -1,5 +1,5 @@
 // /curriculum (public since Oct 29, 2026): how the program is built, for parents. 30 levels from the BC curriculum,
-// Kindergarten to Grade 9, in three grade bands (D-217). Each band is a drop-down, closed until the parent opens it; the
+// Kindergarten to Grade 9, in three grade bands (D-218). Each band is a drop-down, closed until the parent opens it; the
 // grade range is its title and the level numbers come second. Grades appear only as a rough range per band, never next
 // to a single level.
 // Level content lives in src/lib/curriculum.ts. Uses the site nav and footer, like /compare.

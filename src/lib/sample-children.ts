@@ -29,11 +29,13 @@ export type SampleChildId = "a" | "b";
 export interface SampleChild {
   id: SampleChildId;
   name: string;
-  /** The two lines a parent reads: the gap the assessment found, and what their program does about it. */
-  gap: string;
-  /** "Her program" or "His program". */
-  programLabel: string;
-  program: string;
+  /** "she" or "he", for the line labels ("Where she is"). */
+  she: "she" | "he";
+  /** The three lines a parent reads: where the child is, how they like to learn (a learning card answer, D-107), and
+   * what their next book does. */
+  level: string;
+  learnsWith: string;
+  nextBook: string;
 }
 
 export const SAMPLE_GRADE = 3;
@@ -42,16 +44,18 @@ export const SAMPLE_CHILDREN: Record<SampleChildId, SampleChild> = {
   a: {
     id: "a",
     name: "Leah",
-    gap: "Carrying and borrowing.",
-    programLabel: "Her program",
-    program: "Mostly practice on that, a little review, one step ahead.",
+    she: "she",
+    level: "Struggles with borrowing, so taking away big numbers is hard for her.",
+    learnsWith: "Stories and real-life problems.",
+    nextBook: "Borrowing, one step at a time: worked examples, practice, then story problems.",
   },
   b: {
     id: "b",
     name: "Kai",
-    gap: "None in Grade 3 basics.",
-    programLabel: "His program",
-    program: "Multiplication and division, a grade ahead.",
+    she: "he",
+    level: "Has mastered all Grade\u00a03 math and is ready for Grade\u00a04.",
+    learnsWith: "Pictures and diagrams.",
+    nextBook: "Grade\u00a04 multiplication and sharing, with dot arrays and equal groups.",
   },
 };
 
