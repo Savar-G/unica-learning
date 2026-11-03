@@ -30,7 +30,7 @@
 // layout: its books are marked FAKE in index.md and are never stored. The secret key: SUPABASE_SECRET_KEY, else the
 // Supabase Management API with SUPABASE_ACCESS_TOKEN or the Keychain item "supabase-pagewise". No key is printed.
 import { execFileSync } from "node:child_process";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -287,6 +287,14 @@ interface BookResult {
 
 const out = values.out!;
 await mkdir(out, { recursive: true });
+await writeFile(`${out}/run-manifest.json`, JSON.stringify({
+  head: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+  consistencyBase: execFileSync("git", ["rev-parse", "origin/site/workbook-consistency"], { encoding: "utf8" }).trim(),
+  bundleSha256: createHash("sha256").update(await readFile(process.argv[1])).digest("hex"),
+  dataSha256: createHash("sha256").update(await readFile(values.steps ?? "data/curriculum/step-progressions-k9.json")).digest("hex"),
+  steps: values.steps ?? "data/curriculum/step-progressions-k9.json", sampleId: process.env.WORKBOOK_SAMPLE_ID ?? null,
+  args: process.argv.slice(2), fake: values.fake, stored: store,
+}, null, 2));
 const template = workbookTemplate(await fixedTemplateFonts());
 // Chromium can fail to start when several start at once: each print gets up to 3 tries, so one failed launch does not
 // lose a whole book.

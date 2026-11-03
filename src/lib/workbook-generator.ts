@@ -97,7 +97,7 @@ function slotStep(input: GenerateInput, slot: Slot, attempt: number, level: numb
     }
     const stretch = challengeStretch(input, slot, level, day, attempt);
     const stories = storySteps(input, slot, day, level);
-    if (stories.length) return stories[((Number(slot.id.split(".")[1]) || 1) - 1 + Math.floor(attempt / 6)) % stories.length];
+    if (stories.length) return stories[Math.floor(attempt / 6) % stories.length];
     // The last questions of a practice block review an earlier step (the U16 and U4 reviews: a day mixes the new step
     // with earlier ones, not one task twenty times).
     const ordinal = Number(slot.id.split(".")[1]) || 1;
@@ -214,6 +214,8 @@ function taughtSteps(input: GenerateInput, day: number, level: number): { skill:
  * review: "Amara says 3. What does Amara say next?" is no story to work out): the steps the day reviews whose stories
  * add, take away, share or group. Empty when the page's own step has such a story.
  */
+const storyFallbacks = new WeakMap<Curriculum, Map<string, { skill: string; step: number }[]>>();
+
 function storySteps(input: GenerateInput, slot: Slot, day: number, level: number): { skill: string; step: number }[] {
   const at = slot.part.step;
   if (!at || slot.place !== "word-problems") return [];
@@ -224,12 +226,19 @@ function storySteps(input: GenerateInput, slot: Slot, day: number, level: number
   // If this step has no usable story, look backwards within the skill, then through
   // earlier skills. The required story format must not advance the child's step.
   if (!sums(at.skill, at.step)) {
+    let cached = storyFallbacks.get(input.curriculum);
+    if (!cached) { cached = new Map(); storyFallbacks.set(input.curriculum, cached); }
+    const key = `${at.skill}#${at.step}:${level}`;
+    const saved = cached.get(key);
+    if (saved?.length) return saved;
     const rank = stepRank(input.curriculum, at.skill, at.step) ?? 0;
     const prior = input.curriculum.levels.flatMap(l => input.curriculum.levelSkills(l.id) ?? [])
       .flatMap(s => (input.curriculum.skillSteps(s.id) ?? []).map(st => ({ skill: s.id, step: st.number })))
-      .filter(x => (stepRank(input.curriculum, x.skill, x.step) ?? Infinity) < rank && sums(x.skill, x.step))
+      .filter(x => (stepRank(input.curriculum, x.skill, x.step) ?? Infinity) < rank && sums(x.skill, x.step)
+        && (level < 16 || (stepBounds(stepOf(input.curriculum, x.skill, x.step)!)?.max ?? 0) >= 100))
       .sort((a, b) => (stepRank(input.curriculum, b.skill, b.step) ?? 0) - (stepRank(input.curriculum, a.skill, a.step) ?? 0));
-    if (prior.length) return [prior[0]];
+    cached.set(key, prior);
+    if (prior.length) return prior;
   }
   const seen = new Set<string>([`${at.skill}#${at.step}`]);
   const own = sums(at.skill, at.step) ? [{ skill: at.skill, step: at.step }] : [];

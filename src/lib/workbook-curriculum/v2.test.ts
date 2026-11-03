@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { MISCONCEPTIONS } from "@/lib/assessment/misconceptions";
 import { checkQuestionPackage, valueText } from "@/lib/question-package";
-import { buildStepItem, stepTemplateItem } from "@/lib/workbook-step-items";
+import { buildStepItem, hasHardNumberTemplate, printedNumbersOf, stepTemplateItem } from "@/lib/workbook-step-items";
 import { aiSolver, sameAnswer, solveCheck } from "@/lib/workbook-solve-check";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { BC_CURRICULUM, curriculumFor } from "./index";
@@ -25,6 +25,7 @@ describe("v2 data and answer contracts", () => {
       const step = original.steps.find(s => s.skill === patch.skill && s.number === patch.step)!;
       const target = (patch.template === null ? step : step.templates![patch.template - 1]) as unknown as Record<string, unknown>;
       expect(patch.path).toHaveLength(1);
+      expect(["format", "difficulty", "text"]).not.toContain(patch.path[0]);
       expect(target[patch.path[0]]).toEqual(patch.before);
       target[patch.path[0]] = patch.after;
       expect(patch.why).not.toBe("");
@@ -68,6 +69,22 @@ describe("v2 data and answer contracts", () => {
     }
   });
 
+  it("keeps numeric cases of conditional hard stories available to the Challenge", () => {
+    expect(hasHardNumberTemplate(BC, "K3-part-part-whole", 3, 4)).toBe(true);
+    for (let seed = 1; seed <= 12; seed++) {
+      const item = stepTemplateItem({ curriculum: BC, skill: "K3-part-part-whole", step: 3, place: "challenge", level: 4, day: 1, ordinal: 0, seed, attempt: 0 })!;
+      expect(item?.ref.difficulty).toBe("hard");
+      expect(item?.ref.kind).toBe("story");
+      expect(item?.ref.answer).toMatch(/^\d+$/);
+    }
+    const maxima = Array.from({ length: 30 }, (_, seed) => {
+      const item = stepTemplateItem({ curriculum: BC, skill: "1.1-count-to-20", step: 2, place: "challenge", level: 4, day: 1, ordinal: 0, seed, attempt: 0 })!;
+      expect(item.ref.difficulty).toBe("hard");
+      return Math.max(...printedNumbersOf(item.ref.answer));
+    });
+    expect(maxima.filter(n => n >= 18)).toHaveLength(30);
+  });
+
   it.each([
     ["9.8-bank-record", 2, 0, 30, /^\$\d+\.\d{2}$/],
     ["5.12-area-rectangle", 2, 1, 16, /^\d+ m²$/],
@@ -77,7 +94,7 @@ describe("v2 data and answer contracts", () => {
     const filled = stepTemplateItem({ curriculum, skill, step: stepNumber, place: "on-your-own", level, day: 1, ordinal: 0, seed: 7, attempt: 0 })!;
     expect(filled).not.toBeNull();
     expect(filled.ref.answer).toMatch(answerPattern);
-    const built = buildStepItem(filled.ref, filled.text, { id: "q", workbookId: "w", page: 2, question: 1, level, skills: [skill] }, "story");
+    const built = buildStepItem(filled.ref, filled.text, { id: "q", workbookId: "w", page: 2, question: 1, level, skills: [skill] }, "ai");
     expect(built.check.status).toBe("checked");
     const pkg = built.package!;
     expect(checkQuestionPackage(pkg).status).toBe("checked");
