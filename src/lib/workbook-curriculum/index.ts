@@ -25,7 +25,7 @@ export interface Curriculum {
   /** By BC skill id. */
   skill(id: string): CurriculumSkill | null;
   levelOfSkill(skillId: string): CurriculumLevel | null;
-  /** The skill's steps in order; empty where none are drafted yet (outside Grade 3, U10 to U12). */
+  /** The skill's imported steps in order, for all BC levels. */
   skillSteps(skillId: string): readonly CurriculumStep[] | null;
 }
 

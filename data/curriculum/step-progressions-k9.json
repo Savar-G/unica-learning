@@ -66053,6 +66053,10 @@
     "digit": {
      "min": 0,
      "max": 9
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -66125,10 +66129,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "n0": "number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "nh": "n0 // 100",
@@ -66242,6 +66243,10 @@
     "digit": {
      "min": 0,
      "max": 9
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -66312,10 +66317,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "n0": "number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "h": "n0 // 100",
@@ -66332,10 +66334,7 @@
      "slots": {
       "n0": "number",
       "m0": "number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "h": "n0 // 100",
@@ -66431,6 +66430,10 @@
     "result": {
      "min": 100,
      "max": 999
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "regrouping": true,
@@ -66508,10 +66511,7 @@
       "h0": "hundreds",
       "t0": "tens",
       "o0": "ones",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "h": "2 + h0 % 6",
@@ -66528,10 +66528,7 @@
      "slots": {
       "h0": "hundreds",
       "t0": "tens",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "h": "2 + h0 % 6",
@@ -66620,6 +66617,10 @@
     "number": {
      "min": 100,
      "max": 999
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -66692,10 +66693,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "n": "number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "(n // 100) * 100 + (n + 37) % 100 if flip == 0 else ((n // 100) % 9 + 1) * 100 + n % 100"
@@ -67125,6 +67123,10 @@
     "number": {
      "min": 10,
      "max": 999
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -67210,10 +67212,7 @@
       "x": "number",
       "y": "number",
       "z": "number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "lo": "min(x, y, z)",
@@ -67304,6 +67303,14 @@
     "number": {
      "min": 0,
      "max": 1000
+    },
+    "template_pos": {
+     "min": 0,
+     "max": 2
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -67349,10 +67356,7 @@
       "y0": "number",
       "z0": "number",
       "w0": "number",
-      "pos": {
-       "min": 0,
-       "max": 2
-      }
+      "pos": "template_pos"
      },
      "derived": {
       "lo": "25 + x0 % 850",
@@ -67389,10 +67393,7 @@
       "y0": "number",
       "z0": "number",
       "w0": "number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "lo": "25 + x0 % 850",
@@ -67504,6 +67505,10 @@
     "terms": {
      "min": 2,
      "max": 4
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -67573,10 +67578,7 @@
      "slots": {
       "a0": "start",
       "d": "step",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "100 * (1 + a0 // 100 % 8) + 96 + a0 % 4",
@@ -67669,6 +67671,10 @@
     "terms": {
      "min": 2,
      "max": 5
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -67742,10 +67748,7 @@
      "slots": {
       "a0": "start",
       "d": "step",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "a0 % (1001 - 6 * d)",
@@ -67839,6 +67842,10 @@
     "terms": {
      "min": 2,
      "max": 5
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -67913,10 +67920,7 @@
      "slots": {
       "a0": "start",
       "d": "step",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "a0 % (1001 - 6 * d)",
@@ -68004,6 +68008,10 @@
     "terms": {
      "min": 2,
      "max": 5
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -68078,10 +68086,7 @@
      "slots": {
       "a0": "start",
       "d": "step",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "6 * d + a0 % (1001 - 6 * d)",
@@ -68170,6 +68175,10 @@
     "terms": {
      "min": 2,
      "max": 5
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -68245,10 +68254,7 @@
      "slots": {
       "a0": "start",
       "d": "step",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "a0 % (1001 - 6 * d)",
@@ -68335,6 +68341,10 @@
     "result": {
      "min": 20,
      "max": 250
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -68402,10 +68412,7 @@
      "slots": {
       "g": "group_size",
       "n": "groups",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "(g * n) + flip * (1 + (g % 7))"
@@ -68419,10 +68426,7 @@
      "slots": {
       "g": "group_size",
       "n": "groups",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "e": "g * n + (1 + g % 9) * (1 - 2 * f)"
@@ -68512,6 +68516,10 @@
     "result": {
      "min": 50,
      "max": 1000
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -68578,10 +68586,7 @@
      "slots": {
       "g": "group_size",
       "n": "groups",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "(g * n) + flip * (1 + (g % 7))"
@@ -68595,10 +68600,7 @@
      "slots": {
       "g": "group_size",
       "n": "groups",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "e": "g * n + (1 + g % 9) * (1 - 2 * f)"
@@ -68671,6 +68673,10 @@
     "choices": {
      "min": 5,
      "max": 3000
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -68713,10 +68719,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "x": "choices",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "b": "5 + x % 96 if flip == 0 else 400 + x % 2600"
@@ -68730,10 +68733,7 @@
      "slots": {
       "x": "choices",
       "y": "choices",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "5 + x % 96",
@@ -68749,10 +68749,7 @@
      "answer": "'yes' if flip == 0 else 'no'",
      "slots": {
       "x": "choices",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "b": "5 + x % 96 if flip == 0 else 400 + x % 2600"
@@ -68766,10 +68763,7 @@
      "slots": {
       "x": "choices",
       "y": "choices",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "5 + x % 96",
@@ -68797,10 +68791,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "x": "choices",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "b": "10 + x % 31 if flip == 0 else 300 + x % 2700"
@@ -68859,6 +68850,10 @@
     "result": {
      "min": 100,
      "max": 999
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "regrouping": false,
@@ -68964,10 +68959,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "ah": "1 + a0 // 100 % 8",
@@ -68989,10 +68981,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "ah": "1 + a0 // 100 % 8",
@@ -69081,6 +69070,10 @@
     "result": {
      "min": 100,
      "max": 999
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "regrouping": true,
@@ -69186,10 +69179,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "ah": "1 + a0 // 100 % 7",
@@ -69211,10 +69201,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "ah": "1 + a0 // 100 % 7",
@@ -69309,6 +69296,10 @@
     "result": {
      "min": 100,
      "max": 999
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "regrouping": true,
@@ -69414,10 +69405,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "ah": "1 + a0 // 100 % 6",
@@ -69439,10 +69427,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "ah": "1 + a0 // 100 % 6",
@@ -69535,6 +69520,10 @@
     "result": {
      "min": 300,
      "max": 1000
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -69615,10 +69604,7 @@
       "a": "operand1",
       "b": "operand2",
       "c": "operand3",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "(a + b + c) + flip * (1 + (a % 9))"
@@ -69633,10 +69619,7 @@
       "a": "operand1",
       "b": "operand2",
       "c": "operand3",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "e": "a + b + c + (2 * f - 1)"
@@ -69710,6 +69693,10 @@
     "adjustment": {
      "min": 1,
      "max": 3
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "regrouping": true,
@@ -69782,10 +69769,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "a0 - a0 % 10 + 7 + a0 % 3",
@@ -69801,10 +69785,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "a": "a0 - a0 % 10 + 7 + a0 % 3",
@@ -69879,6 +69860,10 @@
     "result": {
      "min": 100,
      "max": 1000
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -69950,10 +69935,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "100 + a0 % 800",
@@ -69969,14 +69951,8 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "g": {
-       "min": 0,
-       "max": 1
-      },
-      "h": {
-       "min": 0,
-       "max": 1
-      }
+      "g": "template_flip",
+      "h": "template_flip"
      },
      "derived": {
       "a": "100 + a0 % 800",
@@ -70055,6 +70031,10 @@
     "result": {
      "min": 0,
      "max": 999
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "regrouping": false,
@@ -70163,10 +70143,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "ah": "1 + a0 // 100 % 9",
@@ -70189,10 +70166,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "ah": "1 + a0 // 100 % 9",
@@ -70283,6 +70257,10 @@
     "result": {
      "min": 0,
      "max": 999
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "regrouping": true,
@@ -70391,10 +70369,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "ah": "1 + a0 // 100 % 9",
@@ -70417,10 +70392,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "ah": "1 + a0 // 100 % 9",
@@ -70511,6 +70483,10 @@
     "result": {
      "min": 0,
      "max": 999
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "regrouping": true,
@@ -70619,10 +70595,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "ah": "2 + a0 // 100 % 8",
@@ -70645,10 +70618,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "ah": "2 + a0 // 100 % 8",
@@ -70745,6 +70715,10 @@
     "result": {
      "min": 0,
      "max": 999
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "regrouping": true,
@@ -70850,10 +70824,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "ah": "2 + a0 // 100 % 8",
@@ -70875,10 +70846,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "ah": "2 + a0 // 100 % 8",
@@ -70973,6 +70941,10 @@
     "result": {
      "min": 0,
      "max": 999
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "regrouping": true,
@@ -71031,10 +71003,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "200 + a0 % 800",
@@ -71050,10 +71019,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "200 + a0 % 800",
@@ -71083,10 +71049,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "200 + a0 % 800",
@@ -71165,6 +71128,10 @@
     "result": {
      "min": 0,
      "max": 999
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -71236,10 +71203,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "300 + a0 % 700",
@@ -71255,10 +71219,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "g": {
-       "min": 0,
-       "max": 1
-      }
+      "g": "template_flip"
      },
      "derived": {
       "a": "300 + a0 % 700",
@@ -71336,6 +71297,10 @@
     "result": {
      "min": 0,
      "max": 1000
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -71421,10 +71386,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "20 + a0 % 500",
@@ -71440,10 +71402,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "a": "20 + a0 % 500",
@@ -71526,6 +71485,10 @@
     "result": {
      "min": 0,
      "max": 1000
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -71611,10 +71574,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "100 + a0 % 880",
@@ -71711,6 +71671,10 @@
     "result": {
      "min": 0,
      "max": 1000
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -71782,10 +71746,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "100 + a0 % 880",
@@ -71894,6 +71855,10 @@
     "result": {
      "min": 0,
      "max": 1000
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -71970,10 +71935,7 @@
       "a0": "operand1",
       "b0": "operand2",
       "c0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "200 + a0 % 700",
@@ -72008,10 +71970,7 @@
       "a0": "operand1",
       "b0": "operand2",
       "c0": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "a": "200 + a0 % 700",
@@ -72089,6 +72048,10 @@
     "result": {
      "min": 9,
      "max": 18
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -72175,10 +72138,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "4 + a0 % 6",
@@ -72194,10 +72154,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "a": "4 + a0 % 6",
@@ -72272,6 +72229,10 @@
     "result": {
      "min": 11,
      "max": 18
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -72358,10 +72319,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "8 + a0 % 2",
@@ -72377,10 +72335,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "a": "8 + a0 % 2",
@@ -72455,6 +72410,10 @@
     "result": {
      "min": 10,
      "max": 18
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -72541,10 +72500,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "3 + a0 % 7",
@@ -72560,10 +72516,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "a": "3 + a0 % 7",
@@ -72638,6 +72591,10 @@
     "result": {
      "min": 2,
      "max": 9
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -72723,10 +72680,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "11 + a0 % 8",
@@ -72742,10 +72696,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "a": "11 + a0 % 8",
@@ -72821,6 +72772,10 @@
     "result": {
      "min": 2,
      "max": 9
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -72906,10 +72861,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "11 + a0 % 8",
@@ -72925,10 +72877,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "a": "11 + a0 % 8",
@@ -73004,6 +72953,10 @@
     "result": {
      "min": 2,
      "max": 9
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -73089,10 +73042,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "11 + a0 % 8",
@@ -73108,10 +73058,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "a": "11 + a0 % 8",
@@ -73187,6 +73134,10 @@
     "result": {
      "min": 5,
      "max": 18
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -73275,10 +73226,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "5 + a0 % 8",
@@ -73379,6 +73327,10 @@
     "term": {
      "min": 2,
      "max": 100
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -73468,10 +73420,7 @@
       "a0": "start",
       "d": "step",
       "n": "terms",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % (99 - 6 * d)",
@@ -73487,10 +73436,7 @@
       "a0": "start",
       "d": "step",
       "n": "terms",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % (99 - 6 * d)",
@@ -73565,6 +73511,10 @@
     "terms": {
      "min": 3,
      "max": 6
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -73655,10 +73605,7 @@
       "a0": "start",
       "d": "step",
       "n": "terms",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "3 + a0 % (490 - 6 * d)",
@@ -73674,10 +73621,7 @@
       "a0": "start",
       "d": "step",
       "n": "terms",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "a": "3 + a0 % (490 - 6 * d)",
@@ -73746,6 +73690,10 @@
     "terms": {
      "min": 4,
      "max": 5
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -73828,10 +73776,7 @@
      "slots": {
       "a0": "start",
       "d": "step",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % 60",
@@ -73924,6 +73869,10 @@
     "result": {
      "min": 2,
      "max": 50
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -73988,10 +73937,7 @@
       "a": "start",
       "d": "step",
       "n": "step_number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "(a + (n - 1) * d) + flip * (1 + (a % 4))"
@@ -74096,6 +74042,10 @@
     "terms": {
      "min": 3,
      "max": 6
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -74186,10 +74136,7 @@
       "a0": "start",
       "d": "step",
       "n": "terms",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "6 * d + 1 + a0 % (100 - 6 * d)",
@@ -74205,10 +74152,7 @@
       "a0": "start",
       "d": "step",
       "n": "terms",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "a": "6 * d + 1 + a0 % (100 - 6 * d)",
@@ -74290,6 +74234,10 @@
     "terms": {
      "min": 3,
      "max": 5
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -74381,10 +74329,7 @@
       "a0": "start",
       "d": "step",
       "n": "terms",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "30 + 7 * d + a0 % (471 - 7 * d)",
@@ -74400,10 +74345,7 @@
       "a0": "start",
       "d": "step",
       "n": "terms",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "a": "30 + 7 * d + a0 % (471 - 7 * d)",
@@ -74472,6 +74414,10 @@
     "terms": {
      "min": 4,
      "max": 5
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -74556,10 +74502,7 @@
       "a0": "start",
       "d": "step",
       "n": "terms",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "200 + a0 % 801",
@@ -74575,10 +74518,7 @@
       "a0": "start",
       "d": "step",
       "n": "terms",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "a": "200 + a0 % 801",
@@ -74647,6 +74587,10 @@
     "terms": {
      "min": 4,
      "max": 4
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -74718,10 +74662,7 @@
      "slots": {
       "a0": "start",
       "d": "step",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "3 + a0 % 85",
@@ -74830,6 +74771,10 @@
     "terms": {
      "min": 3,
      "max": 3
+    },
+    "template_f": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -74873,10 +74818,7 @@
      "slots": {
       "a0": "start",
       "d": "step",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_f"
      },
      "derived": {
       "a": "42 + a0 % 400",
@@ -74891,10 +74833,7 @@
      "slots": {
       "a0": "start",
       "d": "step",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_f"
      },
      "derived": {
       "a": "42 + a0 % 400",
@@ -74909,10 +74848,7 @@
      "slots": {
       "a0": "start",
       "d": "step",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_f"
      },
      "derived": {
       "a": "42 + a0 % 400",
@@ -74927,10 +74863,7 @@
      "slots": {
       "a0": "start",
       "d": "step",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_f"
      },
      "derived": {
       "a": "42 + a0 % 400",
@@ -74945,10 +74878,7 @@
      "slots": {
       "a0": "start",
       "d": "step",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_f"
      },
      "derived": {
       "a": "42 + a0 % 400",
@@ -74963,10 +74893,7 @@
      "slots": {
       "a0": "start",
       "d": "step",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_f"
      },
      "derived": {
       "a": "42 + a0 % 400",
@@ -75032,6 +74959,10 @@
     "result": {
      "min": 8,
      "max": 200
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -75102,10 +75033,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "a": "start",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "(a * 4) + flip * (1 + (a))"
@@ -75118,10 +75046,7 @@
      "answer": "str(a * 8) if f == 0 else str(e)",
      "slots": {
       "a": "start",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "e": "a * 8 + (2 * f - 1)"
@@ -75673,6 +75598,10 @@
     "count": {
      "min": 1,
      "max": 10
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -75740,10 +75669,7 @@
      "slots": {
       "a0": "count",
       "b0": "count",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % 9",
@@ -75833,6 +75759,10 @@
     "count": {
      "min": 3,
      "max": 6
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -75893,10 +75823,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "a": "count",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "2 + flip"
@@ -75974,6 +75901,10 @@
     "count": {
      "min": 1,
      "max": 5
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -76034,10 +75965,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "a": "count",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "1 + flip"
@@ -76119,6 +76047,10 @@
     "heads": {
      "min": 0,
      "max": 20
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -76188,10 +76120,7 @@
      "slots": {
       "t": "tosses",
       "h0": "heads",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "h": "h0 % 20",
@@ -76296,6 +76225,10 @@
     "result": {
      "min": 4,
      "max": 25
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -76372,10 +76305,7 @@
      "slots": {
       "a": "operand1",
       "b": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "(a * b) + flip * (1 + (a % 3))"
@@ -76389,10 +76319,7 @@
      "slots": {
       "a": "operand1",
       "b": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "e": "a * b + (2 * f - 1)"
@@ -76461,6 +76388,10 @@
     "result": {
      "min": 8,
      "max": 50
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -76524,10 +76455,7 @@
      "slots": {
       "a": "operand1",
       "b": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "(a * b) + flip * (1 + (a % 3))"
@@ -76621,6 +76549,10 @@
     "result": {
      "min": 4,
      "max": 50
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -76697,10 +76629,7 @@
      "slots": {
       "a": "operand1",
       "b": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "(a * b) + flip * (1 + (a % 3))"
@@ -76714,10 +76643,7 @@
      "slots": {
       "a": "operand1",
       "b": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "e": "a * b + (2 * f - 1)"
@@ -76786,6 +76712,10 @@
     "result": {
      "min": 6,
      "max": 50
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -76869,10 +76799,7 @@
      "slots": {
       "a": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "b": "3 + b0 % min(8, 50 // a - 2)",
@@ -76887,10 +76814,7 @@
      "slots": {
       "a": "operand1",
       "b0": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "b": "3 + b0 % min(8, 50 // a - 2)",
@@ -76970,6 +76894,10 @@
     "result": {
      "min": 4,
      "max": 50
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -77046,10 +76974,7 @@
      "slots": {
       "a0": "operand1",
       "b": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % min(9, 50 // b - 1)",
@@ -77152,6 +77077,10 @@
     "quotient": {
      "min": 2,
      "max": 10
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -77227,10 +77156,7 @@
      "slots": {
       "d": "divisor",
       "q0": "quotient",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "qmin": "max(2, (8 + d - 1) // d)",
@@ -77264,10 +77190,7 @@
      "slots": {
       "d": "divisor",
       "q0": "quotient",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "qmin": "max(2, (8 + d - 1) // d)",
@@ -77347,6 +77270,10 @@
     "quotient": {
      "min": 2,
      "max": 10
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -77438,10 +77365,7 @@
      "slots": {
       "d": "divisor",
       "q0": "quotient",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "qmin": "max(2, (8 + d - 1) // d)",
@@ -77459,10 +77383,7 @@
      "slots": {
       "d": "divisor",
       "q0": "quotient",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "qmin": "max(2, (8 + d - 1) // d)",
@@ -77541,6 +77462,10 @@
     "quotient": {
      "min": 2,
      "max": 10
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -77632,10 +77557,7 @@
      "slots": {
       "d": "divisor",
       "q0": "quotient",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "qmin": "max(2, (10 + d - 1) // d)",
@@ -77653,10 +77575,7 @@
      "slots": {
       "d": "divisor",
       "q0": "quotient",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "qmin": "max(2, (10 + d - 1) // d)",
@@ -77735,6 +77654,10 @@
     "quotient": {
      "min": 3,
      "max": 6
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -77810,10 +77733,7 @@
      "slots": {
       "d": "divisor",
       "q0": "quotient",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "qmin": "max(3, (10 + d - 1) // d)",
@@ -77847,10 +77767,7 @@
      "slots": {
       "d": "divisor",
       "q0": "quotient",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "qmin": "max(3, (10 + d - 1) // d)",
@@ -77934,6 +77851,10 @@
     "end": {
      "min": 0,
      "max": 0
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -78009,10 +77930,7 @@
      "slots": {
       "d": "divisor",
       "q0": "quotient",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "qmin": "max(3, (10 + d - 1) // d)",
@@ -78123,6 +78041,10 @@
     "quotient": {
      "min": 3,
      "max": 10
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -78198,10 +78120,7 @@
      "slots": {
       "d": "divisor",
       "q0": "quotient",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "qmin": "max(3, (20 + d - 1) // d)",
@@ -78235,10 +78154,7 @@
      "slots": {
       "d": "divisor",
       "q0": "quotient",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "qmin": "max(3, (20 + d - 1) // d)",
@@ -78318,6 +78234,10 @@
     "result": {
      "min": 6,
      "max": 50
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -78387,10 +78307,7 @@
      "slots": {
       "a": "operand1",
       "b": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "c": "a * b",
@@ -78492,6 +78409,10 @@
     "result": {
      "min": 6,
      "max": 50
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -78561,10 +78482,7 @@
      "slots": {
       "a": "operand1",
       "b": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "c": "a * b",
@@ -78663,6 +78581,10 @@
     "result": {
      "min": 4,
      "max": 50
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -78734,10 +78656,7 @@
      "slots": {
       "a": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "b": "2 + b0 % min(9, 50 // a - 1)",
@@ -78840,6 +78759,10 @@
     "result": {
      "min": 10,
      "max": 100
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -78928,10 +78851,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "10 + a0 % 45",
@@ -78948,10 +78868,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "a": "10 + a0 % 45",
@@ -79036,6 +78953,10 @@
     "result": {
      "min": 10,
      "max": 100
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -79109,10 +79030,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "10 + a0 % 45",
@@ -79225,6 +79143,10 @@
     "result": {
      "min": 10,
      "max": 100
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -79298,10 +79220,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "20 + a0 % 80",
@@ -79408,6 +79327,10 @@
     "result": {
      "min": 10,
      "max": 100
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -79481,10 +79404,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "10 + a0 % 45",
@@ -79591,6 +79511,10 @@
     "result": {
      "min": 5,
      "max": 20
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -79664,10 +79588,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "4 + a0 % 8",
@@ -79780,6 +79701,10 @@
     "result": {
      "min": 5,
      "max": 20
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -79853,10 +79778,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "r": "5 + a0 % 8",
@@ -79963,6 +79885,10 @@
     "result": {
      "min": 25,
      "max": 100
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -80036,10 +79962,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "r": "25 + a0 % 30",
@@ -80153,6 +80076,10 @@
     "result": {
      "min": 10,
      "max": 100
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -80226,10 +80153,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "r": "10 + a0 % 40",
@@ -80336,6 +80260,10 @@
     "result": {
      "min": 2,
      "max": 100
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -80380,10 +80308,7 @@
       "a0": "operand1",
       "b0": "operand2",
       "c0": "operand1",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % 40",
@@ -80402,10 +80327,7 @@
       "a0": "operand1",
       "b0": "operand2",
       "c0": "operand1",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % 40",
@@ -80424,10 +80346,7 @@
       "a0": "operand1",
       "b0": "operand2",
       "c0": "operand1",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % 40",
@@ -80446,10 +80365,7 @@
       "a0": "operand1",
       "b0": "operand2",
       "c0": "operand1",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % 40",
@@ -80485,10 +80401,7 @@
       "a0": "operand1",
       "b0": "operand2",
       "c0": "operand1",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % 40",
@@ -80551,6 +80464,10 @@
     "result": {
      "min": 2,
      "max": 100
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -80629,10 +80546,7 @@
       "a0": "operand1",
       "b0": "operand2",
       "c0": "operand1",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % 40",
@@ -80748,6 +80662,10 @@
     "result": {
      "min": 2,
      "max": 100
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -80826,10 +80744,7 @@
       "a0": "operand1",
       "b0": "operand2",
       "c0": "operand1",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "20 + a0 % 60",
@@ -80946,6 +80861,10 @@
     "result": {
      "min": 2,
      "max": 100
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "regrouping": true,
@@ -81025,10 +80944,7 @@
       "a0": "operand1",
       "b0": "operand2",
       "c0": "operand1",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "10 * (1 + a0 // 10 % 4) + 5 + a0 % 5",
@@ -81064,10 +80980,7 @@
       "a0": "operand1",
       "b0": "operand2",
       "c0": "operand1",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "a": "10 * (1 + a0 // 10 % 4) + 5 + a0 % 5",
@@ -81147,6 +81060,10 @@
     "result": {
      "min": 2,
      "max": 20
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -81205,10 +81122,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "k": "2 + a0 % 9",
@@ -81325,6 +81239,10 @@
     "result": {
      "min": 3,
      "max": 20
+    },
+    "template_f": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -81368,10 +81286,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_f"
      },
      "derived": {
       "a": "6 + a0 % 14",
@@ -81404,10 +81319,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_f"
      },
      "derived": {
       "a": "6 + a0 % 14",
@@ -81520,6 +81432,10 @@
     "result": {
      "min": 3,
      "max": 50
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -81593,10 +81509,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "15 + a0 % 35",
@@ -81709,6 +81622,10 @@
     "result": {
      "min": 20,
      "max": 100
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -81782,10 +81699,7 @@
      "slots": {
       "a0": "operand1",
       "b0": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "40 + a0 % 61",
@@ -81892,6 +81806,10 @@
     "terms": {
      "min": 4,
      "max": 4
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -81950,10 +81868,7 @@
      "slots": {
       "a0": "start",
       "d0": "step",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % 98",
@@ -82084,6 +81999,10 @@
     "terms": {
      "min": 4,
      "max": 4
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -82169,10 +82088,7 @@
      "slots": {
       "a0": "start",
       "d0": "step",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "3 + a0 % 190",
@@ -82269,6 +82185,10 @@
     "terms": {
      "min": 3,
      "max": 5
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -82357,10 +82277,7 @@
      "slots": {
       "a0": "start",
       "d0": "step",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % 14",
@@ -82463,6 +82380,10 @@
     "result": {
      "min": 4,
      "max": 100
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -82548,10 +82469,7 @@
      "slots": {
       "a0": "start",
       "d0": "step",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "4 + a0 % 17",
@@ -82646,6 +82564,10 @@
     "result": {
      "min": 2,
      "max": 100
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -82734,10 +82656,7 @@
       "a0": "start",
       "d0": "step",
       "n0": "terms",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % 40",
@@ -82835,6 +82754,10 @@
     "result": {
      "min": 4,
      "max": 100
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -82923,10 +82846,7 @@
       "a0": "start",
       "d0": "step",
       "n0": "step_number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "4 + a0 % 40",
@@ -83014,6 +82934,10 @@
     "label": {
      "min": 0,
      "max": 15
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -83080,10 +83004,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "k0": "value",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "k": "1 + k0 % 4",
@@ -83179,6 +83100,10 @@
     "value": {
      "min": 1,
      "max": 20
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -83250,10 +83175,7 @@
      "slots": {
       "a0": "value",
       "b0": "value",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % 19",
@@ -83361,6 +83283,10 @@
     "result": {
      "min": 2,
      "max": 50
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -83437,10 +83363,7 @@
       "a0": "value",
       "b0": "value",
       "c0": "value",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "1 + a0 % 16",
@@ -83475,10 +83398,7 @@
       "a0": "value",
       "b0": "value",
       "c0": "value",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "a": "1 + a0 % 16",
@@ -83548,6 +83468,10 @@
     "count": {
      "min": 1,
      "max": 20
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -83625,10 +83549,7 @@
       "a0": "count",
       "b0": "count",
       "c0": "count",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "1 + a0 % 6",
@@ -83740,6 +83661,10 @@
     "total": {
      "min": 3,
      "max": 50
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -83816,10 +83741,7 @@
       "a0": "value",
       "b0": "value",
       "c0": "value",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % 11",
@@ -83922,6 +83844,10 @@
     "count": {
      "min": 1,
      "max": 30
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -83993,10 +83919,7 @@
      "slots": {
       "a0": "count",
       "b0": "count",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % 4",
@@ -84026,10 +83949,7 @@
      "slots": {
       "a0": "count",
       "b0": "count",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % 4",
@@ -84096,6 +84016,10 @@
     "count": {
      "min": 1,
      "max": 30
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -84162,10 +84086,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "n0": "count",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "n": "10 + n0 % 21",
@@ -84258,6 +84179,10 @@
     "count": {
      "min": 1,
      "max": 30
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -84335,10 +84260,7 @@
       "a0": "count",
       "b0": "count",
       "c0": "count",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "1 + a0 % 10",
@@ -84576,6 +84498,10 @@
     "value": {
      "min": 3,
      "max": 20
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -84652,10 +84578,7 @@
       "a0": "value",
       "b0": "value",
       "c0": "value",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "3 + a0 % 18",
@@ -84673,10 +84596,7 @@
       "a0": "value",
       "b0": "value",
       "c0": "value",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "3 + a0 % 18",
@@ -84768,6 +84688,10 @@
     "count": {
      "min": 1,
      "max": 60
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -84846,10 +84770,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "n0": "count",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "n": "30 + n0 % 31",
@@ -84929,6 +84850,10 @@
     "total_cents": {
      "min": 5,
      "max": 200
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -85002,10 +84927,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "n0": "total_cents",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "n": "2 + n0 % 7",
@@ -85103,6 +85025,10 @@
       20,
       50
      ]
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -85173,10 +85099,7 @@
      "slots": {
       "a": "total_dollars",
       "b": "total_dollars",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "(a + b) + flip * (1 + (a // 5))"
@@ -85203,10 +85126,7 @@
      "slots": {
       "a": "total_dollars",
       "b": "total_dollars",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "e": "a + b + (2 * f - 1)"
@@ -85277,6 +85197,10 @@
     "loonies": {
      "min": 2,
      "max": 4
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -85358,10 +85282,7 @@
      "slots": {
       "a": "total_dollars",
       "n0": "loonies",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "n": "2 + n0 % 3",
@@ -85389,10 +85310,7 @@
      "slots": {
       "a": "total_dollars",
       "n0": "loonies",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "n": "2 + n0 % 3",
@@ -85464,6 +85382,10 @@
       20,
       50
      ]
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -85552,10 +85474,7 @@
       "a": "total_dollars",
       "b0": "total_dollars",
       "c0": "total_dollars",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "b": "5 * (1 + b0 // 5 % 4)",
@@ -85590,10 +85509,7 @@
       "a": "total_dollars",
       "b0": "total_dollars",
       "c0": "total_dollars",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "b": "5 * (1 + b0 // 5 % 4)",
@@ -85673,6 +85589,10 @@
     "total_cents": {
      "min": 50,
      "max": 200
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -85746,10 +85666,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "c0": "total_cents",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "k": "5 + c0 % 10",
@@ -85836,6 +85753,10 @@
       5,
       10
      ]
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -85904,10 +85825,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "a": "total_dollars",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "b": "a if flip == 0 else a + 1 + a % 2",
@@ -86000,6 +85918,10 @@
       10,
       20
      ]
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -86075,10 +85997,7 @@
      "slots": {
       "a": "total_dollars",
       "b": "total_dollars",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "a + b + flip * (1 + a // 5)"
@@ -86092,10 +86011,7 @@
      "slots": {
       "a": "total_dollars",
       "b": "total_dollars",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "t": "a + b",
@@ -86110,10 +86026,7 @@
      "slots": {
       "a": "total_dollars",
       "b": "total_dollars",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "t": "a + b",
@@ -86466,6 +86379,10 @@
     "count": {
      "min": 1,
      "max": 10
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -86535,10 +86452,7 @@
      "slots": {
       "a": "total_dollars",
       "n0": "count",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "n": "2 + n0 % 5",
@@ -86644,6 +86558,10 @@
       20,
       50
      ]
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -86720,10 +86638,7 @@
       "a": "total_dollars",
       "b0": "total_dollars",
       "c0": "total_dollars",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "b": "5 * (1 + b0 // 5 % 4)",
@@ -86757,10 +86672,7 @@
       "a": "total_dollars",
       "b0": "total_dollars",
       "c0": "total_dollars",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "b": "5 * (1 + b0 // 5 % 4)",
@@ -86831,6 +86743,10 @@
     "denominator": {
      "min": 2,
      "max": 4
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -86896,10 +86812,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "d": "denominator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "k": "flip * (1 + d % 2)"
@@ -86977,6 +86890,10 @@
     "denominator": {
      "min": 2,
      "max": 8
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -87047,10 +86964,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "d": "denominator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "k": "d - 1",
@@ -87132,6 +87046,10 @@
     "denominator": {
      "min": 2,
      "max": 4
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -87187,10 +87105,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "d": "denominator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "s": "d + flip * (1 + d % 2)"
@@ -87281,6 +87196,10 @@
     "denominator": {
      "min": 2,
      "max": 8
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -87341,10 +87260,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "d": "denominator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "'1/' + str(d + flip * (1 - 2 * (d // 8)))"
@@ -87366,10 +87282,7 @@
      "answer": "'1/' + str(d)",
      "slots": {
       "d": "denominator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "p": "'1/' + str(d) if flip == 0 else str(d) + '/1'",
@@ -87434,6 +87347,10 @@
     "denominator": {
      "min": 2,
      "max": 8
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -87505,10 +87422,7 @@
      "slots": {
       "d0": "denominator",
       "n0": "numerator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "d": "3 + d0 % 5",
@@ -87538,10 +87452,7 @@
      "slots": {
       "d0": "denominator",
       "n0": "numerator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "d": "3 + d0 % 5",
@@ -87613,6 +87524,10 @@
     "denominator": {
      "min": 2,
      "max": 8
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -87684,10 +87599,7 @@
      "slots": {
       "d0": "denominator",
       "n0": "numerator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "d": "3 + d0 % 5",
@@ -87717,10 +87629,7 @@
      "slots": {
       "d0": "denominator",
       "n0": "numerator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "d": "3 + d0 % 5",
@@ -87793,6 +87702,10 @@
     "denominator": {
      "min": 2,
      "max": 8
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -87864,10 +87777,7 @@
      "slots": {
       "d0": "denominator",
       "n0": "numerator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "d": "3 + d0 % 5",
@@ -87883,10 +87793,7 @@
      "slots": {
       "d0": "denominator",
       "n0": "numerator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "d": "3 + d0 % 5",
@@ -87972,6 +87879,10 @@
     "denominator": {
      "min": 2,
      "max": 8
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -88043,10 +87954,7 @@
      "slots": {
       "d0": "denominator",
       "n0": "numerator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "d": "3 + d0 % 5",
@@ -88062,10 +87970,7 @@
      "slots": {
       "d0": "denominator",
       "n0": "numerator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "d": "3 + d0 % 5",
@@ -88161,6 +88066,10 @@
     "whole": {
      "min": 2,
      "max": 30
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -88232,10 +88141,7 @@
      "slots": {
       "d": "denominator",
       "w0": "whole",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "q": "2 + w0 % (30 // d - 1)",
@@ -88265,10 +88171,7 @@
      "slots": {
       "d": "denominator",
       "w0": "whole",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "q": "2 + w0 % (30 // d - 1)",
@@ -88349,6 +88252,10 @@
     "whole": {
      "min": 2,
      "max": 30
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -88427,10 +88334,7 @@
       "d0": "denominator",
       "n0": "numerator",
       "w0": "whole",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "d": "4 + d0 % 3",
@@ -88466,10 +88370,7 @@
       "d0": "denominator",
       "n0": "numerator",
       "w0": "whole",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "d": "4 + d0 % 3",
@@ -88549,6 +88450,10 @@
     "whole": {
      "min": 2,
      "max": 30
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -88627,10 +88532,7 @@
       "d0": "denominator",
       "n0": "numerator",
       "w0": "whole",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "d": "2 + d0 % 5",
@@ -88740,6 +88642,10 @@
     "denominator": {
      "min": 2,
      "max": 8
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -88811,10 +88717,7 @@
      "slots": {
       "d0": "denominator",
       "n0": "numerator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "d": "3 + d0 % 6",
@@ -88830,10 +88733,7 @@
      "slots": {
       "d0": "denominator",
       "n0": "numerator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "d": "3 + d0 % 6",
@@ -88919,6 +88819,10 @@
     "denominator": {
      "min": 2,
      "max": 8
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -88990,10 +88894,7 @@
      "slots": {
       "d0": "denominator",
       "n0": "numerator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "d": "3 + d0 % 6",
@@ -89092,6 +88993,10 @@
     "denominator": {
      "min": 2,
      "max": 8
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -89163,10 +89068,7 @@
      "slots": {
       "d0": "denominator",
       "n0": "numerator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "d": "3 + d0 % 6",
@@ -89450,6 +89352,10 @@
     "denominator": {
      "min": 2,
      "max": 8
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -89510,10 +89416,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "d": "denominator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "(d) + flip * (1 + (1 + d % 2))"
@@ -89540,10 +89443,7 @@
      "answer": "str(d) + '/' + str(d)",
      "slots": {
       "d": "denominator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "p": "str(d) + '/' + str(d) if flip == 0 else '1/' + str(d)",
@@ -89608,6 +89508,10 @@
     "denominator": {
      "min": 2,
      "max": 8
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -89679,10 +89583,7 @@
      "slots": {
       "d0": "denominator",
       "n0": "numerator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "d": "3 + d0 % 6",
@@ -89712,10 +89613,7 @@
      "slots": {
       "d0": "denominator",
       "n0": "numerator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "d": "3 + d0 % 6",
@@ -89787,6 +89685,10 @@
     "denominator": {
      "min": 2,
      "max": 8
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -89863,10 +89765,7 @@
       "d0": "denominator",
       "a0": "numerator",
       "b0": "numerator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "d": "5 + d0 % 4",
@@ -89971,6 +89870,10 @@
     "value": {
      "min": 10,
      "max": 20
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -90031,10 +89934,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "v": "value",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "u": "'cm' if flip == 0 else 'km'"
@@ -90047,10 +89947,7 @@
      "answer": "'yes' if flip == 0 else 'no'",
      "slots": {
       "v": "value",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "u": "'m' if flip == 0 else 'cm'"
@@ -90119,6 +90016,10 @@
     "value": {
      "min": 2,
      "max": 9
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -90179,10 +90080,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "v": "value",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "u": "'kg' if flip == 0 else 'g'"
@@ -90195,10 +90093,7 @@
      "answer": "'yes' if flip == 0 else 'no'",
      "slots": {
       "v": "value",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "u": "'mL' if flip == 0 else 'L'"
@@ -90267,6 +90162,10 @@
     "value": {
      "min": 2,
      "max": 200
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -90333,10 +90232,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "v0": "value",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "v": "10 + v0 % 11",
@@ -90350,10 +90246,7 @@
      "answer": "'yes' if flip == 0 else 'no'",
      "slots": {
       "v0": "value",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "v": "2 + v0 % 3",
@@ -90429,6 +90322,10 @@
     "value": {
      "min": 1,
      "max": 2000
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -90495,10 +90392,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "n0": "value",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "n": "2 + n0 % 9",
@@ -90597,6 +90491,10 @@
     "result": {
      "min": 100,
      "max": 900
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -90657,10 +90555,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "m": "metres",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "(m * 100) + flip * (1 + (10 * (1 + m % 3)))"
@@ -90682,10 +90577,7 @@
      "answer": "(str(m) + ' m') if f == 0 else (str(x) + ' cm')",
      "slots": {
       "m": "metres",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "x": "m * 100 + 10 * (1 + m % 4) * (2 * f - 1) + 20 * (1 - f) * 0"
@@ -90752,6 +90644,10 @@
     "cm": {
      "min": 100,
      "max": 900
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -90818,10 +90714,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "c0": "cm",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "c": "100 * (1 + c0 // 100 % 9)",
@@ -90919,6 +90812,10 @@
     "result": {
      "min": 100,
      "max": 999
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -90988,10 +90885,7 @@
      "slots": {
       "m": "metres",
       "c0": "cm",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "c": "c0",
@@ -91019,10 +90913,7 @@
      "slots": {
       "m": "metres",
       "c0": "cm",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "c": "c0",
@@ -91095,6 +90986,10 @@
     "result": {
      "min": 100,
      "max": 999
+    },
+    "template_f": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -91137,10 +91032,7 @@
      "answer": "(str(m) + ' m') if f == 0 else (str(x) + ' cm')",
      "slots": {
       "m": "metres",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_f"
      },
      "derived": {
       "x": "m * 100 + 10 * (1 + m % 4) * (2 * f - 1)"
@@ -91153,10 +91045,7 @@
      "answer": "max(m * 100, x)",
      "slots": {
       "m": "metres",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_f"
      },
      "derived": {
       "x": "m * 100 + 10 * (1 + m % 4) * (2 * f - 1)"
@@ -91170,10 +91059,7 @@
      "slots": {
       "m": "metres",
       "k0": "cm",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_f"
      },
      "derived": {
       "k": "k0",
@@ -91187,10 +91073,7 @@
      "answer": "(str(x) + ' cm') if x < m * 100 else (str(m) + ' m')",
      "slots": {
       "m": "metres",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_f"
      },
      "derived": {
       "x": "m * 100 + 10 * (1 + m % 4) * (2 * f - 1)"
@@ -91203,10 +91086,7 @@
      "answer": "'change to the same unit first, then compare'",
      "slots": {
       "m": "metres",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_f"
      },
      "derived": {
       "x": "m * 100 + 10 * (1 + m % 4) * (2 * f - 1)"
@@ -91277,6 +91157,10 @@
     "area": {
      "min": 4,
      "max": 30
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -91348,10 +91232,7 @@
      "slots": {
       "a0": "length",
       "b0": "width",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % 5",
@@ -91455,6 +91336,10 @@
     "area": {
      "min": 3,
      "max": 30
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -91531,10 +91416,7 @@
       "a0": "length",
       "b0": "length",
       "k0": "length",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "3 + a0 % 8",
@@ -91568,10 +91450,7 @@
       "a0": "length",
       "b0": "length",
       "k0": "length",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "a": "3 + a0 % 8",
@@ -91649,6 +91528,10 @@
     "area": {
      "min": 12,
      "max": 50
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -91712,10 +91595,7 @@
      "slots": {
       "r": "rows",
       "c": "columns",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "(r * c) + flip * (1 + (r % 4))"
@@ -91742,10 +91622,7 @@
      "slots": {
       "r": "rows",
       "c": "columns",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "x": "r * c + (2 * f - 1)"
@@ -92022,6 +91899,10 @@
     "perimeter": {
      "min": 4,
      "max": 16
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -92093,10 +91974,7 @@
      "slots": {
       "a0": "length",
       "b0": "width",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % 5",
@@ -92201,6 +92079,10 @@
     "perimeter": {
      "min": 12,
      "max": 60
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -92282,10 +92164,7 @@
       "b0": "length",
       "c0": "length",
       "d0": "length",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "4 + a0 % 17",
@@ -92407,6 +92286,10 @@
     "perimeter": {
      "min": 16,
      "max": 140
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -92478,10 +92361,7 @@
      "slots": {
       "a0": "length",
       "b0": "width",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "3 + a0 % 48",
@@ -92595,6 +92475,10 @@
     "perimeter": {
      "min": 10,
      "max": 1000
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -92666,10 +92550,7 @@
      "slots": {
       "a0": "length",
       "b0": "width",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "2 + a0 % 249",
@@ -92769,6 +92650,10 @@
     "value": {
      "min": 2,
      "max": 10
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -92835,10 +92720,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "v0": "value",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "v": "v0",
@@ -92926,6 +92808,10 @@
     "value": {
      "min": 7,
      "max": 60
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -92998,10 +92884,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "v0": "value",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "v": "v0",
@@ -93015,10 +92898,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "v0": "value",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "v": "v0",
@@ -93032,10 +92912,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "v0": "value",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "60 + flip * (10 + v0 % 5 * 10)"
@@ -93098,6 +92975,10 @@
     "value": {
      "min": 2,
      "max": 10
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -93164,10 +93045,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "v0": "value",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "v": "5 + v0 % 6",
@@ -93259,6 +93137,10 @@
     "days": {
      "min": 7,
      "max": 35
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -93328,10 +93210,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "w0": "weeks",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "w": "2 + w0 % 4",
@@ -93357,10 +93236,7 @@
      "answer": "(str(w) + ' weeks') if f == 0 else (str(x) + ' days')",
      "slots": {
       "w0": "weeks",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "w": "2 + w0 % 4",
@@ -93436,6 +93312,10 @@
     "months": {
      "min": 12,
      "max": 60
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "values": [
@@ -93511,10 +93391,7 @@
      "slots": {
       "h0": "hours",
       "y0": "years",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "h": "2 + h0 % 2",
@@ -93544,10 +93421,7 @@
      "slots": {
       "h0": "hours",
       "y0": "years",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "h": "2 + h0 % 2",
@@ -93630,6 +93504,10 @@
     "result": {
      "min": 8,
      "max": 60
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -93711,10 +93589,7 @@
       "d0": "days",
       "y0": "years",
       "m0": "months",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "w": "2 + w0 % 4",
@@ -93752,10 +93627,7 @@
       "d0": "days",
       "y0": "years",
       "m0": "months",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "w": "2 + w0 % 4",
@@ -93844,6 +93716,10 @@
     "result": {
      "min": 8,
      "max": 60
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -93925,10 +93801,7 @@
       "d0": "days",
       "y0": "years",
       "m0": "months",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "w": "2 + w0 % 4",
@@ -93966,10 +93839,7 @@
       "d0": "days",
       "y0": "years",
       "m0": "months",
-      "f": {
-       "min": 0,
-       "max": 1
-      }
+      "f": "template_flip"
      },
      "derived": {
       "w": "2 + w0 % 4",
@@ -94042,6 +93912,10 @@
     "faces": {
      "min": 0,
      "max": 12
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -94102,10 +93976,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "f0": "faces",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "(6) + flip * (1 + (2 + f0 % 3))"
@@ -94193,6 +94064,10 @@
     "vertices": {
      "min": 0,
      "max": 12
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -94253,10 +94128,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "e0": "edges",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "(12) + flip * (1 + (1 + e0 % 4))"
@@ -94345,6 +94217,10 @@
     "vertices": {
      "min": 5,
      "max": 6
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -94405,10 +94281,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "e0": "edges",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "(9) + flip * (1 + (1 + e0 % 3))"
@@ -94492,6 +94365,10 @@
     "count": {
      "min": 1,
      "max": 12
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -94558,10 +94435,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "k": "count",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "6 + flip * (1 + k % 3)"
@@ -94645,6 +94519,10 @@
     "count": {
      "min": 1,
      "max": 12
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -94705,10 +94583,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "k": "count",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "2 + flip * (1 + k % 2)"
@@ -94786,6 +94661,10 @@
     "count": {
      "min": 1,
      "max": 12
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -94846,10 +94725,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "k": "count",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "6 - flip * (1 + k % 2)"
@@ -94927,6 +94803,10 @@
     "count": {
      "min": 1,
      "max": 12
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -94969,10 +94849,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "k": "count",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "0 + flip * (1 + k % 3)"
@@ -95068,6 +94945,10 @@
     "faces": {
      "min": 2,
      "max": 6
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -95128,10 +95009,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "f0": "faces",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "6 - flip * (1 + f0 % 2)"
@@ -95209,6 +95087,10 @@
     "faces": {
      "min": 1,
      "max": 6
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -95269,10 +95151,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "f0": "faces",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "3 + flip * (1 + f0 % 2)"
@@ -95360,6 +95239,10 @@
     "vertices": {
      "min": 6,
      "max": 8
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -95420,10 +95303,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "e0": "edges",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "(9) + flip * (1 + (1 + e0 % 3))"
@@ -97380,7 +97260,7 @@
      "format": "bare",
      "difficulty": "easy",
      "text": "Write the first {t} multiples of {f}.",
-     "answer": "str([f, 2 * f, 3 * f, 4 * f, 5 * f, 6 * f][:t])",
+     "answer": "str([f, 2 * f, 3 * f, 4 * f] if t == 4 else ([f, 2 * f, 3 * f, 4 * f, 5 * f] if t == 5 else [f, 2 * f, 3 * f, 4 * f, 5 * f, 6 * f]))",
      "slots": {
       "f": "factor",
       "t": "terms"
@@ -103177,7 +103057,7 @@
      "format": "bare",
      "difficulty": "easy",
      "text": "What is the name of a shape with {n} straight sides?",
-     "answer": "{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n]",
+     "answer": "'triangle' if n == 3 else 'quadrilateral' if n == 4 else 'pentagon' if n == 5 else 'hexagon' if n == 6 else 'heptagon' if n == 7 else 'octagon' if n == 8 else 'nonagon' if n == 9 else 'decagon'",
      "slots": {
       "n": "sides"
      }
@@ -103186,7 +103066,7 @@
      "format": "picture",
      "difficulty": "easy",
      "text": "(picture: a shape with {n} straight sides) What is its name?",
-     "answer": "{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n]",
+     "answer": "'triangle' if n == 3 else 'quadrilateral' if n == 4 else 'pentagon' if n == 5 else 'hexagon' if n == 6 else 'heptagon' if n == 7 else 'octagon' if n == 8 else 'nonagon' if n == 9 else 'decagon'",
      "slots": {
       "n": "sides"
      }
@@ -103201,14 +103081,15 @@
       "flip": "flip"
      },
      "derived": {
-      "word": "{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n] if flip == 0 else {3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[3 + (n - 2) % 8]"
+      "label_sides": "n if flip == 0 else 3 + (n - 2) % 8",
+      "word": "'triangle' if label_sides == 3 else 'quadrilateral' if label_sides == 4 else 'pentagon' if label_sides == 5 else 'hexagon' if label_sides == 6 else 'heptagon' if label_sides == 7 else 'octagon' if label_sides == 8 else 'nonagon' if label_sides == 9 else 'decagon'"
      }
     },
     {
      "format": "story",
      "difficulty": "medium",
      "text": "A sign has {n} straight sides. What shape is the sign?",
-     "answer": "{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n]",
+     "answer": "'triangle' if n == 3 else 'quadrilateral' if n == 4 else 'pentagon' if n == 5 else 'hexagon' if n == 6 else 'heptagon' if n == 7 else 'octagon' if n == 8 else 'nonagon' if n == 9 else 'decagon'",
      "slots": {
       "n": "sides"
      }
@@ -103304,7 +103185,7 @@
      "format": "bare",
      "difficulty": "easy",
      "text": "What is the name of a shape with {n} straight sides?",
-     "answer": "{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n]",
+     "answer": "'triangle' if n == 3 else 'quadrilateral' if n == 4 else 'pentagon' if n == 5 else 'hexagon' if n == 6 else 'heptagon' if n == 7 else 'octagon' if n == 8 else 'nonagon' if n == 9 else 'decagon'",
      "slots": {
       "n": "sides"
      }
@@ -103313,7 +103194,7 @@
      "format": "picture",
      "difficulty": "easy",
      "text": "(picture: a shape with {n} straight sides) What is its name?",
-     "answer": "{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n]",
+     "answer": "'triangle' if n == 3 else 'quadrilateral' if n == 4 else 'pentagon' if n == 5 else 'hexagon' if n == 6 else 'heptagon' if n == 7 else 'octagon' if n == 8 else 'nonagon' if n == 9 else 'decagon'",
      "slots": {
       "n": "sides"
      }
@@ -103328,14 +103209,15 @@
       "flip": "flip"
      },
      "derived": {
-      "word": "{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n] if flip == 0 else {3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[3 + (n - 2) % 8]"
+      "label_sides": "n if flip == 0 else 3 + (n - 2) % 8",
+      "word": "'triangle' if label_sides == 3 else 'quadrilateral' if label_sides == 4 else 'pentagon' if label_sides == 5 else 'hexagon' if label_sides == 6 else 'heptagon' if label_sides == 7 else 'octagon' if label_sides == 8 else 'nonagon' if label_sides == 9 else 'decagon'"
      }
     },
     {
      "format": "story",
      "difficulty": "medium",
      "text": "A sign has {n} straight sides. What shape is the sign?",
-     "answer": "{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n]",
+     "answer": "'triangle' if n == 3 else 'quadrilateral' if n == 4 else 'pentagon' if n == 5 else 'hexagon' if n == 6 else 'heptagon' if n == 7 else 'octagon' if n == 8 else 'nonagon' if n == 9 else 'decagon'",
      "slots": {
       "n": "sides"
      }
@@ -103431,7 +103313,7 @@
      "format": "bare",
      "difficulty": "easy",
      "text": "What is the name of a shape with {n} straight sides?",
-     "answer": "{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n]",
+     "answer": "'triangle' if n == 3 else 'quadrilateral' if n == 4 else 'pentagon' if n == 5 else 'hexagon' if n == 6 else 'heptagon' if n == 7 else 'octagon' if n == 8 else 'nonagon' if n == 9 else 'decagon'",
      "slots": {
       "n": "sides"
      }
@@ -103440,7 +103322,7 @@
      "format": "picture",
      "difficulty": "easy",
      "text": "(picture: a shape with {n} straight sides) What is its name?",
-     "answer": "{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n]",
+     "answer": "'triangle' if n == 3 else 'quadrilateral' if n == 4 else 'pentagon' if n == 5 else 'hexagon' if n == 6 else 'heptagon' if n == 7 else 'octagon' if n == 8 else 'nonagon' if n == 9 else 'decagon'",
      "slots": {
       "n": "sides"
      }
@@ -103455,14 +103337,15 @@
       "flip": "flip"
      },
      "derived": {
-      "word": "{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n] if flip == 0 else {3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[3 + (n - 2) % 8]"
+      "label_sides": "n if flip == 0 else 3 + (n - 2) % 8",
+      "word": "'triangle' if label_sides == 3 else 'quadrilateral' if label_sides == 4 else 'pentagon' if label_sides == 5 else 'hexagon' if label_sides == 6 else 'heptagon' if label_sides == 7 else 'octagon' if label_sides == 8 else 'nonagon' if label_sides == 9 else 'decagon'"
      }
     },
     {
      "format": "story",
      "difficulty": "medium",
      "text": "A sign has {n} straight sides. What shape is the sign?",
-     "answer": "{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n]",
+     "answer": "'triangle' if n == 3 else 'quadrilateral' if n == 4 else 'pentagon' if n == 5 else 'hexagon' if n == 6 else 'heptagon' if n == 7 else 'octagon' if n == 8 else 'nonagon' if n == 9 else 'decagon'",
      "slots": {
       "n": "sides"
      }
@@ -138963,6 +138846,10 @@
     "number": {
      "min": 2,
      "max": 30
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -139015,10 +138902,7 @@
      "slots": {
       "a0": "number",
       "b0": "number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "pp": "(2, 3, 5, 7, 11, 13, 17, 19, 23, 29)[a0 % 10]",
@@ -139343,36 +139227,48 @@
      "format": "bare",
      "difficulty": "easy",
      "text": "Is {n} divisible by 3? Write yes or no.",
-     "answer": "'yes' if sum(int(c) for c in str(n)) % 3 == 0 else 'no'",
+     "answer": "'yes' if digit_sum % 3 == 0 else 'no'",
      "slots": {
       "n": "number"
+     },
+     "derived": {
+      "digit_sum": "n % 10 + (n // 10) % 10 + (n // 100) % 10 + (n // 1000) % 10"
      }
     },
     {
      "format": "missing",
      "difficulty": "medium",
      "text": "The digit sum of {n} is __.",
-     "answer": "sum(int(c) for c in str(n))",
+     "answer": "digit_sum",
      "slots": {
       "n": "number"
+     },
+     "derived": {
+      "digit_sum": "n % 10 + (n // 10) % 10 + (n // 100) % 10 + (n // 1000) % 10"
      }
     },
     {
      "format": "story",
      "difficulty": "medium",
      "text": "{name} has {n} {things}. Can they be shared equally among 9 friends? Write yes or no.",
-     "answer": "'yes' if sum(int(c) for c in str(n)) % 9 == 0 else 'no'",
+     "answer": "'yes' if digit_sum % 9 == 0 else 'no'",
      "slots": {
       "n": "number"
+     },
+     "derived": {
+      "digit_sum": "n % 10 + (n // 10) % 10 + (n // 100) % 10 + (n // 1000) % 10"
      }
     },
     {
      "format": "choose",
      "difficulty": "hard",
      "text": "Is {n} divisible by 3 but not by 9? Write yes or no.",
-     "answer": "'yes' if sum(int(c) for c in str(n)) % 3 == 0 and sum(int(c) for c in str(n)) % 9 != 0 else 'no'",
+     "answer": "'yes' if digit_sum % 3 == 0 and digit_sum % 9 != 0 else 'no'",
      "slots": {
       "n": "number"
+     },
+     "derived": {
+      "digit_sum": "n % 10 + (n // 10) % 10 + (n // 100) % 10 + (n // 1000) % 10"
      }
     }
    ],
@@ -139524,6 +139420,10 @@
     "number": {
      "min": 2,
      "max": 50
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -139582,10 +139482,7 @@
      "slots": {
       "a0": "number",
       "b0": "number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "a0 % 8 + 2",
@@ -139662,6 +139559,10 @@
     "number": {
      "min": 2,
      "max": 100
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -139750,10 +139651,7 @@
      "slots": {
       "a0": "number",
       "b0": "number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "a0 % 9 + 2",
@@ -140322,6 +140220,10 @@
     "lcm": {
      "min": 6,
      "max": 24
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -140397,10 +140299,7 @@
      "slots": {
       "x0": "number1",
       "y0": "number2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "x": "x0 % 3 + 2",
@@ -141030,7 +140929,12 @@
     "fix": "wider than a square corner means obtuse."
    },
    "arithmetic": "checked",
-   "numbers": {},
+   "numbers": {
+    "template_flip": {
+     "min": 0,
+     "max": 1
+    }
+   },
    "practice": [
     {
      "problem": "The corner of a book is what kind of angle?",
@@ -141091,10 +140995,7 @@
      "text": "True or false: an angle with very long arms but a narrow opening is {kind}.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "kind": "'acute' if flip == 0 else 'obtuse'"
@@ -141135,7 +141036,12 @@
     "fix": "bigger than a straight line is a reflex angle."
    },
    "arithmetic": "checked",
-   "numbers": {},
+   "numbers": {
+    "template_flip": {
+     "min": 0,
+     "max": 1
+    }
+   },
    "practice": [
     {
      "problem": "An angle is bigger than a straight line but less than a full turn. What kind is it?",
@@ -141189,10 +141095,7 @@
      "text": "True or false: a reflex angle is {cmp} than a right angle.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "cmp": "'bigger' if flip == 0 else 'smaller'"
@@ -141355,6 +141258,10 @@
     "degrees": {
      "min": 45,
      "max": 180
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -141407,10 +141314,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "d": "degrees",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "near": "45 if d <= 67 else (90 if d < 135 else 180)",
@@ -142195,6 +142099,10 @@
     "perimeter": {
      "min": 18,
      "max": 28
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -142280,10 +142188,7 @@
      "slots": {
       "w0": "side",
       "h0": "side",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "w": "w0 % 6 + 3",
@@ -142338,6 +142243,10 @@
     "perimeter": {
      "min": 28,
      "max": 50
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -142421,10 +142330,7 @@
       "w0": "width",
       "a0": "length",
       "b0": "width",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "l": "l0",
@@ -142488,6 +142394,10 @@
     "perimeter": {
      "min": 24,
      "max": 32
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -142557,10 +142467,7 @@
      "text": "True or false: when two shapes are joined, the shared side is counted {times} in the perimeter.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "times": "'zero times' if flip == 0 else 'once'"
@@ -142747,6 +142654,10 @@
     "outcomes": {
      "min": 2,
      "max": 10
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -142812,10 +142723,7 @@
      "slots": {
       "n": "outcomes",
       "k": "favourable",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "kk": "k if flip == 0 else k + 1"
@@ -143242,6 +143150,10 @@
     "count": {
      "min": 5,
      "max": 60
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -143313,10 +143225,7 @@
      "slots": {
       "k": "count",
       "n": "trials",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "kk": "k if flip == 0 else k + 1"
@@ -143378,6 +143287,10 @@
     "count": {
      "min": 7,
      "max": 52
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -143431,10 +143344,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "n": "trials",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "verb": "'can' if flip == 0 else 'must'"
@@ -143504,6 +143414,10 @@
     "count": {
      "min": 3,
      "max": 125
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -143573,10 +143487,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "n": "trials",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "adj": "'usually' if flip == 0 else 'never'"
@@ -143886,6 +143797,10 @@
     "denominator": {
      "min": 6,
      "max": 12
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -143956,10 +143871,7 @@
      "slots": {
       "d": "denominator",
       "q0": "numerator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "q": "q0 % 8 + 2",
@@ -144161,6 +144073,10 @@
     "result": {
      "min": 25,
      "max": 113
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -144241,10 +144157,7 @@
       "w": "whole",
       "r": "numerator",
       "d": "denominator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "op": "'+' if flip == 0 else '×'"
@@ -144426,6 +144339,10 @@
     "denominator": {
      "min": 4,
      "max": 8
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -144505,10 +144422,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "b": "denominator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "2 * b + 1 if flip == 0 else 2 * b - 1"
@@ -145084,6 +144998,10 @@
     "decimal_places": {
      "min": 1,
      "max": 3
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -145149,10 +145067,7 @@
      "slots": {
       "a": "operand1",
       "b": "operand2",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "c": "b if flip == 0 else round(1 / b, 2)"
@@ -145651,6 +145566,10 @@
     "decimal_places": {
      "min": 1,
      "max": 2
+    },
+    "template_m": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -145736,10 +145655,7 @@
      "slots": {
       "d": "divisor",
       "q0": "quotient",
-      "m": {
-       "min": 0,
-       "max": 1
-      }
+      "m": "template_m"
      },
      "derived": {
       "q": "q0 if m == 0 else round(q0 - 0.6, 2)",
@@ -146286,6 +146202,10 @@
     "number": {
      "min": 2,
      "max": 12
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -146363,10 +146283,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "a": "number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "where": "'both sides' if flip == 0 else 'only the left side'"
@@ -146411,6 +146328,10 @@
     "number": {
      "min": 2,
      "max": 20
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -146492,10 +146413,7 @@
      "text": "True or false: doubling {where} of a level balance keeps it level.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "where": "'both sides' if flip == 0 else 'only the left side'"
@@ -146548,6 +146466,10 @@
     "x": {
      "min": 9,
      "max": 84
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -146627,10 +146549,7 @@
      "slots": {
       "p0": "p",
       "q0": "q",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "p": "p0 % 8 + 2",
@@ -146685,6 +146604,10 @@
     "x": {
      "min": 5,
      "max": 65
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -146761,10 +146684,7 @@
      "slots": {
       "p0": "p",
       "q0": "q",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "p": "p0 % 20 + 2",
@@ -146819,6 +146739,10 @@
     "x": {
      "min": 4,
      "max": 12
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -146898,10 +146822,7 @@
      "slots": {
       "p": "p",
       "x": "x",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "q": "p * x",
@@ -147077,6 +146998,10 @@
     "number": {
      "min": 6,
      "max": 132
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -147131,10 +147056,7 @@
      "slots": {
       "a0": "number",
       "b0": "number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "a0 % 9 + 2",
@@ -147209,6 +147131,10 @@
     "x": {
      "min": 4,
      "max": 8
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -147291,10 +147217,7 @@
       "a": "coefficient",
       "b": "coefficient",
       "x": "x",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "q": "(a + b) * x",
@@ -147348,6 +147271,10 @@
     "x": {
      "min": 7,
      "max": 9
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -147422,10 +147349,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "a": "coefficient",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "res": "a + 1 if flip == 0 else a"
@@ -147613,6 +147537,10 @@
     "number": {
      "min": 6,
      "max": 90
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -147694,10 +147622,7 @@
      "slots": {
       "a0": "number",
       "b0": "number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "a0 % 8 + 2",
@@ -147744,6 +147669,10 @@
     "number": {
      "min": 6,
      "max": 50
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -147826,10 +147755,7 @@
      "slots": {
       "a0": "number",
       "b": "number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "a0 % 5 + 1",
@@ -147875,6 +147801,10 @@
     "number": {
      "min": 3,
      "max": 56
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -147946,10 +147876,7 @@
      "slots": {
       "a0": "number",
       "b0": "number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "a0 % 8 + 2",
@@ -148010,6 +147937,10 @@
     "number": {
      "min": 3,
      "max": 60
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -148095,10 +148026,7 @@
      "slots": {
       "a0": "number",
       "b0": "number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "a0 % 8 + 2",
@@ -148153,6 +148081,10 @@
     "area": {
      "min": 6,
      "max": 27
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -148218,10 +148150,7 @@
      "slots": {
       "b": "base",
       "h": "height",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "b * h / 2 if flip == 0 else b * h"
@@ -148481,10 +148410,7 @@
      "slots": {
       "b": "base",
       "h": "height",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "decimal_places"
      },
      "derived": {
       "den": "2 if flip == 0 else 1"
@@ -148684,6 +148610,10 @@
     "area": {
      "min": 15,
      "max": 48
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -148747,10 +148677,7 @@
      "slots": {
       "b": "base",
       "h": "height",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "b * h if flip == 0 else b + h"
@@ -149000,10 +148927,7 @@
      "text": "True or false: the area of a parallelogram is base {op} height.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "decimal_places"
      },
      "derived": {
       "op": "'×' if flip == 0 else '+'"
@@ -149067,6 +148991,10 @@
     "area": {
      "min": 18,
      "max": 84
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -149135,10 +149063,7 @@
       "a": "side",
       "b": "side",
       "h": "height",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "(a + b) * h / 2 if flip == 0 else a * b * h"
@@ -149395,10 +149320,7 @@
      "slots": {
       "a": "side",
       "b": "side",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "decimal_places"
      },
      "derived": {
       "cmp": "'bigger' if flip == 0 else 'smaller'"
@@ -149602,6 +149524,10 @@
     "height": {
      "min": 4,
      "max": 9
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -149671,10 +149597,7 @@
      "text": "True or false: for a triangle, height = {formula}.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "formula": "'2 × area ÷ base' if flip == 0 else 'area ÷ base'"
@@ -149867,7 +149790,12 @@
     "fix": "no equal sides is scalene."
    },
    "arithmetic": "checked",
-   "numbers": {},
+   "numbers": {
+    "template_flip": {
+     "min": 0,
+     "max": 1
+    }
+   },
    "practice": [
     {
      "problem": "A triangle has two sides marked equal. What is it called?",
@@ -149921,10 +149849,7 @@
      "text": "True or false: a triangle with two equal sides is {kind}.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "kind": "'isosceles' if flip == 0 else 'scalene'"
@@ -149976,6 +149901,10 @@
     "side": {
      "min": 3,
      "max": 12
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -150041,10 +149970,7 @@
       "a0": "side",
       "b0": "side",
       "c0": "side",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "a0 % 6 + 3",
@@ -150106,6 +150032,10 @@
     "perimeter": {
      "min": 20,
      "max": 24
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -150175,10 +150105,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "a": "side",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "3 * a if flip == 0 else 2 * a"
@@ -150231,7 +150158,12 @@
     "fix": "one angle wider than a square corner makes it obtuse."
    },
    "arithmetic": "checked",
-   "numbers": {},
+   "numbers": {
+    "template_flip": {
+     "min": 0,
+     "max": 1
+    }
+   },
    "practice": [
     {
      "problem": "A triangle has all three angles smaller than a square corner. What is it called?",
@@ -150292,10 +150224,7 @@
      "text": "True or false: a triangle can have {kw}.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "kw": "'one square corner' if flip == 0 else 'two square corners'"
@@ -150340,6 +150269,10 @@
     "degrees": {
      "min": 30,
      "max": 110
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -150406,10 +150339,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "a0": "degrees",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "91 + a0 % 19 if flip == 0 else 30 + a0 % 60"
@@ -150591,6 +150521,10 @@
     "y": {
      "min": 0,
      "max": 10
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -150644,10 +150578,7 @@
      "slots": {
       "x": "x",
       "y": "y",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "p": "x if flip == 0 else y",
@@ -150851,7 +150782,11 @@
      2,
      5,
      10
-    ]
+    ],
+    "template_flip": {
+     "min": 0,
+     "max": 1
+    }
    },
    "practice": [
     {
@@ -150930,10 +150865,7 @@
       "s": "scale",
       "i0": "x",
       "j0": "y",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "i": "7 if flip == 0 else i0 % 10 + 1",
@@ -150989,6 +150921,10 @@
     "move": {
      "min": 3,
      "max": 5
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -151065,10 +151001,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "m": "move",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "which": "'up' if flip == 0 else 'across'"
@@ -151389,6 +151322,10 @@
     "y": {
      "min": 0,
      "max": 12
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -151460,10 +151397,7 @@
      "text": "True or false: reflecting a point in a vertical line changes its {which} number.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "which": "'across' if flip == 0 else 'up'"
@@ -151521,6 +151455,10 @@
     "y": {
      "min": 0,
      "max": 12
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -151584,10 +151522,7 @@
      "slots": {
       "x": "x",
       "y": "y",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "px": "6 if flip == 0 else x",
@@ -151648,6 +151583,10 @@
     "y": {
      "min": 0,
      "max": 12
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -151720,10 +151659,7 @@
      "text": "True or false: doing a slide and a flip in a different order {verb} end in a different place.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "verb": "'can' if flip == 0 else 'never'"
@@ -151775,6 +151711,10 @@
     "part": {
      "min": 4,
      "max": 12
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -151849,10 +151789,7 @@
      "slots": {
       "a": "part",
       "b": "part",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "str(b) + ' : ' + str(a) if flip == 0 else str(a) + ' : ' + str(b)"
@@ -152026,6 +151963,10 @@
     "part": {
      "min": 1,
      "max": 5
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -152100,10 +152041,7 @@
      "slots": {
       "a": "part",
       "b": "part",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "str(a) + ' : ' + str(a + b) if flip == 0 else str(a) + ' : ' + str(b)"
@@ -152152,6 +152090,10 @@
     "scale": {
      "min": 2,
      "max": 5
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -152247,10 +152189,7 @@
       "a0": "part",
       "b0": "part",
       "s": "scale",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "a0 % 6 + 1",
@@ -152429,6 +152368,10 @@
     "part": {
      "min": 2,
      "max": 56
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -152527,10 +152470,7 @@
       "a0": "part",
       "b0": "part",
       "s0": "part",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "a0 % 7 + 2",
@@ -152585,6 +152525,10 @@
     "whole": {
      "min": 4,
      "max": 9
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -152658,10 +152602,7 @@
      "slots": {
       "a": "part",
       "b": "whole",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "str(a) + '/' + str(a + b) if flip == 0 else str(a) + '/' + str(b)"
@@ -152844,6 +152785,10 @@
     "number": {
      "min": 2,
      "max": 36
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -152915,10 +152860,7 @@
      "slots": {
       "k": "number",
       "m": "number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "str(k) + '/' + str(k + m) if flip == 0 else str(k) + '/' + str(m)"
@@ -153097,6 +153039,10 @@
     "percent": {
      "min": 10,
      "max": 75
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -153167,10 +153113,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "p": "percent",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "den": "100 if flip == 0 else 10"
@@ -153219,6 +153162,10 @@
     "denominator": {
      "min": 5,
      "max": 25
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -153305,10 +153252,7 @@
      "slots": {
       "d0": "denominator",
       "n0": "denominator",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "d": "(5, 10, 20, 25)[d0 % 4]",
@@ -153359,6 +153303,10 @@
     "quantity": {
      "min": 36,
      "max": 90
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -153430,10 +153378,7 @@
      "slots": {
       "p0": "percent",
       "q0": "quantity",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "p": "(10, 25, 50, 75)[p0 % 4]",
@@ -153628,6 +153573,10 @@
     "quantity": {
      "min": 40,
      "max": 250
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -153699,10 +153648,7 @@
      "slots": {
       "p0": "percent",
       "q0": "quantity",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "p": "2 * (p0 % 26 + 6)",
@@ -153764,6 +153710,10 @@
     "quantity": {
      "min": 20,
      "max": 450
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -153835,10 +153785,7 @@
      "slots": {
       "p0": "percent",
       "q0": "quantity",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "p": "2 * (p0 % 14 + 9)",
@@ -153900,6 +153847,10 @@
     "percent": {
      "min": 10,
      "max": 75
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -153970,10 +153921,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "p": "percent",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "cmp": "'less than' if flip == 0 else 'more than'"
@@ -154168,6 +154116,10 @@
     "percent": {
      "min": 10,
      "max": 30
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -154249,10 +154201,7 @@
      "slots": {
       "p0": "percent",
       "pr0": "price",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "p": "10 * (p0 % 3 + 1)",
@@ -154307,6 +154256,10 @@
     "whole": {
      "min": 24,
      "max": 70
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -154380,10 +154333,7 @@
      "slots": {
       "p0": "percent",
       "w0": "whole",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "p": "(10, 25, 50, 75)[p0 % 4]",
@@ -154598,6 +154548,10 @@
     "whole": {
      "min": 80,
      "max": 250
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -154671,10 +154625,7 @@
      "slots": {
       "p0": "percent",
       "w0": "whole",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "p": "5 * (p0 % 8 + 2)",
@@ -154745,6 +154696,10 @@
     "whole": {
      "min": 30,
      "max": 200
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -154818,10 +154773,7 @@
      "slots": {
       "p0": "percent",
       "w0": "whole",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "p": "5 * (p0 % 9 + 5)",
@@ -155145,6 +155097,10 @@
     "weeks": {
      "min": 8,
      "max": 12
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -155213,10 +155169,7 @@
      "text": "True or false: if {name} spends all the money earned each week, the savings {verb} grow.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "verb": "'do not' if flip == 0 else 'do'"
@@ -155281,6 +155234,10 @@
     "decimal_places": {
      "min": 1,
      "max": 2
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -155361,10 +155318,7 @@
      "text": "True or false: the pack with the lower total price {verb} the better buy.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "verb": "'is not always' if flip == 0 else 'is always'"
@@ -155539,6 +155493,10 @@
     "result": {
      "min": 11,
      "max": 47
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -155615,10 +155573,7 @@
      "slots": {
       "m": "multiplier",
       "n": "n",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "cmp": "'smaller' if flip == 0 else 'bigger'"
@@ -156054,6 +156009,10 @@
     "output": {
      "min": 3,
      "max": 27
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -156129,10 +156088,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "k": "input",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "kk": "k if flip == 0 else k + 1"
@@ -156185,6 +156141,10 @@
     "start": {
      "min": 11,
      "max": 50
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -156269,10 +156229,7 @@
      "slots": {
       "st": "start",
       "k": "input",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "st if flip == 0 else st - k"
@@ -156321,6 +156278,10 @@
     "y": {
      "min": 1,
      "max": 11
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -156397,10 +156358,7 @@
      "slots": {
       "x": "x",
       "y": "y",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "which": "'across' if flip == 0 else 'up'"
@@ -156566,6 +156524,10 @@
     "y": {
      "min": 0,
      "max": 12
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -156630,10 +156592,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "y": "y",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "dir": "'down' if flip == 0 else 'up'"
@@ -156689,6 +156648,10 @@
     "number": {
      "min": 3,
      "max": 7
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -156758,10 +156721,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "k": "number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "str(k) + 'n' if flip == 0 else 'n + ' + str(k)"
@@ -156806,6 +156766,10 @@
     "number": {
      "min": 2,
      "max": 9
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -156875,10 +156839,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "k": "number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "order": "'add ' + str(k) + ' to n first, then double' if flip == 0 else 'double n first, then add ' + str(k)"
@@ -156923,6 +156884,10 @@
     "number": {
      "min": 2,
      "max": 20
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -156992,10 +156957,7 @@
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "k": "number",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "other": "'4n + ' + str(k) if flip == 0 else '4n - ' + str(k)"
@@ -157052,6 +157014,10 @@
     "volume": {
      "min": 12,
      "max": 120
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -157129,10 +157095,7 @@
       "l": "length",
       "w": "width",
       "h": "height",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "shown": "l * w * h if flip == 0 else l + w + h"
@@ -157292,6 +157255,10 @@
     "volume": {
      "min": 8,
      "max": 200
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -157355,10 +157322,7 @@
      "text": "True or false: volume is measured in {unit} centimetres.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "unit": "'cubic' if flip == 0 else 'square'"
@@ -157614,10 +157578,7 @@
      "text": "True or false: volume = base area {op} height.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "decimal_places"
      },
      "derived": {
       "op": "'×' if flip == 0 else '+'"
@@ -157935,6 +157896,10 @@
     "volume": {
      "min": 1,
      "max": 2000
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -157996,10 +157961,7 @@
      "text": "True or false: 1 cm³ holds {x} mL.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "x": "1 if flip == 0 else 10"
@@ -158053,6 +158015,10 @@
     "volume": {
      "min": 0.5,
      "max": 4000
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -158112,10 +158078,7 @@
      "text": "True or false: 1 L = {x} cm³.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "x": "1000 if flip == 0 else 100"
@@ -158174,6 +158137,10 @@
     "week": {
      "min": 1,
      "max": 4
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -158246,10 +158213,7 @@
      "text": "True or false: a line that goes up means the value is getting {cmp}.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "cmp": "'bigger' if flip == 0 else 'smaller'"
@@ -158430,6 +158394,10 @@
     "time": {
      "min": 1,
      "max": 5
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -158497,10 +158465,7 @@
      "text": "True or false: a line that goes down means the value is getting {cmp}.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "cmp": "'smaller' if flip == 0 else 'bigger'"
@@ -158560,6 +158525,10 @@
     "value": {
      "min": 2,
      "max": 9
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -158623,10 +158592,7 @@
      "slots": {
       "d": "day",
       "v": "value",
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "a": "d if flip == 0 else v",
@@ -158819,6 +158785,10 @@
     "week": {
      "min": 1,
      "max": 4
+    },
+    "template_flip": {
+     "min": 0,
+     "max": 1
     }
    },
    "practice": [
@@ -158879,10 +158849,7 @@
      "text": "True or false: a line graph needs {what}.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "flip": {
-       "min": 0,
-       "max": 1
-      }
+      "flip": "template_flip"
      },
      "derived": {
       "what": "'a title and labels on both axes' if flip == 0 else 'only a title'"
@@ -165928,7 +165895,7 @@
      "format": "bare",
      "difficulty": "easy",
      "text": "Write {x} as a fraction in lowest terms.",
-     "answer": "str(fr.numerator) + '/' + str(fr.denominator)",
+     "answer": "str(fr)",
      "slots": {
       "x0": "operand1"
      },
@@ -165942,7 +165909,7 @@
      "format": "story",
      "difficulty": "medium",
      "text": "{name} finished {x} of a book at {places}. Write {x} as a fraction in lowest terms.",
-     "answer": "str(fr.numerator) + '/' + str(fr.denominator)",
+     "answer": "str(fr)",
      "slots": {
       "x0": "operand1"
      },
@@ -166081,7 +166048,7 @@
      "format": "bare",
      "difficulty": "easy",
      "text": "Write {x} as a fraction in lowest terms.",
-     "answer": "str(fr.numerator) + '/' + str(fr.denominator)",
+     "answer": "str(fr)",
      "slots": {
       "x0": "operand1"
      },
@@ -166095,7 +166062,7 @@
      "format": "story",
      "difficulty": "medium",
      "text": "{name} finished {x} of a book at {places}. Write {x} as a fraction in lowest terms.",
-     "answer": "str(fr.numerator) + '/' + str(fr.denominator)",
+     "answer": "str(fr)",
      "slots": {
       "x0": "operand1"
      },
@@ -166234,7 +166201,7 @@
      "format": "bare",
      "difficulty": "easy",
      "text": "Write {x} as a fraction in lowest terms.",
-     "answer": "str(fr.numerator) + '/' + str(fr.denominator)",
+     "answer": "str(fr)",
      "slots": {
       "x0": "operand1"
      },
@@ -166248,7 +166215,7 @@
      "format": "story",
      "difficulty": "medium",
      "text": "{name} finished {x} of a book at {places}. Write {x} as a fraction in lowest terms.",
-     "answer": "str(fr.numerator) + '/' + str(fr.denominator)",
+     "answer": "str(fr)",
      "slots": {
       "x0": "operand1"
      },
@@ -188058,7 +188025,6 @@
      "min": 20,
      "max": 200,
      "values": [
-      10,
       20,
       30,
       40,
@@ -188243,7 +188209,6 @@
      "min": 20,
      "max": 200,
      "values": [
-      10,
       20,
       30,
       40,
@@ -188424,7 +188389,6 @@
      "min": 20,
      "max": 200,
      "values": [
-      10,
       20,
       30,
       40,
@@ -188605,7 +188569,6 @@
      "min": 20,
      "max": 200,
      "values": [
-      10,
       20,
       30,
       40,
@@ -208056,9 +208019,9 @@
       "c": "x"
      },
      "derived": {
-      "y": "g * c",
-      "c": "c % 6 + 1"
-     }
+      "y": "g * c"
+     },
+     "check": "c >= 1 and y <= 30"
     },
     {
      "format": "missing",
@@ -208098,9 +208061,9 @@
      },
      "derived": {
       "y": "g * c",
-      "c": "c % 6 + 1",
       "shown": "(c) if flip == 0 else (c + 1)"
-     }
+     },
+     "check": "c >= 1 and y <= 30"
     }
    ],
    "calibration": {

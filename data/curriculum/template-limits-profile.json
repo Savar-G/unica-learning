@@ -1,8 +1,8 @@
 {
   "templates": 7321,
-  "expressions": 23122,
-  "compiledExpressions": 23099,
-  "rejectedExpressions": 23,
+  "expressions": 23129,
+  "compiledExpressions": 23129,
+  "rejectedExpressions": 0,
   "maxExpressionCharacters": 332,
   "maxExpressionTokens": 97,
   "maxExpressionDepth": 17,

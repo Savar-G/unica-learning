@@ -1,0 +1,5 @@
+[
+  { "table": "skills", "id": "K11-coin-attributes", "field": "pages", "before": 2, "after": 3, "why": "Savar accepted the author's three step pages." },
+  { "table": "levels", "id": "U3", "field": "skillPages", "before": 125, "after": 126, "why": "The level gains the one approved coin-attributes page." },
+  { "table": "grades", "id": 0, "field": "skillPages", "before": 360, "after": 361, "why": "The Kindergarten skill budget gains the same page. Workbook counts do not change." }
+]
