@@ -264,6 +264,11 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | G42 | A | passing | Outside equality before an answer clause | no numeric confirmation | |
 | G43 | A | passing | Mixed typed and spoken operands | no numeric confirmation | |
 | G44 | A | passing | Outside slash form with an answer clause | no numeric confirmation | |
+| G45 | A | passing | First outside operand starts with I got | no numeric confirmation | |
+| G46 | A | passing | Both outside operands start with I got | no numeric confirmation | |
+| G47 | A | passing | Spoken narrative with outside operands and result | no numeric confirmation | |
+| G48 | A | passing | Outside narrative followed by own answer | no numeric confirmation | |
+| G49 | A | passing | Own answer followed by a friend's outside result | no numeric confirmation | |
 
 ## Pending
 
@@ -307,6 +312,6 @@ Everything else is uncertain and stays with the child's own question. Tentative 
 
 The mandatory guarantee is that Maya never computes, states or confirms an outside answer. Math comes from code-written package lines and checked board commands. Model words contain no math. Confirmation cannot repeat a proposed outside result as the answer. Safety guidance, flags and alerts keep priority. Only committed workbook refusals add ledger records. Admin counts are best effort and are not a measure of every outside request.
 
-The independent `outside_answer` check reads spoken and board values against fixed outside results from all four reviews. G scenarios cover every bypass. Sabotage injects each outside answer after controller approval and also adds it to the shared line catalogue; the independent check must still fail. A board mutation must fail too. H scenarios and the public call-interface tests keep all false-refusal controls. Tests run chat, the admin text demo and voice text with scripted or fake models only.
+The independent `outside_answer` check reads spoken and board values against fixed outside results from the reviews. G scenarios cover every bypass. Sabotage injects each outside answer after controller approval and also adds it to the shared line catalogue; the independent check must still fail. A board mutation must fail too. H scenarios and the public call-interface tests keep all false-refusal controls. Tests run chat, the admin text demo and voice text with scripted or fake models only.
 
-A complete outside expression removes all numeric hearing slots for that turn, including hearing alternatives. A scalar wrong answer to the stored question keeps normal confirmation. An arithmetic claim found by code or the reading blocks all model words, even when the reviewer approves them. Maya uses checked lines or neutral bank words and returns to the question. S34 to S37 use a passing reviewer. Sabotage restores the proposed model words and must fail `free_talk_unchecked`, independently of numeric output checks.
+Numeric hearing confirmation checks the whole turn with the D-199 reader. Only one occurrence may be the candidate answer. Every other number must be in the stored question's allowed set. More than one outside number removes all numeric slots and hearing alternatives for that turn. Maya reads her own question with a checked line. No clause or answer prefix removes numbers from this check. A plain wrong answer, including one with checked working, keeps normal confirmation. An arithmetic claim found by code or the reading blocks all model words, even when the reviewer approves them. Maya uses checked lines or neutral bank words and returns to the question. S34 to S37 use a passing reviewer. Sabotage restores the proposed model words and must fail `free_talk_unchecked`, independently of numeric output checks.

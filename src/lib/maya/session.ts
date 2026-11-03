@@ -1967,14 +1967,16 @@ function heardIn(s: Session): [AnswerValue[], [AnswerValue, AnswerValue][]] {
   const since = s.turns.slice(last + 1).flatMap((t) => (t.speaker === "child" ? t.alternatives ?? [] : []));
   const calculation = readNumbers(s.turn.text, { fractions: true, operands: true }).operand.some(Boolean) ||
     !readAnswer(s.turn.text, readOptionsFor(s.package)).sure;
-  const permitted = (v: AnswerValue) => !calculation || (s.package !== null && scopeValue(s.package, v, s.exampleIntroduced === true || s.exampleShown > 0));
+  const readable = (v: AnswerValue) => !calculation || (s.package !== null && scopeValue(s.package, v, s.exampleIntroduced === true || s.exampleShown > 0));
+  const permitted = (v: AnswerValue) => readable(v) && (s.package === null || !outsideConfirmation(s.package, s.turn!.text, s.exampleIntroduced === true || s.exampleShown > 0, v));
   const heard = valuesIn(s.turn.text, readOptionsFor(s.package)).filter(permitted);
   const alternatives = since.flatMap((t) => valuesIn(t, readOptionsFor(s.package))).filter(permitted);
   const pairs: [AnswerValue, AnswerValue][] = [
     ...heard.flatMap((v) => (v.type === "number" ? soundsLike(v.value).map((w) => [v, number(w)] as [AnswerValue, AnswerValue]) : [])),
     ...heard.flatMap((v) => alternatives.filter((a) => !equivalent(a, v)).map((a) => [v, a] as [AnswerValue, AnswerValue])),
   ];
-  return [[...heard, ...alternatives], pairs.filter(([a, b]) => permitted(a) && permitted(b))];
+  // A hearing pair has one candidate answer and an alternative. The candidate owns the one-number exception.
+  return [[...heard, ...alternatives], pairs.filter(([a, b]) => permitted(a) && readable(b))];
 }
 
 /**

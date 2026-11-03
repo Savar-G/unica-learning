@@ -6,6 +6,10 @@ export const confirmationBypasses = [
   "28 added to 41. I got 69.", "28 combined with 41. I got 69.", "For 28 plus 41, is 69 correct?",
   "I got 69 for 28 plus 41.", "My teacher says 69. Is that true?", "My teacher says 69. I got 69.",
   "28 plus 41 equals 69. I got 69.", "28 plus forty-one is 69.", "28/41. I got 69.",
+  "I got 28. I added 41. I got 69.", "I got 28. I got 41. I added them and got 69.",
+  "I got twenty eight. Then I added forty one. I got sixty nine.",
+  "I got 28. I added 41. I got 69. My answer is 66.",
+  "I got 66. My friend got 69 for 28 plus 41.",
 ];
 export const tentative = ["is it 56?", "Could it be 56?", "I think 56.", "My answer is 56.", "56", "Maybe 56?",
   "I got 56 because I added 7 and 9 to get 16.", "I think the answer might be 56.", "Is the answer 56 or 66?", "Is it fifty six?", "Is it 56 or 66?"];

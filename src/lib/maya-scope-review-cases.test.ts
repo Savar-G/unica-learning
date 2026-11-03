@@ -117,6 +117,13 @@ describe.each(["chat", "admin_test", "voice"] as const)("Savar's scope rule thro
     noAnswer(r.spoken, 69);
     expect(r.output.say.join(" ")).not.toMatch(/I (?:heard|think I heard)|was that|Just checking/i);
   });
+  it.each(confirmationBypasses.slice(-5))("uses the whole turn with the ordinary unclear reading: %s", async text => {
+    const r = await run(kind, pkg, text, { unclear: true });
+    noAnswer(r.spoken, 69);
+    expect(numeric(r.spoken)).toEqual(expect.arrayContaining([n(27), n(39)]));
+    expect(r.output.say.join(" ")).not.toMatch(/heard|was that|Just checking/i);
+    expect(r.record.trace?.scopeRefusals ?? r.record.live?.text.session.scopeRefusals ?? []).toEqual([]);
+  });
   it("blocks the ordinary model's unclear outside-result confirmation", async () => {
     const r = await run(kind, pkg, "Twenty eight combined with forty one. I got sixty nine.", { unclear: true });
     noAnswer(r.spoken, 69);
@@ -126,6 +133,22 @@ describe.each(["chat", "admin_test", "voice"] as const)("Savar's scope rule thro
     const r = await run(kind, pkg, `I got ${answer}`, { unclear: true }, false, "heard", answer);
     expect(numeric(r.spoken).some(v => equivalent(v, n(answer)))).toBe(true);
     expect(r.output.say.join(" ")).toMatch(/heard|was that|Just checking/i);
+    expect(r.spoken).not.toContain(line);
+  });
+  it.each(["I got 56 because 27 plus 39", "I got fifty six because twenty seven plus thirty nine"])("keeps normal confirmation with checked working: %s", async text => {
+    const r = await run(kind, pkg, text, { unclear: true }, false, "heard", 56);
+    expect(numeric(r.spoken)).toContainEqual(n(56));
+    expect(r.output.say.join(" ")).toMatch(/heard|was that|Just checking/i);
+    expect(r.spoken).not.toContain(line);
+  });
+  it("gives the single answer exception only to that confirmation candidate", async () => {
+    const r = await run(kind, pkg, "I got 56 because 27 plus 39", { unclear: true }, false, "heard", 27);
+    expect(numeric(r.spoken)).toEqual([n(56)]);
+  });
+  it("does not remove repeated answer numbers from the whole turn", async () => {
+    const r = await run(kind, pkg, "I got 56. I got 56.", { unclear: true });
+    noAnswer(r.spoken, 56);
+    expect(numeric(r.spoken)).toEqual(expect.arrayContaining([n(27), n(39)]));
     expect(r.spoken).not.toContain(line);
   });
   it.each(["Oh, that is true.", "Oh, I agree.", "Oh, that is false.", "Oh, LXIX.", "Oh, sixty\u200bnine.", "Oh, seis nueve."])("blocks model words about a math claim even with a passing reviewer: %s", async words => {
@@ -172,6 +195,15 @@ it("blocks outside-result hearing alternatives from uncertain speech", async () 
   await s.start();
   const out = await s.child("Twenty eight combined with forty one. I got sixty nine.", { uncertain: true, alternatives: ["69", "66"] });
   noAnswer(out.say, 69);
+  expect(out.say.join(" ")).not.toMatch(/heard|was that|Just checking/i);
+});
+
+it.each(confirmationBypasses.slice(-5))("blocks the narrative result and hearing alternatives for uncertain speech: %s", async text => {
+  const s = createTextSession({ callId: "uncertain-narrative", package: pkg, model: ruleMayaModel(), clock: () => 0 });
+  await s.start();
+  const out = await s.child(text, { uncertain: true, alternatives: ["69", "66"] });
+  noAnswer(out.say, 69);
+  expect(numeric(out.say)).toEqual(expect.arrayContaining([n(27), n(39)]));
   expect(out.say.join(" ")).not.toMatch(/heard|was that|Just checking/i);
 });
 
