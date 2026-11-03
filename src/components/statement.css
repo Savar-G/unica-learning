@@ -1,0 +1,7 @@
+/* The statement after the home hero (D-215): one centred paragraph in headline type, grey with the key claim in ink. */
+.statement { padding: clamp(56px, 8vw, 120px) var(--pad-x) clamp(40px, 6vw, 88px); }
+.statement p {
+  margin: 0 auto; max-width: 24em; text-align: center; text-wrap: balance;
+  font: 300 clamp(26px, 3vw, 42px)/1.22 var(--sans); letter-spacing: -.025em; color: var(--ink-3);
+}
+.statement strong { font-weight: inherit; color: var(--ink); }

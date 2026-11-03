@@ -1,4 +1,5 @@
-// Home hero visual (D-214, prototype r30 B): a sample workbook cover, made for one child, on top of a workbook page.
+// Home hero visual (D-214, prototype r30 B; panel from prototype r31 A, D-215): a sample workbook cover, made for one
+// child, on top of a workbook page, inside a grainy colour panel that runs off the page edge.
 // The cover is the real sample cover (public/whats-included/wb/leah-01-cover.jpg) rebuilt in HTML at 880 px wide,
 // so it stays sharp at any size.
 import Image from "next/image";
@@ -33,16 +34,13 @@ function Cover({ name }: { name: string }) {
 
 export function HeroWorkbook() {
   return (
-    <div className="hwb-stage" role="img" aria-label="A sample Unica workbook cover made for Leah, on top of a workbook page">
-      <div className="hwb-glow" aria-hidden="true" />
-      <div className="hwb-desk" aria-hidden="true">
+    <div className="hwb-panel" role="img" aria-label="A sample Unica workbook cover made for Leah, on top of a workbook page">
+      <div className="hwb-book" aria-hidden="true">
         <div className="hwb-sheet hwb-back">
-          <Image src="/whats-included/wb/leah-04-d1p2.jpg" alt="" width={880} height={1139} sizes="440px" loading="eager" />
+          <Image src="/whats-included/wb/leah-04-d1p2.jpg" alt="" width={880} height={1139} sizes="460px" loading="eager" />
         </div>
-        <div className="hwb-front">
-          <div className="hwb-sheet hwb-page"><Cover name={NAME} /></div>
-          <i className="hwb-fold" />
-        </div>
+        <div className="hwb-sheet hwb-page"><Cover name={NAME} /></div>
+        <i className="hwb-fold" />
       </div>
     </div>
   );
