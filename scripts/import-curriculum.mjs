@@ -1,11 +1,11 @@
 // Curriculum import (#361): reads the curriculum skeleton (the source of truth, D-192) and writes the BC workbook
-// curriculum, src/lib/workbook-curriculum/bc.ts: levels, units, skills and the Grade 3 steps. It checks the data first
+// curriculum, src/lib/workbook-curriculum/bc.ts: levels, units, skills and the final K-9 steps. It checks the data first
 // (every skill in the BC skill map, prerequisites before the skills that need them, pages and workbooks adding up to
 // the grade budgets) and writes nothing while a check fails. A build-time tool: nothing in src imports it.
 //
-// Usage: npm run import:curriculum [-- <path to the skeleton .xlsx>]
+// Usage: npm run import:curriculum [-- <skeleton.xlsx> <step-progressions.json>]
 import { build } from "esbuild";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -13,6 +13,7 @@ import readXlsxFile from "read-excel-file/node";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SKELETON = join(root, ".design/workbooks/samples/curriculum-skeleton.xlsx");
+const STEPS = join(root, "data/curriculum/step-progressions-k9.json");
 const OUT = join(root, "src/lib/workbook-curriculum/bc.ts");
 
 const STRANDS = {
@@ -128,7 +129,7 @@ function parseLevels(sheets) {
         band: oneOf(at, r.band, { Early: "early", Middle: "middle", Upper: "upper" }),
         units: String(r.units ?? "").split(",").map((u) => u.trim()).filter(Boolean),
         pagesPerDay: range(at, r.pagesPerDay),
-        lead: oneOf(at, r.lead, LEADS),
+        lead: id && Number(id.slice(1)) >= 4 && Number(id.slice(1)) <= 6 ? "child-led" : oneOf(at, r.lead, LEADS),
         dailyMinutes: range(at, r.daily),
         practicePageMinutes: range(at, String(r.practice).replace(/^about /, ""))?.min ?? null,
         levelTestMinutes: range(at, r.test),
@@ -177,48 +178,6 @@ function parseSkills(sheets, { DELIVERIES, RESPONSE_TYPES, SCORABLE }) {
   return { units: [...units.values()], skills };
 }
 
-/** "4: Gives the digit, not its value [conceptual; zero-placeholder]" -> an expected mistake. */
-function mistake(at, line) {
-  const m = line.match(/^(.+?): (.+) \[(careless|conceptual)(?:; ([a-z0-9-]+))?\]$/);
-  if (!m) return fail(at, `expected mistake "${line}" is not "answer: why [careless or conceptual; misconception id]"`);
-  return { answer: m[1], why: m[2], kind: m[3], misconception: m[4] ?? null };
-}
-
-/** "A -> B" or "A. Fix: B" split in two at its one separator. */
-function split(at, value, separator, what) {
-  const parts = String(value).split(separator);
-  if (parts.length !== 2) return fail(at, `${what} "${value}" needs exactly one "${separator.trim()}"`);
-  return parts.map((p) => p.trim());
-}
-
-function parseSteps(sheets) {
-  const rows = table(sheets, "Grade 3 steps", {
-    skill: "Skill id", number: "Step number", name: "Step name", change: "What changes", rules: "Number ranges",
-    example: "Example problem", pages: "Suggested pages", representation: "Representation", mistakes: "Expected mistakes",
-    spot: "Spot the error", arithmetic: "Arithmetic check", position: "Position code",
-  });
-  return rows.map((r) => {
-    const at = `Grade 3 steps row ${r.row} (${r.skill} step ${r.number})`;
-    const example = split(at, r.example, " -> ", "the example");
-    const spot = split(at, r.spot, " Fix: ", "the spot-the-error item");
-    return {
-      curriculum: "bc",
-      skill: text(at, r.skill),
-      number: whole(at, r.number, 1),
-      position: text(at, r.position),
-      name: text(at, r.name),
-      change: text(at, r.change),
-      rules: text(at, r.rules),
-      example: example && { problem: example[0], answer: example[1] },
-      pages: r.pages === "warm-up slot" ? 0 : whole(at, r.pages),
-      representation: text(at, r.representation),
-      mistakes: String(r.mistakes ?? "").split("\n").map((l) => l.trim()).filter(Boolean).map((l) => mistake(at, l)),
-      spotTheError: spot && { wrong: spot[0], fix: spot[1] },
-      arithmetic: oneOf(at, r.arithmetic, ARITHMETIC),
-    };
-  });
-}
-
 /** The module's data checks and value lists, and the BC skill map, bundled from TypeScript. */
 async function loadModule() {
   const outdir = mkdtempSync(join(tmpdir(), "unica-curriculum-import-"));
@@ -226,6 +185,7 @@ async function loadModule() {
     await build({
       stdin: {
         contents: [
+          'export { parseStepProgressions } from "./src/lib/workbook-curriculum/step-source";',
           'export { curriculumProblems } from "./src/lib/workbook-curriculum/check";',
           'export { DELIVERIES, RESPONSE_TYPES, SCORABLE } from "./src/lib/workbook-curriculum/types";',
           'export { BC_SKILL_MAP } from "./src/lib/assessment";',
@@ -244,8 +204,8 @@ async function loadModule() {
 const lines = (items) => items.map((x) => `    ${JSON.stringify(x)},`).join("\n");
 
 function write(data, source) {
-  const file = `// Generated by scripts/import-curriculum.mjs from ${source}. Do not edit by hand:
-// change the skeleton, then run \`npm run import:curriculum\`.
+  const file = `// Generated by scripts/import-curriculum.mjs from ${JSON.stringify(source)}. Do not edit by hand:
+// change the source data, then run \`npm run import:curriculum\`.
 import type { CurriculumData } from "./types";
 
 export const BC_CURRICULUM: CurriculumData = {
@@ -265,17 +225,20 @@ ${lines(data.steps)}
   grades: [
 ${lines(data.grades)}
   ],
+  contexts: ${JSON.stringify(data.contexts)},
 };
 `;
   writeFileSync(OUT, file);
 }
 
 const path = process.argv[2] ?? SKELETON;
+const stepsPath = process.argv[3] ?? STEPS;
 const sheets = await readXlsxFile(path);
 const curriculum = await loadModule();
+const progressions = curriculum.parseStepProgressions(JSON.parse(readFileSync(stepsPath, "utf8")));
 const levelRows = parseLevels(sheets);
 const { units, skills } = parseSkills(sheets, curriculum);
-const data = { key: "bc", levels: levelRows.map((l) => l.level), units, skills, steps: parseSteps(sheets), grades: parseGrades(sheets) };
+const data = { key: "bc", levels: levelRows.map((l) => l.level), units, skills, steps: progressions.steps, contexts: progressions.contexts, grades: parseGrades(sheets) };
 for (const { level, skillCount } of levelRows) {
   const count = skills.filter((s) => s.level === level.id).length;
   if (count !== skillCount) fail(`Levels, ${level.id}`, `skill count says ${skillCount}, but the level has ${count} skills`);
@@ -286,5 +249,5 @@ if (problems.length > 0) {
   console.error(`The skeleton has ${problems.length} problem(s); nothing was written:\n${problems.map((p) => `- ${p}`).join("\n")}`);
   process.exit(1);
 }
-write(data, relative(root, path));
+write(data, `${relative(root, path)} and ${relative(root, stepsPath)}`);
 console.log(`Wrote ${relative(root, OUT)}: ${data.levels.length} levels, ${data.units.length} units, ${data.skills.length} skills, ${data.steps.length} steps.`);

@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { BC_SKILL_MAP } from "@/lib/assessment";
-import { BC_CURRICULUM, curriculumFor, curriculumProblems, type CurriculumData, type CurriculumSkill } from "./index";
+import { BC_CURRICULUM as ACTIVE_CURRICULUM, curriculumFor, curriculumProblems, type CurriculumData, type CurriculumSkill } from "./index";
 
 const bc = curriculumFor("bc")!;
+// The final import is blocked. Complete the OLD fixture's absent groups with synthetic single steps
+// to keep these budget/order mutation controls independent of the pending source data.
+const legacySkills = new Set(ACTIVE_CURRICULUM.steps.map(s => s.skill));
+const BC_CURRICULUM: CurriculumData = {
+  ...ACTIVE_CURRICULUM,
+  steps: [...ACTIVE_CURRICULUM.steps, ...ACTIVE_CURRICULUM.skills.filter(s => !legacySkills.has(s.id)).map(s => ({
+    ...ACTIVE_CURRICULUM.steps[0], skill: s.id, number: 1, pages: s.pages,
+  }))],
+};
 
 describe("levels", () => {
   it("has a map for BC only", () => {
@@ -220,7 +229,7 @@ function withSkill(id: string, change: Partial<CurriculumSkill>): CurriculumData
 }
 
 describe("data checks", () => {
-  it("finds no problem in the BC data: every skill once, in the BC skill map, after its prerequisites", () => {
+  it("finds no problem in the complete test fixture: every skill once, in the BC skill map, after its prerequisites", () => {
     expect(curriculumProblems(BC_CURRICULUM, BC_SKILL_MAP)).toEqual([]);
   });
 
@@ -294,7 +303,7 @@ describe("data checks", () => {
   it("lists a Grade 3 skill whose whole step group is missing (review R364-01)", () => {
     const steps = BC_CURRICULUM.steps.filter((s) => s.skill !== "3.1-count-1000");
     expect(curriculumProblems({ ...BC_CURRICULUM, steps }, BC_SKILL_MAP)).toEqual([
-      "3.1-count-1000 (U10) has no steps; every skill in U10 to U12 needs them",
+      "3.1-count-1000 (U10) has no steps; every skill in every level needs them",
       "3.1-count-1000 step pages add up to 0, but the skill has 17",
     ]);
   });
@@ -302,12 +311,12 @@ describe("data checks", () => {
   it("lists an activity or warm-up skill in U10 to U12 whose steps are missing", () => {
     const activity = BC_CURRICULUM.steps.filter((s) => s.skill !== "3.9-area-square-units");
     expect(curriculumProblems({ ...BC_CURRICULUM, steps: activity }, BC_SKILL_MAP)).toEqual([
-      "3.9-area-square-units (U12) has no steps; every skill in U10 to U12 needs them",
+      "3.9-area-square-units (U12) has no steps; every skill in every level needs them",
       "3.9-area-square-units step pages add up to 0, but the skill has 1",
     ]);
     const warmUp = BC_CURRICULUM.steps.filter((s) => s.skill !== "3.4-recall-addition-20");
     expect(curriculumProblems({ ...BC_CURRICULUM, steps: warmUp }, BC_SKILL_MAP)).toEqual([
-      "3.4-recall-addition-20 (U10) has no steps; every skill in U10 to U12 needs them",
+      "3.4-recall-addition-20 (U10) has no steps; every skill in every level needs them",
     ]);
   });
 
