@@ -2,6 +2,7 @@ import { pageFullness, pageSpace, fullnessProblem } from "./workbook-template";
 import type { DraftPage, MeasuredElement } from "./workbook-render";
 import type { GeneratedPage } from "./workbook-generator";
 import { STORY_EXPLAIN } from "./workbook-item-plan";
+import { likelihoodChoicesProblem, likelihoodWord } from "./workbook-likelihood";
 import { extraPracticeRepeats, newIdeaFloor, twoWaysCountsAsStory } from "./workbook-provisional";
 import { dayTimeProblem, estimatedDayMinutes } from "./workbook-feedback-check";
 import { printedNumbers } from "./workbook-book";
@@ -89,6 +90,9 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       const c=p.content;
       const printed=[c.title,c.subtitle,...c.blocks.flatMap(b=>[b.label,b.note,b.explain,...b.lines ?? [],...b.methods?.flatMap(m=>[m.label,...m.lines]) ?? []]),...p.questions.flatMap(q=>q.package?[q.package.text]:[])].filter((text):text is string=>typeof text==="string");
       if (printed.some(text=>/\b(?:watch one|finish two|stretch you|unit [ab])\b/i.test(text) || c.level>=4 && /\b(?:draw|for the grown-up)\b/i.test(text))) issues.push({page:p.number,kind:"coverage",reason:"the printed page contains rejected workbook wording"});
+      // Likelihood words: never, sometimes or always only, in every text and every choice (Savar's decision).
+      const word=printed.map(likelihoodWord).find(Boolean) ?? p.questions.flatMap(q=>q.package?.item?.regions ?? []).flatMap(r=>r.kind==="choice" ? [likelihoodChoicesProblem(r.choices) ?? r.choices.map(likelihoodWord).find(Boolean) ?? null] : []).find(Boolean);
+      if (word) issues.push({page:p.number,kind:"coverage",reason:`the page rates likelihood with "${word}"; use never, sometimes or always`});
     }
     if(p.content?.kind==="day") for(const block of p.content.blocks.filter(b=>["worked-example","watch-one","reminder"].includes(b.slot))) {
       if (!block.methods?.some(m=>m.lines.some(line=>line.trim())) && !block.lines?.some(line=>line.trim()) && !block.figure) issues.push({page:p.number,kind:"coverage",reason:`the required ${block.slot} panel has no teaching example`});
@@ -134,6 +138,16 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       const first = p.expected?.find(e => e.slot === q.slot)?.steps?.[0];
       if (!first || first === `${t.skill}#${t.step}`) continue;
       if (largestNumber(q.package!) < 100) issues.push({ page: p.number, kind: "progress", reason: `question ${q.number} is a single-digit fact from an earlier step; at this level a story works with larger numbers` });
+    }
+    // Show what you know asks each step's hardest version, numbers in the top half of the step's range.
+    for (const q of printed) {
+      const t = q.itemPlan?.template;
+      if (q.place === "show-what-you-know" && t?.bounds && t.bounds.max >= 10 && largestNumber(q.package!) < t.bounds.min + (t.bounds.max - t.bounds.min) / 2) issues.push({ page: p.number, kind: "progress", reason: `Show what you know question ${q.number} uses small numbers for its step; this page asks each step's hardest` });
+    }
+    // Show what you know asks each step's hardest version: never an easy template of a step that has harder ones.
+    for (const q of printed) {
+      const t = q.itemPlan?.template;
+      if (q.place === "show-what-you-know" && t && t.difficulty === "easy" && t.hardest === false) issues.push({ page: p.number, kind: "progress", reason: `Show what you know question ${q.number} is an easy question of its step; this page asks each step's hardest` });
     }
     // A stem with no person in it ("In N, which digit is in the thousands place?") twice a page at most (the U16 review).
     const pageStems = new Map<string, number>();
@@ -191,6 +205,18 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
   }
   for (const day of [...new Set(pages.flatMap(p => p.day === null ? [] : [p.day]))].sort((a, b) => a - b)) {
     const ofDay = pages.filter(p => p.day === day);
+    // A worked example and a Watch out line once a day (the real U4 sample: one mistake on three pages of Day 1).
+    const panelSeen = new Map<string, number>();
+    for (const p of ofDay) if (p.content?.kind === "day") for (const b of p.content.blocks.filter(b => ["worked-example", "watch-one", "reminder"].includes(b.slot))) {
+      // (The whole example, its lines together: two examples may share a question stem with other numbers.)
+      const example = [...(b.lines ?? []), ...(b.methods ?? []).flatMap(m => m.lines)].filter(t => t !== b.explain).join(" / ");
+      const texts = [b.explain?.startsWith("Watch out:") ? b.explain : null, example || null].filter((t): t is string => !!t);
+      for (const t of new Set(texts)) {
+        const at = panelSeen.get(t);
+        if (at !== undefined && at !== p.number) issues.push({ page: p.number, kind: "repeat", reason: `the teaching panel repeats "${t.slice(0, 50)}" from page ${at}` });
+        else panelSeen.set(t, p.number);
+      }
+    }
     const questions = ofDay.flatMap(p => p.questions);
     const practice = questions.filter(q => q.place !== "challenge" && q.package);
     // #489: a template Challenge takes the hardest step reached that day (Cedric's sections 1 and 9).
@@ -239,8 +265,14 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       const mine = questions.filter(o => o.itemPlan?.template && o.place !== "challenge" && o.place !== "warm-up" && !reviewParts.has(o.part) && ownStep(o) && o.itemPlan.template.rank === dayTop);
       // (A card from an earlier step is compared with the day's practice of the hardest step, not with a Spot the error or
       // two ways that check its story's work.)
-      const against = reviewCard(p, q) ? mine.filter(o => o.place !== "spot-the-error" && o.place !== "solve-it-two-ways") : mine;
-      const harder = against.every(o => above(q, o));
+      // (And above that day's questions of its own step outside the reviews: the real U4 sample's "? and 9 make 10"
+      // beside practice's "has 4 cookies and wants 10".)
+      const ownStepQs = reviewCard(p, q) ? questions.filter(o => o !== q && o.itemPlan?.template && o.place !== "challenge" && o.place !== "warm-up" && !reviewParts.has(o.part) && !["word-problems", "picture-stories", "math-in-the-world"].includes(o.place ?? "") && o.itemPlan.template.skill === t.skill && o.itemPlan.template.step === t.step) : [];
+      // A card from an earlier step: above that step's questions of the day, and no easier than the hardest step's
+      // practice (a hard card beside its hard practice is as hard, by another step: the review's "use hard items from
+      // earlier taught steps").
+      const against = reviewCard(p, q) ? [...mine.filter(o => o.place !== "spot-the-error" && o.place !== "solve-it-two-ways"), ...ownStepQs] : mine;
+      const harder = reviewCard(p, q) ? ownStepQs.every(o => above(q, o)) && mine.every(o => level(q) >= level(o)) : against.every(o => above(q, o));
       if (against.length && !harder) issues.push({ page: p.number, kind: "challenge", reason: `Day ${day}'s Challenge question ${q.number} is no harder than that day's practice of its step` });
     }
     for (const p of ofDay) for (const q of p.questions.filter(q => q.place === "challenge" && !q.existing && !q.itemPlan?.template)) {

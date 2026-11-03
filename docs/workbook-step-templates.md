@@ -211,6 +211,31 @@ backwards") does not print.
   each story the writer words. Expanded forms print no empty place; from U13
   no factor is 1; "They gets" is "They get".
 
+## Likelihood words, Watch out, Show what you know, minutes (2026-11-03)
+
+- **Likelihood:** a rating is never, sometimes or always
+  (`src/lib/workbook-likelihood.ts`, an allow-list). A template that rates with
+  likely, unlikely, certain, uncertain, impossible or possible does not print, at
+  any level; an item (template or AI) that prints one fails `feedbackItemProblem`;
+  the book check fails a page with one in its text or choices. Comparisons
+  ("more likely", "least likely") stay. Titles say "Never, sometimes, always" or
+  "More or less likely".
+- **Watch out and examples:** a step's common mistake is printed once a day, on
+  its first teaching page; later "Read the example" panels show code's own
+  example with no Watch out line. The book check fails a panel that repeats a
+  worked example or a Watch out line on the same day.
+- **Show what you know:** each step's harder templates (medium and hard) with the
+  largest numbers that fit a 3-line card; an easy one only when no harder one
+  fits. The book check fails an easy card of a step with harder templates, or
+  numbers in the lower half of the step's range.
+- **Challenge:** three kinds of question while the steps have them (a story, a
+  count, a missing number); the day's practice of an earlier step a Challenge
+  card uses stays below that card's difficulty; no part of 0.
+- **Stories:** a Number stories page prints stories on every pass while its steps
+  have them, a story told again rather than a drill.
+- **Minutes:** the plan page says the range the book's own day estimates give,
+  rounded out to fives (28.0 to 28.9 a day: "25 to 30 minutes").
+
 ## Provisional calls for U4 to U9 (2026-11-03)
 
 Made while Savar was away, to confirm. Each is one function in

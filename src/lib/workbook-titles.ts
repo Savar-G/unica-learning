@@ -27,20 +27,20 @@ if (skillProblems.length) throw new Error(`Invalid workbook skill titles:\n${ski
 export const UNIT_TITLES: Readonly<Record<string, string>> = {
   // Kindergarten (U1 to U3).
   K1: "Counting to 10", K2: "Ways to make 5", K3: "Number parts to 10", K4: "Repeating patterns", K5: "Adding and taking away",
-  K6: "Equal or not", K7: "Comparing sizes", K8: "Shapes and objects", K9: "Picture graphs", K10: "Likely or unlikely",
+  K6: "Equal or not", K7: "Comparing sizes", K8: "Shapes and objects", K9: "Picture graphs", K10: "Never, sometimes, always",
   K11: "Coins and shopping",
   // Grade 1 (U4 to U6).
   "1.1": "Numbers to 20", "1.2": "Ways to make 10", "1.3": "Adding and subtracting", "1.4": "Repeating patterns",
   "1.5": "Changing amounts", "1.6": "Equal or not", "1.7": "Measuring things", "1.8": "Shapes and objects",
-  "1.9": "Graphs", "1.10": "Likely or unlikely", "1.11": "Coins",
+  "1.9": "Graphs", "1.10": "Never, sometimes, always", "1.11": "Coins",
   // Grade 2 (U7 to U9).
   "2.1": "Numbers to 100", "2.2": "Benchmarks to 100", "2.3": "Facts to 20", "2.4": "Adding and subtracting",
   "2.5": "Patterns", "2.6": "Changing amounts", "2.7": "Equal or not", "2.8": "Measuring length",
-  "2.9": "Shapes and objects", "2.10": "Picture graphs", "2.11": "Likely or unlikely", "2.12": "Coins and saving",
+  "2.9": "Shapes and objects", "2.10": "Picture graphs", "2.11": "More or less likely", "2.12": "Coins and saving",
   // Grade 3 (U10 to U12).
   "3.1": "Numbers to 1000", "3.2": "Fractions", "3.3": "Adding and subtracting", "3.4": "Facts to 20",
   "3.5": "Multiplying and dividing", "3.6": "Growing patterns", "3.7": "Pattern rules", "3.8": "Missing numbers",
-  "3.9": "Measuring", "3.10": "Time", "3.11": "3D objects", "3.12": "Graphs and tables", "3.13": "Likely or unlikely",
+  "3.9": "Measuring", "3.10": "Time", "3.11": "3D objects", "3.12": "Graphs and tables", "3.13": "More or less likely",
   "3.14": "Money to 100 dollars",
   // Grade 4 (U13 to U15).
   "4.1": "Numbers to 10 000", "4.2": "Decimals", "4.3": "Comparing fractions", "4.4": "Adding and subtracting",

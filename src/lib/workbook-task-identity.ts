@@ -140,8 +140,12 @@ function printedTemplateForm(p: QuestionPackage): string {
  * context), with the names and numbers taken out. Null for a bare sum or a worded drill with no context ("Count on 1
  * from 13."), which the three-forms rule covers instead.
  */
+/** A place-value word ("thousands", "ten thousands") is part of a question's numbers, not its frame (the U16 review: "saw
+ * the number on a sign ... hundreds place" and "... thousands place" are one frame). */
+const PLACE_VALUE = /\b(?:(?:ten|hundred) )?(?:ones|tens|hundreds|thousands|millions)\b/g;
+
 export function sentenceFrameOf(p: QuestionPackage): string | null {
-  const frame = contextFrame(p.text);
+  const frame = contextFrame(p.text)?.replace(PLACE_VALUE, "_place");
   return frame && (frame.match(/[a-z]+/g) ?? []).length >= 4 ? frame : null;
 }
 
@@ -152,7 +156,7 @@ export function sentenceFrameOf(p: QuestionPackage): string | null {
  */
 export function stemOf(p: QuestionPackage): string | null {
   if (contextFrame(p.text)) return null;
-  const stem = p.text.toLowerCase().replace(PLACE, " _ ").replace(/\d+(?:[.,\u202f\u00a0 ]\d+)*/g, "#").replace(/[^a-z#_]+/g, " ").trim();
+  const stem = p.text.toLowerCase().replace(PLACE, " _ ").replace(PLACE_VALUE, "_place").replace(/\d+(?:[.,\u202f\u00a0 ]\d+)*/g, "#").replace(/[^a-z#_]+/g, " ").trim();
   return (stem.match(/[a-z]+/g) ?? []).length >= 4 ? stem : null;
 }
 

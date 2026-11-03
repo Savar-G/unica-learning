@@ -3,6 +3,7 @@ import { checkQuestionPackage, packageItem, type ItemFormat, type QuestionPackag
 import { dayDifficulty } from "@/lib/workbook-plan";
 import { printedValues, skillRange } from "@/lib/workbook-book";
 import { aiTextProblem } from "@/lib/number-words";
+import { likelihoodChoicesProblem, likelihoodWord } from "@/lib/workbook-likelihood";
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import { stepBounds, stepOf, stepTemplateOf } from "@/lib/workbook-step-items";
 
@@ -19,6 +20,10 @@ export function feedbackItemProblem(p: QuestionPackage): string | null {
   if (p.item?.format === "draw" && !/\b(?:ten-frame|number line|shape|triangle|square|rectangle|circle|angle|array|graph|symmetry|polygon|net|coordinate)\b/i.test(text) && !/^Colour \d+ dots? in the row\.$/.test(text)) return "Drawing must be the math. Use colouring or a ten-frame for counting.";
   if (/\bdraw\b/i.test(text) && /\b(?:likely|unlikely|sure|always|sometimes|never|maybe)\b/i.test(text)) return "Likelihood is a circle-the-word question, never a drawing.";
   if (p.skill.skills.some(s => /likelihood/.test(s)) && p.item?.format !== "circle") return "Likelihood uses circle-the-word.";
+  // Never, sometimes or always, for every item, a template's or the AI's (workbook-likelihood.ts).
+  const word = likelihoodWord(text);
+  if (word) return `Likelihood is never, sometimes or always; the item prints "${word}".`;
+  for (const r of p.item?.regions ?? []) if (r.kind === "choice") { const off = likelihoodChoicesProblem(r.choices) ?? (r.choices.map(likelihoodWord).find(Boolean) ? "a choice prints a likelihood word" : null); if (off) return `Likelihood is never, sometimes or always: ${off}.`; }
   return null;
 }
 

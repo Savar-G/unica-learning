@@ -11,6 +11,7 @@
 //   box to fix it), Solve it two ways (two work boxes and the answer), else one answer box.
 // - The AI may reword a story's text only (in real runs): the same numbers, every one of them, checked by code.
 // Pure TypeScript: no Next.js, React, network, database, clock or Math.random.
+import { likelihoodWord } from "./workbook-likelihood";
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import type { AnswerRegion, Item, ItemCheck, QuestionPackage } from "@/lib/question-package";
 import { checkQuestionPackage } from "@/lib/question-package";
@@ -239,6 +240,10 @@ export interface StepItemRequest {
   seed: number;
   /** A later attempt takes the next template and other numbers. */
   attempt: number;
+  /** Show what you know: only the step's harder templates (internal). */
+  hardOnly?: boolean;
+  /** Show what you know: every template, after the harder ones did not fit (internal). */
+  allEasy?: boolean;
   /** The slot's place among its block's slots, from 0. */
   ordinal: number;
   /** Templates the page has used, by index, so the page's slots take different ones first. */
@@ -271,6 +276,9 @@ export function templateProblem(t: StepTemplate, level: number): string | null {
   if (/\b(?:dots?|counters?|tally|tallies|chart|graph|grid|picture|pictured|shown|array|bars?|pictograph|symbols?)\b/i.test(words)) return "it names a picture code does not print";
   // A reversed numeral must be drawn: in words ("A) 5 facing the right way  B) 5 backwards") the choice says its answer.
   if (/\bbackwards?\b|\bfacing the (?:right|wrong) way\b/i.test(words)) return "it needs a reversed numeral code cannot draw";
+  // Likelihood is rated never, sometimes or always (workbook-likelihood.ts); a likelihood answer is no rating word.
+  if (likelihoodWord(words)) return `it rates likelihood as "${likelihoodWord(words)}", not never, sometimes or always`;
+  if (/\blikely\b|\bcertain\b|\bpossible\b/i.test(t.answer)) return "its answer is a likelihood word other than never, sometimes or always";
   if (level >= 4 && BANNED_FROM_U4.test(words)) return "it asks for drawing or tracing";
   if (BANNED.test(words)) return "it uses rejected workbook wording";
   return null;
@@ -305,7 +313,36 @@ export function hasHardNumberTemplate(curriculum: Curriculum, skill: string, ste
  * step's ranges through the seeded filler, tried again (other numbers) until the text fits its room and its numbers its
  * ranges.
  */
+// The same request always gives the same item (a seeded fill): the generator asks for one slot's item many times while
+// it plans, measures and checks a page, so the results are kept per curriculum.
+const FILL_CACHE = new WeakMap<Curriculum, Map<string, ReturnType<typeof stepTemplateFill>>>();
+
 export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; text: string; numbers: number[] } | null {
+  let cache = FILL_CACHE.get(r.curriculum);
+  if (!cache) FILL_CACHE.set(r.curriculum, cache = new Map());
+  const { curriculum: _c, usedOnPage, ...rest } = r;
+  void _c;
+  const key = JSON.stringify([rest, usedOnPage ? [...usedOnPage].sort((a, b) => a[0] - b[0]) : null]);
+  if (cache.has(key)) { const hit = cache.get(key)!; return hit ? structuredClone(hit) : null; }
+  if (cache.size > 200_000) cache.clear();
+  const made = stepTemplateItemUncached(r);
+  cache.set(key, made ? structuredClone(made) : null);
+  return made;
+}
+
+function stepTemplateItemUncached(r: StepItemRequest): { ref: StepTemplateRef; text: string; numbers: number[] } | null {
+  // Show what you know takes its step's hardest version that fits its card; when none of the harder ones fits (a
+  // long story on a 3-line card), the easy one with the largest numbers, the hardest that fits.
+  if ((r.place === "show-what-you-know" || r.place === "level-test") && r.attempt < 256 && !r.allEasy) {
+    // (Its own and the next attempts' numbers: the planner may take another step after a refused attempt.)
+    for (let k = 0; k < 48; k += 3) { const hard = stepTemplateFill({ ...r, attempt: r.attempt + k, hardOnly: true }); if (hard) return hard; }
+    const any = stepTemplateFill(r);
+    return any ? { ...any, ref: { ...any.ref, hardest: true } } : null;
+  }
+  return stepTemplateFill(r);
+}
+
+function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: string; numbers: number[] } | null {
   const step = stepOf(r.curriculum, r.skill, r.step);
   const contexts = r.curriculum.contexts;
   if (!step?.templates?.length || !contexts) return null;
@@ -333,7 +370,7 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
   let usable = r.place === "challenge" ? reserved : rest.length ? rest : printable.filter((x) => !harder.includes(x));
   const storyPage = !!r.place && STEP_STORY_PLACES.has(r.place) && r.place !== "challenge";
   if (r.place && TEACH_PLACES.has(r.place) && !storyPage && new Set(rest.map(({ t }) => t.format)).size < 3) usable = [...rest, ...reserved];
-  else if (storyPage && !rest.some(({ t }) => t.format === "story")) usable = [...rest, ...reserved];
+  else if (storyPage && (!rest.some(({ t }) => t.format === "story") || r.attempt >= 128)) usable = [...rest, ...reserved];
   // A review place (Remember these?, the warm-up, Friday 5) on a step of an earlier level takes them all: no Challenge of
   // this book asks that step. On a step of this level it takes them only late, when the others ran out.
   const reviewPlace = !!r.place && !TEACH_PLACES.has(r.place) && !STEP_STORY_PLACES.has(r.place);
@@ -343,9 +380,15 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
   // A Number stories page asks stories when the step has them (the review: no drills on a page of stories).
   if (r.place && STEP_STORY_PLACES.has(r.place) && r.place !== "challenge" && r.attempt < 256 && usable.some(({ t }) => t.format === "story")) usable = usable.filter(({ t }) => t.format === "story");
   if (r.place === "challenge" && r.attempt < 256) usable = reserved;
+  // Show what you know asks each step's hardest version, the Challenge's templates too (the real U4 sample: "Kai says
+  // 2. What does Kai say next?" on Day 10); it is a review, not the day's practice of the step.
+  const topPlace = r.place === "show-what-you-know" || r.place === "level-test";
+  // (Never an easy one when the step has harder ones, before late attempts.)
+  if (topPlace) usable = r.hardOnly && printable.some(({ t }) => t.difficulty !== "easy") ? printable.filter(({ t }) => t.difficulty !== "easy") : printable;
   // Show what you know asks work to do, not mostly true or false (#482 review at db3b1a0).
   // (Every other card, so the page keeps three forms.)
-  if (r.place === "show-what-you-know" && r.ordinal % 2 === 0 && r.attempt < 192 && usable.some(({ t }) => numberAnswer(t))) usable = usable.filter(({ t }) => numberAnswer(t));
+  // (Among the harder ones only for a few attempts: a harder choice beats an easy number question.)
+  if (r.place === "show-what-you-know" && r.ordinal % 2 === 0 && r.attempt < (r.hardOnly ? 16 : 192) && usable.some(({ t }) => numberAnswer(t))) usable = usable.filter(({ t }) => numberAnswer(t));
   if (!usable.length) return null;
   const used = (i: number) => r.usedOnPage?.get(i) ?? 0;
   // A story place takes the step's stories first, then its number questions (word problems are number stories).
@@ -354,7 +397,7 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
   const fit = (t: StepTemplate) => numberPlace ? (["bare", "missing"].includes(t.format) ? 0 : t.format === "story" ? 2 : 1)
     : !storyPlace ? 0 : t.format === "story" ? 0 : ["bare", "missing"].includes(t.format) ? 1 : 2;
   // A worked example and a Challenge take their difficulty first: the easiest to show, the hardest to stretch.
-  const byDifficulty = r.place === "challenge" || r.place === "worked-example" || r.place === "watch-one" || r.place === "reminder";
+  const byDifficulty = r.place === "challenge" || topPlace || r.place === "worked-example" || r.place === "watch-one" || r.place === "reminder";
   const order = usable
     .map((x, k) => ({ ...x, rank: wanted.indexOf(x.t.difficulty), turn: (k + r.seed) % usable.length }))
     // A Challenge takes the step's hardest template first (Cedric's section 9), whatever its format.
@@ -373,7 +416,7 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
     // A Challenge takes the fill with the largest numbers of several, the top of the step's range (the U4 review); a
     // later attempt the next largest, so the page's three Challenge questions find three tasks.
     const fills: { ref: StepTemplateRef; text: string; numbers: number[] }[] = [];
-    const tries = r.place === "challenge" ? 24 : 12;
+    const tries = r.place === "challenge" || topPlace ? 24 : 12;
     for (let tryNo = 0; tryNo < tries; tryNo++) {
       let filled;
       try { filled = prepared.fill(random); } catch { break; }
@@ -389,11 +432,13 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
       if ((text.match(/ \+ /g) ?? []).length >= 2) text = text.replace(/ \+ 0+(?=\s*(?:[+=.?]|$))/g, "");
       // From U13 no factor is 1 ("1 × ? = 320" asks nothing, the real U16 sample).
       if (r.level >= 13 && /(?:^|[^\d.])1 ?[×x] |[×x] ?1(?![\d.])/.test(text)) continue;
+      // A Challenge asks no part of 0 ("? and 0 make 10", the real U4 sample).
+      if (r.place === "challenge" && (/(?:^|[^\d.,])0 (?:and|\+)|(?:and|\+) 0(?![\d.,])/.test(text) || filled.answer === "0")) continue;
       // "They gets": a person whose pronoun is they takes the plain verb (the U16 sample).
       text = text.replace(/\b(They|they) (has|does|is|was|[a-z]+?(?:ches|shes|xes|sses|oes)|[a-z]+s)\b/g, (_, who: string, verb: string) =>
         `${who} ${({ has: "have", does: "do", is: "are", was: "were" } as Record<string, string>)[verb] ?? (/(?:ch|sh|x|ss|o)es$/.test(verb) ? verb.slice(0, -2) : verb.slice(0, -1))}`);
       // "1 shells", "has 0 buttons": a count a child would not read (the U4 sample); other numbers are tried.
-      if (/\b1 (?!(?:more|less|fewer|of|and|or|is|to|in|comes|makes|says|gets|eats|has|was|goes|needs|wants|plus|minus|times|tens|ones)\b)[a-z]+s\b/i.test(text) || /\b(?:has|have|had|picks|sees|finds) 0\b/i.test(text) || /(?:^|[^\d.,/])1 are\b/.test(text)) continue;
+      if (/\b1 (?!(?:more|less|fewer|of|and|or|is|to|in|comes|makes|says|gets|eats|has|was|goes|needs|wants|plus|minus|times|tens|ones)\b)(?:hockey |toy |orange )?[a-z]+s\b/i.test(text) || /\b(?:has|have|had|picks|sees|finds) 0\b/i.test(text) || /(?:^|[^\d.,/])1 are\b/.test(text)) continue;
       // Many containers one person fills ("Amara fills 890 boxes"): packs bought, a count that can be that large (the U16
       // review). The numbers stay, each once.
       text = plausibleGroups(text);
@@ -454,13 +499,15 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
         challengeTemplates: reserved.length, reserved: reserved.some((x) => x.index === index),
       };
       const found = { ref, text, numbers: printedNumbersOf(text) };
-      if (r.place !== "challenge") return found;
+      if (r.place !== "challenge" && !topPlace) return found;
       if (!fills.some((f) => f.text === found.text && f.ref.answer === found.ref.answer)) fills.push(found);
     }
     if (fills.length) {
       const size = (f: (typeof fills)[number]) => Math.max(0, ...f.numbers, ...printedNumbersOf(f.ref.answer));
       fills.sort((a, b) => size(b) - size(a));
-      return fills[Math.min(fills.length - 1, Math.floor(r.attempt / Math.max(1, order.length)))];
+      // (Show what you know: the largest numbers, the second largest when another card took them.)
+      const k = topPlace ? Math.floor(r.attempt / Math.max(1, order.length)) % Math.min(3, fills.length) : Math.floor(r.attempt / Math.max(1, order.length));
+      return fills[Math.min(fills.length - 1, k)];
     }
   }
   return null;
