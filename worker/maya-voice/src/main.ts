@@ -27,6 +27,8 @@ import { mayaCallStore } from "@/lib/maya-call-store";
 import { callOfRoom, checkJoiner, JOIN_WAIT_MS, VOICE_AGENT_NAME, voiceProviders, type VoiceCallFacts } from "@/lib/maya-voice";
 import { VoiceCallRun, voiceSession, type CallUpdate } from "./agent";
 import { makeProviders } from "./providers";
+import { referenceJob, referenceRoomName } from "@/lib/maya-workbook-speech";
+import { runWorkbookReference } from "./workbook-reference";
 
 const log = (...a: unknown[]) => console.log("[maya voice]", ...a);
 
@@ -60,6 +62,12 @@ function waitForChild(room: Room, call: VoiceCallFacts): Promise<RemoteParticipa
 
 export default defineAgent({
   entry: async (ctx: JobContext) => {
+    let selection = null;
+    try { selection = referenceJob(JSON.parse(ctx.job.metadata || "{}").reference); } catch { /* Not a reference job. */ }
+    if (selection) {
+      if (ctx.job.room?.name !== referenceRoomName(selection.id)) return ctx.shutdown("wrong reference room");
+      return runWorkbookReference(ctx, selection, database());
+    }
     const callId = (() => {
       try {
         return (JSON.parse(ctx.job.metadata || "{}") as { callId?: unknown }).callId;
