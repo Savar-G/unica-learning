@@ -124,6 +124,15 @@ describe("v2 data and answer contracts", () => {
     }
   });
 
+  it("rejects a reversed-numeral instruction supplied by derived text", () => {
+    const step = BC.skillSteps("K1-write-numerals")?.[0];
+    expect(step).toBeDefined();
+    const template = step!.templates!.find(t => t.derived && Object.values(t.derived).some(v => v.includes("backwards")))!;
+    expect(template).toBeDefined();
+    const curriculum = { ...BC, skillSteps: (id: string) => id === step!.skill ? [{ ...step!, templates: [template] }] : BC.skillSteps(id) };
+    expect(stepTemplateItem({ curriculum, skill: step!.skill, step: step!.number, place: "on-your-own", level: 4, day: 1, ordinal: 0, seed: 7, attempt: 0 })).toBeNull();
+  });
+
   it.each([
     ["9.8-bank-record", 2, 0, 30, /^\$\d+\.\d{2}$/],
     ["5.12-area-rectangle", 2, 1, 16, /^\d+ m²$/],

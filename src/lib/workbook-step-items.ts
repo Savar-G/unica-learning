@@ -411,7 +411,9 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
         const big = (r.seed + r.attempt + tryNo) % 2 ? "points" : "tickets";
         text = text.replace(new RegExp(`\\b${small[1]}\\b`, "gi"), big);
       }
-      if (r.level >= 4 && BANNED_FROM_U4.test(text)) continue;
+      // Derived words can introduce the same unsupported drawing or picture
+      // request as literal template text. Check the final text too.
+      if (templateProblem({ ...t, text }, r.level)) continue;
       if (r.room !== undefined && text.length > r.room) continue;
       if (stepRangeProblem(step, text) || stepRangeProblem(step, filled.answer)) continue;
       // An answer that names a person ("'name' if a > b else 'friend'"): circle the name or "the friend".
