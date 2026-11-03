@@ -5,7 +5,7 @@ import { STORY_EXPLAIN } from "./workbook-item-plan";
 import { extraPracticeRepeats, newIdeaFloor, twoWaysCountsAsStory } from "./workbook-provisional";
 import { dayTimeProblem, estimatedDayMinutes } from "./workbook-feedback-check";
 import { printedNumbers } from "./workbook-book";
-import { storyFrame, wordedTask, taskType, reasoningSteps, taskIdentity, printedForm, sentenceFrameOf } from "./workbook-task-identity";
+import { storyFrame, wordedTask, taskType, reasoningSteps, taskIdentity, printedForm, sentenceFrameOf, stemOf, largestNumber } from "./workbook-task-identity";
 import { dayDifficulty } from "./workbook-plan";
 
 export interface BookIssue { page: number; kind: "repeat" | "progress" | "variety" | "time" | "coverage" | "challenge" | "step" | "range"; reason: string }
@@ -123,8 +123,34 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       const frame = sentenceFrameOf(q.package!);
       if (!frame) continue;
       pageFrames.set(frame, (pageFrames.get(frame) ?? 0) + 1);
-      // A Challenge page on a step with fewer than 3 Challenge templates repeats their frames (as its forms).
-      if (pageFrames.get(frame) === 2 && !(challengeOnly && need < 3)) issues.push({ page: p.number, kind: "variety", reason: `question ${q.number} uses the sentence frame "${frame}" a second time on the page` });
+      // Once a page, the Challenge's too (the U16 review: three "saw the number N on a sign" cards).
+      if (pageFrames.get(frame) === 2) issues.push({ page: p.number, kind: "variety", reason: `question ${q.number} uses the sentence frame "${frame}" a second time on the page` });
+    }
+    // From U16, a story or Challenge question from another step than its page's prints or answers a number of 100 or
+    // more (the U16 review: "7 beads in each bag, 4 bags" on a Grade 5 stories page).
+    for (const q of printed) {
+      const t = q.itemPlan?.template;
+      if (!t || (q.package!.level ?? 0) < 16 || !["word-problems", "picture-stories", "math-in-the-world", "challenge"].includes(q.place ?? "")) continue;
+      const first = p.expected?.find(e => e.slot === q.slot)?.steps?.[0];
+      if (!first || first === `${t.skill}#${t.step}`) continue;
+      if (largestNumber(q.package!) < 100) issues.push({ page: p.number, kind: "progress", reason: `question ${q.number} is a single-digit fact from an earlier step; at this level a story works with larger numbers` });
+    }
+    // A stem with no person in it ("In N, which digit is in the thousands place?") twice a page at most (the U16 review).
+    const pageStems = new Map<string, number>();
+    const pageTemplates = new Map<string, number>();
+    for (const q of printed) {
+      if (q.place === "how-do-you-know") continue;
+      // A template is one stem too (outside the Challenge, which asks each of its few once).
+      const t = q.itemPlan?.template;
+      if (t && q.place !== "challenge") {
+        const k = `${t.skill}#${t.step}.${t.index}`;
+        pageTemplates.set(k, (pageTemplates.get(k) ?? 0) + 1);
+        if (pageTemplates.get(k) === 3) issues.push({ page: p.number, kind: "variety", reason: `question ${q.number} asks its template a third time on the page` });
+      }
+      const stem = stemOf(q.package!);
+      if (!stem) continue;
+      pageStems.set(stem, (pageStems.get(stem) ?? 0) + 1);
+      if (pageStems.get(stem) === 3) issues.push({ page: p.number, kind: "variety", reason: `question ${q.number} asks "${stem}" a third time on the page` });
     }
     for (const q of p.questions.filter(q => q.place === "how-do-you-know" && !q.existing)) if (!STORY_EXPLAIN.test(q.package?.text ?? "") || !p.questions.some(s => ["word-problems", "picture-stories"].includes(s.place ?? "") && s.package && s.check.status !== "failed")) issues.push({ page: p.number, kind: "coverage", reason: "the explanation has no story on this page" });
   }
@@ -179,10 +205,29 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       return !first || first === `${q.itemPlan!.template!.skill}#${q.itemPlan!.template!.step}`;
     };
     const dayTop = Math.max(0, ...questions.flatMap(q => q.itemPlan?.template && q.place !== "warm-up" && q.place !== "challenge" && !["word-problems", "picture-stories"].includes(q.place ?? "") && !reviewParts.has(q.part) && ownStep(q) ? [q.itemPlan.template.rank] : []));
+    for (const p of ofDay) {
+      // A step that keeps fewer than 3 Challenge templates asks each once (the U16 review): the page's other cards are
+      // hard questions of steps taught or reviewed before.
+      const cards = p.questions.filter(q => q.place === "challenge" && !q.existing && q.itemPlan?.template);
+      const seenTemplates = new Set<string>();
+      for (const q of cards) {
+        const t = q.itemPlan!.template!;
+        const k = `${t.skill}#${t.step}.${t.index}`;
+        if (t.rank === dayTop && (t.challengeTemplates ?? 3) < 3 && seenTemplates.has(k)) issues.push({ page: p.number, kind: "challenge", reason: `Day ${day}'s Challenge question ${q.number} asks its step's only Challenge template again` });
+        seenTemplates.add(k);
+      }
+    }
+    // (A card from an earlier step: a hard template with a number to work out, beside a card of the day's hardest step
+    // whose step keeps fewer than 3 Challenge templates.)
+    const reviewCard = (p: GeneratedPage, q: GeneratedPage["questions"][number]) => {
+      const t = q.itemPlan!.template!;
+      return t.rank < dayTop && t.difficulty === "hard" && t.kind !== "choice" && p.questions.some(o => o.place === "challenge" && o.itemPlan?.template?.rank === dayTop && (o.itemPlan.template.challengeTemplates ?? 3) < 3);
+    };
     for (const p of ofDay) for (const q of p.questions.filter(q => q.place === "challenge" && !q.existing && q.itemPlan?.template)) {
       const t = q.itemPlan!.template!;
-      // Every question is on the hardest step reached that day (Cedric's brief; #482 review at db3b1a0).
-      if (t.rank < dayTop) issues.push({ page: p.number, kind: "challenge", reason: `Day ${day}'s Challenge question ${q.number} must use the hardest step reached that day, never an easier step than practice` });
+      // Every question is on the hardest step reached that day (Cedric's brief; #482 review at db3b1a0), or is such a
+      // card from an earlier step.
+      if (t.rank < dayTop && !reviewCard(p, q)) issues.push({ page: p.number, kind: "challenge", reason: `Day ${day}'s Challenge question ${q.number} must use the hardest step reached that day, never an easier step than practice` });
       // Every question asks more than every question of the day's teaching on that step: Cedric's template difficulty
       // (easy, medium, hard), then the work (a computed answer above a circled choice), then on one template the larger
       // numbers. A context sentence or a larger unrelated number is no proof of more work.
@@ -192,8 +237,11 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       const same = (a: typeof q, b: typeof q) => a.itemPlan!.template!.skill === b.itemPlan!.template!.skill && a.itemPlan!.template!.step === b.itemPlan!.template!.step && a.itemPlan!.template!.index === b.itemPlan!.template!.index;
       const above = (a: typeof q, b: typeof q) => level(a) !== level(b) ? level(a) > level(b) : work(a) !== work(b) ? work(a) > work(b) : same(a, b) && size(a) > size(b);
       const mine = questions.filter(o => o.itemPlan?.template && o.place !== "challenge" && o.place !== "warm-up" && !reviewParts.has(o.part) && ownStep(o) && o.itemPlan.template.rank === dayTop);
-      const harder = mine.every(o => above(q, o));
-      if (mine.length && !harder) issues.push({ page: p.number, kind: "challenge", reason: `Day ${day}'s Challenge question ${q.number} is no harder than that day's practice of its step` });
+      // (A card from an earlier step is compared with the day's practice of the hardest step, not with a Spot the error or
+      // two ways that check its story's work.)
+      const against = reviewCard(p, q) ? mine.filter(o => o.place !== "spot-the-error" && o.place !== "solve-it-two-ways") : mine;
+      const harder = against.every(o => above(q, o));
+      if (against.length && !harder) issues.push({ page: p.number, kind: "challenge", reason: `Day ${day}'s Challenge question ${q.number} is no harder than that day's practice of its step` });
     }
     for (const p of ofDay) for (const q of p.questions.filter(q => q.place === "challenge" && !q.existing && !q.itemPlan?.template)) {
       const pkg = q.package;

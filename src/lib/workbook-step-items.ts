@@ -274,6 +274,27 @@ export function templateProblem(t: StepTemplate, level: number): string | null {
   return null;
 }
 
+const numberAnswerOf = (t: StepTemplate) => ["bare", "missing", "story"].includes(t.format) && (!/['"]/.test(t.answer) || /['"], ['"]/.test(t.answer));
+const difficultyRank = (d: TemplateDifficulty) => ["easy", "medium", "hard"].indexOf(d);
+
+/**
+ * How many templates a step keeps for its Challenge: its hardest with a number to work out (as `stepTemplateItem`).
+ * A Challenge asks each once; with fewer than 3, its other cards come from steps taught or reviewed before (U16 review).
+ */
+export function challengeTemplateCount(curriculum: Curriculum, skill: string, step: number | null, level: number): number {
+  const printable = (stepOf(curriculum, skill, step)?.templates ?? []).filter((t) => !templateProblem(t, level));
+  const numeric = printable.filter(numberAnswerOf);
+  const pool = numeric.length ? numeric : printable;
+  if (!pool.length) return 0;
+  const top = Math.max(...pool.map((t) => difficultyRank(t.difficulty)));
+  return pool.filter((t) => difficultyRank(t.difficulty) === top).length;
+}
+
+/** Whether a step has a hard template with a number to work out, that prints at this level. */
+export function hasHardNumberTemplate(curriculum: Curriculum, skill: string, step: number | null, level: number): boolean {
+  return (stepOf(curriculum, skill, step)?.templates ?? []).some((t) => t.difficulty === "hard" && numberAnswerOf(t) && !templateProblem(t, level));
+}
+
 /**
  * The step template item for a slot, or null when the step has no template that can print there. The template is the
  * first of the wanted difficulty the page has used least, turned by the seed and the attempt; its numbers come from the
@@ -356,16 +377,33 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
       const seq = sequenceOf(text, filled.answer);
       if (seq && r.place !== "spot-the-error" && r.place !== "solve-it-two-ways") text = seq.text;
       if (r.avoid && new RegExp(`\\b${r.avoid}\\b`, "i").test(text)) continue;
+      // An expanded form prints no empty place ("9 000 + 000 + 20 + 8", the real U16 sample).
+      if ((text.match(/ \+ /g) ?? []).length >= 2) text = text.replace(/ \+ 0+(?=\s*(?:[+=.?]|$))/g, "");
+      // From U13 no factor is 1 ("1 × ? = 320" asks nothing, the real U16 sample).
+      if (r.level >= 13 && /(?:^|[^\d.])1 ?[×x] |[×x] ?1(?![\d.])/.test(text)) continue;
+      // "They gets": a person whose pronoun is they takes the plain verb (the U16 sample).
+      text = text.replace(/\b(They|they) (has|does|is|was|[a-z]+?(?:ches|shes|xes|sses|oes)|[a-z]+s)\b/g, (_, who: string, verb: string) =>
+        `${who} ${({ has: "have", does: "do", is: "are", was: "were" } as Record<string, string>)[verb] ?? (/(?:ch|sh|x|ss|o)es$/.test(verb) ? verb.slice(0, -2) : verb.slice(0, -1))}`);
       // "1 shells", "has 0 buttons": a count a child would not read (the U4 sample); other numbers are tried.
       if (/\b1 (?!(?:more|less|fewer|of|and|or|is|to|in|comes|makes|says|gets|eats|has|was|goes|needs|wants|plus|minus|times|tens|ones)\b)[a-z]+s\b/i.test(text) || /\b(?:has|have|had|picks|sees|finds) 0\b/i.test(text) || /(?:^|[^\d.,/])1 are\b/.test(text)) continue;
       // Many containers one person fills ("Amara fills 890 boxes"): packs bought, a count that can be that large (the U16
       // review). The numbers stay, each once.
       text = plausibleGroups(text);
+      // (After the packs: "buys 570 packs of 1 toy cars" from "Each bag holds 1 toy car", the real U16 sample.)
+      if (r.level >= 13 && /\bpacks? of 1 [a-z]|\bholds? 1 [a-z]+s\b/i.test(text)) continue;
       // Colours that fit the things: no blue apples, acorns or leaves (#482 review at db3b1a0); other things are tried.
       if (/\b(?:red|blue|green|yellow|purple|orange)\b(?! slices)/i.test(text) && /\b(?:apples?|acorns?|leaves|leaf|carrots?|grapes?|berries|berry|cookies|cookie|pancakes?|muffins?|crackers?|orange slices|pumpkins?|bananas?|shells?|pinecones?|pebbles?)\b/i.test(text)) continue;
       // A big count of small things no one has ("10000 leaves", "53805 beads"): another fill takes other things (the U16
       // review: pages, people, kilometres, dollars).
-      if (/\b\d{4,}\s+(?:leaves|beads|shells|stickers|crayons|marbles|buttons|blocks|acorns|apples|pencils|cookies|toy cars|stamps|grapes|carrots|muffins|crackers|pancakes|berries|orange slices|hockey cards|books|cards|pebbles|rocks|feathers|seeds|toys|balloons)\b/i.test(text)) continue;
+      // Things that come in thousands take their place ("counts 4521 tickets on Monday", the U16 review: Grade 5 stories
+      // work with the step's 4-digit numbers); a container holding thousands of them is still no story.
+      const SMALL = /\b\d{4,}\s+(leaves|beads|shells|stickers|crayons|marbles|buttons|blocks|acorns|apples|pencils|cookies|toy cars|stamps|grapes|carrots|muffins|crackers|pancakes|berries|orange slices|hockey cards|books|cards|pebbles|rocks|feathers|seeds|toys|balloons)\b/i;
+      const small = SMALL.exec(text);
+      if (small) {
+        if (/\b(?:holds?|box(?:es)?|bags?|jars?|trays?|baskets?|bins?|containers?|packs?|bottles?)\b/i.test(text)) continue;
+        const big = (r.seed + r.attempt + tryNo) % 2 ? "points" : "tickets";
+        text = text.replace(new RegExp(`\\b${small[1]}\\b`, "gi"), big);
+      }
       if (r.room !== undefined && text.length > r.room) continue;
       if (stepRangeProblem(step, text) || stepRangeProblem(step, filled.answer)) continue;
       // An answer that names a person ("'name' if a > b else 'friend'"): circle the name or "the friend".

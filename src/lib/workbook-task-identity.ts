@@ -110,6 +110,14 @@ function answersOf(p: QuestionPackage): string[] {
   return (p.item?.regions ?? []).flatMap((r) => (r.kind === "box" && r.answer ? [JSON.stringify(r.answer)] : r.kind === "choice" && r.answer ? [r.answer.toLowerCase()] : []));
 }
 
+/** The largest number a question prints or answers ("10 000" read as one number). */
+export function largestNumber(p: QuestionPackage): number {
+  const printed = (p.text.match(/\d{1,3}(?:[ \u202f\u00a0,]\d{3})+|\d+/g) ?? []).map((x) => Number(x.replace(/\D/g, "")));
+  const answers = (p.item?.regions ?? []).flatMap((r) => (r.kind === "box" && r.answer?.type === "number" ? [r.answer.value] : []));
+  const top = p.answer?.value?.type === "number" ? [p.answer.value.value] : [];
+  return Math.max(0, ...printed, ...answers, ...top);
+}
+
 /** The printed format of a step template item with no context. */
 function printedTemplateForm(p: QuestionPackage): string {
   const item = p.item;
@@ -135,6 +143,17 @@ function printedTemplateForm(p: QuestionPackage): string {
 export function sentenceFrameOf(p: QuestionPackage): string | null {
   const frame = contextFrame(p.text);
   return frame && (frame.match(/[a-z]+/g) ?? []).length >= 4 ? frame : null;
+}
+
+/**
+ * A question's stem when no person or thing is in it (the U16 review: six "In N, which digit is in the thousands
+ * place?" on one page): its words with numbers and places taken out, for a question of 4 words or more. Bare sums and
+ * "Missing number: 6 × __ = 42" have none. A page prints a stem twice at most.
+ */
+export function stemOf(p: QuestionPackage): string | null {
+  if (contextFrame(p.text)) return null;
+  const stem = p.text.toLowerCase().replace(PLACE, " _ ").replace(/\d+(?:[.,\u202f\u00a0 ]\d+)*/g, "#").replace(/[^a-z#_]+/g, " ").trim();
+  return (stem.match(/[a-z]+/g) ?? []).length >= 4 ? stem : null;
 }
 
 /** A place in a story ("at the zoo", "at school", "in the park"). */

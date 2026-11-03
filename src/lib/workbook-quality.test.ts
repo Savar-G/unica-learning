@@ -152,3 +152,24 @@ it("fails a step template page below its adopted count, with the provisional U4 
   expect(floorIssue(10, ["now-you", "now-you", "spot-the-error"])).toBe("the page prints 2 practice questions; a new-idea page needs 3");
   expect(floorIssue(4, ["now-you", "spot-the-error"])).toBe("the page prints 1 practice question; a new-idea page needs 2");
 });
+
+it("counts a question stem with no person in it twice a page at most", () => {
+  const p = page(3, 1, 3);
+  p.questions = p.questions.map((q, i) => ({ ...q, package: { ...q.package!, text: `In ${41000 + i * 1111}, which digit is in the thousands place?` } }));
+  expect(workbookQuality([p]).issues.some(i => i.reason.includes("a third time on the page"))).toBe(true);
+  p.questions = p.questions.slice(0, 2);
+  expect(workbookQuality([p]).issues.some(i => i.reason.includes("a third time on the page"))).toBe(false);
+});
+
+it("asks a step's only Challenge template once and takes the other cards from hard templates of earlier steps", () => {
+  const challenge = (rank: number, index: number, difficulty: string, kind = "story") => ({ skill: rank === 9 ? "5.1-place-value-million" : "4.4-add-within-10000", step: 1, index, rank, difficulty, kind, challengeTemplates: 1 });
+  const p = page(10, 1, 3);
+  p.type = "challenge";
+  // The day's practice on its hardest step (rank 9), easy.
+  const practice = page(4, 1, 1);
+  practice.questions = practice.questions.map(q => ({ ...q, itemPlan: { template: challenge(9, 0, "easy", "box") } as unknown as typeof q.itemPlan }));
+  const cards = (ts: ReturnType<typeof challenge>[]) => { p.questions = p.questions.map((q, i) => ({ ...q, place: "challenge" as typeof q.place, part: "challenge", itemPlan: { template: ts[i] } as unknown as typeof q.itemPlan })); return workbookQuality([practice, p]).issues.filter(i => i.kind === "challenge").map(i => i.reason); };
+  expect(cards([challenge(9, 2, "medium"), challenge(9, 2, "medium"), challenge(9, 2, "medium")]).some(r => r.includes("only Challenge template again"))).toBe(true);
+  expect(cards([challenge(9, 2, "medium"), challenge(5, 4, "hard"), challenge(5, 3, "hard")])).toEqual([]);
+  expect(cards([challenge(9, 2, "medium"), challenge(5, 1, "easy"), challenge(5, 3, "hard")]).some(r => r.includes("question 2 must use the hardest step"))).toBe(true);
+});

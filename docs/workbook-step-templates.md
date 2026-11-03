@@ -187,6 +187,30 @@ four longest planned questions takes a shorter one that does not lengthen a
 day near its limit. A template that needs a reversed numeral drawn ("5
 backwards") does not print.
 
+## Challenge cards, story numbers and stems (the U16 review, 2026-11-03)
+
+- **Challenge:** a step that keeps fewer than 3 Challenge templates (its hardest
+  with a number to work out) asks each once, with the largest numbers. The
+  page's other cards take a hard template with a number to work out from a
+  step taught or reviewed by that day (or reviewed on an earlier day), the
+  largest numbers first. The book check accepts such a card beside a card of
+  the day's hardest step, and compares it with that step's practice (not with
+  a Spot the error or two ways), and fails a page that asks its step's only
+  Challenge template twice.
+- **Story numbers:** from U16, a story place's question from another step than
+  its page's prints or answers a number of 100 or more; the page's own step
+  keeps its ranges. A 4-digit count of small things takes tickets or points;
+  one in a container (a box holding 9 000) is no story.
+- **Stems:** a question with no person or thing in it has a stem (its words
+  with numbers and places out, 4 words or more); a template is one stem too.
+  Each prints twice a page at most, outside the warm-up and the Challenge. A
+  sentence frame is once a page and twice a day, on the Challenge too. A
+  stories page tells each story template once while it has others.
+- A template's day cap is 6 on its page's own step, 4 otherwise. A day over
+  its time takes warm-up facts too, down to 8. Planned minutes add 0.15 for
+  each story the writer words. Expanded forms print no empty place; from U13
+  no factor is 1; "They gets" is "They get".
+
 ## Provisional calls for U4 to U9 (2026-11-03)
 
 Made while Savar was away, to confirm. Each is one function in
