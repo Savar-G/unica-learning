@@ -3,12 +3,11 @@
 // network, database or clock. The planner and the generator read the content from here.
 import { digestOf } from "@/lib/workbook-digest";
 import { BC_CURRICULUM } from "./bc";
-import { BC_GENERATOR_STEPS } from "./bc-generator-steps";
 import type { CurriculumData, CurriculumKey, CurriculumLevel, CurriculumSkill, CurriculumStep, CurriculumUnit, TemplateContexts } from "./types";
 
 export type * from "./types";
 export { curriculumProblems } from "./check";
-/** The complete imported BC data for validation. The generator uses the preserved steps through curriculumFor. */
+/** The complete imported BC data: Cedric's 1,622 steps with their number ranges, practice models, templates and contexts (#489). */
 export { BC_CURRICULUM };
 
 /** The reads of one curriculum. An unknown level or skill id reads as null. */
@@ -26,8 +25,10 @@ export interface Curriculum {
   /** By BC skill id. */
   skill(id: string): CurriculumSkill | null;
   levelOfSkill(skillId: string): CurriculumLevel | null;
-  /** The skill's steps in order. The default curriculum retains the generator's drafted steps. */
+  /** The skill's steps in order, with their number ranges, practice models and templates. */
   skillSteps(skillId: string): readonly CurriculumStep[] | null;
+  /** The shared word lists the templates fill (people, things, places, ...); absent for a curriculum without templates. */
+  contexts?: TemplateContexts;
 }
 
 function curriculum(data: CurriculumData): Curriculum {
@@ -58,21 +59,16 @@ function curriculum(data: CurriculumData): Curriculum {
     skill,
     levelOfSkill: (id) => level(skill(id)?.level ?? ""),
     skillSteps: (id) => stepsOf.get(id) ?? null,
+    ...(data.contexts ? { contexts: data.contexts } : {}),
   };
 }
 
-// Keep the corrected metadata, but do not activate the imported steps or contexts in the generator.
-const { contexts: importedContexts, ...bcData } = BC_CURRICULUM;
-const GENERATOR_BC_DATA: CurriculumData = { ...bcData, steps: BC_GENERATOR_STEPS };
-const CURRICULA: Record<CurriculumKey, Curriculum> = { bc: curriculum(GENERATOR_BC_DATA) };
-const IMPORTED_BC = { ...curriculum(BC_CURRICULUM), contexts: importedContexts! };
+// The generator reads every imported step and its templates (#489). The 155 drafted steps it read before are gone.
+const CURRICULA: Record<CurriculumKey, Curriculum> = { bc: curriculum(BC_CURRICULUM) };
 
-/**
- * Opt in to all 1,622 validated BC steps and their template contexts. The generator integration must switch to this
- * accessor explicitly. Reading it does not change curriculumFor or the fingerprint used by current workbook runs.
- */
+/** All 1,622 validated BC steps and their template contexts: the same curriculum curriculumFor("bc") gives. */
 export function bcStepProgressions(): Curriculum & { readonly contexts: TemplateContexts } {
-  return IMPORTED_BC;
+  return CURRICULA.bc as Curriculum & { readonly contexts: TemplateContexts };
 }
 
 /** The curriculum with this key, or null when there is no map for it (only BC today): the caller refuses the child. */
@@ -80,7 +76,7 @@ export function curriculumFor(key: string): Curriculum | null {
   return Object.hasOwn(CURRICULA, key) ? CURRICULA[key as CurriculumKey] : null;
 }
 
-const DATA: Record<CurriculumKey, CurriculumData> = { bc: GENERATOR_BC_DATA };
+const DATA: Record<CurriculumKey, CurriculumData> = { bc: BC_CURRICULUM };
 const versions = new Map<string, string>();
 
 /**

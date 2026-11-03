@@ -38,6 +38,7 @@ import {
 } from "@/lib/question-package-columns";
 import { valueText } from "@/lib/question-package-math";
 import { givensProblem } from "@/lib/question-package-givens";
+import { templateAnswer, templateAnswerValue, templateSourceProblem } from "@/lib/question-package-template";
 
 /** What the checker gives the item check: the value readers it owns, and the package's operation once checked. */
 export interface ItemContext {
@@ -341,6 +342,41 @@ const RULES: { [K in ItemCheck["kind"]]: CheckRule<Extract<ItemCheck, { kind: K 
       if (f?.kind !== "pattern") return fail("a pattern check needs a pattern figure");
       const shape = f.core[f.blank % f.core.length];
       return signProblem(c.region, choiceOf(read, c.region), shape, "the shape in the blank");
+    },
+  },
+
+  template: {
+    region: "box",
+    shape: (c) => oneRegion(c) ?? templateSourceProblem(c.source),
+    regions: (c) => [c.region],
+    verify: (c, read) => {
+      const worked = templateAnswer(c.source);
+      if ("problem" in worked) return fail(worked.problem);
+      const answer = boxAnswer(read, c.region);
+      const right = templateAnswerValue(worked.answer) as AnswerValue;
+      return read.ctx.sameValue(answer, right) ? null : fail(`the region "${c.region}" holds ${valueText(answer)}, but the template's answer is ${worked.answer}`);
+    },
+  },
+
+  "template-choice": {
+    region: "choice",
+    shape: (c) => oneRegion(c) ?? templateSourceProblem(c.source),
+    regions: (c) => [c.region],
+    verify: (c, read) => {
+      const worked = templateAnswer(c.source);
+      if ("problem" in worked) return fail(worked.problem);
+      return signProblem(c.region, choiceOf(read, c.region), worked.answer, "the template's answer");
+    },
+  },
+
+  "template-shown": {
+    region: "choice",
+    shape: (c) => oneRegion(c) ?? templateSourceProblem(c.source) ?? (typeof c.shown === "string" && c.shown.length > 0 && c.shown.length <= 40 ? null : "the shown answer is not text of up to 40 characters"),
+    regions: (c) => [c.region],
+    verify: (c, read) => {
+      const worked = templateAnswer(c.source);
+      if ("problem" in worked) return fail(worked.problem);
+      return signProblem(c.region, choiceOf(read, c.region), worked.answer === c.shown ? "Yes" : "No", "whether the shown answer is right");
     },
   },
 

@@ -23,6 +23,7 @@ import { decimalRational } from "@/lib/question-package-columns";
 import { defaultItem, itemProblem, type ItemContext, type ItemProblem } from "@/lib/question-package-items";
 import { amountOf, amountValueProblem, conversionProblem, dimensionName, sameSize, unknownUnit } from "@/lib/question-package-measures";
 import type { CoinGiven } from "@/lib/question-package-givens";
+import type { TemplateSource } from "@/lib/question-package-template";
 import {
   computation,
   gcd,
@@ -504,7 +505,13 @@ export type ItemCheck =
   | { kind: "yes-no"; statement: Statement; region: string; yes: string; no: string }
   | { kind: "relation"; relation: Relation; numbers: number[]; to: number[]; labels: string[]; region: string }
   | { kind: "count"; region: string }
-  | { kind: "pattern"; region: string };
+  | { kind: "pattern"; region: string }
+  /** #489: the box holds the answer of the step template the question was filled from, recomputed from its numbers. */
+  | { kind: "template"; region: string; source: TemplateSource }
+  /** #489: the circled choice is the template's answer (true or false, yes or no, a word it names). */
+  | { kind: "template-choice"; region: string; source: TemplateSource }
+  /** #489: Spot the error's "Is it right?": No when the shown answer is not the template's answer, else Yes. */
+  | { kind: "template-shown"; region: string; source: TemplateSource; shown: string };
 
 /** A relation a relation check asks, in words. */
 export const RELATIONS = ["less-than", "closer", "equal", "more", "fewer"] as const;
