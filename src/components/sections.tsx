@@ -8,6 +8,7 @@ import { CookieSettingsButton } from "@/components/cookie-consent";
 import { HeroWorkbook } from "@/components/hero-workbook";
 import { ScanShot } from "@/components/scan-shot";
 import "@/components/hero-workbook.css";
+import "@/components/statement.css";
 import { FaqMore } from "@/components/faq-more";
 import { StartLink, StartNote } from "@/components/start-link";
 import { ADDITIONAL_CHILD_PRICE, BRAND, HERO, OFFER_ENDS, PLANS, SOCIAL_LINKS, cad } from "@/lib/site";
@@ -25,7 +26,6 @@ import {
   SectionHeader,
   StepCard,
   StepGrid,
-  SwapWord,
   type IconName,
 } from "@/ds";
 import { CompareTable } from "./compare";
@@ -58,23 +58,17 @@ export function Nav() {
   return <NavBar brand={BRAND} links={[{ label: "How it works", href: "#how" }, { label: "What's included", href: "/whats-included" }, { label: "Curriculum", href: "/curriculum" }, { label: "Pricing", href: "#price" }, { label: "FAQ", href: "#faq" }]} cta={<StartLink className="btn sm" src="nav">Free assessment</StartLink>} />;
 }
 
-// 8-9 characters only: the chip is as wide as its longest word, so a long topic
-// leaves a gap after every short one.
-const TOPICS = [
-  "fractions", "rounding", "decimals", "perimeter", "division", "equations", "percents", "multiples",
-  "patterns", "symmetry", "geometry", "carrying", "integers", "addition", "graphing", "measuring",
-];
-
-// Hero (D-214): text left, a sample workbook right (replaces the D-029 photo hero).
+// Hero (D-214, cleaned up in D-215): a plain kicker line, the headline, the lead, the buttons and the facts on the left;
+// the sample workbook on the closing section's grainy field on the right.
 const HERO_FACTS = ["Free assessment", "First month free", "Cancel anytime"];
 
 export function Hero() {
   return (
     <header id="top" className="hero hero-wb">
       <div className="txt">
-        <p className="eyebrow">{HERO.kicker}</p>
+        <p className="kicker">{HERO.kicker}</p>
         <h1>{HERO.title} <span className="mark">{HERO.highlight}</span> {HERO.after}</h1>
-        <p className="lead"><span className="nowrap">Miss <SwapWord words={TOPICS} /></span> {HERO.lead}</p>
+        <p className="lead">{HERO.lead}</p>
         <div className="ctas">
           <GetStarted src="hero" />
           <Link className="btn ghost" href="/sample-report">See a sample report</Link>
@@ -83,6 +77,19 @@ export function Hero() {
       </div>
       <HeroWorkbook />
     </header>
+  );
+}
+
+// The one-line statement after the hero (D-215, after the Spruce quote block): the set program, then what Unica does
+// (in ink), then how. Compares with a category, never a brand (D-064).
+export function Statement() {
+  return (
+    <section className="statement" aria-label="How Unica is different">
+      <Rise as="p">
+        Learning centres follow a set program. <strong>Unica personalizes your child&apos;s learning.</strong> Each workbook
+        builds on the last one: more practice where they struggled, and new challenges when they are ready.
+      </Rise>
+    </section>
   );
 }
 
