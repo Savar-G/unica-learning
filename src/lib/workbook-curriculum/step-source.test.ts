@@ -7,6 +7,8 @@ import { MISCONCEPTIONS } from "@/lib/assessment/misconceptions";
 import { BC_CURRICULUM } from "./bc";
 import { curriculumProblems } from "./check";
 import { parseStepProgressions, stepFieldProblems } from "./step-source";
+import { domainContains, domainProblems, fillTemplate, seededRandom } from "./template";
+import { formatValue } from "./expression";
 import { auditTemplates } from "./template-audit";
 const raw: unknown = JSON.parse(readFileSync("data/curriculum/step-progressions-k9.json", "utf8"));
 const source = parseStepProgressions(raw);
@@ -50,6 +52,20 @@ describe("staged progression import", () => {
     const codes: { id: string; description: string }[] = JSON.parse(readFileSync("data/curriculum/new-mistake-codes.json", "utf8"));
     expect(codes).toHaveLength(88);
     for (const code of codes) expect(MISCONCEPTIONS[code.id as keyof typeof MISCONCEPTIONS]).toEqual({ description: code.description, evidence: "none" });
+  });
+  it("confirms the remaining price and graph range problems against the source", () => {
+    const priceSteps = source.steps.filter(s => Object.entries(s.numbers ?? {}).some(([key, domain]) => key === "price" && domainProblems(domain).some(p => p.includes("within min and max"))));
+    expect(priceSteps.map(s => `${s.skill}/${s.number}`)).toEqual(["7.13-sale-price/3", "7.13-total-cost/1", "7.13-total-cost/2", "7.13-total-cost/3"]);
+    for (const s of priceSteps) {
+      expect(s.numbers!.price).toMatchObject({ min: 20, values: expect.arrayContaining([10]) });
+    }
+    expect(source.steps.flatMap(s => Object.values(s.numbers ?? {}).flatMap(domainProblems)).filter(p => p.includes("no value on its decimal grid"))).toEqual([]);
+    const graph = source.steps.find(s => s.skill === "8.6-graph-relation" && s.number === 2)!;
+    for (const [index, seed] of [[0, 666305181], [3, 39677870]]) {
+      const t = graph.templates![index], item = fillTemplate(graph, t, source.contexts, seededRandom(seed));
+      expect(domainContains(graph.numbers!.x, item.values.c)).toBe(false);
+      expect(["5", "6"]).toContain(formatValue(item.values.c));
+    }
   });
   it("uses parent-led only in Kindergarten, and child-led from U4", () => {
     for (const l of BC_CURRICULUM.levels) expect(l.lead).toBe(l.number <= 3 ? "parent-led" : "child-led");

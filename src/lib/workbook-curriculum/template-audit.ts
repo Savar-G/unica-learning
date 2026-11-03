@@ -1,7 +1,6 @@
 /** A reproducible corpus audit. Data failures remain failures and do not alter the source. */
-import { formatValue, type ExpressionValue } from "./expression";
-import { prepareTemplate, seededRandom, slotDomain } from "./template";
-import type { NumberRange, StepProgressions } from "./types";
+import { domainContains, prepareTemplate, seededRandom, slotDomain } from "./template";
+import type { StepProgressions } from "./types";
 export interface TemplateFailure {
   skill: string; step: number; template: number; phase: "prepare" | "fill";
   message: string; failedFills: number; firstSeed: number;
@@ -11,7 +10,6 @@ export interface TemplateAudit {
   passedFills: number; failedFills: number; failedTemplates: number; maxAttemptsUsed: number;
   failures: TemplateFailure[];
 }
-function numeric(value: ExpressionValue): number { return Number(formatValue(value)); }
 export function auditTemplates(source: StepProgressions, fillsPerTemplate = 30): TemplateAudit {
   if (!Number.isInteger(fillsPerTemplate) || fillsPerTemplate < 1 || fillsPerTemplate > 1000) throw new Error("Fills per template must be from 1 to 1000");
   const report: TemplateAudit = { steps: source.steps.length, skills: new Set(source.steps.map(s => s.skill)).size, templates: 0, fillsPerTemplate, trials: 0, passedFills: 0, failedFills: 0, failedTemplates: 0, maxAttemptsUsed: 0, failures: [] };
@@ -28,13 +26,7 @@ export function auditTemplates(source: StepProgressions, fillsPerTemplate = 30):
         const filled = prepared.fill(seededRandom(seed));
         for (const [name, ref] of Object.entries(template.slots)) {
           const domain = slotDomain(step, ref), value = filled.values[name];
-          if (Array.isArray(domain)) {
-            if (!domain.some(v => String(v) === formatValue(value))) throw new Error(`${name} is outside its values list`);
-          } else {
-            const range = domain as NumberRange, n = numeric(value);
-            if (!Number.isFinite(n) || n < range.min || n > range.max) throw new Error(`${name} is outside its range`);
-            if (range.values && !range.values.includes(n)) throw new Error(`${name} is outside its range values list`);
-          }
+          if (!domainContains(domain, value)) throw new Error(`${name} is outside its range or values list`);
         }
         if (!filled.answer.length) throw new Error("Answer is empty");
         if (/[{}]/.test(filled.text)) throw new Error("Unfilled placeholder or literal brace in output");

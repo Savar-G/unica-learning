@@ -24,17 +24,49 @@ export class FractionValue {
     this.numerator = bounded(n / g * sign); this.denominator = bounded(d / g * sign);
   }
 }
-export type ExpressionValue = bigint | number | string | boolean | FractionValue | readonly ExpressionValue[];
+/** Exact finite decimal. Division still produces a float unless a Fraction is involved. */
+export class DecimalValue extends FractionValue {
+  constructor(n: bigint, d: bigint = ONE, readonly negativeZero = false) { super(n, d); }
+}
+export function decimalValue(value: string | number): DecimalValue {
+  const text = String(value), match = text.match(/^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/);
+  if (!match || !(match[2] || match[3]) || !Number.isFinite(Number(text))) return fail("Invalid finite decimal");
+  const digits = (match[2] || "0") + (match[3] || ""), places = (match[3]?.length ?? 0) - Number(match[4] ?? 0);
+  if (Math.abs(places) > 1000) fail("Decimal exceeds the precision limit");
+  const n = bounded(BigInt(digits) * (match[1] === "-" ? -ONE : ONE)), scale = bounded(BigInt(10) ** BigInt(Math.abs(places)));
+  return new DecimalValue(places < 0 ? bounded(n * scale) : n, places > 0 ? scale : ONE, match[1] === "-" && n === ZERO);
+}
+/** Numeric equality across exact decimals, integers and computed floats. */
+export function numericCompare(a: ExpressionValue, b: ExpressionValue): number { return compare(a, b); }
+class TupleValue {
+  constructor(readonly items: readonly ExpressionValue[]) {}
+}
+function hashable(value: ExpressionValue): boolean {
+  if (Array.isArray(value) || value instanceof SetValue) return false;
+  return !(value instanceof TupleValue) || value.items.every(hashable);
+}
+class SetValue {
+  readonly items: readonly ExpressionValue[];
+  constructor(items: ExpressionValue[]) {
+    const unique: ExpressionValue[] = [];
+    for (const item of items) {
+      if (!hashable(item)) fail("Unhashable set member");
+      if (!unique.some(v => equal(v, item))) unique.push(item);
+    }
+    this.items = unique;
+  }
+}
+export type ExpressionValue = bigint | number | string | boolean | FractionValue | SetValue | TupleValue | readonly ExpressionValue[];
 export type Bindings = Readonly<Record<string, ExpressionValue>>;
 const functions = new Set(["gcd", "lcm", "floor", "ceil", "round", "abs", "min", "max", "sqrt", "isqrt", "int", "str", "Fraction", "sum", "len", "sorted"]);
 const forbidden = new Set(["__proto__", "prototype", "constructor"]);
 export function validName(name: string): boolean {
-  return /^[A-Za-z][A-Za-z0-9_]*$/.test(name) && !forbidden.has(name) && !functions.has(name) && !["pi", "True", "False", "and", "or", "not", "if", "else"].includes(name);
+  return /^[A-Za-z][A-Za-z0-9_]*$/.test(name) && !forbidden.has(name) && !functions.has(name) && !["pi", "True", "False", "and", "or", "not", "in", "for", "if", "else"].includes(name);
 }
 type Node =
   | { kind: "value"; value: ExpressionValue }
   | { kind: "name"; name: string }
-  | { kind: "list"; items: Node[] }
+  | { kind: "list" | "set" | "tuple"; items: Node[] }
   | { kind: "unary"; op: string; child: Node }
   | { kind: "binary"; op: string; left: Node; right: Node }
   | { kind: "compare"; first: Node; rest: { op: string; right: Node }[] }
@@ -66,10 +98,10 @@ function tokenize(source: string): Token[] {
       const tail = source.slice(i);
       const number = tail.match(/^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/);
       const name = tail.match(/^[A-Za-z_][A-Za-z0-9_]*/);
-      const op = tail.match(/^(?:\*\*|\/\/|<=|>=|==|!=|[+\-*/%<>()\[\],=])/);
+      const op = tail.match(/^(?:\*\*|\/\/|<=|>=|==|!=|[+\-*/%<>()\[\]{},=])/);
       if (number) {
         const text = number[0];
-        tokens.push({ text: "literal", value: /[.eE]/.test(text) ? finite(Number(text)) : bounded(BigInt(text)) }); i += text.length;
+        tokens.push({ text: "literal", value: /[.eE]/.test(text) ? decimalValue(text) : bounded(BigInt(text)) }); i += text.length;
       } else if (name) { tokens.push({ text: name[0] }); i += name[0].length; }
       else if (op) { tokens.push({ text: op[0] }); i += op[0].length; }
       else fail(`Unsupported token ${JSON.stringify(c)} at position ${i}`);
@@ -86,7 +118,10 @@ class Parser {
   constructor(source: string) { this.tokens = tokenize(source); }
   private peek() { return this.tokens[this.at].text; }
   private take(text: string) { if (this.peek() === text) { this.at++; return true; } return false; }
-  private need(text: string) { if (!this.take(text)) fail(`Expected ${text}, found ${this.peek()}`); }
+  private need(text: string) {
+    if (this.peek() === "for") fail("Generator expressions and comprehensions are not supported");
+    if (!this.take(text)) fail(`Expected ${text}, found ${this.peek()}`);
+  }
   parse(): Node { const n = this.expression(); this.need("<end>"); return n; }
   private expression(): Node {
     if (++this.depth > 64) fail("Expression exceeds the nesting limit");
@@ -108,7 +143,11 @@ class Parser {
   };
   private compare(): Node {
     const first = this.add(), rest: { op: string; right: Node }[] = [];
-    while (["<", ">", "<=", ">=", "==", "!="].includes(this.peek())) rest.push({ op: this.tokens[this.at++].text, right: this.add() });
+    while (["<", ">", "<=", ">=", "==", "!=", "in"].includes(this.peek()) || this.peek() === "not" && this.tokens[this.at + 1].text === "in") {
+      const op = this.tokens[this.at++].text;
+      if (op === "not") this.need("in");
+      rest.push({ op: op === "not" ? "not in" : op, right: this.add() });
+    }
     return rest.length ? { kind: "compare", first, rest } : first;
   }
   private add = (): Node => this.chain(this.multiply, ["+", "-"]);
@@ -135,9 +174,14 @@ class Parser {
     const t = this.tokens[this.at++]; let n: Node;
     if (t.text === "literal") n = { kind: "value", value: t.value! };
     else if (t.text === "[") n = { kind: "list", items: this.sequence("]") };
+    else if (t.text === "{") {
+      if (this.peek() === "}") fail("Empty braces are a dictionary; dictionaries are not supported");
+      n = { kind: "set", items: this.sequence("}") };
+    }
     else if (t.text === "(") {
+      if (this.take(")")) return { kind: "tuple", items: [] };
       n = this.expression();
-      if (this.take(",")) { const items = [n]; if (this.peek() !== ")") do { items.push(this.expression()); } while (this.take(",") && this.peek() !== ")"); n = { kind: "list", items }; }
+      if (this.take(",")) { const items = [n]; if (this.peek() !== ")") do { items.push(this.expression()); } while (this.take(",") && this.peek() !== ")"); n = { kind: "tuple", items }; }
       this.need(")");
     } else if (["True", "False", "pi"].includes(t.text)) n = { kind: "value", value: t.text === "pi" ? Math.PI : t.text === "True" };
     else if (/^[A-Za-z][A-Za-z0-9_]*$/.test(t.text) && !forbidden.has(t.text)) {
@@ -195,23 +239,52 @@ function rational(v: ExpressionValue): FractionValue {
 const floorRatio = (n: bigint, d: bigint) => { const q = n / d; return n % d !== ZERO && (n < ZERO) !== (d < ZERO) ? q - ONE : q; };
 function truth(v: ExpressionValue): boolean {
   if (v instanceof FractionValue) return v.numerator !== ZERO;
+  if (v instanceof SetValue || v instanceof TupleValue) return v.items.length > 0;
   return Array.isArray(v) ? v.length > 0 : !!v;
 }
 function compare(a: ExpressionValue, b: ExpressionValue): number {
   if (typeof a === "string" && typeof b === "string") return a < b ? -1 : a > b ? 1 : 0;
-  const x = rational(a), y = rational(b), d = x.numerator * y.denominator - y.numerator * x.denominator;
+  const decimal = a instanceof DecimalValue || b instanceof DecimalValue;
+  const x = rational(decimal && typeof a === "number" ? decimalValue(a) : a), y = rational(decimal && typeof b === "number" ? decimalValue(b) : b), d = x.numerator * y.denominator - y.numerator * x.denominator;
   return d < ZERO ? -1 : d > ZERO ? 1 : 0;
 }
 function equal(a: ExpressionValue, b: ExpressionValue): boolean {
+  if (a instanceof TupleValue || b instanceof TupleValue) return a instanceof TupleValue && b instanceof TupleValue && a.items.length === b.items.length && a.items.every((v, i) => equal(v, b.items[i]));
+  if (a instanceof SetValue || b instanceof SetValue) return a instanceof SetValue && b instanceof SetValue && a.items.length === b.items.length && a.items.every(v => b.items.some(w => equal(v, w)));
   if (typeof a === "string" || typeof b === "string") return a === b;
   if (Array.isArray(a) || Array.isArray(b)) return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => equal(v, b[i]));
   return compare(a, b) === 0;
+}
+function contains(container: ExpressionValue, value: ExpressionValue): boolean {
+  if (typeof container === "string") return typeof value === "string" ? container.includes(value) : fail("String membership requires a string");
+  if (container instanceof SetValue || container instanceof TupleValue) return container.items.some(v => equal(v, value));
+  if (Array.isArray(container)) return container.some(v => equal(v, value));
+  return fail("Membership requires a string, list, tuple or set");
+}
+function decimalArithmetic(op: string, a: ExpressionValue, b: ExpressionValue): ExpressionValue {
+  const x = typeof a === "number" ? decimalValue(a) : rational(a), y = typeof b === "number" ? decimalValue(b) : rational(b);
+  const l = new FractionValue(x.numerator, x.denominator), r = new FractionValue(y.numerator, y.denominator);
+  const result = binary(op, l, op === "**" && r.denominator === ONE ? r.numerator : r);
+  if (!(result instanceof FractionValue)) return typeof result === "bigint" ? new DecimalValue(result) : result;
+  let d = result.denominator;
+  while (d % TWO === ZERO) d /= TWO;
+  while (d % BigInt(5) === ZERO) d /= BigInt(5);
+  if (d !== ONE) return result;
+  const negativeZero = result.numerator === ZERO && op === "*" && Object.is(floating(a) * floating(b), -0);
+  return new DecimalValue(result.numerator, result.denominator, negativeZero);
 }
 function binary(op: string, a: ExpressionValue, b: ExpressionValue): ExpressionValue {
   if (op === "+" && typeof a === "string" && typeof b === "string") {
     if (a.length + b.length > 16000) fail("String exceeds the size limit"); return a + b;
   }
   const x = numeric(a), y = numeric(b);
+  const exactFraction = (n: typeof x) => n instanceof FractionValue && !(n instanceof DecimalValue);
+  if (op === "/" && !exactFraction(x) && !exactFraction(y)) {
+    if (!truth(y)) fail("Division by zero"); return finite(floating(x) / floating(y));
+  }
+  if ((x instanceof DecimalValue || y instanceof DecimalValue) && !exactFraction(x) && !exactFraction(y)) {
+    return decimalArithmetic(op, x, y);
+  }
   if (op === "**") {
     if (typeof y === "bigint" && typeof x !== "number") {
       if (y > BigInt(MAX_BITS) || y < -BigInt(MAX_BITS)) fail("Exponent exceeds the limit");
@@ -259,13 +332,23 @@ function scaledRound(v: ExpressionValue, places: number): bigint {
 /** Python fixed-point format, with ties to even using the exact stored numeric value. */
 export function formatFixed(v: ExpressionValue, places: number): string {
   if (places < 0) fail("Fixed precision must not be negative");
-  const n = scaledRound(v, places), negative = n < ZERO || (n === ZERO && (floating(v) < 0 || Object.is(floating(v), -0)));
+  const n = scaledRound(v, places), negative = n < ZERO || (n === ZERO && (v instanceof DecimalValue && v.negativeZero || floating(v) < 0 || Object.is(floating(v), -0)));
   const digits = (n < ZERO ? -n : n).toString().padStart(places + 1, "0");
   return (negative ? "-" : "") + (places ? `${digits.slice(0, -places)}.${digits.slice(-places)}` : digits);
 }
 export function formatValue(v: ExpressionValue): string {
+  if (v instanceof DecimalValue) {
+    if (v.numerator === ZERO && v.negativeZero) return "-0.0";
+    if (v.denominator === ONE) return `${v.numerator}.0`;
+    let d = v.denominator, places = 0;
+    while (d !== ONE && places < 1000) { d /= gcd(d, BigInt(10)); places++; }
+    if (d !== ONE) return fail("Decimal does not have a finite expansion");
+    return formatFixed(v, places);
+  }
   if (v instanceof FractionValue) return v.denominator === ONE ? String(v.numerator) : `${v.numerator}/${v.denominator}`;
   if (typeof v === "boolean") return v ? "True" : "False";
+  if (v instanceof TupleValue) return `(${v.items.map(x => typeof x === "string" ? `'${x}'` : formatValue(x)).join(", ")}${v.items.length === 1 ? "," : ""})`;
+  if (v instanceof SetValue) return `{${v.items.map(formatValue).join(", ")}}`;
   if (Array.isArray(v)) return `[${v.map(x => typeof x === "string" ? `'${x}'` : formatValue(x)).join(", ")}]`;
   if (typeof v === "number") {
     if (Object.is(v, -0)) return "-0.0";
@@ -281,6 +364,7 @@ export function formatValue(v: ExpressionValue): string {
 function iterable(v: ExpressionValue): readonly ExpressionValue[] {
   if (Array.isArray(v)) return v;
   if (typeof v === "string") return [...v];
+  if (v instanceof SetValue || v instanceof TupleValue) return v.items;
   return fail("Expected a list or a string");
 }
 function call(name: string, a: ExpressionValue[], reverse?: ExpressionValue): ExpressionValue {
@@ -304,6 +388,7 @@ function call(name: string, a: ExpressionValue[], reverse?: ExpressionValue): Ex
       if (a.length === 1) return n;
       if (typeof x === "bigint" && places >= 0) return x;
       if (typeof x === "bigint") return bounded(n * BigInt(10) ** BigInt(-places));
+      if (x instanceof DecimalValue) return places >= 0 ? new DecimalValue(n, BigInt(10) ** BigInt(places)) : new DecimalValue(n * BigInt(10) ** BigInt(-places));
       if (x instanceof FractionValue) return places >= 0 ? new FractionValue(n, BigInt(10) ** BigInt(places)) : new FractionValue(n * BigInt(10) ** BigInt(-places));
       return finite(Number(`${n}e${-places}`));
     }
@@ -357,6 +442,8 @@ export function compileExpression(source: string): CompiledExpression {
         case "value": return n.value;
         case "name": return Object.hasOwn(values, n.name) ? values[n.name] : fail(`Unknown name: ${n.name}`);
         case "list": return n.items.map(run);
+        case "set": return new SetValue(n.items.map(run));
+        case "tuple": return new TupleValue(n.items.map(run));
         case "unary": { const v = run(n.child); return n.op === "not" ? !truth(v) : n.op === "+" ? numeric(v) : binary("*", -ONE, v); }
         case "binary": {
           const l = run(n.left);
@@ -368,7 +455,7 @@ export function compileExpression(source: string): CompiledExpression {
           let l = run(n.first);
           for (const part of n.rest) {
             const r = run(part.right), op = part.op;
-            const ok = op === "==" ? equal(l, r) : op === "!=" ? !equal(l, r) : op === "<" ? compare(l, r) < 0 : op === ">" ? compare(l, r) > 0 : op === "<=" ? compare(l, r) <= 0 : compare(l, r) >= 0;
+            const ok = op === "in" ? contains(r, l) : op === "not in" ? !contains(r, l) : op === "==" ? equal(l, r) : op === "!=" ? !equal(l, r) : op === "<" ? compare(l, r) < 0 : op === ">" ? compare(l, r) > 0 : op === "<=" ? compare(l, r) <= 0 : compare(l, r) >= 0;
             if (!ok) return false; l = r;
           }
           return true;
@@ -376,7 +463,9 @@ export function compileExpression(source: string): CompiledExpression {
         case "conditional": return truth(run(n.condition)) ? run(n.yes) : run(n.no);
         case "call": return call(n.name, n.args.map(run), n.reverse && run(n.reverse));
         case "index": {
-          const items = iterable(run(n.target)), index = Number(integral(run(n.index))), at = index < 0 ? items.length + index : index;
+          const target = run(n.target);
+          if (target instanceof SetValue) fail("Sets do not support indexing");
+          const items = iterable(target), index = Number(integral(run(n.index))), at = index < 0 ? items.length + index : index;
           return at >= 0 && at < items.length ? items[at] : fail(`Index ${index} is outside the list`);
         }
       }

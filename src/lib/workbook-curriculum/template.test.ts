@@ -43,6 +43,18 @@ describe("pure seeded template filler", () => {
     expect(fillTemplate(step, t, source.contexts, () => 0).text).toBe("1|1.00|3|red");
     expect(fillTemplate(step, t, source.contexts, () => 0.9999999).text).toBe("9|2.00|9|blue");
   });
+  it("infers exact decimal grids and evaluates exact sums in checks", () => {
+    const decimalStep = { ...step, numbers: { a: { min: 0.1, max: 0.1 }, b: { min: 0.2, max: 0.2 }, tenths: { min: 0.1, max: 0.9 }, mixed: { min: -0.15, max: 0.2 }, small: { min: 1e-7, max: 3e-7 } } };
+    const t: StepTemplate = { format: "bare", difficulty: "easy", slots: { a: "a", b: "b", c: "tenths", d: "mixed", e: "small" }, text: "{total:.2f}|{c}|{d}|{e}", derived: { total: "a + b" }, check: "total == 0.3", answer: "total" };
+    expect(fillTemplate(decimalStep, t, source.contexts, () => 0)).toMatchObject({ text: "0.30|0.1|-0.15|0.0000001", answer: "0.3", attempts: 1 });
+    expect(fillTemplate(decimalStep, t, source.contexts, () => 0.999999)).toMatchObject({ text: "0.30|0.9|0.2|0.0000003" });
+    const samples = new Set(Array.from({ length: 300 }, (_, seed) => fillTemplate(decimalStep, t, source.contexts, seededRandom(seed)).text.split("|")[1]));
+    expect([...samples].sort()).toEqual(["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9"]);
+  });
+  it("keeps expression braces separate from text placeholders", () => {
+    const t: StepTemplate = { format: "bare", difficulty: "easy", slots: { a: "a" }, text: "{a}: {count}", derived: { count: "len({a, a, 10})" }, check: "a in [1, 2, 3, 4, 5, 6, 7, 8, 9]", answer: "len({a, a, 10})" };
+    expect(fillTemplate(step, t, source.contexts, () => 0)).toMatchObject({ text: "1: 2", answer: "2" });
+  });
   it("applies derived values in order and permits assignment to a sampled slot", () => {
     const t: StepTemplate = { format: "bare", difficulty: "easy", slots: { a: "a" }, derived: { a: "a * 10", b: "a + 1" }, text: "{a}: {b}", answer: "b" };
     expect(fillTemplate(step, t, source.contexts, () => 0)).toMatchObject({ text: "10: 11", answer: "11" });
@@ -56,7 +68,7 @@ describe("pure seeded template filler", () => {
     expect(() => fillTemplate(step, template, source.contexts, () => 1)).toThrow("Random source");
   });
   it("rejects invalid domains before attempting a fill", () => {
-    for (const numbers of [{ a: { min: 5, max: 2 } }, { a: { min: 0, max: 1, values: [2] } }, { a: [] }, { a: { min: 1.000000001, max: 1.1 } }]) {
+    for (const numbers of [{ a: { min: 5, max: 2 } }, { a: { min: 0, max: 1, values: [2] } }, { a: [] }, { a: { min: 0.1, max: 0.9, decimal_places: 0 } }]) {
       expect(() => fillTemplate({ ...step, numbers }, { ...template, slots: { a: "a" } }, source.contexts, seededRandom(1))).toThrow();
     }
   });

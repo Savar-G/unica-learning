@@ -1,5 +1,5 @@
 /** Standalone template API. The book writer does not call this module. */
-import { compileExpression, expressionIsTrue, formatFixed, formatValue, validName, type Bindings, type ExpressionValue } from "./expression";
+import { compileExpression, decimalValue, DecimalValue, numericCompare, expressionIsTrue, formatFixed, formatValue, validName, type Bindings, type ExpressionValue } from "./expression";
 import type { CurriculumStep, NumberDomain, NumberRange, StepTemplate, TemplateContexts } from "./types";
 export type RandomSource = () => number;
 export class TemplateError extends Error {
@@ -23,39 +23,47 @@ function choose<T>(items: readonly T[], random: RandomSource): T {
   if (!Number.isFinite(n) || n < 0 || n >= 1) fail("Random source must return a number in [0, 1)");
   return items[Math.floor(n * items.length)];
 }
-function grid(r: NumberRange): { scale: number; lo: number; hi: number } {
-  const scale = 10 ** (r.decimal_places ?? 0);
-  let lo = Math.ceil(r.min * scale - 1e-8), hi = Math.floor(r.max * scale + 1e-8);
-  // Correct binary endpoint noise, but never move a sample beyond the actual source bounds.
-  if (lo / scale < r.min) lo++;
-  if (hi / scale > r.max) hi--;
-  return { scale, lo, hi };
+function decimalPlaces(value: number): number {
+  const [coefficient, exponent = "0"] = String(value).toLowerCase().split("e");
+  return Math.max(0, (coefficient.split(".")[1]?.length ?? 0) - Number(exponent));
+}
+function grid(r: NumberRange): { scale: bigint; lo: bigint; hi: bigint; places: number } {
+  const places = r.decimal_places ?? Math.max(decimalPlaces(r.min), decimalPlaces(r.max));
+  if (!Number.isInteger(places) || places < 0 || places > 18) return fail("decimal_places must be an integer from 0 to 18");
+  const scale = BigInt(10) ** BigInt(places), min = decimalValue(r.min), max = decimalValue(r.max);
+  const floor = (n: bigint, d: bigint) => n / d - (n < BigInt(0) && n % d !== BigInt(0) ? BigInt(1) : BigInt(0));
+  return { scale, lo: -floor(-min.numerator * scale, min.denominator), hi: floor(max.numerator * scale, max.denominator), places };
+}
+export function domainContains(domain: NumberDomain, value: ExpressionValue): boolean {
+  const matches = (candidate: string | number) => typeof candidate === "string" ? value === candidate : typeof value !== "string" && numericCompare(value, decimalValue(candidate)) === 0;
+  if (Array.isArray(domain)) return domain.some(matches);
+  const r = domain as NumberRange;
+  return numericCompare(value, decimalValue(r.min)) >= 0 && numericCompare(value, decimalValue(r.max)) <= 0 && (!r.values || r.values.some(matches));
 }
 export function domainProblems(domain: NumberDomain): string[] {
   if (Array.isArray(domain)) return domain.length && domain.every(x => typeof x === "string" || typeof x === "number" && Number.isFinite(x)) ? [] : ["values must be a nonempty list of finite numbers or strings"];
   const r = domain as NumberRange, errors: string[] = [];
-  if (!Number.isFinite(r.min) || !Number.isFinite(r.max) || r.min > r.max) errors.push("range must have finite min <= max");
-  const places = r.decimal_places ?? 0;
-  if (!Number.isInteger(places) || places < 0 || places > 6) errors.push("decimal_places must be an integer from 0 to 6");
-  const { lo, hi } = grid(r);
-  if (!Number.isSafeInteger(lo) || !Number.isSafeInteger(hi) || !Number.isSafeInteger(hi - lo + 1) || lo > hi) errors.push("range has no safe sample on its decimal grid");
-  if (r.values && (!r.values.length || r.values.some(v => !Number.isFinite(v) || v < r.min || v > r.max))) errors.push("range values must be nonempty and within min and max");
+  if (!Number.isFinite(r.min) || !Number.isFinite(r.max) || r.min > r.max) return ["range must have finite min <= max"];
+  try {
+    const { lo, hi } = grid(r);
+    if (!r.values && lo > hi) errors.push("range has no value on its decimal grid");
+    if (!r.values && hi - lo + BigInt(1) > BigInt(Number.MAX_SAFE_INTEGER)) errors.push("range grid exceeds the safe sampling limit");
+  } catch (e) { errors.push(e instanceof Error ? e.message : String(e)); }
+  if (r.values && (!r.values.length || r.values.some(v => !Number.isFinite(v) || !domainContains({ min: r.min, max: r.max }, decimalValue(v))))) errors.push("range values must be nonempty and within min and max");
   return errors;
+}
+function scalar(value: string | number): ExpressionValue {
+  return typeof value === "number" ? Number.isInteger(value) ? BigInt(value) : decimalValue(value) : value;
 }
 function sample(domain: NumberDomain, random: RandomSource): ExpressionValue {
   const errors = domainProblems(domain); if (errors.length) fail(errors.join("; "));
-  let value: number | string;
-  if (Array.isArray(domain)) value = choose(domain, random);
-  else {
-    const r = domain as NumberRange;
-    if (r.values) value = choose(r.values, random);
-    else {
-      const { scale, lo, hi } = grid(r);
-      const n = random(); if (!Number.isFinite(n) || n < 0 || n >= 1) fail("Random source must return a number in [0, 1)");
-      value = (lo + Math.floor(n * (hi - lo + 1))) / scale;
-    }
-  }
-  return typeof value === "number" && Number.isInteger(value) ? BigInt(value) : value;
+  if (Array.isArray(domain)) return scalar(choose(domain, random));
+  const r = domain as NumberRange;
+  if (r.values) return scalar(choose(r.values, random));
+  const { scale, lo, hi, places } = grid(r);
+  const n = random(); if (!Number.isFinite(n) || n < 0 || n >= 1) fail("Random source must return a number in [0, 1)");
+  const tick = lo + BigInt(Math.floor(n * Number(hi - lo + BigInt(1))));
+  return places === 0 ? tick : new DecimalValue(tick, scale);
 }
 export function slotDomain(step: CurriculumStep, reference: string | NumberDomain): NumberDomain {
   if (typeof reference !== "string") return reference;
@@ -135,7 +143,7 @@ export function prepareTemplate(step: CurriculumStep, template: StepTemplate, co
     if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 1000) fail("Attempt limit must be an integer from 1 to 1000");
     for (let attempts = 1; attempts <= maxAttempts; attempts++) {
       const values: Record<string, ExpressionValue> = Object.create(null);
-      if (step.values) values.values = step.values.map(v => typeof v === "number" && Number.isInteger(v) ? BigInt(v) : v);
+      if (step.values) values.values = step.values.map(scalar);
       for (const { name, domain } of slots) values[name] = sample(domain, random);
       for (const { name, expression } of derived) values[name] = expression.evaluate(values);
       if (check && !expressionIsTrue(check.evaluate(values))) continue;
