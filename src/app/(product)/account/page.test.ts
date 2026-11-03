@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
 import Account from "./page";
 import StartScreen from "./start/[child]/page";
+import type { ParentNote } from "@/lib/parent-maya-notes";
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({}) }));
@@ -12,6 +13,8 @@ vi.mock("@/lib/parent-pin-server", () => ({ pinIsSet: async () => false }));
 vi.mock("@/lib/workbook-store", () => ({ workbookStore: () => ({ childWorkbooks: async () => [] }) }));
 const scanning = vi.hoisted(() => ({ enabled: false }));
 vi.mock("@/lib/scan-pages-access", () => ({ scanPagesAccess: async () => scanning.enabled }));
+const notes = vi.hoisted(() => ({ latest: new Map<string, ParentNote>() }));
+vi.mock("@/lib/parent-maya-notes", async (original) => ({ ...await original<typeof import("@/lib/parent-maya-notes")>(), latestParentMayaNotes: async () => notes.latest }));
 
 const family = vi.hoisted(() => ({ postal: "V3S 1A1" as string | null, timeZone: null as string | null, olderChild: false }));
 const opensAt = Date.parse("2026-11-18T04:29:00Z");
@@ -43,7 +46,31 @@ vi.mock("@/lib/supabase-auth", () => ({
   }),
 }));
 
-beforeEach(() => { family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; scanning.enabled = false; });
+beforeEach(() => { family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; scanning.enabled = false; notes.latest = new Map(); });
+
+it("shows only the latest note and its links on the matching child's card, without an empty notes section", async () => {
+  family.olderChild = true;
+  notes.latest.set("c1", {
+    child_id: "c1", call_id: "latest-chat", channel: "chat", startedAt: "2026-11-08T01:00:00Z", call_ended_at: "2026-11-08T01:06:00Z",
+    facts: { question: { source: "workbook", page: 23, number: 4, text: "27 + 39" }, minutes: 6, finished: "with_help", reason: "solved", help: "hint", stuckOn: null, paper: "unknown", safety: false },
+    sentences: ["{child} called Maya about page 23, question 4.", "{child} finished it after a small hint."], warm: null,
+  });
+  const out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
+  expect(out.match(/<h3>Latest note from Maya<\/h3>/g)).toHaveLength(1);
+  expect(out).toContain("Asha finished it after a small hint.");
+  expect(out).toContain("Saturday, November 7 · 6:00 p.m. · 6 minutes");
+  expect(out).toContain('href="/account/notes/c1/latest-chat"');
+  expect(out).toContain('href="/account/notes/c1"');
+  expect(out).not.toContain('href="/account/notes/z-old"');
+  expect(out).not.toContain("No notes");
+  expect(out).not.toContain("What Asha and Maya said");
+});
+
+it("adds no note heading or links when no session has a note", async () => {
+  const out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
+  expect(out).not.toContain("Latest note from Maya");
+  expect(out).not.toContain("/account/notes/");
+});
 
 it.each([false, true])("shows the Scan pages link only when the server permits it: %s", async (enabled) => {
   scanning.enabled = enabled;

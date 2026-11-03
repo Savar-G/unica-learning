@@ -23,9 +23,11 @@ export function Personalization() {
 }
 
 function Lines({ child }: { child: SampleChild }) {
+  const her = child.she === "she" ? "Her" : "His";
   const lines: [string, string][] = [
-    ["Gap", child.gap],
-    [child.programLabel, child.program],
+    [`Where ${child.she} is`, child.level],
+    ["Likes to learn with", child.learnsWith],
+    [`${her} next book`, child.nextBook],
   ];
   return (
     <dl className="pz-lines">
@@ -54,7 +56,7 @@ function Fork() {
     <div className="pz-fork">
       <Rise className="pz-start">
         <span className="eyebrow">Meet Leah and Kai</span>
-        <p>Leah and Kai are both in Grade 3. The assessment found different gaps, so their programs are different.</p>
+        <p>Leah and Kai are in the same Grade 3 class. Leah needs to catch up. Kai is ready to move ahead.</p>
       </Rise>
       <svg className="pz-branch" viewBox="0 0 400 60" preserveAspectRatio="none" aria-hidden="true">
         <path d="M200 0 C200 30 100 30 100 60 M200 0 C200 30 300 30 300 60" />

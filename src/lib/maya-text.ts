@@ -43,6 +43,7 @@ import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE
 export const MAX_MAYA_TURNS = 8;
 
 export interface TextSessionOptions {
+  confirmWorkbook?: boolean;
   callId: string;
   /** The question package (untrusted; the session checks it). */
   package: unknown;
@@ -182,7 +183,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   if (resume?.v === 6 && (!resume.initial || !Array.isArray(resume.log))) throw new Error("maya text: the saved event log is missing");
   if (resume && (![1, 6].includes(resume.v) || (resume.v === 6 ? resume.initial!.session.callId : resume.session.callId) !== options.callId)) throw new Error("maya text: the saved session is not this call's");
   const initial: TextLogInitial = resume?.v === 6 && resume.initial ? structuredClone(resume.initial) : {
-    session: resume ? structuredClone(resume.session) : createSession({ callId: options.callId, channel: options.channel, package: options.package, random: options.random, grade: options.grade, history: options.history, childName: options.childName, freeTalk: options.freeTalk === true, limitMs: options.limitMs }),
+    session: resume ? structuredClone(resume.session) : createSession({ callId: options.callId, confirmWorkbook: options.confirmWorkbook, channel: options.channel, package: options.package, random: options.random, grade: options.grade, history: options.history, childName: options.childName, freeTalk: options.freeTalk === true, limitMs: options.limitMs }),
     endedAt: resume?.endedAt ?? null, turns: resume?.turns ?? [], board: resume?.board ?? [],
     approved: resume?.approved, obligations: resume?.obligations, childState: resume?.childState, problems: resume?.problems,
   };

@@ -1,0 +1,14 @@
+.mc-workbook-fields { border: 0; padding: 0; margin: 18px 0 0; min-width: 0; }
+.mc-reference-form { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+.mc-reference-form .mc-field { flex: 1; max-width: 380px; min-width: 180px; }
+.mc-reference-form button { min-height: 44px; }
+.mc-reference-form input { min-height: 44px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); font: 400 15px/1.2 var(--sans); min-width: 0; width: 100%; box-sizing: border-box; }
+.mc-reference-form input:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
+.mc-workbook-grid { display: grid; grid-template-columns: minmax(0, 440px) minmax(0, 1fr); gap: 24px; margin-top: 20px; align-items: start; }
+.mc-workbook-choice { border: 1px solid var(--line); border-radius: 8px; padding: 20px; background: var(--soft); overflow-wrap: anywhere; }
+.mc-workbook-choice h3 { margin: 8px 0; }
+.mc-workbook-choice .adm-row { margin: 16px 0; flex-wrap: wrap; }
+.mc-question-box { cursor: pointer; min-height: 24px; min-width: 24px; }
+.mc-question-box:hover, .mc-question-box.is-selected { border-color: var(--ink); background: color-mix(in srgb, var(--sky) 25%, transparent); }
+.mc-question-box:focus-visible { outline: 3px solid var(--ink); outline-offset: -5px; }
+@media (max-width: 700px) { .mc-workbook-grid { grid-template-columns: minmax(0, 1fr); } .mc-workbook-choice { padding: 16px; } }

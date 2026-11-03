@@ -694,6 +694,15 @@ function placeParts(value: AnswerValue): { parts: string; total: string } | null
 /** The sentences of a question text, each with its own end mark. */
 const sentencesOf = (text: string) => text.split(/(?<=[.?!])\s+/).map((s) => s.trim()).filter(Boolean);
 
+/** Controller-owned opening. Only checked operation data is read aloud, never arbitrary workbook prose. */
+export function workbookOpening(pkg: OperationPackage): string | null {
+  return pkg.ref.source === "workbook" ? WORKBOOK_OPENING
+    .replace("{page}", String(pkg.ref.page)).replace("{number}", String(pkg.ref.question)).replace("{expr}", operationText(pkg.operation)) : null;
+}
+
+/** One fixed confirmation, outside the model's selectable wordings. */
+export const WORKBOOK_OPENING = "Hi, I'm Maya, an AI helper. Let's do page {page}, number {number}: {expr}.";
+
 /**
  * The lines of one checked question package, by situation. The session picks the ones an act may use now; every line
  * is filled from the package's checked numbers and steps.

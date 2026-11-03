@@ -1,0 +1,19 @@
+/* How it works (D-216): the section title, and the card pictures at the Stageshow stage's shape (380 x 232). */
+[data-look] #how .how-head h2 { max-width: 18ch; }
+#how .step .vis { height: auto; aspect-ratio: 380 / 232; background: #ebe8e3; border-radius: 3px; }
+#how .step .vis img { height: auto; object-fit: initial; }
+#how .step:hover .vis img { transform: none; }
+#how .how-pic { position: absolute; inset: 0; }
+#how .how-v { position: absolute; inset: 0; overflow: hidden; }
+
+/* 02: the open workbook, plan page and Day 1 page side by side, cut at the bottom */
+#how .how-v-open { display: flex; justify-content: center; padding-top: 18px; }
+#how .how-v-open img { width: 44%; flex: none; box-shadow: 0 10px 24px -14px rgba(40, 30, 20, .45); }
+#how .how-gutter { position: absolute; left: 50%; top: 18px; bottom: 0; width: 18px; margin-left: -9px; background: linear-gradient(90deg, transparent, rgba(40, 30, 20, .14) 45%, rgba(40, 30, 20, .2) 50%, rgba(40, 30, 20, .14) 55%, transparent); }
+
+/* 03: the Day 1 page in pencil, tilted on the table */
+#how .how-v-paper { background: #e6dfd3; }
+#how .how-tilt { position: absolute; left: 50%; top: 22px; transform: translateX(-50%) rotate(-3deg); }
+
+/* 06: the next workbook's cover */
+#how .how-v-cover { display: grid; justify-items: center; padding-top: 18px; }

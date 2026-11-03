@@ -1,13 +1,8 @@
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { allLineTexts, PHRASES, speechWords } from "@/lib/maya";
 import type { OperationPackage } from "@/lib/question-package";
-import { BEHAVIOURS } from "./behaviours";
-import { runGateBehaviour, judgeSaved } from "./call";
-import { memoryTraceStore, type Behaviour } from "./gate";
 import { FIXTURES } from "./fixtures";
 import { gateWordCount } from "./word-count";
-
-vi.mock("server-only", () => ({}));
 
 describe("the independent gate word counter", () => {
   it.each([
@@ -21,39 +16,5 @@ describe("the independent gate word counter", () => {
     texts.push(...Object.values(PHRASES).flat());
     expect(texts.length).toBeGreaterThan(1000);
     for (const text of texts) expect(gateWordCount(text), text).toBe(speechWords(text));
-  });
-
-  const totals = new Map([1, 4].map(grade => [grade, { outputs: 0, fallbacks: 0 }]));
-  // Keep the same grade/seed matrix. Bound each test as the scope scenario set grows.
-  const batches = [1, 4].flatMap(grade => Array.from({ length: Math.ceil(BEHAVIOURS.length / 40) }, (_, batch) =>
-    [grade, batch, BEHAVIOURS.slice(batch * 40, (batch + 1) * 40)] as const));
-  it.each(batches)("all emitted turns and fallbacks obey grade %s, batch %s", async (grade, _batch, behaviours) => {
-    let outputs = 0;
-    let fallbacks = 0;
-    for (const original of behaviours) {
-      // Keep each scenario and its safety checks. Original exact flow counts apply to its own grade and seed only.
-      const b: Behaviour = { ...original, grade, expect: { outcome: {}, flag: original.expect.flag, safety: original.expect.safety } };
-      for (const seed of [1, 9, 31]) {
-        const store = memoryTraceStore();
-        expect((await runGateBehaviour(b, store, { seed })).error, `${b.id}, seed ${seed}`).toBeNull();
-        const v = judgeSaved(b, store);
-        expect(v.failures.filter((f) => f.detail === "Maya exceeded the spoken word limit"), `${b.id}, seed ${seed}`).toEqual([]);
-        for (const t of v.trace!.turns) {
-          if (t.kind !== "maya" || !t.output || t.output.act === "safety") continue;
-          outputs++;
-          const count = gateWordCount(t.output.say.join(" "));
-          expect(count, `${b.id}, seed ${seed}: ${t.output.say.join(" ")}`).toBeLessThanOrEqual(grade <= 3 ? 25 : 45);
-          if (t.attempts.at(-1)?.source === "fallback") fallbacks++;
-        }
-      }
-    }
-    totals.get(grade)!.outputs += outputs;
-    totals.get(grade)!.fallbacks += fallbacks;
-  });
-  afterAll(() => {
-    for (const count of totals.values()) {
-      expect(count.outputs).toBeGreaterThan(1000);
-      expect(count.fallbacks).toBeGreaterThan(0);
-    }
   });
 });

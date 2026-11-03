@@ -13,6 +13,8 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     ".design/**",
+    // Vendored third-party code, copied unchanged (src/vendor/stageshow/README.md).
+    "src/vendor/**",
   ]),
 ]);
 

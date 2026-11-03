@@ -304,7 +304,7 @@ The reference assertions derive obligations from test inputs and supplied provid
 
 V3b tests a content problem at the pending safety response in the text adapter. The call API has no content-problem input. C30 tests the same concern flag and alert through the saved call. V3b does not prove alert delivery.
 
-## Workbook scope (#357, D-215)
+## Workbook scope (#357, D-221)
 
 Never refuse real help. Maya refuses when the reading identifies another subject, an essay, a homework sheet, general chat, or when code reads one clear, complete outside expression. Code validates the operation and every operand together, including repeats. The allowed expressions come from the stored question, checked steps, commutative forms, valid step combinations and the easier example Maya chose.
 

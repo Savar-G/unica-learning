@@ -37,7 +37,7 @@ import {
 import { talkMath } from "./claims";
 import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
-import { findOffer, normalSlots, packageLines, fixedOffers, areaOffers, spokenOffer, LINE_IDS, type LineOffer } from "./lines";
+import { findOffer, normalSlots, packageLines, workbookOpening, fixedOffers, areaOffers, spokenOffer, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { committedText, readAnswer, readNumbers, takenBack, unreadableAnswer, valuesIn } from "./numbers";
@@ -270,6 +270,8 @@ interface Ladder {
 
 /** One call. Plain data: store it, send it, compare it. Read it through this module. */
 export interface Session {
+  /** Admin workbook sessions confirm the printed reference in their code-owned opening. */
+  confirmWorkbook?: boolean;
   version: 4;
   callId: string;
   /** A desk chat uses the workbook decline for an off-topic reading. */
@@ -393,6 +395,7 @@ export interface Session {
  * now and then. The model never writes the name.
  */
 export function createSession(input: {
+  confirmWorkbook?: boolean;
   callId: string;
   channel?: "chat";
   package: unknown;
@@ -419,6 +422,7 @@ export function createSession(input: {
     version: 4,
     callId: input.callId,
     ...(input.channel ? { channel: input.channel } : {}),
+    ...(input.confirmWorkbook ? { confirmWorkbook: true } : {}),
     variety: newVariety({ random: input.random ?? hashOf(input.callId), history: input.history, name: input.childName }),
     freeTalk: input.freeTalk === true,
     grade: input.grade,
@@ -1078,7 +1082,11 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
 
   // 4. Maya's words and board: lines code writes for this act, step and level, and warm talk with no math in it.
   const view: View = { steps: [ladder.step], done, checked, rightResult, equal, regroup: pendingRegroup(regroup) };
-  const spoken: Spoken | { code: RefusalCode; reason: string } = p.act === "safety" ? { text: "", lines: [], boards: [], replaced: 0, talk: [], segments: [], chosen: [] } : speak(s, p, view, reviews);
+  const forcedOpening = p.act === "open" && s.confirmWorkbook && pkg ? workbookOpening(pkg) : null;
+  // Do not select or record model wordings that this fixed opening will not say.
+  const spoken: Spoken | { code: RefusalCode; reason: string } = forcedOpening
+    ? { text: forcedOpening, lines: [], boards: [], replaced: 0, talk: [], segments: [{ kind: "math", text: forcedOpening }], chosen: [] }
+    : p.act === "safety" ? { text: "", lines: [], boards: [], replaced: 0, talk: [], segments: [], chosen: [] } : speak(s, p, view, reviews);
   if ("code" in spoken) return no(spoken.code, spoken.reason, allowedNow);
   const say = spoken.text;
   if (say === "" && !["wait", "safety", "give_answer"].includes(p.act)) return no("invalid_proposal", "Maya needs words for this act.", allowedNow);
@@ -1102,7 +1110,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     roles = board;
   }
   const released = s.solved !== null || s.assistance.includes("answer_given") || rightResult || p.act === "give_answer";
-  if (pkg !== null && !released && p.act !== "safety" && revealsAnswer(s, pb, [say, ...boardTexts(pb.board ?? [])])) {
+  if (pkg !== null && !released && p.act !== "safety" && revealsAnswer(s, pb, [forcedOpening ? operationText(pkg.operation) : say, ...boardTexts(pb.board ?? [])])) {
     return no("reveals_answer", "Maya may not give the answer yet.", allowedNow);
   }
   const bad = pb.board ? boardProblem(s, pb.board, role, spoken, done) : null;

@@ -3,7 +3,6 @@ import { scopeSummary } from "@/lib/maya-scope-review";
 import type { AdminSession } from "@/lib/admin-store";
 import type { Question, Route, StoredTest } from "@/lib/assessment";
 import { assessmentQuestionReader } from "@/lib/assessment-questions";
-import { rebuildChildProfileNow } from "@/lib/child-profile-server";
 import { mayaCalls, recordView, FAKE_MODEL_ID, type CallStatus, type CallView, type FlagLevel, type MayaCalls } from "@/lib/maya-call";
 import { alertState } from "@/lib/maya-call-alert-store";
 import { callModel, callSeams } from "@/lib/maya-call-seams";
@@ -14,6 +13,7 @@ import { lookupStoredQuestion, SUPPORTED_ASSESSMENT_TEMPLATES, templateSkillName
 import { valueText } from "@/lib/question-package";
 import type { Database } from "@/lib/database";
 import { adminClient } from "@/lib/supabase-auth";
+import { ruleMayaModel } from "@/lib/maya-model-fake";
 
 // Maya's admin test calls on the server (#323): the call module (src/lib/maya-call.ts) with its seams
 // (src/lib/maya-call-seams.ts, shared with the voice worker). Writes use the secret key; the admin pages read with the
@@ -35,10 +35,11 @@ export function nextCallModel(): { id: string; fake: boolean } {
 export const voiceReady = () => livekitProject(process.env) !== null;
 
 /** The call module with the secret key, or null without it. `origin`: the site the alert's admin link points to (see callSeams). */
-export function serverMayaCalls(origin?: string): MayaCalls | null {
+export function serverMayaCalls(origin?: string, scripted = false): MayaCalls | null {
   const db = adminClient();
   if (!db) return null;
-  return mayaCalls(callSeams(db, { origin, rebuild: async (childId) => (await rebuildChildProfileNow(childId))?.built === true }));
+  const seams = callSeams(db, { origin });
+  return mayaCalls(scripted ? { ...seams, model: id => id === null || id === FAKE_MODEL_ID ? ruleMayaModel() : null, reviewer: () => null } : seams);
 }
 
 /** The voice facts of a call for its token: its family, mode and status, read with the secret key. */
