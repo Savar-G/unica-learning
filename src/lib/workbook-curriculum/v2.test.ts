@@ -6,10 +6,10 @@ import { checkQuestionPackage, valueText } from "@/lib/question-package";
 import { buildStepItem, hasHardNumberTemplate, printedNumbersOf, stepTemplateItem } from "@/lib/workbook-step-items";
 import { aiSolver, sameAnswer, solveCheck } from "@/lib/workbook-solve-check";
 import { fakeAiClient } from "@/lib/ai-client-fake";
-import { BC_CURRICULUM, curriculumFor } from "./index";
+import { BC_CURRICULUM, curriculumFor, type NumberRange } from "./index";
 import { parseStepProgressions } from "./step-source";
 import { prepareTemplate, seededRandom } from "./template";
-import { formatValue } from "./expression";
+import { compileExpression, expressionIsTrue, formatValue } from "./expression";
 
 const read = (name: string) => readFileSync(`data/curriculum/${name}`, "utf8");
 const raw = parseStepProgressions;
@@ -58,6 +58,20 @@ describe("v2 data and answer contracts", () => {
     }
   });
 
+  it("keeps the exact accepted pools after unpacking the fraction domains", () => {
+    const author = (JSON.parse(read("step-progressions-k9.v2.original.json")) as typeof active).steps.find(s => s.skill === "7.4-lowest-terms" && s.number === 3)!;
+    const step = active.steps.find(s => s.skill === author.skill && s.number === 3)!;
+    for (const [domain, index, amin, amax, bmin, gmin] of [["pt", 0, 3, 26, 2, 2], ["pth", 4, 7, 25, 5, 4]] as const) {
+      const expected = (author.numbers![domain] as NumberRange).values!;
+      const check = compileExpression(step.templates![index].check!);
+      const accepted: number[] = [];
+      for (let a = amin; a <= amax; a++) for (let b = bmin; b <= 9; b++) for (let g = gmin; g <= 9; g++) {
+        if (expressionIsTrue(check.evaluate({ a: BigInt(a), b: BigInt(b), g: BigInt(g) }))) accepted.push(a * 10000 + b * 100 + g);
+      }
+      expect(accepted.sort((a, b) => a - b)).toEqual([...expected].sort((a, b) => a - b));
+    }
+  });
+
   it("sorts mixed forms by value and keeps each original notation", () => {
     const step = active.steps.find(s => s.skill === "7.4-compare-forms" && s.number === 3)!;
     const fill = prepareTemplate(step, step.templates![0], active.contexts);
@@ -77,12 +91,37 @@ describe("v2 data and answer contracts", () => {
       expect(item?.ref.kind).toBe("story");
       expect(item?.ref.answer).toMatch(/^\d+$/);
     }
+    const likelihood = stepTemplateItem({ curriculum: BC, skill: "1.10-likelihood-words", step: 1, place: "challenge", level: 4, day: 9, ordinal: 0, seed: 7, attempt: 0 });
+    expect(likelihood?.ref).toMatchObject({ difficulty: "hard", kind: "choice" });
     const maxima = Array.from({ length: 30 }, (_, seed) => {
       const item = stepTemplateItem({ curriculum: BC, skill: "1.1-count-to-20", step: 2, place: "challenge", level: 4, day: 1, ordinal: 0, seed, attempt: 0 })!;
       expect(item.ref.difficulty).toBe("hard");
       return Math.max(...printedNumbersOf(item.ref.answer));
     });
     expect(maxima.filter(n => n >= 18)).toHaveLength(30);
+  });
+
+  it("uses purchased goods in a price story while it keeps the arithmetic key", () => {
+    const step = BC.skillSteps("4.11-multiply-divide-unknown")!.find(s => s.number === 3)!;
+    const curriculum = { ...BC, skillSteps: (id: string) => id === step.skill ? [{ ...step, templates: [step.templates![2]] }] : BC.skillSteps(id) };
+    for (let seed = 1; seed <= 20; seed++) {
+      const item = stepTemplateItem({ curriculum, skill: step.skill, step: 3, place: "word-problems", level: 16, day: 1, ordinal: 0, seed, attempt: 0 })!;
+      expect(item.text).toMatch(/books|notebooks|tickets|toy cars/);
+      expect(item.text).not.toMatch(/acorns|leaves|shells/);
+      expect(buildStepItem(item.ref, item.text, { id: "q", workbookId: "w", page: 2, question: 1, level: 16, skills: [step.skill] }, "code").check.status).toBe("checked");
+    }
+  });
+
+  it("prints the hard four-fraction ordering answer on its own Challenge step", () => {
+    for (let seed = 1; seed <= 12; seed++) {
+      const item = stepTemplateItem({ curriculum: BC, skill: "4.3-same-denominator", step: 3, place: "challenge", level: 14, day: 8, ordinal: 0, seed, attempt: 0 })!;
+      expect(item.ref).toMatchObject({ skill: "4.3-same-denominator", step: 3, difficulty: "hard" });
+      const fractions = item.ref.answer.split(", ");
+      expect(fractions).toHaveLength(4);
+      const numerators = fractions.map(f => Number(f.split("/")[0]));
+      expect(numerators).toEqual([...numerators].sort((a, b) => b - a));
+      expect(buildStepItem(item.ref, item.text, { id: "q", workbookId: "w", page: 2, question: 1, level: 14, skills: [item.ref.skill] }, "code").check.status).toBe("checked");
+    }
   });
 
   it.each([

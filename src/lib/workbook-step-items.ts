@@ -197,7 +197,8 @@ function kindAt(place: SlotName | null, answer: string, text: string): { kind: S
   const choices = choicesFor(text, answer);
   if (choices) return { kind: "choice", choices };
   // A short answer the child writes in the box ("pentagon", "9, 10", "4, 5, 6, 7"); never a sentence to mark.
-  const short = answer.length <= 24 && (answer.split(/\s+/).length <= MOST_ANSWER_WORDS || /^-?\d+(?:, -?\d+)+$/.test(answer));
+  const orderedNumbers = answer.length <= 64 && /^-?\d+(?:\.\d+|\/\d+)?(?:, -?\d+(?:\.\d+|\/\d+)?){1,5}$/.test(answer);
+  const short = orderedNumbers || answer.length <= 24 && (answer.split(/\s+/).length <= MOST_ANSWER_WORDS || /^-?\d+(?:, -?\d+)+$/.test(answer));
   return short ? { kind: story ? "story" : "box" } : null;
 }
 
@@ -287,11 +288,9 @@ const difficultyRank = (d: TemplateDifficulty) => ["easy", "medium", "hard"].ind
  */
 export function challengeTemplateCount(curriculum: Curriculum, skill: string, step: number | null, level: number): number {
   const printable = (stepOf(curriculum, skill, step)?.templates ?? []).filter((t) => !templateProblem(t, level));
-  const numeric = printable.filter(numberAnswerOf);
-  const pool = numeric.length ? numeric : printable;
-  if (!pool.length) return 0;
-  const top = Math.max(...pool.map((t) => difficultyRank(t.difficulty)));
-  return pool.filter((t) => difficultyRank(t.difficulty) === top).length;
+  const hardest = printable.filter(t => difficultyRank(t.difficulty) === Math.max(...printable.map(t => difficultyRank(t.difficulty))));
+  const numeric = hardest.filter(numberAnswerOf);
+  return (numeric.length ? numeric : hardest).length;
 }
 
 /** Whether a step has a hard template with a number to work out, that prints at this level. */
@@ -316,15 +315,14 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
     && (r.place !== "solve-it-two-ways" || sumTemplate(t)) && (r.place !== "spot-the-error" || numberAnswer(t)));
   // The step's hardest questions are the Challenge's (#482 review at 3134252: the Challenge is clearly harder than the
   // day's practice): its teaching pages take the easier ones, and the Challenge takes the hardest, with a number to
-  // work out when the step has one, never a true or false or a choice (the U4 review). A late attempt may take others.
+  // work out when its hardest set has one (the U4 review).
   const rank = (d: TemplateDifficulty) => ["easy", "medium", "hard"].indexOf(d);
-  // The Challenge's set: the hardest templates with a number to work out (else the hardest of all). A template harder
-  // still (a hard true or false beside medium number work) goes to no teaching place either, so no practice question
-  // asks more than the Challenge (#482 review at db3b1a0).
-  const numeric = printable.filter(({ t }) => numberAnswer(t));
-  const pool = numeric.length ? numeric : printable;
-  const top = Math.max(...pool.map(({ t }) => rank(t.difficulty)));
-  const reserved = pool.filter(({ t }) => rank(t.difficulty) === top);
+  // Difficulty comes first. Prefer number work within the hardest set, so a medium
+  // numeric question cannot displace a hard comparison or reasoning question.
+  const top = Math.max(...printable.map(({ t }) => rank(t.difficulty)));
+  const hardest = printable.filter(({ t }) => rank(t.difficulty) === top);
+  const numeric = hardest.filter(({ t }) => numberAnswer(t));
+  const reserved = numeric.length ? numeric : hardest;
   // (And the step's other templates at the Challenge's difficulty: the Challenge is clearly the day's hardest.)
   const harder = printable.filter((x) => rank(x.t.difficulty) >= top && !reserved.includes(x));
   const rest = printable.filter((x) => !reserved.includes(x) && !harder.includes(x));
@@ -364,7 +362,12 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
   for (let k = 0; k < order.length; k++) {
     const { t, index } = order[(k + r.attempt) % order.length];
     let prepared;
-    try { prepared = prepareTemplate(step, t, contexts); } catch { continue; }
+    try {
+      // Priced objects need a purchase context. The shared counting list also has
+      // leaves and acorns, which do not fit these price questions.
+      const purchase = t.text.includes("{things}") && /\$|\bdollars?\b|\b(?:buys?|bought)\b|Each \{container\} holds|puts .* in each \{container\}/.test(t.text);
+      prepared = prepareTemplate(step, t, purchase ? { ...contexts, things: ["books", "notebooks", "tickets", "toy cars"] } : contexts);
+    } catch { continue; }
     const random = seededRandom(((r.seed * 31 + r.attempt * 7919 + k * 104729) % 2147483647) + 1);
     // A Challenge takes the fill with the largest numbers of several, the top of the step's range (the U4 review); a
     // later attempt the next largest, so the page's three Challenge questions find three tasks.
@@ -423,7 +426,7 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
       const at = labels ? { kind: "choice" as const, choices: labels.map(([, word]) => word) }
         : seq && r.place !== "spot-the-error" && r.place !== "solve-it-two-ways" ? { kind: "sequence" as const } : kindAt(r.place, answer, text);
       if (!at) break;
-      if (r.place === "challenge" && numeric.length && at.kind === "choice") continue;
+      if (r.place === "challenge" && at.kind === "choice" && /str\(/.test(t.answer) && /['"](?:yes|no)['"]/.test(t.answer)) continue;
       // A circled answer is circled, never written (the U4 review: "Write true or false" beside a circle).
       if (at.kind === "choice") text = text.replace(/\b(?:Write|Say)\s+(true or false|yes or no)\b/gi, "Circle $1");
       const slots: TemplateSource["slots"] = [];

@@ -2215,6 +2215,11 @@ function layOut(input: GenerateInput) {
     // nine times on Day 5).
     const templatesOf = byDay<number>();
     const sizeOf = itemSize;
+    const truthOf = (c: ItemPlan): string | null => {
+      if (c.template?.format !== "true-false") return null;
+      const answer = c.template.answer.toLowerCase();
+      return ["true", "yes"].includes(answer) ? "true" : ["false", "no"].includes(answer) ? "false" : null;
+    };
     // Every day's Challenge is planned first, so its step's hardest tasks are its own before any page spends them, an
     // earlier day's practice too (#482 review at 3134252: reserve scarce Challenge tasks; the U4 review: Day 3's
     // practice took the "7 + 1" Day 5's Challenge needed).
@@ -2308,7 +2313,7 @@ function layOut(input: GenerateInput) {
             // A Challenge page asks the step's few hardest templates: it may print fewer forms (the book check agrees).
             const fewChallenge = w.page.type === "challenge" && slot.place === "challenge" && (c.template?.challengeTemplates ?? 3) < 3;
             if (w.slots.length >= 3 && !fewChallenge && (pageTypes.get(type) ?? 0) >= Math.ceil(w.slots.length / 2)) continue;
-            const truth = c.template?.format === "true-false" ? c.template.answer.toLowerCase() : null;
+            const truth = truthOf(c);
             if (strict && truth && ["true", "false"].includes(truth) && (truthCounts.get(truth) ?? 0) > (truthCounts.get(truth === "true" ? "false" : "true") ?? 0)) continue;
             const tk = templateKey(c);
             const kk = kindKey(c);
@@ -2346,8 +2351,8 @@ function layOut(input: GenerateInput) {
           // of a form the page has (another of its block stays), as a step with small ranges runs out (#489).
         }
         if (best) {
-          if (best.c.template?.format === "true-false") {
-            const truth = best.c.template.answer.toLowerCase();
+          const truth = truthOf(best.c);
+          if (truth) {
             truthCounts.set(truth, (truthCounts.get(truth) ?? 0) + 1);
           }
           used.set(best.key, (used.get(best.key) ?? 0) + 1); if (!usedAt.has(best.key)) usedAt.set(best.key, w.number); pageOps.add(best.op); pageTexts.add(best.p.text);
@@ -2442,11 +2447,21 @@ const droppable = (w: PageWork, level = 0) => {
   return w.slots.findLast(s => can(s) && !s.contract && !s.existing) ?? pick ?? w.slots.findLast(can);
 };
 
-/** A day's estimated minutes from its planned items, as the book check estimates them (existing-path items as facts). */
+const unwrittenPackages = new WeakMap<Slot, QuestionPackage | null>();
+
+/** A day's estimated minutes from its planned items and the existing writer's declared formats. */
 function plannedDayMinutes(input: GenerateInput, work: PageWork[], day: number): number {
   const pages = work.filter((p) => p.day === day && !p.page.extraPractice);
-  const packages = pages.flatMap((p) => p.slots.flatMap((s) => { const pkg = s.contract ? contractPackage(input, p, s.contract) : null; return pkg ? [pkg] : []; }));
-  const others = pages.reduce((n, p) => n + p.slots.filter((s) => !s.contract).length, 0);
+  // Include the existing writer's reading and answer format. A mixed-set story
+  // takes more time than a bare fact, even when its words are not written yet.
+  let others = 0;
+  const packages = pages.flatMap((p) => p.slots.flatMap((s, i) => {
+    if (!s.contract && s.existing && !unwrittenPackages.has(s)) unwrittenPackages.set(s, standIn(input, p, s, i).package);
+    const pkg = s.contract ? contractPackage(input, p, s.contract) : unwrittenPackages.get(s);
+    if (pkg) return [pkg];
+    others++;
+    return [];
+  }));
   const panels = pages.reduce((n, p) => n + p.panels.length, 0);
   // A story the writer words reads longer than code's text (the U16 sample: Day 10 planned under 29.3, printed at 30.2).
   const worded = pages.reduce((n, p) => n + p.slots.filter((s) => s.contract?.source === "story").length, 0) * .15;

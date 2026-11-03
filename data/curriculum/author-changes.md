@@ -1160,3 +1160,224 @@ After:
 ```json
 {"L": "['n', 'x', 'k'][L_i]", "safe_1": "int(round((a / 10) * 100))", "safe_2": "('-' if safe_1 < 0 else '') + str(abs(safe_1) // 100) + '.' + ('0' if abs(safe_1) % 100 < 10 else '') + str(abs(safe_1) % 100)", "pp": "safe_2", "safe_3": "int(round(((a * s + b) / 10) * 100))", "safe_4": "('-' if safe_3 < 0 else '') + str(abs(safe_3) // 100) + '.' + ('0' if abs(safe_3) % 100 < 10 else '') + str(abs(safe_3) % 100)", "rr": "safe_4", "r10": "a * s + b", "E": "str(round(a / 10, 1)) + L + ' + ' + str(round(b / 10, 1)) + ' = ' + str(round((a * s + b) / 10, 1))", "E2": "str(round(a2 / 10, 1)) + L + ' + ' + str(round(b2 / 10, 1)) + ' = ' + str(round((a2 * s2 + b2) / 10, 1))", "r": "round((a * s + b) / 10, 1)", "safe_5": "int(round((b / 10) * 100))", "safe_6": "('-' if safe_5 < 0 else '') + str(abs(safe_5) // 100) + '.' + ('0' if abs(safe_5) % 100 < 10 else '') + str(abs(safe_5) % 100)", "bb": "safe_6", "s2": "s2", "xr": "s", "xw1": "s + 1", "xw2": "s - 1", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else xw1 if pos == 0 else xw2", "oc": "xr if pos == 2 else xw2"}
 ```
+
+## 9.3-vocabulary step 3 template 2 derived
+
+Remove unused derived values and inline short intermediate expressions to keep the stored question source within its existing 24-assignment limit. Keep the maths, text, format and difficulty.
+
+Before:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "a": "(1 - 2 * s1) * a0", "b": "(1 - 2 * s2) * b0", "c": "(1 - 2 * s3) * c0", "P3": "('' if (a) == 1 else '-' if (a) == -1 else str(a)) + L + '²' + (' + ' if (b) > 0 else ' - ') + ('' if abs(b) == 1 else str(abs(b))) + L + (' + ' + str(c) if (c) > 0 else ' - ' + str(abs(c)))", "P2": "('' if (b) == 1 else '-' if (b) == -1 else str(b)) + L + (' + ' + str(c) if (c) > 0 else ' - ' + str(abs(c)))", "PR": "str(c) + (' + ' if (b) > 0 else ' - ') + ('' if abs(b) == 1 else str(abs(b))) + L + (' + ' if (a) > 0 else ' - ') + ('' if abs(a) == 1 else str(abs(a))) + L + '²'", "f0": "str(c)", "f1": "('' if (a) == 1 else '-' if (a) == -1 else str(a)) + L", "f2": "('' if (a) == 1 else '-' if (a) == -1 else str(a)) + L + '²'", "f3": "('' if (a) == 1 else '-' if (a) == -1 else str(a)) + L + (' + ' + str(c) if (c) > 0 else ' - ' + str(abs(c)))", "f4": "('' if (a) == 1 else '-' if (a) == -1 else str(a)) + L + '²' + (' + ' + str(c) if (c) > 0 else ' - ' + str(abs(c)))", "f5": "('' if (a) == 1 else '-' if (a) == -1 else str(a)) + L + '²' + (' + ' if (b) > 0 else ' - ') + ('' if abs(b) == 1 else str(abs(b))) + L + (' + ' + str(c) if (c) > 0 else ' - ' + str(abs(c)))", "g3": "str(c) + (' + ' if (a) > 0 else ' - ') + ('' if abs(a) == 1 else str(abs(a))) + L", "g4": "str(c) + (' + ' if (a) > 0 else ' - ') + ('' if abs(a) == 1 else str(abs(a))) + L + '²'", "PT": "[f0, f1, f2, f3, f4, f5][ty]", "PS": "[f0, f1, f2, g3, g4, PR][ty]", "nt": "[1, 1, 1, 2, 2, 3][ty]", "dg": "[0, 1, 2, 1, 2, 2][ty]", "nm": "['monomial', 'binomial', 'trinomial'][nt - 1]", "nm1": "['monomial', 'binomial', 'trinomial'][nt % 3]", "nm2": "['monomial', 'binomial', 'trinomial'][(nt + 1) % 3]", "xr": "nm", "xw1": "nm1", "xw2": "nm2", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else (xw1 if pos == 0 else xw2)", "oc": "xr if pos == 2 else xw2"}
+```
+After:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "a": "(1 - 2 * s1) * a0", "b": "(1 - 2 * s2) * b0", "c": "(1 - 2 * s3) * c0", "f0": "str(c)", "f1": "('' if (a) == 1 else '-' if (a) == -1 else str(a)) + L", "f2": "('' if (a) == 1 else '-' if (a) == -1 else str(a)) + L + '²'", "f3": "('' if (a) == 1 else '-' if (a) == -1 else str(a)) + L + (' + ' + str(c) if (c) > 0 else ' - ' + str(abs(c)))", "f4": "('' if (a) == 1 else '-' if (a) == -1 else str(a)) + L + '²' + (' + ' + str(c) if (c) > 0 else ' - ' + str(abs(c)))", "f5": "('' if (a) == 1 else '-' if (a) == -1 else str(a)) + L + '²' + (' + ' if (b) > 0 else ' - ') + ('' if abs(b) == 1 else str(abs(b))) + L + (' + ' + str(c) if (c) > 0 else ' - ' + str(abs(c)))", "PT": "[f0, f1, f2, f3, f4, f5][ty]", "nt": "[1, 1, 1, 2, 2, 3][ty]", "nm": "['monomial', 'binomial', 'trinomial'][nt - 1]", "nm1": "['monomial', 'binomial', 'trinomial'][nt % 3]", "nm2": "['monomial', 'binomial', 'trinomial'][(nt + 1) % 3]", "xr": "nm", "xw1": "nm1", "xw2": "nm2", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else (xw1 if pos == 0 else xw2)", "oc": "xr if pos == 2 else xw2"}
+```
+
+## 9.3-like-terms step 3 template 6 answer
+
+Remove unused derived values and inline short intermediate expressions to keep the stored question source within its existing 24-assignment limit. Keep the maths, text, format and difficulty.
+
+Before:
+```json
+"('A) ' + str(xr)) if pos == 0 else (('B) ' + str(xr)) if pos == 1 else ('C) ' + str(xr)))"
+```
+After:
+```json
+"'A) ' + str(cnt) if pos == 0 else 'B) ' + str(cnt) if pos == 1 else 'C) ' + str(cnt)"
+```
+
+## 9.3-like-terms step 3 template 6 derived
+
+Remove unused derived values and inline short intermediate expressions to keep the stored question source within its existing 24-assignment limit. Keep the maths, text, format and difficulty.
+
+Before:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "k0": "c0 if c0 != 0 else 1", "X0": "(str(k0) if t0 == 0 else ('' if (k0) == 1 else '-' if (k0) == -1 else str(k0)) + L + ('²' if t0 == 2 else ''))", "k1": "c1 if c1 != 0 else 1", "u1": "t0 if f1 == 1 else (t0 + 2) % 3", "X1": "(str(k1) if u1 == 0 else ('' if (k1) == 1 else '-' if (k1) == -1 else str(k1)) + L + ('²' if u1 == 2 else ''))", "k2": "c2 if c2 != 0 else 1", "u2": "t0 if f2 == 1 else (t0 + 1) % 3", "X2": "(str(k2) if u2 == 0 else ('' if (k2) == 1 else '-' if (k2) == -1 else str(k2)) + L + ('²' if u2 == 2 else ''))", "k3": "c3 if c3 != 0 else 1", "u3": "t0 if f3 == 1 else (t0 + 2) % 3", "X3": "(str(k3) if u3 == 0 else ('' if (k3) == 1 else '-' if (k3) == -1 else str(k3)) + L + ('²' if u3 == 2 else ''))", "k4": "c4 if c4 != 0 else 1", "u4": "t0 if f4 == 1 else (t0 + 1) % 3", "X4": "(str(k4) if u4 == 0 else ('' if (k4) == 1 else '-' if (k4) == -1 else str(k4)) + L + ('²' if u4 == 2 else ''))", "k5": "c5 if c5 != 0 else 1", "u5": "t0 if f5 == 1 else (t0 + 2) % 3", "X5": "(str(k5) if u5 == 0 else ('' if (k5) == 1 else '-' if (k5) == -1 else str(k5)) + L + ('²' if u5 == 2 else ''))", "cnt": "f1 + f2 + f3 + f4 + f5", "xr": "cnt", "xw1": "cnt + 1", "xw2": "cnt + 2", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else (xw1 if pos == 0 else xw2)", "oc": "xr if pos == 2 else xw2"}
+```
+After:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "k0": "c0 if c0 != 0 else 1", "X0": "(str(k0) if t0 == 0 else ('' if (k0) == 1 else '-' if (k0) == -1 else str(k0)) + L + ('²' if t0 == 2 else ''))", "k1": "c1 if c1 != 0 else 1", "u1": "t0 if f1 == 1 else (t0 + 2) % 3", "X1": "(str(k1) if u1 == 0 else ('' if (k1) == 1 else '-' if (k1) == -1 else str(k1)) + L + ('²' if u1 == 2 else ''))", "k2": "c2 if c2 != 0 else 1", "u2": "t0 if f2 == 1 else (t0 + 1) % 3", "X2": "(str(k2) if u2 == 0 else ('' if (k2) == 1 else '-' if (k2) == -1 else str(k2)) + L + ('²' if u2 == 2 else ''))", "k3": "c3 if c3 != 0 else 1", "u3": "t0 if f3 == 1 else (t0 + 2) % 3", "X3": "(str(k3) if u3 == 0 else ('' if (k3) == 1 else '-' if (k3) == -1 else str(k3)) + L + ('²' if u3 == 2 else ''))", "k4": "c4 if c4 != 0 else 1", "u4": "t0 if f4 == 1 else (t0 + 1) % 3", "X4": "(str(k4) if u4 == 0 else ('' if (k4) == 1 else '-' if (k4) == -1 else str(k4)) + L + ('²' if u4 == 2 else ''))", "k5": "c5 if c5 != 0 else 1", "u5": "t0 if f5 == 1 else (t0 + 2) % 3", "X5": "(str(k5) if u5 == 0 else ('' if (k5) == 1 else '-' if (k5) == -1 else str(k5)) + L + ('²' if u5 == 2 else ''))", "cnt": "f1 + f2 + f3 + f4 + f5", "xw1": "cnt + 1", "xw2": "cnt + 2", "oa": "cnt if pos == 0 else xw1", "ob": "cnt if pos == 1 else xw1 if pos == 0 else xw2", "oc": "cnt if pos == 2 else xw2"}
+```
+
+## 9.3-like-terms step 3 template 6 check
+
+Remove unused derived values and inline short intermediate expressions to keep the stored question source within its existing 24-assignment limit. Keep the maths, text, format and difficulty.
+
+Before:
+```json
+"xr != xw1 and xr != xw2 and xw1 != xw2 and (cnt + 2 <= 5) and X1 != X2 and X1 != X3 and X1 != X4 and X1 != X5 and X2 != X3 and X2 != X4 and X2 != X5 and X3 != X4 and X3 != X5 and X4 != X5"
+```
+After:
+```json
+"cnt != xw1 and cnt != xw2 and (xw1 != xw2) and (cnt + 2 <= 5) and (X1 != X2) and (X1 != X3) and (X1 != X4) and (X1 != X5) and (X2 != X3) and (X2 != X4) and (X2 != X5) and (X3 != X4) and (X3 != X5) and (X4 != X5)"
+```
+
+## 9.3-add step 1 template 6 derived
+
+Remove unused derived values and inline short intermediate expressions to keep the stored question source within its existing 24-assignment limit. Keep the maths, text, format and difficulty.
+
+Before:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "a1": "ma1 if ma1 != 0 else 1", "b1": "mb1 if mb1 != 0 else 1", "c1": "mc1 if mc1 != 0 else 1", "a2": "ma2 if ma2 != 0 else 1", "b2": "mb2 if mb2 != 0 else 1", "c2": "mc2 if mc2 != 0 else 1", "cs2": "(' + ' + str(c2) if (c2) > 0 else ' - ' + str(abs(c2)))", "bs2": "(' + ' if (b2) > 0 else ' - ') + ('' if abs(b2) == 1 else str(abs(b2))) + L", "a3": "ma3 if ma3 != 0 else 1", "b3": "mb3 if mb3 != 0 else 1", "c3": "mc3 if mc3 != 0 else 1", "p1": "('' if (ma1) == 1 else '-' if (ma1) == -1 else str(ma1)) + L + (' + ' + str(mc1) if (mc1) > 0 else ' - ' + str(abs(mc1)))", "p2": "('' if (ma2) == 1 else '-' if (ma2) == -1 else str(ma2)) + L + (' + ' + str(mc2) if (mc2) > 0 else ' - ' + str(abs(mc2)))", "p3": "('' if (ma3) == 1 else '-' if (ma3) == -1 else str(ma3)) + L + (' + ' + str(mc3) if (mc3) > 0 else ' - ' + str(abs(mc3)))", "D": "'(' + p1 + ') + (' + p2 + ')'", "R": "('' if (ma1 + ma2) == 1 else '-' if (ma1 + ma2) == -1 else str(ma1 + ma2)) + L + (' + ' + str(mc1 + mc2) if (mc1 + mc2) > 0 else ' - ' + str(abs(mc1 + mc2)))", "W1": "('' if (ma1 * ma2) == 1 else '-' if (ma1 * ma2) == -1 else str(ma1 * ma2)) + L + (' + ' + str(mc1 + mc2) if (mc1 + mc2) > 0 else ' - ' + str(abs(mc1 + mc2)))", "W2": "('' if (ma1 + ma2) == 1 else '-' if (ma1 + ma2) == -1 else str(ma1 + ma2)) + L + (' + ' + str(mc1 * mc2) if (mc1 * mc2) > 0 else ' - ' + str(abs(mc1 * mc2)))", "HD": "'(' + p1 + ') + (' + p2 + ') + (' + p3 + ')'", "HR": "('' if (ma1 + ma2 + ma3) == 1 else '-' if (ma1 + ma2 + ma3) == -1 else str(ma1 + ma2 + ma3)) + L + (' + ' + str(mc1 + mc2 + mc3) if (mc1 + mc2 + mc3) > 0 else ' - ' + str(abs(mc1 + mc2 + mc3)))", "xr": "R", "xw1": "W1", "xw2": "W2", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else (xw1 if pos == 0 else xw2)", "oc": "xr if pos == 2 else xw2"}
+```
+After:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "p1": "('' if (ma1) == 1 else '-' if (ma1) == -1 else str(ma1)) + L + (' + ' + str(mc1) if (mc1) > 0 else ' - ' + str(abs(mc1)))", "p2": "('' if (ma2) == 1 else '-' if (ma2) == -1 else str(ma2)) + L + (' + ' + str(mc2) if (mc2) > 0 else ' - ' + str(abs(mc2)))", "D": "'(' + p1 + ') + (' + p2 + ')'", "R": "('' if (ma1 + ma2) == 1 else '-' if (ma1 + ma2) == -1 else str(ma1 + ma2)) + L + (' + ' + str(mc1 + mc2) if (mc1 + mc2) > 0 else ' - ' + str(abs(mc1 + mc2)))", "W1": "('' if (ma1 * ma2) == 1 else '-' if (ma1 * ma2) == -1 else str(ma1 * ma2)) + L + (' + ' + str(mc1 + mc2) if (mc1 + mc2) > 0 else ' - ' + str(abs(mc1 + mc2)))", "W2": "('' if (ma1 + ma2) == 1 else '-' if (ma1 + ma2) == -1 else str(ma1 + ma2)) + L + (' + ' + str(mc1 * mc2) if (mc1 * mc2) > 0 else ' - ' + str(abs(mc1 * mc2)))", "xr": "R", "xw1": "W1", "xw2": "W2", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else (xw1 if pos == 0 else xw2)", "oc": "xr if pos == 2 else xw2"}
+```
+
+## 9.3-add step 2 template 6 derived
+
+Remove unused derived values and inline short intermediate expressions to keep the stored question source within its existing 24-assignment limit. Keep the maths, text, format and difficulty.
+
+Before:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "a1": "ma1 if ma1 != 0 else 1", "b1": "mb1 if mb1 != 0 else 1", "c1": "mc1 if mc1 != 0 else 1", "a2": "ma2 if ma2 != 0 else 1", "b2": "mb2 if mb2 != 0 else 1", "c2": "mc2 if mc2 != 0 else 1", "cs2": "(' + ' + str(c2) if (c2) > 0 else ' - ' + str(abs(c2)))", "bs2": "(' + ' if (b2) > 0 else ' - ') + ('' if abs(b2) == 1 else str(abs(b2))) + L", "p1": "('' if (a1) == 1 else '-' if (a1) == -1 else str(a1)) + L + '²' + (' + ' if (b1) > 0 else ' - ') + ('' if abs(b1) == 1 else str(abs(b1))) + L + (' + ' + str(c1) if (c1) > 0 else ' - ' + str(abs(c1)))", "p2": "('' if (a2) == 1 else '-' if (a2) == -1 else str(a2)) + L + '²' + (' + ' if (b2) > 0 else ' - ') + ('' if abs(b2) == 1 else str(abs(b2))) + L + (' + ' + str(c2) if (c2) > 0 else ' - ' + str(abs(c2)))", "p2r": "(' + ' if (b2) > 0 else ' - ') + ('' if abs(b2) == 1 else str(abs(b2))) + L + (' + ' + str(c2) if (c2) > 0 else ' - ' + str(abs(c2)))", "a3": "ma3 if ma3 != 0 else 1", "b3": "mb3 if mb3 != 0 else 1", "c3": "mc3 if mc3 != 0 else 1", "p3": "('' if (a3) == 1 else '-' if (a3) == -1 else str(a3)) + L + '²' + (' + ' if (b3) > 0 else ' - ') + ('' if abs(b3) == 1 else str(abs(b3))) + L + (' + ' + str(c3) if (c3) > 0 else ' - ' + str(abs(c3)))", "D": "'(' + p1 + ') + (' + p2 + ')'", "R": "('' if (a1 + a2) == 1 else '-' if (a1 + a2) == -1 else str(a1 + a2)) + L + '²' + (' + ' if (b1 + b2) > 0 else ' - ') + ('' if abs(b1 + b2) == 1 else str(abs(b1 + b2))) + L + (' + ' + str(c1 + c2) if (c1 + c2) > 0 else ' - ' + str(abs(c1 + c2)))", "W1": "('' if (a1 + a2) == 1 else '-' if (a1 + a2) == -1 else str(a1 + a2)) + L + '²' + (' + ' if (b1 + b2) > 0 else ' - ') + ('' if abs(b1 + b2) == 1 else str(abs(b1 + b2))) + L + (' + ' + str(c1 - c2) if (c1 - c2) > 0 else ' - ' + str(abs(c1 - c2)))", "W2": "('' if (a1 + a2) == 1 else '-' if (a1 + a2) == -1 else str(a1 + a2)) + L + '²' + (' + ' if (b1 * b2) > 0 else ' - ') + ('' if abs(b1 * b2) == 1 else str(abs(b1 * b2))) + L + (' + ' + str(c1 + c2) if (c1 + c2) > 0 else ' - ' + str(abs(c1 + c2)))", "HD": "'(' + p1 + ') + (' + p2 + ') + (' + p3 + ')'", "HR": "('' if (a1 + a2 + a3) == 1 else '-' if (a1 + a2 + a3) == -1 else str(a1 + a2 + a3)) + L + '²' + (' + ' if (b1 + b2 + b3) > 0 else ' - ') + ('' if abs(b1 + b2 + b3) == 1 else str(abs(b1 + b2 + b3))) + L + (' + ' + str(c1 + c2 + c3) if (c1 + c2 + c3) > 0 else ' - ' + str(abs(c1 + c2 + c3)))", "xr": "R", "xw1": "W1", "xw2": "W2", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else (xw1 if pos == 0 else xw2)", "oc": "xr if pos == 2 else xw2"}
+```
+After:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "a1": "ma1 if ma1 != 0 else 1", "b1": "mb1 if mb1 != 0 else 1", "c1": "mc1 if mc1 != 0 else 1", "a2": "ma2 if ma2 != 0 else 1", "b2": "mb2 if mb2 != 0 else 1", "c2": "mc2 if mc2 != 0 else 1", "p1": "('' if (a1) == 1 else '-' if (a1) == -1 else str(a1)) + L + '²' + (' + ' if (b1) > 0 else ' - ') + ('' if abs(b1) == 1 else str(abs(b1))) + L + (' + ' + str(c1) if (c1) > 0 else ' - ' + str(abs(c1)))", "p2": "('' if (a2) == 1 else '-' if (a2) == -1 else str(a2)) + L + '²' + (' + ' if (b2) > 0 else ' - ') + ('' if abs(b2) == 1 else str(abs(b2))) + L + (' + ' + str(c2) if (c2) > 0 else ' - ' + str(abs(c2)))", "D": "'(' + p1 + ') + (' + p2 + ')'", "R": "('' if (a1 + a2) == 1 else '-' if (a1 + a2) == -1 else str(a1 + a2)) + L + '²' + (' + ' if (b1 + b2) > 0 else ' - ') + ('' if abs(b1 + b2) == 1 else str(abs(b1 + b2))) + L + (' + ' + str(c1 + c2) if (c1 + c2) > 0 else ' - ' + str(abs(c1 + c2)))", "W1": "('' if (a1 + a2) == 1 else '-' if (a1 + a2) == -1 else str(a1 + a2)) + L + '²' + (' + ' if (b1 + b2) > 0 else ' - ') + ('' if abs(b1 + b2) == 1 else str(abs(b1 + b2))) + L + (' + ' + str(c1 - c2) if (c1 - c2) > 0 else ' - ' + str(abs(c1 - c2)))", "W2": "('' if (a1 + a2) == 1 else '-' if (a1 + a2) == -1 else str(a1 + a2)) + L + '²' + (' + ' if (b1 * b2) > 0 else ' - ') + ('' if abs(b1 * b2) == 1 else str(abs(b1 * b2))) + L + (' + ' + str(c1 + c2) if (c1 + c2) > 0 else ' - ' + str(abs(c1 + c2)))", "xr": "R", "xw1": "W1", "xw2": "W2", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else (xw1 if pos == 0 else xw2)", "oc": "xr if pos == 2 else xw2"}
+```
+
+## 9.3-add step 3 template 6 derived
+
+Remove unused derived values and inline short intermediate expressions to keep the stored question source within its existing 24-assignment limit. Keep the maths, text, format and difficulty.
+
+Before:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "a1": "ma1 if ma1 != 0 else 1", "b1": "mb1 if mb1 != 0 else 1", "c1": "mc1 if mc1 != 0 else 1", "a2": "ma2 if ma2 != 0 else 1", "b2": "mb2 if mb2 != 0 else 1", "c2": "mc2 if mc2 != 0 else 1", "cs2": "(' + ' + str(c2) if (c2) > 0 else ' - ' + str(abs(c2)))", "bs2": "(' + ' if (b2) > 0 else ' - ') + ('' if abs(b2) == 1 else str(abs(b2))) + L", "a3": "ma3 if ma3 != 0 else 1", "b3": "mb3 if mb3 != 0 else 1", "c3": "mc3 if mc3 != 0 else 1", "p1": "('' if (a1) == 1 else '-' if (a1) == -1 else str(a1)) + L + '²' + (' + ' + str(c1) if (c1) > 0 else ' - ' + str(abs(c1)))", "p2": "('' if (b2) == 1 else '-' if (b2) == -1 else str(b2)) + L + (' + ' + str(c2) if (c2) > 0 else ' - ' + str(abs(c2)))", "p3": "('' if (a3) == 1 else '-' if (a3) == -1 else str(a3)) + L + '²' + (' + ' if (b3) > 0 else ' - ') + ('' if abs(b3) == 1 else str(abs(b3))) + L", "D": "'(' + p1 + ') + (' + p2 + ')'", "R": "('' if (a1) == 1 else '-' if (a1) == -1 else str(a1)) + L + '²' + (' + ' if (b2) > 0 else ' - ') + ('' if abs(b2) == 1 else str(abs(b2))) + L + (' + ' + str(c1 + c2) if (c1 + c2) > 0 else ' - ' + str(abs(c1 + c2)))", "W1": "('' if (a1) == 1 else '-' if (a1) == -1 else str(a1)) + L + '²' + (' + ' if (b2) > 0 else ' - ') + ('' if abs(b2) == 1 else str(abs(b2))) + L + (' + ' + str(c1 - c2) if (c1 - c2) > 0 else ' - ' + str(abs(c1 - c2)))", "W2": "('' if (a1) == 1 else '-' if (a1) == -1 else str(a1)) + L + '²' + (' + ' if (b2) > 0 else ' - ') + ('' if abs(b2) == 1 else str(abs(b2))) + L + (' + ' + str(c1 * c2) if (c1 * c2) > 0 else ' - ' + str(abs(c1 * c2)))", "HD": "'(' + p1 + ') + (' + p2 + ') + (' + p3 + ')'", "HR": "('' if (a1 + a3) == 1 else '-' if (a1 + a3) == -1 else str(a1 + a3)) + L + '²' + (' + ' if (b2 + b3) > 0 else ' - ') + ('' if abs(b2 + b3) == 1 else str(abs(b2 + b3))) + L + (' + ' + str(c1 + c2) if (c1 + c2) > 0 else ' - ' + str(abs(c1 + c2)))", "xr": "R", "xw1": "W1", "xw2": "W2", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else (xw1 if pos == 0 else xw2)", "oc": "xr if pos == 2 else xw2"}
+```
+After:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "a1": "ma1 if ma1 != 0 else 1", "c1": "mc1 if mc1 != 0 else 1", "b2": "mb2 if mb2 != 0 else 1", "c2": "mc2 if mc2 != 0 else 1", "p1": "('' if (a1) == 1 else '-' if (a1) == -1 else str(a1)) + L + '²' + (' + ' + str(c1) if (c1) > 0 else ' - ' + str(abs(c1)))", "p2": "('' if (b2) == 1 else '-' if (b2) == -1 else str(b2)) + L + (' + ' + str(c2) if (c2) > 0 else ' - ' + str(abs(c2)))", "D": "'(' + p1 + ') + (' + p2 + ')'", "R": "('' if (a1) == 1 else '-' if (a1) == -1 else str(a1)) + L + '²' + (' + ' if (b2) > 0 else ' - ') + ('' if abs(b2) == 1 else str(abs(b2))) + L + (' + ' + str(c1 + c2) if (c1 + c2) > 0 else ' - ' + str(abs(c1 + c2)))", "W1": "('' if (a1) == 1 else '-' if (a1) == -1 else str(a1)) + L + '²' + (' + ' if (b2) > 0 else ' - ') + ('' if abs(b2) == 1 else str(abs(b2))) + L + (' + ' + str(c1 - c2) if (c1 - c2) > 0 else ' - ' + str(abs(c1 - c2)))", "W2": "('' if (a1) == 1 else '-' if (a1) == -1 else str(a1)) + L + '²' + (' + ' if (b2) > 0 else ' - ') + ('' if abs(b2) == 1 else str(abs(b2))) + L + (' + ' + str(c1 * c2) if (c1 * c2) > 0 else ' - ' + str(abs(c1 * c2)))", "xr": "R", "xw1": "W1", "xw2": "W2", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else (xw1 if pos == 0 else xw2)", "oc": "xr if pos == 2 else xw2"}
+```
+
+## 9.3-add step 4 template 6 derived
+
+Remove unused derived values and inline short intermediate expressions to keep the stored question source within its existing 24-assignment limit. Keep the maths, text, format and difficulty.
+
+Before:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "a1": "ma1 if ma1 != 0 else 1", "b1": "mb1 if mb1 != 0 else 1", "c1": "mc1 if mc1 != 0 else 1", "a2": "ma2 if ma2 != 0 else 1", "b2": "mb2 if mb2 != 0 else 1", "c2": "mc2 if mc2 != 0 else 1", "cs2": "(' + ' + str(c2) if (c2) > 0 else ' - ' + str(abs(c2)))", "bs2": "(' + ' if (b2) > 0 else ' - ') + ('' if abs(b2) == 1 else str(abs(b2))) + L", "a3": "ma3 if ma3 != 0 else 1", "b3": "mb3 if mb3 != 0 else 1", "c3": "mc3 if mc3 != 0 else 1", "p1": "('' if (ma1) == 1 else '-' if (ma1) == -1 else str(ma1)) + L + (' + ' + str(mc1) if (mc1) > 0 else ' - ' + str(abs(mc1)))", "p2": "('' if (ma2) == 1 else '-' if (ma2) == -1 else str(ma2)) + L + (' + ' + str(mc2) if (mc2) > 0 else ' - ' + str(abs(mc2)))", "p3": "('' if (ma3) == 1 else '-' if (ma3) == -1 else str(ma3)) + L + (' + ' + str(mc3) if (mc3) > 0 else ' - ' + str(abs(mc3)))", "D": "'(' + p1 + ') + (' + p2 + ') + (' + p3 + ')'", "R": "('' if (ma1 + ma2 + ma3) == 1 else '-' if (ma1 + ma2 + ma3) == -1 else str(ma1 + ma2 + ma3)) + L + (' + ' + str(mc1 + mc2 + mc3) if (mc1 + mc2 + mc3) > 0 else ' - ' + str(abs(mc1 + mc2 + mc3)))", "W1": "('' if (ma1 + ma2 + ma3) == 1 else '-' if (ma1 + ma2 + ma3) == -1 else str(ma1 + ma2 + ma3)) + L + (' + ' + str(mc1 * mc2 * mc3) if (mc1 * mc2 * mc3) > 0 else ' - ' + str(abs(mc1 * mc2 * mc3)))", "W2": "('' if (ma1 * ma2 * ma3) == 1 else '-' if (ma1 * ma2 * ma3) == -1 else str(ma1 * ma2 * ma3)) + L + (' + ' + str(mc1 + mc2 + mc3) if (mc1 + mc2 + mc3) > 0 else ' - ' + str(abs(mc1 + mc2 + mc3)))", "HD": "'2(' + p1 + ' + ' + p2 + ')'", "HR": "('' if (2 * (ma1 + ma2)) == 1 else '-' if (2 * (ma1 + ma2)) == -1 else str(2 * (ma1 + ma2))) + L + (' + ' + str(2 * (mc1 + mc2)) if (2 * (mc1 + mc2)) > 0 else ' - ' + str(abs(2 * (mc1 + mc2))))", "xr": "R", "xw1": "W1", "xw2": "W2", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else (xw1 if pos == 0 else xw2)", "oc": "xr if pos == 2 else xw2"}
+```
+After:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "p1": "('' if (ma1) == 1 else '-' if (ma1) == -1 else str(ma1)) + L + (' + ' + str(mc1) if (mc1) > 0 else ' - ' + str(abs(mc1)))", "p2": "('' if (ma2) == 1 else '-' if (ma2) == -1 else str(ma2)) + L + (' + ' + str(mc2) if (mc2) > 0 else ' - ' + str(abs(mc2)))", "p3": "('' if (ma3) == 1 else '-' if (ma3) == -1 else str(ma3)) + L + (' + ' + str(mc3) if (mc3) > 0 else ' - ' + str(abs(mc3)))", "D": "'(' + p1 + ') + (' + p2 + ') + (' + p3 + ')'", "R": "('' if (ma1 + ma2 + ma3) == 1 else '-' if (ma1 + ma2 + ma3) == -1 else str(ma1 + ma2 + ma3)) + L + (' + ' + str(mc1 + mc2 + mc3) if (mc1 + mc2 + mc3) > 0 else ' - ' + str(abs(mc1 + mc2 + mc3)))", "W1": "('' if (ma1 + ma2 + ma3) == 1 else '-' if (ma1 + ma2 + ma3) == -1 else str(ma1 + ma2 + ma3)) + L + (' + ' + str(mc1 * mc2 * mc3) if (mc1 * mc2 * mc3) > 0 else ' - ' + str(abs(mc1 * mc2 * mc3)))", "W2": "('' if (ma1 * ma2 * ma3) == 1 else '-' if (ma1 * ma2 * ma3) == -1 else str(ma1 * ma2 * ma3)) + L + (' + ' + str(mc1 + mc2 + mc3) if (mc1 + mc2 + mc3) > 0 else ' - ' + str(abs(mc1 + mc2 + mc3)))", "xr": "R", "xw1": "W1", "xw2": "W2", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else (xw1 if pos == 0 else xw2)", "oc": "xr if pos == 2 else xw2"}
+```
+
+## 9.3-subtract step 1 template 6 derived
+
+Remove unused derived values and inline short intermediate expressions to keep the stored question source within its existing 24-assignment limit. Keep the maths, text, format and difficulty.
+
+Before:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "a1": "ma1 if ma1 != 0 else 1", "b1": "mb1 if mb1 != 0 else 1", "c1": "mc1 if mc1 != 0 else 1", "a2": "ma2 if ma2 != 0 else 1", "b2": "mb2 if mb2 != 0 else 1", "c2": "mc2 if mc2 != 0 else 1", "cs2": "(' + ' + str(c2) if (c2) > 0 else ' - ' + str(abs(c2)))", "bs2": "(' + ' if (b2) > 0 else ' - ') + ('' if abs(b2) == 1 else str(abs(b2))) + L", "a3": "ma3 if ma3 != 0 else 1", "b3": "mb3 if mb3 != 0 else 1", "c3": "mc3 if mc3 != 0 else 1", "p1": "('' if (ma1) == 1 else '-' if (ma1) == -1 else str(ma1)) + L + (' + ' + str(mc1) if (mc1) > 0 else ' - ' + str(abs(mc1)))", "p2": "('' if (ma2) == 1 else '-' if (ma2) == -1 else str(ma2)) + L + (' + ' + str(mc2) if (mc2) > 0 else ' - ' + str(abs(mc2)))", "p3": "('' if (ma3) == 1 else '-' if (ma3) == -1 else str(ma3)) + L + (' + ' + str(mc3) if (mc3) > 0 else ' - ' + str(abs(mc3)))", "D": "'(' + p1 + ') - (' + p2 + ')'", "R": "('' if (ma1 - ma2) == 1 else '-' if (ma1 - ma2) == -1 else str(ma1 - ma2)) + L + (' + ' + str(mc1 - mc2) if (mc1 - mc2) > 0 else ' - ' + str(abs(mc1 - mc2)))", "W1": "('' if (ma1 - ma2) == 1 else '-' if (ma1 - ma2) == -1 else str(ma1 - ma2)) + L + (' + ' + str(mc1 + mc2) if (mc1 + mc2) > 0 else ' - ' + str(abs(mc1 + mc2)))", "W2": "('' if (ma1 + ma2) == 1 else '-' if (ma1 + ma2) == -1 else str(ma1 + ma2)) + L + (' + ' + str(mc1 - mc2) if (mc1 - mc2) > 0 else ' - ' + str(abs(mc1 - mc2)))", "HD": "'(' + p1 + ') - (' + p2 + ') - (' + p3 + ')'", "HR": "('' if (ma1 - ma2 - ma3) == 1 else '-' if (ma1 - ma2 - ma3) == -1 else str(ma1 - ma2 - ma3)) + L + (' + ' + str(mc1 - mc2 - mc3) if (mc1 - mc2 - mc3) > 0 else ' - ' + str(abs(mc1 - mc2 - mc3)))", "xr": "R", "xw1": "W1", "xw2": "W2", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else (xw1 if pos == 0 else xw2)", "oc": "xr if pos == 2 else xw2"}
+```
+After:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "p1": "('' if (ma1) == 1 else '-' if (ma1) == -1 else str(ma1)) + L + (' + ' + str(mc1) if (mc1) > 0 else ' - ' + str(abs(mc1)))", "p2": "('' if (ma2) == 1 else '-' if (ma2) == -1 else str(ma2)) + L + (' + ' + str(mc2) if (mc2) > 0 else ' - ' + str(abs(mc2)))", "D": "'(' + p1 + ') - (' + p2 + ')'", "R": "('' if (ma1 - ma2) == 1 else '-' if (ma1 - ma2) == -1 else str(ma1 - ma2)) + L + (' + ' + str(mc1 - mc2) if (mc1 - mc2) > 0 else ' - ' + str(abs(mc1 - mc2)))", "W1": "('' if (ma1 - ma2) == 1 else '-' if (ma1 - ma2) == -1 else str(ma1 - ma2)) + L + (' + ' + str(mc1 + mc2) if (mc1 + mc2) > 0 else ' - ' + str(abs(mc1 + mc2)))", "W2": "('' if (ma1 + ma2) == 1 else '-' if (ma1 + ma2) == -1 else str(ma1 + ma2)) + L + (' + ' + str(mc1 - mc2) if (mc1 - mc2) > 0 else ' - ' + str(abs(mc1 - mc2)))", "xr": "R", "xw1": "W1", "xw2": "W2", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else (xw1 if pos == 0 else xw2)", "oc": "xr if pos == 2 else xw2"}
+```
+
+## 9.3-subtract step 2 template 6 derived
+
+Remove unused derived values and inline short intermediate expressions to keep the stored question source within its existing 24-assignment limit. Keep the maths, text, format and difficulty.
+
+Before:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "a1": "ma1 if ma1 != 0 else 1", "b1": "mb1 if mb1 != 0 else 1", "c1": "mc1 if mc1 != 0 else 1", "a2": "ma2 if ma2 != 0 else 1", "b2": "mb2 if mb2 != 0 else 1", "c2": "mc2 if mc2 != 0 else 1", "cs2": "(' + ' + str(c2) if (c2) > 0 else ' - ' + str(abs(c2)))", "bs2": "(' + ' if (b2) > 0 else ' - ') + ('' if abs(b2) == 1 else str(abs(b2))) + L", "p1": "('' if (a1) == 1 else '-' if (a1) == -1 else str(a1)) + L + '²' + (' + ' if (b1) > 0 else ' - ') + ('' if abs(b1) == 1 else str(abs(b1))) + L + (' + ' + str(c1) if (c1) > 0 else ' - ' + str(abs(c1)))", "p2": "('' if (a2) == 1 else '-' if (a2) == -1 else str(a2)) + L + '²' + (' + ' if (b2) > 0 else ' - ') + ('' if abs(b2) == 1 else str(abs(b2))) + L + (' + ' + str(c2) if (c2) > 0 else ' - ' + str(abs(c2)))", "a3": "ma3 if ma3 != 0 else 1", "b3": "mb3 if mb3 != 0 else 1", "c3": "mc3 if mc3 != 0 else 1", "p3": "('' if (a3) == 1 else '-' if (a3) == -1 else str(a3)) + L + '²' + (' + ' if (b3) > 0 else ' - ') + ('' if abs(b3) == 1 else str(abs(b3))) + L + (' + ' + str(c3) if (c3) > 0 else ' - ' + str(abs(c3)))", "D": "'(' + p1 + ') - (' + p2 + ')'", "R": "('' if (a1 - a2) == 1 else '-' if (a1 - a2) == -1 else str(a1 - a2)) + L + '²' + (' + ' if (b1 - b2) > 0 else ' - ') + ('' if abs(b1 - b2) == 1 else str(abs(b1 - b2))) + L + (' + ' + str(c1 - c2) if (c1 - c2) > 0 else ' - ' + str(abs(c1 - c2)))", "W1": "('' if (a1 - a2) == 1 else '-' if (a1 - a2) == -1 else str(a1 - a2)) + L + '²' + (' + ' if (b1 + b2) > 0 else ' - ') + ('' if abs(b1 + b2) == 1 else str(abs(b1 + b2))) + L + (' + ' + str(c1 - c2) if (c1 - c2) > 0 else ' - ' + str(abs(c1 - c2)))", "W2": "('' if (a1 + a2) == 1 else '-' if (a1 + a2) == -1 else str(a1 + a2)) + L + '²' + (' + ' if (b1 - b2) > 0 else ' - ') + ('' if abs(b1 - b2) == 1 else str(abs(b1 - b2))) + L + (' + ' + str(c1 - c2) if (c1 - c2) > 0 else ' - ' + str(abs(c1 - c2)))", "HD": "'(' + p1 + ') - (' + p2 + ') - (' + p3 + ')'", "HR": "('' if (a1 - a2 - a3) == 1 else '-' if (a1 - a2 - a3) == -1 else str(a1 - a2 - a3)) + L + '²' + (' + ' if (b1 - b2 - b3) > 0 else ' - ') + ('' if abs(b1 - b2 - b3) == 1 else str(abs(b1 - b2 - b3))) + L + (' + ' + str(c1 - c2 - c3) if (c1 - c2 - c3) > 0 else ' - ' + str(abs(c1 - c2 - c3)))", "xr": "R", "xw1": "W1", "xw2": "W2", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else (xw1 if pos == 0 else xw2)", "oc": "xr if pos == 2 else xw2"}
+```
+After:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "a1": "ma1 if ma1 != 0 else 1", "b1": "mb1 if mb1 != 0 else 1", "c1": "mc1 if mc1 != 0 else 1", "a2": "ma2 if ma2 != 0 else 1", "b2": "mb2 if mb2 != 0 else 1", "c2": "mc2 if mc2 != 0 else 1", "p1": "('' if (a1) == 1 else '-' if (a1) == -1 else str(a1)) + L + '²' + (' + ' if (b1) > 0 else ' - ') + ('' if abs(b1) == 1 else str(abs(b1))) + L + (' + ' + str(c1) if (c1) > 0 else ' - ' + str(abs(c1)))", "p2": "('' if (a2) == 1 else '-' if (a2) == -1 else str(a2)) + L + '²' + (' + ' if (b2) > 0 else ' - ') + ('' if abs(b2) == 1 else str(abs(b2))) + L + (' + ' + str(c2) if (c2) > 0 else ' - ' + str(abs(c2)))", "D": "'(' + p1 + ') - (' + p2 + ')'", "R": "('' if (a1 - a2) == 1 else '-' if (a1 - a2) == -1 else str(a1 - a2)) + L + '²' + (' + ' if (b1 - b2) > 0 else ' - ') + ('' if abs(b1 - b2) == 1 else str(abs(b1 - b2))) + L + (' + ' + str(c1 - c2) if (c1 - c2) > 0 else ' - ' + str(abs(c1 - c2)))", "W1": "('' if (a1 - a2) == 1 else '-' if (a1 - a2) == -1 else str(a1 - a2)) + L + '²' + (' + ' if (b1 + b2) > 0 else ' - ') + ('' if abs(b1 + b2) == 1 else str(abs(b1 + b2))) + L + (' + ' + str(c1 - c2) if (c1 - c2) > 0 else ' - ' + str(abs(c1 - c2)))", "W2": "('' if (a1 + a2) == 1 else '-' if (a1 + a2) == -1 else str(a1 + a2)) + L + '²' + (' + ' if (b1 - b2) > 0 else ' - ') + ('' if abs(b1 - b2) == 1 else str(abs(b1 - b2))) + L + (' + ' + str(c1 - c2) if (c1 - c2) > 0 else ' - ' + str(abs(c1 - c2)))", "xr": "R", "xw1": "W1", "xw2": "W2", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else (xw1 if pos == 0 else xw2)", "oc": "xr if pos == 2 else xw2"}
+```
+
+## 9.3-subtract step 3 template 6 derived
+
+Remove unused derived values and inline short intermediate expressions to keep the stored question source within its existing 24-assignment limit. Keep the maths, text, format and difficulty.
+
+Before:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "a1": "ma1 if ma1 != 0 else 1", "b1": "mb1 if mb1 != 0 else 1", "c1": "mc1 if mc1 != 0 else 1", "a2": "ma2 if ma2 != 0 else 1", "b2": "mb2 if mb2 != 0 else 1", "c2": "mc2 if mc2 != 0 else 1", "cs2": "(' + ' + str(c2) if (c2) > 0 else ' - ' + str(abs(c2)))", "bs2": "(' + ' if (b2) > 0 else ' - ') + ('' if abs(b2) == 1 else str(abs(b2))) + L", "p1": "('' if (a1) == 1 else '-' if (a1) == -1 else str(a1)) + L + '²' + (' + ' if (b1) > 0 else ' - ') + ('' if abs(b1) == 1 else str(abs(b1))) + L + (' + ' + str(c1) if (c1) > 0 else ' - ' + str(abs(c1)))", "p2": "('' if (a2) == 1 else '-' if (a2) == -1 else str(a2)) + L + '²' + (' + ' if (b2) > 0 else ' - ') + ('' if abs(b2) == 1 else str(abs(b2))) + L + (' + ' + str(c2) if (c2) > 0 else ' - ' + str(abs(c2)))", "a3": "ma3 if ma3 != 0 else 1", "b3": "mb3 if mb3 != 0 else 1", "c3": "mc3 if mc3 != 0 else 1", "p3": "('' if (a3) == 1 else '-' if (a3) == -1 else str(a3)) + L + '²' + (' + ' if (b3) > 0 else ' - ') + ('' if abs(b3) == 1 else str(abs(b3))) + L + (' + ' + str(c3) if (c3) > 0 else ' - ' + str(abs(c3)))", "D": "'(' + p1 + ') - (' + p2 + ')'", "R": "('' if (a1 - a2) == 1 else '-' if (a1 - a2) == -1 else str(a1 - a2)) + L + '²' + (' + ' if (b1 - b2) > 0 else ' - ') + ('' if abs(b1 - b2) == 1 else str(abs(b1 - b2))) + L + (' + ' + str(c1 - c2) if (c1 - c2) > 0 else ' - ' + str(abs(c1 - c2)))", "W1": "('' if (a1 - a2) == 1 else '-' if (a1 - a2) == -1 else str(a1 - a2)) + L + '²' + (' + ' if (b1 + b2) > 0 else ' - ') + ('' if abs(b1 + b2) == 1 else str(abs(b1 + b2))) + L + (' + ' + str(c1 + c2) if (c1 + c2) > 0 else ' - ' + str(abs(c1 + c2)))", "W2": "('' if (a1 + a2) == 1 else '-' if (a1 + a2) == -1 else str(a1 + a2)) + L + '²' + (' + ' if (b1 - b2) > 0 else ' - ') + ('' if abs(b1 - b2) == 1 else str(abs(b1 - b2))) + L + (' + ' + str(c1 - c2) if (c1 - c2) > 0 else ' - ' + str(abs(c1 - c2)))", "HD": "'(' + p1 + ') - (' + p2 + ') - (' + p3 + ')'", "HR": "('' if (a1 - a2 - a3) == 1 else '-' if (a1 - a2 - a3) == -1 else str(a1 - a2 - a3)) + L + '²' + (' + ' if (b1 - b2 - b3) > 0 else ' - ') + ('' if abs(b1 - b2 - b3) == 1 else str(abs(b1 - b2 - b3))) + L + (' + ' + str(c1 - c2 - c3) if (c1 - c2 - c3) > 0 else ' - ' + str(abs(c1 - c2 - c3)))", "xr": "R", "xw1": "W1", "xw2": "W2", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else (xw1 if pos == 0 else xw2)", "oc": "xr if pos == 2 else xw2"}
+```
+After:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "a1": "ma1 if ma1 != 0 else 1", "b1": "mb1 if mb1 != 0 else 1", "c1": "mc1 if mc1 != 0 else 1", "a2": "ma2 if ma2 != 0 else 1", "b2": "mb2 if mb2 != 0 else 1", "c2": "mc2 if mc2 != 0 else 1", "p1": "('' if (a1) == 1 else '-' if (a1) == -1 else str(a1)) + L + '²' + (' + ' if (b1) > 0 else ' - ') + ('' if abs(b1) == 1 else str(abs(b1))) + L + (' + ' + str(c1) if (c1) > 0 else ' - ' + str(abs(c1)))", "p2": "('' if (a2) == 1 else '-' if (a2) == -1 else str(a2)) + L + '²' + (' + ' if (b2) > 0 else ' - ') + ('' if abs(b2) == 1 else str(abs(b2))) + L + (' + ' + str(c2) if (c2) > 0 else ' - ' + str(abs(c2)))", "D": "'(' + p1 + ') - (' + p2 + ')'", "R": "('' if (a1 - a2) == 1 else '-' if (a1 - a2) == -1 else str(a1 - a2)) + L + '²' + (' + ' if (b1 - b2) > 0 else ' - ') + ('' if abs(b1 - b2) == 1 else str(abs(b1 - b2))) + L + (' + ' + str(c1 - c2) if (c1 - c2) > 0 else ' - ' + str(abs(c1 - c2)))", "W1": "('' if (a1 - a2) == 1 else '-' if (a1 - a2) == -1 else str(a1 - a2)) + L + '²' + (' + ' if (b1 + b2) > 0 else ' - ') + ('' if abs(b1 + b2) == 1 else str(abs(b1 + b2))) + L + (' + ' + str(c1 + c2) if (c1 + c2) > 0 else ' - ' + str(abs(c1 + c2)))", "W2": "('' if (a1 + a2) == 1 else '-' if (a1 + a2) == -1 else str(a1 + a2)) + L + '²' + (' + ' if (b1 - b2) > 0 else ' - ') + ('' if abs(b1 - b2) == 1 else str(abs(b1 - b2))) + L + (' + ' + str(c1 - c2) if (c1 - c2) > 0 else ' - ' + str(abs(c1 - c2)))", "xr": "R", "xw1": "W1", "xw2": "W2", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else (xw1 if pos == 0 else xw2)", "oc": "xr if pos == 2 else xw2"}
+```
+
+## 7.4-lowest-terms step 3 template 1 check
+
+Preserve exactly the original accepted fraction triples. The easier pool is improper and below 3. The hard pool also permits proper fractions with larger numerators.
+
+Before:
+```json
+"gcd(a, b) == 1 and a * g <= 100 and b * g <= 100"
+```
+After:
+```json
+"gcd(a, b) == 1 and a * g <= 100 and b * g <= 100 and a < 3 * b and a > b"
+```
+
+## 7.4-lowest-terms step 3 template 2 check
+
+Preserve exactly the original accepted fraction triples. The easier pool is improper and below 3. The hard pool also permits proper fractions with larger numerators.
+
+Before:
+```json
+"gcd(a, b) == 1 and a * g <= 100 and b * g <= 100"
+```
+After:
+```json
+"gcd(a, b) == 1 and a * g <= 100 and b * g <= 100 and a < 3 * b and a > b"
+```
+
+## 7.4-lowest-terms step 3 template 3 check
+
+Preserve exactly the original accepted fraction triples. The easier pool is improper and below 3. The hard pool also permits proper fractions with larger numerators.
+
+Before:
+```json
+"gcd(a, b) == 1 and a * g <= 100 and b * g <= 100"
+```
+After:
+```json
+"gcd(a, b) == 1 and a * g <= 100 and b * g <= 100 and a < 3 * b and a > b"
+```
+
+## 7.4-lowest-terms step 3 template 4 check
+
+Preserve exactly the original accepted fraction triples. The easier pool is improper and below 3. The hard pool also permits proper fractions with larger numerators.
+
+Before:
+```json
+"gcd(a, b) == 1 and a * g <= 100 and b * g <= 100 and c1 != w1 and c1 != w2 and w1 != w2"
+```
+After:
+```json
+"gcd(a, b) == 1 and a * g <= 100 and b * g <= 100 and c1 != w1 and c1 != w2 and w1 != w2 and a < 3 * b and a > b"
+```
+
+## 7.4-lowest-terms step 3 template 5 check
+
+Preserve exactly the original accepted fraction triples. The easier pool is improper and below 3. The hard pool also permits proper fractions with larger numerators.
+
+Before:
+```json
+"gcd(a, b) == 1 and a * g <= 100 and b * g <= 100 and a * g >= 28"
+```
+After:
+```json
+"gcd(a, b) == 1 and a * g <= 100 and b * g <= 100 and a * g >= 28 and a < 3 * b"
+```
+
+## 7.4-lowest-terms step 3 template 6 check
+
+Preserve exactly the original accepted fraction triples. The easier pool is improper and below 3. The hard pool also permits proper fractions with larger numerators.
+
+Before:
+```json
+"gcd(a, b) == 1 and a * g <= 100 and b * g <= 100 and a * g >= 28"
+```
+After:
+```json
+"gcd(a, b) == 1 and a * g <= 100 and b * g <= 100 and a * g >= 28 and a < 3 * b"
+```
