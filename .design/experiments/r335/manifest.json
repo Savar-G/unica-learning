@@ -1,0 +1,209 @@
+{
+  "issue": 335,
+  "route": "direct",
+  "job_kind": "new",
+  "surface": "product",
+  "constraint_mode": "existing-system",
+  "design_contract": "../../../DESIGN.md",
+  "references": [
+    "src/components/admin-workbook.tsx",
+    "src/components/admin-maya.tsx",
+    "src/components/admin-maya.css"
+  ],
+  "browser": "Aside CLI 1.26.1028.2335, account u0",
+  "data": "Synthetic printed workbook and in-memory calls from src/lib/maya-workbook-fixture.ts. Production components and resolver. Temporary /r335 and /api/r335 routes used local data. The picker API URL and session redirect used those temporary routes during capture. All temporary routes and URL changes were removed. No hosted rows or providers were used.",
+  "screenshots": [
+    {
+      "path": "ask-again-laptop.png",
+      "state": "ask-again",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "pixels": [
+        1440,
+        1000
+      ],
+      "sha256": "96739d8d1b33c97a33364b1457ebf1c6df12b4c90ce547814e4e6f00df554612"
+    },
+    {
+      "path": "confirmation-laptop.png",
+      "state": "confirmation",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "pixels": [
+        1440,
+        1000
+      ],
+      "sha256": "032c90f5192f1956323c6396eca980ff9a7b4efb45f87c2f96f3c96995e7c412"
+    },
+    {
+      "path": "confirmation-phone.png",
+      "state": "confirmation",
+      "viewport": [
+        390,
+        844
+      ],
+      "pixels": [
+        390,
+        844
+      ],
+      "sha256": "ab4ac261b5ad865c5463d408f0b9edb3b57140ec476deeff868bb58eda016649"
+    },
+    {
+      "path": "confirmation-tablet.png",
+      "state": "confirmation",
+      "viewport": [
+        834,
+        1112
+      ],
+      "pixels": [
+        834,
+        1112
+      ],
+      "sha256": "3450819be0441f65e3a3632c600b30393a52563db380a29232e3802212547dd1"
+    },
+    {
+      "path": "reference-laptop.png",
+      "state": "reference",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "pixels": [
+        1440,
+        1000
+      ],
+      "sha256": "83080462202b92c704499699fa64f84af0447178914dc4b0131bfb434cd9bec2"
+    },
+    {
+      "path": "reference-phone.png",
+      "state": "reference",
+      "viewport": [
+        390,
+        844
+      ],
+      "pixels": [
+        390,
+        844
+      ],
+      "sha256": "b597fe81bd4cfacf419024f5f175cb2a6014ea8d67386fa8554aff42c0e6a5a5"
+    },
+    {
+      "path": "reference-tablet.png",
+      "state": "reference",
+      "viewport": [
+        834,
+        1112
+      ],
+      "pixels": [
+        834,
+        1112
+      ],
+      "sha256": "3e9c559c1766cbd1a62d87b4d1e45a26aaedf1048e69d1377f5bc45c6ef07470"
+    },
+    {
+      "path": "refused-laptop.png",
+      "state": "refused",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "pixels": [
+        1440,
+        1000
+      ],
+      "sha256": "e4acb00a8a07b4668d0429fd72e5184944ae13b99b5582d5f33a3208930ec044"
+    },
+    {
+      "path": "refused-phone.png",
+      "state": "refused",
+      "viewport": [
+        390,
+        844
+      ],
+      "pixels": [
+        390,
+        844
+      ],
+      "sha256": "d8838fdcc400b0c27b5890fb1ecd6551cd91695fcd53afb39b80265b56e9947d"
+    },
+    {
+      "path": "refused-tablet.png",
+      "state": "refused",
+      "viewport": [
+        834,
+        1112
+      ],
+      "pixels": [
+        834,
+        1112
+      ],
+      "sha256": "e6d9ff674c0eb2201f967b9c745f572e479b2cf5598bd37d2aafc17dc18ff0f5"
+    },
+    {
+      "path": "tap-laptop.png",
+      "state": "tap",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "pixels": [
+        1440,
+        1000
+      ],
+      "sha256": "52723836f9164a3d667135668016fd7624a66810a07e654014ff7cf448cf5a68"
+    },
+    {
+      "path": "tap-phone.png",
+      "state": "tap",
+      "viewport": [
+        390,
+        844
+      ],
+      "pixels": [
+        390,
+        844
+      ],
+      "sha256": "e5f94ce6b414cce606e76bdd0719f0bf0d4d6a0022a22f22f05213481b90026c"
+    },
+    {
+      "path": "tap-tablet.png",
+      "state": "tap",
+      "viewport": [
+        834,
+        1112
+      ],
+      "pixels": [
+        834,
+        1112
+      ],
+      "sha256": "e6fe2ba811a31b3fcbbaca75520304ead8168b52f957063d0075d2c5fe5629cf"
+    }
+  ],
+  "browser_checks": {
+    "widths": [
+      1440,
+      834,
+      390
+    ],
+    "horizontal_overflow": false,
+    "measured_document_widths": [
+      1425,
+      819,
+      375
+    ],
+    "keyboard": "Tab from the reference field focuses Find question with a solid outline.",
+    "refusals": [
+      "nonexistent question",
+      "extra words in the reference"
+    ],
+    "confirmation": "Code-written opening in the existing MayaCall component, before any board batch.",
+    "screenshot_method": "Viewport captures with scroll to the relevant control. Full-page captures repeated the sticky admin header and were replaced."
+  },
+  "merge_approval": "Savar must approve the look and the new Maya lines before merge.",
+  "voice_limit": "The 30-second reference-listening room, final STT transcript, scoped token, fake-room delivery and fake teaching call are wired and tested. Real microphone, provider and device checks remain open without accounts.",
+  "review": "review.md"
+}
