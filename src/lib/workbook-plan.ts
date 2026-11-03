@@ -54,6 +54,7 @@
 // - Every part with items has a skill to aim at, or the plan is refused. Deterministic: the same input gives the same
 //   plan; ties go by the level's order, then curriculum order.
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness.
+import { twoWaysOnStoriesPage } from "@/lib/workbook-provisional";
 import { BC_SKILL_MAP, curriculumOrder, worstFirst, type Grade } from "@/lib/assessment";
 import type { ChildStandard } from "@/lib/child-profile";
 import type { QuestionRef } from "@/lib/question-package";
@@ -629,9 +630,11 @@ export function planWorkbook(input: PlanInput): PlanResult {
       ? { type: "math-in-the-world", role: "practice", parts: [T("math-in-the-world", "A")] }
       : { type: pageType("practice"), role: "practice", parts: [T("practice", "A"), ...(sixPages ? twoWays : [])] };
     // Else on the word problems page.
+    // (U4 to U9, a provisional call: Solve it two ways moves here from practice-2, see workbook-provisional.ts.)
+    const twoWaysHere = !parentLed && !sixPages && twoWaysOnStoriesPage(n);
     const story: Shape = {
       type: pageType("word-problems"), role: "story",
-      parts: [T(parentLed ? "picture-stories" : "word-problems", "A"), ...(world && second?.type !== "practice" ? twoWays.slice(0, 1) : [])],
+      parts: [T(parentLed ? "picture-stories" : "word-problems", "A"), ...(world && second?.type !== "practice" || twoWaysHere ? twoWays.slice(0, 1) : [])],
     };
     const slot: Shape = support
       ? input.workbook.inLevel === SUPPORT_WORKBOOKS - 1 && day === MINI_TEST_DAY
@@ -655,7 +658,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
     }
     const pages: (Shape | null)[] = parentLed || sixPages
       ? [firstPage(day), second, practice, story, slot, reviewPage(day)]
-      : [firstPage(day), second, practice, { type: "practice-2", role: "practice-2", parts: [T("practice", "A"), ...twoWays] }, story, slot, reviewPage(day), challengePage(day)];
+      : [firstPage(day), second, practice, { type: "practice-2", role: "practice-2", parts: [T("practice", "A"), ...(twoWaysHere ? twoWays.slice(1) : twoWays)] }, story, slot, reviewPage(day), challengePage(day)];
     return pages.filter((s): s is Shape => s !== null).map((s) => (extras.has(`${day}:${s.role}`) ? { ...s, parts: [...s.parts, T("remember-these")] } : s));
   };
   /** A Remember these? day after a pause: the day's pages, review (the support unit keeps its page) and a challenge. */

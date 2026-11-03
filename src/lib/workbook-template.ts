@@ -472,7 +472,13 @@ const CSS = `
 .pg.consistent .two>.seq-wide,.pg.consistent .cols>.seq-wide{grid-column:1/-1}
 .pg.consistent .outl{padding:6px 16px;gap:6px}
 .pg.consistent .error-item{display:flex;flex-direction:column;gap:6px}
-.pg.consistent .error-item .ab{height:56px}
+.pg.consistent .error-item>.q:first-child{flex-wrap:nowrap;align-items:flex-start}.pg.consistent .error-item>.q:first-child .wk{flex:1 1 0}
+.pg.consistent .error-item .ans{flex-wrap:wrap;gap:12px}.pg.consistent .error-item .ans .fix{margin-left:12px}
+.pg.consistent .error-item .ab{height:48px}
+/* Practice 2 holds 8 practice questions and Spot the error (U4 to U9, workbook-provisional.ts): closer rows. */
+.pg.consistent[data-page-type="practice-2"] .cols,.pg.consistent[data-page-type="practice-2"] .two{row-gap:calc(4px + var(--extra-gap,0px))}
+.pg.consistent[data-page-type="practice-2"] .two .ab{height:52px;min-width:56px}
+.pg.consistent[data-page-type="practice-2"] .q.seq-item{gap:4px}
 .pg.consistent .error-item .strip{min-height:48px}
 .pg.consistent .ways2 .wb{height:var(--work-min)}
 .pg.consistent .mxs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:calc(12px + var(--extra-gap,0px))}
@@ -680,8 +686,11 @@ function boxWidth(v: AnswerValue | null, band: Band): number {
 function twoWays(p: QuestionPackage): [string, string] | null {
   const t = `${p.operation?.kind ?? ""} ${p.text}`.toLowerCase();
   const small = Math.max(0, ...(p.text.match(/\d+/g) ?? []).map(Number)) < 20;
-  if (small && /subtract|−|\s-\s|left|take|eats|gives|fewer|less/.test(t)) return ["count back", "count up from the smaller number"];
-  if (small && /add|\+|more|in all|together|gets/.test(t)) return ["count on from the bigger number", "make a ten first"];
+  if (small && /subtract|−|\s-\s|left|take|eats|gives|fewer|less|the rest/.test(t)) return ["count back", "count up from the smaller number"];
+  // (Making a ten helps only when the sum passes 10: "6 + 1" counts on, or uses fingers.)
+  const numbers = (p.text.match(/\d+/g) ?? []).map(Number);
+  const pastTen = numbers.length >= 2 && numbers.reduce((a, b) => a + b, 0) > 10;
+  if (small && /add|\+|more|in all|together|gets/.test(t)) return ["count on from the bigger number", pastTen ? "make a ten first" : "use your fingers"];
   if (/multiply|×|\beach\b|groups? of|packs? of|times/.test(t)) return ["split a number into parts", "use a fact you know, then the zeros"];
   if (/divide|÷|share|equally/.test(t)) return ["share in groups", "use a times fact"];
   if (/subtract|−|\s-\s|left|take|eats|gives|fewer|less/.test(t)) return ["take away the tens, then the ones", "count up from the smaller number"];
@@ -946,13 +955,13 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
           const names = regionNames(q);
           const choice = names.find(x => x.region.kind === "choice");
           const box = names.find(x => x.region.kind === "box");
-          return `<div class="error-item" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span><span class="wk" ${mark.questionContent(q.number)}>${(b.lines ?? []).map(worked).join("<br>")}</span><span>Is it right?</span>${choice?.region.kind === "choice" ? regionHtml(q, { ...choice.region, label: null }, choice.name, { band, noTick: true }) : `<span class="strip"><span class="ch"><i class="tb"></i>Yes</span><span class="ch"><i class="tb"></i>No</span></span>`}</div>`
-            + `<div class="q"><span>If not, fix it:</span>${box ? regionHtml(q, box.region, box.name, { band }) : ""}</div></div>`;
+          return `<div class="error-item" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span><span class="wk" ${mark.questionContent(q.number)}>${(b.lines ?? []).map(worked).join("<br>")}</span></div><div class="q ans"><span>Is it right?</span>${choice?.region.kind === "choice" ? regionHtml(q, { ...choice.region, label: null }, choice.name, { band, noTick: true }) : `<span class="strip"><span class="ch"><i class="tb"></i>Yes</span><span class="ch"><i class="tb"></i>No</span></span>`}`
+            + `<span class="fix">If not, fix it:</span>${box ? regionHtml(q, box.region, box.name, { band }) : ""}</div></div>`;
         }).join("") + `</div>`;
     }
 
     case "watch-one":
-      return chipHtml(PRACTICE, b.note) + `<div class="panel p-pr" data-measure="panel-${i}" style="display:flex;flex-direction:column;gap:8px"><div class="lab">Read the example${b.label ? ` · ${escape(b.label)}` : ""}</div><div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div></div>`;
+      return chipHtml(PRACTICE, b.note) + `<div class="panel p-pr" data-measure="panel-${i}" style="display:flex;flex-direction:column;gap:8px"><div class="lab">Read the example${b.label ? ` · ${escape(b.label)}` : ""}</div><div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div>${b.explain ? `<span>${escape(b.explain)}</span>` : ""}</div>`;
     case "finish-these":
       return `<div class="lab" data-measure="heading-${i}">Getting started</div>` + items(c.consistentLayout || ctx.six ? "two" : "list");
     case "on-your-own": {

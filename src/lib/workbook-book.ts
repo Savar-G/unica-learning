@@ -992,9 +992,18 @@ export function dayPageContent(o: {
         };
       }
       case "watch-one": {
+        // Cedric's worked example teaches the step once, on its new idea page; a later page's example is code's own
+        // (other numbers, a task no question asks: the real U4 sample printed one example on three pages), with the
+        // step's common mistake put right.
         const taught = teaching();
-        const ex = taught ? null : panel();
-        return { slot: s.slot, items: [], label: taught ? "How it works" : ex?.label, note: "Read the example, then try it.", lines: taught?.lines ?? ex?.lines ?? [] };
+        // (The panel's own example only, never one of the page's questions: it would give that answer away.)
+        const own = o.examples?.find((e) => e.slot === i)?.package;
+        const ex = taught ? (own ? exampleOf(own, plan.level) : null) : panel();
+        // (Its question first when the worked line does not say it: "Count on. What are the next two numbers?" over
+        // "6, [7], [8]".)
+        const asked = taught && own && ex?.lines.length && !ex.lines.some((l) => l.replace(/[[\]]/g, "").includes(own.text.trim())) ? [own.text] : [];
+        const lines = ex?.lines.length ? [...asked, ...ex.lines] : taught?.lines ?? [];
+        return { slot: s.slot, items: [], label: ex?.lines.length ? ex.label : taught ? "How it works" : undefined, note: "Read the example, then try it.", lines, ...(taught?.remember ? { explain: `Watch out: ${taught.remember}` } : {}) };
       }
       case "reminder": {
         const ex = panel();

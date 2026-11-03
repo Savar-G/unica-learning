@@ -2,6 +2,7 @@ import { pageFullness, pageSpace, fullnessProblem } from "./workbook-template";
 import type { DraftPage, MeasuredElement } from "./workbook-render";
 import type { GeneratedPage } from "./workbook-generator";
 import { STORY_EXPLAIN } from "./workbook-item-plan";
+import { extraPracticeRepeats, newIdeaFloor, twoWaysCountsAsStory } from "./workbook-provisional";
 import { dayTimeProblem, estimatedDayMinutes } from "./workbook-feedback-check";
 import { printedNumbers } from "./workbook-book";
 import { storyFrame, wordedTask, taskType, reasoningSteps, taskIdentity, printedForm, sentenceFrameOf } from "./workbook-task-identity";
@@ -16,6 +17,8 @@ export interface BookQuality {
    */
   steps?: { day: number; average: number }[];
   sources?: { template: number; handBuilt: number; existing: number; total: number };
+  /** Extra practice questions that ask a task of the book once more (the provisional U4 to U9 rule). */
+  extraRepeats?: number;
   failedRate: number;
   dropped: number;
   days: DayQuality[];
@@ -48,14 +51,40 @@ export function typeKey(p: Pick<GeneratedPage, "type">, q: Pick<GeneratedPage["q
 }
 
 /** Inspect actual questions, not the promised schedule or a model's score. */
+/**
+ * A page type's fewest practice and review items (Cedric's section 8 table; about 25% fewer from U19): capacity
+ * plans fewer items than this only by reporting the omission, and the book check fails a page below it. (U4 to U9: a
+ * new idea's floor is 2, a provisional call in workbook-provisional.ts.)
+ */
+export function pageMinimum(type: string, level: number, extra: boolean): number {
+  // The adopted counts (Cedric's section 8, #482 review at db3b1a0): 8 to 10 practice questions on a practice or review
+  // page, a new idea's 3 to 5 beside its Spot the error. Spot the error and Solve it two ways do not count toward them.
+  // (A review page that also carries a Mixed set and a Challenge, 6 pages a day, has no adopted count: its Mixed set's 4.)
+  const n = extra || ["practice", "practice-2", "remember-these"].includes(type) ? 8 : type === "remember-these-mixed-set" ? 4
+    : type === "friday-5" ? 9 : type === "new-idea" ? newIdeaFloor(level) : type === "word-problems" || type === "challenge" ? 3 : type === "math-in-the-world" ? 2 : type === "show-what-you-know" ? 4 : 1;
+  return level >= 19 ? Math.max(1, Math.round(n * .75)) : n;
+}
+
+/** Spot the error and Solve it two ways do not count toward a page's practice questions. */
+const NOT_COUNTED: ReadonlySet<string> = new Set(["spot-the-error", "solve-it-two-ways", "warm-up", "how-do-you-know"]);
+
 export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
   const issues: BookIssue[] = [];
   const days: DayQuality[] = [];
   const seen = new Map<string, number[]>();
+  let extraRepeats = 0;
   const frames = new Map<string, number>();
   const types = new Map<string, number>();
   const all = pages.flatMap(p => p.questions).filter(q => q.package && q.place !== "warm-up");
   for (const p of pages) {
+    // A step template page prints its type's adopted count of practice questions (Cedric's section 8); at U4 to U9 a
+    // new idea's is 2, and two ways counts as a story on the Number stories page (provisional, workbook-provisional.ts).
+    if (p.content?.kind === "day" && p.content.consistentLayout && p.questions.some(q => q.itemPlan?.template)) {
+      const level = p.content.level;
+      const counted = p.questions.filter(q => q.package && q.check.status !== "failed" && (!NOT_COUNTED.has(q.place ?? "") || q.place === "solve-it-two-ways" && twoWaysCountsAsStory(level, p.type))).length;
+      const floor = pageMinimum(p.type, level, !!p.content.extraPractice);
+      if (counted < floor) issues.push({ page: p.number, kind: "coverage", reason: `the page prints ${counted} practice question${counted === 1 ? "" : "s"}; a ${p.type} page needs ${floor}` });
+    }
     if (p.content?.kind === "day") {
       const c=p.content;
       const printed=[c.title,c.subtitle,...c.blocks.flatMap(b=>[b.label,b.note,b.explain,...b.lines ?? [],...b.methods?.flatMap(m=>[m.label,...m.lines]) ?? []]),...p.questions.flatMap(q=>q.package?[q.package.text]:[])].filter((text):text is string=>typeof text==="string");
@@ -128,7 +157,9 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     const key = taskIdentity(pkg);
     const at = seen.get(key) ?? [];
     const limit = 1;
-    const spaced = false;
+    // (Provisional, U4 to U9: an extra practice page may ask a task of the book once more, 40 pages on.)
+    const spaced = at.length === 1 && p.day === null && extraPracticeRepeats(pkg.level, true, at[0], p.number);
+    if (spaced) extraRepeats++;
     if (at.includes(p.number) || at.length >= limit && !spaced) issues.push({ page: p.number, kind: "repeat", reason: `question ${q.number} repeats pages ${at.join(", ")} (limit ${limit})` });
     seen.set(key, [...at, p.number]);
   }
@@ -244,7 +275,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
   const sources = { template: counted.filter(q => q.itemPlan?.template).length, handBuilt: counted.filter(q => q.itemPlan && !q.itemPlan.template).length, existing: counted.filter(q => q.existing).length, total: counted.length };
   const questions = pages.flatMap(p => p.questions);
   const failedRate = questions.length ? questions.filter(q => q.check.status === "failed").length / questions.length : 1;
-  return { steps, sources, failedRate, dropped: pages.reduce((n, p) => n + Math.max(p.leftOut?.length ?? 0, (p.omissions ?? []).reduce((n,o)=>n + Math.max(0,o.requested-o.placed),0)), 0), days, issues,
+  return { steps, sources, extraRepeats, failedRate, dropped: pages.reduce((n, p) => n + Math.max(p.leftOut?.length ?? 0, (p.omissions ?? []).filter(o => !o.time).reduce((n,o)=>n + Math.max(0,o.requested-o.placed),0)), 0), days, issues,
     ready: failedRate < .05 && issues.length === 0 && pages.every(p => p.fit.status !== "failed") };
 }
 

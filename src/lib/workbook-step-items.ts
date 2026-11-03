@@ -267,6 +267,8 @@ export function templateProblem(t: StepTemplate, level: number): string | null {
   if (/\b(?:shade|shades|shaded|colou?r in)\b/i.test(words)) return "it asks to shade a figure code does not print";
   // A picture the text names must be printed: dots, counters, a chart or a grid (the U4 review: "8 dots: 3 red").
   if (/\b(?:dots?|counters?|tally|tallies|chart|graph|grid|picture|pictured|shown|array|bars?|pictograph|symbols?)\b/i.test(words)) return "it names a picture code does not print";
+  // A reversed numeral must be drawn: in words ("A) 5 facing the right way  B) 5 backwards") the choice says its answer.
+  if (/\bbackwards?\b|\bfacing the (?:right|wrong) way\b/i.test(words)) return "it needs a reversed numeral code cannot draw";
   if (level >= 4 && BANNED_FROM_U4.test(words)) return "it asks for drawing or tracing";
   if (BANNED.test(words)) return "it uses rejected workbook wording";
   return null;
@@ -301,18 +303,19 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
   // (And the step's other templates at the Challenge's difficulty: the Challenge is clearly the day's hardest.)
   const harder = printable.filter((x) => rank(x.t.difficulty) >= top && !reserved.includes(x));
   const rest = printable.filter((x) => !reserved.includes(x) && !harder.includes(x));
-  let usable = printable;
-  // (When the others print fewer than 3 formats, a page needs the Challenge's templates too: it plans first and keeps
-  // their largest numbers.)
+  // Outside the Challenge its templates are kept for it (Codex at 3134252: reserve scarce Challenge tasks), but for a
+  // teaching page whose other templates print fewer than 3 formats, and a story page with no other story; the
+  // Challenge plans first and keeps their largest numbers.
+  let usable = rest.length ? rest : printable.filter((x) => !harder.includes(x));
   const storyPage = !!r.place && STEP_STORY_PLACES.has(r.place) && r.place !== "challenge";
-  if (r.place && TEACH_PLACES.has(r.place) && !storyPage) {
-    const thin = new Set(rest.map(({ t }) => t.format)).size < 3;
-    const teach = thin ? [...rest, ...reserved] : rest;
-    if (teach.length) usable = teach;
-  } else if (storyPage) {
-    const story = printable.filter((x) => !harder.includes(x));
-    if (story.length) usable = story;
-  }
+  if (r.place && TEACH_PLACES.has(r.place) && !storyPage && new Set(rest.map(({ t }) => t.format)).size < 3) usable = [...rest, ...reserved];
+  else if (storyPage && !rest.some(({ t }) => t.format === "story")) usable = [...rest, ...reserved];
+  // A review place (Remember these?, the warm-up, Friday 5) on a step of an earlier level takes them all: no Challenge of
+  // this book asks that step. On a step of this level it takes them only late, when the others ran out.
+  const reviewPlace = !!r.place && !TEACH_PLACES.has(r.place) && !STEP_STORY_PLACES.has(r.place);
+  if (reviewPlace && (r.curriculum.levelOfSkill(r.skill)?.number ?? r.level) < r.level) usable = printable;
+  else if (reviewPlace && r.attempt >= 192) usable = printable.filter((x) => !harder.includes(x));
+  if (!usable.length) usable = printable;
   // A Number stories page asks stories when the step has them (the review: no drills on a page of stories).
   if (r.place && STEP_STORY_PLACES.has(r.place) && r.place !== "challenge" && r.attempt < 256 && usable.some(({ t }) => t.format === "story")) usable = usable.filter(({ t }) => t.format === "story");
   if (r.place === "challenge" && r.attempt < 256) usable = reserved;

@@ -138,3 +138,17 @@ it("keeps a hand-built question inside its slot's step range (#482 review at db3
   const wide = { ...p, expected: [{ slot: p.questions[0].slot, part: "practice" as const, place: "on-your-own" as const, steps: ["1.1-one-more-less-20#1"], bounds: { min: 0, max: 1 } }] };
   expect(workbookQuality([wide]).issues.some(i => i.kind === "range")).toBe(true);
 });
+
+it("fails a step template page below its adopted count, with the provisional U4 to U9 new idea floor of 2", () => {
+  const floorIssue = (level: number, places: string[]) => {
+    const p = page(3, 1, places.length);
+    p.type = "new-idea";
+    p.questions = p.questions.map((q, i) => ({ ...q, place: places[i] as typeof q.place, itemPlan: { template: { skill: "1.1-one-more-less-20", step: 1, index: i } } as unknown as typeof q.itemPlan }));
+    p.content = { kind: "day", id: "test", level, day: 1, page: 2, pages: 8, topic: "One more", title: "One more", subtitle: "Write the answer.", grownUp: null, consistentLayout: true, blocks: [] };
+    return workbookQuality([p]).issues.find(i => i.reason.includes("practice question"))?.reason ?? null;
+  };
+  // Spot the error does not count: 2 practice questions beside it hold U4's floor, not U10's.
+  expect(floorIssue(4, ["now-you", "now-you", "spot-the-error"])).toBeNull();
+  expect(floorIssue(10, ["now-you", "now-you", "spot-the-error"])).toBe("the page prints 2 practice questions; a new-idea page needs 3");
+  expect(floorIssue(4, ["now-you", "spot-the-error"])).toBe("the page prints 1 practice question; a new-idea page needs 2");
+});

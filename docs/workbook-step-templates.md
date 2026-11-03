@@ -175,6 +175,38 @@ third form takes #482's builder for its skill, where there is one, before it
 repeats a form. On overflow, a slot with no task goes first, then a question
 of the kind the page has most of.
 
+Planning order: every day's Challenge first, from the last day back (a later
+day reaches larger numbers), then every Number stories page, then the other
+pages in order; each page's worked examples choose their tasks before any
+question, so no question asks them. Days keep their own frame, Challenge and
+reserved-template limits. A review place on a step of an earlier level takes
+all its templates (no Challenge of the book asks that step); on a step of
+this level, the Challenge's templates only late. On overflow, a question
+wider than its space takes the next task of its slot first; then one of the
+four longest planned questions takes a shorter one that does not lengthen a
+day near its limit. A template that needs a reversed numeral drawn ("5
+backwards") does not print.
+
+## Provisional calls for U4 to U9 (2026-11-03)
+
+Made while Savar was away, to confirm. Each is one function in
+`src/lib/workbook-provisional.ts`, so it can be changed in one place:
+
+- **Solve it two ways** moves from Practice 2 to the Number stories page
+  (`twoWaysOnStoriesPage`). Practice 2 holds its 8 practice questions and Spot
+  the error, in closer rows. On that stories page, two ways counts as a story
+  (`twoWaysCountsAsStory`).
+- **New idea floor:** 2 practice questions beside the worked example and Spot
+  the error (`newIdeaFloor`); U10 and up keep 3. The book check
+  (`pageMinimum`) reads the same function. A page that cannot hold its floor
+  still fails and is reported.
+- **Repeats:** Days 1 to 10 never repeat a task. Only an extra practice page
+  may ask a task of the book once more, and only 40 or more pages after it was
+  first asked (`extraPracticeRepeats`). The sample index reports how many
+  extra practice questions do ("extra practice questions that repeat a book
+  task"). Fewer extra practice pages, then a labelled Notes page, are the
+  next steps if a book still runs out; neither has been needed yet.
+
 ## Report
 
 The sample index's quality row adds step progression (each day's average

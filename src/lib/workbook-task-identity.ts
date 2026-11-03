@@ -68,7 +68,8 @@ export function taskIdentity(p: QuestionPackage): string {
     : f === "draw" || f === "colour-or-shade" ? "colour" : contextFrame(p.text) || p.textSource === "ai" ? "story" : "drill";
   const numbers = printedTaskNumbers(p);
   // (Its words with the names taken out: "when Jon fills it" and "when Raj fills it" ask one thing.)
-  const words = numbers.length ? null : contextFrame(p.text) ?? p.text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  // (And its places: "always sunny at the beach" and "at the rink" ask one thing, the real U4 sample.)
+  const words = numbers.length ? null : contextFrame(p.text) ?? p.text.toLowerCase().replace(PLACE, " _ ").replace(/[^a-z0-9_]+/g, " ").trim();
   return JSON.stringify(["task", family, numbers, answersOf(p), p.item?.figure ?? null, words]);
 }
 
