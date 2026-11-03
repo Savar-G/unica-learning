@@ -221,13 +221,23 @@ function storySteps(input: GenerateInput, slot: Slot, day: number, level: number
   const sums = (skill: string, n: number | null) => !!stepOf(input.curriculum, skill, n)?.templates?.some((t) => t.format === "story" && sumTemplate(t) && !/\b1 (?:more|less|fewer)\b/.test(t.text) && !templateProblem(t, level));
   // The page's own step first when it has such stories; then this book's steps taught by today and the day's reviewed
   // steps, the most advanced first (the U16 review: Grade 5 stories, not "Hana has 9 leaves. She gets 7 more").
+  // If this step has no usable story, look backwards within the skill, then through
+  // earlier skills. The required story format must not advance the child's step.
+  if (!sums(at.skill, at.step)) {
+    const rank = stepRank(input.curriculum, at.skill, at.step) ?? 0;
+    const prior = input.curriculum.levels.flatMap(l => input.curriculum.levelSkills(l.id) ?? [])
+      .flatMap(s => (input.curriculum.skillSteps(s.id) ?? []).map(st => ({ skill: s.id, step: st.number })))
+      .filter(x => (stepRank(input.curriculum, x.skill, x.step) ?? Infinity) < rank && sums(x.skill, x.step))
+      .sort((a, b) => (stepRank(input.curriculum, b.skill, b.step) ?? 0) - (stepRank(input.curriculum, a.skill, a.step) ?? 0));
+    if (prior.length) return [prior[0]];
+  }
   const seen = new Set<string>([`${at.skill}#${at.step}`]);
   const own = sums(at.skill, at.step) ? [{ skill: at.skill, step: at.step }] : [];
   const reviewed = (input.plan.days.find((d) => d.day === day)?.pages ?? []).flatMap((p) => p.parts.flatMap((x) => x.reviewSteps ?? []));
   const usable = (x: { skill: string; step: number | null }) => {
     const step = stepOf(input.curriculum, x.skill, x.step);
     const k = `${x.skill}#${step?.number}`;
-    if (!step || seen.has(k) || !sums(x.skill, step.number)) return [];
+    if (!step || seen.has(k) || !sums(x.skill, step.number) || (stepRank(input.curriculum, x.skill, step.number) ?? Infinity) > (stepRank(input.curriculum, at.skill, at.step) ?? 0)) return [];
     seen.add(k);
     return [{ skill: x.skill, step: step.number }];
   };
@@ -2227,6 +2237,7 @@ function layOut(input: GenerateInput) {
       const pageTexts = new Set<string>();
       const pageStems = new Map<string, number>();
       const pageTypes = new Map<string, number>();
+      const truthCounts = new Map<string, number>();
       // One template a third of the page at most, half when nothing else is left (the U4 review: six "counts N in a
       // circle and says M" on one page pass as six contexts).
       const pageTemplates = new Map<string, number>();
@@ -2288,6 +2299,8 @@ function layOut(input: GenerateInput) {
             // A Challenge page asks the step's few hardest templates: it may print fewer forms (the book check agrees).
             const fewChallenge = w.page.type === "challenge" && slot.place === "challenge" && (c.template?.challengeTemplates ?? 3) < 3;
             if (w.slots.length >= 3 && !fewChallenge && (pageTypes.get(type) ?? 0) >= Math.ceil(w.slots.length / 2)) continue;
+            const truth = c.template?.format === "true-false" ? c.template.answer.toLowerCase() : null;
+            if (strict && truth && ["true", "false"].includes(truth) && (truthCounts.get(truth) ?? 0) > (truthCounts.get(truth === "true" ? "false" : "true") ?? 0)) continue;
             const tk = templateKey(c);
             const kk = kindKey(c);
             if (kk && slot.place !== "challenge" && dayChallenge.has(kk) && sizeOf(c) >= dayChallenge.get(kk)!) continue;
@@ -2324,6 +2337,10 @@ function layOut(input: GenerateInput) {
           // of a form the page has (another of its block stays), as a step with small ranges runs out (#489).
         }
         if (best) {
+          if (best.c.template?.format === "true-false") {
+            const truth = best.c.template.answer.toLowerCase();
+            truthCounts.set(truth, (truthCounts.get(truth) ?? 0) + 1);
+          }
           used.set(best.key, (used.get(best.key) ?? 0) + 1); if (!usedAt.has(best.key)) usedAt.set(best.key, w.number); pageOps.add(best.op); pageTexts.add(best.p.text);
           const bestStem = slot.place === "warm-up" || best.c.source === "explain" ? null : stemOf(best.p);
           if (bestStem) pageStems.set(bestStem, (pageStems.get(bestStem) ?? 0) + 1); pageTypes.set(best.type, (pageTypes.get(best.type) ?? 0) + 1);

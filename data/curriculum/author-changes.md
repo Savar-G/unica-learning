@@ -1,614 +1,1162 @@
-# Approved author data changes
+# V2 author changes
 
-The original is preserved byte for byte in `step-progressions-k9.original.json`. The corrected file is `step-progressions-k9.json`. Template numbers are 1-based. A template value of `all` means that the change is to the shared step domain. This record also exists as structured patches in `author-changes.json`.
+All 7,999 v2 templates remain. The raw v2 original is unchanged. V1 history remains in the .v1 files. The input limits remain unchanged.
 
-Savar approved the following budget adjustment: `K11-coin-attributes.pages` 2 -> 3, `U3.skillPages` 125 -> 126, Kindergarten `skillPages` 360 -> 361. Workbooks remain 8 for Kindergarten and 120 in total. The three expected old values are checked by the importer before the adjustment is applied.
+Each field below links to a complete before and after value in `author-changes.json`.
 
-| Skill | Step | Template | Field | Before | After | Why |
-|---|---:|---|---|---|---|---|
-| K11-coin-attributes | all | all | skill.pages | `2` | `3` | Savar accepted the author's three step pages. |
-| U3 | all | all | level.skillPages | `125` | `126` | Include the one added skill page in its level. |
-| Kindergarten | all | all | grade.skillPages | `360` | `361` | Include the same page in the grade budget. Workbook counts remain 8 and 120 overall. |
-| 3.1-place-value-1000 | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.1-place-value-1000 | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-place-value-1000 | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.1-place-value-1000 | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-place-value-1000 | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-place-value-1000 | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.1-place-value-1000 | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-place-value-1000 | 3 | 4 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-place-value-1000 | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.1-place-value-1000 | 4 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-compare-order-1000 | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.1-compare-order-1000 | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-compare-order-1000 | 4 | all | numbers.template_pos | `null` | `{"min":0,"max":2}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.1-compare-order-1000 | 4 | 1 | slots.pos | `{"min":0,"max":2}` | `"template_pos"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-compare-order-1000 | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.1-compare-order-1000 | 4 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-count-1000 | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.1-count-1000 | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-count-1000 | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.1-count-1000 | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-count-1000 | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.1-count-1000 | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-count-1000 | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.1-count-1000 | 4 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-count-1000 | 5 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.1-count-1000 | 5 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-estimate-quantity | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.1-estimate-quantity | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-estimate-quantity | 1 | 4 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-estimate-quantity | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.1-estimate-quantity | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-estimate-quantity | 2 | 4 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-estimate-quantity | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.1-estimate-quantity | 3 | 1 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-estimate-quantity | 3 | 2 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-estimate-quantity | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-estimate-quantity | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.1-estimate-quantity | 3 | 6 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-add-within-1000 | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.3-add-within-1000 | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-add-within-1000 | 1 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-add-within-1000 | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.3-add-within-1000 | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-add-within-1000 | 2 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-add-within-1000 | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.3-add-within-1000 | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-add-within-1000 | 3 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-add-within-1000 | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.3-add-within-1000 | 4 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-add-within-1000 | 4 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-add-within-1000 | 5 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.3-add-within-1000 | 5 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-add-within-1000 | 5 | 4 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-add-within-1000 | 6 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.3-add-within-1000 | 6 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-add-within-1000 | 6 | 4 | slots.g | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-add-within-1000 | 6 | 4 | slots.h | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-subtract-within-1000 | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.3-subtract-within-1000 | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-subtract-within-1000 | 1 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-subtract-within-1000 | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.3-subtract-within-1000 | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-subtract-within-1000 | 2 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-subtract-within-1000 | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.3-subtract-within-1000 | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-subtract-within-1000 | 3 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-subtract-within-1000 | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.3-subtract-within-1000 | 4 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-subtract-within-1000 | 4 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-subtract-within-1000 | 5 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.3-subtract-within-1000 | 5 | 2 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-subtract-within-1000 | 5 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-subtract-within-1000 | 5 | 5 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-subtract-within-1000 | 6 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.3-subtract-within-1000 | 6 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-subtract-within-1000 | 6 | 4 | slots.g | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-word-problems-1000 | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.3-word-problems-1000 | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-word-problems-1000 | 1 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-word-problems-1000 | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.3-word-problems-1000 | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-word-problems-1000 | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.3-word-problems-1000 | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-word-problems-1000 | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.3-word-problems-1000 | 4 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.3-word-problems-1000 | 4 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.4-recall-addition-20 | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.4-recall-addition-20 | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.4-recall-addition-20 | 1 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.4-recall-addition-20 | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.4-recall-addition-20 | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.4-recall-addition-20 | 2 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.4-recall-addition-20 | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.4-recall-addition-20 | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.4-recall-addition-20 | 3 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.4-subtraction-facts-20 | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.4-subtraction-facts-20 | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.4-subtraction-facts-20 | 1 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.4-subtraction-facts-20 | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.4-subtraction-facts-20 | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.4-subtraction-facts-20 | 2 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.4-subtraction-facts-20 | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.4-subtraction-facts-20 | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.4-subtraction-facts-20 | 3 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.4-subtraction-facts-20 | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.4-subtraction-facts-20 | 4 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-increasing-pattern | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.6-increasing-pattern | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-increasing-pattern | 1 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-increasing-pattern | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.6-increasing-pattern | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-increasing-pattern | 2 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-increasing-pattern | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.6-increasing-pattern | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-increasing-pattern | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.6-increasing-pattern | 4 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-decreasing-pattern | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.6-decreasing-pattern | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-decreasing-pattern | 1 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-decreasing-pattern | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.6-decreasing-pattern | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-decreasing-pattern | 2 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-decreasing-pattern | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.6-decreasing-pattern | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-decreasing-pattern | 3 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-growth-amount | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.6-growth-amount | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-growth-amount | 2 | all | numbers.template_f | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.6-growth-amount | 2 | 1 | slots.f | `{"min":0,"max":1}` | `"template_f"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-growth-amount | 2 | 2 | slots.f | `{"min":0,"max":1}` | `"template_f"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-growth-amount | 2 | 3 | slots.f | `{"min":0,"max":1}` | `"template_f"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-growth-amount | 2 | 4 | slots.f | `{"min":0,"max":1}` | `"template_f"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-growth-amount | 2 | 5 | slots.f | `{"min":0,"max":1}` | `"template_f"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-growth-amount | 2 | 6 | slots.f | `{"min":0,"max":1}` | `"template_f"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-growth-amount | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.6-growth-amount | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.6-growth-amount | 3 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.13-simulated-likelihood | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.13-simulated-likelihood | 4 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.13-independent-trials | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.13-independent-trials | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.13-independent-trials | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.13-independent-trials | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.13-independent-trials | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.13-independent-trials | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-equal-groups | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.5-equal-groups | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-equal-groups | 1 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-equal-groups | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.5-equal-groups | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-equal-groups | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.5-equal-groups | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-equal-groups | 3 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-equal-groups | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.5-equal-groups | 4 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-equal-groups | 4 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-equal-groups | 5 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.5-equal-groups | 5 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-equal-sharing | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.5-equal-sharing | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-equal-sharing | 1 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-equal-sharing | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.5-equal-sharing | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-equal-sharing | 2 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-equal-sharing | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.5-equal-sharing | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-equal-sharing | 3 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-grouping-division | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.5-grouping-division | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-grouping-division | 1 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-grouping-division | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.5-grouping-division | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-grouping-division | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.5-grouping-division | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-grouping-division | 3 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-relate-multiply-divide | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.5-relate-multiply-divide | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-relate-multiply-divide | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.5-relate-multiply-divide | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.5-relate-multiply-divide | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.5-relate-multiply-divide | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-unknown-result-change | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.8-unknown-result-change | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-unknown-result-change | 1 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-unknown-result-change | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.8-unknown-result-change | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-unknown-result-change | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.8-unknown-result-change | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-unknown-result-change | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.8-unknown-result-change | 4 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-unknown-start | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.8-unknown-start | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-unknown-start | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.8-unknown-start | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-unknown-start | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.8-unknown-start | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-unknown-start | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.8-unknown-start | 4 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-balance-equations | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.8-balance-equations | 1 | 1 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-balance-equations | 1 | 2 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-balance-equations | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-balance-equations | 1 | 4 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-balance-equations | 1 | 6 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-balance-equations | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.8-balance-equations | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-balance-equations | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.8-balance-equations | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-balance-equations | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.8-balance-equations | 4 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-balance-equations | 4 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-balance-equations | 5 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.8-balance-equations | 5 | 2 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-write-equation | 1 | all | numbers.template_f | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.8-write-equation | 1 | 1 | slots.f | `{"min":0,"max":1}` | `"template_f"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-write-equation | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_f"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-write-equation | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.8-write-equation | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.8-write-equation | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.8-write-equation | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.7-describe-rule | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.7-describe-rule | 1 | 2 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.7-describe-rule | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.7-describe-rule | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.7-describe-rule | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.7-describe-rule | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.7-use-rule | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.7-use-rule | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.7-use-rule | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.7-use-rule | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.7-use-rule | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.7-use-rule | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.12-read-bar-graph | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.12-read-bar-graph | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.12-read-bar-graph | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.12-read-bar-graph | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.12-read-bar-graph | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.12-read-bar-graph | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.12-read-bar-graph | 3 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.12-read-bar-graph | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.12-read-bar-graph | 4 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.12-read-bar-graph | 5 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.12-read-bar-graph | 5 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.12-tally | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.12-tally | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.12-tally | 1 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.12-tally | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.12-tally | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.12-tally | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.12-tally | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.12-choose-display | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.12-choose-display | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.12-choose-display | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.12-choose-display | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.12-choose-display | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.14-coins-bills-100 | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.14-coins-bills-100 | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.14-coins-bills-100 | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.14-coins-bills-100 | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.14-coins-bills-100 | 2 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.14-coins-bills-100 | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.14-coins-bills-100 | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.14-coins-bills-100 | 3 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.14-coins-bills-100 | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.14-coins-bills-100 | 4 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.14-coins-bills-100 | 4 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.14-make-amount-ways | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.14-make-amount-ways | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.14-make-amount-ways | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.14-make-amount-ways | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.14-make-amount-ways | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.14-make-amount-ways | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.14-make-amount-ways | 3 | 4 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.14-make-amount-ways | 3 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.14-earning-payment | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.14-earning-payment | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.14-earning-payment | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.14-earning-payment | 4 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.14-earning-payment | 4 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-equal-parts | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.2-equal-parts | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-equal-parts | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.2-equal-parts | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-equal-parts | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.2-equal-parts | 3 | 2 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-name-fraction-region | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.2-name-fraction-region | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-name-fraction-region | 1 | 5 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-name-fraction-region | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.2-name-fraction-region | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-name-fraction-region | 2 | 5 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-name-fraction-region | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.2-name-fraction-region | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-name-fraction-region | 3 | 5 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-name-fraction-region | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.2-name-fraction-region | 4 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-name-fraction-region | 4 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-fraction-of-set | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.2-fraction-of-set | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-fraction-of-set | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-fraction-of-set | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.2-fraction-of-set | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-fraction-of-set | 2 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-fraction-of-set | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.2-fraction-of-set | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-fraction-of-set | 3 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-fraction-of-set | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.2-fraction-of-set | 4 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-fraction-number-line | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.2-fraction-number-line | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-fraction-number-line | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-fraction-number-line | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.2-fraction-number-line | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-fraction-number-line | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.2-fraction-number-line | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-fraction-whole | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.2-fraction-whole | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-fraction-whole | 1 | 5 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-fraction-whole | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.2-fraction-whole | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-fraction-whole | 2 | 5 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.2-fraction-whole | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.2-fraction-whole | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-metric-units | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.9-metric-units | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-metric-units | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-metric-units | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.9-metric-units | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-metric-units | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-metric-units | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.9-metric-units | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-metric-units | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-metric-units | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.9-metric-units | 4 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-convert-m-cm | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.9-convert-m-cm | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-convert-m-cm | 1 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-convert-m-cm | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.9-convert-m-cm | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-convert-m-cm | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.9-convert-m-cm | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-convert-m-cm | 3 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-convert-m-cm | 4 | all | numbers.template_f | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.9-convert-m-cm | 4 | 1 | slots.f | `{"min":0,"max":1}` | `"template_f"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-convert-m-cm | 4 | 2 | slots.f | `{"min":0,"max":1}` | `"template_f"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-convert-m-cm | 4 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_f"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-convert-m-cm | 4 | 4 | slots.f | `{"min":0,"max":1}` | `"template_f"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-convert-m-cm | 4 | 5 | slots.f | `{"min":0,"max":1}` | `"template_f"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-area-square-units | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.9-area-square-units | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-area-square-units | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.9-area-square-units | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-area-square-units | 2 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-area-square-units | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.9-area-square-units | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-area-square-units | 3 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-perimeter-concept | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.9-perimeter-concept | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-perimeter-concept | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.9-perimeter-concept | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-perimeter-concept | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.9-perimeter-concept | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.9-perimeter-concept | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.9-perimeter-concept | 4 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.10-time-units | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.10-time-units | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.10-time-units | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.10-time-units | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.10-time-units | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.10-time-units | 2 | 5 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.10-time-units | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.10-time-units | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.10-convert-time | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.10-convert-time | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.10-convert-time | 1 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.10-convert-time | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.10-convert-time | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.10-convert-time | 2 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.10-convert-time | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.10-convert-time | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.10-convert-time | 3 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.10-convert-time | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.10-convert-time | 4 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.10-convert-time | 4 | 5 | slots.f | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.11-faces-edges-vertices | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.11-faces-edges-vertices | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.11-faces-edges-vertices | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.11-faces-edges-vertices | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.11-faces-edges-vertices | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.11-faces-edges-vertices | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.11-name-3d | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.11-name-3d | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.11-name-3d | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.11-name-3d | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.11-name-3d | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.11-name-3d | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.11-name-3d | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.11-name-3d | 4 | 1 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.11-nets | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.11-nets | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.11-nets | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.11-nets | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 3.11-nets | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 3.11-nets | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 4.1-multiples | 3 | 1 | answer | `"str([f, 2 * f, 3 * f, 4 * f, 5 * f, 6 * f][:t])"` | `"str([f, 2 * f, 3 * f, 4 * f] if t == 4 else ([f, 2 * f, 3 * f, 4 * f, 5 * f] if t == 5 else [f, 2 * f, 3 * f, 4 * f, 5 * f, 6 * f]))"` | The declared t range is 4-6. Select the same list explicitly instead of slicing. |
-| 4.13-name-polygons | 1 | 1 | answer | `"{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n]"` | `"'triangle' if n == 3 else 'quadrilateral' if n == 4 else 'pentagon' if n == 5 else 'hexagon' if n == 6 else 'heptagon' if n == 7 else 'octagon' if n == 8 else 'nonagon' if n == 9 else 'decagon'"` | Replace dictionary lookup with the same side/name pairs as conditional expressions. |
-| 4.13-name-polygons | 1 | 2 | answer | `"{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n]"` | `"'triangle' if n == 3 else 'quadrilateral' if n == 4 else 'pentagon' if n == 5 else 'hexagon' if n == 6 else 'heptagon' if n == 7 else 'octagon' if n == 8 else 'nonagon' if n == 9 else 'decagon'"` | Replace dictionary lookup with the same side/name pairs as conditional expressions. |
-| 4.13-name-polygons | 1 | 4 | answer | `"{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n]"` | `"'triangle' if n == 3 else 'quadrilateral' if n == 4 else 'pentagon' if n == 5 else 'hexagon' if n == 6 else 'heptagon' if n == 7 else 'octagon' if n == 8 else 'nonagon' if n == 9 else 'decagon'"` | Replace dictionary lookup with the same side/name pairs as conditional expressions. |
-| 4.13-name-polygons | 1 | 3 | derived | `{"word":"{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n] if flip == 0 else {3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[3 + (n - 2) % 8]"}` | `{"label_sides":"n if flip == 0 else 3 + (n - 2) % 8","word":"'triangle' if label_sides == 3 else 'quadrilateral' if label_sides == 4 else 'pentagon' if label_sides == 5 else 'hexagon' if label_sides == 6 else 'heptagon' if label_sides == 7 else 'octagon' if label_sides == 8 else 'nonagon' if label_sides == 9 else 'decagon'"}` | Preserve the true label and the same cyclic wrong label. Use a named intermediate to stay below the expression cap. |
-| 4.13-name-polygons | 2 | 1 | answer | `"{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n]"` | `"'triangle' if n == 3 else 'quadrilateral' if n == 4 else 'pentagon' if n == 5 else 'hexagon' if n == 6 else 'heptagon' if n == 7 else 'octagon' if n == 8 else 'nonagon' if n == 9 else 'decagon'"` | Replace dictionary lookup with the same side/name pairs as conditional expressions. |
-| 4.13-name-polygons | 2 | 2 | answer | `"{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n]"` | `"'triangle' if n == 3 else 'quadrilateral' if n == 4 else 'pentagon' if n == 5 else 'hexagon' if n == 6 else 'heptagon' if n == 7 else 'octagon' if n == 8 else 'nonagon' if n == 9 else 'decagon'"` | Replace dictionary lookup with the same side/name pairs as conditional expressions. |
-| 4.13-name-polygons | 2 | 4 | answer | `"{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n]"` | `"'triangle' if n == 3 else 'quadrilateral' if n == 4 else 'pentagon' if n == 5 else 'hexagon' if n == 6 else 'heptagon' if n == 7 else 'octagon' if n == 8 else 'nonagon' if n == 9 else 'decagon'"` | Replace dictionary lookup with the same side/name pairs as conditional expressions. |
-| 4.13-name-polygons | 2 | 3 | derived | `{"word":"{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n] if flip == 0 else {3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[3 + (n - 2) % 8]"}` | `{"label_sides":"n if flip == 0 else 3 + (n - 2) % 8","word":"'triangle' if label_sides == 3 else 'quadrilateral' if label_sides == 4 else 'pentagon' if label_sides == 5 else 'hexagon' if label_sides == 6 else 'heptagon' if label_sides == 7 else 'octagon' if label_sides == 8 else 'nonagon' if label_sides == 9 else 'decagon'"}` | Preserve the true label and the same cyclic wrong label. Use a named intermediate to stay below the expression cap. |
-| 4.13-name-polygons | 3 | 1 | answer | `"{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n]"` | `"'triangle' if n == 3 else 'quadrilateral' if n == 4 else 'pentagon' if n == 5 else 'hexagon' if n == 6 else 'heptagon' if n == 7 else 'octagon' if n == 8 else 'nonagon' if n == 9 else 'decagon'"` | Replace dictionary lookup with the same side/name pairs as conditional expressions. |
-| 4.13-name-polygons | 3 | 2 | answer | `"{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n]"` | `"'triangle' if n == 3 else 'quadrilateral' if n == 4 else 'pentagon' if n == 5 else 'hexagon' if n == 6 else 'heptagon' if n == 7 else 'octagon' if n == 8 else 'nonagon' if n == 9 else 'decagon'"` | Replace dictionary lookup with the same side/name pairs as conditional expressions. |
-| 4.13-name-polygons | 3 | 4 | answer | `"{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n]"` | `"'triangle' if n == 3 else 'quadrilateral' if n == 4 else 'pentagon' if n == 5 else 'hexagon' if n == 6 else 'heptagon' if n == 7 else 'octagon' if n == 8 else 'nonagon' if n == 9 else 'decagon'"` | Replace dictionary lookup with the same side/name pairs as conditional expressions. |
-| 4.13-name-polygons | 3 | 3 | derived | `{"word":"{3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[n] if flip == 0 else {3: 'triangle', 4: 'quadrilateral', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon', 9: 'nonagon', 10: 'decagon'}[3 + (n - 2) % 8]"}` | `{"label_sides":"n if flip == 0 else 3 + (n - 2) % 8","word":"'triangle' if label_sides == 3 else 'quadrilateral' if label_sides == 4 else 'pentagon' if label_sides == 5 else 'hexagon' if label_sides == 6 else 'heptagon' if label_sides == 7 else 'octagon' if label_sides == 8 else 'nonagon' if label_sides == 9 else 'decagon'"}` | Preserve the true label and the same cyclic wrong label. Use a named intermediate to stay below the expression cap. |
-| 6.4-prime-composite | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.4-prime-composite | 1 | 2 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.4-divisibility | 2 | 1 | derived | `null` | `{"digit_sum":"n % 10 + (n // 10) % 10 + (n // 100) % 10 + (n // 1000) % 10"}` | The declared n range is 100-9999. Four explicit digit terms replace the unsupported generator expression. |
-| 6.4-divisibility | 2 | 1 | answer | `"'yes' if sum(int(c) for c in str(n)) % 3 == 0 else 'no'"` | `"'yes' if digit_sum % 3 == 0 else 'no'"` | Use the exact same digit sum and retain the original divisibility conditions. |
-| 6.4-divisibility | 2 | 2 | derived | `null` | `{"digit_sum":"n % 10 + (n // 10) % 10 + (n // 100) % 10 + (n // 1000) % 10"}` | The declared n range is 100-9999. Four explicit digit terms replace the unsupported generator expression. |
-| 6.4-divisibility | 2 | 2 | answer | `"sum(int(c) for c in str(n))"` | `"digit_sum"` | Use the exact same digit sum and retain the original divisibility conditions. |
-| 6.4-divisibility | 2 | 3 | derived | `null` | `{"digit_sum":"n % 10 + (n // 10) % 10 + (n // 100) % 10 + (n // 1000) % 10"}` | The declared n range is 100-9999. Four explicit digit terms replace the unsupported generator expression. |
-| 6.4-divisibility | 2 | 3 | answer | `"'yes' if sum(int(c) for c in str(n)) % 9 == 0 else 'no'"` | `"'yes' if digit_sum % 9 == 0 else 'no'"` | Use the exact same digit sum and retain the original divisibility conditions. |
-| 6.4-divisibility | 2 | 4 | derived | `null` | `{"digit_sum":"n % 10 + (n // 10) % 10 + (n // 100) % 10 + (n // 1000) % 10"}` | The declared n range is 100-9999. Four explicit digit terms replace the unsupported generator expression. |
-| 6.4-divisibility | 2 | 4 | answer | `"'yes' if sum(int(c) for c in str(n)) % 3 == 0 and sum(int(c) for c in str(n)) % 9 != 0 else 'no'"` | `"'yes' if digit_sum % 3 == 0 and digit_sum % 9 != 0 else 'no'"` | Use the exact same digit sum and retain the original divisibility conditions. |
-| 6.4-factors | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.4-factors | 1 | 2 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.4-factors | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.4-factors | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.4-lcm | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.4-lcm | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.13-classify-angles | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.13-classify-angles | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.13-classify-angles | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.13-classify-angles | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.13-measure-angles | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.13-measure-angles | 1 | 2 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.11-complex-perimeter | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.11-complex-perimeter | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.11-complex-perimeter | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.11-complex-perimeter | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.11-complex-perimeter | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.11-complex-perimeter | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.18-theoretical | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.18-theoretical | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.18-experimental | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.18-experimental | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.18-compare | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.18-compare | 1 | 2 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.18-compare | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.18-compare | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.5-improper-to-mixed | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.5-improper-to-mixed | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.5-mixed-to-improper | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.5-mixed-to-improper | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.5-compare-order | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.5-compare-order | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.8-multiply-decimal | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.8-multiply-decimal | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.8-divide-decimal | 3 | all | numbers.template_m | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.8-divide-decimal | 3 | 4 | slots.m | `{"min":0,"max":1}` | `"template_m"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.10-preserve-equality | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.10-preserve-equality | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.10-preserve-equality | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.10-preserve-equality | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.10-solve-one-step | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.10-solve-one-step | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.10-solve-one-step | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.10-solve-one-step | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.10-solve-one-step | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.10-solve-one-step | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.10-solve-one-step | 5 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.10-solve-one-step | 5 | 2 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.10-combine-like-terms | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.10-combine-like-terms | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.10-combine-like-terms | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.10-combine-like-terms | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.10-write-equation | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.10-write-equation | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.10-write-equation | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.10-write-equation | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.10-write-equation | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.10-write-equation | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.10-write-equation | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.10-write-equation | 4 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.12-triangle-area | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.12-triangle-area | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.12-triangle-area | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"decimal_places"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.12-parallelogram-area | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.12-parallelogram-area | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.12-parallelogram-area | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"decimal_places"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.12-trapezoid-area | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.12-trapezoid-area | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.12-trapezoid-area | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"decimal_places"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.12-missing-dimension | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.12-missing-dimension | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.15-classify-by-sides | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.15-classify-by-sides | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.15-classify-by-sides | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.15-classify-by-sides | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.15-classify-by-sides | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.15-classify-by-sides | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.15-classify-by-angles | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.15-classify-by-angles | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.15-classify-by-angles | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.15-classify-by-angles | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.16-plot-points | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.16-plot-points | 1 | 2 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.16-plot-points | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.16-plot-points | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.16-translate-point | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.16-translate-point | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.16-combine-transformations | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.16-combine-transformations | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.16-combine-transformations | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.16-combine-transformations | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.16-combine-transformations | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.16-combine-transformations | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.6-write-ratio | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.6-write-ratio | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.6-write-ratio | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.6-write-ratio | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.6-equivalent-ratios | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.6-equivalent-ratios | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.6-equivalent-ratios | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.6-equivalent-ratios | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.6-ratio-to-fraction | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.6-ratio-to-fraction | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.6-ratio-to-fraction | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.6-ratio-to-fraction | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.7-percent-meaning | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.7-percent-meaning | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.7-percent-meaning | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.7-percent-meaning | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.7-percent-of | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.7-percent-of | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.7-percent-of | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.7-percent-of | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.7-percent-of | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.7-percent-of | 4 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.7-discount | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.7-discount | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.7-discount | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.7-discount | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.7-missing-whole | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.7-missing-whole | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.7-missing-whole | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.7-missing-whole | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.7-missing-whole | 4 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.7-missing-whole | 4 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.19-saving-plan | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.19-saving-plan | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.19-consumer-choice | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.19-consumer-choice | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.9-evaluate-rule | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.9-evaluate-rule | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.9-find-rule | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.9-find-rule | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.9-find-rule | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.9-find-rule | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.9-graph-relation | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.9-graph-relation | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.9-graph-relation | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.9-graph-relation | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.9-write-expression | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.9-write-expression | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.9-write-expression | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.9-write-expression | 2 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.9-write-expression | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.9-write-expression | 3 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.14-volume-cubes | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.14-volume-cubes | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.14-volume-cubes | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.14-volume-cubes | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.14-volume-prism | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"decimal_places"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.14-capacity-units | 2 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.14-capacity-units | 2 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.14-capacity-units | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.14-capacity-units | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.17-read-line-graph | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.17-read-line-graph | 1 | 4 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.17-read-line-graph | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.17-read-line-graph | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.17-make-line-graph | 1 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.17-make-line-graph | 1 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 6.17-make-line-graph | 3 | all | numbers.template_flip | `null` | `{"min":0,"max":1}` | Give the inline slot range a named domain without changing its bounds. |
-| 6.17-make-line-graph | 3 | 3 | slots.flip | `{"min":0,"max":1}` | `"template_flip"` | Use the identical named numbers domain; preserve the slot name, distribution, meaning, and difficulty. |
-| 7.4-decimal-to-fraction | 1 | 1 | answer | `"str(fr.numerator) + '/' + str(fr.denominator)"` | `"str(fr)"` | The exact Fraction already displays in lowest terms. No attribute access is needed. |
-| 7.4-decimal-to-fraction | 1 | 2 | answer | `"str(fr.numerator) + '/' + str(fr.denominator)"` | `"str(fr)"` | The exact Fraction already displays in lowest terms. No attribute access is needed. |
-| 7.4-decimal-to-fraction | 2 | 1 | answer | `"str(fr.numerator) + '/' + str(fr.denominator)"` | `"str(fr)"` | The exact Fraction already displays in lowest terms. No attribute access is needed. |
-| 7.4-decimal-to-fraction | 2 | 2 | answer | `"str(fr.numerator) + '/' + str(fr.denominator)"` | `"str(fr)"` | The exact Fraction already displays in lowest terms. No attribute access is needed. |
-| 7.4-decimal-to-fraction | 3 | 1 | answer | `"str(fr.numerator) + '/' + str(fr.denominator)"` | `"str(fr)"` | The exact Fraction already displays in lowest terms. No attribute access is needed. |
-| 7.4-decimal-to-fraction | 3 | 2 | answer | `"str(fr.numerator) + '/' + str(fr.denominator)"` | `"str(fr)"` | The exact Fraction already displays in lowest terms. No attribute access is needed. |
-| 7.13-sale-price | 3 | all | numbers.price.values | `[10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190,200]` | `[20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190,200]` | Prices start at 20 in this step; remove the out-of-range value 10. Applies to templates 1-4. |
-| 7.13-total-cost | 1 | all | numbers.price.values | `[10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190,200]` | `[20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190,200]` | Prices start at 20 in this step; remove the out-of-range value 10. Applies to templates 1-4. |
-| 7.13-total-cost | 2 | all | numbers.price.values | `[10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190,200]` | `[20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190,200]` | Prices start at 20 in this step; remove the out-of-range value 10. Applies to templates 1-4. |
-| 7.13-total-cost | 3 | all | numbers.price.values | `[10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190,200]` | `[20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190,200]` | Prices start at 20 in this step; remove the out-of-range value 10. Applies to templates 1-4. |
-| 8.6-graph-relation | 2 | 1 | derived | `{"y":"g * c","c":"c % 6 + 1"}` | `{"y":"g * c"}` | Keep the sampled c unchanged inside x = [-3, 4]. Derive y from that final c; preserve the existing shown-value rule. |
-| 8.6-graph-relation | 2 | 1 | check | `null` | `"c >= 1 and y <= 30"` | Keep positive gaps for the existing wording and keep y in the step range [-30, 30]. |
-| 8.6-graph-relation | 2 | 4 | derived | `{"y":"g * c","c":"c % 6 + 1","shown":"(c) if flip == 0 else (c + 1)"}` | `{"y":"g * c","shown":"(c) if flip == 0 else (c + 1)"}` | Keep the sampled c unchanged inside x = [-3, 4]. Derive y from that final c; preserve the existing shown-value rule. |
-| 8.6-graph-relation | 2 | 4 | check | `null` | `"c >= 1 and y <= 30"` | Keep positive gaps for the existing wording and keep y in the step range [-30, 30]. |
+## 6.12-trapezoid-area step 3 template 1 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"'%g' % area"
+```
+After:
+```json
+"str(area)"
+```
+
+## 6.12-trapezoid-area step 3 template 2 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"'%g' % area + ' m²'"
+```
+After:
+```json
+"str(area) + ' m²'"
+```
+
+## 7.4-lowest-terms step 3 template None numbers
+
+Use separate named quantity ranges.
+
+Before:
+```json
+{"operand1": {"min": 1, "max": 100}, "operand2": {"min": 1, "max": 100}, "result": {"min": 1, "max": 100}, "denominator": {"min": 3, "max": 6}, "numerator": {"min": 1, "max": 50}, "factor": {"min": 2, "max": 5}, "flip": {"min": 0, "max": 1}, "error": {"min": 1, "max": 5}, "denominator_low": {"min": 3, "max": 4}, "numerator_low": {"min": 1, "max": 17}, "factor_low": {"min": 2, "max": 3}, "denominator_high": {"min": 5, "max": 6}, "numerator_high": {"min": 34, "max": 50}, "factor_high": {"min": 4, "max": 5}, "pt": {"min": 30202, "max": 260903, "values": [30202, 30203, 30204, 30205, 30206, 30207, 30208, 30209, 50202, 50203, 50204, 50205, 50206, 50207, 50208, 50209, 40302, 40303, 40304, 40305, 40306, 40307, 40308, 40309, 50302, 50303, 50304, 50305, 50306, 50307, 50308, 50309, 70302, 70303, 70304, 70305, 70306, 70307, 70308, 70309, 80302, 80303, 80304, 80305, 80306, 80307, 80308, 80309, 50402, 50403, 50404, 50405, 50406, 50407, 50408, 50409, 70402, 70403, 70404, 70405, 70406, 70407, 70408, 70409, 90402, 90403, 90404, 90405, 90406, 90407, 90408, 90409, 110402, 110403, 110404, 110405, 110406, 110407, 110408, 110409, 60502, 60503, 60504, 60505, 60506, 60507, 60508, 60509, 70502, 70503, 70504, 70505, 70506, 70507, 70508, 70509, 80502, 80503, 80504, 80505, 80506, 80507, 80508, 80509, 90502, 90503, 90504, 90505, 90506, 90507, 90508, 90509, 110502, 110503, 110504, 110505, 110506, 110507, 110508, 110509, 120502, 120503, 120504, 120505, 120506, 120507, 120508, 130502, 130503, 130504, 130505, 130506, 130507, 140502, 140503, 140504, 140505, 140506, 140507, 70602, 70603, 70604, 70605, 70606, 70607, 70608, 70609, 110602, 110603, 110604, 110605, 110606, 110607, 110608, 110609, 130602, 130603, 130604, 130605, 130606, 130607, 170602, 170603, 170604, 170605, 80702, 80703, 80704, 80705, 80706, 80707, 80708, 80709, 90702, 90703, 90704, 90705, 90706, 90707, 90708, 90709, 100702, 100703, 100704, 100705, 100706, 100707, 100708, 100709, 110702, 110703, 110704, 110705, 110706, 110707, 110708, 110709, 120702, 120703, 120704, 120705, 120706, 120707, 120708, 130702, 130703, 130704, 130705, 130706, 130707, 150702, 150703, 150704, 150705, 150706, 160702, 160703, 160704, 160705, 160706, 170702, 170703, 170704, 170705, 180702, 180703, 180704, 180705, 190702, 190703, 190704, 190705, 200702, 200703, 200704, 200705, 90802, 90803, 90804, 90805, 90806, 90807, 90808, 90809, 110802, 110803, 110804, 110805, 110806, 110807, 110808, 110809, 130802, 130803, 130804, 130805, 130806, 130807, 150802, 150803, 150804, 150805, 150806, 170802, 170803, 170804, 170805, 190802, 190803, 190804, 190805, 210802, 210803, 210804, 230802, 230803, 230804, 100902, 100903, 100904, 100905, 100906, 100907, 100908, 100909, 110902, 110903, 110904, 110905, 110906, 110907, 110908, 110909, 130902, 130903, 130904, 130905, 130906, 130907, 140902, 140903, 140904, 140905, 140906, 140907, 160902, 160903, 160904, 160905, 160906, 170902, 170903, 170904, 170905, 190902, 190903, 190904, 190905, 200902, 200903, 200904, 200905, 220902, 220903, 220904, 230902, 230903, 230904, 250902, 250903, 250904, 260902, 260903]}, "pth": {"min": 70504, "max": 250904, "values": [70504, 70505, 70506, 70507, 70508, 70509, 80504, 80505, 80506, 80507, 80508, 80509, 90504, 90505, 90506, 90507, 90508, 90509, 110504, 110505, 110506, 110507, 110508, 110509, 120504, 120505, 120506, 120507, 120508, 130504, 130505, 130506, 130507, 140504, 140505, 140506, 140507, 70604, 70605, 70606, 70607, 70608, 70609, 110604, 110605, 110606, 110607, 110608, 110609, 130604, 130605, 130606, 130607, 170604, 170605, 80704, 80705, 80706, 80707, 80708, 80709, 90704, 90705, 90706, 90707, 90708, 90709, 100704, 100705, 100706, 100707, 100708, 100709, 110704, 110705, 110706, 110707, 110708, 110709, 120704, 120705, 120706, 120707, 120708, 130704, 130705, 130706, 130707, 150704, 150705, 150706, 160704, 160705, 160706, 170704, 170705, 180704, 180705, 190704, 190705, 200704, 200705, 70804, 70805, 70806, 70807, 70808, 70809, 90804, 90805, 90806, 90807, 90808, 90809, 110804, 110805, 110806, 110807, 110808, 110809, 130804, 130805, 130806, 130807, 150804, 150805, 150806, 170804, 170805, 190804, 190805, 210804, 230804, 70904, 70905, 70906, 70907, 70908, 70909, 80904, 80905, 80906, 80907, 80908, 80909, 100904, 100905, 100906, 100907, 100908, 100909, 110904, 110905, 110906, 110907, 110908, 110909, 130904, 130905, 130906, 130907, 140904, 140905, 140906, 140907, 160904, 160905, 160906, 170904, 170905, 190904, 190905, 200904, 200905, 220904, 230904, 250904]}, "pos": {"min": 0, "max": 2}}
+```
+After:
+```json
+{"operand1": {"min": 1, "max": 100}, "operand2": {"min": 1, "max": 100}, "result": {"min": 1, "max": 100}, "denominator": {"min": 3, "max": 6}, "numerator": {"min": 1, "max": 50}, "factor": {"min": 2, "max": 5}, "flip": {"min": 0, "max": 1}, "error": {"min": 1, "max": 5}, "denominator_low": {"min": 3, "max": 4}, "numerator_low": {"min": 1, "max": 17}, "factor_low": {"min": 2, "max": 3}, "denominator_high": {"min": 5, "max": 6}, "numerator_high": {"min": 34, "max": 50}, "factor_high": {"min": 4, "max": 5}, "pos": {"min": 0, "max": 2}, "reduced_numerator": {"min": 3, "max": 26}, "reduced_denominator": {"min": 2, "max": 9}, "expansion": {"min": 2, "max": 9}, "hard_numerator": {"min": 7, "max": 25}, "hard_denominator": {"min": 5, "max": 9}, "hard_expansion": {"min": 4, "max": 9}}
+```
+
+## 7.4-lowest-terms step 3 template 1 check
+
+Replace packed coprime tuples with separate numerator, denominator and expansion ranges. Keep reduced fractions and the harder number range. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+""
+```
+After:
+```json
+"gcd(a, b) == 1 and a * g <= 100 and b * g <= 100"
+```
+
+## 7.4-lowest-terms step 3 template 1 derived
+
+Replace packed coprime tuples with separate numerator, denominator and expansion ranges. Keep reduced fractions and the harder number range. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"a": "p // 10000", "b": "p // 100 % 100", "g": "p % 100", "n": "a * g", "d": "b * g"}
+```
+After:
+```json
+{"n": "a * g", "d": "b * g"}
+```
+
+## 7.4-lowest-terms step 3 template 1 slots
+
+Replace packed coprime tuples with separate numerator, denominator and expansion ranges. Keep reduced fractions and the harder number range. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"p": "pt"}
+```
+After:
+```json
+{"a": "reduced_numerator", "b": "reduced_denominator", "g": "expansion"}
+```
+
+## 7.4-lowest-terms step 3 template 2 check
+
+Replace packed coprime tuples with separate numerator, denominator and expansion ranges. Keep reduced fractions and the harder number range. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+""
+```
+After:
+```json
+"gcd(a, b) == 1 and a * g <= 100 and b * g <= 100"
+```
+
+## 7.4-lowest-terms step 3 template 2 derived
+
+Replace packed coprime tuples with separate numerator, denominator and expansion ranges. Keep reduced fractions and the harder number range. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"a": "p // 10000", "b": "p // 100 % 100", "g": "p % 100", "n": "a * g", "d": "b * g", "x": "a if flip == 0 else n", "y": "b if flip == 0 else d"}
+```
+After:
+```json
+{"n": "a * g", "d": "b * g", "x": "a if flip == 0 else n", "y": "b if flip == 0 else d"}
+```
+
+## 7.4-lowest-terms step 3 template 2 slots
+
+Replace packed coprime tuples with separate numerator, denominator and expansion ranges. Keep reduced fractions and the harder number range. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"p": "pt", "flip": "flip"}
+```
+After:
+```json
+{"a": "reduced_numerator", "b": "reduced_denominator", "g": "expansion", "flip": "flip"}
+```
+
+## 7.4-lowest-terms step 3 template 3 check
+
+Replace packed coprime tuples with separate numerator, denominator and expansion ranges. Keep reduced fractions and the harder number range. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+""
+```
+After:
+```json
+"gcd(a, b) == 1 and a * g <= 100 and b * g <= 100"
+```
+
+## 7.4-lowest-terms step 3 template 3 derived
+
+Replace packed coprime tuples with separate numerator, denominator and expansion ranges. Keep reduced fractions and the harder number range. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"a": "p // 10000", "b": "p // 100 % 100", "g": "p % 100", "n": "a * g", "d": "b * g"}
+```
+After:
+```json
+{"n": "a * g", "d": "b * g"}
+```
+
+## 7.4-lowest-terms step 3 template 3 slots
+
+Replace packed coprime tuples with separate numerator, denominator and expansion ranges. Keep reduced fractions and the harder number range. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"p": "pt"}
+```
+After:
+```json
+{"a": "reduced_numerator", "b": "reduced_denominator", "g": "expansion"}
+```
+
+## 7.4-lowest-terms step 3 template 4 answer
+
+Replace packed coprime tuples with separate numerator, denominator and expansion ranges. Keep reduced fractions and the harder number range. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"'ABC'[pos] + ') ' + c1"
+```
+After:
+```json
+"safe_1 + ') ' + c1"
+```
+
+## 7.4-lowest-terms step 3 template 4 check
+
+Replace packed coprime tuples with separate numerator, denominator and expansion ranges. Keep reduced fractions and the harder number range. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"c1 != w1 and c1 != w2 and w1 != w2"
+```
+After:
+```json
+"gcd(a, b) == 1 and a * g <= 100 and b * g <= 100 and c1 != w1 and c1 != w2 and w1 != w2"
+```
+
+## 7.4-lowest-terms step 3 template 4 derived
+
+Replace packed coprime tuples with separate numerator, denominator and expansion ranges. Keep reduced fractions and the harder number range. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"a": "p // 10000", "b": "p // 100 % 100", "g": "p % 100", "n": "a * g", "d": "b * g", "c1": "str(a) + '/' + str(b)", "w1": "str(n) + '/' + str(b)", "w2": "str(b) + '/' + str(a)", "oA": "c1 if pos == 0 else w1", "oB": "w1 if pos == 0 else (c1 if pos == 1 else w2)", "oC": "w2 if pos < 2 else c1"}
+```
+After:
+```json
+{"n": "a * g", "d": "b * g", "c1": "str(a) + '/' + str(b)", "w1": "str(n) + '/' + str(b)", "w2": "str(b) + '/' + str(a)", "oA": "c1 if pos == 0 else w1", "oB": "w1 if pos == 0 else c1 if pos == 1 else w2", "oC": "w2 if pos < 2 else c1", "safe_1": "'A' if pos == 0 else ('B' if pos == 1 else ('C'))"}
+```
+
+## 7.4-lowest-terms step 3 template 4 slots
+
+Replace packed coprime tuples with separate numerator, denominator and expansion ranges. Keep reduced fractions and the harder number range. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"p": "pt", "pos": "pos"}
+```
+After:
+```json
+{"a": "reduced_numerator", "b": "reduced_denominator", "g": "expansion", "pos": "pos"}
+```
+
+## 7.4-lowest-terms step 3 template 5 check
+
+Replace packed coprime tuples with separate numerator, denominator and expansion ranges. Keep reduced fractions and the harder number range. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+""
+```
+After:
+```json
+"gcd(a, b) == 1 and a * g <= 100 and b * g <= 100 and a * g >= 28"
+```
+
+## 7.4-lowest-terms step 3 template 5 derived
+
+Replace packed coprime tuples with separate numerator, denominator and expansion ranges. Keep reduced fractions and the harder number range. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"a": "p // 10000", "b": "p // 100 % 100", "g": "p % 100", "n": "a * g", "d": "b * g"}
+```
+After:
+```json
+{"n": "a * g", "d": "b * g"}
+```
+
+## 7.4-lowest-terms step 3 template 5 slots
+
+Replace packed coprime tuples with separate numerator, denominator and expansion ranges. Keep reduced fractions and the harder number range. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"p": "pth"}
+```
+After:
+```json
+{"a": "hard_numerator", "b": "hard_denominator", "g": "hard_expansion"}
+```
+
+## 7.4-lowest-terms step 3 template 6 check
+
+Replace packed coprime tuples with separate numerator, denominator and expansion ranges. Keep reduced fractions and the harder number range. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+""
+```
+After:
+```json
+"gcd(a, b) == 1 and a * g <= 100 and b * g <= 100 and a * g >= 28"
+```
+
+## 7.4-lowest-terms step 3 template 6 derived
+
+Replace packed coprime tuples with separate numerator, denominator and expansion ranges. Keep reduced fractions and the harder number range. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"a": "p // 10000", "b": "p // 100 % 100", "g": "p % 100", "n": "a * g", "d": "b * g"}
+```
+After:
+```json
+{"n": "a * g", "d": "b * g"}
+```
+
+## 7.4-lowest-terms step 3 template 6 slots
+
+Replace packed coprime tuples with separate numerator, denominator and expansion ranges. Keep reduced fractions and the harder number range. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"p": "pth"}
+```
+After:
+```json
+{"a": "hard_numerator", "b": "hard_denominator", "g": "hard_expansion"}
+```
+
+## 7.4-compare-forms step 2 template 5 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions. Sort numeric values, then select the corresponding text at each position. Avoid tuple comparison and nested indexing.
+
+Before:
+```json
+"s[0][1] + ', ' + s[1][1] + ', ' + s[2][1]"
+```
+After:
+```json
+"position_0 + ', ' + position_1 + ', ' + position_2"
+```
+
+## 7.4-compare-forms step 2 template 5 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions. Sort numeric values, then select the corresponding text at each position. Avoid tuple comparison and nested indexing.
+
+Before:
+```json
+{"n": "1 + r % (d - 1)", "a": "k / 100", "sa": "(str(int(a)) if a == int(a) else str(round(a, 6)))", "v": "n / d", "sf": "str(n) + '/' + str(d)", "pc": "p / 100", "sp": "str(p) + '%'", "s": "sorted([(a, sa), (v, sf), (pc, sp)])"}
+```
+After:
+```json
+{"n": "1 + r % (d - 1)", "a": "k / 100", "sa": "str(int(a)) if a == int(a) else str(round(a, 6))", "v": "n / d", "sf": "str(n) + '/' + str(d)", "pc": "p / 100", "sp": "str(p) + '%'", "ordered": "sorted([a, v, pc])", "position_0": "sa if a == ordered[0] else sf if v == ordered[0] else sp", "position_1": "sa if a == ordered[1] else sf if v == ordered[1] else sp", "position_2": "sa if a == ordered[2] else sf if v == ordered[2] else sp"}
+```
+
+## 7.4-compare-forms step 2 template 6 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions. Sort numeric values, then select the corresponding text at each position. Avoid tuple comparison and nested indexing.
+
+Before:
+```json
+"'ABC'[pos] + ') ' + c1"
+```
+After:
+```json
+"safe_1 + ') ' + c1"
+```
+
+## 7.4-compare-forms step 2 template 6 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions. Sort numeric values, then select the corresponding text at each position. Avoid tuple comparison and nested indexing.
+
+Before:
+```json
+{"n": "1 + r % (d - 1)", "a": "k / 100", "sa": "(str(int(a)) if a == int(a) else str(round(a, 6)))", "v": "n / d", "sf": "str(n) + '/' + str(d)", "pc": "p / 100", "sp": "str(p) + '%'", "s": "sorted([(a, sa), (v, sf), (pc, sp)])", "c1": "s[2][1]", "w1": "s[1][1]", "w2": "s[0][1]", "oA": "c1 if pos == 0 else w1", "oB": "w1 if pos == 0 else (c1 if pos == 1 else w2)", "oC": "w2 if pos < 2 else c1"}
+```
+After:
+```json
+{"n": "1 + r % (d - 1)", "a": "k / 100", "sa": "str(int(a)) if a == int(a) else str(round(a, 6))", "v": "n / d", "sf": "str(n) + '/' + str(d)", "pc": "p / 100", "sp": "str(p) + '%'", "ordered": "sorted([a, v, pc])", "position_0": "sa if a == ordered[0] else sf if v == ordered[0] else sp", "position_1": "sa if a == ordered[1] else sf if v == ordered[1] else sp", "position_2": "sa if a == ordered[2] else sf if v == ordered[2] else sp", "c1": "position_2", "w1": "position_1", "w2": "position_0", "oA": "c1 if pos == 0 else w1", "oB": "w1 if pos == 0 else c1 if pos == 1 else w2", "oC": "w2 if pos < 2 else c1", "safe_1": "'A' if pos == 0 else ('B' if pos == 1 else ('C'))"}
+```
+
+## 7.4-compare-forms step 3 template 1 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions. Sort numeric values, then select the corresponding text at each position. Avoid tuple comparison and nested indexing.
+
+Before:
+```json
+"s[0][1] + ', ' + s[1][1] + ', ' + s[2][1] + ', ' + s[3][1]"
+```
+After:
+```json
+"position_0 + ', ' + position_1 + ', ' + position_2 + ', ' + position_3"
+```
+
+## 7.4-compare-forms step 3 template 1 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions. Sort numeric values, then select the corresponding text at each position. Avoid tuple comparison and nested indexing.
+
+Before:
+```json
+{"n": "1 + r % (d - 1)", "a": "k / 100", "sa": "(str(int(a)) if a == int(a) else str(round(a, 6)))", "v": "n / d", "sf": "str(n) + '/' + str(d)", "pc": "p / 100", "sp": "str(p) + '%'", "b": "m / 100", "sb": "(str(int(b)) if b == int(b) else str(round(b, 6)))", "s": "sorted([(a, sa), (v, sf), (pc, sp), (b, sb)])"}
+```
+After:
+```json
+{"n": "1 + r % (d - 1)", "a": "k / 100", "sa": "str(int(a)) if a == int(a) else str(round(a, 6))", "v": "n / d", "sf": "str(n) + '/' + str(d)", "pc": "p / 100", "sp": "str(p) + '%'", "b": "m / 100", "sb": "str(int(b)) if b == int(b) else str(round(b, 6))", "ordered": "sorted([a, v, pc, b])", "position_0": "sa if a == ordered[0] else sf if v == ordered[0] else sp if pc == ordered[0] else sb", "position_1": "sa if a == ordered[1] else sf if v == ordered[1] else sp if pc == ordered[1] else sb", "position_2": "sa if a == ordered[2] else sf if v == ordered[2] else sp if pc == ordered[2] else sb", "position_3": "sa if a == ordered[3] else sf if v == ordered[3] else sp if pc == ordered[3] else sb"}
+```
+
+## 7.4-compare-forms step 3 template 2 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions. Sort numeric values, then select the corresponding text at each position. Avoid tuple comparison and nested indexing.
+
+Before:
+```json
+"s[3][1] + ', ' + s[2][1] + ', ' + s[1][1] + ', ' + s[0][1]"
+```
+After:
+```json
+"position_3 + ', ' + position_2 + ', ' + position_1 + ', ' + position_0"
+```
+
+## 7.4-compare-forms step 3 template 2 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions. Sort numeric values, then select the corresponding text at each position. Avoid tuple comparison and nested indexing.
+
+Before:
+```json
+{"n": "1 + r % (d - 1)", "a": "k / 100", "sa": "(str(int(a)) if a == int(a) else str(round(a, 6)))", "v": "n / d", "sf": "str(n) + '/' + str(d)", "pc": "p / 100", "sp": "str(p) + '%'", "b": "m / 100", "sb": "(str(int(b)) if b == int(b) else str(round(b, 6)))", "s": "sorted([(a, sa), (v, sf), (pc, sp), (b, sb)])"}
+```
+After:
+```json
+{"n": "1 + r % (d - 1)", "a": "k / 100", "sa": "str(int(a)) if a == int(a) else str(round(a, 6))", "v": "n / d", "sf": "str(n) + '/' + str(d)", "pc": "p / 100", "sp": "str(p) + '%'", "b": "m / 100", "sb": "str(int(b)) if b == int(b) else str(round(b, 6))", "ordered": "sorted([a, v, pc, b])", "position_0": "sa if a == ordered[0] else sf if v == ordered[0] else sp if pc == ordered[0] else sb", "position_1": "sa if a == ordered[1] else sf if v == ordered[1] else sp if pc == ordered[1] else sb", "position_2": "sa if a == ordered[2] else sf if v == ordered[2] else sp if pc == ordered[2] else sb", "position_3": "sa if a == ordered[3] else sf if v == ordered[3] else sp if pc == ordered[3] else sb"}
+```
+
+## 7.4-compare-forms step 3 template 3 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions. Sort numeric values, then select the corresponding text at each position. Avoid tuple comparison and nested indexing.
+
+Before:
+```json
+"s[0][1]"
+```
+After:
+```json
+"position_0"
+```
+
+## 7.4-compare-forms step 3 template 3 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions. Sort numeric values, then select the corresponding text at each position. Avoid tuple comparison and nested indexing.
+
+Before:
+```json
+{"n": "1 + r % (d - 1)", "a": "k / 100", "sa": "(str(int(a)) if a == int(a) else str(round(a, 6)))", "v": "n / d", "sf": "str(n) + '/' + str(d)", "pc": "p / 100", "sp": "str(p) + '%'", "b": "m / 100", "sb": "(str(int(b)) if b == int(b) else str(round(b, 6)))", "s": "sorted([(a, sa), (v, sf), (pc, sp), (b, sb)])"}
+```
+After:
+```json
+{"n": "1 + r % (d - 1)", "a": "k / 100", "sa": "str(int(a)) if a == int(a) else str(round(a, 6))", "v": "n / d", "sf": "str(n) + '/' + str(d)", "pc": "p / 100", "sp": "str(p) + '%'", "b": "m / 100", "sb": "str(int(b)) if b == int(b) else str(round(b, 6))", "ordered": "sorted([a, v, pc, b])", "position_0": "sa if a == ordered[0] else sf if v == ordered[0] else sp if pc == ordered[0] else sb", "position_1": "sa if a == ordered[1] else sf if v == ordered[1] else sp if pc == ordered[1] else sb", "position_2": "sa if a == ordered[2] else sf if v == ordered[2] else sp if pc == ordered[2] else sb", "position_3": "sa if a == ordered[3] else sf if v == ordered[3] else sp if pc == ordered[3] else sb"}
+```
+
+## 7.4-compare-forms step 3 template 4 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions. Sort numeric values, then select the corresponding text at each position. Avoid tuple comparison and nested indexing.
+
+Before:
+```json
+{"n": "1 + r % (d - 1)", "a": "k / 100", "sa": "(str(int(a)) if a == int(a) else str(round(a, 6)))", "v": "n / d", "sf": "str(n) + '/' + str(d)", "pc": "p / 100", "sp": "str(p) + '%'", "s": "sorted([(a, sa), (v, sf), (pc, sp)])", "x": "s[0][1] if flip == 0 else s[1][1]", "y": "s[1][1] if flip == 0 else s[0][1]", "z": "s[2][1]"}
+```
+After:
+```json
+{"n": "1 + r % (d - 1)", "a": "k / 100", "sa": "str(int(a)) if a == int(a) else str(round(a, 6))", "v": "n / d", "sf": "str(n) + '/' + str(d)", "pc": "p / 100", "sp": "str(p) + '%'", "ordered": "sorted([a, v, pc])", "position_0": "sa if a == ordered[0] else sf if v == ordered[0] else sp", "position_1": "sa if a == ordered[1] else sf if v == ordered[1] else sp", "position_2": "sa if a == ordered[2] else sf if v == ordered[2] else sp", "x": "position_0 if flip == 0 else position_1", "y": "position_1 if flip == 0 else position_0", "z": "position_2"}
+```
+
+## 7.4-compare-forms step 3 template 5 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions. Sort numeric values, then select the corresponding text at each position. Avoid tuple comparison and nested indexing.
+
+Before:
+```json
+"'ABC'[pos] + ') ' + c1"
+```
+After:
+```json
+"safe_1 + ') ' + c1"
+```
+
+## 7.4-compare-forms step 3 template 5 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions. Sort numeric values, then select the corresponding text at each position. Avoid tuple comparison and nested indexing.
+
+Before:
+```json
+{"n": "1 + r % (d - 1)", "a": "k / 100", "sa": "(str(int(a)) if a == int(a) else str(round(a, 6)))", "v": "n / d", "sf": "str(n) + '/' + str(d)", "pc": "p / 100", "sp": "str(p) + '%'", "s": "sorted([(a, sa), (v, sf), (pc, sp)])", "c1": "s[0][1] + ', ' + s[1][1] + ', ' + s[2][1]", "w1": "s[2][1] + ', ' + s[1][1] + ', ' + s[0][1]", "w2": "s[0][1] + ', ' + s[2][1] + ', ' + s[1][1]", "oA": "c1 if pos == 0 else w1", "oB": "w1 if pos == 0 else (c1 if pos == 1 else w2)", "oC": "w2 if pos < 2 else c1"}
+```
+After:
+```json
+{"n": "1 + r % (d - 1)", "a": "k / 100", "sa": "str(int(a)) if a == int(a) else str(round(a, 6))", "v": "n / d", "sf": "str(n) + '/' + str(d)", "pc": "p / 100", "sp": "str(p) + '%'", "ordered": "sorted([a, v, pc])", "position_0": "sa if a == ordered[0] else sf if v == ordered[0] else sp", "position_1": "sa if a == ordered[1] else sf if v == ordered[1] else sp", "position_2": "sa if a == ordered[2] else sf if v == ordered[2] else sp", "c1": "position_0 + ', ' + position_1 + ', ' + position_2", "w1": "position_2 + ', ' + position_1 + ', ' + position_0", "w2": "position_0 + ', ' + position_2 + ', ' + position_1", "oA": "c1 if pos == 0 else w1", "oB": "w1 if pos == 0 else c1 if pos == 1 else w2", "oC": "w2 if pos < 2 else c1", "safe_1": "'A' if pos == 0 else ('B' if pos == 1 else ('C'))"}
+```
+
+## 7.13-sales-tax-tip step 2 template None numbers
+
+Remove unused cents lists. All six templates already use j or j4m and derive each price and tax separately.
+
+Before:
+```json
+{"operand1": {"min": 1, "max": 80}, "operand2": {"min": 1, "max": 80}, "result": {"min": 1, "max": 80}, "decimal_places": {"min": 0, "max": 2}, "price": {"min": 10, "max": 200, "values": [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200]}, "percent": {"min": 5, "max": 12, "values": [5, 7, 12]}, "flip": {"min": 0, "max": 1}, "error": {"min": 1, "max": 5}, "price_low": {"min": 10, "max": 100, "values": [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]}, "percent_low": {"min": 5, "max": 5, "values": [5]}, "price_high": {"min": 110, "max": 200, "values": [110, 120, 130, 140, 150, 160, 170, 180, 190, 200]}, "percent_high": {"min": 7, "max": 12, "values": [7, 12]}, "C": {"min": 500, "max": 15000, "values": [500, 525, 550, 575, 600, 625, 650, 675, 700, 725, 750, 775, 800, 825, 850, 875, 900, 925, 950, 975, 1000, 1025, 1050, 1075, 1100, 1125, 1150, 1175, 1200, 1225, 1250, 1275, 1300, 1325, 1350, 1375, 1400, 1425, 1450, 1475, 1500, 1525, 1550, 1575, 1600, 1625, 1650, 1675, 1700, 1725, 1750, 1775, 1800, 1825, 1850, 1875, 1900, 1925, 1950, 1975, 2000, 2025, 2050, 2075, 2100, 2125, 2150, 2175, 2200, 2225, 2250, 2275, 2300, 2325, 2350, 2375, 2400, 2425, 2450, 2475, 2500, 2525, 2550, 2575, 2600, 2625, 2650, 2675, 2700, 2725, 2750, 2775, 2800, 2825, 2850, 2875, 2900, 2925, 2950, 2975, 3000, 3025, 3050, 3075, 3100, 3125, 3150, 3175, 3200, 3225, 3250, 3275, 3300, 3325, 3350, 3375, 3400, 3425, 3450, 3475, 3500, 3525, 3550, 3575, 3600, 3625, 3650, 3675, 3700, 3725, 3750, 3775, 3800, 3825, 3850, 3875, 3900, 3925, 3950, 3975, 4000, 4025, 4050, 4075, 4100, 4125, 4150, 4175, 4200, 4225, 4250, 4275, 4300, 4325, 4350, 4375, 4400, 4425, 4450, 4475, 4500, 4525, 4550, 4575, 4600, 4625, 4650, 4675, 4700, 4725, 4750, 4775, 4800, 4825, 4850, 4875, 4900, 4925, 4950, 4975, 5000, 5025, 5050, 5075, 5100, 5125, 5150, 5175, 5200, 5225, 5250, 5275, 5300, 5325, 5350, 5375, 5400, 5425, 5450, 5475, 5500, 5525, 5550, 5575, 5600, 5625, 5650, 5675, 5700, 5725, 5750, 5775, 5800, 5825, 5850, 5875, 5900, 5925, 5950, 5975, 6000, 6025, 6050, 6075, 6100, 6125, 6150, 6175, 6200, 6225, 6250, 6275, 6300, 6325, 6350, 6375, 6400, 6425, 6450, 6475, 6500, 6525, 6550, 6575, 6600, 6625, 6650, 6675, 6700, 6725, 6750, 6775, 6800, 6825, 6850, 6875, 6900, 6925, 6950, 6975, 7000, 7025, 7050, 7075, 7100, 7125, 7150, 7175, 7200, 7225, 7250, 7275, 7300, 7325, 7350, 7375, 7400, 7425, 7450, 7475, 7500, 7525, 7550, 7575, 7600, 7625, 7650, 7675, 7700, 7725, 7750, 7775, 7800, 7825, 7850, 7875, 7900, 7925, 7950, 7975, 8000, 8025, 8050, 8075, 8100, 8125, 8150, 8175, 8200, 8225, 8250, 8275, 8300, 8325, 8350, 8375, 8400, 8425, 8450, 8475, 8500, 8525, 8550, 8575, 8600, 8625, 8650, 8675, 8700, 8725, 8750, 8775, 8800, 8825, 8850, 8875, 8900, 8925, 8950, 8975, 9000, 9025, 9050, 9075, 9100, 9125, 9150, 9175, 9200, 9225, 9250, 9275, 9300, 9325, 9350, 9375, 9400, 9425, 9450, 9475, 9500, 9525, 9550, 9575, 9600, 9625, 9650, 9675, 9700, 9725, 9750, 9775, 9800, 9825, 9850, 9875, 9900, 9925, 9950, 9975, 10000, 10025, 10050, 10075, 10100, 10125, 10150, 10175, 10200, 10225, 10250, 10275, 10300, 10325, 10350, 10375, 10400, 10425, 10450, 10475, 10500, 10525, 10550, 10575, 10600, 10625, 10650, 10675, 10700, 10725, 10750, 10775, 10800, 10825, 10850, 10875, 10900, 10925, 10950, 10975, 11000, 11025, 11050, 11075, 11100, 11125, 11150, 11175, 11200, 11225, 11250, 11275, 11300, 11325, 11350, 11375, 11400, 11425, 11450, 11475, 11500, 11525, 11550, 11575, 11600, 11625, 11650, 11675, 11700, 11725, 11750, 11775, 11800, 11825, 11850, 11875, 11900, 11925, 11950, 11975, 12000, 12025, 12050, 12075, 12100, 12125, 12150, 12175, 12200, 12225, 12250, 12275, 12300, 12325, 12350, 12375, 12400, 12425, 12450, 12475, 12500, 12525, 12550, 12575, 12600, 12625, 12650, 12675, 12700, 12725, 12750, 12775, 12800, 12825, 12850, 12875, 12900, 12925, 12950, 12975, 13000, 13025, 13050, 13075, 13100, 13125, 13150, 13175, 13200, 13225, 13250, 13275, 13300, 13325, 13350, 13375, 13400, 13425, 13450, 13475, 13500, 13525, 13550, 13575, 13600, 13625, 13650, 13675, 13700, 13725, 13750, 13775, 13800, 13825, 13850, 13875, 13900, 13925, 13950, 13975, 14000, 14025, 14050, 14075, 14100, 14125, 14150, 14175, 14200, 14225, 14250, 14275, 14300, 14325, 14350, 14375, 14400, 14425, 14450, 14475, 14500, 14525, 14550, 14575, 14600, 14625, 14650, 14675, 14700, 14725, 14750, 14775, 14800, 14825, 14850, 14875, 14900, 14925, 14950, 14975, 15000]}, "j4": {"min": 500, "max": 15000, "values": [500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000, 2100, 2200, 2300, 2400, 2500, 2600, 2700, 2800, 2900, 3000, 3100, 3200, 3300, 3400, 3500, 3600, 3700, 3800, 3900, 4000, 4100, 4200, 4300, 4400, 4500, 4600, 4700, 4800, 4900, 5000, 5100, 5200, 5300, 5400, 5500, 5600, 5700, 5800, 5900, 6000, 6100, 6200, 6300, 6400, 6500, 6600, 6700, 6800, 6900, 7000, 7100, 7200, 7300, 7400, 7500, 7600, 7700, 7800, 7900, 8000, 8100, 8200, 8300, 8400, 8500, 8600, 8700, 8800, 8900, 9000, 9100, 9200, 9300, 9400, 9500, 9600, 9700, 9800, 9900, 10000, 10100, 10200, 10300, 10400, 10500, 10600, 10700, 10800, 10900, 11000, 11100, 11200, 11300, 11400, 11500, 11600, 11700, 11800, 11900, 12000, 12100, 12200, 12300, 12400, 12500, 12600, 12700, 12800, 12900, 13000, 13100, 13200, 13300, 13400, 13500, 13600, 13700, 13800, 13900, 14000, 14100, 14200, 14300, 14400, 14500, 14600, 14700, 14800, 14900, 15000]}, "j": {"min": 20, "max": 600}, "j4m": {"min": 20, "max": 600, "values": [20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 88, 92, 96, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144, 148, 152, 156, 160, 164, 168, 172, 176, 180, 184, 188, 192, 196, 200, 204, 208, 212, 216, 220, 224, 228, 232, 236, 240, 244, 248, 252, 256, 260, 264, 268, 272, 276, 280, 284, 288, 292, 296, 300, 304, 308, 312, 316, 320, 324, 328, 332, 336, 340, 344, 348, 352, 356, 360, 364, 368, 372, 376, 380, 384, 388, 392, 396, 400, 404, 408, 412, 416, 420, 424, 428, 432, 436, 440, 444, 448, 452, 456, 460, 464, 468, 472, 476, 480, 484, 488, 492, 496, 500, 504, 508, 512, 516, 520, 524, 528, 532, 536, 540, 544, 548, 552, 556, 560, 564, 568, 572, 576, 580, 584, 588, 592, 596, 600]}}
+```
+After:
+```json
+{"operand1": {"min": 1, "max": 80}, "operand2": {"min": 1, "max": 80}, "result": {"min": 1, "max": 80}, "decimal_places": {"min": 0, "max": 2}, "price": {"min": 10, "max": 200, "values": [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200]}, "percent": {"min": 5, "max": 12, "values": [5, 7, 12]}, "flip": {"min": 0, "max": 1}, "error": {"min": 1, "max": 5}, "price_low": {"min": 10, "max": 100, "values": [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]}, "percent_low": {"min": 5, "max": 5, "values": [5]}, "price_high": {"min": 110, "max": 200, "values": [110, 120, 130, 140, 150, 160, 170, 180, 190, 200]}, "percent_high": {"min": 7, "max": 12, "values": [7, 12]}, "j": {"min": 20, "max": 600}, "j4m": {"min": 20, "max": 600, "values": [20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 88, 92, 96, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144, 148, 152, 156, 160, 164, 168, 172, 176, 180, 184, 188, 192, 196, 200, 204, 208, 212, 216, 220, 224, 228, 232, 236, 240, 244, 248, 252, 256, 260, 264, 268, 272, 276, 280, 284, 288, 292, 296, 300, 304, 308, 312, 316, 320, 324, 328, 332, 336, 340, 344, 348, 352, 356, 360, 364, 368, 372, 376, 380, 384, 388, 392, 396, 400, 404, 408, 412, 416, 420, 424, 428, 432, 436, 440, 444, 448, 452, 456, 460, 464, 468, 472, 476, 480, 484, 488, 492, 496, 500, 504, 508, 512, 516, 520, 524, 528, 532, 536, 540, 544, 548, 552, 556, 560, 564, 568, 572, 576, 580, 584, 588, 592, 596, 600]}}
+```
+
+## 8.14-multi-buy-offers step 1 template 1 check
+
+Keep the second offer price derived from the first. Do not sample and then overwrite q. Bound both printed prices. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"n!=m and p/n!=q/m and n >= 2 and m >= 2"
+```
+After:
+```json
+"n!=m and p/n!=q/m and n >= 2 and m >= 2 and q >= 3.2 and q <= 14"
+```
+
+## 8.14-multi-buy-offers step 1 template 1 slots
+
+Keep the second offer price derived from the first. Do not sample and then overwrite q. Bound both printed prices. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"n": "items", "m": "items", "p": "price", "q": "price", "flip": "flip"}
+```
+After:
+```json
+{"n": "items", "m": "items", "p": "price", "flip": "flip"}
+```
+
+## 8.14-multi-buy-offers step 1 template 2 check
+
+Keep the second offer price derived from the first. Do not sample and then overwrite q. Bound both printed prices. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"n!=m and p/n!=q/m and n >= 2 and m >= 2"
+```
+After:
+```json
+"n!=m and p/n!=q/m and n >= 2 and m >= 2 and q >= 3.2 and q <= 14"
+```
+
+## 8.14-multi-buy-offers step 1 template 2 slots
+
+Keep the second offer price derived from the first. Do not sample and then overwrite q. Bound both printed prices. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"n": "items", "m": "items", "p": "price", "q": "price", "flip": "flip"}
+```
+After:
+```json
+{"n": "items", "m": "items", "p": "price", "flip": "flip"}
+```
+
+## 8.14-multi-buy-offers step 1 template 4 check
+
+Keep the second offer price derived from the first. Do not sample and then overwrite q. Bound both printed prices. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"n!=m and p/n!=q/m and n >= 2 and m >= 2"
+```
+After:
+```json
+"n!=m and p/n!=q/m and n >= 2 and m >= 2 and q >= 3.2 and q <= 14"
+```
+
+## 8.14-multi-buy-offers step 1 template 4 slots
+
+Keep the second offer price derived from the first. Do not sample and then overwrite q. Bound both printed prices. Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"n": "items", "m": "items", "p": "price", "q": "price", "flip": "flip"}
+```
+After:
+```json
+{"n": "items", "m": "items", "p": "price", "flip": "flip"}
+```
+
+## 9.2-power-parts step 1 template 4 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"prod": "(str(b) + ' × ') * (e - 1) + str(b)", "pw": "str(b) + ('' if (e) < 10 else '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) // 10]) + '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) % 10]"}
+```
+After:
+```json
+{"safe_1": "str(b) + ' × '", "safe_2": "e - 1", "prod": "safe_1 + (safe_1 if safe_2 >= 2 else '') + (safe_1 if safe_2 >= 3 else '') + (safe_1 if safe_2 >= 4 else '') + (safe_1 if safe_2 >= 5 else '') + (safe_1 if safe_2 >= 6 else '') + (safe_1 if safe_2 >= 7 else '') + str(b)", "safe_3": "'⁰' if e // 10 == 0 else ('¹' if e // 10 == 1 else ('²' if e // 10 == 2 else ('³' if e // 10 == 3 else ('⁴' if e // 10 == 4 else ('⁵' if e // 10 == 5 else ('⁶' if e // 10 == 6 else ('⁷' if e // 10 == 7 else ('⁸' if e // 10 == 8 else ('⁹')))))))))", "safe_4": "'⁰' if e % 10 == 0 else ('¹' if e % 10 == 1 else ('²' if e % 10 == 2 else ('³' if e % 10 == 3 else ('⁴' if e % 10 == 4 else ('⁵' if e % 10 == 5 else ('⁶' if e % 10 == 6 else ('⁷' if e % 10 == 7 else ('⁸' if e % 10 == 8 else ('⁹')))))))))", "pw": "str(b) + ('' if e < 10 else safe_3) + safe_4"}
+```
+
+## 9.2-power-parts step 1 template 5 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"es": "('' if (e) < 10 else '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) // 10]) + '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) % 10]", "shown": "((str(b) + ' × ') * (e - 1) + str(b)) if flip == 0 else (str(b) + ' × ' + str(e))"}
+```
+After:
+```json
+{"safe_1": "'⁰' if e // 10 == 0 else ('¹' if e // 10 == 1 else ('²' if e // 10 == 2 else ('³' if e // 10 == 3 else ('⁴' if e // 10 == 4 else ('⁵' if e // 10 == 5 else ('⁶' if e // 10 == 6 else ('⁷' if e // 10 == 7 else ('⁸' if e // 10 == 8 else ('⁹')))))))))", "safe_2": "'⁰' if e % 10 == 0 else ('¹' if e % 10 == 1 else ('²' if e % 10 == 2 else ('³' if e % 10 == 3 else ('⁴' if e % 10 == 4 else ('⁵' if e % 10 == 5 else ('⁶' if e % 10 == 6 else ('⁷' if e % 10 == 7 else ('⁸' if e % 10 == 8 else ('⁹')))))))))", "es": "('' if e < 10 else safe_1) + safe_2", "safe_3": "str(b) + ' × '", "safe_4": "e - 1", "shown": "safe_3 + (safe_3 if safe_4 >= 2 else '') + (safe_3 if safe_4 >= 3 else '') + (safe_3 if safe_4 >= 4 else '') + (safe_3 if safe_4 >= 5 else '') + (safe_3 if safe_4 >= 6 else '') + (safe_3 if safe_4 >= 7 else '') + str(b) if flip == 0 else str(b) + ' × ' + str(e)"}
+```
+
+## 9.2-power-parts step 2 template 1 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"es": "('' if (e) < 10 else '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) // 10]) + '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) % 10]", "prod": "(str(b) + ' × ') * (e - 1) + str(b)"}
+```
+After:
+```json
+{"safe_1": "'⁰' if e // 10 == 0 else ('¹' if e // 10 == 1 else ('²' if e // 10 == 2 else ('³' if e // 10 == 3 else ('⁴' if e // 10 == 4 else ('⁵' if e // 10 == 5 else ('⁶' if e // 10 == 6 else ('⁷' if e // 10 == 7 else ('⁸' if e // 10 == 8 else ('⁹')))))))))", "safe_2": "'⁰' if e % 10 == 0 else ('¹' if e % 10 == 1 else ('²' if e % 10 == 2 else ('³' if e % 10 == 3 else ('⁴' if e % 10 == 4 else ('⁵' if e % 10 == 5 else ('⁶' if e % 10 == 6 else ('⁷' if e % 10 == 7 else ('⁸' if e % 10 == 8 else ('⁹')))))))))", "es": "('' if e < 10 else safe_1) + safe_2", "safe_3": "str(b) + ' × '", "safe_4": "e - 1", "prod": "safe_3 + (safe_3 if safe_4 >= 2 else '') + (safe_3 if safe_4 >= 3 else '') + (safe_3 if safe_4 >= 4 else '') + (safe_3 if safe_4 >= 5 else '') + (safe_3 if safe_4 >= 6 else '') + (safe_3 if safe_4 >= 7 else '') + str(b)"}
+```
+
+## 9.2-power-parts step 2 template 2 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"es": "('' if (e) < 10 else '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) // 10]) + '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) % 10]", "shown": "((str(b) + ' × ') * (e - 1) + str(b)) if flip == 0 else (str(b) + ' × ' + str(e))"}
+```
+After:
+```json
+{"safe_1": "'⁰' if e // 10 == 0 else ('¹' if e // 10 == 1 else ('²' if e // 10 == 2 else ('³' if e // 10 == 3 else ('⁴' if e // 10 == 4 else ('⁵' if e // 10 == 5 else ('⁶' if e // 10 == 6 else ('⁷' if e // 10 == 7 else ('⁸' if e // 10 == 8 else ('⁹')))))))))", "safe_2": "'⁰' if e % 10 == 0 else ('¹' if e % 10 == 1 else ('²' if e % 10 == 2 else ('³' if e % 10 == 3 else ('⁴' if e % 10 == 4 else ('⁵' if e % 10 == 5 else ('⁶' if e % 10 == 6 else ('⁷' if e % 10 == 7 else ('⁸' if e % 10 == 8 else ('⁹')))))))))", "es": "('' if e < 10 else safe_1) + safe_2", "safe_3": "str(b) + ' × '", "safe_4": "e - 1", "shown": "safe_3 + (safe_3 if safe_4 >= 2 else '') + (safe_3 if safe_4 >= 3 else '') + (safe_3 if safe_4 >= 4 else '') + (safe_3 if safe_4 >= 5 else '') + (safe_3 if safe_4 >= 6 else '') + (safe_3 if safe_4 >= 7 else '') + str(b) if flip == 0 else str(b) + ' × ' + str(e)"}
+```
+
+## 9.2-power-parts step 2 template 3 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"('A) ' + str(xr)) if pos == 0 else (('B) ' + str(xr)) if pos == 1 else ('C) ' + str(xr)))"
+```
+After:
+```json
+"'A) ' + str(xr) if pos == 0 else 'B) ' + str(xr) if pos == 1 else 'C) ' + str(xr)"
+```
+
+## 9.2-power-parts step 2 template 3 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"prod": "(str(b) + ' × ') * (e - 1) + str(b)", "xr": "str(b) + ('' if (e) < 10 else '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) // 10]) + '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) % 10]", "xw1": "str(e) + ('' if (b) < 10 else '⁰¹²³⁴⁵⁶⁷⁸⁹'[(b) // 10]) + '⁰¹²³⁴⁵⁶⁷⁸⁹'[(b) % 10]", "xw2": "str(b * e)", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else (xw1 if pos == 0 else xw2)", "oc": "xr if pos == 2 else xw2"}
+```
+After:
+```json
+{"safe_1": "str(b) + ' × '", "safe_2": "e - 1", "prod": "safe_1 + (safe_1 if safe_2 >= 2 else '') + (safe_1 if safe_2 >= 3 else '') + (safe_1 if safe_2 >= 4 else '') + (safe_1 if safe_2 >= 5 else '') + (safe_1 if safe_2 >= 6 else '') + (safe_1 if safe_2 >= 7 else '') + str(b)", "safe_3": "'⁰' if e // 10 == 0 else ('¹' if e // 10 == 1 else ('²' if e // 10 == 2 else ('³' if e // 10 == 3 else ('⁴' if e // 10 == 4 else ('⁵' if e // 10 == 5 else ('⁶' if e // 10 == 6 else ('⁷' if e // 10 == 7 else ('⁸' if e // 10 == 8 else ('⁹')))))))))", "safe_4": "'⁰' if e % 10 == 0 else ('¹' if e % 10 == 1 else ('²' if e % 10 == 2 else ('³' if e % 10 == 3 else ('⁴' if e % 10 == 4 else ('⁵' if e % 10 == 5 else ('⁶' if e % 10 == 6 else ('⁷' if e % 10 == 7 else ('⁸' if e % 10 == 8 else ('⁹')))))))))", "xr": "str(b) + ('' if e < 10 else safe_3) + safe_4", "safe_5": "'⁰' if b // 10 == 0 else ('¹' if b // 10 == 1 else ('²' if b // 10 == 2 else ('³' if b // 10 == 3 else ('⁴' if b // 10 == 4 else ('⁵' if b // 10 == 5 else ('⁶' if b // 10 == 6 else ('⁷' if b // 10 == 7 else ('⁸' if b // 10 == 8 else ('⁹')))))))))", "safe_6": "'⁰' if b % 10 == 0 else ('¹' if b % 10 == 1 else ('²' if b % 10 == 2 else ('³' if b % 10 == 3 else ('⁴' if b % 10 == 4 else ('⁵' if b % 10 == 5 else ('⁶' if b % 10 == 6 else ('⁷' if b % 10 == 7 else ('⁸' if b % 10 == 8 else ('⁹')))))))))", "xw1": "str(e) + ('' if b < 10 else safe_5) + safe_6", "xw2": "str(b * e)", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else xw1 if pos == 0 else xw2", "oc": "xr if pos == 2 else xw2"}
+```
+
+## 9.2-power-parts step 2 template 5 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"es": "('' if (e) < 10 else '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) // 10]) + '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) % 10]", "shown": "((str(b) + ' × ') * (e - 1) + str(b)) if flip == 0 else ((str(b) + ' × ') * e + str(b))"}
+```
+After:
+```json
+{"safe_1": "'⁰' if e // 10 == 0 else ('¹' if e // 10 == 1 else ('²' if e // 10 == 2 else ('³' if e // 10 == 3 else ('⁴' if e // 10 == 4 else ('⁵' if e // 10 == 5 else ('⁶' if e // 10 == 6 else ('⁷' if e // 10 == 7 else ('⁸' if e // 10 == 8 else ('⁹')))))))))", "safe_2": "'⁰' if e % 10 == 0 else ('¹' if e % 10 == 1 else ('²' if e % 10 == 2 else ('³' if e % 10 == 3 else ('⁴' if e % 10 == 4 else ('⁵' if e % 10 == 5 else ('⁶' if e % 10 == 6 else ('⁷' if e % 10 == 7 else ('⁸' if e % 10 == 8 else ('⁹')))))))))", "es": "('' if e < 10 else safe_1) + safe_2", "safe_3": "str(b) + ' × '", "safe_4": "e - 1", "safe_5": "str(b) + ' × '", "safe_6": "e", "shown": "safe_3 + (safe_3 if safe_4 >= 2 else '') + (safe_3 if safe_4 >= 3 else '') + (safe_3 if safe_4 >= 4 else '') + (safe_3 if safe_4 >= 5 else '') + (safe_3 if safe_4 >= 6 else '') + (safe_3 if safe_4 >= 7 else '') + str(b) if flip == 0 else safe_5 + (safe_5 if safe_6 >= 2 else '') + (safe_5 if safe_6 >= 3 else '') + (safe_5 if safe_6 >= 4 else '') + (safe_5 if safe_6 >= 5 else '') + (safe_5 if safe_6 >= 6 else '') + (safe_5 if safe_6 >= 7 else '') + str(b)"}
+```
+
+## 9.2-power-parts step 2 template 6 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"str(b) + ('' if (e) < 10 else '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) // 10]) + '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) % 10] + ' × ' + str(c) + ('' if (f) < 10 else '⁰¹²³⁴⁵⁶⁷⁸⁹'[(f) // 10]) + '⁰¹²³⁴⁵⁶⁷⁸⁹'[(f) % 10]"
+```
+After:
+```json
+"str(b) + ('' if e < 10 else safe_5) + safe_6 + ' × ' + str(c) + ('' if f < 10 else safe_7) + safe_8"
+```
+
+## 9.2-power-parts step 2 template 6 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"prod": "(str(b) + ' × ') * e + (str(c) + ' × ') * (f - 1) + str(c)"}
+```
+After:
+```json
+{"safe_1": "str(b) + ' × '", "safe_2": "e", "safe_3": "str(c) + ' × '", "safe_4": "f - 1", "prod": "safe_1 + (safe_1 if safe_2 >= 2 else '') + (safe_1 if safe_2 >= 3 else '') + (safe_1 if safe_2 >= 4 else '') + (safe_1 if safe_2 >= 5 else '') + (safe_1 if safe_2 >= 6 else '') + (safe_1 if safe_2 >= 7 else '') + (safe_3 + (safe_3 if safe_4 >= 2 else '') + (safe_3 if safe_4 >= 3 else '') + (safe_3 if safe_4 >= 4 else '') + (safe_3 if safe_4 >= 5 else '') + (safe_3 if safe_4 >= 6 else '') + (safe_3 if safe_4 >= 7 else '')) + str(c)", "safe_5": "'⁰' if e // 10 == 0 else ('¹' if e // 10 == 1 else ('²' if e // 10 == 2 else ('³' if e // 10 == 3 else ('⁴' if e // 10 == 4 else ('⁵' if e // 10 == 5 else ('⁶' if e // 10 == 6 else ('⁷' if e // 10 == 7 else ('⁸' if e // 10 == 8 else ('⁹')))))))))", "safe_6": "'⁰' if e % 10 == 0 else ('¹' if e % 10 == 1 else ('²' if e % 10 == 2 else ('³' if e % 10 == 3 else ('⁴' if e % 10 == 4 else ('⁵' if e % 10 == 5 else ('⁶' if e % 10 == 6 else ('⁷' if e % 10 == 7 else ('⁸' if e % 10 == 8 else ('⁹')))))))))", "safe_7": "'⁰' if f // 10 == 0 else ('¹' if f // 10 == 1 else ('²' if f // 10 == 2 else ('³' if f // 10 == 3 else ('⁴' if f // 10 == 4 else ('⁵' if f // 10 == 5 else ('⁶' if f // 10 == 6 else ('⁷' if f // 10 == 7 else ('⁸' if f // 10 == 8 else ('⁹')))))))))", "safe_8": "'⁰' if f % 10 == 0 else ('¹' if f % 10 == 1 else ('²' if f % 10 == 2 else ('³' if f % 10 == 3 else ('⁴' if f % 10 == 4 else ('⁵' if f % 10 == 5 else ('⁶' if f % 10 == 6 else ('⁷' if f % 10 == 7 else ('⁸' if f % 10 == 8 else ('⁹')))))))))"}
+```
+
+## 9.2-power-parts step 3 template 1 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "es": "('' if (e) < 10 else '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) // 10]) + '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) % 10]", "prod": "(str(L) + ' × ') * (e - 1) + str(L)"}
+```
+After:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "safe_1": "'⁰' if e // 10 == 0 else ('¹' if e // 10 == 1 else ('²' if e // 10 == 2 else ('³' if e // 10 == 3 else ('⁴' if e // 10 == 4 else ('⁵' if e // 10 == 5 else ('⁶' if e // 10 == 6 else ('⁷' if e // 10 == 7 else ('⁸' if e // 10 == 8 else ('⁹')))))))))", "safe_2": "'⁰' if e % 10 == 0 else ('¹' if e % 10 == 1 else ('²' if e % 10 == 2 else ('³' if e % 10 == 3 else ('⁴' if e % 10 == 4 else ('⁵' if e % 10 == 5 else ('⁶' if e % 10 == 6 else ('⁷' if e % 10 == 7 else ('⁸' if e % 10 == 8 else ('⁹')))))))))", "es": "('' if e < 10 else safe_1) + safe_2", "safe_3": "str(L) + ' × '", "safe_4": "e - 1", "prod": "safe_3 + (safe_3 if safe_4 >= 2 else '') + (safe_3 if safe_4 >= 3 else '') + (safe_3 if safe_4 >= 4 else '') + (safe_3 if safe_4 >= 5 else '') + (safe_3 if safe_4 >= 6 else '') + (safe_3 if safe_4 >= 7 else '') + str(L)"}
+```
+
+## 9.2-power-parts step 3 template 2 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "es": "('' if (e) < 10 else '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) // 10]) + '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) % 10]", "shown": "((str(L) + ' × ') * (e - 1) + str(L)) if flip == 0 else (str(e) + L)"}
+```
+After:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "safe_1": "'⁰' if e // 10 == 0 else ('¹' if e // 10 == 1 else ('²' if e // 10 == 2 else ('³' if e // 10 == 3 else ('⁴' if e // 10 == 4 else ('⁵' if e // 10 == 5 else ('⁶' if e // 10 == 6 else ('⁷' if e // 10 == 7 else ('⁸' if e // 10 == 8 else ('⁹')))))))))", "safe_2": "'⁰' if e % 10 == 0 else ('¹' if e % 10 == 1 else ('²' if e % 10 == 2 else ('³' if e % 10 == 3 else ('⁴' if e % 10 == 4 else ('⁵' if e % 10 == 5 else ('⁶' if e % 10 == 6 else ('⁷' if e % 10 == 7 else ('⁸' if e % 10 == 8 else ('⁹')))))))))", "es": "('' if e < 10 else safe_1) + safe_2", "safe_3": "str(L) + ' × '", "safe_4": "e - 1", "shown": "safe_3 + (safe_3 if safe_4 >= 2 else '') + (safe_3 if safe_4 >= 3 else '') + (safe_3 if safe_4 >= 4 else '') + (safe_3 if safe_4 >= 5 else '') + (safe_3 if safe_4 >= 6 else '') + (safe_3 if safe_4 >= 7 else '') + str(L) if flip == 0 else str(e) + L"}
+```
+
+## 9.2-power-parts step 3 template 3 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "es": "('' if (e) < 10 else '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) // 10]) + '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) % 10]", "cl": "str(c) + L", "prod": "(cl + ' × ') * (e - 1) + cl"}
+```
+After:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "safe_1": "'⁰' if e // 10 == 0 else ('¹' if e // 10 == 1 else ('²' if e // 10 == 2 else ('³' if e // 10 == 3 else ('⁴' if e // 10 == 4 else ('⁵' if e // 10 == 5 else ('⁶' if e // 10 == 6 else ('⁷' if e // 10 == 7 else ('⁸' if e // 10 == 8 else ('⁹')))))))))", "safe_2": "'⁰' if e % 10 == 0 else ('¹' if e % 10 == 1 else ('²' if e % 10 == 2 else ('³' if e % 10 == 3 else ('⁴' if e % 10 == 4 else ('⁵' if e % 10 == 5 else ('⁶' if e % 10 == 6 else ('⁷' if e % 10 == 7 else ('⁸' if e % 10 == 8 else ('⁹')))))))))", "es": "('' if e < 10 else safe_1) + safe_2", "cl": "str(c) + L", "safe_3": "cl + ' × '", "safe_4": "e - 1", "prod": "safe_3 + (safe_3 if safe_4 >= 2 else '') + (safe_3 if safe_4 >= 3 else '') + (safe_3 if safe_4 >= 4 else '') + (safe_3 if safe_4 >= 5 else '') + (safe_3 if safe_4 >= 6 else '') + (safe_3 if safe_4 >= 7 else '') + cl"}
+```
+
+## 9.2-power-parts step 3 template 4 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"('A) ' + str(r)) if pos == 0 else (('B) ' + str(r)) if pos == 1 else ('C) ' + str(r)))"
+```
+After:
+```json
+"'A) ' + str(r) if pos == 0 else 'B) ' + str(r) if pos == 1 else 'C) ' + str(r)"
+```
+
+## 9.2-power-parts step 3 template 4 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "es": "('' if (e) < 10 else '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) // 10]) + '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) % 10]", "cl": "str(c) + L", "r": "(cl + ' × ') * (e - 1) + cl", "w1": "str(c) + ' × ' + (L + ' × ') * (e - 1) + L", "w2": "str(c * e) + L", "oa": "r if pos == 0 else w1", "ob": "r if pos == 1 else (w1 if pos == 0 else w2)", "oc": "r if pos == 2 else w2"}
+```
+After:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "safe_1": "'⁰' if e // 10 == 0 else ('¹' if e // 10 == 1 else ('²' if e // 10 == 2 else ('³' if e // 10 == 3 else ('⁴' if e // 10 == 4 else ('⁵' if e // 10 == 5 else ('⁶' if e // 10 == 6 else ('⁷' if e // 10 == 7 else ('⁸' if e // 10 == 8 else ('⁹')))))))))", "safe_2": "'⁰' if e % 10 == 0 else ('¹' if e % 10 == 1 else ('²' if e % 10 == 2 else ('³' if e % 10 == 3 else ('⁴' if e % 10 == 4 else ('⁵' if e % 10 == 5 else ('⁶' if e % 10 == 6 else ('⁷' if e % 10 == 7 else ('⁸' if e % 10 == 8 else ('⁹')))))))))", "es": "('' if e < 10 else safe_1) + safe_2", "cl": "str(c) + L", "safe_3": "cl + ' × '", "safe_4": "e - 1", "r": "safe_3 + (safe_3 if safe_4 >= 2 else '') + (safe_3 if safe_4 >= 3 else '') + (safe_3 if safe_4 >= 4 else '') + (safe_3 if safe_4 >= 5 else '') + (safe_3 if safe_4 >= 6 else '') + (safe_3 if safe_4 >= 7 else '') + cl", "safe_5": "L + ' × '", "safe_6": "e - 1", "w1": "str(c) + ' × ' + (safe_5 + (safe_5 if safe_6 >= 2 else '') + (safe_5 if safe_6 >= 3 else '') + (safe_5 if safe_6 >= 4 else '') + (safe_5 if safe_6 >= 5 else '') + (safe_5 if safe_6 >= 6 else '') + (safe_5 if safe_6 >= 7 else '')) + L", "w2": "str(c * e) + L", "oa": "r if pos == 0 else w1", "ob": "r if pos == 1 else w1 if pos == 0 else w2", "oc": "r if pos == 2 else w2"}
+```
+
+## 9.2-power-parts step 3 template 5 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "es": "('' if (e) < 10 else '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) // 10]) + '⁰¹²³⁴⁵⁶⁷⁸⁹'[(e) % 10]", "prod": "str(c) + ' × ' + (L + ' × ') * (e - 1) + L"}
+```
+After:
+```json
+{"L": "['n', 'k', 'm'][L_i]", "safe_1": "'⁰' if e // 10 == 0 else ('¹' if e // 10 == 1 else ('²' if e // 10 == 2 else ('³' if e // 10 == 3 else ('⁴' if e // 10 == 4 else ('⁵' if e // 10 == 5 else ('⁶' if e // 10 == 6 else ('⁷' if e // 10 == 7 else ('⁸' if e // 10 == 8 else ('⁹')))))))))", "safe_2": "'⁰' if e % 10 == 0 else ('¹' if e % 10 == 1 else ('²' if e % 10 == 2 else ('³' if e % 10 == 3 else ('⁴' if e % 10 == 4 else ('⁵' if e % 10 == 5 else ('⁶' if e % 10 == 6 else ('⁷' if e % 10 == 7 else ('⁸' if e % 10 == 8 else ('⁹')))))))))", "es": "('' if e < 10 else safe_1) + safe_2", "safe_3": "L + ' × '", "safe_4": "e - 1", "prod": "str(c) + ' × ' + (safe_3 + (safe_3 if safe_4 >= 2 else '') + (safe_3 if safe_4 >= 3 else '') + (safe_3 if safe_4 >= 4 else '') + (safe_3 if safe_4 >= 5 else '') + (safe_3 if safe_4 >= 6 else '') + (safe_3 if safe_4 >= 7 else '')) + L"}
+```
+
+## 9.2-evaluate-power step 1 template 2 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"prod": "(str(b) + ' × ') * (e - 1) + str(b)"}
+```
+After:
+```json
+{"safe_1": "str(b) + ' × '", "safe_2": "e - 1", "prod": "safe_1 + (safe_1 if safe_2 >= 2 else '') + (safe_1 if safe_2 >= 3 else '') + (safe_1 if safe_2 >= 4 else '') + (safe_1 if safe_2 >= 5 else '') + (safe_1 if safe_2 >= 6 else '') + (safe_1 if safe_2 >= 7 else '') + str(b)"}
+```
+
+## 9.2-evaluate-power step 2 template 3 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"prod": "('(' + str(b) + ') × ') * (e - 1) + '(' + str(b) + ')'"}
+```
+After:
+```json
+{"safe_1": "'(' + str(b) + ') × '", "safe_2": "e - 1", "prod": "safe_1 + (safe_1 if safe_2 >= 2 else '') + (safe_1 if safe_2 >= 3 else '') + (safe_1 if safe_2 >= 4 else '') + (safe_1 if safe_2 >= 5 else '') + (safe_1 if safe_2 >= 6 else '') + (safe_1 if safe_2 >= 7 else '') + '(' + str(b) + ')'"}
+```
+
+## 9.1-add-subtract step 1 template 3 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"('-' if b < a else '') + '%.2f' % (abs(b - a) / 100)"
+```
+After:
+```json
+"('-' if b < a else '') + safe_6"
+```
+
+## 9.1-add-subtract step 1 template 3 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"A": "'%.2f' % (a / 100)", "B": "'%.2f' % (b / 100)"}
+```
+After:
+```json
+{"safe_1": "int(round((a / 100) * 100))", "safe_2": "('-' if safe_1 < 0 else '') + str(abs(safe_1) // 100) + '.' + ('0' if abs(safe_1) % 100 < 10 else '') + str(abs(safe_1) % 100)", "A": "safe_2", "safe_3": "int(round((b / 100) * 100))", "safe_4": "('-' if safe_3 < 0 else '') + str(abs(safe_3) // 100) + '.' + ('0' if abs(safe_3) % 100 < 10 else '') + str(abs(safe_3) % 100)", "B": "safe_4", "safe_5": "int(round((abs(b - a) / 100) * 100))", "safe_6": "('-' if safe_5 < 0 else '') + str(abs(safe_5) // 100) + '.' + ('0' if abs(safe_5) % 100 < 10 else '') + str(abs(safe_5) % 100)"}
+```
+
+## 9.1-multiply-divide step 2 template 6 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"('-' if v < 0 else '') + '$' + '%.2f' % abs(v)"
+```
+After:
+```json
+"('-' if v < 0 else '') + '$' + safe_6"
+```
+
+## 9.1-multiply-divide step 2 template 6 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"D": "'%.2f' % (h / 100)", "E": "'%.2f' % (g / 10)", "v": "round(-h * n / 100 + g / 10, 2)"}
+```
+After:
+```json
+{"safe_1": "int(round((h / 100) * 100))", "safe_2": "('-' if safe_1 < 0 else '') + str(abs(safe_1) // 100) + '.' + ('0' if abs(safe_1) % 100 < 10 else '') + str(abs(safe_1) % 100)", "D": "safe_2", "safe_3": "int(round((g / 10) * 100))", "safe_4": "('-' if safe_3 < 0 else '') + str(abs(safe_3) // 100) + '.' + ('0' if abs(safe_3) % 100 < 10 else '') + str(abs(safe_3) % 100)", "E": "safe_4", "v": "round(-h * n / 100 + g / 10, 2)", "safe_5": "int(round((abs(v)) * 100))", "safe_6": "('-' if safe_5 < 0 else '') + str(abs(safe_5) // 100) + '.' + ('0' if abs(safe_5) % 100 < 10 else '') + str(abs(safe_5) % 100)"}
+```
+
+## 9.1-order-of-operations step 3 template 3 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"'$' + '%.2f' % (t / 10 + a / d * n)"
+```
+After:
+```json
+"'$' + safe_2"
+```
+
+## 9.1-order-of-operations step 3 template 3 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"a": "1 + n0 % (d - 1)"}
+```
+After:
+```json
+{"a": "1 + n0 % (d - 1)", "safe_1": "int(round((t / 10 + a / d * n) * 100))", "safe_2": "('-' if safe_1 < 0 else '') + str(abs(safe_1) // 100) + '.' + ('0' if abs(safe_1) % 100 < 10 else '') + str(abs(safe_1) % 100)"}
+```
+
+## 9.1-word-problems step 1 template 3 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"'$' + '%.2f' % ((c - s) / 100)"
+```
+After:
+```json
+"'$' + safe_6"
+```
+
+## 9.1-word-problems step 1 template 3 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"D": "'%.2f' % (c / 100)", "S": "'%.2f' % (s / 100)"}
+```
+After:
+```json
+{"safe_1": "int(round((c / 100) * 100))", "safe_2": "('-' if safe_1 < 0 else '') + str(abs(safe_1) // 100) + '.' + ('0' if abs(safe_1) % 100 < 10 else '') + str(abs(safe_1) % 100)", "D": "safe_2", "safe_3": "int(round((s / 100) * 100))", "safe_4": "('-' if safe_3 < 0 else '') + str(abs(safe_3) // 100) + '.' + ('0' if abs(safe_3) % 100 < 10 else '') + str(abs(safe_3) % 100)", "S": "safe_4", "safe_5": "int(round(((c - s) / 100) * 100))", "safe_6": "('-' if safe_5 < 0 else '') + str(abs(safe_5) // 100) + '.' + ('0' if abs(safe_5) % 100 < 10 else '') + str(abs(safe_5) % 100)"}
+```
+
+## 9.1-word-problems step 3 template 5 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"'$' + '%.2f' % (50 - n * q * 25 / 100)"
+```
+After:
+```json
+"'$' + safe_4"
+```
+
+## 9.1-word-problems step 3 template 5 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"P": "'%.2f' % (q * 25 / 100)"}
+```
+After:
+```json
+{"safe_1": "int(round((q * 25 / 100) * 100))", "safe_2": "('-' if safe_1 < 0 else '') + str(abs(safe_1) // 100) + '.' + ('0' if abs(safe_1) % 100 < 10 else '') + str(abs(safe_1) % 100)", "P": "safe_2", "safe_3": "int(round((50 - n * q * 25 / 100) * 100))", "safe_4": "('-' if safe_3 < 0 else '') + str(abs(safe_3) // 100) + '.' + ('0' if abs(safe_3) % 100 < 10 else '') + str(abs(safe_3) % 100)"}
+```
+
+## 9.8-budget step 3 template 4 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"'$' + '%.2f' % (g * u4 / 4 + hall)"
+```
+After:
+```json
+"'$' + safe_4"
+```
+
+## 9.8-budget step 3 template 4 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"P": "'%.2f' % (u4 / 4)"}
+```
+After:
+```json
+{"safe_1": "int(round((u4 / 4) * 100))", "safe_2": "('-' if safe_1 < 0 else '') + str(abs(safe_1) // 100) + '.' + ('0' if abs(safe_1) % 100 < 10 else '') + str(abs(safe_1) % 100)", "P": "safe_2", "safe_3": "int(round((g * u4 / 4 + hall) * 100))", "safe_4": "('-' if safe_3 < 0 else '') + str(abs(safe_3) // 100) + '.' + ('0' if abs(safe_3) % 100 < 10 else '') + str(abs(safe_3) % 100)"}
+```
+
+## 9.8-bank-record step 2 template 1 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"'$' + '%.2f' % (bal4 + c4 / 4 - fee4 / 4)"
+```
+After:
+```json
+"'$' + safe_6"
+```
+
+## 9.8-bank-record step 2 template 1 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"B": "'%.2f' % (bal4 + c4 / 4)", "F": "'%.2f' % (fee4 / 4)"}
+```
+After:
+```json
+{"safe_1": "int(round((bal4 + c4 / 4) * 100))", "safe_2": "('-' if safe_1 < 0 else '') + str(abs(safe_1) // 100) + '.' + ('0' if abs(safe_1) % 100 < 10 else '') + str(abs(safe_1) % 100)", "B": "safe_2", "safe_3": "int(round((fee4 / 4) * 100))", "safe_4": "('-' if safe_3 < 0 else '') + str(abs(safe_3) // 100) + '.' + ('0' if abs(safe_3) % 100 < 10 else '') + str(abs(safe_3) % 100)", "F": "safe_4", "safe_5": "int(round((bal4 + c4 / 4 - fee4 / 4) * 100))", "safe_6": "('-' if safe_5 < 0 else '') + str(abs(safe_5) // 100) + '.' + ('0' if abs(safe_5) % 100 < 10 else '') + str(abs(safe_5) % 100)"}
+```
+
+## 9.8-bank-record step 2 template 2 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"B": "'%.2f' % (bal4 + c4 / 4)", "shown": "('%.2f' % (bal4 + c4 / 4 + dep)) if flip == 0 else ('%.2f' % (bal4 + c4 / 4 - dep))"}
+```
+After:
+```json
+{"safe_1": "int(round((bal4 + c4 / 4) * 100))", "safe_2": "('-' if safe_1 < 0 else '') + str(abs(safe_1) // 100) + '.' + ('0' if abs(safe_1) % 100 < 10 else '') + str(abs(safe_1) % 100)", "B": "safe_2", "safe_3": "int(round((bal4 + c4 / 4 + dep) * 100))", "safe_4": "('-' if safe_3 < 0 else '') + str(abs(safe_3) // 100) + '.' + ('0' if abs(safe_3) % 100 < 10 else '') + str(abs(safe_3) % 100)", "safe_5": "int(round((bal4 + c4 / 4 - dep) * 100))", "safe_6": "('-' if safe_5 < 0 else '') + str(abs(safe_5) // 100) + '.' + ('0' if abs(safe_5) % 100 < 10 else '') + str(abs(safe_5) % 100)", "shown": "safe_4 if flip == 0 else safe_6"}
+```
+
+## 9.8-bank-record step 2 template 3 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"'$' + '%.2f' % (bal4 + c4 / 4 + dep - fee4 / 4)"
+```
+After:
+```json
+"'$' + safe_6"
+```
+
+## 9.8-bank-record step 2 template 3 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"B": "'%.2f' % (bal4 + c4 / 4)", "F": "'%.2f' % (fee4 / 4)"}
+```
+After:
+```json
+{"safe_1": "int(round((bal4 + c4 / 4) * 100))", "safe_2": "('-' if safe_1 < 0 else '') + str(abs(safe_1) // 100) + '.' + ('0' if abs(safe_1) % 100 < 10 else '') + str(abs(safe_1) % 100)", "B": "safe_2", "safe_3": "int(round((fee4 / 4) * 100))", "safe_4": "('-' if safe_3 < 0 else '') + str(abs(safe_3) // 100) + '.' + ('0' if abs(safe_3) % 100 < 10 else '') + str(abs(safe_3) % 100)", "F": "safe_4", "safe_5": "int(round((bal4 + c4 / 4 + dep - fee4 / 4) * 100))", "safe_6": "('-' if safe_5 < 0 else '') + str(abs(safe_5) // 100) + '.' + ('0' if abs(safe_5) % 100 < 10 else '') + str(abs(safe_5) % 100)"}
+```
+
+## 9.8-bank-record step 2 template 4 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"'$' + '%.2f' % (bal4 + c4 / 4 - 7.5 + dep)"
+```
+After:
+```json
+"'$' + safe_4"
+```
+
+## 9.8-bank-record step 2 template 4 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"B": "'%.2f' % (bal4 + c4 / 4)"}
+```
+After:
+```json
+{"safe_1": "int(round((bal4 + c4 / 4) * 100))", "safe_2": "('-' if safe_1 < 0 else '') + str(abs(safe_1) // 100) + '.' + ('0' if abs(safe_1) % 100 < 10 else '') + str(abs(safe_1) % 100)", "B": "safe_2", "safe_3": "int(round((bal4 + c4 / 4 - 7.5 + dep) * 100))", "safe_4": "('-' if safe_3 < 0 else '') + str(abs(safe_3) // 100) + '.' + ('0' if abs(safe_3) % 100 < 10 else '') + str(abs(safe_3) % 100)"}
+```
+
+## 9.8-bank-record step 2 template 5 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"'$' + '%.2f' % (bal_h + c4 / 4 - 2 * fee4 / 4 + dep)"
+```
+After:
+```json
+"'$' + safe_6"
+```
+
+## 9.8-bank-record step 2 template 5 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"B": "'%.2f' % (bal_h + c4 / 4)", "F": "'%.2f' % (fee4 / 4)"}
+```
+After:
+```json
+{"safe_1": "int(round((bal_h + c4 / 4) * 100))", "safe_2": "('-' if safe_1 < 0 else '') + str(abs(safe_1) // 100) + '.' + ('0' if abs(safe_1) % 100 < 10 else '') + str(abs(safe_1) % 100)", "B": "safe_2", "safe_3": "int(round((fee4 / 4) * 100))", "safe_4": "('-' if safe_3 < 0 else '') + str(abs(safe_3) // 100) + '.' + ('0' if abs(safe_3) % 100 < 10 else '') + str(abs(safe_3) % 100)", "F": "safe_4", "safe_5": "int(round((bal_h + c4 / 4 - 2 * fee4 / 4 + dep) * 100))", "safe_6": "('-' if safe_5 < 0 else '') + str(abs(safe_5) // 100) + '.' + ('0' if abs(safe_5) % 100 < 10 else '') + str(abs(safe_5) % 100)"}
+```
+
+## 9.8-bank-record step 2 template 6 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"('A) ' + str(xr)) if pos == 0 else (('B) ' + str(xr)) if pos == 1 else ('C) ' + str(xr)))"
+```
+After:
+```json
+"'A) ' + str(xr) if pos == 0 else 'B) ' + str(xr) if pos == 1 else 'C) ' + str(xr)"
+```
+
+## 9.8-bank-record step 2 template 6 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"B": "'%.2f' % (bal_h + c4 / 4)", "F": "'%.2f' % (fee4 / 4)", "xr": "'$' + '%.2f' % (bal_h + c4 / 4 - fee4 / 4)", "xw1": "'$' + '%.2f' % (bal_h + c4 / 4 + fee4 / 4)", "xw2": "'$' + '%.2f' % (bal_h - c4 / 4 - fee4 / 4)", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else (xw1 if pos == 0 else xw2)", "oc": "xr if pos == 2 else xw2"}
+```
+After:
+```json
+{"safe_1": "int(round((bal_h + c4 / 4) * 100))", "safe_2": "('-' if safe_1 < 0 else '') + str(abs(safe_1) // 100) + '.' + ('0' if abs(safe_1) % 100 < 10 else '') + str(abs(safe_1) % 100)", "B": "safe_2", "safe_3": "int(round((fee4 / 4) * 100))", "safe_4": "('-' if safe_3 < 0 else '') + str(abs(safe_3) // 100) + '.' + ('0' if abs(safe_3) % 100 < 10 else '') + str(abs(safe_3) % 100)", "F": "safe_4", "safe_5": "int(round((bal_h + c4 / 4 - fee4 / 4) * 100))", "safe_6": "('-' if safe_5 < 0 else '') + str(abs(safe_5) // 100) + '.' + ('0' if abs(safe_5) % 100 < 10 else '') + str(abs(safe_5) % 100)", "xr": "'$' + safe_6", "safe_7": "int(round((bal_h + c4 / 4 + fee4 / 4) * 100))", "safe_8": "('-' if safe_7 < 0 else '') + str(abs(safe_7) // 100) + '.' + ('0' if abs(safe_7) % 100 < 10 else '') + str(abs(safe_7) % 100)", "xw1": "'$' + safe_8", "safe_9": "int(round((bal_h - c4 / 4 - fee4 / 4) * 100))", "safe_10": "('-' if safe_9 < 0 else '') + str(abs(safe_9) // 100) + '.' + ('0' if abs(safe_9) % 100 < 10 else '') + str(abs(safe_9) % 100)", "xw2": "'$' + safe_10", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else xw1 if pos == 0 else xw2", "oc": "xr if pos == 2 else xw2"}
+```
+
+## 9.5-rational-coefficients step 2 template 1 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"L": "['n', 'x', 'k'][L_i]", "pp": "'%.2f' % (a / 10)", "rr": "'%.2f' % ((a * s + b) / 10)", "r10": "a * s + b", "E": "str(round(a / 10, 1)) + L + ' + ' + str(round(b / 10, 1)) + ' = ' + str(round((a * s + b) / 10, 1))", "E2": "str(round(a2 / 10, 1)) + L + ' + ' + str(round(b2 / 10, 1)) + ' = ' + str(round((a2 * s2 + b2) / 10, 1))", "r": "round((a * s + b) / 10, 1)", "bb": "'%.2f' % (b / 10)", "s2": "s2"}
+```
+After:
+```json
+{"L": "['n', 'x', 'k'][L_i]", "safe_1": "int(round((a / 10) * 100))", "safe_2": "('-' if safe_1 < 0 else '') + str(abs(safe_1) // 100) + '.' + ('0' if abs(safe_1) % 100 < 10 else '') + str(abs(safe_1) % 100)", "pp": "safe_2", "safe_3": "int(round(((a * s + b) / 10) * 100))", "safe_4": "('-' if safe_3 < 0 else '') + str(abs(safe_3) // 100) + '.' + ('0' if abs(safe_3) % 100 < 10 else '') + str(abs(safe_3) % 100)", "rr": "safe_4", "r10": "a * s + b", "E": "str(round(a / 10, 1)) + L + ' + ' + str(round(b / 10, 1)) + ' = ' + str(round((a * s + b) / 10, 1))", "E2": "str(round(a2 / 10, 1)) + L + ' + ' + str(round(b2 / 10, 1)) + ' = ' + str(round((a2 * s2 + b2) / 10, 1))", "r": "round((a * s + b) / 10, 1)", "safe_5": "int(round((b / 10) * 100))", "safe_6": "('-' if safe_5 < 0 else '') + str(abs(safe_5) // 100) + '.' + ('0' if abs(safe_5) % 100 < 10 else '') + str(abs(safe_5) % 100)", "bb": "safe_6", "s2": "s2"}
+```
+
+## 9.5-rational-coefficients step 2 template 2 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"L": "['n', 'x', 'k'][L_i]", "pp": "'%.2f' % (a / 10)", "rr": "'%.2f' % ((a * s + b) / 10)", "r10": "a * s + b", "E": "str(round(a / 10, 1)) + L + ' + ' + str(round(b / 10, 1)) + ' = ' + str(round((a * s + b) / 10, 1))", "E2": "str(round(a2 / 10, 1)) + L + ' + ' + str(round(b2 / 10, 1)) + ' = ' + str(round((a2 * s2 + b2) / 10, 1))", "r": "round((a * s + b) / 10, 1)", "bb": "'%.2f' % (b / 10)", "s2": "s2", "shown": "(s) if flip == 0 else (s + 1)"}
+```
+After:
+```json
+{"L": "['n', 'x', 'k'][L_i]", "safe_1": "int(round((a / 10) * 100))", "safe_2": "('-' if safe_1 < 0 else '') + str(abs(safe_1) // 100) + '.' + ('0' if abs(safe_1) % 100 < 10 else '') + str(abs(safe_1) % 100)", "pp": "safe_2", "safe_3": "int(round(((a * s + b) / 10) * 100))", "safe_4": "('-' if safe_3 < 0 else '') + str(abs(safe_3) // 100) + '.' + ('0' if abs(safe_3) % 100 < 10 else '') + str(abs(safe_3) % 100)", "rr": "safe_4", "r10": "a * s + b", "E": "str(round(a / 10, 1)) + L + ' + ' + str(round(b / 10, 1)) + ' = ' + str(round((a * s + b) / 10, 1))", "E2": "str(round(a2 / 10, 1)) + L + ' + ' + str(round(b2 / 10, 1)) + ' = ' + str(round((a2 * s2 + b2) / 10, 1))", "r": "round((a * s + b) / 10, 1)", "safe_5": "int(round((b / 10) * 100))", "safe_6": "('-' if safe_5 < 0 else '') + str(abs(safe_5) // 100) + '.' + ('0' if abs(safe_5) % 100 < 10 else '') + str(abs(safe_5) % 100)", "bb": "safe_6", "s2": "s2", "shown": "s if flip == 0 else s + 1"}
+```
+
+## 9.5-rational-coefficients step 2 template 3 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"L": "['n', 'x', 'k'][L_i]", "pp": "'%.2f' % (a / 10)", "rr": "'%.2f' % ((a * s + b) / 10)", "r10": "a * s + b", "E": "str(round(a / 10, 1)) + L + ' + ' + str(round(b / 10, 1)) + ' = ' + str(round((a * s + b) / 10, 1))", "E2": "str(round(a2 / 10, 1)) + L + ' + ' + str(round(b2 / 10, 1)) + ' = ' + str(round((a2 * s2 + b2) / 10, 1))", "r": "round((a * s + b) / 10, 1)", "bb": "'%.2f' % (b / 10)", "s2": "s2"}
+```
+After:
+```json
+{"L": "['n', 'x', 'k'][L_i]", "safe_1": "int(round((a / 10) * 100))", "safe_2": "('-' if safe_1 < 0 else '') + str(abs(safe_1) // 100) + '.' + ('0' if abs(safe_1) % 100 < 10 else '') + str(abs(safe_1) % 100)", "pp": "safe_2", "safe_3": "int(round(((a * s + b) / 10) * 100))", "safe_4": "('-' if safe_3 < 0 else '') + str(abs(safe_3) // 100) + '.' + ('0' if abs(safe_3) % 100 < 10 else '') + str(abs(safe_3) % 100)", "rr": "safe_4", "r10": "a * s + b", "E": "str(round(a / 10, 1)) + L + ' + ' + str(round(b / 10, 1)) + ' = ' + str(round((a * s + b) / 10, 1))", "E2": "str(round(a2 / 10, 1)) + L + ' + ' + str(round(b2 / 10, 1)) + ' = ' + str(round((a2 * s2 + b2) / 10, 1))", "r": "round((a * s + b) / 10, 1)", "safe_5": "int(round((b / 10) * 100))", "safe_6": "('-' if safe_5 < 0 else '') + str(abs(safe_5) // 100) + '.' + ('0' if abs(safe_5) % 100 < 10 else '') + str(abs(safe_5) % 100)", "bb": "safe_6", "s2": "s2"}
+```
+
+## 9.5-rational-coefficients step 2 template 4 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"L": "['n', 'x', 'k'][L_i]", "pp": "'%.2f' % (a / 10)", "rr": "'%.2f' % ((a * s + b) / 10)", "r10": "a * s + b", "E": "str(round(a / 10, 1)) + L + ' + ' + str(round(b / 10, 1)) + ' = ' + str(round((a * s + b) / 10, 1))", "E2": "str(round(a2 / 10, 1)) + L + ' + ' + str(round(b2 / 10, 1)) + ' = ' + str(round((a2 * s2 + b2) / 10, 1))", "r": "round((a * s + b) / 10, 1)", "bb": "'%.2f' % (b / 10)", "s2": "s2"}
+```
+After:
+```json
+{"L": "['n', 'x', 'k'][L_i]", "safe_1": "int(round((a / 10) * 100))", "safe_2": "('-' if safe_1 < 0 else '') + str(abs(safe_1) // 100) + '.' + ('0' if abs(safe_1) % 100 < 10 else '') + str(abs(safe_1) % 100)", "pp": "safe_2", "safe_3": "int(round(((a * s + b) / 10) * 100))", "safe_4": "('-' if safe_3 < 0 else '') + str(abs(safe_3) // 100) + '.' + ('0' if abs(safe_3) % 100 < 10 else '') + str(abs(safe_3) % 100)", "rr": "safe_4", "r10": "a * s + b", "E": "str(round(a / 10, 1)) + L + ' + ' + str(round(b / 10, 1)) + ' = ' + str(round((a * s + b) / 10, 1))", "E2": "str(round(a2 / 10, 1)) + L + ' + ' + str(round(b2 / 10, 1)) + ' = ' + str(round((a2 * s2 + b2) / 10, 1))", "r": "round((a * s + b) / 10, 1)", "safe_5": "int(round((b / 10) * 100))", "safe_6": "('-' if safe_5 < 0 else '') + str(abs(safe_5) // 100) + '.' + ('0' if abs(safe_5) % 100 < 10 else '') + str(abs(safe_5) % 100)", "bb": "safe_6", "s2": "s2"}
+```
+
+## 9.5-rational-coefficients step 2 template 5 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"L": "['n', 'x', 'k'][L_i]", "pp": "'%.2f' % (a / 10)", "rr": "'%.2f' % ((a * s + b) / 10)", "r10": "a * s + b", "E": "str(round(a / 10, 1)) + L + ' + ' + str(round(b / 10, 1)) + ' = ' + str(round((a * s + b) / 10, 1))", "E2": "str(round(a2 / 10, 1)) + L + ' + ' + str(round(b2 / 10, 1)) + ' = ' + str(round((a2 * s2 + b2) / 10, 1))", "r": "round((a * s + b) / 10, 1)", "bb": "'%.2f' % (b / 10)", "s2": "s2"}
+```
+After:
+```json
+{"L": "['n', 'x', 'k'][L_i]", "safe_1": "int(round((a / 10) * 100))", "safe_2": "('-' if safe_1 < 0 else '') + str(abs(safe_1) // 100) + '.' + ('0' if abs(safe_1) % 100 < 10 else '') + str(abs(safe_1) % 100)", "pp": "safe_2", "safe_3": "int(round(((a * s + b) / 10) * 100))", "safe_4": "('-' if safe_3 < 0 else '') + str(abs(safe_3) // 100) + '.' + ('0' if abs(safe_3) % 100 < 10 else '') + str(abs(safe_3) % 100)", "rr": "safe_4", "r10": "a * s + b", "E": "str(round(a / 10, 1)) + L + ' + ' + str(round(b / 10, 1)) + ' = ' + str(round((a * s + b) / 10, 1))", "E2": "str(round(a2 / 10, 1)) + L + ' + ' + str(round(b2 / 10, 1)) + ' = ' + str(round((a2 * s2 + b2) / 10, 1))", "r": "round((a * s + b) / 10, 1)", "safe_5": "int(round((b / 10) * 100))", "safe_6": "('-' if safe_5 < 0 else '') + str(abs(safe_5) // 100) + '.' + ('0' if abs(safe_5) % 100 < 10 else '') + str(abs(safe_5) % 100)", "bb": "safe_6", "s2": "s2"}
+```
+
+## 9.5-rational-coefficients step 2 template 6 answer
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+"('A) ' + str(xr)) if pos == 0 else (('B) ' + str(xr)) if pos == 1 else ('C) ' + str(xr)))"
+```
+After:
+```json
+"'A) ' + str(xr) if pos == 0 else 'B) ' + str(xr) if pos == 1 else 'C) ' + str(xr)"
+```
+
+## 9.5-rational-coefficients step 2 template 6 derived
+
+Replace unsupported percent string formatting, string repetition or string indexing with explicit derived values and supported expressions.
+
+Before:
+```json
+{"L": "['n', 'x', 'k'][L_i]", "pp": "'%.2f' % (a / 10)", "rr": "'%.2f' % ((a * s + b) / 10)", "r10": "a * s + b", "E": "str(round(a / 10, 1)) + L + ' + ' + str(round(b / 10, 1)) + ' = ' + str(round((a * s + b) / 10, 1))", "E2": "str(round(a2 / 10, 1)) + L + ' + ' + str(round(b2 / 10, 1)) + ' = ' + str(round((a2 * s2 + b2) / 10, 1))", "r": "round((a * s + b) / 10, 1)", "bb": "'%.2f' % (b / 10)", "s2": "s2", "xr": "s", "xw1": "s + 1", "xw2": "s - 1", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else (xw1 if pos == 0 else xw2)", "oc": "xr if pos == 2 else xw2"}
+```
+After:
+```json
+{"L": "['n', 'x', 'k'][L_i]", "safe_1": "int(round((a / 10) * 100))", "safe_2": "('-' if safe_1 < 0 else '') + str(abs(safe_1) // 100) + '.' + ('0' if abs(safe_1) % 100 < 10 else '') + str(abs(safe_1) % 100)", "pp": "safe_2", "safe_3": "int(round(((a * s + b) / 10) * 100))", "safe_4": "('-' if safe_3 < 0 else '') + str(abs(safe_3) // 100) + '.' + ('0' if abs(safe_3) % 100 < 10 else '') + str(abs(safe_3) % 100)", "rr": "safe_4", "r10": "a * s + b", "E": "str(round(a / 10, 1)) + L + ' + ' + str(round(b / 10, 1)) + ' = ' + str(round((a * s + b) / 10, 1))", "E2": "str(round(a2 / 10, 1)) + L + ' + ' + str(round(b2 / 10, 1)) + ' = ' + str(round((a2 * s2 + b2) / 10, 1))", "r": "round((a * s + b) / 10, 1)", "safe_5": "int(round((b / 10) * 100))", "safe_6": "('-' if safe_5 < 0 else '') + str(abs(safe_5) // 100) + '.' + ('0' if abs(safe_5) % 100 < 10 else '') + str(abs(safe_5) % 100)", "bb": "safe_6", "s2": "s2", "xr": "s", "xw1": "s + 1", "xw2": "s - 1", "oa": "xr if pos == 0 else xw1", "ob": "xr if pos == 1 else xw1 if pos == 0 else xw2", "oc": "xr if pos == 2 else xw2"}
+```

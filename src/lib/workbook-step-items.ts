@@ -274,7 +274,11 @@ export function templateProblem(t: StepTemplate, level: number): string | null {
   return null;
 }
 
-const numberAnswerOf = (t: StepTemplate) => ["bare", "missing", "story"].includes(t.format) && (!/['"]/.test(t.answer) || /['"], ['"]/.test(t.answer));
+// Numeric output may include a currency sign, a fixed decimal format, or a unit.
+// A quoted choice or model explanation is not number work.
+const numberAnswerOf = (t: StepTemplate) => ["bare", "missing", "story"].includes(t.format)
+  && (t.format === "story" && /str\(/.test(t.answer) || [...t.answer.matchAll(/(['"])(.*?)\1/g)].every(([, , literal]) =>
+    /^[\d\s$,+/.-]*$|^%\.?\d*[fgd]$|^ (?:mm|cm|km|m|kg|g|mL|L|cm²|m²|cm³|m³)$/.test(literal)));
 const difficultyRank = (d: TemplateDifficulty) => ["easy", "medium", "hard"].indexOf(d);
 
 /**
@@ -307,7 +311,7 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
   if (!step?.templates?.length || !contexts) return null;
   const wanted = wantedDifficulty(r.place, r.day, r.ordinal);
   // A number to work out: a number answer, or a list of numbers (a count with boxes).
-  const numberAnswer = (t: StepTemplate) => ["bare", "missing", "story"].includes(t.format) && (!/['"]/.test(t.answer) || /['"], ['"]/.test(t.answer));
+  const numberAnswer = numberAnswerOf;
   const printable = step.templates.map((t, index) => ({ t, index })).filter(({ t }) => !templateProblem(t, r.level)
     && (r.place !== "solve-it-two-ways" || sumTemplate(t)) && (r.place !== "spot-the-error" || numberAnswer(t)));
   // The step's hardest questions are the Challenge's (#482 review at 3134252: the Challenge is clearly harder than the
@@ -327,7 +331,7 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
   // Outside the Challenge its templates are kept for it (Codex at 3134252: reserve scarce Challenge tasks), but for a
   // teaching page whose other templates print fewer than 3 formats, and a story page with no other story; the
   // Challenge plans first and keeps their largest numbers.
-  let usable = rest.length ? rest : printable.filter((x) => !harder.includes(x));
+  let usable = r.place === "challenge" ? reserved : rest.length ? rest : printable.filter((x) => !harder.includes(x));
   const storyPage = !!r.place && STEP_STORY_PLACES.has(r.place) && r.place !== "challenge";
   if (r.place && TEACH_PLACES.has(r.place) && !storyPage && new Set(rest.map(({ t }) => t.format)).size < 3) usable = [...rest, ...reserved];
   else if (storyPage && !rest.some(({ t }) => t.format === "story")) usable = [...rest, ...reserved];
@@ -404,6 +408,7 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
         const big = (r.seed + r.attempt + tryNo) % 2 ? "points" : "tickets";
         text = text.replace(new RegExp(`\\b${small[1]}\\b`, "gi"), big);
       }
+      if (r.level >= 4 && BANNED_FROM_U4.test(text)) continue;
       if (r.room !== undefined && text.length > r.room) continue;
       if (stepRangeProblem(step, text) || stepRangeProblem(step, filled.answer)) continue;
       // An answer that names a person ("'name' if a > b else 'friend'"): circle the name or "the friend".
@@ -418,6 +423,7 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
       const at = labels ? { kind: "choice" as const, choices: labels.map(([, word]) => word) }
         : seq && r.place !== "spot-the-error" && r.place !== "solve-it-two-ways" ? { kind: "sequence" as const } : kindAt(r.place, answer, text);
       if (!at) break;
+      if (r.place === "challenge" && numeric.length && at.kind === "choice") continue;
       // A circled answer is circled, never written (the U4 review: "Write true or false" beside a circle).
       if (at.kind === "choice") text = text.replace(/\b(?:Write|Say)\s+(true or false|yes or no)\b/gi, "Circle $1");
       const slots: TemplateSource["slots"] = [];
