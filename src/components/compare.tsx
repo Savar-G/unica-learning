@@ -1,9 +1,8 @@
-// "How we compare", folded into Pricing under the plan card (D-076): a check table (D-097, variant C of round r19).
-// The same grid, with all five options, is the at-a-glance table on /compare (D-114). The facts live in
+// The check table (D-097, variant C of round r19) is the at-a-glance table on /compare, with all four options (D-114).
+// HomeCompare is the home "How we compare" section (D-219). The facts live in
 // src/lib/compare.ts. Marks scan before words: a full mark is yes, a half mark is partly, an empty mark is no.
-import Link from "next/link";
 import { COST, MARK_LABEL, OPTIONS, ROWS, type Mark, type OptionId, type RowId } from "@/lib/compare";
-import { Rise } from "./drawn";
+import type { Vars } from "./drawn";
 import "@/ds/styles/compare.css";
 
 export function MarkIcon({ m }: { m: Mark }) {
@@ -43,13 +42,44 @@ export function CompareLegend({ marks }: { marks: Mark[] }) {
   return <p className="cmp-legend">{marks.map((m) => <span key={m}><MarkIcon m={m} /> {MARK_LABEL[m]}</span>)}</p>;
 }
 
-export function CompareTable() {
+/** Home "How we compare" (D-219, round r33 variant A3): price first, then four traits. Only our column carries checks,
+ *  on a grainy colour field that runs unbroken down the column. Each cell gets its grid place as CSS variables: --r/--c
+ *  on wide screens (4 columns), --pr/--pc on phones (3 columns; the row label sits above the tutor and centre cells and
+ *  our cell spans both rows, so our column never breaks). */
+const HOME_COLS: OptionId[] = ["tutor", "centre", "us"];
+const HOME_ROWS: RowId[] = ["personal", "help", "plan", "gaps"];
+/** Shorter big numbers where the /compare text does not fit a home column (the range already says it varies). */
+const HOME_PRICE: Partial<Record<OptionId, string>> = { tutor: "$170-430" };
+
+export function HomeCompare() {
+  const at = (r: number, c: number, i: number) => ({ "--r": r, "--c": c, "--pr": i === 0 ? 1 : c === 1 ? 2 * i : c === 4 ? 2 * i : 2 * i + 1, "--pc": c === 1 ? 1 : c - 1 }) as Vars;
+  const name = (id: OptionId) => OPTIONS.find((o) => o.id === id)?.name;
+  const cls = (id: OptionId) => (id === "us" ? "us" : undefined);
+  const rows = HOME_ROWS.map((id) => ROWS.find((r) => r.id === id)!);
   return (
-    <Rise className="cmp">
-      <p className="cmp-kicker" id="cmpT">How we compare</p>
-      <CompareGrid columns={["tutor", "centre", "us"]} rows={["personal", "help", "plan", "gaps"]} labelledBy="cmpT" />
-      <CompareLegend marks={["yes", "part"]} />
-      <p className="cmp-more"><Link href="/compare">See the full comparison →</Link></p>
-    </Rise>
+    <div className="hc" role="table" aria-label="How we compare">
+      <span className="hc-us-field" aria-hidden="true" />
+      <div className="hc-row hc-head" role="row">
+        <span role="columnheader" style={at(1, 1, 0)} />
+        {HOME_COLS.map((id, c) => <span role="columnheader" key={id} className={cls(id)} style={at(1, c + 2, 0)}>{name(id)}</span>)}
+      </div>
+      <div className="hc-row hc-price" role="row">
+        <span role="rowheader" style={at(2, 1, 1)}>Price a month</span>
+        {HOME_COLS.map((id, c) => (
+          <span role="cell" key={id} className={cls(id)} style={at(2, c + 2, 1)}><b>{HOME_PRICE[id] ?? COST[id][0]}</b><small>{COST[id][1]}</small></span>
+        ))}
+      </div>
+      {rows.map((r, n) => (
+        <div className="hc-row" role="row" key={r.id}>
+          <span role="rowheader" style={at(n + 3, 1, n + 2)}>{r.label}</span>
+          {HOME_COLS.map((id, c) => (
+            <span role="cell" key={id} className={cls(id)} style={at(n + 3, c + 2, n + 2)}>
+              {id === "us" && <i className="hc-check" role="img" aria-label="Yes" />}
+              {r.cells[id][1]}
+            </span>
+          ))}
+        </div>
+      ))}
+    </div>
   );
 }
