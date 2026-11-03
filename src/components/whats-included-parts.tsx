@@ -3,6 +3,7 @@
 // (Figma 228:128, Leah's sample workbook), scaled to the width asked for.
 /* eslint-disable @next/next/no-img-element -- fixed-size product mockups; next/image wrappers would break the absolute layout */
 import type { CSSProperties, ReactNode } from "react";
+import "./whats-included-parts.css";
 
 export const ASSETS = "/whats-included";
 const PAGE_W = 541;
