@@ -1,9 +1,53 @@
 import { describe, expect, it } from "vitest";
 import { BC_SKILL_MAP } from "@/lib/assessment";
-import { BC_CURRICULUM as ACTIVE_CURRICULUM, curriculumFor, curriculumProblems, type CurriculumData, type CurriculumSkill } from "./index";
+import { BC_CURRICULUM, bcStepProgressions, curriculumFor, curriculumProblems, curriculumVersion, type CurriculumData, type CurriculumSkill } from "./index";
+import { BC_GENERATOR_STEPS } from "./bc-generator-steps";
+import { digestOf } from "@/lib/workbook-digest";
+import { DEFAULT_STEPS, planWorkbook } from "@/lib/workbook-plan";
+import { sampleChild, samplePlanInput } from "@/lib/workbook-sample-profiles";
 
-const bc = curriculumFor("bc")!;
-const BC_CURRICULUM = ACTIVE_CURRICULUM;
+const bc = bcStepProgressions();
+
+describe("progression activation boundary", () => {
+  it("keeps the generator on the 155 previous steps when the imported accessor is read", () => {
+    const active = curriculumFor("bc")!;
+    const version = curriculumVersion("bc");
+    expect(BC_GENERATOR_STEPS).toHaveLength(155);
+    const imported = bcStepProgressions();
+    for (const skill of BC_CURRICULUM.skills) {
+      expect(active.skillSteps(skill.id)).toEqual(BC_GENERATOR_STEPS.filter(s => s.skill === skill.id));
+      expect(imported.skillSteps(skill.id)).toEqual(BC_CURRICULUM.steps.filter(s => s.skill === skill.id));
+      expect(active.skill(skill.id)).toEqual(imported.skill(skill.id));
+    }
+    expect(imported.contexts).toEqual(BC_CURRICULUM.contexts);
+    expect(imported.levels).toEqual(active.levels);
+    expect(imported.levels.flatMap(l => imported.levelSkills(l.id)!.flatMap(s => imported.skillSteps(s.id)!))).toHaveLength(1622);
+    expect(active.levels.flatMap(l => active.levelSkills(l.id)!.flatMap(s => active.skillSteps(s.id)!))).toHaveLength(155);
+    const data = { ...BC_CURRICULUM };
+    delete data.contexts;
+    expect(version).toBe(digestOf({ ...data, steps: BC_GENERATOR_STEPS }));
+    expect(curriculumVersion("bc")).toBe(version);
+  });
+
+  it("keeps the coin teaching plan unchanged with the approved three-page budget", () => {
+    const active = curriculumFor("bc")!;
+    const coin = "K11-coin-attributes";
+    expect(active.skill(coin)?.pages).toBe(3);
+    expect(active.skillSteps(coin)).toEqual([]);
+    for (const kind of ["first", "second", "test"] as const) {
+      for (const passed of [0, 1, 2]) {
+        const input = samplePlanInput(active, sampleChild(active, "U3")!, kind);
+        // Make the coins the only remaining teaching skill so the changed page budget is binding.
+        input.passed = Object.fromEntries(input.level.units.flatMap(u => u.skills.map(s => [s.id, s.id === coin ? passed : DEFAULT_STEPS])));
+        const before = { ...input, level: { ...input.level, units: input.level.units.map(u => ({ ...u, skills: u.skills.map(s => s.id === coin ? { ...s, pages: 2 } : s) })) } };
+        const result = planWorkbook(input);
+        expect(result.ok).toBe(true);
+        expect(result).toEqual(planWorkbook(before));
+        expect(result.ok && result.plan.newSteps.some(s => s.skill === coin)).toBe(true);
+      }
+    }
+  });
+});
 
 describe("levels", () => {
   it("has a map for BC only", () => {
@@ -221,7 +265,7 @@ function withSkill(id: string, change: Partial<CurriculumSkill>): CurriculumData
 }
 
 describe("data checks", () => {
-  it("finds no problem in the active imported curriculum: every skill once, in the BC skill map, after its prerequisites", () => {
+  it("finds no problem in the imported curriculum: every skill once, in the BC skill map, after its prerequisites", () => {
     expect(curriculumProblems(BC_CURRICULUM, BC_SKILL_MAP)).toEqual([]);
   });
 

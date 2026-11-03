@@ -91,8 +91,8 @@ describe("the curriculum adapter", () => {
         expect(result.ok ? "ok" : result.reason, l.id).toBe("ok");
       }
     }
-    // Imported step pages come through for every level.
-    expect(U10.units[0].skills[0].steps.map((s) => s.pages)).toEqual([8, 8, 8, 9]);
+    // The drafted step pages come through (Grade 3).
+    expect(U10.units[0].skills[0].steps.map((s) => s.pages)).toEqual([7, 8, 7, 11]);
     expect(planLevel(BC, "U31")).toBeNull();
   });
 
@@ -310,15 +310,14 @@ describe("the two-week curriculum plan: units and steps", () => {
   });
 
   it("R356-07: reads each drafted step's pages; with none drafted, splits the skill's pages evenly", () => {
-    // U10's imported first skill: 8, 8, 8 and 9 pages, 4 A pages a day: step 2 starts on Day 3, step 3 on Day 5.
+    // U10's first skill: steps of 7, 8, 7 and 11 pages, 4 A pages a day: step 2 starts on Day 3, step 3 on Day 5.
     expect(plan(input()).newSteps.filter((s) => s.track === "A").slice(0, 3).map((s) => [s.step, s.day])).toEqual([[1, 1], [2, 3], [3, 5]]);
     // The same 33 pages as 30, 1, 1 and 1: step 1 takes eight days.
     const heavy: PlanLevel = { ...U10, units: U10.units.map((u, i) => (i > 0 ? u : { ...u, skills: u.skills.map((s, j) => (j > 0 ? s : { ...s, steps: [30, 1, 1, 1].map((pages) => ({ pages })) })) })) };
     expect(plan(input({ level: heavy })).newSteps.filter((s) => s.track === "A").map((s) => [s.step, s.day]).slice(0, 2)).toEqual([[1, 1], [2, 9]]);
-    // U19 now has imported steps. Keep an explicit missing-steps fixture for the fallback control.
-    expect(U19.units[0].skills[0]).toMatchObject({ id: "6.1-place-value", pages: 16, steps: [{ pages: 8 }, { pages: 8 }] });
-    const undrafted: PlanLevel = { ...U19, units: U19.units.map((u, i) => i ? u : { ...u, skills: u.skills.map((s, j) => j ? s : { ...s, steps: [] }) }) };
-    expect(plan(at(undrafted)).newSteps.filter((s) => s.track === "A").slice(0, 3).map((s) => [s.step, s.day])).toEqual([[1, 1], [2, 3], [3, 5]]);
+    // U19's 6.1-place-value has no drafted steps: 16 pages over 3 steps, 6, 5 and 5; 3 A pages a day.
+    expect(U19.units[0].skills[0]).toMatchObject({ id: "6.1-place-value", pages: 16, steps: [] });
+    expect(plan(at(U19)).newSteps.filter((s) => s.track === "A").slice(0, 3).map((s) => [s.step, s.day])).toEqual([[1, 1], [2, 3], [3, 5]]);
   });
 });
 

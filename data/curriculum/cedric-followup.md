@@ -13,4 +13,4 @@ See [the exact before/after changelog](author-changes.md) and [structured patche
 - 4.1-multiples step 3 template 1: use explicit lists for 4-6 terms.
 - All 332 inline slot entries: use identical named number domains.
 
-Audit: 7,321 templates, 30 seeds each, 219,630 successful fills, zero failed templates, zero blocking import problems. The active app curriculum now uses all 1,622 steps.
+Audit: 7,321 templates, 30 seeds each, 219,630 successful fills, zero failed templates, zero blocking import problems. All 1,622 steps are available through `bcStepProgressions()`. The generator retains main's 155 drafted steps until the integration PR activates the import.

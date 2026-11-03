@@ -15,8 +15,8 @@ const originalBytes = readFileSync("data/curriculum/step-progressions-k9.origina
 const original = parseStepProgressions(JSON.parse(originalBytes.toString()));
 const candidate = { ...BC_CURRICULUM, steps: source.steps, contexts: source.contexts };
 const baseline = JSON.parse(readFileSync("data/curriculum/template-audit.json", "utf8"));
-describe("active progression import", () => {
-  it("activates all source steps with no curriculum problems", () => {
+describe("staged progression import", () => {
+  it("imports all source steps with no curriculum problems", () => {
     expect(source.steps).toHaveLength(1622);
     expect(new Set(source.steps.map(s => s.skill)).size).toBe(541);
     expect(BC_CURRICULUM.steps).toEqual(source.steps);
@@ -24,13 +24,15 @@ describe("active progression import", () => {
     expect(curriculumProblems(candidate, BC_SKILL_MAP)).toEqual([]);
   });
   it("requires steps in every level, including warm-up and activity skills", () => {
+    // These cases vary step presence. The complete template fields are validated in the preceding source test.
+    const required = { ...candidate, steps: source.steps.map(step => ({ ...step, templates: undefined })) };
     for (const level of candidate.levels) {
       const skill = candidate.skills.find(s => s.level === level.id)!;
-      expect(curriculumProblems({ ...candidate, steps: source.steps.filter(s => s.skill !== skill.id) }, BC_SKILL_MAP)).toContain(`${skill.id} (${skill.level}) has no steps; every skill in every level needs them`);
+      expect(curriculumProblems({ ...required, steps: required.steps.filter(s => s.skill !== skill.id) }, BC_SKILL_MAP)).toContain(`${skill.id} (${skill.level}) has no steps; every skill in every level needs them`);
     }
     for (const delivery of ["warm-up", "activity"]) {
       const skill = candidate.skills.find(s => s.delivery === delivery)!;
-      expect(curriculumProblems({ ...candidate, steps: source.steps.filter(s => s.skill !== skill.id) }, BC_SKILL_MAP)).toContain(`${skill.id} (${skill.level}) has no steps; every skill in every level needs them`);
+      expect(curriculumProblems({ ...required, steps: required.steps.filter(s => s.skill !== skill.id) }, BC_SKILL_MAP)).toContain(`${skill.id} (${skill.level}) has no steps; every skill in every level needs them`);
     }
   });
   it("reports reversed ranges, unknown domains, unknown placeholders and inline slots", () => {
@@ -113,7 +115,7 @@ describe("active progression import", () => {
     const originalExpected = { ...originalReport }; delete originalExpected.importProblems;
     expect(auditTemplates(original)).toEqual(originalExpected);
   }, 30000);
-  it("checks the active source without a write and rejects the uncorrected original", () => {
+  it("checks the staged source without a write and rejects the uncorrected original", () => {
     const digest = () => createHash("sha256").update(readFileSync("src/lib/workbook-curriculum/bc.ts")).digest("hex");
     const before = digest();
     const run = spawnSync(process.execPath, ["scripts/import-curriculum.mjs", "--check"], { encoding: "utf8" });

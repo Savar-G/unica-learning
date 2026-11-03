@@ -2,7 +2,7 @@
 
 Issue: https://github.com/Savar-G/unica-learning/issues/486
 
-The active curriculum now includes all 1,622 steps for 541 BC skills, 9,732 practice questions, 7,321 templates, and the shared contexts. All 88 new misconception descriptions are imported. U4-U6 are child-led. Only U1-U3 remain parent-led. The book writer does not call the new template filler.
+The staged import includes all 1,622 steps for 541 BC skills, 9,732 practice questions, 7,321 templates, and the shared contexts. `curriculumFor("bc")` keeps the generator on main's 155 drafted steps. `bcStepProgressions()` exposes the complete import for the next integration. All 88 new misconception descriptions are imported. U4-U6 are child-led. Only U1-U3 remain parent-led. The book writer does not call the new template filler.
 
 The author's original JSON is preserved byte for byte in `step-progressions-k9.original.json`. The working copy is `step-progressions-k9.json`. The brief and misconception source files are unchanged. Calibration entries record the author's claims; this task does not verify those external sources.
 
@@ -34,7 +34,7 @@ Savar approved three changes over the preserved curriculum skeleton:
 | U3 | skill pages | 125 | 126 |
 | Kindergarten | skill-page budget | 360 | 361 |
 
-Workbook counts remain 8 for Kindergarten and 120 overall. Other level and grade budgets are unchanged. `approved-adjustments.json` records the decision. The importer checks each old value before applying the adjustment. It stops on source drift. The XLSX remains unchanged. The active `bc.ts` is generated from the skeleton, the corrected JSON, and these explicit adjustments. `--check` validates the same candidate without a file write. No partial import or error bypass exists.
+Workbook counts remain 8 for Kindergarten and 120 overall. Other level and grade budgets are unchanged. `approved-adjustments.json` records the decision. The importer checks each old value before applying the adjustment. It stops on source drift. The XLSX remains unchanged. The imported `bc.ts` is generated from the skeleton, the corrected JSON, and these explicit adjustments. The generator reads the preserved steps in `bc-generator-steps.ts`; importing again does not activate the new steps. `--check` validates the same candidate without a file write. No partial import or error bypass exists.
 
 ## Admission and resource limits
 
@@ -49,8 +49,14 @@ Tests run both resource reviews' nested-list, 10,000-assignment preparation, and
 ## Consumer API for PR #482
 
 ```ts
+import { bcStepProgressions, curriculumFor } from "@/lib/workbook-curriculum";
 import { fillTemplate, prepareTemplate, seededRandom } from "@/lib/workbook-curriculum/template";
 
+const current = curriculumFor("bc")!; // Existing generator input, 155 drafted steps.
+const imported = bcStepProgressions(); // Explicit opt-in, 1,622 imported steps.
+const step = imported.skillSteps("3.3-add-within-1000")![0];
+const template = step.templates![0];
+const contexts = imported.contexts;
 const random = seededRandom(42);
 const item = fillTemplate(step, template, contexts, random);
 // item.text, item.answer, item.values, item.attempts
@@ -58,6 +64,8 @@ const item = fillTemplate(step, template, contexts, random);
 const prepared = prepareTemplate(step, template, contexts);
 const another = prepared.fill(random, 100);
 ```
+
+`bcStepProgressions()` has the same level, skill and ordered `skillSteps` reads as `curriculumFor`, plus `contexts`. It does not switch the default accessor. `BC_CURRICULUM` is the raw imported data used by the all-level validation. The default curriculum fingerprint includes the preserved generator steps and approved metadata; the staged steps and contexts do not enter that fingerprint. The integration must switch both the curriculum input and its saved fingerprint when it activates imported books. No generator writer, selection or fit code changes in this PR.
 
 Production preparation requires named slot domains, applies import admission checks, and snapshots the admitted expressions, domains, and step values. The returned fill capability is frozen. `prepareTemplateForAudit` is explicitly diagnostic and retains legacy inline-range fills only for the original-source control. It is not the production admission API.
 
@@ -69,9 +77,21 @@ The hand-written interpreter accepts arithmetic, comparisons, membership, lazy b
 
 ## Fixed fake-generation comparison
 
-[The machine report](fake-generation-comparison.json) records U10 before activation, after activation, and a counterfactual with old steps and new budget metadata. Every run uses the repository fake AI, fixed IDs, fixed QR tokens and clock, an in-memory store, a key solver, and a passing fit stub.
+[The machine report](fake-generation-comparison.json) compares main at `8b05542b1afb4fbe5723ecfecb422bbbd8196ae8` with this branch for U4, U10 and U14. Each run uses the real sample CLI with `--fake --levels <one level> --no-store`, default concurrency 6, the real fit engine, strict renderer and PDF output. Each process starts a fresh fake client. There is no passing fit stub.
 
-Both drafts have 84 pages and 777 questions. New step data changes 50 pages; 34 pages are identical. Draft identity, child, workbook number, levels, profile build, and model are unchanged. Fake questions failing the checker change from 73 to 67. Restoring only the old steps reproduces the baseline bytes exactly, proving that the draft changes come from the imported steps. This is draft-output proof, not PDF, layout, real-model, or book-quality acceptance. The actual `workbooks:samples --fake --levels U10 --no-store` CLI also completed: 84 rendered pages, 765 questions, 0 pages that fail fit, and 0 strict render problems. It left out 12 questions for room and retained 59 fake-question check failures. All 945 fake solve checks agreed, with no failures or timeouts. The CLI result tests the renderer separately; it is not the same as the fixed draft comparison with a passing fit stub. No database rows were stored and no model calls were made.
+The comparison fixes only the CLI's IDs, QR tokens and generator clock. The full draft must match byte for byte. The PDF comparison fixes only CreationDate and ModDate, with same-length replacements; all other PDF bytes must match. PNG hashes are diagnostic because Chromium can produce different raster pixels with identical PDF content. Raw PDFs and the PDFs with fixed dates remain in `.workbook-sample/pr487-comparison/`. The report includes their hashes. The approved child-led value is retained in the curriculum. It does not change the generated draft or printed pages in these fake runs.
+
+| Level | Pages, main / head | Questions, main / head | Failed questions, main / head | Omissions, main / head |
+|---|---:|---:|---:|---:|
+| U4 | 84 / 84 | 430 / 430 | 0 / 0 | 0 / 0 |
+| U10 | 84 / 84 | 766 / 766 | 57 / 57 | 11 / 11 |
+| U14 | 84 / 84 | 780 / 780 | 63 / 63 | 0 / 0 |
+
+Full drafts and PDF content match for all three pairs. PDF timestamps are fixed as described above. PNG raster bytes differ on 37 U4 pages, 4 U10 pages and 30 U14 pages; the report retains both hash lists.
+
+The report records all page, question, failure, omission and solve counts. Every run must have zero strict render problems, failed fit pages, solve disagreements and solve failures. Existing fake-question failures and omissions must equal main. No database rows are stored and model cost is USD 0.00. This establishes unchanged fake-book output, not real-model or book-quality acceptance.
+
+The approved K11 budget remains. Its legacy three-step fallback gives each step at least one page, so a skill budget of 2 or 3 produces the same three one-page steps. A public planner test brings coins into teaching as the only remaining skill and compares both budgets. The three required book comparisons separately check the full generator and renderer.
 
 Original source SHA-256:
 
