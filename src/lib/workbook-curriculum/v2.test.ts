@@ -21,7 +21,7 @@ const BC = curriculumFor("bc")!;
 
 describe("v2 data and answer contracts", () => {
   it("replays every recorded change and keeps all template positions with easy and hard coverage", () => {
-    const patches = JSON.parse(read("author-changes.json")) as { skill: string; step: number; template: number | null; path: string[]; before: unknown; after: unknown; why: string; kind?: "quality-fallback" | "wording-rewrite"; beforeAbsent?: boolean }[];
+    const patches = JSON.parse(read("author-changes.json")) as { skill: string; step: number; template: number | null; path: string[]; before: unknown; after: unknown; why: string; kind?: "quality-fallback" | "wording-rewrite"; beforeAbsent?: boolean; afterAbsent?: boolean }[];
     for (const patch of patches) {
       const step = original.steps.find(s => s.skill === patch.skill && s.number === patch.step)!;
       const target = (patch.template === null ? step : step.templates![patch.template - 1]) as unknown as Record<string, unknown>;
@@ -31,7 +31,8 @@ describe("v2 data and answer contracts", () => {
       if (!patch.kind) expect(patch.path[0]).not.toBe("text");
       if (patch.beforeAbsent) expect(Object.hasOwn(target, patch.path[0])).toBe(false);
       else expect(target[patch.path[0]]).toEqual(patch.before);
-      target[patch.path[0]] = patch.after;
+      if (patch.afterAbsent) delete target[patch.path[0]];
+      else target[patch.path[0]] = patch.after;
       expect(patch.why).not.toBe("");
     }
     expect(original).toEqual(active);

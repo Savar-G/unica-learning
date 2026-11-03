@@ -130034,7 +130034,7 @@
       "a": "a0 // 100 * 100 + a0 % 10",
       "b": "b0"
      },
-     "check": "a0 >= 100 and a % 10 != 0 and a // 100 >= 2"
+     "check": "a0 >= 100"
     },
     {
      "format": "story",
@@ -130049,7 +130049,7 @@
       "a": "a0 // 100 * 100 + a0 % 10",
       "b": "b0"
      },
-     "check": "a0 >= 100 and a >= 2 and b >= 2 and a % 10 != 0 and a // 100 >= 2"
+     "check": "a0 >= 100"
     },
     {
      "format": "missing",
@@ -130065,7 +130065,7 @@
       "b": "b0",
       "c": "a * b"
      },
-     "check": "a0 >= 100 and a % 10 != 0 and a // 100 >= 2"
+     "check": "a0 >= 100"
     },
     {
      "format": "true-false",
@@ -130082,23 +130082,24 @@
       "b": "b0",
       "c": "a * b - a if f == 0 else a * b + a"
      },
-     "check": "a0 >= 100 and a % 10 != 0 and a // 100 >= 2"
+     "check": "a0 >= 100"
     },
     {
-     "format": "story",
+     "format": "true-false",
      "difficulty": "hard",
-     "text": "A school buys {a} boxes of {n} pencils and gives away {g}. How many pencils are left?",
-     "answer": "n * a - g",
+     "text": "True or false: {a} × {b} = {c}.",
+     "answer": "'true' if f == 0 else 'false'",
      "slots": {
-      "a": "template_a",
-      "x": "template_x",
-      "y": "template_y",
-      "g0": "template_g0"
+      "a0": "operand1",
+      "b0": "operand2",
+      "f": "flip"
      },
      "derived": {
-      "n": "x * 100 + y",
-      "g": "1 + g0 % min(200, n * a - 1)"
-     }
+      "a": "a0 // 100 * 100 + a0 % 10",
+      "b": "b0",
+      "c": "a * b if f == 0 else a * b + a"
+     },
+     "check": "a0 >= 100"
     }
    ],
    "calibration": {
@@ -130202,8 +130203,7 @@
      "slots": {
       "s": "start",
       "d": "step"
-     },
-     "derived": {}
+     }
     },
     {
      "format": "story",
@@ -130213,8 +130213,7 @@
      "slots": {
       "s": "start",
       "d": "step"
-     },
-     "derived": {}
+     }
     },
     {
      "format": "missing",
@@ -130230,17 +130229,17 @@
      }
     },
     {
-     "format": "bare",
+     "format": "true-false",
      "difficulty": "hard",
-     "text": "A pattern adds the same number each time. Its 2nd term is {t2} and its 5th term is {t5}. What number does it add each time?",
-     "answer": "d",
+     "text": "True or false: starting at {s} and adding {d}, the 3rd term is {t}.",
+     "answer": "'true' if f == 0 else 'false'",
      "slots": {
-      "s": "template_s",
-      "d": "template_d"
+      "s": "start",
+      "d": "step",
+      "f": "flip"
      },
      "derived": {
-      "t2": "s + d",
-      "t5": "s + 4 * d"
+      "t": "s + 2 * d if f == 0 else s + 2 * d + 1 + d % 4"
      }
     }
    ],

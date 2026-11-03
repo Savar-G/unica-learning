@@ -3144,3 +3144,252 @@ After:
 ```json
 "p + q"
 ```
+
+## 5.9-distributive step 2 template 1 check
+
+Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.
+
+Before:
+```json
+"a0 >= 100 and a % 10 != 0 and a // 100 >= 2"
+```
+After:
+```json
+"a0 >= 100"
+```
+
+## 5.9-distributive step 2 template 2 check
+
+Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.
+
+Before:
+```json
+"a0 >= 100 and a >= 2 and b >= 2 and a % 10 != 0 and a // 100 >= 2"
+```
+After:
+```json
+"a0 >= 100"
+```
+
+## 5.9-distributive step 2 template 3 check
+
+Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.
+
+Before:
+```json
+"a0 >= 100 and a % 10 != 0 and a // 100 >= 2"
+```
+After:
+```json
+"a0 >= 100"
+```
+
+## 5.9-distributive step 2 template 4 check
+
+Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.
+
+Before:
+```json
+"a0 >= 100 and a % 10 != 0 and a // 100 >= 2"
+```
+After:
+```json
+"a0 >= 100"
+```
+
+## 5.9-distributive step 2 template 5 format
+
+Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.
+
+Before:
+```json
+"story"
+```
+After:
+```json
+"true-false"
+```
+
+## 5.9-distributive step 2 template 5 text
+
+Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.
+
+Before:
+```json
+"A school buys {a} boxes of {n} pencils and gives away {g}. How many pencils are left?"
+```
+After:
+```json
+"True or false: {a} × {b} = {c}."
+```
+
+## 5.9-distributive step 2 template 5 answer
+
+Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.
+
+Before:
+```json
+"n * a - g"
+```
+After:
+```json
+"'true' if f == 0 else 'false'"
+```
+
+## 5.9-distributive step 2 template 5 slots
+
+Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.
+
+Before:
+```json
+{
+  "a": "template_a",
+  "x": "template_x",
+  "y": "template_y",
+  "g0": "template_g0"
+}
+```
+After:
+```json
+{
+  "a0": "operand1",
+  "b0": "operand2",
+  "f": "flip"
+}
+```
+
+## 5.9-distributive step 2 template 5 derived
+
+Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.
+
+Before:
+```json
+{
+  "n": "x * 100 + y",
+  "g": "1 + g0 % min(200, n * a - 1)"
+}
+```
+After:
+```json
+{
+  "a": "a0 // 100 * 100 + a0 % 10",
+  "b": "b0",
+  "c": "a * b if f == 0 else a * b + a"
+}
+```
+
+## 5.9-distributive step 2 template 5 check
+
+Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.
+
+Before:
+```json
+(absent)
+```
+After:
+```json
+"a0 >= 100"
+```
+
+## 5.10-pattern-rule step 1 template 1 derived
+
+Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.
+
+Before:
+```json
+{}
+```
+After:
+```json
+(absent)
+```
+
+## 5.10-pattern-rule step 1 template 2 derived
+
+Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.
+
+Before:
+```json
+{}
+```
+After:
+```json
+(absent)
+```
+
+## 5.10-pattern-rule step 1 template 4 format
+
+Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.
+
+Before:
+```json
+"bare"
+```
+After:
+```json
+"true-false"
+```
+
+## 5.10-pattern-rule step 1 template 4 text
+
+Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.
+
+Before:
+```json
+"A pattern adds the same number each time. Its 2nd term is {t2} and its 5th term is {t5}. What number does it add each time?"
+```
+After:
+```json
+"True or false: starting at {s} and adding {d}, the 3rd term is {t}."
+```
+
+## 5.10-pattern-rule step 1 template 4 answer
+
+Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.
+
+Before:
+```json
+"d"
+```
+After:
+```json
+"'true' if f == 0 else 'false'"
+```
+
+## 5.10-pattern-rule step 1 template 4 slots
+
+Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.
+
+Before:
+```json
+{
+  "s": "template_s",
+  "d": "template_d"
+}
+```
+After:
+```json
+{
+  "s": "start",
+  "d": "step",
+  "f": "flip"
+}
+```
+
+## 5.10-pattern-rule step 1 template 4 derived
+
+Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.
+
+Before:
+```json
+{
+  "t2": "s + d",
+  "t5": "s + 4 * d"
+}
+```
+After:
+```json
+{
+  "t": "s + 2 * d if f == 0 else s + 2 * d + 1 + d % 4"
+}
+```

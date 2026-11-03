@@ -5996,5 +5996,237 @@
     "after": "p + q",
     "why": "Restore the original v2 walk calculation after shortening its prompt. Keep the valid triangle dimensions, original story format, p + q answer and hard difficulty. The interim v1 hypotenuse fallback is no longer active.",
     "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-distributive",
+    "step": 2,
+    "template": 1,
+    "path": [
+      "check"
+    ],
+    "before": "a0 >= 100 and a % 10 != 0 and a // 100 >= 2",
+    "after": "a0 >= 100",
+    "why": "Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-distributive",
+    "step": 2,
+    "template": 2,
+    "path": [
+      "check"
+    ],
+    "before": "a0 >= 100 and a >= 2 and b >= 2 and a % 10 != 0 and a // 100 >= 2",
+    "after": "a0 >= 100",
+    "why": "Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-distributive",
+    "step": 2,
+    "template": 3,
+    "path": [
+      "check"
+    ],
+    "before": "a0 >= 100 and a % 10 != 0 and a // 100 >= 2",
+    "after": "a0 >= 100",
+    "why": "Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-distributive",
+    "step": 2,
+    "template": 4,
+    "path": [
+      "check"
+    ],
+    "before": "a0 >= 100 and a % 10 != 0 and a // 100 >= 2",
+    "after": "a0 >= 100",
+    "why": "Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-distributive",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "format"
+    ],
+    "before": "story",
+    "after": "true-false",
+    "why": "Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-distributive",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "A school buys {a} boxes of {n} pencils and gives away {g}. How many pencils are left?",
+    "after": "True or false: {a} × {b} = {c}.",
+    "why": "Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-distributive",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "answer"
+    ],
+    "before": "n * a - g",
+    "after": "'true' if f == 0 else 'false'",
+    "why": "Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-distributive",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "a": "template_a",
+      "x": "template_x",
+      "y": "template_y",
+      "g0": "template_g0"
+    },
+    "after": {
+      "a0": "operand1",
+      "b0": "operand2",
+      "f": "flip"
+    },
+    "why": "Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-distributive",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "n": "x * 100 + y",
+      "g": "1 + g0 % min(200, n * a - 1)"
+    },
+    "after": {
+      "a": "a0 // 100 * 100 + a0 % 10",
+      "b": "b0",
+      "c": "a * b if f == 0 else a * b + a"
+    },
+    "why": "Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.9-distributive",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "check"
+    ],
+    "after": "a0 >= 100",
+    "why": "Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.",
+    "kind": "quality-fallback",
+    "beforeAbsent": true
+  },
+  {
+    "skill": "5.10-pattern-rule",
+    "step": 1,
+    "template": 1,
+    "path": [
+      "derived"
+    ],
+    "before": {},
+    "why": "Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.",
+    "kind": "quality-fallback",
+    "afterAbsent": true
+  },
+  {
+    "skill": "5.10-pattern-rule",
+    "step": 1,
+    "template": 2,
+    "path": [
+      "derived"
+    ],
+    "before": {},
+    "why": "Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.",
+    "kind": "quality-fallback",
+    "afterAbsent": true
+  },
+  {
+    "skill": "5.10-pattern-rule",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "format"
+    ],
+    "before": "bare",
+    "after": "true-false",
+    "why": "Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.10-pattern-rule",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "A pattern adds the same number each time. Its 2nd term is {t2} and its 5th term is {t5}. What number does it add each time?",
+    "after": "True or false: starting at {s} and adding {d}, the 3rd term is {t}.",
+    "why": "Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.10-pattern-rule",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "answer"
+    ],
+    "before": "d",
+    "after": "'true' if f == 0 else 'false'",
+    "why": "Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.10-pattern-rule",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "s": "template_s",
+      "d": "template_d"
+    },
+    "after": {
+      "s": "start",
+      "d": "step",
+      "f": "flip"
+    },
+    "why": "Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "5.10-pattern-rule",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "t2": "s + d",
+      "t5": "s + 4 * d"
+    },
+    "after": {
+      "t": "s + 2 * d if f == 0 else s + 2 * d + 1 + d % 4"
+    },
+    "why": "Retain the v1 content for this step after the matched full U16 comparison. The prior candidate reduced mean fullness from 74.734% to 74.585%. These two step fallbacks restore mean fullness to 74.773%, with the same minimum fullness and no failures, omissions, fit errors or variety errors. The selected-day comparison also passes. Keep every template position.",
+    "kind": "quality-fallback"
   }
 ]
