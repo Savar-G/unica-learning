@@ -1,4 +1,4 @@
-// "Help when they're stuck" (D-217, from prototype round C4 on branch site/maya-section-prototype): the header on
+// "Help when they're stuck" (D-219, from prototype round C4 on branch site/maya-section-prototype): the header on
 // its own lines (title on one line on wide screens, the lead under it), then the silent demo with the list of its
 // steps beside it (under it on phones). Naming follows D-172: "AI Teaching Assistant", the name Maya, and no
 // "voice call" wording. The video loops muted and starts when it scrolls into view, so the copy says the captions
