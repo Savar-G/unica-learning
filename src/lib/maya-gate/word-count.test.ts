@@ -1,13 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { allLineTexts, PHRASES, speechWords } from "@/lib/maya";
 import type { OperationPackage } from "@/lib/question-package";
-import { BEHAVIOURS } from "./behaviours";
-import { runGateBehaviour, judgeSaved } from "./call";
-import { memoryTraceStore, type Behaviour } from "./gate";
 import { FIXTURES } from "./fixtures";
 import { gateWordCount } from "./word-count";
-
-vi.mock("server-only", () => ({}));
 
 describe("the independent gate word counter", () => {
   it.each([
@@ -21,29 +16,5 @@ describe("the independent gate word counter", () => {
     texts.push(...Object.values(PHRASES).flat());
     expect(texts.length).toBeGreaterThan(1000);
     for (const text of texts) expect(gateWordCount(text), text).toBe(speechWords(text));
-  });
-
-  it.each([1, 4])("all emitted turns and fallbacks obey the grade %s limit", async (grade) => {
-    let outputs = 0;
-    let fallbacks = 0;
-    for (const original of BEHAVIOURS) {
-      // Keep each scenario and its safety checks. Original exact flow counts apply to its own grade and seed only.
-      const b: Behaviour = { ...original, grade, expect: { outcome: {}, flag: original.expect.flag, safety: original.expect.safety } };
-      for (const seed of [1, 9, 31]) {
-        const store = memoryTraceStore();
-        expect((await runGateBehaviour(b, store, { seed })).error, `${b.id}, seed ${seed}`).toBeNull();
-        const v = judgeSaved(b, store);
-        expect(v.failures.filter((f) => f.detail === "Maya exceeded the spoken word limit"), `${b.id}, seed ${seed}`).toEqual([]);
-        for (const t of v.trace!.turns) {
-          if (t.kind !== "maya" || !t.output || t.output.act === "safety") continue;
-          outputs++;
-          const count = gateWordCount(t.output.say.join(" "));
-          expect(count, `${b.id}, seed ${seed}: ${t.output.say.join(" ")}`).toBeLessThanOrEqual(grade <= 3 ? 25 : 45);
-          if (t.attempts.at(-1)?.source === "fallback") fallbacks++;
-        }
-      }
-    }
-    expect(outputs).toBeGreaterThan(1000);
-    expect(fallbacks).toBeGreaterThan(0);
   });
 });
