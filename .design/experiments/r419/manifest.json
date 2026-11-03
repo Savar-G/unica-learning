@@ -1,0 +1,117 @@
+{
+  "round": "419",
+  "issue": "#419",
+  "design": "Option C, selected by Savar on 2026-11-01. Source: issue #419 and .design/experiments/r331/option-c.html.",
+  "route": "design direct; existing product system; implementation and review",
+  "approval": {
+    "status": "pending",
+    "required_before_merge": true
+  },
+  "browser": "Aside CLI, account u0. npm run dev on port 3419. Browser uses r419.localhost to isolate its cookies.",
+  "viewports": [
+    {
+      "name": "laptop",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "name": "tablet",
+      "width": 768,
+      "height": 1024
+    },
+    {
+      "name": "phone",
+      "width": 390,
+      "height": 844
+    }
+  ],
+  "fixture": {
+    "parent": "Priya",
+    "children": [
+      "Leah, two saved chat notes",
+      "Sam, no notes"
+    ],
+    "families": 2,
+    "notes": 3,
+    "source": "New synthetic Auth users and records only. Notes were seeded before the families were marked as tests, because the production writer correctly excludes test families. No model or email was used."
+  },
+  "screens": [
+    "call-session-laptop.png",
+    "call-session-phone.png",
+    "call-session-tablet.png",
+    "call-transcript-phone.png",
+    "chat-session-laptop.png",
+    "chat-session-phone.png",
+    "chat-session-tablet.png",
+    "chat-transcript-phone.png",
+    "no-notes-laptop.png",
+    "no-notes-phone.png",
+    "no-notes-tablet.png",
+    "notes-list-laptop.png",
+    "notes-list-phone.png",
+    "notes-list-tablet.png",
+    "parent-home-laptop.png",
+    "parent-home-overview-laptop.png",
+    "parent-home-overview-phone.png",
+    "parent-home-overview-tablet.png",
+    "parent-home-phone.png",
+    "parent-home-tablet.png"
+  ],
+  "screenshots": "Viewport captures. Parent home has an overview and a view scrolled to the latest note. No-notes captures show Sam. Phone transcript captures show the conversation below the note. The Next.js development indicator was hidden for capture. Full-page stitching was rejected because it repeated the page top.",
+  "call_fixture": "Family call kind is not yet enabled by #337. The Call captures use the same ParentSessionView component with synthetic channel=call metadata through a temporary authenticated development page. That page is removed before commit. The actual session route has Chat and Call tests. No real family voice call is claimed.",
+  "checks": [
+    "No horizontal overflow at the three viewports",
+    "One latest note for Leah, no notes section for Sam",
+    "Chat and Call labels, family-local date and time, duration",
+    "Full transcript with speaker names and elapsed times",
+    "Keyboard Tab focus, visible outline, 44-pixel notes link, Enter navigation",
+    "60-character unbroken name wraps within the 390-pixel viewport",
+    "Owner HTTP 200; another family list/session, mixed child/session and invalid ID HTTP 404",
+    "Existing notes visible while MAYA_CHAT_ENABLED=off"
+  ],
+  "evidence": [
+    "browser-layout.json",
+    "browser-access.json",
+    "hosted-access.json",
+    "cleanup.json",
+    "security-advisor.json",
+    "migration.json"
+  ],
+  "proof_limits": [
+    "Responsive browser viewports, not physical devices",
+    "Call UI uses synthetic metadata, not a live family voice session",
+    "Hosted SQL and HTTP denial evidence cover chat notes",
+    "Local development HTTP cache headers differ from the account proxy declaration; production headers were not tested",
+    "Savar look approval and independent Codex review remain open"
+  ],
+  "cleanup": {
+    "syntheticUsersDeleted": 2,
+    "syntheticCallsSeeded": 3,
+    "remaining": {
+      "parents": 0,
+      "children": 0,
+      "maya_calls": 0,
+      "maya_call_notes": 0,
+      "test_accounts": 0
+    }
+  },
+  "gates": {
+    "npm test": {
+      "exit": 0,
+      "files": 278,
+      "tests": 12615
+    },
+    "npx eslint src": {
+      "exit": 0
+    },
+    "npm run build": {
+      "exit": 0,
+      "includes": "TypeScript check"
+    },
+    "hosted_sql": {
+      "result": "pass"
+    },
+    "review": ".design/reviews/parent-maya-notes-2026-11-02-r419.md",
+    "independent_review": "pending"
+  }
+}
