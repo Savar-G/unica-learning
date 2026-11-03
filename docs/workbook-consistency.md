@@ -99,14 +99,15 @@ result. The test does not use a fit seam that always returns success.
 The fake indexes report the failed rate, omissions, the union of occupied
 vertical intervals, unoccupied gap sizes, extra practice pages,
 estimated day time, builder coverage and provider calls. The technical gate
-requires less than 5 percent failed items, no unresolved quality or render
-problems, and at least 80 percent measured use on every day page. Fake books
-always keep the approval hold. No child was timed.
+requires less than 5 percent failed items and no unresolved quality or render
+problems. The measured layout requires at least 85 percent occupied space,
+or a completed item budget with bounded even spacing and no large bottom gap.
+Fake books always keep the approval hold. No child was timed.
 
 The example candidates are listed in `workbook-example-bank-480.md`. Savar
 must approve the bank and the next authorised subscription sample before merge.
-No real sample is authorised for these fixes. Cedric's final step data and
-Savar's later layout decisions are the next integration stage.
+No real sample is authorised for these fixes. The layout changes below are
+included. The imported step templates remain assigned to the next agent.
 
 ## Page rules adopted from Cedric's brief
 
@@ -129,7 +130,8 @@ has a period. The cover uses a checked plain title and one learning sentence.
 The new rules apply to the measured layout. Saved legacy pages retain their
 layout limits, with the updated question numbers and cover copy.
 
-The curriculum-step importer is a separate change. The next stage must use
-its approved templates and ranges, move through the skeleton's skills and
-steps, and remove the fixed second topic. These are not claims established
-by the current hand-built U4 pipeline.
+The curriculum-step importer is merged from `origin/main` at `5f078f5`.
+The generator retains the existing 155-step path. The next agent must use
+`bcStepProgressions()` and its approved templates and ranges, move through the
+skeleton's skills and steps, and remove the fixed second topic. These are not
+claims established by the current hand-built U4 pipeline.

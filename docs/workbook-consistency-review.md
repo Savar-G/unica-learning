@@ -1,8 +1,11 @@
 # Workbook consistency: third review repair
 
-This checkpoint fixes the eight findings against `b1a4348`. It precedes the
-step-template integration. No real-model sample was made. Issue #480 stays
-open. Savar must approve the example bank and the next authorised real sample.
+This checkpoint fixes the eight findings against `b1a4348`. It includes
+`origin/main` at `5f078f5f98f66255ad166d295b6e906876bbd1dc`, with PR #487.
+The generator retains its existing 155 steps. The 1,622 imported steps and
+contexts remain available through `bcStepProgressions()` for the next agent.
+No template integration or real-model sample was made. Issue #480 stays open.
+Savar must approve the example bank and the next authorised real sample.
 
 ## Evidence
 
@@ -11,13 +14,13 @@ open. Savar must approve the example bank and the next authorised real sample.
 | U4 | 40 / 44 | 314 | 0 / 0 | 0 | 0 | 2 | 52.0 px | 29.9 min | 0 / 0 | PASS / HOLD |
 | U14 | 80 / 84 | 590 | 0 / 0 | 0 | 0 | 2 | 60.0 px | 28.6 min | 0 / 0 | PASS / HOLD |
 
-Reports: `/tmp/ui-review/samples-480-third-u4/index.md` and
-`/tmp/ui-review/samples-480-third-u14/index.md`.
+Reports after the main merge: `/tmp/ui-review/samples-480-merged-u4/index.md`
+and `/tmp/ui-review/samples-480-merged-u14/index.md`.
 
 Occupied fractions (empty gaps excluded): U4 56.8% / 83.6%; U14 54.3% / 81.7%.
 At the page maximum, the filling rule permits bounded even spacing.
 
-Final gates: 283 files and 12,574 tests passed, with no test filters.
+After the main merge, 288 files and 12,754 tests passed, with no test filters.
 `VITEST_MAX_WORKERS=4` limits worker count. ESLint and the production build
 passed. Every command exited 0.
 
@@ -59,15 +62,30 @@ the physical book runs provide the separate layout proof.
 |---|---|
 | 1: Skill and step progression | The existing ten-day number schedule remains. Skeleton-order progression and imported per-step ranges are the next integration stage. They are not claimed by this checkpoint. |
 | 2: Child copy | Plain titles, one-line instructions, Maya, one error-card question and numbered items are retained. The book also checks rejected wording inside teaching panels. |
-| 3: Child-led U4-U6 | The import contains the curriculum metadata change. It is part of the next stage. Parent copy is already suppressed from U4. |
+| 3: Child-led U4-U6 | The merged curriculum metadata sets U4-U6 to child-led. Parent copy is suppressed from U4. |
 | 4: Question types | Likelihood has circle choices. Drawing is rejected from U4. Printed colouring tasks remain. Existing-path skills retain their current checks until the step templates replace their missing builders. |
 | 5 and 8: Layout | Shared page budgets protect required blocks. The measured layout uses a 32 px gutter, a header at most 150 px, the stated writing-box minimums and 40 px frame cells. Intentional work space fills the story cards. Legacy pages retain their layout limits. |
 | 6: Spare pages | Both binding pages contain extra practice. |
 | 7: Review length | Real plans remain ten consecutive days. Only the review command selects Days 1, 3, 5, 8 and 10. |
 | 9: Variety | Page and book share limits, unique story frames and harder U4 Challenges are checked. Full per-step template variety, including the three-context minimum on number-only pages, belongs to the next integration stage. |
-| 10: Source import | PR #487 is ready at `a6a36f8b99024fcec4b91cd8e965dc2fe5272be3`. Its 1,622 steps are not merged into this checkpoint. |
+| 10: Source import | PR #487 is merged through `origin/main` at `5f078f5`. All 1,622 imported steps are available. The generator keeps its 155 steps until the next agent integrates the templates. |
 | 11: Checks | Language, coverage, repeated tasks, day estimates, number bounds, physical fit and actual unoccupied gaps are checked. Imported step progression checks are the next stage. |
 
 The report does not establish a child's completion time or real-model teaching
 quality. The fake solver reads the supplied key. No real family, print order,
 shipment, database row, subscription call or API call was used by these runs.
+
+## Template integration hand-off
+
+`TEMPLATE_INTEGRATION_PENDING`
+
+Savar assigned the integration to a separate agent. Start with
+`bcStepProgressions()` and the safe filler in `src/lib/workbook-curriculum/`.
+The current generator still uses `curriculumFor("bc")`. Preserve the checked
+panel packages, item contracts, saved edit policy, shared capacity budgets,
+duplicate checks, printed-page measurements and provider-call accounting.
+Replace the temporary builder gaps with the imported templates. Implement
+skeleton-order step progression, step-specific number domains, review from
+taught steps and Challenge from the hardest reached step. Complete the
+three-context or three-format minimum on number-only pages. Change the marker
+to `TEMPLATE_INTEGRATION_DONE` after the integration is complete.
