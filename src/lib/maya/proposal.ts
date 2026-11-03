@@ -77,6 +77,8 @@ export interface Reading {
   writing?: boolean;
   /** A harmless off-topic request, or a request for another question. */
   offTopic?: boolean;
+  /** Optional topic skill read by the model. Code can only narrow the package scope with it. */
+  scopeSkill?: string;
   /**
    * A request for sexual, violent or other harmful content (#383, C29): Maya says the decline line
    * (redirect.decline), with no free talk, then goes back to the question.
@@ -188,13 +190,14 @@ export const PROPOSAL_SCHEMA = {
     reading: nullable({
       type: "object",
       additionalProperties: false,
-      required: ["safety", "stop", "unclear", "writing", "offTopic", "unsafeRequest", "noBoard", "shorter", "aboutMaya", "help", "start", "answers", "paper", "correctsHearing"],
+      required: ["safety", "stop", "unclear", "writing", "offTopic", "scopeSkill", "unsafeRequest", "noBoard", "shorter", "aboutMaya", "help", "start", "answers", "paper", "correctsHearing"],
       properties: {
         safety: nullable({ enum: ["concern", "immediate"] }),
         stop: nullable({ type: "boolean" }),
         unclear: nullable({ type: "boolean" }),
         writing: nullable({ type: "boolean" }),
         offTopic: nullable({ type: "boolean" }),
+        scopeSkill: nullable({ type: "string" }),
         unsafeRequest: nullable({ type: "boolean" }),
         noBoard: nullable({ type: "boolean" }),
         shorter: nullable({ type: "boolean" }),

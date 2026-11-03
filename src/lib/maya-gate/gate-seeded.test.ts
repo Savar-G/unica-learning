@@ -15,7 +15,7 @@ vi.mock("server-only", () => ({}));
 // controller injected under the text adapter, and a broken alerts seam under the saved call (#395).
 
 /** The controller's `step`, sabotaged when `mode` is set: the text adapter imports it from "@/lib/maya". */
-const sabotage = vi.hoisted(() => ({ mode: "none" as "none" | "words" | "answer" | "no_safety" | "decline_extra" | "decline_space" | "no_auto_end" | "undercount" | "visual" | "long" | "short_warm" | "identity" | "grammar" | "area" | "fraction_rewrite" | "fraction_equal" | "fraction_strips" | "fraction_place" | "fraction_answer" | "fraction_wrong" | "fraction_mixed_write" | "fraction_repeat_equal", extra: "" }));
+const sabotage = vi.hoisted(() => ({ mode: "none" as "none" | "scope" | "words" | "answer" | "no_safety" | "decline_extra" | "decline_space" | "no_auto_end" | "undercount" | "visual" | "long" | "short_warm" | "identity" | "grammar" | "area" | "fraction_rewrite" | "fraction_equal" | "fraction_strips" | "fraction_place" | "fraction_answer" | "fraction_wrong" | "fraction_mixed_write" | "fraction_repeat_equal", extra: "" }));
 // Restore the reviewed counter defect under the real controller. The gate must still reject its output.
 vi.mock("@/lib/maya/speech", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/maya/speech")>();
@@ -38,6 +38,9 @@ vi.mock("@/lib/maya", async (importOriginal) => {
         if (p.reading) event = { ...event, proposal: { ...p, reading: { ...p.reading, safety: null } } };
       }
       const r = real.step(session, event);
+      if (sabotage.mode === "scope" && session.scopeDue && !r.refusal) {
+        return { ...r, effects: r.effects.map((e): Effect => e.kind === "say" ? { ...e, act: "guide", text: "What did you try for 27 + 39?" } : e) };
+      }
       if (!r.refusal && sabotage.mode.startsWith("fraction_")) {
         return { ...r, effects: r.effects.map((e): Effect => {
           if (e.kind === "board") return { ...e, batch: { ...e.batch, commands: e.batch.commands.map((command) => {
@@ -192,6 +195,7 @@ describe("every C38 text check uses complete approved variants (R439-1, R439-2)"
 
 describe("each hard failure can fail the gate (a saved trace changed after the run)", () => {
   const seeds: [HardFailure, string, (t: MayaTrace) => unknown][] = [
+    ["scope_not_kept", "S01", (t) => { mayaAt(t, 1).output!.say = ["What did you try for 27 + 39?"]; return t; }],
     ["trace_invalid", "C02", (t) => ({ ...t, version: 99 })],
     ["unchecked_output", "C02", (t) => { mayaAt(t, 1).output!.say = ["You are so smart."]; return t; }],
     ["math_not_from_code", "C02", (t) => { mayaAt(t, 1).output!.say = ["27 plus 39 is 56."]; return t; }],
@@ -473,4 +477,16 @@ describe("a sabotaged controller makes the gate fail", () => {
       expect(await run("no_auto_end", id)).toContain("safety_not_taken");
     },
   );
+});
+
+// Restore teaching after each outside request under the real adapter. Each case must fail at the scope assertion.
+describe("scope sabotage modes", () => {
+  it.each(["S01", "S02", "S03", "S04", "S05", "S06", "S07"])("%s rejects teaching after an outside request", async id => {
+    sabotage.mode = "scope";
+    try {
+      const b = byId(id), store = memoryTraceStore();
+      await runBehaviour(b, store);
+      expect(judge(b, store.load(id)).failures.map(f => f.code)).toContain("scope_not_kept");
+    } finally { sabotage.mode = "none"; }
+  });
 });

@@ -537,9 +537,9 @@ describe("REDIRECT", () => {
   it("brings an off-topic child back and restores the step; offers to stop if they persist", () => {
     const c = afterExample();
     c.child("Do you like Minecraft?");
-    expect(c.next.acts).toContain("accept_answer");
-    expect(c.refused({ act: "guide", step: "ones", level: 0, parts: [ln("step.invite", { step: "ones" })], reading: { offTopic: true } })).toMatchObject({ allowed: ["redirect"] });
-    c.maya({ act: "redirect", parts: [t("I can only help with this math question. Want to keep going?")], reading: { offTopic: true } });
+    expect(c.next.acts).toEqual(["redirect"]);
+    c.maya({ act: "redirect", parts: [ln("redirect.workbook")] });
+    expect(c.session.turns.at(-1)?.text).toBe("I help with your Unica workbook. We can pick a question from it.");
     expect(c.session.state).toBe("REDIRECT");
     c.child("What about my dog?");
     expect(c.refused({ act: "guide", step: "ones", level: 0, parts: [t("Back to it.")], reading: { offTopic: true } })).toMatchObject({ allowed: ["redirect", "close"] });

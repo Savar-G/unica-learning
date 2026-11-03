@@ -1,3 +1,4 @@
+import { SCOPE_REASONS } from "@/lib/maya/scope";
 // Maya's trace format (#322, spec #297): one versioned record of one Maya session, written by every session (the text
 // adapter now, the voice agent #326, the test bench #323 and the admin demo #324 later). It records the model and
 // prompt version, the question package hash, every turn with each proposal, its refusal and repair and the final
@@ -24,11 +25,11 @@ export interface TraceRefusal {
  * words than her approved text start a repair) and `content_problem` (the package turned out wrong during the call).
  * Each records `cancelled`: whether Maya's output was stopped. Version 5 records input obligations and the
  * delivered turn that served each one, or the reason it was dropped. Version 6 adds controller safety output on
- * terminal events. `checkTrace` reads all six versions.
+ * terminal events. Version 7 adds scope refusal reasons and times. `checkTrace` reads all seven versions.
  */
-export const TRACE_VERSION = 6;
+export const TRACE_VERSION = 7;
 /** The trace versions `checkTrace` reads. */
-export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6] as const;
+export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7] as const;
 export const TRACE_KIND = "maya-trace";
 
 export const OBLIGATION_KINDS = ["start_pending", "safety_due", "opening_due", "repair_due", "child_turn_pending", "content_problem"] as const;
@@ -202,6 +203,8 @@ export interface MayaTrace {
   freeTalk: boolean;
   /** Version 3: the free-talk review's model and prompt version, or null when the call had no reviewer. */
   reviewer?: { id: string; promptVersion: string } | null;
+  /** Version 7: reason codes only. No additional child text. */
+  scopeRefusals?: import("@/lib/maya").ScopeRefusal[];
   turns: TraceTurn[];
   /** Version 5: all obligations, including pending work and the reason for each explicit drop. */
   obligations?: TraceObligation[];
@@ -439,6 +442,11 @@ function check(raw: unknown): MayaTrace {
   const r = raw as Record<string, unknown>;
   need((TRACE_VERSIONS as readonly unknown[]).includes(r.version), "version", `one of ${TRACE_VERSIONS.join(", ")}, not ${String(r.version)}`);
   need(isName(r.callId), "callId", "a call id");
+  if (r.version === 7 || r.scopeRefusals !== undefined) {
+    need(Array.isArray(r.scopeRefusals), "scopeRefusals", "a list of reason codes and times");
+    for (const refusal of r.scopeRefusals as unknown[]) need(isObject(refusal) && typeof refusal.at === "number" && Number.isFinite(refusal.at) &&
+      (SCOPE_REASONS as readonly unknown[]).includes(refusal.reason) && Object.keys(refusal).every(k => k === "at" || k === "reason"), "scopeRefusals", "reason and time only");
+  }
   need(oneOf(RUNNERS, r.runner), "runner", "text, livekit-text or voice");
   need(isTime(r.startedAt), "startedAt", "an ISO time or null");
   need(isTime(r.endedAt), "endedAt", "an ISO time or null");

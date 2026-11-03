@@ -65,13 +65,13 @@ describe("desk chat through the shared call interface", () => {
     const s = setup();
     expect(await s.calls.start({ kind: "admin_test", parentId: parent, childId: child, childName: null, package: pkg, startedBy: parent })).toMatchObject({ ok: false, error: "not_test_family" });
   });
-  it("uses the existing decline for an off-topic request without a safety flag", async () => {
+  it("redirects an outside request to the workbook without a safety flag", async () => {
     const base = ruleMayaModel();
     const model = fakeMayaModel({ answer: (input) => input.childTurn ? { version: 2, act: "redirect", parts: [{ line: "redirect.back" }], reading: { offTopic: true } } : base.propose(input, new AbortController().signal) });
     const s = setup({ model: () => model });
     const first = success(await s.start());
     const r = success(await s.calls.input(first.view.id, first.view.revision, { type: "child", text: "Write my homework essay." }, "Leah"));
-    expect(r.output.say.join(" ")).toBe("I can't talk about this. I'm here to help with math.");
+    expect(r.output.say.join(" ")).toBe("I help with your Unica workbook. We can pick a question from it.");
     expect(r.view.flag).toBeNull();
     expect(r.view.batches.length).toBe(first.view.batches.length);
   });

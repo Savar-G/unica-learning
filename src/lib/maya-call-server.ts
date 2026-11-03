@@ -1,4 +1,5 @@
 import "server-only";
+import { scopeSummary } from "@/lib/maya-scope-review";
 import type { AdminSession } from "@/lib/admin-store";
 import type { Question, Route, StoredTest } from "@/lib/assessment";
 import { assessmentQuestionReader } from "@/lib/assessment-questions";
@@ -243,4 +244,20 @@ export async function readCall(a: AdminSession, id: string): Promise<{ view: Cal
   if (!view) return null;
   const child = must<{ first_name: string } | null>(await a.db.rpc("admin_children").select("first_name").eq("id", row.child_id).maybeSingle(), "child");
   return { view, childName: child?.first_name ?? null };
+}
+
+/** All stored refusals for this child, across calls and chats. Keyset pages avoid the API row cap. Admin RLS applies. */
+export async function childScopeSummary(a: AdminSession, childId: string) {
+  const records: Parameters<typeof scopeSummary>[0][number][] = [];
+  let cursor: string | null = null;
+  for (;;) {
+    let query = a.db.from("maya_calls").select("id, trace, live").eq("child_id", childId).order("id").limit(200);
+    if (cursor) query = query.gt("id", cursor);
+    const { data, error } = await query;
+    if (error) throw new Error(`[admin] scope counts: ${error.message}`);
+    if (!data?.length) break;
+    records.push(...data);
+    cursor = data[data.length - 1].id;
+  }
+  return scopeSummary(records);
 }

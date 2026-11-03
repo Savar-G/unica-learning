@@ -1,4 +1,5 @@
 "use client";
+import { SCOPE_LABELS } from "@/lib/maya/scope";
 
 import { formatInZone, PACIFIC_ZONE } from "@/lib/family-time";
 
@@ -451,6 +452,10 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
         </section>
       </div>
 
+      <section aria-label="Workbook scope refusals">
+        <p>Workbook scope refusals in this session: {view.scopeRefusals?.length ?? 0}</p>
+        {!!view.scopeRefusals?.length && <ul>{view.scopeRefusals.map((r, i) => <li key={i}>{SCOPE_LABELS[r.reason]}</li>)}</ul>}
+      </section>
       {!live && <CallRecordFacts view={view} childName={childName} onRetry={() => send({ type: "end" })} busy={busy} error={error} />}
     </div>
   );

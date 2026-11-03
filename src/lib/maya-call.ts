@@ -302,6 +302,7 @@ export interface CallView {
   versions: CallRecord["versions"];
   transcript: TranscriptLine[];
   /** D-197: whether free talk was on, the review's model, and every piece of Maya's own words with both checks. */
+  scopeRefusals?: import("@/lib/maya").ScopeRefusal[];
   freeTalk: { on: boolean; reviewer: string | null; lines: FreeTalkLine[] };
   /** Maya's board batches, in order. */
   batches: Batch[];
@@ -484,6 +485,7 @@ export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertStat
     versions: record.versions,
     transcript: transcriptOf(trace),
     freeTalk: freeTalkOf(trace),
+    scopeRefusals: structuredClone(trace.scopeRefusals ?? []),
     batches: observed ? history.events.flatMap(e => e.kind === "maya" ? [{ transactionId: e.batchId, commands: e.commands }] : []) : batchesOf(trace.board),
     boardHistory: history,
     technicalNotes: trace.turns.flatMap((t) => t.kind === "technical" ? [t.detail] : []),

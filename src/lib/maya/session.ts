@@ -35,6 +35,7 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import { talkMath } from "./claims";
+import { scopeReason, scopeSkills, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
 import { findOffer, normalSlots, packageLines, fixedOffers, areaOffers, spokenOffer, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
@@ -191,6 +192,7 @@ export type Effect =
   | { kind: "end"; at: number; outcome: Outcome; safetyMessage: string | null };
 
 export type RefusalCode =
+  | "scope_first"
   | "turn_too_long"
   | "fixed_reply_first"
   | "invalid_event"
@@ -369,6 +371,8 @@ export interface Session {
   confirmTries: number;
   offeredOtherInput: boolean;
   redirects: number;
+  scopeDue?: ScopeReason;
+  scopeRefusals?: ScopeRefusal[];
   safety: { flagged: boolean; severity: Severity | null; at: number | null; guided: boolean };
   mishearing: { confirmations: number; corrections: number };
   /** The first target step where the child needed help or failed. */
@@ -620,6 +624,7 @@ function proposalProblem(p: unknown): string | null {
   for (const flag of ["stop", "unclear", "writing", "offTopic", "unsafeRequest", "noBoard", "shorter", "correctsHearing"] as const) {
     if (r[flag] !== undefined && typeof r[flag] !== "boolean") return `the reading's ${flag} is true or false`;
   }
+  if (r.scopeSkill !== undefined && typeof r.scopeSkill !== "string") return "scopeSkill is a skill id";
   if (r.aboutMaya !== undefined && r.aboutMaya !== "identity" && r.aboutMaya !== "secret_friend") return "aboutMaya is identity or secret_friend";
   if (r.help !== undefined && r.help !== "more" && r.help !== "show") return "the reading's help is more or show";
   if (r.start !== undefined && r.start !== "has_work" && r.start !== "no_start") return "the reading's start is has_work or no_start";
@@ -678,6 +683,7 @@ function gate(s: Session, reading: Reading): Allowed | null {
   if (s.expect !== "maya") return { acts: [], code: "not_mayas_turn", reason: "It is the child's turn: wait for them." };
   if (s.stopRequested || reading.stop) return { acts: ["close"], code: "stop_first", reason: "The child asked to stop: close kindly, with no more questions." };
   if (s.state === "REPAIR_MAYA") return { acts: ["repair"], code: "repair_first", reason: "Maya said something the checked math does not support: correct it first." };
+  if (s.scopeDue && s.turn && !reading.unsafeRequest) return { acts: ["redirect"], code: "scope_first", reason: "This request is outside the checked question. Use only redirect.workbook." };
   if (s.replies?.length) return { acts: ["redirect"], code: "fixed_reply_first", reason: "Say only the next code reply, with no warm or free talk." };
   if (s.silence === "close_due") return { acts: ["close"], code: "act_not_allowed", reason: "No answer after the check-in: close." };
   if (s.silence === "check_due" && !s.turn) return { acts: ["check_in"], code: "act_not_allowed", reason: "The child has been quiet: one short check-in, with no new help." };
@@ -812,11 +818,19 @@ export function step(session: Session, event: SessionEvent): StepResult {
 
   // The child's turn as the model read it: a stop, an unclear number and a no-start hold even if the proposal fails.
   if (priority.stop) s.stopRequested = true;
+  if (s.turn && isObject(raw) && isObject(raw.reading) && raw.reading.unsafeRequest === true) delete s.scopeDue;
+  if (s.turn && isObject(raw) && isObject(raw.reading) &&
+      (typeof raw.reading.scopeSkill === "string" && (!s.package || !scopeSkills(s.package).includes(raw.reading.scopeSkill)))) {
+    if (!s.scopeDue) {
+      s.scopeDue = "model_scope";
+      (s.scopeRefusals ??= []).push({ at: s.turn.at, reason: "model_scope" });
+    }
+  }
   if (s.turn && priority.noBoard) s.noBoard = true;
   if (s.turn && priority.shorter) s.shorter = true;
-  if (s.turn && !s.replies?.length && priority.aboutMaya) {
+  if (s.turn && !s.scopeDue && !s.replies?.length && priority.aboutMaya) {
     s.replies = ["about.ai", ...(priority.aboutMaya === "secret_friend" ? ["about.no_secret" as const] : []), "question.problem"];
-  } else if (s.turn && priority.shorter && !s.replies?.length) s.replies = ["shorter.prompt"];
+  } else if (s.turn && !s.scopeDue && priority.shorter && !s.replies?.length) s.replies = ["shorter.prompt"];
   if (priority.unclear && s.turn && s.solved === null) s.turn.uncertain = true;
   // From ASSESS, or from an interrupt (such as a confirmation) that returns to ASSESS, and never after the child has
   // done a step of their question (#389: practice run 9, F06, ran the easier example after the child did the ones).
@@ -859,6 +873,13 @@ export function step(session: Session, event: SessionEvent): StepResult {
       s.turn = s.turn
         ? { at: event.at, text: `${s.turn.text}\n${event.text}`, uncertain: s.turn.uncertain || uncertain }
         : { at: event.at, text: event.text, uncertain };
+      if (s.package) {
+        const reason = scopeReason(s.package, s.turn.text, s.exampleIntroduced === true || s.exampleShown > 0);
+        if (reason) {
+          s.scopeDue = reason;
+          (s.scopeRefusals ??= []).push({ at: event.at, reason });
+        }
+      }
       // A checked right answer the child takes back ("Actually 56", or a new answer code cannot read) stands no longer,
       // whatever a later reading names: the result waits for a new checked final answer. The help history stays. A
       // corrected number of a worked step ("15, no wait, 16" for the ones) answers that step, unless it is a known
@@ -957,6 +978,13 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   const no = (code: RefusalCode, reason: string, allowed: Act[]): StepResult => ({ session: base, effects, refusal: { code, reason, allowed } });
   const s = structuredClone(base);
   const pkg = s.package;
+  if (s.scopeDue && gate(s, p.reading ?? {})?.code === "scope_first") {
+    if (p.act !== "redirect" || p.parts.length !== 1 || !("line" in p.parts[0]) || p.parts[0].line !== "redirect.workbook" || p.draw || p.board) {
+      return no("scope_first", "Use only redirect.workbook for this outside request.", ["redirect"]);
+    }
+    // An outside request supplies no answers, paper status or teaching progress.
+    p = { version: PROPOSAL_VERSION, act: "redirect", parts: [{ line: "redirect.workbook" }] };
+  }
   // #358: code supplies the existing decline, without teaching the off-topic request or raising a safety flag.
   if (s.channel === "chat" && p.reading?.offTopic && !p.reading.safety && !p.reading.stop) {
     p = { version: PROPOSAL_VERSION, act: "redirect", parts: [{ line: "redirect.decline" }], reading: { offTopic: true } };
@@ -1218,6 +1246,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       if (!reading.unsafeRequest && !(s.channel === "chat" && reading.offTopic) && spoken.chosen.some((o) => o.line === "redirect.decline")) {
         return no("line_not_offered", "The decline line is only for a request for sexual, violent or other harmful content (reading.unsafeRequest).", allowedNow);
       }
+      if (s.scopeDue && (reading.unsafeRequest || spoken.chosen.some(o => o.line === "redirect.workbook"))) delete s.scopeDue;
       s.redirects += 1;
       enterInterrupt(s, "REDIRECT");
       break;
@@ -1948,6 +1977,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
   const pkg = s.package;
   if (!pkg) return [];
   const l = packageLines(pkg);
+  if (s.scopeDue && act === "redirect") return l.workbook();
   if (s.replies?.length && act === "redirect") {
     return [...fixedOffers(), ...l.question()].filter((o) => o.line === s.replies![0]);
   }
