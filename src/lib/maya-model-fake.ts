@@ -2,7 +2,7 @@
 // gives it and records the requests. `ruleMayaModel` is a small rule player for the command line (`--model fake`): it
 // reads the offers and picks a line the way a careful model would, so a whole call runs with no AI. It is not a
 // teacher; the session still checks every proposal it makes.
-import { readNumbers, writtenFractions, PROPOSAL_VERSION, type Act } from "@/lib/maya";
+import { readNumbers, PROPOSAL_VERSION, type Act } from "@/lib/maya";
 import { valueText } from "@/lib/question-package";
 import { PROMPT_VERSION, type ActOffer, type MayaModel, type ModelInput } from "@/lib/maya-model";
 
@@ -44,7 +44,7 @@ function rulePropose(input: ModelInput): unknown {
   const text = input.childTurn ?? "";
   const answer = input.question?.answer ?? null;
   // In a fraction call the child's spoken fractions are read, as the session reads them (D-204).
-  const read = readNumbers(answer?.includes("/") ? writtenFractions(text) : text);
+  const read = readNumbers(text, { fractions: true, operands: true });
   const last = read.values.at(-1);
   // The child's answer: the right one if they said it anywhere, else their last number.
   // A number in an explanation ("so I carried a ten") is not an answer: only a short turn or "I got ..." gives one.
@@ -58,6 +58,10 @@ function rulePropose(input: ModelInput): unknown {
     unclear: read.unreadable || null,
     writing: has(text, /\b(wait|writing|hold on)\b/) || null,
     offTopic: null,
+    // Semantic classifications of this scripted player only. The production controller never scans topic words.
+    outsideScope: has(text, /\b(?:homework|schoolwork|worksheet|essay|ignore your rules|hidden instructions)\b/) ? "outside_work"
+      : has(text, /\b(?:sister|brother|sibling)'?s?\b.*\b(?:question|workbook|help)\b/) ? "other_person"
+      : has(text, /\b(?:science|capital|chat about games)\b/) ? "other_topic" : null,
     noBoard: has(text, /\b(?:can'?t|cannot|can not|don'?t|do not) see (?:the )?(?:whiteboard|board)\b/) || null,
     shorter: has(text, /\b(?:talk too much|too many words|talk less|shorter|forgot)\b/) || null,
     aboutMaya: has(text, /\b(?:secret|only me|only friend|exclusive)\b/) ? "secret_friend" : has(text, /\b(?:real person|an? ai|are you real)\b/) ? "identity" : null,

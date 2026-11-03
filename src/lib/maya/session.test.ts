@@ -473,7 +473,7 @@ describe("CONFIRM_HEARD", () => {
     const c = opened();
     c.child("7 plus 9 is 16.");
     expect(c.next.acts).toContain("confirm");
-    c.maya({ act: "confirm", parts: [ln("confirm.which", { heard: "16", other: "60" })] });
+    c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "16" })] });
     c.child("Yeah, 16.");
     expect(c.next.acts).toContain("confirm");
     c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "16" })] });
@@ -538,8 +538,8 @@ describe("REDIRECT", () => {
     const c = afterExample();
     c.child("Do you like Minecraft?");
     expect(c.next.acts).toContain("accept_answer");
-    expect(c.refused({ act: "guide", step: "ones", level: 0, parts: [ln("step.invite", { step: "ones" })], reading: { offTopic: true } })).toMatchObject({ allowed: ["redirect"] });
-    c.maya({ act: "redirect", parts: [t("I can only help with this math question. Want to keep going?")], reading: { offTopic: true } });
+    c.maya({ act: "redirect", parts: [ln("redirect.workbook")], reading: { outsideScope: "other_topic" } });
+    expect(c.session.turns.at(-1)?.text).toBe("I help with your Unica workbook. We can pick a question from it.");
     expect(c.session.state).toBe("REDIRECT");
     c.child("What about my dog?");
     expect(c.refused({ act: "guide", step: "ones", level: 0, parts: [t("Back to it.")], reading: { offTopic: true } })).toMatchObject({ allowed: ["redirect", "close"] });
