@@ -211,7 +211,7 @@ The parts of a day, in order (skeleton, "A normal day"), and the levels they app
 | Review | Unit B, or an earlier skill on its spaced schedule ("Remember these?") | Every day |
 | Mixed set | 2 problems where the child chooses the operation: "1 Tick the operation", "2 Write the answer" | Every day from **U10**; Days 5 and 10: Friday 5 instead |
 | Friday 5 | Section 4.8 | Days 5 and 10 |
-| Challenge | 1 to 2 challenge problems | Every day |
+| Challenge | 3 challenge problems (Cedric's section 8: 3 to 4) | Every day |
 
 How these parts sit on 8 and 6 pages is in `DESIGN.md` section 7 (from the samples: warm-up, new idea, practice,
 practice 2, word problems, unit B, remember these + mixed set, challenge).
@@ -275,7 +275,7 @@ practice 2, word problems, unit B, remember these + mixed set, challenge).
 | Cover parent line | Log (Oct 28): dropped | Skeleton: one sentence for the parent |
 | Plan page tick boxes | Samples: none | Skeleton: a tick box per day |
 | Writing line spacing | Notes and log: 34 px apart | Skeleton: at least 36 px below the prompt |
-| Challenge count | Samples: 4 cards on page 8 | Skeleton: 1 to 2 a day (Savar) |
+| Challenge count | Samples: 4 cards on page 8 | 3 a day (Cedric's section 8, adopted; #482 review, 2026-11-03), was 1 to 2 (skeleton) |
 | Mixed set wording | Log: "Operation:" left, "Answer" right | Skeleton and samples: "1 Tick the operation", "2 Write the answer" |
 | "Mum" | Samples | "Mom" |
 
@@ -284,7 +284,7 @@ practice 2, word problems, unit B, remember these + mixed set, challenge).
 1. **Early days (default set, Savar to review in the generated books):** the skeleton starts the warm-up at U8 and the
    Mixed set at U10. Below U8, page 1 is a "Remember these?" picture review; below U10, page 7 is "Remember these?" plus
    one-step picture stories.
-2. **Challenge (decided):** 1 to 2 challenge problems a day (skeleton); the samples' four cards were sample-only.
+2. **Challenge (decided):** 3 challenge problems a day, all on the hardest step reached that day (Cedric's section 8 says 3 to 4; adopted as written, #482 review 2026-11-03). It replaces the skeleton's 1 to 2.
 3. **Parent-led days (U1 to U3, kept; Savar 2026-10-30):** no sample shows one. The skeleton's rules: icon instructions plus a short
    line, answers by circling, matching, colouring, drawing a line or writing one numeral, 6 to 10 items a page, large
    boxes.

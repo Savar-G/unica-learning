@@ -41,7 +41,8 @@ export function questionMinutes(q: GeneratedPage["questions"][number]): number {
 }
 
 /** A question's type for the half-page and half-book limits: a step template item's context or format (#489), else its task. */
-function typeKey(p: GeneratedPage, q: GeneratedPage["questions"][number]): string {
+/** What the half-page rule counts a question as: a step template item by its printed form, else its task type. */
+export function typeKey(p: Pick<GeneratedPage, "type">, q: Pick<GeneratedPage["questions"][number], "itemPlan" | "package">): string {
   if (q.itemPlan?.template) return printedForm(q.package!);
   return ["word-problems", "challenge"].includes(p.type) && wordedTask(q.package!) ? storyFrame(q.package!.text) : taskType(q.package!);
 }
@@ -69,7 +70,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     }
     const friday = p.type === "friday-5" || (p.expected ?? []).some(q => q.part === "friday-5") || p.questions.some(q => q.part === "friday-5") || p.omissions?.some(o => o.kind === "friday-5");
     if (friday && p.questions.filter(q => q.part === "friday-5" && q.package && q.check.status !== "failed").length !== 5) issues.push({ page: p.number, kind: "coverage", reason: "Friday 5 must contain five sound questions" });
-    if ((p.leftOut?.length ?? 0) > 0 || p.omissions?.some(o => o.requested > o.placed)) issues.push({ page: p.number, kind: "coverage", reason: "the page lost planned questions" });
+    if ((p.leftOut?.length ?? 0) > 0 || p.omissions?.some(o => o.requested > o.placed && !o.time)) issues.push({ page: p.number, kind: "coverage", reason: "the page lost planned questions" });
     const questions = p.questions.filter(q => q.package && q.place !== "warm-up" && !q.existing);
     const counts = new Map<string, number>();
     for (const q of questions) {
@@ -99,6 +100,20 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     for (const q of p.questions.filter(q => q.place === "how-do-you-know" && !q.existing)) if (!STORY_EXPLAIN.test(q.package?.text ?? "") || !p.questions.some(s => ["word-problems", "picture-stories"].includes(s.place ?? "") && s.package && s.check.status !== "failed")) issues.push({ page: p.number, kind: "coverage", reason: "the explanation has no story on this page" });
   }
   for (const [type, count] of types) if (all.length >= 12 && count > all.length / 2) for (const p of pages.filter(p => p.questions.some(q => q.package && !q.existing && q.place !== "warm-up" && typeKey(p, q) === type))) issues.push({ page: p.number, kind: "variety", reason: `${type} exceeds half of the book's non-warm-up questions` });
+  // A worked example gives its answer away: its task is never a question of the book, nor another page's example,
+  // before or after it (#482 review at db3b1a0).
+  const examples = new Map<string, number[]>();
+  for (const p of pages) for (const e of p.panelExamples ?? []) if (e) {
+    const key = taskIdentity(e);
+    const at = examples.get(key) ?? [];
+    if (at.length) issues.push({ page: p.number, kind: "repeat", reason: `the worked example repeats the one on page ${at[0]}` });
+    examples.set(key, [...at, p.number]);
+  }
+  for (const p of pages) for (const q of p.questions) {
+    if (!q.package || q.place === "warm-up" || q.place === "how-do-you-know") continue;
+    const at = examples.get(taskIdentity(q.package));
+    if (at) issues.push({ page: p.number, kind: "repeat", reason: `question ${q.number} asks the task of the worked example on page ${at[0]}` });
+  }
   for (const p of pages) for (const q of p.questions) {
     if (!q.package || q.place === "warm-up") continue;
     const pkg = q.package;
@@ -112,10 +127,8 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     // The task's mathematical data, not its printed form: "? = 9 × 2" repeats "9 × 2 = ?".
     const key = taskIdentity(pkg);
     const at = seen.get(key) ?? [];
-    // An extra practice page asks questions from this workbook again, once each.
-    const limit = p.day === null ? 2 : 1;
-    // Spaced review at U4 to U9: a step task five days back (40 pages) may come once more.
-    const spaced = at.length === 1 && !!q.itemPlan?.template && pkg.level <= 9 && q.place !== "show-what-you-know" && p.number - at[0] >= 40;
+    const limit = 1;
+    const spaced = false;
     if (at.includes(p.number) || at.length >= limit && !spaced) issues.push({ page: p.number, kind: "repeat", reason: `question ${q.number} repeats pages ${at.join(", ")} (limit ${limit})` });
     seen.set(key, [...at, p.number]);
   }
@@ -137,23 +150,18 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     const dayTop = Math.max(0, ...questions.flatMap(q => q.itemPlan?.template && q.place !== "warm-up" && q.place !== "challenge" && !["word-problems", "picture-stories"].includes(q.place ?? "") && !reviewParts.has(q.part) && ownStep(q) ? [q.itemPlan.template.rank] : []));
     for (const p of ofDay) for (const q of p.questions.filter(q => q.place === "challenge" && !q.existing && q.itemPlan?.template)) {
       const t = q.itemPlan!.template!;
-      // Its first question is on the hardest step reached that day; later ones may stretch to the next step or take a
-      // step the book taught (the U4 review: three of one task are not a Challenge).
-      const firstOfPage = Math.min(...p.questions.filter(o => o.place === "challenge").map(o => o.number));
-      if (q.number === firstOfPage && t.rank < dayTop) issues.push({ page: p.number, kind: "challenge", reason: `Day ${day}'s Challenge must use the hardest step reached that day, never an easier step than practice` });
-      // Clearly harder than the day's practice of that step: a harder template, or at the same difficulty larger numbers.
-      // The template's difficulty (Cedric's: easy 0 to hard 2) plus what the child does (a story or a count to work
-      // out 2; checking a given answer, one box or two ways of a number task 1; a choice, a comparison or a true or
-      // false 0); at the same demand, the larger numbers.
-      const demand = (o: typeof q) => {
-        const { kind, format, difficulty, answer } = o.itemPlan!.template!;
-        const tier = kind === "choice" || !["story", "missing", "bare"].includes(format) ? 0 : kind === "story" || kind === "sequence" ? 2 : 1;
-        const size = Math.max(0, ...[o.package?.text ?? "", answer].flatMap(x => x.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number));
-        return [["easy", "medium", "hard"].indexOf(difficulty) + tier, size];
-      };
-      const above = (a: number[], b: number[]) => a[0] !== b[0] ? a[0] > b[0] : a[1] > b[1];
-      const mine = questions.filter(o => o.itemPlan?.template && o.place !== "challenge" && !reviewParts.has(o.part) && o.itemPlan.template.skill === t.skill && o.itemPlan.template.step === t.step);
-      const harder = mine.every(o => above(demand(q), demand(o)));
+      // Every question is on the hardest step reached that day (Cedric's brief; #482 review at db3b1a0).
+      if (t.rank < dayTop) issues.push({ page: p.number, kind: "challenge", reason: `Day ${day}'s Challenge question ${q.number} must use the hardest step reached that day, never an easier step than practice` });
+      // Every question asks more than every question of the day's teaching on that step: Cedric's template difficulty
+      // (easy, medium, hard), then the work (a computed answer above a circled choice), then on one template the larger
+      // numbers. A context sentence or a larger unrelated number is no proof of more work.
+      const level = (o: typeof q) => ["easy", "medium", "hard"].indexOf(o.itemPlan!.template!.difficulty);
+      const work = (o: typeof q) => o.itemPlan!.template!.kind === "choice" ? 0 : 1;
+      const size = (o: typeof q) => Math.max(0, ...[o.package?.text ?? "", o.itemPlan!.template!.answer].flatMap(x => x.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number));
+      const same = (a: typeof q, b: typeof q) => a.itemPlan!.template!.skill === b.itemPlan!.template!.skill && a.itemPlan!.template!.step === b.itemPlan!.template!.step && a.itemPlan!.template!.index === b.itemPlan!.template!.index;
+      const above = (a: typeof q, b: typeof q) => level(a) !== level(b) ? level(a) > level(b) : work(a) !== work(b) ? work(a) > work(b) : same(a, b) && size(a) > size(b);
+      const mine = questions.filter(o => o.itemPlan?.template && o.place !== "challenge" && o.place !== "warm-up" && !reviewParts.has(o.part) && ownStep(o) && o.itemPlan.template.rank === dayTop);
+      const harder = mine.every(o => above(q, o));
       if (mine.length && !harder) issues.push({ page: p.number, kind: "challenge", reason: `Day ${day}'s Challenge question ${q.number} is no harder than that day's practice of its step` });
     }
     for (const p of ofDay) for (const q of p.questions.filter(q => q.place === "challenge" && !q.existing && !q.itemPlan?.template)) {
@@ -203,6 +211,13 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
   // is inside that step's ranges (Cedric's section 11), and the last day's steps are above the first day's.
   for (const p of pages) for (const q of p.questions) {
     const t = q.itemPlan?.template;
+    // A hand-built item on a step slot keeps that slot's step numbers too (#482 review at db3b1a0: 100001 on a step to
+    // 99999). Warm-up facts keep their whole fixed range; a written explanation has none.
+    const slotBounds = p.expected?.find(e => e.slot === q.slot)?.bounds;
+    if (!t && q.package && slotBounds && !q.existing && q.place !== "warm-up" && q.place !== "in-your-head" && q.place !== "how-do-you-know") {
+      const out = (q.package.text.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number).find(n => n < slotBounds.min || n > slotBounds.max);
+      if (out !== undefined) issues.push({ page: p.number, kind: "range", reason: `question ${q.number} prints ${out}, outside its steps' range (${slotBounds.min} to ${slotBounds.max})` });
+    }
     if (!t || !q.package) continue;
     const allowed = p.expected?.find(e => e.slot === q.slot)?.steps;
     if (allowed && !allowed.includes(`${t.skill}#${t.step}`)) issues.push({ page: p.number, kind: "step", reason: `question ${q.number} comes from ${t.skill} step ${t.step}, not one of the page's steps (${allowed.join(", ")})` });

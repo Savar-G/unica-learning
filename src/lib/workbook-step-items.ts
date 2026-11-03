@@ -54,6 +54,8 @@ export interface StepTemplateRef {
   hardest: boolean;
   /** How many templates the step keeps for its Challenge (its hardest with a number to work out). */
   challengeTemplates?: number;
+  /** This template is one the step keeps for its Challenge. */
+  reserved?: boolean;
 }
 
 /** Places whose questions are stories with a work box. */
@@ -161,6 +163,30 @@ export function sequenceOf(text: string, answer: string): { text: string; terms:
   return { text: rest, terms: parts.map((x) => (x === "?" ? null : Number(x))), step };
 }
 
+/**
+ * "Each box holds 3 pencils. Amara fills 890 of them." with more than 12 containers reads as packs bought: "Amara buys
+ * 890 packs of 3 pencils. How many pencils is that?". Other texts are unchanged.
+ */
+export function plausibleGroups(text: string): string {
+  const each = text.match(/^Each (\w+) holds (\d+) ([a-z ]+?)\. ([A-Z][a-z]+) fills (\d+) (?:of them|\w+)\. How many \3 (?:is that|in all|does (?:he|she|they) have(?: now)?|are in the \w+ now)\?$/);
+  if (each && Number(each[5]) > 12) return `${each[4]} buys ${each[5]} packs of ${each[2]} ${each[3]}. How many ${each[3]} is that?`;
+  const puts = text.match(/^([A-Z][a-z]+) puts (\d+) ([a-z ]+?) in each (\w+) and fills (\d+) of them\. How many \3 is that\?$/);
+  if (puts && Number(puts[5]) > 12) return `${puts[1]} buys ${puts[5]} packs of ${puts[2]} ${puts[3]}. How many ${puts[3]} is that?`;
+  return text;
+}
+
+/**
+ * A wrong answer a child could give (#482 review at db3b1a0: "60001" for 60000 looks arbitrary): a dropped zero
+ * (60000 as 6000), two digits swapped (47 as 74), one ten off, or for a small number one off. Never the answer.
+ */
+export function plausibleWrong(answer: number, bounds: { min: number; max: number } | null): number {
+  const fits = (n: number) => n !== answer && n >= 0 && (!bounds || n >= bounds.min && n <= bounds.max);
+  const digits = String(answer);
+  const swapped = digits.length >= 2 ? Number(digits.slice(0, -2) + digits.at(-1) + digits.at(-2)) : NaN;
+  const ways = [answer >= 100 && answer % 10 === 0 ? answer / 10 : NaN, swapped, answer >= 20 ? answer + 10 : NaN, answer >= 20 ? answer - 10 : NaN, answer + 1, answer - 1];
+  return ways.find((n) => Number.isInteger(n) && fits(n)) ?? answer + 1;
+}
+
 /** The kind a filled template takes at a place, or null when it cannot print there. */
 function kindAt(place: SlotName | null, answer: string, text: string): { kind: StepItemKind; choices?: string[] } | null {
   const numeric = NUMERIC.test(answer);
@@ -240,7 +266,7 @@ export function templateProblem(t: StepTemplate, level: number): string | null {
   // Shading or colouring needs a printed figure, which a template item does not have.
   if (/\b(?:shade|shades|shaded|colou?r in)\b/i.test(words)) return "it asks to shade a figure code does not print";
   // A picture the text names must be printed: dots, counters, a chart or a grid (the U4 review: "8 dots: 3 red").
-  if (/\b(?:dots?|counters?|tally|tallies|chart|graph|grid|picture|pictured|shown|array)\b/i.test(words)) return "it names a picture code does not print";
+  if (/\b(?:dots?|counters?|tally|tallies|chart|graph|grid|picture|pictured|shown|array|bars?|pictograph|symbols?)\b/i.test(words)) return "it names a picture code does not print";
   if (level >= 4 && BANNED_FROM_U4.test(words)) return "it asks for drawing or tracing";
   if (BANNED.test(words)) return "it uses rejected workbook wording";
   return null;
@@ -265,21 +291,34 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
   // day's practice): its teaching pages take the easier ones, and the Challenge takes the hardest, with a number to
   // work out when the step has one, never a true or false or a choice (the U4 review). A late attempt may take others.
   const rank = (d: TemplateDifficulty) => ["easy", "medium", "hard"].indexOf(d);
-  // The Challenge's set: the hardest templates with a number to work out, else the hardest of all.
+  // The Challenge's set: the hardest templates with a number to work out (else the hardest of all). A template harder
+  // still (a hard true or false beside medium number work) goes to no teaching place either, so no practice question
+  // asks more than the Challenge (#482 review at db3b1a0).
   const numeric = printable.filter(({ t }) => numberAnswer(t));
   const pool = numeric.length ? numeric : printable;
   const top = Math.max(...pool.map(({ t }) => rank(t.difficulty)));
   const reserved = pool.filter(({ t }) => rank(t.difficulty) === top);
-  const rest = printable.filter((x) => !reserved.includes(x));
+  // (And the step's other templates at the Challenge's difficulty: the Challenge is clearly the day's hardest.)
+  const harder = printable.filter((x) => rank(x.t.difficulty) >= top && !reserved.includes(x));
+  const rest = printable.filter((x) => !reserved.includes(x) && !harder.includes(x));
   let usable = printable;
   // (When the others print fewer than 3 formats, a page needs the Challenge's templates too: it plans first and keeps
   // their largest numbers.)
-  // A story page keeps its stories: the generator keeps its numbers below a Challenge on the same template.
   const storyPage = !!r.place && STEP_STORY_PLACES.has(r.place) && r.place !== "challenge";
-  if (r.place && TEACH_PLACES.has(r.place) && rest.length && new Set(rest.map(({ t }) => t.format)).size >= 3 && !storyPage) usable = rest;
+  if (r.place && TEACH_PLACES.has(r.place) && !storyPage) {
+    const thin = new Set(rest.map(({ t }) => t.format)).size < 3;
+    const teach = thin ? [...rest, ...reserved] : rest;
+    if (teach.length) usable = teach;
+  } else if (storyPage) {
+    const story = printable.filter((x) => !harder.includes(x));
+    if (story.length) usable = story;
+  }
   // A Number stories page asks stories when the step has them (the review: no drills on a page of stories).
   if (r.place && STEP_STORY_PLACES.has(r.place) && r.place !== "challenge" && r.attempt < 256 && usable.some(({ t }) => t.format === "story")) usable = usable.filter(({ t }) => t.format === "story");
   if (r.place === "challenge" && r.attempt < 256) usable = reserved;
+  // Show what you know asks work to do, not mostly true or false (#482 review at db3b1a0).
+  // (Every other card, so the page keeps three forms.)
+  if (r.place === "show-what-you-know" && r.ordinal % 2 === 0 && r.attempt < 192 && usable.some(({ t }) => numberAnswer(t))) usable = usable.filter(({ t }) => numberAnswer(t));
   if (!usable.length) return null;
   const used = (i: number) => r.usedOnPage?.get(i) ?? 0;
   // A story place takes the step's stories first, then its number questions (word problems are number stories).
@@ -308,13 +347,19 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
       try { filled = prepared.fill(random); } catch { break; }
       // A template's blank ("Count on: 8, __, __.") prints as "?", as code's missing numbers do: a line of underscores
       // alone leaves too little ink to count as printed.
-      let text = filled.text.replace(/_{2,}/g, "?").replace(/\?\s*\./g, "?");
+      // (A template's plural of a container: "boxs" is "boxes".)
+      let text = filled.text.replace(/_{2,}/g, "?").replace(/\?\s*\./g, "?").replace(/\b(box|dish|bench|glass|bush|lunchbox|pouch|batch)s\b/gi, "$1es");
       // A count with blanks ("Count on: 8, ?, ?.") prints its numbers with a box in each blank (the U4 review).
       const seq = sequenceOf(text, filled.answer);
       if (seq && r.place !== "spot-the-error" && r.place !== "solve-it-two-ways") text = seq.text;
       if (r.avoid && new RegExp(`\\b${r.avoid}\\b`, "i").test(text)) continue;
       // "1 shells", "has 0 buttons": a count a child would not read (the U4 sample); other numbers are tried.
       if (/\b1 (?!(?:more|less|fewer|of|and|or|is|to|in|comes|makes|says|gets|eats|has|was|goes|needs|wants|plus|minus|times|tens|ones)\b)[a-z]+s\b/i.test(text) || /\b(?:has|have|had|picks|sees|finds) 0\b/i.test(text) || /(?:^|[^\d.,/])1 are\b/.test(text)) continue;
+      // Many containers one person fills ("Amara fills 890 boxes"): packs bought, a count that can be that large (the U16
+      // review). The numbers stay, each once.
+      text = plausibleGroups(text);
+      // Colours that fit the things: no blue apples, acorns or leaves (#482 review at db3b1a0); other things are tried.
+      if (/\b(?:red|blue|green|yellow|purple|orange)\b(?! slices)/i.test(text) && /\b(?:apples?|acorns?|leaves|leaf|carrots?|grapes?|berries|berry|cookies|cookie|pancakes?|muffins?|crackers?|orange slices|pumpkins?|bananas?|shells?|pinecones?|pebbles?)\b/i.test(text)) continue;
       // A big count of small things no one has ("10000 leaves", "53805 beads"): another fill takes other things (the U16
       // review: pages, people, kilometres, dollars).
       if (/\b\d{4,}\s+(?:leaves|beads|shells|stickers|crayons|marbles|buttons|blocks|acorns|apples|pencils|cookies|toy cars|stamps|grapes|carrots|muffins|crackers|pancakes|berries|orange slices|hockey cards|books|cards|pebbles|rocks|feathers|seeds|toys|balloons)\b/i.test(text)) continue;
@@ -344,7 +389,7 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
       const values = step.values ? step.values.map((v) => (typeof v === "number" ? (Number.isInteger(v) ? { int: String(v) } : { dec: String(v) }) : { text: v })) as TemplateScalar[] : null;
       if (!ok) break;
       const source: TemplateSource = { answer: t.answer, check: t.check || null, derived: Object.entries(t.derived ?? {}), slots, values, ...(labels ? { labels } : {}) };
-      const shown = at.kind === "spot" ? String(Number(filled.answer) + (Number(filled.answer) + 1 <= (stepBounds(step)?.max ?? Infinity) ? 1 : -1)) : undefined;
+      const shown = at.kind === "spot" ? String(plausibleWrong(Number(filled.answer), stepBounds(step))) : undefined;
       const level = (d: TemplateDifficulty) => ["easy", "medium", "hard"].indexOf(d);
       const ref: StepTemplateRef = {
         skill: step.skill, step: step.number, index, format: t.format, difficulty: t.difficulty, kind: at.kind, source, answer,
@@ -353,7 +398,7 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
         frame: sentenceFrame(text, people), drill: !HAS_SENTENCE.test(t.text),
         rank: stepRank(r.curriculum, step.skill, step.number) ?? 0, bounds: stepBounds(step),
         hardest: level(t.difficulty) >= Math.max(...printable.map((x) => level(x.t.difficulty))),
-        challengeTemplates: reserved.length,
+        challengeTemplates: reserved.length, reserved: reserved.some((x) => x.index === index),
       };
       const found = { ref, text, numbers: printedNumbersOf(text) };
       if (r.place !== "challenge") return found;

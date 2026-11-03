@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { checkWholeBook, measuredPageUse, workbookQuality } from "./workbook-quality";
+import { taskIdentity } from "./workbook-task-identity";
 import { buildPlannedItem, planItem } from "./workbook-item-plan";
 import type { GeneratedPage } from "./workbook-generator";
 import { curriculumFor } from "./workbook-curriculum";
@@ -97,20 +98,43 @@ it("requires three contexts or formats on a printed page and no repeated sentenc
 
 it("fails a Challenge no harder than that day's practice of its step, by what the child does (#482 review at 3134252)", () => {
   const bc = curriculumFor("bc")!;
-  const question = (n: number, place: string, part: string, at: Parameters<typeof stepTemplateItem>[0]["place"], seed: number) => {
-    const it = stepTemplateItem({ curriculum: bc, skill: "1.1-count-to-20", step: 1, place: at, level: 4, day: 1, seed, attempt: 0, ordinal: 0 })!;
+  const question = (n: number, place: string, part: string, at: Parameters<typeof stepTemplateItem>[0]["place"], seed: number, attempt = 0) => {
+    const it = stepTemplateItem({ curriculum: bc, skill: "1.1-count-to-20", step: 1, place: at, level: 4, day: 1, seed, attempt, ordinal: 0 })!;
     const b = buildStepItem(it.ref, it.text, { id: `q${n}`, workbookId: "00000000-0000-4000-8000-0000000000a1", page: 3, question: n, level: 4, skills: [it.ref.skill] }, "code");
     return { number: n, slot: `1.${n}`, part, place, attempts: 1, check: b.check, package: b.package, itemPlan: { template: it.ref } } as unknown as GeneratedPage["questions"][number];
   };
   const day = (challenge: GeneratedPage["questions"][number]): GeneratedPage[] => [
-    { ...page(3, 1, 0), questions: [question(1, "now-you", "practice", "now-you", 3), question(2, "now-you", "practice", "now-you", 5)] },
+    { ...page(3, 1, 0), questions: [question(1, "now-you", "practice", "now-you", 3), question(2, "on-your-own", "practice", "on-your-own", 11, 1)] },
     { ...page(4, 1, 0), type: "challenge", questions: [challenge] },
   ];
   const reasons = (pages: GeneratedPage[]) => workbookQuality(pages).issues.filter(i => i.kind === "challenge").map(i => i.reason);
   // The step's hard count (write the next four numbers) is harder than its practice.
   expect(reasons(day(question(1, "challenge", "challenge", "challenge", 9)))).toEqual([]);
-  // A true or false on the same step asks less than practice's counts.
+  // A true or false (medium) asks less than practice's medium number question: a circled choice, no worked answer.
   const easy = question(1, "challenge", "challenge", "on-your-own", 11);
   expect(easy.itemPlan!.template!.kind).toBe("choice");
+  expect(day(easy)[0].questions[1].itemPlan!.template!.difficulty).toBe(easy.itemPlan!.template!.difficulty);
   expect(reasons(day(easy)).join(" ")).toMatch(/no harder than that day's practice/);
+});
+
+it("reads one printed task on every path: a copy with no template id repeats it (#482 review at db3b1a0)", () => {
+  const bc = curriculumFor("bc")!;
+  const it = stepTemplateItem({ curriculum: bc, skill: "5.1-place-value-million", step: 1, place: "on-your-own", level: 16, day: 1, seed: 5, attempt: 0, ordinal: 0 })!;
+  const b = buildStepItem(it.ref, it.text, { id: "q1", workbookId: "00000000-0000-4000-8000-0000000000a1", page: 3, question: 1, level: 16, skills: [it.ref.skill] }, "code");
+  const copy = { ...b.package!, templateId: null };
+  expect(taskIdentity(copy)).toBe(taskIdentity(b.package!));
+});
+
+it("counts a worked example's task in the repeat check, before and after its question (#482 review at db3b1a0)", () => {
+  const first = page(3, 1, 1), second = page(4, 1, 1);
+  const before = { ...first, panelExamples: [second.questions[0].package] };
+  expect(workbookQuality([before, second]).issues.some(i => i.kind === "repeat" && /worked example/.test(i.reason))).toBe(true);
+  const after = { ...second, panelExamples: [first.questions[0].package] };
+  expect(workbookQuality([first, after]).issues.some(i => i.kind === "repeat" && /worked example/.test(i.reason))).toBe(true);
+});
+
+it("keeps a hand-built question inside its slot's step range (#482 review at db3b1a0: 100001 on a step to 99999)", () => {
+  const p = page(3, 1, 1);
+  const wide = { ...p, expected: [{ slot: p.questions[0].slot, part: "practice" as const, place: "on-your-own" as const, steps: ["1.1-one-more-less-20#1"], bounds: { min: 0, max: 1 } }] };
+  expect(workbookQuality([wide]).issues.some(i => i.kind === "range")).toBe(true);
 });

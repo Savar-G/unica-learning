@@ -47,12 +47,11 @@ The generator now builds each workbook from Cedric's BC step progressions (#487)
   day's Challenge page is planned before that day's practice. When the step's
   other templates print fewer than 3 formats, practice may use the
   Challenge's templates too, with smaller numbers than the Challenge's.
-- **Three different tasks:** question 1 is on the day's step. Questions 2 and
-  3 take, in turn, the next steps of the skill, the book's later new skills
-  (with number tasks at least as hard) and the steps the book has taught,
-  skipping any whose hardest templates read like the one before (U4 Day 1:
-  count on, count back from 20, a parts-of-8 story). A slot whose tasks run
-  out moves along the list; question 1 only to an equal or harder step.
+- **On the day's hardest step:** all three questions (#482 review at db3b1a0:
+  no later or easier step). Templates harder than the step's hardest number
+  work (a hard true or false) go to no practice place either, so no practice
+  question asks more than the Challenge. A small pool of hard templates shows
+  as repeated forms, which the report names.
 - The safe filler samples the numbers from the step's ranges with a seeded
   random source. The seed comes from the workbook, the page and the slot. A
   later attempt takes another template and other numbers.
@@ -62,13 +61,18 @@ The generator now builds each workbook from Cedric's BC step progressions (#487)
   fix it), Solve it two ways, a count with boxes (below), else one box.
 - **Number stories** use stories that work out a sum (add, take away, share,
   equal groups; never "gets 1 more"): the page's own step, else this book's
-  steps nearest the day, else the day's reviewed steps, the most advanced
-  first. A big count of small things ("10000 leaves") is filled again with
+  steps already taught by that day (latest first), else the day's reviewed
+  steps, the most advanced first. Never a later step. A big count of small things ("10000 leaves") is filled again with
   other things.
 - **Practice mixes in review:** On your own from its 6th question and a
   practice row from its 8th take an earlier step (this book's, then the
   day's reviewed steps, the most advanced first). A slot whose own tasks run
   out (late in a full book) does the same.
+- **Teaching panels** on a template step show Cedric's worked example for the
+  step and its answer, then the step's common mistake put right ("Remember:
+  ..."), never one of the page's questions and its key.
+- **Solve it two ways** names its two methods in the work areas (by what the
+  question asks: count on and make a ten, split a number and use a fact, ...).
 - **How do you know?** asks "How did you work out question 1?" (or "How can
   you check your answer to question 1?"). It never prints an answer. Code
   writes it.
@@ -128,15 +132,13 @@ page, a sentence frame once a page and twice a day, the page layout and
 fullness, and the time estimate. All are read from what is printed (#482
 review at 3134252):
 
-- **Task:** a template question is its printed numbers in any order and its
-  answer (where the "?" sits does not matter), with its format family: a
-  story, a drill, Spot the error or Solve it two ways. Two templates or two
-  fills that print the same task are one task.
+- **Task:** every question, whatever made it (a template, #482's builders, the
+  writer), is its printed numbers and sequence terms in any order, its
+  answers and its picture, with its format family (a story, a drill, Spot the
+  error, two ways, a colouring, an explanation). A worked example's task
+  counts too: no question asks it, before or after.
 - **Frame:** a sentence's names, numbers and places are taken out ("saw the
   number # on a sign at _"); its people's things stay.
-- **Spaced review (U4 to U9):** a step task asked 40 pages (five days) back
-  may come once more; an extra practice page may ask each of this book's
-  questions once more.
 - **Form:** a context sentence is its frame; otherwise the format it prints
   (a count on or back, true or false, a choice, a missing number, a
   comparison, bare numbers). A template's id never makes a form.
@@ -145,7 +147,7 @@ Capacity planning measures each page before any writing:
 
 - it plans fewer practice items when template text is longer, and swaps the
   longest template question for a shorter one that keeps the page's forms;
-- it fills a day's review pages first, up to 29.3 minutes, then its other
+- it fills a day's review pages first, up to 28.8 minutes, then its other
   pages up to 28.3 (27.5 on a day with existing-writer slots);
 - later attempts take longer templates in question rows, so a page of short
   templates can still print three forms;
@@ -156,10 +158,14 @@ Capacity planning measures each page before any writing:
 A step page's title names its step's numbers ("Place value to 100 000" on
 Day 1 of U16, not "to millions"); a number in groups counts as one word.
 
-No slot is planned away. A page keeps its type's floor (Cedric's "6 to 10
-items a page": practice and review pages 6, a new idea 3, a Challenge 3,
-Show what you know 4, Friday 5 nine; Spot the error and Solve it two ways
-count as two, from U19 three quarters). Above the floor, an item goes only
+No slot is planned away. A page keeps the adopted counts of practice
+questions (Cedric's section 8: practice and review pages 8, a new idea 3
+beside its Spot the error, a Challenge 3, Show what you know 4, Friday 5
+nine; from U19 three quarters). Spot the error and Solve it two ways do not
+count toward them. A review page that also carries a Mixed set and a
+Challenge (6 pages a day) has no adopted count: 4, its Mixed set's. Time
+trims, above those counts, are reported ("to keep the day under 30
+minutes"), not losses. Above the floor, an item goes only
 when the measured page overflows. Below it, a page that still overflows
 loses an item and reports it, and a slot with no new task stays planned and
 fails: both fail the book check. A review page holds up to 14 items in two

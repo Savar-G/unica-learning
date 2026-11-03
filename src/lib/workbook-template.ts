@@ -260,7 +260,8 @@ const CSS = `
 /* families: day label, chip, panels */
 .f-wu .dl{color:#064E32}.f-pr .dl{color:#0B7A4F}.f-ni .dl{color:#2453D4}.f-wp .dl{color:#C2410C}.f-rv .dl{color:#8A6500}.f-ch .dl{color:#2B2622}.f-lt .dl{color:#0C0C0E}
 .chiprow{display:flex;align-items:center;gap:10px}
-.chip{display:inline-flex;align-items:center;gap:8px;height:28px;padding:6px 10px;border-radius:999px;font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-weight:500;font-size:var(--small);line-height:1.2;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.chiprow .side{flex:1 1 auto;min-width:0}
+.chip{flex:none;display:inline-flex;align-items:center;gap:8px;height:28px;padding:6px 10px;border-radius:999px;font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-weight:500;font-size:var(--small);line-height:1.2;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
 .pg.early .chip,.pg.parent .chip{height:34px}
 .chip svg{width:16px;height:16px;flex:none}
 .chip.c-wu,.chip.c-pr{background:#E3F5EC;color:#064E32}
@@ -527,7 +528,7 @@ const NOTES: Partial<Record<SlotName, string>> = {
   "warm-up": "Do as many as you can.",
   "spot-the-error": "One move is wrong. Find it, then write the fix.",
   "mixed-set": "Tick the operation, then write the answer.",
-  "friday-5": "5 from the last 3 weeks. No hints.",
+  "friday-5": "5 from earlier days. No hints.",
   "show-what-you-know": "One of each, and the hardest ones again.",
   "level-test": "No hints. Do your best.",
 };
@@ -675,6 +676,19 @@ function boxWidth(v: AnswerValue | null, band: Band): number {
 }
 
 /** The unit word after an answer box ("tiles", "cm"), or "". */
+/** Two ways to work a question, by what it asks: add, take away, multiply, share, or null. */
+function twoWays(p: QuestionPackage): [string, string] | null {
+  const t = `${p.operation?.kind ?? ""} ${p.text}`.toLowerCase();
+  const small = Math.max(0, ...(p.text.match(/\d+/g) ?? []).map(Number)) < 20;
+  if (small && /subtract|−|\s-\s|left|take|eats|gives|fewer|less/.test(t)) return ["count back", "count up from the smaller number"];
+  if (small && /add|\+|more|in all|together|gets/.test(t)) return ["count on from the bigger number", "make a ten first"];
+  if (/multiply|×|\beach\b|groups? of|packs? of|times/.test(t)) return ["split a number into parts", "use a fact you know, then the zeros"];
+  if (/divide|÷|share|equally/.test(t)) return ["share in groups", "use a times fact"];
+  if (/subtract|−|\s-\s|left|take|eats|gives|fewer|less/.test(t)) return ["take away the tens, then the ones", "count up from the smaller number"];
+  if (/add|\+|more|in all|together|gets/.test(t)) return ["add the tens, then the ones", "make a ten first"];
+  return null;
+}
+
 function unitAfter(p: QuestionPackage): string {
   const v = p.answer?.value;
   if (v?.type === "quantity" && v.unit !== "$") return v.unit;
@@ -957,7 +971,9 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     case "solve-it-two-ways":
       return qs.map((q) => {
         const names = regionNames(q);
-        const works = names.filter((x) => x.region.kind === "work").map((x) => regionHtml(q, x.region, x.name, { band, work: 110 })).join("");
+        // Each work area names a way to do it (#482 review at db3b1a0: two methods asked, none shown).
+        const ways = twoWays(q.package);
+        const works = names.filter((x) => x.region.kind === "work").map((x, k) => regionHtml(q, ways && x.region.kind === "work" ? { ...x.region, label: `Method ${k + 1}: ${ways[k] ?? ""}`.trim() } : x.region, x.name, { band, work: 110 })).join("");
         const boxes = names.filter((x) => x.region.kind === "box").map((x) => regionHtml(q, x.region, x.name, { band, labels: true })).join("");
         return `<div class="tw" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span><span class="lab" style="color:#0C0C0E">${c.consistentLayout ? "Use 2 ways" : "Solve it two ways"}</span><span class="qb">${qtext(q)}</span></div><div class="ways2">${works}${boxes}</div></div>`;
       }).join("");
@@ -1074,7 +1090,7 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
     + `<p class="st" ${mark.slot("subtitle")}>${escape(c.subtitle)}</p>`
     + (c.level <= 3 && c.grownUp ? `<p class="gu" ${mark.slot("grown-up")}><b>For the grown-up:</b> ${escape(c.grownUp)}</p>` : "") + `</header>`;
   // A Challenge block takes the free room of its page: its work boxes grow into it (DESIGN.md section 4).
-  const blocks = c.blocks.map((b, i) => `<section class="blk${GROW.has(b.slot) || c.consistentLayout && b.slot === "word-problems" ? " grow" : ""}"${b.slot === "in-your-head" ? ` style="flex:0 0 auto"` : ""} data-slot="${b.slot}" data-measure="block-${i}">${blockHtml(b, i, ctx).replace(/<div class="chiprow"/g, (tag, at: number) => `${tag} data-measure="chip-${i}-${at}"`).replace(/<div class="lab"([^>]*)>/g, (tag, attrs: string, at: number) => attrs.includes("data-measure") ? tag : `<div class="lab" data-measure="label-${i}-${at}"${attrs}>`)}${missingHtml(b)}</section>`).join("");
+  const blocks = c.blocks.map((b, i) => `<section class="blk${GROW.has(b.slot) || c.consistentLayout && b.slot === "word-problems" ? " grow" : ""}"${b.slot === "in-your-head" ? ` style="flex:0 0 auto"` : ""} data-slot="${b.slot}" data-measure="block-${i}">${blockHtml(b, i, ctx).replace(/<div class="chiprow">([\s\S]*?)<\/div>/g, (_row, inner: string, at: number) => `<div class="chiprow" data-measure="chip-${i}-${at}">${inner.replace('<span class="chip ', `<span data-measure="chipbadge-${i}-${at}" class="chip `).replace('<span class="side">', `<span data-measure="chipnote-${i}-${at}" class="side">`)}</div>`).replace(/<div class="lab"([^>]*)>/g, (tag, attrs: string, at: number) => attrs.includes("data-measure") ? tag : `<div class="lab" data-measure="label-${i}-${at}"${attrs}>`)}${missingHtml(b)}</section>`).join("");
   return `<div class="pg ${band.name}${c.consistentLayout ? " consistent" : ""} f-${familyOf(page, c)}" data-page-type="${page.type}" style="--work-min:${c.consistentLayout ? workMinimum(c.level) : 64}px">${scanMarks}<div class="frame">${header}<main class="ct" style="--extra-gap:${Math.max(0,Math.min(48,c.extraGap ?? 0))}px" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
 }
 
@@ -1151,6 +1167,8 @@ export function fullnessProblem(page: DraftPage, measured: ReadonlyMap<string, M
   // At the page maximum, Cedric permits evenly distributed spacing. Report the
   // true occupied fraction separately; never relabel a gap as occupied space.
   if (page.content?.kind==="day" && page.content.fillingComplete && use.span>=.85 && use.bottom<=measured.get("slot-content")!.clientHeight*.15) return null;
+  // The day reached its time limit before this page was full: a real maximum (the index shows the occupied height).
+  if (page.content?.kind==="day" && page.content.fillingComplete && page.content.timeLimited) return null;
   return `Questions and teaching panels occupy ${Math.round(100*use.fraction)}% of the page height; add an item up to the page maximum, then spread gaps by at most 48 px.`;
 }
 
@@ -1161,6 +1179,13 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
   const band = bandOf(c.level);
   const at = where(page, c);
   const problems: FitProblem[] = [];
+  // A chip never covers its note (#482 review at db3b1a0: the Practice badge over "Read the example").
+  for (const [name, badge] of measured) {
+    if (!name.startsWith("chipbadge-")) continue;
+    const note = measured.get(name.replace("chipbadge-", "chipnote-"));
+    // (The note starting inside the badge's width; an unmeasured pair sits at one point.)
+    if (note?.visible && badge.visible && badge.width > 0 && note.x > badge.x && note.x < badge.x + badge.width - 0.5) problems.push({ question: null, slot: null, reason: `${at}: a chip covers its note` });
+  }
   if(c.consistentLayout) c.blocks.forEach((b,i)=>{
     if (!["worked-example","watch-one","reminder"].includes(b.slot)) return;
     const panel=measured.get(`panel-${i}`);

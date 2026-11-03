@@ -50,16 +50,6 @@ export function reasoningSteps(p: QuestionPackage): number {
   return p.operation?.kind === "evaluate" ? p.steps.filter(s => s.kind === "operate").length : p.operation ? 1 : 0;
 }
 
-const familyOf = (p: QuestionPackage): string => {
-  const f = p.item?.format;
-  if (f === "spot-the-error") return "error";
-  if (f === "written-reason") return "explain";
-  if (f === "draw" || f === "colour-or-shade") return "colour";
-  if (f === "two-ways") return "two-ways";
-  // A question in a sentence (a story, a context) is its frame and its math; a drill is its math alone.
-  if (p.textSource === "ai" || f === "show-work" || sentenceFrameOf(p)) return `story:${storyFrame(p.text)}`;
-  return "drill";
-};
 
 /**
  * What a question asks, as mathematical data (#482 review): the operation and its operands, or the item's checks and
@@ -67,24 +57,19 @@ const familyOf = (p: QuestionPackage): string => {
  * "=" sits is not part of it, so "9 × 2 = ?" and "? = 9 × 2" are one task. Region ids are left out too.
  */
 export function taskIdentity(p: QuestionPackage): string {
-  // A step template item is the task it prints (#482 review at 3134252): its printed numbers in any order (where the
-  // "?" sits does not matter) and its answer, a story or a drill. "11 × 5 = ?" from two fills or two templates is one
-  // task; so are two stories that work the same numbers to the same answer. Its format family counts, as for #482's
-  // items: checking a given answer (Spot the error) or working it two ways is another task than answering it.
-  if (templateFormat(p)) {
-    const f = p.item?.format;
-    const family = f === "spot-the-error" ? "error" : f === "two-ways" ? "two-ways" : contextFrame(p.text) ? "story" : "drill";
-    return JSON.stringify(["task", family, printedTaskNumbers(p), answersOf(p)]);
-  }
-  const family = familyOf(p);
-  if (p.operation) return JSON.stringify([family, p.operation]);
-  const checks = (p.item?.checks ?? []).map((c) => {
-    const { region: _region, regions: _regions, ...rest } = c as Record<string, unknown>;
-    void _region; void _regions;
-    return JSON.stringify(rest, (_k, v) => (v && typeof v === "object" && !Array.isArray(v) && "region" in v && Object.keys(v).length === 1 ? "box" : v));
-  });
-  if (checks.length === 0) return JSON.stringify([family, p.item?.figure ?? null, p.text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()]);
-  return JSON.stringify([family, checks, p.item?.figure ?? null]);
+  // One printed task for every path (#482 reviews at 3134252 and db3b1a0): template, hand-built and existing-writer
+  // questions alike are their format family (a drill, a story, an error to spot, two ways, a colouring, an explanation),
+  // the numbers they print with their sequence terms in any order (where the "?" sits does not matter), their answers
+  // and their picture. "11 × 5 = ?" from two fills, two templates or two builders is one task; so are two stories that
+  // work the same numbers to the same answer, whatever box they print in (a story card or a row). A question that
+  // prints no number is its words.
+  const f = p.item?.format;
+  const family = f === "spot-the-error" ? "error" : f === "two-ways" ? "two-ways" : f === "written-reason" ? "explain"
+    : f === "draw" || f === "colour-or-shade" ? "colour" : contextFrame(p.text) || p.textSource === "ai" ? "story" : "drill";
+  const numbers = printedTaskNumbers(p);
+  // (Its words with the names taken out: "when Jon fills it" and "when Raj fills it" ask one thing.)
+  const words = numbers.length ? null : contextFrame(p.text) ?? p.text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return JSON.stringify(["task", family, numbers, answersOf(p), p.item?.figure ?? null, words]);
 }
 
 /**

@@ -84,6 +84,8 @@ export interface DayContent {
   extraPractice?: boolean;
   consistentLayout?: boolean;
   fillingComplete?: boolean;
+  /** Filling stopped at the day's time limit: the page is at its maximum, and its gaps may spread. */
+  timeLimited?: boolean;
   /** Extra row spacing, capped at 48 px by the measured capacity pass. */
   extraGap?: number;
   /** The printed page ID (D-187). */
@@ -338,6 +340,8 @@ export interface Omission {
   requested: number;
   placed: number;
   reason: string;
+  /** Left out to keep the day's time estimate under 30 minutes, above the page's adopted count: reported, not a loss. */
+  time?: true;
 }
 
 /** A planned page laid into slots, with what it leaves out. */

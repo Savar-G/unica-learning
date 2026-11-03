@@ -332,7 +332,8 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
   const input = samplePlanInput(BC, child, kind);
   const planned = planWorkbook(input);
   if (!planned.ok) throw new Error(`${label}: plan refused: ${planned.reason}`);
-  const workbookId = randomUUID();
+  // WORKBOOK_SAMPLE_ID repeats a reviewed book's seed (its template fills), e.g. the full U16 regression.
+  const workbookId = process.env.WORKBOOK_SAMPLE_ID ?? randomUUID();
   costKey = label;
   const t0 = Date.now();
   const solveLogs: SolveLog[] = [];

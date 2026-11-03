@@ -961,22 +961,40 @@ export function dayPageContent(o: {
     // A panel's example: of the panel's own skill only, from its own worked example or the same part's questions.
     const sameP = layout.slots.flatMap((x, k) => (x.part === s.part && k !== i ? [k] : []));
     const panel = () => panelExample(questions, o.examples?.find((e) => e.slot === i)?.package ?? null, part?.step?.skill ?? part?.skills[0], sameP, plan.level);
+    // #482 review at db3b1a0: a template step's panel teaches with Cedric's worked example for the step and its common
+    // mistake put right, never a question and its key alone.
+    const teaching = (): { label: string; lines: string[]; remember: string | null } | null => {
+      const step = part?.step ? curriculum.skillSteps(part.step.skill)?.[part.step.step - 1] : undefined;
+      // (From U4: parent-led pages keep their counted examples. An example that needs a picture or a drawing cannot print.)
+      if (!step?.templates?.length || plan.level < 4) return null;
+      const printable = (t: string) => !!t && !/\(picture:|\b(?:shade|shaded|colou?r|draw|trace|dots?|counters?|ten-frame|picture|chart|graph|bars?)\b/i.test(t) && t.length <= 160;
+      // The example worked, then the step's common mistake put right (its fix line), in a panel's room.
+      if (!printable(step.example?.problem) || !step.example?.answer) return null;
+      // The mistake with its fix ("The 3 in 83 175 is worth 300. No: it is in the thousands place: 3 000."), never the
+      // fix alone (the U16 sample: a fix line out of context).
+      const mistake = step.spotTheError;
+      const both = printable(mistake?.wrong) && printable(mistake?.fix) && `${mistake.wrong} ${mistake.fix}`.length <= 150;
+      return { label: "How it works", lines: [step.example.problem, `Answer: [${step.example.answer}]`], remember: both ? `${mistake.wrong.replace(/\.?$/, ".")} No: ${mistake.fix.replace(/^[A-Z]/, (c) => c.toLowerCase())}` : null };
+    };
     switch (s.slot) {
       case "worked-example": {
         const step = part?.step ? curriculum.skillSteps(part.step.skill)?.[part.step.step - 1] : undefined;
-        const ex = panel();
-        const lines = ex?.lines ?? [];
+        const taught = teaching();
+        const ex = taught ? null : panel();
+        const lines = taught?.lines ?? ex?.lines ?? [];
         return {
-          slot: s.slot, items: [], label: ex?.label,
+          slot: s.slot, items: [], label: taught ? step?.name : ex?.label,
           note: "Read how it works, then try it.",
-          methods: lines.length ? [{ label: "Step by step", lines }] : [],
-          // #489: the imported steps' change notes are for builders; the page names the step plainly.
-          explain: step?.templates?.length ? `${step.name}.` : step?.change ?? "Work one step at a time. Then check your answer.",
+          methods: lines.length ? [{ label: taught ? taught.label : "Step by step", lines }] : [],
+          // #489: the imported steps' change notes are for builders; the page names the step plainly, and with Cedric's
+          // worked example it puts the step's common mistake right.
+          explain: taught?.remember ? `Watch out: ${taught.remember}` : step?.templates?.length ? `${step.name}.` : step?.change ?? "Work one step at a time. Then check your answer.",
         };
       }
       case "watch-one": {
-        const ex = panel();
-        return { slot: s.slot, items: [], label: ex?.label, note: "Read the example, then try it.", lines: ex?.lines ?? [] };
+        const taught = teaching();
+        const ex = taught ? null : panel();
+        return { slot: s.slot, items: [], label: taught ? "How it works" : ex?.label, note: "Read the example, then try it.", lines: taught?.lines ?? ex?.lines ?? [] };
       }
       case "reminder": {
         const ex = panel();
@@ -1008,7 +1026,8 @@ export function dayPageContent(o: {
   });
   const two = (n: number) => String(n).padStart(2, "0");
   return {
-    kind: "day", id: pageId(o.child, o.workbook, `D${two(o.day)}·P${page.number}`), level: plan.level, day: o.day, page: page.number, pages,
+    // An extra practice page is no day's page (#482 review at db3b1a0: "D10·P9" under "Extra practice").
+    kind: "day", id: pageId(o.child, o.workbook, page.extraPractice ? `EXTRA·${two(page.number)}` : `D${two(o.day)}·P${page.number}`), level: plan.level, day: o.day, page: page.number, pages,
     ...layout.header, blocks,
   };
 }

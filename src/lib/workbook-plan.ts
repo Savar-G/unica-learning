@@ -253,6 +253,8 @@ export interface PlannedPage {
   extraPractice?: boolean;
   extraGap?: number;
   fillingComplete?: boolean;
+  /** Filling stopped at the day's time limit (the page's maximum). */
+  timeLimited?: boolean;
   /** Approved pipeline capacity. The writer and layout consume this same budget. */
   capacity?: import("./workbook-page").PlannedSlot[];
   capacityChecked?: boolean;
