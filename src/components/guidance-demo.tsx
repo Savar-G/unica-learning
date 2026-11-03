@@ -1,6 +1,6 @@
 "use client";
 
-// The Maya demo with its steps (D-219): the silent demo video and a list of the six steps in it. The list follows the
+// The Maya demo with its steps (D-220): the silent demo video and a list of the six steps in it. The list follows the
 // video; only the step that plays is open, with one line on what it shows a parent. A tap on a step jumps the video
 // there. Wide screens play the whole desk, phones play the board alone; the two files have different timings.
 import { useEffect, useRef, useState } from "react";

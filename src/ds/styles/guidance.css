@@ -1,5 +1,5 @@
 /* Also used by the Maya step on /whats-included (.gd-media, .gd-wide, .gd-board, .gd-cap outside .gd-body).
-   "Help when they're stuck" (src/components/guidance.tsx, guidance-demo.tsx; D-219): the header, then the demo
+   "Help when they're stuck" (src/components/guidance.tsx, guidance-demo.tsx; D-220): the header, then the demo
    video with its list of steps on the right. Only the step that plays is open; a thin bar under it fills as it
    plays. Phones: the board-only video, then the steps under it. */
 
