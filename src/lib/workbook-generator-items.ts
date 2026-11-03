@@ -756,8 +756,11 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
   const problem = operationProblem(candidate);
   if (problem) return fail(`the operation: ${problem}`);
   const op = candidate as Operation;
-  // Code writes the text of a whole-number question at U1 to U9 (round 7): the AI's words are not printed.
-  const worded = !place.preserveText && place.level <= 9 && isWorded(op);
+  // A bare Mixed set gives away the operation the child must choose. Code can word
+  // that exact operation as a story, with the same checks and planned context.
+  const bareMixed = place.story && format === "tick-and-number" && raw.text === operationQuestion(op);
+  // Code writes whole-number questions at U1 to U9 and this bounded recovery at later levels.
+  const worded = !place.preserveText && (place.level <= 9 || bareMixed) && isWorded(op);
   // The box takes the operation's number, so the question must ask for that number, never yes or no or a choice.
   const asks = !worded && typeof raw.text === "string" ? choiceAsked(raw.text) : null;
   if (asks) return fail(`the question asks ${asks}, but its answer is the operation's number: ask for a number (How far is 8 from 10?), or use draw`);

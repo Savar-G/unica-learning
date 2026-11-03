@@ -6,6 +6,8 @@ import { checkQuestionPackage, valueText } from "@/lib/question-package";
 import { buildStepItem, hasHardNumberTemplate, printedNumbersOf, stepTemplateItem } from "@/lib/workbook-step-items";
 import { aiSolver, sameAnswer, solveCheck } from "@/lib/workbook-solve-check";
 import { fakeAiClient } from "@/lib/ai-client-fake";
+import { buildQuestion } from "@/lib/workbook-generator-items";
+import { storyProblem } from "@/lib/workbook-wording";
 import { BC_CURRICULUM, curriculumFor, type NumberRange } from "./index";
 import { parseStepProgressions } from "./step-source";
 import { prepareTemplate, seededRandom } from "./template";
@@ -20,6 +22,20 @@ const originalCounts = new Map(original.steps.map(s => [`${s.skill}#${s.number}`
 const BC = curriculumFor("bc")!;
 
 describe("v2 data and answer contracts", () => {
+  it("recovers the real U16 bare Mixed set as the same checked operation in a story", () => {
+    const raw = { skill: "4.4-add-within-10000", text: "142 + 1389 = ?", format: "tick-and-number", difficulty: 2, operation: { kind: "add", operands: [142, 1389] }, wrongAnswers: [{ value: { type: "number", value: 1421 }, cause: "no-regroup", description: "Forgot the carry", step: "tens" }], easier: { text: "122 + 1239 = ?", operation: { kind: "add", operands: [122, 1239] } }, figure: null };
+    const place = { id: "q", workbookId: "w", page: 9, question: 4, level: 16, skills: [raw.skill], story: true, wording: { name: "Mia", thing: "books", names: ["Mia"], things: ["books"], kinds: ["story" as const], step: false, subtraction: true } };
+    const built = buildQuestion(raw, place);
+    expect(built.check.status).toBe("checked");
+    expect(built.package?.operation).toEqual(raw.operation);
+    expect(built.package?.answer?.value).toEqual({ type: "number", value: 1531 });
+    expect(built.package?.text).toMatch(/Mia/);
+    expect(storyProblem(built.package!.text, { thing: "books" })).toBeNull();
+    expect(built.package?.text).not.toMatch(/[+×÷=]/);
+    expect(buildQuestion(raw, { ...place, preserveText: true }).check).toEqual({ status: "failed", reason: expect.stringMatching(/a story has a person/) });
+    expect(buildQuestion({ ...raw, text: "142 + 1388 = ?" }, place).check.status).toBe("failed");
+  });
+
   it("replays every recorded change and keeps all template positions with easy and hard coverage", () => {
     const patches = JSON.parse(read("author-changes.json")) as { skill: string; step: number; template: number | null; path: string[]; before: unknown; after: unknown; why: string; kind?: "quality-fallback" | "wording-rewrite"; beforeAbsent?: boolean; afterAbsent?: boolean }[];
     for (const patch of patches) {
