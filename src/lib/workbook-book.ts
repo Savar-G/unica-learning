@@ -492,17 +492,18 @@ function statementNumbers(st: Statement): Read[] {
   }
 }
 
-function regionNumbers(r: AnswerRegion): Read[] {
-  const label = readNumbers(r.label ?? "");
+function regionNumbers(r: AnswerRegion, fixedBenchmarks: readonly number[] = []): Read[] {
+  const words = (text: string) => readNumbers(text).filter(r => !fixedBenchmarks.includes(r.value));
+  const label = words(r.label ?? "");
   switch (r.kind) {
     case "box": return [...label, ...valueNumbers(r.answer)];
-    case "choice": return [...label, ...r.choices.flatMap(readNumbers), ...readNumbers(r.answer ?? "")];
+    case "choice": return [...label, ...r.choices.flatMap(words), ...words(r.answer ?? "")];
     case "work": case "lines": case "picture": return label;
     default: return unreachable(r);
   }
 }
 
-function checkNumbers(c: ItemCheck): Read[] {
+function checkNumbers(c: ItemCheck, fixedBenchmarks: readonly number[] = []): Read[] {
   switch (c.kind) {
     case "operation": case "operation-sign": case "count": case "pattern": return [];
     case "places": return [num(c.number)];
@@ -520,7 +521,7 @@ function checkNumbers(c: ItemCheck): Read[] {
       return [...c.terms.flatMap(termNumbers), ...blanks, ...step];
     }
     case "compare": return [...valueNumbers(c.left), ...valueNumbers(c.right)];
-    case "relation": return [...c.numbers, ...c.to].map(num);
+    case "relation": return [...c.numbers, ...c.to.filter(n => !fixedBenchmarks.includes(n))].map(num);
     case "yes-no": return statementNumbers(c.statement);
     default: return unreachable(c);
   }
@@ -550,13 +551,14 @@ function figureNumbers(f: ItemFigure | null | undefined): Read[] {
  * text, operation and answer; and the item's regions (labels, box answers, choices), checks (places, order, equations,
  * sequence terms and blanks, compare and yes-no numbers) and figure (with a number line's hops).
  */
-export function printedValues(p: QuestionPackage): ReadNumber[] {
+// fixedBenchmarks is only for scheduled relation references. It never removes typed quantities being compared.
+export function printedValues(p: QuestionPackage, fixedBenchmarks: readonly number[] = []): ReadNumber[] {
   const item = p.item;
   const error = item?.error ?? null;
   const shown = error ? samWork(p.operation, error.answer, shownOf(p).cause) : null;
   const easier = p.easierExample;
   return [
-    ...readNumbers(p.text),
+    ...readNumbers(p.text).filter(r => !fixedBenchmarks.includes(r.value)),
     ...operationNumbers(p.operation),
     ...valueNumbers(p.answer?.value),
     ...(p.answer?.accepted ?? []).flatMap(valueNumbers),
@@ -564,8 +566,8 @@ export function printedValues(p: QuestionPackage): ReadNumber[] {
     ...valueNumbers(error?.answer),
     ...(shown?.lines ?? []).flatMap(readNumbers),
     ...(easier ? [...readNumbers(easier.text), ...operationNumbers(easier.operation), ...valueNumbers(easier.answer)] : []),
-    ...(item?.regions ?? []).flatMap(regionNumbers),
-    ...(item?.checks ?? []).flatMap(checkNumbers),
+    ...(item?.regions ?? []).flatMap(r => regionNumbers(r, fixedBenchmarks)),
+    ...(item?.checks ?? []).flatMap(c => checkNumbers(c, fixedBenchmarks)),
     ...figureNumbers(item?.figure),
   ];
 }

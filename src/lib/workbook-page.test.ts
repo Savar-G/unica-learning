@@ -125,7 +125,7 @@ describe("pageSlots", () => {
   it("puts Practice 2 in rows of four, fewer beside Solve it two ways and Spot the error", () => {
     expect(names(pageSlots(page("practice-2", [part("practice", 12)]), 12))).toEqual(["practice-row:4", "practice-row:4", "practice-row:4"]);
     expect(names(pageSlots(page("practice-2", [part("practice", 12), part("solve-it-two-ways", 1), part("spot-the-error", 1)]), 12)))
-      .toEqual(["practice-row:4", "practice-row:4", "solve-it-two-ways:1", "spot-the-error:1"]);
+      .toEqual(["practice-row:4", "solve-it-two-ways:1", "spot-the-error:1"]);
   });
 
   it("gives a New idea part its worked example and a Now you card, with 2 items beside Spot the error", () => {

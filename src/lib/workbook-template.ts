@@ -853,7 +853,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
           const box = names.find(x => x.region.kind === "box");
           return `<div class="list" ${mark.question(q.number)}><div class="q"><span class="n">${q.number}</span>${text(q)}</div>`
             + `<div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div>`
-            + `<div class="q"><span>Is it right?</span>${choice ? regionHtml(q, choice.region, choice.name, { band, noTick: true }) : `<span class="strip"><span class="ch"><i class="tb"></i>Yes</span><span class="ch"><i class="tb"></i>No</span></span>`}</div>`
+            + `<div class="q"><span>Is it right?</span>${choice?.region.kind === "choice" ? regionHtml(q, { ...choice.region, label: null }, choice.name, { band, noTick: true }) : `<span class="strip"><span class="ch"><i class="tb"></i>Yes</span><span class="ch"><i class="tb"></i>No</span></span>`}</div>`
             + `<div>If it's not right, fix it:</div>${box ? regionHtml(q, box.region, box.name, { band }) : ""}</div>`;
         }).join("") + `</div>`;
     }

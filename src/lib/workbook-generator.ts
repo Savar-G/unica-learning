@@ -1564,12 +1564,16 @@ function pairedTall(input: GenerateInput, w: PageWork, questions: GeneratedQuest
   return out.every((q, k) => q === questions[k]) ? null : renumbered(out);
 }
 
-/** The question to leave out of a page that does not fit: the last one its problems name, else the page's last. */
-function toLeaveOut(questions: GeneratedQuestion[], problems: FitProblem[]): { index: number; reason: string } {
-  const named = problems.filter((p) => p.question !== null && questions.some((q) => q.number === p.question));
+/** Optional drills yield to teaching cards. A planned error item is never removed to make a page fit. */
+function toLeaveOut(questions: GeneratedQuestion[], problems: FitProblem[]): { index: number; reason: string } | null {
+  const removable = questions.map((q, index) => ({ q, index })).filter(({ q }) => q.place !== "spot-the-error" && q.part !== "spot-the-error");
+  if (!removable.length) return null;
+  const drills = removable.filter(({ q }) => q.part === "practice" || q.part === "remember-these" || q.part === "warm-up");
+  const candidates = drills.length ? drills : removable;
+  const named = problems.filter(p => p.question !== null && candidates.some(({ q }) => q.number === p.question));
   const last = named.reduce<FitProblem | null>((a, p) => (!a || p.question! > a.question! ? p : a), null);
-  if (last) return { index: questions.findIndex((q) => q.number === last.question), reason: last.reason };
-  return { index: questions.length - 1, reason: problems[0]?.reason ?? "the page does not fit" };
+  const chosen = last ? candidates.find(({ q }) => q.number === last.question)! : candidates.at(-1)!;
+  return { index: chosen.index, reason: last?.reason ?? problems[0]?.reason ?? "the page does not fit" };
 }
 
 /** The layout's omissions with the questions left out added to their parts' (the page placed fewer of them). */
@@ -1849,6 +1853,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
       // A page keeps at least one question: its panels take their sums from its questions.
       while (!left.ok && !left.problems.every(p => p.kind === "fullness") && kept.length > 1) {
         const out = toLeaveOut(kept, left.problems);
+        if (!out) break;
         leftOut.push({ question: kept[out.index], slot: w.slots.find((x) => x.id === kept[out.index].slot)!, reason: out.reason });
         kept = renumbered(kept.filter((_, k) => k !== out.index));
         left = await check(kept);
