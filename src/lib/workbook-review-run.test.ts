@@ -11,6 +11,11 @@ import { curriculumFor } from "./workbook-curriculum";
 import { itemContractProblem, planItem } from "./workbook-item-plan";
 import { planLevel } from "./workbook-plan";
 import { PDFDocument } from "pdf-lib";
+import { chromiumPrintEngine } from "./print-engine-chromium";
+import { renderableDraft } from "./workbook-fit";
+import { renderWorkbook } from "./workbook-render";
+import { workbookTemplate } from "./workbook-template";
+import { fixedTemplateFonts } from "./workbook-template-fonts";
 
 const chromium=await findChromium();
 const run=promisify(execFile);
@@ -45,6 +50,19 @@ it.skipIf(!chromium)("completes the full 40-page U4 review command with real fit
   expect((await PDFDocument.load(await readFile(join(out,"U4.pdf")))).getPageCount()).toBe(44);
   for(const day of [5,10]) expect(draft.pages.filter(p=>p.day===day).flatMap(p=>p.questions).filter(q=>q.part==="friday-5")).toHaveLength(5);
   for(const day of [1,3,5,8,10]) expect(draft.pages.filter(p=>p.day===day).flatMap(p=>p.questions).filter(q=>q.place==="challenge")).toHaveLength(3);
+  // #482 review finding 3: the generated approved-v1 day-start page keeps 18 px below Name and Date (DESIGN 4).
+  const starts=draft.pages.filter(p=>p.content?.kind==="day" && p.content.consistentLayout && p.pageOfDay===1).slice(0,2);
+  expect(starts.length).toBe(2);
+  const engine=chromiumPrintEngine(), template=workbookTemplate(await fixedTemplateFonts());
+  const book=renderableDraft(draft);
+  let printed!: Awaited<ReturnType<typeof engine.print>>;
+  await renderWorkbook({draft:{...book,pages:book.pages.filter(p=>starts.some(s=>s.number===p.number))},parentId:"11111111-1111-4111-8111-111111111111",template,
+    engine:{print:async job=>(printed=await engine.print(job))}});
+  for(const sheet of [0,1]) {
+    const name=printed.measured.find(m=>m.sheet===sheet && m.name==="slot-name-date")!;
+    const label=printed.measured.find(m=>m.sheet===sheet && m.name==="slot-day-label")!;
+    expect(label.y-name.y-name.height).toBeGreaterThanOrEqual(18);
+  }
   await rm(out,{recursive:true,force:true});
 },600_000);
 

@@ -3,7 +3,7 @@ import type { DraftPage, MeasuredElement } from "./workbook-render";
 import type { GeneratedPage } from "./workbook-generator";
 import { dayTimeProblem, estimatedDayMinutes } from "./workbook-feedback-check";
 import { printedNumbers } from "./workbook-book";
-import { storyFrame, wordedTask, taskType, reasoningSteps } from "./workbook-task-identity";
+import { storyFrame, wordedTask, taskType, reasoningSteps, taskIdentity, printedForm, sentenceFrameOf } from "./workbook-task-identity";
 import { dayDifficulty } from "./workbook-plan";
 
 export interface BookIssue { page: number; kind: "repeat" | "progress" | "variety" | "time" | "coverage" | "challenge"; reason: string }
@@ -60,6 +60,19 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     }
     const total=p.questions.filter(q=>q.package && q.place!=="warm-up").length;
     for (const [type, count] of counts) if (total >= 3 && count > Math.ceil(total / 2)) issues.push({ page: p.number, kind: "variety", reason: `${type} fills ${count} of ${total} questions; the page limit is half, rounded up` });
+    // Cedric's section 9 (adopted as written): at least 3 contexts or formats on a page, read from what is printed,
+    // the existing writer's questions too; and no sentence frame twice on a page.
+    const printed = p.questions.filter(q => q.package && q.place !== "warm-up");
+    const forms = new Set(printed.map(q => printedForm(q.package!)));
+    if (printed.length >= 3 && forms.size < 3) issues.push({ page: p.number, kind: "variety", reason: `the page prints ${forms.size} context${forms.size === 1 ? "" : "s"} or format${forms.size === 1 ? "" : "s"} (${[...forms].join(", ")}); it needs at least 3` });
+    const pageFrames = new Map<string, number>();
+    for (const q of printed) {
+      if (q.place === "how-do-you-know" && /first story on this page/i.test(q.package!.text)) continue;
+      const frame = sentenceFrameOf(q.package!);
+      if (!frame) continue;
+      pageFrames.set(frame, (pageFrames.get(frame) ?? 0) + 1);
+      if (pageFrames.get(frame) === 2) issues.push({ page: p.number, kind: "variety", reason: `question ${q.number} uses the sentence frame "${frame}" a second time on the page` });
+    }
     for (const q of p.questions.filter(q => q.place === "how-do-you-know" && !q.existing)) if (!/first story on this page/i.test(q.package?.text ?? "") || !p.questions.some(s => ["word-problems", "picture-stories"].includes(s.place ?? "") && s.package && s.check.status !== "failed")) issues.push({ page: p.number, kind: "coverage", reason: "the explanation has no story on this page" });
   }
   for (const [type, count] of types) if (all.length >= 12 && count > all.length / 2) for (const p of pages.filter(p => p.questions.some(q => q.package && taskType(q.package) === type))) issues.push({ page: p.number, kind: "variety", reason: `${type} exceeds half of the book's non-warm-up questions` });
@@ -72,7 +85,8 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       if (before !== undefined) issues.push({ page: p.number, kind: "repeat", reason: `question ${q.number} repeats the story or event frame on page ${before}` });
       else frames.set(frame, p.number);
     }
-    const key = JSON.stringify([pkg.text, pkg.operation, pkg.item?.checks, pkg.item?.figure]);
+    // The task's mathematical data, not its printed form: "? = 9 × 2" repeats "9 × 2 = ?".
+    const key = taskIdentity(pkg);
     const at = seen.get(key) ?? [];
     const limit = 1;
     if (at.includes(p.number) || at.length >= limit) issues.push({ page: p.number, kind: "repeat", reason: `question ${q.number} repeats pages ${at.join(", ")} (limit ${limit})` });
@@ -90,6 +104,14 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       if (!pkg || pkg.item?.format === "circle" || !pkg.operation || demand <= Math.max(1, ...practice.map(q => reasoningSteps(q.package!))) || cap !== undefined && top < cap) issues.push({ page: p.number, kind: "challenge", reason: `Day ${day}'s Challenge must use the day's top number and require more reasoning steps than practice` });
     }
     const formats = new Set(questions.flatMap(q => q.package?.item ? [q.package.item.format] : []));
+    // A sentence frame at most twice a day (Cedric's section 9).
+    const dayFrames = new Map<string, number[]>();
+    for (const p of ofDay) for (const q of p.questions) {
+      if (!q.package || q.place === "warm-up" || q.place === "how-do-you-know" && /first story on this page/i.test(q.package.text)) continue;
+      const frame = sentenceFrameOf(q.package);
+      if (frame) dayFrames.set(frame, [...(dayFrames.get(frame) ?? []), p.number]);
+    }
+    for (const [frame, at] of dayFrames) if (at.length > 2) issues.push({ page: at[2], kind: "variety", reason: `Day ${day} uses the sentence frame "${frame}" ${at.length} times; the limit is 2 a day` });
     // Include time to read worked examples and move between pages.
     const packages = questions.flatMap(q => q.package ? [q.package] : []);
     const panels = ofDay.reduce((n,p)=>n + (p.content?.kind === "day" ? p.content.blocks.filter(b => ["worked-example", "watch-one", "reminder"].includes(b.slot)).length : 0),0);
