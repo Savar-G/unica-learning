@@ -1,0 +1,530 @@
+[
+ {
+  "id": "add-not-multiply",
+  "description": "Adds the number of groups and the group size instead of multiplying them",
+  "example": "4 groups of 3 written as 4 + 3 = 7",
+  "firstUsed": "3.5-equal-groups step 1"
+ },
+ {
+  "id": "align-point",
+  "description": "Lines up the right edges of decimals instead of the decimal points",
+  "example": "3.4 + 1.275 = 1.615",
+  "firstUsed": "5.7-add-thousandths step 2"
+ },
+ {
+  "id": "balance-one-side",
+  "description": "Adds to or takes from one side of an equation or balance only",
+  "example": "Takes 3 from the left side of 2x + 3 = 11 and leaves the right side at 11",
+  "firstUsed": "8.8-model-balance step 1"
+ },
+ {
+  "id": "baseline",
+  "description": "Compares lengths without a shared start line",
+  "example": "Says two pencils with different starts are a fair comparison",
+  "firstUsed": "K7-baseline step 1"
+ },
+ {
+  "id": "carry-dropped",
+  "description": "Forgets to add the carried ten, hundred or thousand",
+  "example": "34 215 + 12 368 = 46 573",
+  "firstUsed": "5.5-add-million step 1"
+ },
+ {
+  "id": "check-one-side",
+  "description": "Works out only one side of an equation when checking a solution, or accepts a value because it appears in the equation",
+  "example": "Says x = 2 works in 3x + 5 = -1 after finding 3 x 2 + 5 = 11",
+  "firstUsed": "8.8-verify step 1"
+ },
+ {
+  "id": "coefficient-name",
+  "description": "Mixes up the coefficient, the variable and the constant of an expression, or gives 0 for a variable with no number",
+  "example": "Says the coefficient of x in 8 + x is 0",
+  "firstUsed": "8.7-parts step 1"
+ },
+ {
+  "id": "count-on-smaller",
+  "description": "Counts on from the smaller number, so 2 + 9 is counted from 2 and the count is lost",
+  "example": "Counted on 8 from 3 and got 10 instead of starting at 8",
+  "firstUsed": "1.3-count-on-back step 2"
+ },
+ {
+  "id": "count-order",
+  "description": "Thinks the total changes when counting from the other end",
+  "example": "Counts 6 from the left, then says 5 from the right",
+  "firstUsed": "K1-how-many step 3"
+ },
+ {
+  "id": "decade-back",
+  "description": "Counts back across a ten and lands on the wrong ten",
+  "example": "42, 41, 30 instead of 42, 41, 40",
+  "firstUsed": "2.1-count-by-ones-100 step 3"
+ },
+ {
+  "id": "decimal-denominator",
+  "description": "Uses 10 as the denominator whatever the number of decimal places",
+  "example": "0.45 = 45/10",
+  "firstUsed": "7.4-decimal-to-fraction step 2"
+ },
+ {
+  "id": "decimal-whole-parts",
+  "description": "Adds the whole parts and the decimal parts as separate numbers",
+  "example": "2.6 + 1.5 written as 3.11",
+  "firstUsed": "4.6-add-decimals step 1"
+ },
+ {
+  "id": "decimals-dense",
+  "description": "Thinks no decimal fits between two neighbouring decimals",
+  "example": "Says nothing is between 0.4 and 0.5",
+  "firstUsed": "5.2-between-decimals step 1"
+ },
+ {
+  "id": "denominator-other",
+  "description": "Uses the number of other outcomes as the denominator instead of the total",
+  "example": "2 red and 3 blue: P(red) = 2/3",
+  "firstUsed": "5.18-probability-fraction step 1"
+ },
+ {
+  "id": "difference-as-sum",
+  "description": "Adds two bars when the question asks how many more",
+  "example": "Girls 16, boys 10, 'how many more' answered 26",
+  "firstUsed": "5.17-double-bar-graph step 2"
+ },
+ {
+  "id": "discrete-join",
+  "description": "Joins the points of a graph with a line when the input can only be a whole number",
+  "example": "Joins the points for the number of cats and their legs",
+  "firstUsed": "8.6-discrete-points step 1"
+ },
+ {
+  "id": "divide-flip-wrong",
+  "description": "Flips the first fraction, or neither, when dividing fractions",
+  "example": "2/3 ÷ 4/9 = 3/2 x 4/9",
+  "firstUsed": "8.5-divide-fractions step 2"
+ },
+ {
+  "id": "divide-no-flip",
+  "description": "Divides by a fraction without turning the second fraction upside down",
+  "example": "(-3/4) / (1/5) written as -3/20",
+  "firstUsed": "9.1-multiply-divide step 3"
+ },
+ {
+  "id": "divisor-point-only",
+  "description": "Moves the decimal point in the divisor only, not in the dividend",
+  "example": "4.8 / 0.6 = 4.8 / 6 = 0.8",
+  "firstUsed": "7.3-divide-decimals step 1"
+ },
+ {
+  "id": "exponent-one",
+  "description": "Thinks a power with the exponent 1 is 1 or 0 instead of the base",
+  "example": "Writes m^1 = 1",
+  "firstUsed": "9.2-zero-one-exponent step 1"
+ },
+ {
+  "id": "face-for-solid",
+  "description": "Names a flat face of an object instead of the solid",
+  "example": "A cereal box is a rectangle",
+  "firstUsed": "5.15-classify-prisms-pyramids step 3"
+ },
+ {
+  "id": "fact-scale-zeros",
+  "description": "Gives the basic fact with too few or too many zeros when numbers are in hundreds or thousands",
+  "example": "800 + 700 = 15",
+  "firstUsed": "5.8-extend-facts step 1"
+ },
+ {
+  "id": "fair-outcome-count",
+  "description": "Judges a game fair from the list of outcomes or a few plays rather than the probability of each player winning",
+  "example": "Calls a game unfair after 7 wins in 10 plays",
+  "firstUsed": "8.13-compare-experimental step 2"
+ },
+ {
+  "id": "fraction-add",
+  "description": "Builds equivalent fractions by adding the same number to both parts",
+  "example": "1/2 = 3/4",
+  "firstUsed": "5.3-equivalent-fractions step 1"
+ },
+ {
+  "id": "fraction-add-across",
+  "description": "Adds the tops and the bottoms of fractions, or multiplies by adding, instead of using a common denominator",
+  "example": "1/4 + 3/8 = 4/12",
+  "firstUsed": "8.5-add-subtract-fractions step 1"
+ },
+ {
+  "id": "fraction-digits-decimal",
+  "description": "Writes the digits of a fraction side by side as a decimal",
+  "example": "3/4 = 0.34",
+  "firstUsed": "5.4-fraction-to-decimal step 1"
+ },
+ {
+  "id": "frame-total",
+  "description": "Reads the whole ten-frame or five-frame instead of the shaded squares",
+  "example": "Says 5 for a frame with 3 shaded",
+  "firstUsed": "K2-five-frame step 2"
+ },
+ {
+  "id": "free-offer",
+  "description": "Reads a free-item offer as a percent off the whole or as a half price",
+  "example": "Says 'buy 2, get 1 free' is 50% off",
+  "firstUsed": "8.14-multi-buy-offers step 2"
+ },
+ {
+  "id": "full-not-capacity",
+  "description": "Thinks a full small container holds more than an empty big one",
+  "example": "Says a full cup holds more than an empty bucket",
+  "firstUsed": "K7-compare-capacity step 1"
+ },
+ {
+  "id": "hypotenuse-leg-swap",
+  "description": "Names a leg as the hypotenuse, usually the first side listed, instead of the side across from the right angle",
+  "example": "Calls 9 the hypotenuse of a triangle with sides 9, 40 and 41",
+  "firstUsed": "8.10-model step 1"
+ },
+ {
+  "id": "independent-dependent",
+  "description": "Mixes up independent and dependent events, such as drawing with and without putting the first back",
+  "example": "Calls two cards drawn without replacement independent",
+  "firstUsed": "8.13-sample-space step 1"
+ },
+ {
+  "id": "input-output-swap",
+  "description": "Puts the output value in the input place of the rule when finding an input",
+  "example": "Solves y = 3x + 2 with y = 20 by computing 3 x 20 + 2",
+  "firstUsed": "8.6-solve-for-input step 2"
+ },
+ {
+  "id": "joins-digits",
+  "description": "Writes the value of a letter beside the number instead of operating",
+  "example": "7n with n = 5 read as 75",
+  "firstUsed": "5.11-evaluate-expression step 1"
+ },
+ {
+  "id": "less-than-order",
+  "description": "Writes the two parts of a 'less than' or 'more than' phrase in the order they are spoken",
+  "example": "Writes '6 less than x' as 6 - x",
+  "firstUsed": "8.7-write-expression step 1"
+ },
+ {
+  "id": "list-not-total",
+  "description": "Says the counting words again instead of the last number as the total",
+  "example": "Says one, two, three, four for 4 hearts",
+  "firstUsed": "K1-count-objects step 3"
+ },
+ {
+  "id": "longer-is-larger",
+  "description": "Thinks a decimal with more digits is bigger",
+  "example": "0.405 is bigger than 0.5",
+  "firstUsed": "5.4-compare-decimals step 2"
+ },
+ {
+  "id": "measure-gaps",
+  "description": "Counts units with gaps or overlaps as a fair measure",
+  "example": "Counted 5 cubes with a gap between two of them and called it fair",
+  "firstUsed": "1.7-non-standard-units step 2"
+ },
+ {
+  "id": "mirror-numeral",
+  "description": "Writes a numeral backwards or upside down, or mixes up numerals that look alike",
+  "example": "Writes a backwards 3 or turns 6 into 9",
+  "firstUsed": "K1-recognize-numerals step 1"
+ },
+ {
+  "id": "mirror-writing",
+  "description": "Writes a numeral backwards or upside down",
+  "example": "Wrote 9 dots as 6, or a mirror 7",
+  "firstUsed": "1.1-read-write-20 step 1"
+ },
+ {
+  "id": "missing-mean-total",
+  "description": "Forgets that mean x number of values is the total when working back from a mean",
+  "example": "Says 5 numbers with a mean of 6 add to 11",
+  "firstUsed": "8.12-missing-value-from-mean step 1"
+ },
+ {
+  "id": "missing-side-half",
+  "description": "Subtracts the known side from the perimeter and forgets to halve",
+  "example": "Perimeter 20, length 6: width 14",
+  "firstUsed": "4.14-missing-side step 1"
+ },
+ {
+  "id": "names-exclusive",
+  "description": "Thinks a shape can have only one name",
+  "example": "A square is not a rectangle",
+  "firstUsed": "5.15-quadrilaterals step 2"
+ },
+ {
+  "id": "near-double",
+  "description": "Uses a near double but forgets the extra one or two",
+  "example": "8 + 9 = 16 from 8 + 8",
+  "firstUsed": "2.3-near-doubles step 1"
+ },
+ {
+  "id": "one-side-only",
+  "description": "Changes only one side of an equation or balance, so it no longer stays equal",
+  "example": "Takes 3 off the left side of x + 3 = 10 only",
+  "firstUsed": "6.10-preserve-equality step 1"
+ },
+ {
+  "id": "ones-in-tens",
+  "description": "Adds the ones to the tens digit of a teen number, so 13 + 4 becomes 53",
+  "example": "13 + 4 written as 53",
+  "firstUsed": "1.3-teen-add-subtract step 2"
+ },
+ {
+  "id": "opposite-same",
+  "description": "Thinks an integer is its own opposite, or writes the same sign for the opposite",
+  "example": "The opposite of -7 is -7",
+  "firstUsed": "7.2-integer-meaning step 2"
+ },
+ {
+  "id": "outcomes-incomplete",
+  "description": "Counts HT and TH (or any reordered pair) as the same outcome, so lists too few outcomes",
+  "example": "Two coins: HH, HT, TT",
+  "firstUsed": "7.12-two-events-outcomes step 1"
+ },
+ {
+  "id": "outlier-affects-median",
+  "description": "Thinks an outlier changes the median as much as it changes the mean",
+  "example": "Says adding 100 to 2, 3, 3, 4 changes the median a lot",
+  "firstUsed": "8.12-outlier step 2"
+ },
+ {
+  "id": "pair-leftover",
+  "description": "Ignores the leftover object when pairing to decide even or odd",
+  "example": "Calls 9 even after pairing leaves one over",
+  "firstUsed": "2.1-even-odd step 1"
+ },
+ {
+  "id": "pair-one-prime",
+  "description": "Sees one pair or triple of a prime factor and decides the number is a perfect square or cube, ignoring unpaired primes",
+  "example": "Says 20 = 2 x 2 x 5 is a perfect square because of the pair of 2s",
+  "firstUsed": "8.1-perfect-by-factors step 1"
+ },
+ {
+  "id": "parts-joined",
+  "description": "Writes two parts side by side as one number instead of adding them",
+  "example": "Writes 43 for 4 and 3",
+  "firstUsed": "K2-subitize-parts step 1"
+ },
+ {
+  "id": "parts-side-by-side",
+  "description": "Writes two parts side by side as one number instead of adding them, including 10 and 6 as 106",
+  "example": "3 red and 4 blue dots written as 34; 10 + 5 written as 105",
+  "firstUsed": "1.1-subitize-to-10 step 3"
+ },
+ {
+  "id": "pattern-circular",
+  "description": "Does not see a pattern returns to its start after the last position",
+  "example": "Dot after bottom-left said to repeat instead of going to top-left",
+  "firstUsed": "2.5-complex-repeating step 2"
+ },
+ {
+  "id": "percent-decimal-shift",
+  "description": "Moves the decimal point the wrong number of places when changing a percent that is under 1 or over 100",
+  "example": "Writes 150% as 0.15 or 0.5% as 0.5",
+  "firstUsed": "8.3-convert-percents step 1"
+ },
+ {
+  "id": "percent-successive-add",
+  "description": "Adds or subtracts percents that apply one after another, such as a discount and a tax",
+  "example": "Treats 20% off then 12% tax as 8% off",
+  "firstUsed": "8.14-coupons step 2"
+ },
+ {
+  "id": "place-shift",
+  "description": "Gives a digit's value one place too small or too large",
+  "example": "The 7 in 472 315 is worth 7 000",
+  "firstUsed": "5.1-place-value-million step 1"
+ },
+ {
+  "id": "prediction-exact",
+  "description": "Thinks a result that differs from the prediction means the prediction was wrong",
+  "example": "Predicts 10 heads, gets 12, says the coin is unfair",
+  "firstUsed": "5.18-experiment step 3"
+ },
+ {
+  "id": "quotient-zero",
+  "description": "Leaves a zero out of the quotient",
+  "example": "618 / 3 = 26",
+  "firstUsed": "5.6-divide-remainder step 2"
+ },
+ {
+  "id": "radius-diameter",
+  "description": "Uses the diameter where the radius is needed, or the reverse, for a circle or cylinder",
+  "example": "Uses 10 as the radius of a base with diameter 10",
+  "firstUsed": "8.9-surface-area-cylinder step 1"
+ },
+ {
+  "id": "rate-ratio-kind",
+  "description": "Calls every comparison a ratio, or does not see that a rate compares different units",
+  "example": "Calls 90 km in 2 hours a ratio",
+  "firstUsed": "8.4-rates step 1"
+ },
+ {
+  "id": "ratio-part-as-whole",
+  "description": "Treats a part-to-part ratio as a part-to-whole fraction",
+  "example": "Red to blue 3 : 2, so red is 3/2 = 150%",
+  "firstUsed": "7.4-ratio-percent step 3"
+ },
+ {
+  "id": "ratio-simplify-partial",
+  "description": "Divides all terms of a ratio by a common factor but stops before lowest terms",
+  "example": "Simplifies 12:18:30 to 6:9:15",
+  "firstUsed": "8.4-three-term-ratio step 2"
+ },
+ {
+  "id": "regroup-whole-fraction",
+  "description": "Regroups one whole from a mixed number but writes the wrong number of parts, or ignores the regrouped whole",
+  "example": "4 - 1 3/5 = 2 3/5",
+  "firstUsed": "8.5-subtract-regroup step 2"
+ },
+ {
+  "id": "remainder-size",
+  "description": "Gives a remainder as large as or larger than the divisor",
+  "example": "29 / 4 = 6 R 5",
+  "firstUsed": "4.5-divide-1-digit step 3"
+ },
+ {
+  "id": "remainder-too-big",
+  "description": "Leaves a remainder as big as or bigger than the divisor",
+  "example": "38 / 4 = 8 R 6",
+  "firstUsed": "5.6-divide-remainder step 1"
+ },
+ {
+  "id": "round-down",
+  "description": "Always rounds down, ignoring whether the number is closer to the next ten",
+  "example": "Rounds 38 to 30",
+  "firstUsed": "2.4-estimate-100 step 1"
+ },
+ {
+  "id": "scale-flip",
+  "description": "Uses the scale or the scale factor the wrong way round: multiplies when the drawing needs dividing or gives a reduction factor above 1",
+  "example": "A 20 cm side that becomes 5 cm is called scale factor 4",
+  "firstUsed": "9.6-scale-factor step 2"
+ },
+ {
+  "id": "scale-tick-one",
+  "description": "Counts each gap or tick mark on a scaled axis as 1 instead of its value",
+  "example": "Reads the 4th gap with each gap worth 5 as 4",
+  "firstUsed": "8.6-scale-axes step 1"
+ },
+ {
+  "id": "shape-same-kind",
+  "description": "Thinks a shape is a different kind when it is bigger, smaller or turned",
+  "example": "Says a tilted square is not a square",
+  "firstUsed": "K8-same-shape step 1"
+ },
+ {
+  "id": "share-equal",
+  "description": "Shares a quantity equally when the question asks to share it in a ratio",
+  "example": "Shares $40 in the ratio 3:5 as $20 and $20",
+  "firstUsed": "8.4-ratio-share step 1"
+ },
+ {
+  "id": "sign-distribute",
+  "description": "Changes the sign of only the first term when subtracting a bracket",
+  "example": "(5n - 7) - (2n + 3) written as 3n - 4",
+  "firstUsed": "9.3-subtract step 1"
+ },
+ {
+  "id": "smaller-from-larger",
+  "description": "Subtracts the smaller digit from the larger in each column, whichever is on top",
+  "example": "7.42 - 3.18 = 4.36",
+  "firstUsed": "5.5-subtract-million step 1"
+ },
+ {
+  "id": "subtract-order",
+  "description": "Writes a subtraction with the smaller number first",
+  "example": "9 frogs, 2 hop away written as 2 - 9 = 7",
+  "firstUsed": "1.3-meaning-of-subtraction step 3"
+ },
+ {
+  "id": "symbol-count",
+  "description": "Counts the symbols in a graph instead of using what each symbol stands for",
+  "example": "4 stars worth 5 each read as 4",
+  "firstUsed": "5.17-scale step 1"
+ },
+ {
+  "id": "symbol-direction",
+  "description": "Points the < or > symbol the wrong way",
+  "example": "Writes 29 > 31",
+  "firstUsed": "2.7-greater-less-symbols step 1"
+ },
+ {
+  "id": "tally-bundle",
+  "description": "Counts a bundle of five tally marks as one",
+  "example": "3 bundles and 2 marks read as 5",
+  "firstUsed": "4.17-record-trials step 1"
+ },
+ {
+  "id": "teen-ty",
+  "description": "Mixes up a teen number word with the matching tens word",
+  "example": "Writes sixty as 16",
+  "firstUsed": "2.1-read-write-100 step 1"
+ },
+ {
+  "id": "teen-ty-confusion",
+  "description": "Mixes up a teen word with the matching tens word, such as twelve and twenty",
+  "example": "Matched 'twenty' to 12",
+  "firstUsed": "1.1-read-write-20 step 3"
+ },
+ {
+  "id": "ten-dropped",
+  "description": "Drops the ten when taking ones from a teen and gives only the ones left",
+  "example": "18 - 6 written as 2 instead of 12",
+  "firstUsed": "1.3-teen-add-subtract step 3"
+ },
+ {
+  "id": "tenth-hundredth",
+  "description": "Treats tenths and hundredths as the same size",
+  "example": "0.4 written as 4/100",
+  "firstUsed": "4.2-fraction-decimal step 4"
+ },
+ {
+  "id": "tree-incomplete",
+  "description": "Stops a factor tree at a composite number instead of splitting down to primes",
+  "example": "Writes 24 = 3 x 8 as prime factors",
+  "firstUsed": "8.1-prime-factorization step 1"
+ },
+ {
+  "id": "undo-order",
+  "description": "Undoes the operations of a two-step equation in the wrong order",
+  "example": "Divides 19 by 3 first, then subtracts 4, for 3x + 4 = 19",
+  "firstUsed": "8.8-solve-two-step-integers step 3"
+ },
+ {
+  "id": "uneven-units",
+  "description": "Thinks body-part units such as hands or steps measure as fairly as same-size units",
+  "example": "Said steps are fair because everyone has feet",
+  "firstUsed": "1.7-uniform-units step 1"
+ },
+ {
+  "id": "view-swap",
+  "description": "Mixes up the front view and the side view of a cube object, or reads one row as the whole view",
+  "example": "Gives the front view of back row 1 2, front row 3 1 as 3 1 instead of 3 2",
+  "firstUsed": "8.11-views step 2"
+ },
+ {
+  "id": "want-need",
+  "description": "Calls something a need because it is liked or useful",
+  "example": "Says a video game is a need",
+  "firstUsed": "K11-wants-needs step 1"
+ },
+ {
+  "id": "wish-not-chance",
+  "description": "Picks the likely event by what the child wants, not what usually happens",
+  "example": "Says a snow day in summer is likely",
+  "firstUsed": "K10-likelihood-words step 2"
+ },
+ {
+  "id": "zero-in-subtraction",
+  "description": "Gets subtraction with zero or the same number wrong, such as 5 - 0 = 0",
+  "example": "6 - 6 written as 6",
+  "firstUsed": "1.3-subtract-within-10 step 4"
+ },
+ {
+  "id": "zero-is-number",
+  "description": "Does not treat 0 as a number meaning none",
+  "example": "Says 0 means 1 apple",
+  "firstUsed": "K1-recognize-numerals step 3"
+ }
+]
