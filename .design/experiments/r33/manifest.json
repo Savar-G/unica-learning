@@ -4,7 +4,7 @@
   "route": "/ (section #compare)",
   "prototype_branch": "prototype/compare-section",
   "build_branch": "site/compare-section",
-  "decision": "D-217",
+  "decision": "D-219",
   "reference": "Savar's screenshot: a table with the price row first and a highlighted Unica column (chat 2026-11-02)",
   "rounds": [
     { "round": 1, "variants": [

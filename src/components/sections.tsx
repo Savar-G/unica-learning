@@ -93,6 +93,7 @@ const DRIFT: [StaticImageData, number, number, number, number, number, number, b
   [emo11, 22, 78, 13, 16, 0.12, -2, true], [emo10, 64, 79, 13, 16, -0.1, 4, true],
 ];
 
+// Hidden from the home page (2026-11-02); kept here to bring back later. Render <Feel /> in landing.tsx to restore.
 export function Feel() {
   return (
     <Section className="feel" aria-labelledby="feelT">
@@ -190,7 +191,7 @@ export function Pricing() {
   );
 }
 
-/** How we compare (D-217): its own section after Pricing. The link under the title opens /compare (D-114). */
+/** How we compare (D-219): its own section after Pricing. The link under the title opens /compare (D-114). */
 export function Compare() {
   return (
     <Section id="compare" aria-labelledby="compareT">

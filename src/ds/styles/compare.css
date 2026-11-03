@@ -1,5 +1,5 @@
 /* The check table (src/components/compare.tsx, D-097): the at-a-glance table on /compare (.cmp-all, D-114).
-   The home "How we compare" section (.hc, D-217) is at the end of this file.
+   The home "How we compare" section (.hc, D-219) is at the end of this file.
    Each trait cell leads with a mark (full = yes, half = partly) so the table scans before it reads.
    Our column has the accent-soft tint, a gradient bar along its top (the D-037 colours) and accent marks;
    the other columns stay plain ink-2, so nothing reads as a plan tier.
@@ -69,7 +69,7 @@
   .cmp-switch button[aria-pressed="true"] { background: var(--btn, var(--ink)); border-color: var(--btn, var(--ink)); color: #fff; }
 }
 
-/* ---------- Home "How we compare" (D-217, round r33 variant A3) ----------
+/* ---------- Home "How we compare" (D-219, round r33 variant A3) ----------
    Four columns: row label, private tutor, learning centre, [Brand]. Rows: price a month, then four traits.
    The others are plain ink-2 text; our column has ink text and white check discs on a grainy colour field
    (.hc-us-field, the hero and closing colours), one block behind the whole column. Cells are placed with

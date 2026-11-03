@@ -1,5 +1,5 @@
 // The check table (D-097, variant C of round r19) is the at-a-glance table on /compare, with all four options (D-114).
-// HomeCompare is the home "How we compare" section (D-217). The facts live in
+// HomeCompare is the home "How we compare" section (D-219). The facts live in
 // src/lib/compare.ts. Marks scan before words: a full mark is yes, a half mark is partly, an empty mark is no.
 import { COST, MARK_LABEL, OPTIONS, ROWS, type Mark, type OptionId, type RowId } from "@/lib/compare";
 import type { Vars } from "./drawn";
@@ -42,7 +42,7 @@ export function CompareLegend({ marks }: { marks: Mark[] }) {
   return <p className="cmp-legend">{marks.map((m) => <span key={m}><MarkIcon m={m} /> {MARK_LABEL[m]}</span>)}</p>;
 }
 
-/** Home "How we compare" (D-217, round r33 variant A3): price first, then four traits. Only our column carries checks,
+/** Home "How we compare" (D-219, round r33 variant A3): price first, then four traits. Only our column carries checks,
  *  on a grainy colour field that runs unbroken down the column. Each cell gets its grid place as CSS variables: --r/--c
  *  on wide screens (4 columns), --pr/--pc on phones (3 columns; the row label sits above the tutor and centre cells and
  *  our cell spans both rows, so our column never breaks). */
