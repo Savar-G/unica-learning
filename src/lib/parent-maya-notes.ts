@@ -25,8 +25,17 @@ export function sessionWhen(note: ParentNote, zone: FamilyZone): string {
   return `${day} · ${familyTime(at, zone)} · ${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
 }
 
-export function notesPage(raw: string | string[] | undefined): number {
-  return typeof raw === "string" && /^[1-9]\d{0,5}$/.test(raw) ? Number(raw) - 1 : 0;
+type NoteCursor = { at: string; id: string; direction: "older" | "newer" };
+function noteCursor(raw: string | string[] | undefined): NoteCursor | null {
+  if (typeof raw !== "string" || raw.length > 500) return null;
+  try {
+    const c = JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
+    return c && typeof c.at === "string" &&
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(c.at) &&
+      Number.isFinite(Date.parse(c.at)) && new Date(c.at.slice(0, 10)).toISOString().slice(0, 10) === c.at.slice(0, 10) &&
+      typeof c.id === "string" && UUID.test(c.id) && (c.direction === "older" || c.direction === "newer")
+      ? { at: c.at, id: c.id.toLowerCase(), direction: c.direction } : null;
+  } catch { return null; }
 }
 
 /** Only safe metadata comes from the session table. The notes and transcripts still use parent-session RLS. */
@@ -47,20 +56,32 @@ export async function latestParentMayaNotes(db: SupabaseClient<Database>, parent
   const rows = await Promise.all(children.map(async (child) => {
     const { data, error } = await db.from("maya_call_notes").select(COLUMNS)
       .eq("parent_id", parent).eq("child_id", child)
-      .order("call_ended_at", { ascending: false }).order("call_id").limit(1);
+      .order("call_ended_at", { ascending: false }).order("call_id", { ascending: false }).limit(1);
     if (error) throw new Error(`Latest parent note: ${error.message}`);
     return data ?? [];
   }));
   return new Map((await withSessions(db, rows.flat())).map((n) => [n.child_id, n]));
 }
 
-export async function listParentMayaNotes(db: SupabaseClient<Database>, parent: string, child: string, page: number) {
-  const start = page * NOTES_PAGE_SIZE;
-  const { data, error } = await db.from("maya_call_notes").select(COLUMNS)
-    .eq("parent_id", parent).eq("child_id", child)
-    .order("call_ended_at", { ascending: false }).order("call_id").range(start, start + NOTES_PAGE_SIZE);
+export async function listParentMayaNotes(db: SupabaseClient<Database>, parent: string, child: string, token?: string | string[]) {
+  const cursor = noteCursor(token);
+  const backwards = cursor?.direction === "newer";
+  let query = db.from("maya_call_notes").select(COLUMNS).eq("parent_id", parent).eq("child_id", child);
+  if (cursor) {
+    const comparison = backwards ? "gt" : "lt";
+    query = query.or(`call_ended_at.${comparison}.${cursor.at},and(call_ended_at.eq.${cursor.at},call_id.${comparison}.${cursor.id})`);
+  }
+  const { data, error } = await query.order("call_ended_at", { ascending: backwards })
+    .order("call_id", { ascending: backwards }).limit(NOTES_PAGE_SIZE + 1);
   if (error) throw new Error(`Parent notes: ${error.message}`);
-  return { notes: await withSessions(db, (data ?? []).slice(0, NOTES_PAGE_SIZE)), hasMore: (data?.length ?? 0) > NOTES_PAGE_SIZE };
+  const more = (data?.length ?? 0) > NOTES_PAGE_SIZE;
+  const picked = (data ?? []).slice(0, NOTES_PAGE_SIZE);
+  if (backwards) picked.reverse();
+  const link = (note: (typeof picked)[number], direction: NoteCursor["direction"]) =>
+    Buffer.from(JSON.stringify({ at: note.call_ended_at, id: note.call_id, direction })).toString("base64url");
+  const older = picked.length ? (backwards || more ? link(picked.at(-1)!, "older") : null) : backwards ? "start" : null;
+  const newer = picked.length ? (backwards ? more : cursor !== null) ? link(picked[0], "newer") : null : cursor && !backwards ? "start" : null;
+  return { notes: await withSessions(db, picked), older, newer };
 }
 
 export async function readParentMayaNote(db: SupabaseClient<Database>, parent: string, child: string, call: string): Promise<ParentNoteSession | null> {
