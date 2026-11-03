@@ -43,7 +43,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     const friday = p.type === "friday-5" || (p.expected ?? []).some(q => q.part === "friday-5") || p.questions.some(q => q.part === "friday-5") || p.omissions?.some(o => o.kind === "friday-5");
     if (friday && p.questions.filter(q => q.part === "friday-5" && q.package && q.check.status !== "failed").length !== 5) issues.push({ page: p.number, kind: "coverage", reason: "Friday 5 must contain five sound questions" });
     if ((p.leftOut?.length ?? 0) > 0 || p.omissions?.some(o => o.requested > o.placed)) issues.push({ page: p.number, kind: "coverage", reason: "the page lost planned questions" });
-    const questions = p.questions.filter(q => q.package && q.place !== "warm-up");
+    const questions = p.questions.filter(q => q.package && q.place !== "warm-up" && !q.existing);
     const counts = new Map<string, number>();
     for (const q of questions) {
       const key = taskType(q.package!);
@@ -51,11 +51,11 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       types.set(key, (types.get(key) ?? 0) + 1);
     }
     for (const [type, count] of counts) if (questions.length >= 3 && count > Math.ceil(questions.length / 2)) issues.push({ page: p.number, kind: "variety", reason: `${type} fills ${count} of ${questions.length} questions; the page limit is half, rounded up` });
-    for (const q of p.questions.filter(q => q.place === "how-do-you-know")) if (!/first story on this page/i.test(q.package?.text ?? "") || !p.questions.some(s => ["word-problems", "picture-stories"].includes(s.place ?? "") && s.package && s.check.status !== "failed")) issues.push({ page: p.number, kind: "coverage", reason: "the explanation has no story on this page" });
+    for (const q of p.questions.filter(q => q.place === "how-do-you-know" && !q.existing)) if (!/first story on this page/i.test(q.package?.text ?? "") || !p.questions.some(s => ["word-problems", "picture-stories"].includes(s.place ?? "") && s.package && s.check.status !== "failed")) issues.push({ page: p.number, kind: "coverage", reason: "the explanation has no story on this page" });
   }
   for (const [type, count] of types) if (all.length >= 12 && count > all.length / 2) for (const p of pages.filter(p => p.questions.some(q => q.package && taskType(q.package) === type))) issues.push({ page: p.number, kind: "variety", reason: `${type} exceeds half of the book's non-warm-up questions` });
   for (const p of pages) for (const q of p.questions) {
-    if (!q.package || q.place === "warm-up") continue;
+    if (!q.package || q.place === "warm-up" || q.existing) continue;
     const pkg = q.package;
     if (q.place === "how-do-you-know" && /first story on this page/.test(pkg.text)) continue;
     if (wordedTask(pkg)) {
@@ -73,7 +73,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     const ofDay = pages.filter(p => p.day === day);
     const questions = ofDay.flatMap(p => p.questions);
     const practice = questions.filter(q => q.place !== "challenge" && q.package);
-    for (const p of ofDay) for (const q of p.questions.filter(q => q.place === "challenge")) {
+    for (const p of ofDay) for (const q of p.questions.filter(q => q.place === "challenge" && !q.existing)) {
       const pkg = q.package;
       const demand = pkg ? reasoningSteps(pkg) : 0;
       const cap = pkg ? dayDifficulty(pkg.level, day).numberRange.max : undefined;
@@ -92,10 +92,10 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
   }
   // Compare the numbers of the same skills, so changing Unit B does not hide a
   // flat main-unit sequence. A short review need not contain days 8 to 10.
-  const skills = new Set(pages.flatMap(p => p.questions.flatMap(q => q.package?.skill.skills ?? [])));
+  const skills = new Set(pages.flatMap(p => p.questions.flatMap(q => q.existing ? [] : q.package?.skill.skills ?? [])));
   for (const skill of skills) {
     // An earlier skill's fixed review range need not grow with the new unit.
-    if (/make-10|partners-of-10/.test(skill)) continue;
+    if (/make-10|partners-of-10|multiplication-facts|division-facts/.test(skill)) continue;
     if (skill.startsWith("K") && pages.some(p => p.questions.some(q => (q.package?.level ?? 0) > 3))) continue;
     const largest = (late: boolean) => Math.max(0, ...pages.filter(p => p.day !== null && (late ? p.day >= 8 : p.day <= 3)).flatMap(p => p.questions.flatMap(q => q.package?.skill.skills.includes(skill) ? printedNumbers({...q.package, wrongAnswers: [], easierExample: null}).map(Math.abs) : [])));
     const early = largest(false), late = largest(true);

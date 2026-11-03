@@ -72,7 +72,7 @@ it("retains five Friday questions and gives every Challenge more reasoning than 
   expect(failures,JSON.stringify(failures)).toEqual([]);
   for (const day of [5,10]) expect(draft.pages.filter(p=>p.day===day).flatMap(p=>p.questions).filter(q=>q.part==="friday-5").length).toBe(5);
   const challenges = draft.pages.flatMap(p=>p.questions.filter(q=>q.place==="challenge").map(q=>({q,day:p.day!})));
-  expect(challenges).toHaveLength(10);
+  expect(challenges).toHaveLength(20);
   for (const {q,day} of challenges) {
     const practice = draft.pages.filter(p=>p.day===day).flatMap(p=>p.questions).filter(q=>q.place!=="challenge" && q.package);
     expect(reasoningSteps(q.package!)).toBeGreaterThan(Math.max(...practice.map(q=>reasoningSteps(q.package!))));
@@ -238,4 +238,22 @@ it("refuses an impossible practice page before writing instead of removing its l
   const page=draft.pages.find(p=>p.day!==null)!;
   page.questions=[];page.expected=[];
   expect(workbookQuality(draft.pages).issues.some(i=>i.page===page.number && i.kind==="coverage")).toBe(true);
+});
+
+it("keeps uncovered U14 skills on the existing writer and preserves their policy in edits",async()=>{
+  const o=fixture();
+  const result=planWorkbook(samplePlanInput(c,sampleChild(c,"U14")!,"first"));
+  if(!result.ok)throw new Error(result.reason);
+  o.input.plan={...result.plan,days:result.plan.days.slice(0,1)};
+  const {draft}=await make(o);
+  const questions=draft.pages.flatMap(p=>p.questions);
+  expect(questions.some(q=>q.existing && q.package?.skill.skills.includes("4.5-multiply-1-digit"))).toBe(true);
+  expect(questions.some(q=>q.itemPlan && q.package?.skill.skills.includes("4.8-multiplication-facts"))).toBe(true);
+  expect(questions.filter(q=>q.check.status==="failed").map(q=>q.check)).toEqual([]);
+  const requests=o.ai.requests.map(r=>JSON.parse((r.content[0] as {text:string}).text));
+  expect(requests.some(r=>r.slots.some((s:{contract?:unknown;skills:string[]})=>!s.contract && s.skills.includes("4.5-multiply-1-digit")))).toBe(true);
+  const page=draft.pages.find(p=>p.questions.some(q=>q.existing && q.package && q.place!=="spot-the-error"))!;
+  const q=page.questions.find(q=>q.existing && q.package && q.place!=="spot-the-error")!;
+  const edited=await reviseWorkbookPage(o.input,o.deps,page,{question:q.number,note:"Keep the numbers."});
+  expect(edited.questions.find(x=>x.number===q.number)!.package!.operation).toEqual(q.package!.operation);
 });

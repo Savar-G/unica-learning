@@ -35,3 +35,46 @@ export const STORY_FRAMES = {
     "{name} has {t} shells to paint. {He} paints {b}. How many shells must {he} still paint?",
   ],
 } as const;
+
+/** Short forms for three-line cards. The operation and its numbers stay fixed. */
+export const COMPACT_STORY_FRAMES = {
+  add: [
+    "{name} has {a} {thing}. {He} gets {b} more. How many {thing} now?",
+    "{name} finds {a} {thing}, then {b} more. How many {thing} did {he} find?",
+    "{name} packs {a} books. {other} brings {b} more. How many books now?",
+    "{name} puts {a} cups on a tray. {He} adds {b}. How many cups now?",
+    "{name} sees {a} birds. {b} more land. How many birds now?",
+    "{name} has {a} red and {b} blue pens. How many pens does {he} have?",
+    "{name} picks {a} plums before lunch and {b} after. How many plums?",
+    "{name} puts {a} blocks in a tower, then {b} more. How many blocks?",
+    "{name} hangs up {a} hats. {other} adds {b} hats. How many hats now?",
+    "{name} counts {a} kites. Then {b} more go up. How many kites now?",
+    "{name} puts {a} socks in a bag, then {b} more. How many socks?",
+    "{name} draws {a} dots, then {b} more. How many dots did {he} draw?",
+    "{name} puts {a} cars on a mat. {He} adds {b}. How many cars now?",
+    "{name} collects {a} leaves and {b} more. How many leaves now?",
+    "{name} has {a} big and {b} small shells. How many shells?",
+  ],
+  subtract: [
+    "{name} has {t} {thing}. {He} gives {b} away. How many {thing} now?",
+    "{name} has {t} books. {He} lends {b}. How many books now?",
+    "{name} has {t} apples. {He} eats {b}. How many apples now?",
+    "{name} has {t} cups on a tray. {He} removes {b}. How many cups now?",
+    "{name} sees {t} birds. {b} fly away. How many birds now?",
+    "{name} has {t} socks to fold. {He} folds {b}. How many still to fold?",
+    "{name} has {t} kites in a box. {He} takes out {b}. How many kites now?",
+    "{name} builds with {t} blocks. {He} removes {b}. How many blocks now?",
+    "{name} has {t} pens. {He} gives {b} to {other}. How many pens now?",
+    "{name} has {t} hats on hooks. {He} packs {b}. How many hats on hooks?",
+    "{name} has {t} beads. {He} uses {b}. How many beads now?",
+    "{name} has {t} plums in a bag. {b} fall out. How many plums now?",
+    "{name} has {t} balls. {He} rolls {b} away. How many balls now?",
+    "{name} has {t} shells to paint. {He} paints {b}. How many still to paint?",
+    "{name} has {t} stickers. {He} uses {b}. How many stickers now?",
+  ],
+  "missing-addend": [
+    "{name} needs {t} {thing}. {He} has {a}. How many more {thing}?",
+    "{name} has {a} books. {He} needs {t}. How many more books?",
+    "{name} puts {a} cups on a tray. {He} needs {t}. How many more cups?",
+  ],
+} as const;

@@ -6,7 +6,7 @@ import type { AiItem, AiOperation, AiValue, BuiltQuestion, GeneratedFormat, Slot
 import { buildQuestion } from "./workbook-generator-items";
 import { checkQuestionPackage } from "./question-package";
 import { LIKELIHOOD_EVENTS } from "./workbook-likelihood-bank";
-import { STORY_FRAMES } from "./workbook-story-bank";
+import { STORY_FRAMES, COMPACT_STORY_FRAMES } from "./workbook-story-bank";
 
 export type QuestionType = keyof typeof approvedSkills;
 export interface ItemDayRange { min: number; max: number; pictures: boolean; help: "full" | "partial" | "none" }
@@ -17,6 +17,17 @@ export interface ItemPlan {
   /** The exact multiset of numbers that the story must print, including duplicates. */
   numbers: number[];
   dayRange: ItemDayRange;
+  textBudget?: { lines: number; perLine: number; characters: number };
+}
+
+export function itemTextLines(text: string, perLine: number): number {
+  let lines = 1, used = 0;
+  for (const word of text.trim().split(/\s+/)) {
+    if (used && used + word.length + 1 > perLine) { lines++; used = 0; }
+    used += word.length + (used ? 1 : 0);
+    if (used > perLine) { lines += Math.floor((used - 1) / perLine); used = ((used - 1) % perLine) + 1; }
+  }
+  return lines;
 }
 
 /** No default format for a skill absent from this reviewed list. */
@@ -66,14 +77,14 @@ export function itemExamples(type: QuestionType, level: number, source: ItemPlan
   const key = source === "explain" ? "explain" : type;
   const items: readonly string[] = key in band ? band[key as keyof typeof band] : ITEM_EXAMPLES.early[key];
   const storyKind = type === "sequence" ? "add" : type;
-  const examples = source === "story" && (storyKind === "add" || storyKind === "subtract") ? STORY_FRAMES[storyKind].slice(0, 4).map(f => fillFrame(f,
+  const examples = source === "story" && (storyKind === "add" || storyKind === "subtract") ? (level <= 9 ? COMPACT_STORY_FRAMES : STORY_FRAMES)[storyKind].slice(0, 4).map(f => fillFrame(f,
     level <= 9 ? {a:3,b:2,t:5} : level <= 18 ? {a:268,b:157,t:425} : {a:1250,b:875,t:2125}, "Mia", "shells")) : [];
   const challenge = source === "story" && type === "sequence" ? ["Mia has 5 shells. She gets 1 more. Then she gets 2 more. How many shells does Mia have now?", "Ben packs 10 books. Ava brings 1 book. Leo brings 2 books. Mia brings 3 books. How many books does Ben pack?"] : [];
   return { band: level <= 9 ? "K-2" : level <= 18 ? "3-5" : "6-9", type: key, items: [...items, ...examples, ...challenge] };
 }
 
 /** One slot's deterministic item, including the story's fixed math. */
-export function planItem(o: { skill: string; slot: string; level: number; day: number; ordinal: number; range: ItemDayRange; story?: boolean; explain?: boolean; challenge?: boolean; format?: GeneratedFormat; attempt?: number; compact?: boolean }): ItemPlan | null {
+export function planItem(o: { skill: string; slot: string; level: number; day: number; ordinal: number; range: ItemDayRange; story?: boolean; explain?: boolean; challenge?: boolean; format?: GeneratedFormat; attempt?: number; compact?: boolean; textBudget?: ItemPlan["textBudget"] }): ItemPlan | null {
   const type = approvedQuestionTypes(o.skill)[0];
   if (!type) return null;
   const r = o.range;
@@ -92,7 +103,8 @@ export function planItem(o: { skill: string; slot: string; level: number; day: n
   let numbers: number[] = [];
   switch (type === "sequence" && (source === "story" || o.format === "spot-the-error" || o.format === "two-ways") ? "add" : type) {
     case "likelihood": {
-      item.text = `${LIKELIHOOD_EVENTS[seed % LIKELIHOOD_EVENTS.length]} Circle never, maybe or always.`;
+      item.text = `${LIKELIHOOD_EVENTS[seed % LIKELIHOOD_EVENTS.length]} Circle a word.`;
+      if (o.textBudget && (item.text.length > o.textBudget.characters || itemTextLines(item.text,o.textBudget.perLine)>o.textBudget.lines)) return null;
       item.format = "written-reason"; // Built as a circle region below, using the existing renderer.
       break;
     }
@@ -164,12 +176,13 @@ export function planItem(o: { skill: string; slot: string; level: number; day: n
         else { y = 17; x = Math.floor((Math.max(top, min + 27) - y) / 10) * 10 - 2; }
         if (x < min || x + (type === "subtract" ? 0 : y) > max) return null;
       }
-      if (type === "multiply" || type === "divide") { if (max < 4) return null; y = 2 + seed % Math.min(9, Math.floor(max / 2) - 1); x = Math.max(2, Math.min(10, Math.floor(max / y), a)); kind = type; if (type === "divide") x *= y; }
+      if (type === "multiply" || type === "divide") { if (max < 4) return null; y = 2 + seed % Math.min(9, Math.floor(max / 2) - 1); x = Math.max(2, Math.min(2 + Math.floor(seed / 9) % 9, Math.floor(max / y))); kind = type; if (type === "divide") x *= y; }
       item.operation = operation(kind, x, y);
       if (r.pictures && top <= 10 && ["add", "subtract", "missing-addend"].includes(kind) && o.format !== "spot-the-error") item.figure = "ten-frame";
       if (kind === "missing-addend" && item.figure) item.figureShows = "part";
       const sign = { add: "+", subtract: "-", multiply: "×", divide: "÷", "missing-addend": "+" }[kind as "add"];
       item.text = kind === "missing-addend" ? `${x} + ? = ${y}` : seed % 2 ? `${x} ${sign} ${y} = ?` : `? = ${x} ${sign} ${y}`;
+      if (o.compact && source === "code" && kind !== "missing-addend") item.text = `${x}${sign}${y}=`;
       numbers = [x, y];
       if (source === "story") item.text = kind === "missing-addend" ? `Mia needs ${y} shells. She has ${x}. How many more shells does Mia need?` : kind === "subtract" ? `Mia has ${x} shells. She gives ${y} away. How many shells does Mia have now?` : kind === "multiply" ? `Mia fills ${x} bags. Each bag holds ${y} shells. How many shells does Mia pack?` : kind === "divide" ? `Mia shares ${x} shells equally among ${y} bags. How many shells does Mia put in each bag?` : `Mia has ${x} shells. She gets ${y} more. How many shells does Mia have now?`;
       item.format = source === "story" ? o.format === "tick-and-number" ? "tick-and-number" : "show-work" : o.format ?? "write-number";
@@ -196,40 +209,53 @@ export function planItem(o: { skill: string; slot: string; level: number; day: n
     });
     const name = PEOPLE[seed % PEOPLE.length], thing = THINGS[Math.floor(seed / PEOPLE.length) % THINGS.length];
     const extra = item.operation.kind === "add" ? STORY_FRAMES.add : item.operation.kind === "subtract" ? STORY_FRAMES.subtract : [];
-    const words = [...frames.map(f => f.f), ...extra].map(f => fillFrame(f, {a: pair[0], b: pair[1], t: pair[0] + pair[1]}, name, thing));
-    const sound = words.filter(text => stable((text.match(/\d+/g) ?? []).map(Number).sort((a,b)=>a-b)) === stable([...numbers].sort((a,b)=>a-b)));
+    const compact = COMPACT_STORY_FRAMES[item.operation.kind as keyof typeof COMPACT_STORY_FRAMES] ?? [];
+    const words = [...frames.map(f => f.f), ...extra, ...compact].map(f => fillFrame(f, {a: pair[0], b: pair[1], t: pair[0] + pair[1]}, name, thing));
+    const sound = words.filter(text => stable((text.match(/\d+/g) ?? []).map(Number).sort((a,b)=>a-b)) === stable([...numbers].sort((a,b)=>a-b)) && (!o.textBudget || text.length <= o.textBudget.characters && itemTextLines(text, o.textBudget.perLine) <= o.textBudget.lines));
+    if (!sound.length) return null;
     if (sound.length) { item.text = sound[Math.floor(seed / 3) % sound.length]; item.name = name; item.thing = thing; }
   }
   if (o.challenge) {
     // A count-on challenge has two changes, then three changes on later days.
     // Other skills require their own reviewed multi-step builder.
     if (!/^1\.1-(?:count|read-write|number-line)/.test(o.skill)) return null;
-    const changes = o.day >= 8 ? [1, 2, 3] : [1, 2];
+    const second = (Number(o.slot.split(".")[1]) || 1) > 1;
+    const changes = o.day >= 8 ? [1, 2, second ? 4 : 3] : [1, second ? 3 : 2];
     const start = max - changes.reduce((n, v) => n + v, 0);
     if (start < 1) return null;
     const values = [start, ...changes];
     item.operation = { kind: "evaluate", operands: [], expression: values.join(" + "), unit: null, denominator: null, values: [] };
     const settings = [
-      [`Mia has ${start} shells. She gets 1 more. Then she gets 2 more.`, "How many shells does Mia have now?"],
-      [`Ben puts ${start} apples in a bag. He adds 1 apple. Ava puts in 2 more.`, "How many apples are in the bag now?"],
-      [`Ava sees ${start} birds on a fence. 1 bird lands. Then 2 more birds land.`, "How many birds does Ava see now?"],
-      [`Leo builds a tower with ${start} blocks. He puts 1 block on top. Then he adds 2 more blocks.`, "How many blocks are in Leo's tower now?"],
-      [`Mia packs ${start} books. Ben brings 1 book. Ava brings 2 more books.`, "How many books does Mia pack?"],
-      [`Ben draws ${start} dots. He draws 1 more dot. Then he draws 2 more dots.`, "How many dots did Ben draw?"],
-      [`Ava finds ${start} buttons. She finds 1 under a chair. Then she finds 2 in a box.`, "How many buttons did Ava find?"],
-      [`Leo has ${start} cars on a shelf. He puts 1 car beside them. Then he puts down 2 more cars.`, "How many cars are on the shelf now?"],
-      [`Mia counts ${start} ducks in a pond. 1 duck swims over. Then 2 more ducks join them.`, "How many ducks does Mia see now?"],
-      [`Ben puts ${start} pens on a desk. Ava adds 1 pen. Leo adds 2 more pens.`, "How many pens are on the desk now?"],
+      [`Mia has ${start} shells. She gets 1 more. Then she gets ${changes[1]} more.`, "How many shells does Mia have now?"],
+      [`Ben puts ${start} apples in a bag. He adds 1 apple. Ava puts in ${changes[1]} more.`, "How many apples are in the bag now?"],
+      [`Ava sees ${start} birds on a fence. 1 bird lands. Then ${changes[1]} more birds land.`, "How many birds does Ava see now?"],
+      [`Leo builds a tower with ${start} blocks. He puts 1 block on top. Then he adds ${changes[1]} more blocks.`, "How many blocks are in Leo's tower now?"],
+      [`Mia packs ${start} books. Ben brings 1 book. Ava brings ${changes[1]} more books.`, "How many books does Mia pack?"],
+      [`Ben draws ${start} dots. He draws 1 more dot. Then he draws ${changes[1]} more dots.`, "How many dots did Ben draw?"],
+      [`Ava finds ${start} buttons. She finds 1 under a chair. Then she finds ${changes[1]} in a box.`, "How many buttons did Ava find?"],
+      [`Leo has ${start} cars on a shelf. He puts 1 car beside them. Then he puts down ${changes[1]} more cars.`, "How many cars are on the shelf now?"],
+      [`Mia counts ${start} ducks in a pond. 1 duck swims over. Then ${changes[1]} more ducks join them.`, "How many ducks does Mia see now?"],
+      [`Ben puts ${start} pens on a desk. Ava adds 1 pen. Leo adds ${changes[1]} more pens.`, "How many pens are on the desk now?"],
+      [`Mia puts ${start} cups on a tray. Ben adds 1 cup. Ava adds ${changes[1]} cups.`, "How many cups are on the tray now?"],
+      [`Ben collects ${start} leaves. He finds 1 by a tree. Then he finds ${changes[1]} by a gate.`, "How many leaves did Ben collect?"],
+      [`Ava hangs up ${start} hats. Leo brings 1 hat. Mia brings ${changes[1]} hats.`, "How many hats are hanging up now?"],
+      [`Leo puts ${start} socks in a bag. He finds 1 sock. Then he finds ${changes[1]} more socks.`, "How many socks does Leo pack?"],
+      [`Mia picks ${start} plums. Ben gives her 1 plum. Ava gives her ${changes[1]} plums.`, "How many plums does Mia have now?"],
+      [`Ben sets out ${start} plates. He adds 1 plate for Mia. Then he adds ${changes[1]} more plates.`, "How many plates are set out now?"],
+      [`Ava buys ${start} pens. Leo gives her 1 pen. She finds ${changes[1]} pens in her desk.`, "How many pens does Ava have now?"],
+      [`Leo has ${start} stickers. He gets 1 for a game. Then he gets ${changes[1]} for a race.`, "How many stickers does Leo have now?"],
+      [`Mia lines up ${start} shoes. She adds 1 shoe. Then she puts down ${changes[1]} more shoes.`, "How many shoes are in the line now?"],
+      [`Ben counts ${start} boats. 1 boat arrives. Then ${changes[1]} more boats arrive.`, "How many boats does Ben see now?"],
     ];
-    const setting = settings[(o.day - 1) % settings.length];
-    item.text = `${setting[0]}${changes.length === 3 ? " Mia adds 3 more." : ""} ${setting[1]}`;
+    const setting = settings[(o.day - 1) % 10 + (second ? 10 : 0)];
+    item.text = `${setting[0]}${changes.length === 3 ? ` Mia adds ${changes[2]} more.` : ""} ${setting[1]}`;
     item.format = "show-work"; item.figure = null; item.sequence = null;
     item.easier = { text: `${[start - 1, ...changes].join(" + ")} = ?`, operation: { ...item.operation, expression: [start - 1, ...changes].join(" + ") } };
     item.wrongAnswers = [{ value: itemNumber(max - 1), cause: "careless", description: "Counts one too few.", step: null }]; numbers = values;
-    return { type, source: "story", item, numbers, dayRange: r };
+    return { type, source: "story", item, numbers, dayRange: r, ...(o.textBudget ? { textBudget: o.textBudget } : {}) };
   }
   if (source === "explain") { item.text = "How can you check your answer to the first story on this page?"; item.format = "written-reason"; item.operation = null; item.figure = null; item.figureShows = null; item.numbers = []; item.sequence = null; item.relation = null; item.wrongAnswers = []; item.easier = null; numbers = []; }
-  return { type, source, item, numbers, dayRange: r };
+  return { type, source, item, numbers, dayRange: r, ...(o.textBudget ? { textBudget: o.textBudget } : {}) };
 }
 
 const stable = (value: unknown): string => JSON.stringify(value, (_key, v) => v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v);
@@ -243,6 +269,7 @@ export function itemContractProblem(raw: unknown, plan: ItemPlan): string | null
   for (const field of ["numbers", "places", "sequence", "relation", "direction", "figure", "figureShows", "easier", "wrongAnswers", "shownWrong"] as const)
     if (stable(r[field]) !== stable(plan.item[field])) return `the writer changed the code-picked ${field}`;
   if (typeof r.text !== "string") return "the writer gave no question text";
+  if (plan.textBudget && (r.text.length > plan.textBudget.characters || itemTextLines(r.text, plan.textBudget.perLine) > plan.textBudget.lines)) return `the text must fit ${plan.textBudget.lines} lines of ${plan.textBudget.perLine} characters`;
   if (plan.source === "explain" && !/^(?:How (?:do|can|did)|Why\b|Explain\b)/i.test(r.text)) return "an explain item must ask how or why";
   if (plan.source === "explain" && !/first story on this page/i.test(r.text)) return "the explanation must refer to the first story on this page";
   if (plan.source === "explain" && PEOPLE.some(name => new RegExp(`\\b${name}\\b`).test(r.text))) return "refer to the story without adding another named person";

@@ -8,14 +8,14 @@ Simple earlier skills can appear as review in a later grade band.
 
 | Band | Type | Examples sent to the writer |
 |---|---|---|
-| K-2 | sequence | Fill in the missing numbers. [3, 4, box, 6]<br>Count back. [8, box, 6, 5]<br>Mia packs 3 books for a trip. Ben brings 2 more books. How many books does Mia pack?<br>Mia puts 3 apples on a plate. She puts 2 apples on another plate. How many apples are on the plates?<br>Mia hangs 3 hats by the door. Ben hangs up 2 more hats. How many hats are by the door now?<br>Mia has 3 crayons in a box. She finds 2 crayons under the desk. How many crayons does she have now?<br>Mia has 5 shells. She gets 1 more. Then she gets 2 more. How many shells does Mia have now?<br>Ben packs 10 books. Ava brings 1 book. Leo brings 2 books. Mia brings 3 books. How many books does Ben pack? |
+| K-2 | sequence | Fill in the missing numbers. [3, 4, box, 6]<br>Count back. [8, box, 6, 5]<br>Mia has 3 shells. She gets 2 more. How many shells now?<br>Mia finds 3 shells, then 2 more. How many shells did she find?<br>Mia packs 3 books. Ben brings 2 more. How many books now?<br>Mia puts 3 cups on a tray. She adds 2. How many cups now?<br>Mia has 5 shells. She gets 1 more. Then she gets 2 more. How many shells does Mia have now?<br>Ben packs 10 books. Ava brings 1 book. Leo brings 2 books. Mia brings 3 books. How many books does Ben pack? |
 | K-2 | count | Colour 5 dots in the row.<br>Fill a ten-frame to show 7. |
 | K-2 | likelihood | The event bank below. Code writes these items. |
 | K-2 | relation | Mia sees 3 red counters and 5 blue counters. Are there more red counters or blue counters?<br>Is 8 close to 0 or 10? |
 | K-2 | bond | 4 + ? = 9<br>Mia needs 10 shells. She has 6. How many more shells does she need? |
 | K-2 | step | 7 + 1 = ?<br>Ben has 8 cars. He gives 2 away. How many cars does Ben have now? |
-| K-2 | add | 7 + 5 = ?<br>Ava has 3 apples. She gets 4 more. How many apples does Ava have now?<br>Mia packs 3 books for a trip. Ben brings 2 more books. How many books does Mia pack?<br>Mia puts 3 apples on a plate. She puts 2 apples on another plate. How many apples are on the plates?<br>Mia hangs 3 hats by the door. Ben hangs up 2 more hats. How many hats are by the door now?<br>Mia has 3 crayons in a box. She finds 2 crayons under the desk. How many crayons does she have now? |
-| K-2 | subtract | 9 - 4 = ?<br>Leo has 9 cups. He gives 4 away. How many cups does Leo have now?<br>Mia has 5 books in a pile. She puts 2 on a shelf. How many books are in the pile now?<br>Mia has 5 apples on a tray. She packs 2 for a trip. How many apples are on the tray now?<br>Mia has 5 cups on a table. She puts 2 in a sink. How many cups are on the table now?<br>Mia has 5 crayons in a pot. She lends 2 to Ben. How many crayons are in the pot now? |
+| K-2 | add | 7 + 5 = ?<br>Ava has 3 apples. She gets 4 more. How many apples does Ava have now?<br>Mia has 3 shells. She gets 2 more. How many shells now?<br>Mia finds 3 shells, then 2 more. How many shells did she find?<br>Mia packs 3 books. Ben brings 2 more. How many books now?<br>Mia puts 3 cups on a tray. She adds 2. How many cups now? |
+| K-2 | subtract | 9 - 4 = ?<br>Leo has 9 cups. He gives 4 away. How many cups does Leo have now?<br>Mia has 5 shells. She gives 2 away. How many shells now?<br>Mia has 5 books. She lends 2. How many books now?<br>Mia has 5 apples. She eats 2. How many apples now?<br>Mia has 5 cups on a tray. She removes 2. How many cups now? |
 | K-2 | order | Write the numbers from least to greatest. [6, 2, 9]<br>Write the numbers from greatest to least. [3, 8, 5] |
 | K-2 | places | Write the tens and ones in 17.<br>Write the tens and ones in 24. |
 | K-2 | multiply | 3 × 4 = ?<br>Mia fills 3 bags. Each bag has 4 shells. How many shells does Mia pack? |
@@ -141,7 +141,7 @@ It uses the upper number limit for that day.
 
 ## Skill limits
 
-The list contains 65 skill IDs. Six earlier mappings now fail closed:
+The list contains 65 skill IDs. Six earlier hand-built mappings now use the existing checked writer:
 
 - `K2-five-frame`: no five-frame representation.
 - `2.1-decompose-tens-ones`: no checked alternative decomposition builder.
@@ -150,7 +150,7 @@ The list contains 65 skill IDs. Six earlier mappings now fail closed:
 - `6.5-compare-order`: no approved mixed-number ordering builder.
 - `9.1-compare-order`: no approved rational number-line builder.
 
-A skill without a reviewed Challenge builder also fails closed for that slot.
+A skill without a code Challenge builder keeps the existing checked writer.
 The current Challenge builder covers the supported U4 count-on skills.
 
 ## Additional story frame candidates
@@ -190,3 +190,47 @@ The current Challenge builder covers the supported U4 count-on skills.
 - Mia has 5 balls in a basket. She rolls 2 onto a mat. How many balls are in the basket now?
 - Mia has 5 buttons in a box. She uses 2 to mend a coat. How many buttons are in the box now?
 - Mia has 5 shells to paint. She paints 2. How many shells must she still paint?
+
+## Compact story candidates for narrow cards
+
+### add
+
+- Mia has 3 shells. She gets 2 more. How many shells now?
+- Mia finds 3 shells, then 2 more. How many shells did she find?
+- Mia packs 3 books. Ben brings 2 more. How many books now?
+- Mia puts 3 cups on a tray. She adds 2. How many cups now?
+- Mia sees 3 birds. 2 more land. How many birds now?
+- Mia has 3 red and 2 blue pens. How many pens does she have?
+- Mia picks 3 plums before lunch and 2 after. How many plums?
+- Mia puts 3 blocks in a tower, then 2 more. How many blocks?
+- Mia hangs up 3 hats. Ben adds 2 hats. How many hats now?
+- Mia counts 3 kites. Then 2 more go up. How many kites now?
+- Mia puts 3 socks in a bag, then 2 more. How many socks?
+- Mia draws 3 dots, then 2 more. How many dots did she draw?
+- Mia puts 3 cars on a mat. She adds 2. How many cars now?
+- Mia collects 3 leaves and 2 more. How many leaves now?
+- Mia has 3 big and 2 small shells. How many shells?
+
+### subtract
+
+- Mia has 5 shells. She gives 2 away. How many shells now?
+- Mia has 5 books. She lends 2. How many books now?
+- Mia has 5 apples. She eats 2. How many apples now?
+- Mia has 5 cups on a tray. She removes 2. How many cups now?
+- Mia sees 5 birds. 2 fly away. How many birds now?
+- Mia has 5 socks to fold. She folds 2. How many still to fold?
+- Mia has 5 kites in a box. She takes out 2. How many kites now?
+- Mia builds with 5 blocks. She removes 2. How many blocks now?
+- Mia has 5 pens. She gives 2 to Ben. How many pens now?
+- Mia has 5 hats on hooks. She packs 2. How many hats on hooks?
+- Mia has 5 beads. She uses 2. How many beads now?
+- Mia has 5 plums in a bag. 2 fall out. How many plums now?
+- Mia has 5 balls. She rolls 2 away. How many balls now?
+- Mia has 5 shells to paint. She paints 2. How many still to paint?
+- Mia has 5 stickers. She uses 2. How many stickers now?
+
+### missing-addend
+
+- Mia needs 5 shells. She has 3. How many more shells?
+- Mia has 3 books. She needs 5. How many more books?
+- Mia puts 3 cups on a tray. She needs 5. How many more cups?

@@ -57,6 +57,7 @@ import { workbookFiles } from "@/lib/workbook-store";
 import { workbookTemplate } from "@/lib/workbook-template";
 import { aiSolver, keySolver, type SolveLog, type Solver } from "@/lib/workbook-solve-check";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
+import { workbookBuilderCoverage } from "@/lib/workbook-builder-coverage";
 
 const PROJECT = "cdjobwsyzndtltzfpyqa";
 const URL = `https://${PROJECT}.supabase.co`;
@@ -475,17 +476,24 @@ async function writeIndex() {
     "|---|---|---|---|---|---|---|---|---|---|",
     ...rows,
     "",
+    "## Builder coverage (#480)",
+    `Fully covered levels (level and fluency skills): ${workbookBuilderCoverage(BC).filter(c=>c.fullyCovered).map(c=>c.level).join(", ") || "none"}. Other skills keep the existing writer with the current daily checks. Personal review skills are routed individually.`,
+    "| Level | Code builders | Existing writer | Missing builder IDs |",
+    "|---|---|---|---|",
+    ...workbookBuilderCoverage(BC).map(c=>`| ${c.level} | ${c.approved.length} | ${c.existing.length} | ${c.existing.join(", ") || "none"} |`),
+    "",
     "## Quality score (#480)",
     "The failure limit is below 5%. Time is an estimate from the actual items, reading and work space. Page fullness is vertical use of the measured content area, including writing space. A score does not replace Savar's sample and example-bank approval.",
-    "| Level | Failed | Dropped for room | Page fullness min / mean | Minutes per day | AI calls | Ship gate |",
-    "|---|---|---|---|---|---|---|",
+    "| Level | Failed | Dropped for room | Page fullness min / mean | Minutes per day | AI calls | Technical checks | Ship gate |",
+    "|---|---|---|---|---|---|---|---|",
     ...ok.map(r => {
       const q = r.draft.quality ?? workbookQuality(r.draft.pages);
       const uses = r.pageUse.flatMap(p => p.fraction === null ? [] : [p.fraction]);
       const fullness = uses.length ? `${(Math.min(...uses) * 100).toFixed(1)}% / ${(uses.reduce((a,b)=>a+b,0) / uses.length * 100).toFixed(1)}%` : "not measured";
       const calls = providerCounts.get(r.label);
       const underfilled = r.pageUse.length === 0 || uses.length !== r.pageUse.length || uses.some(x => x < .8);
-      return `| ${r.label} | ${(q.failedRate * 100).toFixed(2)}% | ${q.dropped} | ${fullness} | ${q.days.map(d=>`${d.day}: ${d.minutes.toFixed(1)}`).join("; ")} | subscription ${calls?.subscription ?? 0}; API ${calls?.api ?? 0} | ${!values.fake && q.ready && !underfilled && r.renderProblems.length === 0 ? "technical checks pass; approval pending" : "HOLD"} |`;
+      const passed=q.ready && !underfilled && r.renderProblems.length===0;
+      return `| ${r.label} | ${(q.failedRate * 100).toFixed(2)}% | ${q.dropped} | ${fullness} | ${q.days.map(d=>`${d.day}: ${d.minutes.toFixed(1)}`).join("; ")} | subscription ${calls?.subscription ?? 0}; API ${calls?.api ?? 0} | ${passed ? "PASS" : "FAIL"} | ${!values.fake && passed ? "technical checks pass; approval pending" : "HOLD"} |`;
     }),
     ...ok.map(r => `- ${r.label}: layout omissions ${(r.draft.quality ?? workbookQuality(r.draft.pages)).dropped - r.draft.pages.reduce((n,p)=>n+(p.leftOut?.length??0),0)}; fit omissions ${r.draft.pages.reduce((n,p)=>n+(p.leftOut?.length??0),0)}; total ${(r.draft.quality ?? workbookQuality(r.draft.pages)).dropped}.`),
     ...ok.map(r => `- ${r.label}: ${providerLine(r.label)}. API calls: ${providerCounts.get(r.label)?.api ?? (values.api || values.anthropic ? r.calls + r.solve.checks : 0)}.`),
@@ -517,3 +525,4 @@ async function writeIndex() {
   await writeFile(`${out}/index.md`, md);
 }
 console.log(`done: ${results.filter((r) => !r.error).length} books, USD ${results.reduce((n, r) => n + (r.usd ?? 0) + (r.solve?.usd ?? 0), 0).toFixed(2)}; ${out}/index.md`);
+if (results.some(r=>r.error)) process.exitCode=1;

@@ -242,6 +242,7 @@ export interface PlannedPage {
   capacity?: import("./workbook-page").PlannedSlot[];
   capacityChecked?: boolean;
   itemContracts?: Record<string, import("./workbook-item-plan").ItemPlan | null>;
+  existingSlots?: string[];
   /** The page of the day, from 1. */
   number: number;
   type: PageType;

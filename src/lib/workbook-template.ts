@@ -275,12 +275,12 @@ const CSS = `
 .qm{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-size:var(--math);white-space:nowrap}
 /* answer regions */
 .ab{display:inline-block;height:var(--box);min-width:var(--box);border:1.2px solid #0C0C0E;border-radius:6px;background:#fff;flex:none;vertical-align:middle}
-.rg{display:inline-flex;align-items:center;gap:8px;flex:none}
+.rg{display:inline-flex;align-items:center;gap:8px;flex:0 1 auto;flex-wrap:wrap;max-width:100%}
 .rg .rl{font-size:var(--small);color:#44444C}
 .rg .rl.box{font-family:"Unica Mono",ui-monospace,Menlo,monospace;letter-spacing:.04em;text-transform:uppercase}
 .unit{font-size:var(--body)}
-.strip{display:inline-flex;align-items:center;gap:28px;height:42px;padding:8px 14px;background:#F4F4F5;border-radius:8px;flex:none}
-.pg.early .strip,.pg.parent .strip{height:56px}
+.strip{display:inline-flex;align-items:center;gap:28px;min-height:42px;padding:8px 14px;background:#F4F4F5;border-radius:8px;flex:0 1 auto;flex-wrap:wrap;max-width:100%}
+.pg.early .strip,.pg.parent .strip{min-height:56px}
 .strip .ch{display:inline-flex;align-items:center;gap:8px;font-size:16px}
 .pg.early .strip .ch,.pg.parent .strip .ch{font-size:var(--body)}
 .tb{display:inline-block;width:20px;height:20px;border:2px solid #0C0C0E;border-radius:3px;background:#fff}
@@ -885,7 +885,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     case "word-problems":
       return qs.map((q, k) => {
         const names = regionNames(q);
-        const work = names.filter((x) => x.region.kind === "work").map((x) => regionHtml(q, x.region, x.name, { band, work: 88 })).join("");
+        const work = names.filter((x) => x.region.kind === "work").map((x) => regionHtml(q, x.region, x.name, { band, work: band.name === "early" && qs.length === 2 ? 120 : 88 })).join("");
         const boxes = names.filter((x) => x.region.kind === "box" || x.region.kind === "choice").map((x) => regionHtml(q, x.region, x.name, { band, labels: true })).join("");
         const fig = b.figures?.[k];
         return `<div class="story" ${mark.question(q.number)}><div class="head"><span class="sn">${q.number}</span><span class="qb">${text(q)}</span>${fig ? figureSvg(fig) : ""}</div><div class="act">${work}${boxes}</div></div>`;
@@ -896,6 +896,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
         return `<div ${mark.question(q.number)}><div class="ln" ${measureAttr(lines.name)}><div class="lp"><span class="n">${q.number}</span> ${text(q)}</div>${"<i></i>".repeat(LINES)}</div></div>`;
       }).join("");
     case "reminder": {
+      if (b.label === "Likelihood words") return chip(undefined, b.note) + `<div class="panel p-ni"><div class="lab">Likelihood words</div><div>${escape(b.explain ?? "")}</div></div>`;
       const fig = b.figure ? figureSvg(b.figure) : "";
       return chip(undefined, b.note) + `<div class="panel p-ni"><div class="fig2"><div style="display:flex;flex-direction:column;gap:8px"><div class="lab">${escape(b.label ?? "Remember")}</div>${fig}<div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div></div><div class="why"><div class="lab">What's going on</div><span>${escape(b.explain ?? "")}</span></div></div></div>`;
     }
@@ -979,7 +980,7 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
     + `<p class="st" ${mark.slot("subtitle")}>${escape(c.subtitle)}</p>`
     + (c.level <= 3 && c.grownUp ? `<p class="gu" ${mark.slot("grown-up")}><b>For the grown-up:</b> ${escape(c.grownUp)}</p>` : "") + `</header>`;
   // A Challenge block takes the free room of its page: its work boxes grow into it (DESIGN.md section 4).
-  const blocks = c.blocks.map((b, i) => `<section class="blk${GROW.has(b.slot) ? " grow" : ""}" data-measure="block-${i}">${blockHtml(b, i, ctx)}${missingHtml(b)}</section>`).join("");
+  const blocks = c.blocks.map((b, i) => `<section class="blk${GROW.has(b.slot) ? " grow" : ""}"${b.slot === "in-your-head" ? ` style="flex:0 0 auto"` : ""} data-measure="block-${i}">${blockHtml(b, i, ctx)}${missingHtml(b)}</section>`).join("");
   return `<div class="pg ${band.name} f-${familyOf(page, c)}">${scanMarks}<div class="frame">${header}<main class="ct" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
 }
 
