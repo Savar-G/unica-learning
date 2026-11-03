@@ -138,7 +138,7 @@ export function planItem(o: { skill: string; slot: string; level: number; day: n
       item.text = kind === "missing-addend" ? `${x} + ? = ${y}` : seed % 2 ? `${x} ${sign} ${y} = ?` : `? = ${x} ${sign} ${y}`;
       numbers = [x, y];
       if (source === "story") item.text = kind === "missing-addend" ? `Mia needs ${y} shells. She has ${x}. How many more shells does Mia need?` : kind === "subtract" ? `Mia has ${x} shells. She gives ${y} away. How many shells does Mia have now?` : kind === "multiply" ? `Mia fills ${x} bags. Each bag holds ${y} shells. How many shells does Mia pack?` : kind === "divide" ? `Mia shares ${x} shells equally among ${y} bags. How many shells does Mia put in each bag?` : `Mia has ${x} shells. She gets ${y} more. How many shells does Mia have now?`;
-      item.format = source === "story" ? "show-work" : o.format ?? "write-number";
+      item.format = source === "story" ? o.format === "tick-and-number" ? "tick-and-number" : "show-work" : o.format ?? "write-number";
       // A code-built example with a different answer. Whole-number operations use
       // buildQuestion's checked easier-example builder where available.
       if (kind === "multiply" || kind === "divide") item.easier = { text: `2 ${sign} 2 = ?`, operation: operation(kind, 2, 2) };
