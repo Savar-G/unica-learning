@@ -88,7 +88,8 @@ export function dayHeader(curriculum: Curriculum, page: PlannedPage, level: numb
   const type = page.type !== "parent-led" ? page.type
     : first === "new-idea" ? "new-idea" : first === "picture-stories" ? "word-problems" : first === "remember-these" ? "remember-these" : first ?? "practice";
   const subtitles: Record<string, string> = {
-    "warm-up": level >= 16 ? "Facts to 20. Beat your own count from last time." : "Facts to 20. Take your time: there is no timer.",
+    // From U13 the warm-up's facts go past 20 (times tables, adding hundreds): it names no range then.
+    "warm-up": level >= 16 ? "Facts you know. Beat your own count from last time." : level >= 13 ? "Facts you know. Take your time: there is no timer." : "Facts to 20. Take your time: there is no timer.",
     "new-idea": level >= 19 ? "Try it first. Then see how it works." : "Read how it works, then try it.",
     practice: "Read the example, then answer the questions.",
     "practice-2": "Each row is a little harder than the one before.",
@@ -106,11 +107,33 @@ export function dayHeader(curriculum: Curriculum, page: PlannedPage, level: numb
     return strand && NUMBER_STRANDS.has(strand) ? skillRange(curriculum, level, skill).max : null;
   }));
 
+  const shown = stepTitle(curriculum, title, main?.step ?? null, page.type);
+
   const parentLed = level <= 3 && page.type === "parent-led";
   const grownUp = parentLed
     ? "Read each line aloud. Your child circles, colours or writes one number."
     : early && type === "new-idea" ? "Read the blue box aloud. Show both ways with a finger." : null;
-  return { topic: type === "level-test" ? "Level test" : type === "show-what-you-know" ? "Show what you know" : topic, title, subtitle, grownUp };
+  return { topic: type === "level-test" ? "Level test" : type === "show-what-you-know" ? "Show what you know" : topic, title: shown, subtitle, grownUp };
+}
+
+/**
+ * A step page's title names its step's numbers (the U16 review: "Place value to millions" over Day 1's five-digit
+ * numbers): a skill title's closing range ("to millions", "to 1000") becomes the step's, rounded up to a power of ten
+ * ("Place value to 100 000"), when the step stops below it.
+ */
+function stepTitle(curriculum: Curriculum, title: string, step: { skill: string; step: number | null } | null, type: string): string {
+  if (!step?.step || ["challenge", "word-problems", "remember-these", "show-what-you-know", "friday-5", "level-test"].includes(type)) return title;
+  const at = curriculum.skillSteps(step.skill)?.[step.step - 1];
+  const m = title.match(/^(.*\bto) (millions|a million|thousands|\d[\d ]*)$/i);
+  if (!at?.numbers || !m) return title;
+  const nums = Object.entries(at.numbers).flatMap(([name, d]) => /^(?:flip|error|e\d*)$/.test(name) ? [] : Array.isArray(d) ? d.filter((v): v is number => typeof v === "number") : [(d as { max: number }).max]);
+  const max = Math.max(0, ...nums);
+  if (max < 10) return title;
+  const top = /million/i.test(m[2]) ? 1_000_000 : /thousand/i.test(m[2]) ? 1000 : Number(m[2].replace(/ /g, ""));
+  const nice = 10 ** Math.ceil(Math.log10(max + 1));
+  if (!(nice < top)) return title;
+  const written = nice >= 10_000 ? String(nice).replace(/\B(?=(\d{3})+$)/g, " ") : String(nice);
+  return `${m[1]} ${written}`;
 }
 
 /** The most characters a line of the 66 px cover title holds. */
@@ -118,6 +141,14 @@ const COVER_LINE = 19;
 
 /** A level title as two cover lines: the whole title when it wraps into two, else its part before " and " or a comma. */
 export function coverTitleLines(title: string): [string, string] {
+  // A number written in groups ("1 000 000") is one word: it never breaks across the lines.
+  const glue = (text: string) => text.replace(/(\d) (?=\d{3}\b)/g, "$1\u00a0");
+  const plain = (line: string) => line.replace(/\u00a0/g, " ");
+  const [first, second] = splitCoverTitle(glue(title));
+  return [plain(first), plain(second)];
+}
+
+function splitCoverTitle(title: string): [string, string] {
   const wrap = (text: string) => {
     const lines: string[] = [];
     for (const word of text.split(" ")) {
@@ -132,6 +163,10 @@ export function coverTitleLines(title: string): [string, string] {
     if (lines.length === 2 && lines.every((l) => l.length <= COVER_LINE)) return [lines[0], lines[1]];
     if (lines.length === 1) {
       const words = text.split(" ");
+      // A short title breaks before its closing phrase ("Numbers / to 20"), never leaving a number alone on the line
+      // (the U4 review).
+      const at = words.findLastIndex((w, i) => i > 0 && /^(?:to|within|up|past|over|of|and|with|in|on|by|for)$/i.test(w));
+      if (at > 0) return [words.slice(0, at).join(" "), words.slice(at).join(" ")];
       if (words.length > 1) return [words.slice(0, -1).join(" "), words.at(-1)!];
     }
   }
@@ -152,7 +187,7 @@ export const PANEL_SLOTS: readonly SlotName[] = ["worked-example", "watch-one", 
 
 export function layoutDayPage(curriculum: Curriculum, plan: WorkbookPlan, day: number, page: PlannedPage): DayLayout {
   const header = dayHeader(curriculum, page, plan.level);
-  if (page.capacity) return { header, slots: structuredClone(page.capacity), omissions: [] };
+  if (page.capacity) return { header, slots: structuredClone(page.capacity), omissions: structuredClone(page.capacityOmissions ?? []) };
   const pages = plan.days.find((d) => d.day === day)?.pages.length ?? page.number;
   const { slots, omissions } = pageSlots(page, plan.level, { headerGrowth: headerGrowth(header, plan.level, day, page.number, pages) });
   return { header, slots, omissions };
@@ -957,7 +992,8 @@ export function dayPageContent(o: {
         const q = mine[0]?.package;
         // #489: a step template item shows Sam's answer to its question; code's error steps need an operation.
         const templated = q?.item?.checks.find((c) => c.kind === "template-shown");
-        if (templated?.kind === "template-shown") return { slot: s.slot, items, who: "Sam", lines: [`${q!.text} Sam's answer: ${templated.shown}.`], ...withFigures, ...missing };
+        // The question and the answer given, with no one's name (the U4 review, item 16).
+        if (templated?.kind === "template-shown") return { slot: s.slot, items, who: "Sam", lines: [`${q!.text} Answer given: ${templated.shown}.`], ...withFigures, ...missing };
         const shown = q ? shownOf(q) : null;
         const work = samWork(q?.operation ?? null, shown?.answer, shown?.cause);
         return { slot: s.slot, items, who: "Sam", lines: work?.lines ?? [], ...withFigures, ...missing };

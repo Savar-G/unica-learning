@@ -83,8 +83,8 @@ export function slotMax(slot: SlotName, c: Pick<DayContent, "level" | "pages" | 
     case "warm-up": return band.name === "mid" ? 12 : 8;
     case "fix-it": return 3;
     case "in-your-head": case "try-first": case "spot-the-error": case "solve-it-two-ways": case "how-do-you-know": return 1;
-    // An extra practice page is one review block: two columns of 7 (#489: short template questions fill it).
-    case "remember-these": return band.name === "parent" ? 6 : c.consistentLayout ? (c.extraPractice ? 14 : 10) : 8;
+    // Short template questions fill a review page in two columns of 7 (#489); the measured fit and the day's minutes cap it.
+    case "remember-these": return band.name === "parent" ? 6 : c.consistentLayout ? (c.extraPractice ? 14 : 12) : 8;
     case "now-you": return c.consistentLayout ? 5 : 4;
     case "finish-these": return c.consistentLayout ? 4 : 2;
     case "on-your-own": return band.name === "mid" ? 8 : 6;
@@ -294,7 +294,7 @@ const CSS = `
 .t1 i{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border:1.5px solid #0C0C0E;border-radius:2px;font-style:normal;font-size:12px;color:#0C0C0E;line-height:1}
 .circ{display:inline-flex;align-items:center;gap:36px;min-height:56px;padding:6px 18px;flex:none}
 .circ .co{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-size:var(--fact)}
-.circ.words{flex-direction:column;align-items:flex-start;gap:4px;min-height:48px;padding:2px 8px}
+.circ.words{flex-direction:column;align-items:flex-start;gap:4px;min-height:48px;min-width:56px;padding:2px 8px}
 .circ.words.likelihood{flex-direction:row;gap:16px}
 .circ.words .co{font-family:"Unica Sans",Helvetica,Arial,sans-serif;font-size:var(--body);line-height:1.3;white-space:nowrap}
 .wb{display:block;border:1px solid #D4D4DA;border-radius:8px;padding:10px 12px;background:#fff;flex:1 1 auto;min-width:120px}
@@ -404,7 +404,7 @@ const CSS = `
 .cv .for{margin-top:32px;font-weight:500;font-size:22px;line-height:1.4;color:#44444C;max-height:62px;overflow:hidden}
 .cv h1{margin:20px 0 0;font-weight:300;font-size:66px;line-height:1.18;letter-spacing:-.03em;height:164px;overflow:hidden}
 .cv h1 .hl{display:inline-block;background:#FFD23F;padding:0 10px;margin-left:-10px;line-height:1.12}
-.made{margin-top:28px;background:#FFF1EA;border:1.5px solid #FF6A3D;border-radius:10px;padding:22px 24px;display:flex;flex-direction:column;gap:14px;height:268px;overflow:hidden}
+.made{margin-top:28px;background:#FFF1EA;border:1.5px solid #FF6A3D;border-radius:10px;padding:22px 24px;display:flex;flex-direction:column;gap:14px;max-height:268px;overflow:hidden}
 .made .lab{font-size:12px;color:#0C0C0E}
 .made p{margin:0;font-size:17px}
 .made ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px}
@@ -462,11 +462,13 @@ const CSS = `
 .pg.consistent .col .sum{margin-left:auto}
 .pg.consistent.mid .col .sum{font-size:20px}
 .pg.consistent .q .rgs{margin-left:auto}
-.pg.consistent .ab{height:80px}
+.pg.consistent .ab{height:64px;min-width:64px}
 .pg.consistent[data-page-type="friday-5"] .ab,.pg.consistent[data-page-type="remember-these-mixed-set"] .ab{height:64px}
-.pg.consistent .seq .ab{height:48px}
+.pg.consistent .seq .ab{height:48px;min-width:48px;width:48px}
 .pg.consistent .q.seq-item{gap:8px}
 .pg.consistent .seq-item .qt{font-size:18px}
+.pg.consistent .seq-below .rgs{flex-basis:100%;margin-left:0;padding-left:34px}
+.pg.consistent .two>.seq-wide,.pg.consistent .cols>.seq-wide{grid-column:1/-1}
 .pg.consistent .outl{padding:6px 16px;gap:6px}
 .pg.consistent .error-item{display:flex;flex-direction:column;gap:6px}
 .pg.consistent .error-item .ab{height:56px}
@@ -478,6 +480,8 @@ const CSS = `
 .pg.consistent .chc{padding:12px;gap:8px}
 .pg.consistent .chc .act{display:flex;gap:16px;align-items:flex-end;flex:1}
 .pg.consistent [data-slot="word-problems"] .story{flex:1}
+.pg.consistent [data-slot="word-problems"] .story.nowork{flex:0 0 auto}
+.story.nowork .head{align-items:center}.story.nowork .qb{flex:1 1 0}
 .pg.consistent .story .act{flex:1}
 .pg.consistent .story .act .wb,.pg.consistent .chc .act .wb{height:auto!important;min-height:var(--work-min);align-self:stretch}
 `;
@@ -775,7 +779,9 @@ function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: 
   for (const { region, name } of names) {
     if (inSequence.has(region.id)) continue;
     const html = regionHtml(q, region, name, o);
-    if (region.kind === "box" || region.kind === "choice") inline += html;
+    // A long word answer ("the square root") takes its own row under the question, never a narrow column of text.
+    const long = region.kind === "box" && region.answer?.type === "text" && region.answer.value.length > 8;
+    if ((region.kind === "box" || region.kind === "choice") && !long) inline += html;
     else full += html;
   }
   return { inline, full };
@@ -788,6 +794,9 @@ const text = (q: DraftQuestion, cls = "qt") => `<span class="${cls}" ${mark.ques
 const isMath = (s: string) => /^[\d\s+−×÷=?.,()/$¢a-z]*$/i.test(s) && /\d/.test(s) && !/[a-z]{3,}/i.test(s);
 const qtext = (q: DraftQuestion) => text(q, isMath(q.package.text) ? "qm" : "qt");
 
+/** A count with five terms or more (four boxes): half a page's width does not hold it. */
+const wideSequence = (q: DraftQuestion) => ((packageItem(q.package).checks.find((c) => c.kind === "sequence") as { terms?: unknown[] } | undefined)?.terms?.length ?? 0) >= 5;
+
 /** A question in a line: its number, its text, its boxes at the right, then any work box or writing lines under it. */
 function lineItem(q: DraftQuestion, band: Band, hint?: WorkedLine | null, work = 80, figure?: Figure | null): string {
   const pictured = packageItem(q.package).regions.some((r) => r.kind === "picture");
@@ -798,7 +807,12 @@ function lineItem(q: DraftQuestion, band: Band, hint?: WorkedLine | null, work =
   // A picture the child reads (dots to count, a pattern) sits under the question, before any work box.
   const inline = split.inline;
   const full = (figure && !pictured ? `<div class="picr">${figureSvg(figure,1,band.consistentLayout ? 40 : 30)}</div>` : "") + split.full;
-  return `<div class="q${sequence ? " seq-item" : ""}${places ? " places-item" : ""}" ${mark.question(q.number)}><span class="n">${questionNumber(q.number)}</span><span class="qb">${qtext(q)}${hint ? ` <span class="qm">${worked(hint)}</span>` : ""}</span>`
+  // A sequence under a sentence ("Count on. What are the next two numbers?") prints on its own line under it, so the
+  // sentence keeps the width (never a narrow column of one word a line).
+  const below = sequence && band.consistentLayout && q.package.text.length > 16;
+  // Four boxes or more do not fit half a page's width: the count takes the whole row.
+  const wide = below && wideSequence(q);
+  return `<div class="q${sequence ? " seq-item" : ""}${below ? " seq-below" : ""}${wide ? " seq-wide" : ""}${places ? " places-item" : ""}" ${mark.question(q.number)}><span class="n">${questionNumber(q.number)}</span><span class="qb">${qtext(q)}${hint ? ` <span class="qm">${worked(hint)}</span>` : ""}</span>`
     + `<span class="rgs"${places ? ` style="--places:${columns}"` : ""}>${inline}</span>${full ? `<div class="full">${full}</div>` : ""}</div>`;
 }
 
@@ -953,6 +967,9 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
         const work = names.filter((x) => x.region.kind === "work").map((x) => regionHtml(q, x.region, x.name, { band, work: c.consistentLayout ? workMinimum(c.level) : band.name === "early" && qs.length===2 ? 120 : 88 })).join("");
         const boxes = names.filter((x) => x.region.kind === "box" || x.region.kind === "choice").map((x) => regionHtml(q, x.region, x.name, { band, labels: true })).join("");
         const fig = b.figures?.[k];
+        // A question with nothing to work out (true or false, a choice) circles its answer beside its text: no empty
+        // work area (the U4 review).
+        if (!work && c.consistentLayout) return `<div class="story nowork" ${mark.question(q.number)}><div class="head"><span class="sn">${questionNumber(q.number)}</span><span class="qb">${text(q)}</span>${fig ? figureSvg(fig,1,40) : ""}${boxes}</div></div>`;
         return `<div class="story" ${mark.question(q.number)}><div class="head"><span class="sn">${questionNumber(q.number)}</span><span class="qb">${text(q)}</span>${fig ? figureSvg(fig,1,c.consistentLayout ? 40 : 30) : ""}</div><div class="act">${work}${boxes}</div></div>`;
       }).join("");
     case "how-do-you-know":
@@ -989,8 +1006,9 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       const cols = qs.length <= 3 ? 1 : 2;
       return chip() + `<div class="fill" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${qs.map((q) => {
         const { inline, full } = regionsSplit(q, { band, work: "fill", labels: true });
-        const work = full || `<div class="wb"><span class="lab">Show your work</span></div>`;
-        return `<div class="tc" ${mark.question(q.number)}><div class="q"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${qtext(q)}</span><span class="rgs">${inline}</span></div>${work}</div>`;
+        // A work area only for an item that needs working (the U4 review, item 10), on the measured layout.
+        const work = full || (c.consistentLayout ? "" : `<div class="wb"><span class="lab">Show your work</span></div>`);
+        return `<div class="tc"${cols > 1 && c.consistentLayout && wideSequence(q) ? ` style="grid-column:1/-1"` : ""} ${mark.question(q.number)}><div class="q"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${qtext(q)}</span><span class="rgs">${inline}</span></div>${work}</div>`;
       }).join("")}</div>`;
     }
     case "challenge": {

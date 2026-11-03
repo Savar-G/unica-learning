@@ -41,7 +41,7 @@ describe("binding item plans", () => {
     const b = buildPlannedItem(p, p.item, place(p.item.skill));
     expect(b.check.status).toBe("not-checked");
     expect(b.package?.item?.figure).toBeTruthy();
-    expect(b.package?.text).toMatch(/Colour in \d+ cells?|Colour \d+ dots in the row/);
+    expect(b.package?.text).toMatch(/Colour in \d+ cells?|Colour \d+ dots? in the row/);
   });
   it("supplies examples for each approved type and grade band", () => {
     for (const level of [4, 14, 26]) for (const source of ["story", "explain"] as const) {

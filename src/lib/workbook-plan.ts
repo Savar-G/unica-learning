@@ -58,6 +58,7 @@ import { BC_SKILL_MAP, curriculumOrder, worstFirst, type Grade } from "@/lib/ass
 import type { ChildStandard } from "@/lib/child-profile";
 import type { QuestionRef } from "@/lib/question-package";
 import type { Curriculum, CurriculumLevel, Delivery, Range } from "@/lib/workbook-curriculum";
+import { sumTemplate, templateProblem } from "@/lib/workbook-step-items";
 
 /** Shared ten-day schedule (#479). Apply the range inside each skill's curriculum bound.
  * Fixed benchmarks, measures and fractions keep their values; support and complexity still change.
@@ -104,6 +105,8 @@ export type PartKind = (typeof PART_KINDS)[number];
 /** One step of a skill: its page budget. */
 export interface PlanStep {
   pages: number;
+  /** #489: the step has a sum two methods can work (Solve it two ways); absent: unknown, kept. */
+  sums?: boolean;
 }
 
 /** One skill of a level. */
@@ -162,7 +165,7 @@ export function planLevel(curriculum: Curriculum, levelId: string): PlanLevel | 
         id: s.id,
         delivery: s.delivery,
         pages: s.pages,
-        steps: (curriculum.skillSteps(s.id) ?? []).map((step) => ({ pages: step.pages })),
+        steps: (curriculum.skillSteps(s.id) ?? []).map((step) => ({ pages: step.pages, ...(step.templates?.length ? { sums: step.templates.some((t) => !templateProblem(t, level.number) && sumTemplate(t)) } : {}) })),
       })),
     })),
     fluency: fluencyFrom ? warmUp(fluencyFrom) : [],
@@ -253,6 +256,8 @@ export interface PlannedPage {
   /** Approved pipeline capacity. The writer and layout consume this same budget. */
   capacity?: import("./workbook-page").PlannedSlot[];
   capacityChecked?: boolean;
+  /** Planned questions the measured page had no room for, before writing: reported, never silent (#489). */
+  capacityOmissions?: import("./workbook-page").Omission[];
   itemContracts?: Record<string, import("./workbook-item-plan").ItemPlan | null>;
   existingSlots?: string[];
   /** The page of the day, from 1. */
@@ -351,6 +356,8 @@ const LEVELS = 30;
 /** Steps a skill has when the skeleton has none drafted (CONTEXT 2: 3 to 5). */
 export const DEFAULT_STEPS = 3;
 export const NEW_STEPS_MAX = 8;
+/** The step progression's window (#489): how many of the level's skills a book works on at once. */
+export const STEP_WINDOW = 3;
 /** The spaced review intervals in practice days: 2 days, 1 week, 3 weeks, 2 months (five practice days a week). */
 export const SPACED_INTERVALS = [2, 5, 15, 40] as const;
 /** The day's A to B, counted by parts: about 2:1. */
@@ -684,8 +691,46 @@ export function planWorkbook(input: PlanInput): PlanResult {
     const next: Record<Track, number> = { A: 0, B: 0 };
     const stepOn: Record<Track, (QueuedStep | null)[]> = { A: [], B: [] };
     const startDays: Record<Track, Set<number>> = { A: new Set(), B: new Set() };
+    // The step progression (#489): each teaching day starts the next step of one skill of a small window, the first
+    // STEP_WINDOW skills in skeleton order whose prerequisites in the level are all taught, the one started longest
+    // ago first. So a book works through several of the level's skills at once, each in its own order.
+    const bySkill = new Map<string, QueuedStep[]>();
+    for (const q of queue.A) bySkill.set(q.skill, [...(bySkill.get(q.skill) ?? []), q]);
+    const order = [...bySkill.keys()];
+    const taken = new Map<string, number>();
+    const lastDay = new Map<string, number>();
+    const done = (skill: string, day: number) => {
+      const list = bySkill.get(skill);
+      if (!list) return true;
+      return (taken.get(skill) ?? 0) >= list.length && (lastDay.get(skill) ?? 0) < day;
+    };
+    const ready = (skill: string, day: number) => (MAP_SKILLS.get(skill)?.skill.requires ?? []).every((r) => !levelIds.has(r) || done(r, day));
+    const nextStep = (day: number): QueuedStep | null => {
+      const window = order.filter((k) => (taken.get(k) ?? 0) < bySkill.get(k)!.length && ready(k, day)).slice(0, STEP_WINDOW);
+      const pick = [...window].sort((a, b) => (lastDay.get(a) ?? 0) - (lastDay.get(b) ?? 0) || order.indexOf(a) - order.indexOf(b))[0];
+      if (!pick) return null;
+      const step = bySkill.get(pick)![taken.get(pick) ?? 0];
+      taken.set(pick, (taken.get(pick) ?? 0) + 1);
+      lastDay.set(pick, day);
+      return step;
+    };
     for (let day = 1; day <= DAYS; day++) {
       const teaching = kinds[day - 1] === "teach";
+      if (steps) {
+        const step = teaching && day <= lastStart ? nextStep(day) : null;
+        if (step) {
+          current.A = { step, left: step.pages };
+          starts.push({ ...stepRef(step), day, track: "A" });
+          startDays.A.add(day);
+        } else if (teaching && starts.length) {
+          // A day with no new step (Day 10) works on the deepest step the book reached, the latest of them.
+          const deepest = [...starts].sort((x, y) => y.step - x.step || y.day - x.day)[0];
+          current.A = { step: queue.A.find((q) => q.skill === deepest.skill && q.step === deepest.step)!, left: 0 };
+        }
+        stepOn.A[day - 1] = teaching ? current.A?.step ?? null : null;
+        stepOn.B[day - 1] = null;
+        continue;
+      }
       for (const track of ["A", "B"] as const) {
         const cur = current[track];
         // The step progression (#489) starts the next step on every teaching day: Day 10 is harder than Day 1.
@@ -885,6 +930,9 @@ export function planWorkbook(input: PlanInput): PlanResult {
   // done before its day: this book's earlier days (latest first), the spaced reviews' own steps, passed steps, and every
   // step of an earlier level's skill (null: its last). A check asks a step 1; the level test and a mini-test the last.
   if (steps) {
+    // Solve it two ways only on a step with a sum two methods can work (the U4 review, item 14).
+    const sumsOf = (ref: StepRef | null) => !ref || levelSkills.find((s) => s.id === ref.skill)?.steps[ref.step - 1]?.sums !== false;
+    for (const d of days) for (const page of d.pages) page.parts = page.parts.filter((p) => p.kind !== "solve-it-two-ways" || sumsOf(p.step));
     const skillOf = new Map(levelSkills.map((s) => [s.id, s]));
     const doneStep = (skill: string, day: number): number | null | undefined => {
       const mine = sim.starts.filter((x) => x.skill === skill && x.day < day);

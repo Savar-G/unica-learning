@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { checkQuestionPackage, type ItemCheck } from "@/lib/question-package";
 import { curriculumFor } from "@/lib/workbook-curriculum";
-import { buildStepItem, choicesFor, stepBounds, stepOf, stepRangeProblem, stepRank, stepTemplateItem } from "@/lib/workbook-step-items";
+import { buildStepItem, choicesFor, sequenceOf, stepBounds, stepOf, stepRangeProblem, stepRank, stepTemplateItem, templateProblem } from "@/lib/workbook-step-items";
 
 const BC = curriculumFor("bc")!;
 const place = (level: number, skill: string) => ({ id: "q1", workbookId: "00000000-0000-4000-8000-0000000000c1", page: 3, question: 1, level, skills: [skill] });
@@ -62,11 +62,60 @@ describe("step template items (#489)", () => {
   it("reads the choices a text offers and ranks steps through the curriculum", () => {
     expect(choicesFor("Is it a cone or a cube?", "cone")).toEqual(["cone", "cube"]);
     expect(choicesFor("True or false: 8 comes after 7.", "True")).toEqual(["True", "false"]);
-    expect(choicesFor("Which is right? A: 14  B: 15  C: 13", "A")).toEqual(["a", "b", "c"].map((x) => (x === "a" ? "A" : x)));
+    // Letters print as capitals (the U4 review: never "A b").
+    expect(choicesFor("Which is right? A: 14  B: 15  C: 13", "A")).toEqual(["A", "B", "C"]);
     expect(choicesFor("What is the name of a shape with 5 straight sides?", "pentagon")).toBeNull();
     expect(stepRank(BC, "1.1-count-to-20", 2)!).toBeGreaterThan(stepRank(BC, "1.1-count-to-20", 1)!);
     expect(stepRank(BC, "1.1-read-write-20", 1)!).toBeGreaterThan(stepRank(BC, "1.1-count-to-20", 4)!);
     expect(stepRank(BC, "2.1-count-tens-ones", 1)!).toBeGreaterThan(stepRank(BC, "1.10-likelihood-words", 2)!);
     expect(stepBounds(stepOf(BC, "1.1-count-on-back", 3)!)).toEqual({ min: 0, max: 20 });
+  });
+
+  it("reads a template's printed words only: a slot named {shown} names no picture", () => {
+    const step = stepOf(BC, "1.1-count-to-20", 1)!;
+    const tf = step.templates!.find((t) => t.format === "true-false")!;
+    expect(tf.text).toContain("{shown}");
+    expect(templateProblem(tf, 4)).toBeNull();
+    expect(templateProblem({ ...tf, text: "How many dots are shown?" }, 4)).toMatch(/picture/);
+  });
+
+  it("prints a count with blanks as a sequence: its numbers in order, a box in each blank", () => {
+    expect(sequenceOf("Count on: 8, ?, ?. What are the next two numbers?", "9, 10")).toEqual({ text: "Count on. What are the next two numbers?", terms: [8, null, null], step: 1 });
+    expect(sequenceOf("Count on: 3, ?, ?, ?, ?. Write the next four numbers.", "4, 5, 6, 7")?.text).toBe("Count on. Write the next four numbers.");
+    // The answer must fill the blanks by one step.
+    expect(sequenceOf("Count on: 8, ?, ?.", "9, 11")).toBeNull();
+  });
+
+  it("keeps a step's hardest number templates for its Challenge (#482 review at 3134252)", () => {
+    // Count on to 20, step 1: its one hard template ("Write the next four numbers") is the Challenge's.
+    const hard = stepOf(BC, "1.1-count-to-20", 1)!.templates!.findIndex((t) => t.difficulty === "hard");
+    const challenge = new Set<string>();
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const c = item("1.1-count-to-20", 1, "challenge", 7, attempt)!;
+      expect(c.ref.index).toBe(hard);
+      expect(c.ref.challengeTemplates).toBe(1);
+      challenge.add(`${c.text} ${c.ref.answer}`);
+    }
+    // Later attempts find other tasks, so a page's three Challenge questions differ.
+    expect(challenge.size).toBeGreaterThanOrEqual(3);
+    for (let seed = 1; seed <= 30; seed++) for (const at of ["now-you", "finish-these", "on-your-own"] as const) expect(item("1.1-count-to-20", 1, at, seed)!.ref.index).not.toBe(hard);
+  });
+
+  it("circles the person a story's answer names, and checks it from the numbers", () => {
+    const seen = new Set<string>();
+    for (let seed = 1; seed <= 60; seed++) {
+      const it = item("4.3-same-denominator", 1, "on-your-own", seed, 0, 14);
+      if (!it || !/Who eats more/.test(it.text)) continue;
+      expect(it.ref.kind).toBe("choice");
+      expect(it.ref.choices).toEqual([it.text.split(" ")[0], "the friend"]);
+      expect(it.ref.choices).toContain(it.ref.answer);
+      const built = buildStepItem(it.ref, it.text, place(14, it.ref.skill), "code");
+      expect(built.check.status, it.text).toBe("checked");
+      // A label that says the other person fails the check.
+      const swapped = { ...it.ref, source: { ...it.ref.source, labels: it.ref.source.labels!.map(([k, w]) => [k === "name" ? "friend" : "name", w] as [string, string]) } };
+      expect(buildStepItem(swapped, it.text, place(14, it.ref.skill), "code").check.status).toBe("failed");
+      seen.add(it.ref.answer);
+    }
+    expect(seen.size).toBeGreaterThan(1);
   });
 });

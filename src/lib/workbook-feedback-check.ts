@@ -16,7 +16,7 @@ export function feedbackItemProblem(p: QuestionPackage): string | null {
   const text = p.text;
   if (p.level >= 4 && (/\bdraw(?:ing)?\b/i.test(text) || p.item?.format === "draw")) return "Drawing tasks are only for Kindergarten. Colour a printed figure instead.";
   if (p.level > 3 && /\btrac(?:e|ing)\b/i.test(text)) return "Tracing is only for Kindergarten.";
-  if (p.item?.format === "draw" && !/\b(?:ten-frame|number line|shape|triangle|square|rectangle|circle|angle|array|graph|symmetry|polygon|net|coordinate)\b/i.test(text) && !/^Colour \d+ dots in the row\.$/.test(text)) return "Drawing must be the math. Use colouring or a ten-frame for counting.";
+  if (p.item?.format === "draw" && !/\b(?:ten-frame|number line|shape|triangle|square|rectangle|circle|angle|array|graph|symmetry|polygon|net|coordinate)\b/i.test(text) && !/^Colour \d+ dots? in the row\.$/.test(text)) return "Drawing must be the math. Use colouring or a ten-frame for counting.";
   if (/\bdraw\b/i.test(text) && /\b(?:likely|unlikely|sure|always|sometimes|never|maybe)\b/i.test(text)) return "Likelihood is a circle-the-word question, never a drawing.";
   if (p.skill.skills.some(s => /likelihood/.test(s)) && p.item?.format !== "circle") return "Likelihood uses circle-the-word.";
   return null;
@@ -42,7 +42,7 @@ export function scheduledItemProblem(p: QuestionPackage, curriculum: Curriculum,
     const feedback = feedbackItemProblem(p);
     if (feedback) return feedback;
     const d = dayDifficulty(p.level, day);
-    const countingTask = p.operation === null && ["draw","colour-or-shade"].includes(p.item?.format ?? "") && p.skill.skills.every(s => /count-objects|how-many|count-scattered|subitize|ten-frame/.test(s)) && /^(?:Colour \d+ dots in the row\.|Colour in \d+ cells?(?: on the printed ten-frame)?\.)$/.test(p.text);
+    const countingTask = p.operation === null && ["draw","colour-or-shade"].includes(p.item?.format ?? "") && p.skill.skills.every(s => /count-objects|how-many|count-scattered|subitize|ten-frame/.test(s)) && /^(?:Colour \d+ dots? in the row\.|Colour in \d+ cells?(?: on the printed ten-frame)?\.)$/.test(p.text);
     if (p.item?.figure && !countingTask && (d.helpLevel === "none" || d.helpLevel === "new-ideas-only" && !["worked-example", "now-you", "try-first"].includes(place))) return "This day has no picture support in this place.";
     const item = packageItem(p);
     if (!Object.hasOwn(READABLE_FORMATS, item.format)) return "The daily number check cannot read this item format.";
@@ -50,6 +50,8 @@ export function scheduledItemProblem(p: QuestionPackage, curriculum: Curriculum,
     if (checked.status === "failed" || checked.status === "unsupported" && !(p.operation === null && item.parentChecked && !item.scorable && item.checks.length === 0))
       return `The daily number check cannot read this item: ${checked.reason}`;
     if (p.skill.skills.length === 0 || p.skill.skills.some(s => !curriculum.skill(s))) return "The daily number check needs a known curriculum skill.";
+    // A template page's explanation names its first story's answer (that story's numbers were checked): no own numbers.
+    if (place === "how-do-you-know" && item.format === "written-reason") return null;
     // #489: a step template item's numbers come from its step's ranges, which replace the day's cap (the book moves
     // through the steps); the AI-text rules read only words the AI wrote.
     const template = stepTemplateOf(p);

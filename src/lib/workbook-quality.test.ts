@@ -2,6 +2,8 @@ import { expect, it } from "vitest";
 import { checkWholeBook, measuredPageUse, workbookQuality } from "./workbook-quality";
 import { buildPlannedItem, planItem } from "./workbook-item-plan";
 import type { GeneratedPage } from "./workbook-generator";
+import { curriculumFor } from "./workbook-curriculum";
+import { buildStepItem, stepTemplateItem } from "./workbook-step-items";
 
 function page(number: number, day: number, count = 2): GeneratedPage {
   return { number, day, pageOfDay: 1, dayLabel: `Day ${day}`, type: "practice", qrToken: "token-000000000001", attempts: 0, fit: { status: "fits" }, questions: Array.from({ length: count }, (_, i) => {
@@ -91,4 +93,24 @@ it("requires three contexts or formats on a printed page and no repeated sentenc
   twice.questions[1] = { ...twice.questions[1], package: { ...after, id: "a1", text: "Mia has 3 shells. She gets 1 more. How many shells does Mia have now?", operation: { kind: "add", operands: [3, 1] } } };
   twice.questions[2] = { ...twice.questions[2], package: { ...after, id: "a2", text: "Ben has 7 shells. He gets 1 more. How many shells does Ben have now?", operation: { kind: "add", operands: [7, 1] } } };
   expect(workbookQuality([twice]).issues).toContainEqual(expect.objectContaining({ page: 6, reason: expect.stringMatching(/sentence frame .* a second time/) }));
+});
+
+it("fails a Challenge no harder than that day's practice of its step, by what the child does (#482 review at 3134252)", () => {
+  const bc = curriculumFor("bc")!;
+  const question = (n: number, place: string, part: string, at: Parameters<typeof stepTemplateItem>[0]["place"], seed: number) => {
+    const it = stepTemplateItem({ curriculum: bc, skill: "1.1-count-to-20", step: 1, place: at, level: 4, day: 1, seed, attempt: 0, ordinal: 0 })!;
+    const b = buildStepItem(it.ref, it.text, { id: `q${n}`, workbookId: "00000000-0000-4000-8000-0000000000a1", page: 3, question: n, level: 4, skills: [it.ref.skill] }, "code");
+    return { number: n, slot: `1.${n}`, part, place, attempts: 1, check: b.check, package: b.package, itemPlan: { template: it.ref } } as unknown as GeneratedPage["questions"][number];
+  };
+  const day = (challenge: GeneratedPage["questions"][number]): GeneratedPage[] => [
+    { ...page(3, 1, 0), questions: [question(1, "now-you", "practice", "now-you", 3), question(2, "now-you", "practice", "now-you", 5)] },
+    { ...page(4, 1, 0), type: "challenge", questions: [challenge] },
+  ];
+  const reasons = (pages: GeneratedPage[]) => workbookQuality(pages).issues.filter(i => i.kind === "challenge").map(i => i.reason);
+  // The step's hard count (write the next four numbers) is harder than its practice.
+  expect(reasons(day(question(1, "challenge", "challenge", "challenge", 9)))).toEqual([]);
+  // A true or false on the same step asks less than practice's counts.
+  const easy = question(1, "challenge", "challenge", "on-your-own", 11);
+  expect(easy.itemPlan!.template!.kind).toBe("choice");
+  expect(reasons(day(easy)).join(" ")).toMatch(/no harder than that day's practice/);
 });

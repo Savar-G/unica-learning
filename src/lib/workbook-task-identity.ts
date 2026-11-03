@@ -3,7 +3,7 @@ import { PEOPLE, THINGS } from "./workbook-wording";
 
 /** A step template item's format ("missing", "true-false", ...), from its template id (#489); null for any other item. */
 const templateFormat = (p: QuestionPackage): string | null =>
-  (p.item?.checks ?? []).some((c) => c.kind.startsWith("template")) ? /:([a-z-]+)$/.exec(p.templateId ?? "")?.[1] ?? "template" : null;
+  p.ref.source === "workbook" ? /^[^#\s]+#\d+\.\d+:([a-z-]+)$/.exec(p.templateId ?? "")?.[1] ?? null : null;
 
 /** Capitalised words that start a sentence, never a person ("True or false", "How many"). */
 const STARTS: ReadonlySet<string> = new Set(["Will", "How", "What", "Which", "Is", "Are", "Does", "Do", "Can", "Did", "Then", "The", "A", "An", "Circle", "Colour", "Fill", "Write", "Add", "Start", "Count", "Never", "Sometimes", "Always", "It", "In", "Each", "Find", "Look", "Think",
@@ -67,10 +67,15 @@ const familyOf = (p: QuestionPackage): string => {
  * "=" sits is not part of it, so "9 × 2 = ?" and "? = 9 × 2" are one task. Region ids are left out too.
  */
 export function taskIdentity(p: QuestionPackage): string {
-  // A step template item is its template and sampled numbers, in any layout (#489): the same fill as a story card and
-  // as a box is one task; another template of the step is another question.
-  const template = (p.item?.checks ?? []).find((c) => c.kind === "template" || c.kind === "template-choice" || c.kind === "template-shown");
-  if (template && "source" in template) return JSON.stringify(["template", (p.templateId ?? "").replace(/:[a-z-]+$/, ""), template.source]);
+  // A step template item is the task it prints (#482 review at 3134252): its printed numbers in any order (where the
+  // "?" sits does not matter) and its answer, a story or a drill. "11 × 5 = ?" from two fills or two templates is one
+  // task; so are two stories that work the same numbers to the same answer. Its format family counts, as for #482's
+  // items: checking a given answer (Spot the error) or working it two ways is another task than answering it.
+  if (templateFormat(p)) {
+    const f = p.item?.format;
+    const family = f === "spot-the-error" ? "error" : f === "two-ways" ? "two-ways" : contextFrame(p.text) ? "story" : "drill";
+    return JSON.stringify(["task", family, printedTaskNumbers(p), answersOf(p)]);
+  }
   const family = familyOf(p);
   if (p.operation) return JSON.stringify([family, p.operation]);
   const checks = (p.item?.checks ?? []).map((c) => {
@@ -91,11 +96,9 @@ export function printedForm(p: QuestionPackage): string {
   const context = contextFrame(p.text);
   if (context && p.item?.format !== "written-reason") return `context:${context}`;
   const frame = storyFrame(p.text);
-  // A step template item with no context: its template's format (bare numbers, a missing number, true or false, ...).
-  // Each of a step's templates is its own question type ("What comes just after?" and "just before?"), as #482 counts
-  // counting on and counting back apart.
-  const template = templateFormat(p);
-  if (template) return template === "story" ? `context:${frame}` : `${template}:${(p.templateId ?? "").replace(/:[a-z-]+$/, "")}`;
+  // A step template item with no context: the format it prints (true or false, a choice, a count with boxes, a missing
+  // number, a comparison, bare numbers), never its template (#482 review at 3134252).
+  if (templateFormat(p)) return printedTemplateForm(p);
   if (p.item?.figure) return `picture:${p.item.figure.kind}`;
   const f = p.item?.format;
   if (f === "written-reason") return "explain";
@@ -110,6 +113,34 @@ export function printedForm(p: QuestionPackage): string {
   return check?.kind ?? f ?? "other";
 }
 
+/** The numbers a question prints, the sequence's printed terms included, from least to greatest. */
+function printedTaskNumbers(p: QuestionPackage): number[] {
+  const terms = (p.item?.checks ?? []).flatMap((c) => (c.kind === "sequence" ? c.terms.flatMap((t) => ("region" in t ? [] : t.type === "number" ? [t.value] : [])) : []));
+  return [...(p.text.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number), ...terms].sort((a, b) => a - b);
+}
+
+/** A question's answers as printed in its key: each box's value and each circled choice, in order. */
+function answersOf(p: QuestionPackage): string[] {
+  return (p.item?.regions ?? []).flatMap((r) => (r.kind === "box" && r.answer ? [JSON.stringify(r.answer)] : r.kind === "choice" && r.answer ? [r.answer.toLowerCase()] : []));
+}
+
+/** The printed format of a step template item with no context. */
+function printedTemplateForm(p: QuestionPackage): string {
+  const item = p.item;
+  const seq = item?.checks.find((c) => c.kind === "sequence");
+  if (seq?.kind === "sequence") return `sequence:${seq.step.type === "number" && seq.step.value < 0 ? "back" : "on"}`;
+  if (item?.format === "spot-the-error") return "spot";
+  if (item?.format === "two-ways") return "two-ways";
+  if (item?.format === "circle") {
+    const choices = item.regions.flatMap((r) => (r.kind === "choice" ? r.choices.map((c) => c.toLowerCase()) : []));
+    return choices.includes("true") || choices.includes("yes") ? "true-false" : "choice";
+  }
+  // A printed blank stands alone ("9 is 4 and ?", "? × ? = 36"); a question's own mark follows its last word.
+  if (/(?:^|[\s(=])\?(?=[\s.,)]|$)/.test(p.text)) return "missing";
+  if (/\b(?:bigger|biggest|larger|smaller|greater|less|fewer|more|most|least|order)\b/i.test(p.text)) return "compare";
+  return "bare";
+}
+
 /**
  * A sentence frame (Cedric's section 9): a question in a sentence of 4 words or more about a person or a thing (its
  * context), with the names and numbers taken out. Null for a bare sum or a worded drill with no context ("Count on 1
@@ -119,6 +150,9 @@ export function sentenceFrameOf(p: QuestionPackage): string | null {
   const frame = contextFrame(p.text);
   return frame && (frame.match(/[a-z]+/g) ?? []).length >= 4 ? frame : null;
 }
+
+/** A place in a story ("at the zoo", "at school", "in the park"). */
+const PLACE = /\b(?:at|in|to|on|near) (?:the |a )?(?:zoo|school|pool|beach|farm|library|park|camp|store|rink|fair|museum|market|gym|cafe|lake|garden|playground|field|arena|mall|shop|bakery|class|classroom|home|party|game|show|cabin|ferry|bus|train|track)\b/g;
 
 const CONTEXT_WORDS = new Set([...THINGS, ...THINGS.map(x => x.replace(/s$/, "")), "dog", "dogs", "cat", "cats", "bird", "birds", "fish", "frogs", "ducks"]);
 
@@ -133,7 +167,10 @@ export function contextFrame(text: string): string | null {
   const framed = blanked.replace(/\b[A-Z][A-Za-z0-9]*\b/g, w => (STARTS.has(w) || w.length === 1 ? w : (named = true, "_")));
   const words = blanked.toLowerCase().match(/[a-z]+/g) ?? [];
   if (!named && !words.some(w => CONTEXT_WORDS.has(w))) return null;
+  // A place is not a new context: "saw the number # on a sign at the zoo" and "... at school" are one frame (the U16
+  // review). A person and a thing are.
   return framed
     .toLowerCase().replace(/-?\d+(?:\.\d+)?/g, "#").replace(/\b(?:he|she|him|her|his|hers|they|them|their)\b/g, "_")
+    .replace(PLACE, "at _")
     .replace(/[^a-z#_ ]+/g, " ").replace(/\s+/g, " ").trim();
 }

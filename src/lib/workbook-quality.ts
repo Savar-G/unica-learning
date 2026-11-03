@@ -1,6 +1,7 @@
 import { pageFullness, pageSpace, fullnessProblem } from "./workbook-template";
 import type { DraftPage, MeasuredElement } from "./workbook-render";
 import type { GeneratedPage } from "./workbook-generator";
+import { STORY_EXPLAIN } from "./workbook-item-plan";
 import { dayTimeProblem, estimatedDayMinutes } from "./workbook-feedback-check";
 import { printedNumbers } from "./workbook-book";
 import { storyFrame, wordedTask, taskType, reasoningSteps, taskIdentity, printedForm, sentenceFrameOf } from "./workbook-task-identity";
@@ -23,6 +24,12 @@ export interface BookQuality {
 }
 
 /** Planning estimate, not a claim about a child's measured completion time. */
+/** A Challenge page whose step keeps fewer than 3 templates for it: it may repeat their forms and frames (#489). */
+export function fewChallengePage(p: GeneratedPage): boolean {
+  const printed = p.questions.filter(q => q.package && q.place !== "warm-up");
+  return printed.length > 0 && printed.every(q => q.place === "challenge" && q.itemPlan?.template) && Math.max(1, ...printed.map(q => q.itemPlan!.template!.challengeTemplates ?? 3)) < 3;
+}
+
 export function questionMinutes(q: GeneratedPage["questions"][number]): number {
   const p = q.package;
   if (!p) return .5;
@@ -71,27 +78,31 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       types.set(key, (types.get(key) ?? 0) + 1);
     }
     const total=p.questions.filter(q=>q.package && q.place!=="warm-up").length;
-    for (const [type, count] of counts) if (total >= 3 && count > Math.ceil(total / 2)) issues.push({ page: p.number, kind: "variety", reason: `${type} fills ${count} of ${total} questions; the page limit is half, rounded up` });
-    // Cedric's section 9 (adopted as written): at least 3 contexts or formats on a page, read from what is printed,
-    // the existing writer's questions too; and no sentence frame twice on a page.
     const printed = p.questions.filter(q => q.package && q.place !== "warm-up");
     const forms = new Set(printed.map(q => printedForm(q.package!)));
-    if (printed.length >= 3 && forms.size < 3) issues.push({ page: p.number, kind: "variety", reason: `the page prints ${forms.size} context${forms.size === 1 ? "" : "s"} or format${forms.size === 1 ? "" : "s"} (${[...forms].join(", ")}); it needs at least 3` });
+    // A Challenge page asks its step's hardest questions only: it can show as many forms as the step keeps for it.
+    const challengeOnly = printed.length > 0 && printed.every(q => q.place === "challenge" && q.itemPlan?.template);
+    const need = challengeOnly ? Math.min(3, Math.max(1, ...printed.map(q => q.itemPlan!.template!.challengeTemplates ?? 3))) : 3;
+    for (const [type, count] of counts) if (total >= 3 && count > Math.ceil(total / 2) && !(challengeOnly && need < 3)) issues.push({ page: p.number, kind: "variety", reason: `${type} fills ${count} of ${total} questions; the page limit is half, rounded up` });
+    // Cedric's section 9 (adopted as written): at least 3 contexts or formats on a page, read from what is printed,
+    // the existing writer's questions too; and no sentence frame twice on a page.
+    if (printed.length >= 3 && forms.size < need) issues.push({ page: p.number, kind: "variety", reason: `the page prints ${forms.size} context${forms.size === 1 ? "" : "s"} or format${forms.size === 1 ? "" : "s"} (${[...forms].join(", ")}); it needs at least 3` });
     const pageFrames = new Map<string, number>();
     for (const q of printed) {
-      if (q.place === "how-do-you-know" && /first story on this page/i.test(q.package!.text)) continue;
+      if (q.place === "how-do-you-know" && STORY_EXPLAIN.test(q.package!.text)) continue;
       const frame = sentenceFrameOf(q.package!);
       if (!frame) continue;
       pageFrames.set(frame, (pageFrames.get(frame) ?? 0) + 1);
-      if (pageFrames.get(frame) === 2) issues.push({ page: p.number, kind: "variety", reason: `question ${q.number} uses the sentence frame "${frame}" a second time on the page` });
+      // A Challenge page on a step with fewer than 3 Challenge templates repeats their frames (as its forms).
+      if (pageFrames.get(frame) === 2 && !(challengeOnly && need < 3)) issues.push({ page: p.number, kind: "variety", reason: `question ${q.number} uses the sentence frame "${frame}" a second time on the page` });
     }
-    for (const q of p.questions.filter(q => q.place === "how-do-you-know" && !q.existing)) if (!/first story on this page/i.test(q.package?.text ?? "") || !p.questions.some(s => ["word-problems", "picture-stories"].includes(s.place ?? "") && s.package && s.check.status !== "failed")) issues.push({ page: p.number, kind: "coverage", reason: "the explanation has no story on this page" });
+    for (const q of p.questions.filter(q => q.place === "how-do-you-know" && !q.existing)) if (!STORY_EXPLAIN.test(q.package?.text ?? "") || !p.questions.some(s => ["word-problems", "picture-stories"].includes(s.place ?? "") && s.package && s.check.status !== "failed")) issues.push({ page: p.number, kind: "coverage", reason: "the explanation has no story on this page" });
   }
   for (const [type, count] of types) if (all.length >= 12 && count > all.length / 2) for (const p of pages.filter(p => p.questions.some(q => q.package && !q.existing && q.place !== "warm-up" && typeKey(p, q) === type))) issues.push({ page: p.number, kind: "variety", reason: `${type} exceeds half of the book's non-warm-up questions` });
   for (const p of pages) for (const q of p.questions) {
     if (!q.package || q.place === "warm-up") continue;
     const pkg = q.package;
-    if (q.place === "how-do-you-know" && /first story on this page/.test(pkg.text)) continue;
+    if (q.place === "how-do-you-know" && STORY_EXPLAIN.test(pkg.text)) continue;
     // A step template item's sentence frames are limited by page and day instead (#489).
     if (!q.existing && wordedTask(pkg) && !q.itemPlan?.template) {
       const frame = storyFrame(pkg.text), before = frames.get(frame);
@@ -101,8 +112,11 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     // The task's mathematical data, not its printed form: "? = 9 × 2" repeats "9 × 2 = ?".
     const key = taskIdentity(pkg);
     const at = seen.get(key) ?? [];
-    const limit = 1;
-    if (at.includes(p.number) || at.length >= limit) issues.push({ page: p.number, kind: "repeat", reason: `question ${q.number} repeats pages ${at.join(", ")} (limit ${limit})` });
+    // An extra practice page asks questions from this workbook again, once each.
+    const limit = p.day === null ? 2 : 1;
+    // Spaced review at U4 to U9: a step task five days back (40 pages) may come once more.
+    const spaced = at.length === 1 && !!q.itemPlan?.template && pkg.level <= 9 && q.place !== "show-what-you-know" && p.number - at[0] >= 40;
+    if (at.includes(p.number) || at.length >= limit && !spaced) issues.push({ page: p.number, kind: "repeat", reason: `question ${q.number} repeats pages ${at.join(", ")} (limit ${limit})` });
     seen.set(key, [...at, p.number]);
   }
   for (const day of [...new Set(pages.flatMap(p => p.day === null ? [] : [p.day]))].sort((a, b) => a - b)) {
@@ -110,10 +124,37 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     const questions = ofDay.flatMap(p => p.questions);
     const practice = questions.filter(q => q.place !== "challenge" && q.package);
     // #489: a template Challenge takes the hardest step reached that day (Cedric's sections 1 and 9).
-    const dayTop = Math.max(0, ...questions.flatMap(q => q.itemPlan?.template && q.place !== "warm-up" && q.part !== "remember-these" ? [q.itemPlan.template.rank] : []));
+    // The day's teaching parts, not its reviews (Show what you know reviews the whole book).
+    const reviewParts = new Set(["remember-these", "show-what-you-know", "friday-5", "mixed-set", "picture-stories", "fix-it", "unit-check", "already-know-it", "level-test", "mini-test"]);
+    // (Not the Challenge's own questions: its later ones stretch to the step the child meets next. Not a story page's,
+    // which may take stories from the steps the day reviews.)
+    // (Only questions on their own page's step: a slot whose tasks ran out may take a taught step.)
+    const ownStep = (q: GeneratedPage["questions"][number]) => {
+      const page = ofDay.find(p => p.questions.includes(q));
+      const first = page?.expected?.find(e => e.slot === q.slot)?.steps?.[0];
+      return !first || first === `${q.itemPlan!.template!.skill}#${q.itemPlan!.template!.step}`;
+    };
+    const dayTop = Math.max(0, ...questions.flatMap(q => q.itemPlan?.template && q.place !== "warm-up" && q.place !== "challenge" && !["word-problems", "picture-stories"].includes(q.place ?? "") && !reviewParts.has(q.part) && ownStep(q) ? [q.itemPlan.template.rank] : []));
     for (const p of ofDay) for (const q of p.questions.filter(q => q.place === "challenge" && !q.existing && q.itemPlan?.template)) {
       const t = q.itemPlan!.template!;
-      if (t.rank < dayTop) issues.push({ page: p.number, kind: "challenge", reason: `Day ${day}'s Challenge must use the hardest step reached that day, never an easier step than practice` });
+      // Its first question is on the hardest step reached that day; later ones may stretch to the next step or take a
+      // step the book taught (the U4 review: three of one task are not a Challenge).
+      const firstOfPage = Math.min(...p.questions.filter(o => o.place === "challenge").map(o => o.number));
+      if (q.number === firstOfPage && t.rank < dayTop) issues.push({ page: p.number, kind: "challenge", reason: `Day ${day}'s Challenge must use the hardest step reached that day, never an easier step than practice` });
+      // Clearly harder than the day's practice of that step: a harder template, or at the same difficulty larger numbers.
+      // The template's difficulty (Cedric's: easy 0 to hard 2) plus what the child does (a story or a count to work
+      // out 2; checking a given answer, one box or two ways of a number task 1; a choice, a comparison or a true or
+      // false 0); at the same demand, the larger numbers.
+      const demand = (o: typeof q) => {
+        const { kind, format, difficulty, answer } = o.itemPlan!.template!;
+        const tier = kind === "choice" || !["story", "missing", "bare"].includes(format) ? 0 : kind === "story" || kind === "sequence" ? 2 : 1;
+        const size = Math.max(0, ...[o.package?.text ?? "", answer].flatMap(x => x.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number));
+        return [["easy", "medium", "hard"].indexOf(difficulty) + tier, size];
+      };
+      const above = (a: number[], b: number[]) => a[0] !== b[0] ? a[0] > b[0] : a[1] > b[1];
+      const mine = questions.filter(o => o.itemPlan?.template && o.place !== "challenge" && !reviewParts.has(o.part) && o.itemPlan.template.skill === t.skill && o.itemPlan.template.step === t.step);
+      const harder = mine.every(o => above(demand(q), demand(o)));
+      if (mine.length && !harder) issues.push({ page: p.number, kind: "challenge", reason: `Day ${day}'s Challenge question ${q.number} is no harder than that day's practice of its step` });
     }
     for (const p of ofDay) for (const q of p.questions.filter(q => q.place === "challenge" && !q.existing && !q.itemPlan?.template)) {
       const pkg = q.package;
@@ -126,8 +167,10 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     // A sentence frame at most twice a day (Cedric's section 9).
     const dayFrames = new Map<string, number[]>();
     for (const p of ofDay) for (const q of p.questions) {
-      if (!q.package || q.place === "warm-up" || q.place === "how-do-you-know" && /first story on this page/i.test(q.package.text)) continue;
+      if (!q.package || q.place === "warm-up" || q.place === "how-do-you-know" && STORY_EXPLAIN.test(q.package.text)) continue;
       const frame = sentenceFrameOf(q.package);
+      // Such a Challenge page counts each of its frames once.
+      if (frame && fewChallengePage(p) && (dayFrames.get(frame) ?? []).includes(p.number)) continue;
       if (frame) dayFrames.set(frame, [...(dayFrames.get(frame) ?? []), p.number]);
     }
     for (const [frame, at] of dayFrames) if (at.length > 2) issues.push({ page: at[2], kind: "variety", reason: `Day ${day} uses the sentence frame "${frame}" ${at.length} times; the limit is 2 a day` });
@@ -143,12 +186,14 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
   // Compare the numbers of the same skills, so changing Unit B does not hide a
   // flat main-unit sequence. A short review need not contain days 8 to 10.
   // Step template items show the step up by their steps instead (#489, the progression check below).
-  const skills = new Set(pages.flatMap(p => p.questions.flatMap(q => q.existing || q.itemPlan?.template ? [] : q.package?.skill.skills ?? [])));
+  // (A template page's "How can you check the first story?" asks about that story, not numbers of its own.)
+  const stepItem = (q: GeneratedPage["questions"][number]) => !!q.itemPlan?.template || q.itemPlan?.type === "template";
+  const skills = new Set(pages.flatMap(p => p.questions.flatMap(q => q.existing || stepItem(q) ? [] : q.package?.skill.skills ?? [])));
   for (const skill of skills) {
     // An earlier skill's fixed review range need not grow with the new unit.
     if (/make-10|partners-of-10|multiplication-facts|division-facts/.test(skill)) continue;
     if (skill.startsWith("K") && pages.some(p => p.questions.some(q => (q.package?.level ?? 0) > 3))) continue;
-    const largest = (late: boolean) => Math.max(0, ...pages.filter(p => p.day !== null && (late ? p.day >= 8 : p.day <= 3)).flatMap(p => p.questions.flatMap(q => q.package?.skill.skills.includes(skill) && !q.itemPlan?.template ? printedNumbers({...q.package, wrongAnswers: [], easierExample: null}).map(Math.abs) : [])));
+    const largest = (late: boolean) => Math.max(0, ...pages.filter(p => p.day !== null && (late ? p.day >= 8 : p.day <= 3)).flatMap(p => p.questions.flatMap(q => q.package?.skill.skills.includes(skill) && !stepItem(q) && !q.existing ? printedNumbers({...q.package, wrongAnswers: [], easierExample: null}).map(Math.abs) : [])));
     const early = largest(false), late = largest(true);
     if (early > 0 && late > 0 && late <= early) {
       for (const p of pages.filter(p => (p.day ?? 0) >= 8 && p.questions.some(q => q.package?.skill.skills.includes(skill)))) issues.push({ page: p.number, kind: "progress", reason: `${skill}: days 8 to 10 do not use bigger numbers than days 1 to 3 (${late} versus ${early})` });
@@ -165,7 +210,18 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     if (out !== undefined && out !== null && t.bounds) issues.push({ page: p.number, kind: "range", reason: `question ${q.number} prints ${out}, outside ${t.skill} step ${t.step}'s range (${t.bounds.min} to ${t.bounds.max})` });
   }
   const steps = [...new Set(pages.flatMap(p => p.day === null ? [] : [p.day]))].sort((a, b) => a - b).flatMap(day => {
-    const ranks = pages.filter(p => p.day === day).flatMap(p => p.questions.flatMap(q => q.itemPlan?.template && q.place !== "warm-up" ? [q.itemPlan.template.rank] : []));
+    // The day's teaching: not its reviews, its Challenge (which stretches) or its stories (which may come from reviewed steps).
+    const review = new Set(["remember-these", "show-what-you-know", "friday-5", "mixed-set", "picture-stories", "fix-it", "unit-check", "already-know-it", "level-test", "mini-test"]);
+    const teaching = (q: GeneratedPage["questions"][number]) => q.place !== "warm-up" && q.place !== "challenge" && q.place !== "word-problems" && q.place !== "picture-stories" && !review.has(q.part);
+    const all = pages.filter(p => p.day === day).flatMap(p => p.questions.flatMap(q => q.itemPlan?.template && q.place !== "warm-up" ? [{ p, q }] : []));
+    // (On their page's own step: a practice block's last questions review earlier steps.)
+    const own = ({ p, q }: { p: GeneratedPage; q: GeneratedPage["questions"][number] }) => {
+      const first = p.expected?.find(e => e.slot === q.slot)?.steps?.[0];
+      return !first || first === `${q.itemPlan!.template!.skill}#${q.itemPlan!.template!.step}`;
+    };
+    const taught = all.filter(x => teaching(x.q) && own(x));
+    const pick = (taught.length ? taught : all).map(x => x.q);
+    const ranks = pick.map(q => q.itemPlan!.template!.rank);
     return ranks.length ? [{ day, average: Math.round(ranks.reduce((a, b) => a + b, 0) / ranks.length * 10) / 10 }] : [];
   });
   if (steps.length >= 2 && steps.at(-1)!.average <= steps[0].average) for (const p of pages.filter(p => p.day === steps.at(-1)!.day)) issues.push({ page: p.number, kind: "progress", reason: `Day ${steps.at(-1)!.day}'s steps (average ${steps.at(-1)!.average}) are not above Day ${steps[0].day}'s (${steps[0].average})` });

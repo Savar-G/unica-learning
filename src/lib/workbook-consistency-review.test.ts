@@ -75,11 +75,12 @@ it("retains five Friday questions and gives every Challenge more reasoning than 
   // #489: every Challenge comes from the hardest step reached that day, so Day 10's is above Day 1's.
   const challenges = draft.pages.flatMap(p=>p.questions.filter(q=>q.place==="challenge").map(q=>({q,day:p.day!})));
   expect(challenges.length).toBeGreaterThanOrEqual(20);
-  for (const {q,day} of challenges) {
-    const taught = draft.pages.filter(p=>p.day===day).flatMap(p=>p.questions).filter(q=>q.itemPlan?.template && q.part!=="remember-these");
-    expect(q.itemPlan!.template!.rank).toBe(Math.max(...taught.map(q=>q.itemPlan!.template!.rank)));
-  }
-  expect(challenges.at(-1)!.q.itemPlan!.template!.rank).toBeGreaterThan(challenges[0].q.itemPlan!.template!.rank);
+  // The book check's Challenge rules (#489): each page's first question on the hardest step reached that day, every
+  // question harder than that day's practice of its step.
+  const challengeIssues=workbookQuality(draft.pages).issues.filter(i=>i.kind==="challenge");
+  expect(challengeIssues,JSON.stringify(challengeIssues)).toEqual([]);
+  const firsts = challenges.filter(({q})=>q.number===1);
+  expect(firsts.at(-1)!.q.itemPlan!.template!.rank).toBeGreaterThan(firsts[0].q.itemPlan!.template!.rank);
   expect(draft.quality!.dropped).toBe(0);
   expect(draft.quality!.issues, JSON.stringify(draft.quality!.issues)).toEqual([]);
   expect(draft.pages.flatMap(p=>p.leftOut ?? [])).toEqual([]);
@@ -108,11 +109,14 @@ it("retains the saved policy and examples through generation and editing",async(
     expect(r.exampleBank[0].items.length).toBeGreaterThan(1);
   }
   expect(edited.questions.find(x=>x.number===q.number)!.package!.operation).toEqual(q.package!.operation);
-  // A template story's numbers and format are code's: another number or format is refused.
-  for (const mutate of [(x:{text:string})=>({...x,text:x.text.replace(/\d+/,n=>String(Number(n)+1))}),(x:object)=>({...x,format:"draw"})]) {
-    const bad=fakeAiClient({answer:r=>({items:fakeWorkbookItems(r).items.map(x=>mutate(x as {text:string}))})});
-    await expect(reviseWorkbookPage(o.input,{...o.deps,ai:bad},storyPage,{question:q.number,note:"Keep the numbers."})).rejects.toThrow(/changed|approved|code-picked numbers/);
-  }
+  // A template story's numbers and format are code's: a rewording with another number keeps code's words (its numbers
+  // never change), and another format is refused.
+  const numbers=(t:string)=>(t.match(/\d+/g) ?? []).join(",");
+  const renumber=fakeAiClient({answer:r=>({items:fakeWorkbookItems(r).items.map(x=>({...x,text:(x as {text:string}).text.replace(/\d+/,n=>String(Number(n)+1))}))})});
+  const kept=await reviseWorkbookPage(o.input,{...o.deps,ai:renumber},storyPage,{question:q.number,note:"Keep the numbers."});
+  expect(numbers(kept.questions.find(x=>x.number===q.number)!.package!.text)).toBe(numbers(q.itemPlan!.item.text));
+  const reformat=fakeAiClient({answer:r=>({items:fakeWorkbookItems(r).items.map(x=>({...(x as object),format:"draw"}))})});
+  await expect(reviseWorkbookPage(o.input,{...o.deps,ai:reformat},storyPage,{question:q.number,note:"Keep the numbers."})).rejects.toThrow(/changed|approved|code-picked numbers/);
   const drill=draft.pages.find(p=>p.questions.some(q=>q.itemPlan?.source==="code"))!;
   const code=drill.questions.find(q=>q.itemPlan?.source==="code")!;
   const forbidden=fakeAiClient({answer:()=>{throw new Error("a code drill reached AI");}});

@@ -115,7 +115,7 @@ export function planItem(o: { skill: string; slot: string; level: number; day: n
     case "count": {
       const countMax = /subitize-to-5/.test(o.skill) ? Math.min(5, max) : /subitize|^K/.test(o.skill) ? Math.min(10, max) : Math.min(20, max);
       const count = Math.min(countMax, Math.max(1, Math.ceil(Math.min(r.min, countMax)), 1 + seed % countMax));
-      item.text = count <= 8 && Math.floor(seed / countMax) % 2 && !/ten-frame/.test(o.skill) ? `Colour ${count} dots in the row.` : `Colour in ${count} ${count === 1 ? "cell" : "cells"}.`;
+      item.text = count <= 8 && Math.floor(seed / countMax) % 2 && !/ten-frame/.test(o.skill) ? `Colour ${count} ${count === 1 ? "dot" : "dots"} in the row.` : `Colour in ${count} ${count === 1 ? "cell" : "cells"}.`;
       item.format = "draw";
       numbers = [count];
       break;
@@ -314,7 +314,7 @@ export function itemContractProblem(raw: unknown, plan: ItemPlan): string | null
   if (typeof r.text !== "string") return "the writer gave no question text";
   if (plan.textBudget && (r.text.length > plan.textBudget.characters || itemTextLines(r.text, plan.textBudget.perLine) > plan.textBudget.lines)) return `the text must fit ${plan.textBudget.lines} lines of ${plan.textBudget.perLine} characters`;
   if (plan.source === "explain" && !/^(?:How (?:do|can|did)|Why\b|Explain\b)/i.test(r.text)) return "an explain item must ask how or why";
-  if (plan.source === "explain" && !/first story on this page/i.test(r.text)) return "the explanation must refer to the first story on this page";
+  if (plan.source === "explain" && !STORY_EXPLAIN.test(r.text)) return "the explanation must refer to the first story on this page";
   if (plan.source === "explain" && PEOPLE.some(name => new RegExp(`\\b${name}\\b`).test(r.text))) return "refer to the story without adding another named person";
   if (plan.source !== "code" && /^(?:Draw|Trace|Colour)\b/i.test(r.text)) return "the writer changed the approved task to drawing or tracing";
   if (plan.source !== "code") {
@@ -344,7 +344,7 @@ export function buildPlannedItem(plan: ItemPlan, raw: unknown, place: SlotPlace)
     p.item = plan.type === "likelihood" ? { format: "circle", scorable: false, parentChecked: true,
       regions: [{ id: "answer", kind: "choice", mark: "circle", label: null, choices: ["never", "sometimes", "always"], answer: null }], checks: [], error: null }
       : { format: "colour-or-shade", scorable: false, parentChecked: true, regions: [{ id: "drawing", kind: "picture", label: null }], checks: [], error: null,
-        figure: / dots /.test(p.text) ? { kind: "dots", groups: [Math.min(8, Math.floor(plan.dayRange.max))], takenAway: 0 } : { kind: "ten-frame", counters: plan.numbers[0] > 10 ? [0, 0] : [0] } };
+        figure: / dots? in the row/.test(p.text) ? { kind: "dots", groups: [Math.min(8, Math.floor(plan.dayRange.max))], takenAway: 0 } : { kind: "ten-frame", counters: plan.numbers[0] > 10 ? [0, 0] : [0] } };
     built.check = { status: "not-checked", reason: "a parent checks the circle or coloured drawing" };
   }
   if (plan.source === "code" && plan.type === "relation" && plan.item.relation?.kind === "more") {
@@ -367,10 +367,11 @@ function buildTemplatePlan(plan: ItemPlan, ref: StepTemplateRef, raw: unknown, p
   const r = raw as AiItem;
   if (r.skill !== plan.item.skill || r.format !== plan.item.format) return failed("the writer changed the approved skill or question format");
   if (plan.source === "story" && r.text !== plan.item.text) {
-    const problem = stepStoryProblem(r.text, plan.numbers, ref, place.level);
-    if (problem) return failed(problem);
-    if (plan.textBudget && (r.text.length > plan.textBudget.characters || itemTextLines(r.text, plan.textBudget.perLine) > plan.textBudget.lines)) return failed(`the text must fit ${plan.textBudget.lines} lines of ${plan.textBudget.perLine} characters`);
-    return buildStepItem(ref, r.text, place, "ai");
+    // A rewording that breaks the contract (other numbers, no question at the end, too long) keeps the template's own
+    // checked words instead: the slot is never left empty for the writer's words (the U4 review, items 2 and 4).
+    const problem = stepStoryProblem(r.text, plan.numbers, ref, place.level)
+      ?? (plan.textBudget && (r.text.length > plan.textBudget.characters || itemTextLines(r.text, plan.textBudget.perLine) > plan.textBudget.lines) ? "too long" : null);
+    if (!problem) return buildStepItem(ref, r.text, place, "ai");
   }
   return buildStepItem(ref, plan.item.text, place, "code");
 }
@@ -379,12 +380,15 @@ export function approvedSkillIds(): string[] {
   return [...new Set(Object.values(approvedSkills).flat())];
 }
 
+/** An explanation of the page's first story: "... the first story on this page ..." or "How did you work out question 1?". */
+export const STORY_EXPLAIN = /first story on this page|\b(?:work(?:ed)? out|answer to) question \d+\b/i;
+
 /** Semantic guards supplement the arithmetic checker. A correct sum can teach the wrong skill. */
 export function skillItemProblem(plan: ItemPlan): string | null {
   const p = plan.item, id = p.skill;
   if (plan.type === "template") return plan.template || plan.source === "explain" ? null : "a template item needs its step template";
   if (!approvedQuestionTypes(id).includes(plan.type)) return "the skill has no approved builder";
-  if (plan.source === "explain") return p.text.includes("first story on this page") ? null : "the explanation must refer to the story on this page";
+  if (plan.source === "explain") return STORY_EXPLAIN.test(p.text) ? null : "the explanation must refer to the story on this page";
   const [a, b] = p.operation?.operands.map(x => x.value!) ?? [];
   const bad = (ok: boolean, rule: string) => ok ? null : `${id}: ${rule}`;
   if (id === "1.3-doubles") return bad(p.operation?.kind === "add" && a === b && a + b <= 20, "use equal addends within 20");

@@ -31,6 +31,11 @@ export interface TemplateSource {
   slots: { name: string; value: TemplateScalar; domain: StoredDomain }[];
   /** The step's `values` list, when the template reads it. */
   values: TemplateScalar[] | null;
+  /**
+   * The words a word answer prints as, when the template's answer names a person ("'name' if a > b else 'friend'"):
+   * [answer, printed], for example ["name", "Zara"], ["friend", "the friend"].
+   */
+  labels?: [string, string][] | null;
 }
 
 const SOURCE_TEXT = 2000;
@@ -80,6 +85,8 @@ export function templateSourceProblem(s: unknown): string | null {
     if (problems.length) return `the template slot ${x.name} has no valid range`;
   }
   if (src.values !== null && (!Array.isArray(src.values) || src.values.length > 64 || !src.values.every(scalarOk))) return "the template source's values are not a list of values";
+  if (src.labels !== undefined && src.labels !== null && (!Array.isArray(src.labels) || src.labels.length > 4
+    || !src.labels.every((l) => Array.isArray(l) && l.length === 2 && NAME.test(String(l[0])) && typeof l[1] === "string" && l[1].trim().length > 0 && l[1].length <= 40))) return "the template source's labels are not [answer, printed words] pairs";
   return null;
 }
 
@@ -99,7 +106,8 @@ export function templateAnswer(src: TemplateSource): { answer: string } | { prob
     }
     for (const [name, expression] of src.derived) values[name] = compileExpression(expression, budget).evaluate(values, budget);
     if (src.check && !expressionIsTrue(compileExpression(src.check, budget).evaluate(values, budget))) return { problem: "the sampled numbers do not pass the template's check" };
-    return { answer: formatValue(compileExpression(src.answer, budget).evaluate(values, budget), budget) };
+    const answer = formatValue(compileExpression(src.answer, budget).evaluate(values, budget), budget);
+    return { answer: src.labels?.find(([key]) => key === answer)?.[1] ?? answer };
   } catch (e) {
     return { problem: `the template cannot be worked out: ${e instanceof Error ? e.message : String(e)}` };
   }
