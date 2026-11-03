@@ -35,7 +35,7 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import { talkMath } from "./claims";
-import { scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
+import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
 import { findOffer, normalSlots, packageLines, fixedOffers, areaOffers, spokenOffer, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
@@ -372,6 +372,7 @@ export interface Session {
   offeredOtherInput: boolean;
   redirects: number;
   scopeDue?: ScopeReason;
+  mathClaim?: boolean;
   scopeRefusals?: ScopeRefusal[];
   safety: { flagged: boolean; severity: Severity | null; at: number | null; guided: boolean };
   mishearing: { confirmations: number; corrections: number };
@@ -621,7 +622,7 @@ function proposalProblem(p: unknown): string | null {
   if (r === undefined) return null;
   if (!isObject(r)) return "the reading is an object";
   if (r.safety !== undefined && !SEVERITIES.includes(r.safety as Severity)) return "the reading's safety is concern or immediate";
-  for (const flag of ["stop", "unclear", "writing", "offTopic", "unsafeRequest", "noBoard", "shorter", "correctsHearing"] as const) {
+  for (const flag of ["stop", "unclear", "writing", "offTopic", "mathClaim", "unsafeRequest", "noBoard", "shorter", "correctsHearing"] as const) {
     if (r[flag] !== undefined && typeof r[flag] !== "boolean") return `the reading's ${flag} is true or false`;
   }
   if (r.outsideScope !== undefined && !["outside_work", "other_person", "other_topic"].includes(r.outsideScope as string)) return "outsideScope is a reason code";
@@ -692,6 +693,9 @@ function gate(s: Session, reading: Reading): Allowed | null {
   // Once the answer stands, the model's unclear reading does not hold the turn (practice: "I heard 66. Is that right?"
   // after "That's right: 27 + 39 = 66"); a number code cannot read still does.
   if (s.turn?.uncertain || (reading.unclear && s.solved === null)) {
+    if (s.turn && s.package && outsideConfirmation(s.package, s.turn.text, s.exampleIntroduced === true || s.exampleShown > 0)) {
+      return { acts: ["clarify"], code: "confirm_first", reason: "This turn contains outside arithmetic. Read the stored question instead of confirming any number from the turn." };
+    }
     if (s.confirmTries < 2) return { acts: ["confirm"], code: "confirm_first", reason: "What the child said is unclear: confirm it before judging any math." };
     return {
       acts: s.offeredOtherInput ? ["close"] : ["offer_other_input", "close"],
@@ -826,6 +830,10 @@ export function step(session: Session, event: SessionEvent): StepResult {
   if (s.turn && s.package && event.type === "proposal") {
     // Scope inputs are read separately from proposal shape. A bad board or a later retry cannot remove this duty.
     const r = isObject(raw) && isObject(raw.reading) ? raw.reading : {};
+    if (mathClaimIn(s.turn.text, {
+      mathClaim: r.mathClaim === true,
+      mathRequests: Array.isArray(r.mathRequests) ? r.mathRequests : [],
+    })) s.mathClaim = true;
     const reading: ScopeReading = {
       ...(typeof r.scopeSkill === "string" ? { scopeSkill: r.scopeSkill } : {}),
       ...(r.outsideScope === "outside_work" || r.outsideScope === "other_person" || r.outsideScope === "other_topic" ? { outsideScope: r.outsideScope } : {}),
@@ -886,6 +894,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
         : { at: event.at, text: event.text, uncertain };
       // Each child turn starts with no numeric restriction from a prior turn.
       delete s.scopeDue;
+      s.mathClaim = mathClaimIn(s.turn.text);
       if (s.package) {
         const reason = scopeReason(s.package, s.turn.text, s.exampleIntroduced === true || s.exampleShown > 0);
         if (reason) s.scopeDue = reason;
@@ -1309,7 +1318,10 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   }
   s.boardRoles = { ...s.boardRoles, ...roles };
   // Repairs and the AI disclosure do not answer the child's pending turn.
-  if (p.act !== "repair" && p.act !== "open") s.turn = null;
+  if (p.act !== "repair" && p.act !== "open") {
+    s.turn = null;
+    delete s.mathClaim;
+  }
 
   if (text !== "") {
     effects.push({ kind: "say", act: p.act, text, ...(spoken.replaced > 0 ? { talkReplaced: spoken.replaced } : {}), ...(spoken.talk.length > 0 ? { talk: spoken.talk } : {}) });
@@ -1950,6 +1962,7 @@ const lastSaid = (s: Session) => [...s.turns].reverse().find((t) => t.speaker ==
 /** The numbers Maya may have heard in the child's pending turn, and the pairs that sound alike or were offered as alternatives. */
 function heardIn(s: Session): [AnswerValue[], [AnswerValue, AnswerValue][]] {
   if (!s.turn) return [[], []];
+  if (s.package && outsideConfirmation(s.package, s.turn.text, s.exampleIntroduced === true || s.exampleShown > 0)) return [[], []];
   const last = s.turns.map((t) => t.speaker).lastIndexOf("maya");
   const since = s.turns.slice(last + 1).flatMap((t) => (t.speaker === "child" ? t.alternatives ?? [] : []));
   const calculation = readNumbers(s.turn.text, { fractions: true, operands: true }).operand.some(Boolean) ||
@@ -2155,7 +2168,9 @@ function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview
       if (part.pick !== undefined && !phraseOffers(s, part.warm).some((o) => o.pick === part.pick)) {
         return { code: "line_not_offered", reason: "This praise needs observed work in the call. Pick a currently offered phrase." };
       }
-      add("warm", phrase(part.warm, part.echo === undefined ? null : echoOf(s, part.echo), part.pick));
+      add("warm", s.mathClaim && part.warm !== "back"
+        ? phrase("smalltalk", null, undefined, NEUTRAL_SMALLTALK)
+        : phrase(part.warm, part.echo === undefined ? null : echoOf(s, part.echo), part.pick));
       continue;
     }
     if ("talk" in part) {
@@ -2163,19 +2178,20 @@ function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview
       // of the act's purpose. Either way they stay the model's part, so a turn with math refuses them
       // (assembledProblem).
       const proposed = part.talk.trim();
-      const code = s.freeTalk ? freeTalkProblem(part.talk, s.variety.name, childWords(s)) : "free talk is off";
+      const code = s.mathClaim ? "math claims use checked lines or neutral bank words"
+        : s.freeTalk ? freeTalkProblem(part.talk, s.variety.name, childWords(s)) : "free talk is off";
       const review = code === null ? reviews.find((r) => r.text === proposed)?.result ?? null : null;
       if (code === null && review?.verdict === "pass") {
         add("talk", proposed);
         talk.push({ proposed, code, review: "pass", shown: proposed });
       } else {
         replaced += 1;
-        const group = FALLBACK_GROUP[p.act] ?? "encourage";
+        const group = s.mathClaim ? "smalltalk" : FALLBACK_GROUP[p.act] ?? "encourage";
         const childText = s.turn?.text ?? [...s.turns].reverse().find((t) => t.speaker === "child")?.text;
-        const neutral = hardFeeling(childText) ? FEELING_SMALLTALK : NEUTRAL_SMALLTALK;
+        const neutral = !s.mathClaim && hardFeeling(childText) ? FEELING_SMALLTALK : NEUTRAL_SMALLTALK;
         // A question about Maya, a request for a promise, or praise gets the code-written reply that answers it, once a
         // turn; anything else the neutral phrase, which fits any child turn.
-        const reply = group === "smalltalk" && !replied ? replyFor(childText) : null;
+        const reply = !s.mathClaim && group === "smalltalk" && !replied ? replyFor(childText) : null;
         if (reply) replied = true;
         const shown = reply ? phrase(reply.group, null, reply.pick) : phrase(group, null, undefined, group === "smalltalk" ? neutral : undefined);
         add("talk", shown);
@@ -2203,6 +2219,9 @@ function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview
     add(isMathLine(o) || o.line === "redirect.decline" ? "math" : "plain", text);
     lines.push(text);
     chosen.push(o);
+  }
+  if (s.mathClaim && !chosen.length && !p.parts.some(part => "warm" in part && part.warm === "back") && PHRASE_ACTS.back.includes(p.act)) {
+    add("warm", phrase("back"));
   }
   const level = Math.min(p.level ?? 0, 3);
   if (p.act === "guide" && level >= 1 && !chosen.some((o) => o.level === level)) {

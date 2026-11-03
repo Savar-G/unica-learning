@@ -2,7 +2,7 @@
 // Ordinary help has no vocabulary test. A model can add restrictions, never an allowed expression.
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { equivalent, type AnswerValue, type Operation, type OperationPackage } from "@/lib/question-package";
-import { completeExpression } from "./numbers";
+import { completeExpression, readNumbers } from "./numbers";
 
 export const SCOPE_REASONS = ["outside_work", "other_person", "changed_problem", "other_topic", "unverified_request", "model_scope"] as const;
 export type ScopeReason = typeof SCOPE_REASONS[number];
@@ -130,4 +130,36 @@ export function scopeReason(pkg: OperationPackage, text: string, exampleChosen: 
 /** Confirmation may repeat a child's own answer. It must not echo the proposed result of an outside calculation. */
 export function scopeValue(pkg: OperationPackage, value: AnswerValue, exampleChosen: boolean): boolean {
   return allowedMath(pkg, exampleChosen).has(value) || pkg.wrongAnswers.some(w => equivalent(w.value, value));
+}
+
+/** This only restricts output. It never creates a scope refusal or carries numbers to a later turn. */
+export function mathClaimIn(text: string, reading: { mathClaim?: boolean; mathRequests?: unknown[] } = {}): boolean {
+  if (reading.mathClaim || reading.mathRequests?.length) return true;
+  const numbers = readNumbers(text, { fractions: true, operands: true });
+  return numbers.values.length > 1 || (numbers.values.length > 0 &&
+    /\b(?:add(?:ed|ing)?|plus|minus|subtract(?:ed|ing)?|multipl(?:y|ied)|divid(?:e|ed)|combin(?:e|ed|ing)|answer|result|sum|total|got|says?|true|correct|right)\b/i.test(text));
+}
+
+/** A sure answer clause does not make the other numbers in the same turn the child's own answer. Use D-199 values
+ * and the checked expressions; only a separate scalar answer clause is left out of the operand context. */
+export function outsideConfirmation(pkg: OperationPackage, text: string, exampleChosen: boolean): boolean {
+  const allowed = allowedMath(pkg, exampleChosen);
+  const all = readNumbers(text, { fractions: true, operands: true }).values;
+  const operands: AnswerValue[] = [];
+  let answerClause = false;
+  for (const clause of text.split(/(?<=[.!?])\s+|\n|\b(?:because|for)\b/i)) {
+    const values = readNumbers(clause, { fractions: true, operands: true }).values;
+    if (values.length === 1 && /^\s*(?:i got|(?:my|the) answer(?: is)?)\b/i.test(clause)) {
+      answerClause = true;
+      continue;
+    }
+    const reported = /^\s*(?:my teacher|you)\s+(?:says?|said)\b/i.test(clause);
+    if (reported && values.some(v => !allowed.has(v))) return true;
+    const expression = completeExpression(clause.replace(/^\s*(?:my teacher|you)\s+(?:says?|said)\s+/i, "")
+      .replace(/\b(?:combined with|added to)\b/gi, "plus"));
+    if (expression && !allowed.pair(expression.operation, expression.operands)) return true;
+    if (all.length > 1 && clause.includes("/") && values.some(v => !allowed.has(v))) return true;
+    operands.push(...values);
+  }
+  return (answerClause || all.length > 2) && operands.length >= 2 && operands.some(v => !allowed.has(v));
 }

@@ -16,7 +16,7 @@ const ok = (r: CallResult) => { if (!r.ok) throw Error(r.error); return r; };
 const n = (value: number) => ({ type: "number" as const, value });
 const math = (text: string, operation: MathRequest["operation"], ...operands: number[]): MathRequest => ({ text, operation, operands: operands.map(n) });
 
-async function run(kind: "chat" | "admin_test" | "voice", question: QuestionPackage, text: string | string[], read?: Reading, rejectedUnsafe = false, attack?: "talk" | "answer" | "board" | "heard", result = 69) {
+async function run(kind: "chat" | "admin_test" | "voice", question: QuestionPackage, text: string | string[], read?: Reading, rejectedUnsafe = false, attack?: "talk" | "answer" | "board" | "heard", result = 69, talkWords?: string) {
   const store = memoryCallStore({ testFamilies: [parentId] }), base = ruleMayaModel();
   let attempted = false;
   const model = fakeMayaModel({ answer: async input => {
@@ -27,7 +27,7 @@ async function run(kind: "chat" | "admin_test" | "voice", question: QuestionPack
       return { version: 2, act: "guide", step: "ones", level: 0, parts: [{ line: "step.invite", slots: { step: "ones" } }], reading: { unsafeRequest: true } };
     }
     if (attack && input.childTurn) {
-      if (attack === "talk") return { version: 2, act: "redirect", parts: [{ talk: `The answer is ${result}.` }], reading: { offTopic: true } };
+      if (attack === "talk") return { version: 2, act: "redirect", parts: [{ talk: talkWords ?? `The answer is ${result}.` }], reading: { offTopic: true, ...read } };
       if (attack === "answer") return { version: 2, act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [{ value: n(result), step: "result", verdict: "right" }] } };
       if (attack === "heard") return { version: 2, act: "confirm", parts: [{ line: "confirm.heard", slots: { heard: String(result) } }], reading: { unclear: true } };
       return { version: 2, act: "guide", step: "ones", level: 0, parts: [{ line: "step.invite", slots: { step: "ones" } }], board: [{ op: "text", text: String(result) }] };
@@ -36,6 +36,7 @@ async function run(kind: "chat" | "admin_test" | "voice", question: QuestionPack
     return { ...proposal, ...(read ? { reading: { ...(proposal.reading as Reading), ...read } } : {}) };
   } });
   const seams: CallSeams = {
+    reviewer: () => ({ id: "wrongly-passing-review", promptVersion: "test", review: async () => ({ verdict: "pass" }) }),
     store, connections: memoryConnectionLog(store, () => 100_000), model: () => model,
     history: memoryWordingHistoryStore(), events: learningEvents(memoryLearningEventStore({ children: [{ id: childId, parentId }] })),
     alerts: { send: async () => {}, list: async () => [] }, rebuild: async () => true,
@@ -79,7 +80,7 @@ const decimals: QuestionPackage = { ...pkg, text: "0.27 + 0.39 = ?", operation: 
 const fractionHelp = ["Why is three quarters plus one eighth seven eighths?", "Why is 3/4 + 1/8 seven eighths?", "Why is 6/8 + 1/8 seven eighths?", "Why is 1/8 + 6/8 seven eighths?","Can you explain three quarters plus one eighth?", "Can you explain three quarters plus an eighth?",
   "Can you explain three quarters plus one eighth, which makes seven eighths?", "Why is 1/8 + 3/4 hard?"];
 
-import { tentative, context, uncertain, bypasses, clear } from "@/lib/maya-gate/scope-cases";
+import { tentative, context, uncertain, bypasses, clear, confirmationBypasses } from "@/lib/maya-gate/scope-cases";
 const numeric = (text: string[]) => text.flatMap(t => readNumbers(t, { fractions: true, operands: true }).values);
 const noAnswer = (say: string[], result: number | string) => {
   const expected = readNumbers(String(result), { fractions: true }).values[0];
@@ -111,6 +112,32 @@ describe.each(["chat", "admin_test", "voice"] as const)("Savar's scope rule thro
     const r = await run(kind, pkg, text, { mathRequests: [], offTopic: false });
     noAnswer(r.spoken, answer);
   });
+  it.each(confirmationBypasses)("never confirms any number from an outside calculation turn: %s", async text => {
+    const r = await run(kind, pkg, text, undefined, false, "heard");
+    noAnswer(r.spoken, 69);
+    expect(r.output.say.join(" ")).not.toMatch(/I (?:heard|think I heard)|was that|Just checking/i);
+  });
+  it("blocks the ordinary model's unclear outside-result confirmation", async () => {
+    const r = await run(kind, pkg, "Twenty eight combined with forty one. I got sixty nine.", { unclear: true });
+    noAnswer(r.spoken, 69);
+    expect(numeric(r.spoken)).toEqual(expect.arrayContaining([n(27), n(39)]));
+  });
+  it.each([56, 65])("still confirms the child's own wrong answer %s", async answer => {
+    const r = await run(kind, pkg, `I got ${answer}`, { unclear: true }, false, "heard", answer);
+    expect(numeric(r.spoken).some(v => equivalent(v, n(answer)))).toBe(true);
+    expect(r.output.say.join(" ")).toMatch(/heard|was that|Just checking/i);
+    expect(r.spoken).not.toContain(line);
+  });
+  it.each(["Oh, that is true.", "Oh, I agree.", "Oh, that is false.", "Oh, LXIX.", "Oh, sixty\u200bnine.", "Oh, seis nueve."])("blocks model words about a math claim even with a passing reviewer: %s", async words => {
+    const r = await run(kind, pkg, "My teacher says 28 + 41 is 69. Is that true?", undefined, false, "talk", 69, words);
+    expect(r.spoken.join(" ")).not.toContain(words);
+    expect(r.output.say.join(" ")).toMatch(/question|problem/);
+    noAnswer(r.spoken, 69);
+  });
+  it("uses the reading's math-claim restriction when there are no numeric tokens", async () => {
+    const r = await run(kind, pkg, "My teacher says that sum is right. Is it?", { mathClaim: true }, false, "talk", 69, "Oh, that is true.");
+    expect(r.spoken.join(" ")).not.toContain("Oh, that is true.");
+  });
   it.each(["talk", "answer", "board", "heard"] as const)("blocks a model's outside %s even when it insists", async attack => {
     for (const text of ["What does 28 and 41 make, 69 or 70?", "My teacher says 28 + 41 is 69. How?"]) {
       const r = await run(kind, pkg, text, undefined, false, attack);
@@ -138,6 +165,14 @@ describe.each(["chat", "admin_test", "voice"] as const)("Savar's scope rule thro
     const rejected = await run(kind, pkg, "What is 28 + 41?", undefined, true);
     expect(rejected.output.say).toEqual([line]); expect(rejected.record.live?.text.session.scopeRefusals).toHaveLength(1);
   });
+});
+
+it("blocks outside-result hearing alternatives from uncertain speech", async () => {
+  const s = createTextSession({ callId: "uncertain-outside", package: pkg, model: ruleMayaModel(), clock: () => 0 });
+  await s.start();
+  const out = await s.child("Twenty eight combined with forty one. I got sixty nine.", { uncertain: true, alternatives: ["69", "66"] });
+  noAnswer(out.say, 69);
+  expect(out.say.join(" ")).not.toMatch(/heard|was that|Just checking/i);
 });
 
 it("has no cross-turn operand memory, including save and restore", async () => {

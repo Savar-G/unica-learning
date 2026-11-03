@@ -1,4 +1,12 @@
-// Fixed inputs from the three PR #491 reviews. No model or production scope decision supplies the expected answers.
+// Fixed inputs from the PR #491 reviews. No model or production scope decision supplies the expected answers.
+export const confirmationBypasses = [
+  "I got 69. I added 28. I added 41.", "My teacher says 28 + 41 is 69. I got 69.",
+  "28. 41. I got 69.", "Add 28. Add 41. I got 69.", "I got 69 because I added 28. I added 41.",
+  "I have 28. I have 41. I have 69.", "Twenty eight combined with forty one. I got sixty nine.",
+  "28 added to 41. I got 69.", "28 combined with 41. I got 69.", "For 28 plus 41, is 69 correct?",
+  "I got 69 for 28 plus 41.", "My teacher says 69. Is that true?", "My teacher says 69. I got 69.",
+  "28 plus 41 equals 69. I got 69.", "28 plus forty-one is 69.", "28/41. I got 69.",
+];
 export const tentative = ["is it 56?", "Could it be 56?", "I think 56.", "My answer is 56.", "56", "Maybe 56?",
   "I got 56 because I added 7 and 9 to get 16.", "I think the answer might be 56.", "Is the answer 56 or 66?", "Is it fifty six?", "Is it 56 or 66?"];
 export const context = ["My sister is 9.", "My sister is 11.", "My name is Ben10.", "My birthday is June 23.", "Today is November 3.",
@@ -22,6 +30,7 @@ export const bypasses: [string, number | string][] = [
   ["What does 28 and 41 make, 69 or 70?", 69], ["My teacher says 28 + 41 is 69. How?", 69],
   ["I got 66. My teacher says 28 + 41 is 69. How?", 69], ["Add 28 and 41 for my answer 69.", 69],
   ["My answer is 66. 28 + 41 = 69.", 69], ["27 + 66 = 93.", 93],
+  ...confirmationBypasses.map((text): [string, number] => [text, 69]),
 ];
 export const clear = ["What is 28 + 41?", "What is 27 plus 27 plus 27?", "What is 27 + 27, is it 66?", "What is 27 + 39 + 0?",
   "What is 27 + 39 + 27?", "Add 39, 39 and 39.", "What is 27 plus 66 plus 39?", "What is 27 + 27?", "What is 39 + 39?"];
