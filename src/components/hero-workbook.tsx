@@ -1,14 +1,9 @@
-"use client";
-
 // Home hero visual (D-214, prototype r30 B): a sample workbook cover, made for one child, on top of a workbook page.
 // The cover is the real sample cover (public/whats-included/wb/leah-01-cover.jpg) rebuilt in HTML at 880 px wide,
-// so the child's name can change: it cycles through sample names to show that each book is made for one child.
-// With reduced motion on, it stays on the first name.
+// so it stays sharp at any size.
 import Image from "next/image";
-import { useEffect, useState } from "react";
 
-const NAMES = ["Leah", "Arjun", "Maya", "Noah", "Sofia", "Ethan"];
-const EVERY_MS = 2600;
+const NAME = "Leah";
 
 function Cover({ name }: { name: string }) {
   const whose = /s$/i.test(name) ? `${name}'` : `${name}'s`;
@@ -37,22 +32,15 @@ function Cover({ name }: { name: string }) {
 }
 
 export function HeroWorkbook() {
-  const [n, setN] = useState(0);
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const t = window.setInterval(() => setN((i) => (i + 1) % NAMES.length), EVERY_MS);
-    return () => window.clearInterval(t);
-  }, []);
-
   return (
-    <div className="hwb-stage" role="img" aria-label="A sample Unica workbook cover made for one child, on top of a workbook page">
+    <div className="hwb-stage" role="img" aria-label="A sample Unica workbook cover made for Leah, on top of a workbook page">
       <div className="hwb-glow" aria-hidden="true" />
       <div className="hwb-desk" aria-hidden="true">
         <div className="hwb-sheet hwb-back">
           <Image src="/whats-included/wb/leah-04-d1p2.jpg" alt="" width={880} height={1139} sizes="440px" loading="eager" />
         </div>
         <div className="hwb-front">
-          <div className="hwb-sheet hwb-page"><Cover key={NAMES[n]} name={NAMES[n]} /></div>
+          <div className="hwb-sheet hwb-page"><Cover name={NAME} /></div>
           <i className="hwb-fold" />
         </div>
       </div>
