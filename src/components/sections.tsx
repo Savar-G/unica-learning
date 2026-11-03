@@ -25,7 +25,8 @@ import {
   SectionHeader,
   type IconName,
 } from "@/ds";
-import { CompareTable } from "./compare";
+import { Suspense } from "react";
+import { CompareFull, ComparePrototype, VariantA } from "./compare-prototype";
 import { Knot, Rise, type Vars } from "./drawn";
 
 import adapt4 from "@/assets/img/loop-adapt-4.jpg";
@@ -186,7 +187,24 @@ export function Pricing() {
           cta={<div className="plan-cta"><GetStarted src="price" /><StartNote /></div>}
         />
       </PlanGrid>
-      <CompareTable />
+    </Section>
+  );
+}
+
+/** PROTOTYPE (site/compare-section-prototype): "How we compare" as its own section after Pricing. ?variant=A|B|C|D */
+export function Compare() {
+  return (
+    <Section id="compare" aria-labelledby="compareT">
+      <Knot />
+      <Rise>
+        <SectionHeader eyebrow="How we compare" title={<>Tutor, learning centre or {BRAND.split(" ")[0]}?</>} titleId="compareT" />
+        <CompareFull />
+      </Rise>
+      <div className="cp-body">
+        <Suspense fallback={<VariantA />}>
+          <ComparePrototype />
+        </Suspense>
+      </div>
     </Section>
   );
 }
