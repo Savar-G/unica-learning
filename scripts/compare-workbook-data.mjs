@@ -14,6 +14,14 @@ try {
   const summarize = (dir, level) => {
     const d = JSON.parse(readFileSync(join(dir, `${level}-draft.json`), "utf8"));
     const m = JSON.parse(readFileSync(join(dir, `${level}-measurements.json`), "utf8"));
+    const manifest = JSON.parse(readFileSync(join(dir, "run-manifest.json"), "utf8"));
+    const source = JSON.parse(readFileSync(resolve(manifest.steps), "utf8"));
+    const templates = d.pages.flatMap(p => p.questions).flatMap(q => q.itemPlan?.template ? [q.itemPlan.template] : []);
+    const coverage = [...new Set(templates.map(t => `${t.skill}#${t.step}`))].map(key => {
+      const used = templates.filter(t => `${t.skill}#${t.step}` === key);
+      const step = source.steps.find(s => `${s.skill}#${s.number}` === key);
+      return { step: key, used: [...new Set(used.map(t => t.index + 1))].sort((a,b) => a-b), available: step?.templates?.length ?? 0 };
+    });
     const uses = m.pageUse.filter(p => p.fraction !== null).map(p => p.fraction);
     const frames = [], stems = [], truth = [], challenges = [], byDay = new Map();
     for (const p of d.pages.filter(p => p.day !== null)) {
@@ -25,10 +33,13 @@ try {
       const tf = questions.filter(q => q.itemPlan?.template?.format === "true-false");
       const answers = tf.map(q => q.itemPlan.template.answer.toLowerCase());
       if (tf.length) truth.push({ page: p.number, true: answers.filter(a => ["true", "yes"].includes(a)).length, false: answers.filter(a => ["false", "no"].includes(a)).length });
-      for (const q of questions.filter(q => q.place === "challenge")) challenges.push({ page: p.number, difficulty: q.itemPlan?.template?.difficulty ?? "builder", skill: q.itemPlan?.template?.skill, step: q.itemPlan?.template?.step, largestNumber: largestNumber(q.package) });
+      for (const q of questions.filter(q => q.place === "challenge")) {
+        const t = q.itemPlan?.template;
+        challenges.push({ page: p.number, day: p.day, difficulty: t?.difficulty ?? "builder", skill: t?.skill, step: t?.step, answer: t?.answer, bounds: t?.bounds, largestNumber: largestNumber(q.package), slots: t?.source.slots });
+      }
     }
     const dayFrames = [...byDay.values()].flatMap(values => Object.values(count(values)));
-    return { counts: d.counts, failedPercent: 100 * d.quality.failedRate, droppedForRoom: d.quality.dropped, leftOut: d.pages.reduce((n,p) => n + (p.leftOut?.length ?? 0), 0), omissions: d.pages.reduce((n,p) => n + (p.omissions ?? []).filter(o => !o.time).reduce((n,o) => n + Math.max(0,o.requested-o.placed),0),0), renderErrors: m.renderProblems.length, fitFailures: d.counts.failedPages, fullness: { min: Math.min(...uses), mean: uses.reduce((a,b) => a+b,0)/uses.length }, spacingFailures: m.pageUse.filter(p => p.problem).length, days: d.quality.days, steps: d.quality.steps, sources: d.quality.sources, variety: { pageFrameMax: Math.max(0,...frames), dayFrameMax: Math.max(0,...dayFrames), pageStemMax: Math.max(0,...stems), pageFrameDistribution: count(frames), dayFrameDistribution: count(dayFrames), pageStemDistribution: count(stems), issues: d.quality.issues.filter(i => i.kind === "variety"), truth }, challenge: { difficulties: count(challenges.map(c => c.difficulty)), cards: challenges }, issues: d.quality.issues, ready: d.quality.ready };
+    return { manifest, templateCoverage: coverage, counts: d.counts, failedPercent: 100 * d.quality.failedRate, droppedForRoom: d.quality.dropped, timeBudgetTrims: d.pages.reduce((n,p) => n + (p.omissions ?? []).filter(o => o.time).reduce((n,o) => n + Math.max(0,o.requested-o.placed),0),0), leftOut: d.pages.reduce((n,p) => n + (p.leftOut?.length ?? 0), 0), omissions: d.pages.reduce((n,p) => n + (p.omissions ?? []).filter(o => !o.time).reduce((n,o) => n + Math.max(0,o.requested-o.placed),0),0), renderErrors: m.renderProblems.length, fitFailures: d.counts.failedPages, fullness: { min: Math.min(...uses), mean: uses.reduce((a,b) => a+b,0)/uses.length }, spacingFailures: m.pageUse.filter(p => p.problem).length, days: d.quality.days, steps: d.quality.steps, sources: d.quality.sources, variety: { pageFrameMax: Math.max(0,...frames), dayFrameMax: Math.max(0,...dayFrames), pageStemMax: Math.max(0,...stems), pageFrameDistribution: count(frames), dayFrameDistribution: count(dayFrames), pageStemDistribution: count(stems), issues: d.quality.issues.filter(i => i.kind === "variety"), truth }, challenge: { difficulties: count(challenges.map(c => c.difficulty)), cards: challenges }, issues: d.quality.issues, ready: d.quality.ready };
   };
   const report = [];
   for (const level of ["U4", "U10", "U14", "U16", "U26"]) if (existsSync(join(before, `${level}-draft.json`)) && existsSync(join(after, `${level}-draft.json`))) {

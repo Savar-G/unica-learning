@@ -193,7 +193,7 @@ export function textRoom(slot: SlotName, level: number, pages = 8, consistent = 
       // A story's full line beside its number (26 + 12) and a picture.
       return textRoomOf(CONTENT_W - 38 - 160, band.story, 3);
     case "mixed-set":
-      return textRoomOf(CONTENT_W - 22 - 12, band.name === "mid" ? 14 : band.story, 2);
+      return textRoomOf((consistent ? (CONTENT_W - 32) / 2 : CONTENT_W) - 22 - 12, band.name === "mid" ? 14 : band.story, 2);
     case "challenge":
       return textRoomOf(CONTENT_W - 35 - badge - 32 - box, band.body, 4);
     case "math-in-the-world":

@@ -19,7 +19,7 @@ const original = JSON.parse(read("step-progressions-k9.v2.original.json")) as ty
 const BC = curriculumFor("bc")!;
 
 describe("v2 data and answer contracts", () => {
-  it("replays every recorded field change and keeps every source template's intent and difficulty", () => {
+  it("replays every recorded change and keeps all template positions and difficulty tags", () => {
     const patches = JSON.parse(read("author-changes.json")) as { skill: string; step: number; template: number | null; path: string[]; before: unknown; after: unknown; why: string; kind?: "quality-fallback" | "wording-rewrite"; beforeAbsent?: boolean }[];
     for (const patch of patches) {
       const step = original.steps.find(s => s.skill === patch.skill && s.number === patch.step)!;
