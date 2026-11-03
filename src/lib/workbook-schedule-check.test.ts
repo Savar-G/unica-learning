@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildQuestion } from "@/lib/workbook-generator-items";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import { scheduledItemProblem } from "@/lib/workbook-feedback-check";
+import { rangeProblem } from "@/lib/workbook-book";
 import { checkQuestionPackage, operationResult, workedSteps, type Item, type Operation, type QuestionPackage } from "@/lib/question-package";
 
 const bc = curriculumFor("bc")!;
@@ -25,6 +26,18 @@ function built(format: string, over: Record<string,unknown> = {}, skill="1.1-com
   expect(result.check).toEqual({status:"checked"});
   expect(checkQuestionPackage(result.package).status).toBe("checked");
   return result.package!;
+}
+function moneyItem(text: string): QuestionPackage {
+  return {...built("compare",{text:"Compare 5 and 6.",numbers:[num(5),num(6)]},"1.11-coin-values",6),text,
+    item:{format:"written-reason",scorable:false,parentChecked:true,error:null,regions:[{id:"reason",kind:"lines",label:"How do you know?"}],checks:[]}};
+}
+function moneySum(a: number, b: number): QuestionPackage {
+  const quantity=(value:number)=>({type:"quantity" as const,value,unit:"¢" as const});
+  const operation:Operation={kind:"quantity-add",operands:[quantity(a),quantity(b)]};
+  const easier:Operation={kind:"quantity-add",operands:[quantity(1),quantity(1)]};
+  return {...arithmetic(6,"1.11-count-one-coin-type",[a,b]),text:`Ava has ${a}¢. Ava gets ${b}¢ more. How much money?`,operation,
+    answer:{value:operationResult(operation),accepted:[],unit:null},steps:workedSteps(operation),
+    easierExample:{text:"1¢ + 1¢ = ?",operation:easier,answer:operationResult(easier),steps:workedSteps(easier)}};
 }
 
 describe("the daily bound for every readable item format", () => {
@@ -69,13 +82,46 @@ describe("the daily bound for every readable item format", () => {
     expect(scheduledItemProblem(fractions(9000),bc,1,"practice")).toMatch(/up to 4000/);
   });
   it("exempts a real coin denomination only on its money skill",()=>{
-    const coins:QuestionPackage={...built("compare",{text:"Compare 5 and 6.",numbers:[num(5),num(6)]},"1.11-coin-values",6),text:"Describe 25¢ and 5¢ coins.",
-      item:{format:"written-reason",scorable:false,parentChecked:true,error:null,regions:[{id:"reason",kind:"lines",label:"How do you know?"}],checks:[]}};
+    const coins=moneyItem("A dime is 10¢. A quarter is 25¢. Describe the coins.");
     expect(checkQuestionPackage(coins).status).toBe("not-checked");
     expect(scheduledItemProblem(coins,bc,1,"practice")).toBeNull();
-    expect(scheduledItemProblem({...coins,skill:{standard:"1.1",skills:["1.1-compare-order-20"]}},bc,1,"practice")).toMatch(/up to 8/);
+    expect(scheduledItemProblem({...coins,text:"Circle the 25¢ coin.",skill:{standard:"1.1",skills:["1.1-compare-order-20"]}},bc,1,"practice")).toMatch(/up to 8/);
     const oversized=arithmetic(6,"1.11-count-one-coin-type",[7,8]);
     expect(scheduledItemProblem(oversized,bc,1,"practice")).toMatch(/up to 8/);
+  });
+  it.each([[10,0],[11,0],[20,5],[5,5]])("bounds the checked money sum %s¢ + %s¢ even at a coin denomination",(a,b)=>{
+    const p=moneySum(a,b);
+    expect(checkQuestionPackage(p).status).toBe("checked");
+    expect(rangeProblem(p,bc,6)).toBeNull();
+    expect(scheduledItemProblem(p,bc,1,"practice")).toBe("Day 1 uses numbers up to 8.");
+    // No amount appears in this text. The typed operands and computed total must still be checked.
+    expect(scheduledItemProblem({...p,text:"How much money?"},bc,1,"practice")).toMatch(/up to 8/);
+    // A named given with the same denomination cannot exempt the computed total.
+    expect(scheduledItemProblem({...p,text:"A dime is 10¢. A quarter is 25¢. How much money?"},bc,1,"practice")).toMatch(/up to 8/);
+  });
+  it("bounds a computed 25¢ total when the typed operands are both below the daily limit",()=>{
+    const operation:Operation={kind:"quantity-add",operands:[{type:"quantity",value:.1,unit:"$"},{type:"quantity",value:.15,unit:"$"}],unit:"¢"};
+    const p:QuestionPackage={...moneySum(10,0),text:"How much money?",operation,steps:workedSteps(operation),
+      answer:{value:operationResult(operation),accepted:[],unit:"¢"}};
+    expect(checkQuestionPackage(p).status).toBe("checked");
+    expect(rangeProblem(p,bc,6)).toBeNull();
+    expect(p.answer?.value).toEqual({type:"quantity",value:25,unit:"¢"});
+    expect(scheduledItemProblem(p,bc,1,"practice")).toMatch(/up to 8/);
+  });
+  it("bounds each amount in an unscored story without exempting matching denominations",()=>{
+    for(const amount of [9,10,25]) {
+      const p=moneyItem(`A dime is 10¢. Ava has ${amount}¢. Can Ava buy a 5¢ sticker? Explain.`);
+      expect(checkQuestionPackage(p).status).toBe("not-checked");
+      expect(rangeProblem(p,bc,6)).toBeNull();
+      expect(scheduledItemProblem(p,bc,1,"practice")).toMatch(/up to 8/);
+    }
+    expect(scheduledItemProblem(moneyItem("Ava has 6¢. Can Ava buy a 5¢ sticker? Explain."),bc,1,"practice")).toBeNull();
+    expect(scheduledItemProblem(moneySum(10,0),bc,10,"practice")).toBeNull();
+  });
+  it("requires an explicit coin reference with its actual denomination",()=>{
+    expect(scheduledItemProblem(moneyItem("Circle the 25¢ coin."),bc,1,"practice")).toBeNull();
+    expect(scheduledItemProblem(moneyItem("A nickel is 10¢. Describe the coin."),bc,1,"practice")).toMatch(/up to 8/);
+    expect(scheduledItemProblem(moneyItem("Describe 25¢ and 5¢ coins."),bc,1,"practice")).toMatch(/up to 8/);
   });
   it("fails closed for unknown formats, unknown data and absent skills",()=>{
     const p=built("compare");

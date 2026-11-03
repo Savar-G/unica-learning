@@ -20,11 +20,29 @@ export interface ReadNumber {
   form: "whole" | "decimal" | "fraction" | "percent" | "time" | "colon";
   clock?: true;
   money?: true;
+  /** The value matches a denomination. This alone does not mean it names a coin. */
   coin?: true;
+  /** This occurrence explicitly gives a coin's denomination, such as "a dime is 10¢" or "the 25¢ coin". */
+  coinReference?: true;
 }
 
 /** A Canadian coin's value (1¢, 5¢, 10¢, 25¢, $1, $2). */
 export const isCoin = (value: number, unit: string) => (unit === "¢" && [1, 5, 10, 25].includes(value)) || (unit === "$" && [1, 2].includes(value));
+
+const COIN_VALUES: Readonly<Record<string, readonly [number, string]>> = {
+  nickel: [5, "¢"], dime: [10, "¢"], quarter: [25, "¢"], loonie: [1, "$"], toonie: [2, "$"],
+};
+
+/** An explicit given, not an amount elsewhere in a sentence that happens to mention a coin. */
+function coinReference(before: string, after: string, value: number, unit: string): boolean {
+  if (!isCoin(value, unit)) return false;
+  const named = before.match(/\b(nickel|dime|quarter|loonie|toonie)\s+(?:is(?:\s+worth)?|has\s+a\s+value\s+of)\s*$/i);
+  if (named) {
+    const [denomination, currency] = COIN_VALUES[named[1].toLowerCase()];
+    return value === denomination && unit === currency;
+  }
+  return /^\s+coin\b/i.test(after);
+}
 
 /**
  * The number lexicon. NUMBER_WORDS name or build a number and are refused anywhere in AI-written text: cardinals, tens
@@ -215,7 +233,8 @@ export function readNumbers(text: string): ReadNumber[] {
     if (after === "%") { out.push({ value, form: "percent" }); continue; }
     const unit = dollar ? "$" : after === "¢" ? "¢" : null;
     const r: ReadNumber = { value, form: Number.isInteger(value) ? "whole" : "decimal" };
-    out.push(unit ? { ...r, money: true, ...(isCoin(value, unit) ? { coin: true as const } : {}) } : r);
+    out.push(unit ? { ...r, money: true, ...(isCoin(value, unit) ? { coin: true as const } : {}),
+      ...(coinReference(prior, text.slice(m.index + m[0].length), value, unit) ? { coinReference: true as const } : {}) } : r);
   }
   return out;
 }

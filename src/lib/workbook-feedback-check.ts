@@ -58,8 +58,8 @@ export function scheduledItemProblem(p: QuestionPackage, curriculum: Curriculum,
     const numbers = printedValues(p, references);
     if (numbers.some(n => !Number.isFinite(n.value))) return "The daily number check cannot read a non-finite quantity.";
     const big = numbers.find(n => {
-      // Only real coin denominations and clock components retain their taught fixed values.
-      if (n.coin && ranges.every(r => r.money)) return false;
+      // Only explicit coin givens and clock components retain their taught fixed values, never computed money.
+      if (n.coinReference && ranges.every(r => r.money)) return false;
       if ((n.form === "time" || n.form === "colon" && n.clock) && ranges.every(r => r.time)) return false;
       return Math.abs(n.value) > max;
     });
