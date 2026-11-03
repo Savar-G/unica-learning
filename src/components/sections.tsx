@@ -60,7 +60,7 @@ export function Nav() {
 
 // 8-9 characters only: the chip is as wide as its longest word, so a long topic
 // leaves a gap after every short one.
-const TOPICS = [
+export const TOPICS = [
   "fractions", "rounding", "decimals", "perimeter", "division", "equations", "percents", "multiples",
   "patterns", "symmetry", "geometry", "carrying", "integers", "addition", "graphing", "measuring",
 ];

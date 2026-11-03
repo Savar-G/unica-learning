@@ -5,15 +5,16 @@ import { Parent } from "@/components/parent";
 import { Personalization } from "@/components/personalization";
 import { StartLink, StartNote } from "@/components/start-link";
 import { Closing, Faq, Feel, Footer, Hero, How, Nav, OurPromise, Pricing, START_LABEL, ThreadEnd } from "@/components/sections";
+import type { ReactNode } from "react";
 import type { Look } from "@/lib/look";
 
-export function Landing({ look = "primer" }: { look?: Look }) {
+export function Landing({ look = "primer", hero }: { look?: Look; hero?: ReactNode }) {
   return (
     <div className="look-root landing-with-mobile-cta" data-look={look}>
       <Nav />
       <div className="frame">
         <main id="main">
-          <Hero />
+          {hero ?? <Hero />}
           <How />
           <Personalization />
           <Guidance />
