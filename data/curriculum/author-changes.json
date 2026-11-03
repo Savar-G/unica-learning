@@ -4354,5 +4354,696 @@
     "before": "str(area) + ' m²'",
     "after": "str(int(area) if area == int(area) else area) + ' m²'",
     "why": "Keep the original general-number format for area units. An integer area must print 33 m², not 33.0 m², so the strict solve check reads the same key."
+  },
+  {
+    "skill": "8.10-model",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "format"
+    ],
+    "before": "story",
+    "after": "choose",
+    "why": "Quality fallback from the U26 matched full-book comparison at base 6d20e5ab. The v2 story adds a large two-method work area. V2 drops 20 planned questions versus 15 for v1, and minimum fullness falls from 62.5% to 57.9%. Use the hard v1 hypotenuse question with v2 derived Pythagorean triples. Keep the hard difficulty and all four templates.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "8.10-model",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "{name} walks along the two sides of a right triangle that meet at the square corner. The three sides measure {x}, {y} and {z} m. How far does {name} walk in all?",
+    "after": "Which side is across from the right angle in a right triangle with sides {x}, {y} and {z}? Write its length.",
+    "why": "Quality fallback from the U26 matched full-book comparison at base 6d20e5ab. The v2 story adds a large two-method work area. V2 drops 20 planned questions versus 15 for v1, and minimum fullness falls from 62.5% to 57.9%. Use the hard v1 hypotenuse question with v2 derived Pythagorean triples. Keep the hard difficulty and all four templates.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "8.10-model",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "answer"
+    ],
+    "before": "p + q",
+    "after": "h",
+    "why": "Quality fallback from the U26 matched full-book comparison at base 6d20e5ab. The v2 story adds a large two-method work area. V2 drops 20 planned questions versus 15 for v1, and minimum fullness falls from 62.5% to 57.9%. Use the hard v1 hypotenuse question with v2 derived Pythagorean triples. Keep the hard difficulty and all four templates.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "8.10-model",
+    "step": 1,
+    "template": null,
+    "path": [
+      "numbers"
+    ],
+    "before": {
+      "side": {
+        "min": 3,
+        "max": 41
+      },
+      "flip": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    "after": {
+      "side": {
+        "min": 3,
+        "max": 41
+      },
+      "flip": {
+        "min": 0,
+        "max": 1
+      },
+      "leg": {
+        "min": 3,
+        "max": 40,
+        "values": [
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          12,
+          15,
+          16,
+          18,
+          20,
+          21,
+          24,
+          28,
+          30,
+          32,
+          35,
+          36,
+          40
+        ]
+      }
+    },
+    "why": "The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage."
+  },
+  {
+    "skill": "8.10-model",
+    "step": 1,
+    "template": 1,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "m0": "side",
+      "n0": "side",
+      "o": "side"
+    },
+    "after": {
+      "m0": "leg",
+      "n0": "leg",
+      "o": "side"
+    },
+    "why": "The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage."
+  },
+  {
+    "skill": "8.10-model",
+    "step": 1,
+    "template": 1,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "m": "m0 % 4 + 2",
+      "n": "n0 % (m - 1) + 1",
+      "p": "m * m - n * n",
+      "q": "2 * m * n",
+      "h": "m * m + n * n",
+      "x": "(p, h, q)[o % 3]",
+      "y": "(h, q, p)[o % 3]",
+      "z": "(q, p, h)[o % 3]"
+    },
+    "after": {
+      "p": "m0",
+      "q": "n0",
+      "h": "isqrt(p * p + q * q)",
+      "x": "(p, h, q)[o % 3]",
+      "y": "(h, q, p)[o % 3]",
+      "z": "(q, p, h)[o % 3]"
+    },
+    "why": "The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage."
+  },
+  {
+    "skill": "8.10-model",
+    "step": 1,
+    "template": 1,
+    "path": [
+      "check"
+    ],
+    "before": null,
+    "after": "h <= 41 and h * h == p * p + q * q",
+    "why": "The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage.",
+    "beforeAbsent": true
+  },
+  {
+    "skill": "8.10-model",
+    "step": 1,
+    "template": 2,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "m0": "side",
+      "n0": "side",
+      "o": "side",
+      "flip": "flip"
+    },
+    "after": {
+      "m0": "leg",
+      "n0": "leg",
+      "o": "side",
+      "flip": "flip"
+    },
+    "why": "The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage."
+  },
+  {
+    "skill": "8.10-model",
+    "step": 1,
+    "template": 2,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "m": "m0 % 4 + 2",
+      "n": "n0 % (m - 1) + 1",
+      "p": "m * m - n * n",
+      "q": "2 * m * n",
+      "h": "m * m + n * n",
+      "x": "(p, h, q)[o % 3]",
+      "y": "(h, q, p)[o % 3]",
+      "z": "(q, p, h)[o % 3]",
+      "shown": "h if flip == 0 else min(p, q)"
+    },
+    "after": {
+      "p": "m0",
+      "q": "n0",
+      "h": "isqrt(p * p + q * q)",
+      "x": "(p, h, q)[o % 3]",
+      "y": "(h, q, p)[o % 3]",
+      "z": "(q, p, h)[o % 3]",
+      "shown": "h if flip == 0 else min(p, q)"
+    },
+    "why": "The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage."
+  },
+  {
+    "skill": "8.10-model",
+    "step": 1,
+    "template": 2,
+    "path": [
+      "check"
+    ],
+    "before": null,
+    "after": "h <= 41 and h * h == p * p + q * q",
+    "why": "The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage.",
+    "beforeAbsent": true
+  },
+  {
+    "skill": "8.10-model",
+    "step": 1,
+    "template": 3,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "m0": "side",
+      "n0": "side",
+      "o": "side"
+    },
+    "after": {
+      "m0": "leg",
+      "n0": "leg",
+      "o": "side"
+    },
+    "why": "The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage."
+  },
+  {
+    "skill": "8.10-model",
+    "step": 1,
+    "template": 3,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "m": "m0 % 4 + 2",
+      "n": "n0 % (m - 1) + 1",
+      "p": "m * m - n * n",
+      "q": "2 * m * n",
+      "h": "m * m + n * n",
+      "x": "(p, h, q)[o % 3]",
+      "y": "(h, q, p)[o % 3]",
+      "z": "(q, p, h)[o % 3]"
+    },
+    "after": {
+      "p": "m0",
+      "q": "n0",
+      "h": "isqrt(p * p + q * q)",
+      "x": "(p, h, q)[o % 3]",
+      "y": "(h, q, p)[o % 3]",
+      "z": "(q, p, h)[o % 3]"
+    },
+    "why": "The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage."
+  },
+  {
+    "skill": "8.10-model",
+    "step": 1,
+    "template": 3,
+    "path": [
+      "check"
+    ],
+    "before": null,
+    "after": "h <= 41 and h * h == p * p + q * q",
+    "why": "The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage.",
+    "beforeAbsent": true
+  },
+  {
+    "skill": "8.10-model",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "m0": "side",
+      "n0": "side",
+      "o": "side"
+    },
+    "after": {
+      "m0": "leg",
+      "n0": "leg",
+      "o": "side"
+    },
+    "why": "The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage."
+  },
+  {
+    "skill": "8.10-model",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "m": "m0 % 4 + 2",
+      "n": "n0 % (m - 1) + 1",
+      "p": "m * m - n * n",
+      "q": "2 * m * n",
+      "h": "m * m + n * n",
+      "x": "(p, h, q)[o % 3]",
+      "y": "(h, q, p)[o % 3]",
+      "z": "(q, p, h)[o % 3]"
+    },
+    "after": {
+      "p": "m0",
+      "q": "n0",
+      "h": "isqrt(p * p + q * q)",
+      "x": "(p, h, q)[o % 3]",
+      "y": "(h, q, p)[o % 3]",
+      "z": "(q, p, h)[o % 3]"
+    },
+    "why": "The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage."
+  },
+  {
+    "skill": "8.10-model",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "check"
+    ],
+    "before": null,
+    "after": "h <= 41 and h * h == p * p + q * q",
+    "why": "The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage.",
+    "beforeAbsent": true
+  },
+  {
+    "skill": "4.3-same-numerator",
+    "step": 2,
+    "template": 1,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "n": "numerator",
+      "u1": "u1",
+      "u2": "u2",
+      "u3": "u3"
+    },
+    "after": {
+      "n": "numerator",
+      "a": "denominator",
+      "b": "denominator"
+    },
+    "why": "Quality domain fallback trial from the U14 full comparison at base 6d20e5ab. The narrower v2 denominator pairs change the review choices and lower minimum fullness from 47.0% to 45.7%. Restore the accepted v1 denominator sampling for easy comparison, medium story and true-false questions. Keep every v2 question, answer, format, difficulty and the corrected hard ordering key.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.3-same-numerator",
+    "step": 2,
+    "template": 1,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "a0": "n + 1 + u1 % 5",
+      "b0": "n + 6 + u2 % (7 - n)",
+      "a": "a0 if u3 % 2 == 0 else b0",
+      "b": "b0 if u3 % 2 == 0 else a0"
+    },
+    "after": {},
+    "why": "Quality domain fallback trial from the U14 full comparison at base 6d20e5ab. The narrower v2 denominator pairs change the review choices and lower minimum fullness from 47.0% to 45.7%. Restore the accepted v1 denominator sampling for easy comparison, medium story and true-false questions. Keep every v2 question, answer, format, difficulty and the corrected hard ordering key.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.3-same-numerator",
+    "step": 2,
+    "template": 1,
+    "path": [
+      "check"
+    ],
+    "before": null,
+    "after": "a != b and n < a and n < b",
+    "why": "Quality domain fallback trial from the U14 full comparison at base 6d20e5ab. The narrower v2 denominator pairs change the review choices and lower minimum fullness from 47.0% to 45.7%. Restore the accepted v1 denominator sampling for easy comparison, medium story and true-false questions. Keep every v2 question, answer, format, difficulty and the corrected hard ordering key.",
+    "kind": "quality-fallback",
+    "beforeAbsent": true
+  },
+  {
+    "skill": "4.3-same-numerator",
+    "step": 2,
+    "template": 3,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "n": "numerator",
+      "u1": "u1",
+      "u2": "u2",
+      "u3": "u3"
+    },
+    "after": {
+      "n": "numerator",
+      "a": "denominator",
+      "b": "denominator"
+    },
+    "why": "Quality domain fallback trial from the U14 full comparison at base 6d20e5ab. The narrower v2 denominator pairs change the review choices and lower minimum fullness from 47.0% to 45.7%. Restore the accepted v1 denominator sampling for easy comparison, medium story and true-false questions. Keep every v2 question, answer, format, difficulty and the corrected hard ordering key.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.3-same-numerator",
+    "step": 2,
+    "template": 3,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "a0": "n + 1 + u1 % 5",
+      "b0": "n + 6 + u2 % (7 - n)",
+      "a": "a0 if u3 % 2 == 0 else b0",
+      "b": "b0 if u3 % 2 == 0 else a0"
+    },
+    "after": {},
+    "why": "Quality domain fallback trial from the U14 full comparison at base 6d20e5ab. The narrower v2 denominator pairs change the review choices and lower minimum fullness from 47.0% to 45.7%. Restore the accepted v1 denominator sampling for easy comparison, medium story and true-false questions. Keep every v2 question, answer, format, difficulty and the corrected hard ordering key.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.3-same-numerator",
+    "step": 2,
+    "template": 3,
+    "path": [
+      "check"
+    ],
+    "before": null,
+    "after": "a != b and n < a and n < b",
+    "why": "Quality domain fallback trial from the U14 full comparison at base 6d20e5ab. The narrower v2 denominator pairs change the review choices and lower minimum fullness from 47.0% to 45.7%. Restore the accepted v1 denominator sampling for easy comparison, medium story and true-false questions. Keep every v2 question, answer, format, difficulty and the corrected hard ordering key.",
+    "kind": "quality-fallback",
+    "beforeAbsent": true
+  },
+  {
+    "skill": "4.3-same-numerator",
+    "step": 2,
+    "template": 4,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "n": "numerator",
+      "u1": "u1",
+      "u2": "u2",
+      "u3": "u3"
+    },
+    "after": {
+      "n": "numerator",
+      "a": "denominator",
+      "b": "denominator"
+    },
+    "why": "Quality domain fallback trial from the U14 full comparison at base 6d20e5ab. The narrower v2 denominator pairs change the review choices and lower minimum fullness from 47.0% to 45.7%. Restore the accepted v1 denominator sampling for easy comparison, medium story and true-false questions. Keep every v2 question, answer, format, difficulty and the corrected hard ordering key.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.3-same-numerator",
+    "step": 2,
+    "template": 4,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "a0": "n + 1 + u1 % 5",
+      "b0": "n + 6 + u2 % (7 - n)",
+      "a": "a0 if u3 % 2 == 0 else b0",
+      "b": "b0 if u3 % 2 == 0 else a0"
+    },
+    "after": {},
+    "why": "Quality domain fallback trial from the U14 full comparison at base 6d20e5ab. The narrower v2 denominator pairs change the review choices and lower minimum fullness from 47.0% to 45.7%. Restore the accepted v1 denominator sampling for easy comparison, medium story and true-false questions. Keep every v2 question, answer, format, difficulty and the corrected hard ordering key.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.3-same-numerator",
+    "step": 2,
+    "template": 4,
+    "path": [
+      "check"
+    ],
+    "before": null,
+    "after": "a != b and n < a and n < b",
+    "why": "Quality domain fallback trial from the U14 full comparison at base 6d20e5ab. The narrower v2 denominator pairs change the review choices and lower minimum fullness from 47.0% to 45.7%. Restore the accepted v1 denominator sampling for easy comparison, medium story and true-false questions. Keep every v2 question, answer, format, difficulty and the corrected hard ordering key.",
+    "kind": "quality-fallback",
+    "beforeAbsent": true
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 2,
+    "path": [
+      "text"
+    ],
+    "before": "{ask} Which is the more sensible guess: {p} or {q}?",
+    "after": "{ask} Which guess is sensible: {p} or {q}?",
+    "why": "The matched U10 full book reaches the page minimum counts but takes 30.8 estimated minutes on Day 10. Shorten the repeated estimate prompt while keeping all contexts, numbers, answer expressions, formats and difficulty tags. Each question still asks for the same sensible or least sensible estimate.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 2,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "i": "x % 5",
+      "v": "x // 5 % 8",
+      "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
+      "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
+      "ask": "'How many pencils fit in a pencil case?' if i == 0 else ('How many pages are in a picture book?' if i == 1 else ('How many grapes are in a small bunch?' if i == 2 else ('How many books fit on a classroom shelf?' if i == 3 else 'How many children are in a classroom?')))",
+      "bad": "b * 10",
+      "p": "b if flip == 0 else bad",
+      "q": "bad if flip == 0 else b"
+    },
+    "after": {
+      "i": "x % 5",
+      "v": "x // 5 % 8",
+      "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
+      "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
+      "ask": "'Pencils in a pencil case.' if i == 0 else ('Pages in a picture book.' if i == 1 else ('Grapes in a small bunch.' if i == 2 else ('Books on a classroom shelf.' if i == 3 else 'Children in a classroom.')))",
+      "bad": "b * 10",
+      "p": "b if flip == 0 else bad",
+      "q": "bad if flip == 0 else b"
+    },
+    "why": "The matched U10 full book reaches the page minimum counts but takes 30.8 estimated minutes on Day 10. Shorten the repeated estimate prompt while keeping all contexts, numbers, answer expressions, formats and difficulty tags. Each question still asks for the same sensible or least sensible estimate.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "{ask} Which is the most sensible guess: {p}, {q} or {r}?",
+    "after": "{ask} Which guess is sensible: {p}, {q} or {r}?",
+    "why": "The matched U10 full book reaches the page minimum counts but takes 30.8 estimated minutes on Day 10. Shorten the repeated estimate prompt while keeping all contexts, numbers, answer expressions, formats and difficulty tags. Each question still asks for the same sensible or least sensible estimate.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "i": "x % 5",
+      "v": "x // 5 % 8",
+      "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
+      "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
+      "ask": "'How many pencils fit in a pencil case?' if i == 0 else ('How many pages are in a picture book?' if i == 1 else ('How many grapes are in a small bunch?' if i == 2 else ('How many books fit on a classroom shelf?' if i == 3 else 'How many children are in a classroom?')))",
+      "bad": "b * 10",
+      "t10": "b * 10",
+      "h100": "b * 100",
+      "p": "b if pos == 0 else (h100 if pos == 1 else t10)",
+      "q": "t10 if pos == 0 else (b if pos == 1 else h100)",
+      "r": "h100 if pos == 0 else (t10 if pos == 1 else b)"
+    },
+    "after": {
+      "i": "x % 5",
+      "v": "x // 5 % 8",
+      "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
+      "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
+      "ask": "'Pencils in a pencil case.' if i == 0 else ('Pages in a picture book.' if i == 1 else ('Grapes in a small bunch.' if i == 2 else ('Books on a classroom shelf.' if i == 3 else 'Children in a classroom.')))",
+      "bad": "b * 10",
+      "t10": "b * 10",
+      "h100": "b * 100",
+      "p": "b if pos == 0 else (h100 if pos == 1 else t10)",
+      "q": "t10 if pos == 0 else (b if pos == 1 else h100)",
+      "r": "h100 if pos == 0 else (t10 if pos == 1 else b)"
+    },
+    "why": "The matched U10 full book reaches the page minimum counts but takes 30.8 estimated minutes on Day 10. Shorten the repeated estimate prompt while keeping all contexts, numbers, answer expressions, formats and difficulty tags. Each question still asks for the same sensible or least sensible estimate.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 6,
+    "path": [
+      "text"
+    ],
+    "before": "{ask} Which guess is the least sensible: {p}, {q} or {r}?",
+    "after": "{ask} Which guess is least sensible: {p}, {q} or {r}?",
+    "why": "The matched U10 full book reaches the page minimum counts but takes 30.8 estimated minutes on Day 10. Shorten the repeated estimate prompt while keeping all contexts, numbers, answer expressions, formats and difficulty tags. Each question still asks for the same sensible or least sensible estimate.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 3,
+    "template": 6,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "i": "x % 5",
+      "v": "x // 5 % 8",
+      "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
+      "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
+      "ask": "'How many pencils fit in a pencil case?' if i == 0 else ('How many pages are in a picture book?' if i == 1 else ('How many grapes are in a small bunch?' if i == 2 else ('How many books fit on a classroom shelf?' if i == 3 else 'How many children are in a classroom?')))",
+      "bad": "b * 10",
+      "t10": "b * 10",
+      "h100": "b * 100",
+      "p": "b if pos == 0 else (h100 if pos == 1 else t10)",
+      "q": "t10 if pos == 0 else (b if pos == 1 else h100)",
+      "r": "h100 if pos == 0 else (t10 if pos == 1 else b)"
+    },
+    "after": {
+      "i": "x % 5",
+      "v": "x // 5 % 8",
+      "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
+      "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
+      "ask": "'Pencils in a pencil case.' if i == 0 else ('Pages in a picture book.' if i == 1 else ('Grapes in a small bunch.' if i == 2 else ('Books on a classroom shelf.' if i == 3 else 'Children in a classroom.')))",
+      "bad": "b * 10",
+      "t10": "b * 10",
+      "h100": "b * 100",
+      "p": "b if pos == 0 else (h100 if pos == 1 else t10)",
+      "q": "t10 if pos == 0 else (b if pos == 1 else h100)",
+      "r": "h100 if pos == 0 else (t10 if pos == 1 else b)"
+    },
+    "why": "The matched U10 full book reaches the page minimum counts but takes 30.8 estimated minutes on Day 10. Shorten the repeated estimate prompt while keeping all contexts, numbers, answer expressions, formats and difficulty tags. Each question still asks for the same sensible or least sensible estimate.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "3.6-increasing-pattern",
+    "step": 1,
+    "template": 1,
+    "path": [
+      "text"
+    ],
+    "before": "Start at {a}. Add {d} each time. What is the next number?",
+    "after": "Start at {a}. Add {d}. What comes next?",
+    "why": "The U10 full-book estimate remains 30.2 minutes after shortening estimation prompts. State the first pattern position directly and remove repeated wording. Keep the start, increment, target position, answer, format and difficulty. This preserves the one-based pattern rule and reduces reading time.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "3.6-increasing-pattern",
+    "step": 1,
+    "template": 3,
+    "path": [
+      "text"
+    ],
+    "before": "Start at {a}, add {d} each time. Number {n} in the pattern is __ (The start is number 1.)",
+    "after": "Number 1 is {a}. Add {d} each time. Number {n} is __.",
+    "why": "The U10 full-book estimate remains 30.2 minutes after shortening estimation prompts. State the first pattern position directly and remove repeated wording. Keep the start, increment, target position, answer, format and difficulty. This preserves the one-based pattern rule and reduces reading time.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "3.6-increasing-pattern",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "True or false: start at {a}, add {d} each time. Number {n} in the pattern is {shown}. (The start is number 1.)",
+    "after": "Number 1 is {a}. Add {d} each time. True or false: number {n} is {shown}.",
+    "why": "The U10 full-book estimate remains 30.2 minutes after shortening estimation prompts. State the first pattern position directly and remove repeated wording. Keep the start, increment, target position, answer, format and difficulty. This preserves the one-based pattern rule and reduces reading time.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "3.6-decreasing-pattern",
+    "step": 1,
+    "template": 1,
+    "path": [
+      "text"
+    ],
+    "before": "Start at {a}. Take away {d} each time. What is the next number?",
+    "after": "Start at {a}. Take away {d}. What comes next?",
+    "why": "The U10 full-book estimate remains 30.2 minutes after shortening estimation prompts. State the first pattern position directly and remove repeated wording. Keep the start, increment, target position, answer, format and difficulty. This preserves the one-based pattern rule and reduces reading time.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "3.6-decreasing-pattern",
+    "step": 1,
+    "template": 3,
+    "path": [
+      "text"
+    ],
+    "before": "Start at {a}, take away {d} each time. Number {n} in the pattern is __ (The start is number 1.)",
+    "after": "Number 1 is {a}. Take away {d} each time. Number {n} is __.",
+    "why": "The U10 full-book estimate remains 30.2 minutes after shortening estimation prompts. State the first pattern position directly and remove repeated wording. Keep the start, increment, target position, answer, format and difficulty. This preserves the one-based pattern rule and reduces reading time.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "3.6-decreasing-pattern",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "True or false: start at {a}, take away {d} each time. Number {n} in the pattern is {shown}. (The start is number 1.)",
+    "after": "Number 1 is {a}. Take away {d} each time. True or false: number {n} is {shown}.",
+    "why": "The U10 full-book estimate remains 30.2 minutes after shortening estimation prompts. State the first pattern position directly and remove repeated wording. Keep the start, increment, target position, answer, format and difficulty. This preserves the one-based pattern rule and reduces reading time.",
+    "kind": "wording-rewrite"
   }
 ]

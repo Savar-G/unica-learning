@@ -30,7 +30,7 @@ After:
 "str(area) + ' m²'"
 ```
 
-## 7.4-lowest-terms step 3 template None numbers
+## 7.4-lowest-terms step 3 step fields: numbers
 
 Use separate named quantity ranges.
 
@@ -459,7 +459,7 @@ After:
 {"n": "1 + r % (d - 1)", "a": "k / 100", "sa": "str(int(a)) if a == int(a) else str(round(a, 6))", "v": "n / d", "sf": "str(n) + '/' + str(d)", "pc": "p / 100", "sp": "str(p) + '%'", "ordered": "sorted([a, v, pc])", "position_0": "sa if a == ordered[0] else sf if v == ordered[0] else sp", "position_1": "sa if a == ordered[1] else sf if v == ordered[1] else sp", "position_2": "sa if a == ordered[2] else sf if v == ordered[2] else sp", "c1": "position_0 + ', ' + position_1 + ', ' + position_2", "w1": "position_2 + ', ' + position_1 + ', ' + position_0", "w2": "position_0 + ', ' + position_2 + ', ' + position_1", "oA": "c1 if pos == 0 else w1", "oB": "w1 if pos == 0 else c1 if pos == 1 else w2", "oC": "w2 if pos < 2 else c1", "safe_1": "'A' if pos == 0 else ('B' if pos == 1 else ('C'))"}
 ```
 
-## 7.13-sales-tax-tip step 2 template None numbers
+## 7.13-sales-tax-tip step 2 step fields: numbers
 
 Remove unused cents lists. All six templates already use j or j4m and derive each price and tax separately.
 
@@ -1393,4 +1393,738 @@ Before:
 After:
 ```json
 "str(int(area) if area == int(area) else area) + ' m²'"
+```
+
+## 8.10-model step 1 template 4 format
+
+Quality fallback from the U26 matched full-book comparison at base 6d20e5ab. The v2 story adds a large two-method work area. V2 drops 20 planned questions versus 15 for v1, and minimum fullness falls from 62.5% to 57.9%. Use the hard v1 hypotenuse question with v2 derived Pythagorean triples. Keep the hard difficulty and all four templates.
+
+Before:
+```json
+"story"
+```
+After:
+```json
+"choose"
+```
+
+## 8.10-model step 1 template 4 text
+
+Quality fallback from the U26 matched full-book comparison at base 6d20e5ab. The v2 story adds a large two-method work area. V2 drops 20 planned questions versus 15 for v1, and minimum fullness falls from 62.5% to 57.9%. Use the hard v1 hypotenuse question with v2 derived Pythagorean triples. Keep the hard difficulty and all four templates.
+
+Before:
+```json
+"{name} walks along the two sides of a right triangle that meet at the square corner. The three sides measure {x}, {y} and {z} m. How far does {name} walk in all?"
+```
+After:
+```json
+"Which side is across from the right angle in a right triangle with sides {x}, {y} and {z}? Write its length."
+```
+
+## 8.10-model step 1 template 4 answer
+
+Quality fallback from the U26 matched full-book comparison at base 6d20e5ab. The v2 story adds a large two-method work area. V2 drops 20 planned questions versus 15 for v1, and minimum fullness falls from 62.5% to 57.9%. Use the hard v1 hypotenuse question with v2 derived Pythagorean triples. Keep the hard difficulty and all four templates.
+
+Before:
+```json
+"p + q"
+```
+After:
+```json
+"h"
+```
+
+## 8.10-model step 1 step fields numbers
+
+The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage.
+
+Before:
+```json
+{
+  "side": {
+    "min": 3,
+    "max": 41
+  },
+  "flip": {
+    "min": 0,
+    "max": 1
+  }
+}
+```
+After:
+```json
+{
+  "side": {
+    "min": 3,
+    "max": 41
+  },
+  "flip": {
+    "min": 0,
+    "max": 1
+  },
+  "leg": {
+    "min": 3,
+    "max": 40,
+    "values": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      12,
+      15,
+      16,
+      18,
+      20,
+      21,
+      24,
+      28,
+      30,
+      32,
+      35,
+      36,
+      40
+    ]
+  }
+}
+```
+
+## 8.10-model step 1 template 1 slots
+
+The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage.
+
+Before:
+```json
+{
+  "m0": "side",
+  "n0": "side",
+  "o": "side"
+}
+```
+After:
+```json
+{
+  "m0": "leg",
+  "n0": "leg",
+  "o": "side"
+}
+```
+
+## 8.10-model step 1 template 1 derived
+
+The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage.
+
+Before:
+```json
+{
+  "m": "m0 % 4 + 2",
+  "n": "n0 % (m - 1) + 1",
+  "p": "m * m - n * n",
+  "q": "2 * m * n",
+  "h": "m * m + n * n",
+  "x": "(p, h, q)[o % 3]",
+  "y": "(h, q, p)[o % 3]",
+  "z": "(q, p, h)[o % 3]"
+}
+```
+After:
+```json
+{
+  "p": "m0",
+  "q": "n0",
+  "h": "isqrt(p * p + q * q)",
+  "x": "(p, h, q)[o % 3]",
+  "y": "(h, q, p)[o % 3]",
+  "z": "(q, p, h)[o % 3]"
+}
+```
+
+## 8.10-model step 1 template 1 check
+
+The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage.
+
+Before:
+```json
+null
+```
+After:
+```json
+"h <= 41 and h * h == p * p + q * q"
+```
+
+## 8.10-model step 1 template 2 slots
+
+The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage.
+
+Before:
+```json
+{
+  "m0": "side",
+  "n0": "side",
+  "o": "side",
+  "flip": "flip"
+}
+```
+After:
+```json
+{
+  "m0": "leg",
+  "n0": "leg",
+  "o": "side",
+  "flip": "flip"
+}
+```
+
+## 8.10-model step 1 template 2 derived
+
+The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage.
+
+Before:
+```json
+{
+  "m": "m0 % 4 + 2",
+  "n": "n0 % (m - 1) + 1",
+  "p": "m * m - n * n",
+  "q": "2 * m * n",
+  "h": "m * m + n * n",
+  "x": "(p, h, q)[o % 3]",
+  "y": "(h, q, p)[o % 3]",
+  "z": "(q, p, h)[o % 3]",
+  "shown": "h if flip == 0 else min(p, q)"
+}
+```
+After:
+```json
+{
+  "p": "m0",
+  "q": "n0",
+  "h": "isqrt(p * p + q * q)",
+  "x": "(p, h, q)[o % 3]",
+  "y": "(h, q, p)[o % 3]",
+  "z": "(q, p, h)[o % 3]",
+  "shown": "h if flip == 0 else min(p, q)"
+}
+```
+
+## 8.10-model step 1 template 2 check
+
+The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage.
+
+Before:
+```json
+null
+```
+After:
+```json
+"h <= 41 and h * h == p * p + q * q"
+```
+
+## 8.10-model step 1 template 3 slots
+
+The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage.
+
+Before:
+```json
+{
+  "m0": "side",
+  "n0": "side",
+  "o": "side"
+}
+```
+After:
+```json
+{
+  "m0": "leg",
+  "n0": "leg",
+  "o": "side"
+}
+```
+
+## 8.10-model step 1 template 3 derived
+
+The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage.
+
+Before:
+```json
+{
+  "m": "m0 % 4 + 2",
+  "n": "n0 % (m - 1) + 1",
+  "p": "m * m - n * n",
+  "q": "2 * m * n",
+  "h": "m * m + n * n",
+  "x": "(p, h, q)[o % 3]",
+  "y": "(h, q, p)[o % 3]",
+  "z": "(q, p, h)[o % 3]"
+}
+```
+After:
+```json
+{
+  "p": "m0",
+  "q": "n0",
+  "h": "isqrt(p * p + q * q)",
+  "x": "(p, h, q)[o % 3]",
+  "y": "(h, q, p)[o % 3]",
+  "z": "(q, p, h)[o % 3]"
+}
+```
+
+## 8.10-model step 1 template 3 check
+
+The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage.
+
+Before:
+```json
+null
+```
+After:
+```json
+"h <= 41 and h * h == p * p + q * q"
+```
+
+## 8.10-model step 1 template 4 slots
+
+The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage.
+
+Before:
+```json
+{
+  "m0": "side",
+  "n0": "side",
+  "o": "side"
+}
+```
+After:
+```json
+{
+  "m0": "leg",
+  "n0": "leg",
+  "o": "side"
+}
+```
+
+## 8.10-model step 1 template 4 derived
+
+The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage.
+
+Before:
+```json
+{
+  "m": "m0 % 4 + 2",
+  "n": "n0 % (m - 1) + 1",
+  "p": "m * m - n * n",
+  "q": "2 * m * n",
+  "h": "m * m + n * n",
+  "x": "(p, h, q)[o % 3]",
+  "y": "(h, q, p)[o % 3]",
+  "z": "(q, p, h)[o % 3]"
+}
+```
+After:
+```json
+{
+  "p": "m0",
+  "q": "n0",
+  "h": "isqrt(p * p + q * q)",
+  "x": "(p, h, q)[o % 3]",
+  "y": "(h, q, p)[o % 3]",
+  "z": "(q, p, h)[o % 3]"
+}
+```
+
+## 8.10-model step 1 template 4 check
+
+The full U26 comparison exhausts the small right-triangle pool and substitutes shorter root questions on extra practice. Sample each leg from its own bounded list and derive the hypotenuse. The accepted pool contains all integer right triangles with sides from 3 to 41. This keeps v2 correct triangle dimensions and increases valid task coverage.
+
+Before:
+```json
+null
+```
+After:
+```json
+"h <= 41 and h * h == p * p + q * q"
+```
+
+## 4.3-same-numerator step 2 template 1 slots
+
+Quality domain fallback trial from the U14 full comparison at base 6d20e5ab. The narrower v2 denominator pairs change the review choices and lower minimum fullness from 47.0% to 45.7%. Restore the accepted v1 denominator sampling for easy comparison, medium story and true-false questions. Keep every v2 question, answer, format, difficulty and the corrected hard ordering key.
+
+Before:
+```json
+{
+  "n": "numerator",
+  "u1": "u1",
+  "u2": "u2",
+  "u3": "u3"
+}
+```
+After:
+```json
+{
+  "n": "numerator",
+  "a": "denominator",
+  "b": "denominator"
+}
+```
+
+## 4.3-same-numerator step 2 template 1 derived
+
+Quality domain fallback trial from the U14 full comparison at base 6d20e5ab. The narrower v2 denominator pairs change the review choices and lower minimum fullness from 47.0% to 45.7%. Restore the accepted v1 denominator sampling for easy comparison, medium story and true-false questions. Keep every v2 question, answer, format, difficulty and the corrected hard ordering key.
+
+Before:
+```json
+{
+  "a0": "n + 1 + u1 % 5",
+  "b0": "n + 6 + u2 % (7 - n)",
+  "a": "a0 if u3 % 2 == 0 else b0",
+  "b": "b0 if u3 % 2 == 0 else a0"
+}
+```
+After:
+```json
+{}
+```
+
+## 4.3-same-numerator step 2 template 1 check
+
+Quality domain fallback trial from the U14 full comparison at base 6d20e5ab. The narrower v2 denominator pairs change the review choices and lower minimum fullness from 47.0% to 45.7%. Restore the accepted v1 denominator sampling for easy comparison, medium story and true-false questions. Keep every v2 question, answer, format, difficulty and the corrected hard ordering key.
+
+Before:
+```json
+null
+```
+After:
+```json
+"a != b and n < a and n < b"
+```
+
+## 4.3-same-numerator step 2 template 3 slots
+
+Quality domain fallback trial from the U14 full comparison at base 6d20e5ab. The narrower v2 denominator pairs change the review choices and lower minimum fullness from 47.0% to 45.7%. Restore the accepted v1 denominator sampling for easy comparison, medium story and true-false questions. Keep every v2 question, answer, format, difficulty and the corrected hard ordering key.
+
+Before:
+```json
+{
+  "n": "numerator",
+  "u1": "u1",
+  "u2": "u2",
+  "u3": "u3"
+}
+```
+After:
+```json
+{
+  "n": "numerator",
+  "a": "denominator",
+  "b": "denominator"
+}
+```
+
+## 4.3-same-numerator step 2 template 3 derived
+
+Quality domain fallback trial from the U14 full comparison at base 6d20e5ab. The narrower v2 denominator pairs change the review choices and lower minimum fullness from 47.0% to 45.7%. Restore the accepted v1 denominator sampling for easy comparison, medium story and true-false questions. Keep every v2 question, answer, format, difficulty and the corrected hard ordering key.
+
+Before:
+```json
+{
+  "a0": "n + 1 + u1 % 5",
+  "b0": "n + 6 + u2 % (7 - n)",
+  "a": "a0 if u3 % 2 == 0 else b0",
+  "b": "b0 if u3 % 2 == 0 else a0"
+}
+```
+After:
+```json
+{}
+```
+
+## 4.3-same-numerator step 2 template 3 check
+
+Quality domain fallback trial from the U14 full comparison at base 6d20e5ab. The narrower v2 denominator pairs change the review choices and lower minimum fullness from 47.0% to 45.7%. Restore the accepted v1 denominator sampling for easy comparison, medium story and true-false questions. Keep every v2 question, answer, format, difficulty and the corrected hard ordering key.
+
+Before:
+```json
+null
+```
+After:
+```json
+"a != b and n < a and n < b"
+```
+
+## 4.3-same-numerator step 2 template 4 slots
+
+Quality domain fallback trial from the U14 full comparison at base 6d20e5ab. The narrower v2 denominator pairs change the review choices and lower minimum fullness from 47.0% to 45.7%. Restore the accepted v1 denominator sampling for easy comparison, medium story and true-false questions. Keep every v2 question, answer, format, difficulty and the corrected hard ordering key.
+
+Before:
+```json
+{
+  "n": "numerator",
+  "u1": "u1",
+  "u2": "u2",
+  "u3": "u3"
+}
+```
+After:
+```json
+{
+  "n": "numerator",
+  "a": "denominator",
+  "b": "denominator"
+}
+```
+
+## 4.3-same-numerator step 2 template 4 derived
+
+Quality domain fallback trial from the U14 full comparison at base 6d20e5ab. The narrower v2 denominator pairs change the review choices and lower minimum fullness from 47.0% to 45.7%. Restore the accepted v1 denominator sampling for easy comparison, medium story and true-false questions. Keep every v2 question, answer, format, difficulty and the corrected hard ordering key.
+
+Before:
+```json
+{
+  "a0": "n + 1 + u1 % 5",
+  "b0": "n + 6 + u2 % (7 - n)",
+  "a": "a0 if u3 % 2 == 0 else b0",
+  "b": "b0 if u3 % 2 == 0 else a0"
+}
+```
+After:
+```json
+{}
+```
+
+## 4.3-same-numerator step 2 template 4 check
+
+Quality domain fallback trial from the U14 full comparison at base 6d20e5ab. The narrower v2 denominator pairs change the review choices and lower minimum fullness from 47.0% to 45.7%. Restore the accepted v1 denominator sampling for easy comparison, medium story and true-false questions. Keep every v2 question, answer, format, difficulty and the corrected hard ordering key.
+
+Before:
+```json
+null
+```
+After:
+```json
+"a != b and n < a and n < b"
+```
+
+## 3.1-estimate-quantity step 3 template 2 text
+
+The matched U10 full book reaches the page minimum counts but takes 30.8 estimated minutes on Day 10. Shorten the repeated estimate prompt while keeping all contexts, numbers, answer expressions, formats and difficulty tags. Each question still asks for the same sensible or least sensible estimate.
+
+Before:
+```json
+"{ask} Which is the more sensible guess: {p} or {q}?"
+```
+After:
+```json
+"{ask} Which guess is sensible: {p} or {q}?"
+```
+
+## 3.1-estimate-quantity step 3 template 2 derived
+
+The matched U10 full book reaches the page minimum counts but takes 30.8 estimated minutes on Day 10. Shorten the repeated estimate prompt while keeping all contexts, numbers, answer expressions, formats and difficulty tags. Each question still asks for the same sensible or least sensible estimate.
+
+Before:
+```json
+{
+  "i": "x % 5",
+  "v": "x // 5 % 8",
+  "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
+  "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
+  "ask": "'How many pencils fit in a pencil case?' if i == 0 else ('How many pages are in a picture book?' if i == 1 else ('How many grapes are in a small bunch?' if i == 2 else ('How many books fit on a classroom shelf?' if i == 3 else 'How many children are in a classroom?')))",
+  "bad": "b * 10",
+  "p": "b if flip == 0 else bad",
+  "q": "bad if flip == 0 else b"
+}
+```
+After:
+```json
+{
+  "i": "x % 5",
+  "v": "x // 5 % 8",
+  "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
+  "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
+  "ask": "'Pencils in a pencil case.' if i == 0 else ('Pages in a picture book.' if i == 1 else ('Grapes in a small bunch.' if i == 2 else ('Books on a classroom shelf.' if i == 3 else 'Children in a classroom.')))",
+  "bad": "b * 10",
+  "p": "b if flip == 0 else bad",
+  "q": "bad if flip == 0 else b"
+}
+```
+
+## 3.1-estimate-quantity step 3 template 4 text
+
+The matched U10 full book reaches the page minimum counts but takes 30.8 estimated minutes on Day 10. Shorten the repeated estimate prompt while keeping all contexts, numbers, answer expressions, formats and difficulty tags. Each question still asks for the same sensible or least sensible estimate.
+
+Before:
+```json
+"{ask} Which is the most sensible guess: {p}, {q} or {r}?"
+```
+After:
+```json
+"{ask} Which guess is sensible: {p}, {q} or {r}?"
+```
+
+## 3.1-estimate-quantity step 3 template 4 derived
+
+The matched U10 full book reaches the page minimum counts but takes 30.8 estimated minutes on Day 10. Shorten the repeated estimate prompt while keeping all contexts, numbers, answer expressions, formats and difficulty tags. Each question still asks for the same sensible or least sensible estimate.
+
+Before:
+```json
+{
+  "i": "x % 5",
+  "v": "x // 5 % 8",
+  "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
+  "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
+  "ask": "'How many pencils fit in a pencil case?' if i == 0 else ('How many pages are in a picture book?' if i == 1 else ('How many grapes are in a small bunch?' if i == 2 else ('How many books fit on a classroom shelf?' if i == 3 else 'How many children are in a classroom?')))",
+  "bad": "b * 10",
+  "t10": "b * 10",
+  "h100": "b * 100",
+  "p": "b if pos == 0 else (h100 if pos == 1 else t10)",
+  "q": "t10 if pos == 0 else (b if pos == 1 else h100)",
+  "r": "h100 if pos == 0 else (t10 if pos == 1 else b)"
+}
+```
+After:
+```json
+{
+  "i": "x % 5",
+  "v": "x // 5 % 8",
+  "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
+  "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
+  "ask": "'Pencils in a pencil case.' if i == 0 else ('Pages in a picture book.' if i == 1 else ('Grapes in a small bunch.' if i == 2 else ('Books on a classroom shelf.' if i == 3 else 'Children in a classroom.')))",
+  "bad": "b * 10",
+  "t10": "b * 10",
+  "h100": "b * 100",
+  "p": "b if pos == 0 else (h100 if pos == 1 else t10)",
+  "q": "t10 if pos == 0 else (b if pos == 1 else h100)",
+  "r": "h100 if pos == 0 else (t10 if pos == 1 else b)"
+}
+```
+
+## 3.1-estimate-quantity step 3 template 6 text
+
+The matched U10 full book reaches the page minimum counts but takes 30.8 estimated minutes on Day 10. Shorten the repeated estimate prompt while keeping all contexts, numbers, answer expressions, formats and difficulty tags. Each question still asks for the same sensible or least sensible estimate.
+
+Before:
+```json
+"{ask} Which guess is the least sensible: {p}, {q} or {r}?"
+```
+After:
+```json
+"{ask} Which guess is least sensible: {p}, {q} or {r}?"
+```
+
+## 3.1-estimate-quantity step 3 template 6 derived
+
+The matched U10 full book reaches the page minimum counts but takes 30.8 estimated minutes on Day 10. Shorten the repeated estimate prompt while keeping all contexts, numbers, answer expressions, formats and difficulty tags. Each question still asks for the same sensible or least sensible estimate.
+
+Before:
+```json
+{
+  "i": "x % 5",
+  "v": "x // 5 % 8",
+  "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
+  "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
+  "ask": "'How many pencils fit in a pencil case?' if i == 0 else ('How many pages are in a picture book?' if i == 1 else ('How many grapes are in a small bunch?' if i == 2 else ('How many books fit on a classroom shelf?' if i == 3 else 'How many children are in a classroom?')))",
+  "bad": "b * 10",
+  "t10": "b * 10",
+  "h100": "b * 100",
+  "p": "b if pos == 0 else (h100 if pos == 1 else t10)",
+  "q": "t10 if pos == 0 else (b if pos == 1 else h100)",
+  "r": "h100 if pos == 0 else (t10 if pos == 1 else b)"
+}
+```
+After:
+```json
+{
+  "i": "x % 5",
+  "v": "x // 5 % 8",
+  "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
+  "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
+  "ask": "'Pencils in a pencil case.' if i == 0 else ('Pages in a picture book.' if i == 1 else ('Grapes in a small bunch.' if i == 2 else ('Books on a classroom shelf.' if i == 3 else 'Children in a classroom.')))",
+  "bad": "b * 10",
+  "t10": "b * 10",
+  "h100": "b * 100",
+  "p": "b if pos == 0 else (h100 if pos == 1 else t10)",
+  "q": "t10 if pos == 0 else (b if pos == 1 else h100)",
+  "r": "h100 if pos == 0 else (t10 if pos == 1 else b)"
+}
+```
+
+## 3.6-increasing-pattern step 1 template 1 text
+
+The U10 full-book estimate remains 30.2 minutes after shortening estimation prompts. State the first pattern position directly and remove repeated wording. Keep the start, increment, target position, answer, format and difficulty. This preserves the one-based pattern rule and reduces reading time.
+
+Before:
+```json
+"Start at {a}. Add {d} each time. What is the next number?"
+```
+After:
+```json
+"Start at {a}. Add {d}. What comes next?"
+```
+
+## 3.6-increasing-pattern step 1 template 3 text
+
+The U10 full-book estimate remains 30.2 minutes after shortening estimation prompts. State the first pattern position directly and remove repeated wording. Keep the start, increment, target position, answer, format and difficulty. This preserves the one-based pattern rule and reduces reading time.
+
+Before:
+```json
+"Start at {a}, add {d} each time. Number {n} in the pattern is __ (The start is number 1.)"
+```
+After:
+```json
+"Number 1 is {a}. Add {d} each time. Number {n} is __."
+```
+
+## 3.6-increasing-pattern step 1 template 4 text
+
+The U10 full-book estimate remains 30.2 minutes after shortening estimation prompts. State the first pattern position directly and remove repeated wording. Keep the start, increment, target position, answer, format and difficulty. This preserves the one-based pattern rule and reduces reading time.
+
+Before:
+```json
+"True or false: start at {a}, add {d} each time. Number {n} in the pattern is {shown}. (The start is number 1.)"
+```
+After:
+```json
+"Number 1 is {a}. Add {d} each time. True or false: number {n} is {shown}."
+```
+
+## 3.6-decreasing-pattern step 1 template 1 text
+
+The U10 full-book estimate remains 30.2 minutes after shortening estimation prompts. State the first pattern position directly and remove repeated wording. Keep the start, increment, target position, answer, format and difficulty. This preserves the one-based pattern rule and reduces reading time.
+
+Before:
+```json
+"Start at {a}. Take away {d} each time. What is the next number?"
+```
+After:
+```json
+"Start at {a}. Take away {d}. What comes next?"
+```
+
+## 3.6-decreasing-pattern step 1 template 3 text
+
+The U10 full-book estimate remains 30.2 minutes after shortening estimation prompts. State the first pattern position directly and remove repeated wording. Keep the start, increment, target position, answer, format and difficulty. This preserves the one-based pattern rule and reduces reading time.
+
+Before:
+```json
+"Start at {a}, take away {d} each time. Number {n} in the pattern is __ (The start is number 1.)"
+```
+After:
+```json
+"Number 1 is {a}. Take away {d} each time. Number {n} is __."
+```
+
+## 3.6-decreasing-pattern step 1 template 4 text
+
+The U10 full-book estimate remains 30.2 minutes after shortening estimation prompts. State the first pattern position directly and remove repeated wording. Keep the start, increment, target position, answer, format and difficulty. This preserves the one-based pattern rule and reduces reading time.
+
+Before:
+```json
+"True or false: start at {a}, take away {d} each time. Number {n} in the pattern is {shown}. (The start is number 1.)"
+```
+After:
+```json
+"Number 1 is {a}. Take away {d} each time. True or false: number {n} is {shown}."
 ```

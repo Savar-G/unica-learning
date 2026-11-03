@@ -20,13 +20,16 @@ const BC = curriculumFor("bc")!;
 
 describe("v2 data and answer contracts", () => {
   it("replays every recorded field change and keeps every source template's intent and difficulty", () => {
-    const patches = JSON.parse(read("author-changes.json")) as { skill: string; step: number; template: number | null; path: string[]; before: unknown; after: unknown; why: string }[];
+    const patches = JSON.parse(read("author-changes.json")) as { skill: string; step: number; template: number | null; path: string[]; before: unknown; after: unknown; why: string; kind?: "quality-fallback" | "wording-rewrite"; beforeAbsent?: boolean }[];
     for (const patch of patches) {
       const step = original.steps.find(s => s.skill === patch.skill && s.number === patch.step)!;
       const target = (patch.template === null ? step : step.templates![patch.template - 1]) as unknown as Record<string, unknown>;
       expect(patch.path).toHaveLength(1);
-      expect(["format", "difficulty", "text"]).not.toContain(patch.path[0]);
-      expect(target[patch.path[0]]).toEqual(patch.before);
+      expect(patch.path[0]).not.toBe("difficulty");
+      if (patch.kind !== "quality-fallback") expect(patch.path[0]).not.toBe("format");
+      if (!patch.kind) expect(patch.path[0]).not.toBe("text");
+      if (patch.beforeAbsent) expect(Object.hasOwn(target, patch.path[0])).toBe(false);
+      else expect(target[patch.path[0]]).toEqual(patch.before);
       target[patch.path[0]] = patch.after;
       expect(patch.why).not.toBe("");
     }
@@ -91,6 +94,20 @@ describe("v2 data and answer contracts", () => {
     expect(sameAnswer("33 m²", [whole.answer], false)).toBe(true);
   });
 
+  it("keeps every triangle dimension valid while it uses a shorter hard question", () => {
+    const step = BC.skillSteps("8.10-model")!.find(s => s.number === 1)!;
+    expect(step.templates![3]).toMatchObject({ format: "choose", difficulty: "hard", answer: "h" });
+    for (const template of step.templates!) {
+      const fill = prepareTemplate(step, template, BC.contexts!);
+      for (let seed = 1; seed <= 40; seed++) {
+        const { values } = fill.fill(seededRandom(seed));
+        const [p, q, h] = [values.p, values.q, values.h].map(v => Number(formatValue(v)));
+        expect(p * p + q * q).toBe(h * h);
+        expect(h).toBeLessThanOrEqual(41);
+      }
+    }
+  });
+
   it("keeps numeric cases of conditional hard stories available to the Challenge", () => {
     expect(hasHardNumberTemplate(BC, "K3-part-part-whole", 3, 4)).toBe(true);
     for (let seed = 1; seed <= 12; seed++) {
@@ -130,6 +147,15 @@ describe("v2 data and answer contracts", () => {
       expect(numerators).toEqual([...numerators].sort((a, b) => b - a));
       expect(buildStepItem(item.ref, item.text, { id: "q", workbookId: "w", page: 2, question: 1, level: 14, skills: [item.ref.skill] }, "code").check.status).toBe("checked");
     }
+  });
+
+  it("keeps number construction out of a two-method arithmetic area", () => {
+    const step = BC.skillSteps("5.1-place-value-million")!.find(s => s.number === 2)!;
+    const hard = step.templates!.find(t => /every other place/i.test(t.text))!;
+    expect(hard).toBeDefined();
+    const curriculum = { ...BC, skillSteps: (id: string) => id === step.skill ? [{ ...step, templates: [hard] }] : BC.skillSteps(id) };
+    expect(stepTemplateItem({ curriculum, skill: step.skill, step: step.number, place: "solve-it-two-ways", level: 16, day: 1, ordinal: 0, seed: 7, attempt: 0 })).toBeNull();
+    expect(stepTemplateItem({ curriculum, skill: step.skill, step: step.number, place: "challenge", level: 16, day: 1, ordinal: 0, seed: 7, attempt: 0 })?.ref.difficulty).toBe("hard");
   });
 
   it("rejects a reversed-numeral instruction supplied by derived text", () => {

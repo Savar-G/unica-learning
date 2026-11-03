@@ -95,6 +95,17 @@ function slotStep(input: GenerateInput, slot: Slot, attempt: number, level: numb
       const steps = challengeReviewSteps(input, slot, day, level);
       if (steps.length) return steps[(review - 1 + Math.floor(attempt / 6)) % steps.length];
     }
+    if (slot.place === "solve-it-two-ways") {
+      const sums = (x: { skill: string; step: number }) => stepOf(input.curriculum, x.skill, x.step)?.templates?.some(t => sumTemplate(t) && !templateProblem(t, level));
+      const own = { skill: part.step.skill, step: part.step.step };
+      if (!sums(own)) {
+        const rank = stepRank(input.curriculum, own.skill, own.step) ?? 0;
+        const prior = earlierSteps(input, slot, day, level, true)
+          .filter(x => (stepRank(input.curriculum, x.skill, x.step) ?? Infinity) < rank && sums(x))
+          .sort((a, b) => (stepRank(input.curriculum, b.skill, b.step) ?? 0) - (stepRank(input.curriculum, a.skill, a.step) ?? 0));
+        if (prior.length) return prior[Math.floor(attempt / 6) % prior.length];
+      }
+    }
     const stretch = challengeStretch(input, slot, level, day, attempt);
     const stories = storySteps(input, slot, day, level);
     if (stories.length) return stories[Math.floor(attempt / 6) % stories.length];
@@ -3001,7 +3012,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
         const forms=()=>new Set(current.flatMap(o=>o.package && o.place!=="warm-up" ? [printedForm(o.package)] : []));
         const fewForms=issues.some(i=>/contexts? or formats?/.test(i.reason)) && forms().size<3 && !!q.package && q.place!=="warm-up" && current.filter(o=>o.package && printedForm(o.package)===printedForm(q.package!)).length>=2;
         const frameAgain=issues.some(i=>i.reason.startsWith(`question ${q.number} uses the sentence frame`) || /sentence frame/.test(i.reason) && i.reason.includes("times") && !!q.package && i.reason.includes(`"${sentenceFrameOf(q.package)}"`));
-        if(issues.every(i=>i.kind==="variety") && q.package && (counts.get(kindOf(q)) ?? 0)<=limit && !fewForms && !frameAgain) return q;
+        if(fixable.every(i=>i.kind==="variety") && q.package && (counts.get(kindOf(q)) ?? 0)<=limit && !fewForms && !frameAgain) return q;
         const others=pages.flatMap(p=>p.questions.filter(other=>p.number!==page.number || other.number!==q.number)).concat(current.slice(0,index));
         const keys=new Set([...others.flatMap(other=>other.package && other.place!=="warm-up" ? [keyOf(other.package)] : []), ...pages.flatMap(p=>(p.panelExamples ?? []).flatMap(e=>e ? [keyOf(e)] : []))]);
         const frames=new Set(others.flatMap(other=>other.package && wordedTask(other.package) ? [storyFrame(other.package.text)] : []));

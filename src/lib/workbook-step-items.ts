@@ -256,6 +256,7 @@ export interface StepItemRequest {
  */
 export function sumTemplate(t: StepTemplate): boolean {
   return ["bare", "missing", "story"].includes(t.format) && !/['"]/.test(t.answer)
+    && !/\bevery (?:other )?place\b/i.test(t.text)
     && /[+×÷−]|\s-\s|\b(?:count on|count back|more|less|fewer|add|adds|take|takes|left|rest|altogether|times|groups? of|shares?|split|makes?|in all|total|each|every|per|holds?|fills?|grows?|loses?)\b/i.test(t.text);
 }
 

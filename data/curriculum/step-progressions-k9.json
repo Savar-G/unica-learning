@@ -72674,7 +72674,7 @@
     {
      "format": "choose",
      "difficulty": "easy",
-     "text": "{ask} Which is the more sensible guess: {p} or {q}?",
+     "text": "{ask} Which guess is sensible: {p} or {q}?",
      "answer": "str(b)",
      "slots": {
       "x": "choices",
@@ -72685,7 +72685,7 @@
       "v": "x // 5 % 8",
       "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
       "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
-      "ask": "'How many pencils fit in a pencil case?' if i == 0 else ('How many pages are in a picture book?' if i == 1 else ('How many grapes are in a small bunch?' if i == 2 else ('How many books fit on a classroom shelf?' if i == 3 else 'How many children are in a classroom?')))",
+      "ask": "'Pencils in a pencil case.' if i == 0 else ('Pages in a picture book.' if i == 1 else ('Grapes in a small bunch.' if i == 2 else ('Books on a classroom shelf.' if i == 3 else 'Children in a classroom.')))",
       "bad": "b * 10",
       "p": "b if flip == 0 else bad",
       "q": "bad if flip == 0 else b"
@@ -72713,7 +72713,7 @@
     {
      "format": "choose",
      "difficulty": "medium",
-     "text": "{ask} Which is the most sensible guess: {p}, {q} or {r}?",
+     "text": "{ask} Which guess is sensible: {p}, {q} or {r}?",
      "answer": "str(b)",
      "slots": {
       "x": "choices",
@@ -72724,7 +72724,7 @@
       "v": "x // 5 % 8",
       "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
       "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
-      "ask": "'How many pencils fit in a pencil case?' if i == 0 else ('How many pages are in a picture book?' if i == 1 else ('How many grapes are in a small bunch?' if i == 2 else ('How many books fit on a classroom shelf?' if i == 3 else 'How many children are in a classroom?')))",
+      "ask": "'Pencils in a pencil case.' if i == 0 else ('Pages in a picture book.' if i == 1 else ('Grapes in a small bunch.' if i == 2 else ('Books on a classroom shelf.' if i == 3 else 'Children in a classroom.')))",
       "bad": "b * 10",
       "t10": "b * 10",
       "h100": "b * 100",
@@ -72753,7 +72753,7 @@
     {
      "format": "choose",
      "difficulty": "hard",
-     "text": "{ask} Which guess is the least sensible: {p}, {q} or {r}?",
+     "text": "{ask} Which guess is least sensible: {p}, {q} or {r}?",
      "answer": "str(h100)",
      "slots": {
       "x": "choices",
@@ -72764,7 +72764,7 @@
       "v": "x // 5 % 8",
       "b": "8 + v if i == 0 else (20 + 2 * v if i == 1 else (15 + v if i == 2 else (24 + 2 * v if i == 3 else 20 + v)))",
       "what": "'pencils fit in a pencil case' if i == 0 else ('pages are in a picture book' if i == 1 else ('grapes are in a small bunch' if i == 2 else ('books fit on a classroom shelf' if i == 3 else 'children are in a classroom')))",
-      "ask": "'How many pencils fit in a pencil case?' if i == 0 else ('How many pages are in a picture book?' if i == 1 else ('How many grapes are in a small bunch?' if i == 2 else ('How many books fit on a classroom shelf?' if i == 3 else 'How many children are in a classroom?')))",
+      "ask": "'Pencils in a pencil case.' if i == 0 else ('Pages in a picture book.' if i == 1 else ('Grapes in a small bunch.' if i == 2 else ('Books on a classroom shelf.' if i == 3 else 'Children in a classroom.')))",
       "bad": "b * 10",
       "t10": "b * 10",
       "h100": "b * 100",
@@ -77508,7 +77508,7 @@
     {
      "format": "bare",
      "difficulty": "easy",
-     "text": "Start at {a}. Add {d} each time. What is the next number?",
+     "text": "Start at {a}. Add {d}. What comes next?",
      "answer": "a + d",
      "slots": {
       "a0": "start",
@@ -77534,7 +77534,7 @@
     {
      "format": "missing",
      "difficulty": "medium",
-     "text": "Start at {a}, add {d} each time. Number {n} in the pattern is __ (The start is number 1.)",
+     "text": "Number 1 is {a}. Add {d} each time. Number {n} is __.",
      "answer": "a + (n - 1) * d",
      "slots": {
       "a0": "start",
@@ -77548,7 +77548,7 @@
     {
      "format": "true-false",
      "difficulty": "medium",
-     "text": "True or false: start at {a}, add {d} each time. Number {n} in the pattern is {shown}. (The start is number 1.)",
+     "text": "Number 1 is {a}. Add {d} each time. True or false: number {n} is {shown}.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "a0": "start",
@@ -78255,7 +78255,7 @@
     {
      "format": "bare",
      "difficulty": "easy",
-     "text": "Start at {a}. Take away {d} each time. What is the next number?",
+     "text": "Start at {a}. Take away {d}. What comes next?",
      "answer": "a - d",
      "slots": {
       "a0": "start",
@@ -78281,7 +78281,7 @@
     {
      "format": "missing",
      "difficulty": "medium",
-     "text": "Start at {a}, take away {d} each time. Number {n} in the pattern is __ (The start is number 1.)",
+     "text": "Number 1 is {a}. Take away {d} each time. Number {n} is __.",
      "answer": "a - (n - 1) * d",
      "slots": {
       "a0": "start",
@@ -78295,7 +78295,7 @@
     {
      "format": "true-false",
      "difficulty": "medium",
-     "text": "True or false: start at {a}, take away {d} each time. Number {n} in the pattern is {shown}. (The start is number 1.)",
+     "text": "Number 1 is {a}. Take away {d} each time. True or false: number {n} is {shown}.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "a0": "start",
@@ -112452,16 +112452,11 @@
      "answer": "'<' if a > b else '>'",
      "slots": {
       "n": "numerator",
-      "u1": "u1",
-      "u2": "u2",
-      "u3": "u3"
+      "a": "denominator",
+      "b": "denominator"
      },
-     "derived": {
-      "a0": "n + 1 + u1 % 5",
-      "b0": "n + 6 + u2 % (7 - n)",
-      "a": "a0 if u3 % 2 == 0 else b0",
-      "b": "b0 if u3 % 2 == 0 else a0"
-     }
+     "derived": {},
+     "check": "a != b and n < a and n < b"
     },
     {
      "format": "picture",
@@ -112488,16 +112483,11 @@
      "answer": "'yes' if a < b else 'no'",
      "slots": {
       "n": "numerator",
-      "u1": "u1",
-      "u2": "u2",
-      "u3": "u3"
+      "a": "denominator",
+      "b": "denominator"
      },
-     "derived": {
-      "a0": "n + 1 + u1 % 5",
-      "b0": "n + 6 + u2 % (7 - n)",
-      "a": "a0 if u3 % 2 == 0 else b0",
-      "b": "b0 if u3 % 2 == 0 else a0"
-     }
+     "derived": {},
+     "check": "a != b and n < a and n < b"
     },
     {
      "format": "true-false",
@@ -112506,16 +112496,11 @@
      "answer": "'true' if a < b else 'false'",
      "slots": {
       "n": "numerator",
-      "u1": "u1",
-      "u2": "u2",
-      "u3": "u3"
+      "a": "denominator",
+      "b": "denominator"
      },
-     "derived": {
-      "a0": "n + 1 + u1 % 5",
-      "b0": "n + 6 + u2 % (7 - n)",
-      "a": "a0 if u3 % 2 == 0 else b0",
-      "b": "b0 if u3 % 2 == 0 else a0"
-     }
+     "derived": {},
+     "check": "a != b and n < a and n < b"
     },
     {
      "format": "compare",
@@ -229314,6 +229299,33 @@
     "flip": {
      "min": 0,
      "max": 1
+    },
+    "leg": {
+     "min": 3,
+     "max": 40,
+     "values": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      12,
+      15,
+      16,
+      18,
+      20,
+      21,
+      24,
+      28,
+      30,
+      32,
+      35,
+      36,
+      40
+     ]
     }
    },
    "practice": [
@@ -229355,20 +229367,19 @@
      "text": "The sides of a right triangle are {x}, {y} and {z}. Which is the hypotenuse?",
      "answer": "h",
      "slots": {
-      "m0": "side",
-      "n0": "side",
+      "m0": "leg",
+      "n0": "leg",
       "o": "side"
      },
      "derived": {
-      "m": "m0 % 4 + 2",
-      "n": "n0 % (m - 1) + 1",
-      "p": "m * m - n * n",
-      "q": "2 * m * n",
-      "h": "m * m + n * n",
+      "p": "m0",
+      "q": "n0",
+      "h": "isqrt(p * p + q * q)",
       "x": "(p, h, q)[o % 3]",
       "y": "(h, q, p)[o % 3]",
       "z": "(q, p, h)[o % 3]"
-     }
+     },
+     "check": "h <= 41 and h * h == p * p + q * q"
     },
     {
      "format": "true-false",
@@ -229376,22 +229387,21 @@
      "text": "True or false: the hypotenuse of a right triangle with sides {x}, {y} and {z} is {shown}.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "m0": "side",
-      "n0": "side",
+      "m0": "leg",
+      "n0": "leg",
       "o": "side",
       "flip": "flip"
      },
      "derived": {
-      "m": "m0 % 4 + 2",
-      "n": "n0 % (m - 1) + 1",
-      "p": "m * m - n * n",
-      "q": "2 * m * n",
-      "h": "m * m + n * n",
+      "p": "m0",
+      "q": "n0",
+      "h": "isqrt(p * p + q * q)",
       "x": "(p, h, q)[o % 3]",
       "y": "(h, q, p)[o % 3]",
       "z": "(q, p, h)[o % 3]",
       "shown": "h if flip == 0 else min(p, q)"
-     }
+     },
+     "check": "h <= 41 and h * h == p * p + q * q"
     },
     {
      "format": "story",
@@ -229399,41 +229409,39 @@
      "text": "{name} cuts a right triangle from paper with sides {x}, {y} and {z} cm. Which side is the shortest? Write its length.",
      "answer": "min(p, q)",
      "slots": {
-      "m0": "side",
-      "n0": "side",
+      "m0": "leg",
+      "n0": "leg",
       "o": "side"
      },
      "derived": {
-      "m": "m0 % 4 + 2",
-      "n": "n0 % (m - 1) + 1",
-      "p": "m * m - n * n",
-      "q": "2 * m * n",
-      "h": "m * m + n * n",
+      "p": "m0",
+      "q": "n0",
+      "h": "isqrt(p * p + q * q)",
       "x": "(p, h, q)[o % 3]",
       "y": "(h, q, p)[o % 3]",
       "z": "(q, p, h)[o % 3]"
-     }
+     },
+     "check": "h <= 41 and h * h == p * p + q * q"
     },
     {
-     "format": "story",
+     "format": "choose",
      "difficulty": "hard",
-     "text": "{name} walks along the two sides of a right triangle that meet at the square corner. The three sides measure {x}, {y} and {z} m. How far does {name} walk in all?",
-     "answer": "p + q",
+     "text": "Which side is across from the right angle in a right triangle with sides {x}, {y} and {z}? Write its length.",
+     "answer": "h",
      "slots": {
-      "m0": "side",
-      "n0": "side",
+      "m0": "leg",
+      "n0": "leg",
       "o": "side"
      },
      "derived": {
-      "m": "m0 % 4 + 2",
-      "n": "n0 % (m - 1) + 1",
-      "p": "m * m - n * n",
-      "q": "2 * m * n",
-      "h": "m * m + n * n",
+      "p": "m0",
+      "q": "n0",
+      "h": "isqrt(p * p + q * q)",
       "x": "(p, h, q)[o % 3]",
       "y": "(h, q, p)[o % 3]",
       "z": "(q, p, h)[o % 3]"
-     }
+     },
+     "check": "h <= 41 and h * h == p * p + q * q"
     }
    ],
    "calibration": {

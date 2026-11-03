@@ -486,6 +486,12 @@ const CSS = `
 .pg.consistent .mx .sl{min-width:0}
 .pg.consistent .chc{padding:12px;gap:8px}
 .pg.consistent .chc .act{display:flex;gap:16px;align-items:flex-end;flex:1}
+.pg.consistent .chs.side3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.pg.consistent .chs.side3 .top{gap:8px}
+.pg.consistent .chs.side3 .act{flex-direction:column;align-items:stretch;gap:8px}
+.pg.consistent .chs.side3 .act .wb{width:100%;min-width:0}
+.pg.consistent .chs.side3 .act .rg{align-self:flex-end}
+.pg.consistent.older-extra .ab{height:88px}
 .pg.consistent [data-slot="word-problems"] .story{flex:1}
 .pg.consistent [data-slot="word-problems"] .story.nowork{flex:0 0 auto}
 .story.nowork .head{align-items:center}.story.nowork .qb{flex:1 1 0}
@@ -1049,8 +1055,9 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       }
 
       const side = ctx.six && qs.length === 2;
+      const three = ctx.six && qs.length === 3;
       const work = c.consistentLayout ? workMinimum(c.level) : "fill" as const;
-      return chip() + `<div class="chs${side ? " side2" : ""}">${qs.map((q) => {
+      return chip() + `<div class="chs${side ? " side2" : three ? " side3" : ""}">${qs.map((q) => {
         const { inline, full } = regionsSplit(q, { band, work });
         return `<div class="chc" ${mark.question(q.number)}><div class="top"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${text(q)}</span></div><div class="act">${full}${inline}</div></div>`;
       }).join("")}</div>`;
@@ -1100,7 +1107,7 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
     + (c.level <= 3 && c.grownUp ? `<p class="gu" ${mark.slot("grown-up")}><b>For the grown-up:</b> ${escape(c.grownUp)}</p>` : "") + `</header>`;
   // A Challenge block takes the free room of its page: its work boxes grow into it (DESIGN.md section 4).
   const blocks = c.blocks.map((b, i) => `<section class="blk${GROW.has(b.slot) || c.consistentLayout && b.slot === "word-problems" ? " grow" : ""}"${b.slot === "in-your-head" ? ` style="flex:0 0 auto"` : ""} data-slot="${b.slot}" data-measure="block-${i}">${blockHtml(b, i, ctx).replace(/<div class="chiprow">([\s\S]*?)<\/div>/g, (_row, inner: string, at: number) => `<div class="chiprow" data-measure="chip-${i}-${at}">${inner.replace('<span class="chip ', `<span data-measure="chipbadge-${i}-${at}" class="chip `).replace('<span class="side">', `<span data-measure="chipnote-${i}-${at}" class="side">`)}</div>`).replace(/<div class="lab"([^>]*)>/g, (tag, attrs: string, at: number) => attrs.includes("data-measure") ? tag : `<div class="lab" data-measure="label-${i}-${at}"${attrs}>`)}${missingHtml(b)}</section>`).join("");
-  return `<div class="pg ${band.name}${c.consistentLayout ? " consistent" : ""} f-${familyOf(page, c)}" data-page-type="${page.type}" style="--work-min:${c.consistentLayout ? workMinimum(c.level) : 64}px">${scanMarks}<div class="frame">${header}<main class="ct" style="--extra-gap:${Math.max(0,Math.min(48,c.extraGap ?? 0))}px" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
+  return `<div class="pg ${band.name}${c.consistentLayout ? " consistent" : ""}${c.extraPractice && c.level >= 19 ? " older-extra" : ""} f-${familyOf(page, c)}" data-page-type="${page.type}" style="--work-min:${c.consistentLayout ? workMinimum(c.level) : 64}px">${scanMarks}<div class="frame">${header}<main class="ct" style="--extra-gap:${Math.max(0,Math.min(48,c.extraGap ?? 0))}px" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
 }
 
 /** A failed question with nothing to print: a red placeholder with its number and why (review drafts only). */
