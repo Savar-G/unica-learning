@@ -107,7 +107,7 @@ Fake books always keep the approval hold. No child was timed.
 The example candidates are listed in `workbook-example-bank-480.md`. Savar
 must approve the bank and the next authorised subscription sample before merge.
 No real sample is authorised for these fixes. The layout changes below are
-included. The imported step templates remain assigned to the next agent.
+included. The imported step templates are integrated (#489, `workbook-step-templates.md`).
 
 ## Page rules adopted from Cedric's brief
 
@@ -131,7 +131,4 @@ The new rules apply to the measured layout. Saved legacy pages retain their
 layout limits, with the updated question numbers and cover copy.
 
 The curriculum-step importer is merged from `origin/main` at `5f078f5`.
-The generator retains the existing 155-step path. The next agent must use
-`bcStepProgressions()` and its approved templates and ranges, move through the
-skeleton's skills and steps, and remove the fixed second topic. These are not
-claims established by the current hand-built U4 pipeline.
+The generator reads the imported 1,622 steps and their templates (#489). See `workbook-step-templates.md`.

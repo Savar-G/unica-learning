@@ -748,7 +748,7 @@ describe("a book laid out for the templates: room, rules and the content left", 
     const qs = draft.pages.flatMap((p) => p.questions).filter((q) => q.place !== "spot-the-error");
     expect(qs.length).toBeGreaterThan(0);
     // A writer that gives an earlier page's sum again fails as a repeat (the task is its operation, #482 review).
-    expect(qs.filter((q) => q.check.status === "failed").every((q) => /repeats a question/.test((q.check as { reason: string }).reason))).toBe(true);
+    expect(qs.filter((q) => q.check.status === "failed").every((q) => /repeats a question|same sum as question|same task as question/.test((q.check as { reason: string }).reason))).toBe(true);
     // (This writer gives every kind of slot a missing part, so at U3's small numbers many sums come back.)
     expect(qs.filter((q) => q.check.status !== "failed").length).toBeGreaterThan(0);
     expect(qs.filter((q) => q.check.status !== "failed").every((q) => {

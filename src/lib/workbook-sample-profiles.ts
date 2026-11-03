@@ -67,7 +67,8 @@ export function samplePlanInput(curriculum: Curriculum, child: SampleChild, kind
   ];
   const stepsOf = (id: string) => {
     const s = level.units.flatMap((u) => u.skills).find((x) => x.id === id)!;
-    return s.delivery === "activity" ? 1 : s.steps.length || DEFAULT_STEPS;
+    // An activity skill's one page is on its last step (#489).
+    return s.steps.length || (s.delivery === "activity" ? 1 : DEFAULT_STEPS);
   };
   const taught = level.units.flatMap((u) => u.skills).filter((s) => s.delivery !== "warm-up");
   const passed: Record<string, number> = kind === "test"

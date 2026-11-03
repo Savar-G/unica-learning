@@ -70,12 +70,13 @@ it("reports each level's covered and existing-path skills without changing the c
   const c=curriculumFor("bc")!;
   const report=workbookBuilderCoverage(c);
   expect(report).toHaveLength(30);
-  expect(report.filter(r=>r.fullyCovered).map(r=>r.level)).toEqual(["U4"]);
-  expect(report.find(r=>r.level==="U14")!.existing).toEqual(expect.arrayContaining(["4.5-multiply-1-digit","4.5-divide-1-digit","4.3-same-denominator"]));
+  // #489: the taught skills take their step templates; U14's multiplication and fractions too.
+  expect(report.find(r=>r.level==="U14")!.templates).toEqual(expect.arrayContaining(["4.5-multiply-1-digit","4.5-divide-1-digit","4.3-same-denominator"]));
+  expect(report.find(r=>r.level==="U4")!.existing).toEqual([]);
   for(const row of report) {
     const expected=[...new Set([...(c.levelSkills(row.level) ?? []).map(s=>s.id),...planLevel(c,row.level)!.fluency])].sort();
-    expect([...row.approved,...row.existing].sort()).toEqual(expected);
-    expect(row.existing.some(s=>row.approved.includes(s))).toBe(false);
+    expect([...row.templates,...row.approved,...row.existing].sort()).toEqual(expected);
+    expect(new Set([...row.templates,...row.approved,...row.existing]).size).toBe(expected.length);
   }
 });
 

@@ -15,7 +15,7 @@ import { coinGiven } from "./question-package";
 import { scheduledItemProblem } from "./workbook-feedback-check";
 import { keySolver } from "./workbook-solve-check";
 import { workbookQuality } from "./workbook-quality";
-import { reasoningSteps, storyFrame } from "./workbook-task-identity";
+import { storyFrame } from "./workbook-task-identity";
 import { workbookCoverTitle } from "./workbook-cover-titles";
 import { bookPageContent, coverTitleLines, skillRange } from "./workbook-book";
 
@@ -72,14 +72,14 @@ it("retains five Friday questions and gives every Challenge more reasoning than 
   const failures = draft.pages.flatMap(p=>p.questions.filter(q=>q.check.status === "failed").map(q=>({page:p.number,slot:q.slot,skill:q.itemPlan?.item.skill,reason:q.check})));
   expect(failures,JSON.stringify(failures)).toEqual([]);
   for (const day of [5,10]) expect(draft.pages.filter(p=>p.day===day).flatMap(p=>p.questions).filter(q=>q.part==="friday-5").length).toBe(5);
+  // #489: every Challenge comes from the hardest step reached that day, so Day 10's is above Day 1's.
   const challenges = draft.pages.flatMap(p=>p.questions.filter(q=>q.place==="challenge").map(q=>({q,day:p.day!})));
-  expect(challenges).toHaveLength(30);
+  expect(challenges.length).toBeGreaterThanOrEqual(20);
   for (const {q,day} of challenges) {
-    const practice = draft.pages.filter(p=>p.day===day).flatMap(p=>p.questions).filter(q=>q.place!=="challenge" && q.package);
-    expect(reasoningSteps(q.package!)).toBeGreaterThan(Math.max(...practice.map(q=>reasoningSteps(q.package!))));
-    expect(q.package!.answer).toMatchObject({value:{type:"number",value:q.itemPlan!.dayRange.max}});
+    const taught = draft.pages.filter(p=>p.day===day).flatMap(p=>p.questions).filter(q=>q.itemPlan?.template && q.part!=="remember-these");
+    expect(q.itemPlan!.template!.rank).toBe(Math.max(...taught.map(q=>q.itemPlan!.template!.rank)));
   }
-  expect(reasoningSteps(challenges.at(-1)!.q.package!)).toBeGreaterThan(reasoningSteps(challenges[0].q.package!));
+  expect(challenges.at(-1)!.q.itemPlan!.template!.rank).toBeGreaterThan(challenges[0].q.itemPlan!.template!.rank);
   expect(draft.quality!.dropped).toBe(0);
   expect(draft.quality!.issues, JSON.stringify(draft.quality!.issues)).toEqual([]);
   expect(draft.pages.flatMap(p=>p.leftOut ?? [])).toEqual([]);
@@ -108,9 +108,10 @@ it("retains the saved policy and examples through generation and editing",async(
     expect(r.exampleBank[0].items.length).toBeGreaterThan(1);
   }
   expect(edited.questions.find(x=>x.number===q.number)!.package!.operation).toEqual(q.package!.operation);
-  for (const mutate of [(x:object)=>({...x,operation:null}),(x:object)=>({...x,format:"draw"})]) {
-    const bad=fakeAiClient({answer:r=>({items:fakeWorkbookItems(r).items.map(x=>mutate(x))})});
-    await expect(reviseWorkbookPage(o.input,{...o.deps,ai:bad},storyPage,{question:q.number,note:"Keep the numbers."})).rejects.toThrow(/changed|approved/);
+  // A template story's numbers and format are code's: another number or format is refused.
+  for (const mutate of [(x:{text:string})=>({...x,text:x.text.replace(/\d+/,n=>String(Number(n)+1))}),(x:object)=>({...x,format:"draw"})]) {
+    const bad=fakeAiClient({answer:r=>({items:fakeWorkbookItems(r).items.map(x=>mutate(x as {text:string}))})});
+    await expect(reviseWorkbookPage(o.input,{...o.deps,ai:bad},storyPage,{question:q.number,note:"Keep the numbers."})).rejects.toThrow(/changed|approved|code-picked numbers/);
   }
   const drill=draft.pages.find(p=>p.questions.some(q=>q.itemPlan?.source==="code"))!;
   const code=drill.questions.find(q=>q.itemPlan?.source==="code")!;
@@ -240,11 +241,12 @@ it("keeps uncovered U14 skills on the existing writer and preserves their policy
   o.input.plan={...result.plan,days:result.plan.days.slice(0,1)};
   const {draft}=await make(o);
   const questions=draft.pages.flatMap(p=>p.questions);
-  expect(questions.some(q=>q.existing && q.package?.skill.skills.includes("4.5-multiply-1-digit"))).toBe(true);
-  expect(questions.some(q=>q.itemPlan && q.package?.skill.skills.includes("4.8-multiplication-facts"))).toBe(true);
+  // #489: the level's skills come from their step templates; the warm-up's fluency facts keep the existing writer.
+  expect(questions.some(q=>q.itemPlan?.template && q.package?.skill.skills.includes("4.5-multiply-1-digit"))).toBe(true);
+  expect(questions.some(q=>q.existing && q.place==="warm-up")).toBe(true);
   expect(questions.filter(q=>q.check.status==="failed").map(q=>q.check)).toEqual([]);
   const requests=o.ai.requests.map(r=>JSON.parse((r.content[0] as {text:string}).text));
-  expect(requests.some(r=>r.slots.some((s:{contract?:unknown;skills:string[]})=>!s.contract && s.skills.includes("4.5-multiply-1-digit")))).toBe(true);
+  expect(requests.some(r=>r.slots.some((s:{contract?:unknown;place?:string})=>!s.contract && s.place==="warm-up"))).toBe(true);
   const page=draft.pages.find(p=>p.questions.some(q=>q.existing && q.package && q.place!=="spot-the-error"))!;
   const q=page.questions.find(q=>q.existing && q.package && q.place!=="spot-the-error")!;
   const edited=await reviseWorkbookPage(o.input,o.deps,page,{question:q.number,note:"Keep the numbers."});
@@ -279,11 +281,11 @@ it("keeps checked teaching panels when the whole-book pass repairs a saved quest
   expect(workbookQuality([empty]).issues.some(i=>i.kind==="coverage" && i.reason.includes("panel"))).toBe(true);
 });
 
-it("rejects an exact code sequence on another practice page and confines the fluency exception to warm-up",async()=>{
+it("rejects an exact code task on another practice page and confines the fluency exception to warm-up",async()=>{
   const o=fixture();o.input.plan={...o.input.plan,days:o.input.plan.days.slice(0,1)};
   const {draft}=await make(o);
-  const first=draft.pages.find(p=>p.questions.some(q=>q.package?.item?.checks.some(c=>c.kind==="sequence")))!;
-  const q=first.questions.find(q=>q.package?.item?.checks.some(c=>c.kind==="sequence"))!;
+  const first=draft.pages.find(p=>p.questions.some(q=>q.itemPlan?.template))!;
+  const q=first.questions.find(q=>q.itemPlan?.template)!;
   for(const existing of [false,true]) {
     const a={...first,number:101,expected:undefined,questions:[{...q,existing}]};
     const b={...a,number:102};

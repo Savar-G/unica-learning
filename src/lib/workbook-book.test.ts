@@ -294,7 +294,9 @@ describe("Sam's wrong work", () => {
     });
     const q = none.draft.pages.flatMap((p) => p.questions).filter((x) => x.place === "spot-the-error");
     expect(q.length).toBeGreaterThan(0);
-    expect(q.every((x) => x.check.status === "failed" && x.check.reason.includes("Sam's steps"))).toBe(true);
+    // None passes; on a story page the story check may name another reason first (#489's plan puts some there).
+    expect(q.every((x) => x.check.status === "failed")).toBe(true);
+    expect(q.some((x) => x.check.status === "failed" && x.check.reason.includes("Sam's steps"))).toBe(true);
   });
 });
 

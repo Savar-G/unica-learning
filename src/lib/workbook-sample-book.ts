@@ -531,7 +531,7 @@ export function sampleBook(o: SampleBookOptions): SampleBook {
   if (!level) throw new Error(`sample book: no level ${o.level}`);
   const number = o.number ?? 1;
   const passed = o.testWorkbook
-    ? Object.fromEntries(level.units.flatMap((u) => u.skills.filter((s) => s.delivery !== "warm-up").map((s) => [s.id, s.delivery === "activity" ? 1 : s.steps.length || DEFAULT_STEPS])))
+    ? Object.fromEntries(level.units.flatMap((u) => u.skills.filter((s) => s.delivery !== "warm-up").map((s) => [s.id, s.steps.length || (s.delivery === "activity" ? 1 : DEFAULT_STEPS)])))
     : {};
   const teach = level.units.flatMap((u) => u.skills).filter((s) => s.delivery !== "warm-up").map((s) => s.id);
   const input: PlanInput = {

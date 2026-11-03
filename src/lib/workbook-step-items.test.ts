@@ -18,8 +18,9 @@ describe("step template items (#489)", () => {
       for (const s of it.ref.source.slots) {
         const value = Number("int" in s.value ? s.value.int : "dec" in s.value ? s.value.dec : NaN);
         if (!Array.isArray(s.domain) && Number.isFinite(value)) {
-          expect(value).toBeGreaterThanOrEqual(s.domain.min);
-          expect(value).toBeLessThanOrEqual(s.domain.max);
+          const d = s.domain as { min: number; max: number };
+          expect(value).toBeGreaterThanOrEqual(d.min);
+          expect(value).toBeLessThanOrEqual(d.max);
         }
       }
       const built = buildStepItem(it.ref, it.text, place(4, it.ref.skill), "code");

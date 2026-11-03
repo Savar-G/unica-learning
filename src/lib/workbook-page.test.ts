@@ -19,7 +19,8 @@ const page = (type: PlannedPage["type"], parts: PlannedPart[]): PlannedPage => (
 const names = (layout: PageLayout) => layout.slots.map((s) => `${s.slot}:${s.items}`);
 
 describe("assembleBook", () => {
-  it.each([["U12", 84], ["U22", 64], ["U6", 84], ["U2", 60]])("puts a %s book in order and pads it to a multiple of 4 (%i pages)", (level, total) => {
+  // #489: every teaching day starts the next step, so a U2 day always has its New idea page (64 pages, was 60).
+  it.each([["U12", 84], ["U22", 64], ["U6", 84], ["U2", 64]])("puts a %s book in order and pads it to a multiple of 4 (%i pages)", (level, total) => {
     const { draft, plan } = book(level);
     const types = draft.pages.map((p) => p.type);
     const dayPages = plan.days.reduce((n, d) => n + d.pages.length, 0);
@@ -67,7 +68,8 @@ describe("assembleBook", () => {
     const types = new Set([book("U2"), book("U6"), book("U12"), book("U22"), book("U12", { testWorkbook: true })].flatMap((b) => b.draft.pages.map((p) => p.type)));
     expect([...types].sort()).toEqual([
       "blank", "challenge", "cover", "friday-5", "how-plan", "level-test", "math-in-the-world", "new-idea", "parent-led",
-      "practice", "practice-2", "remember-these", "remember-these-mixed-set", "show-what-you-know", "unit-b", "warm-up", "word-problems",
+      // #489: the step progression has no second unit, so no Unit B page.
+      "practice", "practice-2", "remember-these", "remember-these-mixed-set", "show-what-you-know", "warm-up", "word-problems",
     ]);
   });
 

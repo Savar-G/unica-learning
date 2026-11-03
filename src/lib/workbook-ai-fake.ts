@@ -38,6 +38,8 @@ export function fakeWorkbookItems(r: AiJsonRequest) {
   const text = (r.content[0] as { text: string }).text;
   const asked = JSON.parse(text) as { day?: number; page?: number; slots: AskedSlot[]; examples?: AskedSlot[]; note?: string | null; currentQuestions?: {data: AiItem | null}[] };
   const day = asked.day ?? 1;
+  // No two questions of a page work one sum, as the real AI is asked (#380): a pair taken moves on.
+  const sums = new Set<string>();
   return {
     items: [...asked.slots, ...(asked.examples ?? [])].map((s, k) => {
       if (s.contract) return s.contract.item;
@@ -85,8 +87,10 @@ export function fakeWorkbookItems(r: AiJsonRequest) {
       // others' (the k-th slot), and a bare sum takes another form after every `span` slots and in each later call.
       const planned = plan?.numbers && plan.numbers[0] >= 1 && plan.numbers[0] + plan.numbers[1] + 1 <= max ? plan.numbers : null;
       const span = Math.max(1, max > 40 ? 19 : Math.min(9, max - 3));
-      const b = planned?.[1] ?? 1 + ((seed + k) % span);
+      let b = planned?.[1] ?? 1 + ((seed + k) % span);
       const a = planned?.[0] ?? 1 + ((Math.floor(seed / 9) + 7 * k) % Math.max(1, max - span - 1));
+      for (let n = 0; n < span && sums.has(`${a},${b}`) && a + b + 2 <= max; n++) b = b % span + 1;
+      sums.add(`${a},${b}`);
       // The kind code aimed the slot at, as the real AI is asked (#480 review: three contexts or formats a page): a
       // missing part, a bare fact, else a story in one of several sentences.
       const call = r.name === "workbook_page_redo" ? 1 : r.name === "workbook_page_shorter" ? 2 : 0;

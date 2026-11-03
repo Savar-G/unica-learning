@@ -77,13 +77,14 @@ export const questionNumber = (number: number): string => `${number}.`;
 // ---------- Slot limits (DESIGN.md section 7: maximums for the 688 by 720 content area) ----------
 
 /** The most items a slot takes on a page. */
-export function slotMax(slot: SlotName, c: Pick<DayContent, "level" | "pages" | "consistentLayout">): number {
+export function slotMax(slot: SlotName, c: Pick<DayContent, "level" | "pages" | "consistentLayout"> & { extraPractice?: boolean }): number {
   const band = bandOf(c.level);
   switch (slot) {
     case "warm-up": return band.name === "mid" ? 12 : 8;
     case "fix-it": return 3;
     case "in-your-head": case "try-first": case "spot-the-error": case "solve-it-two-ways": case "how-do-you-know": return 1;
-    case "remember-these": return band.name === "parent" ? 6 : c.consistentLayout ? 10 : 8;
+    // An extra practice page is one review block: two columns of 7 (#489: short template questions fill it).
+    case "remember-these": return band.name === "parent" ? 6 : c.consistentLayout ? (c.extraPractice ? 14 : 10) : 8;
     case "now-you": return c.consistentLayout ? 5 : 4;
     case "finish-these": return c.consistentLayout ? 4 : 2;
     case "on-your-own": return band.name === "mid" ? 8 : 6;

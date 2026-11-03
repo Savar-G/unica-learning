@@ -205,6 +205,12 @@ function exampleOf(p: QuestionPackage, level: number): PanelExample | null {
     return r?.kind === "box" && r.answer ? valueText(r.answer) : "?";
   };
   for (const c of item.checks) {
+    // #489: a step template item worked as an example: the question, then its answer.
+    if (c.kind === "template" || c.kind === "template-choice") {
+      const r = item.regions.find((x) => x.id === c.region);
+      const answer = r?.kind === "box" && r.answer ? valueText(r.answer) : r?.kind === "choice" ? r.answer ?? "?" : "?";
+      return { label: "Example", lines: [p.text, `Answer: [${answer}]`], answered: `Answer: [${answer}]` };
+    }
     if (c.kind === "count" && item.figure) {
       const n = figureCount(item.figure);
       if (n !== null && n >= 1 && n <= 20) {
@@ -527,6 +533,8 @@ function checkNumbers(c: ItemCheck, fixedBenchmarks: readonly number[] = []): Re
     case "compare": return [...valueNumbers(c.left), ...valueNumbers(c.right)];
     case "relation": return [...c.numbers, ...c.to.filter(n => !fixedBenchmarks.includes(n))].map(num);
     case "yes-no": return statementNumbers(c.statement);
+    // A template's sampled numbers are printed in its text, which is read already.
+    case "template": case "template-choice": case "template-shown": return [];
     default: return unreachable(c);
   }
 }
@@ -606,6 +614,7 @@ function checkOperations(c: ItemCheck): SignOperation[] {
     // In words ("less than 5", "close to 10", "more"): no < or > sign is printed.
     case "relation": return [];
     case "yes-no": return c.statement.kind === "equation" ? eq(c.statement.equation) : [];
+    case "template": case "template-choice": case "template-shown": return [];
     default: return unreachable(c);
   }
 }
@@ -926,7 +935,8 @@ export function dayPageContent(o: {
           slot: s.slot, items: [], label: ex?.label,
           note: "Read how it works, then try it.",
           methods: lines.length ? [{ label: "Step by step", lines }] : [],
-          explain: step?.change ?? "Work one step at a time. Then check your answer.",
+          // #489: the imported steps' change notes are for builders; the page names the step plainly.
+          explain: step?.templates?.length ? `${step.name}.` : step?.change ?? "Work one step at a time. Then check your answer.",
         };
       }
       case "watch-one": {
@@ -939,12 +949,15 @@ export function dayPageContent(o: {
         return {
           slot: s.slot, items: [], label: "Remember", note: "From before",
           lines: ex ? [ex.answered] : [],
-          explain: step?.change ?? "Do it the same way as before. Check each answer.",
+          explain: step?.templates?.length ? `${step.name}.` : step?.change ?? "Do it the same way as before. Check each answer.",
         };
       }
       case "spot-the-error": {
         // Sam's work step by step, built by code from the mistake; the right answer stays in the answer key only.
         const q = mine[0]?.package;
+        // #489: a step template item shows Sam's answer to its question; code's error steps need an operation.
+        const templated = q?.item?.checks.find((c) => c.kind === "template-shown");
+        if (templated?.kind === "template-shown") return { slot: s.slot, items, who: "Sam", lines: [`${q!.text} Sam's answer: ${templated.shown}.`], ...withFigures, ...missing };
         const shown = q ? shownOf(q) : null;
         const work = samWork(q?.operation ?? null, shown?.answer, shown?.cause);
         return { slot: s.slot, items, who: "Sam", lines: work?.lines ?? [], ...withFigures, ...missing };

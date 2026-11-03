@@ -7,8 +7,10 @@ import { buildQuestion } from "./workbook-generator-items";
 import { checkQuestionPackage } from "./question-package";
 import { LIKELIHOOD_EVENTS } from "./workbook-likelihood-bank";
 import { STORY_FRAMES, COMPACT_STORY_FRAMES } from "./workbook-story-bank";
+import { buildStepItem, stepStoryProblem, type StepTemplateRef } from "./workbook-step-items";
 
-export type QuestionType = keyof typeof approvedSkills;
+/** An approved hand-built type, or "template": a question filled from its step's templates (#489). */
+export type QuestionType = keyof typeof approvedSkills | "template";
 export interface ItemDayRange { min: number; max: number; pictures: boolean; help: "full" | "partial" | "none" }
 export interface ItemPlan {
   type: QuestionType;
@@ -18,6 +20,8 @@ export interface ItemPlan {
   numbers: number[];
   dayRange: ItemDayRange;
   textBudget?: { lines: number; perLine: number; characters: number };
+  /** #489: the step template the item was filled from; absent on a hand-built item. */
+  template?: StepTemplateRef;
 }
 
 export function itemTextLines(text: string, perLine: number): number {
@@ -75,7 +79,7 @@ export const ITEM_EXAMPLES = {
 export function itemExamples(type: QuestionType, level: number, source: ItemPlan["source"]) {
   const band = level <= 9 ? ITEM_EXAMPLES.early : level <= 18 ? ITEM_EXAMPLES.middle : ITEM_EXAMPLES.upper;
   const key = source === "explain" ? "explain" : type;
-  const items: readonly string[] = key in band ? band[key as keyof typeof band] : ITEM_EXAMPLES.early[key];
+  const items: readonly string[] = key in band ? band[key as keyof typeof band] : ITEM_EXAMPLES.early[key as keyof typeof ITEM_EXAMPLES.early] ?? [];
   const storyKind = type === "sequence" ? "add" : type;
   const examples = source === "story" && (storyKind === "add" || storyKind === "subtract") ? (level <= 9 ? COMPACT_STORY_FRAMES : STORY_FRAMES)[storyKind].slice(0, 4).map(f => fillFrame(f,
     level <= 9 ? {a:3,b:2,t:5} : level <= 18 ? {a:268,b:157,t:425} : {a:1250,b:875,t:2125}, "Mia", "shells")) : [];
@@ -111,7 +115,7 @@ export function planItem(o: { skill: string; slot: string; level: number; day: n
     case "count": {
       const countMax = /subitize-to-5/.test(o.skill) ? Math.min(5, max) : /subitize|^K/.test(o.skill) ? Math.min(10, max) : Math.min(20, max);
       const count = Math.min(countMax, Math.max(1, Math.ceil(Math.min(r.min, countMax)), 1 + seed % countMax));
-      item.text = count <= 8 && Math.floor(seed / countMax) % 2 && !/ten-frame/.test(o.skill) ? `Colour ${count} dots in the row.` : `Colour in ${count} cells.`;
+      item.text = count <= 8 && Math.floor(seed / countMax) % 2 && !/ten-frame/.test(o.skill) ? `Colour ${count} dots in the row.` : `Colour in ${count} ${count === 1 ? "cell" : "cells"}.`;
       item.format = "draw";
       numbers = [count];
       break;
@@ -327,6 +331,7 @@ export function itemContractProblem(raw: unknown, plan: ItemPlan): string | null
 }
 
 export function buildPlannedItem(plan: ItemPlan, raw: unknown, place: SlotPlace): BuiltQuestion {
+  if (plan.template) return buildTemplatePlan(plan, plan.template, raw, place);
   const problem = itemContractProblem(raw, plan) ?? skillItemProblem(plan);
   if (problem) return { package: null, check: { status: "failed", reason: problem }, stepIds: [] };
   const item = raw as AiItem;
@@ -352,6 +357,24 @@ export function buildPlannedItem(plan: ItemPlan, raw: unknown, place: SlotPlace)
   return built;
 }
 
+/**
+ * A step template item (#489): code's text, or the writer's rewording of a story with exactly the same numbers. The
+ * package's answer comes from the template, recomputed by the checker from the sampled numbers.
+ */
+function buildTemplatePlan(plan: ItemPlan, ref: StepTemplateRef, raw: unknown, place: SlotPlace): BuiltQuestion {
+  const failed = (reason: string): BuiltQuestion => ({ package: null, stepIds: [], check: { status: "failed", reason } });
+  if (!raw || typeof raw !== "object") return failed("the writer did not fill the approved item");
+  const r = raw as AiItem;
+  if (r.skill !== plan.item.skill || r.format !== plan.item.format) return failed("the writer changed the approved skill or question format");
+  if (plan.source === "story" && r.text !== plan.item.text) {
+    const problem = stepStoryProblem(r.text, plan.numbers, ref, place.level);
+    if (problem) return failed(problem);
+    if (plan.textBudget && (r.text.length > plan.textBudget.characters || itemTextLines(r.text, plan.textBudget.perLine) > plan.textBudget.lines)) return failed(`the text must fit ${plan.textBudget.lines} lines of ${plan.textBudget.perLine} characters`);
+    return buildStepItem(ref, r.text, place, "ai");
+  }
+  return buildStepItem(ref, plan.item.text, place, "code");
+}
+
 export function approvedSkillIds(): string[] {
   return [...new Set(Object.values(approvedSkills).flat())];
 }
@@ -359,6 +382,7 @@ export function approvedSkillIds(): string[] {
 /** Semantic guards supplement the arithmetic checker. A correct sum can teach the wrong skill. */
 export function skillItemProblem(plan: ItemPlan): string | null {
   const p = plan.item, id = p.skill;
+  if (plan.type === "template") return plan.template || plan.source === "explain" ? null : "a template item needs its step template";
   if (!approvedQuestionTypes(id).includes(plan.type)) return "the skill has no approved builder";
   if (plan.source === "explain") return p.text.includes("first story on this page") ? null : "the explanation must refer to the story on this page";
   const [a, b] = p.operation?.operands.map(x => x.value!) ?? [];

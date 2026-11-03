@@ -85,15 +85,6 @@ shipment, database row, subscription call or API call was used by these runs.
 
 ## Template integration hand-off
 
-`TEMPLATE_INTEGRATION_PENDING`
+`TEMPLATE_INTEGRATION_DONE`
 
-Savar assigned the integration to a separate agent. Start with
-`bcStepProgressions()` and the safe filler in `src/lib/workbook-curriculum/`.
-The current generator still uses `curriculumFor("bc")`. Preserve the checked
-panel packages, item contracts, saved edit policy, shared capacity budgets,
-duplicate checks, printed-page measurements and provider-call accounting.
-Replace the temporary builder gaps with the imported templates. Implement
-skeleton-order step progression, step-specific number domains, review from
-taught steps and Challenge from the hardest reached step. Complete the
-three-context or three-format minimum on number-only pages. Change the marker
-to `TEMPLATE_INTEGRATION_DONE` after the integration is complete.
+Integrated in #489 on this branch. See `workbook-step-templates.md`.

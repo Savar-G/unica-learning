@@ -477,16 +477,17 @@ async function writeIndex() {
     "|---|---|---|---|---|---|---|---|---|---|",
     ...rows,
     "",
-    "## Builder coverage (#480)",
-    `Fully covered levels (level and fluency skills): ${workbookBuilderCoverage(BC).filter(c=>c.fullyCovered).map(c=>c.level).join(", ") || "none"}. Other skills keep the existing writer with the current daily checks. Personal review skills are routed individually.`,
-    "| Level | Code builders | Existing writer | Missing builder IDs |",
-    "|---|---|---|---|",
-    ...workbookBuilderCoverage(BC).map(c=>`| ${c.level} | ${c.approved.length} | ${c.existing.length} | ${c.existing.join(", ") || "none"} |`),
+    "## Builder coverage (#480, #489)",
+    `Fully covered levels (level and fluency skills): ${workbookBuilderCoverage(BC).filter(c=>c.fullyCovered).map(c=>c.level).join(", ") || "none"}. A skill whose steps all have printable templates takes its questions from them; the warm-up's fluency facts and skills without printable templates use #482's builders or, with neither, the existing writer. Personal review skills are routed individually.`,
+    "| Level | Step templates | Hand-built builders | Existing writer | Existing writer IDs |",
+    "|---|---|---|---|---|",
+    ...workbookBuilderCoverage(BC).map(c=>`| ${c.level} | ${c.templates.length} | ${c.approved.length} | ${c.existing.length} | ${c.existing.join(", ") || "none"} |`),
     "",
     "## Quality score (#480)",
     "The failure limit is below 5%. Time is an estimate from the actual items, reading and work space. Page fullness is the union of occupied vertical intervals, including writing space. Empty gaps are excluded. At the page maximum, bounded even spacing can pass with a lower occupied fraction. A score does not replace Savar's sample and example-bank approval.",
-    "| Level | Failed | Dropped for room | Page fullness min / mean | Minutes per day | AI calls | Technical checks | Ship gate |",
-    "|---|---|---|---|---|---|---|---|",
+    "Step progression is the average curriculum step rank of each day's step template questions (#489): the last day must be above the first. Template coverage is the share of non-warm-up questions filled from their step's templates, then #482's hand-built builders and the existing writer.",
+    "| Level | Failed | Dropped for room | Page fullness min / mean | Minutes per day | Step progression | Template coverage | AI calls | Technical checks | Ship gate |",
+    "|---|---|---|---|---|---|---|---|---|---|",
     ...ok.map(r => {
       const q = r.draft.quality ?? workbookQuality(r.draft.pages);
       const uses = r.pageUse.flatMap(p => p.fraction === null ? [] : [p.fraction]);
@@ -494,7 +495,10 @@ async function writeIndex() {
       const calls = providerCounts.get(r.label);
       const underfilled = r.pageUse.length === 0 || uses.length !== r.pageUse.length || r.pageUse.some(p => p.problem !== undefined ? p.problem !== null : (p.fraction ?? 0) < .85);
       const passed=q.ready && !underfilled && r.renderProblems.length===0;
-      return `| ${r.label} | ${(q.failedRate * 100).toFixed(2)}% | ${q.dropped} | ${fullness} | ${q.days.map(d=>`${d.day}: ${d.minutes.toFixed(1)}`).join("; ")} | subscription ${calls?.subscription ?? 0}; API ${calls?.api ?? 0} | ${passed ? "PASS" : "FAIL"} | ${!values.fake && passed ? "technical checks pass; approval pending" : "HOLD"} |`;
+      const steps = q.steps?.length ? `${q.steps.map(d => `${d.day}: ${d.average}`).join("; ")} (${q.steps.length >= 2 && q.steps.at(-1)!.average > q.steps[0].average ? "rises" : "flat"})` : "none";
+      const src = q.sources;
+      const coverage = src && src.total ? `${(src.template / src.total * 100).toFixed(1)}% templates; ${src.handBuilt} hand-built; ${src.existing} existing writer` : "none";
+      return `| ${r.label} | ${(q.failedRate * 100).toFixed(2)}% | ${q.dropped} | ${fullness} | ${q.days.map(d=>`${d.day}: ${d.minutes.toFixed(1)}`).join("; ")} | ${steps} | ${coverage} | subscription ${calls?.subscription ?? 0}; API ${calls?.api ?? 0} | ${passed ? "PASS" : "FAIL"} | ${!values.fake && passed ? "technical checks pass; approval pending" : "HOLD"} |`;
     }),
     ...ok.map(r => `- ${r.label}: largest unoccupied gap ${Math.max(...r.pageUse.map(p=>p.largestGap ?? 0)).toFixed(1)} px; extra practice pages ${r.draft.pages.filter(p=>p.content?.kind === "day" && p.content.extraPractice).length}; spacing failures ${r.pageUse.filter(p=>p.problem).length}.`),
     ...ok.map(r => `- ${r.label}: layout omissions ${(r.draft.quality ?? workbookQuality(r.draft.pages)).dropped - r.draft.pages.reduce((n,p)=>n+(p.leftOut?.length??0),0)}; fit omissions ${r.draft.pages.reduce((n,p)=>n+(p.leftOut?.length??0),0)}; total ${(r.draft.quality ?? workbookQuality(r.draft.pages)).dropped}.`),

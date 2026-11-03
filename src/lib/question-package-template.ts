@@ -7,6 +7,16 @@ import { compileExpression, decimalValue, EvaluationBudget, expressionIsTrue, fo
 import { domainContains, domainProblems } from "@/lib/workbook-curriculum/template";
 import type { NumberDomain } from "@/lib/workbook-curriculum/types";
 
+/** A step's range or list as stored with a question: plain data, a copy of the step's. */
+export type StoredDomain = { min: number; max: number; decimal_places?: number; values?: number[] } | (number | string)[];
+
+/** A copy of a step's range or list, to store. */
+export function storedDomain(d: NumberDomain): StoredDomain {
+  if (Array.isArray(d)) return [...d];
+  const r = d as { min: number; max: number; decimal_places?: number; values?: readonly number[] };
+  return { min: r.min, max: r.max, ...(r.decimal_places !== undefined ? { decimal_places: r.decimal_places } : {}), ...(r.values ? { values: [...r.values] } : {}) };
+}
+
 /** A sampled value: a whole number, an exact decimal (both as written) or a word. */
 export type TemplateScalar = { int: string } | { dec: string } | { text: string };
 
@@ -18,7 +28,7 @@ export interface TemplateSource {
   /** The derived values in order: [name, expression]. */
   derived: [string, string][];
   /** Each sampled slot: its name, its value and the step's range or list it was drawn from. */
-  slots: { name: string; value: TemplateScalar; domain: NumberDomain }[];
+  slots: { name: string; value: TemplateScalar; domain: StoredDomain }[];
   /** The step's `values` list, when the template reads it. */
   values: TemplateScalar[] | null;
 }
