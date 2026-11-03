@@ -3,7 +3,7 @@ import { mayaCalls, recordView, boardPlayback, type CallSeams, type CallResult }
 import { memoryCallStore } from "@/lib/maya-call-memory";
 import { createTextSession } from "@/lib/maya-text";
 import { fakeMayaModel, ruleMayaModel } from "@/lib/maya-model-fake";
-import { memoryWordingHistoryStore } from "@/lib/maya";
+import { memoryWordingHistoryStore, type OutsideReason } from "@/lib/maya";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { hasOperation } from "@/lib/question-package";
@@ -26,11 +26,17 @@ const outside = [
   "Can we chat about games?", "Teach me fractions.", "A bus has 48 people. 29 more get on. How many people?",
 ];
 
+const outsideReading: Record<string, OutsideReason> = {
+  "Teach me science.": "other_topic", "Write an essay about a dog.": "outside_work",
+  "What is the capital of Canada?": "other_topic", "Can we chat about games?": "other_topic",
+  "This is my sister's question: 27 + 39.": "other_person",
+  "Teach me fractions.": "other_topic", "A bus has 48 people. 29 more get on. How many people?": "outside_work",
+};
 function setup() {
   const store = memoryCallStore({ testFamilies: [parentId] });
   const base = ruleMayaModel();
   const model = fakeMayaModel({ answer: input => input.childTurn && outside.includes(input.childTurn)
-    ? { version: 2, act: "guide", step: "ones", level: 0, reading: { offTopic: false, answers: [{ value: { type: "number", value: 66 }, step: "result", verdict: "right" }] }, parts: [{ line: "step.invite", slots: { step: "ones" } }], draw: [{ offer: "question.columns" }] }
+    ? { version: 2, act: "guide", step: "ones", level: 0, reading: { outsideScope: input.childTurn ? outsideReading[input.childTurn] : undefined, offTopic: false, answers: [{ value: { type: "number", value: 66 }, step: "result", verdict: "right" }] }, parts: [{ line: "step.invite", slots: { step: "ones" } }], draw: [{ offer: "question.columns" }] }
     : base.propose(input, new AbortController().signal) });
   let id = 0;
   const calls = mayaCalls({ store, model: () => model, history: memoryWordingHistoryStore(),
@@ -82,13 +88,13 @@ it("keeps the boundary through malformed replies, model failure and checkpoint r
     } });
     let session = createTextSession({ callId: broken, package: pkg, model, clock: () => now });
     await session.start();
-    for (const text of outside) {
+    for (const text of outside.filter(t => !outsideReading[t])) {
       now += 1000;
       const output = await session.child(text);
       expect(output.say).toEqual([line]); expect(output.board).toEqual([]);
       session = createTextSession({ callId: broken, package: pkg, model, clock: () => now, resume: JSON.parse(JSON.stringify(await session.saved())) });
     }
-    expect(session.trace().scopeRefusals).toHaveLength(outside.length);
+    expect(session.trace().scopeRefusals).toHaveLength(outside.filter(t => !outsideReading[t]).length);
   }
 });
 
@@ -123,7 +129,7 @@ it("counts refusals across ended calls and a live chat, without counting the sam
     r = ok(await calls.input(r.view.id, r.view.revision, { type: "child", text: outside[0] }, null));
     if (kind === "admin_test") await calls.input(r.view.id, r.view.revision, { type: "end" }, null);
   }
-  expect(scopeSummary(store.rows())).toEqual({ count: 2, reasons: { outside_work: 2 } });
+  expect(scopeSummary(store.rows())).toEqual({ count: 2, reasons: { changed_problem: 2 } });
   const ended = store.rows().find(r => r.trace)!;
   const duplicate = { ...ended, live: { text: { session: { scopeRefusals: ended.trace!.scopeRefusals } } } };
   expect(scopeSummary([duplicate]).count).toBe(1);

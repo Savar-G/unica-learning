@@ -1,105 +1,154 @@
-// Scope is an intersection: checked package, curriculum edges, then the model's stricter reading.
-// No model field can supply a question, operands, example or curriculum edge.
+// The reading identifies requests. Code validates their arithmetic against the stored package.
+// Ordinary help has no vocabulary test. A model can add restrictions, never an allowed expression.
 import { BC_SKILL_MAP } from "@/lib/assessment";
-import { operationText, type OperationPackage } from "@/lib/question-package";
-import { readNumbers } from "./numbers";
+import { equivalent, type AnswerValue, type Operation, type OperationPackage } from "@/lib/question-package";
+import { valuesIn } from "./numbers";
+import { readOptionsFor } from "./fractions";
 
 export const SCOPE_REASONS = ["outside_work", "other_person", "changed_problem", "other_topic", "unverified_request", "model_scope"] as const;
 export type ScopeReason = typeof SCOPE_REASONS[number];
+export type OutsideReason = "outside_work" | "other_person" | "other_topic";
 export interface ScopeRefusal { at: number; reason: ScopeReason }
 export const SCOPE_LABELS: Record<ScopeReason, string> = {
   outside_work: "Outside homework or schoolwork", other_person: "Another person's question",
   changed_problem: "Different question or numbers", other_topic: "Another topic",
   unverified_request: "Request outside the checked question", model_scope: "Model requested a scope limit",
 };
+export const SCOPE_OPERATIONS = ["add", "subtract", "multiply", "divide", "pair"] as const;
+export type ScopeOperation = typeof SCOPE_OPERATIONS[number];
+/** One expression, not the whole turn. text quotes only its operands and operation, without its result. */
+export interface MathRequest { text: string; operation: ScopeOperation; operands: AnswerValue[] }
+export interface ScopeReading { mathRequests?: MathRequest[]; outsideScope?: OutsideReason; scopeSkill?: string }
 
 const skills = new Map(BC_SKILL_MAP.standards.flatMap(s => s.skills.map(k => [k.id, k] as const)));
-/** Only the package's skills and their direct prerequisites. No neighbouring standard or forward edge. */
 export function scopeSkills(pkg: OperationPackage): string[] {
   return [...new Set(pkg.skill.skills.flatMap(id => skills.has(id) ? [id, ...skills.get(id)!.requires] : []))];
 }
+const normal = (s: string) => s.normalize("NFKC").replace(/\u2212/g, "-").replace(/[’‘]/g, "'").toLowerCase();
+const words = "zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand";
+const number = `(?:\\d+(?:\\.\\d+)?(?:\\s+\\d+\\s*\\/\\s*\\d+|\\s*\\/\\s*\\d+)?|(?:${words})(?:[ -]+(?:${words}))*(?:\\s+(?:halves|quarters|eighths|sixteenths|thirds|fourths|fifths|sixths|sevenths|tenths))?)(?![a-z0-9])`;
+const operator = "(?:\\+|-(?=\\s*\\d)|×|\\*|÷|\\bx\\b|plus|minus|times|multiplied by|divided by|take away|and)";
+const operationOf = (s: string): ScopeOperation => /^(?:\+|plus)$/.test(s) ? "add" : /^(?:-|minus|take away)$/.test(s) ? "subtract"
+  : /^(?:×|\*|x|times|multiplied by)$/.test(s) ? "multiply" : /^(?:÷|\/|divided by)$/.test(s) ? "divide" : "pair";
 
-const plain = (text: string) => text.normalize("NFKC").replace(/\u2212/g, "-").replace(/[’‘]/g, "'").replace(/[\u200B-\u200F\u2060\uFEFF]/g, "").toLowerCase();
-const request = /\?|\b(?:can|could|would|will) you\b|(?:^|[.!]\s+)(?:please\s+)?(?:what|why|how|who|where|when|tell|teach|explain|solve|calculate|write|help|show)\b/;
-// These words name help with the current checked work. All other request words must come from the package's
-// skill or its direct prerequisites. Numbers never gain permission from this vocabulary.
-const HELP_WORDS = new Set(("a an the i you we me my our it this that these those is are was were be do does did don't not no can't cannot can could would should will shall have has had to of for with in on at from into by and or but so if as then again now please okay ok yes hi hello hey yep idea hmm um uh it's i'm you're i've maybe grade pass kid world smartest tomorrow you'll come back i'll test finish help why what how which when where help explain show tell try start stuck understand know get got answer result question problem work out step next first last need more slower slowly shorter less talk repeat say said hear heard meant mean board see write writing wrote written paper done finished stop goodbye bye real person robot ai helper secret friend only friends promise best teacher smartest pets pet dog cat food favourite birthday live family school games game like keep you'll tomorrow just want didn't anything whiteboard oh extra make about feel feeling sad happy tired bored frustrated angry worried sick rude thanks thank think sure because carry carried carrying regroup exchange borrow borrowing ones tens hundreds thousands column columns add adding plus subtract subtracting minus take away multiply multiplication times divide division equal equals makes made put under over top bottom all together digit digits number numbers point decimal fraction fractions numerator denominator simplify simplest common amount unit units square centimetres centimeters cm squared inch inches area perimeter" ).split(/\s+/));
-
-export function scopeReason(pkg: OperationPackage, text: string, exampleChosen: boolean): ScopeReason | null {
-  const t = plain(text);
-  if (/\b(?:homework|schoolwork|worksheet|homework sheet|essay|book report|assignment|teacher (?:said|says).*\b(?:teach|solve|homework)\b|ignore (?:your|the|all) rules|forget (?:your|the) rules|answer key)\b/.test(t)) return "outside_work";
-  if (/\b(?:sibling|brother|sister|friend)'?s?\b.*\b(?:question|problem|workbook|help|homework)\b|\b(?:i am|i'm|this is) (?:her|his|their|the) (?:sister|brother|sibling|friend)\b/.test(t)) return "other_person";
-  if (/\b(?:science|history|geography|english|spelling|grammar|poem|story|capital|weather|news|joke|trivia|chat about|talk about)\b/.test(t) && request.test(t)) return "other_topic";
-
-  // Every binary expression must be one in the package or its worked steps. Use the existing spoken-number
-  // reader, so "twenty eight plus forty one" has the same boundary as "28 + 41".
-  const examples = exampleChosen ? [pkg.easierExample] : [];
-  const problems = [pkg, ...examples];
-  const allNumbers = (raw: unknown): number[] => typeof raw === "number" ? [raw] : Array.isArray(raw) ? raw.flatMap(allNumbers)
-    : raw !== null && typeof raw === "object" ? Object.values(raw).flatMap(allNumbers) : [];
-  const known = allNumbers(problems.map(p => [p.operation, p.steps]));
-  for (const p of problems) for (const s of p.steps) {
-    if (s.kind === "subtract-column") known.push(s.top - Number(s.lent) + (s.regrouped ? 10 : 0));
-    if (s.kind === "add-column") known.push(10 * s.carryOut);
+/** Numeric syntax only. These expressions also constrain a missing or incorrect model reading.
+ * The model supplies semantic pairs and requests across clauses through mathRequests. */
+export function mathRequestsIn(text: string, pkg: OperationPackage): MathRequest[] {
+  const t = normal(text), out: MathRequest[] = [];
+  const asks = /\?|\b(?:why|what|how|explain|solve|calculate|teach|help|add|subtract|multiply|divide)\b/.test(t);
+  const expression = new RegExp(`(?<![a-z0-9])${number}(?:\\s*${operator}\\s*${number})+`, "g");
+  for (const match of t.matchAll(expression)) {
+    const span = match[0];
+    if (!asks && t.trim().replace(/[.?!]$/, "") !== span) continue; // Statements remain answers, checked by D-199.
+    const terms = [...span.matchAll(new RegExp(number, "g"))];
+    if (terms.length < 2) continue;
+    const operands = terms.map(m => valuesIn(m[0], readOptionsFor(pkg)));
+    if (operands.some(v => v.length !== 1)) continue;
+    const ops = terms.slice(1).map((m, i) => operationOf(span.slice(terms[i].index! + terms[i][0].length, m.index).trim()));
+    if (!asks && ops.every(op => op === "pair")) continue;
+    // Keep mixed operations as individual expressions. Never join unrelated requests or use a turn-wide exemption.
+    if (ops.every(op => op === ops[0])) out.push({ text: span, operation: ops[0], operands: operands.map(v => v[0]) });
+    else for (let i = 0; i < ops.length; i++) out.push({ text: span.slice(terms[i].index, terms[i + 1].index! + terms[i + 1][0].length), operation: ops[i], operands: [operands[i][0], operands[i + 1][0]] });
   }
-  const pairs: number[][] = [];
-  for (const p of problems) for (const step of p.steps) {
-    if (step.kind === "add-column") {
-      const terms = [...step.digits, ...(step.carryIn ? [step.carryIn] : [])];
-      for (let i = 1; i < terms.length; i++) {
-        pairs.push([terms[i - 1], terms[i]]);
-        const scale = step.place === "tens" ? 10 : step.place === "hundreds" ? 100 : step.place === "thousands" ? 1000 : 1;
-        pairs.push([terms[i - 1] * scale, terms[i] * scale]);
+  return out;
+}
+
+const num = (value: number): AnswerValue => ({ type: "number", value });
+const family = (op: Operation): ScopeOperation | null => op.kind.includes("add") ? "add" : op.kind.includes("subtract") ? "subtract" : op.kind.includes("multiply") ? "multiply" : op.kind.includes("divide") ? "divide" : null;
+interface Allowed { operation: ScopeOperation; operands: AnswerValue[] }
+const value = (x: unknown): x is AnswerValue => typeof x === "object" && x !== null &&
+  (("type" in x && x.type === "number" && "value" in x && typeof x.value === "number" && Number.isFinite(x.value)) ||
+   ("type" in x && x.type === "fraction" && "numerator" in x && "denominator" in x && Number.isInteger(x.numerator) && Number.isInteger(x.denominator) && Number(x.denominator) > 0));
+
+/** A requested sum is a partition of these checked terms. Each term can be used once.
+ * Thus 9+7, 20+30, 16+20+30 and 39+27 all belong to 27+39; 28+38 does not. */
+function sumOfTerms(requested: AnswerValue[], terms: number[]): boolean {
+  if (requested.some(v => v.type !== "number") || terms.length > 10 || requested.length > terms.length) return false;
+  const sums = Array.from({ length: 1 << terms.length }, (_, mask) => terms.reduce((sum, n, i) => sum + ((mask & (1 << i)) ? n : 0), 0));
+  const place = (at: number, used: number): boolean => {
+    if (at === requested.length) return true;
+    const target = requested[at];
+    for (let mask = 1; mask < sums.length; mask++) if (!(mask & used) && target.type === "number" && Number(sums[mask].toFixed(10)) === target.value && place(at + 1, used | mask)) return true;
+    return false;
+  };
+  return place(0, 0);
+}
+function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
+  const expressions: Allowed[] = [], sums: number[][] = [];
+  const add = (operation: ScopeOperation, operands: AnswerValue[]) => expressions.push({ operation, operands });
+  for (const p of [pkg, ...(exampleChosen ? [pkg.easierExample] : [])]) {
+    const op = family(p.operation);
+    const operands = p.operation.operands.map(v => typeof v === "number" ? num(v) : v).filter(value);
+    if (op && operands.length === p.operation.operands.length) add(op, operands);
+    const placeTerms = operands.flatMap(v => {
+      if (v.type !== "number" || v.value < 0) return [];
+      const [whole, fraction = ""] = String(v.value).split(".");
+      const terms = [...whole, ...fraction].map((d, i) => Number((Number(d) * 10 ** (whole.length - 1 - i)).toFixed(10))).filter(n => n !== 0);
+      sums.push(terms); // Decomposing one stored operand does not permit adding different operands together.
+      return terms;
+    });
+    if (op === "add") sums.push(placeTerms);
+    const places = ["thousandths", "hundredths", "tenths", "ones", "tens", "hundreds", "thousands", "ten thousands", "hundred thousands", "millions"];
+    const subtractionParts = p.steps.flatMap(st => st.kind === "subtract-column" && st.write !== null
+      ? [st.write * 10 ** (places.indexOf(st.place) - 3)] : []);
+    if (subtractionParts.length > 1) sums.push(subtractionParts);
+    const partials = p.steps.flatMap(st => st.kind === "partial-product" ? [st.value] : []);
+    if (partials.length > 1) sums.push(partials);
+    for (const st of p.steps) {
+      if (st.kind === "add-column") sums.push([...st.digits, ...(st.carryIn ? [st.carryIn] : [])]);
+      if (st.kind === "subtract-column" && st.bottom !== null) {
+        add("subtract", [num(st.top - Number(st.lent) + (st.regrouped ? 10 : 0)), num(st.bottom)]);
+        if (st.regrouped) add("add", [num(st.top - Number(st.lent)), num(10)]);
+        if (st.lent) add("subtract", [num(st.top), num(1)]);
+      }
+      if (st.kind === "multiply-digit" && st.top !== null) {
+        add("multiply", [num(st.top), num(st.multiplier)]);
+        if (st.carryIn) sums.push([st.total - st.carryIn, st.carryIn]);
+      }
+      if (st.kind === "divide-digit" && p.operation.kind === "divide") {
+        add("divide", [num(st.current), num(p.operation.operands[1])]);
+        add("multiply", [num(st.quotient), num(p.operation.operands[1])]);
+        add("subtract", [num(st.current), num(st.product)]);
+      }
+      if (st.kind === "combine-numerators") add(st.op, st.numerators.map(num));
+      if (st.kind === "common-denominator") for (let i = 0; i < st.from.length; i++) {
+        add("multiply", [num(st.from[i].numerator), num(st.factors[i])]);
+        add("multiply", [num(st.from[i].denominator), num(st.factors[i])]);
+      }
+      if (st.kind === "simplify") {
+        add("divide", [num(st.from.numerator), num(st.divisor)]);
+        add("divide", [num(st.from.denominator), num(st.divisor)]);
       }
     }
-    if (step.kind === "subtract-column" && step.bottom !== null) pairs.push([step.top - Number(step.lent) + (step.regrouped ? 10 : 0), step.bottom]);
-    if (step.kind === "multiply-digit" && step.top !== null) pairs.push([step.top, step.multiplier]);
-    if (step.kind === "combine-numerators") for (let i = 1; i < step.numerators.length; i++) pairs.push([step.numerators[i - 1], step.numerators[i]]);
   }
-  const numbers = readNumbers(t);
-  const asksNew = /\b(?:solve|calculate|teach|what is|what's|what does|what about|how much|help.*with|replace|change|use these)\b/.test(t);
-  const operationWords = t.match(/\b(?:plus|minus|times|multiplied|divided|take away|add|added|adding|subtract|subtracted|subtracting|multiply|divide|x)\b|[+×*÷]|(?<=\d)\s*-\s*(?=\d)/g) ?? [];
-  const kind = pkg.operation.kind;
-  if (numbers.operand.some(Boolean) && (/\bminus\b|(?<=\d)\s*-\s*(?=\d)/.test(t)) && !kind.includes("subtract") && !/\bi did\b/.test(t)) return "changed_problem";
-  if (operationWords.some(w => /times|multipl|x|[×*]/.test(w) ? !kind.includes("multiply") : /divid|÷/.test(w) ? !kind.includes("divide") && !kind.startsWith("fraction") : false)) return "changed_problem";
-  for (const sentence of t.split(/[!?;\n]|\.(?=\s|$)|,\s*and\s+/)) {
-    if (!/\b(?:plus|minus|times|multiplied|divided|take away|add|added|adding|subtract|subtracted|subtracting|multiply|divide|x)\b|[+×*÷]|(?<=\d)\s*-\s*(?=\d)/.test(sentence)) continue;
-    const expression = readNumbers(sentence);
-    for (let i = 1; i < expression.values.length; i++) {
-      if (!expression.operand[i] || expression.notAnswer[i] || operationWords.length === 0) continue;
-      const a = expression.values[i - 1], b = expression.values[i];
-      const pair = JSON.stringify([a, b]);
-      const allowed = problems.some(p => JSON.stringify(readNumbers(plain(operationText(p.operation))).values.slice(0, 2)) === pair);
-      // The checked worked steps supply the column digits and regroup values. This does not authorise a new target.
-      const inSteps = a.type === "number" && b.type === "number" && pairs.some(([x, y]) => x === a.value && y === b.value);
-      // A completed compensation method can use the neighbouring ten, but only with a package operand and a
-      // checked final result. It never authorises a request to teach that expression as another problem.
-      const compensation = !asksNew && /\bi did\b/.test(t) && pkg.operation.operands.some(n => typeof n === "number" && a.type === "number" && n === a.value) &&
-        numbers.values.at(-1)?.type === "number" && JSON.stringify(numbers.values.at(-1)) === JSON.stringify(pkg.answer.value);
-      if (!allowed && !inSteps && !compensation) return "changed_problem";
-    }
-  }
-  if (operationWords.length === 0 && numbers.values.length > 1 && (asksNew || request.test(t)) &&
-      !(t.includes(" or ") && !asksNew) &&
-      !/\b(?:i got|i think|is it|because|since|no|wait|said|heard|ones|tens|hundreds|answer)\b/.test(t) &&
-      numbers.values.some(v => v.type === "number" && !known.includes(v.value))) return "changed_problem";
+  return (r: MathRequest) => {
+    const matches = (op: ScopeOperation) => expressions.some(e => {
+      if (e.operation !== op || e.operands.length !== r.operands.length) return false;
+      const remaining = [...e.operands];
+      return r.operands.every((v, i) => {
+        const at = op === "add" || op === "multiply" ? remaining.findIndex(n => equivalent(n, v)) : equivalent(e.operands[i], v) ? 0 : -1;
+        if (at < 0) return false;
+        remaining.splice(at, 1); return true;
+      });
+    }) || (op === "add" && sums.some(terms => sumOfTerms(r.operands, terms)));
+    return r.operation === "pair" ? ["add", "subtract", "multiply", "divide"].some(op => matches(op as ScopeOperation)) : matches(r.operation);
+  };
+}
 
-  if (/\b(?:let's chat|can we chat|tell me about|teach me about)\b/.test(t) && !/\b(?:question|step|carry|regroup|ones|tens)\b/.test(t)) return "other_topic";
-  if (request.test(t) && !(/\b(?:because|since)\b/.test(t) && !t.includes("?"))) {
-    const vocabulary = new Set(HELP_WORDS);
-    for (const word of "multiply multiplication times divide division decimal fraction fractions numerator denominator simplify simplest common area perimeter".split(" ")) vocabulary.delete(word);
-    // The operation's own terms are useful even when the skill uses a different inflection.
-    const family = pkg.operation.kind;
-    if (family.includes("multiply")) for (const w of ["multiply", "multiplication", "times"]) vocabulary.add(w);
-    if (family.includes("divide")) for (const w of ["divide", "division"]) vocabulary.add(w);
-    if (family.includes("fraction")) for (const w of ["fraction", "fractions", "numerator", "denominator", "simplify", "simplest", "common", "divide"]) vocabulary.add(w);
-    if (family.includes("decimal")) vocabulary.add("decimal");
-    if (pkg.text.toLowerCase().includes("area")) vocabulary.add("area");
-    for (const id of scopeSkills(pkg)) for (const w of plain(skills.get(id)!.text).match(/[a-z']+/g) ?? []) vocabulary.add(w);
-    // Exact number forms belong to the existing reader. Unknown words in a request fail closed.
-    for (const w of t.match(/[a-z']+/g) ?? []) {
-      if (!vocabulary.has(w) && readNumbers(w).values.length === 0) return "unverified_request";
-    }
+/** Called on every reading, including a rejected or malformed proposal. It can only add a restriction. */
+export function scopeReason(pkg: OperationPackage, text: string, exampleChosen: boolean, reading: ScopeReading = {}): ScopeReason | null {
+  if (reading.outsideScope) return reading.outsideScope;
+  if (reading.scopeSkill && !scopeSkills(pkg).includes(reading.scopeSkill)) return "model_scope";
+  const requests = mathRequestsIn(text, pkg);
+  for (const r of reading.mathRequests ?? []) {
+    if (!r || typeof r.text !== "string" || !normal(text).includes(normal(r.text)) || !SCOPE_OPERATIONS.includes(r.operation) ||
+        !Array.isArray(r.operands) || r.operands.length < 2 || r.operands.length > 8 || !r.operands.every(value)) return "unverified_request";
+    const syntax = mathRequestsIn(r.text, pkg);
+    if (syntax.some(e => e.operation !== "pair" && e.operation !== r.operation)) return "unverified_request";
+    const heard = valuesIn(r.text, readOptionsFor(pkg));
+    if (heard.length !== r.operands.length || !heard.every((v, i) => equivalent(v, r.operands[i]))) return "unverified_request";
+    requests.push(r);
   }
-  return null;
+  const permits = requests.length ? allowedMath(pkg, exampleChosen) : () => true;
+  return requests.some(r => !permits(r)) ? "changed_problem" : null;
 }

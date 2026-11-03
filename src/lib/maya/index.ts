@@ -82,4 +82,4 @@ export { MAX_WORDINGS, memoryWordingHistoryStore, mergeHistory, type WordingHist
 export { readAnswer, readNumbers, unreadableAnswer, valuesIn, writtenFractions, type AnswerRead, type NumbersRead, type ReadOptions } from "./numbers";
 export { asksSimplest, isEqualForm, readOptionsFor, rightForQuestion, teachSteps, TAUGHT_STEP_KINDS } from "./fractions";
 
-export { scopeReason, scopeSkills, SCOPE_LABELS, SCOPE_REASONS, type ScopeReason, type ScopeRefusal } from "./scope";
+export { scopeReason, scopeSkills, mathRequestsIn, SCOPE_LABELS, SCOPE_REASONS, type MathRequest, type ScopeReading, type OutsideReason, type ScopeReason, type ScopeRefusal } from "./scope";

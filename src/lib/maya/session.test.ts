@@ -537,8 +537,8 @@ describe("REDIRECT", () => {
   it("brings an off-topic child back and restores the step; offers to stop if they persist", () => {
     const c = afterExample();
     c.child("Do you like Minecraft?");
-    expect(c.next.acts).toEqual(["redirect"]);
-    c.maya({ act: "redirect", parts: [ln("redirect.workbook")] });
+    expect(c.next.acts).toContain("accept_answer");
+    c.maya({ act: "redirect", parts: [ln("redirect.workbook")], reading: { outsideScope: "other_topic" } });
     expect(c.session.turns.at(-1)?.text).toBe("I help with your Unica workbook. We can pick a question from it.");
     expect(c.session.state).toBe("REDIRECT");
     c.child("What about my dog?");

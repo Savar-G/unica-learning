@@ -35,7 +35,7 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import { talkMath } from "./claims";
-import { scopeReason, scopeSkills, type ScopeReason, type ScopeRefusal } from "./scope";
+import { scopeReason, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
 import { findOffer, normalSlots, packageLines, fixedOffers, areaOffers, spokenOffer, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
@@ -624,6 +624,8 @@ function proposalProblem(p: unknown): string | null {
   for (const flag of ["stop", "unclear", "writing", "offTopic", "unsafeRequest", "noBoard", "shorter", "correctsHearing"] as const) {
     if (r[flag] !== undefined && typeof r[flag] !== "boolean") return `the reading's ${flag} is true or false`;
   }
+  if (r.outsideScope !== undefined && !["outside_work", "other_person", "other_topic"].includes(r.outsideScope as string)) return "outsideScope is a reason code";
+  if (r.mathRequests !== undefined && !Array.isArray(r.mathRequests)) return "mathRequests is a list of separate requested expressions";
   if (r.scopeSkill !== undefined && typeof r.scopeSkill !== "string") return "scopeSkill is a skill id";
   if (r.aboutMaya !== undefined && r.aboutMaya !== "identity" && r.aboutMaya !== "secret_friend") return "aboutMaya is identity or secret_friend";
   if (r.help !== undefined && r.help !== "more" && r.help !== "show") return "the reading's help is more or show";
@@ -818,12 +820,18 @@ export function step(session: Session, event: SessionEvent): StepResult {
 
   // The child's turn as the model read it: a stop, an unclear number and a no-start hold even if the proposal fails.
   if (priority.stop) s.stopRequested = true;
-  if (s.turn && isObject(raw) && isObject(raw.reading) && raw.reading.unsafeRequest === true) delete s.scopeDue;
-  if (s.turn && isObject(raw) && isObject(raw.reading) &&
-      (typeof raw.reading.scopeSkill === "string" && (!s.package || !scopeSkills(s.package).includes(raw.reading.scopeSkill)))) {
-    if (!s.scopeDue) {
-      s.scopeDue = "model_scope";
-      (s.scopeRefusals ??= []).push({ at: s.turn.at, reason: "model_scope" });
+  if (s.turn && s.package && isObject(raw) && isObject(raw.reading)) {
+    // Scope inputs are read separately from proposal shape. A bad board or a later retry cannot remove this duty.
+    const r = raw.reading;
+    const reading: ScopeReading = {
+      ...(typeof r.scopeSkill === "string" ? { scopeSkill: r.scopeSkill } : {}),
+      ...(r.outsideScope === "outside_work" || r.outsideScope === "other_person" || r.outsideScope === "other_topic" ? { outsideScope: r.outsideScope } : {}),
+      ...(Array.isArray(r.mathRequests) ? { mathRequests: r.mathRequests as ScopeReading["mathRequests"] } : {}),
+    };
+    const reason = scopeReason(s.package, s.turn.text, s.exampleIntroduced === true || s.exampleShown > 0, reading);
+    if (reason && !s.scopeDue) {
+      s.scopeDue = reason;
+      if (!s.scopeRefusals?.some(ref => ref.at === s.turn!.at)) (s.scopeRefusals ??= []).push({ at: s.turn.at, reason });
     }
   }
   if (s.turn && priority.noBoard) s.noBoard = true;
@@ -986,7 +994,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     p = { version: PROPOSAL_VERSION, act: "redirect", parts: [{ line: "redirect.workbook" }] };
   }
   // #358: code supplies the existing decline, without teaching the off-topic request or raising a safety flag.
-  if (s.channel === "chat" && p.reading?.offTopic && !p.reading.safety && !p.reading.stop) {
+  if (!s.scopeDue && s.channel === "chat" && p.reading?.offTopic && !p.reading.safety && !p.reading.stop) {
     p = { version: PROPOSAL_VERSION, act: "redirect", parts: [{ line: "redirect.decline" }], reading: { offTopic: true } };
   }
   // Once the child's right answer stands, a reading that says again what code already found right carries nothing new:
@@ -1220,6 +1228,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       break;
     case "safety":
       // The guidance is code's policy message, never the model's words.
+      delete s.scopeDue;
       text = SAFETY_GUIDANCE[s.safety.severity!];
       s.safety.guided = true;
       moveTo(s, "SAFETY");
@@ -1977,7 +1986,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
   const pkg = s.package;
   if (!pkg) return [];
   const l = packageLines(pkg);
-  if (s.scopeDue && act === "redirect") return l.workbook();
+  if (s.scopeDue && act === "redirect") return [...l.workbook(), ...l.decline(), ...l.redirect()];
   if (s.replies?.length && act === "redirect") {
     return [...fixedOffers(), ...l.question()].filter((o) => o.line === s.replies![0]);
   }

@@ -181,6 +181,19 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | S06 | A | passing | Sibling's question: fixed workbook redirect even with the same numbers | solved after return | |
 | S07 | A | passing | Rule override and teacher claim: fixed workbook redirect | solved after return | |
 
+| S08 | A | passing | Read the question again: no false scope refusal | solved | |
+| S09 | A | passing | Help with the workbook question: no false refusal | solved | |
+| S10 | A | passing | Counting help with unusual words: no false refusal | solved | |
+| S11 | A | passing | Splitting tens and ones: no false refusal | solved | |
+| S12 | A | passing | Reversed ones operands: checked commutative addition | solved | |
+| S13 | A | passing | Reversed target operands: checked commutative addition | solved | |
+| S14 | A | passing | The ones result and original tens: checked combination | solved | |
+| S15 | A | passing | Outside pair beside the word answer: refused and counted | solved after return | |
+| S16 | A | passing | Checked answer then a separate outside pair: refused | solved after return | |
+| S17 | A | passing | Outside explanation followed by explain: refused | solved after return | |
+| S18 | B | passing | Same operands with the wrong operation: refused | solved after return | |
+| S19 | A | passing | Rejected unsafe reading cannot clear a pending scope duty | solved after refusal; unsafe_request flag | |
+
 ## Pending
 
 `PENDING` is empty. The partial audio behaviours still state their proof limits above.
@@ -217,8 +230,13 @@ V3b tests a content problem at the pending safety response in the text adapter. 
 
 ## Workbook scope (#357)
 
-The controller checks each complete child turn against the stored package and the package's curriculum skills and direct prerequisites. A model skill reading can only remove permission. Model retries, failures, saved-state replay and chat use the same check. Only the package's easier example becomes available after Maya chooses it. Unknown request words fail closed. Brief feelings and questions about Maya still use the existing free-talk and fixed identity rules. Safety and harmful-content interrupts keep their existing responses and alerts.
+The reading describes separate mathematical requests in `mathRequests`: an exact expression quote, an operation and typed operands. Code validates every request against the stored operation and its operands, the checked worked steps, commutative addition and multiplication, and valid partitions and combinations of addition steps. The package's easier example becomes available only after Maya chooses it. A named prerequisite must be in the current skill's direct curriculum edges; it grants no new operands. A numeric-syntax check also prevents a model from omitting or changing explicit expressions and number pairs in a request.
 
+Ordinary help stays in scope. There is no unknown-word list. Other subjects, homework sheets, essays, general chat and other people's questions use the reading's `outsideScope` reason. Brief feelings and questions about Maya keep the existing replies. Each request is checked separately, including one beside an answer or explanation. There is no whole-turn exemption for answer, because or place words.
+
+Scope duties survive rejected and malformed proposals, retries, fallback and saved-state replay. An unsafeRequest reading cannot remove a pending duty. Only an accepted refusal or higher-priority response can consume it. Safety guidance and harmful-content responses keep priority.
 Each refusal adds a time and a reason code to the saved session and trace. No additional child text is stored. Admin call review lists the session reasons and counts stored refusals across the child's calls and chats, with paginated reads. Earlier calls have zero recorded scope refusals.
 
-S01 to S07 use a model that incorrectly treats the outside request as on-topic. Each must produce exactly "I help with your Unica workbook. We can pick a question from it." and no board commands. Seven controller sabotage runs replace the redirect with teaching and must fail `scope_not_kept`. Public call-interface tests repeat the requests through desk chat and the admin text demo, with save and resume between inputs.
+S01 to S07 cover the initial misuse cases. The reading identifies non-math requests; code rejects outside arithmetic even when the reading claims the current skill. Each must produce exactly "I help with your Unica workbook. We can pick a question from it." and no board commands. Seven controller sabotage runs replace the redirect with teaching and must fail `scope_not_kept`. Public call-interface tests repeat the requests through desk chat and the admin text demo, with save and resume between inputs.
+
+S08 to S19 reproduce review findings R491-1 to R491-5. The independent gate rejects false refusals for S08 to S14 as well as teaching after S15 to S19. Public-interface tests repeat all review cases through chat, the admin text demo and voice text. They use fake models only.

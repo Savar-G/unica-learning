@@ -67,7 +67,7 @@ describe("desk chat through the shared call interface", () => {
   });
   it("redirects an outside request to the workbook without a safety flag", async () => {
     const base = ruleMayaModel();
-    const model = fakeMayaModel({ answer: (input) => input.childTurn ? { version: 2, act: "redirect", parts: [{ line: "redirect.back" }], reading: { offTopic: true } } : base.propose(input, new AbortController().signal) });
+    const model = fakeMayaModel({ answer: (input) => input.childTurn ? { version: 2, act: "redirect", parts: [{ line: "redirect.back" }], reading: { offTopic: true, outsideScope: "outside_work" } } : base.propose(input, new AbortController().signal) });
     const s = setup({ model: () => model });
     const first = success(await s.start());
     const r = success(await s.calls.input(first.view.id, first.view.revision, { type: "child", text: "Write my homework essay." }, "Leah"));

@@ -58,6 +58,10 @@ function rulePropose(input: ModelInput): unknown {
     unclear: read.unreadable || null,
     writing: has(text, /\b(wait|writing|hold on)\b/) || null,
     offTopic: null,
+    // Semantic classifications of this scripted player only. The production controller never scans topic words.
+    outsideScope: has(text, /\b(?:homework|schoolwork|worksheet|essay|ignore your rules|hidden instructions)\b/) ? "outside_work"
+      : has(text, /\b(?:sister|brother|sibling)'?s?\b.*\b(?:question|workbook|help)\b/) ? "other_person"
+      : has(text, /\b(?:science|capital|chat about games)\b/) ? "other_topic" : null,
     noBoard: has(text, /\b(?:can'?t|cannot|can not|don'?t|do not) see (?:the )?(?:whiteboard|board)\b/) || null,
     shorter: has(text, /\b(?:talk too much|too many words|talk less|shorter|forgot)\b/) || null,
     aboutMaya: has(text, /\b(?:secret|only me|only friend|exclusive)\b/) ? "secret_friend" : has(text, /\b(?:real person|an? ai|are you real)\b/) ? "identity" : null,

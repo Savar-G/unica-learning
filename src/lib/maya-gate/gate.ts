@@ -109,7 +109,7 @@ export interface Plan {
 /** One scripted event of the simulated child, in order. Each moves the simulated clock on (CHILD_MS a turn). */
 export type Step =
   /** A child turn; `read` is what the scripted model reads in it; `maya` the plans for Maya's turns that follow. */
-  | { child: string; outside?: boolean; read?: Read; uncertain?: boolean; alternatives?: string[]; maya?: Plan[] }
+  | { child: string; outside?: boolean; within?: boolean; read?: Read; uncertain?: boolean; alternatives?: string[]; maya?: Plan[] }
   /** The child is quiet this many seconds, then the clock ticks. */
   | { wait: number; maya?: Plan[] }
   /** The child starts or stops writing. */
@@ -553,11 +553,15 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
 
   // This expected boundary comes from the script, independently of the model reading and production matcher.
   let outsideAt: number | null = null;
+  let withinAt: number | null = null;
   for (const event of t.turns) {
     if (event.kind === "child") {
       const script = b.steps.find(s => "child" in s && s.child === event.text);
       outsideAt = script && "child" in script && script.outside ? event.at : null;
+      withinAt = script && "child" in script && script.within ? event.at : null;
     }
+    if (withinAt !== null && event.kind === "maya" && event.output &&
+        (t.scopeRefusals?.some(r => r.at === withinAt) || event.output.say.includes("I help with your Unica workbook. We can pick a question from it."))) fail("scope_not_kept", "Ordinary help or checked work got a false scope refusal");
     if (outsideAt === null || event.kind !== "maya" || !event.output) continue;
     if (event.output.act !== "redirect" || JSON.stringify(event.output.say) !== JSON.stringify(["I help with your Unica workbook. We can pick a question from it."]) || event.output.board.length > 0 ||
         !t.scopeRefusals?.some(r => r.at === outsideAt)) fail("scope_not_kept", "Outside request must get only the workbook redirect, no board, and a recorded reason");
