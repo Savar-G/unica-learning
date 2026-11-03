@@ -66,7 +66,7 @@ const TOPICS = [
 ];
 
 // Hero (D-214): text left, a sample workbook right (replaces the D-029 photo hero).
-const HERO_FACTS = ["Free assessment", "First month free", "BC curriculum", "Cancel anytime"];
+const HERO_FACTS = ["Free assessment", "First month free", "Cancel anytime"];
 
 export function Hero() {
   return (
