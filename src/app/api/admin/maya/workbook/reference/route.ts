@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   if (!body || typeof body !== "object") return new Response("Bad request", { status: 400 });
   const context = await workbookSelectionContext(body, adminWorkbookReader(admin));
-  if (!context) return new Response("Not found", { status: 404 });
+  if (!context.ok) return Response.json(context, { status: 404, headers: { "cache-control": "no-store" } });
   const project = livekitProject(process.env);
   if (!project) return Response.json({ ok: false, error: "voice_unavailable" }, { status: 503 });
   const job = { id: randomUUID(), parentId: context.parentId, childId: context.childId, workbookId: context.book.id };

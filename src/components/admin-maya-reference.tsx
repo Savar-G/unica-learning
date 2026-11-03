@@ -23,7 +23,10 @@ export function MayaReferenceMicrophone({ childId, workbookId, available, disabl
     try {
       const response = await fetch("/api/admin/maya/workbook/reference", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ childId, workbookId }) });
       const ticket = await response.json();
-      if (!ticket.ok) throw Error("reference unavailable");
+      if (!ticket.ok) {
+        if (run === generation.current) { stop(); setError(ticket.say ?? "Voice calls are not set up yet. Type the reference below."); }
+        return;
+      }
       const { Room, RoomEvent, ParticipantKind } = await import("livekit-client");
       if (run !== generation.current) return;
       const room = new Room();

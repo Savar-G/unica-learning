@@ -24,9 +24,9 @@ let root: Root;
 let host: HTMLDivElement;
 afterEach(async () => { await act(async () => root?.unmount()); host?.remove(); vi.unstubAllGlobals(); rooms.length = 0; });
 
-async function mount() {
+async function mount(reply: { ok: boolean; id?: string; url?: string; token?: string; say?: string } = { ok: true, id: "selection-A", url: "wss://fake.invalid", token: "fake" }) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  vi.stubGlobal("fetch", vi.fn(async () => ({ json: async () => ({ ok: true, id: "selection-A", url: "wss://fake.invalid", token: "fake" }) })));
+  vi.stubGlobal("fetch", vi.fn(async () => ({ json: async () => reply })));
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   const selected = vi.fn();
   await act(async () => root.render(createElement(MayaReferenceMicrophone, { childId: "child", workbookId: "book", available: true, disabled: false, onReference: selected })));
@@ -57,4 +57,11 @@ it("drops late speech after Stop listening", async () => {
   await act(async () => room.emit("DataReceived", new TextEncoder().encode(JSON.stringify({ text: "page 4 number 3" })), { kind: 4, attributes: { "maya.reference": "selection-A" } }, undefined, REFERENCE_TOPIC));
   expect(selected).not.toHaveBeenCalled();
   expect(room.disconnect).toHaveBeenCalledWith(true);
+});
+
+it.each(["This workbook is not printed yet.", "I can't find that question in this child's workbook.", "Only test families can start a Maya session."])("shows the server refusal without a microphone permission error: %s", async say => {
+  const { selected } = await mount({ ok: false, say });
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(say);
+  expect(rooms).toHaveLength(0);
+  expect(selected).not.toHaveBeenCalled();
 });

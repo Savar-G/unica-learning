@@ -24,7 +24,7 @@
         1440,
         1000
       ],
-      "sha256": "96739d8d1b33c97a33364b1457ebf1c6df12b4c90ce547814e4e6f00df554612"
+      "sha256": "1941602c87c73d4415a3be2da7a8b552d1fa344c86650f712525b82bbb0b8826"
     },
     {
       "path": "confirmation-laptop.png",
@@ -64,6 +64,32 @@
         1112
       ],
       "sha256": "3450819be0441f65e3a3632c600b30393a52563db380a29232e3802212547dd1"
+    },
+    {
+      "path": "foreign-reference-laptop.png",
+      "state": "foreign-reference",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "pixels": [
+        1440,
+        1000
+      ],
+      "sha256": "357f05828b17b2840c71fd988f606bddac2708ccbeef80f86caa94f508224cb1"
+    },
+    {
+      "path": "missing-page-laptop.png",
+      "state": "missing-page",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "pixels": [
+        1440,
+        1000
+      ],
+      "sha256": "7e28f0d2d2029af801a960f71804b1816aa59809c6dff373dc17b78bd1c5fa62"
     },
     {
       "path": "reference-laptop.png",
@@ -115,7 +141,7 @@
         1440,
         1000
       ],
-      "sha256": "e4acb00a8a07b4668d0429fd72e5184944ae13b99b5582d5f33a3208930ec044"
+      "sha256": "1ebdf0aca5dbfa76f6f3db2018b38df800e78d6b2ee936affe8a1d22448891bc"
     },
     {
       "path": "refused-phone.png",
@@ -128,7 +154,7 @@
         390,
         844
       ],
-      "sha256": "d8838fdcc400b0c27b5890fb1ecd6551cd91695fcd53afb39b80265b56e9947d"
+      "sha256": "6378f5a08b7592009dbfe19ba78f9620f1621b4326d78078ec34a989660bd86c"
     },
     {
       "path": "refused-tablet.png",
@@ -141,7 +167,7 @@
         834,
         1112
       ],
-      "sha256": "e6d9ff674c0eb2201f967b9c745f572e479b2cf5598bd37d2aafc17dc18ff0f5"
+      "sha256": "a05dbb91bd7ab7fb58936fc0c274948daf4b40f060fc84dd82e197b1b57294b1"
     },
     {
       "path": "tap-laptop.png",
@@ -181,6 +207,19 @@
         1112
       ],
       "sha256": "e6fe2ba811a31b3fcbbaca75520304ead8168b52f957063d0075d2c5fe5629cf"
+    },
+    {
+      "path": "unprinted-laptop.png",
+      "state": "unprinted",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "pixels": [
+        1440,
+        1000
+      ],
+      "sha256": "6743d7960cd0c321e266d6a7995bed19021368e8b31ee0ce5743f680198bfb7e"
     }
   ],
   "browser_checks": {
@@ -197,13 +236,30 @@
     ],
     "keyboard": "Tab from the reference field focuses Find question with a solid outline.",
     "refusals": [
-      "nonexistent question",
-      "extra words in the reference"
+      "Page 4 has no number 99.",
+      "Page 40 is not in this workbook.",
+      "This workbook is not printed yet.",
+      "Type it like: page 4, number 3.",
+      "I can't find that question in this child's workbook."
     ],
     "confirmation": "Code-written opening in the existing MayaCall component, before any board batch.",
     "screenshot_method": "Viewport captures with scroll to the relevant control. Full-page captures repeated the sticky admin header and were replaced."
   },
-  "merge_approval": "Savar must approve the look and the new Maya lines before merge.",
+  "merge_approval": "Savar approved the PR #493 look with the required change to specific refusal messages. This revision implements that change. Merge remains with Savar.",
   "voice_limit": "The 30-second reference-listening room, final STT transcript, scoped token, fake-room delivery and fake teaching call are wired and tested. Real microphone, provider and device checks remain open without accounts.",
-  "review": "review.md"
+  "review": "review.md",
+  "refusal_refresh": {
+    "base_head": "0f94297f1aebfb8e123d03b859a8d786efe08010",
+    "request": "Savar approved the look with specific plain admin refusal messages.",
+    "screenshots": [
+      "refused-laptop.png",
+      "refused-tablet.png",
+      "refused-phone.png",
+      "ask-again-laptop.png",
+      "missing-page-laptop.png",
+      "unprinted-laptop.png",
+      "foreign-reference-laptop.png"
+    ],
+    "data": "Synthetic data through the production resolver and components. Temporary /r335-refusals and /api/r335-refusals routes were removed. Foreign-reference screenshot uses a sibling mismatch; module tests also cover another family and an unprinted foreign workbook."
+  }
 }

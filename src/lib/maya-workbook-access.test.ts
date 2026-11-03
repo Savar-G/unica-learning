@@ -104,7 +104,26 @@ it("admits the reference microphone to one short-lived room without reading a pa
 it("refuses a foreign workbook before it issues a reference token", async () => {
   const f = await setup();
   const question = vi.spyOn(f.books, "question");
-  expect((await referenceToken(request({ ...f.input, childId: f.ids.sibling }))).status).toBe(404);
+  const response = await referenceToken(request({ ...f.input, childId: f.ids.sibling }));
+  expect(response.status).toBe(404);
+  expect(await response.json()).toEqual({ ok: false, error: "reference_refused", say: "I can't find that question in this child's workbook." });
   expect(question).not.toHaveBeenCalled();
+  expect(calls).not.toHaveBeenCalled();
+});
+
+it.each(["select", "text", "voice"])("returns the missing-number reason for %s without creating a call", async mode => {
+  const f = await setup();
+  const response = await POST(request({ ...f.input, mode, reference: "page 4 number 99" }));
+  expect(response.status).toBe(404);
+  expect(await response.json()).toEqual({ ok: false, error: "reference_refused", say: "Page 4 has no number 99." });
+  expect(calls).not.toHaveBeenCalled();
+});
+
+it("returns the print reason before it issues a reference token", async () => {
+  const f = await setup();
+  f.books.setStatus(f.ids.workbook, "approved");
+  const response = await referenceToken(request(f.input));
+  expect(response.status).toBe(404);
+  expect(await response.json()).toEqual({ ok: false, error: "reference_refused", say: "This workbook is not printed yet." });
   expect(calls).not.toHaveBeenCalled();
 });

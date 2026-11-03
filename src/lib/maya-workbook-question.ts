@@ -4,8 +4,9 @@ import { checkQuestionPackage, type QuestionPackage, type WorkbookQuestionRef } 
 import { isUuid, type WorkbookStore } from "@/lib/workbook-content";
 import { createSession } from "@/lib/maya";
 
-export const WORKBOOK_REFERENCE_AGAIN = 'Say or type "page 4, number 3". Which question do you want?';
-export const WORKBOOK_REFERENCE_REFUSED = "I can't use that question. Choose a printed page from this child's workbook.";
+export const WORKBOOK_REFERENCE_AGAIN = "Type it like: page 4, number 3.";
+export const WORKBOOK_REFERENCE_REFUSED = "I can't find that question in this child's workbook.";
+export const WORKBOOK_NOT_PRINTED = "This workbook is not printed yet.";
 
 const WORDS = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty"];
 const numberOf = (s: string) => /^[1-9][0-9]{0,3}$/.test(s) ? Number(s) : WORDS.indexOf(s);
@@ -36,23 +37,26 @@ export interface WorkbookSelectionReader {
   books: Pick<WorkbookStore, "childWorkbooks" | "page" | "question">;
 }
 
-export type WorkbookSelection = { ok: true; parentId: string; childId: string; childName: string | null; grade?: number; ref: WorkbookQuestionRef; package: QuestionPackage } |
-  { ok: false; error: "reference_again" | "reference_refused" | "not_test_family"; say: string };
+type WorkbookRefusal = { ok: false; error: "reference_again" | "reference_refused" | "not_test_family"; say: string };
+export type WorkbookSelection = { ok: true; parentId: string; childId: string; childName: string | null; grade?: number; ref: WorkbookQuestionRef; package: QuestionPackage } | WorkbookRefusal;
+const refuse = (say = WORKBOOK_REFERENCE_REFUSED, error: WorkbookRefusal["error"] = "reference_refused"): WorkbookRefusal => ({ ok: false, error, say });
 
 /** Also authorizes the short microphone connection. This reads summaries, never question packages. */
 export async function workbookSelectionContext(input: Pick<WorkbookSelectionInput, "childId" | "workbookId">, reader: WorkbookSelectionReader) {
-  if (!isUuid(input.childId) || !isUuid(input.workbookId)) return null;
+  if (!isUuid(input.childId) || !isUuid(input.workbookId)) return refuse();
   const childId = input.childId.toLowerCase(), workbookId = input.workbookId.toLowerCase();
   const child = await reader.child(childId);
-  if (!child || !await reader.isTestFamily(child.parentId)) return null;
+  if (!child) return refuse();
   const book = (await reader.books.childWorkbooks(childId)).find(b => b.id === workbookId);
-  return book && book.childId === childId && book.parentId === child.parentId && ["printed", "shipped"].includes(book.status) && book.printedAt
-    ? { book, childId, childName: child.firstName, parentId: child.parentId, grade: child.grade } : null;
+  // Check ownership before reporting any workbook state, including its print status.
+  if (!book || book.childId !== childId || book.parentId !== child.parentId) return refuse();
+  if (!await reader.isTestFamily(child.parentId)) return refuse("Only test families can start a Maya session.", "not_test_family");
+  if (!["printed", "shipped"].includes(book.status) || !book.printedAt) return refuse(WORKBOOK_NOT_PRINTED);
+  return { ok: true as const, book, childId, childName: child.firstName, parentId: child.parentId, grade: child.grade };
 }
 
 export async function selectWorkbookQuestion(input: WorkbookSelectionInput, reader: WorkbookSelectionReader): Promise<WorkbookSelection> {
-  const no = (): WorkbookSelection => ({ ok: false, error: "reference_refused", say: WORKBOOK_REFERENCE_REFUSED });
-  if (!isUuid(input.childId) || !isUuid(input.workbookId)) return no();
+  if (!isUuid(input.childId) || !isUuid(input.workbookId)) return refuse();
   // Ambiguous requests cannot silently prefer one reference over another.
   const typed = input.reference !== undefined;
   const at = typed ? parseWorkbookReference(input.reference) : { page: input.page, question: input.question };
@@ -60,21 +64,22 @@ export async function selectWorkbookQuestion(input: WorkbookSelectionInput, read
     !Number.isInteger(at.page) || !Number.isInteger(at.question) || Number(at.page) < 1 || Number(at.page) > 1000 || Number(at.question) < 1 || Number(at.question) > 1000) {
     return { ok: false, error: "reference_again", say: WORKBOOK_REFERENCE_AGAIN };
   }
-  const childId = input.childId.toLowerCase(), workbookId = input.workbookId.toLowerCase();
-  const child = await reader.child(childId);
-  if (!child) return no();
-  if (!await reader.isTestFamily(child.parentId)) return { ok: false, error: "not_test_family", say: WORKBOOK_REFERENCE_REFUSED };
-  const book = (await reader.books.childWorkbooks(childId)).find(b => b.id === workbookId);
-  if (!book || book.childId !== childId || book.parentId !== child.parentId || !["printed", "shipped"].includes(book.status) || !book.printedAt) return no();
+  const context = await workbookSelectionContext(input, reader);
+  if (!context.ok) return context;
+  const { book, childId, childName, parentId, grade } = context;
+  const workbookId = book.id;
   const page = await reader.books.page(book.id, Number(at.page));
-  if (!page?.image || !page.questions.some(q => q.number === at.question)) return no();
+  if (!page) return refuse(`Page ${at.page} is not in this workbook.`);
+  if (!page.questions.some(q => q.number === at.question)) return refuse(`Page ${at.page} has no number ${at.question}.`);
+  if (!page.image) return refuse(`Page ${at.page} has no saved image.`);
   const ref: WorkbookQuestionRef = { source: "workbook", workbookId, page: Number(at.page), question: Number(at.question) };
   const found = await reader.books.question(ref);
-  if (found.status !== "found") return no();
+  if (found.status === "not-found") return refuse(`Page ${at.page} has no number ${at.question}.`);
+  if (found.status !== "found") return refuse(`The saved content for page ${at.page}, number ${at.question} is not available.`);
   const checked = checkQuestionPackage(found.package);
-  if (!checked.ok) return no();
+  if (!checked.ok) return refuse(`Page ${at.page}, number ${at.question} has invalid saved content.`);
   const saved = checked.package.ref;
-  if (saved.source !== "workbook" || saved.workbookId !== ref.workbookId || saved.page !== ref.page || saved.question !== ref.question) return no();
-  if (!createSession({ callId: "selection-check", package: checked.package }).package) return no();
-  return { ok: true, ref, package: checked.package, parentId: child.parentId, childId, childName: child.firstName, grade: child.grade };
+  if (saved.source !== "workbook" || saved.workbookId !== ref.workbookId || saved.page !== ref.page || saved.question !== ref.question) return refuse(`The saved content does not match page ${at.page}, number ${at.question}.`);
+  if (!createSession({ callId: "selection-check", package: checked.package }).package) return refuse(`Maya cannot teach page ${at.page}, number ${at.question} yet.`);
+  return { ok: true, ref, package: checked.package, parentId, childId, childName, grade };
 }

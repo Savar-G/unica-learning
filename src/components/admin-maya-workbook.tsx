@@ -6,6 +6,7 @@ import type { Workbook } from "@/lib/workbook-content";
 import type { WorkbookQuestionRef } from "@/lib/question-package";
 import { ADMIN_PATH } from "@/lib/admin-view";
 import { MayaReferenceMicrophone } from "@/components/admin-maya-reference";
+import { WORKBOOK_NOT_PRINTED } from "@/lib/maya-workbook-question";
 import "./admin-maya.css";
 import "./admin-workbook.css";
 import "./admin-maya-workbook.css";
@@ -47,7 +48,7 @@ export function MayaWorkbookPicker({ book, images, voice, initialPage, initialQu
   return <section className="mc-pick mc-workbook" aria-labelledby="workbook-question-title">
     <h2 id="workbook-question-title">Choose a workbook question</h2>
     <p className="adm-note">Tap a question on the page, or type its page and number. Only printed workbooks from test families can be used.</p>
-    {!ready && <p role="status" className="mc-error">This workbook is not printed. Choose a printed workbook.</p>}
+    {!ready && <p role="status" className="mc-error">{WORKBOOK_NOT_PRINTED}</p>}
     <MayaReferenceMicrophone key={speechGeneration} childId={book.childId} workbookId={book.id} available={voice} disabled={busy || !ready}
       onReference={text => { setReference(text); void request("select", { reference: text }); }} />
     <fieldset disabled={busy || !ready} className="mc-workbook-fields">
