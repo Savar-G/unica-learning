@@ -4343,5 +4343,16 @@
     "before": "gcd(a, b) == 1 and a * g <= 100 and b * g <= 100 and a * g >= 28",
     "after": "gcd(a, b) == 1 and a * g <= 100 and b * g <= 100 and a * g >= 28 and a < 3 * b",
     "why": "Preserve exactly the original accepted fraction triples. The easier pool is improper and below 3. The hard pool also permits proper fractions with larger numerators."
+  },
+  {
+    "skill": "6.12-trapezoid-area",
+    "step": 3,
+    "template": 2,
+    "path": [
+      "answer"
+    ],
+    "before": "str(area) + ' m²'",
+    "after": "str(int(area) if area == int(area) else area) + ' m²'",
+    "why": "Keep the original general-number format for area units. An integer area must print 33 m², not 33.0 m², so the strict solve check reads the same key."
   }
 ]

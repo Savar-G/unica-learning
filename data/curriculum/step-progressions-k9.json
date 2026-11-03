@@ -160765,7 +160765,7 @@
      "format": "story",
      "difficulty": "medium",
      "text": "A pond is a trapezoid with parallel sides {a_t} m and {b_t} m, {h} m apart. What is its area in m²?",
-     "answer": "str(area) + ' m²'",
+     "answer": "str(int(area) if area == int(area) else area) + ' m²'",
      "slots": {
       "a0": "side",
       "b0": "side",

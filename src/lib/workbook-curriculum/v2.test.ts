@@ -83,6 +83,14 @@ describe("v2 data and answer contracts", () => {
     }
   });
 
+  it("keeps whole area keys free of an added decimal zero", () => {
+    const step = BC.skillSteps("6.12-trapezoid-area")!.find(s => s.number === 3)!;
+    const fill = prepareTemplate(step, step.templates![1], BC.contexts!);
+    const whole = fill.fill(seededRandom(3));
+    expect(whole.answer).toBe("33 m²");
+    expect(sameAnswer("33 m²", [whole.answer], false)).toBe(true);
+  });
+
   it("keeps numeric cases of conditional hard stories available to the Challenge", () => {
     expect(hasHardNumberTemplate(BC, "K3-part-part-whole", 3, 4)).toBe(true);
     for (let seed = 1; seed <= 12; seed++) {

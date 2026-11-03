@@ -1381,3 +1381,16 @@ After:
 ```json
 "gcd(a, b) == 1 and a * g <= 100 and b * g <= 100 and a * g >= 28 and a < 3 * b"
 ```
+
+## 6.12-trapezoid-area step 3 template 2 answer
+
+Keep the original general-number format for area units. An integer area must print 33 m², not 33.0 m², so the strict solve check reads the same key.
+
+Before:
+```json
+"str(area) + ' m²'"
+```
+After:
+```json
+"str(int(area) if area == int(area) else area) + ' m²'"
+```
