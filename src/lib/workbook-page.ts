@@ -81,6 +81,11 @@ export interface Block {
 /** A day page's content: its header and its slots. */
 export interface DayContent {
   kind: "day";
+  extraPractice?: boolean;
+  consistentLayout?: boolean;
+  fillingComplete?: boolean;
+  /** Extra row spacing, capped at 48 px by the measured capacity pass. */
+  extraGap?: number;
   /** The printed page ID (D-187). */
   id: string;
   level: number;

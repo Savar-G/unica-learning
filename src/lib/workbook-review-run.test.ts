@@ -31,13 +31,20 @@ it.skipIf(!chromium)("completes the full 40-page U4 review command with real fit
   expect(draft.counts.failedPages).toBe(0);
   expect(draft.quality).toMatchObject({ready:true,dropped:0,issues:[]});
   expect(draft.pages.every(p=>p.fit.status!=="failed")).toBe(true);
+  const extra=draft.pages.filter(p=>p.content?.kind==="day" && p.content.extraPractice);
+  expect(extra).toHaveLength(2);
+  expect(extra.every(p=>p.questions.length>=8 && p.day===null)).toBe(true);
+  expect(draft.pages.some(p=>p.type==="blank" || p.type==="back-cover")).toBe(false);
+  for(const p of draft.pages) if(p.content?.kind==="day") for(const b of p.content.blocks) {
+    if(["worked-example","watch-one"].includes(b.slot)) expect(Boolean(b.methods?.some(m=>m.lines.length) || b.lines?.length || b.figure)).toBe(true);
+  }
   expect(draft.pages.flatMap(p=>p.leftOut ?? [])).toEqual([]);
   expect(index).toContain("## Failures (0)");
   expect(index).toContain("subscription 0; API 0 | PASS | HOLD");
   expect((await stat(join(out,"U4.pdf"))).size).toBeGreaterThan(10_000);
   expect((await PDFDocument.load(await readFile(join(out,"U4.pdf")))).getPageCount()).toBe(44);
   for(const day of [5,10]) expect(draft.pages.filter(p=>p.day===day).flatMap(p=>p.questions).filter(q=>q.part==="friday-5")).toHaveLength(5);
-  for(const day of [1,3,5,8,10]) expect(draft.pages.filter(p=>p.day===day).flatMap(p=>p.questions).filter(q=>q.place==="challenge")).toHaveLength(2);
+  for(const day of [1,3,5,8,10]) expect(draft.pages.filter(p=>p.day===day).flatMap(p=>p.questions).filter(q=>q.place==="challenge")).toHaveLength(3);
   await rm(out,{recursive:true,force:true});
 },600_000);
 

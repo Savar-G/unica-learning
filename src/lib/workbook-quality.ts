@@ -1,4 +1,4 @@
-import { pageFullness } from "./workbook-template";
+import { pageFullness, pageSpace, fullnessProblem } from "./workbook-template";
 import type { DraftPage, MeasuredElement } from "./workbook-render";
 import type { GeneratedPage } from "./workbook-generator";
 import { dayTimeProblem, estimatedDayMinutes } from "./workbook-feedback-check";
@@ -36,7 +36,15 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
   const types = new Map<string, number>();
   const all = pages.flatMap(p => p.questions).filter(q => q.package && q.place !== "warm-up");
   for (const p of pages) {
-    if (p.day !== null && p.questions.length === 0) issues.push({ page: p.number, kind: "coverage", reason: "a day page has no planned questions" });
+    if (p.content?.kind === "day") {
+      const c=p.content;
+      const printed=[c.title,c.subtitle,...c.blocks.flatMap(b=>[b.label,b.note,b.explain,...b.lines ?? [],...b.methods?.flatMap(m=>[m.label,...m.lines]) ?? []]),...p.questions.flatMap(q=>q.package?[q.package.text]:[])].filter((text):text is string=>typeof text==="string");
+      if (printed.some(text=>/\b(?:watch one|finish two|stretch you|unit [ab])\b/i.test(text) || c.level>=4 && /\b(?:draw|for the grown-up)\b/i.test(text))) issues.push({page:p.number,kind:"coverage",reason:"the printed page contains rejected workbook wording"});
+    }
+    if(p.content?.kind==="day") for(const block of p.content.blocks.filter(b=>["worked-example","watch-one","reminder"].includes(b.slot))) {
+      if (!block.methods?.some(m=>m.lines.some(line=>line.trim())) && !block.lines?.some(line=>line.trim()) && !block.figure) issues.push({page:p.number,kind:"coverage",reason:`the required ${block.slot} panel has no teaching example`});
+    }
+    if ((p.day !== null || p.content?.kind === "day") && p.questions.length === 0) issues.push({ page: p.number, kind: "coverage", reason: "a day page has no planned questions" });
     for (const expected of p.expected ?? []) {
       if (!p.questions.some(q => q.slot === expected.slot && q.package && q.check.status !== "failed")) issues.push({ page: p.number, kind: "coverage", reason: `required planned slot ${expected.slot} (${expected.part}) is missing or failed` });
     }
@@ -46,26 +54,27 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     const questions = p.questions.filter(q => q.package && q.place !== "warm-up" && !q.existing);
     const counts = new Map<string, number>();
     for (const q of questions) {
-      const key = taskType(q.package!);
+      const key = ["word-problems","challenge"].includes(p.type) && wordedTask(q.package!) ? storyFrame(q.package!.text) : taskType(q.package!);
       counts.set(key, (counts.get(key) ?? 0) + 1);
       types.set(key, (types.get(key) ?? 0) + 1);
     }
-    for (const [type, count] of counts) if (questions.length >= 3 && count > Math.ceil(questions.length / 2)) issues.push({ page: p.number, kind: "variety", reason: `${type} fills ${count} of ${questions.length} questions; the page limit is half, rounded up` });
+    const total=p.questions.filter(q=>q.package && q.place!=="warm-up").length;
+    for (const [type, count] of counts) if (total >= 3 && count > Math.ceil(total / 2)) issues.push({ page: p.number, kind: "variety", reason: `${type} fills ${count} of ${total} questions; the page limit is half, rounded up` });
     for (const q of p.questions.filter(q => q.place === "how-do-you-know" && !q.existing)) if (!/first story on this page/i.test(q.package?.text ?? "") || !p.questions.some(s => ["word-problems", "picture-stories"].includes(s.place ?? "") && s.package && s.check.status !== "failed")) issues.push({ page: p.number, kind: "coverage", reason: "the explanation has no story on this page" });
   }
   for (const [type, count] of types) if (all.length >= 12 && count > all.length / 2) for (const p of pages.filter(p => p.questions.some(q => q.package && taskType(q.package) === type))) issues.push({ page: p.number, kind: "variety", reason: `${type} exceeds half of the book's non-warm-up questions` });
   for (const p of pages) for (const q of p.questions) {
-    if (!q.package || q.place === "warm-up" || q.existing) continue;
+    if (!q.package || q.place === "warm-up") continue;
     const pkg = q.package;
     if (q.place === "how-do-you-know" && /first story on this page/.test(pkg.text)) continue;
-    if (wordedTask(pkg)) {
+    if (!q.existing && wordedTask(pkg)) {
       const frame = storyFrame(pkg.text), before = frames.get(frame);
       if (before !== undefined) issues.push({ page: p.number, kind: "repeat", reason: `question ${q.number} repeats the story or event frame on page ${before}` });
       else frames.set(frame, p.number);
     }
     const key = JSON.stringify([pkg.text, pkg.operation, pkg.item?.checks, pkg.item?.figure]);
     const at = seen.get(key) ?? [];
-    const limit = pkg.textSource === "code" ? 3 : 1;
+    const limit = 1;
     if (at.includes(p.number) || at.length >= limit) issues.push({ page: p.number, kind: "repeat", reason: `question ${q.number} repeats pages ${at.join(", ")} (limit ${limit})` });
     seen.set(key, [...at, p.number]);
   }
@@ -127,10 +136,14 @@ export async function checkWholeBook(pages: GeneratedPage[], rewrite: (page: Gen
   return { pages: result, quality: workbookQuality(result) };
 }
 
-export interface PageUse { page: number; fraction: number | null }
+export interface PageUse { page: number; fraction: number | null; problem?: string | null; largestGap?: number; empty?: number }
 
 /** Vertical use of the measured content area. Do not call this an ink-area
  * measurement: writing and work spaces are intentional page content. */
 export function measuredPageUse(pages: readonly DraftPage[], measured: readonly MeasuredElement[]): PageUse[] {
-  return pages.map((page, sheet) => ({ page: page.number, fraction: pageFullness(page, new Map(measured.filter(m=>m.sheet===sheet).map(m=>[m.name,m]))) }));
+  return pages.map((page, sheet) => {
+    const map=new Map(measured.filter(m=>m.sheet===sheet).map(m=>[m.name,m]));
+    const space=pageSpace(page,map);
+    return {page:page.number,fraction:pageFullness(page,map),...(page.content?.kind==="day" && page.content.consistentLayout ? {problem:fullnessProblem(page,map),largestGap:space?.largestGap,empty:space?.empty} : {})};
+  });
 }

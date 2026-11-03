@@ -41,15 +41,17 @@ describe("Savar's workbook feedback as permanent checks", () => {
         if (page.type==="challenge") expect(h).toMatchObject({title:"Challenge",subtitle:"Test yourself."});
       }
       const cover=bookPageContent({curriculum:BC,plan:plan.plan,child:"Noah",workbook:1,type:"cover",number:1});
-      expect(cover.kind==="cover" && cover.bullets).toHaveLength(3);
-      expect(cover.kind==="cover" && cover.sentence).toBe("In this workbook, Noah will learn to:");
+      expect(cover.kind==="cover" && cover.bullets).toHaveLength(0);
+      expect(cover.kind==="cover" && cover.sentence).toMatch(/^Noah will .+\.$/);
     }
   });
   it("rejects abstract drawings and tracing after Kindergarten", () => {
     const draw={format:"draw",scorable:false,parentChecked:true,error:null,regions:[],checks:[]} as const;
-    for(const text of ["Draw an always.","Draw likely wind.","Draw a sure win.","Draw 7 eggs.","Trace 7."])
+    for(const text of ["Draw an always.","Draw likely wind.","Draw a sure win.","Draw 7 eggs.","Draw a triangle.","Trace 7."])
       expect(feedbackItemProblem(q({text,item:structuredClone(draw) as unknown as QuestionPackage["item"]}))).not.toBeNull();
-    expect(feedbackItemProblem(q({text:"Draw 7 as a ten-frame.",item:structuredClone(draw) as unknown as QuestionPackage["item"]}))).toBeNull();
+    expect(feedbackItemProblem(q({text:"Draw 7 as a ten-frame.",item:structuredClone(draw) as unknown as QuestionPackage["item"]}))).not.toBeNull();
+    const colour={...structuredClone(draw),format:"colour-or-shade",figure:{kind:"ten-frame",counters:[0]}} as unknown as QuestionPackage["item"];
+    expect(feedbackItemProblem(q({text:"Colour in 7 cells.",item:colour}))).toBeNull();
     expect(feedbackItemProblem(q({text:"Trace 7.",level:2}))).toBeNull();
     expect(feedbackItemProblem(q({skill:{standard:"1.10",skills:["1.10-likelihood-words"]}}))).toMatch(/circle/);
   });
@@ -59,15 +61,15 @@ describe("Savar's workbook feedback as permanent checks", () => {
     const item={format:"write-number",scorable:true,parentChecked:false,error:null,regions:[],checks:[],figure:{kind:"dots",groups:[3,5],takenAway:0}} as const;
     expect(scheduledItemProblem(q({item:structuredClone(item) as unknown as QuestionPackage["item"]}),BC,8,"practice")).toMatch(/no picture/);
   });
-  it("fails closed if page fullness cannot be measured or falls below 80 percent", () => {
+  it("fails closed if page fullness cannot be measured or falls below 85 percent", () => {
     const measured = new Map<string,MeasuredElement>();
     expect(pageFullness(page,measured)).toBeNull();
     expect(fullnessProblem(page,measured)).not.toBeNull();
     const m={visible:true,clientHeight:700,y:200,height:700} as MeasuredElement;
     measured.set("slot-content",m);
     for(const question of page.questions) measured.set(`question-${question.number}`,{...m,height:500});
-    expect(fullnessProblem(page,measured)).toMatch(/80%/);
-    for(const question of page.questions) measured.set(`question-${question.number}`,{...m,height:560});
+    expect(fullnessProblem(page,measured)).toMatch(/occupy/);
+    for(const question of page.questions) measured.set(`question-${question.number}`,{...m,height:600});
     expect(fullnessProblem(page,measured)).toBeNull();
   });
   it("includes worked-example reading time and refuses a day estimate above 30 minutes", () => {
@@ -75,4 +77,12 @@ describe("Savar's workbook feedback as permanent checks", () => {
     expect(estimatedDayMinutes(Array.from({length:100},()=>q()),4)).toBeGreaterThan(30);
     expect(dayTimeProblem(Array.from({length:100},()=>q()),4)).toMatch(/limit is 30/);
   });
+});
+
+it("excludes a 164 px empty gap from occupied space and rejects it even at the item maximum",()=>{
+  const p={...page,content:page.content?.kind==="day"?{...page.content,blocks:[],fillingComplete:true}:page.content,questions:page.questions.slice(0,2)};
+  const m=(name:string,y:number,height:number)=>({name,visible:true,y,height,clientHeight:height} as MeasuredElement);
+  const measured=new Map([["slot-content",m("slot-content",0,700)],["question-1",m("question-1",0,268)],["question-2",m("question-2",432,268)]]);
+  expect(pageFullness(p,measured)).toBeCloseTo(536/700);
+  expect(fullnessProblem(p,measured)).toMatch(/164 px unoccupied gap/);
 });

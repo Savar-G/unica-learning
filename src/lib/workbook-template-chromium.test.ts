@@ -74,7 +74,8 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
     expect(day.y-first.y-first.height).toBeGreaterThanOrEqual(18);
     expect(measured.some(m=>m.sheet===3 && m.name==="slot-name-date")).toBe(false);
     const coverText=measured.filter(m=>m.sheet===0).map(m=>m.text).join(" ");
-    expect(coverText).toContain("In this workbook, Mateo will learn to:");
+    expect(coverText).toContain("Mateo will count, read and write numbers up to 20, and learn how numbers split into smaller parts.");
+    expect(coverText).not.toContain("will learn to:");
     expect(coverText).not.toMatch(/This fortnight|How this works and your plan are next/);
     const planText=measured.filter(m=>m.sheet===1).map(m=>m.text).join(" ");
     expect(planText).toContain("Ask for help using Maya, the AI Teaching Assistant.");

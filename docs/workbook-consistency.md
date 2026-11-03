@@ -55,10 +55,12 @@ budget before the physical capacity check. Writer output must meet it too.
 The real renderer still checks actual line wrapping and overflow.
 
 Fully covered pages are measured with their code-picked items before a writer
-call. Optional review and drills give up room first. The last practice drill
-stays. The run frame saves the capacity and exact contracts. Generation,
+call. The shared page budget protects the required teaching blocks and item minimums.
+The capacity pass adds an item from the same step when the measured page needs
+more content, up to its limit. A candidate that overflows is removed before
+writing. The run frame saves the capacity and exact contracts. Generation,
 layout, recovery and coverage use this budget. Existing-path pages keep their
-bounded fit rewrite. Required teaching cards stay protected.
+bounded fit rewrite and the same page budget. Required teaching cards stay protected.
 
 Missing or failed planned items fail the book check. Friday 5 needs five sound
 questions. An empty day page fails. The sample command returns a nonzero exit
@@ -70,19 +72,22 @@ checks; its index reports that result separately from the approval hold.
 The strict checks apply to the items whose builders exist. A story or event
 frame can occur once in a book. Changed names, objects or quantities do not
 hide a repeat. One type can fill at most half a page with three or more
-questions, rounded up, and half of the book's non-warm-up items. A code drill
-can recur up to three times. Warm-up facts can recur for fluency.
+questions, rounded up, and half of the book's non-warm-up items. An identical code drill cannot recur. Warm-up facts can recur for fluency.
+A page-specific explanation is a different task because it refers to that
+page's first story.
 
-The U4 Challenge has two hard stories each day. Each reaches the day's upper
+The U4 Challenge has at least three hard stories each day. Each reaches the day's upper
 number limit and needs more operation steps than practice. Days 8 to 10 use
-three changes. Each problem now gets about half the page for work. Challenges
+three changes. Each story has its own work area. The work areas share the available room. Challenges
 without this builder keep the existing checked path. An explanation with a
 contract refers to the first story on its own page.
 
 The book checks estimated time below 30 minutes. Fixed multiplication and
 division facts need not grow beyond their taught range. A weak page gets at
 most one code repair. It must keep its slots and item count and still fit.
-A worse repair is refused. The book pass adds no provider calls.
+A worse repair is refused. A code replacement must also be absent from the
+rest of the book. The repair retains checked panel packages and teaching blocks.
+An empty required example panel fails coverage. The book pass adds no provider calls.
 
 ## Review evidence and limits
 
@@ -91,7 +96,8 @@ real Chromium templates and fullness checks. It requires 40 day pages, a
 44-page PDF, no failed questions or pages, no omissions, and a passing quality
 result. The test does not use a fit seam that always returns success.
 
-The fake indexes report the failed rate, omissions, measured vertical use,
+The fake indexes report the failed rate, omissions, the union of occupied
+vertical intervals, unoccupied gap sizes, extra practice pages,
 estimated day time, builder coverage and provider calls. The technical gate
 requires less than 5 percent failed items, no unresolved quality or render
 problems, and at least 80 percent measured use on every day page. Fake books
@@ -101,3 +107,29 @@ The example candidates are listed in `workbook-example-bank-480.md`. Savar
 must approve the bank and the next authorised subscription sample before merge.
 No real sample is authorised for these fixes. Cedric's final step data and
 Savar's later layout decisions are the next integration stage.
+
+## Page rules adopted from Cedric's brief
+
+The new measured layout keeps the 32 px gutter, a header of at most 150 px,
+answer boxes of at least 48 px (56 px in Kindergarten), 36 px answer lines,
+and work areas of at least 120 / 140 / 160 px by level band. Printed frames
+use 40 px cells. Required item counts share the template budget. Spare binding
+pages contain practice from skills already used in the book.
+
+`pageSpace` merges occupied intervals. A gap never increases the reported
+occupied fraction. The capacity pass adds items before it adds spacing.
+At the maximum that fits, even spacing can use up to 48 px extra per gap.
+The spacing check rejects a gap above 60 px and rejects a bottom gap above
+15% of the question area. A lower occupied fraction at the page maximum is
+reported as such in the sample index.
+
+Likelihood uses never / sometimes / always. Drawing tasks fail from U4 up.
+Colouring a printed row or frame remains permitted. Every question number
+has a period. The cover uses a checked plain title and one learning sentence.
+The new rules apply to the measured layout. Saved legacy pages retain their
+layout limits, with the updated question numbers and cover copy.
+
+The curriculum-step importer is a separate change. The next stage must use
+its approved templates and ranges, move through the skeleton's skills and
+steps, and remove the fixed second topic. These are not claims established
+by the current hand-built U4 pipeline.

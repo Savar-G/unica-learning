@@ -295,7 +295,6 @@ function itemFor(format: GeneratedFormat, op: Operation, answer: AnswerValue, sh
         regions: [
           { id: "operation", kind: "choice", mark: "tick", label: "Tick the operation", choices: SIGNS.filter((x) => x === sign || signs.includes(x)), answer: sign },
           { ...box, label: "Write the answer" },
-          { id: "work", kind: "work", label: "Show your work" },
         ],
         checks: [{ kind: "operation-sign", region: "operation" }, onAnswer],
       };

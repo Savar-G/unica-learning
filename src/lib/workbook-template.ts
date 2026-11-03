@@ -36,6 +36,7 @@ const fontFace = (family: string, weights: string, woff2: Uint8Array) =>
 
 /** The type ramp and box sizes of a level band (DESIGN.md section 2, minimum sizes by level; section 7.3). */
 interface Band {
+  consistentLayout?: boolean;
   name: "parent" | "early" | "mid";
   title: number;
   body: number;
@@ -70,27 +71,29 @@ export const CARD_LINES = 3;
 const WORK_MIN = 64;
 /** The smallest answer box each way at any level (CONTEXT.md section 6). */
 export const ANSWER_MIN = 40;
+export const workMinimum = (level: number) => level <= 9 ? 120 : level <= 18 ? 140 : 160;
+export const questionNumber = (number: number): string => `${number}.`;
 
 // ---------- Slot limits (DESIGN.md section 7: maximums for the 688 by 720 content area) ----------
 
 /** The most items a slot takes on a page. */
-export function slotMax(slot: SlotName, c: Pick<DayContent, "level" | "pages">): number {
+export function slotMax(slot: SlotName, c: Pick<DayContent, "level" | "pages" | "consistentLayout">): number {
   const band = bandOf(c.level);
   switch (slot) {
     case "warm-up": return band.name === "mid" ? 12 : 8;
     case "fix-it": return 3;
     case "in-your-head": case "try-first": case "spot-the-error": case "solve-it-two-ways": case "how-do-you-know": return 1;
-    case "remember-these": return band.name === "parent" ? 6 : 8;
-    case "now-you": return 4;
-    case "finish-these": return 2;
+    case "remember-these": return band.name === "parent" ? 6 : c.consistentLayout ? 10 : 8;
+    case "now-you": return c.consistentLayout ? 5 : 4;
+    case "finish-these": return c.consistentLayout ? 4 : 2;
     case "on-your-own": return band.name === "mid" ? 8 : 6;
-    case "practice-row": return 4;
-    case "word-problems": return 3;
+    case "practice-row": return c.consistentLayout ? 10 : 4;
+    case "word-problems": return c.consistentLayout ? 4 : 3;
     case "unit-b-practice": return 8;
     case "mixed-set": return 4;
     case "picture-stories": return 6;
     case "friday-5": return 5;
-    case "challenge": return 2;
+    case "challenge": return c.consistentLayout ? 4 : 2;
     case "math-in-the-world": return 3;
     // Cards with a work area of at least 44 px: 5 rows of 2 from U10, 4 rows at U4 to U9.
     case "show-what-you-know": return band.name === "mid" ? 8 : 6;
@@ -142,14 +145,14 @@ const textRoomOf = (width: number, font: number, lines: number, em = SANS_EM): T
  * - stories, How do you know?, the Mixed set, Challenge, Math in the world, Solve it two ways and test cards by their
  *   own blocks. Null for a panel (no question).
  */
-export function textRoom(slot: SlotName, level: number, pages = 8): TextRoom | null {
+export function textRoom(slot: SlotName, level: number, pages = 8, consistent = false): TextRoom | null {
   const band = bandOf(level);
   const six = pages <= 6 && band.name === "mid";
   const parent = band.name === "parent";
   const badge = band.name === "mid" ? 24 : 30;
   const box = Math.max(64, band.box);
   // .pcard: (688 - 12) / 2, less its border (2) and padding (28), badge and one 10 px gap (no read-aloud mark, D-201).
-  const cardWidth = (CONTENT_W - 12) / 2 - 2 - 28 - badge - 10;
+  const cardWidth = (CONTENT_W - (consistent ? 32 : 12)) / 2 - 2 - 28 - badge - 10;
   const card = textRoomOf(cardWidth, band.body, CARD_LINES);
   // .list: the number (22) and three 12 px gaps around the text and the box.
   const full = textRoomOf(CONTENT_W - 22 - 36 - box, band.body, 1);
@@ -436,6 +439,46 @@ const CSS = `
 .map .lv.now .ll{font-weight:500}
 .bk .key{margin-top:32px;display:flex;gap:18px;align-items:center;font-size:15px}
 .bk .key i{display:inline-block;width:20px;height:20px;border:1.2px solid #0C0C0E;vertical-align:middle;margin-right:6px}
+
+/* The measured page plan uses the adopted layout. Saved legacy pages keep their layout. */
+.pg.consistent .frame{height:856px;gap:8px}
+.pg.consistent .hd{max-height:150px}
+.pg.consistent.mid .hd{min-height:112px}
+.pg.consistent .nd{margin-bottom:0}
+.pg.consistent .ct{gap:calc(8px + var(--extra-gap,0px))}
+.pg.consistent .blk{flex:0 0 auto;gap:calc(6px + var(--extra-gap,0px))}
+.pg.consistent .blk.grow{flex:1 0 auto}
+.pg.consistent .ft{top:939px;height:48px}
+.pg.consistent .list{flex:none;justify-content:flex-start;gap:calc(12px + var(--extra-gap,0px))}
+.pg.consistent .two{flex:none;grid-auto-rows:auto;row-gap:calc(12px + var(--extra-gap,0px))}
+.pg.consistent .facts{flex:none;align-content:start;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:calc(12px + var(--extra-gap,0px))}
+.pg.consistent .pcards{flex:none;grid-auto-rows:auto;column-gap:32px;row-gap:calc(12px + var(--extra-gap,0px))}
+.pg.consistent .cols{flex:none;align-content:start;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:calc(12px + var(--extra-gap,0px))}
+.pg.consistent .cols .ab{height:48px}
+.pg.consistent .places-item .rgs{display:grid;grid-template-columns:repeat(var(--places),minmax(0,1fr));gap:8px;flex-basis:100%;width:100%;margin-left:0}
+.pg.consistent .places-item .rg{display:flex;flex-direction:column;gap:6px}
+.pg.consistent .places-item .rl{font-size:var(--small);white-space:normal;text-align:center}
+.pg.consistent .col .sum{margin-left:auto}
+.pg.consistent.mid .col .sum{font-size:20px}
+.pg.consistent .q .rgs{margin-left:auto}
+.pg.consistent .ab{height:80px}
+.pg.consistent[data-page-type="friday-5"] .ab,.pg.consistent[data-page-type="remember-these-mixed-set"] .ab{height:64px}
+.pg.consistent .seq .ab{height:48px}
+.pg.consistent .q.seq-item{gap:8px}
+.pg.consistent .seq-item .qt{font-size:18px}
+.pg.consistent .outl{padding:6px 16px;gap:6px}
+.pg.consistent .error-item{display:flex;flex-direction:column;gap:6px}
+.pg.consistent .error-item .ab{height:56px}
+.pg.consistent .error-item .strip{min-height:48px}
+.pg.consistent .ways2 .wb{height:var(--work-min)}
+.pg.consistent .mxs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:calc(12px + var(--extra-gap,0px))}
+.pg.consistent .mx .stp{flex-wrap:wrap}
+.pg.consistent .mx .sl{min-width:0}
+.pg.consistent .chc{padding:12px;gap:8px}
+.pg.consistent .chc .act{display:flex;gap:16px;align-items:flex-end;flex:1}
+.pg.consistent [data-slot="word-problems"] .story{flex:1}
+.pg.consistent .story .act{flex:1}
+.pg.consistent .story .act .wb,.pg.consistent .chc .act .wb{height:auto!important;min-height:var(--work-min);align-self:stretch}
 `;
 
 // ---------- Icons ----------
@@ -491,7 +534,7 @@ const chipHtml = (chip: Chip, note?: string) =>
 
 const COUNTER = ["#FF6A3D", "#3366F0", "#16A06A"];
 
-export function figureSvg(f: Figure, scale = 1): string {
+export function figureSvg(f: Figure, scale = 1, cell = 30): string {
   const out = (w: number, h: number, body: string) =>
     `<svg class="pic" width="${Math.round(w * scale)}" height="${Math.round(h * scale)}" viewBox="0 0 ${w} ${h}">${body}</svg>`;
   switch (f.kind) {
@@ -526,17 +569,17 @@ export function figureSvg(f: Figure, scale = 1): string {
       };
       let body = "";
       for (let i = 0; i < 10 * frames; i++) {
-        const cx = (i % 5) * 30 + Math.floor(i / 10) * 166;
-        const cy = Math.floor((i % 10) / 5) * 30;
-        body += `<rect x="${cx + 1}" y="${cy + 1}" width="30" height="30" fill="#fff" stroke="#0C0C0E" stroke-width="1.2"/>`;
-        if (i < f.filled) body += `<circle cx="${cx + 16}" cy="${cy + 16}" r="10" fill="${colourAt(i)}"/>`;
+        const cx = (i % 5) * cell + (cell === 30 ? Math.floor(i / 10) * 166 : 0);
+        const cy = Math.floor((i % 10) / 5) * cell + (cell === 40 ? Math.floor(i / 10) * 96 : 0);
+        body += `<rect x="${cx + 1}" y="${cy + 1}" width="${cell}" height="${cell}" fill="#fff" stroke="#0C0C0E" stroke-width="1.2"/>`;
+        if (i < f.filled) body += `<circle cx="${cx + cell/2+1}" cy="${cy + cell/2+1}" r="10" fill="${colourAt(i)}"/>`;
       }
-      return out(152 + (frames - 1) * 166, 62, body);
+      return out(cell===40 ? 202 : 152+(frames-1)*166, cell===40 ? 82+(frames-1)*96 : 62, body);
     }
     case "number-line": {
       // Labels are HTML over the drawing, not SVG text, so the print engine can check them like any text.
-      const w = 320;
       const n = Math.round((f.to - f.from) / f.step);
+      const w = cell===40 ? Math.max(320,n*40+20) : 320;
       const at = (v: number) => 10 + ((v - f.from) / (f.to - f.from)) * (w - 20);
       let body = `<line x1="4" y1="44" x2="${w - 4}" y2="44" stroke="#0C0C0E" stroke-width="2"/>`;
       let labels = "";
@@ -676,13 +719,13 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
         // Choices in words ("less than 5", "not equal", "cats") stack in the body type: a card has no room for them in
         // a row at the size of a fact.
         const words = !shapes && r.choices.some((c) => /[a-z]{2}/i.test(c));
-        return `<span class="circ${words ? " words" : ""}${r.choices.join(",") === "never,maybe,always" ? " likelihood" : ""}" ${at}>${r.choices.map((c) => `<span class="co">${choice(c)}</span>`).join("")}</span>`;
+        return `<span class="circ${words ? " words" : ""}${r.choices.join(",") === "never,sometimes,always" ? " likelihood" : ""}" ${at}>${r.choices.map((c) => `<span class="co">${choice(c)}</span>`).join("")}</span>`;
       }
       const choices = r.choices.map((c) => `<span class="ch"><i class="tb"></i><span>${escape(c)}</span></span>`).join("");
       return `<span class="rg">${r.label ? `<span class="rl">${escape(r.label)}</span>` : ""}<span class="strip" ${at}>${choices}</span>${o.noTick ? "" : `<span class="t1"><span>Tick one</span><i>✓</i></span>`}</span>`;
     }
     case "work": {
-      const h = o.work === "fill" ? "" : `height:${o.work ?? 80}px`;
+      const h = o.work === "fill" ? "" : `height:max(${o.work ?? 80}px,var(--work-min,64px))`;
       return `<div class="wb" ${at} style="${h}"><span class="lab">${escape(r.label)}</span></div>`;
     }
     case "lines": {
@@ -692,7 +735,11 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
       return `<div class="ln" ${at}>${bare ? "" : `<div class="lp">${escape(r.label)}</div>`}${"<i></i>".repeat(LINES)}</div>`;
     }
     case "picture":
-      return o.figure ? `<div class="picr" ${at}>${figureSvg(o.figure)}</div>` : `<div class="draw" ${at}></div>`;
+      if(q.package.item?.format === "colour-or-shade" && o.figure?.kind === "dots") {
+        const count=o.figure.groups.reduce((a,b)=>a+b,0);
+        return `<div class="picr" ${at}><svg width="${count*40}" height="48" viewBox="0 0 ${count*40} 48">${Array.from({length:count},(_,i)=>`<circle cx="${20+i*40}" cy="24" r="16" stroke="#0C0C0E" fill="white"/>`).join("")}</svg></div>`;
+      }
+      return o.figure ? `<div class="picr" ${at}>${figureSvg(o.figure,1,o.band.consistentLayout || q.package.item?.format === "colour-or-shade" ? 40 : 30)}</div>` : `<div class="draw" ${at}></div>`;
   }
 }
 
@@ -743,18 +790,21 @@ const qtext = (q: DraftQuestion) => text(q, isMath(q.package.text) ? "qm" : "qt"
 /** A question in a line: its number, its text, its boxes at the right, then any work box or writing lines under it. */
 function lineItem(q: DraftQuestion, band: Band, hint?: WorkedLine | null, work = 80, figure?: Figure | null): string {
   const pictured = packageItem(q.package).regions.some((r) => r.kind === "picture");
+  const sequence = packageItem(q.package).checks.some(c=>c.kind === "sequence");
+  const places = packageItem(q.package).checks.some(c=>c.kind === "places");
+  const columns = Math.min(4,packageItem(q.package).regions.length);
   const split = regionsSplit(q, { band, work, labels: true, bare: packageItem(q.package).format === "written-reason", figure: pictured ? figure : null });
   // A picture the child reads (dots to count, a pattern) sits under the question, before any work box.
   const inline = split.inline;
-  const full = (figure && !pictured ? `<div class="picr">${figureSvg(figure)}</div>` : "") + split.full;
-  return `<div class="q" ${mark.question(q.number)}><span class="n">${q.number}</span><span class="qb">${qtext(q)}${hint ? ` <span class="qm">${worked(hint)}</span>` : ""}</span>`
-    + `<span class="rgs">${inline}</span>${full ? `<div class="full">${full}</div>` : ""}</div>`;
+  const full = (figure && !pictured ? `<div class="picr">${figureSvg(figure,1,band.consistentLayout ? 40 : 30)}</div>` : "") + split.full;
+  return `<div class="q${sequence ? " seq-item" : ""}${places ? " places-item" : ""}" ${mark.question(q.number)}><span class="n">${questionNumber(q.number)}</span><span class="qb">${qtext(q)}${hint ? ` <span class="qm">${worked(hint)}</span>` : ""}</span>`
+    + `<span class="rgs"${places ? ` style="--places:${columns}"` : ""}>${inline}</span>${full ? `<div class="full">${full}</div>` : ""}</div>`;
 }
 
 /** A fact in a grid: small grey number, the fact, the box. */
 function factItem(q: DraftQuestion, band: Band): string {
   const { inline } = regionsSplit(q, { band });
-  return `<div class="q" ${mark.question(q.number)}><span class="gn">${q.number}</span>${text(q, "qm")}${inline}</div>`;
+  return `<div class="q" ${mark.question(q.number)}><span class="gn">${questionNumber(q.number)}</span>${text(q, "qm")}${inline}</div>`;
 }
 
 /** A sum in columns (whole-number add, subtract and multiply), the answer box under the rule. */
@@ -766,7 +816,7 @@ function columnItem(q: DraftQuestion, band: Band): string {
   const names = regionNames(q);
   const answer = names.find((x) => x.region.kind === "box")!;
   const box = `<span class="ab" ${measureAttr(answer.name)} style="width:${Math.max(boxWidth(answer.region.kind === "box" ? answer.region.answer : null, band), 72)}px"></span>`;
-  return `<div class="col" ${mark.question(q.number)}><span class="n">${q.number}</span><div class="sum"><div ${mark.questionContent(q.number)}><div class="row"><span>${a}</span></div><div class="row"><span class="op">${sign}</span><span>${b}</span></div></div><div class="rule">${box}</div></div></div>`;
+  return `<div class="col" ${mark.question(q.number)}><span class="n">${questionNumber(q.number)}</span><div class="sum"><div ${mark.questionContent(q.number)}><div class="row"><span>${a}</span></div><div class="row"><span class="op">${sign}</span><span>${b}</span></div></div><div class="rule">${box}</div></div></div>`;
 }
 
 /** A question in a card: number badge, text, its boxes, then work or lines. */
@@ -774,8 +824,8 @@ function cardItem(q: DraftQuestion, band: Band, work: number | "fill" = 80, cls 
   const pictured = packageItem(q.package).regions.some((r) => r.kind === "picture");
   const split = regionsSplit(q, { band, work, labels: true, figure: pictured ? figure : null });
   const inline = split.inline;
-  const full = (figure && !pictured ? `<div class="picr">${figureSvg(figure)}</div>` : "") + split.full;
-  return `<div class="${cls}" ${mark.question(q.number)}><div class="q"><span class="badge">${q.number}</span><span class="qb">${qtext(q)}</span><span class="rgs">${inline}</span></div>${full ? `<div class="q" style="margin-top:10px">${full}</div>` : ""}</div>`;
+  const full = (figure && !pictured ? `<div class="picr">${figureSvg(figure,1,band.consistentLayout ? 40 : 30)}</div>` : "") + split.full;
+  return `<div class="${cls}" ${mark.question(q.number)}><div class="q"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${qtext(q)}</span><span class="rgs">${inline}</span></div>${full ? `<div class="q" style="margin-top:10px">${full}</div>` : ""}</div>`;
 }
 
 /**
@@ -788,8 +838,8 @@ function parentItem(q: DraftQuestion, band: Band, figure: Figure | null | undefi
   const pictured = packageItem(q.package).regions.some((r) => r.kind === "picture");
   const { inline, full } = regionsSplit(q, { band, work: 80, noUnits: true, figure: pictured ? figure : null });
   const icon = packageItem(q.package).regions.some((r) => r.kind === "choice") ? `<span class="ico">${ICONS.pencil}</span>` : "";
-  return `<div class="pcard" ${mark.question(q.number)}><div class="head"><span class="badge">${q.number}</span>${icon}${text(q)}</div>`
-    + `<div class="pb">${figure && !pictured ? figureSvg(figure) : ""}<div class="q">${inline}${full}</div></div></div>`;
+  return `<div class="pcard" ${mark.question(q.number)}><div class="head"><span class="badge">${questionNumber(q.number)}</span>${icon}${text(q)}</div>`
+    + `<div class="pb">${figure && !pictured ? figureSvg(figure,1,band.consistentLayout ? 40 : 30) : ""}<div class="q">${inline}${full}</div></div></div>`;
 }
 
 // ---------- Slots ----------
@@ -812,7 +862,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
   const items = (cls = "list") => (parent ? list(line, "pcards") : list(line, cls));
   const chip = (fallback?: Chip, note?: string) => {
     const own = CHIPS[b.slot] ?? fallback;
-    return own ? chipHtml(own, b.note ?? note ?? NOTES[b.slot]) : "";
+    return own ? `<div data-measure="chip-${i}">${chipHtml(own, b.note ?? note ?? NOTES[b.slot])}</div>` : "";
   };
   const firstOfPage = i === 0 && (ctx.page.type === "remember-these" || ctx.page.type === "remember-these-mixed-set");
 
@@ -833,40 +883,54 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       const head = prev === "try-first" ? "" : chipHtml(NEW_IDEA, b.note);
       const label = `<div class="lab">Worked example${b.label ? ` · ${escape(b.label)}` : ""}</div>`;
       const ways = b.methods && b.methods.length > 0
-        ? `<div class="ways">${b.methods.map((m, k) => `<div class="in"><div class="lab">Method ${k + 1}${m.label ? ` · ${escape(m.label)}` : ""}</div><div class="wk">${m.lines.map(worked).join("<br>")}</div></div>`).join("")}</div>`
+        ? `<div class="ways" style="grid-template-columns:repeat(${b.methods.length},minmax(0,1fr))">${b.methods.map((m, k) => `<div class="in"><div class="lab">Method ${k + 1}${m.label ? ` · ${escape(m.label)}` : ""}</div><div class="wk">${m.lines.map(worked).join("<br>")}</div></div>`).join("")}</div>`
         : "";
       const why = b.figure || b.explain
-        ? `<div class="fig2">${b.figure ? figureSvg(b.figure, band.name === "mid" ? 1 : 1.3) : ""}<div class="why"><div class="lab">What's going on</div><span>${escape(b.explain ?? "")}</span></div></div>`
+        ? `<div class="${b.figure ? "fig2" : "full-width"}">${b.figure ? figureSvg(b.figure, band.name === "mid" ? 1 : 1.3,c.consistentLayout ? 40 : 30) : ""}<div class="why"><div class="lab">What's going on</div><span>${escape(b.explain ?? "")}</span></div></div>`
         : "";
-      return head + `<div class="panel p-ni" style="display:flex;flex-direction:column;gap:12px">${label}${ways}${ways && b.explain && !b.figure ? `<span>${escape(b.explain)}</span>` : why}</div>`;
+      return head + `<div class="panel p-ni" data-measure="panel-${i}" style="display:flex;flex-direction:column;gap:12px">${label}${ways}${ways && b.explain && !b.figure ? `<span>${escape(b.explain)}</span>` : why}</div>`;
     }
     case "now-you":
       return parent
         ? items()
-        : `<div class="outl"><div class="lab">Now you${b.label ? `: ${escape(b.label)}` : ""}</div><div class="list">${qs.map((q, k) => lineItem(q, band, null, 80, b.figures?.[k])).join("")}</div></div>`;
+        : `<div class="outl"><div class="lab" data-measure="heading-${i}">Now you${b.label ? `: ${escape(b.label)}` : ""}</div><div class="two">${qs.map((q, k) => lineItem(q, band, null, 80, b.figures?.[k])).join("")}</div></div>`;
     case "spot-the-error": {
+      if (!c.consistentLayout) {
+
       // Full width at every level: Sam's work, the yes/no strip and the fix box do not fit a half-width parent card.
       return `<div class="lab">SPOT THE ERROR</div><div class="outl">`
         + qs.map((q) => {
           const names = regionNames(q);
           const choice = names.find(x => x.region.kind === "choice");
           const box = names.find(x => x.region.kind === "box");
-          return `<div class="list" ${mark.question(q.number)}><div class="q"><span class="n">${q.number}</span>${text(q)}</div>`
+          return `<div class="list" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span>${text(q)}</div>`
             + `<div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div>`
             + `<div class="q"><span>Is it right?</span>${choice?.region.kind === "choice" ? regionHtml(q, { ...choice.region, label: null }, choice.name, { band, noTick: true }) : `<span class="strip"><span class="ch"><i class="tb"></i>Yes</span><span class="ch"><i class="tb"></i>No</span></span>`}</div>`
             + `<div>If it's not right, fix it:</div>${box ? regionHtml(q, box.region, box.name, { band }) : ""}</div>`;
         }).join("") + `</div>`;
+
+      }
+
+      // Full width at every level: Sam's work, the yes/no strip and the fix box do not fit a half-width parent card.
+      return `<div class="lab">SPOT THE ERROR</div><div class="outl">`
+        + qs.map((q) => {
+          const names = regionNames(q);
+          const choice = names.find(x => x.region.kind === "choice");
+          const box = names.find(x => x.region.kind === "box");
+          return `<div class="error-item" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span><span class="wk" ${mark.questionContent(q.number)}>${(b.lines ?? []).map(worked).join("<br>")}</span><span>Is it right?</span>${choice?.region.kind === "choice" ? regionHtml(q, { ...choice.region, label: null }, choice.name, { band, noTick: true }) : `<span class="strip"><span class="ch"><i class="tb"></i>Yes</span><span class="ch"><i class="tb"></i>No</span></span>`}</div>`
+            + `<div class="q"><span>If not, fix it:</span>${box ? regionHtml(q, box.region, box.name, { band }) : ""}</div></div>`;
+        }).join("") + `</div>`;
     }
 
     case "watch-one":
-      return chipHtml(PRACTICE, b.note) + `<div class="panel p-pr" style="display:flex;flex-direction:column;gap:8px"><div class="lab">Read the example${b.label ? ` · ${escape(b.label)}` : ""}</div><div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div></div>`;
+      return chipHtml(PRACTICE, b.note) + `<div class="panel p-pr" data-measure="panel-${i}" style="display:flex;flex-direction:column;gap:8px"><div class="lab">Read the example${b.label ? ` · ${escape(b.label)}` : ""}</div><div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div></div>`;
     case "finish-these":
-      return `<div class="lab">Finish these</div>` + items(ctx.six ? "two" : "list");
+      return `<div class="lab" data-measure="heading-${i}">Getting started</div>` + items(c.consistentLayout || ctx.six ? "two" : "list");
     case "on-your-own": {
-      const head = prev === "finish-these" ? `<div class="lab">On your own</div>` : chipHtml(PRACTICE, b.note);
+      const head = prev === "finish-these" ? `<div class="lab" data-measure="heading-${i}">On your own</div>` : chipHtml(PRACTICE, b.note);
       // Column sums on the 8-page day; the 6-page practice page lists them, as in the sample (DESIGN.md 7.2).
       const columns = band.name === "mid" && !parent && !ctx.six && qs.length > 0 && !b.figures?.some(Boolean) && qs.every((q) => ["add", "subtract", "multiply"].includes(q.package.operation?.kind ?? "") && packageItem(q.package).regions.length === 1);
-      return head + (columns ? list((q) => columnItem(q, band), "cols") : items(ctx.six ? "two" : "list"));
+      return head + (columns ? list((q) => columnItem(q, band), "cols") : items(c.consistentLayout || ctx.six ? "two" : "list"));
     }
     case "practice-row": {
       const head = prev === "practice-row" ? "" : chipHtml(PRACTICE, b.note);
@@ -880,25 +944,25 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
         const names = regionNames(q);
         const works = names.filter((x) => x.region.kind === "work").map((x) => regionHtml(q, x.region, x.name, { band, work: 110 })).join("");
         const boxes = names.filter((x) => x.region.kind === "box").map((x) => regionHtml(q, x.region, x.name, { band, labels: true })).join("");
-        return `<div class="tw" ${mark.question(q.number)}><div class="q"><span class="n">${q.number}</span><span class="lab" style="color:#0C0C0E">Solve it two ways</span><span class="qb">${qtext(q)}</span></div><div class="ways2">${works}${boxes}</div></div>`;
+        return `<div class="tw" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span><span class="lab" style="color:#0C0C0E">${c.consistentLayout ? "Use 2 ways" : "Solve it two ways"}</span><span class="qb">${qtext(q)}</span></div><div class="ways2">${works}${boxes}</div></div>`;
       }).join("");
     case "word-problems":
       return qs.map((q, k) => {
         const names = regionNames(q);
-        const work = names.filter((x) => x.region.kind === "work").map((x) => regionHtml(q, x.region, x.name, { band, work: band.name === "early" && qs.length === 2 ? 120 : 88 })).join("");
+        const work = names.filter((x) => x.region.kind === "work").map((x) => regionHtml(q, x.region, x.name, { band, work: c.consistentLayout ? workMinimum(c.level) : band.name === "early" && qs.length===2 ? 120 : 88 })).join("");
         const boxes = names.filter((x) => x.region.kind === "box" || x.region.kind === "choice").map((x) => regionHtml(q, x.region, x.name, { band, labels: true })).join("");
         const fig = b.figures?.[k];
-        return `<div class="story" ${mark.question(q.number)}><div class="head"><span class="sn">${q.number}</span><span class="qb">${text(q)}</span>${fig ? figureSvg(fig) : ""}</div><div class="act">${work}${boxes}</div></div>`;
+        return `<div class="story" ${mark.question(q.number)}><div class="head"><span class="sn">${questionNumber(q.number)}</span><span class="qb">${text(q)}</span>${fig ? figureSvg(fig,1,c.consistentLayout ? 40 : 30) : ""}</div><div class="act">${work}${boxes}</div></div>`;
       }).join("");
     case "how-do-you-know":
       return qs.map((q) => {
         const [lines] = regionNames(q);
-        return `<div ${mark.question(q.number)}><div class="ln" ${measureAttr(lines.name)}><div class="lp"><span class="n">${q.number}</span> ${text(q)}</div>${"<i></i>".repeat(LINES)}</div></div>`;
+        return `<div ${mark.question(q.number)}><div class="ln" ${measureAttr(lines.name)}><div class="lp"><span class="n">${questionNumber(q.number)}</span> ${text(q)}</div>${"<i></i>".repeat(LINES)}</div></div>`;
       }).join("");
     case "reminder": {
-      if (b.label === "Likelihood words") return chip(undefined, b.note) + `<div class="panel p-ni"><div class="lab">Likelihood words</div><div>${escape(b.explain ?? "")}</div></div>`;
-      const fig = b.figure ? figureSvg(b.figure) : "";
-      return chip(undefined, b.note) + `<div class="panel p-ni"><div class="fig2"><div style="display:flex;flex-direction:column;gap:8px"><div class="lab">${escape(b.label ?? "Remember")}</div>${fig}<div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div></div><div class="why"><div class="lab">What's going on</div><span>${escape(b.explain ?? "")}</span></div></div></div>`;
+      if (b.label === "Likelihood words") return chip(undefined, b.note) + `<div class="panel p-ni" data-measure="panel-${i}"><div class="lab">Likelihood words</div><div>${escape(b.explain ?? "")}</div></div>`;
+      const fig = b.figure ? figureSvg(b.figure,1,c.consistentLayout ? 40 : 30) : "";
+      return chip(undefined, b.note) + `<div class="panel p-ni" data-measure="panel-${i}"><div class="fig2"><div style="display:flex;flex-direction:column;gap:8px"><div class="lab">${escape(b.label ?? "Remember")}</div>${fig}<div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div></div><div class="why"><div class="lab">What's going on</div><span>${escape(b.explain ?? "")}</span></div></div></div>`;
     }
     case "mixed-set":
       return chip() + `<div class="mxs">` + qs.map((q) => {
@@ -908,7 +972,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
         const box = pick("box");
         const work = pick("work");
         const choices = tick && tick.region.kind === "choice" ? tick.region.choices.map((c) => `<span class="ch"><i class="tb"></i><span>${escape(c)}</span></span>`).join("") : "";
-        return `<div class="mx" ${mark.question(q.number)}><div class="q"><span class="n">${q.number}</span><span class="qb">${text(q)}</span></div>`
+        return `<div class="mx" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span><span class="qb">${text(q)}</span></div>`
           + (tick ? `<div class="stp"><span class="sb">1</span><span class="sl">Tick the operation:</span><span class="strip" ${measureAttr(tick.name)}>${choices}</span><span class="t1"><span>Tick one</span><i>✓</i></span></div>` : "")
           + (box ? `<div class="stp"><span class="sb">2</span><span class="sl">Write the answer:</span>${regionHtml(q, box.region, box.name, { band })}${work ? regionHtml(q, work.region, work.name, { band, work: 64 }) : ""}</div>` : "")
           + `</div>`;
@@ -916,7 +980,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     case "picture-stories":
       return chip() + list((q, k) => parentItem(q, band, b.figures?.[k]), "pcards");
     case "friday-5": case "unit-check": case "mini-test": case "already-know-it":
-      return chip() + items(parent ? "pcards" : qs.length > 5 ? "two" : "list");
+      return chip() + items(parent ? "pcards" : c.consistentLayout || qs.length>5 ? "two" : "list");
     case "show-what-you-know": case "level-test": {
       // The test and the celebration fill their page: each item is a card in a grid whose rows share the room left
       // under the chip, and its work area grows into its card (an item with no work region gets a plain one).
@@ -925,15 +989,26 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       return chip() + `<div class="fill" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${qs.map((q) => {
         const { inline, full } = regionsSplit(q, { band, work: "fill", labels: true });
         const work = full || `<div class="wb"><span class="lab">Show your work</span></div>`;
-        return `<div class="tc" ${mark.question(q.number)}><div class="q"><span class="badge">${q.number}</span><span class="qb">${qtext(q)}</span><span class="rgs">${inline}</span></div>${work}</div>`;
+        return `<div class="tc" ${mark.question(q.number)}><div class="q"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${qtext(q)}</span><span class="rgs">${inline}</span></div>${work}</div>`;
       }).join("")}</div>`;
     }
     case "challenge": {
+      if (!c.consistentLayout) {
+
       const side = ctx.six && qs.length === 2;
       const work = "fill" as const;
       return chip() + `<div class="chs${side ? " side2" : ""}">${qs.map((q) => {
         const { inline, full } = regionsSplit(q, { band, work });
-        return `<div class="chc" ${mark.question(q.number)}><div class="top"><span class="badge">${q.number}</span><span class="qb">${text(q)}</span>${inline}</div>${full}</div>`;
+        return `<div class="chc" ${mark.question(q.number)}><div class="top"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${text(q)}</span>${inline}</div>${full}</div>`;
+      }).join("")}</div>`;
+
+      }
+
+      const side = ctx.six && qs.length === 2;
+      const work = c.consistentLayout ? workMinimum(c.level) : "fill" as const;
+      return chip() + `<div class="chs${side ? " side2" : ""}">${qs.map((q) => {
+        const { inline, full } = regionsSplit(q, { band, work });
+        return `<div class="chc" ${mark.question(q.number)}><div class="top"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${text(q)}</span></div><div class="act">${full}${inline}</div></div>`;
       }).join("")}</div>`;
     }
     case "math-in-the-world": {
@@ -942,10 +1017,10 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
         const names = regionNames(q);
         const boxes = names.filter((x) => x.region.kind === "box");
         if (boxes.length > 1) {
-          return `<div class="list" ${mark.question(q.number)}><div class="q"><span class="n">${q.number}</span><span class="qb">${text(q)}</span></div><div class="parts">${boxes.map((x) => regionHtml(q, x.region, x.name, { band, labels: true }).replace(`<span class="rl box">`, `<span class="rl">`)).join("")}</div></div>`;
+          return `<div class="list" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span><span class="qb">${text(q)}</span></div><div class="parts">${boxes.map((x) => regionHtml(q, x.region, x.name, { band, labels: true }).replace(`<span class="rl box">`, `<span class="rl">`)).join("")}</div></div>`;
         }
         const { inline, full } = regionsSplit(q, { band, work: 120, labels: true });
-        return `<div class="list" ${mark.question(q.number)}><div class="q"><span class="n">${q.number}</span><span class="qb">${text(q)}</span><span class="rgs">${inline}</span></div>${full}</div>`;
+        return `<div class="list" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span><span class="qb">${text(q)}</span><span class="rgs">${inline}</span></div>${full}</div>`;
       }).join("");
     }
   }
@@ -964,7 +1039,7 @@ function footer(page: DraftPage, parts: PageParts, id: string): string {
 }
 
 function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
-  const band = bandOf(c.level);
+  const band:Band = {...bandOf(c.level),consistentLayout:c.consistentLayout};
   const byNumber = new Map(page.questions.map((q) => [q.number, q]));
   const ctx: Ctx = {
     page, c, band, six: c.pages <= 6 && band.name === "mid",
@@ -974,14 +1049,14 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
       return q;
     },
   };
-  const label = dayLabel(c.day, c.page, c.pages);
+  const label = c.extraPractice ? "Extra practice" : dayLabel(c.day, c.page, c.pages);
   const header = `<header class="hd">${c.page === 1 ? `<div class="nd" ${mark.slot("name-date")}><span>Name</span><i class="r1"></i><span>Date</span><i class="r2"></i></div>` : ""}`
     + `<div class="dl" ${mark.slot("day-label")}>${escape(label)}</div><h1 class="tt" ${mark.slot("title")}>${escape(c.title)}</h1>`
     + `<p class="st" ${mark.slot("subtitle")}>${escape(c.subtitle)}</p>`
     + (c.level <= 3 && c.grownUp ? `<p class="gu" ${mark.slot("grown-up")}><b>For the grown-up:</b> ${escape(c.grownUp)}</p>` : "") + `</header>`;
   // A Challenge block takes the free room of its page: its work boxes grow into it (DESIGN.md section 4).
-  const blocks = c.blocks.map((b, i) => `<section class="blk${GROW.has(b.slot) ? " grow" : ""}"${b.slot === "in-your-head" ? ` style="flex:0 0 auto"` : ""} data-measure="block-${i}">${blockHtml(b, i, ctx)}${missingHtml(b)}</section>`).join("");
-  return `<div class="pg ${band.name} f-${familyOf(page, c)}">${scanMarks}<div class="frame">${header}<main class="ct" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
+  const blocks = c.blocks.map((b, i) => `<section class="blk${GROW.has(b.slot) || c.consistentLayout && b.slot === "word-problems" ? " grow" : ""}"${b.slot === "in-your-head" ? ` style="flex:0 0 auto"` : ""} data-slot="${b.slot}" data-measure="block-${i}">${blockHtml(b, i, ctx).replace(/<div class="chiprow"/g, (tag, at: number) => `${tag} data-measure="chip-${i}-${at}"`).replace(/<div class="lab"([^>]*)>/g, (tag, attrs: string, at: number) => attrs.includes("data-measure") ? tag : `<div class="lab" data-measure="label-${i}-${at}"${attrs}>`)}${missingHtml(b)}</section>`).join("");
+  return `<div class="pg ${band.name}${c.consistentLayout ? " consistent" : ""} f-${familyOf(page, c)}" data-page-type="${page.type}" style="--work-min:${c.consistentLayout ? workMinimum(c.level) : 64}px">${scanMarks}<div class="frame">${header}<main class="ct" style="--extra-gap:${Math.max(0,Math.min(48,c.extraGap ?? 0))}px" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
 }
 
 /** A failed question with nothing to print: a red placeholder with its number and why (review drafts only). */
@@ -995,7 +1070,7 @@ function coverPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, { 
   return `<div class="pg mid">${scanMarks}<div class="cv" ${mark.slot("page")}><div class="top">${wordmark}<span class="wn">Workbook ${c.workbook} · 10 days</span></div>${UNICA_MARK}`
     + `<div class="for" ${mark.slot("made-for")}>Made for ${escape(c.child)} · Level U${c.level}</div>`
     + `<h1 ${mark.slot("cover-title")}>${escape(c.title[0])}<br><span class="hl">${escape(c.title[1])}</span></h1>`
-    + `<div class="made" ${mark.slot("made-from")}><span class="lab">${escape(label)}</span><p>${escape(c.sentence)}</p><ul>${c.bullets.map((x) => `<li><i></i><span>${escape(x)}</span></li>`).join("")}</ul></div>`
+    + `<div class="made" ${mark.slot("made-from")}><span class="lab">${escape(label)}</span><p>${escape(c.sentence)}</p></div>`
     + `</div>${footer(page, parts, c.id)}</div>`;
 }
 
@@ -1026,21 +1101,38 @@ const overlap = (a: MeasuredElement, b: MeasuredElement) =>
   Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
 const where = (page: DraftPage, c: DayContent) => `day ${c.day} page ${c.page} (${page.type})`;
 
-/** Fraction of the content height used by questions, writing space and teaching panels. */
-export function pageFullness(page: DraftPage, measured: ReadonlyMap<string, MeasuredElement>): number | null {
+/** Union of occupied vertical intervals. Gaps never count as content. */
+export function pageSpace(page: DraftPage, measured: ReadonlyMap<string, MeasuredElement>): { fraction: number; empty: number; largestGap: number; bottom: number; span: number } | null {
   const area = measured.get("slot-content");
   const bounds = page.questions.map(q => measured.get(`question-${q.number}`));
   if (!area?.visible || area.clientHeight <= 0 || bounds.length === 0 || bounds.some(m => !m?.visible)) return null;
   const panels = page.content?.kind === "day" ? page.content.blocks.flatMap((b, i) => ["worked-example", "watch-one", "reminder"].includes(b.slot) ? [measured.get(`block-${i}`)] : []) : [];
   if (panels.some(m => !m?.visible)) return null;
-  const rows = [...bounds, ...panels] as MeasuredElement[];
-  return Math.min(1, (Math.max(...rows.map(bottomOf)) - Math.min(...rows.map(m => m.y))) / area.clientHeight);
+  const headings=[...measured].filter(([name])=>/^(?:chip|heading|label)-/.test(name)).map(([,m])=>m);
+  const rows = ([...bounds, ...panels, ...headings] as MeasuredElement[]).map(m => [Math.max(area.y,m.y),Math.min(area.y+area.clientHeight,bottomOf(m))]).sort((a,b)=>a[0]-b[0]);
+  const merged: number[][] = [];
+  for (const row of rows) {
+    const last=merged.at(-1);
+    if (last && row[0]<=last[1]) last[1]=Math.max(last[1],row[1]); else merged.push(row);
+  }
+  const occupied=merged.reduce((n,[from,to])=>n+Math.max(0,to-from),0);
+  const gaps=merged.slice(1).map((row,i)=>row[0]-merged[i][1]);
+  return {fraction:occupied/area.clientHeight,empty:area.clientHeight-occupied,largestGap:Math.max(0,...gaps),bottom:area.y+area.clientHeight-merged.at(-1)![1],span:(merged.at(-1)![1]-merged[0][0])/area.clientHeight};
+}
+
+export function pageFullness(page: DraftPage, measured: ReadonlyMap<string, MeasuredElement>): number | null {
+  return pageSpace(page,measured)?.fraction ?? null;
 }
 
 export function fullnessProblem(page: DraftPage, measured: ReadonlyMap<string, MeasuredElement>): string | null {
-  const fullness = pageFullness(page, measured);
-  if (fullness === null) return "The page fullness could not be measured.";
-  return fullness < .8 ? `Questions and teaching panels use ${Math.round(100 * fullness)}% of the page height; the target is at least 80%. Add questions or increase writing space.` : null;
+  const use=pageSpace(page,measured);
+  if (!use) return "The page fullness could not be measured.";
+  if (use.largestGap>60.5) return `The page has a ${Math.round(use.largestGap)} px unoccupied gap; allow 12 px plus at most 48 px extra.`;
+  if (use.fraction>=.85) return null;
+  // At the page maximum, Cedric permits evenly distributed spacing. Report the
+  // true occupied fraction separately; never relabel a gap as occupied space.
+  if (page.content?.kind==="day" && page.content.fillingComplete && use.span>=.85 && use.bottom<=measured.get("slot-content")!.clientHeight*.15) return null;
+  return `Questions and teaching panels occupy ${Math.round(100*use.fraction)}% of the page height; add an item up to the page maximum, then spread gaps by at most 48 px.`;
 }
 
 /** The template's fit check of a laid-out day page (see the header). */
@@ -1050,6 +1142,12 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
   const band = bandOf(c.level);
   const at = where(page, c);
   const problems: FitProblem[] = [];
+  if(c.consistentLayout) c.blocks.forEach((b,i)=>{
+    if (!["worked-example","watch-one","reminder"].includes(b.slot)) return;
+    const panel=measured.get(`panel-${i}`);
+    const max=b.slot === "reminder" ? 160 : 260;
+    if(!panel?.visible || panel.height>max+.5) problems.push({question:null,slot:b.slot,reason:`${at}: the ${b.slot} panel must fit ${max} px`});
+  });
   c.blocks.forEach((b) => {
     const max = slotMax(b.slot, c);
     if (b.items.length > max) problems.push({ question: null, slot: b.slot, reason: `${at}: the ${b.slot} slot holds ${b.items.length} items; it takes at most ${max}` });
@@ -1112,9 +1210,10 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
       const small = (what: string, size: number, min: number) =>
         problems.push({ question: q.number, slot: slotOf(q.number), reason: `${at}: question ${q.number}'s ${what} is ${Math.floor(size)} px; the design allows no less than ${min}` });
       if (region.kind === "box") {
-        if (m.height < band.box - 0.5) small("answer box height", m.height, band.box);
-        if (m.width < ANSWER_MIN - 0.5) small("answer box width", m.width, ANSWER_MIN);
-      } else if (region.kind === "work" && m.height < WORK_MIN - 0.5) small("work box height", m.height, WORK_MIN);
+        const minimum=c.consistentLayout ? c.level<=3 ? 56 : 48 : band.box;
+        if (m.height < minimum - 0.5) small("answer box height", m.height, minimum);
+        if (m.width < (c.consistentLayout ? 48 : ANSWER_MIN) - 0.5) small("answer box width", m.width, c.consistentLayout ? 48 : ANSWER_MIN);
+      } else if (region.kind === "work" && m.height < (c.consistentLayout ? workMinimum(c.level) : WORK_MIN) - 0.5) small("work box height", m.height, c.consistentLayout ? workMinimum(c.level) : WORK_MIN);
       else if (region.kind === "lines" && m.height < LINE_FIRST + LINE_NEXT * (LINES - 1) - 0.5) small("writing space", m.height, LINE_FIRST + LINE_NEXT * (LINES - 1));
     }
   }

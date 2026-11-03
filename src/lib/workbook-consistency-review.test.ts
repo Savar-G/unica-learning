@@ -45,6 +45,7 @@ describe("the approved skill audit", () => {
       expect(p,skill).not.toBeNull();
       expect(skillItemProblem(p!)).toBeNull();
       const b = buildPlannedItem(p!,p!.item,{id:"q",workbookId:"00000000-0000-4000-8000-0000000000a1",page:3,question:1,level,skills:[skill]});
+      if (p!.type === "places") expect(b.package?.text).toContain(String(p!.item.numbers[0].value));
       expect(b.check.status,`${skill}: ${JSON.stringify(p!.item)} ${JSON.stringify(b.check)}`).not.toBe("failed");
     }
   });
@@ -72,7 +73,7 @@ it("retains five Friday questions and gives every Challenge more reasoning than 
   expect(failures,JSON.stringify(failures)).toEqual([]);
   for (const day of [5,10]) expect(draft.pages.filter(p=>p.day===day).flatMap(p=>p.questions).filter(q=>q.part==="friday-5").length).toBe(5);
   const challenges = draft.pages.flatMap(p=>p.questions.filter(q=>q.place==="challenge").map(q=>({q,day:p.day!})));
-  expect(challenges).toHaveLength(20);
+  expect(challenges).toHaveLength(30);
   for (const {q,day} of challenges) {
     const practice = draft.pages.filter(p=>p.day===day).flatMap(p=>p.questions).filter(q=>q.place!=="challenge" && q.package);
     expect(reasoningSteps(q.package!)).toBeGreaterThan(Math.max(...practice.map(q=>reasoningSteps(q.package!))));
@@ -87,19 +88,10 @@ it("retains five Friday questions and gives every Challenge more reasoning than 
 it("measures the capacity before a writer call and protects Friday 5 when optional review does not fit", async () => {
   const o=fixture();
   o.input.plan={...o.input.plan,days:[o.input.plan.days[4],o.input.plan.days[9]].map(d=>({...d,pages:d.pages.filter(p=>p.parts.some(p=>p.kind==="friday-5"))}))};
-  let measures=0;
-  o.deps.fit={fits:async p=>{measures++;const friday=p.questions.filter(q=>p.content?.kind==="day" && p.content.blocks.find(b=>b.slot==="friday-5")?.items.includes(q.number));
-    if (p.questions.length>6) { expect(o.ai.requests).toHaveLength(0); return {ok:false,problems:[{question:null,reason:"the combined blocks exceed the page capacity"}]}; }
-    expect(friday).toHaveLength(5); return {ok:true}; }};
-  const {draft}=await make(o);
-  expect(measures).toBeGreaterThan(2);
-  expect(draft.pages.flatMap(p=>p.questions).filter(q=>q.part==="friday-5")).toHaveLength(10);
-  expect(draft.quality!.dropped).toBe(0);
-  const missing=structuredClone(draft.pages);
-  const friday=missing.find(p=>p.questions.some(q=>q.part==="friday-5"))!;
-  friday.questions=friday.questions.filter(q=>q.part!=="friday-5");
-  expect(workbookQuality(missing).issues.some(i=>i.kind==="coverage")).toBe(true);
-  expect(workbookQuality(missing).ready).toBe(false);
+  o.deps.fit={fits:async()=>({ok:false,problems:[{question:null,reason:"the template has fewer than the required nine places"}]})};
+  await expect(generateWorkbook(o.input,o.deps)).resolves.toMatchObject({status:"refused"});
+  expect(o.ai.requests).toHaveLength(0);
+
 });
 
 it("retains the saved policy and examples through generation and editing",async()=>{
@@ -127,7 +119,7 @@ it("retains the saved policy and examples through generation and editing",async(
   expect(forbidden.requests).toEqual([]);
 });
 
-it("uses a complete code title for every level and prints U4's learning list",()=>{
+it("uses a complete code title for every level and prints U4's single learning sentence",()=>{
   for(let level=1;level<=30;level++) {
     const lines=coverTitleLines(workbookCoverTitle(level));
     expect(lines.join(" ").trim()).toBe(workbookCoverTitle(level));
@@ -135,8 +127,9 @@ it("uses a complete code title for every level and prints U4's learning list",()
   }
   const {input}=fixture();
   const cover=bookPageContent({curriculum:c,plan:workbookCapacityPlan(c,input.plan),child:"Noah",workbook:1,type:"cover",number:1});
-  expect(cover).toMatchObject({kind:"cover",levelTitle:"Counting and adding to 20"});
-  expect(cover?.kind==="cover" && cover.bullets?.length).toBeGreaterThan(0);
+  expect(cover).toMatchObject({kind:"cover",levelTitle:"Numbers to 20"});
+  expect(cover?.kind==="cover" && cover.bullets).toEqual([]);
+  expect(cover?.kind==="cover" && cover.sentence).toBe("Noah will count, read and write numbers up to 20, and learn how numbers split into smaller parts.");
 });
 
 const chromium = await findChromium();
@@ -170,17 +163,17 @@ it("rejects changed-name duplicates and page and book type excesses through the 
 
 it("saves the measured capacity and contracts before a writer call and reuses that exact plan",async()=>{
   const o=fixture();o.input.plan={...o.input.plan,days:[o.input.plan.days[4]].map(d=>({...d,pages:d.pages.filter(p=>p.parts.some(p=>p.kind==="friday-5"))}))};
-  const fit={fits:async(p:Parameters<GenerateDeps["fit"]["fits"]>[0])=>p.questions.length>6?{ok:false as const,problems:[{question:null,reason:"too many cards"}]}:{ok:true as const}};
+  const fit={fits:async(p:Parameters<GenerateDeps["fit"]["fits"]>[0])=>p.questions.length>9?{ok:false as const,problems:[{question:null,reason:"too many cards"}]}:{ok:true as const}};
   const plan=await prepareWorkbookCapacity(o.input,fit);
   expect(o.ai.requests).toEqual([]);
   const p=plan.days[0].pages[0];
   expect(p.capacityChecked).toBe(true);
-  expect(Object.keys(p.itemContracts!)).toHaveLength(6);
+  expect(Object.keys(p.itemContracts!)).toHaveLength(9);
   expect(p.capacity!.filter(s=>s.slot==="friday-5").reduce((n,s)=>n+s.items,0)).toBe(5);
   const ready={...o.input,plan};
   const hash=bookOutline(ready);
   const {draft}=await make({...o,input:ready});
-  expect(draft.pages.find(p=>p.day!==null)!.questions).toHaveLength(6);
+  expect(draft.pages.find(p=>p.day!==null)!.questions).toHaveLength(9);
   expect(bookOutline(ready)).toBe(hash);
 });
 
@@ -256,4 +249,47 @@ it("keeps uncovered U14 skills on the existing writer and preserves their policy
   const q=page.questions.find(q=>q.existing && q.package && q.place!=="spot-the-error")!;
   const edited=await reviseWorkbookPage(o.input,o.deps,page,{question:q.number,note:"Keep the numbers."});
   expect(edited.questions.find(x=>x.number===q.number)!.package!.operation).toEqual(q.package!.operation);
+});
+
+it("keeps checked teaching panels when the whole-book pass repairs a saved question",async()=>{
+  const o=fixture();o.input.plan={...o.input.plan,days:o.input.plan.days.slice(0,1)};
+  const saved=new Map<number,import('./workbook-generator').GeneratedPage>();
+  let loads=0;
+  o.deps.pages={load:async()=>{
+    loads++;
+    const pages=structuredClone([...saved.values()]);
+    if(loads>1) {
+      const first=pages.find(p=>p.number===3)!;
+      const teaching=pages.find(p=>p.number===4)!;
+      teaching.questions[0].package=structuredClone(first.questions[0].package);
+    }
+    return pages;
+  },save:async p=>{saved.set(p.number,structuredClone(p));}};
+  const {draft}=await make(o);
+  const before=saved.get(4)!;
+  const after=draft.pages.find(p=>p.number===4)!;
+  expect(after.questions[0].package).not.toEqual(before.questions[0].package && saved.get(3)!.questions[0].package);
+  expect(after.content?.kind==="day" && after.content.blocks.filter(b=>b.slot==="worked-example"))
+    .toEqual(before.content?.kind==="day" && before.content.blocks.filter(b=>b.slot==="worked-example"));
+  expect(after.panelExamples).toEqual(before.panelExamples);
+  const empty=structuredClone(after);
+  if(empty.content?.kind!=="day") throw Error("missing day content");
+  const panel=empty.content.blocks.find(b=>b.slot==="worked-example")!;
+  Object.assign(panel,{methods:[],lines:[],figure:undefined});
+  expect(workbookQuality([empty]).issues.some(i=>i.kind==="coverage" && i.reason.includes("panel"))).toBe(true);
+});
+
+it("rejects an exact code sequence on another practice page and confines the fluency exception to warm-up",async()=>{
+  const o=fixture();o.input.plan={...o.input.plan,days:o.input.plan.days.slice(0,1)};
+  const {draft}=await make(o);
+  const first=draft.pages.find(p=>p.questions.some(q=>q.package?.item?.checks.some(c=>c.kind==="sequence")))!;
+  const q=first.questions.find(q=>q.package?.item?.checks.some(c=>c.kind==="sequence"))!;
+  for(const existing of [false,true]) {
+    const a={...first,number:101,expected:undefined,questions:[{...q,existing}]};
+    const b={...a,number:102};
+    expect(workbookQuality([a,b]).issues.some(i=>i.kind==="repeat")).toBe(true);
+    a.questions[0].place="warm-up";
+    b.questions=[{...a.questions[0]}];
+    expect(workbookQuality([a,b]).issues.some(i=>i.kind==="repeat")).toBe(false);
+  }
 });

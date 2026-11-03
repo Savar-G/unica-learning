@@ -3,7 +3,7 @@ const TITLES: Readonly<Record<number, string>> = {
   1: "Counting to 10",
   2: "Making 5 and comparing",
   3: "Adding and taking away",
-  4: "Counting and adding to 20",
+  4: "Numbers to 20",
   5: "Adding and subtracting to 20",
   6: "Measuring and sorting shapes",
   7: "Counting and comparing to 100",

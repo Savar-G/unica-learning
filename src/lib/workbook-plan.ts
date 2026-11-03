@@ -238,6 +238,9 @@ export interface PlannedPart {
 }
 
 export interface PlannedPage {
+  extraPractice?: boolean;
+  extraGap?: number;
+  fillingComplete?: boolean;
   /** Approved pipeline capacity. The writer and layout consume this same budget. */
   capacity?: import("./workbook-page").PlannedSlot[];
   capacityChecked?: boolean;
@@ -293,6 +296,7 @@ export interface WorkbookPlan {
   checks: { unit: string; kind: "unit-check" | "already-know-it"; day: number }[];
   /** Units of `unassessedUnits` that are not in this level: the placement checks cover the starting level only. */
   checksSkipped: string[];
+  extraPractice?: PlannedPage[];
   days: PlannedDay[];
 }
 

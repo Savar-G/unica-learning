@@ -30,6 +30,7 @@ import {
   type PlannedSlot,
 } from "@/lib/workbook-page";
 import { DEFAULT_STEPS, planLevel, planWorkbook, type PlanInput, type PlannedPage, type WorkbookPlan } from "@/lib/workbook-plan";
+import { workbookCoverTitle } from "@/lib/workbook-cover-titles";
 import { bookPageContent, coverTitleLines, dayHeader, pageTopic } from "@/lib/workbook-book";
 import type { WorkbookDraft } from "@/lib/workbook-render";
 
@@ -549,7 +550,7 @@ export function sampleBook(o: SampleBookOptions): SampleBook {
   const plan = result.plan;
   let key = 0;
   const band = bandOf(level.number);
-  const title = BC.level(o.level)!.title;
+  const title = workbookCoverTitle(level.number);
   // The cover title is two lines of at most COVER_LINE characters (66 px type): the level's title, else its first part.
   const coverTitle = coverTitleLines(title);
   const dayTopic = (day: number, track: "A" | "B") => {

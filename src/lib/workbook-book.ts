@@ -1030,8 +1030,9 @@ export function bookPageContent(o: {
       return {
         kind: "cover", id: id("COVER"), level, child, workbook, levelTitle: title, title: coverTitleLines(title),
         madeFrom: workbook === 1 ? "assessment" : "last-workbook", pagesADay, minutes: { ...plan.timeTarget },
-        sentence: `In this workbook, ${child} will learn to:`,
-        bullets: coverSkills(plan),
+        sentence: level === 4 ? `${child} will count, read and write numbers up to 20, and learn how numbers split into smaller parts.`
+          : `${child} will ${coverSkills(plan).map(x => x[0].toLowerCase() + x.slice(1)).join(", ").replace(/, ([^,]+)$/, ", and $1")}.`,
+        bullets: [],
         parentLine: "",
       };
     }

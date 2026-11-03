@@ -44,5 +44,14 @@ it("measures the printed content and keeps an unknown measurement unknown", () =
   const pages = [0,1].map(i=>({ number:i+1, dayLabel:"Day 1", type:"practice" as const, qrToken:"token-000000000001", questions }));
   const m = (sheet:number,name:string,y:number,height:number) => ({sheet,name,y,height,x:0,width:688,clientWidth:688,clientHeight:height,scrollWidth:688,scrollHeight:height,visible:true,textPrinted:true,text:""});
   const q = measuredPageUse(pages,[m(0,"slot-content",100,800),m(0,"question-1",100,400),m(0,"question-2",520,300),m(1,"sheet",0,1000)]);
-  expect(q).toEqual([{ page: 1, fraction: .9 }, { page: 2, fraction: null }]);
+  expect(q).toEqual([{ page: 1, fraction: .875 }, { page: 2, fraction: null }]);
+});
+
+it("checks rejected wording in teaching panels as well as in question text",()=>{
+  const p=page(3,1);
+  p.content={kind:"day",id:"test",level:6,day:1,page:1,pages:8,topic:"Shapes",title:"Shapes",subtitle:"Answer the questions.",grownUp:null,
+    blocks:[{slot:"worked-example",items:[],methods:[{label:"An example",lines:["Draw a triangle."]}]}]};
+  expect(workbookQuality([p]).issues.some(i=>i.reason.includes("rejected workbook wording"))).toBe(true);
+  p.content.blocks[0].methods![0].lines=["Look at the printed triangle."];
+  expect(workbookQuality([p]).issues.some(i=>i.reason.includes("rejected workbook wording"))).toBe(false);
 });

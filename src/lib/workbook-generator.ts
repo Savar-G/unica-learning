@@ -72,11 +72,11 @@ import { dayDifficulty, type PageType, type PlannedPage, type PlannedPart, type 
 import { scheduledItemProblem } from "@/lib/workbook-feedback-check";
 import { workbookEditItem } from "@/lib/workbook-edit-item";
 import type { DraftPage } from "@/lib/workbook-render";
-import { textRoom } from "@/lib/workbook-template";
+import { textRoom, slotMax } from "@/lib/workbook-template";
 
 import { checkWholeBook, type BookQuality } from "@/lib/workbook-quality";
 import { approvedQuestionTypes, buildPlannedItem, planItem, itemExamples, ITEM_EXAMPLES, type ItemPlan } from "@/lib/workbook-item-plan";
-import { storyFrame, taskType } from "@/lib/workbook-task-identity";
+import { storyFrame, taskType, wordedTask } from "@/lib/workbook-task-identity";
 import { COMPACT_STORY_FRAMES } from "@/lib/workbook-story-bank";
 
 /** The shared schedule bounds every code-picked item in its skill's range. */
@@ -88,6 +88,14 @@ function contractFor(input: GenerateInput, w: PageWork, slot: Slot, attempt = 0,
     : slot.part.skills[(((Number(slot.id.split(".")[1]) || 1) - 1) + attempt) % slot.part.skills.length]);
   if (!skill) return null;
   if (!approvedQuestionTypes(skill).length) return null;
+  if (["mixed-set","spot-the-error","solve-it-two-ways"].includes(slot.place ?? "") && approvedQuestionTypes(skill).every(t=>["places","order","count","relation","likelihood"].includes(t))) {
+    if(skillOverride) return null;
+    for(const other of slot.part.skills.filter(s=>s!==skill)) {
+      const alternative=contractFor(input,w,slot,attempt,other);
+      if(alternative) return alternative;
+    }
+    return null;
+  }
   const max = skillRange(input.curriculum, input.plan.level, skill).max;
   const schedule = dayDifficulty(input.plan.level, w.day);
   const cap = Math.min(schedule.numberRange.max, Math.max(5, Math.ceil(max * schedule.rangeFraction)));
@@ -190,6 +198,8 @@ export interface GeneratedPage {
    * Set on every page when the book is laid out for the templates (GenerateInput.book); else absent.
    */
   content?: PageContent;
+  /** Checked examples stay with the page through whole-book repairs and recovery. */
+  panelExamples?: (QuestionPackage | null)[];
   /**
    * Planned items the page has no room for, with why: from the layout (pageSlots), and the questions the fit check left
    * out (`leftOut`); only on a day page that leaves some out.
@@ -921,7 +931,7 @@ function varyNumber(key: string, max: number): number {
 
 /** A slot's text room on a day's page (textRoom), for the plan's level and the day's page count. */
 function roomOf(input: GenerateInput, place: SlotName, day: number) {
-  return textRoom(place, input.plan.level, input.plan.days.find((d) => d.day === day)?.pages.length ?? 8);
+  return textRoom(place, input.plan.level, input.plan.days.find((d) => d.day === day)?.pages.length ?? 8, input.itemPolicy === "approved-v1");
 }
 
 /**
@@ -1018,7 +1028,7 @@ const REVIEW_PLACES: ReadonlySet<SlotName> = new Set<SlotName>(["remember-these"
 function duplicateProblem(p: QuestionPackage, place: SlotName | null, memory: BookMemory | null, siblings: { number: number; package: QuestionPackage }[]): string | null {
   const key = dupKey(p);
   // Warm-up facts come back day after day on purpose (fluency): only a repeat on the same page counts there.
-  const at = place === "warm-up" || p.textSource === "code" ? undefined : memory?.keys.get(key);
+  const at = place === "warm-up" ? undefined : memory?.keys.get(key);
   if (at !== undefined) return `it repeats a question already asked on page ${at} ("${p.text}"): write a different question`;
   const shape = shapeOf(p.text);
   // A relation's words are code's (round 6), and so are a whole-number question's at U1 to U9 (round 7): code prints the
@@ -1642,15 +1652,24 @@ function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuesti
   if (input.itemPolicy === "approved-v1" && content.kind === "day") {
     content.blocks.forEach((block, index) => {
       const part = w.page.parts[w.layout!.slots[keep[index]]?.part];
+      if (block.slot === "reminder" && !part?.skills.every(skill=>/likelihood/.test(skill))) { block.explain=undefined; block.lines=block.lines?.slice(-2); }
+      if (block.slot === "spot-the-error" && block.lines) block.lines=block.lines.slice(-1);
       if (["worked-example", "watch-one", "reminder"].includes(block.slot) && part?.skills.every(skill => /likelihood/.test(skill))) {
         block.label = "Likelihood words";
         block.methods = [];
         block.figure = undefined;
         block.lines = ["A stone cannot grow legs. Circle never."];
-        block.explain = "Never means it cannot happen. Maybe means it can happen. Always means it happens every time.";
+        block.explain = "Never means it cannot happen. Sometimes means it can happen. Always means it happens every time.";
         if (block.slot !== "worked-example") block.lines.push(block.explain);
       }
     });
+  }
+  if (content.kind === "day") {
+    content.extraGap = w.page.extraGap ?? 0;
+    content.consistentLayout = input.itemPolicy === "approved-v1";
+    content.fillingComplete = w.page.fillingComplete;
+    if(questions.some(q=>q.package?.item?.format === "circle")) content.subtitle="Circle a word or write the answer.";
+    if (w.page.extraPractice) Object.assign(content, { extraPractice: true, title: "Extra practice", subtitle: "Answer questions from this workbook." });
   }
   return content;
 }
@@ -1691,7 +1710,9 @@ async function pool<T>(items: T[], limit: number, run: (item: T) => Promise<void
  */
 /** Apply the template capacity before assigning an item or asking the writer. */
 export function workbookCapacityPlan(curriculum: Curriculum, plan: WorkbookPlan): WorkbookPlan {
+  const taught = new Set<string>();
   return { ...plan, days: plan.days.map(day => ({ ...day, pages: day.pages.map(page => {
+    page = { ...page, parts: page.parts.map(p=>p.kind === "remember-these" && taught.size ? {...p,skills:[...new Set([...p.skills,...taught])]} : p) };
     if (page.capacity) return page;
     const layout = layoutDayPage(curriculum, plan, day.day, page);
     // Friday 5 owns its five places. Optional review shares the remaining room.
@@ -1700,21 +1721,47 @@ export function workbookCapacityPlan(curriculum: Curriculum, plan: WorkbookPlan)
       const at = layout.slots.find(s => s.slot === "friday-5");
       if (at) at.items = 5; else layout.slots.push({ slot: "friday-5", part: friday, items: 5 });
     }
+    if(page.type === "unit-b") for(const s of layout.slots) if(s.slot === "worked-example") s.slot="reminder";
+    const reduced = plan.level >= 19;
+    const target = (n: number) => reduced ? Math.ceil(n * .75) : n;
+    const has = (name: SlotName) => layout.slots.some(s => s.slot === name);
     for (const s of layout.slots) {
-      if (s.slot === "remember-these") s.items = Math.min(s.items, friday >= 0 ? 2 : 4);
-      if (plan.level >= 10 && s.slot === "now-you" && page.parts.some(p=>p.kind==="spot-the-error")) s.items = Math.min(s.items,1);
-      if (plan.level >= 10 && s.slot === "unit-b-practice" && page.parts.some(p=>p.kind==="new-idea") && page.parts.some(p=>p.kind==="spot-the-error")) s.items=Math.min(s.items,2);
+      if(page.type === "remember-these" && s.slot === "picture-stories") s.slot="unit-b-practice";
+      if (s.slot === "remember-these") s.items = ["word-problems","challenge","unit-b","new-idea"].includes(page.type) ? 0 : target(friday >= 0 ? 4 : has("mixed-set") ? 4 : 8);
+      if (s.slot === "now-you") s.items = target(3);
+      if (s.slot === "finish-these") s.items = target(2);
+      if (s.slot === "on-your-own") s.items = target(6);
+      if (s.slot === "practice-row") s.items = target(8 - layout.slots.filter(x=>["in-your-head","solve-it-two-ways","spot-the-error"].includes(x.slot)).length);
+      if (s.slot === "word-problems") s.items = target(3);
+      if (s.slot === "unit-b-practice" && page.type !== "remember-these") s.items = target(6);
+      if (s.slot === "mixed-set") s.items = target(4);
       if (s.slot === "spot-the-error" && page.parts[s.part]?.skills.every(skill => /likelihood/.test(skill))) { s.slot = "unit-b-practice"; s.items = 1; }
-      if (s.slot === "challenge" && day.pages.some(p => p.parts.some(p => p.unit === "A" && p.skills.some(s=>/^1\.1-(?:count|read-write|number-line)/.test(s))))) s.items = 2;
+      if (s.slot === "challenge") s.items = target(3);
+      if (s.slot === "show-what-you-know") s.items = target(4);
     }
+    if (page.type === "unit-b") {
+      const practice=layout.slots.find(s=>s.slot==="unit-b-practice");
+      if(practice) practice.items=Math.max(1,target(6)-layout.slots.filter(s=>s!==practice && !PANEL_SLOTS.includes(s.slot)).reduce((n,s)=>n+s.items,0));
+    }
+    if (page.type === "remember-these" && friday < 0) {
+      const other=layout.slots.filter(s=>s.slot!=="remember-these" && !PANEL_SLOTS.includes(s.slot)).reduce((n,s)=>n+s.items,0);
+      const reviews=layout.slots.filter(s=>s.slot==="remember-these");
+      if(reviews.length) { reviews[0].items=target(Math.max(4,8-other)); for(const s of reviews.slice(1)) s.items=0; }
+    }
+    if (page.type === "new-idea" && !layout.slots.some(s=>s.slot==="now-you")) {
+      const part=page.parts.findIndex(p=>p.kind==="new-idea");
+      if(part>=0) layout.slots.push({slot:"now-you",part,items:3});
+    }
+    for(const p of page.parts) if(p.step && p.unit === "A") for(const skill of p.skills) taught.add(skill);
     const parts = page.parts.map((part, i) => ({ ...part, items: layout.slots.filter(s => s.part === i && s.slot !== "how-do-you-know").reduce((n,s) => n + s.items, 0) + (part.kind === "practice" ? part.faded?.watch ?? 0 : 0) }));
-    const likelihood = layout.slots.filter(s => !PANEL_SLOTS.includes(s.slot) && parts[s.part].skills.every(skill => /likelihood/.test(skill)));
+    const likelihood = layout.slots.filter(s => s.slot !== "challenge" && !PANEL_SLOTS.includes(s.slot) && parts[s.part].skills.every(skill => /likelihood/.test(skill)));
     if (likelihood.reduce((n,s) => n+s.items,0) >= 3) {
       const review = day.pages.flatMap(p => p.parts).find(p => p.unit === "A" && p.skills.length);
       if (review) {
-        let room = 3;
+        let room = Math.floor(likelihood.reduce((n,s)=>n+s.items,0)/2);
+        const budget = room;
         for (const s of likelihood) { s.items = Math.min(s.items, room); room -= s.items; }
-        const items = 3 - room;
+        const items = budget - room;
         parts.push({ ...review, kind: "remember-these", unit: null, step: null, items, faded: undefined, methods: undefined, hints: true });
         layout.slots.push({ slot: "remember-these", part: parts.length - 1, items });
         for (const s of likelihood) parts[s.part].items = layout.slots.filter(x => x.part === s.part).reduce((n,x) => n+x.items,0);
@@ -1744,6 +1791,24 @@ function layOut(input: GenerateInput) {
       });
     }
   }
+  if (input.itemPolicy === "approved-v1" && input.book) {
+    const count = Math.ceil((number + 1) / 4) * 4 - number;
+    const last = input.plan.days.at(-1)!;
+    const main = [...new Set(input.plan.days.flatMap(d => d.pages.flatMap(p => p.parts.filter(p => p.step && p.unit === "A").flatMap(p => p.skills))))];
+    const practised=[...new Set(input.plan.days.flatMap(d=>d.pages.flatMap(p=>p.parts.flatMap(p=>p.skills))))];
+    const covered=main.filter(s=>approvedQuestionTypes(s).length);
+    const taught=covered.length ? covered : practised.filter(s=>approvedQuestionTypes(s).length);
+    const extras = input.plan.extraPractice ?? Array.from({ length: count }, (_, i): PlannedPage => ({
+      ...last.pages[0], number: last.pages.length + i + 1, type: "remember-these", extraPractice: true,
+      parts: [{ kind: "remember-these", unit: null, step: null, skills: taught.length ? taught : last.pages[0].parts[0].skills, items: input.plan.level >= 19 ? 6 : 8, hints: false }],
+      capacity: [{ slot: "remember-these", part: 0, items: input.plan.level >= 19 ? 6 : 8 }],
+    }));
+    for (const page of extras) {
+      const layout = layoutDayPage(input.curriculum, input.plan, last.day, page);
+      work.push({ number: ++number, day: last.day, page, layout, slots: layoutSlots(page, layout), panels: [],
+        tries: { used: new Map(), max: Infinity }, calls: { next: 0, kept: new Map() }, solves: new Map() });
+    }
+  }
   // Each slot's skill, kind of question, numbers and person, planned in book order (#380), so the same skill is not
   // asked the same way page after page and no two questions of a page work one sum.
   if (input.book) planBook(input, work);
@@ -1770,17 +1835,19 @@ function layOut(input: GenerateInput) {
           continue;
         }
         let best: ItemPlan | null = null;
-        for (let candidate = 0; candidate < 128; candidate++) {
+        for (let candidate = 0; candidate < 512; candidate++) {
           const c = contractFor(input, w, slot, candidate);
           if (!c) continue;
           const key = JSON.stringify([c.item.text, c.item.operation, c.item.numbers, c.item.sequence]);
           const op = c.item.operation ? JSON.stringify(c.item.operation) : key;
           const frame = c.source === "story" || c.type === "likelihood" ? storyFrame(c.item.text) : null;
           if (frame && frames.has(frame)) continue;
-          const p = buildPlannedItem(c, c.item, { id: "capacity", workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [c.item.skill] }).package;
-          const type = p ? taskType(p) : c.type;
+          const built = buildPlannedItem(c, c.item, { id: "capacity", workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [c.item.skill] });
+          const p = built.package;
+          if (!p || built.check.status === "failed" || scheduledItemProblem(p,input.curriculum,w.day,slot.place ?? "")) continue;
+          const type = ["word-problems","challenge"].includes(w.page.type) && c.source === "story" ? storyFrame(c.item.text) : p ? taskType(p) : c.type;
           if (w.slots.length >= 3 && (pageTypes.get(type) ?? 0) >= Math.ceil(w.slots.length / 2)) continue;
-          const limit = slot.place === "warm-up" || c.source === "explain" ? Infinity : c.source === "code" && !frame ? 3 : 1;
+          const limit = slot.place === "warm-up" || c.source === "explain" ? Infinity : 1;
           if ((used.get(key) ?? 0) < limit && !pageOps.has(op)) { best = c; used.set(key, (used.get(key) ?? 0) + 1); pageOps.add(op); pageTypes.set(type, (pageTypes.get(type) ?? 0) + 1); if (frame) frames.add(frame); break; }
         }
         slot.contract = best;
@@ -1789,7 +1856,7 @@ function layOut(input: GenerateInput) {
     }
   }
   const backCover = number + 1;
-  return { work, backCover, total: Math.ceil(backCover / 4) * 4 };
+  return { work, backCover, total: input.itemPolicy === "approved-v1" && input.book ? number : Math.ceil(backCover / 4) * 4 };
 }
 
 /**
@@ -1801,7 +1868,7 @@ function layOut(input: GenerateInput) {
 export function bookOutline(input: GenerateInput): string {
   const { work, total } = layOut(input.book ? { ...input, book: { child: "" } } : input);
   return digestOf({
-    number: input.number, level: input.plan.level, total, laidOut: !!input.book, ...(input.itemPolicy === "approved-v1" ? { itemPipeline: { version: 4, examples: ITEM_EXAMPLES, compactExamples: COMPACT_STORY_FRAMES } } : {}),
+    number: input.number, level: input.plan.level, total, laidOut: !!input.book, ...(input.itemPolicy === "approved-v1" ? { itemPipeline: { version: 5, examples: ITEM_EXAMPLES, compactExamples: COMPACT_STORY_FRAMES } } : {}),
     pages: work.map((w) => ({
       number: w.number, day: w.day, page: w.page.number, type: w.page.type, layout: w.layout, panels: w.panels,
       slots: w.slots.map((x) => ({
@@ -1815,7 +1882,7 @@ export function bookOutline(input: GenerateInput): string {
 /** Why a kept day page does not fit the page the plan has at its number (R379-8-2), or null. */
 function keptPageProblem(input: GenerateInput, w: PageWork | undefined, p: GeneratedPage): string | null {
   if (!w) return `kept page ${p.number} is not a day page of the plan`;
-  if (p.day !== w.day || p.pageOfDay !== w.page.number || p.type !== w.page.type) {
+  if (p.day !== (w.page.extraPractice ? null : w.day) || p.pageOfDay !== (w.page.extraPractice ? null : w.page.number) || p.type !== w.page.type) {
     return `kept page ${p.number} is day ${p.day}, page ${p.pageOfDay} (${p.type}); the plan has day ${w.day}, page ${w.page.number} (${w.page.type}) there`;
   }
   const ids = new Set(w.slots.map((x) => x.id));
@@ -1839,8 +1906,13 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         w.page={...w.page,capacityChecked:true,itemContracts:Object.fromEntries(w.slots.map(s=>[s.id,s.contract??null])),existingSlots:w.slots.filter(s=>s.existing).map(s=>s.id)};
         continue;
       }
-      const before = w.slots.length;
-      for (let trim = 0; trim <= before; trim++) {
+      const minimum = w.slots.length;
+      const max = ["remember-these","practice","practice-2"].includes(w.page.type) ? (input.plan.level >= 19 ? 8 : 10)
+        : w.page.type === "new-idea" ? minimum + 2 : w.page.type === "unit-b" ? minimum + 2
+        : w.page.type === "word-problems" || w.page.type === "challenge" ? minimum + 1 : minimum;
+      let ceiling = max;
+      let added: Slot | null = null;
+      for (let round = 0; round < 64; round++) {
         const questions = w.slots.map((s, i) => {
           const c = s.contract;
           const b = c ? buildPlannedItem(c, c.item, { id: `budget:${w.number}:${s.id}`, workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: [c.item.skill] }) : unapprovedBuild();
@@ -1853,13 +1925,44 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         const fit = await fitCheck.fits(fitPage(w, "token-000000000001", questions, contentOf(input, w, questions, examples)), {
           id: input.workbookId, childId: input.childId, number: input.number, levels: [input.plan.level], profileBuild: input.profileBuild,
         });
-        if (fit.ok || fit.problems.every(p => p.kind === "fullness")) break;
-        const optional = w.slots.filter(s => w.slots.length > 1 && ["remember-these", "practice", "warm-up"].includes(s.part.kind)
-          && (s.part.kind === "remember-these" || w.slots.filter(other => other.part === s.part).length > 1));
-        const out = optional.findLast(s => s.part.kind === "remember-these") ?? optional.at(-1);
-        if (!out) return `Page ${w.number}: the required questions exceed the template capacity: ${fit.problems.map(p => p.reason).join(" ")}`;
-        w.slots = w.slots.filter(s => s !== out);
-        if (w.layout) w.layout.slots[out.layoutSlot].items--;
+        if (fit.ok) break;
+        if (fit.problems.every(p => p.kind === "fullness")) {
+          added = null;
+          const target = w.slots.findLast(s=>["remember-these","on-your-own","finish-these","practice-row","unit-b-practice","now-you","word-problems","challenge"].includes(s.place ?? "") && s.place && w.slots.filter(x=>x.layoutSlot===s.layoutSlot).length < slotMax(s.place,{level:input.plan.level,pages:input.plan.pagesADay.max,consistentLayout:true}));
+          if (target && w.slots.length < ceiling && w.layout) {
+            const layoutSlot=target.layoutSlot;
+            const ordinal=w.slots.filter(s=>s.layoutSlot===layoutSlot).length+1;
+            const slot={...target,id:`${Number(target.id.split(".")[0])}.${target.place === "challenge" ? ordinal : 99+ordinal}`,contract:null};
+            const taken=new Set(work.flatMap(p=>p.slots.flatMap(s=>s.contract ? [JSON.stringify([s.contract.item.text,s.contract.item.operation,s.contract.item.numbers,s.contract.item.sequence])] : [])));
+            const frames=new Set(work.flatMap(p=>p.slots.flatMap(s=>s.contract && (s.contract.source==="story" || s.contract.type==="likelihood") ? [storyFrame(s.contract.item.text)] : [])));
+            for(let attempt=0;attempt<512;attempt++) {
+              const c=contractFor(input,w,slot,attempt);
+              if (!c || taken.has(JSON.stringify([c.item.text,c.item.operation,c.item.numbers,c.item.sequence])) || (c.source==="story" || c.type==="likelihood") && frames.has(storyFrame(c.item.text))) continue;
+              const built=buildPlannedItem(c,c.item,{id:"capacity",workbookId:input.workbookId,page:w.number,question:w.slots.length+1,level:input.plan.level,skills:[c.item.skill]});
+              if (!built.package || built.check.status === "failed" || scheduledItemProblem(built.package,input.curriculum,w.day,slot.place ?? "")) continue;
+              if (!["word-problems","challenge"].includes(w.page.type)) {
+                const type=taskType(built.package);
+                const same=w.slots.filter(s=>s.contract).filter(s=>{
+                  const p=buildPlannedItem(s.contract!,s.contract!.item,{id:"capacity",workbookId:input.workbookId,page:w.number,question:1,level:input.plan.level,skills:[s.contract!.item.skill]}).package;
+                  return p && taskType(p)===type;
+                }).length;
+                if (same>=Math.ceil((w.slots.length+1)/2)) continue;
+              }
+              added={...slot,contract:c}; break;
+            }
+            if (added) { w.slots.splice(w.slots.findLastIndex(s=>s.layoutSlot===layoutSlot)+1,0,added); w.layout.slots[layoutSlot].items++; continue; }
+            ceiling=w.slots.length;
+          }
+          if (!w.page.fillingComplete) { w.page.fillingComplete=true; continue; }
+          if ((w.page.extraGap ?? 0)<48) { w.page.extraGap=(w.page.extraGap ?? 0)+4; continue; }
+          break;
+        }
+        if (added && w.layout) {
+          w.slots=w.slots.filter(s=>s!==added);
+          w.layout.slots[added.layoutSlot].items--;
+          ceiling=w.slots.length; added=null; continue;
+        }
+        return `Page ${w.number}: the required questions exceed the template capacity: ${fit.problems.map(p => p.reason).join(" ")}`;
       }
       const oldSlots = w.slots;
       w.page = { ...w.page, parts: w.page.parts.map((p, i) => ({ ...p, items: (w.layout?.slots ?? []).filter(s => s.part === i && s.slot !== "how-do-you-know").reduce((n,s)=>n+s.items,0) + (p.kind === "practice" ? p.faded?.watch ?? 0 : 0) })), capacity: w.layout?.slots, capacityChecked: true };
@@ -1884,7 +1987,7 @@ export async function prepareWorkbookCapacity(input: GenerateInput, fitCheck: Fi
   const { work } = layOut(input);
   const problem = await fitWorkBudget(input, fitCheck, work);
   if (problem) throw new Error(problem);
-  return { ...input.plan, days: input.plan.days.map(d=>({ ...d, pages:d.pages.map(p=>work.find(w=>w.day===d.day && w.page.number===p.number)!.page) })) };
+  return { ...input.plan, extraPractice: work.filter(w=>w.page.extraPractice).map(w=>w.page), days: input.plan.days.map(d=>({ ...d, pages:d.pages.map(p=>work.find(w=>w.day===d.day && w.page.number===p.number)!.page) })) };
 }
 
 /**
@@ -1964,9 +2067,19 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
   if (finished.size > 0) deps.progress?.(finished.size, work.length);
   const writePage = async (w: PageWork, first: PageCall | null, memory: BookMemory | null): Promise<GeneratedPage> => {
     const qrToken = tokens[w.number - 1];
-    const page = { number: w.number, type: w.page.type, dayLabel: `Day ${w.day}`, day: w.day, pageOfDay: w.page.number, qrToken };
+    const page = { number: w.number, type: w.page.type, dayLabel: w.page.extraPractice ? "Extra practice" : `Day ${w.day}`, day: w.page.extraPractice ? null : w.day, pageOfDay: w.page.extraPractice ? null : w.page.number, qrToken };
     let examples: (QuestionPackage | null)[] = [];
-    const check = (questions: GeneratedQuestion[]) => deps.fit.fits(fitPage(w, qrToken, questions, contentOf(input, w, questions, examples)), book);
+    const check = async (questions: GeneratedQuestion[]) => {
+      let fit = await deps.fit.fits(fitPage(w, qrToken, questions, contentOf(input, w, questions, examples)), book);
+      if (input.itemPolicy === "approved-v1" && w.slots.some(s=>s.existing)) {
+        w.page.fillingComplete=true;
+        for(let extra=w.page.extraGap ?? 0;!fit.ok && fit.problems.every(p=>p.kind==="fullness") && extra<=48;extra+=4) {
+          w.page.extraGap=extra;
+          fit=await deps.fit.fits(fitPage(w,qrToken,questions,contentOf(input,w,questions,examples)),book);
+        }
+      }
+      return fit;
+    };
     let result: GeneratedPage;
     if (w.slots.length === 0 || !first) {
       const content = contentOf(input, w, []);
@@ -2014,6 +2127,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
       const omissions = omissionsWith(w, leftOut);
       result = {
         ...page, fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems }, attempts, questions,
+        panelExamples: examples,
         ...(input.itemPolicy === "approved-v1" ? { expected: w.slots.map(s => ({ slot: s.id, part: s.part.kind, place: s.place })) } : {}),
         ...(content ? { content } : {}), ...(omissions.length ? { omissions } : {}),
         ...(leftOut.length ? { leftOut: leftOut.map((x) => ({ slot: x.question.slot, part: x.question.part, text: x.question.package?.text ?? null, reason: x.reason })) } : {}),
@@ -2069,23 +2183,53 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
     }
   }
   let pages: GeneratedPage[] = [plain(1, "cover"), plain(2, "how-plan"), ...work.map((w) => finished.get(w.number)!)];
-  pages.push(plain(backCover, "blank"));
-  for (let n = backCover + 1; n <= total; n++) pages.push(plain(n, "blank"));
+  for (let n = backCover; n <= total; n++) pages.push(plain(n, "blank"));
 
   let quality: BookQuality | undefined;
   if (input.itemPolicy === "approved-v1") {
-    const reviewed = await checkWholeBook(pages, async (page) => {
+    const repairKeys=new Set<string>(), repairFrames=new Set<string>();
+    const reviewed = await checkWholeBook(pages, async (page, issues) => {
       const w = byNumber.get(page.number);
       if (!w) return null;
-      const questions = page.questions.map(q => {
-        const slot = w.slots.find(s => s.id === q.slot);
-        const c = slot ? contractFor(input, w, slot, 2) : null;
-        if (!c || c.source !== "code") return q;
-        const b = buildPlannedItem(c, c.item, { id: q.package?.id ?? `${input.workbookId}:${page.number}:${q.slot}`, workbookId: input.workbookId, page: page.number, question: q.number, level: input.plan.level, skills: [c.item.skill] });
-        if (b.package && (rangeProblem(b.package, input.curriculum, input.plan.level) || scheduledItemProblem(b.package, input.curriculum, w.day, slot?.place ?? ""))) return q;
-        return b.check.status === "failed" ? q : { ...q, check: b.check, package: b.package, itemPlan: c };
+      const keyOf=(pkg:QuestionPackage)=>JSON.stringify([pkg.text,pkg.operation,pkg.item?.checks,pkg.item?.figure]);
+      const current=[...page.questions];
+      const questions = page.questions.map((q,index) => {
+        if (issues.every(i=>i.kind === "repeat") && !issues.some(i=>i.reason.includes(`question ${q.number} `))) return q;
+        const slot=w.slots.find(s=>s.id===q.slot);
+        if(!slot || q.existing) return q;
+        const counts=new Map<string,number>();
+        for(const other of current) if(other.package && other.place!=="warm-up") counts.set(taskType(other.package),(counts.get(taskType(other.package)) ?? 0)+1);
+        const limit=Math.ceil(current.filter(q=>q.package && q.place!=="warm-up").length/2);
+        if(issues.every(i=>i.kind==="variety") && q.package && (counts.get(taskType(q.package)) ?? 0)<=limit) return q;
+        const others=pages.flatMap(p=>p.questions.filter(other=>p.number!==page.number || other.number!==q.number)).concat(current.slice(0,index));
+        const keys=new Set(others.flatMap(other=>other.package && other.place!=="warm-up" ? [keyOf(other.package)] : []));
+        const frames=new Set(others.flatMap(other=>other.package && wordedTask(other.package) ? [storyFrame(other.package.text)] : []));
+        for(let attempt=2;attempt<130;attempt++) {
+          const c=contractFor(input,w,slot,attempt);
+          if(!c || c.source!=="code") continue;
+          const b=buildPlannedItem(c,c.item,{id:q.package?.id ?? `${input.workbookId}:${page.number}:${q.slot}`,workbookId:input.workbookId,page:page.number,question:q.number,level:input.plan.level,skills:[c.item.skill]});
+          if(!b.package || b.check.status==="failed" || rangeProblem(b.package,input.curriculum,input.plan.level) || scheduledItemProblem(b.package,input.curriculum,w.day,slot.place ?? "")) continue;
+          if(keys.has(keyOf(b.package)) || repairKeys.has(keyOf(b.package)) || wordedTask(b.package) && (frames.has(storyFrame(b.package.text)) || repairFrames.has(storyFrame(b.package.text)))) continue;
+          const type=taskType(b.package),old=q.package ? taskType(q.package) : "";
+          if(current.length>=3 && (counts.get(type) ?? 0)-(type===old ? 1 : 0)>=limit) continue;
+          const fresh={...q,check:b.check,package:b.package,itemPlan:c};
+          current[index]=fresh;
+          repairKeys.add(keyOf(b.package));
+          if(wordedTask(b.package)) repairFrames.add(storyFrame(b.package.text));
+          return fresh;
+        }
+        return q;
       });
-      const content = contentOf(input, w, questions);
+      const content = contentOf(input, w, questions, page.panelExamples ?? []);
+      // Older checkpoints keep the checked teaching blocks, even if their
+      // separate example packages predate panelExamples.
+      if (content?.kind === "day" && page.content?.kind === "day") {
+        const old = page.content.blocks.filter(b=>PANEL_SLOTS.includes(b.slot));
+        for (const block of content.blocks.filter(b=>PANEL_SLOTS.includes(b.slot))) {
+          const index = old.findIndex(b=>b.slot===block.slot);
+          if (index>=0) Object.assign(block,structuredClone(old.splice(index,1)[0]));
+        }
+      }
       const fit = await deps.fit.fits(fitPage(w, page.qrToken, questions, content), book);
       return { ...page, questions, ...(content ? { content } : {}), fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems } };
     });
@@ -2250,7 +2394,7 @@ export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDep
       }
     }
   }
-  const next = { ...page, questions, content, fit: { status: "fits" } as PageFit };
+  const next = { ...page, questions, content, ...(change.question === null ? {panelExamples:examples} : {}), fit: { status: "fits" } as PageFit };
   const fit = await deps.fit.fits(fitPage(w, page.qrToken, questions, content), {
     id: input.workbookId, childId: input.childId, number: input.number, levels: [input.plan.level], profileBuild: input.profileBuild,
   });

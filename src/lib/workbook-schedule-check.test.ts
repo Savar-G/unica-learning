@@ -140,8 +140,8 @@ describe("the daily bound for every readable item format", () => {
     expect(scheduledItemProblem({...p,skill:{standard:"1.1",skills:[]}},bc,1,"practice")).not.toBeNull();
     const unreadable=arithmetic(14,"4.4-add-within-10000",[3,5]);
     unreadable.operation={kind:"evaluate",operands:["9 ^ 9"]};
-    unreadable.text="Draw a graph.";
-    unreadable.item={format:"draw",scorable:false,parentChecked:true,error:null,checks:[],regions:[{id:"picture",kind:"picture",label:null}]};
+    unreadable.text="Colour the graph.";
+    unreadable.item={format:"colour-or-shade",scorable:false,parentChecked:true,error:null,checks:[],regions:[{id:"picture",kind:"picture",label:null}]};
     expect(checkQuestionPackage(unreadable).status).toBe("unsupported");
     expect(scheduledItemProblem(unreadable,bc,1,"practice")).toMatch(/cannot read/);
     for (const text of ["Compare nineteen and twenty.","Compare /12 and 3."])

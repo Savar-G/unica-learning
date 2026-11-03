@@ -11,7 +11,7 @@ describe("binding item plans", () => {
     expect(planItem({ skill: "new-skill", slot: "1", level: 4, day: 1, ordinal: 1, range: { min: 1, max: 10, pictures: true, help: "full" } })).toBeNull();
     const p = make("1.10-likelihood-words");
     const b = buildPlannedItem(p, p.item, place(p.item.skill));
-    expect(b.package?.item?.regions[0]).toMatchObject({ kind: "choice", mark: "circle", choices: ["never", "maybe", "always"] });
+    expect(b.package?.item?.regions[0]).toMatchObject({ kind: "choice", mark: "circle", choices: ["never", "sometimes", "always"] });
     expect(b.package?.text).not.toMatch(/draw|trace/i);
   });
   it("builds sound drills from code and makes no solve request", () => {
@@ -41,7 +41,7 @@ describe("binding item plans", () => {
     const b = buildPlannedItem(p, p.item, place(p.item.skill));
     expect(b.check.status).toBe("not-checked");
     expect(b.package?.item?.figure).toBeTruthy();
-    expect(b.package?.text).toMatch(/Fill (?:a |the )?ten-frame|Colour \d+ dots in the row/);
+    expect(b.package?.text).toMatch(/Colour in \d+ cells|Colour \d+ dots in the row/);
   });
   it("supplies examples for each approved type and grade band", () => {
     for (const level of [4, 14, 26]) for (const source of ["story", "explain"] as const) {

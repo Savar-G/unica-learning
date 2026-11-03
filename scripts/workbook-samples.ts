@@ -336,12 +336,13 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
   costKey = label;
   const t0 = Date.now();
   const solveLogs: SolveLog[] = [];
+  let layoutToken=0;
   const result = await generateWorkbook(
     { workbookId, childId, number: input.workbook.number, profileBuild: null, plan: reviewDays(planned.plan, values.days), curriculum: BC, book: { child: child.name }, itemPolicy: "approved-v1" },
     {
       ai, fit: renderFitCheck({ template, engine, parentId, fullness: true }), concurrency: Number(values.concurrency),
       store: drafts ?? { save: async () => ({ status: "saved", draftId: workbookId }), draft: async () => null },
-      qrToken: () => randomBytes(16).toString("base64url"), timeLimitMs: 240_000,
+      qrToken: () => values.fake && values["no-store"] ? `token-${String(++layoutToken).padStart(12,"0")}` : randomBytes(16).toString("base64url"), timeLimitMs: values.fake ? 900_000 : 240_000,
       progress: (done, total) => { if (done % 10 === 0 || done === total) console.log(`  ${label}: ${done}/${total} day pages`); },
       solver, solveTimeLimitMs: 60_000, now: () => Date.now(), onSolve: (log) => { solveLogs.push(log); },
     },
@@ -365,7 +366,7 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
     : await reviewPrint({ draft: renderable, template, engine, problems });
   const pdf = `${out}/${label}.pdf`;
   const sheet = `${out}/${label}-contact.png`;
-  const pageUse = measuredPageUse(renderable.pages, lastMeasured).filter(p => draft.pages[p.page - 1]?.day !== null);
+  const pageUse = measuredPageUse(renderable.pages, lastMeasured).filter(p => draft.pages[p.page - 1]?.content?.kind === "day");
   await writeFile(`${out}/${label}-draft.json`, JSON.stringify(draft, null, 2));
   await writeFile(pdf, printed.pdf);
   await mkdir(`${out}/pages/${label}`, { recursive: true });
@@ -483,7 +484,7 @@ async function writeIndex() {
     ...workbookBuilderCoverage(BC).map(c=>`| ${c.level} | ${c.approved.length} | ${c.existing.length} | ${c.existing.join(", ") || "none"} |`),
     "",
     "## Quality score (#480)",
-    "The failure limit is below 5%. Time is an estimate from the actual items, reading and work space. Page fullness is vertical use of the measured content area, including writing space. A score does not replace Savar's sample and example-bank approval.",
+    "The failure limit is below 5%. Time is an estimate from the actual items, reading and work space. Page fullness is the union of occupied vertical intervals, including writing space. Empty gaps are excluded. At the page maximum, bounded even spacing can pass with a lower occupied fraction. A score does not replace Savar's sample and example-bank approval.",
     "| Level | Failed | Dropped for room | Page fullness min / mean | Minutes per day | AI calls | Technical checks | Ship gate |",
     "|---|---|---|---|---|---|---|---|",
     ...ok.map(r => {
@@ -491,10 +492,11 @@ async function writeIndex() {
       const uses = r.pageUse.flatMap(p => p.fraction === null ? [] : [p.fraction]);
       const fullness = uses.length ? `${(Math.min(...uses) * 100).toFixed(1)}% / ${(uses.reduce((a,b)=>a+b,0) / uses.length * 100).toFixed(1)}%` : "not measured";
       const calls = providerCounts.get(r.label);
-      const underfilled = r.pageUse.length === 0 || uses.length !== r.pageUse.length || uses.some(x => x < .8);
+      const underfilled = r.pageUse.length === 0 || uses.length !== r.pageUse.length || r.pageUse.some(p => p.problem !== undefined ? p.problem !== null : (p.fraction ?? 0) < .85);
       const passed=q.ready && !underfilled && r.renderProblems.length===0;
       return `| ${r.label} | ${(q.failedRate * 100).toFixed(2)}% | ${q.dropped} | ${fullness} | ${q.days.map(d=>`${d.day}: ${d.minutes.toFixed(1)}`).join("; ")} | subscription ${calls?.subscription ?? 0}; API ${calls?.api ?? 0} | ${passed ? "PASS" : "FAIL"} | ${!values.fake && passed ? "technical checks pass; approval pending" : "HOLD"} |`;
     }),
+    ...ok.map(r => `- ${r.label}: largest unoccupied gap ${Math.max(...r.pageUse.map(p=>p.largestGap ?? 0)).toFixed(1)} px; extra practice pages ${r.draft.pages.filter(p=>p.content?.kind === "day" && p.content.extraPractice).length}; spacing failures ${r.pageUse.filter(p=>p.problem).length}.`),
     ...ok.map(r => `- ${r.label}: layout omissions ${(r.draft.quality ?? workbookQuality(r.draft.pages)).dropped - r.draft.pages.reduce((n,p)=>n+(p.leftOut?.length??0),0)}; fit omissions ${r.draft.pages.reduce((n,p)=>n+(p.leftOut?.length??0),0)}; total ${(r.draft.quality ?? workbookQuality(r.draft.pages)).dropped}.`),
     ...ok.map(r => `- ${r.label}: ${providerLine(r.label)}. API calls: ${providerCounts.get(r.label)?.api ?? (values.api || values.anthropic ? r.calls + r.solve.checks : 0)}.`),
     ...ok.flatMap(r => (r.draft.quality?.issues ?? []).map(i => `- ${r.label} p${i.page}: ${i.kind}: ${i.reason}`)),

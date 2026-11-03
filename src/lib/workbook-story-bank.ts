@@ -50,7 +50,7 @@ export const COMPACT_STORY_FRAMES = {
     "{name} hangs up {a} hats. {other} adds {b} hats. How many hats now?",
     "{name} counts {a} kites. Then {b} more go up. How many kites now?",
     "{name} puts {a} socks in a bag, then {b} more. How many socks?",
-    "{name} draws {a} dots, then {b} more. How many dots did {he} draw?",
+    "{name} gets {a} pegs, then {b} more. How many pegs does {he} have?",
     "{name} puts {a} cars on a mat. {He} adds {b}. How many cars now?",
     "{name} collects {a} leaves and {b} more. How many leaves now?",
     "{name} has {a} big and {b} small shells. How many shells?",
