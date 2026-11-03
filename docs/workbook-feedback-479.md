@@ -19,7 +19,27 @@ The result has:
 
 The printed plan time target is also capped at 30 minutes for every level.
 
-For U4, the daily maxima are 8, 9, 10, 12, 13, 14, 15, 17, 19 and 20. Days 1 to 3 use pictures. Days 4 to 7 use pictures only for new ideas. Days 8 to 10 have no picture support. Only fixed references named by a benchmark skill, explicit coin references on money skills and clock components on time skills keep their taught value. A coin reference must name the given coin, such as "a dime is 10¢" or "the 25¢ coin". A matching denomination does not exempt an amount. Operands, answers and totals always use the daily bound. Fraction components follow the daily bound. Permission to teach fractions or decimals does not exempt other quantities.
+For U4, the daily maxima are 8, 9, 10, 12, 13, 14, 15, 17, 19 and 20. Days 1 to 3 use pictures. Days 4 to 7 use pictures only for new ideas. Days 8 to 10 have no picture support. Only fixed references named by a benchmark skill, typed coin givens on money skills and clock components on time skills keep their taught value. Wording never decides whether a number is a coin reference. Operands, answers and totals always use the daily bound. Fraction components follow the daily bound. Permission to teach fractions or decimals does not exempt other quantities.
+
+## Typed coin givens for #480
+
+`Item.givens?: CoinGiven[]` is additive. Old packages remain readable. Import `coinGiven`, `CoinGiven`, `CoinGivenSource` and `CoinName` from `@/lib/question-package`.
+
+Code or an approved question type sets `SlotPlace.givens` when it calls `buildQuestion`. The builder copies these declarations into `item.givens`. It ignores a `givens` field in raw AI output. Do not forward AI metadata into the trusted builder argument.
+
+```ts
+const givens = [coinGiven("dime", { kind: "text", index: 0 })];
+const built = buildQuestion(raw, { ...place, givens });
+// raw.text: "How many nickels make a dime (10¢)? Explain."
+// Stored item.givens:
+// [{ kind: "coin", coin: "dime", value: 10, unit: "¢", source: { kind: "text", index: 0 } }]
+```
+
+The factory supplies the fixed value and unit. The coin names are `penny`, `nickel`, `dime`, `quarter`, `loonie` and `toonie`. The package checker verifies the declaration and the selected printed value and currency. Both `scheduledItemProblem` and `rangeProblem` use the typed givens. Neither check exempts an amount just because its value matches a denomination.
+
+`source.index` is the zero-based index returned by `readNumbers` for that text. It counts numeric readings, not words. Select it after the final wording is set. A region label uses `{ kind: "region-label", region: "reason", index: 0 }`. For example, a quarter given can mark the `25¢` in the label `25¢ coins`. The Figure type has no coin picture yet.
+
+A source can name only question text or a region label. It cannot name an operand, an answer, a choice answer or a computed total. A declaration exempts only its selected occurrence. Another 10¢ amount beside a declared dime stays bounded. Missing locations, wrong denominations, wrong currencies, duplicate declarations and unknown source kinds fail closed. Without a typed given, all money text uses the normal daily bound, including text that says `coins`.
 
 ## Checks for the #480 writer
 
@@ -53,7 +73,7 @@ Practice 2 reserves a separate row for each teaching card. A middle-level page w
 | No back My levels page | Generator and assembler tests; every-page markup test |
 | Difficulty ramp and picture support | Schedule tests across all 30 levels; `scheduledItemProblem` |
 | Daily bounds for all formats | `workbook-schedule-check.test.ts`: U14 addition and U4 comparison, places, order, missing sequence terms, picture counts, benchmark references, fraction components and unreadable data |
-| Coin references versus money amounts | Public schedule tests reject `10¢ + 0¢`, computed 10¢ and 25¢ totals, and unscored story totals. Named dimes, quarters and a given 25¢ coin remain exempt on a money skill. A reference never exempts another occurrence of its value. |
+| Coin references versus money amounts | Public builder, package and schedule tests accept typed dime and quarter givens in parentheses and plural labels. The same text without structure is bounded. `10¢ + 0¢`, computed 10¢ and 25¢ totals, raw AI declarations and unscored story totals remain bounded. A given never exempts another occurrence of its value. |
 | Complete error card retained; choice label printed once | `workbook-error-card.test.ts`: public generation and real render of a checked three-line U14 error; forced overflow and failed-page controls |
 | Likelihood, colouring and mathematical drawing | `feedbackItemProblem`; #480 supplies the approved item types |
 | At least 80 percent page use; under 30 minutes | Public fullness and day-time checks with negative tests; #480 applies the whole-book checks |

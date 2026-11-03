@@ -22,6 +22,7 @@ import { BC_SKILL_MAP } from "@/lib/assessment";
 import { decimalRational } from "@/lib/question-package-columns";
 import { defaultItem, itemProblem, type ItemContext, type ItemProblem } from "@/lib/question-package-items";
 import { amountOf, amountValueProblem, conversionProblem, dimensionName, sameSize, unknownUnit } from "@/lib/question-package-measures";
+import type { CoinGiven } from "@/lib/question-package-givens";
 import {
   computation,
   gcd,
@@ -35,6 +36,7 @@ import {
 } from "@/lib/question-package-math";
 
 export { operationProblem, operationResult, operationText, stepText, valueText, workedSteps } from "@/lib/question-package-math";
+export { coinGiven, type CoinGiven, type CoinGivenSource, type CoinName } from "@/lib/question-package-givens";
 
 /**
  * The version of the QuestionPackage shape. The workbook store keeps it beside each stored package (#299), so a reader
@@ -597,6 +599,8 @@ export interface Item {
   error: ShownError | null;
   /** The picture the child reads, drawn by code; absent or null: none (every item before #377 has none). */
   figure?: Figure | null;
+  /** Code-declared references to exact printed numbers, never inferred from the wording or applied to answers. */
+  givens?: CoinGiven[];
 }
 
 /** Why a question has no trusted package. */
@@ -863,7 +867,7 @@ function packageProblem(p: unknown): Problem | null {
     if (!isWhole(p.stepsVersion, 1)) return failed("the steps version is not a whole number from 1");
     if (!STEPS_VERSIONS.includes(p.stepsVersion)) return { status: "unsupported", reason: `code cannot read worked steps of version ${p.stepsVersion}` };
   }
-  if (p.operation === null && p.item !== undefined) return noOperationProblem(p);
+  if (p.operation === null && p.item !== undefined) return noOperationProblem(p, p.text);
   const operation = operationCheck(p.operation);
   if (operation?.status === "unsupported") return operation;
   const form = unknownForm(p);
@@ -877,12 +881,13 @@ function packageProblem(p: unknown): Problem | null {
   const q = p as unknown as QuestionPackage & { answer: PackageAnswer; operation: Operation };
   return itemProblem(p.item, {
     ...VALUE_READERS,
+    text: q.text,
     computed: { operation: q.operation, answer: q.answer.value, accepted: q.answer.accepted, wrongAnswers: q.wrongAnswers },
   });
 }
 
 /** The value readers the item check uses. */
-const VALUE_READERS: Omit<ItemContext, "computed"> = { valueProblem, sameValue, number: rational };
+const VALUE_READERS: Omit<ItemContext, "computed" | "text"> = { valueProblem, sameValue, number: rational };
 
 const ANSWER_TYPES: readonly string[] = ["number", "fraction", "mixed", "remainder", "quantity", "compound", "time", "expression", "choice", "text"];
 
@@ -985,14 +990,14 @@ function skillProblem(p: Record<string, unknown>): string | null {
 }
 
 /** A package whose item has no operation: no answer, steps, wrong answers or easier example; the item holds the answers. */
-function noOperationProblem(p: Record<string, unknown>): Problem | null {
+function noOperationProblem(p: Record<string, unknown>, text: string): Problem | null {
   const form = unknownForm(p);
   if (form) return { status: "unsupported", reason: form };
   if (p.answer !== null || p.easierExample !== null) return failed("a package with no operation has no answer and no easier example: its item holds the answers");
   if (!Array.isArray(p.steps) || p.steps.length > 0 || !Array.isArray(p.wrongAnswers) || p.wrongAnswers.length > 0) {
     return failed("a package with no operation has no worked steps and no wrong answers");
   }
-  return failed(skillProblem(p)) ?? itemProblem(p.item, { ...VALUE_READERS, computed: null });
+  return failed(skillProblem(p)) ?? itemProblem(p.item, { ...VALUE_READERS, text, computed: null });
 }
 
 /**

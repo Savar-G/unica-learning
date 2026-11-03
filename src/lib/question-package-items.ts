@@ -37,9 +37,12 @@ import {
   type Rational,
 } from "@/lib/question-package-columns";
 import { valueText } from "@/lib/question-package-math";
+import { givensProblem } from "@/lib/question-package-givens";
 
 /** What the checker gives the item check: the value readers it owns, and the package's operation once checked. */
 export interface ItemContext {
+  /** The question text, used only to validate a declared numeric occurrence. */
+  text: string;
   /** Why a value is not a well-formed answer value ("<what> is missing"), or null. */
   valueProblem(value: unknown, what: string): string | null;
   /** Two values are the same written value. */
@@ -759,6 +762,8 @@ export function itemProblem(item: unknown, ctx: ItemContext): ItemProblem | null
     if (problem) return fail(problem);
   }
   const list = item.regions as AnswerRegion[];
+  const givens = givensProblem(item.givens, ctx.text, list);
+  if (givens) return fail(givens);
   const regions = new Map(list.map((r) => [r.id, r]));
   if (regions.size !== list.length) return fail("a region id is used twice");
   if (typeof item.format !== "string" || !Object.hasOwn(FORMATS, item.format)) return fail("the item's format is not one code knows");

@@ -51,6 +51,7 @@ import {
   type Relation,
   type QuestionPackage,
   type WrongAnswer,
+  type CoinGiven,
 } from "@/lib/question-package";
 
 // ---------- What the AI writes ----------
@@ -626,6 +627,8 @@ export interface BuiltQuestion {
 
 /** Where a slot's question goes, and what the plan lets it be. */
 export interface SlotPlace {
+  /** Trusted declarations from code or an approved question type. Raw AI fields cannot supply these. */
+  givens?: readonly CoinGiven[];
   /** The package's stable id. */
   id: string;
   workbookId: string;
@@ -723,7 +726,7 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
     ref: { source: "workbook", workbookId: place.workbookId, page: place.page, question: place.question },
     templateId: null,
     text,
-    item,
+    item: place.givens === undefined ? item : { ...item, givens: place.givens.map(g => ({ ...g, source: { ...g.source } })) },
     answer: op ? { value: operationResult(op), accepted: [], unit: null } : null,
     operation: op,
     steps: op ? workedSteps(op) : [],

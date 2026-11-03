@@ -30,7 +30,9 @@ import {
   type Term,
   type Operation,
   type QuestionPackage,
+  type CoinGiven,
 } from "@/lib/question-package";
+import { givenNumbers, givensProblem } from "@/lib/question-package-givens";
 import { aiTextProblem, groupingWords, isCoin, readNumbers, signOperation, textOperations, type ReadNumber, type SignOperation } from "@/lib/number-words";
 import { figureCount } from "@/lib/question-package-items";
 import { relationChoices } from "@/lib/question-package";
@@ -333,7 +335,7 @@ export type Concept = (typeof CONCEPTS)[number];
 export type NumberRange = {
   /** The largest number an item may print or ask for (printedNumbers). */
   max: number;
-  /** The skill is about money: coin values always fit, and amounts of money may have cents ($4.75). */
+  /** The skill is about money: typed coin givens fit, and amounts of money may have cents ($4.75). */
   money: boolean;
   /** The skill is about time: h:mm is a clock time and fits as it is; elsewhere every a:b is a ratio. */
   time: boolean;
@@ -438,16 +440,9 @@ type Read = ReadNumber;
 const num = (value: number): Read => ({ value, form: Number.isInteger(value) ? "whole" : "decimal" });
 const frac = (value: number): Read => ({ value, form: "fraction" });
 const money = (value: number, unit: string): Read =>
-  unit === "$" || unit === "¢" ? { ...num(value), money: true, ...(isCoin(value, unit) ? { coin: true as const } : {}) } : num(value);
+  unit === "$" || unit === "¢" ? { ...num(value), money: true, currency: unit, ...(isCoin(value, unit) ? { coin: true as const } : {}) } : num(value);
 /** The same numbers, as the parts of a fraction (a fraction operation's whole numbers too). */
 const asFraction = (rs: Read[]): Read[] => rs.map((r) => ({ ...r, form: "fraction" }));
-
-/** Operands and answers are amounts, even when their text names a coin with the same denomination. */
-const computedNumbers = (text: string): Read[] => readNumbers(text).map(r => {
-  const amount = { ...r };
-  delete amount.coinReference;
-  return amount;
-});
 
 /** The numbers of a value. */
 function valueNumbers(v: AnswerValue | null | undefined): Read[] {
@@ -462,7 +457,7 @@ function valueNumbers(v: AnswerValue | null | undefined): Read[] {
     case "time": return [{ value: v.hours, form: "time" }, { value: v.minutes, form: "time" }];
     case "expression":
     case "choice":
-    case "text": return computedNumbers(v.value);
+    case "text": return readNumbers(v.value);
     default: return unreachable(v);
   }
 }
@@ -470,7 +465,7 @@ function valueNumbers(v: AnswerValue | null | undefined): Read[] {
 /** The numbers of an operation's operands and its other numbers; a fraction or decimal operation is that idea. */
 function operationNumbers(op: Operation | null | undefined): Read[] {
   if (!op) return [];
-  const operand = (o: number | string | AnswerValue): Read[] => (typeof o === "number" ? [num(o)] : typeof o === "string" ? computedNumbers(o) : valueNumbers(o));
+  const operand = (o: number | string | AnswerValue): Read[] => (typeof o === "number" ? [num(o)] : typeof o === "string" ? readNumbers(o) : valueNumbers(o));
   const operands = (op.operands as readonly (number | string | AnswerValue)[]).flatMap(operand);
   switch (op.kind) {
     case "add": case "subtract": case "multiply": case "divide": case "missing-addend":
@@ -499,9 +494,9 @@ function statementNumbers(st: Statement): Read[] {
   }
 }
 
-function regionNumbers(r: AnswerRegion, fixedBenchmarks: readonly number[] = []): Read[] {
+function regionNumbers(r: AnswerRegion, fixedBenchmarks: readonly number[] = [], givens?: readonly CoinGiven[]): Read[] {
   const words = (text: string) => readNumbers(text).filter(r => !fixedBenchmarks.includes(r.value));
-  const label = words(r.label ?? "");
+  const label = givenNumbers(r.label ?? "", givens, { kind: "region-label", region: r.id }).filter(n => !fixedBenchmarks.includes(n.value));
   switch (r.kind) {
     case "box": return [...label, ...valueNumbers(r.answer)];
     case "choice": return [...label, ...r.choices.flatMap(words), ...words(r.answer ?? "")];
@@ -565,7 +560,7 @@ export function printedValues(p: QuestionPackage, fixedBenchmarks: readonly numb
   const shown = error ? samWork(p.operation, error.answer, shownOf(p).cause) : null;
   const easier = p.easierExample;
   return [
-    ...readNumbers(p.text).filter(r => !fixedBenchmarks.includes(r.value)),
+    ...givenNumbers(p.text, item?.givens, { kind: "text" }).filter(r => !fixedBenchmarks.includes(r.value)),
     ...operationNumbers(p.operation),
     ...valueNumbers(p.answer?.value),
     ...(p.answer?.accepted ?? []).flatMap(valueNumbers),
@@ -573,7 +568,7 @@ export function printedValues(p: QuestionPackage, fixedBenchmarks: readonly numb
     ...valueNumbers(error?.answer),
     ...(shown?.lines ?? []).flatMap(readNumbers),
     ...(easier ? [...readNumbers(easier.text), ...operationNumbers(easier.operation), ...valueNumbers(easier.answer)] : []),
-    ...(item?.regions ?? []).flatMap(r => regionNumbers(r, fixedBenchmarks)),
+    ...(item?.regions ?? []).flatMap(r => regionNumbers(r, fixedBenchmarks, item?.givens)),
     ...(item?.checks ?? []).flatMap(c => checkNumbers(c, fixedBenchmarks)),
     ...figureNumbers(item?.figure),
   ];
@@ -637,10 +632,12 @@ export const printedNumbers = (p: QuestionPackage): number[] => printedValues(p)
  * question and the easier example) that fails the gate (aiTextProblem: characters, number forms, number words), a
  * number past the range, or an idea before the curriculum's first level of it (CONCEPTS: a negative number, fraction,
  * decimal, percent or ratio, or a subtraction, multiplication, division or comparison sign anywhere it is printed). On
- * a money skill, coin values always fit and amounts of money may have cents; on a time skill, h:mm is a clock time and
+ * a money skill, typed coin givens fit and amounts of money may have cents; on a time skill, h:mm is a clock time and
  * fits as it is.
  */
 export function rangeProblem(p: QuestionPackage, curriculum: Curriculum, level: number): string | null {
+  const givens = givensProblem(p.item?.givens, p.text, p.item?.regions ?? []);
+  if (givens) return givens;
   const skill = p.skill.skills[0];
   const range = skill ? skillRange(curriculum, level, skill) : levelRange(curriculum, level);
   const context = { skill: skill ?? null, money: range.money };
@@ -648,7 +645,7 @@ export function rangeProblem(p: QuestionPackage, curriculum: Curriculum, level: 
   if (text) return text;
   // a:b in text is a clock time only on a time skill and in the h:mm shape; anywhere else it is a ratio.
   const read = printedValues(p)
-    .filter((r) => !(r.coin && range.money) && !(r.form === "time" && range.time) && !(r.form === "colon" && r.clock && range.time));
+    .filter((r) => !(r.given === "coin" && range.money) && !(r.form === "time" && range.time) && !(r.form === "colon" && r.clock && range.time));
   const big = read.find((r) => Math.abs(r.value) > range.max);
   if (big) return `the number ${big.value} is too big for this question: its numbers are at most ${range.max}`;
   const negative = read.find((r) => r.value < 0);
