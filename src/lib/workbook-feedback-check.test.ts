@@ -6,13 +6,22 @@ import { sampleChild, samplePlanInput } from "@/lib/workbook-sample-profiles";
 import { planWorkbook } from "@/lib/workbook-plan";
 import { sampleBook } from "@/lib/workbook-sample-book";
 import { fullnessProblem, pageFullness } from "@/lib/workbook-template";
-import type { QuestionPackage } from "@/lib/question-package";
+import { operationResult, workedSteps, type QuestionPackage } from "@/lib/question-package";
 import type { MeasuredElement } from "@/lib/workbook-render";
 
 const BC = curriculumFor("bc")!;
 const sample = sampleBook({ level: "U4", workbookId: "11111111-1111-4111-8111-111111111111", childId: "22222222-2222-4222-8222-222222222222", child: "Noah" }).draft;
 const page = sample.pages[2];
-const q = (over: Partial<QuestionPackage> = {}): QuestionPackage => ({ ...page.questions[0].package, level:4, text:"3 + 5 = ?", operation:{kind:"add",operands:[3,5]}, skill:{standard:"1.1",skills:["1.1-count-to-20"]}, item:undefined, answer:{value:{type:"number",value:8},accepted:[],unit:null},wrongAnswers:[],easierExample:null,steps:[], ...over });
+const q = (over: Partial<QuestionPackage> = {}): QuestionPackage => {
+  const operation: QuestionPackage["operation"] = over.operation ?? {kind:"add",operands:[3,5]};
+  const easier = {kind:"add" as const,operands:[1,2] as [number,number]};
+  return { ...page.questions[0].package, level:4, text:"3 + 5 = ?", operation,
+    skill:{standard:"1.1",skills:["1.1-count-to-20"]}, item:undefined,
+    answer:{value:operationResult(operation),accepted:[],unit:null},
+    wrongAnswers:[{value:{type:"number",value:0},cause:"careless",description:"A different answer",step:null}],
+    easierExample:{text:"1 + 2 = ?",operation:easier,answer:operationResult(easier),steps:workedSteps(easier)},
+    steps:workedSteps(operation), ...over };
+};
 
 describe("Savar's workbook feedback as permanent checks", () => {
   it("refuses missing instructions, internal unit labels and the rejected wording", () => {

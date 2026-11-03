@@ -316,13 +316,13 @@ describe("a page that does not fit", () => {
     expect(await d.store.draft(WORKBOOK)).toEqual(draft);
   });
 
-  it("leaves out the page's last question when the fit check names none", async () => {
+  it("leaves out the last optional drill when the fit check names none", async () => {
     const total = DAY_PAGES[0].parts.reduce((n, p) => n + p.items, 0);
     const fit: FitCheck = { fits: async (page) => (page.number === 3 && page.questions.length === total ? { ok: false, problems: [{ question: null, reason: "the slot runs past" }] } : { ok: true }) };
     const page = (await generate(deps({ fit }))).pages[2];
     expect(page.questions).toHaveLength(total - 1);
-    const parts = DAY_PAGES[0].parts.filter((p) => p.items > 0);
-    const lastSlot = `${DAY_PAGES[0].parts.indexOf(parts.at(-1)!) + 1}.${parts.at(-1)!.items}`;
+    const part = DAY_PAGES[0].parts.findLast(p => ["practice", "warm-up", "remember-these"].includes(p.kind) && p.items > 0)!;
+    const lastSlot = `${DAY_PAGES[0].parts.indexOf(part) + 1}.${part.items}`;
     expect(page.leftOut).toEqual([expect.objectContaining({ slot: lastSlot, reason: "the slot runs past" })]);
     expect(page.questions.map((q) => q.slot)).not.toContain(lastSlot);
   });

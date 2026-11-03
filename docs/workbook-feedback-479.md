@@ -19,7 +19,7 @@ The result has:
 
 The printed plan time target is also capped at 30 minutes for every level.
 
-For U4, the daily maxima are 8, 9, 10, 12, 13, 14, 15, 17, 19 and 20. Days 1 to 3 use pictures. Days 4 to 7 use pictures only for new ideas. Days 8 to 10 have no picture support. Fixed curriculum values, such as a benchmark of 10 or a fraction denominator, keep their taught value. Increase task complexity and remove help for those skills.
+For U4, the daily maxima are 8, 9, 10, 12, 13, 14, 15, 17, 19 and 20. Days 1 to 3 use pictures. Days 4 to 7 use pictures only for new ideas. Days 8 to 10 have no picture support. Only fixed references named by a benchmark skill, actual coin denominations on money skills and clock components on time skills keep their taught value. Fraction components follow the daily bound. Permission to teach fractions or decimals does not exempt other quantities.
 
 ## Checks for the #480 writer
 
@@ -27,13 +27,15 @@ For U4, the daily maxima are 8, 9, 10, 12, 13, 14, 15, 17, 19 and 20. Days 1 to 
 
 - `instructionProblem(text)`: refuses missing instructions, internal unit labels and rejected wording.
 - `feedbackItemProblem(package)`: refuses tracing after Kindergarten, object drawing used only to count, abstract likelihood drawing and a likelihood response other than circle-the-word. The renderer calls this check.
-- `scheduledItemProblem(package, curriculum, day, place)`: checks the feedback rules, picture support and the scalar number bound. The writer must call it before accepting a question.
+- `scheduledItemProblem(package, curriculum, day, place)`: checks the feedback rules, picture support and every applicable quantity across all item formats. This includes operands, results, comparison values, sequence values, counts, regions and figures. Unknown formats, unreadable packages, number forms and missing skills fail closed. The writer must call it before accepting a question.
 - `estimatedDayMinutes(questions, panels)`: includes reading time, worked examples, response type and algebra work. This is a planning estimate. It is not a measured child completion time.
 - `dayTimeProblem(questions, panels)`: refuses an estimated day above 30 minutes. The whole-book pass must call it.
 
 `src/lib/workbook-template.ts` exports `pageFullness(page, measured)` and `fullnessProblem(page, measured)`. The target is 80 percent of the usable height, including teaching panels and writing space. Missing measurements fail closed. The whole-book pass must use this check when it chooses whether to add questions or increase writing space. Overflow remains a separate strict render check.
 
 The current slot limits reserve room for the larger writing areas. The generator still records every planned omission. A Unit B page with a new example and a spot-the-error card has no spare practice block at U1 to U9. Review pages keep two mixed-set items. Packed six-page days keep two retrieval items beside their challenge cards.
+
+Practice 2 reserves a separate row for each teaching card. A middle-level page with both cards keeps four drills. If a render still overflows, optional drills are removed first. The planned error card is never removed. A page that cannot fit the required card fails its fit check.
 
 ## Permanent evidence
 
@@ -50,6 +52,8 @@ The current slot limits reserve room for the larger writing areas. The generator
 | Page topics | Code selects skill titles for plan rows; the page-title tests cover the title selection rules |
 | No back My levels page | Generator and assembler tests; every-page markup test |
 | Difficulty ramp and picture support | Schedule tests across all 30 levels; `scheduledItemProblem` |
+| Daily bounds for all formats | `workbook-schedule-check.test.ts`: U14 addition and U4 comparison, places, order, missing sequence terms, picture counts, benchmark references, fraction components and unreadable data |
+| Complete error card retained; choice label printed once | `workbook-error-card.test.ts`: public generation and real render of a checked three-line U14 error; forced overflow and failed-page controls |
 | Likelihood, colouring and mathematical drawing | `feedbackItemProblem`; #480 supplies the approved item types |
 | At least 80 percent page use; under 30 minutes | Public fullness and day-time checks with negative tests; #480 applies the whole-book checks |
 | U26 smaller easier example | Public package-check tests for same-shape expressions with smaller literals |

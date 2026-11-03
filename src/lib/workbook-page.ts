@@ -196,7 +196,8 @@ function partSlots(part: PlannedPart, page: PlannedPage, level: number): { slots
     case "practice": {
       if (page.type === "practice-2") {
         // Rows getting harder, four to a row.
-        const room = early ? 4 : 12 - (has("solve-it-two-ways") || has("spot-the-error") ? 4 : 0) - (has("remember-these") ? 4 : 0);
+        // Each teaching card reserves a full row, including the three-line wrong solution and its fix box.
+        const room = early ? 4 : Math.max(0, 12 - (has("solve-it-two-ways") ? 4 : 0) - (has("spot-the-error") ? 4 : 0) - (has("remember-these") ? 4 : 0));
         const items = Math.min(part.items, room);
         const rows = Math.ceil(items / 4);
         return laid(Array.from({ length: rows }, (_, i) => ({ slot: "practice-row" as const, items: Math.min(4, items - i * 4) })), `Practice 2 has room for ${room} items beside its other blocks`);
