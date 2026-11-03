@@ -473,7 +473,7 @@ describe("CONFIRM_HEARD", () => {
     const c = opened();
     c.child("7 plus 9 is 16.");
     expect(c.next.acts).toContain("confirm");
-    c.maya({ act: "confirm", parts: [ln("confirm.which", { heard: "16", other: "60" })] });
+    c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "16" })] });
     c.child("Yeah, 16.");
     expect(c.next.acts).toContain("confirm");
     c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "16" })] });

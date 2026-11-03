@@ -662,7 +662,7 @@ const MATH_WORDS = new Set([
   "multiplied", "divided", "shared", "grouped", "drew", "dots", "blocks", "fingers", "line", "head", "with", "from", "by",
   "me", "them", "they", "these", "those", "this", "column", "columns", "top", "bottom", "under", "above", "extra", "more",
   "less", "other", "both", "times", "again", "too", "also", "checked", "check", "know", "knew", "remember", "remembered",
-  "away", "fine", "alright", "than", "teacher", "says", "you", "wrong", "divide", "multiply", "idea", "how", "works", "clue", "big", "way",
+  "away", "fine", "alright",
 ]);
 const UNIT_WORD = /^(?:mm|cm|dm|m|km|g|kg|mg|ml|l|(?:milli|centi|deci|kilo)?(?:metre|meter|gram|litre|liter)s?|metres?|meters?|grams?|litres?|liters?|dollars?|cents?|seconds?|minutes?|hours?|days?|weeks?|months?|years?|o'clock|am|pm|a\.m\.|p\.m\.|degrees?|percent|\$|¢|%)$/i;
 
@@ -710,37 +710,6 @@ function plainExplanations(text: string): boolean {
   });
 }
 const EXPLANATION_ALL = /\b(?:because|since|cause|cuz|coz)\b/gi;
-
-/** A complete answer/explanation statement, not a question followed by an answer. Scope exceptions use this stricter
- * form of the existing D-199 answer grammar. Every clause must belong to the child's own work. */
-export function answerStatement(text: string, options?: ReadOptions): boolean {
-  const read = readAnswer(text, options);
-  const source = prepared(text, options);
-  const corrections = correctionRuns(source).filter(r => r.clean);
-  let plain = source;
-  for (const run of corrections.reverse()) plain = plain.slice(0, run.index) + " " + plain.slice(run.end);
-  const numbers = readNumbers(source);
-  const explanation = EXPLANATION.test(source);
-  const withdrawn = numbers.values.length === 1 && NEGATIVE.test(source);
-  let started = false;
-  return !numbers.unreadable && !read.choice && (read.final !== null || explanation || withdrawn) && plain.split(/[.!?;:\n]+/)
-    .every(clause => {
-      const part = readNumbers(clause);
-      started ||= part.values.length > 0 || part.unreadable;
-      const statement = numbers.values.length === 1 && numbers.values[0].type === "number" && numbers.values[0].value < 0
-        ? clause.replace(/\b(?:minus|negative)\b/gi, " ") : clause;
-      return !started || plainClause(statement.replace(EXPLANATION_ALL, " "));
-    });
-}
-
-/** Legacy readings can name a scalar answer beside a feeling or ordinary talk. Keep the complete source clause.
- * Explanations with several numbers require the complete statement, so a later request cannot inherit an exception. */
-export function answerStatements(text: string): string[] {
-  if (answerStatement(text, { fractions: true })) return [text];
-  if (readNumbers(text, { fractions: true }).unreadable) return [];
-  return [...text.matchAll(/\S[\s\S]*?(?:[!?;\n]|\.(?=\s|$)|$)/g)].map(m => m[0]).filter(clause =>
-    readNumbers(clause, { fractions: true }).values.length === 1 && answerStatement(clause, { fractions: true }));
-}
 
 /**
  * What the child kept in a turn, and their final answer (D-199). The rule never needs the answer key. First the last word
@@ -822,3 +791,40 @@ export function takenBack(said: string, options?: ReadOptions): { kept: AnswerVa
 
 /** The text offers numbers as a choice ("is it 66 or 56?"): none of them is the child's answer yet. */
 export const offersChoice = (text: string) => text.split(/\bor\b/i).filter((p) => valuesIn(p).length > 0).length > 1;
+
+/** A complete calculation in a plain request. This reuses the D-199 tokenizer and value reader. Other wording,
+ * claims, choices, metadata, partial calculations and unsupported number forms are uncertain, not outside work. */
+export function completeExpression(said: string): { operation: "add" | "subtract" | "multiply" | "divide"; operands: AnswerValue[] } | null {
+  if (readAnswer(said, { fractions: true }).choice) return null;
+  let text = plainMinus(said).toLowerCase().trim().replace(/[.!?]+$/, "");
+  text = text.replace(/^(?:what is|what's|how much is|calculate|solve|explain|can you (?:explain|solve|calculate)|help me (?:with|solve))\s+/, "");
+  const verb = /^(add|subtract|multiply|divide)\s+/.exec(text);
+  if (verb) text = text.slice(verb[0].length);
+  // A proposed result does not become another operand. A choice was already treated as uncertain above.
+  const result = /,?\s+\b(?:is it|is|equals?|makes?)\b|=/.exec(text);
+  if (result) text = text.slice(0, result.index).trim();
+  text = prepared(text.replace(/multiplied by/g, "times").replace(/divided by/g, "÷").replace(/take away/g, "minus"), { fractions: true, operands: true });
+  const matches = [...text.matchAll(TOKEN)];
+  const operators = new Map<string, "add" | "subtract" | "multiply" | "divide">(Object.entries({
+    "+": "add", plus: "add", "-": "subtract", minus: "subtract", less: "subtract",
+    "×": "multiply", "*": "multiply", x: "multiply", times: "multiply", "÷": "divide",
+  } as const));
+  const ops = new Set<string>(verb ? [verb[1]] : []);
+  let end = 0, previous = "", operationCount = 0;
+  for (const m of matches) {
+    if (!/^[\s,]*$/.test(text.slice(end, m.index))) return null;
+    const token = m[0];
+    const op = operators.get(token);
+    if (op && (!["-", "minus", "+"].includes(token) || (previous && !operators.has(previous)))) {
+      ops.add(op); operationCount++;
+    }
+    if (!op && !/^[\d.]/.test(token) && kindOf(token) === null && !["and", "point", "negative", "/", MIX_MARK].includes(token)) return null;
+    previous = token; end = m.index! + token.length;
+  }
+  if (!/^[\s,]*$/.test(text.slice(end)) || ops.size !== 1 || operators.has(previous) ||
+      ["and", "point", "negative", "/", MIX_MARK].includes(previous)) return null;
+  const read = readNumbers(text);
+  if (read.unreadable || read.values.length < 2 || (!verb &&
+      (operationCount !== read.values.length - 1 || !read.operand.slice(1).every(Boolean)))) return null;
+  return { operation: [...ops][0] as "add" | "subtract" | "multiply" | "divide", operands: read.values };
+}

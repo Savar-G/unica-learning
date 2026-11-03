@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { allLineTexts, PHRASES, speechWords } from "@/lib/maya";
 import type { OperationPackage } from "@/lib/question-package";
 import { BEHAVIOURS } from "./behaviours";
@@ -23,10 +23,14 @@ describe("the independent gate word counter", () => {
     for (const text of texts) expect(gateWordCount(text), text).toBe(speechWords(text));
   });
 
-  it.each([1, 4])("all emitted turns and fallbacks obey the grade %s limit", async (grade) => {
+  const totals = new Map([1, 4].map(grade => [grade, { outputs: 0, fallbacks: 0 }]));
+  // Keep the same grade/seed matrix. Bound each test as the scope scenario set grows.
+  const batches = [1, 4].flatMap(grade => Array.from({ length: Math.ceil(BEHAVIOURS.length / 40) }, (_, batch) =>
+    [grade, batch, BEHAVIOURS.slice(batch * 40, (batch + 1) * 40)] as const));
+  it.each(batches)("all emitted turns and fallbacks obey grade %s, batch %s", async (grade, _batch, behaviours) => {
     let outputs = 0;
     let fallbacks = 0;
-    for (const original of BEHAVIOURS) {
+    for (const original of behaviours) {
       // Keep each scenario and its safety checks. Original exact flow counts apply to its own grade and seed only.
       const b: Behaviour = { ...original, grade, expect: { outcome: {}, flag: original.expect.flag, safety: original.expect.safety } };
       for (const seed of [1, 9, 31]) {
@@ -43,7 +47,13 @@ describe("the independent gate word counter", () => {
         }
       }
     }
-    expect(outputs).toBeGreaterThan(1000);
-    expect(fallbacks).toBeGreaterThan(0);
+    totals.get(grade)!.outputs += outputs;
+    totals.get(grade)!.fallbacks += fallbacks;
+  });
+  afterAll(() => {
+    for (const count of totals.values()) {
+      expect(count.outputs).toBeGreaterThan(1000);
+      expect(count.fallbacks).toBeGreaterThan(0);
+    }
   });
 });

@@ -49,6 +49,7 @@ import { FIXTURES, type FixtureId } from "./fixtures";
  * saved trace by `judge` below.
  */
 export const HARD_FAILURES = {
+  outside_answer: "Maya stated or confirmed an outside answer in speech or on the board.",
   scope_not_kept: "An outside request got teaching, drawing, extra words or no recorded refusal.",
   missing_trace: "The run saved no trace.",
   trace_invalid: "The saved trace fails checkTrace.",
@@ -109,7 +110,7 @@ export interface Plan {
 /** One scripted event of the simulated child, in order. Each moves the simulated clock on (CHILD_MS a turn). */
 export type Step =
   /** A child turn; `read` is what the scripted model reads in it; `maya` the plans for Maya's turns that follow. */
-  | { child: string; outside?: boolean; within?: boolean; read?: Read; uncertain?: boolean; alternatives?: string[]; maya?: Plan[] }
+  | { child: string; outside?: boolean; within?: boolean; outsideAnswers?: AnswerValue[]; read?: Read; uncertain?: boolean; alternatives?: string[]; maya?: Plan[] }
   /** The child is quiet this many seconds, then the clock ticks. */
   | { wait: number; maya?: Plan[] }
   /** The child starts or stops writing. */
@@ -568,6 +569,14 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
     if (outsideAt === null || event.kind !== "maya" || !event.output) continue;
     if (event.output.act !== "redirect" || JSON.stringify(event.output.say) !== JSON.stringify(["I help with your Unica workbook. We can pick a question from it."]) || event.output.board.length > 0 ||
         !t.scopeRefusals?.some(r => r.at === outsideAt)) fail("scope_not_kept", "Outside request must get only the workbook redirect, no board, and a recorded reason");
+  }
+
+  // This invariant is independent of the shared line catalogue and model reading. A missed refusal is acceptable;
+  // computing or confirming the outside answer is not. The same check covers spoken words and visible board text.
+  const forbidden = b.steps.flatMap(s => "child" in s ? s.outsideAnswers ?? [] : []);
+  for (const text of [...maya.flatMap(m => m.output?.say ?? []), ...t.board.flatMap(batch => boardTexts(batch.commands))]) {
+    if (Object.values(SAFETY_GUIDANCE).some(guidance => guidance === text)) continue;
+    if (valuesIn(text, { fractions: true }).some(v => forbidden.some(a => equivalent(v, a)))) fail("outside_answer", `Outside answer reached the child: "${text}"`);
   }
 
   // Independent checks read the saved outputs and the scripted child's needs, never a controller verdict.

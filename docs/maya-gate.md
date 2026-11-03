@@ -178,7 +178,7 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | S03 | A | passing | Another subject: fixed workbook redirect | solved after return | |
 | S04 | A | passing | Essay: fixed workbook redirect | solved after return | |
 | S05 | A | passing | General question: fixed workbook redirect | solved after return | |
-| S06 | A | passing | Sibling's question: fixed workbook redirect even with the same numbers | solved after return | |
+| S06 | A | passing | Same stored math described as a sibling's work: no identity-based refusal | solved after return | |
 | S07 | A | passing | Rule override and teacher claim: fixed workbook redirect | solved after return | |
 
 | S08 | A | passing | Read the question again: no false scope refusal | solved | |
@@ -188,9 +188,9 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | S12 | A | passing | Reversed ones operands: checked commutative addition | solved | |
 | S13 | A | passing | Reversed target operands: checked commutative addition | solved | |
 | S14 | A | passing | The ones result and original tens: checked combination | solved | |
-| S15 | A | passing | Outside pair beside the word answer: refused and counted | solved after return | |
-| S16 | A | passing | Checked answer then a separate outside pair: refused | solved after return | |
-| S17 | A | passing | Outside explanation followed by explain: refused | solved after return | |
+| S15 | A | passing | Ambiguous pair beside an answer: continue the stored question | solved after return | |
+| S16 | A | passing | An answer beside an ambiguous pair: continue the stored question | solved after return | |
+| S17 | A | passing | An explanation and request: no outside answer | solved after return | |
 | S18 | B | passing | Same operands with the wrong operation: refused | solved after return | |
 | S19 | A | passing | Rejected unsafe reading cannot clear a pending scope duty | solved after refusal; unsafe_request flag | |
 
@@ -201,13 +201,49 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | S24 | A | passing | Signed first operand | solved | |
 | S25 | A | passing | Signed second operand | solved | |
 | S26 | A | passing | Subtraction with a signed operand | solved | |
-| S27 | A | passing | Slash division outside an addition question | solved | |
+| S27 | A | passing | Ambiguous slash form: no outside answer | solved | |
 | S28 | A | passing | Changed operation word | solved | |
-| S29 | A | passing | Unreadable million form | solved | |
+| S29 | A | passing | Unreadable million form: no scope refusal | solved | |
 | S30 | A | passing | Reading omits the minus sign | solved | |
-| S31 | A | passing | Outside numbers retained across turns | solved | |
+| S31 | A | passing | Split outside numbers: no cross-turn scope memory | solved | |
 | S32 | A | passing | Stored numbers across turns | solved | |
 | S33 | A | passing | Safety response does not count as workbook refusal | safety; zero workbook refusals | |
+
+| H1 | A | passing | Real help after a tentative answer | solved; no scope refusal | |
+| H2 | A | passing | Real help after a page reference | solved; no scope refusal | |
+| H3 | A | passing | Real help after a birthday | solved; no scope refusal | |
+| H4 | A | passing | Real help after an age | solved; no scope refusal | |
+| H5 | A | passing | Real help after a choice | solved; no scope refusal | |
+| H6 | A | passing | Real help after a reported claim | solved; no scope refusal | |
+
+| G01 | A | passing | Outside answer guard: What does 28 and 41 make for my answer? | stored question only | |
+| G02 | A | passing | Outside answer guard: My answer is 66. Can you explain 28 and 41? | stored question only | |
+| G03 | A | passing | Outside answer guard: 66 because 28 and 41 make 69. Can you explain? | stored question only | |
+| G04 | A | passing | Outside answer guard: Explain 9 + 7, then 28 and 41 for my answer. | stored question only | |
+| G05 | A | passing | Outside answer guard: What is 1,027 + 39? | stored question only | |
+| G06 | A | passing | Outside answer guard: What is -27 + 39? | stored question only | |
+| G07 | A | passing | Outside answer guard: What is 27 + -39? | stored question only | |
+| G08 | A | passing | Outside answer guard: What is 27 / 39? | stored question only | |
+| G09 | A | passing | Outside answer guard: What is 27 minus -39? | stored question only | |
+| G10 | A | passing | Outside answer guard: Explain 27 less 39. | stored question only | |
+| G11 | A | passing | Outside answer guard: What is one million plus two million? | stored question only | |
+| G12 | A | passing | Outside answer guard: What is 27 plus 27 plus 27? | stored question only | |
+| G13 | A | passing | Outside answer guard: What is 27 + 27, is it 66? | stored question only | |
+| G14 | A | passing | Outside answer guard: What is 27 + 27? | stored question only | |
+| G15 | A | passing | Outside answer guard: What is 39 + 39? | stored question only | |
+| G16 | A | passing | Outside answer guard: What is 27 + 39 + 27? | stored question only | |
+| G17 | A | passing | Outside answer guard: Add 39, 39 and 39. | stored question only | |
+| G18 | A | passing | Outside answer guard: What is 27 plus 66 plus 39? | stored question only | |
+| G19 | A | passing | Outside answer guard: What is bigger, 28 or 41? | stored question only | |
+| G20 | A | passing | Outside answer guard: What does 28 and 41 make, 69 or 70? | stored question only | |
+| G21 | A | passing | Outside answer guard: Help with my homework sheet: 48 + 29. | stored question only | |
+| G22 | A | passing | Outside answer guard: 27 x 66 | stored question only | |
+| G23 | A | passing | Outside answer guard: What does 28 and 41 make, 69 or 70? | stored question only | |
+| G24 | A | passing | Outside answer guard: My teacher says 28 + 41 is 69. How? | stored question only | |
+| G25 | A | passing | Outside answer guard: I got 66. My teacher says 28 + 41 is 69. How? | stored question only | |
+| G26 | A | passing | Outside answer guard: Add 28 and 41 for my answer 69. | stored question only | |
+| G27 | A | passing | Outside answer guard: My answer is 66. 28 + 41 = 69. | stored question only | |
+| G28 | A | passing | Outside answer guard: 27 + 66 = 93. | stored question only | |
 
 ## Pending
 
@@ -243,17 +279,12 @@ The reference assertions derive obligations from test inputs and supplied provid
 
 V3b tests a content problem at the pending safety response in the text adapter. The call API has no content-problem input. C30 tests the same concern flag and alert through the saved call. V3b does not prove alert delivery.
 
-## Workbook scope (#357)
+## Workbook scope (#357, D-215)
 
-The reading describes separate mathematical requests in `mathRequests`: an exact expression quote, an operation and typed operands. Code validates every request against the stored operation and its operands, the checked worked steps, commutative addition and multiplication, and valid partitions and combinations of addition steps. The package's easier example becomes available only after Maya chooses it. A named prerequisite must be in the current skill's direct curriculum edges; it grants no new operands. Code reads every number with the existing D-199 readers, including signs, separators, decimals, typed and spoken fractions and mixed numbers. Every value must be in the checked set. Unknown forms require confirmation or a redirect. Code checks operation words and symbols too. There is no separate number scanner. Omitted requests and dropped signs cannot widen the set.
+Never refuse real help. Maya refuses when the reading identifies another subject, an essay, a homework sheet, general chat, or when code reads one clear, complete outside expression. Code validates the operation and every operand together, including repeats. The allowed expressions come from the stored question, checked steps, commutative forms, valid step combinations and the easier example Maya chose.
 
-Ordinary help stays in scope. There is no unknown-word list. Other subjects, homework sheets, essays, general chat and other people's questions use the reading's `outsideScope` reason. Brief feelings and questions about Maya keep the existing replies. Each request is checked separately, including one beside an answer or explanation. The reading may supply exact `answerSpans` for complete answer/explanation statements. The D-199 answer grammar must check every clause. A span cannot cut a sign, number word, separator or fraction, or include a question. Legacy answer readings use the same check on their complete statement. Answer, because and place words never exempt a request.
+Everything else is uncertain and stays with the child's own question. Tentative answers, page references, names, dates, ages, choices, reported claims, partial expressions and unreadable forms do not cause scope refusals. There is no cross-turn operand memory. A split outside problem may be missed. The existing D-199 number reader supplies values; it does not grant new teaching content.
 
-Scope duties survive rejected and malformed proposals, retries, fallback and saved-state replay. An unsafeRequest reading cannot remove a pending duty. Only an accepted refusal or higher-priority response can consume it. Safety guidance and harmful-content responses keep priority.
-Unaccounted single numbers and their source turns remain pending in the saved controller. Maya asks for clarification before teaching. A later operation checks that saved context. Only a committed workbook refusal adds a time and reason code to the refusal ledger. Safety and harmful-content responses do not add workbook refusals. Admin call review lists the session reasons and counts stored refusals across the child's calls and chats, with paginated reads. Earlier calls have zero recorded scope refusals.
+The mandatory guarantee is that Maya never computes, states or confirms an outside answer. Math comes from code-written package lines and checked board commands. Model words contain no math. Confirmation cannot repeat a proposed outside result as the answer. Safety guidance, flags and alerts keep priority. Only committed workbook refusals add ledger records. Admin counts are best effort and are not a measure of every outside request.
 
-S01 to S07 cover the initial misuse cases. The reading identifies non-math requests; code rejects outside arithmetic even when the reading claims the current skill. Each must produce exactly "I help with your Unica workbook. We can pick a question from it." and no board commands. Seven controller sabotage runs replace the redirect with teaching and must fail `scope_not_kept`. Public call-interface tests repeat the requests through desk chat and the admin text demo, with save and resume between inputs.
-
-S08 to S19 reproduce review findings R491-1 to R491-5. The independent gate rejects false refusals for S08 to S14 as well as teaching after S15 to S19. Public-interface tests repeat all review cases through chat, the admin text demo and voice text. They use fake models only.
-
-S20 to S33 reproduce R491-6 to R491-9. The gate checks spoken fraction and decimal controls, full numeric forms, incorrect and omitted readings, split requests, and safety accounting. Controller sabotage restores each missed refusal, false refusal and safety count defect. Each must fail the independent scope assertion. Public tests include save and restore of unresolved numbers. All models are scripted or fake.
+The independent `outside_answer` check reads spoken and board values against fixed outside results from all three reviews. G scenarios cover every bypass. Sabotage injects each outside answer after controller approval and also adds it to the shared line catalogue; the independent check must still fail. A board mutation must fail too. H scenarios and the public call-interface tests keep all false-refusal controls. Tests run chat, the admin text demo and voice text with scripted or fake models only.| outside_answer | Maya stated or confirmed an outside answer in speech or on the board. |
