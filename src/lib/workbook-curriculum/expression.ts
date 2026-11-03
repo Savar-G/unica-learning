@@ -1,43 +1,57 @@
 /** A bounded interpreter for the expression language in the progression brief. No host runtime access. */
 const ZERO = BigInt(0), ONE = BigInt(1), TWO = BigInt(2);
-const MAX_BITS = 4096;
-export class ExpressionError extends Error {
-  constructor(message: string) { super(message); this.name = "ExpressionError"; }
-}
+import { INPUT_LIMITS, assertExpressionInput, ExpressionError } from "./limits";
+export { ExpressionError } from "./limits";
+const MAX_BITS = INPUT_LIMITS.integerBits;
+const MAX_INTEGER = (BigInt(1) << BigInt(MAX_BITS)) - BigInt(1);
 const fail = (message: string): never => { throw new ExpressionError(message); };
 function bounded(n: bigint): bigint {
-  if (n.toString(2).length > MAX_BITS) fail("Integer exceeds the 4096-bit limit");
+  if (n < -MAX_INTEGER || n > MAX_INTEGER) fail("Integer exceeds the 256-bit value limit");
   return n;
 }
-function gcd(a: bigint, b: bigint): bigint {
+function integerPower(base: bigint, exponent: bigint, budget: EvaluationBudget): bigint {
+  let result = ONE;
+  while (exponent > ZERO) {
+    budget.step();
+    if (exponent % TWO !== ZERO) result = bounded(result * base);
+    exponent /= TWO;
+    if (exponent > ZERO) base = bounded(base * base);
+  }
+  return result;
+}
+function gcd(a: bigint, b: bigint, budget: EvaluationBudget): bigint {
+  bounded(a); bounded(b);
   a = a < ZERO ? -a : a; b = b < ZERO ? -b : b;
-  while (b !== ZERO) [a, b] = [b, a % b];
+  while (b !== ZERO) { budget.step(); [a, b] = [b, a % b]; }
   return a;
 }
 /** Reduced exact rational. A denominator of one still has Fraction semantics. */
 export class FractionValue {
   readonly numerator: bigint;
   readonly denominator: bigint;
-  constructor(n: bigint, d: bigint = ONE) {
+  constructor(n: bigint, d: bigint = ONE, budget = new EvaluationBudget()) {
+    bounded(n); bounded(d);
     if (d === ZERO) fail("Division by zero");
-    const g = gcd(n, d), sign = d < ZERO ? -ONE : ONE;
+    const g = gcd(n, d, budget), sign = d < ZERO ? -ONE : ONE;
     this.numerator = bounded(n / g * sign); this.denominator = bounded(d / g * sign);
   }
 }
 /** Exact finite decimal. Division still produces a float unless a Fraction is involved. */
 export class DecimalValue extends FractionValue {
-  constructor(n: bigint, d: bigint = ONE, readonly negativeZero = false) { super(n, d); }
+  constructor(n: bigint, d: bigint = ONE, readonly negativeZero = false, budget = new EvaluationBudget()) { super(n, d, budget); }
 }
-export function decimalValue(value: string | number): DecimalValue {
-  const text = String(value), match = text.match(/^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/);
+export function decimalValue(value: string | number, budget = new EvaluationBudget()): DecimalValue {
+  const text = String(value);
+  if (text.length > INPUT_LIMITS.stringLength) fail("Decimal input exceeds the string length limit");
+  const match = text.match(/^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/);
   if (!match || !(match[2] || match[3]) || !Number.isFinite(Number(text))) return fail("Invalid finite decimal");
   const digits = (match[2] || "0") + (match[3] || ""), places = (match[3]?.length ?? 0) - Number(match[4] ?? 0);
-  if (Math.abs(places) > 1000) fail("Decimal exceeds the precision limit");
+  if (Math.abs(places) > 76) fail("Decimal exceeds the precision limit");
   const n = bounded(BigInt(digits) * (match[1] === "-" ? -ONE : ONE)), scale = bounded(BigInt(10) ** BigInt(Math.abs(places)));
-  return new DecimalValue(places < 0 ? bounded(n * scale) : n, places > 0 ? scale : ONE, match[1] === "-" && n === ZERO);
+  return new DecimalValue(places < 0 ? bounded(n * scale) : n, places > 0 ? scale : ONE, match[1] === "-" && n === ZERO, budget);
 }
 /** Numeric equality across exact decimals, integers and computed floats. */
-export function numericCompare(a: ExpressionValue, b: ExpressionValue): number { return compare(a, b); }
+export function numericCompare(a: ExpressionValue, b: ExpressionValue, budget = new EvaluationBudget()): number { return compare(a, b, budget); }
 class TupleValue {
   constructor(readonly items: readonly ExpressionValue[]) { Object.freeze(items); Object.freeze(this); }
 }
@@ -60,7 +74,7 @@ class SetValue {
 }
 export type ExpressionValue = bigint | number | string | boolean | FractionValue | SetValue | TupleValue | readonly ExpressionValue[];
 export type Bindings = Readonly<Record<string, ExpressionValue>>;
-export const EVALUATION_LIMITS = Object.freeze({ work: 100000, depth: 64, expandedValueSize: 16000, totalValueSize: 100000, outputLength: 16000 });
+export const EVALUATION_LIMITS = Object.freeze({ work: 50000, depth: 32, expandedValueSize: 4096, totalValueSize: 32768, outputLength: 2048 });
 /** One budget per fill, including retries, all expressions, collection operations and rendered output. */
 export class EvaluationBudget {
   private remainingWork = EVALUATION_LIMITS.work;
@@ -76,11 +90,17 @@ export class EvaluationBudget {
   private stats(value: ExpressionValue, depth = 0): { size: number; depth: number } {
     this.step(); this.depth(depth);
     if (typeof value === "string") {
-      this.output(value.length);
+      if (value.length > INPUT_LIMITS.stringLength) fail("Value string exceeds the length limit");
       return { size: 1 + value.length, depth: 0 };
     }
     const items = Array.isArray(value) ? value : value instanceof TupleValue || value instanceof SetValue ? value.items : null;
-    if (!items) return { size: 1, depth: 0 };
+    if (!items) {
+      if (typeof value === "bigint") bounded(value);
+      else if (typeof value === "number") finite(value);
+      else if (value instanceof FractionValue) { bounded(value.numerator); bounded(value.denominator); }
+      return { size: 1, depth: 0 };
+    }
+    if (items.length > INPUT_LIMITS.collectionLength) fail("Collection exceeds the length limit");
     const cached = this.sizes.get(value as object);
     if (cached) { this.depth(depth + cached.depth); return cached; }
     let size = 1, nested = 0;
@@ -122,15 +142,17 @@ type Node =
   | { kind: "call"; name: string; args: Node[]; reverse?: Node }
   | { kind: "index"; target: Node; index: Node };
 type Token = { text: string; value?: ExpressionValue };
-function tokenize(source: string): Token[] {
-  if (source.length > 16000) fail("Expression exceeds the size limit");
+function tokenize(source: string, budget: EvaluationBudget): Token[] {
+  assertExpressionInput(source);
   const tokens: Token[] = [];
   for (let i = 0; i < source.length;) {
+    budget.step();
     const c = source[i];
     if (/\s/.test(c)) { i++; continue; }
     if (c === "'" || c === '"') {
       let value = ""; const quote = c; i++;
       while (i < source.length && source[i] !== quote) {
+        budget.step();
         let ch = source[i++];
         if (ch === "\\") {
           ch = source[i++];
@@ -149,12 +171,12 @@ function tokenize(source: string): Token[] {
       const op = tail.match(/^(?:\*\*|\/\/|<=|>=|==|!=|[+\-*/%<>()\[\]{},=])/);
       if (number) {
         const text = number[0];
-        tokens.push({ text: "literal", value: /[.eE]/.test(text) ? decimalValue(text) : bounded(BigInt(text)) }); i += text.length;
+        tokens.push({ text: "literal", value: /[.eE]/.test(text) ? decimalValue(text, budget) : bounded(BigInt(text)) }); i += text.length;
       } else if (name) { tokens.push({ text: name[0] }); i += name[0].length; }
       else if (op) { tokens.push({ text: op[0] }); i += op[0].length; }
       else fail(`Unsupported token ${JSON.stringify(c)} at position ${i}`);
     }
-    if (tokens.length > 4096) fail("Expression exceeds the token limit");
+    if (tokens.length > INPUT_LIMITS.expressionTokens) fail("Expression exceeds the token limit");
   }
   tokens.push({ text: "<end>" }); return tokens;
 }
@@ -162,31 +184,32 @@ class Parser {
   private at = 0;
   private depth = 0;
   private readonly tokens: Token[];
+  get tokenCount(): number { return this.tokens.length - 1; }
   readonly names = new Set<string>();
-  constructor(source: string) { this.tokens = tokenize(source); }
+  constructor(source: string, private readonly budget: EvaluationBudget) { this.tokens = tokenize(source, budget); }
   private peek() { return this.tokens[this.at].text; }
-  private take(text: string) { if (this.peek() === text) { this.at++; return true; } return false; }
+  private take(text: string) { this.budget.step(); if (this.peek() === text) { this.at++; return true; } return false; }
   private need(text: string) {
     if (this.peek() === "for") fail("Generator expressions and comprehensions are not supported");
     if (!this.take(text)) fail(`Expected ${text}, found ${this.peek()}`);
   }
   parse(): Node { const n = this.expression(); this.need("<end>"); return n; }
   private expression(): Node {
-    if (++this.depth > 64) fail("Expression exceeds the nesting limit");
+    if (++this.depth > INPUT_LIMITS.expressionDepth) fail("Expression exceeds the nesting limit");
     let n = this.or();
     if (this.take("if")) { const condition = this.or(); this.need("else"); n = { kind: "conditional", yes: n, condition, no: this.expression() }; }
     this.depth--; return n;
   }
   private chain(next: () => Node, ops: string[]): Node {
     let n = next();
-    while (ops.includes(this.peek())) { const op = this.tokens[this.at++].text; n = { kind: "binary", op, left: n, right: next() }; }
+    while (ops.includes(this.peek())) { this.budget.step(); const op = this.tokens[this.at++].text; n = { kind: "binary", op, left: n, right: next() }; }
     return n;
   }
   private or = (): Node => this.chain(this.and, ["or"]);
   private and = (): Node => this.chain(this.not, ["and"]);
   private not = (): Node => {
     if (!this.take("not")) return this.compare();
-    if (++this.depth > 64) fail("Expression exceeds the nesting limit");
+    if (++this.depth > INPUT_LIMITS.expressionDepth) fail("Expression exceeds the nesting limit");
     const child = this.not(); this.depth--; return { kind: "unary", op: "not", child };
   };
   private compare(): Node {
@@ -202,7 +225,7 @@ class Parser {
   private multiply = (): Node => this.chain(this.unary, ["*", "/", "//", "%"]);
   private unary = (): Node => {
     if (!["+", "-"].includes(this.peek())) return this.power();
-    if (++this.depth > 64) fail("Expression exceeds the nesting limit");
+    if (++this.depth > INPUT_LIMITS.expressionDepth) fail("Expression exceeds the nesting limit");
     const op = this.tokens[this.at++].text, child = this.unary(); this.depth--; return { kind: "unary", op, child };
   };
   private power(): Node {
@@ -210,7 +233,7 @@ class Parser {
     return this.take("**") ? { kind: "binary", op: "**", left, right: this.unaryWithDepth() } : left;
   }
   private unaryWithDepth(): Node {
-    if (++this.depth > 64) fail("Expression exceeds the nesting limit");
+    if (++this.depth > INPUT_LIMITS.expressionDepth) fail("Expression exceeds the nesting limit");
     const n = this.unary(); this.depth--; return n;
   }
   private sequence(end: string): Node[] {
@@ -255,7 +278,11 @@ class Parser {
     return n;
   }
 }
-function finite(x: number): number { return Number.isFinite(x) ? x : fail("Non-finite numeric result"); }
+function finite(x: number): number {
+  if (!Number.isFinite(x)) fail("Non-finite numeric result");
+  if (Math.abs(x) >= 2 ** MAX_BITS) fail("Number exceeds the 256-bit value limit");
+  return x;
+}
 function numeric(v: ExpressionValue): bigint | number | FractionValue {
   if (typeof v === "bigint") return bounded(v);
   if (typeof v === "number") return finite(v);
@@ -271,18 +298,18 @@ function integral(v: ExpressionValue): bigint {
   if (n instanceof FractionValue && n.denominator === ONE) return n.numerator;
   return fail("Expected an integer");
 }
-function rational(v: ExpressionValue): FractionValue {
-  const n = numeric(v); if (n instanceof FractionValue) return n;
-  if (typeof n === "bigint") return new FractionValue(n);
+function rational(v: ExpressionValue, budget: EvaluationBudget): FractionValue {
+  const n = numeric(v); if (n instanceof FractionValue) { bounded(n.numerator); bounded(n.denominator); return n; }
+  if (typeof n === "bigint") return new FractionValue(n, ONE, budget);
   // Exact IEEE-754 value, including subnormals. This is also Python's float rounding input.
-  if (n === 0) return new FractionValue(ZERO);
+  if (n === 0) return new FractionValue(ZERO, ONE, budget);
   const view = new DataView(new ArrayBuffer(8)); view.setFloat64(0, n);
   const hi = view.getUint32(0), lo = view.getUint32(4), exp = (hi >>> 20) & 2047;
   let mantissa = (BigInt(hi & 0xfffff) << BigInt(32)) + BigInt(lo);
   if (exp) mantissa += ONE << BigInt(52);
   if (hi >>> 31) mantissa = -mantissa;
   const shift = (exp || 1) - 1023 - 52;
-  return shift >= 0 ? new FractionValue(mantissa << BigInt(shift)) : new FractionValue(mantissa, ONE << BigInt(-shift));
+  return shift >= 0 ? new FractionValue(mantissa << BigInt(shift), ONE, budget) : new FractionValue(mantissa, ONE << BigInt(-shift), budget);
 }
 const floorRatio = (n: bigint, d: bigint) => { const q = n / d; return n % d !== ZERO && (n < ZERO) !== (d < ZERO) ? q - ONE : q; };
 function truth(v: ExpressionValue): boolean {
@@ -294,7 +321,7 @@ function compare(a: ExpressionValue, b: ExpressionValue, budget = new Evaluation
   budget.step();
   if (typeof a === "string" && typeof b === "string") { budget.step(a.length + b.length); return a < b ? -1 : a > b ? 1 : 0; }
   const decimal = a instanceof DecimalValue || b instanceof DecimalValue;
-  const x = rational(decimal && typeof a === "number" ? decimalValue(a) : a), y = rational(decimal && typeof b === "number" ? decimalValue(b) : b), d = x.numerator * y.denominator - y.numerator * x.denominator;
+  const x = rational(decimal && typeof a === "number" ? decimalValue(a, budget) : a, budget), y = rational(decimal && typeof b === "number" ? decimalValue(b, budget) : b, budget), d = x.numerator * y.denominator - y.numerator * x.denominator;
   return d < ZERO ? -1 : d > ZERO ? 1 : 0;
 }
 function equal(a: ExpressionValue, b: ExpressionValue, budget: EvaluationBudget, depth = 0): boolean {
@@ -313,16 +340,16 @@ function contains(container: ExpressionValue, value: ExpressionValue, budget: Ev
   return fail("Membership requires a string, list, tuple or set");
 }
 function decimalArithmetic(op: string, a: ExpressionValue, b: ExpressionValue, budget: EvaluationBudget): ExpressionValue {
-  const x = typeof a === "number" ? decimalValue(a) : rational(a), y = typeof b === "number" ? decimalValue(b) : rational(b);
-  const l = new FractionValue(x.numerator, x.denominator), r = new FractionValue(y.numerator, y.denominator);
+  const x = typeof a === "number" ? decimalValue(a, budget) : rational(a, budget), y = typeof b === "number" ? decimalValue(b, budget) : rational(b, budget);
+  const l = new FractionValue(x.numerator, x.denominator, budget), r = new FractionValue(y.numerator, y.denominator, budget);
   const result = binary(op, l, op === "**" && r.denominator === ONE ? r.numerator : r, budget);
-  if (!(result instanceof FractionValue)) return typeof result === "bigint" ? new DecimalValue(result) : result;
+  if (!(result instanceof FractionValue)) return typeof result === "bigint" ? new DecimalValue(result, ONE, false, budget) : result;
   let d = result.denominator;
-  while (d % TWO === ZERO) d /= TWO;
-  while (d % BigInt(5) === ZERO) d /= BigInt(5);
+  while (d % TWO === ZERO) { budget.step(); d /= TWO; }
+  while (d % BigInt(5) === ZERO) { budget.step(); d /= BigInt(5); }
   if (d !== ONE) return result;
   const negativeZero = result.numerator === ZERO && op === "*" && Object.is(floating(a) * floating(b), -0);
-  return new DecimalValue(result.numerator, result.denominator, negativeZero);
+  return new DecimalValue(result.numerator, result.denominator, negativeZero, budget);
 }
 function binary(op: string, a: ExpressionValue, b: ExpressionValue, budget: EvaluationBudget): ExpressionValue {
   budget.step();
@@ -340,11 +367,10 @@ function binary(op: string, a: ExpressionValue, b: ExpressionValue, budget: Eval
   if (op === "**") {
     if (typeof y === "bigint" && typeof x !== "number") {
       if (y > BigInt(MAX_BITS) || y < -BigInt(MAX_BITS)) fail("Exponent exceeds the limit");
-      const f = rational(x), power = y < ZERO ? -y : y;
-      if (f.numerator.toString(2).length * Number(power) > MAX_BITS || f.denominator.toString(2).length * Number(power) > MAX_BITS) fail("Power exceeds the integer limit");
-      const n = f.numerator ** power, d = f.denominator ** power;
-      if (y < ZERO) return x instanceof FractionValue ? new FractionValue(d, n) : finite(Number(d) / Number(n));
-      return x instanceof FractionValue ? new FractionValue(n, d) : bounded(n);
+      const f = rational(x, budget), power = y < ZERO ? -y : y;
+      const n = integerPower(f.numerator, power, budget), d = integerPower(f.denominator, power, budget);
+      if (y < ZERO) return x instanceof FractionValue ? new FractionValue(d, n, budget) : finite(Number(d) / Number(n));
+      return x instanceof FractionValue ? new FractionValue(n, d, budget) : bounded(n);
     }
     return finite(floating(x) ** floating(y));
   }
@@ -363,29 +389,29 @@ function binary(op: string, a: ExpressionValue, b: ExpressionValue, budget: Eval
     }
     return finite(op === "+" ? l + r : op === "-" ? l - r : op === "*" ? l * r : op === "/" ? l / r : op === "//" ? Math.floor(l / r) : ((l % r) + r) % r);
   }
-  const l = rational(x), r = rational(y);
+  const l = rational(x, budget), r = rational(y, budget);
   if (["/", "//", "%"].includes(op) && r.numerator === ZERO) fail("Division by zero");
   if (op === "//") return bounded(floorRatio(l.numerator * r.denominator, l.denominator * r.numerator));
   if (op === "%") return binary("-", x, binary("*", binary("//", x, y, budget), y, budget), budget);
   const n = op === "+" ? l.numerator * r.denominator + r.numerator * l.denominator : op === "-" ? l.numerator * r.denominator - r.numerator * l.denominator : op === "*" ? l.numerator * r.numerator : l.numerator * r.denominator;
   const d = op === "/" ? l.denominator * r.numerator : l.denominator * r.denominator;
-  const result = new FractionValue(n, d);
+  const result = new FractionValue(n, d, budget);
   return x instanceof FractionValue || y instanceof FractionValue ? result : result.numerator;
 }
 function halfEven(n: bigint, d: bigint): bigint {
   const q = floorRatio(n, d), rem = n - q * d;
   return rem * TWO > d || (rem * TWO === d && q % TWO !== ZERO) ? q + ONE : q;
 }
-function scaledRound(v: ExpressionValue, places: number): bigint {
+function scaledRound(v: ExpressionValue, places: number, budget: EvaluationBudget): bigint {
   if (!Number.isInteger(places) || Math.abs(places) > 100) fail("Precision must be an integer from -100 to 100");
-  const f = rational(v), scale = BigInt(10) ** BigInt(Math.abs(places));
+  const f = rational(v, budget), scale = BigInt(10) ** BigInt(Math.abs(places));
   return halfEven(f.numerator * (places >= 0 ? scale : ONE), f.denominator * (places < 0 ? scale : ONE));
 }
 /** Python fixed-point format, with ties to even using the exact stored numeric value. */
 export function formatFixed(v: ExpressionValue, places: number, budget = new EvaluationBudget()): string {
   budget.step();
   if (places < 0) fail("Fixed precision must not be negative");
-  const n = scaledRound(v, places), negative = n < ZERO || (n === ZERO && (v instanceof DecimalValue && v.negativeZero || floating(v) < 0 || Object.is(floating(v), -0)));
+  const n = scaledRound(v, places, budget), negative = n < ZERO || (n === ZERO && (v instanceof DecimalValue && v.negativeZero || floating(v) < 0 || Object.is(floating(v), -0)));
   const digits = (n < ZERO ? -n : n).toString().padStart(places + 1, "0");
   return (negative ? "-" : "") + (places ? `${digits.slice(0, -places)}.${digits.slice(-places)}` : digits);
 }
@@ -394,7 +420,7 @@ function formatScalar(v: ExpressionValue, budget: EvaluationBudget): string {
     if (v.numerator === ZERO && v.negativeZero) return "-0.0";
     if (v.denominator === ONE) return `${v.numerator}.0`;
     let d = v.denominator, places = 0;
-    while (d !== ONE && places < 1000) { d /= gcd(d, BigInt(10)); places++; }
+    while (d !== ONE && places < 1000) { budget.step(); d /= gcd(d, BigInt(10), budget); places++; }
     if (d !== ONE) return fail("Decimal does not have a finite expansion");
     return formatFixed(v, places, budget);
   }
@@ -434,9 +460,10 @@ export function formatValue(value: ExpressionValue, budget = new EvaluationBudge
   };
   visit(value, 0); return output;
 }
-function iterable(v: ExpressionValue): readonly ExpressionValue[] {
+function iterable(v: ExpressionValue, budget: EvaluationBudget): readonly ExpressionValue[] {
+  budget.step();
   if (Array.isArray(v)) return v;
-  if (typeof v === "string") return [...v];
+  if (typeof v === "string") { budget.step(v.length); return [...v]; }
   if (v instanceof SetValue || v instanceof TupleValue) return v.items;
   return fail("Expected a list or a string");
 }
@@ -449,31 +476,36 @@ function call(name: string, a: ExpressionValue[], budget: EvaluationBudget, reve
     case "str": return formatValue(x, budget);
     case "int": {
       if (typeof x === "string") return /^[+-]?\d+$/.test(x.trim()) ? bounded(BigInt(x.trim())) : fail("Invalid integer string");
-      const f = rational(x); return bounded(f.numerator / f.denominator);
+      const f = rational(x, budget); return bounded(f.numerator / f.denominator);
     }
     case "Fraction": {
-      if (a.length === 2) return new FractionValue(integral(x), integral(a[1]));
-      const f = rational(x); return new FractionValue(f.numerator, f.denominator);
+      if (a.length === 2) return new FractionValue(integral(x), integral(a[1]), budget);
+      const f = rational(x, budget); return new FractionValue(f.numerator, f.denominator, budget);
     }
-    case "gcd": return a.reduce<bigint>((v, x) => gcd(v, integral(x)), ZERO);
-    case "lcm": return a.reduce<bigint>((v, x) => { const n = integral(x); return v === ZERO || n === ZERO ? ZERO : bounded((v / gcd(v, n) * n) < ZERO ? -(v / gcd(v, n) * n) : v / gcd(v, n) * n); }, ONE);
-    case "floor": { const f = rational(x); return floorRatio(f.numerator, f.denominator); }
-    case "ceil": { const f = rational(x); return -floorRatio(-f.numerator, f.denominator); }
+    case "gcd": return a.reduce<bigint>((v, x) => { budget.step(); return gcd(v, integral(x), budget); }, ZERO);
+    case "lcm": return a.reduce<bigint>((v, x) => {
+      budget.step(); const n = integral(x);
+      if (v === ZERO || n === ZERO) return ZERO;
+      const result = bounded(v / gcd(v, n, budget) * n);
+      return result < ZERO ? -result : result;
+    }, ONE);
+    case "floor": { const f = rational(x, budget); return floorRatio(f.numerator, f.denominator); }
+    case "ceil": { const f = rational(x, budget); return -floorRatio(-f.numerator, f.denominator); }
     case "abs": return compare(x, ZERO, budget) < 0 ? binary("*", x, -ONE, budget) : numeric(x);
     case "round": {
-      const places = a.length === 2 ? Number(integral(a[1])) : 0, n = scaledRound(x, places);
-      if (a.length === 1) return n;
+      const places = a.length === 2 ? Number(integral(a[1])) : 0, n = scaledRound(x, places, budget);
+      if (a.length === 1) return bounded(n);
       if (typeof x === "bigint" && places >= 0) return x;
       if (typeof x === "bigint") return bounded(n * BigInt(10) ** BigInt(-places));
       if (x instanceof DecimalValue) {
         const negativeZero = n === ZERO && (x.numerator < ZERO || x.negativeZero);
-        return places >= 0 ? new DecimalValue(n, BigInt(10) ** BigInt(places), negativeZero) : new DecimalValue(n * BigInt(10) ** BigInt(-places), ONE, negativeZero);
+        return places >= 0 ? new DecimalValue(n, BigInt(10) ** BigInt(places), negativeZero, budget) : new DecimalValue(n * BigInt(10) ** BigInt(-places), ONE, negativeZero, budget);
       }
-      if (x instanceof FractionValue) return places >= 0 ? new FractionValue(n, BigInt(10) ** BigInt(places)) : new FractionValue(n * BigInt(10) ** BigInt(-places));
+      if (x instanceof FractionValue) return places >= 0 ? new FractionValue(n, BigInt(10) ** BigInt(places), budget) : new FractionValue(n * BigInt(10) ** BigInt(-places), ONE, budget);
       return n === ZERO && (floating(x) < 0 || Object.is(floating(x), -0)) ? -0 : finite(Number(`${n}e${-places}`));
     }
     case "min": case "max": {
-      const items = a.length === 1 ? iterable(x) : a;
+      const items = a.length === 1 ? iterable(x, budget) : a;
       if (!items.length) fail(`${name} has an empty list`);
       return items.reduce((v, n) => (compare(n, v, budget) * (name === "min" ? 1 : -1) < 0 ? n : v));
     }
@@ -482,28 +514,32 @@ function call(name: string, a: ExpressionValue[], budget: EvaluationBudget, reve
       const n = integral(x); if (n < ZERO) fail("Square root of a negative number");
       if (n < TWO) return n;
       let r = ONE << BigInt(Math.ceil(n.toString(2).length / 2));
-      for (;;) { const next = (r + n / r) / TWO; if (next >= r) return r; r = next; }
+      for (;;) { budget.step(); const next = (r + n / r) / TWO; if (next >= r) return r; r = next; }
     }
-    case "len": return BigInt(iterable(x).length);
-    case "sum": return iterable(x).reduce<ExpressionValue>((v, n) => binary("+", v, n, budget), a[1] ?? ZERO);
+    case "len": return BigInt(iterable(x, budget).length);
+    case "sum": return iterable(x, budget).reduce<ExpressionValue>((v, n) => binary("+", v, n, budget), a[1] ?? ZERO);
     case "sorted": {
       if (reverse !== undefined && typeof reverse !== "boolean") fail("sorted reverse must be a boolean");
-      return [...iterable(x)].sort((l, r) => compare(l, r, budget) * (reverse ? -1 : 1));
+      return [...iterable(x, budget)].sort((l, r) => compare(l, r, budget) * (reverse ? -1 : 1));
     }
     default: return fail(`Unknown function: ${name}`);
   }
 }
 export interface CompiledExpression {
   readonly names: readonly string[];
+  readonly inputProfile: { characters: number; tokens: number; depth: number };
   evaluate(values?: Bindings, budget?: EvaluationBudget): ExpressionValue;
 }
 /** Parse once, then evaluate with only the supplied own names. Lazy branches retain Python semantics. */
-export function compileExpression(source: string): CompiledExpression {
-  const parser = new Parser(source), tree = parser.parse();
+export function compileExpression(source: string, budget = new EvaluationBudget()): CompiledExpression {
+  const parser = new Parser(source, budget), tree = parser.parse();
+  let maximumDepth = 0;
   const pending: { node: Node; depth: number }[] = [{ node: tree, depth: 0 }];
   while (pending.length) {
+    budget.step();
     const { node, depth } = pending.pop()!;
-    if (depth > 128) fail("Expression exceeds the evaluation nesting limit");
+    maximumDepth = Math.max(maximumDepth, depth);
+    if (depth > INPUT_LIMITS.expressionDepth) fail("Expression exceeds the evaluation nesting limit");
     for (const value of Object.values(node)) {
       if (value && typeof value === "object" && "kind" in value) pending.push({ node: value as Node, depth: depth + 1 });
       else if (Array.isArray(value)) for (const part of value) {
@@ -514,7 +550,7 @@ export function compileExpression(source: string): CompiledExpression {
       }
     }
   }
-  return { names: [...parser.names], evaluate(values = {}, budget = new EvaluationBudget()) {
+  return { names: [...parser.names], inputProfile: { characters: source.length, tokens: parser.tokenCount, depth: maximumDepth }, evaluate(values = {}, budget = new EvaluationBudget()) {
     const run = (node: Node, depth = 0): ExpressionValue => {
       budget.step(); budget.depth(depth);
       return budget.created(evaluateNode(node, depth));
@@ -548,7 +584,7 @@ export function compileExpression(source: string): CompiledExpression {
         case "index": {
           const target = child(n.target);
           if (target instanceof SetValue) fail("Sets do not support indexing");
-          const items = iterable(target), index = Number(integral(child(n.index))), at = index < 0 ? items.length + index : index;
+          const items = iterable(target, budget), index = Number(integral(child(n.index))), at = index < 0 ? items.length + index : index;
           return at >= 0 && at < items.length ? items[at] : fail(`Index ${index} is outside the list`);
         }
       }

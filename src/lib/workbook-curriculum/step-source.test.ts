@@ -59,7 +59,7 @@ describe("staged progression import", () => {
     for (const s of priceSteps) {
       expect(s.numbers!.price).toMatchObject({ min: 20, values: expect.arrayContaining([10]) });
     }
-    expect(source.steps.flatMap(s => Object.values(s.numbers ?? {}).flatMap(domainProblems)).filter(p => p.includes("no value on its decimal grid"))).toEqual([]);
+    expect(source.steps.flatMap(s => Object.values(s.numbers ?? {}).flatMap(domain => domainProblems(domain))).filter(p => p.includes("no value on its decimal grid"))).toEqual([]);
     const graph = source.steps.find(s => s.skill === "8.6-graph-relation" && s.number === 2)!;
     for (const [index, seed] of [[0, 666305181], [3, 39677870]]) {
       const t = graph.templates![index], item = fillTemplate(graph, t, source.contexts, seededRandom(seed));

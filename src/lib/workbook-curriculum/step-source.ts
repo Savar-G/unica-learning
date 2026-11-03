@@ -1,29 +1,49 @@
+import { assertTemplateInput, assertContextInput, INPUT_LIMITS } from "./limits";
 /** Read source JSON as data. This module validates structure before any typed consumer sees it. */
 import type { CurriculumStep, StepProgressions, TemplateContexts } from "./types";
-import { CONTEXT_NAMES, domainProblems, placeholders, prepareTemplate } from "./template";
+import { CONTEXT_NAMES, domainProblems, placeholders, prepareTemplateForAudit } from "./template";
 function object(x: unknown): x is Record<string, unknown> { return !!x && typeof x === "object" && !Array.isArray(x); }
 const strings = (x: unknown) => Array.isArray(x) && x.length > 0 && x.every(v => typeof v === "string" && v.length > 0);
-const scalarList = (x: unknown) => Array.isArray(x) && x.every(v => typeof v === "string" || typeof v === "number" && Number.isFinite(v));
+const scalarList = (x: unknown) => Array.isArray(x) && x.length <= INPUT_LIMITS.collectionLength && x.every(v => typeof v === "string" || typeof v === "number" && Number.isFinite(v));
 function domain(x: unknown): boolean {
-  return scalarList(x) || object(x) && typeof x.min === "number" && typeof x.max === "number" && (x.decimal_places === undefined || typeof x.decimal_places === "number") && (x.values === undefined || Array.isArray(x.values) && x.values.every(v => typeof v === "number"));
+  return scalarList(x) || object(x) && typeof x.min === "number" && typeof x.max === "number" && (x.decimal_places === undefined || typeof x.decimal_places === "number") && (x.values === undefined || scalarList(x.values) && (x.values as unknown[]).every(v => typeof v === "number"));
 }
 const pair = (x: unknown, keys: string[]) => object(x) && keys.every(k => typeof x[k] === "string");
 const difficulty = (x: unknown) => ["easy", "medium", "hard"].includes(String(x));
 /** Reject dangerous object keys even when they occur in an unused part of the document. */
 function safeKeys(input: unknown): void {
-  const queue = [{ value: input, depth: 0 }]; let size = 0;
-  while (queue.length) {
-    const { value, depth } = queue.pop()!;
+  let size = 0;
+  const visit = (value: unknown, depth: number): void => {
     if (++size > 1000000 || depth > 40) throw new Error("Source exceeds the structure limit");
-    if (value && typeof value === "object") for (const [k, v] of Object.entries(value)) {
-      if (["__proto__", "prototype", "constructor"].includes(k)) throw new Error(`Forbidden source key: ${k}`);
-      queue.push({ value: v, depth: depth + 1 });
+    if (typeof value === "string" && value.length > INPUT_LIMITS.stringLength) throw new Error("Source string exceeds the length limit");
+    if (Array.isArray(value)) {
+      if (value.length > 2048) throw new Error("Source array exceeds the length limit");
+      for (const item of value) visit(item, depth + 1);
+    } else if (value && typeof value === "object") {
+      let count = 0;
+      for (const k in value) if (Object.hasOwn(value, k)) {
+        if (++count > 64) throw new Error("Source object exceeds the entry limit");
+        if (["__proto__", "prototype", "constructor"].includes(k)) throw new Error(`Forbidden source key: ${k}`);
+        visit((value as Record<string, unknown>)[k], depth + 1);
+      }
     }
-  }
+  };
+  visit(input, 0);
 }
 export function parseStepProgressions(input: unknown): StepProgressions {
+  // Reject aggregate template input before the general shape walk or expression compilation.
+  if (object(input) && Array.isArray(input.steps)) {
+    if (input.steps.length > 2048) throw new Error("Source steps exceed the length limit");
+    for (const step of input.steps) {
+      if (object(step) && Array.isArray(step.templates)) {
+        if (step.templates.length > 6) throw new Error("Source templates exceed the length limit");
+        for (const template of step.templates) assertTemplateInput(template);
+      }
+    }
+  }
   safeKeys(input);
   if (!object(input) || input.curriculum !== "bc" || typeof input.format !== "string" || !Array.isArray(input.steps) || !object(input.contexts)) throw new Error("Expected BC step progressions with format, steps, and contexts");
+  assertContextInput(input.contexts);
   const c = input.contexts;
   if (!Array.isArray(c.people) || !c.people.length || !c.people.every(p => pair(p, ["name", "they", "them", "their"]) && Object.values(p).every(v => typeof v === "string" && v.length))) throw new Error("Invalid contexts.people");
   for (const k of ["things", "animals", "foods", "places", "containers", "units_length", "units_mass", "units_capacity"]) if (!strings(c[k])) throw new Error(`Invalid contexts.${k}`);
@@ -70,6 +90,9 @@ export function stepFieldProblems(step: CurriculumStep, contexts?: TemplateConte
   if (step.templates && (step.templates.length < 4 || step.templates.length > 6)) errors.push(`${at} needs four to six templates`);
   for (const [i, t] of (step.templates ?? []).entries()) {
     const prefix = `${at} template ${i + 1}`;
+    try { assertTemplateInput(t); } catch (e) {
+      errors.push(`${prefix}: ${e instanceof Error ? e.message : String(e)}`); continue;
+    }
     for (const [name, ref] of Object.entries(t.slots)) {
       if (typeof ref !== "string") errors.push(`${prefix} slot ${name} must name a numbers key or values list; inline range found`);
       else if (!(step.numbers && Object.hasOwn(step.numbers, ref)) && !(ref === "values" && step.values)) errors.push(`${prefix} slot ${name} names unknown domain ${ref}`);
@@ -78,7 +101,7 @@ export function stepFieldProblems(step: CurriculumStep, contexts?: TemplateConte
       const known = new Set([...Object.keys(t.slots), ...Object.keys(t.derived ?? {}), ...CONTEXT_NAMES, ...(step.values ? ["values"] : [])]);
       for (const field of placeholders(t.text)) if (!known.has(field.name)) errors.push(`${prefix} unknown placeholder ${field.name}`);
       if (!contexts) errors.push(`${prefix} has no contexts`);
-      else prepareTemplate(step, t, contexts);
+      else prepareTemplateForAudit(step, t, contexts);
     } catch (e) { errors.push(`${prefix}: ${e instanceof Error ? e.message : String(e)}`); }
   }
   return errors;

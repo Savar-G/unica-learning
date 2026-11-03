@@ -1,5 +1,5 @@
 /** A reproducible corpus audit. Data failures remain failures and do not alter the source. */
-import { domainContains, prepareTemplate, seededRandom, slotDomain } from "./template";
+import { domainContains, prepareTemplateForAudit, seededRandom, slotDomain } from "./template";
 import type { StepProgressions } from "./types";
 export interface TemplateFailure {
   skill: string; step: number; template: number; phase: "prepare" | "fill";
@@ -15,8 +15,8 @@ export function auditTemplates(source: StepProgressions, fillsPerTemplate = 30):
   const report: TemplateAudit = { steps: source.steps.length, skills: new Set(source.steps.map(s => s.skill)).size, templates: 0, fillsPerTemplate, trials: 0, passedFills: 0, failedFills: 0, failedTemplates: 0, maxAttemptsUsed: 0, failures: [] };
   for (const step of source.steps) for (const [i, template] of (step.templates ?? []).entries()) {
     const ordinal = report.templates++; let failed = false;
-    let prepared: ReturnType<typeof prepareTemplate> | undefined, prepareError: unknown;
-    try { prepared = prepareTemplate(step, template, source.contexts); } catch (e) { prepareError = e; }
+    let prepared: ReturnType<typeof prepareTemplateForAudit> | undefined, prepareError: unknown;
+    try { prepared = prepareTemplateForAudit(step, template, source.contexts); } catch (e) { prepareError = e; }
     const groups = new Map<string, TemplateFailure>();
     for (let run = 0; run < fillsPerTemplate; run++) {
       // Stable across machines; every template/replicate pair has an independent seed.
