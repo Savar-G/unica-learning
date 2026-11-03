@@ -1,0 +1,64 @@
+{
+  "http": [
+    {
+      "route": "/account/notes/d2475066-be34-4c8f-9f85-95be6b90ff3a/583bf2a6-e8f1-4776-9114-b5b5c25f7527",
+      "status": 200,
+      "bytes": 46003,
+      "cache": "no-cache, must-revalidate",
+      "ownTranscript": true,
+      "otherName": false,
+      "notFound": true
+    },
+    {
+      "route": "/account/notes/a4b9f16c-19e9-4ea1-bc47-d6119698c41e",
+      "status": 404,
+      "bytes": 28255,
+      "cache": "no-cache, must-revalidate",
+      "ownTranscript": false,
+      "otherName": false,
+      "notFound": true
+    },
+    {
+      "route": "/account/notes/a4b9f16c-19e9-4ea1-bc47-d6119698c41e/97e9671a-e100-465a-a52f-332af009fe53",
+      "status": 404,
+      "bytes": 29002,
+      "cache": "no-cache, must-revalidate",
+      "ownTranscript": false,
+      "otherName": false,
+      "notFound": true
+    },
+    {
+      "route": "/account/notes/d2475066-be34-4c8f-9f85-95be6b90ff3a/97e9671a-e100-465a-a52f-332af009fe53",
+      "status": 404,
+      "bytes": 28651,
+      "cache": "no-cache, must-revalidate",
+      "ownTranscript": false,
+      "otherName": false,
+      "notFound": true
+    },
+    {
+      "route": "/account/notes/d2475066-be34-4c8f-9f85-95be6b90ff3a/invalid",
+      "status": 404,
+      "bytes": 28551,
+      "cache": "no-cache, must-revalidate",
+      "ownTranscript": false,
+      "otherName": false,
+      "notFound": true
+    }
+  ],
+  "focus": {
+    "href": "/account/notes/d2475066-be34-4c8f-9f85-95be6b90ff3a",
+    "visible": true,
+    "outline": "solid",
+    "height": 44
+  },
+  "longName": {
+    "characters": 60,
+    "viewportWidth": 390,
+    "scrollWidth": 375,
+    "overflowWrap": "anywhere"
+  },
+  "limits": [
+    "Development HTTP cache header is no-cache, must-revalidate. The account proxy sets private, no-store in source. Production headers are not verified here."
+  ]
+}
