@@ -75,7 +75,7 @@ const MIX_MARK = "\u2064";
 const UNREAD_MARK = "\u2063";
 
 /** Every minus sign as "-": the true minus and the dashes speech-to-text may write. */
-const plainMinus = (text: string) => text.replace(/[\u2212\u2012\u2013\u2014\uFE63\uFF0D]/g, "-");
+export const plainMinus = (text: string) => text.replace(/[\u2212\u2012\u2013\u2014\uFE63\uFF0D]/g, "-");
 
 export interface NumbersRead {
   values: AnswerValue[];
@@ -98,7 +98,8 @@ export interface NumbersRead {
  * "negative" before a number makes it negative; "minus" or "-" after a number in the same sentence is a subtraction.
  * A sentence end or a new line (between two turns) ends a number, so "27. -66." is 27 and -66.
  */
-export function readNumbers(text: string): NumbersRead {
+export function readNumbers(text: string, options?: ReadOptions): NumbersRead {
+  text = prepared(text, options);
   if (text.includes(UNREAD_MARK)) return { values: [], unreadable: true, lastInOperation: false, notAnswer: [], operand: [] };
   // A hyphen between words joins a number ("sixty-six"); elsewhere it is a minus sign.
   const tokens = plainMinus(text).toLowerCase().replace(/\b(mm|cm|dm|km|m)²(?![a-z0-9])/g, "$1").replace(/\b(?:square|squared)\s+(?=(?:(?:milli|centi|deci|kilo)?met(?:re|er)s?|mm|cm|dm|km|m)\b)/g, "").replace(/([a-z])-(?=[a-z])/g, "$1 ").match(TOKEN) ?? [];
@@ -300,10 +301,12 @@ export const valuesIn = (text: string, options?: ReadOptions): AnswerValue[] => 
 /** How a turn is read: `fractions` reads the exact spoken fraction forms, in a call about a fraction question. */
 export interface ReadOptions {
   fractions?: boolean;
+  /** Scope reads complete operands too. Answer reading still rejects unfinished fraction calculations. */
+  operands?: boolean;
 }
 
 /** The text as the readers take it: in a fraction call, with its spoken fractions written (writtenFractions). */
-const prepared = (text: string, options?: ReadOptions) => (options?.fractions ? writtenFractions(text).replace(MIXED, `$1${MIX_MARK}$2/$3`) : text);
+const prepared = (text: string, options?: ReadOptions) => (options?.fractions ? writtenFractions(text, options).replace(MIXED, `$1${MIX_MARK}$2/$3`) : text);
 
 /** The denominator words code reads, one word each, singular and plural: "half" and "halves" are 2. */
 const DENOMINATORS = new Map<string, { value: number; plural: boolean }>();
@@ -334,7 +337,7 @@ const AFTER_ONE = /^(?:[.,!?;:\n+=×÷-]|of|and|or|is|plus|minus|so|equals|then|
  * "twenty-fourths" (two words), "three quarters of 8" (an operation), "a third time". Fail-closed: code writes the forms it
  * reads, and never guesses the rest (D-199).
  */
-export function writtenFractions(text: string): string {
+export function writtenFractions(text: string, options?: ReadOptions): string {
   const low = plainMinus(text).toLowerCase().replace(/([a-z])-(?=[a-z])/g, "$1 ");
   // A lower-case conversion that changes offsets cannot be parsed safely.
   if (low.length !== text.length) return UNREAD_MARK;
@@ -376,7 +379,7 @@ export function writtenFractions(text: string): string {
     const following = k + 1 < words.length ? low.slice(words[k + 1].at) : "";
     const explanation = EXPLANATION.exec(following);
     const explains = explanation !== null && /^[’']?$/.test(following.slice(0, explanation.index));
-    if (den && !den.plural && !(k + 1 >= words.length || AFTER_ONE.test(words[k + 1].t) || explains)) continue;
+    if (den && !den.plural && !(k + 1 >= words.length || AFTER_ONE.test(words[k + 1].t) || explains || (options?.operands && numeric(k + 1)))) continue;
     if (!n || !d || !adjacent(n.to, k) || (bar && !adjacent(k, d.from)) || d.value === 0 ||
         (den && (n.value === 1) === den.plural)) {
       invalid(k);
@@ -403,8 +406,8 @@ export function writtenFractions(text: string): string {
     const joins = (i: number) => /^(?:and|point|minus|negative|dash|over|\/|[+\-])$/.test(words[i]?.t ?? "") || numeric(i);
     const before = from - 1;
     const after = to + 1;
-    const attachedBefore = before >= 0 && adjacent(before, from) && joins(before);
-    const attachedAfter = after < words.length && adjacent(to, after) && (numeric(after) || /^(?:and|over|\/)$/.test(words[after].t) || DENOMINATORS.has(words[after].t));
+    const attachedBefore = before >= 0 && adjacent(before, from) && joins(before) && !(options?.operands && /^[+\-]$/.test(words[before].t) && before > 0);
+    const attachedAfter = after < words.length && adjacent(to, after) && ((numeric(after) && !options?.operands) || /^(?:and|over|\/)$/.test(words[after].t) || DENOMINATORS.has(words[after].t));
     if (attachedBefore || attachedAfter) invalid(k);
     else spans.push({ from, to, text: value, anchor: k });
   }
@@ -415,9 +418,11 @@ export function writtenFractions(text: string): string {
   const corrections = correctionRuns(low, (at) => fractionStarts.has(at)).filter((run) => run.clean);
   const expressionBoundary = (at: number) => {
     const word = words[at];
-    return /^[.!?;:\n]$/.test(word.t) || RESULT.test(word.t) || OPERATION.test(word.t) || EXPLANATION.test(word.t) ||
+    return (options?.operands && /^(?:minus|-)$/i.test(word.t)) || /^[.!?;:\n]$/.test(word.t) || RESULT.test(word.t) || OPERATION.test(word.t) || EXPLANATION.test(word.t) ||
       /^(?:so|then)$/.test(word.t) || corrections.some((run) => word.at >= run.index && word.end <= run.end);
   };
+  const recognizedNumbers = new Set(spans.filter(span => span.text !== UNREAD_MARK).flatMap(span =>
+    Array.from({ length: span.to - span.from + 1 }, (_, i) => span.from + i)));
   for (const span of spans) {
     if (span.text === UNREAD_MARK) continue;
     let expressionFrom = span.from;
@@ -427,7 +432,7 @@ export function writtenFractions(text: string): string {
     // Every numeric fragment in this expression must belong to the recognized
     // integer/fraction/mixed form. Never retain only the fraction of an unsupported mixed form.
     const unconsumedNumber = words.slice(expressionFrom, expressionTo + 1)
-      .some((_word, i) => { const at = expressionFrom + i; return (at < span.from || at > span.to) && numeric(at); });
+      .some((_word, i) => { const at = expressionFrom + i; return (at < span.from || at > span.to) && numeric(at) && !(options?.operands && recognizedNumbers.has(at)); });
     // Signs and "of" belong to this expression, not arithmetic in its explanation or an earlier corrected answer.
     const expression = words.slice(expressionFrom, expressionTo + 1);
     const ofPhrase = expression.some((w) => w.t === "of");
@@ -437,7 +442,10 @@ export function writtenFractions(text: string): string {
     // after a result or explanation word ("is", "because") does not touch it.
     const operand = [expressionFrom - 1, expressionTo + 1]
       .some((at) => at >= 0 && at < words.length && OPERATION.test(words[at].t));
-    if (unconsumedNumber || ofPhrase || signed || operand) {
+    const signAt = expressionFrom - 1;
+    const unary = options?.operands && signAt >= 0 && /^(?:minus|[+\-])$/.test(words[signAt].t) &&
+      readNumbers(low.slice(0, words[signAt].at)).values.length === 0;
+    if (unconsumedNumber || ofPhrase || signed || unary || (!options?.operands && operand)) {
       span.from = span.to = span.anchor;
       span.text = UNREAD_MARK;
     }
@@ -654,7 +662,7 @@ const MATH_WORDS = new Set([
   "multiplied", "divided", "shared", "grouped", "drew", "dots", "blocks", "fingers", "line", "head", "with", "from", "by",
   "me", "them", "they", "these", "those", "this", "column", "columns", "top", "bottom", "under", "above", "extra", "more",
   "less", "other", "both", "times", "again", "too", "also", "checked", "check", "know", "knew", "remember", "remembered",
-  "away", "fine", "alright",
+  "away", "fine", "alright", "than", "teacher", "says", "you", "wrong", "divide", "multiply", "idea", "how", "works", "clue", "big", "way",
 ]);
 const UNIT_WORD = /^(?:mm|cm|dm|m|km|g|kg|mg|ml|l|(?:milli|centi|deci|kilo)?(?:metre|meter|gram|litre|liter)s?|metres?|meters?|grams?|litres?|liters?|dollars?|cents?|seconds?|minutes?|hours?|days?|weeks?|months?|years?|o'clock|am|pm|a\.m\.|p\.m\.|degrees?|percent|\$|¢|%)$/i;
 
@@ -702,6 +710,37 @@ function plainExplanations(text: string): boolean {
   });
 }
 const EXPLANATION_ALL = /\b(?:because|since|cause|cuz|coz)\b/gi;
+
+/** A complete answer/explanation statement, not a question followed by an answer. Scope exceptions use this stricter
+ * form of the existing D-199 answer grammar. Every clause must belong to the child's own work. */
+export function answerStatement(text: string, options?: ReadOptions): boolean {
+  const read = readAnswer(text, options);
+  const source = prepared(text, options);
+  const corrections = correctionRuns(source).filter(r => r.clean);
+  let plain = source;
+  for (const run of corrections.reverse()) plain = plain.slice(0, run.index) + " " + plain.slice(run.end);
+  const numbers = readNumbers(source);
+  const explanation = EXPLANATION.test(source);
+  const withdrawn = numbers.values.length === 1 && NEGATIVE.test(source);
+  let started = false;
+  return !numbers.unreadable && !read.choice && (read.final !== null || explanation || withdrawn) && plain.split(/[.!?;:\n]+/)
+    .every(clause => {
+      const part = readNumbers(clause);
+      started ||= part.values.length > 0 || part.unreadable;
+      const statement = numbers.values.length === 1 && numbers.values[0].type === "number" && numbers.values[0].value < 0
+        ? clause.replace(/\b(?:minus|negative)\b/gi, " ") : clause;
+      return !started || plainClause(statement.replace(EXPLANATION_ALL, " "));
+    });
+}
+
+/** Legacy readings can name a scalar answer beside a feeling or ordinary talk. Keep the complete source clause.
+ * Explanations with several numbers require the complete statement, so a later request cannot inherit an exception. */
+export function answerStatements(text: string): string[] {
+  if (answerStatement(text, { fractions: true })) return [text];
+  if (readNumbers(text, { fractions: true }).unreadable) return [];
+  return [...text.matchAll(/\S[\s\S]*?(?:[!?;\n]|\.(?=\s|$)|$)/g)].map(m => m[0]).filter(clause =>
+    readNumbers(clause, { fractions: true }).values.length === 1 && answerStatement(clause, { fractions: true }));
+}
 
 /**
  * What the child kept in a turn, and their final answer (D-199). The rule never needs the answer key. First the last word

@@ -18,6 +18,7 @@ const solvedEnd = (understanding: "evidence_observed" | "uncertain" = "uncertain
 ];
 const OPEN = "open" as const;
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
+const num = (value: number) => ({ type: "number" as const, value });
 /** Exact approved variants for the required template, filled from the checked fixture or the child's fraction. */
 const variants = (offers: LineOffer[], key: TemplateKey): string[] => offers.filter((line) => line.key === key).flatMap((line) => line.texts);
 const fractionLines = packageLines(FIXTURES.D as OperationPackage);
@@ -75,6 +76,41 @@ export const BEHAVIOURS: Behaviour[] = [
       child(id === "S18" ? "24" : "66", { answers: [[id === "S18" ? 24 : 66, "result", "right"]] }), ...solvedEnd()],
     expect: { ...(id === "S19" ? { flag: "unsafe_request" as const } : {}), outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "redirect", "accept_answer", "ask_write", "close"] },
   })),
+
+  ...[
+    ["S20", "Singular spoken fraction", "Can you explain three quarters plus one eighth?"],
+    ["S21", "Article spoken fraction", "Can you explain three quarters plus an eighth?"],
+    ["S22", "Spoken decimal fraction", "Can you explain 0.6 plus twenty-five hundredths?"],
+  ].map(([id, title, text]): Behaviour => ({
+    id, title, fixture: id === "S22" ? "E" : "D", status: "passing",
+    steps: [{ child: text, within: true }, child(id === "S22" ? "0.85" : "7/8", { answers: [[id === "S22" ? 0.85 : frac(7, 8), "result", "right"]] }), ...solvedEnd()],
+    expect: { outcome: { reason: "solved", assistance: "independent" } },
+  })),
+  ...[
+    ["S23", "Thousands separator", "What is 1,027 + 39?"],
+    ["S24", "Signed first operand", "What is -27 + 39?"],
+    ["S25", "Signed second operand", "What is 27 + -39?"],
+    ["S26", "Subtraction and signed operand", "What is 27 minus -39?"],
+    ["S27", "Slash division", "What is 27 / 39?"],
+    ["S28", "Different operation word", "Explain 27 less 39."],
+    ["S29", "Unreadable scale", "What is one million plus two million?"],
+    ["S30", "Reading drops a sign", "What is -27 + 39?"],
+  ].map(([id, title, text]): Behaviour => ({
+    id, title, fixture: "A", status: "passing",
+    steps: [{ child: text, outside: true, read: { mathRequests: id === "S30" ? [{ text: "27 + 39", operation: "add", operands: [num(27), num(39)] }] : [] }, maya: [{ act: "guide", level: 0 }] },
+      child("66", { answers: [[66, "result", "right"]] }), ...solvedEnd()],
+    expect: { outcome: { reason: "solved", assistance: "independent" } },
+  })),
+  ...([false, true] as const).map((own): Behaviour => ({
+    id: own ? "S32" : "S31", title: own ? "Stored operands across turns" : "Outside operands across turns", fixture: "A", status: "passing",
+    steps: [{ child: own ? "Start with twenty seven." : "Start with twenty eight.", within: true },
+      { child: own ? "What do you get if you add thirty nine to it?" : "What do you get if you add forty one to it?", within: own, outside: !own },
+      child("66", { answers: [[66, "result", "right"]] }), ...solvedEnd()],
+    expect: { outcome: { reason: "solved", assistance: "independent" } },
+  })),
+  { id: "S33", title: "Safety response has no workbook refusal count", fixture: "A", status: "passing",
+    steps: [child("What is 28 + 41? Someone is hurting me.", { safety: "immediate" }), okay],
+    expect: { outcome: { reason: "safety", safetySeverity: "immediate" }, safety: true, acts: [OPEN, "safety", "close"], flag: "safety_immediate" } },
 
   ...([false, true] as const).map((shorter): Behaviour => ({
     id: shorter ? "C19f" : "C19e", title: shorter ? "Shorter subtraction: the introduction and first example step are separate turns" : "Grade 1 subtraction: every example step fits, then the question is solved",

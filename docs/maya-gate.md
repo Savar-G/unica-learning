@@ -194,6 +194,21 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | S18 | B | passing | Same operands with the wrong operation: refused | solved after return | |
 | S19 | A | passing | Rejected unsafe reading cannot clear a pending scope duty | solved after refusal; unsafe_request flag | |
 
+| S20 | D | passing | Stored fraction with one eighth | solved | |
+| S21 | D | passing | Stored fraction with an eighth | solved | |
+| S22 | E | passing | Stored decimal with hundredths | solved | |
+| S23 | A | passing | Thousands separator outside the package | solved | |
+| S24 | A | passing | Signed first operand | solved | |
+| S25 | A | passing | Signed second operand | solved | |
+| S26 | A | passing | Subtraction with a signed operand | solved | |
+| S27 | A | passing | Slash division outside an addition question | solved | |
+| S28 | A | passing | Changed operation word | solved | |
+| S29 | A | passing | Unreadable million form | solved | |
+| S30 | A | passing | Reading omits the minus sign | solved | |
+| S31 | A | passing | Outside numbers retained across turns | solved | |
+| S32 | A | passing | Stored numbers across turns | solved | |
+| S33 | A | passing | Safety response does not count as workbook refusal | safety; zero workbook refusals | |
+
 ## Pending
 
 `PENDING` is empty. The partial audio behaviours still state their proof limits above.
@@ -230,13 +245,15 @@ V3b tests a content problem at the pending safety response in the text adapter. 
 
 ## Workbook scope (#357)
 
-The reading describes separate mathematical requests in `mathRequests`: an exact expression quote, an operation and typed operands. Code validates every request against the stored operation and its operands, the checked worked steps, commutative addition and multiplication, and valid partitions and combinations of addition steps. The package's easier example becomes available only after Maya chooses it. A named prerequisite must be in the current skill's direct curriculum edges; it grants no new operands. A numeric-syntax check also prevents a model from omitting or changing explicit expressions and number pairs in a request.
+The reading describes separate mathematical requests in `mathRequests`: an exact expression quote, an operation and typed operands. Code validates every request against the stored operation and its operands, the checked worked steps, commutative addition and multiplication, and valid partitions and combinations of addition steps. The package's easier example becomes available only after Maya chooses it. A named prerequisite must be in the current skill's direct curriculum edges; it grants no new operands. Code reads every number with the existing D-199 readers, including signs, separators, decimals, typed and spoken fractions and mixed numbers. Every value must be in the checked set. Unknown forms require confirmation or a redirect. Code checks operation words and symbols too. There is no separate number scanner. Omitted requests and dropped signs cannot widen the set.
 
-Ordinary help stays in scope. There is no unknown-word list. Other subjects, homework sheets, essays, general chat and other people's questions use the reading's `outsideScope` reason. Brief feelings and questions about Maya keep the existing replies. Each request is checked separately, including one beside an answer or explanation. There is no whole-turn exemption for answer, because or place words.
+Ordinary help stays in scope. There is no unknown-word list. Other subjects, homework sheets, essays, general chat and other people's questions use the reading's `outsideScope` reason. Brief feelings and questions about Maya keep the existing replies. Each request is checked separately, including one beside an answer or explanation. The reading may supply exact `answerSpans` for complete answer/explanation statements. The D-199 answer grammar must check every clause. A span cannot cut a sign, number word, separator or fraction, or include a question. Legacy answer readings use the same check on their complete statement. Answer, because and place words never exempt a request.
 
 Scope duties survive rejected and malformed proposals, retries, fallback and saved-state replay. An unsafeRequest reading cannot remove a pending duty. Only an accepted refusal or higher-priority response can consume it. Safety guidance and harmful-content responses keep priority.
-Each refusal adds a time and a reason code to the saved session and trace. No additional child text is stored. Admin call review lists the session reasons and counts stored refusals across the child's calls and chats, with paginated reads. Earlier calls have zero recorded scope refusals.
+Unaccounted single numbers and their source turns remain pending in the saved controller. Maya asks for clarification before teaching. A later operation checks that saved context. Only a committed workbook refusal adds a time and reason code to the refusal ledger. Safety and harmful-content responses do not add workbook refusals. Admin call review lists the session reasons and counts stored refusals across the child's calls and chats, with paginated reads. Earlier calls have zero recorded scope refusals.
 
 S01 to S07 cover the initial misuse cases. The reading identifies non-math requests; code rejects outside arithmetic even when the reading claims the current skill. Each must produce exactly "I help with your Unica workbook. We can pick a question from it." and no board commands. Seven controller sabotage runs replace the redirect with teaching and must fail `scope_not_kept`. Public call-interface tests repeat the requests through desk chat and the admin text demo, with save and resume between inputs.
 
 S08 to S19 reproduce review findings R491-1 to R491-5. The independent gate rejects false refusals for S08 to S14 as well as teaching after S15 to S19. Public-interface tests repeat all review cases through chat, the admin text demo and voice text. They use fake models only.
+
+S20 to S33 reproduce R491-6 to R491-9. The gate checks spoken fraction and decimal controls, full numeric forms, incorrect and omitted readings, split requests, and safety accounting. Controller sabotage restores each missed refusal, false refusal and safety count defect. Each must fail the independent scope assertion. Public tests include save and restore of unresolved numbers. All models are scripted or fake.

@@ -2,8 +2,7 @@
 // Ordinary help has no vocabulary test. A model can add restrictions, never an allowed expression.
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { equivalent, type AnswerValue, type Operation, type OperationPackage } from "@/lib/question-package";
-import { valuesIn } from "./numbers";
-import { readOptionsFor } from "./fractions";
+import { answerStatement, plainMinus, readAnswer, readNumbers, writtenFractions } from "./numbers";
 
 export const SCOPE_REASONS = ["outside_work", "other_person", "changed_problem", "other_topic", "unverified_request", "model_scope"] as const;
 export type ScopeReason = typeof SCOPE_REASONS[number];
@@ -18,38 +17,22 @@ export const SCOPE_OPERATIONS = ["add", "subtract", "multiply", "divide", "pair"
 export type ScopeOperation = typeof SCOPE_OPERATIONS[number];
 /** One expression, not the whole turn. text quotes only its operands and operation, without its result. */
 export interface MathRequest { text: string; operation: ScopeOperation; operands: AnswerValue[] }
-export interface ScopeReading { mathRequests?: MathRequest[]; outsideScope?: OutsideReason; scopeSkill?: string }
+export interface ScopeReading { mathRequests?: MathRequest[]; outsideScope?: OutsideReason; scopeSkill?: string; answerSpans?: string[] }
 
 const skills = new Map(BC_SKILL_MAP.standards.flatMap(s => s.skills.map(k => [k.id, k] as const)));
 export function scopeSkills(pkg: OperationPackage): string[] {
   return [...new Set(pkg.skill.skills.flatMap(id => skills.has(id) ? [id, ...skills.get(id)!.requires] : []))];
 }
 const normal = (s: string) => s.normalize("NFKC").replace(/\u2212/g, "-").replace(/[’‘]/g, "'").toLowerCase();
-const words = "zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand";
-const number = `(?:\\d+(?:\\.\\d+)?(?:\\s+\\d+\\s*\\/\\s*\\d+|\\s*\\/\\s*\\d+)?|(?:${words})(?:[ -]+(?:${words}))*(?:\\s+(?:halves|quarters|eighths|sixteenths|thirds|fourths|fifths|sixths|sevenths|tenths))?)(?![a-z0-9])`;
-const operator = "(?:\\+|-(?=\\s*\\d)|×|\\*|÷|\\bx\\b|plus|minus|times|multiplied by|divided by|take away|and)";
-const operationOf = (s: string): ScopeOperation => /^(?:\+|plus)$/.test(s) ? "add" : /^(?:-|minus|take away)$/.test(s) ? "subtract"
-  : /^(?:×|\*|x|times|multiplied by)$/.test(s) ? "multiply" : /^(?:÷|\/|divided by)$/.test(s) ? "divide" : "pair";
-
-/** Numeric syntax only. These expressions also constrain a missing or incorrect model reading.
- * The model supplies semantic pairs and requests across clauses through mathRequests. */
-export function mathRequestsIn(text: string, pkg: OperationPackage): MathRequest[] {
-  const t = normal(text), out: MathRequest[] = [];
-  const asks = /\?|\b(?:why|what|how|explain|solve|calculate|teach|help|add|subtract|multiply|divide)\b/.test(t);
-  const expression = new RegExp(`(?<![a-z0-9])${number}(?:\\s*${operator}\\s*${number})+`, "g");
-  for (const match of t.matchAll(expression)) {
-    const span = match[0];
-    if (!asks && t.trim().replace(/[.?!]$/, "") !== span) continue; // Statements remain answers, checked by D-199.
-    const terms = [...span.matchAll(new RegExp(number, "g"))];
-    if (terms.length < 2) continue;
-    const operands = terms.map(m => valuesIn(m[0], readOptionsFor(pkg)));
-    if (operands.some(v => v.length !== 1)) continue;
-    const ops = terms.slice(1).map((m, i) => operationOf(span.slice(terms[i].index! + terms[i][0].length, m.index).trim()));
-    if (!asks && ops.every(op => op === "pair")) continue;
-    // Keep mixed operations as individual expressions. Never join unrelated requests or use a turn-wide exemption.
-    if (ops.every(op => op === ops[0])) out.push({ text: span, operation: ops[0], operands: operands.map(v => v[0]) });
-    else for (let i = 0; i < ops.length; i++) out.push({ text: span.slice(terms[i].index, terms[i + 1].index! + terms[i + 1][0].length), operation: ops[i], operands: [operands[i][0], operands[i + 1][0]] });
-  }
+/** Operations only. All numeric syntax belongs to the D-199 readers in numbers.ts. A word hyphen is not subtraction;
+ * a fraction bar is part of a number, whose complete value is checked below. */
+function operationsIn(text: string): ScopeOperation[] {
+  const t = writtenFractions(plainMinus(normal(text)), { operands: true }).replace(/([a-z])-(?=[a-z])/g, "$1 ");
+  const out: ScopeOperation[] = [];
+  if (/\+|\b(?:plus|add|added|adding)\b/.test(t)) out.push("add");
+  if (/\b(?:minus|subtract|subtracted|subtracting|less|take away|took away)\b|\d\s*-/.test(t)) out.push("subtract");
+  if (/[×*]|\bx\b|\b(?:times|multiply|multiplied|multiplying)\b/.test(t)) out.push("multiply");
+  if (/÷|\b(?:divide|divided|dividing)\b/.test(t)) out.push("divide");
   return out;
 }
 
@@ -60,8 +43,6 @@ const value = (x: unknown): x is AnswerValue => typeof x === "object" && x !== n
   (("type" in x && x.type === "number" && "value" in x && typeof x.value === "number" && Number.isFinite(x.value)) ||
    ("type" in x && x.type === "fraction" && "numerator" in x && "denominator" in x && Number.isInteger(x.numerator) && Number.isInteger(x.denominator) && Number(x.denominator) > 0));
 
-/** A requested sum is a partition of these checked terms. Each term can be used once.
- * Thus 9+7, 20+30, 16+20+30 and 39+27 all belong to 27+39; 28+38 does not. */
 function sumOfTerms(requested: AnswerValue[], terms: number[]): boolean {
   if (requested.some(v => v.type !== "number") || terms.length > 10 || requested.length > terms.length) return false;
   const sums = Array.from({ length: 1 << terms.length }, (_, mask) => terms.reduce((sum, n, i) => sum + ((mask & (1 << i)) ? n : 0), 0));
@@ -73,11 +54,22 @@ function sumOfTerms(requested: AnswerValue[], terms: number[]): boolean {
   };
   return place(0, 0);
 }
+/** Values and operations come only from the checked package, including its checked prerequisite work. */
 function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
-  const expressions: Allowed[] = [], sums: number[][] = [];
-  const add = (operation: ScopeOperation, operands: AnswerValue[]) => expressions.push({ operation, operands });
+  const expressions: Allowed[] = [], sums: number[][] = [], values: AnswerValue[] = [];
+  const add = (operation: ScopeOperation, operands: AnswerValue[]) => { expressions.push({ operation, operands }); values.push(...operands); };
+  const collect = (v: unknown): void => {
+    if (typeof v === "number" && Number.isFinite(v)) values.push(num(v));
+    else if (Array.isArray(v)) v.forEach(collect);
+    else if (v && typeof v === "object") {
+      if (value(v)) values.push(v);
+      if ("numerator" in v && "denominator" in v) values.push({ type: "fraction", numerator: Number(v.numerator), denominator: Number(v.denominator) });
+      Object.values(v).forEach(collect);
+    }
+  };
   for (const p of [pkg, ...(exampleChosen ? [pkg.easierExample] : [])]) {
     const op = family(p.operation);
+    collect(p.operation.operands); collect(p.steps); collect(p === pkg ? pkg.answer.value : pkg.easierExample.answer);
     const operands = p.operation.operands.map(v => typeof v === "number" ? num(v) : v).filter(value);
     if (op && operands.length === p.operation.operands.length) add(op, operands);
     const placeTerms = operands.flatMap(v => {
@@ -95,7 +87,10 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
     const partials = p.steps.flatMap(st => st.kind === "partial-product" ? [st.value] : []);
     if (partials.length > 1) sums.push(partials);
     for (const st of p.steps) {
-      if (st.kind === "add-column") sums.push([...st.digits, ...(st.carryIn ? [st.carryIn] : [])]);
+      if (st.kind === "add-column") {
+        sums.push([...st.digits, ...(st.carryIn ? [st.carryIn] : [])]);
+        if (st.carryIn || st.carryOut) values.push(num(10));
+      }
       if (st.kind === "subtract-column" && st.bottom !== null) {
         add("subtract", [num(st.top - Number(st.lent) + (st.regrouped ? 10 : 0)), num(st.bottom)]);
         if (st.regrouped) add("add", [num(st.top - Number(st.lent)), num(10)]);
@@ -121,34 +116,101 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
       }
     }
   }
-  return (r: MathRequest) => {
-    const matches = (op: ScopeOperation) => expressions.some(e => {
-      if (e.operation !== op || e.operands.length !== r.operands.length) return false;
-      const remaining = [...e.operands];
-      return r.operands.every((v, i) => {
-        const at = op === "add" || op === "multiply" ? remaining.findIndex(n => equivalent(n, v)) : equivalent(e.operands[i], v) ? 0 : -1;
-        if (at < 0) return false;
-        remaining.splice(at, 1); return true;
-      });
-    }) || (op === "add" && sums.some(terms => sumOfTerms(r.operands, terms)));
-    return r.operation === "pair" ? ["add", "subtract", "multiply", "divide"].some(op => matches(op as ScopeOperation)) : matches(r.operation);
+  // All combinations are built from disjoint checked place terms. No child-provided term enters this set.
+  for (const terms of sums) {
+    if (terms.length > 10) continue;
+    const combinations = Array.from({ length: 1 << terms.length }, (_, mask) => num(Number(terms.reduce((sum, n, i) => sum + ((mask & (1 << i)) ? n : 0), 0).toFixed(10))));
+    values.push(...combinations);
+  }
+  return {
+    has: (v: AnswerValue) => values.some(n => equivalent(n, v)),
+    operation: (op: ScopeOperation) => expressions.some(e => e.operation === op) || (op === "add" && sums.length > 0),
+    pair: (op: ScopeOperation, requested: AnswerValue[]) => expressions.some(e => e.operation === op && e.operands.length === requested.length &&
+      (e.operands.every((v, i) => equivalent(v, requested[i])) || ((op === "add" || op === "multiply") && [...e.operands].reverse().every((v, i) => equivalent(v, requested[i]))))) ||
+      (op === "add" && sums.some(terms => sumOfTerms(requested, terms))),
+    forOperation: (op: ScopeOperation, numbers: AnswerValue[]) => numbers.every(v => expressions.some(e => e.operation === op && e.operands.some(n => equivalent(n, v))) || (op === "add" && sums.some(terms => sumOfTerms([v], terms)))),
   };
 }
 
-/** Called on every reading, including a rejected or malformed proposal. It can only add a restriction. */
-export function scopeReason(pkg: OperationPackage, text: string, exampleChosen: boolean, reading: ScopeReading = {}): ScopeReason | null {
-  if (reading.outsideScope) return reading.outsideScope;
-  if (reading.scopeSkill && !scopeSkills(pkg).includes(reading.scopeSkill)) return "model_scope";
-  const requests = mathRequestsIn(text, pkg);
+export interface ScopePending { at: number; text: string }
+export interface ScopeCheck { reason: ScopeReason | null; pending: ScopePending[] }
+
+/** A checked answer/explanation span cannot cut a sign, a number word, a separator or a fraction in half. The same
+ * D-199 reading must result before and after partitioning the source. There is no substring numeric parser. */
+function removeAnswers(text: string, spans: string[], allowed: ReturnType<typeof allowedMath>): string | null {
+  let remaining = text;
+  for (const span of spans) {
+    const at = remaining.indexOf(span);
+    if (!span || at < 0 || !answerStatement(span, { fractions: true })) return null;
+    for (const clause of span.split(/[!?;\n]|\.(?=\s|$)/)) {
+      const numbers = readNumbers(clause, { fractions: true });
+      // A child's account of their work may contain a mistake. A bare calculation is still a proposed problem:
+      // only its result can be their answer. Its operands must already belong to the checked work.
+      if (numbers.values.every(allowed.has) || /^\s*(?:i\b|my\b|so\b|then\b)/i.test(clause) ||
+          /\b(?:because|since|cause|cuz|coz)\b/i.test(clause) || !numbers.operand.some(Boolean)) continue;
+      const operands = numbers.lastInOperation ? numbers.values : numbers.values.slice(0, -1);
+      const operations = operationsIn(clause);
+      if (operands.some(v => !allowed.has(v)) || !(operations.length ? operations : SCOPE_OPERATIONS.filter(op => op !== "pair"))
+        .some(op => allowed.pair(op, operands))) return null;
+    }
+    const before = remaining.slice(0, at), after = remaining.slice(at + span.length);
+    if ((before.trim() && !/[.!?;\n]\s*$/.test(before)) ||
+        (after.trim() && !/[.!?;\n]\s*$/.test(span) && !/^\s*[.!?;\n]/.test(after))) return null;
+    const whole = readNumbers(remaining, { fractions: true });
+    const pieces = [before, span, after].flatMap(t => readNumbers(t, { fractions: true }).values);
+    if (whole.unreadable || whole.values.length !== pieces.length || !whole.values.every((v, i) => equivalent(v, pieces[i]))) return null;
+    remaining = `${before} [checked answer] ${after}`;
+  }
+  return remaining;
+}
+
+/** Each number is read in full by D-199, including unknown forms. Model readings can only remove a code-checked
+ * answer span or add a restriction. Unaccounted single numbers wait across responses and saved sessions. */
+export function checkScope(pkg: OperationPackage, text: string, exampleChosen: boolean, reading: ScopeReading = {}, previous: ScopePending[] = [], at = 0): ScopeCheck {
+  const fail = (reason: ScopeReason): ScopeCheck => ({ reason, pending: previous });
+  if (reading.outsideScope) return fail(reading.outsideScope);
+  if (reading.scopeSkill && !scopeSkills(pkg).includes(reading.scopeSkill)) return fail("model_scope");
+  const allowed = allowedMath(pkg, exampleChosen);
+  const remaining = removeAnswers(text, reading.answerSpans ?? [], allowed);
+  if (remaining === null) return fail("unverified_request");
+  if (readAnswer(remaining, { fractions: true }).choice && !operationsIn(remaining).length) return { reason: null, pending: [...previous, { at, text: remaining }] };
+  const pending: ScopePending[] = [];
+  let numberCount = 0, hasOperation = false, unreadable = false;
+  for (const source of [...previous, { at, text: remaining }]) {
+    const stated = operationsIn(source.text);
+    const numbers = readNumbers(source.text, { fractions: true, operands: stated.length > 0 });
+    const ordinary = readNumbers(source.text);
+    if (numbers.unreadable && !numbers.values.length && !ordinary.values.length && !ordinary.unreadable) continue;
+    const operations = (numbers.values.length || previous.length ? stated : []).filter(op =>
+      !(op === "subtract" && numbers.values.length === 1 && numbers.values[0].type === "number" && numbers.values[0].value < 0 && !numbers.lastInOperation));
+    // A slash inside a stored fraction is notation. A different fraction is not permission to divide new numbers.
+    if (source.text.includes("/") && numbers.values.some(v => v.type === "fraction" && !allowed.has(v))) operations.push("divide");
+    if (numbers.values.length === 2 && operations.length === 1 && !numbers.unreadable && !allowed.pair(operations[0], numbers.values)) return fail("changed_problem");
+    if (operations.some(op => !allowed.operation(op))) return fail("changed_problem");
+    // A prerequisite operation cannot use the target's operands as a new problem. The model may identify each
+    // separate request; without such a reading the complete numeric context must fit that operation's values.
+    if (operations.length === 1 && !allowed.forOperation(operations[0], numbers.values) && numbers.values.every(allowed.has)) {
+      // Results are checked values too, even when not operands of a further step.
+      const primary = family(pkg.operation);
+      if (operations[0] !== primary) return fail("changed_problem");
+    }
+    numberCount += numbers.values.length;
+    hasOperation ||= operations.length > 0;
+    unreadable ||= numbers.unreadable;
+    if (numbers.unreadable || numbers.values.some(v => !allowed.has(v))) pending.push(source);
+  }
   for (const r of reading.mathRequests ?? []) {
     if (!r || typeof r.text !== "string" || !normal(text).includes(normal(r.text)) || !SCOPE_OPERATIONS.includes(r.operation) ||
-        !Array.isArray(r.operands) || r.operands.length < 2 || r.operands.length > 8 || !r.operands.every(value)) return "unverified_request";
-    const syntax = mathRequestsIn(r.text, pkg);
-    if (syntax.some(e => e.operation !== "pair" && e.operation !== r.operation)) return "unverified_request";
-    const heard = valuesIn(r.text, readOptionsFor(pkg));
-    if (heard.length !== r.operands.length || !heard.every((v, i) => equivalent(v, r.operands[i]))) return "unverified_request";
-    requests.push(r);
+        !Array.isArray(r.operands) || !r.operands.every(value)) return fail("unverified_request");
+    const heard = readNumbers(r.text, { fractions: true, operands: true });
+    if (heard.unreadable || heard.values.length !== r.operands.length || !heard.values.every((v, i) => equivalent(v, r.operands[i])) ||
+        operationsIn(r.text).some(op => op !== r.operation)) return fail("unverified_request");
+    if (r.operands.some(v => !allowed.has(v)) || (r.operation !== "pair" && !allowed.operation(r.operation))) return fail("changed_problem");
   }
-  const permits = requests.length ? allowedMath(pkg, exampleChosen) : () => true;
-  return requests.some(r => !permits(r)) ? "changed_problem" : null;
+  if (pending.length && (hasOperation || (!unreadable && numberCount > 1) || (reading.mathRequests?.length ?? 0) > 0)) return fail(unreadable ? "unverified_request" : "changed_problem");
+  return { reason: null, pending };
+}
+
+export function scopeReason(pkg: OperationPackage, text: string, exampleChosen: boolean, reading: ScopeReading = {}): ScopeReason | null {
+  return checkScope(pkg, text, exampleChosen, reading).reason;
 }

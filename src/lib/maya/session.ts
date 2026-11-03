@@ -35,12 +35,12 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import { talkMath } from "./claims";
-import { scopeReason, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
+import { checkScope, type ScopePending, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
 import { findOffer, normalSlots, packageLines, fixedOffers, areaOffers, spokenOffer, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
-import { committedText, readAnswer, takenBack, unreadableAnswer, valuesIn } from "./numbers";
+import { answerStatement, answerStatements, committedText, readAnswer, readNumbers, takenBack, unreadableAnswer, valuesIn } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
@@ -372,6 +372,8 @@ export interface Session {
   offeredOtherInput: boolean;
   redirects: number;
   scopeDue?: ScopeReason;
+  scopePending?: ScopePending[];
+  scopeCurrent?: ScopePending[];
   scopeRefusals?: ScopeRefusal[];
   safety: { flagged: boolean; severity: Severity | null; at: number | null; guided: boolean };
   mishearing: { confirmations: number; corrections: number };
@@ -626,6 +628,7 @@ function proposalProblem(p: unknown): string | null {
   }
   if (r.outsideScope !== undefined && !["outside_work", "other_person", "other_topic"].includes(r.outsideScope as string)) return "outsideScope is a reason code";
   if (r.mathRequests !== undefined && !Array.isArray(r.mathRequests)) return "mathRequests is a list of separate requested expressions";
+  if (r.answerSpans !== undefined && (!Array.isArray(r.answerSpans) || !r.answerSpans.every(t => typeof t === "string"))) return "answerSpans is a list of complete answer statements";
   if (r.scopeSkill !== undefined && typeof r.scopeSkill !== "string") return "scopeSkill is a skill id";
   if (r.aboutMaya !== undefined && r.aboutMaya !== "identity" && r.aboutMaya !== "secret_friend") return "aboutMaya is identity or secret_friend";
   if (r.help !== undefined && r.help !== "more" && r.help !== "show") return "the reading's help is more or show";
@@ -691,7 +694,7 @@ function gate(s: Session, reading: Reading): Allowed | null {
   if (s.silence === "check_due" && !s.turn) return { acts: ["check_in"], code: "act_not_allowed", reason: "The child has been quiet: one short check-in, with no new help." };
   // Once the answer stands, the model's unclear reading does not hold the turn (practice: "I heard 66. Is that right?"
   // after "That's right: 27 + 39 = 66"); a number code cannot read still does.
-  if (s.turn?.uncertain || (reading.unclear && s.solved === null)) {
+  if (s.turn?.uncertain || ((s.scopeCurrent?.length ?? 0) > 0 && !reading.unsafeRequest && !readAnswer(s.turn?.text ?? "", { fractions: true }).choice) || (reading.unclear && s.solved === null)) {
     if (s.confirmTries < 2) return { acts: ["confirm"], code: "confirm_first", reason: "What the child said is unclear: confirm it before judging any math." };
     return {
       acts: s.offeredOtherInput ? ["close"] : ["offer_other_input", "close"],
@@ -820,19 +823,21 @@ export function step(session: Session, event: SessionEvent): StepResult {
 
   // The child's turn as the model read it: a stop, an unclear number and a no-start hold even if the proposal fails.
   if (priority.stop) s.stopRequested = true;
-  if (s.turn && s.package && isObject(raw) && isObject(raw.reading)) {
+  if (s.turn && s.package && event.type === "proposal") {
     // Scope inputs are read separately from proposal shape. A bad board or a later retry cannot remove this duty.
-    const r = raw.reading;
+    const r = isObject(raw) && isObject(raw.reading) ? raw.reading : {};
     const reading: ScopeReading = {
       ...(typeof r.scopeSkill === "string" ? { scopeSkill: r.scopeSkill } : {}),
       ...(r.outsideScope === "outside_work" || r.outsideScope === "other_person" || r.outsideScope === "other_topic" ? { outsideScope: r.outsideScope } : {}),
       ...(Array.isArray(r.mathRequests) ? { mathRequests: r.mathRequests as ScopeReading["mathRequests"] } : {}),
     };
-    const reason = scopeReason(s.package, s.turn.text, s.exampleIntroduced === true || s.exampleShown > 0, reading);
-    if (reason && !s.scopeDue) {
-      s.scopeDue = reason;
-      if (!s.scopeRefusals?.some(ref => ref.at === s.turn!.at)) (s.scopeRefusals ??= []).push({ at: s.turn.at, reason });
-    }
+    // Scope reads answer/explanation statements with D-199. Bare calculations still need checked operands.
+    // The ordinary answer checks below retain ownership of verdicts and progress.
+    const spans = Array.isArray(r.answerSpans) ? r.answerSpans.filter((t): t is string => typeof t === "string") : answerStatements(s.turn.text);
+    reading.answerSpans = spans.filter(text => answerStatement(text, { fractions: true }));
+    const scope = checkScope(s.package, s.turn.text, s.exampleIntroduced === true || s.exampleShown > 0, reading, s.scopePending, s.turn.at);
+    if (scope.reason) s.scopeDue ??= scope.reason;
+    s.scopeCurrent = scope.pending;
   }
   if (s.turn && priority.noBoard) s.noBoard = true;
   if (s.turn && priority.shorter) s.shorter = true;
@@ -876,17 +881,28 @@ export function step(session: Session, event: SessionEvent): StepResult {
       s.turns.push({ at: event.at, speaker: "child", text: event.text, state: s.state, ...(alternatives.length > 0 ? { alternatives } : {}) });
       // A number form code cannot read is confirmed, never guessed; one inside the child's explanation is never their
       // answer ("66, because six tens and six ones"), so it needs no confirmation (D-199).
-      const uncertain = event.uncertain === true || unreadableAnswer(event.text, readOptionsFor(s.package));
+      const operands = readNumbers(event.text, { fractions: true, operands: true });
+      const readableQuestion = s.package && !operands.unreadable && operands.values.length >= 2 &&
+        !checkScope(s.package, event.text, s.exampleIntroduced === true || s.exampleShown > 0).reason;
+      const uncertain = event.uncertain === true || (!readableQuestion && unreadableAnswer(event.text, readOptionsFor(s.package)));
       // A new line keeps the turns apart, so a sign in the second turn is not read as a subtraction from the first.
       s.turn = s.turn
         ? { at: event.at, text: `${s.turn.text}\n${event.text}`, uncertain: s.turn.uncertain || uncertain }
         : { at: event.at, text: event.text, uncertain };
       if (s.package) {
-        const reason = scopeReason(s.package, s.turn.text, s.exampleIntroduced === true || s.exampleShown > 0);
-        if (reason) {
-          s.scopeDue = reason;
-          (s.scopeRefusals ??= []).push({ at: event.at, reason });
+        const own = answerStatement(s.turn.text, { fractions: true });
+        if (own && s.state === "CONFIRM_HEARD") {
+          // A repeated answer can resolve a failed number reading. An unrelated readable operand stays pending.
+          const current = valuesIn(s.turn.text, { fractions: true });
+          s.scopePending = s.scopePending?.filter(source => {
+            const old = readAnswer(source.text, { fractions: true });
+            return !unreadableAnswer(source.text, { fractions: true }) && !old.choice &&
+              !valuesIn(source.text, { fractions: true }).every(v => current.some(n => equivalent(v, n)));
+          });
         }
+        const scope = checkScope(s.package, s.turn.text, s.exampleIntroduced === true || s.exampleShown > 0, { answerSpans: answerStatements(s.turn.text) }, s.scopePending, event.at);
+        if (scope.reason) s.scopeDue ??= scope.reason;
+        s.scopeCurrent = scope.pending;
       }
       // A checked right answer the child takes back ("Actually 56", or a new answer code cannot read) stands no longer,
       // whatever a later reading names: the result waits for a new checked final answer. The help history stays. A
@@ -1229,6 +1245,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     case "safety":
       // The guidance is code's policy message, never the model's words.
       delete s.scopeDue;
+      delete s.scopePending; delete s.scopeCurrent;
       text = SAFETY_GUIDANCE[s.safety.severity!];
       s.safety.guided = true;
       moveTo(s, "SAFETY");
@@ -1255,7 +1272,11 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       if (!reading.unsafeRequest && !(s.channel === "chat" && reading.offTopic) && spoken.chosen.some((o) => o.line === "redirect.decline")) {
         return no("line_not_offered", "The decline line is only for a request for sexual, violent or other harmful content (reading.unsafeRequest).", allowedNow);
       }
-      if (s.scopeDue && (reading.unsafeRequest || spoken.chosen.some(o => o.line === "redirect.workbook"))) delete s.scopeDue;
+      if (s.scopeDue && (reading.unsafeRequest || spoken.chosen.some(o => o.line === "redirect.workbook"))) {
+        if (spoken.chosen.some(o => o.line === "redirect.workbook")) (s.scopeRefusals ??= []).push({ at: s.turn?.at ?? s.now!, reason: s.scopeDue });
+        delete s.scopeDue;
+        delete s.scopePending; delete s.scopeCurrent;
+      }
       s.redirects += 1;
       enterInterrupt(s, "REDIRECT");
       break;
@@ -1281,6 +1302,8 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   }
 
   // 7. Committed: the reading counts now (its answers only when they were judged).
+  // Repairs retain the original pending turn. Confirmations retain unaccounted numbers across completed turns.
+  if (p.act !== "repair" && p.act !== "open" && s.scopeCurrent) s.scopePending = s.scopeCurrent;
   if (reading.correctsHearing) s.mishearing.corrections += 1;
   if (s.turn && checked.length > 0) s.workAttempts = (s.workAttempts ?? 0) + 1;
   if (reading.paper) s.paper = reading.paper === "written" ? "child_confirmed" : "declined";

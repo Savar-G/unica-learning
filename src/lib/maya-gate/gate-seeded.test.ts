@@ -15,7 +15,7 @@ vi.mock("server-only", () => ({}));
 // controller injected under the text adapter, and a broken alerts seam under the saved call (#395).
 
 /** The controller's `step`, sabotaged when `mode` is set: the text adapter imports it from "@/lib/maya". */
-const sabotage = vi.hoisted(() => ({ mode: "none" as "none" | "scope" | "false_scope" | "words" | "answer" | "no_safety" | "decline_extra" | "decline_space" | "no_auto_end" | "undercount" | "visual" | "long" | "short_warm" | "identity" | "grammar" | "area" | "fraction_rewrite" | "fraction_equal" | "fraction_strips" | "fraction_place" | "fraction_answer" | "fraction_wrong" | "fraction_mixed_write" | "fraction_repeat_equal", extra: "" }));
+const sabotage = vi.hoisted(() => ({ mode: "none" as "none" | "scope_count" | "scope" | "false_scope" | "words" | "answer" | "no_safety" | "decline_extra" | "decline_space" | "no_auto_end" | "undercount" | "visual" | "long" | "short_warm" | "identity" | "grammar" | "area" | "fraction_rewrite" | "fraction_equal" | "fraction_strips" | "fraction_place" | "fraction_answer" | "fraction_wrong" | "fraction_mixed_write" | "fraction_repeat_equal", extra: "" }));
 // Restore the reviewed counter defect under the real controller. The gate must still reject its output.
 vi.mock("@/lib/maya/speech", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/maya/speech")>();
@@ -38,6 +38,9 @@ vi.mock("@/lib/maya", async (importOriginal) => {
         if (p.reading) event = { ...event, proposal: { ...p, reading: { ...p.reading, safety: null } } };
       }
       const r = real.step(session, event);
+      if (sabotage.mode === "scope_count" && !r.refusal && r.effects.some(e => e.kind === "say" && e.act === "safety")) {
+        (r.session.scopeRefusals ??= []).push({ at: session.turn?.at ?? event.at, reason: "changed_problem" });
+      }
       if (sabotage.mode === "false_scope" && session.turn && !session.scopeDue && !r.refusal) {
         return { ...r, effects: r.effects.map((e): Effect => e.kind === "say" ? { ...e, act: "redirect", text: "I help with your Unica workbook. We can pick a question from it." } : e) };
       }
@@ -484,7 +487,7 @@ describe("a sabotaged controller makes the gate fail", () => {
 
 // Restore teaching after each outside request under the real adapter. Each case must fail at the scope assertion.
 describe("scope sabotage modes", () => {
-  it.each(["S01", "S02", "S03", "S04", "S05", "S06", "S07", "S15", "S16", "S17", "S18", "S19"])("%s rejects teaching after an outside request", async id => {
+  it.each(["S01", "S02", "S03", "S04", "S05", "S06", "S07", "S15", "S16", "S17", "S18", "S19", "S23", "S24", "S25", "S26", "S27", "S28", "S29", "S30", "S31"])("%s rejects teaching after an outside request", async id => {
     sabotage.mode = "scope";
     try {
       const b = byId(id), store = memoryTraceStore();
@@ -494,11 +497,20 @@ describe("scope sabotage modes", () => {
   });
 });
 
-it.each(["S08", "S09", "S10", "S11", "S12", "S13", "S14"])("%s sabotage rejects a false refusal of ordinary help", async id => {
+it.each(["S08", "S09", "S10", "S11", "S12", "S13", "S14", "S20", "S21", "S22", "S32"])("%s sabotage rejects a false refusal of ordinary help", async id => {
   sabotage.mode = "false_scope";
   try {
     const b = byId(id), store = memoryTraceStore();
     await runBehaviour(b, store);
     expect(judge(b, store.load(id)).failures.map(f => f.code)).toContain("scope_not_kept");
+  } finally { sabotage.mode = "none"; }
+});
+
+it("S33 sabotage rejects counting a workbook refusal when safety responds", async () => {
+  sabotage.mode = "scope_count";
+  try {
+    const b = byId("S33"), store = memoryTraceStore();
+    await runGateBehaviour(b, store);
+    expect(judgeSaved(b, store).failures.map(f => f.code)).toContain("scope_not_kept");
   } finally { sabotage.mode = "none"; }
 });

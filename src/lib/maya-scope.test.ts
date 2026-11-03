@@ -91,7 +91,7 @@ it("keeps the boundary through malformed replies, model failure and checkpoint r
     for (const text of outside.filter(t => !outsideReading[t])) {
       now += 1000;
       const output = await session.child(text);
-      expect(output.say).toEqual([line]); expect(output.board).toEqual([]);
+      expect(output.say, `${broken}: ${text}`).toEqual([line]); expect(output.board).toEqual([]);
       session = createTextSession({ callId: broken, package: pkg, model, clock: () => now, resume: JSON.parse(JSON.stringify(await session.saved())) });
     }
     expect(session.trace().scopeRefusals).toHaveLength(outside.filter(t => !outsideReading[t]).length);

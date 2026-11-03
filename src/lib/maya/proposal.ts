@@ -81,6 +81,8 @@ export interface Reading {
   scopeSkill?: string;
   /** Each requested expression has its own exact quote. Answers and explanations are not turn-wide exceptions. */
   mathRequests?: import("./scope").MathRequest[];
+  /** Exact local answer/explanation statements. D-199 and the answer key must check each span before exemption. */
+  answerSpans?: string[];
   /** A non-math outside request identified by the reading. Ordinary help stays in scope. */
   outsideScope?: import("./scope").OutsideReason;
   /**
@@ -194,7 +196,7 @@ export const PROPOSAL_SCHEMA = {
     reading: nullable({
       type: "object",
       additionalProperties: false,
-      required: ["safety", "stop", "unclear", "writing", "offTopic", "scopeSkill", "mathRequests", "outsideScope", "unsafeRequest", "noBoard", "shorter", "aboutMaya", "help", "start", "answers", "paper", "correctsHearing"],
+      required: ["safety", "stop", "unclear", "writing", "offTopic", "scopeSkill", "mathRequests", "answerSpans", "outsideScope", "unsafeRequest", "noBoard", "shorter", "aboutMaya", "help", "start", "answers", "paper", "correctsHearing"],
       properties: {
         safety: nullable({ enum: ["concern", "immediate"] }),
         stop: nullable({ type: "boolean" }),
@@ -203,6 +205,7 @@ export const PROPOSAL_SCHEMA = {
         offTopic: nullable({ type: "boolean" }),
         scopeSkill: nullable({ type: "string" }),
         outsideScope: nullable({ enum: ["outside_work", "other_person", "other_topic"] }),
+        answerSpans: nullable({ type: "array", maxItems: 16, items: { type: "string" } }),
         mathRequests: nullable({ type: "array", maxItems: 16, items: {
           type: "object", additionalProperties: false, required: ["text", "operation", "operands"],
           properties: { text: { type: "string" }, operation: { enum: ["add", "subtract", "multiply", "divide", "pair"] },
