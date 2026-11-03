@@ -1,8 +1,8 @@
-// The comparison facts behind the home "How we compare" table (D-097) and the /compare page (D-114).
+// The comparison facts behind the home "How we compare" section (D-217) and the /compare page (D-114).
 // Categories only, never a competitor name (D-064). Every fact is backed by .design/research/competitors-2026-10.md
 // and .design/research/compare-page-2026-10-16.md; re-check them before editing. A full mark is yes, a half mark is
 // partly, an empty mark is no.
-import { BRAND, PLANS } from "@/lib/site";
+import { BRAND, PLANS, cad } from "@/lib/site";
 
 export type Mark = "yes" | "part" | "no";
 export type OptionId = "tutor" | "centre" | "online" | "us";
@@ -87,7 +87,7 @@ export const COST: Record<OptionId, [string, string]> = {
   tutor: ["About $170-$430", "a month, for 1 hour a week"],
   centre: ["About $200", "a month, per subject"],
   online: ["$0-$25", "a month"],
-  us: [`$${PLANS.one.price}`, "a month, delivery included"],
+  us: [`CAD ${cad(PLANS.one.price)}`, "a month, delivery included"],
 };
 
 /** One block per option on /compare: what it does well, what is harder, and what Unica does instead. */

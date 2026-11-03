@@ -25,7 +25,7 @@ import {
   SectionHeader,
   type IconName,
 } from "@/ds";
-import { CompareTable } from "./compare";
+import { HomeCompare } from "./compare";
 import { Knot, Rise, type Vars } from "./drawn";
 
 import adapt4 from "@/assets/img/loop-adapt-4.jpg";
@@ -186,7 +186,22 @@ export function Pricing() {
           cta={<div className="plan-cta"><GetStarted src="price" /><StartNote /></div>}
         />
       </PlanGrid>
-      <CompareTable />
+    </Section>
+  );
+}
+
+/** How we compare (D-217): its own section after Pricing. The link under the title opens /compare (D-114). */
+export function Compare() {
+  return (
+    <Section id="compare" aria-labelledby="compareT">
+      <Knot />
+      <Rise>
+        <SectionHeader className="hc-head-block" eyebrow="How we compare" title="Tutor, learning centre or Unica?" titleId="compareT" />
+        <Link className="hc-full" href="/compare">See the full comparison <span aria-hidden="true">→</span></Link>
+      </Rise>
+      <Rise>
+        <HomeCompare />
+      </Rise>
     </Section>
   );
 }
