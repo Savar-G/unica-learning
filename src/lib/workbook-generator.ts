@@ -76,21 +76,28 @@ import { textRoom } from "@/lib/workbook-template";
 
 import { checkWholeBook, type BookQuality } from "@/lib/workbook-quality";
 import { buildPlannedItem, planItem, itemExamples, ITEM_EXAMPLES, type ItemPlan } from "@/lib/workbook-item-plan";
+import { storyFrame, taskType } from "@/lib/workbook-task-identity";
 
 /** The shared schedule bounds every code-picked item in its skill's range. */
-function contractFor(input: GenerateInput, w: PageWork, slot: Slot, attempt = 0): ItemPlan | null {
-  if (attempt === 0 && slot.contract !== undefined) return slot.contract;
-  const skill = slot.aim?.skill ?? slot.part.skills[((Number(slot.id.split(".")[1]) || 1) - 1) % slot.part.skills.length];
+function contractFor(input: GenerateInput, w: PageWork, slot: Slot, attempt = 0, skillOverride?: string): ItemPlan | null {
+  if (!skillOverride && attempt === 0 && slot.contract !== undefined) return slot.contract;
+  const challengeSkills = input.plan.days.find(d => d.day === w.day)?.pages.flatMap(p => p.parts.filter(p => p.unit === "A").flatMap(p => p.skills)) ?? [];
+  const skill = skillOverride ?? (slot.place === "challenge" ? challengeSkills.find(s => /^1\.1-(?:count|read-write|number-line)/.test(s))
+    : slot.part.skills[(((Number(slot.id.split(".")[1]) || 1) - 1) + attempt) % slot.part.skills.length]);
   if (!skill) return null;
   const max = skillRange(input.curriculum, input.plan.level, skill).max;
   const schedule = dayDifficulty(input.plan.level, w.day);
-  const fixed = /make-10|partners-of-10/.test(skill) ? 10 : 0;
-  const cap = Math.max(fixed, 5, Math.ceil(max * schedule.rangeFraction));
+  const cap = Math.min(schedule.numberRange.max, Math.max(5, Math.ceil(max * schedule.rangeFraction)));
   const pictures = schedule.helpLevel === "pictures" || schedule.helpLevel === "new-ideas-only" && ["worked-example", "now-you", "try-first"].includes(slot.place ?? "");
   const format = slot.place === "spot-the-error" ? "spot-the-error" : slot.place === "solve-it-two-ways" ? "two-ways" : slot.place === "mixed-set" ? "tick-and-number" : "write-number";
-  return planItem({ skill, slot: slot.id, level: input.plan.level, day: w.day, ordinal: w.number * 31 + (Number(slot.id.split(".")[1]) || 1),
+  const planned = planItem({ skill, slot: slot.id, level: input.plan.level, day: w.day, ordinal: w.number * 31 + (Number(slot.id.split(".")[1]) || 1),
     range: { min: slot.place === "challenge" ? cap : w.day >= 8 ? Math.floor(cap * 0.7) : 1, max: Math.min(max, cap), pictures, help: schedule.helpLevel === "pictures" ? "full" : schedule.helpLevel === "new-ideas-only" ? "partial" : "none" },
-    story: !!slot.place && STORY_CHECK_PLACES.has(slot.place), explain: slot.place === "how-do-you-know" || slot.place === "in-your-head", format, attempt, compact: ["practice-row", "warm-up", "finish-these", "on-your-own"].includes(slot.place ?? "") });
+    story: !!slot.place && STORY_CHECK_PLACES.has(slot.place), explain: slot.place === "how-do-you-know", challenge: slot.place === "challenge", format, attempt, compact: ["practice-row", "warm-up", "finish-these", "on-your-own"].includes(slot.place ?? "") });
+  if (!planned && !skillOverride && slot.place !== "challenge") for (const other of slot.part.skills.filter(s => s !== skill)) {
+    const candidate = contractFor(input, w, slot, attempt, other);
+    if (candidate) return candidate;
+  }
+  return planned;
 }
 const unapprovedBuild = (): BuiltQuestion => ({ package: null, stepIds: [], check: { status: "failed", reason: "this skill has no approved question type; add and review its item builder" } });
 
@@ -147,6 +154,8 @@ export interface GeneratedQuestion {
   attempts: 1 | 2 | 3;
   /** Its package; null only when code could build none (the AI wrote nothing usable). */
   package: QuestionPackage | null;
+  /** Saved with the question so an edit keeps its approved type and fixed math. */
+  itemPlan?: ItemPlan;
 }
 
 export type PageFit = { status: "fits" } | { status: "failed"; problems: FitProblem[] } | { status: "not-needed" };
@@ -181,6 +190,8 @@ export interface GeneratedPage {
   omissions?: Omission[];
   /** Questions left out because the page had no room for them after its shorter rewrite, in the order they went. */
   leftOut?: LeftOut[];
+  /** The shared capacity budget, fixed before any writer call. */
+  expected?: { slot: string; part: PlannedPart["kind"]; place: SlotName | null }[];
 }
 
 /** A question the page left out to fit: its slot, part, text and the fit problem that named it. */
@@ -1096,7 +1107,7 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
     await solveChecks(deps, w, seq, ask, kept.built, kept.examples);
     return { built: kept.built, examples: kept.examples, refused: new Set(kept.refused) };
   }
-  const attempt = name === "workbook_page_redo" ? 1 : 0;
+  const attempt = input.itemPolicy === "approved-v1" ? 0 : name === "workbook_page_redo" ? 1 : 0;
   const contracts = new Map(which.map(i => [w.slots[i].id, input.itemPolicy === "approved-v1" ? contractFor(input, w, w.slots[i], attempt) : null]));
   const local = new Map<string, unknown>();
   if (input.itemPolicy === "approved-v1") {
@@ -1335,6 +1346,7 @@ function rewordRepeat(input: GenerateInput, b: BuiltQuestion, slot: Slot, memory
 
 const generated = (w: PageWork, i: number, b: BuiltQuestion, attempts: GeneratedQuestion["attempts"]): GeneratedQuestion => ({
   number: i + 1, slot: w.slots[i].id, part: w.slots[i].part.kind, ...(w.slots[i].place ? { place: w.slots[i].place! } : {}), check: b.check, attempts, package: b.package,
+  ...(w.slots[i].contract ? { itemPlan: structuredClone(w.slots[i].contract!) } : {}),
 });
 
 /** What to do about a failed check, said plainly for the redo; null when the reason says it all. */
@@ -1407,6 +1419,7 @@ function overRoom(input: GenerateInput, w: PageWork, i: number, b: BuiltQuestion
 /** Fails a sound question that repeats one of the book or of `others` on this page. */
 function markRepeat(b: BuiltQuestion, place: SlotName | null, memory: BookMemory | null, others: { number: number; package: QuestionPackage }[]) {
   if (b.check.status === "failed" || !b.package || !memory) return;
+  if (place === "how-do-you-know" && /first story on this page/.test(b.package.text)) return;
   const problem = duplicateProblem(b.package, place, memory, others);
   if (problem) b.check = { status: "failed", reason: problem };
 }
@@ -1661,7 +1674,41 @@ async function pool<T>(items: T[], limit: number, run: (item: T) => Promise<void
  * The book's pages and their numbers, before any AI call: the cover, How + Plan, the days, the back cover, blanks. Each
  * day page with its layout, slots and panels, and each slot planned (#380). The same input always gives the same.
  */
+/** Apply the template capacity before assigning an item or asking the writer. */
+export function workbookCapacityPlan(curriculum: Curriculum, plan: WorkbookPlan): WorkbookPlan {
+  return { ...plan, days: plan.days.map(day => ({ ...day, pages: day.pages.map(page => {
+    if (page.capacity) return page;
+    const layout = layoutDayPage(curriculum, plan, day.day, page);
+    // Friday 5 owns its five places. Optional review shares the remaining room.
+    const friday = page.parts.findIndex(p => p.kind === "friday-5");
+    if (friday >= 0) {
+      const at = layout.slots.find(s => s.slot === "friday-5");
+      if (at) at.items = 5; else layout.slots.push({ slot: "friday-5", part: friday, items: 5 });
+    }
+    for (const s of layout.slots) {
+      if (s.slot === "remember-these") s.items = Math.min(s.items, friday >= 0 ? 2 : 4);
+      if (s.slot === "spot-the-error" && page.parts[s.part]?.skills.every(skill => /likelihood/.test(skill))) { s.slot = "unit-b-practice"; s.items = 1; }
+      if (s.slot === "challenge") s.items = 1;
+    }
+    const parts = page.parts.map((part, i) => ({ ...part, items: layout.slots.filter(s => s.part === i && s.slot !== "how-do-you-know").reduce((n,s) => n + s.items, 0) + (part.kind === "practice" ? part.faded?.watch ?? 0 : 0) }));
+    const likelihood = layout.slots.filter(s => !PANEL_SLOTS.includes(s.slot) && parts[s.part].skills.every(skill => /likelihood/.test(skill)));
+    if (likelihood.reduce((n,s) => n+s.items,0) >= 3) {
+      const review = day.pages.flatMap(p => p.parts).find(p => p.unit === "A" && p.skills.length);
+      if (review) {
+        let room = 3;
+        for (const s of likelihood) { s.items = Math.min(s.items, room); room -= s.items; }
+        const items = 3 - room;
+        parts.push({ ...review, kind: "remember-these", unit: null, step: null, items, faded: undefined, methods: undefined, hints: true });
+        layout.slots.push({ slot: "remember-these", part: parts.length - 1, items });
+        for (const s of likelihood) parts[s.part].items = layout.slots.filter(x => x.part === s.part).reduce((n,x) => n+x.items,0);
+      }
+    }
+    return { ...page, parts, capacity: layout.slots };
+  }) })) };
+}
+
 function layOut(input: GenerateInput) {
+  if (input.itemPolicy === "approved-v1") input = { ...input, plan: workbookCapacityPlan(input.curriculum, input.plan) };
   const work: PageWork[] = [];
   let number = 2;
   for (const day of input.plan.days) {
@@ -1669,9 +1716,6 @@ function layOut(input: GenerateInput) {
       const layout = input.book ? layoutDayPage(input.curriculum, input.plan, day.day, page) : null;
       // A likelihood skill has no numeric wrong solution. Use the existing
       // practice block for its approved circle task, rather than an error strip.
-      if (layout && input.itemPolicy === "approved-v1") for (const slot of layout.slots) {
-        if (slot.slot === "spot-the-error" && page.parts[slot.part]?.skills.every(skill => /likelihood/.test(skill))) { slot.slot = "unit-b-practice"; slot.items = 4; }
-      }
       const panels = (layout?.slots ?? []).flatMap((x, k): Panel[] => {
         const part = page.parts[x.part];
         const skill = part?.step?.skill ?? part?.skills[0];
@@ -1687,20 +1731,32 @@ function layOut(input: GenerateInput) {
   // asked the same way page after page and no two questions of a page work one sum.
   if (input.book) planBook(input, work);
   if (input.itemPolicy === "approved-v1") {
-    const used = new Set<string>();
+    const used = new Map<string, number>(), frames = new Set<string>();
     for (const w of work) {
       const pageOps = new Set<string>();
+      const pageTypes = new Map<string, number>();
       for (const slot of w.slots) {
-        let best = contractFor(input, w, slot);
+        if (w.page.itemContracts && Object.hasOwn(w.page.itemContracts, slot.id)) {
+          slot.contract = structuredClone(w.page.itemContracts[slot.id]);
+          if (slot.place === "challenge" && slot.contract) slot.part = { ...slot.part, skills: [slot.contract.item.skill] };
+          continue;
+        }
+        let best: ItemPlan | null = null;
         for (let candidate = 0; candidate < 128; candidate++) {
           const c = contractFor(input, w, slot, candidate);
           if (!c) break;
-          best = c;
           const key = JSON.stringify([c.item.text, c.item.operation, c.item.numbers, c.item.sequence]);
           const op = c.item.operation ? JSON.stringify(c.item.operation) : key;
-          if (!used.has(key) && !pageOps.has(op)) { used.add(key); pageOps.add(op); break; }
+          const frame = c.source === "story" || c.type === "likelihood" ? storyFrame(c.item.text) : null;
+          if (frame && frames.has(frame)) continue;
+          const p = buildPlannedItem(c, c.item, { id: "capacity", workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [c.item.skill] }).package;
+          const type = p ? taskType(p) : c.type;
+          if (w.slots.length >= 3 && (pageTypes.get(type) ?? 0) >= Math.ceil(w.slots.length / 2)) continue;
+          const limit = c.source === "explain" ? Infinity : c.source === "code" && !frame ? 3 : 1;
+          if ((used.get(key) ?? 0) < limit && !pageOps.has(op)) { best = c; used.set(key, (used.get(key) ?? 0) + 1); pageOps.add(op); pageTypes.set(type, (pageTypes.get(type) ?? 0) + 1); if (frame) frames.add(frame); break; }
         }
         slot.contract = best;
+        if (best && slot.place === "challenge") slot.part = { ...slot.part, skills: [best.item.skill] };
       }
     }
   }
@@ -1717,7 +1773,7 @@ function layOut(input: GenerateInput) {
 export function bookOutline(input: GenerateInput): string {
   const { work, total } = layOut(input.book ? { ...input, book: { child: "" } } : input);
   return digestOf({
-    number: input.number, level: input.plan.level, total, laidOut: !!input.book, ...(input.itemPolicy === "approved-v1" ? { itemPipeline: { version: 1, examples: ITEM_EXAMPLES } } : {}),
+    number: input.number, level: input.plan.level, total, laidOut: !!input.book, ...(input.itemPolicy === "approved-v1" ? { itemPipeline: { version: 2, examples: ITEM_EXAMPLES } } : {}),
     pages: work.map((w) => ({
       number: w.number, day: w.day, page: w.page.number, type: w.page.type, layout: w.layout, panels: w.panels,
       slots: w.slots.map((x) => ({
@@ -1744,6 +1800,61 @@ function keptPageProblem(input: GenerateInput, w: PageWork | undefined, p: Gener
   return null;
 }
 
+/** A measured capacity is saved before any writer call or run fingerprint. */
+async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: PageWork[]): Promise<string | null> {
+  if (input.itemPolicy === "approved-v1" && input.book) {
+    // Measure the code-picked questions before a provider sees a slot. The same
+    // retained slot IDs feed generation, checkpoints, content and coverage checks.
+    for (const w of work) {
+      if (w.page.capacityChecked) continue;
+      const before = w.slots.length;
+      for (let trim = 0; trim <= before; trim++) {
+        const questions = w.slots.map((s, i) => {
+          const c = s.contract;
+          const b = c ? buildPlannedItem(c, c.item, { id: `budget:${w.number}:${s.id}`, workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: [c.item.skill] }) : unapprovedBuild();
+          return generated(w, i, b, 1);
+        });
+        const examples = w.panels.map(p => {
+          const c = contractFor(input, w, { id: p.id, part: { ...w.page.parts[0], skills: [p.skill] }, place: p.place, layoutSlot: p.layoutSlot });
+          return c ? buildPlannedItem(c, c.item, { id: `budget:${w.number}:${p.id}`, workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [p.skill] }).package : null;
+        });
+        const fit = await fitCheck.fits(fitPage(w, "token-000000000001", questions, contentOf(input, w, questions, examples)), {
+          id: input.workbookId, childId: input.childId, number: input.number, levels: [input.plan.level], profileBuild: input.profileBuild,
+        });
+        if (fit.ok || fit.problems.every(p => p.kind === "fullness")) break;
+        const optional = w.slots.filter(s => w.slots.length > 1 && ["remember-these", "practice", "warm-up"].includes(s.part.kind)
+          && (s.part.kind === "remember-these" || w.slots.filter(other => other.part === s.part).length > 1));
+        const out = optional.findLast(s => s.part.kind === "remember-these") ?? optional.at(-1);
+        if (!out) return `Page ${w.number}: the required questions exceed the template capacity: ${fit.problems.map(p => p.reason).join(" ")}`;
+        w.slots = w.slots.filter(s => s !== out);
+        if (w.layout) w.layout.slots[out.layoutSlot].items--;
+      }
+      const oldSlots = w.slots;
+      w.page = { ...w.page, parts: w.page.parts.map((p, i) => ({ ...p, items: (w.layout?.slots ?? []).filter(s => s.part === i && s.slot !== "how-do-you-know").reduce((n,s)=>n+s.items,0) + (p.kind === "practice" ? p.faded?.watch ?? 0 : 0) })), capacity: w.layout?.slots, capacityChecked: true };
+      if (w.layout) {
+        w.slots = layoutSlots(w.page, w.layout);
+        const used = new Map<number, number>();
+        for (const slot of w.slots) {
+          const index = used.get(slot.layoutSlot) ?? 0;
+          used.set(slot.layoutSlot, index + 1);
+          const old = oldSlots.filter(s => s.layoutSlot === slot.layoutSlot)[index]?.contract;
+          slot.contract = old ? { ...old, item: { ...old.item, slot: slot.id } } : null;
+          if (slot.place === "challenge" && old) slot.part = { ...slot.part, skills: [old.item.skill] };
+        }
+      }
+      w.page.itemContracts = Object.fromEntries(w.slots.map(s=>[s.id,s.contract ?? null]));
+    }
+  }
+  return null;
+}
+
+export async function prepareWorkbookCapacity(input: GenerateInput, fitCheck: FitCheck): Promise<WorkbookPlan> {
+  const { work } = layOut(input);
+  const problem = await fitWorkBudget(input, fitCheck, work);
+  if (problem) throw new Error(problem);
+  return { ...input.plan, days: input.plan.days.map(d=>({ ...d, pages:d.pages.map(p=>work.find(w=>w.day===d.day && w.page.number===p.number)!.page) })) };
+}
+
 /**
  * Generates a draft from a plan and stores it as one unit. Refused, with nothing stored and no AI call, when the input
  * is not sound; refused after generation when the store refuses the draft. Throws ResumeMismatch when a kept page,
@@ -1754,7 +1865,10 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
   if (!isUuid(input.childId)) return { status: "refused", reason: "the child id is not a UUID" };
   if (input.plan.days.length === 0) return { status: "refused", reason: "the plan has no days" };
 
+  if (input.itemPolicy === "approved-v1") input = { ...input, plan: workbookCapacityPlan(input.curriculum, input.plan) };
   const { work, backCover, total } = layOut(input);
+  const capacityProblem = await fitWorkBudget(input, deps.fit, work);
+  if (capacityProblem) return { status: "refused", reason: capacityProblem };
   const byNumber = new Map(work.map((w) => [w.number, w]));
   // A resumed run (#312) keeps its stored pages and their tokens; a new token never repeats a kept one (a bounded
   // number of tries; a maker that keeps repeating is caught by draftProblem). Each page starts with the attempts its
@@ -1851,7 +1965,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
       let kept = questions;
       let left = fit;
       // A page keeps at least one question: its panels take their sums from its questions.
-      while (!left.ok && !left.problems.every(p => p.kind === "fullness") && kept.length > 1) {
+      while (input.itemPolicy !== "approved-v1" && !left.ok && !left.problems.every(p => p.kind === "fullness") && kept.length > 1) {
         const out = toLeaveOut(kept, left.problems);
         if (!out) break;
         leftOut.push({ question: kept[out.index], slot: w.slots.find((x) => x.id === kept[out.index].slot)!, reason: out.reason });
@@ -1866,6 +1980,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
       const omissions = omissionsWith(w, leftOut);
       result = {
         ...page, fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems }, attempts, questions,
+        ...(input.itemPolicy === "approved-v1" ? { expected: w.slots.map(s => ({ slot: s.id, part: s.part.kind, place: s.place })) } : {}),
         ...(content ? { content } : {}), ...(omissions.length ? { omissions } : {}),
         ...(leftOut.length ? { leftOut: leftOut.map((x) => ({ slot: x.question.slot, part: x.question.part, text: x.question.package?.text ?? null, reason: x.reason })) } : {}),
       };
@@ -1933,7 +2048,8 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
         const c = slot ? contractFor(input, w, slot, 2) : null;
         if (!c || c.source !== "code") return q;
         const b = buildPlannedItem(c, c.item, { id: q.package?.id ?? `${input.workbookId}:${page.number}:${q.slot}`, workbookId: input.workbookId, page: page.number, question: q.number, level: input.plan.level, skills: [c.item.skill] });
-        return b.check.status === "failed" ? q : { ...q, check: b.check, package: b.package };
+        if (b.package && (rangeProblem(b.package, input.curriculum, input.plan.level) || scheduledItemProblem(b.package, input.curriculum, w.day, slot?.place ?? ""))) return q;
+        return b.check.status === "failed" ? q : { ...q, check: b.check, package: b.package, itemPlan: c };
       });
       const content = contentOf(input, w, questions);
       const fit = await deps.fit.fits(fitPage(w, page.qrToken, questions, content), book);
@@ -1977,7 +2093,7 @@ function editNumbers(value: unknown): number[] {
 /** Replace only the selected questions of a stored day page. The plan, checks and templates stay binding. */
 export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDeps, page: GeneratedPage,
   change: { question: number | number[] | null; note: string; item?: unknown; items?: Record<number, unknown> }): Promise<GeneratedPage> {
-  input = { ...input, itemPolicy: undefined };
+  if (page.questions.some(q => q.itemPlan)) input = { ...input, itemPolicy: "approved-v1" };
   const w = layOut(input).work.find((x) => x.number === page.number);
   if (!w || !page.content || page.content.kind !== "day") throw new Error("This page has no questions to rewrite.");
   const targets = page.questions.filter((q) => change.question === null || (Array.isArray(change.question) ? change.question.includes(q.number) : q.number === change.question));
@@ -1995,6 +2111,16 @@ export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDep
     slot.planned = { use: keepNumbers ? numbers : null, spare: null, name: old?.name ?? "Mia", thing: old?.thing ?? "apples",
       names: PEOPLE.filter(name => name !== input.book?.child), things: [...THINGS] };
     delete slot.aim;
+    if (input.itemPolicy === "approved-v1") {
+      const saved = targets[k].itemPlan;
+      if (!saved) throw new Error("This question has no saved item policy. Prepare a new workbook.");
+      slot.contract = structuredClone(saved);
+      slot.contract.item.text = targets[k].package?.text ?? saved.item.text;
+      if (!keepNumbers) {
+        slot.contract = contractFor(input, w, slot, 1);
+        if (!slot.contract) throw new Error("There is no approved replacement for this skill.");
+      }
+    }
   }
   const currentQuestions = targets.map(q => ({ number: q.number, text: q.package?.text ?? null, data: workbookEditItem(q) }));
   const writer = deps.ai;
@@ -2017,12 +2143,14 @@ export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDep
     const q = targets[k], slot = w.slots[which[k]];
     if (!Object.hasOwn(manual, q.number)) { built.push(result!.built[aiWhich.indexOf(which[k])]); continue; }
     const raw = manual[q.number] as { text?: unknown; easier?: { text?: unknown } };
-    const b = buildQuestion(raw, { id: q.package?.id ?? `${input.workbookId}:p${page.number}q${q.number}`,
+    if (input.itemPolicy === "approved-v1" && slot.contract?.source === "code" && raw.text !== slot.contract.item.text) throw new Error("Code writes this drill. Change its numbers through the approved builder.");
+    const builder = input.itemPolicy === "approved-v1" ? (raw: unknown, place: Parameters<typeof buildQuestion>[1]) => slot.contract ? buildPlannedItem(slot.contract, raw, place) : unapprovedBuild() : buildQuestion;
+    const b = builder(raw, { id: q.package?.id ?? `${input.workbookId}:p${page.number}q${q.number}`,
       workbookId: input.workbookId, page: page.number, question: q.number, level: input.plan.level,
       skills: slot.part.skills, signs: levelSigns(input.curriculum, input.plan.level), story: !!slot.place && STORY_CHECK_PLACES.has(slot.place) });
     if (b.package && typeof raw.text === "string") {
       b.package.text = raw.text;
-      b.package.textSource = "human";
+      if (input.itemPolicy !== "approved-v1" || slot.contract?.source !== "code") b.package.textSource = "human";
       if (b.package.easierExample && typeof raw.easier?.text === "string") b.package.easierExample.text = raw.easier.text;
       const codeCheck = checkQuestionPackage(b.package);
       if (codeCheck.status !== "checked") throw new Error("The code cannot derive and check every answer from these fields.");
@@ -2043,6 +2171,7 @@ export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDep
     const format = b.package.item?.format;
     if (slot.place && STRICT_SLOTS.includes(slot.place) && format && !SLOT_FORMATS[slot.place]?.includes(format)) throw new Error("The question does not fit this part of the page.");
     const problem = rangeProblem(b.package, input.curriculum, input.plan.level)
+      ?? (input.itemPolicy === "approved-v1" ? scheduledItemProblem(b.package, input.curriculum, w.day, slot.place ?? "") : null)
       ?? (slot.place === "spot-the-error" ? samProblem(b.package, input.plan.level) : null);
     if (problem) throw new Error(problem);
   }
@@ -2058,7 +2187,7 @@ export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDep
   }));
   const questions = page.questions.map((q) => {
     const k = targets.indexOf(q);
-    return k < 0 ? q : { ...q, package: built[k].package, check: built[k].check };
+    return k < 0 ? q : { ...q, package: built[k].package, check: built[k].check, ...(w.slots[which[k]].contract ? { itemPlan: w.slots[which[k]].contract! } : {}) };
   });
   // Keep the original slot positions and panels on a question edit. Rebuild only its dependent picture and hints.
   const content = structuredClone(page.content);

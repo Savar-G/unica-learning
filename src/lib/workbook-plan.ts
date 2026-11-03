@@ -238,6 +238,10 @@ export interface PlannedPart {
 }
 
 export interface PlannedPage {
+  /** Approved pipeline capacity. The writer and layout consume this same budget. */
+  capacity?: import("./workbook-page").PlannedSlot[];
+  capacityChecked?: boolean;
+  itemContracts?: Record<string, import("./workbook-item-plan").ItemPlan | null>;
   /** The page of the day, from 1. */
   number: number;
   type: PageType;

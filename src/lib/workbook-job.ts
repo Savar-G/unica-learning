@@ -45,6 +45,8 @@ import type { PageImage, QuestionBox, WorkbookFiles } from "@/lib/workbook-conte
 import { curriculumFor, curriculumVersion } from "@/lib/workbook-curriculum";
 import {
   bookOutline,
+  workbookCapacityPlan,
+  prepareWorkbookCapacity,
   generateWorkbook,
   ResumeMismatch,
   type AttemptLedger,
@@ -581,8 +583,9 @@ async function runFrame(run: WorkbookRun, deps: WorkbookJobDeps & { ai: AiClient
     if (!planned.ok) throw new Refusal(`The plan could not be made: ${planned.reason}.`);
     const made: RunFrame = {
       version: RUN_FRAME_VERSION, ...(deps.itemPolicy === "legacy" ? {} : { itemPolicy: "approved-v1" as const }), curriculum: key, grade: inputs.grade, profileRevision: inputs.profile?.revision ?? null, workbooks: inputs.workbooks,
-      plan: planned.plan, versions: { curriculum: "", outline: "", model: deps.ai.model, solveModel: deps.solver.model, build: deps.build ?? null },
+      plan: deps.itemPolicy === "legacy" ? planned.plan : workbookCapacityPlan(curriculum, planned.plan), versions: { curriculum: "", outline: "", model: deps.ai.model, solveModel: deps.solver.model, build: deps.build ?? null },
     };
+    if (made.itemPolicy === "approved-v1") made.plan = await prepareWorkbookCapacity(generateInput(run, made, name), deps.fit(run.parentId));
     made.versions.curriculum = curriculumVersion(key)!;
     made.versions.outline = bookOutline(generateInput(run, made, name));
     if (!(await deps.runs.saveFrame(run.id, lease, made))) throw new Stopped("the run was taken up by another call");

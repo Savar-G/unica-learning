@@ -3,8 +3,10 @@ import type { DraftPage, MeasuredElement } from "./workbook-render";
 import type { GeneratedPage } from "./workbook-generator";
 import { dayTimeProblem, estimatedDayMinutes } from "./workbook-feedback-check";
 import { printedNumbers } from "./workbook-book";
+import { storyFrame, wordedTask, taskType, reasoningSteps } from "./workbook-task-identity";
+import { dayDifficulty } from "./workbook-plan";
 
-export interface BookIssue { page: number; kind: "repeat" | "progress" | "variety" | "time"; reason: string }
+export interface BookIssue { page: number; kind: "repeat" | "progress" | "variety" | "time" | "coverage" | "challenge"; reason: string }
 export interface DayQuality { day: number; minutes: number; formats: number; largestNumber: number }
 export interface BookQuality {
   failedRate: number;
@@ -30,9 +32,37 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
   const issues: BookIssue[] = [];
   const days: DayQuality[] = [];
   const seen = new Map<string, number[]>();
+  const frames = new Map<string, number>();
+  const types = new Map<string, number>();
+  const all = pages.flatMap(p => p.questions).filter(q => q.package && q.place !== "warm-up");
+  for (const p of pages) {
+    if (p.day !== null && p.questions.length === 0) issues.push({ page: p.number, kind: "coverage", reason: "a day page has no planned questions" });
+    for (const expected of p.expected ?? []) {
+      if (!p.questions.some(q => q.slot === expected.slot && q.package && q.check.status !== "failed")) issues.push({ page: p.number, kind: "coverage", reason: `required planned slot ${expected.slot} (${expected.part}) is missing or failed` });
+    }
+    const friday = p.type === "friday-5" || (p.expected ?? []).some(q => q.part === "friday-5") || p.questions.some(q => q.part === "friday-5") || p.omissions?.some(o => o.kind === "friday-5");
+    if (friday && p.questions.filter(q => q.part === "friday-5" && q.package && q.check.status !== "failed").length !== 5) issues.push({ page: p.number, kind: "coverage", reason: "Friday 5 must contain five sound questions" });
+    if ((p.leftOut?.length ?? 0) > 0 || p.omissions?.some(o => o.requested > o.placed)) issues.push({ page: p.number, kind: "coverage", reason: "the page lost planned questions" });
+    const questions = p.questions.filter(q => q.package && q.place !== "warm-up");
+    const counts = new Map<string, number>();
+    for (const q of questions) {
+      const key = taskType(q.package!);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+      types.set(key, (types.get(key) ?? 0) + 1);
+    }
+    for (const [type, count] of counts) if (questions.length >= 3 && count > Math.ceil(questions.length / 2)) issues.push({ page: p.number, kind: "variety", reason: `${type} fills ${count} of ${questions.length} questions; the page limit is half, rounded up` });
+    for (const q of p.questions.filter(q => q.place === "how-do-you-know")) if (!/first story on this page/i.test(q.package?.text ?? "") || !p.questions.some(s => ["word-problems", "picture-stories"].includes(s.place ?? "") && s.package && s.check.status !== "failed")) issues.push({ page: p.number, kind: "coverage", reason: "the explanation has no story on this page" });
+  }
+  for (const [type, count] of types) if (all.length >= 12 && count > all.length / 2) for (const p of pages.filter(p => p.questions.some(q => q.package && taskType(q.package) === type))) issues.push({ page: p.number, kind: "variety", reason: `${type} exceeds half of the book's non-warm-up questions` });
   for (const p of pages) for (const q of p.questions) {
-    if (!q.package || q.check.status === "failed" || q.place === "warm-up") continue;
+    if (!q.package || q.place === "warm-up") continue;
     const pkg = q.package;
+    if (q.place === "how-do-you-know" && /first story on this page/.test(pkg.text)) continue;
+    if (wordedTask(pkg)) {
+      const frame = storyFrame(pkg.text), before = frames.get(frame);
+      if (before !== undefined) issues.push({ page: p.number, kind: "repeat", reason: `question ${q.number} repeats the story or event frame on page ${before}` });
+      else frames.set(frame, p.number);
+    }
     const key = JSON.stringify([pkg.text, pkg.operation, pkg.item?.checks, pkg.item?.figure]);
     const at = seen.get(key) ?? [];
     const limit = pkg.textSource === "code" ? 3 : 1;
@@ -42,6 +72,14 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
   for (const day of [...new Set(pages.flatMap(p => p.day === null ? [] : [p.day]))].sort((a, b) => a - b)) {
     const ofDay = pages.filter(p => p.day === day);
     const questions = ofDay.flatMap(p => p.questions);
+    const practice = questions.filter(q => q.place !== "challenge" && q.package);
+    for (const p of ofDay) for (const q of p.questions.filter(q => q.place === "challenge")) {
+      const pkg = q.package;
+      const demand = pkg ? reasoningSteps(pkg) : 0;
+      const cap = pkg ? dayDifficulty(pkg.level, day).numberRange.max : undefined;
+      const top = pkg ? Math.max(0, ...printedNumbers({ ...pkg, wrongAnswers: [], easierExample: null })) : 0;
+      if (!pkg || pkg.item?.format === "circle" || !pkg.operation || demand <= Math.max(1, ...practice.map(q => reasoningSteps(q.package!))) || cap !== undefined && top < cap) issues.push({ page: p.number, kind: "challenge", reason: `Day ${day}'s Challenge must use the day's top number and require more reasoning steps than practice` });
+    }
     const formats = new Set(questions.flatMap(q => q.package?.item ? [q.package.item.format] : []));
     // Include time to read worked examples and move between pages.
     const packages = questions.flatMap(q => q.package ? [q.package] : []);

@@ -13,6 +13,7 @@
 //
 // The words here are code's, never the AI's: headers, panel labels and explanations come from the plan and the
 // curriculum. Pure TypeScript: no Next.js, React, network, database, clock or randomness.
+import { workbookCoverTitle } from "@/lib/workbook-cover-titles";
 import { SKILL_TITLES } from "@/lib/workbook-skill-titles";
 import {
   operationResult,
@@ -151,6 +152,7 @@ export const PANEL_SLOTS: readonly SlotName[] = ["worked-example", "watch-one", 
 
 export function layoutDayPage(curriculum: Curriculum, plan: WorkbookPlan, day: number, page: PlannedPage): DayLayout {
   const header = dayHeader(curriculum, page, plan.level);
+  if (page.capacity) return { header, slots: structuredClone(page.capacity), omissions: [] };
   const pages = plan.days.find((d) => d.day === day)?.pages.length ?? page.number;
   const { slots, omissions } = pageSlots(page, plan.level, { headerGrowth: headerGrowth(header, plan.level, day, page.number, pages) });
   return { header, slots, omissions };
@@ -1024,7 +1026,7 @@ export function bookPageContent(o: {
   const pagesADay = Math.max(...plan.days.map((d) => d.pages.length));
   switch (o.type) {
     case "cover": {
-      const title = curriculum.level(`U${level}`)?.title ?? `Level U${level}`;
+      const title = workbookCoverTitle(level);
       return {
         kind: "cover", id: id("COVER"), level, child, workbook, levelTitle: title, title: coverTitleLines(title),
         madeFrom: workbook === 1 ? "assessment" : "last-workbook", pagesADay, minutes: { ...plan.timeTarget },

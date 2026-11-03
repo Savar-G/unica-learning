@@ -14,7 +14,7 @@ export function instructionProblem(text: string): string | null {
 export function feedbackItemProblem(p: QuestionPackage): string | null {
   const text = p.text;
   if (p.level > 3 && /\btrac(?:e|ing)\b/i.test(text)) return "Tracing is only for Kindergarten.";
-  if (p.item?.format === "draw" && !/\b(?:ten-frame|number line|shape|triangle|square|rectangle|circle|angle|array|graph|symmetry|polygon|net|coordinate)\b/i.test(text)) return "Drawing must be the math. Use colouring or a ten-frame for counting.";
+  if (p.item?.format === "draw" && !/\b(?:ten-frame|number line|shape|triangle|square|rectangle|circle|angle|array|graph|symmetry|polygon|net|coordinate)\b/i.test(text) && !/^Colour \d+ dots in the row\.$/.test(text)) return "Drawing must be the math. Use colouring or a ten-frame for counting.";
   if (/\bdraw\b/i.test(text) && /\b(?:likely|unlikely|sure|always|sometimes|never|maybe)\b/i.test(text)) return "Likelihood is a circle-the-word question, never a drawing.";
   if (p.skill.skills.some(s => /likelihood/.test(s)) && p.item?.format !== "circle") return "Likelihood uses circle-the-word.";
   return null;
@@ -40,7 +40,8 @@ export function scheduledItemProblem(p: QuestionPackage, curriculum: Curriculum,
     const feedback = feedbackItemProblem(p);
     if (feedback) return feedback;
     const d = dayDifficulty(p.level, day);
-    if (p.item?.figure && (d.helpLevel === "none" || d.helpLevel === "new-ideas-only" && !["worked-example", "now-you", "try-first"].includes(place))) return "This day has no picture support in this place.";
+    const countingTask = p.operation === null && p.item?.format === "draw" && p.skill.skills.every(s => /count-objects|how-many|count-scattered|subitize|ten-frame/.test(s)) && /^(?:Colour \d+ dots in the row\.|Fill the ten-frame boxes to show \d+\.)$/.test(p.text);
+    if (p.item?.figure && !countingTask && (d.helpLevel === "none" || d.helpLevel === "new-ideas-only" && !["worked-example", "now-you", "try-first"].includes(place))) return "This day has no picture support in this place.";
     const item = packageItem(p);
     if (!Object.hasOwn(READABLE_FORMATS, item.format)) return "The daily number check cannot read this item format.";
     const checked = checkQuestionPackage(p);
