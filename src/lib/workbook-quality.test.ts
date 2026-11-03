@@ -173,3 +173,12 @@ it("asks a step's only Challenge template once and takes the other cards from ha
   expect(cards([challenge(9, 2, "medium"), challenge(5, 4, "hard"), challenge(5, 3, "hard")])).toEqual([]);
   expect(cards([challenge(9, 2, "medium"), challenge(5, 1, "easy"), challenge(5, 3, "hard")]).some(r => r.includes("question 2 must use the hardest step"))).toBe(true);
 });
+
+it("fails a page that rates likelihood outside never, sometimes and always, and a panel line twice a day", () => {
+  const p = page(3, 1, 2);
+  p.content = { kind: "day", id: "test", level: 4, day: 1, page: 1, pages: 8, topic: "Chance", title: "Chance", subtitle: "Circle the answer.", grownUp: null, blocks: [] };
+  p.questions[0] = { ...p.questions[0], package: { ...p.questions[0].package!, text: "Which is right? You eat breakfast on a school day. A) likely  B) unlikely" } };
+  expect(workbookQuality([p]).issues.some(i => i.reason.includes('rates likelihood with "likely"'))).toBe(true);
+  const panel = (n: number) => { const q = page(n, 1, 1); q.content = { kind: "day", id: "t", level: 4, day: 1, page: n, pages: 8, topic: "Count", title: "Count", subtitle: "Write it.", grownUp: null, blocks: [{ slot: "watch-one", items: [], lines: [`${n}, [${n + 1}]`], explain: "Watch out: Mia wrote 9, 10, 12. No: after 10 comes 11." }] }; return q; };
+  expect(workbookQuality([panel(4), panel(5)]).issues.some(i => i.kind === "repeat" && i.reason.includes("Watch out: Mia wrote"))).toBe(true);
+});

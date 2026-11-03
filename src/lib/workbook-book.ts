@@ -13,6 +13,7 @@
 //
 // The words here are code's, never the AI's: headers, panel labels and explanations come from the plan and the
 // curriculum. Pure TypeScript: no Next.js, React, network, database, clock or randomness.
+import { likelihoodWord } from "@/lib/workbook-likelihood";
 import { workbookCoverTitle } from "@/lib/workbook-cover-titles";
 import { SKILL_TITLES } from "@/lib/workbook-skill-titles";
 import {
@@ -967,13 +968,18 @@ export function dayPageContent(o: {
       const step = part?.step ? curriculum.skillSteps(part.step.skill)?.[part.step.step - 1] : undefined;
       // (From U4: parent-led pages keep their counted examples. An example that needs a picture or a drawing cannot print.)
       if (!step?.templates?.length || plan.level < 4) return null;
-      const printable = (t: string) => !!t && !/\(picture:|\b(?:shade|shaded|colou?r|draw|trace|dots?|counters?|ten-frame|picture|chart|graph|bars?)\b/i.test(t) && t.length <= 160;
+      const printable = (t: string) => !!t && !/\(picture:|\b(?:shade|shaded|colou?r|draw|trace|dots?|counters?|ten-frame|picture|chart|graph|bars?)\b/i.test(t) && t.length <= 160 && !likelihoodWord(t);
       // The example worked, then the step's common mistake put right (its fix line), in a panel's room.
       if (!printable(step.example?.problem) || !step.example?.answer) return null;
       // The mistake with its fix ("The 3 in 83 175 is worth 300. No: it is in the thousands place: 3 000."), never the
       // fix alone (the U16 sample: a fix line out of context).
       const mistake = step.spotTheError;
-      const both = printable(mistake?.wrong) && printable(mistake?.fix) && `${mistake.wrong} ${mistake.fix}`.length <= 150;
+      // Once a day: a later page of the day that teaches the same step prints no Watch out line (the real U4 sample:
+      // "Mia wrote 9, 10, 12" on three pages of Day 1).
+      const day = plan.days.find((d) => d.day === o.day);
+      const sameStep = (x: PlannedPage) => x.parts.some((pt) => pt.step && part?.step && pt.step.skill === part.step.skill && pt.step.step === part.step.step && (x.type === "new-idea" || !!pt.faded?.watch));
+      const earlier = (day?.pages ?? []).some((x) => x.number < page.number && sameStep(x));
+      const both = !earlier && printable(mistake?.wrong) && printable(mistake?.fix) && `${mistake.wrong} ${mistake.fix}`.length <= 150;
       return { label: "How it works", lines: [step.example.problem, `Answer: [${step.example.answer}]`], remember: both ? `${mistake.wrong.replace(/\.?$/, ".")} No: ${mistake.fix.replace(/^[A-Z]/, (c) => c.toLowerCase())}` : null };
     };
     switch (s.slot) {
