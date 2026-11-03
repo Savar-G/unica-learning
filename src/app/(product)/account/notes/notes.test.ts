@@ -242,7 +242,7 @@ it("formats a session across the family date boundary and the correct seasonal r
 
 it.each([
   undefined, "-1", "0", "NaN", ["a", "b"], "x".repeat(501),
-  ...["2026-02-30T00:00:00Z", "2026-02-29T00:00:00Z", "2026-11-08T01:06:00Z),child_id.gt.0"].map((at) =>
+  ...["2026-02-30T00:00:00Z", "2026-02-29T00:00:00Z", "2026-11-08T01:06:00Z),child_id.gt.0", "0000-01-01T00:00:00Z", "2026-11-08T01:06:00+16:00", "2026-11-08T01:06:00-14:60"].map((at) =>
     Buffer.from(JSON.stringify({ at, id: chat, direction: "older" })).toString("base64url")),
   ...[{ at: "2026-11-08T01:06:00Z", id: "bad-id", direction: "older" },
     { at: "2026-11-08T01:06:00Z", id: chat, direction: "invalid" }, null].map((c) => Buffer.from(JSON.stringify(c)).toString("base64url")),

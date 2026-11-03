@@ -26,6 +26,13 @@ export function sessionWhen(note: ParentNote, zone: FamilyZone): string {
 }
 
 type NoteCursor = { at: string; id: string; direction: "older" | "newer" };
+/** Years PostgreSQL and our data can hold, and real UTC offsets (at most 14 hours), so a changed cursor opens the first page. */
+function cursorTimeInRange(at: string): boolean {
+  const year = Number(at.slice(0, 4));
+  if (year < 2000 || year > 2999) return false;
+  const offset = /([+-])(\d{2}):(\d{2})$/.exec(at);
+  return !offset || (Number(offset[2]) * 60 + Number(offset[3]) <= 14 * 60 && Number(offset[3]) < 60);
+}
 function noteCursor(raw: string | string[] | undefined): NoteCursor | null {
   if (typeof raw !== "string" || raw.length > 500) return null;
   try {
@@ -33,6 +40,7 @@ function noteCursor(raw: string | string[] | undefined): NoteCursor | null {
     return c && typeof c.at === "string" &&
       /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(c.at) &&
       Number.isFinite(Date.parse(c.at)) && new Date(c.at.slice(0, 10)).toISOString().slice(0, 10) === c.at.slice(0, 10) &&
+      cursorTimeInRange(c.at) &&
       typeof c.id === "string" && UUID.test(c.id) && (c.direction === "older" || c.direction === "newer")
       ? { at: c.at, id: c.id.toLowerCase(), direction: c.direction } : null;
   } catch { return null; }
