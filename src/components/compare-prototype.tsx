@@ -22,36 +22,42 @@ const PRICE: Record<OptionId, [string, string]> = {
   us: [`CAD ${cad(PLANS.one.price)}`, "a month, first month free"],
 };
 
-const VARIANTS = [
-  { key: "A", name: "Reference table" },
-  { key: "B", name: "Price scale" },
-  { key: "C", name: "Three cards" },
-  { key: "D", name: "Head to head" },
+// Round 2 (Savar picked A): colour treatments of our column. Round 1 layouts B-D stay reachable by URL.
+const TONES: { key: string; name: string; tone: Tone }[] = [
+  { key: "A1", name: "Peach + tangerine", tone: "peach" },
+  { key: "A2", name: "Soft grey card + ink", tone: "grey" },
+  { key: "A3", name: "Grainy colour field", tone: "field" },
+  { key: "A4", name: "Warm dark + sunflower", tone: "dark" },
+  { key: "A5", name: "Ink outline + leaf", tone: "outline" },
 ];
 
 export function CompareFull() {
   return <Link className="cp-full" href="/compare">See the full comparison <span aria-hidden="true">→</span></Link>;
 }
 
-/** A: the reference. Price row first, plain text for the others, checks only in our raised column. */
-export function VariantA() {
+/** A: the reference. Price row first, plain text for the others, checks only in our column.
+ *  `tone` is the round-2 question: how our column and its checks are coloured. */
+export type Tone = "peach" | "grey" | "field" | "dark" | "outline";
+export function VariantA({ tone = "peach" }: { tone?: Tone }) {
+  const at = (r: number, c: number) => ({ "--r": r, "--c": c }) as React.CSSProperties;
   return (
-    <div className="cpA" role="table" aria-label="How we compare">
+    <div className="cpA" data-tone={tone} role="table" aria-label="How we compare">
+      <span className="cpA-bg" aria-hidden="true" />
       <div className="cpA-row cpA-head" role="row">
-        <span role="columnheader" />
-        {COLS.map((id) => <span role="columnheader" key={id} className={id === "us" ? "us" : ""}>{name(id)}</span>)}
+        <span role="columnheader" style={at(1, 1)} />
+        {COLS.map((id, c) => <span role="columnheader" key={id} style={at(1, c + 2)} className={id === "us" ? "us" : ""}>{name(id)}</span>)}
       </div>
       <div className="cpA-row cpA-price" role="row">
-        <span role="rowheader">Price a month</span>
-        {COLS.map((id) => (
-          <span role="cell" key={id} className={id === "us" ? "us" : ""}><b>{PRICE[id][0]}</b><small>{PRICE[id][1]}</small></span>
+        <span role="rowheader" style={at(2, 1)}>Price a month</span>
+        {COLS.map((id, c) => (
+          <span role="cell" key={id} style={at(2, c + 2)} className={id === "us" ? "us" : ""}><b>{PRICE[id][0]}</b><small>{PRICE[id][1]}</small></span>
         ))}
       </div>
       {rows.map((r, n) => (
         <div className={`cpA-row${n === rows.length - 1 ? " last" : ""}`} role="row" key={r.id}>
-          <span role="rowheader">{r.label}</span>
-          {COLS.map((id) => (
-            <span role="cell" key={id} className={id === "us" ? "us" : ""}>
+          <span role="rowheader" style={at(n + 3, 1)}>{r.label}</span>
+          {COLS.map((id, c) => (
+            <span role="cell" key={id} style={at(n + 3, c + 2)} className={id === "us" ? "us" : ""}>
               {id === "us" && <i className="cp-check" aria-hidden="true" />}
               {r.cells[id][1]}
             </span>
@@ -167,11 +173,12 @@ export function VariantD() {
 }
 
 export function ComparePrototype() {
-  const v = useSearchParams().get("variant") ?? "A";
+  const v = useSearchParams().get("variant") ?? "A1";
+  const tone = TONES.find((t) => t.key === v)?.tone ?? "peach";
   return (
     <>
-      {v === "B" ? <VariantB /> : v === "C" ? <VariantC /> : v === "D" ? <VariantD /> : <VariantA />}
-      <PrototypeSwitcher variants={VARIANTS} current={v} />
+      {v === "B" ? <VariantB /> : v === "C" ? <VariantC /> : v === "D" ? <VariantD /> : <VariantA tone={tone} />}
+      <PrototypeSwitcher variants={TONES} current={v} />
     </>
   );
 }
