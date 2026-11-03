@@ -115,7 +115,7 @@ function choiceList(text: string, answer: string): string[] | null {
   }
   // "Is it a cone or a cube?", "Write = or ≠", "... more likely, less likely or equally likely?"
   const tail = text.split(/[.:]\s+/).at(-1) ?? text;
-  const m = tail.match(/(?:^|\b(?:is it|is that|write|circle|say|choose|it is|they are|use)\s+|^\s*)([^?]*?\bor\b[^?]*?)\??\s*$/i);
+  const m = tail.match(/\b(?:is it|is that|write|circle|say|choose|it is|they are|use)\s+([^?]*?\bor\b[^?]*?)\??\s*$/i) ?? tail.match(/^\s*([^?]*?\bor\b[^?]*?)\??\s*$/i);
   if (!m) return null;
   const options = m[1].split(/,\s*|\s+or\s+/).map((x) => x.trim().replace(/^(?:a|an|the)\s+/i, "").replace(/[.?!]$/, "")).filter(Boolean);
   const clean = (x: string) => x.toLowerCase().replace(/^(?:a|an|the)\s+/, "");
