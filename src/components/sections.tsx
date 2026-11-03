@@ -5,7 +5,9 @@ import type { ReactNode } from "react";
 import Image, { type StaticImageData } from "next/image";
 import Link from "next/link";
 import { CookieSettingsButton } from "@/components/cookie-consent";
+import { HeroWorkbook } from "@/components/hero-workbook";
 import { ScanShot } from "@/components/scan-shot";
+import "@/components/hero-workbook.css";
 import { FaqMore } from "@/components/faq-more";
 import { StartLink, StartNote } from "@/components/start-link";
 import { ADDITIONAL_CHILD_PRICE, BRAND, HERO, OFFER_ENDS, PLANS, SOCIAL_LINKS, cad } from "@/lib/site";
@@ -14,7 +16,6 @@ import {
   BeliefList,
   Eyebrow,
   Faq as FaqList,
-  Hero as HeroBlock,
   Highlight,
   IncludedCard,
   Nav as NavBar,
@@ -30,7 +31,6 @@ import {
 import { CompareTable } from "./compare";
 import { Knot, Rise, type Vars } from "./drawn";
 
-import heroHome1 from "@/assets/img/hero-home-1.jpg";
 import assessPhoto from "@/assets/img/loop-assess-1.jpg";
 import practice6 from "@/assets/img/loop-practice-6.jpg";
 import deliverPhoto from "@/assets/img/loop-deliver.jpg";
@@ -65,29 +65,24 @@ const TOPICS = [
   "patterns", "symmetry", "geometry", "carrying", "integers", "addition", "graphing", "measuring",
 ];
 
+// Hero (D-214): text left, a sample workbook right (replaces the D-029 photo hero).
+const HERO_FACTS = ["Free assessment", "First month free", "BC curriculum", "Cancel anytime"];
+
 export function Hero() {
   return (
-    <HeroBlock
-        id="top"
-        className="hero-ink"
-        eyebrow=""
-        kicker={HERO.kicker}
-        title={HERO.title}
-        highlight={HERO.highlight}
-        after={HERO.after}
-        lead={<><span className="nowrap">Miss <SwapWord words={TOPICS} /></span> {HERO.lead}</>}
-        meta={["Free assessment", "First month free", "BC curriculum", "Cancel anytime"]}
-        page={null}
-        report={null}
-        animate
-        actions={
-          <>
-            <GetStarted src="hero" />
-            <Link className="btn ghost" href="/sample-report">See a sample report</Link>
-          </>
-        }
-        media={<Image src={heroHome1} alt="A boy writes in his workbook at a desk at home" sizes="(min-width: 1200px) 1120px, 100vw" placeholder="blur" loading="eager" fetchPriority="high" />}
-      />
+    <header id="top" className="hero hero-wb">
+      <div className="txt">
+        <p className="eyebrow">{HERO.kicker}</p>
+        <h1>{HERO.title} <span className="mark">{HERO.highlight}</span> {HERO.after}</h1>
+        <p className="lead"><span className="nowrap">Miss <SwapWord words={TOPICS} /></span> {HERO.lead}</p>
+        <div className="ctas">
+          <GetStarted src="hero" />
+          <Link className="btn ghost" href="/sample-report">See a sample report</Link>
+        </div>
+        <ul className="facts">{HERO_FACTS.map((f) => <li key={f}>{f}</li>)}</ul>
+      </div>
+      <HeroWorkbook />
+    </header>
   );
 }
 
