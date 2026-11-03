@@ -19,7 +19,7 @@ The result has:
 
 The printed plan time target is also capped at 30 minutes for every level.
 
-For U4, the daily maxima are 8, 9, 10, 12, 13, 14, 15, 17, 19 and 20. Days 1 to 3 use pictures. Days 4 to 7 use pictures only for new ideas. Days 8 to 10 have no picture support. Only fixed references named by a benchmark skill, actual coin denominations on money skills and clock components on time skills keep their taught value. Fraction components follow the daily bound. Permission to teach fractions or decimals does not exempt other quantities.
+For U4, the daily maxima are 8, 9, 10, 12, 13, 14, 15, 17, 19 and 20. Days 1 to 3 use pictures. Days 4 to 7 use pictures only for new ideas. Days 8 to 10 have no picture support. Only fixed references named by a benchmark skill, explicit coin references on money skills and clock components on time skills keep their taught value. A coin reference must name the given coin, such as "a dime is 10¢" or "the 25¢ coin". A matching denomination does not exempt an amount. Operands, answers and totals always use the daily bound. Fraction components follow the daily bound. Permission to teach fractions or decimals does not exempt other quantities.
 
 ## Checks for the #480 writer
 
@@ -53,6 +53,7 @@ Practice 2 reserves a separate row for each teaching card. A middle-level page w
 | No back My levels page | Generator and assembler tests; every-page markup test |
 | Difficulty ramp and picture support | Schedule tests across all 30 levels; `scheduledItemProblem` |
 | Daily bounds for all formats | `workbook-schedule-check.test.ts`: U14 addition and U4 comparison, places, order, missing sequence terms, picture counts, benchmark references, fraction components and unreadable data |
+| Coin references versus money amounts | Public schedule tests reject `10¢ + 0¢`, computed 10¢ and 25¢ totals, and unscored story totals. Named dimes, quarters and a given 25¢ coin remain exempt on a money skill. A reference never exempts another occurrence of its value. |
 | Complete error card retained; choice label printed once | `workbook-error-card.test.ts`: public generation and real render of a checked three-line U14 error; forced overflow and failed-page controls |
 | Likelihood, colouring and mathematical drawing | `feedbackItemProblem`; #480 supplies the approved item types |
 | At least 80 percent page use; under 30 minutes | Public fullness and day-time checks with negative tests; #480 applies the whole-book checks |

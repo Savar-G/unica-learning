@@ -442,6 +442,13 @@ const money = (value: number, unit: string): Read =>
 /** The same numbers, as the parts of a fraction (a fraction operation's whole numbers too). */
 const asFraction = (rs: Read[]): Read[] => rs.map((r) => ({ ...r, form: "fraction" }));
 
+/** Operands and answers are amounts, even when their text names a coin with the same denomination. */
+const computedNumbers = (text: string): Read[] => readNumbers(text).map(r => {
+  const amount = { ...r };
+  delete amount.coinReference;
+  return amount;
+});
+
 /** The numbers of a value. */
 function valueNumbers(v: AnswerValue | null | undefined): Read[] {
   if (!v) return [];
@@ -455,7 +462,7 @@ function valueNumbers(v: AnswerValue | null | undefined): Read[] {
     case "time": return [{ value: v.hours, form: "time" }, { value: v.minutes, form: "time" }];
     case "expression":
     case "choice":
-    case "text": return readNumbers(v.value);
+    case "text": return computedNumbers(v.value);
     default: return unreachable(v);
   }
 }
@@ -463,7 +470,7 @@ function valueNumbers(v: AnswerValue | null | undefined): Read[] {
 /** The numbers of an operation's operands and its other numbers; a fraction or decimal operation is that idea. */
 function operationNumbers(op: Operation | null | undefined): Read[] {
   if (!op) return [];
-  const operand = (o: number | string | AnswerValue): Read[] => (typeof o === "number" ? [num(o)] : typeof o === "string" ? readNumbers(o) : valueNumbers(o));
+  const operand = (o: number | string | AnswerValue): Read[] => (typeof o === "number" ? [num(o)] : typeof o === "string" ? computedNumbers(o) : valueNumbers(o));
   const operands = (op.operands as readonly (number | string | AnswerValue)[]).flatMap(operand);
   switch (op.kind) {
     case "add": case "subtract": case "multiply": case "divide": case "missing-addend":
