@@ -471,7 +471,7 @@ async function writeIndex() {
     `Model: ${ai.model}; solve check: ${solver.model}. Books: ${ok.length}. Total AI cost (solve checks included): USD ${total.toFixed(2)}. Draft rows: public.workbook_drafts${store ? "" : " (not stored)"}.`,
     "Nothing is sent to print or shipped. Failed pages are drawn with a red banner in the PDF and the page images.",
     "",
-    "| Book | Child | Pages | Questions | Failed questions | Failed pages | Not checked by code | Left out for room | AI cost | Contact sheet |",
+    "| Book | Child | Pages | Questions | Failed questions | Failed pages | Not checked by code | Left out after fit | AI cost | Contact sheet |",
     "|---|---|---|---|---|---|---|---|---|---|",
     ...rows,
     "",
@@ -487,6 +487,7 @@ async function writeIndex() {
       const underfilled = r.pageUse.length === 0 || uses.length !== r.pageUse.length || uses.some(x => x < .8);
       return `| ${r.label} | ${(q.failedRate * 100).toFixed(2)}% | ${q.dropped} | ${fullness} | ${q.days.map(d=>`${d.day}: ${d.minutes.toFixed(1)}`).join("; ")} | subscription ${calls?.subscription ?? 0}; API ${calls?.api ?? 0} | ${!values.fake && q.ready && !underfilled && r.renderProblems.length === 0 ? "technical checks pass; approval pending" : "HOLD"} |`;
     }),
+    ...ok.map(r => `- ${r.label}: layout omissions ${(r.draft.quality ?? workbookQuality(r.draft.pages)).dropped - r.draft.pages.reduce((n,p)=>n+(p.leftOut?.length??0),0)}; fit omissions ${r.draft.pages.reduce((n,p)=>n+(p.leftOut?.length??0),0)}; total ${(r.draft.quality ?? workbookQuality(r.draft.pages)).dropped}.`),
     ...ok.map(r => `- ${r.label}: ${providerLine(r.label)}. API calls: ${providerCounts.get(r.label)?.api ?? (values.api || values.anthropic ? r.calls + r.solve.checks : 0)}.`),
     ...ok.flatMap(r => (r.draft.quality?.issues ?? []).map(i => `- ${r.label} p${i.page}: ${i.kind}: ${i.reason}`)),
     "",
