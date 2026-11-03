@@ -51,6 +51,16 @@ describe("pure seeded template filler", () => {
     const samples = new Set(Array.from({ length: 300 }, (_, seed) => fillTemplate(decimalStep, t, source.contexts, seededRandom(seed)).text.split("|")[1]));
     expect([...samples].sort()).toEqual(["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9"]);
   });
+  it("keeps sampled decimals exact when explicitly converted to Fraction", () => {
+    const decimalStep = { ...step, numbers: { half: { min: 0.5, max: 0.5 } } };
+    const t: StepTemplate = { format: "bare", difficulty: "easy", slots: { a: "half" }, text: "{a}", answer: "Fraction(a) / 3" };
+    expect(fillTemplate(decimalStep, t, source.contexts, seededRandom(1))).toMatchObject({ text: "0.5", answer: "1/6" });
+    expect(fillTemplate(decimalStep, { ...t, answer: "Fraction(a) ** 2" }, source.contexts, seededRandom(1)).answer).toBe("1/4");
+  });
+  it("keeps rounded negative zero in both text and the answer", () => {
+    const t: StepTemplate = { format: "bare", difficulty: "easy", slots: {}, derived: { a: "round(-0.001, 2)" }, text: "{a:.2f}", answer: "str(a)" };
+    expect(fillTemplate(step, t, source.contexts, seededRandom(1))).toMatchObject({ text: "-0.00", answer: "-0.0" });
+  });
   it("keeps expression braces separate from text placeholders", () => {
     const t: StepTemplate = { format: "bare", difficulty: "easy", slots: { a: "a" }, text: "{a}: {count}", derived: { count: "len({a, a, 10})" }, check: "a in [1, 2, 3, 4, 5, 6, 7, 8, 9]", answer: "len({a, a, 10})" };
     expect(fillTemplate(step, t, source.contexts, () => 0)).toMatchObject({ text: "1: 2", answer: "2" });

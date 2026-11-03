@@ -1,5 +1,5 @@
 /** Standalone template API. The book writer does not call this module. */
-import { compileExpression, decimalValue, DecimalValue, numericCompare, expressionIsTrue, formatFixed, formatValue, validName, type Bindings, type ExpressionValue } from "./expression";
+import { compileExpression, EvaluationBudget, EVALUATION_LIMITS, decimalValue, DecimalValue, numericCompare, expressionIsTrue, formatFixed, formatValue, validName, type Bindings, type ExpressionValue } from "./expression";
 import type { CurriculumStep, NumberDomain, NumberRange, StepTemplate, TemplateContexts } from "./types";
 export type RandomSource = () => number;
 export class TemplateError extends Error {
@@ -99,14 +99,14 @@ function contextValues(contexts: TemplateContexts, random: RandomSource, request
   if (requested.has("currency")) values.currency = contexts.money.currency;
   return values;
 }
-function render(text: string, values: Bindings): string {
+function render(text: string, values: Bindings, budget: EvaluationBudget): string {
   let output = "";
   for (let i = 0; i < text.length;) {
-    if (text.slice(i, i + 2) === "{{" || text.slice(i, i + 2) === "}}") { output += text[i]; i += 2; continue; }
-    if (text[i] !== "{") { output += text[i++]; continue; }
+    if (text.slice(i, i + 2) === "{{" || text.slice(i, i + 2) === "}}") { output = budget.append(output, text[i]); i += 2; continue; }
+    if (text[i] !== "{") { output = budget.append(output, text[i++]); continue; }
     const end = text.indexOf("}", i), [field] = placeholders(text.slice(i, end + 1));
     if (!Object.hasOwn(values, field.name)) fail(`Unknown placeholder: ${field.name}`);
-    output += field.places === undefined ? formatValue(values[field.name]) : formatFixed(values[field.name], field.places);
+    output = budget.append(output, field.places === undefined ? formatValue(values[field.name], budget) : formatFixed(values[field.name], field.places, budget));
     i = end + 1;
   }
   return output;
@@ -121,6 +121,7 @@ export interface FilledTemplate {
 export interface PreparedTemplate { fill(random: RandomSource, maxAttempts?: number): FilledTemplate }
 /** Validate and compile once. Use the prepared object for a batch of fills. */
 export function prepareTemplate(step: CurriculumStep, template: StepTemplate, contexts: TemplateContexts): PreparedTemplate {
+  if (template.text.length > EVALUATION_LIMITS.outputLength) throw new TemplateError("Template text exceeds the output length limit");
   const fields = placeholders(template.text), requested = new Set(fields.map(x => x.name));
   const known = new Set<string>(step.values ? ["values"] : []);
   const slots = Object.entries(template.slots).map(([name, ref]) => {
@@ -141,14 +142,16 @@ export function prepareTemplate(step: CurriculumStep, template: StepTemplate, co
   for (const f of fields) if (!known.has(f.name) && !(CONTEXT_NAMES as readonly string[]).includes(f.name)) fail(`Unknown placeholder: ${f.name}`);
   return { fill(random, maxAttempts = 100) {
     if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 1000) fail("Attempt limit must be an integer from 1 to 1000");
+    const budget = new EvaluationBudget();
     for (let attempts = 1; attempts <= maxAttempts; attempts++) {
+      budget.step();
       const values: Record<string, ExpressionValue> = Object.create(null);
-      if (step.values) values.values = step.values.map(scalar);
-      for (const { name, domain } of slots) values[name] = sample(domain, random);
-      for (const { name, expression } of derived) values[name] = expression.evaluate(values);
-      if (check && !expressionIsTrue(check.evaluate(values))) continue;
-      const result = answer.evaluate(values), text = render(template.text, { ...contextValues(contexts, random, requested), ...values });
-      return { text, answer: formatValue(result), values, attempts };
+      if (step.values) values.values = budget.created(Object.freeze(step.values.map(value => { budget.step(); return scalar(value); })));
+      for (const { name, domain } of slots) { budget.step(); values[name] = budget.created(sample(domain, random)); }
+      for (const { name, expression } of derived) values[name] = expression.evaluate(values, budget);
+      if (check && !expressionIsTrue(check.evaluate(values, budget))) continue;
+      const result = answer.evaluate(values, budget), text = render(template.text, { ...contextValues(contexts, random, requested), ...values }, budget);
+      return { text, answer: formatValue(result, budget), values, attempts };
     }
     return fail(`Check did not pass within ${maxAttempts} attempts`);
   } };

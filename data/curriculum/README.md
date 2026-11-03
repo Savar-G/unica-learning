@@ -62,6 +62,14 @@ The interpreter tokenizes, parses, and evaluates its own syntax tree. It has no 
 
 Integer, Decimal, and Fraction operations use exact arithmetic. Decimal literals are exact base-10 values. Thus `0.1 + 0.2 == 0.3` is true. Integer `/` produces a float. `//` floors toward negative infinity. `%` follows the divisor's sign. Rounding and `{x:.2f}` use ties to even from the stored value. Exact decimal `round(2.675, 2)` is 2.68. Binary float `round(2675 / 1000, 2)` is 2.67. When a decimal and a computed float meet in arithmetic or a comparison, the float is read from its shortest base-10 representation. Unknown names and all other tokens fail with an error. Prototype-related names are forbidden. Expressions have size, token, nesting, operation, exponent, and integer bit limits. Numeric results must be finite. Decimal sampling supports zero to 18 places and bounds the number of grid points for safe seeded selection. Fixed output supports zero to 99 places.
 
+## Review fixes
+
+Every fill now uses one evaluation budget across slots, all derived assignments, checks, retry attempts, and output. The fixed limits are 100,000 work steps, nesting depth 64, 16,000 expanded units per collection value, 100,000 total value units, and 16,000 characters per output string. Expanded sizes include every nested element and repeated reference. Stored size metadata avoids expanding shared structures when checking the limit. Recursive equality, set membership and hashability checks, sorting, and formatting charge the same budget. Text rendering uses bounded appends. A breach raises `ExpressionError`.
+
+Tests execute the nested-list formatting and equality attacks in separate Node processes with a 64 MB heap and a three-second timeout. They require a clean error, exit code 0 from the test runner, and no termination signal. Additional controls cover shared work across derived expressions and retries, nesting across expressions, long strings, output expansion, and `10 ** 10 ** 10`.
+
+The one-argument `Fraction` constructor always creates an ordinary exact Fraction, including from sampled decimal slots. `Fraction(0.5)` displays as `1/2`; dividing it by 3 gives `1/6`. Decimal and float rounding preserve negative zero, so `round(-0.001, 2)` displays as `-0.0` and formats as `-0.00`.
+
 Source SHA-256:
 
 - `step-progressions-k9.json`: `f22f6614a0f7013abde0b9228e1cf5ecdab4436fb99a6fbfabab73453a0726ea`

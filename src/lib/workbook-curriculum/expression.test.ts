@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateExpression, formatFixed, formatValue } from "./expression";
+import { evaluateExpression, formatFixed, formatValue, FractionValue, DecimalValue } from "./expression";
 const result = (expression: string) => formatValue(evaluateExpression(expression));
 describe("bounded expression language", () => {
   it.each([
@@ -25,6 +25,22 @@ describe("bounded expression language", () => {
     ["sum([1, 2, 3])", "6"], ["sorted([3, 1, 2], reverse=True)", "[3, 2, 1]"],
     ["sorted((3, 1, 2))[1]", "2"], ["[1, 2, 3][-1]", "3"],
   ])("evaluates %s", (expression, expected) => expect(result(expression)).toBe(expected));
+  it("constructs a true exact Fraction from decimal values", () => {
+    const fraction = evaluateExpression("Fraction(0.5)");
+    expect(fraction.constructor).toBe(FractionValue);
+    expect(fraction).not.toBeInstanceOf(DecimalValue);
+    expect(formatValue(fraction)).toBe("1/2");
+    expect(result("str(Fraction(0.5))")).toBe("1/2");
+    expect(result("Fraction(0.5) / 3")).toBe("1/6");
+    expect(result("Fraction(0.5) ** 2")).toBe("1/4");
+    expect(result("Fraction(0.5) ** -2")).toBe("4");
+  });
+  it.each(["round(-0.001, 2)", "round(-1 / 1000, 2)", "round(-0.0, 2)"])("retains the sign of rounded zero: %s", expression => {
+    const value = evaluateExpression(expression);
+    expect(formatValue(value)).toBe("-0.0");
+    expect(formatFixed(value, 2)).toBe("-0.00");
+    expect(result("round(-0.001)")).toBe("0");
+  });
   it("formats decimals with Python ties to even", () => {
     expect(formatFixed(evaluateExpression("2.675"), 2)).toBe("2.68");
     expect(formatFixed(evaluateExpression("Fraction(1, 8)"), 2)).toBe("0.12");
