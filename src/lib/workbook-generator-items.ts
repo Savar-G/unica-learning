@@ -826,7 +826,7 @@ function wordingsFor(op: Operation, format: GeneratedFormat, figure: Figure | nu
   const name = offered(w?.names, raw.name) ?? w?.name ?? DEFAULT_NAMES[((variant % DEFAULT_NAMES.length) + DEFAULT_NAMES.length) % DEFAULT_NAMES.length];
   const thing = offered(w?.things, raw.thing) ?? w?.thing ?? DEFAULT_THINGS[((variant % DEFAULT_THINGS.length) + DEFAULT_THINGS.length) % DEFAULT_THINGS.length];
   const words = typeof raw.text === "string" && /[a-z]{3,}/i.test(raw.text);
-  return codeWordings(op, {
+  const wordings = codeWordings(op, {
     format, figure, name, thing,
     kinds: w?.kinds ?? (words ? ["story", "picture", "missing-part", "fact"] : ["fact", "missing-part"]),
     step: w?.step ?? false,
@@ -835,6 +835,9 @@ function wordingsFor(op: Operation, format: GeneratedFormat, figure: Figure | nu
     // The planned wording names the planned person and thing.
     planned: w && name === w.name && thing === w.thing ? w.planned ?? null : null,
   });
+  // Later levels use this function only to recover an exact bare Mixed set.
+  // Keep its planned person and object instead of a fixed animal story.
+  return place.level <= 9 ? wordings : wordings.filter(text => text.startsWith(`${name} `) && text.includes(thing));
 }
 
 /**

@@ -30,6 +30,7 @@ describe("v2 data and answer contracts", () => {
     expect(built.package?.operation).toEqual(raw.operation);
     expect(built.package?.answer?.value).toEqual({ type: "number", value: 1531 });
     expect(built.package?.text).toMatch(/Mia/);
+    expect(built.package?.text).toMatch(/books/);
     expect(storyProblem(built.package!.text, { thing: "books" })).toBeNull();
     expect(built.package?.text).not.toMatch(/[+×÷=]/);
     expect(buildQuestion(raw, { ...place, preserveText: true }).check).toEqual({ status: "failed", reason: expect.stringMatching(/a story has a person/) });
