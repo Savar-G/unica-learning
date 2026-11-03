@@ -6,8 +6,8 @@ import Image, { type StaticImageData } from "next/image";
 import Link from "next/link";
 import { CookieSettingsButton } from "@/components/cookie-consent";
 import { HeroWorkbook } from "@/components/hero-workbook";
-import { ScanShot } from "@/components/scan-shot";
 import "@/components/hero-workbook.css";
+import "@/components/statement.css";
 import { FaqMore } from "@/components/faq-more";
 import { StartLink, StartNote } from "@/components/start-link";
 import { ADDITIONAL_CHILD_PRICE, BRAND, HERO, OFFER_ENDS, PLANS, SOCIAL_LINKS, cad } from "@/lib/site";
@@ -23,19 +23,11 @@ import {
   PlanGrid,
   Section,
   SectionHeader,
-  StepCard,
-  StepGrid,
-  SwapWord,
   type IconName,
 } from "@/ds";
 import { CompareTable } from "./compare";
 import { Knot, Rise, type Vars } from "./drawn";
 
-import assessPhoto from "@/assets/img/loop-assess-1.jpg";
-import practice6 from "@/assets/img/loop-practice-6.jpg";
-import deliverPhoto from "@/assets/img/loop-deliver.jpg";
-import adaptPhoto from "@/assets/img/loop-adapt.jpg";
-import repeatPhoto from "@/assets/img/loop-repeat.jpg";
 import adapt4 from "@/assets/img/loop-adapt-4.jpg";
 import heroHome2 from "@/assets/img/hero-home-2.jpg";
 import emo4 from "@/assets/img/emotion-4.jpg";
@@ -58,23 +50,17 @@ export function Nav() {
   return <NavBar brand={BRAND} links={[{ label: "How it works", href: "#how" }, { label: "What's included", href: "/whats-included" }, { label: "Curriculum", href: "/curriculum" }, { label: "Pricing", href: "#price" }, { label: "FAQ", href: "#faq" }]} cta={<StartLink className="btn sm" src="nav">Free assessment</StartLink>} />;
 }
 
-// 8-9 characters only: the chip is as wide as its longest word, so a long topic
-// leaves a gap after every short one.
-const TOPICS = [
-  "fractions", "rounding", "decimals", "perimeter", "division", "equations", "percents", "multiples",
-  "patterns", "symmetry", "geometry", "carrying", "integers", "addition", "graphing", "measuring",
-];
-
-// Hero (D-214): text left, a sample workbook right (replaces the D-029 photo hero).
+// Hero (D-214, cleaned up in D-215): a plain kicker line, the headline, the lead, the buttons and the facts on the left;
+// the sample workbook on the closing section's grainy field on the right.
 const HERO_FACTS = ["Free assessment", "First month free", "Cancel anytime"];
 
 export function Hero() {
   return (
     <header id="top" className="hero hero-wb">
       <div className="txt">
-        <p className="eyebrow">{HERO.kicker}</p>
+        <p className="kicker">{HERO.kicker}</p>
         <h1>{HERO.title} <span className="mark">{HERO.highlight}</span> {HERO.after}</h1>
-        <p className="lead"><span className="nowrap">Miss <SwapWord words={TOPICS} /></span> {HERO.lead}</p>
+        <p className="lead">{HERO.lead}</p>
         <div className="ctas">
           <GetStarted src="hero" />
           <Link className="btn ghost" href="/sample-report">See a sample report</Link>
@@ -86,34 +72,16 @@ export function Hero() {
   );
 }
 
-const STEP_SIZES = "(min-width: 1080px) 380px, (min-width: 700px) 45vw, 92vw";
-
-const STEPS = [
-  { n: "01", t: "Assess", d: "Your child takes the free online assessment. The report shows their level and gaps. BC-curriculum families can choose a plan. Other curricula can join the waitlist.",
-    v: <Image src={assessPhoto} alt="A girl and her mother sit at a laptop, with a workbook open on the table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "02", t: "Deliver", d: "We mail a workbook matched to their level and gaps, with practice built around the math skills they learn at school.", v: <Image src={deliverPhoto} alt="Two mailers waiting on a front step" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "03", t: "Practice", d: <>Your child works on paper for 15 to 30 minutes a day, 5 days a week, with rewards for every page. <Link href="/rewards" className="more-link">See the rewards <span aria-hidden="true">→</span></Link></>,
-    v: <Image src={practice6} alt="A girl works through an arithmetic page in pencil" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "04", t: "Scan", d: "Scan the finished pages in the Unica app. We mark the work, show you the gaps, and give the solutions.", v: <ScanShot sizes={STEP_SIZES} />, tone: "photo" as const },
-  { n: "05", t: "Adapt", d: "Each scan updates the program. Missed carrying? You get more of it. Got it? It moves on.", v: <Image src={adaptPhoto} alt="A girl shows her finished work to her parents" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-  { n: "06", t: "Track and repeat", d: <>Your child&apos;s progress report updates after every scan. The next workbook arrives before this one runs out, built from that progress. <Link href="/sample-report" className="more-link">See a sample report <span aria-hidden="true">→</span></Link></>, v: <Image src={repeatPhoto} alt="A girl starts on her next workbook at the dining table" sizes={STEP_SIZES} placeholder="blur" />, tone: "photo" as const },
-];
-
-export function How() {
+// The one-line statement after the hero (D-215, after the Spruce quote block): the set program, then what Unica does
+// (in ink), then how. Compares with a category, never a brand (D-064).
+export function Statement() {
   return (
-    <Section id="how" aria-labelledby="howT">
-      <Knot />
-      <Rise>
-        <SectionHeader eyebrow="How it works" title="Start easily. Repeat easily." titleId="howT" lead={<>Every workbook is built from the last one. <Link href="/whats-included" className="more-link">See what&apos;s included <span aria-hidden="true">→</span></Link></>} />
+    <section className="statement" aria-label="How Unica is different">
+      <Rise as="p">
+        Learning centres follow a set program. <strong>Unica personalizes your child&apos;s learning.</strong> Each workbook
+        builds on the last one: more practice where they struggled, and new challenges when they are ready.
       </Rise>
-      <StepGrid>
-        {STEPS.map((s, i) => (
-          <StepCard key={s.n} number={s.n} title={`${s.t}.`} visual={s.v} visualTone={s.tone} className="rise" style={d(i * 0.06)}>
-            {s.d}
-          </StepCard>
-        ))}
-      </StepGrid>
-    </Section>
+    </section>
   );
 }
 
