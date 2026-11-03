@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
 import ParentNotes from "./[child]/page";
 import ParentSession from "./[child]/[session]/page";
-import { latestParentMayaNotes, listParentMayaNotes, readParentMayaNote, sessionWhen, notesPage } from "@/lib/parent-maya-notes";
+import { latestParentMayaNotes, listParentMayaNotes, readParentMayaNote, sessionWhen } from "@/lib/parent-maya-notes";
 import { sessionClient } from "@/lib/supabase-auth";
 import type { NoteFacts } from "@/lib/maya-call-note";
 
@@ -17,6 +17,25 @@ const state = vi.hoisted(() => ({
   user: "p1" as string | null, postal: "V3S 1A1" as string | null, zone: null as string | null, name: "Leah",
   rows: [] as Record<string, unknown>[], projections: [] as string[], fail: false, metadata: true,
 }));
+function terms(text: string): string[] {
+  let depth = 0, start = 0;
+  const found: string[] = [];
+  [...text].forEach((c, i) => {
+    if (c === "(") depth++;
+    if (c === ")") depth--;
+    if (c === "," && depth === 0) { found.push(text.slice(start, i)); start = i + 1; }
+  });
+  return [...found, text.slice(start)];
+}
+function matches(row: Record<string, unknown>, term: string): boolean {
+  if (term.startsWith("and(")) return terms(term.slice(4, -1)).every((t) => matches(row, t));
+  const [key, op, ...parts] = term.split(".");
+  const value = parts.join(".");
+  if (op === "lt") return String(row[key]) < value;
+  if (op === "gt") return String(row[key]) > value;
+  if (op === "eq") return String(row[key]) === value;
+  throw new Error(`Unsupported filter ${term}`);
+}
 const child = "11111111-1111-4111-8111-111111111111";
 const sibling = "22222222-2222-4222-8222-222222222222";
 const other = "33333333-3333-4333-8333-333333333333";
@@ -52,6 +71,7 @@ vi.mock("@/lib/supabase-auth", () => ({
       };
       const query = {
         eq: (k: string, v: string) => { rows = rows.filter((r) => r[k] === v); return query; },
+        or: (filter: string) => { rows = rows.filter((r) => terms(filter).some((t) => matches(r, t))); return query; },
         order: (key: string, options?: { ascending: boolean }) => { orders.push({ key, ascending: options?.ascending ?? true }); return query; },
         limit: (n: number) => { result(); rows = rows.slice(0, n); return query; },
         range: (a: number, b: number) => { result(); rows = rows.slice(a, b + 1); return query; },
@@ -83,7 +103,7 @@ function row(id = chat, childId = child, parent = "p1", channel = "chat") {
 }
 beforeEach(() => { state.user = "p1"; state.postal = "V3S 1A1"; state.zone = null; state.name = "Leah"; state.rows = [row(), row(call, child, "p1", "call")]; state.projections = []; state.fail = false; state.metadata = true; });
 const html = (node: React.ReactNode) => renderToStaticMarkup(createElement("div", null, node));
-const list = (id = child, page?: string) => ParentNotes({ params: Promise.resolve({ child: id }), searchParams: Promise.resolve({ page }) });
+const list = (id = child, cursor?: string) => ParentNotes({ params: Promise.resolve({ child: id }), searchParams: Promise.resolve({ cursor }) });
 const session = (id = child, note = chat) => ParentSession({ params: Promise.resolve({ child: id, session: note }), searchParams: Promise.resolve({}) });
 
 it.each([[chat, "Chat"], [call, "Call"]])("renders the owning family's %s note and transcript", async (id, kind) => {
@@ -163,19 +183,48 @@ it("keeps every child's latest note even when a sibling has more than 50 newer n
   const notes = await latestParentMayaNotes(await sessionClient(), "p1", [child, sibling, other]);
   expect([...notes.keys()]).toEqual([child, sibling]);
   expect(notes.get(sibling)?.call_id).toBe(call);
-  expect(notes.get(child)?.call_id).toBe("44444444-4444-4444-8444-000000000000");
+  expect(notes.get(child)?.call_id).toBe("44444444-4444-4444-8444-000000000064");
   expect(state.projections.some((p) => p.includes("transcript"))).toBe(false);
 });
 
-it("paginates tied timestamps without losing or duplicating old notes", async () => {
-  state.rows = Array.from({ length: 43 }, (_, i) => row(`44444444-4444-4444-8444-${String(42 - i).padStart(12, "0")}`));
+it.each([false, true])("keeps all original notes when a new note arrives between pages, tied=%s", async (tied) => {
+  state.rows = Array.from({ length: 43 }, (_, i) => ({
+    ...row(`44444444-4444-4444-8444-${String(42 - i).padStart(12, "0")}`),
+    call_ended_at: tied ? "2026-11-08T01:06:00.123456Z" : `2026-11-${String(8 - Math.floor(i / 10)).padStart(2, "0")}T01:06:00Z`,
+  }));
+  const expected = state.rows.map((r) => r.call_id);
   const db = await sessionClient();
-  const pages = await Promise.all([0, 1, 2].map((p) => listParentMayaNotes(db, "p1", child, p)));
+  const first = await listParentMayaNotes(db, "p1", child);
+  const firstHtml = html(await list());
+  expect(firstHtml).toContain(`?cursor=${first.older}`);
+  expect(first.newer).toBeNull();
+  // A newly completed session must not move the boundary of the older page.
+  state.rows.push({ ...row(call), call_ended_at: "2026-11-09T01:06:00Z" });
+  // These rows must not enter this child's pages, even when their keys pass the cursor.
+  state.rows.push(row(other, other, "p2"), row(chat, sibling));
+  const second = await listParentMayaNotes(db, "p1", child, first.older!);
+  const third = await listParentMayaNotes(db, "p1", child, second.older!);
+  const pages = [first, second, third];
   expect(pages.map((p) => p.notes.length)).toEqual([20, 20, 3]);
-  expect(pages.map((p) => p.hasMore)).toEqual([true, true, false]);
-  expect(new Set(pages.flatMap((p) => p.notes.map((n) => n.call_id))).size).toBe(43);
-  expect(html(await list(child, "2"))).toContain("?page=1");
-  expect(html(await list(child, "2"))).toContain("?page=3");
+  expect(third.older).toBeNull();
+  expect(pages.flatMap((p) => p.notes.map((n) => n.call_id))).toEqual(expected);
+  expect((await listParentMayaNotes(db, "p1", child, third.newer!)).notes).toEqual(second.notes);
+  expect((await listParentMayaNotes(db, "p1", child, second.newer!)).notes).toEqual(first.notes);
+  const secondHtml = html(await list(child, first.older!));
+  expect(secondHtml).toContain(`?cursor=${second.newer}`);
+  expect(secondHtml).toContain(`?cursor=${second.older}`);
+  expect(secondHtml).not.toContain("?page=");
+  expect(state.projections.some((p) => p.includes("transcript"))).toBe(false);
+  expect((await listParentMayaNotes(db, "p1", child)).notes[0].call_id).toBe(call);
+});
+
+it("lets an empty cursor page return to the newest notes", async () => {
+  state.rows = Array.from({ length: 21 }, (_, i) => row(`44444444-4444-4444-8444-${String(i).padStart(12, "0")}`));
+  const first = await listParentMayaNotes(await sessionClient(), "p1", child);
+  state.rows = [];
+  const out = html(await list(child, first.older!));
+  expect(out).toContain("There are no older notes.");
+  expect(out).toContain(`href="/account/notes/${child}"`);
 });
 
 it("does not turn a database failure into an empty history", async () => {
@@ -191,4 +240,12 @@ it("formats a session across the family date boundary and the correct seasonal r
   expect(sessionWhen({ ...note!, startedAt: "2026-11-08T07:00:00Z" }, "America/Vancouver")).toContain("Sunday, November 8 · 12:00 a.m.");
 });
 
-it.each([undefined, "-1", "0", "NaN", "1.1", ["2", "3"], "9999999"])("rejects an invalid page %s", (input) => expect(notesPage(input)).toBe(0));
+it.each([
+  undefined, "-1", "0", "NaN", ["a", "b"], "x".repeat(501),
+  ...["2026-02-30T00:00:00Z", "2026-02-29T00:00:00Z", "2026-11-08T01:06:00Z),child_id.gt.0", "0000-01-01T00:00:00Z", "2026-11-08T01:06:00+16:00", "2026-11-08T01:06:00-14:60"].map((at) =>
+    Buffer.from(JSON.stringify({ at, id: chat, direction: "older" })).toString("base64url")),
+  ...[{ at: "2026-11-08T01:06:00Z", id: "bad-id", direction: "older" },
+    { at: "2026-11-08T01:06:00Z", id: chat, direction: "invalid" }, null].map((c) => Buffer.from(JSON.stringify(c)).toString("base64url")),
+])("returns the first page for invalid cursor %s", async (input) => {
+  expect(html(await ParentNotes({ params: Promise.resolve({ child }), searchParams: Promise.resolve({ cursor: input }) }))).toBe(html(await list()));
+});
