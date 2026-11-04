@@ -150,7 +150,8 @@ const NORMALISE: [RegExp, string][] = [[/[‘’]/g, "'"], [/[“”]/g, '"'], [
 export const normaliseAiText = (text: string) => NORMALISE.reduce((t, [re, to]) => t.replace(re, to), text);
 
 /** The characters AI-written text may use (see the header). */
-const ALLOWED_CHAR = /[A-Za-z0-9 .,?!'"\-:()$¢%/+=×÷<>]/;
+// (And "−", the minus every printed text uses between numbers: the U16 r14 review.)
+const ALLOWED_CHAR = /[A-Za-z0-9 .,?!'"\-\u2212:()$¢%/+=×÷<>]/;
 
 /** The number forms a token may take. A negative sign before one ("-3") is read as a sign; the levels check it. */
 export const NUMBER_FORMS: readonly { name: string; form: RegExp; example: string }[] = [

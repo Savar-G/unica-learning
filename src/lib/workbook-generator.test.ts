@@ -1869,7 +1869,7 @@ describe("round 7 (#380, R380-12-1): code writes the text where it can, a solve 
       const away = built(text, subOp(7, 5), 3);
       expect(away.package!.text, text).toMatch(/\b7\b/);
       expect(away.package!.answer!.value).toEqual({ type: "number", value: 2 });
-      for (const w of away.wordings!) expect(w, w).toMatch(/left|away|take|-|less|back|crossed|hides|uses|lost|loses|fell|gives|hop/i);
+      for (const w of away.wordings!) expect(w, w).toMatch(/left|away|take|-|\u2212|less|back|crossed|hides|uses|lost|loses|fell|gives|hop/i);
     }
   });
 

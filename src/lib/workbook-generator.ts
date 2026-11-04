@@ -2663,7 +2663,9 @@ function stemCount(input: GenerateInput, w: PageWork, stem: string, except?: Slo
 const plannedTallness = (s: { contract?: ItemPlan | null }) => (s.contract?.item.text.length ?? 0)
   + (s.contract?.item.figure || s.contract?.type === "count" ? 200 : 0)
   // (Never, sometimes and always print on a row of their own under the question: about 60 characters of height.)
-  + (s.contract?.type === "likelihood" || /\bnever, sometimes or always\b/i.test(s.contract?.item.text ?? "") ? 60 : 0);
+  + (s.contract?.type === "likelihood" || /\bnever, sometimes or always\b/i.test(s.contract?.item.text ?? "") ? 60 : 0)
+  // (A count with boxes prints a row of them under its words: "Count on. Write the next four numbers." is tall.)
+  + (/\bnext (?:two|three|four|five) numbers\b|^Count (?:on|back)\b/i.test(s.contract?.item.text ?? "") ? 80 : 0);
 
 /** A block's questions on its own step first, its review of earlier steps after them under "Remember these". */
 function ownStepFirst(w: PageWork): void {
@@ -2745,15 +2747,30 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         const fit = await fitCheck.fits(fitPage(w, "token-000000000001", questions, contentOf(input, w, questions, examples)), {
           id: input.workbookId, childId: input.childId, number: input.number, levels: [input.plan.level], profileBuild: input.profileBuild,
         });
-        if (fit.ok) break;
-        if (fit.problems.every(p => p.kind === "fullness")) {
+        // (A page that fits below its planned count fills on too: 5 large questions met the fullness check, the full U4
+        // book's Day 9, where the floor is 8.)
+        const short = fit.ok && w.slots.length < minimum && (w.page.refills ?? 0) < 8;
+        if (fit.ok && !short) break;
+        if (short || !fit.ok && fit.problems.every(p => p.kind === "fullness")) {
           added = null;
-          const target = w.slots.findLast(s=>!s.existing && ["remember-these","on-your-own","finish-these","practice-row","unit-b-practice","now-you","word-problems","challenge"].includes(s.place ?? "") && s.place && w.slots.filter(x=>x.layoutSlot===s.layoutSlot).length < slotMax(s.place,{level:input.plan.level,pages:input.plan.pagesADay.max,consistentLayout:true,extraPractice:!!w.page.extraPractice}));
+          const open = (s: Slot) => !s.existing && ["remember-these","on-your-own","finish-these","practice-row","unit-b-practice","now-you","word-problems","challenge"].includes(s.place ?? "") && !!s.place && w.slots.filter(x=>x.layoutSlot===s.layoutSlot).length < slotMax(s.place,{level:input.plan.level,pages:input.plan.pagesADay.max,consistentLayout:true,extraPractice:!!w.page.extraPractice});
+          // (A page refilling below its planned count adds to its practice, which may take a short question of an earlier
+          // step, not to a review of one tall kind: the full U4 book's Day 9.)
+          const refilling = w.slots.length >= ceiling && w.slots.length < minimum;
+          const target = (refilling ? w.slots.findLast(s => open(s) && ["on-your-own", "finish-these", "practice-row"].includes(s.place ?? "")) : undefined) ?? w.slots.findLast(open);
           // An added item must keep the day's estimate under 30 minutes, with a margin (#489: templates read longer).
-          const timeOk = w.page.extraPractice || plannedDayMinutes(input, work, w.day) < (work.some(p => p.day === w.day && p.slots.some(s => s.existing)) ? DAY_MINUTES_FILL_ESTIMATED : review(w) ? DAY_MINUTES_REVIEW : DAY_MINUTES_FILL);
+          // (A refill back to the planned count may use the day's last minutes, under 30: the full U4 book's Day 1 page 6.)
+          // (A review page's extra questions leave the day's later practice pages the minutes their floor needs, about
+          // 0.4 each: the full U4 book's Day 1 review took 12 and its last practice page lost its 8th.)
+          const reserve = !refilling && review(w) ? 0.4 * work.filter(p => p !== w && p.day === w.day && !p.page.capacityChecked && ["practice", "practice-2"].includes(p.page.type)).length : 0;
+          const timeOk = w.page.extraPractice || plannedDayMinutes(input, work, w.day) + reserve < (refilling ? DAY_MINUTES_MOST - 0.4 : work.some(p => p.day === w.day && p.slots.some(s => s.existing)) ? DAY_MINUTES_FILL_ESTIMATED : review(w) ? DAY_MINUTES_REVIEW : DAY_MINUTES_FILL);
           // The day at its time limit is the page's maximum: its gaps may spread (the report shows its occupied height).
-          if (target && w.slots.length < ceiling && w.layout && !timeOk) w.page.timeLimited = true;
-          if (target && w.slots.length < ceiling && w.layout && timeOk) {
+          // (A page below its planned count takes questions again once it has room: a drop lowered its ceiling while a
+          // tall question was still on it, the full U4 book's Day 9 at 24 minutes with 4 of 8 questions.)
+          const refill = w.slots.length < minimum && (w.page.refills ?? 0) < 8;
+          if (target && (w.slots.length < ceiling || refill) && w.layout && !timeOk) w.page.timeLimited = true;
+          if (target && (w.slots.length < ceiling || refill) && w.layout && timeOk) {
+            if (w.slots.length >= ceiling) w.page.refills = (w.page.refills ?? 0) + 1;
             const layoutSlot=target.layoutSlot;
             const ordinal=w.slots.filter(s=>s.layoutSlot===layoutSlot).length+1;
             const slot={...target,id:`${Number(target.id.split(".")[0])}.${target.place === "challenge" ? ordinal : 99+ordinal}`,contract:null};
@@ -2785,11 +2802,21 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
                 }).length;
                 if (same>=Math.ceil((w.slots.length+1)/2)) continue;
               }
+              // (Refilling: a short question only, so the page keeps its room.)
+              if (refilling && plannedTallness({ contract: c }) > 70) continue;
               added={...slot,contract:c}; break;
             }
-            if (added) { w.slots.splice(w.slots.findLastIndex(s=>s.layoutSlot===layoutSlot)+1,0,added); w.layout.slots[layoutSlot].items++; continue; }
+            if (added) {
+              w.slots.splice(w.slots.findLastIndex(s=>s.layoutSlot===layoutSlot)+1,0,added); w.layout.slots[layoutSlot].items++;
+              // (A question taken again where one was dropped for room: the part's omission is made good.)
+              const part = (Number(added.id.split(".")[0]) || 1) - 1;
+              const lost = w.layout.omissions.find(o => o.part === part && o.requested > o.placed && !o.time) ?? w.layout.omissions.find(o => o.requested > o.placed && !o.time);
+              if (lost) { lost.placed++; if (lost.placed >= lost.requested) w.layout.omissions = w.layout.omissions.filter(o => o !== lost); }
+              continue;
+            }
             ceiling=w.slots.length;
           }
+          if (short) break;
           if (!w.page.fillingComplete) { w.page.fillingComplete=true; continue; }
           if ((w.page.extraGap ?? 0)<(w.page.gapCap ?? 48) && !w.page.atMaximum) { w.page.extraGap=(w.page.extraGap ?? 0)+4; continue; }
           // At its maximum with its gaps at their widest and still half empty (no question the book's rules allow is
@@ -2797,6 +2824,7 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
           if (!w.page.atMaximum) { w.page.atMaximum = true; w.page.extraGap = 0; continue; }
           break;
         }
+        if (fit.ok) break;
         // Overflowing only because its gaps grew: the gaps come back, never a question (the full U4 book's Practice 2).
         if (!added && (w.page.extraGap ?? 0) > 0 && !fit.problems.some(p => p.kind === "fullness")) {
           w.page.extraGap = Math.max(0, (w.page.extraGap ?? 0) - 8);

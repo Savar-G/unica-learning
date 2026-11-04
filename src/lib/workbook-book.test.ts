@@ -500,10 +500,15 @@ describe("every number the child sees fits the range (R380-3-1)", () => {
   });
 
   it.each([
-    ["Shade ½ of the shape.", "½"], ["Shade ⅓ of the shape.", "⅓"], ["What is 9 − 3?", "−"], ["Count ５ dots.", "５"],
+    ["Shade ½ of the shape.", "½"], ["Shade ⅓ of the shape.", "⅓"], ["Count ５ dots.", "５"],
     ["What is 2² + 1?", "²"], ["Ava has 3 apples… then 2.", "…"], ["Zoë has 3 cats.", "ë"],
   ])("refuses a character outside the set: %s", (text, char) => {
     expect(problem(pkg({ text }))).toContain(`"${char}"`);
+  });
+
+  // (The minus prints as "−" between numbers, the U16 r14 review: the set takes it.)
+  it("takes the minus sign", () => {
+    expect(problem(pkg({ text: "What is 9 − 3?" })) ?? "").not.toContain('"−"');
   });
 
   it.each(["Find 5 % of 4.", "Add 0,5 and 1.", "Find 5%% of 4.", "What is .5 + 1?", "Count 10 000 grains.", "Read pages 3-8.", "It costs $ 5.", "Pay $4.5 now."])("refuses a number in no allowed form: %s", (text) => {

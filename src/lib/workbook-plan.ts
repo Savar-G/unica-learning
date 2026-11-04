@@ -260,6 +260,8 @@ export interface PlannedPage {
   atMaximum?: boolean;
   /** The widest extra gap that kept the page inside its area. */
   gapCap?: number;
+  /** How often the page took a question again below its planned count, after a drop (8 at most). */
+  refills?: number;
   /** The worked example's panel had no room for its Watch out line beside its method (U4's large type). */
   noWatchOut?: boolean;
   /** Approved pipeline capacity. The writer and layout consume this same budget. */

@@ -330,6 +330,14 @@ backwards") does not print.
   prints "Remember these" alone.
 - **New-idea floors** follow Cedric's band table: 2 at U4-U9, 3 at U10-U18, 2 at
   U19-U30.
+- **Minus signs** print as "−" between numbers in every text (templates, AI
+  items, panels); the book check fails a hyphen there, and the solve check reads
+  both.
+- **Refill:** a page that lost a question for room takes one again (a short one,
+  on its practice) once it has room, and the omission is made good; a review
+  page's extra questions leave the day's later practice pages about 0.4 minutes
+  each. The full U4 book still has three pages below 8 (Days 1 and 9): see the
+  report.
 
 ## Report
 
