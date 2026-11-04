@@ -92,6 +92,10 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     if (p.type === "word-problems") {
       const stories = p.questions.filter(q => q.package && ["word-problems", "solve-it-two-ways"].includes(q.place ?? "")).map(q => storyKind(q.package!.text)).filter(Boolean);
       if (stories.length >= 2 && new Set(stories).size < 2) issues.push({ page: p.number, kind: "variety", reason: `the stories page tells one kind of story (${stories[0]}); it needs at least two` });
+      // (Three kinds where it has three stories, at every level: two take-aways and a join on the real U16 r17's Word
+      // problems, Savar 2026-11-04.)
+      // (From U10; U4 to U9 keep two kinds, their stories being the few young steps' joins, take-aways and compares.)
+      else if ((p.content?.kind === "day" ? p.content.level : 0) >= 10 && new Set(stories).size < Math.min(3, stories.length)) issues.push({ page: p.number, kind: "variety", reason: `the stories page tells ${stories.length} stories of ${new Set(stories).size} kinds; it needs ${Math.min(3, stories.length)} (join, take-away, compare)` });
     }
     // A circled choice on a page whose instruction never says to circle fails (Savar, 2026-11-04).
     if (p.content?.kind === "day" && p.questions.some(q => q.package && q.place !== "warm-up" && (q.package.item?.regions ?? []).some(r => r.kind === "choice" && r.mark !== "tick")) && !/\bcircle\b/i.test(p.content.subtitle ?? ""))
@@ -101,7 +105,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     // A story's numbers and question are code's (Codex at e6d79b6a, B1): its plan's text, or code's wording of its
     // operation, with only the person and the thing changed.
     for (const q of p.questions) {
-      const problem = q.package && q.place !== "how-do-you-know" && q.package.item?.format !== "two-ways" ? codeStoryProblem(q.package, q.itemPlan?.item?.text) : null;
+      const problem = q.package && q.place !== "how-do-you-know" ? codeStoryProblem(q.package, q.itemPlan?.item?.text ?? q.codeText) : null;
       if (problem) issues.push({ page: p.number, kind: "coverage", reason: `question ${q.number}: ${problem}` });
     }
     // A take-away story takes the things away (Codex at 24751f16, P0): every question, whatever wrote it.

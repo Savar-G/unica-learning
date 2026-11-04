@@ -107,3 +107,53 @@ describe("a task is its maths, not its distractors (Codex at e6d79b6a, B2)", () 
     expect(workbookQuality([page]).issues.some((i) => i.kind === "repeat"), `${pair!.a} / ${pair!.b}`).toBe(true);
   });
 });
+
+describe("the writer edits no story text (Codex at cb78c56b, B1a and B1b)", () => {
+  const story = () => {
+    for (let seed = 1; seed < 60; seed++) {
+      const f = stepTemplateItem({ curriculum: BC, skill: "5.9-multiply-tens", step: 2, place: "challenge", level: 16, day: 5, seed, attempt: 2, ordinal: 2 });
+      if (f && /orders .* boxes .* gives away/.test(f.text)) return f;
+    }
+    throw new Error("no story fill");
+  };
+  const page = (pkg: unknown, plan: ItemPlan | undefined, codeText?: string) => ({ number: 42, day: 5, pageOfDay: 8, dayLabel: "Day 5", type: "challenge", qrToken: "token-000000000001", attempts: 0, fit: { status: "fits" },
+    questions: [{ number: 1, slot: "1.3", part: "challenge", place: "challenge", attempts: 1, check: { status: "checked" }, ...(plan ? { itemPlan: plan } : {}), ...(codeText ? { codeText } : {}), package: pkg }] }) as unknown as GeneratedPage;
+
+  it("B1a: prints code's story whatever person or thing the writer swaps in, and the book check refuses every swap", () => {
+    const f = story();
+    const plan: ItemPlan = { type: "template", source: "story", item: stepAiItem("1.3", f.ref, f.text), numbers: f.numbers, dayRange: { min: 0, max: 81000, help: "none", pictures: false } as never, template: f.ref };
+    const thing = /with \d+ ([a-z ]+?) in each/.exec(f.text)![1];
+    const who = /^([A-Z][a-z]+)'s/.exec(f.text)![1];
+    const swaps = [
+      f.text.replaceAll(thing, "tickets").replaceAll(who, "Noah"),
+      f.text.replace(`How many ${thing}`, "How many boxes"),
+      f.text.replace(`How many ${thing}`, "How many jars"),
+      f.text.replace(/with (\d+) /, "with $1 boxes of "),
+      f.text.replace(`${who}'s`, "Noah's"),
+      f.text.replace("does the school have now", `does ${who === "Mia" ? "Noah" : "Mia"} have now`),
+    ];
+    for (const text of swaps) {
+      const out = buildPlannedItem(plan, { ...plan.item, text }, { ...place, level: 16, skills: [f.ref.skill] } as never);
+      expect(out.package?.text, text).toBe(f.text);
+      expect(workbookQuality([page({ ...out.package!, text }, plan)]).issues.some((i) => i.reason.includes("not code's")), text).toBe(true);
+    }
+    expect(workbookQuality([page(buildPlannedItem(plan, plan.item, { ...place, level: 16, skills: [f.ref.skill] } as never).package, plan)]).issues.some((i) => i.reason.includes("code's"))).toBe(false);
+  });
+
+  it("B1b: Solve it two ways prints code's sum, never the writer's story, and the book check refuses the story", () => {
+    for (const text of [
+      "Max has 1010 beads. He puts 17 in a jar he uses for beads. How many beads does he have now?",
+      "Max has 1010 beads. He puts 17 in a jar. How many beads now?",
+      "Max has 1010 beads. He gets 17 more. How many beads does he have now?",
+    ]) {
+      const num = (value: number) => ({ type: "number", value, numerator: null, denominator: null, whole: null, unit: null, hours: null, minutes: null, period: null, parts: [], text: null });
+      const sub = (a: number, b: number) => ({ kind: "subtract", operands: [num(a), num(b)], expression: null, unit: null, denominator: null, values: [] });
+      const raw = { slot: "1.1", skill: "4.4-subtract-within-10000", difficulty: 2, text, format: "two-ways", operation: sub(1010, 17), wrongAnswers: [{ value: num(992), cause: "count", description: "x", step: null }], easier: { text: "1000 - 17 = ?", operation: sub(1000, 17) }, shownWrong: null, figure: null, numbers: [], places: null, direction: null, sequence: null, pattern: null, relation: null, figureShows: null };
+      const built = buildQuestion(raw, place as never);
+      expect(built.package, JSON.stringify(built.check)).not.toBeNull();
+      expect(built.package!.text, text).not.toBe(text);
+      expect(isNumberStory(built.package!.text)).toBe(false);
+      expect(workbookQuality([page({ ...built.package!, text }, undefined)]).issues.some((i) => i.reason.includes("code's")), text).toBe(true);
+    }
+  });
+});

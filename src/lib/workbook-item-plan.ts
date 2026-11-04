@@ -1,14 +1,13 @@
 // The item contract (#480). Code owns the type, the numbers, the operation and the
 // help. The writer can change only the words of a story or an explanation.
 import { framesFor, fillFrame, frameDoes, PEOPLE, THINGS, storyProblem } from "./workbook-wording";
-import { sameStory } from "@/lib/workbook-code-story";
 import approvedSkills from "./workbook-approved-skills.json";
 import type { AiItem, AiOperation, AiValue, BuiltQuestion, GeneratedFormat, SlotPlace } from "./workbook-generator-items";
 import { buildQuestion } from "./workbook-generator-items";
 import { checkQuestionPackage } from "./question-package";
 import { LIKELIHOOD_EVENTS } from "./workbook-likelihood-bank";
 import { STORY_FRAMES, COMPACT_STORY_FRAMES } from "./workbook-story-bank";
-import { buildStepItem, stepStoryProblem, type StepTemplateRef } from "./workbook-step-items";
+import { buildStepItem, type StepTemplateRef } from "./workbook-step-items";
 
 /** An approved hand-built type, or "template": a question filled from its step's templates (#489). */
 export type QuestionType = keyof typeof approvedSkills | "template";
@@ -333,12 +332,14 @@ export function itemContractProblem(raw: unknown, plan: ItemPlan): string | null
 
 export function buildPlannedItem(plan: ItemPlan, raw: unknown, place: SlotPlace): BuiltQuestion {
   if (plan.template) return buildTemplatePlan(plan, plan.template, raw, place);
-  const problem = itemContractProblem(raw, plan) ?? skillItemProblem(plan);
+  // (Code's text is what prints, B1 final: the contract is checked on it, the writer's words never.)
+  const problem = itemContractProblem(plan.source === "explain" || !raw || typeof raw !== "object" ? raw : { ...(raw as object), text: plan.item.text }, plan) ?? skillItemProblem(plan);
   if (problem) return { package: null, check: { status: "failed", reason: problem }, stepIds: [] };
   const item = raw as AiItem;
   // A story prints code's words: the writer's only when they are code's with the person and the thing changed (Codex at
   // e6d79b6a, B1). Code's planned text otherwise.
-  const text = plan.source === "code" || sameStory(item.text, plan.item.text) ? item.text : plan.item.text;
+  // (The writer edits no story text, Savar 2026-11-04 B1: code's planned text prints, whatever came back.)
+  const text = plan.source === "explain" ? item.text : plan.item.text;
   const built = buildQuestion({ ...plan.item, text }, { ...place, preserveText: true });
   if (!built.package) return built;
   // Reuse existing circle, picture and region support. These tasks are checked
@@ -355,7 +356,8 @@ export function buildPlannedItem(plan: ItemPlan, raw: unknown, place: SlotPlace)
     const [red,blue]=plan.item.numbers.map(n=>n.value);
     built.package.text=`Red: ${red}. Blue: ${blue}. Which has more?`;
   }
-  built.package.textSource = plan.source === "code" ? "code" : "ai";
+  // (Code wrote it, B1 final: only an explanation is the writer's.)
+  built.package.textSource = plan.source === "explain" ? "ai" : "code";
   const checked = checkQuestionPackage(built.package);
   if (checked.status === "failed") return { ...built, check: { status: "failed", reason: checked.reason } };
   return built;
@@ -370,16 +372,7 @@ function buildTemplatePlan(plan: ItemPlan, ref: StepTemplateRef, raw: unknown, p
   if (!raw || typeof raw !== "object") return failed("the writer did not fill the approved item");
   const r = raw as AiItem;
   if (r.skill !== plan.item.skill || r.format !== plan.item.format) return failed("the writer changed the approved skill or question format");
-  if (plan.source === "story" && r.text !== plan.item.text) {
-    // A rewording that breaks the contract (other numbers, no question at the end, too long) keeps the template's own
-    // checked words instead: the slot is never left empty for the writer's words (the U4 review, items 2 and 4).
-    // (Code's words with only the person and the thing changed, Codex at e6d79b6a, B1: "It puts 800 leaves in a jar" for
-    // code's "It gives away 800 leaves" keeps code's text.)
-    const problem = (sameStory(r.text, plan.item.text) ? null : "the writer changed code's story words")
-      ?? stepStoryProblem(r.text, plan.numbers, ref, place.level)
-      ?? (plan.textBudget && (r.text.length > plan.textBudget.characters || itemTextLines(r.text, plan.textBudget.perLine) > plan.textBudget.lines) ? "too long" : null);
-    if (!problem) return buildStepItem(ref, r.text, place, "ai");
-  }
+  // (The writer edits no story text, Savar 2026-11-04 B1: a story prints code's own words, always.)
   return buildStepItem(ref, plan.item.text, place, "code");
 }
 

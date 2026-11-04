@@ -25,7 +25,7 @@ describe("Unica Challenge templates", () => {
     const numeric = (t: { format: string; answer: string }) => ["bare", "missing", "story"].includes(t.format) && !/['"]/.test(t.answer);
     for (const h of HOUSE_TEMPLATES) {
       const step = c.skillSteps(h.skill)![h.step - 1];
-      expect(step.templates!.filter((t) => t.difficulty === "hard" && numeric(t)).length, `${h.skill}#${h.step}`).toBeGreaterThanOrEqual(3);
+      if (!h.stories) expect(step.templates!.filter((t) => t.difficulty === "hard" && numeric(t)).length, `${h.skill}#${h.step}`).toBeGreaterThanOrEqual(3);
       const own = BC_CURRICULUM.steps.find((s) => s.skill === h.skill && s.number === h.step)!.templates ?? [];
       for (const t of h.templates) expect(own.some((o) => o.text === t.text || o.answer === t.answer && o.format === t.format && o.difficulty === "hard")).toBe(false);
     }

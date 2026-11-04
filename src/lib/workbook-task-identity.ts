@@ -117,7 +117,9 @@ function printedTaskNumbers(p: QuestionPackage): number[] {
   const shown = p.text.replace(/(\d)[\u00a0\u202f ](?=\d{3}\b)/g, "$1")
     // (The distractors: "and which number: 2 or 3?" offers the answer among others. A comparison's numbers, "Which is
     // more: 8 or 6?", are its task and stay.)
-    .replace(/\bwhich number\b:?[^?]*\?/gi, " ?");
+    .replace(/\bwhich number\b:?[^?]*\?/gi, " ?")
+    // (And a closing "12 or 11?" offered for the answer, "What comes after 10: 12 or 11?", but a comparison's.)
+    .replace(/:\s*-?\d+(?:\.\d+)?\s+or\s+-?\d+(?:\.\d+)?\s*\?\s*$/, (m, _o: number, all: string) => /\b(?:more|less|bigger|biggest|greater|smaller|smallest|fewer|most|least|larger|largest)\b/i.test(all) ? m : " ?");
   const printed = (shown.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
   for (const r of p.item?.regions ?? []) if (r.kind === "choice") for (const c of r.choices) {
     const at = /^-?\d+(?:\.\d+)?$/.test(c.trim()) ? printed.lastIndexOf(Number(c.trim())) : -1;
@@ -264,7 +266,8 @@ export function cardFrameProblem(uses: readonly CardFrameUse[], use: CardFrameUs
  * multiplies its numbers without reading a digit (no %), or the operation code picked for it.
  */
 export function operationStory(p: QuestionPackage, templateAnswer?: string | null): boolean {
-  if (templateAnswer) return /[+\-*]/.test(templateAnswer.replace(/'[^']*'|"[^"]*"/g, "")) && !/%|'|"/.test(templateAnswer);
+  // (Sharing or grouping divides by a number of the story, "dv // b"; dividing by 10, 100 or 1000 reads a place.)
+  if (templateAnswer) return (/[+\-*]/.test(templateAnswer) || /\/\/\s*[a-z_]/i.test(templateAnswer)) && !/%|'|"|\/\/\s*10+\b/.test(templateAnswer);
   return ["add", "subtract", "multiply", "divide", "missing-addend", "evaluate"].includes(p.operation?.kind ?? "");
 }
 

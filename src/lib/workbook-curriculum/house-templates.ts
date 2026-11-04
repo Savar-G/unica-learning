@@ -9,6 +9,8 @@ import type { CurriculumData, CurriculumStep, StepTemplate } from "./types";
 export interface HouseTemplates {
   skill: string;
   step: number;
+  /** Stories for a stories page (any place), not the Challenge's: absent means Challenge-only. */
+  stories?: boolean;
   /** The step's name when these were written: the curriculum test fails when it changes. */
   name: string;
   templates: readonly StepTemplate[];
@@ -21,7 +23,20 @@ const hard = (format: StepTemplate["format"], text: string, answer: string, slot
 const CHALLENGE_ONLY = new WeakSet<StepTemplate>();
 export const isChallengeOnly = (t: StepTemplate): boolean => CHALLENGE_ONLY.has(t);
 
+const medium = (text: string, answer: string, slots: Record<string, string>, derived: Record<string, string>, check: string): StepTemplate =>
+  ({ format: "story", difficulty: "medium", text, answer, slots, derived, check });
+
 export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
+  // Compare stories for a U16 stories page (Savar, 2026-11-04: join, take-away and compare on one page; the steps U16
+  // reaches with Grade 5 numbers tell joins and take-aways only).
+  {
+    skill: "4.4-subtract-within-10000", step: 5, name: "Take away from 10 000, then check", stories: true,
+    templates: [medium("{name} scores {a} points. A friend scores {c} points. How many more points does {name} score?", "a - c", { b0: "template_b0", c0: "template_c0" }, { a: "max(b0, c0)", c: "min(b0, c0)" }, "max(b0, c0) - min(b0, c0) >= 100 and min(b0, c0) >= 1000")],
+  },
+  {
+    skill: "4.4-add-within-10000", step: 5, name: "Story problems", stories: true,
+    templates: [medium("{name} has {a} stickers and wants {s}. How many more stickers does {name} need?", "s - a", { u1: "u1", u2: "u2", u3: "u3", u4: "u4", u5: "u5", u6: "u6", u7: "u7", u8: "u8" }, { a: "1000 + u1 * 400 + u2 * 40 + u3 * 4 + u4", s: "1000 + u1 * 400 + u2 * 40 + u3 * 4 + u4 + 1000 + u5 * 300 + u6 * 30 + u7 * 3 + u8" }, "s <= 9999")],
+  },
   {
     skill: "5.1-place-value-million", step: 1, name: "Value of a digit to 10 000s",
     templates: [
@@ -150,7 +165,7 @@ export function withHouseTemplates(data: CurriculumData, house: readonly HouseTe
     if (!h) return s;
     if (s.name !== h.name) throw new Error(`Unica templates for ${h.skill} step ${h.step} were written for "${h.name}", not "${s.name}"`);
     found.add(`${s.skill}#${s.number}`);
-    for (const t of h.templates) CHALLENGE_ONLY.add(t);
+    if (!h.stories) for (const t of h.templates) CHALLENGE_ONLY.add(t);
     return { ...s, templates: [...(s.templates ?? []), ...h.templates] };
   });
   const missing = [...byKey.keys()].filter((k) => !found.has(k));
@@ -166,15 +181,15 @@ export function withHouseTemplates(data: CurriculumData, house: readonly HouseTe
  */
 export interface LevelRewrite { level: number; skill: string; step: number; template: number; from: string; to: string }
 
-const CLAIM_PARTS = "{w} {things}: {p} in a {container}. {name} says the rest is {claim}. Is that right? If not, fix it.";
+const CLAIM_PARTS = "{w} {things}, {p} in a {container}. {name}: the rest is {claim}. Right? If not, fix it.";
 export const LEVEL_REWRITES: readonly LevelRewrite[] = [
   { level: 4, skill: "K3-part-part-whole", step: 3, template: 5, from: "Out of {w} {things}, {name} puts {p} in a {container}. {name} says the rest is {claim}. Is that right? If not, say how many.", to: CLAIM_PARTS },
-  { level: 4, skill: "K1-count-scattered", step: 3, template: 4, from: "{name} counts {c} {things} in a circle and says {a}. Is that right? If not, say the right number.", to: "{c} {things} in a circle. {name} counts {a}. Is that right? If not, fix it." },
-  { level: 4, skill: "K1-write-numerals", step: 3, template: 4, from: "{name} wrote {a} for the number {n}. Is that right? If not, write the right number.", to: "{name} writes {a} for {n}. Is that right? If not, fix it." },
-  { level: 4, skill: "K5-two-more-less", step: 3, template: 5, from: "{name} says 2 more than {s} is {claim}. Is that right? If not, say the right number.", to: "{name} says 2 more than {s} is {claim}. Is that right? If not, fix it." },
+  { level: 4, skill: "K1-count-scattered", step: 3, template: 4, from: "{name} counts {c} {things} in a circle and says {a}. Is that right? If not, say the right number.", to: "{c} {things} in a circle. {name} counts {a}. Right? If not, fix it." },
+  { level: 4, skill: "K1-write-numerals", step: 3, template: 4, from: "{name} wrote {a} for the number {n}. Is that right? If not, write the right number.", to: "{name} writes {a} for {n}. Right? If not, fix it." },
+  { level: 4, skill: "K5-two-more-less", step: 3, template: 5, from: "{name} says 2 more than {s} is {claim}. Is that right? If not, say the right number.", to: "{name} says 2 more than {s} is {claim}. Right? If not, fix it." },
   { level: 4, skill: "K5-two-more-less", step: 3, template: 3, from: "{name} has {s} {things}. {name} gets 2 more. How many {things} does {name} have now?", to: "{name} has {s} {things} and gets 2 more. How many {things} now?" },
   ...[1, 2, 3].map((step) => ({ level: 4, skill: "1.2-decompose-within-10", step, template: 3, from: "{name} has {w} {things}. {p} of them {be} red and the rest are blue. How many are blue?", to: "{w} {things}: {p} red, the rest blue. How many are blue?" })),
-  ...[1, 2].map((step) => ({ level: 4, skill: "1.2-decompose-within-10", step, template: 5, from: "{name} says {w} is {a} and {claim}. Is that right? If not, write what goes with {a}.", to: "{name} says {w} is {a} and {claim}. Is that right? If not, fix it." })),
+  ...[1, 2].map((step) => ({ level: 4, skill: "1.2-decompose-within-10", step, template: 5, from: "{name} says {w} is {a} and {claim}. Is that right? If not, write what goes with {a}.", to: "{name} says {w} is {a} and {claim}. Right? If not, fix it." })),
   ...[1, 2].map((step) => ({ level: 4, skill: "1.1-subitize-to-10", step, template: 2, from: "True or false: if you count {n} {things}, the last number you say is {shown}.", to: "True or false: counting {n} {things}, you end on {shown}." })),
   ...[1, 2].map((step) => ({ level: 4, skill: "1.1-subitize-to-10", step, template: 3, from: "{name} has {n} {things}. {name} gets 1 more. How many {things} now?", to: "{name} has {n} {things} and gets 1 more. How many {things} now?" })),
   { level: 4, skill: "1.1-subitize-to-10", step: 3, template: 3, from: "{name} has {w} {things}. {p} are red and the rest are blue. How many are blue?", to: "{name} has {w} {things}. {p} are red, the rest blue. How many blue?" },
@@ -182,6 +197,8 @@ export const LEVEL_REWRITES: readonly LevelRewrite[] = [
   { level: 4, skill: "1.10-likelihood-words", step: 1, template: 1, from: "{name} says {animals} can drive a car. Circle never, sometimes or always.", to: "Can {animals} drive a car? Circle never, sometimes or always." },
   ...[1, 2].map((step) => ({ level: 4, skill: "1.1-count-to-20", step, template: 2, from: "{name} counts {things}. {name} says {s}. What does {name} say next?", to: "{name} counts {things} and says {s}. What comes next?" })),
   { level: 4, skill: "1.1-count-to-20", step: 3, template: 2, from: "{name} counts down from {s} at the rink. What does {name} say next?", to: "{name} counts down from {s}. What comes next?" },
+  ...[1, 2].map((step) => ({ level: 4, skill: "1.1-count-to-20", step, template: 4, from: "Which number comes right after {s}: {x} or {y}?", to: "What comes after {s}: {x} or {y}?" })),
+  { level: 4, skill: "1.1-count-to-20", step: 3, template: 4, from: "Which number comes right before {s}: {x} or {y}?", to: "What comes before {s}: {x} or {y}?" },
 ];
 
 /** A template as a book of this level prints it: Unica's shorter words where there are some, else Cedric's. */

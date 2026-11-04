@@ -8,7 +8,7 @@
  */
 import { bcStepProgressions } from "@/lib/workbook-curriculum";
 import type { QuestionPackage } from "@/lib/question-package";
-import { codeWordings, isWorded, PEOPLE, THINGS, type WordingKind } from "@/lib/workbook-wording";
+import { PEOPLE, printedMinus, THINGS } from "@/lib/workbook-wording";
 
 let lists: { names: RegExp; things: RegExp } | null = null;
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -42,29 +42,13 @@ export function isNumberStory(text: string): boolean {
   return new RegExp(names.source).test(text) || new RegExp(things.source, "i").test(text);
 }
 
-const KINDS: WordingKind[] = ["story", "picture", "fact", "missing-part", "line"];
-
-/** Code's wordings of an operation, every kind and option: what a code-worded story may print. */
-function wordingsOf(p: QuestionPackage): string[] {
-  const op = p.operation;
-  if (!op || !isWorded(op)) return [];
-  const out: string[] = [];
-  for (const step of [false, true]) for (const subtraction of [false, true]) for (const figure of [p.item?.figure ?? null, null]) {
-    try {
-      out.push(...codeWordings(op, { format: p.item?.format ?? "write-number", figure, name: "Mia", thing: "shells", kinds: KINDS, step, subtraction, variant: 0 }));
-    } catch { /* an option code does not word */ }
-  }
-  return out;
-}
-
 /**
- * Why a printed story is not code's, or null: compared with its plan's text when code planned it, else with code's
- * wordings of its operation; a number story with neither fails.
+ * Why a printed story is not code's, or null (Savar, 2026-11-04, B1 final): the writer edits no story text, so a number
+ * story prints code's text character for character, its plan's or code's wording of its operation; with neither it fails.
+ * Nothing is exempt.
  */
-export function codeStoryProblem(p: QuestionPackage, planText: string | null | undefined): string | null {
+export function codeStoryProblem(p: QuestionPackage, codeText: string | null | undefined): string | null {
   if (!isNumberStory(p.text)) return null;
-  if (planText) return sameStory(p.text, planText) ? null : `the story's words are not code's ("${p.text.slice(0, 50)}"): only the person and the thing may change`;
-  const wordings = wordingsOf(p);
-  if (wordings.some((w) => sameStory(p.text, w))) return null;
-  return `the story's words are not code's ("${p.text.slice(0, 50)}"): a story's numbers and question come from code`;
+  if (codeText && p.text === printedMinus(codeText)) return null;
+  return codeText ? `the story's words are not code's ("${p.text.slice(0, 50)}"): a story prints code's text exactly` : `the story has no text of code's ("${p.text.slice(0, 50)}"): a story's words come from code`;
 }

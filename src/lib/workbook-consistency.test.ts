@@ -18,12 +18,12 @@ it("sends only story and explanation contracts to the writer, and supplies examp
     curriculum: c, plan: { ...planned.plan, days: planned.plan.days.slice(0, 2) }, book: { child: "Noah" }, itemPolicy: "approved-v1" },
   { ai, solver: keySolver(), fit: { fits: async () => ({ ok: true }) }, store: { save: async d => ({ status: "saved", draftId: d.id }), draft: async () => null }, qrToken: () => `token-${String(++tokens).padStart(12, "0")}` });
   expect(result.status).toBe("stored");
-  expect(ai.requests.length).toBeGreaterThan(0);
+  // (The writer edits no story text, B1 final: it is asked for explanations only, and a U4 book may ask it nothing.)
   for (const request of ai.requests) {
     const asked = JSON.parse((request.content[0] as { text: string }).text);
     expect(asked.exampleBank.length).toBe(asked.slots.length);
     expect(asked.examples).toBeUndefined();
-    for (const slot of asked.slots) expect(["story", "explain"]).toContain(slot.contract.source);
+    for (const slot of asked.slots) expect(slot.contract.source).toBe("explain");
   }
   if (result.status === "stored") {
     const code = result.draft.pages.flatMap(p => p.questions).filter(q => q.package?.textSource === "code");

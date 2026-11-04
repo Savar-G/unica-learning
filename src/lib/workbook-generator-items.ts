@@ -694,7 +694,15 @@ const standardOf = (skill: string) => BC_SKILL_MAP.standards.find((s) => s.skill
  * One slot's question: the AI's item made into a package with code's answer, steps, easier example answer and item,
  * then checked. Never throws: anything code cannot build is a failed question with the reason.
  */
-export function buildQuestion(raw: unknown, place: SlotPlace): BuiltQuestion {
+/** Solve it two ways prints code's sum, never the writer's story (B1 final). */
+function twoWaysCode(given: unknown, place: SlotPlace): unknown {
+  if (place.preserveText || !isObject(given) || given.format !== "two-ways" || typeof given.text !== "string" || !isNumberStory(given.text)) return given;
+  const op = operationFrom(given.operation);
+  return op && !operationProblem(op) && isWorded(op as Operation) ? { ...given, text: operationQuestion(op as Operation) } : given;
+}
+
+export function buildQuestion(given: unknown, place: SlotPlace): BuiltQuestion {
+  const raw: unknown = twoWaysCode(given, place);
   try {
     const made = build(raw, place);
     // (A minus prints as "−" whoever wrote the text, the U16 r14 review.)
@@ -772,8 +780,7 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
   // Code writes whole-number questions at U1 to U9 and this bounded recovery at later levels.
   // A story the writer wrote takes code's wording at every level: its numbers and question are code's (Codex at e6d79b6a,
   // B1: "puts 17 in a jar" keyed as a take-away).
-  // (Not Solve it two ways: it asks for two methods of a sum, and code's wordings are stories or bare sums.)
-  const writersStory = !place.preserveText && format !== "two-ways" && typeof raw.text === "string" && isNumberStory(raw.text);
+  const writersStory = !place.preserveText && typeof raw.text === "string" && isNumberStory(raw.text);
   if (writersStory && !isWorded(op)) return fail("a story's numbers and question come from code, and code has no wording for this operation");
   const worded = !place.preserveText && (place.level <= 9 || bareMixed || writersStory) && isWorded(op);
   // The box takes the operation's number, so the question must ask for that number, never yes or no or a choice.

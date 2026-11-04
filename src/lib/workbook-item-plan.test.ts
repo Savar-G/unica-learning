@@ -29,12 +29,13 @@ describe("binding item plans", () => {
       expect(itemContractProblem(raw, p)).not.toBeNull();
     }
   });
-  it("keeps the story words for an independent solve check", () => {
+  it("prints code's story words, whatever the writer sends, with nothing for the solve check to read (B1 final)", () => {
     const p = make("1.1-one-more-less-20", true);
-    const b = buildPlannedItem(p, p.item, { ...place(p.item.skill), story: true });
+    const b = buildPlannedItem(p, { ...p.item, text: "Sam has 9 cats. He puts 2 in a box. How many now?" }, { ...place(p.item.skill), story: true });
     expect(b.check).toEqual({ status: "checked" });
     expect(b.package?.text).toBe(p.item.text);
-    expect(toSolve(b.package!).questions.length).toBeGreaterThan(0);
+    expect(b.package?.textSource).toBe("code");
+    expect(toSolve(b.package!).questions).toEqual([]);
   });
   it("prints a row to colour or an empty ten-frame for counting", () => {
     const p = make("1.1-count-objects-20");

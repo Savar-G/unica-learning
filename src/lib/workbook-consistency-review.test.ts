@@ -102,21 +102,16 @@ it("retains the saved policy and examples through generation and editing",async(
   const q=storyPage.questions.find(q=>q.itemPlan?.source==="story")!;
   const before=o.ai.requests.length;
   const edited=await reviseWorkbookPage(o.input,o.deps,storyPage,{question:q.number,note:"Use plain words. Keep the numbers."});
-  expect(o.ai.requests.length).toBeGreaterThan(before);
-  for (const request of o.ai.requests.slice(before)) {
-    const r=JSON.parse((request.content[0] as {text:string}).text);
-    expect(r.slots[0].contract.item.operation).toEqual(q.itemPlan!.item.operation);
-    expect(r.exampleBank[0].items.length).toBeGreaterThan(1);
-  }
+  // (The writer edits no story text, Codex at cb78c56b, B1 final: an edit of a story asks it nothing and keeps code's
+  // words, its numbers and its operation.)
+  expect(o.ai.requests.length).toBe(before);
+  expect(edited.questions.find(x=>x.number===q.number)!.package!.text).toBe(q.package!.text);
   expect(edited.questions.find(x=>x.number===q.number)!.package!.operation).toEqual(q.package!.operation);
-  // A template story's numbers and format are code's: a rewording with another number keeps code's words (its numbers
-  // never change), and another format is refused.
   const numbers=(t:string)=>(t.match(/\d+/g) ?? []).join(",");
   const renumber=fakeAiClient({answer:r=>({items:fakeWorkbookItems(r).items.map(x=>({...x,text:(x as {text:string}).text.replace(/\d+/,n=>String(Number(n)+1))}))})});
   const kept=await reviseWorkbookPage(o.input,{...o.deps,ai:renumber},storyPage,{question:q.number,note:"Keep the numbers."});
   expect(numbers(kept.questions.find(x=>x.number===q.number)!.package!.text)).toBe(numbers(q.itemPlan!.item.text));
-  const reformat=fakeAiClient({answer:r=>({items:fakeWorkbookItems(r).items.map(x=>({...(x as object),format:"draw"}))})});
-  await expect(reviseWorkbookPage(o.input,{...o.deps,ai:reformat},storyPage,{question:q.number,note:"Keep the numbers."})).rejects.toThrow(/changed|approved|code-picked numbers/);
+  expect(renumber.requests).toHaveLength(0);
   const drill=draft.pages.find(p=>p.questions.some(q=>q.itemPlan?.source==="code"))!;
   const code=drill.questions.find(q=>q.itemPlan?.source==="code")!;
   const forbidden=fakeAiClient({answer:()=>{throw new Error("a code drill reached AI");}});

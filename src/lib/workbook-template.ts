@@ -467,6 +467,10 @@ const CSS = `
 .pg.consistent.stretch .ct>.blk>.list{flex:1 0 auto}.pg.consistent.stretch .ct>.blk>.list>*{flex:1 0 auto}
 .pg.consistent .list{flex:none;justify-content:flex-start;gap:calc(12px + var(--extra-gap,0px))}
 .pg.consistent .two{flex:none;grid-auto-rows:auto;row-gap:calc(12px + var(--extra-gap,0px))}
+/* U4 to U9 (the large type): a tighter row gap, boxes the same size; a true or false pair one box high (Savar,
+   2026-11-04: 8 practice questions on a U4 page). */
+.pg.consistent.early .two,.pg.consistent.early .cols{row-gap:calc(6px + var(--extra-gap,0px))}
+.pg.early .circ.words:not(.likelihood) .co{min-height:22px}
 .pg.consistent .facts{flex:none;align-content:start;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:calc(10px + var(--extra-gap,0px))}
 .pg.consistent .pcards{flex:none;grid-auto-rows:auto;column-gap:32px;row-gap:calc(12px + var(--extra-gap,0px))}
 .pg.consistent .cols{flex:none;align-content:start;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:calc(12px + var(--extra-gap,0px))}
@@ -488,7 +492,7 @@ const CSS = `
 .pg.consistent .two>.places-wide,.pg.consistent .cols>.places-wide{grid-column:1/-1}
 .pg.consistent .outl{padding:6px 16px;gap:6px}
 .pg.consistent .error-item{display:flex;flex-direction:column;gap:6px}
-.pg.consistent .error-item>.q:first-child{flex-wrap:nowrap;align-items:flex-start}.pg.consistent .error-item>.q:first-child .wk{flex:1 1 0}
+.pg.consistent .error-item>.q:first-child{flex-wrap:nowrap;align-items:baseline}.pg.consistent .error-item>.q:first-child .wk{flex:1 1 0}
 .pg.consistent .error-item .ans{flex-wrap:wrap;gap:12px}.pg.consistent .error-item .ans .fix{margin-left:12px}
 .pg.consistent .error-item .ab{height:48px}
 /* Practice 2 holds 8 practice questions and Spot the error (U4 to U9, D-222, workbook-early-levels.ts): closer rows. */
@@ -509,7 +513,6 @@ const CSS = `
 .circ.words .co{display:inline-flex;align-items:center;justify-content:center;min-height:28px;min-width:var(--box);padding:0 8px;line-height:1}
 .circ.words.likelihood{flex-direction:row;gap:12px;min-width:0}.circ.words.likelihood .co{min-width:0;min-height:44px;padding:0 6px}
 .q .rgs:has(>.circ.words){align-self:flex-start}
-.error-item>.q:first-child{align-items:baseline}
 .tc>.q{flex-wrap:nowrap;align-items:flex-start}.tc>.q>.qb{flex:1 1 0;min-width:0}.tc>.q>.rgs{margin-left:auto;flex:none;align-self:flex-start}
 .pg.consistent [data-slot="word-problems"] .story{padding-bottom:14px}
 .pg.consistent .mx .stp{flex-wrap:wrap}

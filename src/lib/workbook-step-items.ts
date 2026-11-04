@@ -433,7 +433,9 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
       // Priced objects need a purchase context. The shared counting list also has
       // leaves and acorns, which do not fit these price questions.
       const purchase = t.text.includes("{things}") && /\$|\bdollars?\b|\b(?:buys?|bought)\b|Each \{container\} holds|puts .* in each \{container\}/.test(t.text);
-      prepared = prepareTemplate(step, templateAtLevel(r.level, step, index, t), purchase ? { ...contexts, things: ["books", "notebooks", "tickets", "toy cars"] } : contexts);
+      // (Sam is Spot the error's child: no other story names Sam, so code's text prints unchanged, B1.)
+      const people = r.place === "spot-the-error" ? contexts.people : contexts.people.filter((x) => x.name !== "Sam");
+      prepared = prepareTemplate(step, templateAtLevel(r.level, step, index, t), { ...contexts, people, ...(purchase ? { things: ["books", "notebooks", "tickets", "toy cars"] } : {}) });
     } catch { continue; }
     const random = seededRandom(((r.seed * 31 + r.attempt * 7919 + k * 104729) % 2147483647) + 1);
     // A Challenge takes the fill with the largest numbers of several, the top of the step's range (the U4 review); a

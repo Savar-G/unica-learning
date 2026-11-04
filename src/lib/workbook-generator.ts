@@ -552,6 +552,8 @@ export interface GeneratedQuestion {
   itemPlan?: ItemPlan;
   /** This skill still uses the existing writer until its approved builder exists. */
   existing?: boolean;
+  /** The text code wrote for a question with no plan (code's wording of its operation): a story prints it exactly (B1). */
+  codeText?: string;
 }
 
 export type PageFit = { status: "fits" } | { status: "failed"; problems: FitProblem[] } | { status: "not-needed" };
@@ -1564,7 +1566,8 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
   const local = new Map<string, unknown>();
   if (input.itemPolicy === "approved-v1") {
     // Code's words, and a template page's explanation, which code writes from the page's first story.
-    for (const [id, c] of contracts) if (c?.source === "code" || c?.type === "template" && c.source === "explain") local.set(id, c.item);
+    // (And every story: the writer no longer edits any story text, code prints its own, Savar 2026-11-04 B1.)
+    for (const [id, c] of contracts) if (c?.source === "code" || c?.source === "story" || c?.type === "template" && c.source === "explain") local.set(id, c.item);
     for (const p of panels) {
       // The slot the planner chose the example's task for (#482: an example asked another page's task).
       const c = contractFor(input, w, panelSlot(w, p), p.attempt ?? 0);
@@ -1573,12 +1576,12 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
     }
   }
   const existing = new Set([...which.filter(i=>w.slots[i].existing).map(i=>w.slots[i].id), ...panels.filter(p=>!contracts.get(p.id)).map(p=>p.id)]);
-  const ids = [...ask.slots, ...ask.panels].filter(id => input.itemPolicy !== "approved-v1" || existing.has(id) || contracts.get(id)?.source !== "code" && contracts.get(id) !== null);
+  const ids = [...ask.slots, ...ask.panels].filter(id => input.itemPolicy !== "approved-v1" || existing.has(id) || contracts.get(id)?.source === "explain" && contracts.get(id)?.type !== "template");
   const open = ids.filter((id) => hasTry(w, id));
   const denied = open.length > 0 && deps.attempts ? (await deps.attempts.use(w.number, open)).refused : [];
   const refused = new Set([...ids.filter((id) => !open.includes(id)), ...denied]);
   for (const id of open) w.tries.used.set(id, denied.includes(id) ? w.tries.max : (w.tries.used.get(id) ?? 0) + 1);
-  const asked = which.map((i) => w.slots[i]).filter((x) => !refused.has(x.id) && (input.itemPolicy !== "approved-v1" || x.existing || contracts.get(x.id)?.source === "story" || contracts.get(x.id)?.source === "explain" && contracts.get(x.id)?.type !== "template"));
+  const asked = which.map((i) => w.slots[i]).filter((x) => !refused.has(x.id) && (input.itemPolicy !== "approved-v1" || x.existing || contracts.get(x.id)?.source === "explain" && contracts.get(x.id)?.type !== "template"));
   const askedPanels = panels.filter((x) => !refused.has(x.id) && (input.itemPolicy !== "approved-v1" || existing.has(x.id)));
   const out = asked.length + askedPanels.length > 0
     ? await callAi(deps, name, pageRequest(input, w, asked, note, askedPanels, memory, pageTexts, attempt), [...asked.map((x) => x.id), ...askedPanels.map((x) => x.id)])
@@ -1815,6 +1818,7 @@ const generated = (w: PageWork, i: number, b: BuiltQuestion, attempts: Generated
   number: i + 1, slot: w.slots[i].id, part: w.slots[i].part.kind, ...(w.slots[i].place ? { place: w.slots[i].place! } : {}), check: b.check, attempts, package: b.package,
   ...(w.slots[i].contract ? { itemPlan: structuredClone(w.slots[i].contract!) } : {}),
   ...(w.slots[i].existing ? { existing: true } : {}),
+  ...(!w.slots[i].contract && b.package && b.wordings?.includes(b.package.text) ? { codeText: b.package.text } : {}),
 });
 
 /** What to do about a failed check, said plainly for the redo; null when the reason says it all. */
@@ -2471,7 +2475,9 @@ function layOut(input: GenerateInput) {
             if (storyKey && strict && slot.place && STEP_STORY_PLACES.has(slot.place) && slot.place !== "challenge" && pageStories.has(storyKey)) continue;
             // A stories page mixes kinds of story (join, take away, compare, ...) while its steps have others (the U4 review).
             const kind = slot.place === "word-problems" || slot.place === "solve-it-two-ways" && w.page.type === "word-problems" ? storyKind(p.text) : null;
-            if (kind && strict && pageStoryKinds.has(kind) && pageStoryKinds.size < 3) continue;
+            // (A kind once a page: strict, then while the page has fewer than 3 kinds; the book check fails a kind twice, and
+            // the whole-book repair takes another, the real U16 r17's two take-aways from 10,000.)
+            if (kind && pageStoryKinds.has(kind) && (strict || candidate < 768)) continue;
             // An extra practice page asks questions from this workbook again ("Answer questions from this workbook").
             const limit = slot.place === "warm-up" || c.source === "explain" ? Infinity : 1;
             // (U4 to U9, D-222: an extra practice page may ask a task of the book once more, 40 pages on.)

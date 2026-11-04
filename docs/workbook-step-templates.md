@@ -377,8 +377,16 @@ backwards") does not print.
   not fit beside its example panel prints a one-line reminder instead.
 - **Alignment:** a row's cards top-aligned with each number on its text's first
   line; one gap before every section label; a test card's box at its top right.
-- **Open:** the full U4 book (fixed seed) has three practice pages one to three
-  questions short of 8 (Days 1 and 9): U4's large type holds 7 there.
+- **The writer edits no story text** (Codex at cb78c56b, B1 final, Savar): every
+  story, Solve it two ways included, prints code's own text with code's name,
+  thing and pronouns; the writer is asked for explanations only; the book check
+  needs a printed story to equal code's text character for character (its plan's,
+  or the wording code chose, `codeText`); Sam is Spot the error's child only.
+- **Stories pages** from U10 tell three kinds where they have three stories
+  (U16 adds code's compare stories on its 4.4 steps); U4 to U9 keep two kinds.
+- **U4 room:** a tighter row gap at U4 to U9 (boxes unchanged), a true or false
+  pair one box high, and shorter claim wording ("Right? If not, fix it.").
+- **Open:** the full U4 book (fixed seed) still has practice pages short of 8.
 
 ## Report
 
