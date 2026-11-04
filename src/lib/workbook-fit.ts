@@ -3,7 +3,8 @@
 // question or the page that overflows, a question with no printed content or answer space, or a page type the template
 // has no layout for. With the real templates (#310, `workbookTemplate`) it is their strict fit check (#363): a slot
 // holding more items than it takes, content past the content area, an answer box smaller than the band allows, a box
-// over its own text, a work box or writing lines under their minimum. The real templates lay out a page from its
+// over its own text, a work box or writing lines under their minimum, and the layout checks of Savar's page reviews
+// (src/lib/workbook-layout-check.ts: their problems keep the kind "layout"). The real templates lay out a page from its
 // content, so the generator lays its book out for them (GenerateInput.book) and every page it checks has content.
 // Pure TypeScript: no Next.js, React, network, database or clock (the engine is passed in).
 import { fullnessProblem } from "@/lib/workbook-template";
@@ -21,7 +22,8 @@ export function renderFitCheck(o: { template: WorkbookTemplate; engine: PrintEng
         const fullness = o.fullness ? fullnessProblem(page, new Map(measured.map(m=>[m.name,m]))) : null;
         return fullness ? {ok:false,problems:[{question:null,reason:fullness,kind:"fullness"}]} : { ok: true };
       }
-      return { ok: false, problems: result.problems.map((p) => ({ question: p.question, reason: p.reason })) };
+      // (A layout check's problem keeps its kind: the generator's loops make room for a page, never for its layout.)
+      return { ok: false, problems: result.problems.map((p) => ({ question: p.question, reason: p.reason, ...(p.kind ? { kind: p.kind } : {}) })) };
     },
   };
 }

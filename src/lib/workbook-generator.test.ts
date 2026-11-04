@@ -327,6 +327,18 @@ describe("a page that does not fit", () => {
     expect(page.questions.map((q) => q.slot)).not.toContain(lastSlot);
   });
 
+  it("keeps every question of a page whose fit check finds only a layout problem, and reports the page", async () => {
+    // (The layout checks of src/lib/workbook-layout-check.ts: no question more or less mends a misaligned box.)
+    const total = DAY_PAGES[0].parts.reduce((n, p) => n + p.items, 0);
+    const problem = { question: 2, reason: "question 2's answer box starts 9 px above its first line", kind: "layout" as const };
+    const fit: FitCheck = { fits: async (page) => (page.number === 3 ? { ok: false, problems: [problem] } : { ok: true }) };
+    const page = (await generate(deps({ fit }))).pages[2];
+    expect(page.questions).toHaveLength(total);
+    expect(page.attempts).toBe(1);
+    expect(page.leftOut).toBeUndefined();
+    expect(page.fit).toEqual({ status: "failed", problems: [problem] });
+  });
+
   it("is checked with the page's content and numbers, not the failed questions with no package", async () => {
     const seen: { number: number; questions: number[] }[] = [];
     const fit: FitCheck = { fits: async (page) => { seen.push({ number: page.number, questions: page.questions.map((q) => q.number) }); return { ok: true }; } };

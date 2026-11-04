@@ -78,6 +78,8 @@ export interface FitProblem {
   question: number | null;
   slot: string | null;
   reason: string;
+  /** "layout": a layout check of the page (src/lib/workbook-layout-check.ts), not a lack of room. */
+  kind?: "layout";
 }
 
 export interface WorkbookTemplate {
@@ -126,6 +128,18 @@ export interface MeasuredElement {
    * for an element with no text; the renderer reads it for the page number and each question's content.
    */
   textPrinted: boolean;
+  /**
+   * The first line of its text: its rect and its baseline, in CSS pixels from the sheet's top left corner. Only the real
+   * engine gives it (with `font` and `clip`), for the template's layout checks; absent for an element with no text.
+   */
+  firstLine?: { x: number; y: number; width: number; height: number; baseline: number };
+  /** The first line's font: family, weight and size ("Unica Mono 500 14px"). */
+  font?: string;
+  /**
+   * How many CSS pixels of its shown lines of text a clipping box cuts off at each side, the most of any line (a line's
+   * rect is its font's full height, a little more than its letters). All 0: nothing is cut.
+   */
+  clip?: { top: number; bottom: number; left: number; right: number };
   x: number;
   y: number;
   width: number;
@@ -158,6 +172,7 @@ export interface RenderProblem {
   question: number | null;
   slot?: string;
   reason: string;
+  kind?: "layout";
 }
 
 export type RenderResult =
@@ -260,7 +275,7 @@ export async function renderWorkbook(o: {
     const image = out.images[i];
     const path = `${folder}/${pageImageName(page.number, o.fileKey)}`;
     files.push({ path, contentType: "image/png", bytes: image.png });
-    const fail = (question: number | null, reason: string, slot?: string) => problems.push({ page: page.number, question, ...(slot ? { slot } : {}), reason });
+    const fail = (question: number | null, reason: string, slot?: string, kind?: "layout") => problems.push({ page: page.number, question, ...(slot ? { slot } : {}), reason, ...(kind ? { kind } : {}) });
     const measured = new Map<string, MeasuredElement>();
     for (const m of out.measured.filter((m) => m.sheet === i)) {
       if (measured.has(m.name)) fail(null, `the template marks ${m.name} more than once`);
@@ -290,7 +305,7 @@ export async function renderWorkbook(o: {
         fail(q.number, `question ${q.number} has no answer space`);
       } else questions.push({ ...q, box: pixelBox(m, image) });
     }
-    for (const p of template.fit?.(page, measured, draft) ?? []) fail(p.question, p.reason, p.slot ?? undefined);
+    for (const p of template.fit?.(page, measured, draft) ?? []) fail(p.question, p.reason, p.slot ?? undefined, p.kind);
     pages.push({ number: page.number, dayLabel: page.dayLabel, type: page.type, qrToken: page.qrToken, image: { path, width: image.width, height: image.height }, questions });
   });
   if (problems.length) return { status: "failed", problems };
