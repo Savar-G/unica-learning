@@ -1,13 +1,16 @@
 import { adminSession, type CardSetupRow } from "@/lib/admin-store";
+import { adminClient } from "@/lib/supabase-auth";
 import { isUuid } from "@/lib/assessment-store";
 import { startPlan, stripe } from "@/lib/stripe";
 import { planPrice } from "@/lib/subscription-plan";
 import { firstDelivery } from "@/lib/workbook-delivery";
 import { workbookDeliveryStore } from "@/lib/workbook-delivery-store";
+import { sendPlanStartEmail } from "@/lib/workbook-email-server";
 import { workbookStore } from "@/lib/workbook-store";
 
 // D-139: an admin starts a saved card's paid plan when the child's first workbook arrives at your home. Stripe holds the result; the
-// dashboard reads it from there. Answers { ok, firstChargeAt } or { ok: false, error }.
+// dashboard reads it from there, and the parent gets the confirmation email. Answers { ok, firstChargeAt, confirmation }
+// or { ok: false, error }.
 export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards/[id]/start">) {
   // Checks Auth and live admin membership for every request.
   const admin = await adminSession();
@@ -32,10 +35,24 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
     if (!receipt) return Response.json({ ok: false, error: "delivery_receipt_required" }, { status: 409 });
     const s = stripe();
     if (!s) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
-    const result = await startPlan(s, { cardSetup: card.id, customer: card.stripe_customer_id, price: planPrice(Number(card.price), card.plan), deliveryConfirmed: true });
-    return Response.json(result, { status: result.ok ? 200 : 409 });
+    const price = planPrice(Number(card.price), card.plan);
+    const result = await startPlan(s, { cardSetup: card.id, customer: card.stripe_customer_id, price, deliveryConfirmed: true });
+    if (!result.ok) return Response.json(result, { status: 409 });
+    return Response.json({ ...result, confirmation: await confirm(card.id, price, result.firstChargeAt, new URL(request.url).origin) });
   } catch (e) {
     console.error("[stripe] start plan failed", e instanceof Error ? e.message : "failed");
     return Response.json({ ok: false, error: "failed" }, { status: 502 });
+  }
+}
+
+/** The plan has started, so a failed email must not read as a failed start. The admin sees the outcome. */
+async function confirm(cardId: string, price: number, firstChargeAt: string, origin: string) {
+  const db = adminClient();
+  if (!db) return "not_sent";
+  try {
+    return (await sendPlanStartEmail(db, { cardId, price, firstChargeAt, origin })).status;
+  } catch (e) {
+    console.error("[stripe] plan start email failed", e instanceof Error ? e.message : "failed");
+    return "not_sent";
   }
 }

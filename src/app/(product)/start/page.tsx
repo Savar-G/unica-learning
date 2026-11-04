@@ -19,7 +19,7 @@ export const metadata = pageMetadata({
 // The signup for the free online math assessment (D-082): no plan question. Every "Take free assessment" link on
 // the public site opens it (#82). The parent proves the email with a one-time code before any account data is written.
 // D-134: the three steps and a piece of the sample report come first, so the parent knows what happens before the
-// form. On a phone the form is short (no postal code, no password): the test happens later on a laptop or tablet.
+// form. On a phone the form is short (no password): the test happens later on a laptop or tablet.
 export default async function Start() {
   if (await parentId(await sessionClient())) redirect("/account");
   const phone = isPhone(await headers());

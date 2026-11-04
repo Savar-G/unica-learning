@@ -282,7 +282,7 @@ function storySteps(input: GenerateInput, slot: Slot, day: number, level: number
  */
 /** A stories page's question that is no story while its step has stories (a drill is shorter, "What is 2 more than 8?"). */
 function notAStory(input: GenerateInput, slot: Slot, c: ItemPlan, p: QuestionPackage, pageType?: string): boolean {
-  // (Two ways on a Number stories page is one of its stories, U4 to U9, D-222.)
+  // (Two ways on a Number stories page is one of its stories, U4 to U9, D-226.)
   const storyPlace = STEP_STORY_PLACES.has(slot.place ?? "warm-up") && slot.place !== "challenge" || slot.place === "solve-it-two-ways" && pageType === "word-problems";
   if (storyPlace && !printedForm(p).startsWith("context:") && stepHasStory(input, c)) return true;
   // (A stories page's story works an operation, Savar 2026-11-04: never a place-value question dressed as a story.)
@@ -2220,7 +2220,7 @@ export function workbookCapacityPlan(curriculum: Curriculum, plan: WorkbookPlan)
       // drops one when they do not fit, down to 4.
       if (s.slot === "show-what-you-know") s.items = target(6);
     }
-    // The page's 8 practice questions across its rows, not 8 a row (D-225: 8 to 10 a page; U16's Practice 2 held 14).
+    // The page's 8 practice questions across its rows, not 8 a row (D-229: 8 to 10 a page; U16's Practice 2 held 14).
     const rows = layout.slots.filter(s => s.slot === "practice-row");
     if (rows.length > 1) rows.forEach((s, k) => { s.items = Math.floor(target(8) / rows.length) + (k < target(8) % rows.length ? 1 : 0); });
     if (page.type === "unit-b") {
@@ -2481,7 +2481,7 @@ function layOut(input: GenerateInput) {
             if (kind && pageStoryKinds.has(kind) && (strict || candidate < 768)) continue;
             // An extra practice page asks questions from this workbook again ("Answer questions from this workbook").
             const limit = slot.place === "warm-up" || c.source === "explain" ? Infinity : 1;
-            // (U4 to U9, D-222: an extra practice page may ask a task of the book once more, 40 pages on.)
+            // (U4 to U9, D-226: an extra practice page may ask a task of the book once more, 40 pages on.)
             const spaced = (used.get(key) ?? 0) === 1 && extraPracticeRepeats(input.plan.level, !!w.page.extraPractice, usedAt.get(key) ?? w.number, w.number);
             if ((used.get(key) ?? 0) >= limit && !spaced || pageOps.has(op) || pageTexts.has(p.text)) continue;
             // A sentence frame once a page and twice a day, the Challenge's too (the U16 review: three "saw the number N
@@ -3343,7 +3343,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
     });
     // Checkpoints keep pre-review pages. These code-only repairs are deterministic
     // and repeat after a resume without spending another provider call.
-    // The plan page says "about N minutes" from the book's own day estimates, their mean to the nearest five (D-225: a
+    // The plan page says "about N minutes" from the book's own day estimates, their mean to the nearest five (D-229: a
     // day is about 30 minutes; the real U4 sample said "20 to 25 minutes" beside days estimated at 28.7). Never copy
     // written apart from the estimate.
     const minutes = quality.days.map(d => d.minutes).filter(m => m > 0);

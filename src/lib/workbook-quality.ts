@@ -21,7 +21,7 @@ export interface BookQuality {
    */
   steps?: { day: number; average: number }[];
   sources?: { template: number; handBuilt: number; existing: number; total: number };
-  /** Extra practice questions that ask a task of the book once more (the U4 to U9 rule, D-222). */
+  /** Extra practice questions that ask a task of the book once more (the U4 to U9 rule, D-226). */
   extraRepeats?: number;
   failedRate: number;
   dropped: number;
@@ -58,7 +58,7 @@ export function typeKey(p: Pick<GeneratedPage, "type">, q: Pick<GeneratedPage["q
 /**
  * A page type's fewest practice and review items (Cedric's section 8 table; about 25% fewer from U19): capacity
  * plans fewer items than this only by reporting the omission, and the book check fails a page below it. (U4 to U9: a
- * new idea's floor is 2, D-222, workbook-early-levels.ts.)
+ * new idea's floor is 2, D-226, workbook-early-levels.ts.)
  */
 export function pageMinimum(type: string, level: number, extra: boolean): number {
   // The adopted counts (Cedric's section 8, #482 review at db3b1a0): 8 to 10 practice questions on a practice or review
@@ -127,12 +127,12 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       const own = practice.filter(ownStep).length;
       // (Half, or 3 for a step with few printable templates.)
       const need = Math.min(3, Math.ceil(practice.length / 2));
-      // (From U10: at U4 to U9 a small step can run out of new tasks late in the book, D-222, and its page prints its
+      // (From U10: at U4 to U9 a small step can run out of new tasks late in the book, D-226, and its page prints its
       // review under "Remember these".)
       if (p.content.level >= 10 && practice.length >= 4 && own < need) issues.push({ page: p.number, kind: "step", reason: `the page practises its own step in ${own} of ${practice.length} questions; it needs ${need}` });
     }
     // A step template page prints its type's adopted count of practice questions (Cedric's section 8); at U4 to U9 a
-    // new idea's is 2, and two ways counts as a story on the Number stories page (D-222, workbook-early-levels.ts).
+    // new idea's is 2, and two ways counts as a story on the Number stories page (D-226, workbook-early-levels.ts).
     // (Every page kind from U4, whatever wrote its questions: Codex at 47c5fd78 found a hand-built page skipped.)
     if (p.content?.kind === "day" && p.content.consistentLayout && p.content.level >= 4) {
       const level = p.content.level;
@@ -268,7 +268,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     const key = taskIdentity(pkg);
     const at = seen.get(key) ?? [];
     const limit = 1;
-    // (U4 to U9, D-222: an extra practice page may ask a task of the book once more, 40 pages on.)
+    // (U4 to U9, D-226: an extra practice page may ask a task of the book once more, 40 pages on.)
     const spaced = at.length === 1 && p.day === null && extraPracticeRepeats(pkg.level, true, at[0], p.number);
     if (spaced) extraRepeats++;
     if (at.includes(p.number) || at.length >= limit && !spaced) issues.push({ page: p.number, kind: "repeat", reason: `question ${q.number} repeats pages ${at.join(", ")} (limit ${limit})` });

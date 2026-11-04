@@ -4500,7 +4500,7 @@ After:
 
 ## Unica Challenge templates (2026-11-03)
 
-Savar approved writing hard Challenge templates for the U16 day steps that had too few, so that every U16 day prints 3 Challenge cards that are harder than its practice (D-224; Codex at 24751f16, B3). Cedric's data is unchanged: the templates live in `src/lib/workbook-curriculum/house-templates.ts` and are appended to their steps when the curriculum loads. Each has a number answer, takes two steps, and keeps its numbers in the step's range (top half for Show what you know). None repeats a v2 hard template.
+Savar approved writing hard Challenge templates for the U16 day steps that had too few, so that every U16 day prints 3 Challenge cards that are harder than its practice (D-228; Codex at 24751f16, B3). Cedric's data is unchanged: the templates live in `src/lib/workbook-curriculum/house-templates.ts` and are appended to their steps when the curriculum loads. Each has a number answer, takes two steps, and keeps its numbers in the step's range (top half for Show what you know). None repeats a v2 hard template.
 
 | Skill | Step | Format | Template | Answer |
 |---|---:|---|---|---|

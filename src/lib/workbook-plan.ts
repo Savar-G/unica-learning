@@ -640,7 +640,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
       ? { type: "math-in-the-world", role: "practice", parts: [T("math-in-the-world", "A")] }
       : { type: pageType("practice"), role: "practice", parts: [T("practice", "A"), ...(sixPages ? twoWays : [])] };
     // Else on the word problems page.
-    // (U4 to U9, D-222: Solve it two ways moves here from practice-2, see workbook-early-levels.ts.)
+    // (U4 to U9, D-226: Solve it two ways moves here from practice-2, see workbook-early-levels.ts.)
     const twoWaysHere = !parentLed && !sixPages && twoWaysOnStoriesPage(n);
     const story: Shape = {
       type: pageType("word-problems"), role: "story",

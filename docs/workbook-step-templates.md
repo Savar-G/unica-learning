@@ -234,7 +234,7 @@ backwards") does not print.
 - **Stories:** a Number stories page prints stories on every pass while its steps
   have them, a story told again rather than a drill.
 - **Minutes:** the plan page says "about N minutes", the mean of the book's own day
-  estimates to the nearest five (D-225).
+  estimates to the nearest five (D-229).
 
 ## Codex at 47c5fd78, U16 r8 and U4 r17 (2026-11-03)
 
@@ -269,7 +269,7 @@ backwards") does not print.
 
 ## Confirmed decisions (Savar, 2026-11-03)
 
-- **U4 to U9 (D-222),** each one function in `src/lib/workbook-early-levels.ts`:
+- **U4 to U9 (D-226),** each one function in `src/lib/workbook-early-levels.ts`:
   - **Solve it two ways** sits on the Number stories page, not Practice 2
     (`twoWaysOnStoriesPage`), and counts there as a story (`twoWaysCountsAsStory`).
     Practice 2 holds its 8 practice questions and Spot the error, in closer rows.
@@ -281,10 +281,10 @@ backwards") does not print.
     asked (`extraPracticeRepeats`). The sample index reports how many do. Fewer
     extra practice pages, then a labelled Notes page, are the next steps if a book
     runs out.
-- **Spaced review (D-223):** a question type comes back with fresh numbers, never
-  an exact task (D-222 is the one exception).
-- **Challenge (D-224):** 3 questions a day, all harder than the day's practice.
-- **Page counts and time (D-225):** practice and review pages hold 8 to 10
+- **Spaced review (D-227):** a question type comes back with fresh numbers, never
+  an exact task (D-226 is the one exception).
+- **Challenge (D-228):** 3 questions a day, all harder than the day's practice.
+- **Page counts and time (D-229):** practice and review pages hold 8 to 10
   questions; a day is about 30 minutes, and the How it works page says "about N
   minutes" from the book's own day estimates (their mean to the nearest five).
 
@@ -300,7 +300,7 @@ backwards") does not print.
 - **Task identity (B2):** a question's printed choices are not its task: "6 is 1
   and which number: 6 or 5?" is "6 is 1 and ?". A number answer is one answer,
   boxed or circled. A story is typed by its printed words, whoever wrote them.
-- **Challenge (B3, D-224):** every card is on the day's hardest step and above
+- **Challenge (B3, D-228):** every card is on the day's hardest step and above
   every question of that step's practice that day: its difficulty, then its work
   (a circled choice, a number, a story), then the numbers its answer combines.
   A card of an earlier step fails, whatever its label.
@@ -360,7 +360,7 @@ backwards") does not print.
 
 ## Savar's U16 r13 and r16 reviews (2026-11-04)
 
-- **Numbers** of 1,000 and up print with commas everywhere (D-226, replacing the
+- **Numbers** of 1,000 and up print with commas everywhere (D-230, replacing the
   BC spaces); stored texts keep plain digits, and the solve check takes either.
 - **Titles** read naturally ("Place value up to 100,000"; "up to" is one word
   of the 4). "Now you" is "Now it's your turn"; "In your head" is "Mental math"

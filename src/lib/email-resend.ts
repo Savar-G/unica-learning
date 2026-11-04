@@ -1,5 +1,6 @@
 import "server-only";
-import type { MailTransport, SendResult } from "@/lib/email-delivery";
+import type { EmailMessage, MailTransport, SendResult } from "@/lib/email-delivery";
+import { FOUNDERS_SENDER_NAME } from "@/lib/contact";
 
 // The Resend adapter of the mail transport (#149). The one place that reads the Resend key, the sender address and the
 // request time limit, and the one place that decides what an answer from Resend means:
@@ -23,6 +24,18 @@ export function resendSender(): string | null {
   return process.env.EMAIL_FROM || null;
 }
 
+/**
+ * The From header of `message`: EMAIL_FROM, or, for an email the founders sign, the founders' name on the same address
+ * (D-225). Null when EMAIL_FROM is not set.
+ */
+export function resendFrom(message: Pick<EmailMessage, "sender">): string | null {
+  const from = resendSender();
+  if (!from || message.sender.to !== "parent" || message.sender.from !== "founders") return from;
+  const address = from.match(/<([^>]+)>/)?.[1] ?? from.trim();
+  // Plain `Name <address>`, the form in Resend's docs: the name has no comma or other character that needs quotes.
+  return `${FOUNDERS_SENDER_NAME} <${address}>`;
+}
+
 const refusal = (status: number) => status >= 400 && status < 500 && status !== 408;
 const reason = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -32,7 +45,7 @@ export function resendTransport({ fetch: request = (input, init) => fetch(input,
     async send(message): Promise<SendResult> {
       const key = process.env.RESEND_API_KEY;
       if (!key) return { status: "refused", error: "RESEND_API_KEY is not set" };
-      const from = resendSender();
+      const from = resendFrom(message);
       if (!from) return { status: "refused", error: "EMAIL_FROM is not set" };
 
       // The time limit covers the answer's body too.

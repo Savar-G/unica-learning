@@ -30,7 +30,7 @@ import { titleProblem } from "@/lib/workbook-titles";
 import { printedMinus, singularPlaces } from "@/lib/workbook-wording";
 
 /**
- * Numbers of 1,000 and up print with commas, everywhere a page prints text (Savar, 2026-11-03, D-226, replacing the BC
+ * Numbers of 1,000 and up print with commas, everywhere a page prints text (Savar, 2026-11-03, D-230, replacing the BC
  * spaces): 4,998, 97,531, 1,000,000. A number written in spaced groups ("10 000") is one number. The stored texts keep
  * plain digits, so every check reads them as before; a child may write either.
  */
@@ -495,7 +495,7 @@ const CSS = `
 .pg.consistent .error-item>.q:first-child{flex-wrap:nowrap;align-items:baseline}.pg.consistent .error-item>.q:first-child .wk{flex:1 1 0}
 .pg.consistent .error-item .ans{flex-wrap:wrap;gap:12px}.pg.consistent .error-item .ans .fix{margin-left:12px}
 .pg.consistent .error-item .ab{height:48px}
-/* Practice 2 holds 8 practice questions and Spot the error (U4 to U9, D-222, workbook-early-levels.ts): closer rows. */
+/* Practice 2 holds 8 practice questions and Spot the error (U4 to U9, D-226, workbook-early-levels.ts): closer rows. */
 .pg.consistent[data-page-type="practice-2"] .cols,.pg.consistent[data-page-type="practice-2"] .two{row-gap:calc(4px + var(--extra-gap,0px))}
 .pg.consistent[data-page-type="practice-2"] .two .ab{height:52px;min-width:56px}
 .pg.consistent[data-page-type="practice-2"] .q.seq-item{gap:4px}
@@ -704,7 +704,7 @@ function shapeSvg(shape: string, x: number, y: number, fill: string): string {
 
 /** A worked line, its [given] numbers in blue. */
 /** BC prints numbers from 10 000 up in groups of three with a space (4 digits together, decimals untouched). */
-/** (The BC spaces are gone, D-226: numbers print with commas through `escape`.) */
+/** (The BC spaces are gone, D-230: numbers print with commas through `escape`.) */
 export const bcNumbers = (t: string) => t;
 const worked = (line: WorkedLine) => bcNumbers(escape(printedMinus(singularPlaces(line)))).replace(/\[([^\]]*)\]/g, `<span class="blue">$1</span>`);
 

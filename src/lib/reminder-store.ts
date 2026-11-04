@@ -221,7 +221,7 @@ export function reminderMessage(r: DueReminder, token: string, state: LoadedStat
   }
 
   return {
-    sender: { to: "parent" },
+    sender: email.founders ? { to: "parent", from: "founders" } : { to: "parent" },
     to: parent.email,
     replyTo: SUPPORT_EMAIL,
     subject: email.subject,

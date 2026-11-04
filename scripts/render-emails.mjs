@@ -11,6 +11,7 @@ const bundled = await build({
     export { reportEmail } from './src/lib/report-email';
     export { linkEmail } from './src/lib/sign-in-link';
     export { AUTH_EMAIL_KINDS, authEmail } from './src/lib/auth-email';
+    export { welcomeEmail, phoneWelcomeEmail, waitlistEmail } from './src/lib/founder-emails';
     export { reportModel } from './src/lib/assessment';
     export { knowsUpTo, takeTest } from './src/lib/assessment/scripted-child';
   `, resolveDir: process.cwd() },
@@ -37,6 +38,9 @@ for (const province of ["BC", "ON"]) {
     samples[`report-${province}-${offer ? "offer" : "quiet"}`] = api.reportEmail({ view, parentName: common.parentName, url: "https://unicalearning.com/account/report/sample?src=email", unsubscribeUrl: common.unsubscribeUrl, offer });
   }
 }
+samples["founders-welcome"] = api.welcomeEmail({ parentName: common.parentName, childName: common.childName, url: "https://unicalearning.com/account/start/sample" });
+samples["founders-phone-welcome"] = api.phoneWelcomeEmail({ parentName: common.parentName, childName: common.childName, url: "https://unicalearning.com/sign-in/link?t=sample-token" });
+samples["founders-waitlist"] = api.waitlistEmail({ parentName: common.parentName, childName: common.childName, curriculum: "Ontario", reportUrl: "https://unicalearning.com/account/report/sample", bookingUrl: "https://calendly.com/contact-unicalearning/15min" });
 for (const kind of api.AUTH_EMAIL_KINDS) samples[kind] = api.authEmail(kind);
 await mkdir(output, { recursive: true });
 for (const [name, email] of Object.entries(samples)) await writeFile(resolve(output, `${name}.html`), email.html);

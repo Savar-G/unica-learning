@@ -217,7 +217,7 @@ the Try this first card from U19. On Days 5 and 10 the Friday 5 replaces the Mix
 | 5 Word problems | "Number stories to <n>" up to U12, "Word problems" from U13 (D-201); "Read it. Work it out in the box. Write the answer." | 3 stories, each: number, story (up to 3 lines), optional picture (dots, blocks), work box, ANSWER box with unit word; one "How do you know?" or "Did you need to ...? How do you know?" with 2 writing lines. Story number in Geist Light 26; stories separated by full-width 1.5 px `#FF6A3D` rules; answer boxes 80 to 96 by 40 |
 | 6 Unit B | the skill's short title, or the Unit B unit title when skills mix (D-201); "Answer the questions. Use the example if you need help." | NEW IDEA or REMEMBER chip + "Unit B · new step" or "From yesterday"; reminder panel (figure + "What's going on"); PRACTICE chip; up to 8 items, "HARDER: TWO MORE EACH" rows last |
 | 7 Remember these + Mixed set | "Remember these?" ("Review and Friday 5" with the Friday 5); "Things you learned before, so they stay fresh." | 8 review items in 2 columns (answer boxes at the right of each column); MIXED SET chip + "Tick + or −, then write the answer."; 3 to 4 Mixed set items |
-| 8 Challenge | "Challenge"; "Test yourself." | CHALLENGE chip; 3 Challenge cards a day (D-224; the skeleton had 1 to 2), full width and stacked, each with a large work box; spare room goes to spaced review. The samples' four cards in a 2 by 2 grid were sample-only |
+| 8 Challenge | "Challenge"; "Test yourself." | CHALLENGE chip; 3 Challenge cards a day (D-228; the skeleton had 1 to 2), full width and stacked, each with a large work box; spare room goes to spaced review. The samples' four cards in a 2 by 2 grid were sample-only |
 
 ### 7.2 Other page counts
 

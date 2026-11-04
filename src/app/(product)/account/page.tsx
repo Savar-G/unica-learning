@@ -40,13 +40,15 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   const db = await sessionClient();
   const parentUser = await parentId(db);
   if (!parentUser) redirect("/sign-in");
-  const [{ data: parent }, { data: kids }, states, { data: reports }] = await Promise.all([
+  const [{ data: parent }, { data: kids }, states, { data: reports }, { data: cards }] = await Promise.all([
     db.from("parents").select("name, email, postal, time_zone").maybeSingle(),
     db.from("children").select(`id, created_at, first_name, grade, province, ${LEARNING_COLUMNS}`).order("created_at").order("id"),
     // Start, continue, start again after 24 hours, or wait 30 days after a completed test (#72).
     parentStartStates(parentUser),
     // Reports (#65), oldest first, each with the time its test finished.
     db.from("reports").select("id, child_id, assessment:assessments(completed_at)").order("created_at"),
+    // A saved card opens the plan page, where the parent can see or cancel the plan.
+    db.from("card_setups").select("card_saved_at"),
   ]);
   if (!parent) redirect("/account/finish");
   // While a child waits for the next test, the link opens the report of the test just done (none while it is built).
@@ -102,6 +104,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
         ))}
       </ul>
       {scansEnabled && <p><Link className="btn" href="/account/scan">Scan pages <span aria-hidden="true">→</span></Link></p>}
+      {cards?.some((c) => c.card_saved_at) && <p><Link className="btn ghost" href="/account/plan">Manage or cancel plan</Link></p>}
       {minutes.size > 0 && <p className="small">Your &quot;Try Maya&quot; calls have a separate limit of {DEMO_DAILY_MINUTES} minutes a day for your account. They do not use your child&apos;s weekly minutes.</p>}
       {!parent.time_zone && <SaveTimeZone />}
       <AddChild province={children.at(-1)?.province ?? "BC"} />

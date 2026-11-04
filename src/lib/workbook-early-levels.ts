@@ -1,5 +1,5 @@
 /**
- * The young levels' layout and repeat rules, U4 to U9 (D-222, Savar confirmed 2026-11-03; #482 review at db3b1a0).
+ * The young levels' layout and repeat rules, U4 to U9 (D-226, Savar confirmed 2026-11-03; #482 review at db3b1a0).
  * Each rule lives here only, so it changes in one place.
  */
 

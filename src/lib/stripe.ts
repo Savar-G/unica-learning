@@ -1,6 +1,7 @@
 import "server-only";
 import Stripe from "stripe";
 import { gradeName } from "@/lib/assessment/grades";
+import { RUNNING_PLAN } from "@/lib/parent-plan";
 import { cad, priceWithOffer } from "@/lib/site";
 import { PLAN_PRODUCT, firstChargeAt, planTerms } from "@/lib/subscription-plan";
 
@@ -207,4 +208,34 @@ export async function startPlan(s: Stripe, p: { cardSetup: string; customer: str
   }, { idempotencyKey: `start-plan-${p.cardSetup}` });
   const end = created.trial_end ? new Date(created.trial_end * 1000) : firstChargeAt(now, terms.trialDays);
   return { ok: true, subscription: created.id, firstChargeAt: end.toISOString() };
+}
+
+export type CancelPlanOutcome =
+  | { ok: true; changed: boolean; endsAt: string | null }
+  | { ok: false; error: "no_plan" };
+
+/**
+ * The parent's cancel button. A plan in its free month or a paid month stops at the end of that month and charges
+ * nothing more (terms: "takes effect at the end of the month you are in"). A plan with a failed payment stops now, so
+ * Stripe does not try the card again.
+ */
+export async function cancelPlan(s: Stripe, customer: string): Promise<CancelPlanOutcome> {
+  const current = await s.subscriptions.list({ customer, status: "all", limit: 20 });
+  const live = current.data.filter((x) => RUNNING_PLAN.has(x.status));
+  if (live.length === 0) return { ok: false, error: "no_plan" };
+  let changed = false;
+  let endsAt: string | null = null;
+  for (const plan of live) {
+    if (plan.status !== "trialing" && plan.status !== "active") {
+      await s.subscriptions.cancel(plan.id);
+      changed = true;
+      continue;
+    }
+    const end = plan.trial_end && plan.status === "trialing" ? plan.trial_end : plan.items.data[0]?.current_period_end;
+    if (end) endsAt = new Date(end * 1000).toISOString();
+    if (plan.cancel_at_period_end) continue;
+    await s.subscriptions.update(plan.id, { cancel_at_period_end: true });
+    changed = true;
+  }
+  return { ok: true, changed, endsAt };
 }

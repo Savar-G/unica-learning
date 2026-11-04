@@ -1,6 +1,6 @@
 // Unica's own Challenge templates (Savar, 2026-11-03): hard templates with a number answer and more than one step, for
 // the U16 day steps whose Challenge had one medium template only. A Challenge prints 3 cards a day on the day's step
-// (D-224), each harder than that day's practice (Codex at 24751f16, B3), so these steps needed 3 hard ones. They are
+// (D-228), each harder than that day's practice (Codex at 24751f16, B3), so these steps needed 3 hard ones. They are
 // appended to Cedric's templates of the step when the curriculum loads; his data stays as he wrote it. Each is logged in
 // data/curriculum/author-changes.md ("Unica Challenge templates"). The step's name is checked, so a renumbered step
 // (Cedric's v2, PR #508) fails the curriculum test instead of taking a template that is not its own.

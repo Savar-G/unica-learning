@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { commaNumbers } from "@/lib/workbook-template";
 import { naturalTitle } from "@/lib/workbook-book";
 
-describe("printed numbers and titles (Savar, 2026-11-03/04, D-226)", () => {
+describe("printed numbers and titles (Savar, 2026-11-03/04, D-230)", () => {
   it("prints every number of 1,000 and up with commas, a spaced number as one", () => {
     expect(commaNumbers("Omar has 10000 points and gives 4998 away.")).toBe("Omar has 10,000 points and gives 4,998 away.");
     expect(commaNumbers("The 3 in 83 175 is worth 300. 97 531, 1 000 000 and 999")).toBe("The 3 in 83,175 is worth 300. 97,531, 1,000,000 and 999");

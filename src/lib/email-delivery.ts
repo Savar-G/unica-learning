@@ -1,5 +1,5 @@
 import "server-only";
-import { resendConfigProblem, resendSender, resendTransport } from "@/lib/email-resend";
+import { resendConfigProblem, resendFrom, resendTransport } from "@/lib/email-resend";
 
 // The parent email delivery module (#149, spec #143): every email the site sends goes through here. A caller gives a
 // finished message and, when the email must go at most once, a send key. The module owns the "send once" protocol:
@@ -9,8 +9,11 @@ import { resendConfigProblem, resendSender, resendTransport } from "@/lib/email-
 // Two seams: the mail transport (Resend in production, src/lib/email-resend.ts) and the send ledger (where the claims
 // live). Tests use the in-memory adapters in src/lib/email-delivery-memory.ts.
 
-/** Who the email goes to. The sender address is EMAIL_FROM for both; when it is not set, the email is refused (D-133). */
-export type Sender = { to: "parent" } | { to: "savar" };
+/**
+ * Who the email goes to. The sender address is EMAIL_FROM for both; when it is not set, the email is refused (D-133).
+ * `from: "founders"` shows the founders' name on that address (D-225).
+ */
+export type Sender = { to: "parent"; from?: "founders" } | { to: "savar" };
 
 /** A finished email. The caller decides its content; the module only sends it. */
 export interface EmailMessage {
@@ -101,7 +104,7 @@ export async function sendEmailOnce<K, H>(
   if (ledger.keepCopy) {
     // A copy that is not kept never changes the email's outcome.
     try {
-      await ledger.keepCopy(handle, key, { from: resendSender(), message, outcome: result.status, emailId: result.status === "sent" ? result.emailId : null });
+      await ledger.keepCopy(handle, key, { from: resendFrom(message), message, outcome: result.status, emailId: result.status === "sent" ? result.emailId : null });
     } catch (e) {
       console.error("[email] copy not kept", result.status, e instanceof Error ? e.message : e);
     }
