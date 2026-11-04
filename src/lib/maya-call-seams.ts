@@ -58,12 +58,12 @@ async function isTestFamily(db: SupabaseClient<Database>, parentId: string): Pro
 }
 
 /** Rebuilds a child's profile on this client; true when it was built. Never throws. */
-async function rebuild(db: SupabaseClient<Database>, childId: string): Promise<boolean> {
+async function rebuild(db: SupabaseClient<Database>, childId: string, factsOnly = false): Promise<boolean> {
   try {
     const workbooks = workbookStore(db);
     const tests = assessmentQuestionReader(db);
     const questions: QuestionReader = { question: (ref) => (ref.source === "workbook" ? workbooks.question(ref) : tests.question(ref)) };
-    const result = await rebuildChildProfile(childId, { profiles: childProfileStore(db), events: learningEventStore(db), ai: childProfileAiClient(), questions });
+    const result = await rebuildChildProfile(childId, { profiles: childProfileStore(db), events: learningEventStore(db), ai: factsOnly ? null : childProfileAiClient(), questions });
     return result.built === true;
   } catch (e) {
     console.error("[maya call] profile rebuild failed", childId, e instanceof Error ? e.message : String(e));
@@ -72,7 +72,7 @@ async function rebuild(db: SupabaseClient<Database>, childId: string): Promise<b
 }
 
 /** `origin`: the site the safety alert's admin link points to; default NEXT_PUBLIC_SITE_URL, else the production site. */
-export function callSeams(db: SupabaseClient<Database>, options: { env?: Env; origin?: string; rebuild?: (childId: string) => Promise<boolean> } = {}): CallSeams {
+export function callSeams(db: SupabaseClient<Database>, options: { env?: Env; origin?: string; rebuild?: CallSeams["rebuild"] } = {}): CallSeams {
   const env = options.env ?? process.env;
   return {
     alerts: callAlerts({ ledger: mayaAlertLedger(db), to: env.SIGNUP_NOTIFY_EMAIL || null, origin: options.origin ?? siteOrigin(env) }),
@@ -80,7 +80,7 @@ export function callSeams(db: SupabaseClient<Database>, options: { env?: Env; or
     connections: mayaConnectionLog(db),
     history: wordingHistoryStore(db),
     events: learningEvents(learningEventStore(db)),
-    rebuild: options.rebuild ?? ((childId) => rebuild(db, childId)),
+    rebuild: options.rebuild ?? ((childId, o) => rebuild(db, childId, o?.factsOnly)),
     model: (id) => callModel(id, env),
     reviewer: (modelId) => callReviewer(modelId, env),
     isTestFamily: (parentId) => isTestFamily(db, parentId),

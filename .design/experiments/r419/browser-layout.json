@@ -1,0 +1,261 @@
+[
+  {
+    "file": "parent-home-laptop.png",
+    "surface": "parent-home",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "metrics": {
+      "width": 1440,
+      "scrollWidth": 1425,
+      "scrollY": 513,
+      "latestNotes": 1,
+      "transcriptLines": 0
+    }
+  },
+  {
+    "file": "no-notes-laptop.png",
+    "surface": "child-without-notes",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "metrics": {
+      "width": 1440,
+      "scrollWidth": 1425,
+      "notes": 0
+    }
+  },
+  {
+    "file": "parent-home-tablet.png",
+    "surface": "parent-home",
+    "viewport": {
+      "width": 768,
+      "height": 1024
+    },
+    "metrics": {
+      "width": 768,
+      "scrollWidth": 753,
+      "scrollY": 446,
+      "latestNotes": 1,
+      "transcriptLines": 0
+    }
+  },
+  {
+    "file": "no-notes-tablet.png",
+    "surface": "child-without-notes",
+    "viewport": {
+      "width": 768,
+      "height": 1024
+    },
+    "metrics": {
+      "width": 768,
+      "scrollWidth": 753,
+      "notes": 0
+    }
+  },
+  {
+    "file": "parent-home-phone.png",
+    "surface": "parent-home",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "metrics": {
+      "width": 390,
+      "scrollWidth": 375,
+      "scrollY": 553,
+      "latestNotes": 1,
+      "transcriptLines": 0
+    }
+  },
+  {
+    "file": "no-notes-phone.png",
+    "surface": "child-without-notes",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "metrics": {
+      "width": 390,
+      "scrollWidth": 375,
+      "notes": 0
+    }
+  },
+  {
+    "file": "notes-list-laptop.png",
+    "surface": "notes-list",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "metrics": {
+      "width": 1440,
+      "scrollWidth": 1425,
+      "scrollY": 0,
+      "latestNotes": 0,
+      "transcriptLines": 0
+    }
+  },
+  {
+    "file": "notes-list-tablet.png",
+    "surface": "notes-list",
+    "viewport": {
+      "width": 768,
+      "height": 1024
+    },
+    "metrics": {
+      "width": 768,
+      "scrollWidth": 768,
+      "scrollY": 0,
+      "latestNotes": 0,
+      "transcriptLines": 0
+    }
+  },
+  {
+    "file": "notes-list-phone.png",
+    "surface": "notes-list",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "metrics": {
+      "width": 390,
+      "scrollWidth": 375,
+      "scrollY": 0,
+      "latestNotes": 0,
+      "transcriptLines": 0
+    }
+  },
+  {
+    "file": "chat-session-laptop.png",
+    "surface": "chat-session",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "metrics": {
+      "width": 1440,
+      "scrollWidth": 1425,
+      "scrollY": 0,
+      "latestNotes": 0,
+      "transcriptLines": 14
+    }
+  },
+  {
+    "file": "chat-session-tablet.png",
+    "surface": "chat-session",
+    "viewport": {
+      "width": 768,
+      "height": 1024
+    },
+    "metrics": {
+      "width": 768,
+      "scrollWidth": 753,
+      "scrollY": 0,
+      "latestNotes": 0,
+      "transcriptLines": 14
+    }
+  },
+  {
+    "file": "chat-session-phone.png",
+    "surface": "chat-session",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "metrics": {
+      "width": 390,
+      "scrollWidth": 375,
+      "scrollY": 0,
+      "latestNotes": 0,
+      "transcriptLines": 14
+    }
+  },
+  {
+    "file": "call-session-laptop.png",
+    "surface": "call-session",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "metrics": {
+      "width": 1440,
+      "scrollWidth": 1425,
+      "scrollY": 0,
+      "latestNotes": 0,
+      "transcriptLines": 14
+    }
+  },
+  {
+    "file": "call-session-tablet.png",
+    "surface": "call-session",
+    "viewport": {
+      "width": 768,
+      "height": 1024
+    },
+    "metrics": {
+      "width": 768,
+      "scrollWidth": 753,
+      "scrollY": 0,
+      "latestNotes": 0,
+      "transcriptLines": 14
+    }
+  },
+  {
+    "file": "call-session-phone.png",
+    "surface": "call-session",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "metrics": {
+      "width": 390,
+      "scrollWidth": 375,
+      "scrollY": 0,
+      "latestNotes": 0,
+      "transcriptLines": 14
+    }
+  },
+  {
+    "file": "parent-home-overview-laptop.png",
+    "surface": "parent-home-overview",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    }
+  },
+  {
+    "file": "parent-home-overview-tablet.png",
+    "surface": "parent-home-overview",
+    "viewport": {
+      "width": 768,
+      "height": 1024
+    }
+  },
+  {
+    "file": "parent-home-overview-phone.png",
+    "surface": "parent-home-overview",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    }
+  },
+  {
+    "file": "chat-transcript-phone.png",
+    "surface": "chat-transcript",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    }
+  },
+  {
+    "file": "call-transcript-phone.png",
+    "surface": "call-transcript",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    }
+  }
+]

@@ -77,6 +77,14 @@ export interface Reading {
   writing?: boolean;
   /** A harmless off-topic request, or a request for another question. */
   offTopic?: boolean;
+  /** Optional topic skill read by the model. Code can only narrow the package scope with it. */
+  scopeSkill?: string;
+  /** Each requested expression has its own exact quote. Answers and explanations are not turn-wide exceptions. */
+  mathRequests?: import("./scope").MathRequest[];
+  /** The child makes or asks about an arithmetic claim. Only checked lines or neutral bank words may respond. */
+  mathClaim?: boolean;
+  /** A non-math outside request identified by the reading. Ordinary help stays in scope. */
+  outsideScope?: import("./scope").OutsideReason;
   /**
    * A request for sexual, violent or other harmful content (#383, C29): Maya says the decline line
    * (redirect.decline), with no free talk, then goes back to the question.
@@ -188,13 +196,21 @@ export const PROPOSAL_SCHEMA = {
     reading: nullable({
       type: "object",
       additionalProperties: false,
-      required: ["safety", "stop", "unclear", "writing", "offTopic", "unsafeRequest", "noBoard", "shorter", "aboutMaya", "help", "start", "answers", "paper", "correctsHearing"],
+      required: ["safety", "stop", "unclear", "writing", "offTopic", "scopeSkill", "mathRequests", "mathClaim", "outsideScope", "unsafeRequest", "noBoard", "shorter", "aboutMaya", "help", "start", "answers", "paper", "correctsHearing"],
       properties: {
         safety: nullable({ enum: ["concern", "immediate"] }),
         stop: nullable({ type: "boolean" }),
         unclear: nullable({ type: "boolean" }),
         writing: nullable({ type: "boolean" }),
         offTopic: nullable({ type: "boolean" }),
+        mathClaim: nullable({ type: "boolean" }),
+        scopeSkill: nullable({ type: "string" }),
+        outsideScope: nullable({ enum: ["outside_work", "other_person", "other_topic"] }),
+        mathRequests: nullable({ type: "array", maxItems: 16, items: {
+          type: "object", additionalProperties: false, required: ["text", "operation", "operands"],
+          properties: { text: { type: "string" }, operation: { enum: ["add", "subtract", "multiply", "divide", "pair"] },
+            operands: { type: "array", minItems: 2, maxItems: 8, items: answerValue } },
+        } }),
         unsafeRequest: nullable({ type: "boolean" }),
         noBoard: nullable({ type: "boolean" }),
         shorter: nullable({ type: "boolean" }),

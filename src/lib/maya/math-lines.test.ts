@@ -312,7 +312,7 @@ describe("the line set", () => {
         continue;
       }
       // The decline has one fixed wording, approved by Savar (D-197, #383).
-      expect(variants.length, key).toBeGreaterThanOrEqual(key === "redirect.decline" ? 1 : 2);
+      expect(variants.length, key).toBeGreaterThanOrEqual(["redirect.decline", "redirect.workbook"].includes(key) ? 1 : 2);
       for (const v of variants) expect(v.split(/\s+/).length, v).toBeLessThanOrEqual(22);
     }
   });

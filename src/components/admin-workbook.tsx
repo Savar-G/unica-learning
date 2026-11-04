@@ -4,7 +4,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { WorkbookDetail } from "@/lib/admin-store";
-import { adminWorkbookRunPath, when, workbookPdfPath } from "@/lib/admin-view";
+import { ADMIN_PATH, adminWorkbookRunPath, when, workbookPdfPath } from "@/lib/admin-view";
 import { checkQuestionPackage, hasOperation, packageItem, stepText, valueText, type AnswerRegion, type QuestionPackage } from "@/lib/question-package";
 import type { WorkbookPage, WorkbookQuestion, WorkbookStatus } from "@/lib/workbook-content";
 import { curriculumFor } from "@/lib/workbook-curriculum";
@@ -24,7 +24,7 @@ export const WorkbookStatusChip = ({ status }: { status: WorkbookStatus }) => <C
 export const pageTitle = (p: Pick<WorkbookPage, "number" | "dayLabel" | "type">) => [`Page ${p.number}`, p.dayLabel, p.type].filter(Boolean).join(" · ");
 
 /** The page image with each question's box over it, numbered as on the page. */
-function PageImage({ page, url }: { page: WorkbookPage; url: string | undefined }) {
+function PageImage({ page, url, workbookId, printed }: { page: WorkbookPage; url: string | undefined; workbookId: string; printed: boolean }) {
   if (!page.image) return <p className="adm-empty">This page has no image.</p>;
   const { width, height } = page.image;
   const pct = (n: number, of: number) => `${(n / of) * 100}%`;
@@ -34,10 +34,12 @@ function PageImage({ page, url }: { page: WorkbookPage; url: string | undefined 
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {url ? <img src={url} alt={`${pageTitle(page)}, as printed`} /> : <figcaption className="adm-empty">The page image did not load.</figcaption>}
       {page.questions.map((q) => (
-        <span key={q.number} className="adm-wb-box" aria-hidden="true"
+        <Link key={q.number} className="adm-wb-box" aria-label={`Choose page ${page.number}, number ${q.number} for Maya`}
+          href={`${ADMIN_PATH}/maya?workbook=${workbookId}&page=${page.number}&question=${q.number}`}
+          aria-disabled={!printed || undefined} tabIndex={printed ? 0 : -1}
           style={{ left: pct(q.box.x, width), top: pct(q.box.y, height), width: pct(q.box.width, width), height: pct(q.box.height, height) }}>
           {q.number}
-        </span>
+        </Link>
       ))}
     </figure>
   );
@@ -169,6 +171,7 @@ export function AdminWorkbook({ email, detail }: { email: string; detail: Workbo
         ["Workbook id", <span key="id" className="adm-mono">{w.id}</span>],
       ]} />
       <PrintAndShip detail={detail} />
+      <p className="adm-note"><Link href={`${ADMIN_PATH}/maya?workbook=${w.id}`}>Try Maya on a workbook question</Link>. Only printed workbooks from test families can start a session.</p>
       {w.status === "shipped" && <WorkbookDelivery workbookId={w.id} childId={w.childId} number={w.number}
         timeZone={detail.deliveryZone} receipt={detail.delivery} actor={audit.find((e) => e.id === (detail.delivery?.correction?.auditId ?? detail.delivery?.auditId))?.actor_email} />}
       {w.pages.map((p) => (
@@ -176,7 +179,7 @@ export function AdminWorkbook({ email, detail }: { email: string; detail: Workbo
           <h2 id={`page-${p.number}`}>{pageTitle(p)}</h2>
           <p className="adm-note adm-mono">QR token {p.qrToken}{p.image && ` · ${p.image.width} × ${p.image.height} px · ${p.image.path}`}</p>
           <div className="adm-wb-grid">
-            <PageImage page={p} url={p.image ? images[p.image.path] : undefined} />
+            <PageImage page={p} url={p.image ? images[p.image.path] : undefined} workbookId={w.id} printed={w.status === "printed" || w.status === "shipped"} />
             <Table label={`Questions on page ${p.number}`} empty="No questions on this page."
               head={["#", "Box (x, y · w × h)", "Question", "Answer", "Check", "Worked steps", "Skill", "Level · difficulty", "Wrong answers", "Easier example"]}>
               {p.questions.map((q) => <QuestionRow key={q.number} q={q} />)}

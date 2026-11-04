@@ -1,0 +1,265 @@
+{
+  "issue": 335,
+  "route": "direct",
+  "job_kind": "new",
+  "surface": "product",
+  "constraint_mode": "existing-system",
+  "design_contract": "../../../DESIGN.md",
+  "references": [
+    "src/components/admin-workbook.tsx",
+    "src/components/admin-maya.tsx",
+    "src/components/admin-maya.css"
+  ],
+  "browser": "Aside CLI 1.26.1028.2335, account u0",
+  "data": "Synthetic printed workbook and in-memory calls from src/lib/maya-workbook-fixture.ts. Production components and resolver. Temporary /r335 and /api/r335 routes used local data. The picker API URL and session redirect used those temporary routes during capture. All temporary routes and URL changes were removed. No hosted rows or providers were used.",
+  "screenshots": [
+    {
+      "path": "ask-again-laptop.png",
+      "state": "ask-again",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "pixels": [
+        1440,
+        1000
+      ],
+      "sha256": "1941602c87c73d4415a3be2da7a8b552d1fa344c86650f712525b82bbb0b8826"
+    },
+    {
+      "path": "confirmation-laptop.png",
+      "state": "confirmation",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "pixels": [
+        1440,
+        1000
+      ],
+      "sha256": "032c90f5192f1956323c6396eca980ff9a7b4efb45f87c2f96f3c96995e7c412"
+    },
+    {
+      "path": "confirmation-phone.png",
+      "state": "confirmation",
+      "viewport": [
+        390,
+        844
+      ],
+      "pixels": [
+        390,
+        844
+      ],
+      "sha256": "ab4ac261b5ad865c5463d408f0b9edb3b57140ec476deeff868bb58eda016649"
+    },
+    {
+      "path": "confirmation-tablet.png",
+      "state": "confirmation",
+      "viewport": [
+        834,
+        1112
+      ],
+      "pixels": [
+        834,
+        1112
+      ],
+      "sha256": "3450819be0441f65e3a3632c600b30393a52563db380a29232e3802212547dd1"
+    },
+    {
+      "path": "foreign-reference-laptop.png",
+      "state": "foreign-reference",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "pixels": [
+        1440,
+        1000
+      ],
+      "sha256": "357f05828b17b2840c71fd988f606bddac2708ccbeef80f86caa94f508224cb1"
+    },
+    {
+      "path": "missing-page-laptop.png",
+      "state": "missing-page",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "pixels": [
+        1440,
+        1000
+      ],
+      "sha256": "7e28f0d2d2029af801a960f71804b1816aa59809c6dff373dc17b78bd1c5fa62"
+    },
+    {
+      "path": "reference-laptop.png",
+      "state": "reference",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "pixels": [
+        1440,
+        1000
+      ],
+      "sha256": "83080462202b92c704499699fa64f84af0447178914dc4b0131bfb434cd9bec2"
+    },
+    {
+      "path": "reference-phone.png",
+      "state": "reference",
+      "viewport": [
+        390,
+        844
+      ],
+      "pixels": [
+        390,
+        844
+      ],
+      "sha256": "b597fe81bd4cfacf419024f5f175cb2a6014ea8d67386fa8554aff42c0e6a5a5"
+    },
+    {
+      "path": "reference-tablet.png",
+      "state": "reference",
+      "viewport": [
+        834,
+        1112
+      ],
+      "pixels": [
+        834,
+        1112
+      ],
+      "sha256": "3e9c559c1766cbd1a62d87b4d1e45a26aaedf1048e69d1377f5bc45c6ef07470"
+    },
+    {
+      "path": "refused-laptop.png",
+      "state": "refused",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "pixels": [
+        1440,
+        1000
+      ],
+      "sha256": "1ebdf0aca5dbfa76f6f3db2018b38df800e78d6b2ee936affe8a1d22448891bc"
+    },
+    {
+      "path": "refused-phone.png",
+      "state": "refused",
+      "viewport": [
+        390,
+        844
+      ],
+      "pixels": [
+        390,
+        844
+      ],
+      "sha256": "6378f5a08b7592009dbfe19ba78f9620f1621b4326d78078ec34a989660bd86c"
+    },
+    {
+      "path": "refused-tablet.png",
+      "state": "refused",
+      "viewport": [
+        834,
+        1112
+      ],
+      "pixels": [
+        834,
+        1112
+      ],
+      "sha256": "a05dbb91bd7ab7fb58936fc0c274948daf4b40f060fc84dd82e197b1b57294b1"
+    },
+    {
+      "path": "tap-laptop.png",
+      "state": "tap",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "pixels": [
+        1440,
+        1000
+      ],
+      "sha256": "52723836f9164a3d667135668016fd7624a66810a07e654014ff7cf448cf5a68"
+    },
+    {
+      "path": "tap-phone.png",
+      "state": "tap",
+      "viewport": [
+        390,
+        844
+      ],
+      "pixels": [
+        390,
+        844
+      ],
+      "sha256": "e5f94ce6b414cce606e76bdd0719f0bf0d4d6a0022a22f22f05213481b90026c"
+    },
+    {
+      "path": "tap-tablet.png",
+      "state": "tap",
+      "viewport": [
+        834,
+        1112
+      ],
+      "pixels": [
+        834,
+        1112
+      ],
+      "sha256": "e6fe2ba811a31b3fcbbaca75520304ead8168b52f957063d0075d2c5fe5629cf"
+    },
+    {
+      "path": "unprinted-laptop.png",
+      "state": "unprinted",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "pixels": [
+        1440,
+        1000
+      ],
+      "sha256": "6743d7960cd0c321e266d6a7995bed19021368e8b31ee0ce5743f680198bfb7e"
+    }
+  ],
+  "browser_checks": {
+    "widths": [
+      1440,
+      834,
+      390
+    ],
+    "horizontal_overflow": false,
+    "measured_document_widths": [
+      1425,
+      819,
+      375
+    ],
+    "keyboard": "Tab from the reference field focuses Find question with a solid outline.",
+    "refusals": [
+      "Page 4 has no number 99.",
+      "Page 40 is not in this workbook.",
+      "This workbook is not printed yet.",
+      "Type it like: page 4, number 3.",
+      "I can't find that question in this child's workbook."
+    ],
+    "confirmation": "Code-written opening in the existing MayaCall component, before any board batch.",
+    "screenshot_method": "Viewport captures with scroll to the relevant control. Full-page captures repeated the sticky admin header and were replaced."
+  },
+  "merge_approval": "Savar approved the PR #493 look with the required change to specific refusal messages. This revision implements that change. Merge remains with Savar.",
+  "voice_limit": "The 30-second reference-listening room, final STT transcript, scoped token, fake-room delivery and fake teaching call are wired and tested. Real microphone, provider and device checks remain open without accounts.",
+  "review": "review.md",
+  "refusal_refresh": {
+    "base_head": "0f94297f1aebfb8e123d03b859a8d786efe08010",
+    "request": "Savar approved the look with specific plain admin refusal messages.",
+    "screenshots": [
+      "refused-laptop.png",
+      "refused-tablet.png",
+      "refused-phone.png",
+      "ask-again-laptop.png",
+      "missing-page-laptop.png",
+      "unprinted-laptop.png",
+      "foreign-reference-laptop.png"
+    ],
+    "data": "Synthetic data through the production resolver and components. Temporary /r335-refusals and /api/r335-refusals routes were removed. Foreign-reference screenshot uses a sibling mismatch; module tests also cover another family and an unprinted foreign workbook."
+  }
+}

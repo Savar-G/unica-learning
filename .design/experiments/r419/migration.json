@@ -1,0 +1,12 @@
+[
+  {
+    "version": "20261103052205",
+    "name": "parent_maya_note_sessions",
+    "prosecdef": true,
+    "proconfig": [
+      "search_path=\"\""
+    ],
+    "anon_execute": false,
+    "parent_execute": true
+  }
+]
