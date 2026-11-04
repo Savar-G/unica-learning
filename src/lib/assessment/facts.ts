@@ -249,6 +249,8 @@ export interface FactsResult {
   medianMs: number | null;
   accuracy: FactsAccuracy | null;
   speed: FactsSpeed | null;
+  /** Per-family results, derived from the seeded facts. Absent in older schema-1 profiles. */
+  byFamily?: Partial<Record<FactFamilyId, Pick<FactsResult, "answered" | "correct" | "skipped" | "medianMs" | "accuracy" | "speed">>>;
 }
 
 function median(values: number[]): number | null {
@@ -263,19 +265,28 @@ function median(values: number[]): number | null {
  * from the answer before it (or the start) to its own answer (#185). The browser's time leaves out the save queue, so a
  * fast child's speed is their typing speed, not the network's (#122).
  */
-export function factsResult(session: FactsSession): FactsResult {
-  const answered = session.answers.filter((a) => !isSkip(a.response));
+function score(answers: readonly FactAnswer[]): Omit<FactsResult, "families" | "seconds" | "byFamily"> {
+  const answered = answers.filter((a) => !isSkip(a.response));
   const correct = answered.filter((a) => a.correct).length;
   const medianMs = median(answered.map(factTime));
   return {
-    families: [...FACTS_BY_GRADE[session.grade]],
-    seconds: FACTS_SECONDS,
     answered: answered.length,
     correct,
-    skipped: session.answers.length - answered.length,
+    skipped: answers.length - answered.length,
     medianMs,
     accuracy: answered.length === 0 ? null : atLeast(correct, answered.length, FACTS_SECURE_PERCENT) ? "secure" : "needs-practice",
     speed: medianMs === null ? null : medianMs <= FACTS_QUICK_MS ? "quick" : "needs-practice",
+  };
+}
+
+export function factsResult(session: FactsSession): FactsResult {
+  const families = [...FACTS_BY_GRADE[session.grade]];
+  const familyOf = new Map(session.facts.map((fact) => [fact.id, fact.family]));
+  return {
+    families,
+    seconds: FACTS_SECONDS,
+    ...score(session.answers),
+    byFamily: Object.fromEntries(families.map((family) => [family, score(session.answers.filter((a) => familyOf.get(a.factId) === family))])),
   };
 }
 

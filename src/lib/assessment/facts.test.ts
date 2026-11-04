@@ -119,6 +119,42 @@ function placementWith(profile: ChildProfile, isRight: Script, facts: FactsSessi
 }
 const onGrade4 = { grade: 4, province: "BC" } as const;
 const factsFor4 = () => createFacts(onGrade4, 5);
+
+describe("per-family facts from the seeded section", () => {
+  it.each([5, 182, 7919])("scores families independently and restores the same results, seed %i", (seed) => {
+    let section = createFacts(onGrade4, seed);
+    section.facts.slice(0, 9).forEach((f, i) => {
+      section = submitFact(section, {
+        factId: f.id,
+        response: i === 7 ? "" : f.family === "mul2510" ? "999" : String(f.answer),
+        atMs: (i + 1) * 5000,
+        browserMs: f.family === "add20" ? 1000 : f.family === "sub20" ? 4000 : null,
+      });
+    });
+    const result = placementWith(onGrade4, knowsUpTo(4), section).facts!;
+    expect(result.byFamily).toEqual({
+      add20: { answered: 3, correct: 3, skipped: 0, medianMs: 1000, accuracy: "secure", speed: "quick" },
+      sub20: { answered: 2, correct: 2, skipped: 1, medianMs: 4000, accuracy: "secure", speed: "needs-practice" },
+      mul2510: { answered: 3, correct: 0, skipped: 0, medianMs: 5000, accuracy: "needs-practice", speed: "needs-practice" },
+    });
+    const rows = Object.values(result.byFamily!);
+    for (const field of ["answered", "correct", "skipped"] as const) {
+      expect(rows.reduce((sum, row) => sum + row[field], 0)).toBe(result[field]);
+    }
+    const restored = restoreFacts(storedFacts(createFacts(onGrade4, seed)), section.answers);
+    expect(placementWith(onGrade4, knowsUpTo(4), restored).facts).toEqual(result);
+  });
+
+  it("keeps null results for families with no answers, including skip-only families", () => {
+    let section = factsFor4();
+    section = submitFact(section, { factId: section.facts[0].id, response: " ", atMs: 2000 });
+    expect(placementWith(onGrade4, knowsUpTo(4), section).facts?.byFamily).toEqual({
+      add20: { answered: 0, correct: 0, skipped: 1, medianMs: null, accuracy: null, speed: null },
+      sub20: { answered: 0, correct: 0, skipped: 0, medianMs: null, accuracy: null, speed: null },
+      mul2510: { answered: 0, correct: 0, skipped: 0, medianMs: null, accuracy: null, speed: null },
+    });
+  });
+});
 const report = (facts: FactsSession | null) =>
   reportModel(placementWith(onGrade4, knowsUpTo(4), facts), { completedTestsInGrade: 0, workReviews: [] });
 

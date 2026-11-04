@@ -228,7 +228,7 @@ export interface LearnerProfile {
   strengths: ProfileStrength[];
   /** Needs attention first, then developing; each in curriculum order. */
   struggles: ProfileStruggle[];
-  /** Fact fluency (#70): accuracy and speed, as the placement stored them. Null when the child had no facts section. */
+  /** Fact fluency (#70), including optional per-family results within schema 1. Null with no facts section. */
   facts: FactsResult | null;
   behaviour: ProfileBehaviour;
   /** How the child likes to learn and what interests them (the book mix reads these). Empty when not answered. */
