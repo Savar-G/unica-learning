@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shownWorkbookEmailStatus, workbookDelivery, workbookEmail } from "@/lib/workbook-email";
+import { planStartEmail, shownWorkbookEmailStatus, workbookDelivery, workbookEmail } from "@/lib/workbook-email";
 
 const mail = { method: "mail" as const, carrier: "Canada Post", trackingNumber: "ABC123", trackingUrl: "https://example.com/track?code=ABC123&lang=en" };
 const parent = { parentName: "Priya", childName: "Asha", workbookNumber: 1 };
@@ -63,5 +63,20 @@ describe("workbook emails", () => {
     const claimed_at = "2026-11-01T10:00:00Z";
     expect(shownWorkbookEmailStatus({ status: "sending", claimed_at }, Date.parse(claimed_at) + 599999)).toBe("sending");
     expect(shownWorkbookEmailStatus({ status: "sending", claimed_at }, Date.parse(claimed_at) + 600000)).toBe("unknown");
+  });
+});
+
+describe("the free month confirmation", () => {
+  const email = planStartEmail({ parentName: "Priya", childName: "Asha & Co", price: 79.99, firstCharge: "December 5, 2026", planUrl: "https://unica.test/account/plan" });
+  it("gives the terms the card networks require: the price, how often, the first charge and how to cancel", () => {
+    expect(email.text).toContain("On December 5, 2026, we charge CAD 79.99 to your saved card. We then charge CAD 79.99 each month until you cancel.");
+    expect(email.text).toContain("We will email you a reminder 7 days before the first charge.");
+    expect(email.text).toContain('open https://unica.test/account/plan, then press "Cancel plan". If you cancel before December 5, 2026, you pay nothing.');
+    expect(email.text).toContain("contact@unicalearning.com");
+  });
+  it("links the plan page and escapes names in the html", () => {
+    expect(email.html).toContain('<a href="https://unica.test/account/plan"');
+    expect(email.html).toContain("Asha &amp; Co");
+    expect(email.html).not.toContain("Asha & Co");
   });
 });
