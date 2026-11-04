@@ -450,7 +450,7 @@ describe("finishing on a phone (#63)", () => {
     const link = calls.find((c) => c.method === "POST" && c.path === "/rest/v1/sign_in_links");
     expect(link?.body).toMatchObject({ parent_id: ID, child_id: "child-42" });
     expect(sent).toEqual(["https://api.resend.com/emails"]);
-    expect(bodies[0]).toMatchObject({ from: '"Cedric & Savar, Unica Learning" <contact@unicalearning.com>', subject: "Welcome to Unica Learning: open this on a laptop or tablet" });
+    expect(bodies[0]).toMatchObject({ from: "Cedric & Savar from Unica Learning <contact@unicalearning.com>", subject: "Welcome to Unica Learning: open this on a laptop or tablet" });
     expect(await res.json()).toEqual({ ok: true, linkSent: true });
   });
 
@@ -497,7 +497,7 @@ describe("the founders' welcome (D-225)", () => {
     for (const task of afterResponse) await task();
     vi.unstubAllGlobals();
     expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({ from: '"Cedric & Savar, Unica Learning" <contact@unicalearning.com>', to: ["Priya@Family.ca"], subject: "Welcome to Unica Learning" });
+    expect(sent[0]).toMatchObject({ from: "Cedric & Savar from Unica Learning <contact@unicalearning.com>", to: ["Priya@Family.ca"], subject: "Welcome to Unica Learning" });
     expect(sent[0].text).toContain("Start Asha's test: https://unica.test/account/start/child-42");
   });
 

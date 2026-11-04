@@ -117,9 +117,9 @@ describe("the sender", () => {
   it("of an email the founders sign shows their name on the EMAIL_FROM address (D-225)", async () => {
     const net = network(answer(200, { id: "e1" }));
     await resendTransport({ fetch: net.fetch }).send({ ...toParent, sender: { to: "parent", from: "founders" } });
-    expect(net.body()).toMatchObject({ from: '"Cedric & Savar, Unica Learning" <contact@unicalearning.com>' });
+    expect(net.body()).toMatchObject({ from: "Cedric & Savar from Unica Learning <contact@unicalearning.com>" });
     vi.stubEnv("EMAIL_FROM", "contact@unicalearning.com");
-    expect(resendFrom({ sender: { to: "parent", from: "founders" } })).toBe('"Cedric & Savar, Unica Learning" <contact@unicalearning.com>');
+    expect(resendFrom({ sender: { to: "parent", from: "founders" } })).toBe("Cedric & Savar from Unica Learning <contact@unicalearning.com>");
     expect(resendFrom({ sender: { to: "parent" } })).toBe("contact@unicalearning.com");
   });
 
