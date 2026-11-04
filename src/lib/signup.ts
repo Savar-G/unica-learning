@@ -41,18 +41,6 @@ export type CurriculumId = keyof typeof CURRICULA;
 export const OPEN_CURRICULA: readonly CurriculumId[] = ["BC"];
 export const statusFor = (c: CurriculumId): SignupStatus => (OPEN_CURRICULA.includes(c) ? "reserved" : "waitlist");
 
-/** Best guess from the first letter of a postal code, which encodes the province. */
-export function curriculumFromPostal(postal: string): CurriculumId | null {
-  const c = postal.trim().charAt(0).toUpperCase();
-  if (!c) return null;
-  if (c === "V") return "BC";
-  if (c === "T") return "AB";
-  if (c === "S") return "SK";
-  if (c === "R") return "MB";
-  if ("KLMNP".includes(c)) return "ON";
-  return "other";
-}
-
 // The server sets the status from the curriculum, so the client does not send one.
 export interface SignupPayload {
   name: string;

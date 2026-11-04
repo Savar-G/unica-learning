@@ -60,7 +60,8 @@ export async function sendWorkbookNotice(db: SupabaseClient<Database>, key: Work
   ]);
   if (parent.error || child.error || !parent.data || !child.data) throw Error("store_failed");
   const message: EmailMessage = {
-    sender: { to: "parent" }, to: parent.data.email, replyTo: SUPPORT_EMAIL,
+    // The founders sign the welcome after a saved card (D-225); the team signs the dispatch notices.
+    sender: key.kind === "welcome" ? { to: "parent", from: "founders" } : { to: "parent" }, to: parent.data.email, replyTo: SUPPORT_EMAIL,
     ...workbookEmail({ parentName: parent.data.name, childName: child.data.first_name, kind: key.kind, workbookNumber: key.workbookNumber, delivery: key.delivery }),
   };
   return sendEmailOnce(workbookEmailLedger(db, message), key, message, { transport });

@@ -212,7 +212,8 @@ async function emailParent(
     ledger,
     { report: reportId, email: "parent" },
     {
-      sender: { to: "parent" },
+      // The founders sign the report (D-225).
+      sender: { to: "parent", from: "founders" },
       to: parent.email,
       replyTo: SUPPORT_EMAIL,
       // RFC 8058 one-click: mail apps POST here from their own Unsubscribe button.

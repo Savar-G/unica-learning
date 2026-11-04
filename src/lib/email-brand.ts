@@ -1,5 +1,8 @@
 import { BUSINESS_NAME, MAILING_ADDRESS, SUPPORT_EMAIL, WEBSITE } from "@/lib/contact";
 
+/** Who signs an email: the team (notices and security emails) or the two founders (D-225). */
+export type Signer = "team" | "founders";
+
 // Approved email design A. These fragments are table rows, with inline styles and system fonts.
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 const INK = "#0c0c0e";
@@ -13,10 +16,13 @@ export interface EmailFooter {
   unsubscribe?: { url: string; label: string };
   /** Hosted Auth mail has no app-owned Reply-To header. Give the support address instead. */
   support?: "email";
+  /** The sign-off. Default: the team. */
+  signer?: Signer;
 }
 
-export function emailSignatureText(support?: "email"): string {
-  return `Thank you,\nThe ${BUSINESS_NAME} team\n${support === "email" ? `Questions? Email ${SUPPORT_EMAIL}.` : "Questions? Reply to this email."}`;
+export function emailSignatureText(support?: "email", signer: Signer = "team"): string {
+  const by = signer === "founders" ? `Cedric & Savar\nCo-founders, ${BUSINESS_NAME}` : `The ${BUSINESS_NAME} team`;
+  return `Thank you,\n${by}\n${support === "email" ? `Questions? Email ${SUPPORT_EMAIL}.` : "Questions? Reply to this email."}`;
 }
 
 export function emailFooterText(f: EmailFooter): string {
@@ -40,7 +46,9 @@ export function emailEndHtml(f: EmailFooter, inset = 24): string {
     : "Questions? Reply to this email.";
   const p = (s: string) => `<p style="margin:0 0 16px">${s}</p>`;
   return `<tr><td style="padding:24px ${inset}px 32px;font-size:16px;line-height:1.6;color:${INK}">
-Thank you,<br><strong style="font-weight:600">The ${esc(BUSINESS_NAME)} team</strong><br>
+Thank you,<br>${f.signer === "founders"
+    ? `<strong style="font-weight:600">Cedric &amp; Savar</strong><br><span style="color:${SECONDARY}">Co-founders, ${esc(BUSINESS_NAME)}</span>`
+    : `<strong style="font-weight:600">The ${esc(BUSINESS_NAME)} team</strong>`}<br>
 <span style="font-size:14px;color:${SECONDARY}">${support}</span>
 </td></tr>
 <tr><td style="padding:0 ${inset}px">
