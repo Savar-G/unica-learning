@@ -2,7 +2,7 @@
 
 Use this guide to split a generator round into small PRs. Read the [shared agent brief](agents/delegate-brief.md) and follow the [fast loop](workbook-fast-loop.md).
 
-## Three lanes
+## Lanes
 
 Each lane owns its listed files and their tests. Paths without a directory below are in `src/lib/`.
 
@@ -10,6 +10,7 @@ Each lane owns its listed files and their tests. Paths without a directory below
 |---|---|---|
 | Correctness | Answer keys, solve checks, item checks, repeat and task identity, story text | `workbook-solve-check.ts`, `workbook-task-identity.ts`, `workbook-code-story.ts`, `workbook-wording.ts`, `workbook-item-plan.ts`, `workbook-generator-items.ts` |
 | Content | Step data and templates, difficulty, variety, Challenge, progression | `data/curriculum/`, `src/lib/workbook-curriculum/`, `workbook-step-items.ts`, `workbook-plan.ts` |
+| Profile and placement | The child profile at plan time, book signals, placement, the admin "Why this book" view ([Workbook personalization](workbook-personalization.md)) | `assessment/facts.ts`, `assessment/profile.ts`, `child-profile-server.ts`, `workbook-job.ts`, `workbook-job-deps.ts`, `workbook-job-store.ts`, `workbook-job-memory.ts`, `workbook-placement.ts`, `workbook-signals.ts`, `workbook-sample-profiles.ts`, `workbook-why.ts` |
 | Layout | Template and CSS, fit and fullness, spacing, labels and instructions, automatic layout checks | `workbook-template.ts`, `workbook-template-fixed.ts`, `workbook-template-fonts.ts`, `workbook-fit.ts`, `workbook-render.ts`; layout checks in `workbook-template.test.ts`, `workbook-template-chromium.test.ts` and `workbook-render.test.ts` |
 
 Name one owner for `workbook-generator.ts` and one owner for `workbook-quality.ts` in the round's tickets before work starts. Each file has only one owner per round. Assign any other shared file before editing it.
