@@ -531,9 +531,15 @@ const CSS = `
 .pg.consistent [data-slot="word-problems"] .story.nowork{flex:0 0 auto}
 .story.nowork .head{align-items:center}.story.nowork .qb{flex:1 1 0}
 /* The layout checks (Savar's page reviews, 2026-11-04; src/lib/workbook-layout-check.ts). One gap before every section
-   label, wider than the gap under it and than the rows' gap: 16 px. */
-.pg.consistent .ct{gap:calc(16px + var(--extra-gap,0px))}
-.pg.consistent .blk>:is(.lab,.chiprow,[data-measure^="chip-"]):not(:first-child){margin-top:10px}
+   label, wider than the 6 px under it and no narrower than the rows' gap: 12 px (10 on Practice 2, whose rows are 4 px
+   apart, D-226, and at U4 to U9). */
+.pg.consistent .ct{gap:calc(12px + var(--extra-gap,0px))}
+.pg.consistent .blk>:is(.lab,.chiprow,[data-measure^="chip-"]):not(:first-child){margin-top:6px}
+.pg.consistent[data-page-type="practice-2"] .ct{gap:calc(10px + var(--extra-gap,0px))}
+.pg.consistent[data-page-type="practice-2"] .blk>:is(.lab,.chiprow,[data-measure^="chip-"]):not(:first-child){margin-top:4px}
+/* (U4 to U9: rows 6 px apart, 10 px before a label.) */
+.pg.consistent.early .ct{gap:calc(10px + var(--extra-gap,0px))}
+.pg.consistent.early .blk>:is(.lab,.chiprow,[data-measure^="chip-"]):not(:first-child){margin-top:4px}
 /* A question's number and first line share their baseline, and its answer box's top is that line's top. */
 .pg.consistent :is(.two,.list)>.q{align-items:flex-start}
 .pg.consistent :is(.two,.list)>.q>:is(.n,.qb){padding-top:0;align-self:baseline}
@@ -542,15 +548,17 @@ const CSS = `
 .pg.consistent :is(.two,.list)>.q>.rgs:has(>.circ){align-self:baseline}
 .pg.consistent .tc>.q>:is(.badge,.qb,.rgs:has(>.circ)){align-self:baseline}
 .pg.consistent .q .circ:not(.words){min-height:var(--box);padding:0 18px;align-items:baseline}
+.pg.consistent :is(.two,.list,.tc)>.q>.rgs>.circ:not(.words) .co{font-size:var(--body)}
 .pg.consistent .circ.words .co{align-items:flex-start}
 /* A fact's number in the page's one number style, on the fact's baseline. */
 .pg.consistent .facts .fl{display:flex;align-items:baseline;gap:10px;flex:1 1 auto;min-width:0}
 .pg.consistent .facts .fl>.n{min-width:22px}
-/* Solve it two ways on a stories page: its number is a story number, on its sentence's baseline. */
-.tw .sn{font-weight:300;font-size:26px;line-height:1;min-width:26px}
+/* A stories page's numbers are all story numbers (Use 2 ways, Remember these), each on its sentence's baseline. */
+.pg.consistent[data-page-type="word-problems"] [data-measure^="number-"]{font-family:"Unica Sans",Helvetica,Arial,sans-serif;font-weight:300;font-size:26px;line-height:1;min-width:26px}
 .pg.consistent .tw>.q{align-items:baseline}
-/* (After the stories, the same gap as between two stories: its block gap less the 10 px a section label takes.) */
-.pg.consistent .ct>[data-slot="word-problems"]+[data-slot="solve-it-two-ways"]{margin-top:-10px}
+/* (After the stories, the same gap as between two stories: the block gap less the blocks' gap within a slot.) */
+.pg.consistent .ct>[data-slot="word-problems"]+[data-slot="solve-it-two-ways"]{margin-top:-6px}
+.pg.consistent.early .ct>[data-slot="word-problems"]+[data-slot="solve-it-two-ways"]{margin-top:-4px}
 /* A Challenge page at its maximum: cards with nothing to work in grow too, so no room is left under the last one (the
    full U4 book's Day 10). */
 .pg.consistent.stretch .chs>.chc.nowork{flex:1 0 auto}
@@ -1067,7 +1075,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
         const ways = twoWays(q.package);
         const works = names.filter((x) => x.region.kind === "work").map((x, k) => regionHtml(q, ways && x.region.kind === "work" ? { ...x.region, label: `Method ${k + 1}: ${ways[k] ?? ""}`.trim() } : x.region, x.name, { band, work: 110 })).join("");
         const boxes = names.filter((x) => x.region.kind === "box").map((x) => regionHtml(q, x.region, x.name, { band, labels: true })).join("");
-        return `<div class="tw" ${mark.question(q.number)}><div class="q"><span class="${c.consistentLayout && ctx.page.type === "word-problems" ? "sn" : "n"}">${questionNumber(q.number)}</span><span class="lab" style="color:#0C0C0E">${c.consistentLayout ? "Use 2 ways" : "Solve it two ways"}</span><span class="qb">${qtext(q)}</span></div><div class="ways2">${works}${boxes}</div></div>`;
+        return `<div class="tw" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span><span class="lab" style="color:#0C0C0E">${c.consistentLayout ? "Use 2 ways" : "Solve it two ways"}</span><span class="qb">${qtext(q)}</span></div><div class="ways2">${works}${boxes}</div></div>`;
       }).join("");
     case "word-problems":
       return qs.map((q, k) => {
