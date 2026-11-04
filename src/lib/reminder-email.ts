@@ -89,18 +89,22 @@ function content(e: ReminderEmailInput): { subject: string; preview: string; par
 }
 
 /** One reminder email, with its CASL footer and unsubscribe link. */
-export function reminderEmail(e: ReminderEmailInput): { subject: string; text: string; html: string } {
+/** The reminders the founders sign (D-223): the last start reminder. The others are notices from the team. */
+export const FOUNDER_REMINDERS: readonly ReminderKind[] = ["start_followup"];
+
+export function reminderEmail(e: ReminderEmailInput): { subject: string; text: string; html: string; founders: boolean } {
   const { subject, preview, paragraphs, button } = content(e);
   const first = firstName(e.parentName);
   const signIn = "If you are signed out, sign in first and the test opens.";
   const why = `You get this reminder because you signed up for ${e.childName}'s free math placement test.`;
-  const footer = { why, unsubscribe: { url: e.unsubscribeUrl, label: "Unsubscribe from reminders" } };
+  const founders = FOUNDER_REMINDERS.includes(e.kind);
+  const footer = { why, unsubscribe: { url: e.unsubscribeUrl, label: "Unsubscribe from reminders" }, signer: founders ? "founders" as const : "team" as const };
 
   const text = [
     `Hi ${first},`,
     ...paragraphs,
     `${button}: ${e.url}\n${signIn}`,
-    emailSignatureText(),
+    emailSignatureText(undefined, footer.signer),
     emailFooterText(footer),
   ].join("\n\n");
 
@@ -115,5 +119,5 @@ ${paragraphs.map((x) => p(esc(x))).join("\n")}
 </td></tr>
 <tr><td style="padding:0 24px 4px">${p(esc(signIn), `margin:8px 0 0;font-size:14px;color:${INK_2}`)}</td></tr>
 ` });
-  return { subject, text, html };
+  return { subject, text, html, founders };
 }

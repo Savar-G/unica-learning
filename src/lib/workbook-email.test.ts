@@ -36,6 +36,14 @@ describe("workbook emails", () => {
     expect(message.text).toContain("free first month starts when your first workbook arrives at your home");
     expect(message.text).not.toContain("Tracking number:");
   });
+  it("the founders sign the welcome; the team signs dispatch notices (D-223)", () => {
+    const welcome = workbookEmail({ ...parent, kind: "welcome", delivery: null });
+    expect(welcome.text).toContain("Thank you,\nCedric & Savar\nCo-founders, Unica Learning");
+    expect(welcome.html).toContain("Cedric &amp; Savar");
+    const dispatch = workbookEmail({ ...parent, kind: "dispatch", delivery: { method: "hand" } });
+    expect(dispatch.text).toContain("The Unica Learning team");
+    expect(dispatch.text).not.toContain("Co-founders");
+  });
   it("includes mail tracking in text and HTML", () => {
     const message = workbookEmail({ ...parent, kind: "dispatch", delivery: mail });
     expect(message.text).toContain("Asha's workbook 1 is on its way.");

@@ -5,7 +5,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { CURRICULA, EMAIL, POSTAL, curriculumFromPostal, type CurriculumId } from "@/lib/signup";
+import { CURRICULA, EMAIL, type CurriculumId } from "@/lib/signup";
 import type { StartState } from "@/lib/assessment";
 import { gradeLabel, gradeShort } from "@/lib/assessment/grades";
 import { GRADES, gradeHint, PASSWORD_MAX, PASSWORD_MIN, signInFailure, validPassword, type AccountError, type SignInFailure, type AccountResult, type ChildInput } from "@/lib/account";
@@ -83,10 +83,10 @@ const described = (id: string, bad: boolean | undefined, hint = false) =>
   [hint && `h-${id}`, bad && `e-${id}`].filter(Boolean).join(" ") || undefined;
 
 /**
- * First name, grade and province of one child. `onPickProvince` runs when the parent chooses a province. An empty
- * province (the short phone signup, D-134: no postal code to guess it from) shows "Choose a province" until one is picked.
+ * First name, grade and province of one child. An empty province (the short phone signup, D-134) shows "Choose a
+ * province" until one is picked.
  */
-function ChildFields({ prefix, value, onChange, bad, badProvince, onPickProvince }: { prefix: string; value: ChildInput; onChange: (c: ChildInput) => void; bad?: boolean; badProvince?: boolean; onPickProvince?: () => void }) {
+function ChildFields({ prefix, value, onChange, bad, badProvince }: { prefix: string; value: ChildInput; onChange: (c: ChildInput) => void; bad?: boolean; badProvince?: boolean }) {
   return (
     <>
       <Field id={`${prefix}-first`} label="Child's first name" bad={bad} error="Enter your child's first name.">
@@ -105,10 +105,7 @@ function ChildFields({ prefix, value, onChange, bad, badProvince, onPickProvince
         <select
           id={`${prefix}-province`}
           value={value.province}
-          onChange={(e) => {
-            onPickProvince?.();
-            onChange({ ...value, province: e.target.value as CurriculumId });
-          }}
+          onChange={(e) => onChange({ ...value, province: e.target.value as CurriculumId })}
           aria-invalid={!!badProvince}
           aria-describedby={described(`${prefix}-province`, badProvince, true)}
         >
@@ -128,7 +125,7 @@ function Submit({ busy, children }: { busy: boolean; children: ReactNode }) {
   );
 }
 
-type SignupErrors = Partial<Record<"name" | "email" | "postal" | "password" | "child" | "province", boolean>>;
+type SignupErrors = Partial<Record<"name" | "email" | "password" | "child" | "province", boolean>>;
 
 /** What the email-code step shows under the button (#82). */
 type CodeNote = null | "sent_again" | "wait" | "bad" | "expired" | "too_many" | "check_failed" | "send_failed";
@@ -171,7 +168,7 @@ async function sendCode(email: string): Promise<"sent" | "wait" | "failed"> {
  * whether or not the email already has an account: the owner of an existing account gets a code too, the code signs
  * them in, and their account stays as it was.
  *
- * `phone` (D-134): the short phone signup. No postal code and no password: the test happens later on a laptop or tablet,
+ * `phone` (D-134): the short phone signup. No password: the test happens later on a laptop or tablet,
  * and the sign-in link that /api/account/finish emails to a phone opens it there.
  */
 export function AccountSignup({ phone = false }: { phone?: boolean }) {
@@ -180,13 +177,10 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
   const codeInput = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [postal, setPostal] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  // On a phone there is no postal code to guess the province from, so the parent chooses it (D-134).
+  // On a phone the parent chooses the province (D-134). Elsewhere it starts on BC, the curriculum we serve today.
   const [child, setChild] = useState<ChildInput>({ firstName: "", grade: 4, province: phone ? ("" as CurriculumId) : "BC" });
-  // Until the parent picks a province, follow the one in their postal code.
-  const [pickedProvince, setPickedProvince] = useState(false);
   const [website, setWebsite] = useState("");
   const [errors, setErrors] = useState<SignupErrors>({});
   const [failure, setFailure] = useState<AccountError | null>(null);
@@ -221,7 +215,7 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
     setBusy(true);
     const res = await post("/api/account/finish", {
       name: name.trim(), child: { ...child, firstName: child.firstName.trim() }, source: collectSource(),
-      ...(phone ? {} : { postal: postal.trim().toUpperCase(), password }),
+      ...(phone ? {} : { password }),
     });
     if (!res.ok) {
       track("account_signup_failed", { code: res.error ?? "unknown" });
@@ -262,14 +256,13 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
     const next: SignupErrors = {
       name: name.trim().length < 2,
       email: !EMAIL.test(email.trim()),
-      postal: !phone && !POSTAL.test(postal.trim()),
       password: !phone && !validPassword(password),
       child: !child.firstName.trim(),
       province: !child.province,
     };
     setErrors(next);
     setFailure(null);
-    const firstBad = (["name", "email", "postal", "password", "child", "province"] as const).find((k) => next[k]);
+    const firstBad = (["name", "email", "password", "child", "province"] as const).find((k) => next[k]);
     if (firstBad) {
       const at = firstBad === "child" ? "c-first" : firstBad === "province" ? "c-province" : firstBad;
       form.current?.querySelector<HTMLElement>(`#a-${at}`)?.focus();
@@ -401,13 +394,6 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
           <input id="a-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={!!errors.email} aria-describedby={described("a-email", errors.email, true)} />
         </Field>
         {!phone && <>
-          <Field id="a-postal" label="Postal code" bad={errors.postal} error="Enter a Canadian postal code, like V6B 1A1.">
-            <input id="a-postal" autoComplete="postal-code" placeholder="V6B 1A1" value={postal} onChange={(e) => {
-              setPostal(e.target.value);
-              const guess = curriculumFromPostal(e.target.value);
-              if (guess && !pickedProvince) setChild((c) => ({ ...c, province: guess }));
-            }} aria-invalid={!!errors.postal} aria-describedby={described("a-postal", errors.postal)} />
-          </Field>
           <Field id="a-password" label="Password" bad={errors.password} error={failure === "weak_password" ? "Choose a different password." : `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`} hint={`At least ${PASSWORD_MIN} characters.`}>
             <span className="pw">
               <input id="a-password" type={showPassword ? "text" : "password"} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} aria-invalid={!!errors.password} aria-describedby={described("a-password", errors.password, true)} />
@@ -418,7 +404,7 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
       </fieldset>
       <fieldset>
         <legend>Your child</legend>
-        <ChildFields prefix="a-c" value={child} onChange={setChild} bad={errors.child} badProvince={errors.province} onPickProvince={() => setPickedProvince(true)} />
+        <ChildFields prefix="a-c" value={child} onChange={setChild} bad={errors.child} badProvince={errors.province} />
       </fieldset>
       <input className="hp" type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" value={website} onChange={(e) => setWebsite(e.target.value)} />
       <Submit busy={busy}>Create account <span className="arr">→</span></Submit>
@@ -810,11 +796,9 @@ export function FinishAccount({ name: googleName, email, needsPassword }: { name
   const router = useRouter();
   const form = useRef<HTMLFormElement>(null);
   const [name, setName] = useState(googleName);
-  const [postal, setPostal] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [child, setChild] = useState<ChildInput>({ firstName: "", grade: 4, province: "BC" });
-  const [pickedProvince, setPickedProvince] = useState(false);
   const [errors, setErrors] = useState<SignupErrors>({});
   const [failure, setFailure] = useState<AccountError | null>(null);
   const [busy, setBusy] = useState(false);
@@ -825,20 +809,19 @@ export function FinishAccount({ name: googleName, email, needsPassword }: { name
     if (busy) return;
     const next: SignupErrors = {
       name: name.trim().length < 2,
-      postal: !POSTAL.test(postal.trim()),
       password: needsPassword && !validPassword(password),
       child: !child.firstName.trim(),
     };
     setErrors(next);
     setFailure(null);
-    const firstBad = (["name", "postal", "password", "child"] as const).find((k) => next[k]);
+    const firstBad = (["name", "password", "child"] as const).find((k) => next[k]);
     if (firstBad) {
       form.current?.querySelector<HTMLInputElement>(`#f-${firstBad === "child" ? "c-first" : firstBad}`)?.focus();
       return;
     }
     setBusy(true);
     const res = await post("/api/account/finish", {
-      name: name.trim(), postal: postal.trim().toUpperCase(), child: { ...child, firstName: child.firstName.trim() }, source: collectSource(),
+      name: name.trim(), child: { ...child, firstName: child.firstName.trim() }, source: collectSource(),
       ...(needsPassword ? { password } : {}),
     });
     if (!res.ok) {
@@ -866,13 +849,6 @@ export function FinishAccount({ name: googleName, email, needsPassword }: { name
         <Field id="f-name" label="Your name" bad={errors.name} error="Enter your name.">
           <input id="f-name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!errors.name} aria-describedby={described("f-name", errors.name)} />
         </Field>
-        <Field id="f-postal" label="Postal code" bad={errors.postal} error="Enter a Canadian postal code, like V6B 1A1.">
-          <input id="f-postal" autoComplete="postal-code" placeholder="V6B 1A1" value={postal} onChange={(e) => {
-            setPostal(e.target.value);
-            const guess = curriculumFromPostal(e.target.value);
-            if (guess && !pickedProvince) setChild((c) => ({ ...c, province: guess }));
-          }} aria-invalid={!!errors.postal} aria-describedby={described("f-postal", errors.postal)} />
-        </Field>
         {needsPassword && (
           <Field id="f-password" label="Choose a password" bad={errors.password} error={failure === "weak_password" ? "Choose a different password." : `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`} hint={`At least ${PASSWORD_MIN} characters. You sign in with it next time.`}>
             <span className="pw">
@@ -884,7 +860,7 @@ export function FinishAccount({ name: googleName, email, needsPassword }: { name
       </fieldset>
       <fieldset>
         <legend>Your child</legend>
-        <ChildFields prefix="f-c" value={child} onChange={setChild} bad={errors.child} onPickProvince={() => setPickedProvince(true)} />
+        <ChildFields prefix="f-c" value={child} onChange={setChild} bad={errors.child} />
       </fieldset>
       <Submit busy={busy}>Finish <span className="arr">→</span></Submit>
       <p className="small">We use your details to run your child&apos;s assessment and to contact you. Read our <Link href="/privacy">privacy policy</Link> and <Link href="/terms">terms</Link>.</p>

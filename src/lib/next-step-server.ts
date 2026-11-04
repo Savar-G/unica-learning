@@ -5,6 +5,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { gradeName, withFamilyCardOperation, type Province } from "@/lib/assessment";
 import { emailConfigProblem, sendEmail } from "@/lib/email-delivery";
+import { SUPPORT_EMAIL, BOOKING_URL } from "@/lib/contact";
+import { waitlistEmail } from "@/lib/founder-emails";
 import type { CardCheckResult, CardResult, NextStepError, ReportSrc, WaitlistResult } from "@/lib/next-step";
 import { REPORT_PLANS, reportPath, type PlanOption } from "@/lib/report-view";
 import { CURRICULA } from "@/lib/signup";
@@ -193,6 +195,12 @@ export async function joinWaitlist(parentId: string, reportId: string, origin: s
     return fail("store_failed", 502);
   }
   if (!data?.length) return { ok: true, state: "already" };
+  // The founders' note (D-223): once per child, like the row.
+  const note = waitlistEmail({
+    parentName: parent.name, childName: report.child!.first_name, curriculum: province === "other" ? null : CURRICULA[province],
+    reportUrl: `${origin}${reportPath(report.id)}`, bookingUrl: BOOKING_URL || null,
+  });
+  after(() => sendToParent(parent.email, note, "waitlist"));
   after(() => alertSavar({
     subject: `Waitlist from a report: ${parent.name} (${CURRICULA[province]})`,
     replyTo: parent.email,
@@ -204,6 +212,12 @@ export async function joinWaitlist(parentId: string, reportId: string, origin: s
     ].join("\n"),
   }));
   return { ok: true, state: "joined" };
+}
+
+/** A founders' email to a parent, sent without a send key: its caller's row is the guard. Never throws. */
+async function sendToParent(to: string, email: { subject: string; text: string; html: string }, label: string) {
+  const outcome = await sendEmail({ sender: { to: "parent", from: "founders" }, to, replyTo: SUPPORT_EMAIL, ...email });
+  if (outcome.status !== "sent") console.error(`[next-step] ${label} email failed`, outcome.status, outcome.error);
 }
 
 function cardAlert(setup: ReportCardSetup, report: ReportRow, option: PlanOption, src: ReportSrc, reason: string, origin: string) {

@@ -61,8 +61,10 @@ export function workbookEmail(p: { parentName: string; childName: string; kind: 
       ...(delivery.trackingUrl ? [`Track your workbook: ${delivery.trackingUrl}`] : [])] : []),
   ];
   const footer = { why: "You received this email about your Unica Learning program." };
-  const text = [...paragraphs, emailSignatureText(), emailFooterText(footer)].join("\n\n");
+  // The founders sign the welcome (D-223); the team signs the dispatch notices.
+  const signer = welcome ? "founders" as const : "team" as const;
+  const text = [...paragraphs, emailSignatureText(undefined, signer), emailFooterText({ ...footer, signer })].join("\n\n");
   const body = `<tr><td style="padding:0 24px">${paragraphs.map((s) => `<p style="margin:0 0 16px">${esc(s)}</p>`).join("")}${!welcome && delivery?.method === "mail" && delivery.trackingUrl
     ? `<p><a href="${esc(delivery.trackingUrl)}" style="color:#0c0c0e">Track your workbook</a></p>` : ""}</td></tr>`;
-  return { subject, text, html: emailDocument({ title: subject, preview: welcome ? "We will email you when your workbook is on its way." : "Your workbook delivery details.", body, footer }) };
+  return { subject, text, html: emailDocument({ title: subject, preview: welcome ? "We will email you when your workbook is on its way." : "Your workbook delivery details.", body, footer: { ...footer, signer } }) };
 }

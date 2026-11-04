@@ -89,14 +89,15 @@ describe("every reminder", () => {
       expect(e.text).toContain("You get this reminder because you signed up for Maya's free math placement test.");
     }
   });
-  it("uses the chosen logo and team signature for all four reminders", () => {
+  it("uses the chosen logo and a signature above the address in all four reminders (team or founders, D-223)", () => {
     for (const e of all) {
       expect(e.html).toContain("background:#ff6a3d");
+      const signed = e.founders ? "Co-founders, Unica Learning" : "The Unica Learning team";
       for (const body of [e.text, e.html]) {
-        expect(body).toContain("The Unica Learning team");
+        expect(body).toContain(signed);
         expect(body).toContain("Questions? Reply to this email.");
       }
-      expect(e.html.indexOf("The Unica Learning team")).toBeLessThan(e.html.indexOf("16557 87A Ave"));
+      expect(e.html.indexOf(signed)).toBeLessThan(e.html.indexOf("16557 87A Ave"));
     }
   });
   it("escapes names and links in the HTML", () => {
@@ -104,5 +105,20 @@ describe("every reminder", () => {
     expect(html).not.toMatch(/<b>A<\/b>|<i>/);
     expect(html).toContain("Jo &amp; &lt;i&gt;");
     expect(html).toContain('href="https://x.test/?a=1&amp;b=2"');
+  });
+});
+
+describe("who signs a reminder (D-223)", () => {
+  it("the founders sign the last start reminder; the team signs the others", () => {
+    const last = email({ kind: "start_followup" });
+    expect(last.founders).toBe(true);
+    expect(last.text).toContain("Thank you,\nCedric & Savar\nCo-founders, Unica Learning");
+    expect(last.html).toContain("Cedric &amp; Savar");
+    for (const kind of ["continue", "come_back", "start"] as const) {
+      const e = email({ kind });
+      expect(e.founders).toBe(false);
+      expect(e.text).toContain("The Unica Learning team");
+      expect(e.text).not.toContain("Co-founders");
+    }
   });
 });
