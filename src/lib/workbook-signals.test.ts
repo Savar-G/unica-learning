@@ -33,6 +33,15 @@ describe("book signals through the public profile interface", () => {
     expect(signal(i,"S18").status).toBe("missing");
     expect(signal(i,"S5").reliability).toBe("early-sign");
   });
+  it("accepts an older profile with grade and standards only", () => {
+    const legacy=firstCustomerProfile();
+    for(const key of ["assessment","events","preferences","parent","ai"]) Reflect.deleteProperty(legacy,key);
+    const s=bookSignals({grade:4,profile:legacy});
+    expect(s.hasAssessment).toBe(false);
+    expect(s.standards).toHaveLength(30);
+    expect(s.events).toBeNull();
+    expect(s.trace.find(t=>t.id==="S8")?.status).toBe("missing");
+  });
   it("uses per-family results without promoting an unmeasured family from the section score", () => {
     const i=input();
     const quick: FamilyResult={answered:4,correct:4,skipped:0,medianMs:1000,accuracy:"secure",speed:"quick"};

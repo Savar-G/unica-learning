@@ -146,7 +146,7 @@ export function bookSignals(input: BookSignalsInput): BookSignals {
   add("S5", standards.every(s => s.certainty === "clear") ? "clear" : "early-sign", standards.length > 0, true, "only clear secure units can skip first-book teaching");
   add("S6", weak.every(s => s.certainty === "clear") ? "clear" : "early-sign", !!p, weak.length > 0, weak.length ? "weaknesses at or below school grade only" : "no weakness at or below school grade");
   add("S7", "fact", !!a, mistakes.some(m => m.misconceptions.length > 0), "use coded mistakes at or below school grade; never copy answers");
-  add("S8", "fact", !!p?.events, (p?.events.counted ?? 0) > 0, "counted learning events; no event identifiers or question text");
+  add("S8", "fact", !!p?.events, (p?.events?.counted ?? 0) > 0, "counted learning events; no event identifiers or question text");
   add("S9", "fact", !!section, !!section && section.answered > 0, section?.byFamily ? "per-family accuracy and speed" : "older profile: section result applies only to the families asked");
   add("S10", "fact", !!unknowns, !!unknowns && (unknowns.untested.length + unknowns.checkNext.length > 0), "unmeasured units keep placement checks");
   add("S11", "fact", !!b, rushed, rushed ? "rushing blocks stretch" : "pace alone has no slow norm and changes nothing");
