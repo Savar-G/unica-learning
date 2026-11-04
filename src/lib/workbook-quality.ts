@@ -176,7 +176,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     const pageStems = new Map<string, number>();
     const pageTemplates = new Map<string, number>();
     for (const q of printed) {
-      if (q.place === "how-do-you-know") continue;
+      if (q.place === "how-do-you-know" || q.place === "spot-the-error" || q.place === "solve-it-two-ways") continue;
       // A template is one stem too (outside the Challenge, which asks each of its few once).
       const t = q.itemPlan?.template;
       if (t && q.place !== "challenge") {
@@ -235,7 +235,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       const lines = [...(b.methods ?? []).flatMap(m => m.lines), ...(b.lines ?? []), ...(b.explain ? [b.explain] : [])].filter(l => !/^Watch out:/.test(l));
       if (!lines.length) continue;
       const asked = new Set((p.panelExamples ?? []).flatMap(e => e ? [e.text] : []));
-      const method = lines.some((l, k) => (k > 0 || !asked.size) && !asked.has(l) && !/^Answer:/.test(l) && (l.replace(/\[[^\]]*\]/g, "").match(/[a-z]{2,}/gi) ?? []).length >= 2);
+      const method = lines.some((l, k) => k > 0 && !asked.has(l) && !/^Answer:/.test(l) && (l.replace(/\[[^\]]*\]/g, "").match(/[a-z]{2,}/gi) ?? []).length >= 2);
       if (!method) issues.push({ page: p.number, kind: "coverage", reason: `the worked example shows its answer without a method ("${lines[0].slice(0, 40)}")` });
     }
     // A worked example and a Watch out line once a day (the real U4 sample: one mistake on three pages of Day 1).

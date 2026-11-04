@@ -451,8 +451,10 @@ const CSS = `
 .pg.consistent .blk{flex:0 0 auto;gap:calc(6px + var(--extra-gap,0px))}
 .pg.consistent .blk.grow{flex:1 0 auto}
 .pg.consistent .ft{top:939px;height:48px}
-.pg.consistent.stretch .ct>.blk:last-child{flex:1 0 auto;display:flex;flex-direction:column}
-.pg.consistent.stretch .ct>.blk:last-child>:is(.two,.cols,.list,.facts,.pcards,.mxs):last-child{flex:1 0 auto;grid-auto-rows:1fr;align-content:stretch}
+.pg.consistent [data-measure^="review-"]{margin:-4px 0 -4px}
+.pg.consistent.stretch .ct>.blk:has(>:is(.two,.cols,.list,.facts,.pcards,.mxs)){flex:1 0 auto;display:flex;flex-direction:column}
+.pg.consistent.stretch .ct>.blk>:is(.two,.cols,.facts,.pcards,.mxs){flex:1 0 auto;grid-auto-rows:auto;align-content:stretch}
+.pg.consistent.stretch .ct>.blk>.list{flex:1 0 auto}.pg.consistent.stretch .ct>.blk>.list>*{flex:1 0 auto}
 .pg.consistent .list{flex:none;justify-content:flex-start;gap:calc(12px + var(--extra-gap,0px))}
 .pg.consistent .two{flex:none;grid-auto-rows:auto;row-gap:calc(12px + var(--extra-gap,0px))}
 .pg.consistent .facts{flex:none;align-content:start;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:calc(10px + var(--extra-gap,0px))}
@@ -1128,7 +1130,7 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
   const blocks = c.blocks.map((b, i) => `<section class="blk${GROW.has(b.slot) || c.consistentLayout && b.slot === "word-problems" ? " grow" : ""}"${b.slot === "in-your-head" ? ` style="flex:0 0 auto"` : ""} data-slot="${b.slot}" data-measure="block-${i}">${blockHtml(b, i, ctx).replace(/<div class="chiprow">([\s\S]*?)<\/div>/g, (_row, inner: string, at: number) => `<div class="chiprow" data-measure="chip-${i}-${at}">${inner.replace('<span class="chip ', `<span data-measure="chipbadge-${i}-${at}" class="chip `).replace('<span class="side">', `<span data-measure="chipnote-${i}-${at}" class="side">`)}</div>`).replace(/<div class="lab"([^>]*)>/g, (tag, attrs: string, at: number) => attrs.includes("data-measure") ? tag : `<div class="lab" data-measure="label-${i}-${at}"${attrs}>`)}${missingHtml(b)}</section>`).join("");
   // A page at its day's time limit holds no more questions: its rows grow to fill it, each with more room to work
   // (Codex at 47c5fd78: the time limit must not excuse a half-empty page).
-  const stretch = c.consistentLayout && c.fillingComplete && c.timeLimited ? " stretch" : "";
+  const stretch = c.consistentLayout && c.fillingComplete && c.atMaximum ? " stretch" : "";
   return `<div class="pg ${band.name}${c.consistentLayout ? " consistent" : ""}${stretch} f-${familyOf(page, c)}" data-page-type="${page.type}" style="--work-min:${c.consistentLayout ? workMinimum(c.level) : 64}px">${scanMarks}<div class="frame">${header}<main class="ct" style="--extra-gap:${Math.max(0,Math.min(48,c.extraGap ?? 0))}px" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
 }
 

@@ -169,11 +169,11 @@ export function sequenceOf(text: string, answer: string): { text: string; terms:
  * 890 packs of 3 pencils. How many pencils is that?". Other texts are unchanged.
  */
 export function plausibleGroups(text: string): string {
-  // Packs a person buys: up to 50 (the U16 review: "buys 810 packs of 20 apples"); more than that, a factory or a school
-  // fills them. The numbers stay, each once.
+  // Packs a person buys: up to 50 (the U16 review: "buys 810 packs of 20 apples"); more than that, a school
+  // orders them. The numbers stay, each once.
   const many = (count: string, size: string, things: string, who: string) => Number(count) <= 50
     ? `${who} buys ${count} packs of ${size} ${things}. How many ${things} is that?`
-    : `A factory fills ${count} boxes with ${size} ${things} in each. How many ${things} is that?`;
+    : `${who}'s school orders ${count} boxes with ${size} ${things} in each. How many ${things} is that?`;
   const each = text.match(/^Each (\w+) holds (\d+) ([a-z ]+?)\. ([A-Z][a-z]+) fills (\d+) (?:of them|\w+)\. How many \3 (?:is that|in all|does (?:he|she|they) have(?: now)?|are in the \w+ now)\?$/);
   if (each && Number(each[5]) > 12) return many(each[5], each[2], each[3], each[4]);
   const puts = text.match(/^([A-Z][a-z]+) puts (\d+) ([a-z ]+?) in each (\w+) and fills (\d+) of them\. How many \3 is that\?$/);

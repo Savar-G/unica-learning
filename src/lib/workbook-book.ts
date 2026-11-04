@@ -13,7 +13,7 @@
 //
 // The words here are code's, never the AI's: headers, panel labels and explanations come from the plan and the
 // curriculum. Pure TypeScript: no Next.js, React, network, database, clock or randomness.
-import { templateNumbers, type TemplateSource } from "@/lib/question-package-template";
+import { templateAnswer, templateNumbers, type TemplateSource } from "@/lib/question-package-template";
 import { likelihoodWord } from "@/lib/workbook-likelihood";
 import { workbookCoverTitle } from "@/lib/workbook-cover-titles";
 import { SKILL_TITLES } from "@/lib/workbook-skill-titles";
@@ -248,7 +248,8 @@ function exampleOf(p: QuestionPackage, level: number): PanelExample | null {
       const answer = r?.kind === "box" && r.answer ? valueText(r.answer) : r?.kind === "choice" ? r.answer ?? "?" : "?";
       // The work, then the answer: a worked example shows its method, never an answer key alone (Codex at db3b1a0).
       const how = templateMethod(c.source, p.text);
-      return { label: "Example", lines: [p.text, ...(how ? [how] : []), `Answer: [${answer}]`], answered: `Answer: [${answer}]` };
+      // (The method and its answer on one line: "Work it out: 7 − 4 = 3. Answer: 3", a line less on a full page.)
+      return { label: "Example", lines: [p.text, how ? `${how} Answer: [${answer}]` : `Answer: [${answer}]`], answered: `Answer: [${answer}]` };
     }
     if (c.kind === "count" && item.figure) {
       const n = figureCount(item.figure);
@@ -355,6 +356,12 @@ export function templateMethod(src: TemplateSource, text: string): string | null
   const before = text.match(/\b(?:just |right )?before (\d+)/i);
   if (before) return `Count back 1 from ${before[1]}: ${Number(before[1]) - 1} comes just before.`;
   const direct = resolve(src.answer);
+  // (Any expression of its numbers and + − × ÷: "38 + 3 × 12 = 74".)
+  const expr = src.answer.trim().replace(/\b[a-z]\w*\b/gi, (k) => (v[k] !== undefined ? String(v[k]) : k));
+  if (!direct && /^[\d\s+\-*/()]+$/.test(expr) && /[+\-*/]/.test(expr)) {
+    const result = templateAnswer(src);
+    if ("answer" in result) return `Work it out: ${expr.replace(/\/\//g, "÷").replace(/\*/g, "×").replace(/-/g, "−").replace(/\d{5,}/g, (x) => groupedNumber(Number(x)))} = ${groupedNumber(Number(result.answer))}.`;
+  }
   if (direct) return `Work it out: ${direct}.`;
   // A true or false: the sum it checks, from the derived values.
   // (A sum whose two numbers the question prints.)

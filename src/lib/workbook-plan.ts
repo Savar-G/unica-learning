@@ -256,6 +256,10 @@ export interface PlannedPage {
   fillingComplete?: boolean;
   /** Filling stopped at the day's time limit (the page's maximum). */
   timeLimited?: boolean;
+  /** Filling found no further question the book's rules allow (the page's maximum, as at the time limit). */
+  atMaximum?: boolean;
+  /** The widest extra gap that kept the page inside its area. */
+  gapCap?: number;
   /** The worked example's panel had no room for its Watch out line beside its method (U4's large type). */
   noWatchOut?: boolean;
   /** Approved pipeline capacity. The writer and layout consume this same budget. */

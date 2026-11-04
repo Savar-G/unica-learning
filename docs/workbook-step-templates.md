@@ -236,6 +236,34 @@ backwards") does not print.
 - **Minutes:** the plan page says "about N minutes", the mean of the book's own day
   estimates to the nearest five (D-225).
 
+## Codex at 47c5fd78, U16 r8 and U4 r17 (2026-11-03)
+
+- **Worked examples** print the page's own reserved example with a method line
+  ("Work it out: 7 − 4 = 3. Answer: 3", "Read the thousands place: ...",
+  "Add 1 each time."), from the template's expression and numbers
+  (`templateMethod`). The book check fails a panel with no method line.
+  U4 to U9 panels may take 320 px; a panel with no room drops its Watch out line.
+- **Task identity** reads the printed task only: who wrote it never changes it.
+- **Page floors:** every day page kind has its count (`pageMinimum`, in the book
+  check for every page from U4, whatever wrote its questions). From U19 a new
+  idea's floor is 2: Cedric's upper band (Savar). Practice rows share 8 across
+  their rows (U16's Practice 2 had 14).
+- **Own step:** from U10 a practice page asks at least half its practice
+  questions, or 3, on its own step. A block's own-step questions come first, its
+  earlier steps after them under "Remember these".
+- **Fullness:** the time limit no longer excuses a half-empty page. At its
+  maximum with its gaps at their widest, a page's rows grow to fill it (the
+  rows, not the gaps), and the fullness check still runs. A page that overflows
+  only because its gaps grew gets its gaps back, never loses a question.
+- **Numbers:** from 10 000 up, printed in BC groups ("46 251", `bcNumbers`).
+- **Wording:** "counting by 10, 3 marks above 40" is "start at 40 and count on
+  by 10s 3 times"; more than 50 packs are a school's order of boxes.
+- **Stories:** a Number stories page mixes kinds (join, take away, compare, part
+  and whole, groups; `storyKind`), in the planner and the book check, and a
+  shorter replacement never loses one. Two ways there is a story too.
+- **Show what you know:** a half card alone in its row takes the row. A Challenge
+  card with nothing to work in keeps its height.
+
 ## Confirmed decisions (Savar, 2026-11-03)
 
 - **U4 to U9 (D-222),** each one function in `src/lib/workbook-early-levels.ts`:

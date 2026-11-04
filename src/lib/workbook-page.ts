@@ -88,6 +88,8 @@ export interface DayContent {
   fillingComplete?: boolean;
   /** Filling stopped at the day's time limit: the page is at its maximum, and its gaps may spread. */
   timeLimited?: boolean;
+  /** No further question could be added: the page's rows grow to fill it. */
+  atMaximum?: boolean;
   /** Extra row spacing, capped at 48 px by the measured capacity pass. */
   extraGap?: number;
   /** The printed page ID (D-187). */
