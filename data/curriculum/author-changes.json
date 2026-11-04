@@ -6398,5 +6398,29 @@
     },
     "why": "The matched U10 selected-day comparison reduced minimum fullness from 50.64% to 49.18% with v2 estimate templates. Restore this step from patched v1. Trial r37 passes both the selected-day and full-book comparisons with no worse failures, omissions, fullness, render errors or variety. Keep all six template positions and easy and hard coverage.",
     "kind": "quality-fallback"
+  },
+  {
+    "skill": "4.3-benchmarks",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "A pizza is cut into {d} equal slices. {name} eats {a} of the slices and a friend eats {b} of the slices. Did they eat less than, exactly or more than one whole pizza?",
+    "after": "Each pizza has {d} equal slices. {name} and a friend eat {a} and {b} slices. Choose: A) less than 1 pizza B) 1 pizza C) more than 1 pizza.",
+    "why": "The full U14 comparison could not print this hard story as a choice and fell back to an easier builder on Day 9. Use explicit A/B/C choices with the same sum-of-slices comparison. Permit equal pizzas for the greater-than-one case. The shorter prompt retains the story format and hard difficulty. Trial r50 passes the full U14 comparison with zero failed questions, omissions, fit failures or render errors.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "4.3-benchmarks",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "answer"
+    ],
+    "before": "['less than one whole', 'exactly one whole', 'more than one whole'][k]",
+    "after": "'A' if k == 0 else ('B' if k == 1 else 'C')",
+    "why": "The full U14 comparison could not print this hard story as a choice and fell back to an easier builder on Day 9. Use explicit A/B/C choices with the same sum-of-slices comparison. Permit equal pizzas for the greater-than-one case. The shorter prompt retains the story format and hard difficulty. Trial r50 passes the full U14 comparison with zero failed questions, omissions, fit failures or render errors.",
+    "kind": "wording-rewrite"
   }
 ]

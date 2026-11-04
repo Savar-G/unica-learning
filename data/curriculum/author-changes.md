@@ -3575,3 +3575,29 @@ After:
   "g": "group_size"
 }
 ```
+
+## 4.3-benchmarks step 1 template 5 text
+
+The full U14 comparison could not print this hard story as a choice and fell back to an easier builder on Day 9. Use explicit A/B/C choices with the same sum-of-slices comparison. Permit equal pizzas for the greater-than-one case. The shorter prompt retains the story format and hard difficulty. Trial r50 passes the full U14 comparison with zero failed questions, omissions, fit failures or render errors.
+
+Before:
+```json
+"A pizza is cut into {d} equal slices. {name} eats {a} of the slices and a friend eats {b} of the slices. Did they eat less than, exactly or more than one whole pizza?"
+```
+After:
+```json
+"Each pizza has {d} equal slices. {name} and a friend eat {a} and {b} slices. Choose: A) less than 1 pizza B) 1 pizza C) more than 1 pizza."
+```
+
+## 4.3-benchmarks step 1 template 5 answer
+
+The full U14 comparison could not print this hard story as a choice and fell back to an easier builder on Day 9. Use explicit A/B/C choices with the same sum-of-slices comparison. Permit equal pizzas for the greater-than-one case. The shorter prompt retains the story format and hard difficulty. Trial r50 passes the full U14 comparison with zero failed questions, omissions, fit failures or render errors.
+
+Before:
+```json
+"['less than one whole', 'exactly one whole', 'more than one whole'][k]"
+```
+After:
+```json
+"'A' if k == 0 else ('B' if k == 1 else 'C')"
+```

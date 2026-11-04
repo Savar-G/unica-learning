@@ -146,6 +146,15 @@ describe("v2 data and answer contracts", () => {
     expect(maxima.filter(n => n >= 18)).toHaveLength(30);
   });
 
+  it("keeps a rate story and its unit-bearing key available through the public item builder", () => {
+    const item = stepTemplateItem({ curriculum: BC, skill: "8.4-rates", step: 3, place: "word-problems", level: 26, day: 9, ordinal: 0, seed: 7, attempt: 0 });
+    expect(item?.ref).toMatchObject({ kind: "story", format: "story" });
+    expect(item?.ref.answer).toMatch(/^\d+ words per minute$/);
+    const built = buildStepItem(item!.ref, item!.text, { id: "rate", workbookId: "w", page: 54, question: 1, level: 26, skills: ["8.4-rates"] }, "code");
+    expect(built.check.status).toBe("checked");
+    expect(checkQuestionPackage(built.package!).status).toBe("checked");
+  });
+
   it("uses purchased goods in a price story while it keeps the arithmetic key", () => {
     const step = BC.skillSteps("4.11-multiply-divide-unknown")!.find(s => s.number === 3)!;
     const curriculum = { ...BC, skillSteps: (id: string) => id === step.skill ? [{ ...step, templates: [step.templates![2]] }] : BC.skillSteps(id) };

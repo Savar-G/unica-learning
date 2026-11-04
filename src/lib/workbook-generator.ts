@@ -233,7 +233,7 @@ function storySteps(input: GenerateInput, slot: Slot, day: number, level: number
   const at = slot.part.step;
   if (!at || slot.place !== "word-problems") return [];
   // (Not "gets 1 more": one more is a count, not a story to work out; the U4 review.)
-  const sums = (skill: string, n: number | null) => !!stepOf(input.curriculum, skill, n)?.templates?.some((t) => t.format === "story" && sumTemplate(t) && !/\b1 (?:more|less|fewer)\b/.test(t.text) && !templateProblem(t, level));
+  const sums = (skill: string, n: number | null) => !!stepOf(input.curriculum, skill, n)?.templates?.some((t) => t.format === "story" && sumTemplate(t, true) && !/\b1 (?:more|less|fewer)\b/.test(t.text) && !templateProblem(t, level));
   // The page's own step first when it has such stories; then this book's steps taught by today and the day's reviewed
   // steps, the most advanced first (the U16 review: Grade 5 stories, not "Hana has 9 leaves. She gets 7 more").
   // If this step has no usable story, look backwards within the skill, then through

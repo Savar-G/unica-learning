@@ -111,6 +111,7 @@ export function stepRangeProblem(step: CurriculumStep, text: string): string | n
 }
 
 const NUMERIC = /^-?\d+(?:\.\d+)?$|^-?\d+\/\d+$|^\d+ \d+\/\d+$/;
+const UNIT_NUMBER = /^-?\d+(?:\.\d+|\/\d+)? (?:mm|cm|km|m|kg|g|mL|L|cm²|m²|cm³|m³|km per hour|words per minute)$/;
 const integerAnswer = (a: string) => /^-?\d+$/.test(a);
 
 /** The choices a text offers for a word answer, or null: true or false, yes or no, and "a, b or c" at its end. */
@@ -190,7 +191,7 @@ export function plausibleWrong(answer: number, bounds: { min: number; max: numbe
 
 /** The kind a filled template takes at a place, or null when it cannot print there. */
 function kindAt(place: SlotName | null, answer: string, text: string): { kind: StepItemKind; choices?: string[] } | null {
-  const numeric = NUMERIC.test(answer);
+  const numeric = NUMERIC.test(answer) || UNIT_NUMBER.test(answer);
   if (place === "spot-the-error") return integerAnswer(answer) ? { kind: "spot" } : null;
   if (place === "solve-it-two-ways") return numeric ? { kind: "two-ways" } : null;
   const story = !!place && STEP_STORY_PLACES.has(place);
@@ -259,8 +260,10 @@ export interface StepItemRequest {
  * answer (no quoted word in its answer) to a bare, missing-number or story question that adds, takes away, multiplies,
  * shares or splits.
  */
-export function sumTemplate(t: StepTemplate): boolean {
-  return ["bare", "missing", "story"].includes(t.format) && !/['"]/.test(t.answer)
+export function sumTemplate(t: StepTemplate, allowUnits = false): boolean {
+  const literals = [...t.answer.matchAll(/(['"])(.*?)\1/g)].map(([, , literal]) => literal);
+  const numberWithUnit = allowUnits && literals.length > 0 && literals.every(literal => /^ (?:mm|cm|km|m|kg|g|mL|L|cm²|m²|cm³|m³|km per hour|words per minute)$/.test(literal));
+  return ["bare", "missing", "story"].includes(t.format) && (!/['"]/.test(t.answer) || numberWithUnit)
     && !/\bevery (?:other )?place\b/i.test(t.text)
     && /[+×÷−]|\s-\s|\b(?:count on|count back|more|less|fewer|add|adds|take|takes|left|rest|altogether|times|groups? of|shares?|split|makes?|in all|total|each|every|per|holds?|fills?|grows?|loses?)\b/i.test(t.text);
 }

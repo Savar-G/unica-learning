@@ -112865,8 +112865,8 @@
     {
      "format": "story",
      "difficulty": "hard",
-     "text": "A pizza is cut into {d} equal slices. {name} eats {a} of the slices and a friend eats {b} of the slices. Did they eat less than, exactly or more than one whole pizza?",
-     "answer": "['less than one whole', 'exactly one whole', 'more than one whole'][k]",
+     "text": "Each pizza has {d} equal slices. {name} and a friend eat {a} and {b} slices. Choose: A) less than 1 pizza B) 1 pizza C) more than 1 pizza.",
+     "answer": "'A' if k == 0 else ('B' if k == 1 else 'C')",
      "slots": {
       "d": "template_d",
       "a0": "template_a0",
