@@ -89,7 +89,7 @@ describe("every reminder", () => {
       expect(e.text).toContain("You get this reminder because you signed up for Maya's free math placement test.");
     }
   });
-  it("uses the chosen logo and a signature above the address in all four reminders (team or founders, D-223)", () => {
+  it("uses the chosen logo and a signature above the address in all four reminders (team or founders, D-225)", () => {
     for (const e of all) {
       expect(e.html).toContain("background:#ff6a3d");
       const signed = e.founders ? "Co-founders, Unica Learning" : "The Unica Learning team";
@@ -108,7 +108,7 @@ describe("every reminder", () => {
   });
 });
 
-describe("who signs a reminder (D-223)", () => {
+describe("who signs a reminder (D-225)", () => {
   it("the founders sign the last start reminder; the team signs the others", () => {
     const last = email({ kind: "start_followup" });
     expect(last.founders).toBe(true);

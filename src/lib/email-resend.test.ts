@@ -114,7 +114,7 @@ describe("an answer that leaves the outcome unknown", () => {
 });
 
 describe("the sender", () => {
-  it("of an email the founders sign shows their name on the EMAIL_FROM address (D-223)", async () => {
+  it("of an email the founders sign shows their name on the EMAIL_FROM address (D-225)", async () => {
     const net = network(answer(200, { id: "e1" }));
     await resendTransport({ fetch: net.fetch }).send({ ...toParent, sender: { to: "parent", from: "founders" } });
     expect(net.body()).toMatchObject({ from: '"Cedric & Savar, Unica Learning" <contact@unicalearning.com>' });

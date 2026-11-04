@@ -11,7 +11,7 @@ import { resendConfigProblem, resendFrom, resendTransport } from "@/lib/email-re
 
 /**
  * Who the email goes to. The sender address is EMAIL_FROM for both; when it is not set, the email is refused (D-133).
- * `from: "founders"` shows the founders' name on that address (D-223).
+ * `from: "founders"` shows the founders' name on that address (D-225).
  */
 export type Sender = { to: "parent"; from?: "founders" } | { to: "savar" };
 

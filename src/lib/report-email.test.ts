@@ -140,7 +140,7 @@ describe("the report email to the parent", () => {
     expect(email.html).toMatch(new RegExp(`<a href="${UNSUB.replace(/[?.]/g, "\\$&")}"[^>]*>Unsubscribe</a>`));
     expect(email.html).toContain('href="https://unicalearning.com"');
   });
-  it("is signed by the founders in both report variants (D-223)", () => {
+  it("is signed by the founders in both report variants (D-225)", () => {
     for (const offer of [true, false]) {
       const e = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3)), parentName: "Priya", url: URL, offer });
       expect(e.text).toContain("Thank you,\nCedric & Savar\nCo-founders, Unica Learning");

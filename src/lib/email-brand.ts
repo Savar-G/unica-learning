@@ -1,6 +1,6 @@
 import { BUSINESS_NAME, MAILING_ADDRESS, SUPPORT_EMAIL, WEBSITE } from "@/lib/contact";
 
-/** Who signs an email: the team (notices and security emails) or the two founders (D-223). */
+/** Who signs an email: the team (notices and security emails) or the two founders (D-225). */
 export type Signer = "team" | "founders";
 
 // Approved email design A. These fragments are table rows, with inline styles and system fonts.

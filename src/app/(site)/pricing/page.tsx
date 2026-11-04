@@ -47,7 +47,7 @@ export default function PricingPage() {
             <p>We email you seven days before the first charge, with a link to manage or cancel the plan. Cancel before day {TRIAL_DAYS} and you pay nothing.</p>
           </Section>
           <Section title="Pauses, cancellation and program limits">
-            <p>Cancel anytime through the link in your reminder email, or <Link href="/contact">contact us</Link>. Contact us to arrange a pause of up to two months a year.</p>
+            <p>Cancel anytime from your account, through the link in your reminder email, or <Link href="/contact">contact us</Link>. Contact us to arrange a pause of up to two months a year.</p>
             <p>The program is for math. Reading is planned for later. Each book follows your child&apos;s level and gaps. Province-specific curriculum alignment is expanding, so the books may not yet cover every topic in your local curriculum.</p>
             <p><Link href="/compare">Compare {BRAND} with tutors and learning centres</Link>, or <Link href="/sample-report">read a sample assessment report</Link>.</p>
           </Section>

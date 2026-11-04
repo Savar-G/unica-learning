@@ -54,7 +54,7 @@ export const isPhone = (headers: Headers) => userAgent({ headers }).device.type 
  * site in a parent's email. Previews and local dev use the request's own origin, so the link opens the same deployment.
  */
 /**
- * The founders' welcome (D-223), once: the caller sends it only when create_family made the family. A phone signup gets
+ * The founders' welcome (D-225), once: the caller sends it only when create_family made the family. A phone signup gets
  * the sign-in link email instead. Never throws; a welcome that does not go is logged and not tried again.
  */
 export async function sendWelcome(p: { name: string; email: string; childName: string; childId: string; origin: string }): Promise<void> {
@@ -71,7 +71,7 @@ export type SendLinkResult = "sent" | "not_found" | "too_many" | "failed";
 
 /**
  * Emails the parent a one-time sign-in link (24 hours) that opens this child's start screen. `welcome`: the first link
- * of a phone signup, sent as the founders' welcome (D-223); a link asked for again is the team's plain link email.
+ * of a phone signup, sent as the founders' welcome (D-225); a link asked for again is the team's plain link email.
  */
 export async function sendSignInLink(admin: SupabaseClient<Database>, parentId: string, childId: string, origin: string, { welcome = false }: { welcome?: boolean } = {}): Promise<SendLinkResult> {
   // Stop before a token row is written: without the configuration the email cannot go.

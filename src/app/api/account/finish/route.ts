@@ -104,7 +104,7 @@ export async function POST(request: Request) {
 
   const phone = isPhone(request.headers);
   const linkSent = phone && (await sendSignInLink(admin, user.id, family.child, linkOrigin(request), { welcome: true })) === "sent";
-  // The founders' welcome (D-223), after the answer so the signup does not wait for it. On a phone the link email above
+  // The founders' welcome (D-225), after the answer so the signup does not wait for it. On a phone the link email above
   // is the welcome, so the parent gets one email.
   if (!phone) {
     const welcome = { name: details.name, email: user.email, childName: child.firstName, childId: family.child, origin: linkOrigin(request) };

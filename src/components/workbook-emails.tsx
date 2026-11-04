@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { shownWorkbookEmailStatus, workbookDelivery, workbookEmail, type WorkbookEmailKind, type WorkbookEmailRecord, type WorkbookEmailStatus } from "@/lib/workbook-email";
+import { shownWorkbookEmailStatus, workbookDelivery, workbookEmail, type WorkbookEmailRecord, type WorkbookNoticeKind, type WorkbookEmailStatus } from "@/lib/workbook-email";
 import "./workbook-emails.css";
 
 const LABEL: Record<WorkbookEmailStatus, string> = {
@@ -28,7 +28,7 @@ export function WorkbookEmails({ cardId, parentName, parentEmail, childName, rec
   const [carrier, setCarrier] = useState("");
   const [trackingNumber, setTrackingNumber] = useState("");
   const [trackingUrl, setTrackingUrl] = useState("");
-  const [preview, setPreview] = useState<WorkbookEmailKind | null>(null);
+  const [preview, setPreview] = useState<WorkbookNoticeKind | null>(null);
   const delivery = workbookDelivery({ method, carrier, trackingNumber, trackingUrl });
   const welcome = records.find((r) => r.kind === "welcome");
   const dispatch = records.find((r) => r.kind === "dispatch" && r.workbook_number === number);
@@ -38,7 +38,7 @@ export function WorkbookEmails({ cardId, parentName, parentEmail, childName, rec
   const email = preview ? workbookEmail({ parentName, childName, kind: preview, workbookNumber: number, delivery }) : null;
 
   function changed() { setPreview(null); setNotice(""); }
-  async function send(kind: WorkbookEmailKind) {
+  async function send(kind: WorkbookNoticeKind) {
     if (sending.current || uncertain) return;
     sending.current = true;
     setBusy(true);
@@ -92,7 +92,7 @@ export function WorkbookEmails({ cardId, parentName, parentEmail, childName, rec
     {notice && <p role="status">{notice}</p>}
     {uncertain && <button className="btn adm-btn" type="button" onClick={() => window.location.reload()}>Reload to check status</button>}
     {records.map((r) => <details key={r.id} className="adm-workbook-history">
-      <summary>{r.kind === "welcome" ? "Welcome" : `Workbook ${r.workbook_number}`}: {LABEL[shownWorkbookEmailStatus(r, observedAt)]}</summary>
+      <summary>{r.kind === "welcome" ? "Welcome" : r.kind === "plan_start" ? "Free month confirmation" : `Workbook ${r.workbook_number}`}: {LABEL[shownWorkbookEmailStatus(r, observedAt)]}</summary>
       {r.subject && <p>{r.subject}</p>}{r.text_body && <pre>{r.text_body}</pre>}
     </details>)}
   </details>;

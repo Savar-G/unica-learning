@@ -195,7 +195,7 @@ export async function joinWaitlist(parentId: string, reportId: string, origin: s
     return fail("store_failed", 502);
   }
   if (!data?.length) return { ok: true, state: "already" };
-  // The founders' note (D-223): once per child, like the row.
+  // The founders' note (D-225): once per child, like the row.
   const note = waitlistEmail({
     parentName: parent.name, childName: report.child!.first_name, curriculum: province === "other" ? null : CURRICULA[province],
     reportUrl: `${origin}${reportPath(report.id)}`, bookingUrl: BOOKING_URL || null,

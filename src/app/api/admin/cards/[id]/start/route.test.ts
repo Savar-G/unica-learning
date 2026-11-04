@@ -5,6 +5,8 @@ vi.mock("@/lib/admin-store", () => ({ adminSession: f.session }));
 vi.mock("@/lib/workbook-delivery-store", () => ({ workbookDeliveryStore: () => ({ receipt: f.receipt }) }));
 vi.mock("@/lib/workbook-store", () => ({ workbookStore: () => ({ childWorkbooks: f.books }) }));
 vi.mock("@/lib/stripe", () => ({ stripe: f.stripe, startPlan: f.start }));
+vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => null }));
+vi.mock("@/lib/workbook-email-server", () => ({ sendPlanStartEmail: vi.fn() }));
 import { POST } from "./route";
 const id = "00000000-0000-4000-8000-000000000001";
 const book = { id, childId: "child", parentId: "parent", number: 1, status: "shipped" };

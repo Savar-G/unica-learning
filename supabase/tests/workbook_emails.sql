@@ -71,6 +71,15 @@ begin
   if n <> 1 then raise exception 'second workbook or hand delivery was blocked'; end if;
   select count(*) into n from public.claim_workbook_email(card_a, 'welcome', 0, '{}'::jsonb, msg, gen_random_uuid());
   if n <> 0 then raise exception 'welcome sent after dispatch'; end if;
+  select count(*) into n from public.claim_workbook_email(card_a, 'plan_start', 0, '{}'::jsonb, msg, gen_random_uuid());
+  if n <> 1 then raise exception 'plan start email was not claimed'; end if;
+  select count(*) into n from public.claim_workbook_email(card_a, 'plan_start', 0, '{}'::jsonb, msg, gen_random_uuid());
+  if n <> 0 then raise exception 'plan start email was claimed twice'; end if;
+  begin
+    perform public.claim_workbook_email(card_a, 'plan_start', 1, '{}'::jsonb, msg, gen_random_uuid());
+    raise exception 'plan start email with a workbook number was accepted';
+  exception when check_violation then null;
+  end;
   reset role;
   delete from public.parents where id = p;
   if exists (select 1 from public.workbook_emails where parent_id = p) then raise exception 'family deletion left workbook emails'; end if;

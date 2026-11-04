@@ -3,7 +3,7 @@ import { FOUNDERS_WHY, phoneWelcomeEmail, waitlistEmail, welcomeEmail } from "@/
 
 const SIGNED = "Thank you,\nCedric & Savar\nCo-founders, Unica Learning";
 
-describe("the founders' emails (D-223)", () => {
+describe("the founders' emails (D-225)", () => {
   const welcome = welcomeEmail({ parentName: "Priya Shah", childName: "Asha", url: "https://unicalearning.com/account/start/c1" });
   const wait = waitlistEmail({ parentName: "Priya Shah", childName: "Asha", curriculum: "Ontario", reportUrl: "https://unicalearning.com/account/report/r1", bookingUrl: "https://calendly.com/x" });
 

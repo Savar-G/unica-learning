@@ -89,7 +89,7 @@ function content(e: ReminderEmailInput): { subject: string; preview: string; par
 }
 
 /** One reminder email, with its CASL footer and unsubscribe link. */
-/** The reminders the founders sign (D-223): the last start reminder. The others are notices from the team. */
+/** The reminders the founders sign (D-225): the last start reminder. The others are notices from the team. */
 export const FOUNDER_REMINDERS: readonly ReminderKind[] = ["start_followup"];
 
 export function reminderEmail(e: ReminderEmailInput): { subject: string; text: string; html: string; founders: boolean } {

@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // change by an admin ends every session of the user, the caller's too. A request with an ended session gets 403
 // session_not_found.
 vi.mock("server-only", () => ({}));
-/** Work the route leaves for after the answer (the founders' welcome, D-223). */
+/** Work the route leaves for after the answer (the founders' welcome, D-225). */
 let afterResponse: (() => unknown)[] = [];
 vi.mock("next/server", async (original) => ({ ...(await original<typeof import("next/server")>()), after: (task: () => unknown) => void afterResponse.push(task) }));
 
@@ -434,7 +434,7 @@ describe("finishing on a phone (#63)", () => {
     expect(parentSignedIn()).toBe(true);
   });
 
-  it("emails the sign-in link for the new child, as the founders' welcome: one email (D-223)", async () => {
+  it("emails the sign-in link for the new child, as the founders' welcome: one email (D-225)", async () => {
     vi.stubEnv("RESEND_API_KEY", "re_synthetic");
     vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");
     const sent: string[] = [];
@@ -481,7 +481,7 @@ describe("finishing on a phone (#63)", () => {
   });
 });
 
-describe("the founders' welcome (D-223)", () => {
+describe("the founders' welcome (D-225)", () => {
   it("goes after the answer to a new family on a laptop, from the founders, with the child's start link", async () => {
     vi.stubEnv("RESEND_API_KEY", "re_synthetic");
     vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");

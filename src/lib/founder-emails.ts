@@ -1,4 +1,4 @@
-// The emails the founders sign at each step with a family (D-223): the welcome after signup (on a phone, the welcome
+// The emails the founders sign at each step with a family (D-225): the welcome after signup (on a phone, the welcome
 // with the laptop sign-in link) and the waitlist. The card-saved welcome is the workbook welcome (workbook-email.ts).
 // Pure: the callers send them with `sender: { to: "parent", from: "founders" }`. Each goes once by its own guard: the
 // family is created once, a child joins the waitlist once.
@@ -73,7 +73,7 @@ export function welcomeEmail({ parentName, childName, url }: { parentName: strin
 }
 
 /**
- * The phone signup's one email (D-223): the founders' welcome and the sign-in link for the laptop or tablet in one, so
+ * The phone signup's one email (D-225): the founders' welcome and the sign-in link for the laptop or tablet in one, so
  * the parent never gets two emails at once. A link asked for again later is the team's plain link email.
  */
 export function phoneWelcomeEmail({ parentName, childName, url }: { parentName: string; childName: string; url: string }): FounderEmail {

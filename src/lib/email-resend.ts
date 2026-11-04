@@ -26,7 +26,7 @@ export function resendSender(): string | null {
 
 /**
  * The From header of `message`: EMAIL_FROM, or, for an email the founders sign, the founders' name on the same address
- * (D-223). Null when EMAIL_FROM is not set.
+ * (D-225). Null when EMAIL_FROM is not set.
  */
 export function resendFrom(message: Pick<EmailMessage, "sender">): string | null {
   const from = resendSender();
