@@ -111,6 +111,11 @@
 .acct-desk { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding-top: 16px; border-top: 1px solid var(--line); }
 .acct-desk > span:first-child { display: grid; gap: 4px; font-size: 17px; max-width: 34em; }
 .acct-desk form { margin: 0; }
+.acct-plan { display: grid; gap: 16px; }
+.acct-plan p { margin: 8px 0 0; max-width: 38em; }
+.acct-plan-actions p { margin: 0 0 12px; }
+.acct-plan-buttons { display: flex; flex-wrap: wrap; gap: 12px; }
+.acct-plan .btn { min-height: 48px; }
 .acct-desk .btn { min-height: 48px; gap: 8px; }
 
 /* The desk guard (#301): a parent page restored from history shows nothing while it checks for an open desk. */

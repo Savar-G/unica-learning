@@ -7,18 +7,23 @@ import { sendEmailOnce, type DeliveryOutcome, type EmailMessage, type MailTransp
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { findSavedCard, recordSavedCard, type SavedCards, type StripeAnswer } from "@/lib/saved-card";
 import { savedCards } from "@/lib/saved-card-server";
-import { workbookEmail, type WorkbookDelivery, type WorkbookEmailKind } from "@/lib/workbook-email";
+import { familyProvince, familyZone, formatInZone } from "@/lib/family-time";
+import { planStartEmail, workbookEmail, type WorkbookDelivery, type WorkbookEmailKind, type WorkbookNoticeKind } from "@/lib/workbook-email";
 
-export interface WorkbookNotice {
+/** The send key of every email in the ledger. */
+interface WorkbookEmailKey {
   cardId: string;
   kind: WorkbookEmailKind;
   workbookNumber: number;
   delivery: WorkbookDelivery | null;
 }
+export interface WorkbookNotice extends WorkbookEmailKey {
+  kind: WorkbookNoticeKind;
+}
 type Claim = { id: string; token: string };
 
 /** The database claims the exact message and dispatch details before any provider call. */
-export function workbookEmailLedger(db: SupabaseClient<Database>, message: EmailMessage): SendLedger<WorkbookNotice, Claim> {
+export function workbookEmailLedger(db: SupabaseClient<Database>, message: EmailMessage): SendLedger<WorkbookEmailKey, Claim> {
   async function outcome(c: Claim, fields: Database["public"]["Tables"]["workbook_emails"]["Update"]) {
     try {
       const { error } = await db.from("workbook_emails").update({ ...fields, updated_at: new Date().toISOString() })
@@ -59,6 +64,24 @@ export async function sendWorkbookNotice(db: SupabaseClient<Database>, key: Work
     ...workbookEmail({ parentName: parent.data.name, childName: child.data.first_name, kind: key.kind, workbookNumber: key.workbookNumber, delivery: key.delivery }),
   };
   return sendEmailOnce(workbookEmailLedger(db, message), key, message, { transport });
+}
+
+/** The confirmation when the free month starts. The ledger allows one per saved card, so a retry cannot send a second copy. */
+export async function sendPlanStartEmail(db: SupabaseClient<Database>, p: { cardId: string; price: number; firstChargeAt: string; origin: string }, transport?: MailTransport): Promise<DeliveryOutcome> {
+  const { data: card, error } = await db.from("card_setups").select("parent_id, child_id").eq("id", p.cardId).maybeSingle();
+  if (error || !card) throw Error("store_failed");
+  const [parent, child] = await Promise.all([
+    db.from("parents").select("name, email, postal, time_zone").eq("id", card.parent_id).maybeSingle(),
+    db.from("children").select("first_name, province").eq("id", card.child_id).eq("parent_id", card.parent_id).maybeSingle(),
+  ]);
+  if (parent.error || child.error || !parent.data || !child.data) throw Error("store_failed");
+  const zone = familyZone({ timeZone: parent.data.time_zone, postal: parent.data.postal, province: familyProvince([{ id: card.child_id, province: child.data.province }]) });
+  const firstCharge = formatInZone(p.firstChargeAt, zone, { year: "numeric", month: "long", day: "numeric" });
+  const message: EmailMessage = {
+    sender: { to: "parent" }, to: parent.data.email, replyTo: SUPPORT_EMAIL,
+    ...planStartEmail({ parentName: parent.data.name, childName: child.data.first_name, price: p.price, firstCharge, planUrl: `${p.origin}/account/plan` }),
+  };
+  return sendEmailOnce(workbookEmailLedger(db, message), { cardId: p.cardId, kind: "plan_start", workbookNumber: 0, delivery: null }, message, { transport });
 }
 
 export async function sendQueuedWorkbookWelcome(db: SupabaseClient<Database>, cardId: string, transport?: MailTransport) {

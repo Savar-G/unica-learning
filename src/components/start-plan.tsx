@@ -15,11 +15,12 @@ const ERRORS: Record<string, string> = {
 
 /**
  * D-139: "Workbook delivered: start free month" on a saved card. One confirm, then the subscription with the free trial starts
- * in Stripe. Shows the first charge date, or why it did not start.
+ * in Stripe and the parent gets the confirmation email. Shows the first charge date, or why it did not start.
  */
 export function StartPlan({ cardId, child }: { cardId: string; child: string }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
+  const [unconfirmed, setUnconfirmed] = useState(false);
   const [error, setError] = useState("");
   async function start() {
     if (busy || !window.confirm(`Has ${child}'s first workbook arrived at their home? Confirm only after delivery. The 30-day free month begins now. Stripe charges the saved card on day 30.`)) return;
@@ -31,12 +32,15 @@ export function StartPlan({ cardId, child }: { cardId: string; child: string }) 
       });
       if (res.status === 404) { setError("This card is unavailable or your admin access has ended."); return; }
       const result = await res.json();
-      if (result.ok) { setDone(result.firstChargeAt); return; }
+      if (result.ok) { setDone(result.firstChargeAt); setUnconfirmed(result.confirmation !== "sent"); return; }
       setError(ERRORS[result.error] ?? ERRORS.failed);
     } catch { setError("The response was lost. Open the family in Stripe to check before trying again."); }
     finally { setBusy(false); }
   }
-  if (done) return <span className="adm-note">Started. First charge {localDay(done, PACIFIC_ZONE)}</span>;
+  if (done) return <>
+    <span className="adm-note">Started. First charge {localDay(done, PACIFIC_ZONE)}</span>
+    {unconfirmed && <p role="alert" className="adm-note">We could not confirm the free month email. Reload this page and check Workbook emails on this card. If it did not go, send the parent its text by hand.</p>}
+  </>;
   return <>
     <button type="button" className="btn adm-btn" onClick={start} disabled={busy}>{busy ? "Starting..." : "Workbook delivered: start free month"}</button>
     {error && <p role="alert" className="adm-note">{error}</p>}
