@@ -26,9 +26,10 @@
 // key goes to the solve check (src/lib/workbook-solve-check.ts) in the generator.
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness.
 import { BC_SKILL_MAP } from "@/lib/assessment";
+import { isNumberStory } from "@/lib/workbook-code-story";
 import { readNumbers } from "@/lib/number-words";
 import { defaultItem, figureCount } from "@/lib/question-package-items";
-import { codeWordings, isWorded, operationQuestion, quantityStoryProblem, storyProblem, type WordingKind } from "@/lib/workbook-wording";
+import { codeWordings, isWorded, operationQuestion, printedMinus, quantityStoryProblem, storyProblem, takeAwayProblem, type WordingKind } from "@/lib/workbook-wording";
 import { PLACE_ORDER, written } from "@/lib/question-package-columns";
 import {
   checkQuestionPackage,
@@ -51,6 +52,7 @@ import {
   type Relation,
   type QuestionPackage,
   type WrongAnswer,
+  type CoinGiven,
 } from "@/lib/question-package";
 
 // ---------- What the AI writes ----------
@@ -294,7 +296,6 @@ function itemFor(format: GeneratedFormat, op: Operation, answer: AnswerValue, sh
         regions: [
           { id: "operation", kind: "choice", mark: "tick", label: "Tick the operation", choices: SIGNS.filter((x) => x === sign || signs.includes(x)), answer: sign },
           { ...box, label: "Write the answer" },
-          { id: "work", kind: "work", label: "Show your work" },
         ],
         checks: [{ kind: "operation-sign", region: "operation" }, onAnswer],
       };
@@ -626,6 +627,8 @@ export interface BuiltQuestion {
 
 /** Where a slot's question goes, and what the plan lets it be. */
 export interface SlotPlace {
+  /** Trusted declarations from code or an approved question type. Raw AI fields cannot supply these. */
+  givens?: readonly CoinGiven[];
   /** The package's stable id. */
   id: string;
   workbookId: string;
@@ -647,6 +650,8 @@ export interface SlotPlace {
   wording?: SlotWording;
   /** A place whose questions are stories (word problems, picture stories, the Mixed set): checked by storyProblem (D-201). */
   story?: boolean;
+  /** Keep contract-checked text instead of legacy code rewording. */
+  preserveText?: boolean;
 }
 
 /** What the plan gives code to word a slot's whole-number question with (round 7). */
@@ -671,9 +676,16 @@ const DEFAULT_NAMES = ["Mia", "Ben", "Ava", "Leo", "Lia", "Tom"];
 const DEFAULT_THINGS = ["shells", "apples", "cars", "stickers", "hats", "cups"];
 
 /** A question whose printed text code writes (round 7): a whole-number +, -, missing part, × or ÷ at U1 to U9. */
-export const isCodeWorded = (p: QuestionPackage) => p.textSource !== "human" && p.level <= 9 && isWorded(p.operation);
+export const isCodeWorded = (p: QuestionPackage) => (p.textSource === "code" || (p.textSource !== "human" && p.textSource !== "ai" && p.level <= 9 && isWorded(p.operation)));
 
 const fail = (reason: string, pkg: QuestionPackage | null = null, stepIds: string[] = []): BuiltQuestion => ({ check: { status: "failed", reason }, package: pkg, stepIds });
+
+/** A package's number answer: its answer, else its first number box (null for none). */
+export const numberAnswer = (p: QuestionPackage): number | null => {
+  if (p.answer?.value.type === "number") return p.answer.value.value;
+  const box = p.item?.regions.find((r) => r.kind === "box" && r.answer?.type === "number");
+  return box?.kind === "box" && box.answer?.type === "number" ? box.answer.value : null;
+};
 
 /** The standard (BC code) a skill id belongs to, or null. */
 const standardOf = (skill: string) => BC_SKILL_MAP.standards.find((s) => s.skills.some((k) => k.id === skill))?.code ?? null;
@@ -682,9 +694,19 @@ const standardOf = (skill: string) => BC_SKILL_MAP.standards.find((s) => s.skill
  * One slot's question: the AI's item made into a package with code's answer, steps, easier example answer and item,
  * then checked. Never throws: anything code cannot build is a failed question with the reason.
  */
-export function buildQuestion(raw: unknown, place: SlotPlace): BuiltQuestion {
+/** Solve it two ways prints code's sum, never the writer's story (B1 final). */
+function twoWaysCode(given: unknown, place: SlotPlace): unknown {
+  if (place.preserveText || !isObject(given) || given.format !== "two-ways" || typeof given.text !== "string" || !isNumberStory(given.text)) return given;
+  const op = operationFrom(given.operation);
+  return op && !operationProblem(op) && isWorded(op as Operation) ? { ...given, text: operationQuestion(op as Operation) } : given;
+}
+
+export function buildQuestion(given: unknown, place: SlotPlace): BuiltQuestion {
+  const raw: unknown = twoWaysCode(given, place);
   try {
-    const built = build(raw, place);
+    const made = build(raw, place);
+    // (A minus prints as "−" whoever wrote the text, the U16 r14 review.)
+    const built = made.package ? { ...made, package: { ...made.package, text: printedMinus(made.package.text) }, ...(made.wordings ? { wordings: made.wordings.map(printedMinus) } : {}) } : made;
     if (built.check.status === "failed" || !built.package || !isObject(raw)) return built;
     const pkg = built.package;
     // Every quantity question, including practice and review pictures, follows D-201 at every level.
@@ -694,11 +716,11 @@ export function buildQuestion(raw: unknown, place: SlotPlace): BuiltQuestion {
     const story = (text: string) => place.story ? storyProblem(text, facts) : quantityStoryProblem(text, facts);
     if (built.wordings) {
       // Code's wordings that pass every text check, the first printed (one always does off a story place: the bare sum).
-      const sound = built.wordings.filter((w) => !kindProblem({ ...pkg, text: w }, raw) && !story(w));
+      const sound = built.wordings.filter((w) => !kindProblem({ ...pkg, text: w }, raw) && !story(w) && !takeAwayProblem(w, numberAnswer(pkg)));
       if (sound.length === 0) return fail(kindProblem(pkg, raw) ?? story(pkg.text) ?? "no wording of code's fits this story place", pkg, built.stepIds);
       return { ...built, package: { ...pkg, text: sound[0] }, wordings: sound };
     }
-    const problem = kindProblem(pkg, raw) ?? story(pkg.text);
+    const problem = kindProblem(pkg, raw) ?? story(pkg.text) ?? takeAwayProblem(pkg.text, numberAnswer(pkg));
     return problem ? fail(problem, pkg, built.stepIds) : built;
   } catch (e) {
     return fail(`code could not build the question: ${e instanceof Error ? e.message : String(e)}`);
@@ -721,7 +743,7 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
     ref: { source: "workbook", workbookId: place.workbookId, page: place.page, question: place.question },
     templateId: null,
     text,
-    item,
+    item: place.givens === undefined ? item : { ...item, givens: place.givens.map(g => ({ ...g, source: { ...g.source } })) },
     answer: op ? { value: operationResult(op), accepted: [], unit: null } : null,
     operation: op,
     steps: op ? workedSteps(op) : [],
@@ -752,8 +774,15 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
   const problem = operationProblem(candidate);
   if (problem) return fail(`the operation: ${problem}`);
   const op = candidate as Operation;
-  // Code writes the text of a whole-number question at U1 to U9 (round 7): the AI's words are not printed.
-  const worded = place.level <= 9 && isWorded(op);
+  // A bare Mixed set gives away the operation the child must choose. Code can word
+  // that exact operation as a story, with the same checks and planned context.
+  const bareMixed = place.story && format === "tick-and-number" && raw.text === operationQuestion(op);
+  // Code writes whole-number questions at U1 to U9 and this bounded recovery at later levels.
+  // A story the writer wrote takes code's wording at every level: its numbers and question are code's (Codex at e6d79b6a,
+  // B1: "puts 17 in a jar" keyed as a take-away).
+  const writersStory = !place.preserveText && typeof raw.text === "string" && isNumberStory(raw.text);
+  if (writersStory && !isWorded(op)) return fail("a story's numbers and question come from code, and code has no wording for this operation");
+  const worded = !place.preserveText && (place.level <= 9 || bareMixed || writersStory) && isWorded(op);
   // The box takes the operation's number, so the question must ask for that number, never yes or no or a choice.
   const asks = !worded && typeof raw.text === "string" ? choiceAsked(raw.text) : null;
   if (asks) return fail(`the question asks ${asks}, but its answer is the operation's number: ask for a number (How far is 8 from 10?), or use draw`);
@@ -819,7 +848,7 @@ function wordingsFor(op: Operation, format: GeneratedFormat, figure: Figure | nu
   const name = offered(w?.names, raw.name) ?? w?.name ?? DEFAULT_NAMES[((variant % DEFAULT_NAMES.length) + DEFAULT_NAMES.length) % DEFAULT_NAMES.length];
   const thing = offered(w?.things, raw.thing) ?? w?.thing ?? DEFAULT_THINGS[((variant % DEFAULT_THINGS.length) + DEFAULT_THINGS.length) % DEFAULT_THINGS.length];
   const words = typeof raw.text === "string" && /[a-z]{3,}/i.test(raw.text);
-  return codeWordings(op, {
+  const wordings = codeWordings(op, {
     format, figure, name, thing,
     kinds: w?.kinds ?? (words ? ["story", "picture", "missing-part", "fact"] : ["fact", "missing-part"]),
     step: w?.step ?? false,
@@ -828,6 +857,9 @@ function wordingsFor(op: Operation, format: GeneratedFormat, figure: Figure | nu
     // The planned wording names the planned person and thing.
     planned: w && name === w.name && thing === w.thing ? w.planned ?? null : null,
   });
+  // Later levels use this function only to recover an exact bare Mixed set.
+  // Keep its planned person and object instead of a fixed animal story.
+  return place.level <= 9 ? wordings : wordings.filter(text => text.startsWith(`${name} `) && text.includes(thing));
 }
 
 /**

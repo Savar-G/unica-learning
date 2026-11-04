@@ -14,6 +14,8 @@ Personalized, mailed math and reading workbooks for ages 5 to 14 (Kindergarten t
 
 ## Agent rules
 
+- Workbook generator work: follow `docs/workbook-fast-loop.md`. Use `npm run workbook:fast` and only the touched tests in the inner loop. Review the fake sample with `--diff`. At the end of a round, run exactly one real U4 and U16 pair with `--replay`, in parallel. Run the full gate once before the push. Reviewers read `<label>-pages.md` and the changed-pages sheet.
+
 - Resolve family time through `src/lib/family-time.ts`: use a valid `parents.time_zone`, else the postal mapping, else the oldest child's province by `created_at` then `id`, else Pacific; use its dated overrides for every family time format and day or week calculation.
 
 - Apply database migrations yourself. Do not ask Savar first. Write the SQL to `supabase/migrations/<yyyymmdd>_<name>.sql`, apply it with the Supabase MCP `apply_migration` (project `cdjobwsyzndtltzfpyqa`), and verify it with `list_migrations` and a probe query. Apply it before the code that needs it ships. Keep migrations additive, so the live code keeps working in between.

@@ -17,7 +17,9 @@ function story(text: string, operation = op("add", 7, 5), easier = { text: "6 + 
     wrongAnswers: [{ value: num(99), cause: "count", description: "x", step: null }], easier,
   }, { id: "q1", workbookId: "w", page: 3, question: 1, level: 10, skills: ["K5-take-away-change"] });
   if (!b.package) throw new Error(JSON.stringify(b.check));
-  return b.package;
+  // (The builder prints code's wording of a story now, Codex at e6d79b6a, B1: the solve check is shown the AI's words
+  // as they would print, to read them on its own.)
+  return { ...b.package, text, textSource: "ai" as const };
 }
 
 /** A reader who solves a short story from its words alone: take-away words subtract, else the numbers are added. */
@@ -44,8 +46,8 @@ describe("the solve check", () => {
     const sent = JSON.parse((ai.requests[0].content[0] as { text: string }).text);
     expect(sent).toEqual({
       questions: [
-        { id: "question", text: "Mia has 7 shells. She finds 5 more. How many now?", picture: null, shown: null, boxes: [{ id: "answer", asks: "a box for the answer" }] },
-        { id: "easier", text: "6 + 5 = ?", picture: null, shown: null, boxes: [{ id: "answer", asks: "a box for the answer" }] },
+        { id: "question", text: "Mia has 7 shells. She finds 5 more. How many now?", picture: null, shown: null, boxes: [{ id: "answer", asks: "a box for the answer", numberOnly: true }] },
+        { id: "easier", text: "6 + 5 = ?", picture: null, shown: null, boxes: [{ id: "answer", asks: "a box for the answer", numberOnly: true }] },
       ],
     });
     expect(JSON.stringify(ai.requests[0])).not.toMatch(/"12"|operation|operands|wrongAnswers/);
@@ -65,7 +67,9 @@ describe("the solve check", () => {
 
   it("fails an easier example whose text contradicts its key", async () => {
     // The question is sound; its easier example prints 6 - 5 over add [6, 5] (key 11).
-    const p = story("Mia has 7 cups and gets 5. How many in all?", op("add", 7, 5), { text: "6 - 5 = ?", operation: op("add", 6, 5) });
+    const built = story("Mia has 7 cups and gets 5. How many in all?", op("add", 7, 5), { text: "6 - 5 = ?", operation: op("add", 6, 5) });
+    // (Code writes a story's easier example now, B1: the contradicting text is set as it would print.)
+    const p = { ...built, easierExample: { ...built.easierExample!, text: "6 - 5 = ?" } };
     expect((await solveCheck(reader, p, 1000))!.verdict).toMatchObject({ status: "disagreed", reason: expect.stringContaining("the easier example") });
   });
 

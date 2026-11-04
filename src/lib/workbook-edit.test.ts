@@ -88,8 +88,9 @@ describe("workbook comment batches",()=>{
     const solve = vi.fn(async () => ({ answers: [{ question: "question", box: "answer", answer: "6" }], problem: null }));
     s.deps.generation = { ...gen, solver: { model: gen.solver.model, solve } };
     expect(await runWorkbookEdit(s.send(), s.deps)).toBe("failed");
-    expect(solve).toHaveBeenCalledTimes(1);
-    expect(s.review.comments[0]).toMatchObject({ status: "failed", error: expect.stringMatching(/solve check/) });
+    // (A story's words are the generator's, Codex at 09a095cd: the manual wording is refused before any solve check.)
+    expect(solve).not.toHaveBeenCalled();
+    expect(s.review.comments[0]).toMatchObject({ status: "failed", error: expect.stringMatching(/Stories print the generator's own wording/) });
     expect(s.renderPage).not.toHaveBeenCalled();
     expect(s.review.snapshot().revision).toBe(1);
   });

@@ -61,7 +61,7 @@ export async function runWorkbookJobWith(admin: SupabaseClient<Database>, runId:
       solver: fake ? workbookFakeSolver() : live!.solve?.solver ?? null,
       ...(live?.solve ? { solveCost: live.solve.cost } : {}),
       template,
-      fit: (parentId) => renderFitCheck({ template, engine, parentId }),
+      fit: (parentId) => renderFitCheck({ template, engine, parentId, fullness: true }),
       engine,
       newId: randomUUID,
       qrToken,

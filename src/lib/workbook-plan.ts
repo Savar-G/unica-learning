@@ -54,10 +54,35 @@
 // - Every part with items has a skill to aim at, or the plan is refused. Deterministic: the same input gives the same
 //   plan; ties go by the level's order, then curriculum order.
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness.
+import { twoWaysOnStoriesPage } from "@/lib/workbook-early-levels";
 import { BC_SKILL_MAP, curriculumOrder, worstFirst, type Grade } from "@/lib/assessment";
 import type { ChildStandard } from "@/lib/child-profile";
 import type { QuestionRef } from "@/lib/question-package";
 import type { Curriculum, CurriculumLevel, Delivery, Range } from "@/lib/workbook-curriculum";
+import { sumTemplate, templateProblem } from "@/lib/workbook-step-items";
+
+/** Shared ten-day schedule (#479). Apply the range inside each skill's curriculum bound.
+ * Fixed benchmarks, measures and fractions keep their values; support and complexity still change.
+ * The time limit is a planning estimate, not a measured child completion time.
+ */
+export interface DayDifficulty {
+  numberRange: { min: number; max: number };
+  rangeFraction: number;
+  helpLevel: "pictures" | "new-ideas-only" | "none";
+  difficulty: 1 | 2 | 3;
+  storyShare: number;
+  maxMinutes: number;
+}
+export function dayDifficulty(level: number, day: number): DayDifficulty {
+  if (!Number.isInteger(level) || level < 1 || level > 30) throw new Error("A workbook level must be 1 to 30.");
+  if (!Number.isInteger(day) || day < 1 || day > 10) throw new Error("A workbook day must be 1 to 10.");
+  const top = level <= 3 ? 10 : level <= 6 ? 20 : level <= 9 ? 100 : level <= 12 ? 1000
+    : level <= 15 ? 10_000 : level <= 18 ? 1_000_000 : 1_000_000_000;
+  const rangeFraction = [.4, .45, .5, .6, .65, .7, .75, .85, .95, 1][day - 1];
+  return { numberRange: { min: 0, max: Math.max(5, Math.ceil(top * rangeFraction)) }, rangeFraction,
+    helpLevel: day <= 3 ? "pictures" : day <= 7 ? "new-ideas-only" : "none",
+    difficulty: day <= 3 ? 1 : day <= 7 ? 2 : 3, storyShare: day <= 7 ? .2 : .4, maxMinutes: 30 };
+}
 
 /**
  * The page types of a workbook day (DESIGN.md section 7), a closed list for the generator and the templates. The
@@ -81,6 +106,8 @@ export type PartKind = (typeof PART_KINDS)[number];
 /** One step of a skill: its page budget. */
 export interface PlanStep {
   pages: number;
+  /** #489: the step has a sum two methods can work (Solve it two ways); absent: unknown, kept. */
+  sums?: boolean;
 }
 
 /** One skill of a level. */
@@ -115,6 +142,8 @@ export interface PlanLevel {
   units: readonly PlanUnit[];
   /** The fluency (warm-up) skills of the daily warm-up: the level's, or the nearest earlier level's. */
   fluency: readonly string[];
+  /** Each curriculum skill's level number (#489): review takes only skills of this level or an earlier one. */
+  skillLevels?: Readonly<Record<string, number>>;
 }
 
 /** The level `levelId` ("U10") of a curriculum as the plan reads it; null when the curriculum has no such level. */
@@ -137,10 +166,11 @@ export function planLevel(curriculum: Curriculum, levelId: string): PlanLevel | 
         id: s.id,
         delivery: s.delivery,
         pages: s.pages,
-        steps: (curriculum.skillSteps(s.id) ?? []).map((step) => ({ pages: step.pages })),
+        steps: (curriculum.skillSteps(s.id) ?? []).map((step) => ({ pages: step.pages, ...(step.templates?.length ? { sums: step.templates.some((t) => t.difficulty !== "hard" && !templateProblem(t, level.number) && sumTemplate(t)) } : {}) })),
       })),
     })),
     fluency: fluencyFrom ? warmUp(fluencyFrom) : [],
+    skillLevels: Object.fromEntries(curriculum.levels.flatMap((l) => (curriculum.levelSkills(l.id) ?? []).map((s) => [s.id, l.number]))),
   };
 }
 
@@ -212,9 +242,37 @@ export interface PlannedPart {
   /** The level test: its units, context questions and sittings. */
   test?: { units: string[]; contextQuestions: number; sittings: 1 | 2 };
   fixIt?: FixItem[];
+  /**
+   * The steps a review, check or test part draws its items from (#489): each a skill and its step, the steps already done
+   * before this day (this book's earlier days, passed steps, earlier levels). A null step is the skill's last step (a
+   * skill of an earlier level, all of it done). Absent on a part on the plan's own step and on plans before #489.
+   */
+  reviewSteps?: { skill: string; step: number | null }[];
 }
 
 export interface PlannedPage {
+  extraPractice?: boolean;
+  extraGap?: number;
+  fillingComplete?: boolean;
+  /** Filling stopped at the day's time limit (the page's maximum). */
+  timeLimited?: boolean;
+  /** Filling found no further question the book's rules allow (the page's maximum, as at the time limit). */
+  atMaximum?: boolean;
+  /** The widest extra gap that kept the page inside its area. */
+  gapCap?: number;
+  /** How often the page took a question again below its planned count, after a drop (8 at most). */
+  refills?: number;
+  /** The worked example's panel had no room for its Watch out line beside its method (U4's large type). */
+  noWatchOut?: boolean;
+  /** A practice page whose floor does not fit beside its full example panel prints a one-line reminder instead (U4 to U9). */
+  compactPanel?: boolean;
+  /** Approved pipeline capacity. The writer and layout consume this same budget. */
+  capacity?: import("./workbook-page").PlannedSlot[];
+  capacityChecked?: boolean;
+  /** Planned questions the measured page had no room for, before writing: reported, never silent (#489). */
+  capacityOmissions?: import("./workbook-page").Omission[];
+  itemContracts?: Record<string, import("./workbook-item-plan").ItemPlan | null>;
+  existingSlots?: string[];
   /** The page of the day, from 1. */
   number: number;
   type: PageType;
@@ -265,6 +323,7 @@ export interface WorkbookPlan {
   checks: { unit: string; kind: "unit-check" | "already-know-it"; day: number }[];
   /** Units of `unassessedUnits` that are not in this level: the placement checks cover the starting level only. */
   checksSkipped: string[];
+  extraPractice?: PlannedPage[];
   days: PlannedDay[];
 }
 
@@ -294,6 +353,12 @@ export interface PlanInput {
   support: string | null;
   /** The units (BC standard codes) the assessment had no questions for: checked in the first workbook (CONTEXT 2). */
   unassessedUnits: readonly string[];
+  /**
+   * How the book moves through the level (#489). "steps", the default: one progression through the level's skills and
+   * their steps in skeleton order, the next step at the start of each teaching day, no second unit. "units": the
+   * schedule before #489 (unit A and unit B at about 2:1, a step starting when its pages are spent, at most 8).
+   */
+  progression?: "steps" | "units";
 }
 
 export type PlanResult = { ok: true; plan: WorkbookPlan } | { ok: false; reason: string };
@@ -304,6 +369,8 @@ const LEVELS = 30;
 /** Steps a skill has when the skeleton has none drafted (CONTEXT 2: 3 to 5). */
 export const DEFAULT_STEPS = 3;
 export const NEW_STEPS_MAX = 8;
+/** The step progression's window (#489): how many of the level's skills a book works on at once. */
+export const STEP_WINDOW = 3;
 /** The spaced review intervals in practice days: 2 days, 1 week, 3 weeks, 2 months (five practice days a week). */
 export const SPACED_INTERVALS = [2, 5, 15, 40] as const;
 /** The day's A to B, counted by parts: about 2:1. */
@@ -458,10 +525,18 @@ export function planWorkbook(input: PlanInput): PlanResult {
   const secureUnits = firstWorkbook ? level.units.filter((u) => status.get(u.code) === "secure" && !unassessed.has(u.code) && !parentLed).map((u) => u.code) : [];
 
   // The steps still to teach, by unit, in the level's order.
+  const steps = (input.progression ?? "steps") === "steps";
   const taught = levelSkills.filter((s) => s.delivery !== "warm-up");
   const remaining = new Map<string, QueuedStep[]>();
+  /** How many steps a skill has: its drafted ones, else DEFAULT_STEPS; an activity skill is one page. */
+  const stepCount = (s: (typeof levelSkills)[number]) => s.steps.length > 0 ? s.steps.length : s.delivery === "activity" ? 1 : DEFAULT_STEPS;
   for (const s of taught) {
     if (secureUnits.includes(s.unit)) continue;
+    // An activity skill's one page is on its last step (the skeleton puts it there).
+    if (s.delivery === "activity" && steps) {
+      if ((input.passed[s.id] ?? 0) < stepCount(s)) remaining.set(s.unit, [...(remaining.get(s.unit) ?? []), { unit: s.unit, skill: s.id, step: stepCount(s), pages: 1 }]);
+      continue;
+    }
     const pages = s.delivery === "activity" ? [1] : s.steps.length > 0 ? s.steps.map((x) => Math.max(1, x.pages)) : evenSteps(s.pages, DEFAULT_STEPS);
     for (let step = Math.min(input.passed[s.id] ?? 0, pages.length) + 1; step <= pages.length; step++) {
       remaining.set(s.unit, [...(remaining.get(s.unit) ?? []), { unit: s.unit, skill: s.id, step, pages: pages[step - 1] }]);
@@ -476,7 +551,8 @@ export function planWorkbook(input: PlanInput): PlanResult {
   const skillsOfUnit = (code: string) => taught.filter((s) => s.unit === code).map((s) => s.id);
   const needs = (code: string, others: readonly string[]) => skillsOfUnit(code).some((id) => others.some((o) => prerequisites(id).has(o)));
   const firstA = unitsLeft[0];
-  const unitB = firstA === undefined || testWorkbook || support ? null : unitsLeft.slice(1).find((code) => !needs(code, skillsOfUnit(firstA))) ?? null;
+  // The step progression (#489) has no second unit: the book moves through every unit in the skeleton's order.
+  const unitB = steps || firstA === undefined || testWorkbook || support ? null : unitsLeft.slice(1).find((code) => !needs(code, skillsOfUnit(firstA))) ?? null;
   const unitsA: string[] = [];
   for (const code of unitsLeft) {
     if (code === unitB) continue;
@@ -564,15 +640,19 @@ export function planWorkbook(input: PlanInput): PlanResult {
       ? { type: "math-in-the-world", role: "practice", parts: [T("math-in-the-world", "A")] }
       : { type: pageType("practice"), role: "practice", parts: [T("practice", "A"), ...(sixPages ? twoWays : [])] };
     // Else on the word problems page.
+    // (U4 to U9, D-226: Solve it two ways moves here from practice-2, see workbook-early-levels.ts.)
+    const twoWaysHere = !parentLed && !sixPages && twoWaysOnStoriesPage(n);
     const story: Shape = {
       type: pageType("word-problems"), role: "story",
-      parts: [T(parentLed ? "picture-stories" : "word-problems", "A"), ...(world && second?.type !== "practice" ? twoWays.slice(0, 1) : [])],
+      parts: [T(parentLed ? "picture-stories" : "word-problems", "A"), ...(world && second?.type !== "practice" || twoWaysHere ? twoWays.slice(0, 1) : [])],
     };
     const slot: Shape = support
       ? input.workbook.inLevel === SUPPORT_WORKBOOKS - 1 && day === MINI_TEST_DAY
         ? { type: pageType("remember-these"), role: "slot", parts: [T("mini-test"), ...(parentLed ? [T("remember-these")] : [])] }
         : reviewOnly("slot")
       : bOn ? { type: pageType("unit-b"), role: "slot", parts: [...(startsB ? newIdea("B") : []), T("practice", "B")] }
+      // The step progression (#489): the page of the second unit is more practice on the day's step.
+      : steps && !parentLed ? { type: "practice", role: "slot", parts: [T("practice", "A")] }
       : reviewOnly("slot");
     // A Kindergarten check day: the unit's two Already know it? pages take the review room of page 1 and one of A's
     // pages (A keeps its New idea and practice, or practice and stories); Unit B keeps its page and the challenge, so
@@ -588,7 +668,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
     }
     const pages: (Shape | null)[] = parentLed || sixPages
       ? [firstPage(day), second, practice, story, slot, reviewPage(day)]
-      : [firstPage(day), second, practice, { type: "practice-2", role: "practice-2", parts: [T("practice", "A"), ...twoWays] }, story, slot, reviewPage(day), challengePage(day)];
+      : [firstPage(day), second, practice, { type: "practice-2", role: "practice-2", parts: [T("practice", "A"), ...(twoWaysHere ? twoWays.slice(1) : twoWays)] }, story, slot, reviewPage(day), challengePage(day)];
     return pages.filter((s): s is Shape => s !== null).map((s) => (extras.has(`${day}:${s.role}`) ? { ...s, parts: [...s.parts, T("remember-these")] } : s));
   };
   /** A Remember these? day after a pause: the day's pages, review (the support unit keeps its page) and a challenge. */
@@ -626,12 +706,51 @@ export function planWorkbook(input: PlanInput): PlanResult {
     const next: Record<Track, number> = { A: 0, B: 0 };
     const stepOn: Record<Track, (QueuedStep | null)[]> = { A: [], B: [] };
     const startDays: Record<Track, Set<number>> = { A: new Set(), B: new Set() };
+    // The step progression (#489): each teaching day starts the next step of one skill of a small window, the first
+    // STEP_WINDOW skills in skeleton order whose prerequisites in the level are all taught, the one started longest
+    // ago first. So a book works through several of the level's skills at once, each in its own order.
+    const bySkill = new Map<string, QueuedStep[]>();
+    for (const q of queue.A) bySkill.set(q.skill, [...(bySkill.get(q.skill) ?? []), q]);
+    const order = [...bySkill.keys()];
+    const taken = new Map<string, number>();
+    const lastDay = new Map<string, number>();
+    const done = (skill: string, day: number) => {
+      const list = bySkill.get(skill);
+      if (!list) return true;
+      return (taken.get(skill) ?? 0) >= list.length && (lastDay.get(skill) ?? 0) < day;
+    };
+    const ready = (skill: string, day: number) => (MAP_SKILLS.get(skill)?.skill.requires ?? []).every((r) => !levelIds.has(r) || done(r, day));
+    const nextStep = (day: number): QueuedStep | null => {
+      const window = order.filter((k) => (taken.get(k) ?? 0) < bySkill.get(k)!.length && ready(k, day)).slice(0, STEP_WINDOW);
+      const pick = [...window].sort((a, b) => (lastDay.get(a) ?? 0) - (lastDay.get(b) ?? 0) || order.indexOf(a) - order.indexOf(b))[0];
+      if (!pick) return null;
+      const step = bySkill.get(pick)![taken.get(pick) ?? 0];
+      taken.set(pick, (taken.get(pick) ?? 0) + 1);
+      lastDay.set(pick, day);
+      return step;
+    };
     for (let day = 1; day <= DAYS; day++) {
       const teaching = kinds[day - 1] === "teach";
+      if (steps) {
+        const step = teaching && day <= lastStart ? nextStep(day) : null;
+        if (step) {
+          current.A = { step, left: step.pages };
+          starts.push({ ...stepRef(step), day, track: "A" });
+          startDays.A.add(day);
+        } else if (teaching && starts.length) {
+          // A day with no new step (Day 10) works on the deepest step the book reached, the latest of them.
+          const deepest = [...starts].sort((x, y) => y.step - x.step || y.day - x.day)[0];
+          current.A = { step: queue.A.find((q) => q.skill === deepest.skill && q.step === deepest.step)!, left: 0 };
+        }
+        stepOn.A[day - 1] = teaching ? current.A?.step ?? null : null;
+        stepOn.B[day - 1] = null;
+        continue;
+      }
       for (const track of ["A", "B"] as const) {
         const cur = current[track];
-        const canStart = teaching && day <= lastStart && starts.length < NEW_STEPS_MAX && next[track] < queue[track].length;
-        if (canStart && (cur === null || cur.left <= 0) && (track === "A" || bDay(day))) {
+        // The step progression (#489) starts the next step on every teaching day: Day 10 is harder than Day 1.
+        const canStart = teaching && day <= lastStart && (steps || starts.length < NEW_STEPS_MAX) && next[track] < queue[track].length;
+        if (canStart && (steps || cur === null || cur.left <= 0) && (track === "A" || bDay(day))) {
           const step = queue[track][next[track]++];
           current[track] = { step, left: step.pages };
           starts.push({ ...stepRef(step), day, track });
@@ -822,6 +941,53 @@ export function planWorkbook(input: PlanInput): PlanResult {
     return { day, week: day <= DAYS_A_WEEK ? 1 : 2, kind, pages: pagesOut };
   });
 
+  // The step progression (#489): each review, check and test part names the steps it draws from, only steps already
+  // done before its day: this book's earlier days (latest first), the spaced reviews' own steps, passed steps, and every
+  // step of an earlier level's skill (null: its last). A check asks a step 1; the level test and a mini-test the last.
+  if (steps) {
+    // Solve it two ways only on a step with a sum two methods can work (the U4 review, item 14).
+    const sumsOf = (ref: StepRef | null) => !ref || levelSkills.find((s) => s.id === ref.skill)?.steps[ref.step - 1]?.sums !== false;
+    for (const d of days) for (const page of d.pages) page.parts = page.parts.filter((p) => p.kind !== "solve-it-two-ways" || sumsOf(p.step));
+    const skillOf = new Map(levelSkills.map((s) => [s.id, s]));
+    const doneStep = (skill: string, day: number): number | null | undefined => {
+      const mine = sim.starts.filter((x) => x.skill === skill && x.day < day);
+      if (mine.length) return Math.max(...mine.map((x) => x.step));
+      const own = skillOf.get(skill);
+      if (!own) {
+        // Another level's skill: all of an earlier level is done; a later level's is not (nor, unknown, one of this grade).
+        const at = level.skillLevels?.[skill];
+        if (at !== undefined) return at < n ? null : undefined;
+        return MAP_SKILLS.get(skill)!.standard.grade < levelGrade ? null : undefined;
+      }
+      if (own.delivery === "warm-up" || secureUnits.includes(own.unit)) return null;
+      const passed = input.passed[skill] ?? 0;
+      return passed > 0 ? Math.min(passed, stepCount(own)) : undefined;
+    };
+    const REVIEWED = new Set<PartKind>(["remember-these", "mixed-set", "friday-5", "show-what-you-know", "picture-stories", "fix-it", "mini-test"]);
+    for (const d of days) {
+      const before = sim.starts.filter((x) => x.day < d.day).reverse();
+      for (const page of d.pages) {
+        page.parts = page.parts.map((p) => {
+          if (p.step || p.items === 0) return p;
+          const key = (x: { skill: string; step: number | null }) => `${x.skill}#${x.step}`;
+          let list: { skill: string; step: number | null }[] = [];
+          if (p.kind === "unit-check" || p.kind === "already-know-it") list = p.skills.map((skill) => ({ skill, step: 1 }));
+          else if (p.kind === "level-test") list = p.skills.map((skill) => ({ skill, step: null }));
+          else if (p.kind === "show-what-you-know") list = sim.starts.length ? sim.starts.filter((x) => x.day <= d.day).map((x) => ({ skill: x.skill, step: x.step })) : p.skills.flatMap((skill) => { const at = doneStep(skill, d.day); return at === undefined ? [] : [{ skill, step: at }]; });
+          else if (REVIEWED.has(p.kind)) {
+            const own = p.skills.flatMap((skill) => { const at = doneStep(skill, d.day); return at === undefined ? [] : [{ skill, step: at }]; });
+            const spaced = (p.reviews ?? []).map((r) => ({ skill: r.skill, step: r.step }));
+            const fix = p.kind === "fix-it" ? p.skills.map((skill) => ({ skill, step: doneStep(skill, d.day) ?? 1 })) : [];
+            list = [...fix, ...spaced, ...(p.kind === "fix-it" || p.kind === "mini-test" ? [] : before.map((x) => ({ skill: x.skill, step: x.step }))), ...own];
+          } else return p;
+          const unique = list.filter((x, i) => list.findIndex((y) => key(y) === key(x)) === i);
+          if (!unique.length) return p;
+          return { ...p, skills: [...new Set(unique.map((x) => x.skill))], reviewSteps: unique };
+        });
+      }
+    }
+  }
+
   // Every part with items has a skill to aim at.
   for (const d of days) {
     for (const page of d.pages) {
@@ -836,7 +1002,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
       level: n,
       lead: level.lead,
       pagesADay: { ...level.pagesPerDay },
-      timeTarget: { ...level.dailyMinutes },
+      timeTarget: { min: Math.min(level.dailyMinutes.min, 30), max: Math.min(level.dailyMinutes.max, 30) },
       testWorkbook,
       units: { A: unitsA.filter((code) => code === firstA || sim.starts.some((s) => s.unit === code)), B: unitB, support },
       newSteps: sim.starts,

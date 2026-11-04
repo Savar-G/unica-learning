@@ -26,7 +26,7 @@ public curriculum page `/curriculum`.
 
 - **One workbook = 10 practice days**, five days a week over a two-week family cycle; one workbook is mailed every two
   weeks. The program runs all year, summer included, and never pauses on its own (section 4.10).
-- **Book order:** cover, How + Plan page, Day 1 to Day 10, back cover (the level map), then blank pages to a multiple
+- **Book order:** cover, How + Plan page, Day 1 to Day 10, blank pages to a multiple
   of 4.
 - **Pages a day (D-186), capped at 8 for now:**
 
@@ -37,13 +37,14 @@ public curriculum page `/curriculum`.
 | U7 to U9 | Early | 8 | Child-led | 20 to 25 min | 20 to 25 min |
 | U10 to U15 | Middle | 8 | Child-led | 25 to 30 min | 30 to 35 min |
 | U16 to U18 | Middle | 8 | Child-led | 25 to 30 min | 35 to 40 min |
-| U19 to U24 | Upper | 6 | Child-led | 30 to 35 min | 40 to 45 min |
-| U25 to U30 | Upper | 6 | Child-led | 30 to 40 min | 45 to 50 min |
+| U19 to U24 | Upper | 6 | Child-led | about 30 min | 40 to 45 min |
+| U25 to U30 | Upper | 6 | Child-led | about 30 min | 45 to 50 min |
 
-  Time targets are typical, not limits; pages times minutes does not match them in most bands, and that stays until
-  real children are timed (skeleton open question 1).
-- **Size of a book:** at 8 a day, cover + plan + 80 day pages + back cover = 83, padded to **84 (the maximum)**; at 6 a
-  day, 63 padded to 64.
+  These are planning estimates. Issue #479 caps generated days at 30 minutes; a generated day is about 30 minutes, and the
+  How it works page says "about 30 minutes" from the book's own estimate (D-229, Savar confirmed 2026-11-03). Real
+  children have not been timed.
+- **Size of a book:** at 8 a day, cover + plan + 80 day pages = 82, padded to **84 (the maximum)**; at 6 a
+  day, 62 padded to 64.
 - **Print and binding (D-191):** US Letter, colour, **saddle stitch**; blank pages go **at the end**.
 - **Workbooks per grade:** Kindergarten 8, Grades 1 and 2: 10, Grades 3 to 5: 12, Grades 6 to 9: 14 (120 in all),
   split across each grade's three levels by page share (2 to 6 per level, usually 3 to 5). Planning averages, not
@@ -192,9 +193,9 @@ Every run makes a **draft**. A team member reviews it in admin, fixes or redoes 
   same weeks. Illness or a busy week: no pause unless asked; the next workbook is built from what was scanned.
 
 ### 4.11 Keeping children going
-- **Back cover:** the level map, 30 squares (no grades); the child colours the current one. The same map is in the app.
+- **Levels:** show the level map in the browser account. Do not print a My levels page (#479).
 - **Certificate:** mailed with the first workbook of a new level, with the level's title.
-- **Cover parent line:** one sentence for the parent: what to ask the child to show them this fortnight.
+- **Cover:** a plain title and three skills under "In this workbook, <name> will learn to:" (#479).
 - **Plan page:** a tick box per day.
 
 ## 5. The day
@@ -210,16 +211,16 @@ The parts of a day, in order (skeleton, "A normal day"), and the levels they app
 | Practice that builds | Faded: a full example, 2 half-finished problems, then problems on their own, getting harder | Every day |
 | Word and picture problems | The same idea in stories and pictures; at least one "How do you know?" | Every day (U19 and up: Math in the world on Days 4 and 9) |
 | Review | Unit B, or an earlier skill on its spaced schedule ("Remember these?") | Every day |
-| Mixed set | 3 to 4 problems where the child chooses the operation: "1 Tick the operation", "2 Write the answer" | Every day from **U10**; Days 5 and 10: Friday 5 instead |
+| Mixed set | 2 problems where the child chooses the operation: "1 Tick the operation", "2 Write the answer" | Every day from **U10**; Days 5 and 10: Friday 5 instead |
 | Friday 5 | Section 4.8 | Days 5 and 10 |
-| Challenge | 1 to 2 challenge problems | Every day |
+| Challenge | 3 challenge problems (Cedric's section 8: 3 to 4) | Every day |
 
 How these parts sit on 8 and 6 pages is in `DESIGN.md` section 7 (from the samples: warm-up, new idea, practice,
 practice 2, word problems, unit B, remember these + mixed set, challenge).
 
 ## 6. Items and answers (what marking and Maya read)
 
-- **Every answer goes in a box** (at least 40 px tall; larger at U1 to U3). Work space is a plain empty box ("SHOW YOUR
+- **Every answer goes in a box** (at least 56 px tall at U1 to U9 and 48 px from U10). Work space is a plain empty box ("SHOW YOUR
   WORK"), never dots. No answer key in the book (the app shows solutions after marking).
 - **Choices are tick boxes**, never pills: 20 px squares in a light grey strip with a printed "Tick one ☑" example. The
   instruction always names the choices ("Tick yes or no.", "Tick prime, composite or neither.").
@@ -276,7 +277,7 @@ practice 2, word problems, unit B, remember these + mixed set, challenge).
 | Cover parent line | Log (Oct 28): dropped | Skeleton: one sentence for the parent |
 | Plan page tick boxes | Samples: none | Skeleton: a tick box per day |
 | Writing line spacing | Notes and log: 34 px apart | Skeleton: at least 36 px below the prompt |
-| Challenge count | Samples: 4 cards on page 8 | Skeleton: 1 to 2 a day (Savar) |
+| Challenge count | Samples: 4 cards on page 8 | 3 a day (D-228, Savar confirmed 2026-11-03; Cedric's section 8), was 1 to 2 (skeleton) |
 | Mixed set wording | Log: "Operation:" left, "Answer" right | Skeleton and samples: "1 Tick the operation", "2 Write the answer" |
 | "Mum" | Samples | "Mom" |
 
@@ -285,7 +286,7 @@ practice 2, word problems, unit B, remember these + mixed set, challenge).
 1. **Early days (default set, Savar to review in the generated books):** the skeleton starts the warm-up at U8 and the
    Mixed set at U10. Below U8, page 1 is a "Remember these?" picture review; below U10, page 7 is "Remember these?" plus
    one-step picture stories.
-2. **Challenge (decided):** 1 to 2 challenge problems a day (skeleton); the samples' four cards were sample-only.
+2. **Challenge (decided, D-228):** 3 challenge problems a day, all harder than that day's practice, starting from the hardest step reached that day (Cedric's section 8 says 3 to 4; adopted as written, #482 review 2026-11-03). It replaces the skeleton's 1 to 2.
 3. **Parent-led days (U1 to U3, kept; Savar 2026-10-30):** no sample shows one. The skeleton's rules: icon instructions plus a short
    line, answers by circling, matching, colouring, drawing a line or writing one numeral, 6 to 10 items a page, large
    boxes.

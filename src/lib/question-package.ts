@@ -22,6 +22,8 @@ import { BC_SKILL_MAP } from "@/lib/assessment";
 import { decimalRational } from "@/lib/question-package-columns";
 import { defaultItem, itemProblem, type ItemContext, type ItemProblem } from "@/lib/question-package-items";
 import { amountOf, amountValueProblem, conversionProblem, dimensionName, sameSize, unknownUnit } from "@/lib/question-package-measures";
+import type { CoinGiven } from "@/lib/question-package-givens";
+import type { TemplateSource } from "@/lib/question-package-template";
 import {
   computation,
   gcd,
@@ -35,6 +37,7 @@ import {
 } from "@/lib/question-package-math";
 
 export { operationProblem, operationResult, operationText, stepText, valueText, workedSteps } from "@/lib/question-package-math";
+export { coinGiven, type CoinGiven, type CoinGivenSource, type CoinName } from "@/lib/question-package-givens";
 
 /**
  * The version of the QuestionPackage shape. The workbook store keeps it beside each stored package (#299), so a reader
@@ -369,7 +372,7 @@ export interface QuestionPackage {
   /** The assessment template the question came from, or null. */
   templateId: string | null;
   /** Human edits require the solve check, including relations and low-level operations. */
-  textSource?: "human";
+  textSource?: "human" | "code" | "ai";
   /** The question as the child reads it. */
   text: string;
   /**
@@ -502,7 +505,13 @@ export type ItemCheck =
   | { kind: "yes-no"; statement: Statement; region: string; yes: string; no: string }
   | { kind: "relation"; relation: Relation; numbers: number[]; to: number[]; labels: string[]; region: string }
   | { kind: "count"; region: string }
-  | { kind: "pattern"; region: string };
+  | { kind: "pattern"; region: string }
+  /** #489: the box holds the answer of the step template the question was filled from, recomputed from its numbers. */
+  | { kind: "template"; region: string; source: TemplateSource }
+  /** #489: the circled choice is the template's answer (true or false, yes or no, a word it names). */
+  | { kind: "template-choice"; region: string; source: TemplateSource }
+  /** #489: Spot the error's "Is it right?": No when the shown answer is not the template's answer, else Yes. */
+  | { kind: "template-shown"; region: string; source: TemplateSource; shown: string };
 
 /** A relation a relation check asks, in words. */
 export const RELATIONS = ["less-than", "closer", "equal", "more", "fewer"] as const;
@@ -597,6 +606,8 @@ export interface Item {
   error: ShownError | null;
   /** The picture the child reads, drawn by code; absent or null: none (every item before #377 has none). */
   figure?: Figure | null;
+  /** Code-declared references to exact printed numbers, never inferred from the wording or applied to answers. */
+  givens?: CoinGiven[];
 }
 
 /** Why a question has no trusted package. */
@@ -820,6 +831,7 @@ interface Size {
   carries: number;
   /** The numbers of a whole-number +, −, × or ÷, from least to greatest; null for any other kind. */
   numbers: number[] | null;
+  expressionShape: string | null;
 }
 /** A step that carries, regroups or changes the hours of a clock time: the harder part of a method. */
 const carries = (s: WorkedStep) => ((s.kind === "add-column" || s.kind === "multiply-digit") && s.carryOut > 0)
@@ -831,7 +843,10 @@ function size(operation: Operation): Size {
   // 1 to 10, so it is easier than 7 + ? = 10, which counts 3).
   const numbers = operation.kind === "missing-addend" ? [operation.operands[1] - operation.operands[0], operation.operands[1]].sort((x, y) => x - y)
     : WHOLE_KINDS.includes(operation.kind) ? [...(operation.operands as number[])].sort((x, y) => x - y) : null;
-  return { digits: (operationText(operation).match(/\d/g) ?? []).length, steps: steps.length, carries: steps.filter(carries).length, numbers };
+  const expression = operation.kind === "evaluate" || operation.kind === "solve" ? operation.operands[0] : null;
+  const literals = expression ? operationText(operation).match(/\d+(?:\.\d+)?/g)?.map(Number).sort((a, b) => a - b) ?? null : null;
+  return { digits: (operationText(operation).match(/\d/g) ?? []).length, steps: steps.length, carries: steps.filter(carries).length,
+    numbers: numbers ?? literals, expressionShape: expression?.replace(/\d+(?:\.\d+)?/g, "#").replace(/\s/g, "") ?? null };
 }
 /**
  * An easier example has fewer digits, or as many digits and fewer steps (1/5 + 2/5 is easier than 2/3 + 3/4), or as many
@@ -843,7 +858,7 @@ function size(operation: Operation): Size {
 const fewer = (a: number[] | null, b: number[] | null) =>
   a !== null && b !== null && a.length === b.length && a.every((x, i) => x <= b[i]) && a.some((x, i) => x < b[i]);
 const smaller = (a: Size, b: Size) => a.digits < b.digits || (a.digits === b.digits && (a.steps < b.steps || (a.steps === b.steps
-  && (a.carries < b.carries || (a.carries === b.carries && fewer(a.numbers, b.numbers))))));
+  && (a.carries < b.carries || (a.carries === b.carries && (a.expressionShape === b.expressionShape && fewer(a.numbers, b.numbers)))))));
 
 type Problem = ItemProblem;
 const failed = (reason: string | null): Problem | null => (reason ? { status: "failed", reason } : null);
@@ -859,7 +874,7 @@ function packageProblem(p: unknown): Problem | null {
     if (!isWhole(p.stepsVersion, 1)) return failed("the steps version is not a whole number from 1");
     if (!STEPS_VERSIONS.includes(p.stepsVersion)) return { status: "unsupported", reason: `code cannot read worked steps of version ${p.stepsVersion}` };
   }
-  if (p.operation === null && p.item !== undefined) return noOperationProblem(p);
+  if (p.operation === null && p.item !== undefined) return noOperationProblem(p, p.text);
   const operation = operationCheck(p.operation);
   if (operation?.status === "unsupported") return operation;
   const form = unknownForm(p);
@@ -873,12 +888,13 @@ function packageProblem(p: unknown): Problem | null {
   const q = p as unknown as QuestionPackage & { answer: PackageAnswer; operation: Operation };
   return itemProblem(p.item, {
     ...VALUE_READERS,
+    text: q.text,
     computed: { operation: q.operation, answer: q.answer.value, accepted: q.answer.accepted, wrongAnswers: q.wrongAnswers },
   });
 }
 
 /** The value readers the item check uses. */
-const VALUE_READERS: Omit<ItemContext, "computed"> = { valueProblem, sameValue, number: rational };
+const VALUE_READERS: Omit<ItemContext, "computed" | "text"> = { valueProblem, sameValue, number: rational };
 
 const ANSWER_TYPES: readonly string[] = ["number", "fraction", "mixed", "remainder", "quantity", "compound", "time", "expression", "choice", "text"];
 
@@ -981,14 +997,14 @@ function skillProblem(p: Record<string, unknown>): string | null {
 }
 
 /** A package whose item has no operation: no answer, steps, wrong answers or easier example; the item holds the answers. */
-function noOperationProblem(p: Record<string, unknown>): Problem | null {
+function noOperationProblem(p: Record<string, unknown>, text: string): Problem | null {
   const form = unknownForm(p);
   if (form) return { status: "unsupported", reason: form };
   if (p.answer !== null || p.easierExample !== null) return failed("a package with no operation has no answer and no easier example: its item holds the answers");
   if (!Array.isArray(p.steps) || p.steps.length > 0 || !Array.isArray(p.wrongAnswers) || p.wrongAnswers.length > 0) {
     return failed("a package with no operation has no worked steps and no wrong answers");
   }
-  return failed(skillProblem(p)) ?? itemProblem(p.item, { ...VALUE_READERS, computed: null });
+  return failed(skillProblem(p)) ?? itemProblem(p.item, { ...VALUE_READERS, text, computed: null });
 }
 
 /**

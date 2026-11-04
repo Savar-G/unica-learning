@@ -20,7 +20,11 @@ export interface ReadNumber {
   form: "whole" | "decimal" | "fraction" | "percent" | "time" | "colon";
   clock?: true;
   money?: true;
+  currency?: "¢" | "$";
+  /** The value matches a denomination. This alone does not mean it names a coin. */
   coin?: true;
+  /** Only the package's typed givens can set this role. The text reader never sets it. */
+  given?: "coin";
 }
 
 /** A Canadian coin's value (1¢, 5¢, 10¢, 25¢, $1, $2). */
@@ -146,7 +150,8 @@ const NORMALISE: [RegExp, string][] = [[/[‘’]/g, "'"], [/[“”]/g, '"'], [
 export const normaliseAiText = (text: string) => NORMALISE.reduce((t, [re, to]) => t.replace(re, to), text);
 
 /** The characters AI-written text may use (see the header). */
-const ALLOWED_CHAR = /[A-Za-z0-9 .,?!'"\-:()$¢%/+=×÷<>]/;
+// (And "−", the minus every printed text uses between numbers: the U16 r14 review.)
+const ALLOWED_CHAR = /[A-Za-z0-9 .,?!'"\-\u2212:()$¢%/+=×÷<>]/;
 
 /** The number forms a token may take. A negative sign before one ("-3") is read as a sign; the levels check it. */
 export const NUMBER_FORMS: readonly { name: string; form: RegExp; example: string }[] = [
@@ -215,7 +220,7 @@ export function readNumbers(text: string): ReadNumber[] {
     if (after === "%") { out.push({ value, form: "percent" }); continue; }
     const unit = dollar ? "$" : after === "¢" ? "¢" : null;
     const r: ReadNumber = { value, form: Number.isInteger(value) ? "whole" : "decimal" };
-    out.push(unit ? { ...r, money: true, ...(isCoin(value, unit) ? { coin: true as const } : {}) } : r);
+    out.push(unit ? { ...r, money: true, currency: unit, ...(isCoin(value, unit) ? { coin: true as const } : {}) } : r);
   }
   return out;
 }

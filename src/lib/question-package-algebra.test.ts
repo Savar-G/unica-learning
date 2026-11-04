@@ -296,3 +296,21 @@ describe("an exact result with no finite decimal (#354 review)", () => {
     expect(checkQuestionPackage(p)).toEqual(unsupported(reason));
   });
 });
+
+
+describe("U26 easier algebra examples (#479)", () => {
+  it("accepts smaller literals in the same expression with the same number of steps", () => {
+    const p=packageOf(evaluate("7 + 8 × 3"),31,evaluate("2 + 3 × 1"),5,"6.3");
+    expect(checkQuestionPackage(p)).toMatchObject({status:"checked"});
+  });
+  it("includes given variable values when it compares the number sizes", () => {
+    const p=packageOf(evaluate("7 + n × 3", {n:2}),13,evaluate("2 + n × 1", {n:9}),11,"8.7");
+    expect(checkQuestionPackage(p)).toEqual(failed("the easier example is not smaller than the question"));
+  });
+  it("refuses larger literals, equal literals, or a changed expression shape", () => {
+    for(const [expression,answer] of [["8 + 9 × 2",26],["7 + 8 × 3",31],["2 × 3 + 1",7]] as const) {
+      const p=packageOf(evaluate("7 + 8 × 3"),31,evaluate(expression),answer,"6.3");
+      expect(checkQuestionPackage(p).status).toBe("failed");
+    }
+  });
+});

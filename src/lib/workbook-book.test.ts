@@ -4,6 +4,7 @@ import { fakeAiClient } from "@/lib/ai-client-fake";
 import { keySolver } from "@/lib/workbook-solve-check";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
 import type { AnswerValue, Item, ItemFormat, Operation, QuestionPackage } from "@/lib/question-package";
+import { coinGiven } from "@/lib/question-package";
 import { conceptLevels, isGroupingSkill, levelSigns, levelMistakes, pageFigure, printedNumbers, printedValues, rangeProblem, samProblem, samWork, skillRange } from "@/lib/workbook-book";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
@@ -69,7 +70,7 @@ describe("a book laid out for the templates", () => {
     const { draft } = await generate("U12", "first");
     expect(draft.pages.every((p) => p.content)).toBe(true);
     expect(draft.pages.map((p) => p.content!.kind).slice(0, 2)).toEqual(["cover", "how-plan"]);
-    expect(draft.pages.filter((p) => p.type === "back-cover")).toHaveLength(1);
+    expect(draft.pages.filter((p) => p.type === "back-cover")).toHaveLength(0);
     expect(draft.pages.length % 4).toBe(0);
     for (const p of dayPages(draft)) {
       expect(p.content!.kind).toBe("day");
@@ -293,7 +294,9 @@ describe("Sam's wrong work", () => {
     });
     const q = none.draft.pages.flatMap((p) => p.questions).filter((x) => x.place === "spot-the-error");
     expect(q.length).toBeGreaterThan(0);
-    expect(q.every((x) => x.check.status === "failed" && x.check.reason.includes("Sam's steps"))).toBe(true);
+    // None passes; on a story page the story check may name another reason first (#489's plan puts some there).
+    expect(q.every((x) => x.check.status === "failed")).toBe(true);
+    expect(q.some((x) => x.check.status === "failed" && x.check.reason.includes("Sam's steps"))).toBe(true);
   });
 });
 
@@ -455,11 +458,13 @@ describe("every number the child sees fits the range (R380-3-1)", () => {
     expect(problem(pkg({ text: "Count 10,000 grains." }))).toContain("10000");
   });
 
-  it("lets coin values through only on a money skill", () => {
+  it("lets typed coin givens through only on a money skill", () => {
     const coins = { standard: "K11", skills: ["K11-coin-attributes"] };
-    expect(problem(pkg({ text: "Circle the 25¢ coin.", skill: coins }))).toBeNull();
+    const given = item({ givens: [coinGiven("quarter", { kind: "text", index: 0 })] });
+    expect(problem(pkg({ text: "Circle the 25¢ coin.", skill: coins, item: given }))).toBeNull();
+    expect(problem(pkg({ text: "Circle the 25¢ coin.", skill: coins }))).toContain("25");
     expect(problem(pkg({ text: "Circle the quarter.", skill: coins }))).toBeNull();
-    expect(problem(pkg({ text: "Circle the 25¢ coin." }))).toContain("25");
+    expect(problem(pkg({ text: "Circle the 25¢ coin.", item: given }))).toContain("25");
     expect(problem(pkg({ text: "Circle the quarter." }))).toContain("number in words");
     expect(problem(pkg({ text: "Circle the 75¢.", skill: coins }))).toContain("75");
   });
@@ -495,10 +500,15 @@ describe("every number the child sees fits the range (R380-3-1)", () => {
   });
 
   it.each([
-    ["Shade ½ of the shape.", "½"], ["Shade ⅓ of the shape.", "⅓"], ["What is 9 − 3?", "−"], ["Count ５ dots.", "５"],
+    ["Shade ½ of the shape.", "½"], ["Shade ⅓ of the shape.", "⅓"], ["Count ５ dots.", "５"],
     ["What is 2² + 1?", "²"], ["Ava has 3 apples… then 2.", "…"], ["Zoë has 3 cats.", "ë"],
   ])("refuses a character outside the set: %s", (text, char) => {
     expect(problem(pkg({ text }))).toContain(`"${char}"`);
+  });
+
+  // (The minus prints as "−" between numbers, the U16 r14 review: the set takes it.)
+  it("takes the minus sign", () => {
+    expect(problem(pkg({ text: "What is 9 − 3?" })) ?? "").not.toContain('"−"');
   });
 
   it.each(["Find 5 % of 4.", "Add 0,5 and 1.", "Find 5%% of 4.", "What is .5 + 1?", "Count 10 000 grains.", "Read pages 3-8.", "It costs $ 5.", "Pay $4.5 now."])("refuses a number in no allowed form: %s", (text) => {
@@ -608,7 +618,7 @@ describe("each allowed number form at its level (R380-6)", () => {
     ["clock time", 14, "4.12-read-analog", "What time is 3:30 on a clock?"],
     ["ratio", 21, "6.6-write-ratio", "Write the ratio 3:4 another way."],
     ["dollars", 11, "3.14-coins-bills-100", "A book costs $4.75."],
-    ["cents", 6, "1.11-coin-values", "A quarter is 25¢."],
+    ["cents", 6, "1.11-count-one-coin-type", "A sticker costs 6¢."],
     ["negative", 22, "7.2-add-integers", "What is -3 + 5?"],
   ] as const)("accepts a %s at U%i", (_name, level, skill, text) => {
     expect(at(level, skill, text)).toBeNull();

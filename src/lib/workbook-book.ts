@@ -13,6 +13,11 @@
 //
 // The words here are code's, never the AI's: headers, panel labels and explanations come from the plan and the
 // curriculum. Pure TypeScript: no Next.js, React, network, database, clock or randomness.
+import { templateAnswer, templateNumbers, type TemplateSource } from "@/lib/question-package-template";
+import { TITLE_WORDS_MAX, titleWords } from "@/lib/workbook-title-rules";
+import { likelihoodWord } from "@/lib/workbook-likelihood";
+import { workbookCoverTitle } from "@/lib/workbook-cover-titles";
+import { SKILL_TITLES } from "@/lib/workbook-skill-titles";
 import {
   operationResult,
   operationText,
@@ -29,7 +34,9 @@ import {
   type Term,
   type Operation,
   type QuestionPackage,
+  type CoinGiven,
 } from "@/lib/question-package";
+import { givenNumbers, givensProblem } from "@/lib/question-package-givens";
 import { aiTextProblem, groupingWords, isCoin, readNumbers, signOperation, textOperations, type ReadNumber, type SignOperation } from "@/lib/number-words";
 import { figureCount } from "@/lib/question-package-items";
 import { relationChoices } from "@/lib/question-package";
@@ -62,6 +69,7 @@ export function pageTopic(curriculum: Curriculum, skill: string | undefined, ste
   if (!skill) return "Review";
   const named = step ? curriculum.skillSteps(skill)?.[step - 1]?.name : undefined;
   if (named) return named;
+  if (SKILL_TITLES[skill]) return SKILL_TITLES[skill];
   const clause = (curriculum.skill(skill)?.text ?? skill).split(/,|;| \(/)[0].trim();
   return clause.length <= TOPIC_MAX ? clause : curriculum.levelOfSkill(skill)?.title ?? "Review";
 }
@@ -77,35 +85,74 @@ const NUMBER_STRANDS = new Set(["N", "O", "A"]);
 export function dayHeader(curriculum: Curriculum, page: PlannedPage, level: number): DayHeader {
   const main = page.parts.find((p) => p.step) ?? page.parts[0];
   const topic = pageTopic(curriculum, main?.step?.skill ?? main?.skills[0], main?.step?.step);
-  const early = level <= 9;
+  const early = level <= 3;
   // A parent-led page takes the subtitle of its first part.
   const first = page.parts[0]?.kind;
   const type = page.type !== "parent-led" ? page.type
     : first === "new-idea" ? "new-idea" : first === "picture-stories" ? "word-problems" : first === "remember-these" ? "remember-these" : first ?? "practice";
   const subtitles: Record<string, string> = {
-    "warm-up": level >= 16 ? "Facts to 20. Beat your own count from last time." : "Facts to 20. Take your time: there is no timer.",
-    "new-idea": level >= 19 ? "Try it first. Then see how it works." : "Watch how it works. Then try it.",
-    practice: "Watch one. Finish two. Then do the rest on your own.",
+    // From U13 the warm-up's facts go past 20 (times tables, adding hundreds): it names no range then.
+    "warm-up": level >= 16 ? "Facts you know. Beat your own count from last time." : level >= 13 ? "Facts you know. Take your time: there is no timer." : "Facts to 20. Take your time: there is no timer.",
+    "new-idea": level >= 19 ? "Try it first. Then see how it works." : "Read how it works, then try it.",
+    practice: "Read the example, then answer the questions.",
     "practice-2": "Each row is a little harder than the one before.",
     "word-problems": "Read it. Work it out in the box. Write the answer.",
     "math-in-the-world": "One real task. Plan it, then work it out.",
-    "unit-b": `Unit B: ${topic.toLowerCase()}.`,
+    "unit-b": "Answer the questions. Use the example if you need help.",
     "friday-5": "Things you learned before, then five with no hints.",
-    challenge: (page.parts.find((x) => x.kind === "challenge")?.items ?? 1) > 1 ? "Two to stretch you." : "One to stretch you.",
+    challenge: "Test yourself.",
     "show-what-you-know": "Ten days of work. Show what you learned!",
     "level-test": "Do this on your own.",
   };
-  const subtitle = subtitles[type] ?? "Things you learned before, so they stay fresh.";
-  const title = pageTitle(page, level, curriculumTitleSkills(curriculum, (skill) => {
+  const subtitle = subtitles[type] ?? "Answer the questions about what you learned before.";
+  const title = page.type === "challenge" ? "Challenge" : pageTitle(page, level, curriculumTitleSkills(curriculum, (skill) => {
     const strand = curriculum.unit(curriculum.skill(skill)?.unit ?? "")?.strand;
     return strand && NUMBER_STRANDS.has(strand) ? skillRange(curriculum, level, skill).max : null;
   }));
 
-  const parentLed = page.type === "parent-led";
+  const shown = stepTitle(curriculum, title, main?.step ?? null, page.type);
+
+  const parentLed = level <= 3 && page.type === "parent-led";
   const grownUp = parentLed
     ? "Read each line aloud. Your child circles, colours or writes one number."
     : early && type === "new-idea" ? "Read the blue box aloud. Show both ways with a finger." : null;
-  return { topic: type === "level-test" ? "Level test" : type === "show-what-you-know" ? "Show what you know" : topic, title, subtitle, grownUp };
+  return { topic: type === "level-test" ? "Level test" : type === "show-what-you-know" ? "Show what you know" : topic, title: shown, subtitle, grownUp };
+}
+
+/**
+ * A step page's title names its step's numbers (the U16 review: "Place value to millions" over Day 1's five-digit
+ * numbers): a skill title's closing range ("to millions", "to 1000") becomes the step's, rounded up to a power of ten
+ * ("Place value to 100 000"), when the step stops below it.
+ */
+/**
+ * A title that names a range reads naturally (Savar, 2026-11-04): "Place value up to 100,000", not "Place value to 100
+ * 000". A title that starts with what the child does keeps its "to" ("Count on to 20", "Add within 10 to 20").
+ */
+const DOING = /^(?:count|add|subtract|multiply|divide|skip|round|compare|order|read|write|make|share|split|jump|hop|find|show|use|using|go|get|move|match|sort|estimate)\b/i;
+export function naturalTitle(title: string): string {
+  if (DOING.test(title.trim())) return title;
+  const up = title.replace(/(?<!\bup )\bto ((?:\d[\d ,\u00a0]*\d|\d)|millions|a million|thousands)$/i, "up to $1");
+  // (A title keeps 4 words at most, "up to" one of them: "Number stories to 20" stays.)
+  return titleWords(up).length <= TITLE_WORDS_MAX ? up : title;
+}
+
+function stepTitle(curriculum: Curriculum, title: string, step: { skill: string; step: number | null } | null, type: string): string {
+  return naturalTitle(stepRangeTitle(curriculum, title, step, type));
+}
+
+function stepRangeTitle(curriculum: Curriculum, title: string, step: { skill: string; step: number | null } | null, type: string): string {
+  if (!step?.step || ["challenge", "word-problems", "remember-these", "show-what-you-know", "friday-5", "level-test"].includes(type)) return title;
+  const at = curriculum.skillSteps(step.skill)?.[step.step - 1];
+  const m = title.match(/^(.*\bto) (millions|a million|thousands|\d[\d ]*)$/i);
+  if (!at?.numbers || !m) return title;
+  const nums = Object.entries(at.numbers).flatMap(([name, d]) => /^(?:flip|error|e\d*)$/.test(name) ? [] : Array.isArray(d) ? d.filter((v): v is number => typeof v === "number") : [(d as { max: number }).max]);
+  const max = Math.max(0, ...nums);
+  if (max < 10) return title;
+  const top = /million/i.test(m[2]) ? 1_000_000 : /thousand/i.test(m[2]) ? 1000 : Number(m[2].replace(/ /g, ""));
+  const nice = 10 ** Math.ceil(Math.log10(max + 1));
+  if (!(nice < top)) return title;
+  const written = nice >= 10_000 ? String(nice).replace(/\B(?=(\d{3})+$)/g, " ") : String(nice);
+  return `${m[1]} ${written}`;
 }
 
 /** The most characters a line of the 66 px cover title holds. */
@@ -113,6 +160,14 @@ const COVER_LINE = 19;
 
 /** A level title as two cover lines: the whole title when it wraps into two, else its part before " and " or a comma. */
 export function coverTitleLines(title: string): [string, string] {
+  // A number written in groups ("1 000 000") is one word: it never breaks across the lines.
+  const glue = (text: string) => text.replace(/(\d) (?=\d{3}\b)/g, "$1\u00a0");
+  const plain = (line: string) => line.replace(/\u00a0/g, " ");
+  const [first, second] = splitCoverTitle(glue(title));
+  return [plain(first), plain(second)];
+}
+
+function splitCoverTitle(title: string): [string, string] {
   const wrap = (text: string) => {
     const lines: string[] = [];
     for (const word of text.split(" ")) {
@@ -127,6 +182,10 @@ export function coverTitleLines(title: string): [string, string] {
     if (lines.length === 2 && lines.every((l) => l.length <= COVER_LINE)) return [lines[0], lines[1]];
     if (lines.length === 1) {
       const words = text.split(" ");
+      // A short title breaks before its closing phrase ("Numbers / to 20"), never leaving a number alone on the line
+      // (the U4 review).
+      const at = words.findLastIndex((w, i) => i > 0 && /^(?:to|within|up|past|over|of|and|with|in|on|by|for)$/i.test(w));
+      if (at > 0) return [words.slice(0, at).join(" "), words.slice(at).join(" ")];
       if (words.length > 1) return [words.slice(0, -1).join(" "), words.at(-1)!];
     }
   }
@@ -147,6 +206,7 @@ export const PANEL_SLOTS: readonly SlotName[] = ["worked-example", "watch-one", 
 
 export function layoutDayPage(curriculum: Curriculum, plan: WorkbookPlan, day: number, page: PlannedPage): DayLayout {
   const header = dayHeader(curriculum, page, plan.level);
+  if (page.capacity) return { header, slots: structuredClone(page.capacity), omissions: structuredClone(page.capacityOmissions ?? []) };
   const pages = plan.days.find((d) => d.day === day)?.pages.length ?? page.number;
   const { slots, omissions } = pageSlots(page, plan.level, { headerGrowth: headerGrowth(header, plan.level, day, page.number, pages) });
   return { header, slots, omissions };
@@ -199,6 +259,16 @@ function exampleOf(p: QuestionPackage, level: number): PanelExample | null {
     return r?.kind === "box" && r.answer ? valueText(r.answer) : "?";
   };
   for (const c of item.checks) {
+    // #489: a step template item worked as an example: the question, then its answer.
+    if (c.kind === "template" || c.kind === "template-choice") {
+      const r = item.regions.find((x) => x.id === c.region);
+      const answer = r?.kind === "box" && r.answer ? valueText(r.answer) : r?.kind === "choice" ? r.answer ?? "?" : "?";
+      // The work, then the answer: a worked example shows its method, never an answer key alone (Codex at db3b1a0).
+      const how = templateMethod(c.source, p.text);
+      if (!how) return null;
+      // (The method and its answer on one line: "Work it out: 7 − 4 = 3. Answer: 3", a line less on a full page.)
+      return { label: "Example", lines: [p.text, `${how} Answer: [${answer}]`], answered: `Answer: [${answer}]` };
+    }
     if (c.kind === "count" && item.figure) {
       const n = figureCount(item.figure);
       if (n !== null && n >= 1 && n <= 20) {
@@ -208,7 +278,11 @@ function exampleOf(p: QuestionPackage, level: number): PanelExample | null {
     }
     if (c.kind === "sequence") {
       const line = c.terms.map((t) => ("region" in t ? `[${boxAnswer(t.region)}]` : valueText(t))).join(", ");
-      return { label: "Fill the gaps", lines: [line], answered: line };
+      const step = c.step.type === "number" ? c.step.value : null;
+      const how = step ? `${step > 0 ? "Add" : "Take away"} ${Math.abs(step)} each time.` : null;
+      // (A template's question first: "Count on. What are the next two numbers?" over its worked count.)
+      const asked = p.templateId && /[a-z]{3,}/i.test(p.text) ? [p.text] : [];
+      return { label: "Fill the gaps", lines: [...asked, ...(how ? [how] : []), line], answered: line };
     }
     if (c.kind === "relation") {
       const r = relationChoices(c);
@@ -250,6 +324,84 @@ function panelExample(questions: PageQuestion[], example: QuestionPackage | null
     if (own) return own;
   }
   return null;
+}
+
+const PLACE_NAMES: Record<number, string> = { 1: "ones", 10: "tens", 100: "hundreds", 1000: "thousands", 10000: "ten thousands", 100000: "hundred thousands", 1000000: "millions" };
+const SYMBOL: Record<string, string> = { "+": "+", "-": "−", "*": "×", "//": "÷" };
+
+/**
+ * A template example's worked method line, from its answer expression and its numbers: "8 − 5 = 3", "20 × 40 = 800",
+ * "The thousands digit of 97531 is 7.", or for a true or false the sum it checks. Null when the expression is not one
+ * code can word.
+ */
+export function templateMethod(src: TemplateSource, text: string): string | null {
+  const v = templateNumbers(src);
+  if (!v) return null;
+  const n = (k: string) => (/^\d+$/.test(k) ? Number(k) : v[k]);
+  const fmt = (x: number) => groupedNumber(x);
+  const binary = (e: string) => {
+    const m = e.trim().match(/^(\w+) (\+|-|\*|\/\/) (\w+)$/);
+    if (!m || n(m[1]) === undefined || n(m[3]) === undefined) return null;
+    const a = n(m[1]), b = n(m[3]);
+    const r = m[2] === "+" ? a + b : m[2] === "-" ? a - b : m[2] === "*" ? a * b : Math.floor(a / b);
+    return `${fmt(a)} ${SYMBOL[m[2]]} ${fmt(b)} = ${fmt(r)}`;
+  };
+  const resolve = (e: string, depth = 0): string | null => {
+    const b = binary(e);
+    if (b) return b;
+    const name = e.trim();
+    const d = src.derived.find(([k]) => k === name);
+    return d && depth < 3 ? resolve(d[1], depth + 1) : null;
+  };
+  // A digit of a number: "n // 1000 % 10", its value "n // 1000 % 10 * 1000".
+  const digit = src.answer.match(/^\(?(\w+) \/\/ (\d+)\)? % 10(?: \* (\d+))?$/);
+  if (digit && n(digit[1]) !== undefined && PLACE_NAMES[Number(digit[2])]) {
+    const d = Math.floor(n(digit[1]) / Number(digit[2])) % 10;
+    const place = PLACE_NAMES[Number(digit[2])];
+    return digit[3] ? `The ${place} digit of ${fmt(n(digit[1]))} is ${d}: ${d} × ${fmt(Number(digit[3]))} = ${fmt(d * Number(digit[3]))}.` : `Read the ${place} place: the ${place} digit of ${fmt(n(digit[1]))} is ${d}.`;
+  }
+  const more = text.match(/Which is (more|less): (\d+) \w[\w ]*? or (\d+)/i);
+  if (more) { const [a, b] = [Number(more[2]), Number(more[3])]; const big = Math.max(a, b), small = Math.min(a, b); return `${big} comes after ${small} when you count, so ${more[1].toLowerCase() === "more" ? big : small} is ${more[1].toLowerCase()}.`; }
+  const make = text.match(/(\d+) and (\d+) make (\d+)/);
+  if (make) return `Work it out: ${make[1]} + ${make[2]} = ${Number(make[1]) + Number(make[2])}.`;
+  // An equality can put its total first: checking the calculation explains both true and false claims.
+  const equality = text.match(/\b\d+\s*=\s*(\d+)\s*([+−×÷])\s*(\d+)(?!\d|\.\d|\/\d|[⁰¹²³⁴⁵⁶⁷⁸⁹])/);
+  if (equality) {
+    const a = Number(equality[1]), b = Number(equality[3]);
+    const result = equality[2] === "+" ? a + b : equality[2] === "−" ? a - b : equality[2] === "×" ? a * b : b ? a / b : NaN;
+    if (Number.isInteger(result)) return `Work it out: ${fmt(a)} ${equality[2]} ${fmt(b)} = ${fmt(result)}.`;
+  }
+  const parts = text.match(/parts (\d+) and (\d+), whole (\d+)/i);
+  if (parts) return `Work it out: ${parts[1]} + ${parts[2]} = ${Number(parts[1]) + Number(parts[2])}.`;
+  // Counting facts the text states: the last number said is how many; one after, one before.
+  const last = text.match(/count (\d+) \w[\w ]*?, the last number you say is (\d+)/i);
+  if (last) return `When you count ${last[1]} things, the last number you say is ${last[1]}.`;
+  const after = text.match(/\b(?:just |right )?after (\d+) comes (\d+)/i) ?? text.match(/comes (?:just |right )?after (\d+)/i);
+  if (after) return `Count on 1 from ${after[1]}: ${Number(after[1]) + 1} comes next.`;
+  const before = text.match(/\b(?:just |right )?before (\d+)/i);
+  if (before) return `Count back 1 from ${before[1]}: ${Number(before[1]) - 1} comes just before.`;
+  const direct = resolve(src.answer);
+  // (Any expression of its numbers and + − × ÷: "38 + 3 × 12 = 74".)
+  const expr = src.answer.trim().replace(/\b[a-z]\w*\b/gi, (k) => (v[k] !== undefined ? String(v[k]) : k));
+  if (!direct && /^[\d\s+\-*/()]+$/.test(expr) && /[+\-*/]/.test(expr)) {
+    const result = templateAnswer(src);
+    if ("answer" in result) return `Work it out: ${expr.replace(/\/\//g, "÷").replace(/\*/g, "×").replace(/-/g, "−").replace(/\d{5,}/g, (x) => groupedNumber(Number(x)))} = ${groupedNumber(Number(result.answer))}.`;
+  }
+  if (direct) return `Work it out: ${direct}.`;
+  // A true or false: the sum it checks, from the derived values.
+  // (A sum whose two numbers the question prints.)
+  const printed = new Set((text.replace(/(\d)[\s\u00a0\u202f](?=\d{3}\b)/g, "$1").match(/\d+/g) ?? []).map(Number));
+  if (/'true'|'false'|'yes'|'no'/.test(src.answer)) for (const [, e] of src.derived) {
+    const m = e.trim().match(/^(\w+) (\+|-|\*|\/\/) (\w+)$/);
+    if (m && printed.has(n(m[1])) && printed.has(n(m[3]))) return `Work it out: ${binary(e)}.`;
+  }
+  return null;
+}
+
+/** A number as BC prints it: groups of three with a space from 10 000 up ("46 251"), 4 digits together ("4251"). */
+export function groupedNumber(x: number): string {
+  const s = String(x);
+  return Math.abs(x) >= 10000 && Number.isInteger(x) ? s.replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0") : s;
 }
 
 /** The sum with its answer in blue: "5 + 2 = [7]", and for a missing part "2 + [3] = 5". */
@@ -295,6 +447,7 @@ export function pageFigure(f: ItemFigure | null | undefined): Figure | null {
     // Two parts ("2 and 6") in two colours, so the child sees each part (round 6); one part in one colour.
     case "ten-frame": {
       const filled = f.counters.reduce((a, b) => a + b, 0);
+      if (filled === 0 && f.counters.length === 2) return { kind: "ten-frame", filled, frames: 2 };
       return f.counters.filter((n) => n > 0).length > 1 ? { kind: "ten-frame", filled, parts: [...f.counters] } : { kind: "ten-frame", filled };
     }
     // A question's number line has no hop drawn: the hop lands on the answer, so the child draws it (#380).
@@ -330,7 +483,7 @@ export type Concept = (typeof CONCEPTS)[number];
 export type NumberRange = {
   /** The largest number an item may print or ask for (printedNumbers). */
   max: number;
-  /** The skill is about money: coin values always fit, and amounts of money may have cents ($4.75). */
+  /** The skill is about money: typed coin givens fit, and amounts of money may have cents ($4.75). */
   money: boolean;
   /** The skill is about time: h:mm is a clock time and fits as it is; elsewhere every a:b is a ratio. */
   time: boolean;
@@ -435,7 +588,7 @@ type Read = ReadNumber;
 const num = (value: number): Read => ({ value, form: Number.isInteger(value) ? "whole" : "decimal" });
 const frac = (value: number): Read => ({ value, form: "fraction" });
 const money = (value: number, unit: string): Read =>
-  unit === "$" || unit === "¢" ? { ...num(value), money: true, ...(isCoin(value, unit) ? { coin: true as const } : {}) } : num(value);
+  unit === "$" || unit === "¢" ? { ...num(value), money: true, currency: unit, ...(isCoin(value, unit) ? { coin: true as const } : {}) } : num(value);
 /** The same numbers, as the parts of a fraction (a fraction operation's whole numbers too). */
 const asFraction = (rs: Read[]): Read[] => rs.map((r) => ({ ...r, form: "fraction" }));
 
@@ -489,17 +642,18 @@ function statementNumbers(st: Statement): Read[] {
   }
 }
 
-function regionNumbers(r: AnswerRegion): Read[] {
-  const label = readNumbers(r.label ?? "");
+function regionNumbers(r: AnswerRegion, fixedBenchmarks: readonly number[] = [], givens?: readonly CoinGiven[]): Read[] {
+  const words = (text: string) => readNumbers(text).filter(r => !fixedBenchmarks.includes(r.value));
+  const label = givenNumbers(r.label ?? "", givens, { kind: "region-label", region: r.id }).filter(n => !fixedBenchmarks.includes(n.value));
   switch (r.kind) {
     case "box": return [...label, ...valueNumbers(r.answer)];
-    case "choice": return [...label, ...r.choices.flatMap(readNumbers), ...readNumbers(r.answer ?? "")];
+    case "choice": return [...label, ...r.choices.flatMap(words), ...words(r.answer ?? "")];
     case "work": case "lines": case "picture": return label;
     default: return unreachable(r);
   }
 }
 
-function checkNumbers(c: ItemCheck): Read[] {
+function checkNumbers(c: ItemCheck, fixedBenchmarks: readonly number[] = []): Read[] {
   switch (c.kind) {
     case "operation": case "operation-sign": case "count": case "pattern": return [];
     case "places": return [num(c.number)];
@@ -517,8 +671,10 @@ function checkNumbers(c: ItemCheck): Read[] {
       return [...c.terms.flatMap(termNumbers), ...blanks, ...step];
     }
     case "compare": return [...valueNumbers(c.left), ...valueNumbers(c.right)];
-    case "relation": return [...c.numbers, ...c.to].map(num);
+    case "relation": return [...c.numbers, ...c.to.filter(n => !fixedBenchmarks.includes(n))].map(num);
     case "yes-no": return statementNumbers(c.statement);
+    // A template's sampled numbers are printed in its text, which is read already.
+    case "template": case "template-choice": case "template-shown": return [];
     default: return unreachable(c);
   }
 }
@@ -547,13 +703,14 @@ function figureNumbers(f: ItemFigure | null | undefined): Read[] {
  * text, operation and answer; and the item's regions (labels, box answers, choices), checks (places, order, equations,
  * sequence terms and blanks, compare and yes-no numbers) and figure (with a number line's hops).
  */
-export function printedValues(p: QuestionPackage): ReadNumber[] {
+// fixedBenchmarks is only for scheduled relation references. It never removes typed quantities being compared.
+export function printedValues(p: QuestionPackage, fixedBenchmarks: readonly number[] = []): ReadNumber[] {
   const item = p.item;
   const error = item?.error ?? null;
   const shown = error ? samWork(p.operation, error.answer, shownOf(p).cause) : null;
   const easier = p.easierExample;
   return [
-    ...readNumbers(p.text),
+    ...givenNumbers(p.text, item?.givens, { kind: "text" }).filter(r => !fixedBenchmarks.includes(r.value)),
     ...operationNumbers(p.operation),
     ...valueNumbers(p.answer?.value),
     ...(p.answer?.accepted ?? []).flatMap(valueNumbers),
@@ -561,8 +718,8 @@ export function printedValues(p: QuestionPackage): ReadNumber[] {
     ...valueNumbers(error?.answer),
     ...(shown?.lines ?? []).flatMap(readNumbers),
     ...(easier ? [...readNumbers(easier.text), ...operationNumbers(easier.operation), ...valueNumbers(easier.answer)] : []),
-    ...(item?.regions ?? []).flatMap(regionNumbers),
-    ...(item?.checks ?? []).flatMap(checkNumbers),
+    ...(item?.regions ?? []).flatMap(r => regionNumbers(r, fixedBenchmarks, item?.givens)),
+    ...(item?.checks ?? []).flatMap(c => checkNumbers(c, fixedBenchmarks)),
     ...figureNumbers(item?.figure),
   ];
 }
@@ -597,6 +754,7 @@ function checkOperations(c: ItemCheck): SignOperation[] {
     // In words ("less than 5", "close to 10", "more"): no < or > sign is printed.
     case "relation": return [];
     case "yes-no": return c.statement.kind === "equation" ? eq(c.statement.equation) : [];
+    case "template": case "template-choice": case "template-shown": return [];
     default: return unreachable(c);
   }
 }
@@ -625,10 +783,12 @@ export const printedNumbers = (p: QuestionPackage): number[] => printedValues(p)
  * question and the easier example) that fails the gate (aiTextProblem: characters, number forms, number words), a
  * number past the range, or an idea before the curriculum's first level of it (CONCEPTS: a negative number, fraction,
  * decimal, percent or ratio, or a subtraction, multiplication, division or comparison sign anywhere it is printed). On
- * a money skill, coin values always fit and amounts of money may have cents; on a time skill, h:mm is a clock time and
+ * a money skill, typed coin givens fit and amounts of money may have cents; on a time skill, h:mm is a clock time and
  * fits as it is.
  */
 export function rangeProblem(p: QuestionPackage, curriculum: Curriculum, level: number): string | null {
+  const givens = givensProblem(p.item?.givens, p.text, p.item?.regions ?? []);
+  if (givens) return givens;
   const skill = p.skill.skills[0];
   const range = skill ? skillRange(curriculum, level, skill) : levelRange(curriculum, level);
   const context = { skill: skill ?? null, money: range.money };
@@ -636,7 +796,7 @@ export function rangeProblem(p: QuestionPackage, curriculum: Curriculum, level: 
   if (text) return text;
   // a:b in text is a clock time only on a time skill and in the h:mm shape; anywhere else it is a ratio.
   const read = printedValues(p)
-    .filter((r) => !(r.coin && range.money) && !(r.form === "time" && range.time) && !(r.form === "colon" && r.clock && range.time));
+    .filter((r) => !(r.given === "coin" && range.money) && !(r.form === "time" && range.time) && !(r.form === "colon" && r.clock && range.time));
   const big = read.find((r) => Math.abs(r.value) > range.max);
   if (big) return `the number ${big.value} is too big for this question: its numbers are at most ${range.max}`;
   const negative = read.find((r) => r.value < 0);
@@ -895,6 +1055,11 @@ export function dayPageContent(o: {
   const pages = plan.days.find((d) => d.day === o.day)?.pages.length ?? page.number;
   let row = 0;
   const blocks: Block[] = layout.slots.map((s, i): Block => {
+    // Questions of an earlier step than the part's own (late in a practice block): printed under "Remember these".
+    const ownStep = page.parts[s.part]?.step;
+    const review = ownStep && ["on-your-own", "practice-row", "finish-these"].includes(s.slot) ? questions.filter((q) => q.slot === i && q.package?.templateId && !q.package.templateId.startsWith(`${ownStep.skill}#${ownStep.step}.`)).map((q) => q.number) : [];
+    const firstReview = review.length ? Math.min(...review) : undefined;
+    const reviewFrom = firstReview !== undefined && questions.filter((q) => q.slot === i && q.package && q.number > firstReview).every((q) => review.includes(q.number)) ? { reviewFrom: firstReview } : {};
     const mine = questions.filter((q) => q.slot === i && q.package);
     const items = mine.map((q) => q.number);
     // A question with no package cannot print; its placeholder names it and why.
@@ -906,21 +1071,57 @@ export function dayPageContent(o: {
     // A panel's example: of the panel's own skill only, from its own worked example or the same part's questions.
     const sameP = layout.slots.flatMap((x, k) => (x.part === s.part && k !== i ? [k] : []));
     const panel = () => panelExample(questions, o.examples?.find((e) => e.slot === i)?.package ?? null, part?.step?.skill ?? part?.skills[0], sameP, plan.level);
+    // #482 review at db3b1a0: a template step's panel teaches with Cedric's worked example for the step and its common
+    // mistake put right, never a question and its key alone.
+    const teaching = (): { label: string; lines: string[]; remember: string | null } | null => {
+      const step = part?.step ? curriculum.skillSteps(part.step.skill)?.[part.step.step - 1] : undefined;
+      // (From U4: parent-led pages keep their counted examples. An example that needs a picture or a drawing cannot print.)
+      if (!step?.templates?.length || plan.level < 4) return null;
+      const printable = (t: string) => !!t && !/\(picture:|\b(?:shade|shaded|colou?r|draw|trace|dots?|counters?|ten-frame|picture|chart|graph|bars?)\b/i.test(t) && t.length <= 160 && !likelihoodWord(t);
+      // The example worked, then the step's common mistake put right (its fix line), in a panel's room.
+      if (!printable(step.example?.problem) || !step.example?.answer) return null;
+      // The mistake with its fix ("The 3 in 83 175 is worth 300. No: it is in the thousands place: 3 000."), never the
+      // fix alone (the U16 sample: a fix line out of context).
+      const mistake = step.spotTheError;
+      // Once a day: a later page of the day that teaches the same step prints no Watch out line (the real U4 sample:
+      // "Mia wrote 9, 10, 12" on three pages of Day 1).
+      const day = plan.days.find((d) => d.day === o.day);
+      const sameStep = (x: PlannedPage) => x.parts.some((pt) => pt.step && part?.step && pt.step.skill === part.step.skill && pt.step.step === part.step.step && (x.type === "new-idea" || !!pt.faded?.watch));
+      const earlier = (day?.pages ?? []).some((x) => x.number < page.number && sameStep(x));
+      const both = !earlier && !page.noWatchOut && printable(mistake?.wrong) && printable(mistake?.fix) && `${mistake.wrong} ${mistake.fix}`.length <= 150;
+      return { label: "How it works", lines: [step.example.problem, `Answer: [${step.example.answer}]`], remember: both ? `${mistake.wrong.replace(/\.?$/, ".")} No: ${mistake.fix.replace(/^[A-Z]/, (c) => c.toLowerCase())}` : null };
+    };
     switch (s.slot) {
       case "worked-example": {
         const step = part?.step ? curriculum.skillSteps(part.step.skill)?.[part.step.step - 1] : undefined;
-        const ex = panel();
-        const lines = ex?.lines ?? [];
+        const taught = teaching();
+        // The page's own reserved example, worked with its method (Codex at 47c5fd78: Cedric's fixed example printed
+        // a task the repeat check never saw, and its answer alone); Cedric's example only when there is none.
+        const own = o.examples?.find((e) => e.slot === i)?.package;
+        const ex = own ? exampleOf(own, plan.level) : taught ? null : panel();
+        const lines = ex?.lines.length ? ex.lines : taught?.lines ?? [];
         return {
-          slot: s.slot, items: [], label: ex?.label,
-          note: part?.unit === "B" ? "Unit B · new step" : "Unit A · new step",
-          methods: lines.length ? [{ label: "Step by step", lines }] : [],
-          explain: step?.change ?? "Work one step at a time. Then check your answer.",
+          slot: s.slot, items: [], label: taught ? step?.name : ex?.label,
+          note: "Read how it works, then try it.",
+          methods: lines.length ? [{ label: taught ? taught.label : "Step by step", lines }] : [],
+          // #489: the imported steps' change notes are for builders; the page names the step plainly, and with Cedric's
+          // worked example it puts the step's common mistake right.
+          explain: taught?.remember ? `Watch out: ${taught.remember}` : step?.templates?.length ? `${step.name}.` : step?.change ?? "Work one step at a time. Then check your answer.",
         };
       }
       case "watch-one": {
-        const ex = panel();
-        return { slot: s.slot, items: [], label: ex?.label, note: "Watch one worked out. Then finish two.", lines: ex?.lines ?? [] };
+        // Cedric's worked example teaches the step once, on its new idea page; a later page's example is code's own
+        // (other numbers, a task no question asks: the real U4 sample printed one example on three pages), with the
+        // step's common mistake put right.
+        const taught = teaching();
+        // (The panel's own example only, never one of the page's questions: it would give that answer away.)
+        const own = o.examples?.find((e) => e.slot === i)?.package;
+        const ex = taught ? (own ? exampleOf(own, plan.level) : null) : panel();
+        // (Its question first when the worked line does not say it: "Count on. What are the next two numbers?" over
+        // "6, [7], [8]".)
+        const asked = taught && own && ex?.lines.length && !ex.lines.some((l) => l.replace(/[[\]]/g, "").includes(own.text.trim())) ? [own.text] : [];
+        const lines = ex?.lines.length ? [...asked, ...ex.lines] : taught?.lines ?? [];
+        return { slot: s.slot, items: [], label: ex?.lines.length ? ex.label : taught ? "How it works" : undefined, note: "Read the example, then try it.", lines, ...(taught?.remember ? { explain: `Watch out: ${taught.remember}` } : {}) };
       }
       case "reminder": {
         const ex = panel();
@@ -928,27 +1129,32 @@ export function dayPageContent(o: {
         return {
           slot: s.slot, items: [], label: "Remember", note: "From before",
           lines: ex ? [ex.answered] : [],
-          explain: step?.change ?? "Do it the same way as before. Check each answer.",
+          explain: step?.templates?.length ? `${step.name}.` : step?.change ?? "Do it the same way as before. Check each answer.",
         };
       }
       case "spot-the-error": {
         // Sam's work step by step, built by code from the mistake; the right answer stays in the answer key only.
         const q = mine[0]?.package;
+        // #489: a step template item shows Sam's answer to its question; code's error steps need an operation.
+        const templated = q?.item?.checks.find((c) => c.kind === "template-shown");
+        // The question and the answer given, with no one's name (the U4 review, item 16).
+        if (templated?.kind === "template-shown") return { slot: s.slot, items, who: "Sam", lines: [`${q!.text} Answer given: ${templated.shown}.`], ...withFigures, ...missing };
         const shown = q ? shownOf(q) : null;
         const work = samWork(q?.operation ?? null, shown?.answer, shown?.cause);
         return { slot: s.slot, items, who: "Sam", lines: work?.lines ?? [], ...withFigures, ...missing };
       }
       case "practice-row":
-        return { slot: s.slot, items, label: ROW_LABELS[Math.min(row++, ROW_LABELS.length - 1)], ...withFigures, ...missing };
+        return { slot: s.slot, items, label: ROW_LABELS[Math.min(row++, ROW_LABELS.length - 1)], ...withFigures, ...missing, ...reviewFrom };
       case "finish-these":
-        return { slot: s.slot, items, hints: items.map(() => null), ...withFigures, ...missing };
+        return { slot: s.slot, items, hints: items.map(() => null), ...withFigures, ...missing, ...reviewFrom };
       default:
-        return { slot: s.slot, items, ...withFigures, ...missing };
+        return { slot: s.slot, items, ...withFigures, ...missing, ...reviewFrom };
     }
   });
   const two = (n: number) => String(n).padStart(2, "0");
   return {
-    kind: "day", id: pageId(o.child, o.workbook, `D${two(o.day)}·P${page.number}`), level: plan.level, day: o.day, page: page.number, pages,
+    // An extra practice page is no day's page (#482 review at db3b1a0: "D10·P9" under "Extra practice").
+    kind: "day", id: pageId(o.child, o.workbook, page.extraPractice ? `EXTRA·${two(page.number)}` : `D${two(o.day)}·P${page.number}`), level: plan.level, day: o.day, page: page.number, pages,
     ...layout.header, blocks,
   };
 }
@@ -957,7 +1163,7 @@ export function dayPageContent(o: {
 
 /** Each day's row on the plan page: Unit A's topic and the line under it. */
 export function planRow(curriculum: Curriculum, plan: WorkbookPlan, day: number): { topic: string; second: string } {
-  const d = plan.days[day - 1];
+  const d = plan.days.find((d) => d.day === day)!;
   const topicOf = (track: "A" | "B") => {
     const part = d.pages.flatMap((p) => p.parts).find((p) => p.unit === track && p.step);
     return part ? pageTopic(curriculum, part.step!.skill, part.step!.step) : null;
@@ -968,6 +1174,36 @@ export function planRow(curriculum: Curriculum, plan: WorkbookPlan, day: number)
   const b = topicOf("B");
   const second = day === 10 ? "Show what you know" : day === 5 ? "Friday 5" : b ?? (d.kind === "mixed" ? "Mixed practice" : "Remember these?");
   return { topic: a ?? (d.kind === "mixed" ? "Mixed practice" : "Review"), second };
+}
+
+/** A skill title as a plain continuation of "will learn to" on the cover. */
+function learningSkill(title: string): string {
+  const verbs: Record<string, string> = { Counting: "Count", Adding: "Add", Subtracting: "Subtract", Comparing: "Compare", Making: "Make",
+    Finding: "Find", Measuring: "Measure", Reading: "Read", Writing: "Write", Using: "Use", Multiplying: "Multiply", Dividing: "Divide",
+    Solving: "Solve", Ordering: "Order", Rounding: "Round", Drawing: "Draw", Naming: "Name" };
+  const [first, ...rest] = title.split(" ");
+  if (verbs[first]) return [verbs[first], ...rest].join(" ");
+  if (/^(Read|Write|Count|Add|Subtract|Compare|Find|Make|Measure|Use|Draw|Name|Solve|See|Show|Multiply|Divide|Estimate|Describe|Sort|Choose|Order|Break|Change|Plot|Continue|Combine|Match|Skip-count|Predict|Share|Evaluate|Model|Check|Tell|Put|Spot|Take|Balance|Move|Build|Extend|Record|Recall|Link|Slide|Flip|Turn|Translate|Test|Convert|Regroup|Substitute|List|Simplify|Interpolate|Extrapolate|Collect|Save)\b/.test(title)) return title;
+  if (/^(What|How|Why)\b/.test(title)) return `Explain ${title.toLowerCase()}`;
+  if (/^Which\b/.test(title)) return `Choose ${title.toLowerCase()}`;
+  if (title === "Likelihood words") return "Use likelihood words";
+  if (title === "More, fewer or same") return "Compare amounts";
+  if (first === "Numbers") return `Read and write ${title.toLowerCase()}`;
+  if (first === "Ways") return `Find ${title.toLowerCase()}`;
+  return `Work with ${title.toLowerCase()}`;
+}
+
+/** Prefer the taught skills, then the skills practised in review, for the three cover lines. */
+function coverSkills(plan: WorkbookPlan): string[] {
+  const parts = plan.days.flatMap(d => d.pages.flatMap(p => p.parts));
+  const taught = ["A", "B"].flatMap(unit => parts.filter(p => p.unit === unit).flatMap(p => p.skills));
+  const skills = [...new Set([...taught, ...parts.flatMap(p => p.skills)])].slice(0, 3);
+  if (skills.length !== 3) throw new Error("The cover needs three planned skills.");
+  return skills.map(skill => {
+    const title = SKILL_TITLES[skill];
+    if (!title) throw new Error(`The cover has no title for ${skill}.`);
+    return learningSkill(title);
+  });
 }
 
 /** The content of a book page that is not a day page: the cover (1), How + Plan (2), the back cover and blanks. */
@@ -985,20 +1221,14 @@ export function bookPageContent(o: {
   const pagesADay = Math.max(...plan.days.map((d) => d.pages.length));
   switch (o.type) {
     case "cover": {
-      const title = curriculum.level(`U${level}`)?.title ?? `Level U${level}`;
+      const title = workbookCoverTitle(level);
       return {
         kind: "cover", id: id("COVER"), level, child, workbook, levelTitle: title, title: coverTitleLines(title),
         madeFrom: workbook === 1 ? "assessment" : "last-workbook", pagesADay, minutes: { ...plan.timeTarget },
-        sentence: workbook === 1
-          ? `${child}'s assessment showed what is secure and what to build next at Level U${level}. So this workbook:`
-          : `${child}'s last workbook showed which steps stuck and which need another go. So this workbook:`,
-        bullets: [
-          plan.testWorkbook ? "Checks the whole level with a test on Day 7" : "Builds the next steps of this level, one small step at a time",
-          "Shows each new idea with a worked example first",
-          "Brings back earlier skills every day, so they stay fresh",
-          workbook === 1 ? "Ends each week with five questions and no hints" : "Fixes last time's mistakes with new questions",
-        ],
-        parentLine: `This fortnight, ask ${child} to show you one worked example and explain it in their own words.`,
+        sentence: level === 4 ? `${child} will count, read and write numbers up to 20, and learn how numbers split into smaller parts.`
+          : `${child} will ${coverSkills(plan).map(x => x[0].toLowerCase() + x.slice(1)).join(", ").replace(/, ([^,]+)$/, ", and $1")}.`,
+        bullets: [],
+        parentLine: "",
       };
     }
     case "how-plan": {

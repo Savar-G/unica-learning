@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FRAMES, fillFrame, GIRLS, BOYS, storyProblem, quantityStoryProblem, THINGS } from "@/lib/workbook-wording";
+import { FRAMES, fillFrame, GIRLS, BOYS, storyProblem, quantityStoryProblem, singularPlaces, takeAwayProblem, printedMinus, hyphenMinus, THINGS } from "@/lib/workbook-wording";
 
 // Plain story language (D-201): code's own story wordings keep every rule, and storyProblem refuses a story that breaks
 // one it can check exactly.
@@ -82,3 +82,34 @@ describe("quantity questions on practice and review cards", () => {
     }
   });
 });
+
+describe("place words and take-away stories (U16 r13, Codex at 24751f16)", () => {
+  it("prints a place unit after 1 in the singular", () => {
+    expect(singularPlaces("Write 4 thousands, 0 hundreds, 1 tens and 6 ones as a number.")).toBe("Write 4 thousands, 0 hundreds, 1 ten and 6 ones as a number.");
+    expect(singularPlaces("6 hundreds, 0 tens and 1 ones; 1 hundreds, 1 thousands, 1 ten thousands, 21 tens, 0.1 tens")).toBe("6 hundreds, 0 tens and 1 one; 1 hundred, 1 thousand, 1 ten thousand, 21 tens, 0.1 tens");
+  });
+  it("needs a verb that takes the things away, or a question about the rest", () => {
+    expect(takeAwayProblem("Max has 1010 buttons, puts 17 in a jar. How many buttons does he have now?", 993)).not.toBeNull();
+    expect(takeAwayProblem("Max has 1010 buttons and hides 17. How many buttons are left?", 993)).not.toBeNull();
+    for (const [text, answer] of [
+      ["Omar has 10000 points and gives 6338 away. How many points are left?", 3662],
+      ["Ethan has 5 apples. 4 are in a bin. How many are not?", 1],
+      ["Max has 10 buttons and puts 3 in a jar. How many are not in the jar?", 7],
+      ["Kai has 6 stamps and wants 10. How many more?", 4],
+      ["Noah has 3414 tickets. He gets 2965 more. How many tickets does Noah have now?", 6379],
+      ["A shop has 6 boxes with 200 bolts in each. It sells 600 bolts. How many bolts are left?", 600],
+    ] as const) expect(takeAwayProblem(text, answer), text).toBeNull();
+  });
+});
+
+describe("minus signs (the U16 r14 review)", () => {
+  it("prints a minus between numbers as − and finds a hyphen left there", () => {
+    expect(printedMinus("What is 90 × 870 - 100?")).toBe("What is 90 × 870 \u2212 100?");
+    expect(printedMinus("8090 - ? = 80 × 100")).toBe("8090 \u2212 ? = 80 × 100");
+    expect(printedMinus("A ten-frame shows 7. Twenty-one is 21.")).toBe("A ten-frame shows 7. Twenty-one is 21.");
+    expect(hyphenMinus("10 000 - ? = 4913")).toBe(true);
+    expect(hyphenMinus(printedMinus("10 000 - ? = 4913"))).toBe(false);
+    expect(hyphenMinus("a ten-frame")).toBe(false);
+  });
+});
+

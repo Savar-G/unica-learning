@@ -19,14 +19,15 @@ const page = (type: PlannedPage["type"], parts: PlannedPart[]): PlannedPage => (
 const names = (layout: PageLayout) => layout.slots.map((s) => `${s.slot}:${s.items}`);
 
 describe("assembleBook", () => {
-  it.each([["U12", 84], ["U22", 64], ["U6", 84], ["U2", 60]])("puts a %s book in order and pads it to a multiple of 4 (%i pages)", (level, total) => {
+  // #489: every teaching day starts the next step, so a U2 day always has its New idea page (64 pages, was 60).
+  it.each([["U12", 84], ["U22", 64], ["U6", 84], ["U2", 64]])("puts a %s book in order and pads it to a multiple of 4 (%i pages)", (level, total) => {
     const { draft, plan } = book(level);
     const types = draft.pages.map((p) => p.type);
     const dayPages = plan.days.reduce((n, d) => n + d.pages.length, 0);
 
     expect(types[0]).toBe("cover");
     expect(types[1]).toBe("how-plan");
-    expect(types[2 + dayPages]).toBe("back-cover");
+    expect(types[2 + dayPages]).toBe("blank");
     expect(types.slice(3 + dayPages).every((t) => t === "blank")).toBe(true);
     expect(draft.pages.length).toBe(total);
     expect(draft.pages.length % 4).toBe(0);
@@ -37,7 +38,7 @@ describe("assembleBook", () => {
     const { draft } = book("U12");
     const ids = draft.pages.map((p) => p.content!.id);
     expect(ids.slice(0, 4)).toEqual(["UL·LEAH·W02·COVER", "UL·LEAH·W02·HOW+PLAN", "UL·LEAH·W02·D01·P1", "UL·LEAH·W02·D01·P2"]);
-    expect(ids[82]).toBe("UL·LEAH·W02·BACK");
+    expect(ids[82]).toBe("UL·LEAH·W02·BLANK·P83");
     expect(ids[83]).toBe("UL·LEAH·W02·BLANK·P84");
 
     const plan = draft.pages[1].content!;
@@ -66,8 +67,9 @@ describe("assembleBook", () => {
   it("covers every page type of a day across the sample levels and a level's last book", () => {
     const types = new Set([book("U2"), book("U6"), book("U12"), book("U22"), book("U12", { testWorkbook: true })].flatMap((b) => b.draft.pages.map((p) => p.type)));
     expect([...types].sort()).toEqual([
-      "back-cover", "blank", "challenge", "cover", "friday-5", "how-plan", "level-test", "math-in-the-world", "new-idea", "parent-led",
-      "practice", "practice-2", "remember-these", "remember-these-mixed-set", "show-what-you-know", "unit-b", "warm-up", "word-problems",
+      "blank", "challenge", "cover", "friday-5", "how-plan", "level-test", "math-in-the-world", "new-idea", "parent-led",
+      // #489: the step progression has no second unit, so no Unit B page.
+      "practice", "practice-2", "remember-these", "remember-these-mixed-set", "show-what-you-know", "warm-up", "word-problems",
     ]);
   });
 
@@ -125,7 +127,7 @@ describe("pageSlots", () => {
   it("puts Practice 2 in rows of four, fewer beside Solve it two ways and Spot the error", () => {
     expect(names(pageSlots(page("practice-2", [part("practice", 12)]), 12))).toEqual(["practice-row:4", "practice-row:4", "practice-row:4"]);
     expect(names(pageSlots(page("practice-2", [part("practice", 12), part("solve-it-two-ways", 1), part("spot-the-error", 1)]), 12)))
-      .toEqual(["practice-row:4", "practice-row:4", "solve-it-two-ways:1", "spot-the-error:1"]);
+      .toEqual(["practice-row:4", "solve-it-two-ways:1", "spot-the-error:1"]);
   });
 
   it("gives a New idea part its worked example and a Now you card, with 2 items beside Spot the error", () => {
@@ -140,7 +142,10 @@ describe("pageSlots", () => {
   });
 
   it("adds a How do you know? to the stories and splits Math in the world into its plan, parts and final answer", () => {
-    expect(names(pageSlots(page("word-problems", [part("word-problems", 3)]), 12))).toEqual(["word-problems:3", "how-do-you-know:1"]);
+    // (From U4 every story has its work box: the How do you know? line goes and its room goes to the work boxes, Savar
+    // 2026-11-04; a parent-led page keeps it.)
+    expect(names(pageSlots(page("word-problems", [part("word-problems", 3)]), 12))).toEqual(["word-problems:3"]);
+    expect(names(pageSlots(page("word-problems", [part("word-problems", 3)]), 3))).toEqual(["word-problems:2", "how-do-you-know:1"]);
     expect(names(pageSlots(page("math-in-the-world", [part("math-in-the-world", 1)]), 22))).toEqual(["math-in-the-world:3"]);
   });
 
@@ -187,7 +192,7 @@ describe("pageSlots", () => {
     expect(names(pageSlots(unitB, 12, { headerGrowth: 92 }))).toEqual(["worked-example:0", "spot-the-error:1"]);
 
     const review = page("remember-these-mixed-set", [part("remember-these", 8), part("mixed-set", 4)]);
-    expect(names(pageSlots(review, 12, { headerGrowth: 38 }))).toEqual(["remember-these:6", "mixed-set:4"]);
+    expect(names(pageSlots(review, 12, { headerGrowth: 38 }))).toEqual(["remember-these:6", "mixed-set:2"]);
     // A parent-led page's card budget leaves 100 px spare, which a wrapped header uses before any card goes.
     const parent = page("parent-led", [part("remember-these", 6)]);
     expect(names(pageSlots(parent, 2, { headerGrowth: 67 }))).toEqual(["remember-these:6"]);
@@ -205,7 +210,7 @@ describe("pageSlots", () => {
 
   it("caps a slot at what the template takes, and says so", () => {
     const layout = pageSlots(page("show-what-you-know", [part("show-what-you-know", 17)]), 12);
-    expect(names(layout)).toEqual(["show-what-you-know:10"]);
-    expect(layout.omissions).toEqual([{ part: 0, kind: "show-what-you-know", requested: 17, placed: 10, reason: "the show-what-you-know slot takes at most 10 items" }]);
+    expect(names(layout)).toEqual(["show-what-you-know:8"]);
+    expect(layout.omissions).toEqual([{ part: 0, kind: "show-what-you-know", requested: 17, placed: 8, reason: "the show-what-you-know slot takes at most 8 items" }]);
   });
 });

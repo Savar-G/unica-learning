@@ -10,6 +10,7 @@ export interface Misconception {
 }
 
 export const MISCONCEPTIONS = {
+  "operation-swap": { description: "Adds when the story takes away, or takes away when the story adds", evidence: "none" },
   "clock-carry": { description: "Subtracts 60 minutes but does not advance the hour", evidence: "none" },
   "minutes-reversed": { description: "Subtracts the end minutes from the start minutes and ignores the change of hour", evidence: "none" },
   "count-other": { description: "Estimates the count for the other outcome instead of the outcome asked about", evidence: "none" },

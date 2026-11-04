@@ -63,6 +63,19 @@ describe("the workbook templates", () => {
     }
   });
 
+  it("uses Name and Date only on each day's first page and removes the level map", () => {
+    const draft=book("U6");
+    const template=workbookTemplate();
+    for(const p of draft.pages) {
+      const html=template.page(p,{qr:"",qrUrl:""},draft)!;
+      expect(html).not.toContain("My levels");
+      if(p.content?.kind==="day") {
+        expect(html.includes('class="nd"')).toBe(p.content.page===1);
+        expect(html).not.toContain("For the grown-up:");
+      }
+    }
+  });
+
   it("has no layout for a page with no slot content", async () => {
     const draft = book("U12");
     const bare: DraftPage = { ...draft.pages[2], content: undefined };
@@ -113,7 +126,7 @@ describe("the fit check", () => {
   it("fails an answer box smaller than the level band allows: 40 px from U10, 56 px at U1 to U3", async () => {
     const at = (n: number) => ({
       ...AREA, [`1 question-${n}`]: { x: 64, y: 290, width: 600, height: 80 },
-      [`1 question-${n}-content`]: { x: 64, y: 300, width: 30, height: 20 }, [`1 question-${n}-answer`]: { x: 100, y: 300, width: 64, height: 44 },
+      [`1 question-${n}-content`]: { x: 64, y: 300, width: 30, height: 20 }, [`1 question-${n}-answer`]: { x: 100, y: 300, width: 64, height: 48 },
     });
     const mid = first(draft, "warm-up");
     expect((await render(only(draft, mid), fakePrintEngine({ rects: at(1) }))).status).toBe("rendered");
@@ -124,7 +137,7 @@ describe("the fit check", () => {
     const n = boxed(parent)!.number;
     const result = await render(only(early, parent), fakePrintEngine({ rects: at(n) }));
     expect(result.status === "failed" && result.problems).toEqual([
-      { page: parent.number, question: n, slot: expect.any(String), reason: expect.stringMatching(new RegExp(`question ${n}'s answer box height is 44 px; the design allows no less than 56$`)) },
+      { page: parent.number, question: n, slot: expect.any(String), reason: expect.stringMatching(new RegExp(`question ${n}'s answer box height is 48 px; the design allows no less than 56$`)) },
     ]);
   });
 
@@ -138,7 +151,7 @@ describe("the fit check", () => {
         ...AREA,
         [`1 question-${fix}`]: { x: 100, y: 300, width: 180, height: 60 },
         [`1 question-${fix}-content`]: { x: 130, y: 310, width: 120, height: 22 },
-        [`1 question-${fix}-answer`]: { x: 210, y: 305, width: 64, height: 44 },
+        [`1 question-${fix}-answer`]: { x: 210, y: 305, width: 64, height: 48 },
       },
     });
     const result = await render(only(draft, warm), engine);
@@ -199,21 +212,20 @@ describe("the fit check", () => {
     const stories = first(draft, "word-problems");
     const c = stories.content!;
     if (c.kind !== "day") throw new Error("not a day page");
-    const why = c.blocks.find((b) => b.slot === "how-do-you-know")!.items[0];
     const story = c.blocks.find((b) => b.slot === "word-problems")!.items[0];
-    const engine = fakePrintEngine({
-      rects: {
-        ...AREA,
-        [`1 question-${why}-answer`]: { x: 64, y: 700, width: 688, height: 60 },
-        [`1 question-${why}`]: { x: 64, y: 690, width: 688, height: 80 },
-        [`1 region-${story}-work`]: { x: 64, y: 300, width: 500, height: 30 },
-      },
-    });
-    const result = await render(only(draft, stories), engine);
-    expect(result.status === "failed" && result.problems.map((p) => [p.question, p.slot, p.reason.replace(/^.*: /, "")])).toEqual([
-      [story, "word-problems", `question ${story}'s work box height is 30 px; the design allows no less than 44`],
-      [why, "how-do-you-know", `question ${why}'s writing space is 60 px; the design allows no less than 70`],
+    // (From U4 the stories carry work boxes and no How do you know? line, Savar 2026-11-04.)
+    expect(c.blocks.some((b) => b.slot === "how-do-you-know")).toBe(false);
+    const boxed = await render(only(draft, stories), fakePrintEngine({ rects: { ...AREA, [`1 region-${story}-work`]: { x: 64, y: 300, width: 500, height: 30 } } }));
+    expect(boxed.status === "failed" && boxed.problems.map((p) => [p.question, p.slot, p.reason.replace(/^.*: /, "")])).toEqual([
+      [story, "word-problems", `question ${story}'s work box height is 30 px; the design allows no less than 64`],
     ]);
+    // A parent-led stories page (U1 to U3) keeps its writing lines.
+    const early = book("U3");
+    const page = early.pages.find((p) => p.content?.kind === "day" && p.content.blocks.some((b) => b.slot === "how-do-you-know"));
+    if (!page || page.content?.kind !== "day") return;
+    const why = page.content.blocks.find((b) => b.slot === "how-do-you-know")!.items[0];
+    const lined = await render(only(early, page), fakePrintEngine({ rects: { ...AREA, [`1 question-${why}-answer`]: { x: 64, y: 700, width: 688, height: 60 }, [`1 question-${why}`]: { x: 64, y: 690, width: 688, height: 80 } } }));
+    expect(lined.status === "failed" && lined.problems.some((p) => p.question === why && /writing space is 60 px/.test(p.reason))).toBe(true);
   });
 });
 
@@ -278,4 +290,16 @@ describe("a pattern item's choices", () => {
     expect(circ).toContain(`aria-label="triangle"`);
     expect(circ).not.toMatch(/<span class="co">(circle|triangle)<\/span>/);
   });
+});
+
+it("prints a period after each question number in every page family",()=>{
+  const template=workbookTemplate();
+  for(const level of ["U2","U6","U12","U22"]) {
+    const draft=book(level);
+    for(const page of draft.pages) for(const consistentLayout of [false,true]) {
+      const p={...page,content:page.content?.kind==="day"?{...page.content,consistentLayout}:page.content};
+      const html=template.page(p,{qr:`<div data-measure="qr"></div>`,qrUrl:"https://unicalearning.com/tutor/p/test"},draft)!;
+      for(const q of p.questions) expect(html,`${level} ${p.type} q${q.number}`).toMatch(new RegExp(`<span class="(?:n|gn|sn|badge)">${q.number}\\.</span>`));
+    }
+  }
 });

@@ -17,6 +17,7 @@ interface Planned {
   operation?: { kind: "add" | "subtract" | "missing-addend"; operands: [number, number] }; figure?: string | null; figureShows?: string | null;
 }
 interface AskedSlot {
+  contract?: { item: AiItem };
   slot: string; place?: string; skills: string[]; formats?: string[] | null; mistakes?: { name: string }[]; numbers?: Record<string, { max: number }>;
   aim?: { skill: string; kind: string }; planned?: Planned; room?: { characters: number };
 }
@@ -37,8 +38,11 @@ export function fakeWorkbookItems(r: AiJsonRequest) {
   const text = (r.content[0] as { text: string }).text;
   const asked = JSON.parse(text) as { day?: number; page?: number; slots: AskedSlot[]; examples?: AskedSlot[]; note?: string | null; currentQuestions?: {data: AiItem | null}[] };
   const day = asked.day ?? 1;
+  // No two questions of a page work one sum, as the real AI is asked (#380): a pair taken moves on.
+  const sums = new Set<string>();
   return {
     items: [...asked.slots, ...(asked.examples ?? [])].map((s, k) => {
+      if (s.contract) return s.contract.item;
       const current = asked.currentQuestions?.find(q => q.data?.slot === s.slot)?.data;
       if (current) return { ...current, ...(/apples/i.test(asked.note ?? "") ? { name: "Mia", thing: "apples" } : {}) };
       const seed = hash(`${r.name}|${day}|${asked.page ?? 0}|${s.slot}|${asked.note ?? ""}`);
@@ -83,12 +87,25 @@ export function fakeWorkbookItems(r: AiJsonRequest) {
       // others' (the k-th slot), and a bare sum takes another form after every `span` slots and in each later call.
       const planned = plan?.numbers && plan.numbers[0] >= 1 && plan.numbers[0] + plan.numbers[1] + 1 <= max ? plan.numbers : null;
       const span = Math.max(1, max > 40 ? 19 : Math.min(9, max - 3));
-      const b = planned?.[1] ?? 1 + ((seed + k) % span);
+      let b = planned?.[1] ?? 1 + ((seed + k) % span);
       const a = planned?.[0] ?? 1 + ((Math.floor(seed / 9) + 7 * k) % Math.max(1, max - span - 1));
-      const story = `${who} has ${a}. ${b} more come. How many now?`;
-      const bare = story.length > (s.room?.characters ?? Infinity);
-      // A redo or a shorter rewrite writes its bare sums in a form of its own, so they never read like the first call's.
+      for (let n = 0; n < span && sums.has(`${a},${b}`) && a + b + 2 <= max; n++) b = b % span + 1;
+      sums.add(`${a},${b}`);
+      // The kind code aimed the slot at, as the real AI is asked (#480 review: three contexts or formats a page): a
+      // missing part, a bare fact, else a story in one of several sentences.
       const call = r.name === "workbook_page_redo" ? 1 : r.name === "workbook_page_shorter" ? 2 : 0;
+      const stories = [`${who} picks ${a}. Then ${b} more. How many now?`, `${who} counts ${a}, then ${b} more. How many is that?`,
+        `${who} stacks ${a}. Then ${b} more go on top. How many now?`, `${who} collects ${a} and then ${b} more. How many now?`];
+      const story = stories[(k + (asked.page ?? 0) + call) % stories.length];
+      if (s.aim?.kind === "missing-part" && b >= 2 && a + b <= 20 && format === "write-number") {
+        return {
+          ...base, text: `${a} + ? = ${a + b}`, operation: { ...op("add", a, a + b), kind: "missing-addend" },
+          wrongAnswers: [{ value: num(a + b), cause: "careless", description: "Writes the total.", step: null }],
+          easier: b >= 2 ? { text: `${a} + ? = ${a + b - 1}`, operation: { ...op("add", a, a + b - 1), kind: "missing-addend" } } : null, shownWrong: null,
+        };
+      }
+      const bare = s.aim?.kind === "fact" || story.length > (s.room?.characters ?? Infinity);
+      // A redo or a shorter rewrite writes its bare sums in a form of its own, so they never read like the first call's.
       const form = (call + Math.floor(k / span)) % 3;
       return {
         ...base, text: bare ? [`${a} + ${b} = ?`, `? = ${a} + ${b}`, `${a} + ${b} =`][form] : story, operation: op("add", a, b),

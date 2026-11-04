@@ -275,13 +275,15 @@ describe("a full draft for the early levels", () => {
     const s = { ...slot, skills: [skill] };
     const is = (re: RegExp) => re.test(skill);
     if (is(/create-pattern|represent-pattern|count-out|sort-one|likelihood|which-more-likely|graph|pictograph/)) return item(s, "draw", { text: "Draw it." });
-    if (is(/(^K4-|^1\.4-)/)) return item(s, "pattern", { pattern: { core: ["circle", "square"], shapes: 6, blank: 5 } });
+    if (is(/(^K4-|^1\.4-|^2\.5-)/)) return item(s, "pattern", { pattern: { core: ["circle", "square"], shapes: 6, blank: 5 } });
     if (is(/ten-frame/)) return item(s, "count", { figure: "ten-frame", numbers: [num(7)] });
     if (is(/decompose|make-10|part-part-whole/)) return withOp(s, "write-number", op("add", 7, 3), 11, op("add", 2, 1), { figure: "ten-frame" });
     if (is(/two-more-less|number-line/)) return withOp(s, "number-line", op("add", 9, 5), 15, op("add", 3, 4));
     if (is(/ten-and-ones/)) return item(s, "places", { numbers: [num(14)], figure: "ten-frame" });
     if (is(/order-numerals/)) return item(s, "order", { text: "Put them in order, least first.", numbers: [num(7), num(2), num(9)], direction: "up" });
     if (is(/compare|benchmarks/)) return item(s, "compare", { numbers: [num(3), num(8)], figure: "dots" });
+    // Even numbers count by 2s (the U7 plan spreads its skills over the days, #489).
+    if (is(/even-odd/)) return item(s, "sequence", { sequence: { start: num(2), step: num(2), terms: 5, blanks: [3] } });
     if (is(/rote-count|number-sequence|count-to-20|skip-count|count-by-ones|count-on-back/)) {
       return item(s, "sequence", { sequence: { start: num(5), step: num(is(/skip/) ? 2 : 1), terms: 5, blanks: [3] } });
     }

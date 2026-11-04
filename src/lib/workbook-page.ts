@@ -33,7 +33,7 @@ export type Figure =
    * One ten-frame, or two when more than 10 are filled. `parts` (round 6): the counters of each part in turn, each part
    * its own colour ("2 and 6": 2 orange, then 6 blue), adding up to `filled`; absent, every counter one colour.
    */
-  | { kind: "ten-frame"; filled: number; parts?: number[] }
+  | { kind: "ten-frame"; filled: number; parts?: number[]; frames?: number }
   | { kind: "number-line"; from: number; to: number; step: number; hops: [number, number][] }
   | { kind: "blocks"; hundreds?: number; tens: number; ones: number }
   | { kind: "array"; rows: number; columns: number }
@@ -53,6 +53,8 @@ export interface Block {
   items: number[];
   /** A panel or row label: "FACTOR PAIRS OF 24", "TWO DIGITS". */
   label?: string;
+  /** The first question of the block that reviews an earlier step: from it on, the block prints under "Remember these". */
+  reviewFrom?: number;
   /** A line beside the slot's chip: "Do as many as you can.", "Tick + or −, then write the answer.". */
   note?: string;
   /** Worked lines: Watch one, a reminder, the wrong work of Spot the error. */
@@ -81,6 +83,15 @@ export interface Block {
 /** A day page's content: its header and its slots. */
 export interface DayContent {
   kind: "day";
+  extraPractice?: boolean;
+  consistentLayout?: boolean;
+  fillingComplete?: boolean;
+  /** Filling stopped at the day's time limit: the page is at its maximum, and its gaps may spread. */
+  timeLimited?: boolean;
+  /** No further question could be added: the page's rows grow to fill it. */
+  atMaximum?: boolean;
+  /** Extra row spacing, capped at 48 px by the measured capacity pass. */
+  extraGap?: number;
   /** The printed page ID (D-187). */
   id: string;
   level: number;
@@ -196,7 +207,8 @@ function partSlots(part: PlannedPart, page: PlannedPage, level: number): { slots
     case "practice": {
       if (page.type === "practice-2") {
         // Rows getting harder, four to a row.
-        const room = early ? 4 : 12 - (has("solve-it-two-ways") || has("spot-the-error") ? 4 : 0) - (has("remember-these") ? 4 : 0);
+        // Each teaching card reserves a full row, including the three-line wrong solution and its fix box.
+        const room = early ? 4 : Math.max(0, 12 - (has("solve-it-two-ways") ? 4 : 0) - (has("spot-the-error") ? 4 : 0) - (has("remember-these") ? 4 : 0));
         const items = Math.min(part.items, room);
         const rows = Math.ceil(items / 4);
         return laid(Array.from({ length: rows }, (_, i) => ({ slot: "practice-row" as const, items: Math.min(4, items - i * 4) })), `Practice 2 has room for ${room} items beside its other blocks`);
@@ -205,8 +217,8 @@ function partSlots(part: PlannedPart, page: PlannedPage, level: number): { slots
         // Unit B: a reminder panel first when no New idea of B teaches on the page, then practice.
         const reminder = page.parts.some((p) => p.kind === "new-idea" && p.unit === "B") ? [] : [{ slot: "reminder" as const, items: 0 }];
         // Up to 8 items; 2 fewer beside a new step's worked example, 2 fewer beside a Spot the error card.
-        const room = 8 - (reminder.length === 0 ? 2 : 0) - (has("spot-the-error") ? 2 : 0) - (early || level >= 19 ? 2 : 0);
-        return laid([...reminder, { slot: "unit-b-practice", items: Math.min(part.items, room) }], `the Unit B page has room for ${room} practice items`);
+        const room = early && reminder.length === 0 && has("spot-the-error") ? 0 : 8 - (reminder.length === 0 ? 2 : 0) - (has("spot-the-error") ? 2 : 0) - (early || level >= 19 ? 2 : 0);
+        return laid([...reminder, ...(room > 0 ? [{ slot: "unit-b-practice" as const, items: Math.min(part.items, room) }] : [])], `the Unit B page has room for ${room} practice items`);
       }
       // Faded: one worked (Watch one), two partly done, the rest alone.
       const watch = part.faded?.watch ?? 0;
@@ -220,9 +232,13 @@ function partSlots(part: PlannedPart, page: PlannedPage, level: number): { slots
         { slot: "on-your-own", items: full ? Math.min(own, 2) : early ? Math.min(own, 3) : own },
       ], full ? "On your own takes 2 items beside Solve it two ways and Spot the error" : "On your own takes 3 items at U1 to U9");
     }
-    // The stories, then one "How do you know?" with two writing lines.
+    // The stories, then one "How do you know?" with two writing lines, where the stories have no work box (U1 to U3,
+    // parent-led). From U4 each story has its "Show your work" box: the line asked the same again (Savar, 2026-11-04),
+    // so its work boxes take its room.
     case "word-problems":
-      return laid([{ slot: "word-problems", items: Math.min(part.items, has("remember-these") || early ? 2 : 3) }, { slot: "how-do-you-know", items: 1 }], "the stories page holds 2 stories beside a Remember these? block or at U1 to U9");
+      return level >= 4
+        ? laid([{ slot: "word-problems", items: Math.min(part.items, has("remember-these") || early ? 2 : 3) }], "the stories page holds 2 stories beside a Remember these? block or at U4 to U9, else 3")
+        : laid([{ slot: "word-problems", items: Math.min(part.items, has("remember-these") || early ? 2 : 3) }, { slot: "how-do-you-know", items: 1 }], "the stories page holds 2 stories beside a Remember these? block or at U1 to U9");
     case "picture-stories":
       return laid([{ slot: "picture-stories", items: Math.min(part.items, has("remember-these") && early ? 2 : part.items) }], "2 picture stories fit beside Remember these? at U1 to U9");
     // The plan (writing lines), the lettered parts, and the final answer with its work box.
@@ -230,9 +246,9 @@ function partSlots(part: PlannedPart, page: PlannedPage, level: number): { slots
     // A spare Remember these? block on a page that is already full (the 6-page Practice page) gets no room.
     case "remember-these":
       if (page.parts.some((p) => p.kind === "practice" && p.faded) && has("solve-it-two-ways") && has("spot-the-error")) return laid([], "the 6-page Practice page has no room for a spare Remember these? block");
-      return laid([{ slot: "remember-these", items: early && !reviewPage ? Math.min(part.items, 2) : part.items }], "a spare Remember these? block takes 2 items at U1 to U9");
+      return laid([{ slot: "remember-these", items: early && !reviewPage ? Math.min(part.items, 2) : has("challenge") ? Math.min(part.items, 2) : part.items }], "a spare Remember these? block takes 2 items at U1 to U9");
     // The 6-page review page: 2 Mixed set items beside the Challenge cards (DESIGN.md 7.2).
-    case "mixed-set": return laid([{ slot: "mixed-set", items: Math.min(part.items, has("challenge") ? 2 : 4) }], "the Mixed set takes 2 items beside the Challenge cards");
+    case "mixed-set": return laid([{ slot: "mixed-set", items: Math.min(part.items, 2) }], "the Mixed set takes 2 items beside the Challenge cards");
     // Up to 30 facts; 27 (9 rows) beside the In your head box.
     case "warm-up": return laid([{ slot: "warm-up", items: Math.min(part.items, has("in-your-head") ? 27 : 30) }], "the warm-up takes 27 facts beside In your head");
     case "try-first": case "spot-the-error": case "solve-it-two-ways": case "in-your-head":
@@ -332,6 +348,8 @@ export interface Omission {
   requested: number;
   placed: number;
   reason: string;
+  /** Left out to keep the day's time estimate under 30 minutes, above the page's adopted count: reported, not a loss. */
+  time?: true;
 }
 
 /** A planned page laid into slots, with what it leaves out. */
@@ -532,7 +550,7 @@ export function assembleBook(o: BookInput): AssembledBook {
       }, questions);
     }
   }
-  add("back-cover", null, { kind: "back-cover", id: id("BACK"), level });
+
   // Each blank page names its book page, so no two pages of a book share an ID.
   while (pages.length % 4 !== 0) add("blank", null, { kind: "blank", id: id(`BLANK·P${pages.length + 1}`), level });
   if (pages.length > BOOK_PAGES_MAX) throw new Error(`the book has ${pages.length} pages; at most ${BOOK_PAGES_MAX} can be stitched`);

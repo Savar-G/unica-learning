@@ -35,7 +35,7 @@ const fits: FitCheck = { fits: async () => ({ ok: true }) };
 const pageCalls = (requests: AiJsonRequest[]) => requests.filter((r) => r.name === "workbook_page").length;
 
 function setup(o: {
-  inputs?: ChildInputs; ai?: WorkbookJobDeps["ai"]; files?: WorkbookJobDeps["files"]; budgetMs?: number; handOff?: WorkbookJobDeps["handOff"];
+  itemPolicy?: WorkbookJobDeps["itemPolicy"]; inputs?: ChildInputs; ai?: WorkbookJobDeps["ai"]; files?: WorkbookJobDeps["files"]; budgetMs?: number; handOff?: WorkbookJobDeps["handOff"];
   solver?: WorkbookJobDeps["solver"]; solveCost?: WorkbookJobDeps["solveCost"]; concurrency?: number;
 } = {}) {
   let clock = new Date("2026-10-31T17:00:00.000Z");
@@ -48,6 +48,8 @@ function setup(o: {
   const tick = (seconds: number) => { clock = new Date(clock.getTime() + seconds * 1000); };
   const ai = o.ai === undefined ? fakeAiClient({ answer: (r) => { tick(AI_SECONDS); return answer(r); } }) : o.ai;
   const deps: WorkbookJobDeps = {
+    // These recovery cases pin the old policy. The approved-policy case below exercises new frames.
+    itemPolicy: o.itemPolicy ?? "legacy",
     runs, drafts, files: o.files ?? files, ai, template: workbookTemplate(), fit: () => fits, engine: fakePrintEngine(),
     solver: o.solver === undefined ? keySolver() : o.solver, ...(o.solveCost ? { solveCost: o.solveCost } : {}),
     source: { inputs: async (id) => (id === CHILD ? (o.inputs ?? child()) : null) },
@@ -854,4 +856,18 @@ describe("R404 lease and runner regressions", () => {
     expect(await runWorkbookJob(id, { ...s.deps, runner: "mac" }, { resume: true })).toBe("not-claimed");
     expect(await s.runs.resume(id, "server-resume", STALE_SECONDS, "server")).not.toBeNull();
   });
+});
+
+// #480: fresh runs use binding contracts; existing frames keep their saved policy.
+it("pins the approved item policy in a fresh frame and writes only stories or explanations", async () => {
+  const ai = fakeAiClient({ answer });
+  const s = setup({ itemPolicy: "approved-v1", ai, inputs: child({ grade: 1 }) });
+  const id = await started(s);
+  expect(await runWorkbookJob(id, s.deps)).toBe("done");
+  expect((await s.runs.frame(id))?.itemPolicy).toBe("approved-v1");
+  // (The writer edits no story text, B1 final: explanations only.)
+  for (const r of ai.requests) {
+    const asked = JSON.parse((r.content[0] as {text:string}).text);
+    for (const slot of asked.slots) expect(slot.contract.source).toBe("explain");
+  }
 });
