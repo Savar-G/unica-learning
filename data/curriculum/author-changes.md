@@ -3393,3 +3393,120 @@ After:
   "t": "s + 2 * d if f == 0 else s + 2 * d + 1 + d % 4"
 }
 ```
+
+## 4.5-multiply-1-digit step 1 template 5 text
+
+Shorten the hard multiplication-plus-loose-items story so it fits the test card. On base 5151b73f, U14 selected Day 10 fell back to a medium comparison with small numbers and failed the progression check. The shorter story keeps a * b + c, its quantities, format and hard difficulty; the selected-day run has no fit or progression errors.
+
+Before:
+```json
+"{name} buys {b} packs with {a} {things} in each pack, plus {c} loose {things}. How many {things} in all?"
+```
+After:
+```json
+"{name} buys {b} packs of {a} {things}, plus {c} loose ones. How many?"
+```
+
+## 5.1-place-value-million step 3 template 4 format
+
+Retain the v1 hard comparison at this step after the matched full U16 comparison on base 5151b73f. The prior candidate reduced mean fullness from 73.857% to 73.767%. This fallback restores it to 74.032%, with the same minimum fullness and zero failures, omissions, fit errors and variety errors. The selected-day comparison also passes. Keep all five template positions; the distinct medium comparison uses the ten thousands and hundreds places.
+
+Before:
+```json
+"bare"
+```
+After:
+```json
+"true-false"
+```
+
+## 5.1-place-value-million step 3 template 4 text
+
+Retain the v1 hard comparison at this step after the matched full U16 comparison on base 5151b73f. The prior candidate reduced mean fullness from 73.857% to 73.767%. This fallback restores it to 74.032%, with the same minimum fullness and zero failures, omissions, fit errors and variety errors. The selected-day comparison also passes. Keep all five template positions; the distinct medium comparison uses the ten thousands and hundreds places.
+
+Before:
+```json
+"In {n}, the digit in the thousands place is 0. If that 0 were changed to {k}, how much bigger would the number become?"
+```
+After:
+```json
+"True or false: in {n}, the digit in the hundreds place is bigger than the digit in the tens place."
+```
+
+## 5.1-place-value-million step 3 template 4 answer
+
+Retain the v1 hard comparison at this step after the matched full U16 comparison on base 5151b73f. The prior candidate reduced mean fullness from 73.857% to 73.767%. This fallback restores it to 74.032%, with the same minimum fullness and zero failures, omissions, fit errors and variety errors. The selected-day comparison also passes. Keep all five template positions; the distinct medium comparison uses the ten thousands and hundreds places.
+
+Before:
+```json
+"k * 1000"
+```
+After:
+```json
+"'true' if n // 100 % 10 > n // 10 % 10 else 'false'"
+```
+
+## 5.1-place-value-million step 3 template 4 slots
+
+Retain the v1 hard comparison at this step after the matched full U16 comparison on base 5151b73f. The prior candidate reduced mean fullness from 73.857% to 73.767%. This fallback restores it to 74.032%, with the same minimum fullness and zero failures, omissions, fit errors and variety errors. The selected-day comparison also passes. Keep all five template positions; the distinct medium comparison uses the ten thousands and hundreds places.
+
+Before:
+```json
+{
+  "a": "template_a",
+  "b": "template_b",
+  "c": "template_c",
+  "d": "template_d",
+  "e": "template_e",
+  "k": "template_k"
+}
+```
+After:
+```json
+{
+  "n0": "value"
+}
+```
+
+## 5.1-place-value-million step 3 template 4 derived
+
+Retain the v1 hard comparison at this step after the matched full U16 comparison on base 5151b73f. The prior candidate reduced mean fullness from 73.857% to 73.767%. This fallback restores it to 74.032%, with the same minimum fullness and zero failures, omissions, fit errors and variety errors. The selected-day comparison also passes. Keep all five template positions; the distinct medium comparison uses the ten thousands and hundreds places.
+
+Before:
+```json
+{
+  "n": "a * 100000 + b * 10000 + c * 100 + d * 10 + e"
+}
+```
+After:
+```json
+{
+  "n": "n0 if '0' in str(n0) else n0 - n0 // (10 ** (1 + n0 % 4)) % 10 * 10 ** (1 + n0 % 4)"
+}
+```
+
+## 5.1-place-value-million step 3 template 5 text
+
+Retain the v1 hard comparison at this step after the matched full U16 comparison on base 5151b73f. The prior candidate reduced mean fullness from 73.857% to 73.767%. This fallback restores it to 74.032%, with the same minimum fullness and zero failures, omissions, fit errors and variety errors. The selected-day comparison also passes. Keep all five template positions; the distinct medium comparison uses the ten thousands and hundreds places.
+
+Before:
+```json
+"True or false: in {n}, the digit in the hundreds place is bigger than the digit in the tens place."
+```
+After:
+```json
+"True or false: in {n}, the digit in the ten thousands place is bigger than the digit in the hundreds place."
+```
+
+## 5.1-place-value-million step 3 template 5 answer
+
+Retain the v1 hard comparison at this step after the matched full U16 comparison on base 5151b73f. The prior candidate reduced mean fullness from 73.857% to 73.767%. This fallback restores it to 74.032%, with the same minimum fullness and zero failures, omissions, fit errors and variety errors. The selected-day comparison also passes. Keep all five template positions; the distinct medium comparison uses the ten thousands and hundreds places.
+
+Before:
+```json
+"'true' if n // 100 % 10 > n // 10 % 10 else 'false'"
+```
+After:
+```json
+"'true' if n // 10000 % 10 > n // 100 % 10 else 'false'"
+```

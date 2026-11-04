@@ -109683,7 +109683,7 @@
     {
      "format": "story",
      "difficulty": "hard",
-     "text": "{name} buys {b} packs with {a} {things} in each pack, plus {c} loose {things}. How many {things} in all?",
+     "text": "{name} buys {b} packs of {a} {things}, plus {c} loose ones. How many?",
      "answer": "a * b + c",
      "slots": {
       "u1": "u1",
@@ -126497,27 +126497,22 @@
      }
     },
     {
-     "format": "bare",
+     "format": "true-false",
      "difficulty": "hard",
-     "text": "In {n}, the digit in the thousands place is 0. If that 0 were changed to {k}, how much bigger would the number become?",
-     "answer": "k * 1000",
+     "text": "True or false: in {n}, the digit in the hundreds place is bigger than the digit in the tens place.",
+     "answer": "'true' if n // 100 % 10 > n // 10 % 10 else 'false'",
      "slots": {
-      "a": "template_a",
-      "b": "template_b",
-      "c": "template_c",
-      "d": "template_d",
-      "e": "template_e",
-      "k": "template_k"
+      "n0": "value"
      },
      "derived": {
-      "n": "a * 100000 + b * 10000 + c * 100 + d * 10 + e"
+      "n": "n0 if '0' in str(n0) else n0 - n0 // (10 ** (1 + n0 % 4)) % 10 * 10 ** (1 + n0 % 4)"
      }
     },
     {
      "format": "true-false",
      "difficulty": "medium",
-     "text": "True or false: in {n}, the digit in the hundreds place is bigger than the digit in the tens place.",
-     "answer": "'true' if n // 100 % 10 > n // 10 % 10 else 'false'",
+     "text": "True or false: in {n}, the digit in the ten thousands place is bigger than the digit in the hundreds place.",
+     "answer": "'true' if n // 10000 % 10 > n // 100 % 10 else 'false'",
      "slots": {
       "n0": "value"
      },
