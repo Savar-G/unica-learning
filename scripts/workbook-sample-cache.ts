@@ -7,6 +7,8 @@ import { aiSolver, type Solver } from "@/lib/workbook-solve-check";
 export interface CacheEntry {
   version: 1;
   hash: string;
+  /** This request's position among identical requests in its run, taken when it was sent, not when it finished. */
+  occurrence?: number;
   model: string;
   request: AiJsonRequest;
   response: unknown;
@@ -36,6 +38,8 @@ export async function sampleAiCache(file: string, replay?: string) {
         entries.set(entry.hash, records);
       }
     }
+    // Lines are written in completion order; replay follows the order the requests were sent.
+    for (const records of entries.values()) records.sort((a, b) => (a.occurrence ?? 0) - (b.occurrence ?? 0));
   }
   let writes = Promise.resolve();
   // Truncate only after the replay source has been read and checked.
@@ -47,12 +51,12 @@ export async function sampleAiCache(file: string, replay?: string) {
       const hash = requestHash(client.model, request);
       const records = entries.get(hash);
       const index = used.get(hash) ?? 0;
+      used.set(hash, index + 1);
       const previous = records?.[Math.min(index, records.length - 1)];
-      if (previous) used.set(hash, index + 1);
       counts[previous ? "replayed" : "new"]++;
       counts[`${kind}${previous ? "Replayed" : "New"}`]++;
       const response = previous ? structuredClone(previous.response) : await client.json(request, signal);
-      const entry: CacheEntry = { version: 1, hash, model: client.model, request, response };
+      const entry: CacheEntry = { version: 1, hash, occurrence: index, model: client.model, request, response };
       const line = `${JSON.stringify(entry)}\n`;
       writes = writes.then(() => appendFile(file, line));
       await writes;

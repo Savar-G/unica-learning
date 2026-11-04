@@ -37,7 +37,7 @@ export default {
     running ??= (async () => {
       browserStats.launches++;
       return puppeteer.launch(options);
-    })();
+    })().catch(error => { running = undefined; throw error; });
     const browser = await running;
     const leased: Page[] = [];
     // The production engine closes this lease in its finally block. The real browser

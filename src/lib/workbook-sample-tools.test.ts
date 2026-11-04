@@ -35,6 +35,21 @@ describe("sample AI replay", () => {
     expect(entry).toMatchObject({ hash: requestHash(live.model, request()), request: request(), response: { answer: 7 } });
   });
 
+  it("replays identical requests in the order they were sent, even when they finished in reverse", async () => {
+    const before = await folder(), after = await folder();
+    const release: Array<() => void> = [];
+    let n = 0;
+    const live: AiClient = { model: "writer", json: () => { const answer = ++n; return new Promise(done => release.push(() => done({ answer }))); } };
+    const first = (await sampleAiCache(join(before, "U16-ai-cache.jsonl"))).client(live);
+    const one = first.json(request(), signal()), two = first.json(request(), signal());
+    await new Promise(r => setTimeout(r, 0));
+    release[1](); await two;
+    release[0](); await one;
+    const second = (await sampleAiCache(join(after, "U16-ai-cache.jsonl"), before)).client(live);
+    expect(await second.json(request(), signal())).toEqual({ answer: 1 });
+    expect(await second.json(request(), signal())).toEqual({ answer: 2 });
+  });
+
   it.each(["model", "prompt", "inputs", "schema", "effort", "maxTokens"])("calls the provider when %s changes", async field => {
     const before = await folder(), after = await folder();
     let calls = 0;
