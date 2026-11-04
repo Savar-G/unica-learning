@@ -54,7 +54,7 @@
 // - Every part with items has a skill to aim at, or the plan is refused. Deterministic: the same input gives the same
 //   plan; ties go by the level's order, then curriculum order.
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness.
-import { twoWaysOnStoriesPage } from "@/lib/workbook-provisional";
+import { twoWaysOnStoriesPage } from "@/lib/workbook-early-levels";
 import { BC_SKILL_MAP, curriculumOrder, worstFirst, type Grade } from "@/lib/assessment";
 import type { ChildStandard } from "@/lib/child-profile";
 import type { QuestionRef } from "@/lib/question-package";
@@ -256,6 +256,8 @@ export interface PlannedPage {
   fillingComplete?: boolean;
   /** Filling stopped at the day's time limit (the page's maximum). */
   timeLimited?: boolean;
+  /** The worked example's panel had no room for its Watch out line beside its method (U4's large type). */
+  noWatchOut?: boolean;
   /** Approved pipeline capacity. The writer and layout consume this same budget. */
   capacity?: import("./workbook-page").PlannedSlot[];
   capacityChecked?: boolean;
@@ -630,7 +632,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
       ? { type: "math-in-the-world", role: "practice", parts: [T("math-in-the-world", "A")] }
       : { type: pageType("practice"), role: "practice", parts: [T("practice", "A"), ...(sixPages ? twoWays : [])] };
     // Else on the word problems page.
-    // (U4 to U9, a provisional call: Solve it two ways moves here from practice-2, see workbook-provisional.ts.)
+    // (U4 to U9, D-222: Solve it two ways moves here from practice-2, see workbook-early-levels.ts.)
     const twoWaysHere = !parentLed && !sixPages && twoWaysOnStoriesPage(n);
     const story: Shape = {
       type: pageType("word-problems"), role: "story",

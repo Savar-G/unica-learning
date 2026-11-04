@@ -451,6 +451,8 @@ const CSS = `
 .pg.consistent .blk{flex:0 0 auto;gap:calc(6px + var(--extra-gap,0px))}
 .pg.consistent .blk.grow{flex:1 0 auto}
 .pg.consistent .ft{top:939px;height:48px}
+.pg.consistent.stretch .ct>.blk:last-child{flex:1 0 auto;display:flex;flex-direction:column}
+.pg.consistent.stretch .ct>.blk:last-child>:is(.two,.cols,.list,.facts,.pcards,.mxs):last-child{flex:1 0 auto;grid-auto-rows:1fr;align-content:stretch}
 .pg.consistent .list{flex:none;justify-content:flex-start;gap:calc(12px + var(--extra-gap,0px))}
 .pg.consistent .two{flex:none;grid-auto-rows:auto;row-gap:calc(12px + var(--extra-gap,0px))}
 .pg.consistent .facts{flex:none;align-content:start;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:calc(10px + var(--extra-gap,0px))}
@@ -475,7 +477,7 @@ const CSS = `
 .pg.consistent .error-item>.q:first-child{flex-wrap:nowrap;align-items:flex-start}.pg.consistent .error-item>.q:first-child .wk{flex:1 1 0}
 .pg.consistent .error-item .ans{flex-wrap:wrap;gap:12px}.pg.consistent .error-item .ans .fix{margin-left:12px}
 .pg.consistent .error-item .ab{height:48px}
-/* Practice 2 holds 8 practice questions and Spot the error (U4 to U9, workbook-provisional.ts): closer rows. */
+/* Practice 2 holds 8 practice questions and Spot the error (U4 to U9, D-222, workbook-early-levels.ts): closer rows. */
 .pg.consistent[data-page-type="practice-2"] .cols,.pg.consistent[data-page-type="practice-2"] .two{row-gap:calc(4px + var(--extra-gap,0px))}
 .pg.consistent[data-page-type="practice-2"] .two .ab{height:52px;min-width:56px}
 .pg.consistent[data-page-type="practice-2"] .q.seq-item{gap:4px}
@@ -486,6 +488,7 @@ const CSS = `
 .pg.consistent .mx .sl{min-width:0}
 .pg.consistent .chc{padding:12px;gap:8px}
 .pg.consistent .chc .act{display:flex;gap:16px;align-items:flex-end;flex:1}
+.pg.consistent .chc.nowork{flex:0 0 auto}.pg.consistent .chc.nowork .act{flex:0 0 auto;align-items:flex-start}
 .pg.consistent [data-slot="word-problems"] .story{flex:1}
 .pg.consistent [data-slot="word-problems"] .story.nowork{flex:0 0 auto}
 .story.nowork .head{align-items:center}.story.nowork .qb{flex:1 1 0}
@@ -663,7 +666,9 @@ function shapeSvg(shape: string, x: number, y: number, fill: string): string {
 }
 
 /** A worked line, its [given] numbers in blue. */
-const worked = (line: WorkedLine) => escape(line).replace(/\[([^\]]*)\]/g, `<span class="blue">$1</span>`);
+/** BC prints numbers from 10 000 up in groups of three with a space (4 digits together, decimals untouched). */
+export const bcNumbers = (t: string) => t.replace(/(?<![\d.,\u00a0])\d{5,}(?![\d]|[.,]\d)/g, (n) => n.replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0"));
+const worked = (line: WorkedLine) => bcNumbers(escape(line)).replace(/\[([^\]]*)\]/g, `<span class="blue">$1</span>`);
 
 // ---------- Questions and their answer regions ----------
 
@@ -813,7 +818,7 @@ function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: 
 /** The question's text, marked as its content. */
 /** A word with a hyphen ("ten-frame") never breaks at it: the line breaks before the word. */
 const keepHyphens = (html: string) => html.replace(/\b([A-Za-z]+(?:-[A-Za-z]+)+)\b/g, `<span style="white-space:nowrap">$1</span>`);
-const text = (q: DraftQuestion, cls = "qt") => `<span class="${cls}" ${mark.questionContent(q.number)}>${keepHyphens(escape(q.package.text))}</span>`;
+const text = (q: DraftQuestion, cls = "qt") => `<span class="${cls}" ${mark.questionContent(q.number)}>${keepHyphens(bcNumbers(escape(q.package.text)))}</span>`;
 const isMath = (s: string) => /^[\d\s+−×÷=?.,()/$¢a-z]*$/i.test(s) && /\d/.test(s) && !/[a-z]{3,}/i.test(s);
 const qtext = (q: DraftQuestion) => text(q, isMath(q.package.text) ? "qm" : "qt");
 
@@ -895,7 +900,14 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
   const qs = b.items.map(ctx.q);
   const prev = c.blocks[i - 1]?.slot;
   const parent = band.name === "parent";
-  const list = (render: (q: DraftQuestion, k: number) => string, cls = "list") => `<div class="${cls}">${qs.map(render).join("")}</div>`;
+  // A step page's review questions print under their own "Remember these" label (the U16 review: earlier steps mixed into
+  // the page's practice read as off-topic).
+  const list = (render: (q: DraftQuestion, k: number) => string, cls = "list") => {
+    const at = b.reviewFrom !== undefined ? qs.findIndex((q) => q.number >= b.reviewFrom!) : -1;
+    if (at < 0) return `<div class="${cls}">${qs.map(render).join("")}</div>`;
+    if (at === 0) return `<div class="lab" data-measure="review-${i}">Remember these</div><div class="${cls}">${qs.map(render).join("")}</div>`;
+    return `<div class="${cls}">${qs.slice(0, at).map(render).join("")}</div><div class="lab" data-measure="review-${i}">Remember these</div><div class="${cls}">${qs.slice(at).map((q, k) => render(q, k + at)).join("")}</div>`;
+  };
   const line = (q: DraftQuestion, k: number) => (parent ? parentItem(q, band, b.figures?.[k]) : lineItem(q, band, b.hints?.[k], 80, b.figures?.[k]));
   const items = (cls = "list") => (parent ? list(line, "pcards") : list(line, cls));
   const chip = (fallback?: Chip, note?: string) => {
@@ -1029,11 +1041,23 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       // under the chip, and its work area grows into its card (an item with no work region gets a plain one).
       if (parent) return chip() + list((q, k) => parentItem(q, band, b.figures?.[k]), `pcards fill`);
       const cols = qs.length <= 3 ? 1 : 2;
-      return chip() + `<div class="fill" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${qs.map((q) => {
-        const { inline, full } = regionsSplit(q, { band, work: "fill", labels: true });
+      // Every row is full: a wide card takes its row, and a half card left alone in its row takes the row too (the real U4
+      // sample: rows with one half card and an empty half).
+      const wide = qs.map((q) => cols > 1 && c.consistentLayout && wideSequence(q));
+      const full = new Set<number>();
+      if (cols > 1 && c.consistentLayout) {
+        let run = 0;
+        qs.forEach((_, k) => {
+          if (wide[k]) { if (run % 2 === 1) full.add(k - 1); run = 0; return; }
+          run++;
+          if (k === qs.length - 1 && run % 2 === 1) full.add(k);
+        });
+      }
+      return chip() + `<div class="fill" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${qs.map((q, k) => {
+        const { inline, full: area } = regionsSplit(q, { band, work: "fill", labels: true });
         // A work area only for an item that needs working (the U4 review, item 10), on the measured layout.
-        const work = full || (c.consistentLayout ? "" : `<div class="wb"><span class="lab">Show your work</span></div>`);
-        return `<div class="tc"${cols > 1 && c.consistentLayout && wideSequence(q) ? ` style="grid-column:1/-1"` : ""} ${mark.question(q.number)}><div class="q"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${qtext(q)}</span><span class="rgs">${inline}</span></div>${work}</div>`;
+        const work = area || (c.consistentLayout ? "" : `<div class="wb"><span class="lab">Show your work</span></div>`);
+        return `<div class="tc"${wide[k] || full.has(k) ? ` style="grid-column:1/-1"` : ""} ${mark.question(q.number)}><div class="q"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${qtext(q)}</span><span class="rgs">${inline}</span></div>${work}</div>`;
       }).join("")}</div>`;
     }
     case "challenge": {
@@ -1052,7 +1076,9 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       const work = c.consistentLayout ? workMinimum(c.level) : "fill" as const;
       return chip() + `<div class="chs${side ? " side2" : ""}">${qs.map((q) => {
         const { inline, full } = regionsSplit(q, { band, work });
-        return `<div class="chc" ${mark.question(q.number)}><div class="top"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${text(q)}</span></div><div class="act">${full}${inline}</div></div>`;
+        // (A card with nothing to work in, a count with boxes, keeps its height: its boxes sit under the question, never at
+        // the foot of an empty card, the real U4 sample.)
+        return `<div class="chc${full ? "" : " nowork"}" ${mark.question(q.number)}><div class="top"><span class="badge">${questionNumber(q.number)}</span><span class="qb">${text(q)}</span></div><div class="act">${full}${inline}</div></div>`;
       }).join("")}</div>`;
     }
     case "math-in-the-world": {
@@ -1100,7 +1126,10 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
     + (c.level <= 3 && c.grownUp ? `<p class="gu" ${mark.slot("grown-up")}><b>For the grown-up:</b> ${escape(c.grownUp)}</p>` : "") + `</header>`;
   // A Challenge block takes the free room of its page: its work boxes grow into it (DESIGN.md section 4).
   const blocks = c.blocks.map((b, i) => `<section class="blk${GROW.has(b.slot) || c.consistentLayout && b.slot === "word-problems" ? " grow" : ""}"${b.slot === "in-your-head" ? ` style="flex:0 0 auto"` : ""} data-slot="${b.slot}" data-measure="block-${i}">${blockHtml(b, i, ctx).replace(/<div class="chiprow">([\s\S]*?)<\/div>/g, (_row, inner: string, at: number) => `<div class="chiprow" data-measure="chip-${i}-${at}">${inner.replace('<span class="chip ', `<span data-measure="chipbadge-${i}-${at}" class="chip `).replace('<span class="side">', `<span data-measure="chipnote-${i}-${at}" class="side">`)}</div>`).replace(/<div class="lab"([^>]*)>/g, (tag, attrs: string, at: number) => attrs.includes("data-measure") ? tag : `<div class="lab" data-measure="label-${i}-${at}"${attrs}>`)}${missingHtml(b)}</section>`).join("");
-  return `<div class="pg ${band.name}${c.consistentLayout ? " consistent" : ""} f-${familyOf(page, c)}" data-page-type="${page.type}" style="--work-min:${c.consistentLayout ? workMinimum(c.level) : 64}px">${scanMarks}<div class="frame">${header}<main class="ct" style="--extra-gap:${Math.max(0,Math.min(48,c.extraGap ?? 0))}px" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
+  // A page at its day's time limit holds no more questions: its rows grow to fill it, each with more room to work
+  // (Codex at 47c5fd78: the time limit must not excuse a half-empty page).
+  const stretch = c.consistentLayout && c.fillingComplete && c.timeLimited ? " stretch" : "";
+  return `<div class="pg ${band.name}${c.consistentLayout ? " consistent" : ""}${stretch} f-${familyOf(page, c)}" data-page-type="${page.type}" style="--work-min:${c.consistentLayout ? workMinimum(c.level) : 64}px">${scanMarks}<div class="frame">${header}<main class="ct" style="--extra-gap:${Math.max(0,Math.min(48,c.extraGap ?? 0))}px" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
 }
 
 /** A failed question with nothing to print: a red placeholder with its number and why (review drafts only). */
@@ -1122,7 +1151,7 @@ function howPlanPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, 
   const rows = c.rows.map((r) => `<tr><td class="d">Day ${r.day}</td><td><span class="tp" ${mark.slot(`day-${r.day}`)}><b>${escape(r.topic)}</b><span class="t2">${escape(r.second)}</span></span></td>`
     + `<td class="pp">${r.pages[0]}–${r.pages[1]}</td><td class="dn"><i class="tb"></i></td></tr>`).join("");
   const how = [
-    { chip: { label: "Every day", cls: "c-pr", icon: ICONS.target }, text: `${c.pagesADay} pages a day, ${c.minutes.min === c.minutes.max ? c.minutes.max : `${c.minutes.min} to ${c.minutes.max}`} minutes.` },
+    { chip: { label: "Every day", cls: "c-pr", icon: ICONS.target }, text: `${c.pagesADay} pages a day, ${c.minutes.min === c.minutes.max ? `about ${c.minutes.max}` : `${c.minutes.min} to ${c.minutes.max}`} minutes.` },
     { chip: { label: "Scan", cls: "c-mx", icon: ICONS.search }, text: "Open unicalearning.com in your browser to scan each finished page." },
     { chip: { label: "Stuck?", cls: "c-ni", icon: ICONS.book }, text: "Ask for help using Maya, the AI Teaching Assistant." },
     { chip: { label: "Fix it", cls: "c-fx", icon: ICONS.wrench }, text: "Anything your child got wrong in the previous workbook comes back as new questions." },
@@ -1176,8 +1205,6 @@ export function fullnessProblem(page: DraftPage, measured: ReadonlyMap<string, M
   // At the page maximum, Cedric permits evenly distributed spacing. Report the
   // true occupied fraction separately; never relabel a gap as occupied space.
   if (page.content?.kind==="day" && page.content.fillingComplete && use.span>=.85 && use.bottom<=measured.get("slot-content")!.clientHeight*.15) return null;
-  // The day reached its time limit before this page was full: a real maximum (the index shows the occupied height).
-  if (page.content?.kind==="day" && page.content.fillingComplete && page.content.timeLimited) return null;
   return `Questions and teaching panels occupy ${Math.round(100*use.fraction)}% of the page height; add an item up to the page maximum, then spread gaps by at most 48 px.`;
 }
 
@@ -1198,7 +1225,8 @@ export function fitProblems(page: DraftPage, measured: ReadonlyMap<string, Measu
   if(c.consistentLayout) c.blocks.forEach((b,i)=>{
     if (!["worked-example","watch-one","reminder"].includes(b.slot)) return;
     const panel=measured.get(`panel-${i}`);
-    const max=b.slot === "reminder" ? 160 : 260;
+    // (U4 to U9 print larger: a worked example with its method line takes up to 320 px there.)
+    const max=b.slot === "reminder" ? 160 : c.level <= 9 ? 320 : 260;
     if(!panel?.visible || panel.height>max+.5) problems.push({question:null,slot:b.slot,reason:`${at}: the ${b.slot} panel must fit ${max} px`});
   });
   c.blocks.forEach((b) => {

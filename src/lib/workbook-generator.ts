@@ -75,9 +75,9 @@ import type { DraftPage } from "@/lib/workbook-render";
 import { textRoom, slotMax } from "@/lib/workbook-template";
 
 import { checkWholeBook, pageMinimum, questionMinutes, typeKey, type BookQuality } from "@/lib/workbook-quality";
-import { extraPracticeRepeats, twoWaysCountsAsStory } from "@/lib/workbook-provisional";
+import { extraPracticeRepeats, twoWaysCountsAsStory } from "@/lib/workbook-early-levels";
 import { approvedQuestionTypes, buildPlannedItem, planItem, itemExamples, itemNumber, ITEM_EXAMPLES, STORY_EXPLAIN, type ItemPlan } from "@/lib/workbook-item-plan";
-import { largestNumber, printedForm, sentenceFrameOf, stemOf, storyFrame, taskIdentity, taskType, wordedTask } from "@/lib/workbook-task-identity";
+import { largestNumber, printedForm, sentenceFrameOf, stemOf, storyKind, storyFrame, taskIdentity, taskType, wordedTask } from "@/lib/workbook-task-identity";
 import { COMPACT_STORY_FRAMES } from "@/lib/workbook-story-bank";
 import { buildStepItem, challengeTemplateCount, hasHardNumberTemplate, NO_TEMPLATE_PLACES, STEP_STORY_PLACES, stepAiItem, stepBounds, stepOf, stepRank, stepTemplateItem, stepTemplateOf, sumTemplate, templateProblem } from "@/lib/workbook-step-items";
 
@@ -2130,6 +2130,9 @@ export function workbookCapacityPlan(curriculum: Curriculum, plan: WorkbookPlan)
       // drops one when they do not fit, down to 4.
       if (s.slot === "show-what-you-know") s.items = target(6);
     }
+    // The page's 8 practice questions across its rows, not 8 a row (D-225: 8 to 10 a page; U16's Practice 2 held 14).
+    const rows = layout.slots.filter(s => s.slot === "practice-row");
+    if (rows.length > 1) rows.forEach((s, k) => { s.items = Math.floor(target(8) / rows.length) + (k < target(8) % rows.length ? 1 : 0); });
     if (page.type === "unit-b") {
       const practice=layout.slots.find(s=>s.slot==="unit-b-practice");
       if(practice) practice.items=Math.max(1,target(6)-layout.slots.filter(s=>s!==practice && !PANEL_SLOTS.includes(s.slot)).reduce((n,s)=>n+s.items,0));
@@ -2242,7 +2245,7 @@ function layOut(input: GenerateInput) {
         const key = taskIdentity(pkg);
         if (used.has(key)) continue;
         panel.attempt = attempt;
-        // (Twice: not even a provisional extra practice repeat asks it.)
+        // (Twice: not even an extra practice repeat asks it.)
         used.set(key, 2);
         break;
       }
@@ -2254,6 +2257,7 @@ function layOut(input: GenerateInput) {
       const pageStems = new Map<string, number>();
       const pageKinds = new Set<string>();
       const pageStories = new Set<string>();
+      const pageStoryKinds = new Set<string>();
       const pageTypes = new Map<string, number>();
       // One template a third of the page at most, half when nothing else is left (the U4 review: six "counts N in a
       // circle and says M" on one page pass as six contexts).
@@ -2325,7 +2329,7 @@ function layOut(input: GenerateInput) {
             if (tk && c.template?.reserved && slot.place !== "challenge" && !topReview && (dayReserved.get(tk) ?? 0) >= 3) continue;
             // (6 for the page's own step, so its pages mix its templates, the U16 review.)
             const ownTemplate = !!c.template && !!slot.part.step && c.template.skill === slot.part.step.skill && c.template.step === slot.part.step.step;
-            if (tk && strict && slot.place !== "challenge" && slot.place !== "warm-up" && (dayTemplates.get(tk) ?? 0) >= (ownTemplate ? 6 : 4)) continue;
+            if (tk && strict && slot.place !== "challenge" && slot.place !== "warm-up" && (dayTemplates.get(tk) ?? 0) >= (ownTemplate ? 8 : 4)) continue;
             // (A quarter while other tasks are left: the real U4 sample printed four "counts N in a circle" in a row.)
             // A Challenge asks each of its step's few Challenge templates once when earlier steps can bring its other cards.
             if (tk && slot.place === "challenge" && (c.template?.challengeTemplates ?? 3) < 3 && (pageTemplates.get(tk) ?? 0) >= 1 && challengeReviewSteps(input, slot, w.day, input.plan.level).length) continue;
@@ -2350,9 +2354,12 @@ function layOut(input: GenerateInput) {
             const storyKey = c.template ? templateWords(input, c) : null;
             // (A story told again beats a drill: the second pass allows it, never a drill while stories are left.)
             if (storyKey && strict && slot.place && STEP_STORY_PLACES.has(slot.place) && slot.place !== "challenge" && pageStories.has(storyKey)) continue;
+            // A stories page mixes kinds of story (join, take away, compare, ...) while its steps have others (the U4 review).
+            const kind = slot.place === "word-problems" || slot.place === "solve-it-two-ways" && w.page.type === "word-problems" ? storyKind(p.text) : null;
+            if (kind && strict && pageStoryKinds.has(kind) && pageStoryKinds.size < 3) continue;
             // An extra practice page asks questions from this workbook again ("Answer questions from this workbook").
             const limit = slot.place === "warm-up" || c.source === "explain" ? Infinity : 1;
-            // (Provisional, U4 to U9: an extra practice page may ask a task of the book once more, 40 pages on.)
+            // (U4 to U9, D-222: an extra practice page may ask a task of the book once more, 40 pages on.)
             const spaced = (used.get(key) ?? 0) === 1 && extraPracticeRepeats(input.plan.level, !!w.page.extraPractice, usedAt.get(key) ?? w.number, w.number);
             if ((used.get(key) ?? 0) >= limit && !spaced || pageOps.has(op) || pageTexts.has(p.text)) continue;
             // A sentence frame once a page and twice a day, the Challenge's too (the U16 review: three "saw the number N
@@ -2372,6 +2379,7 @@ function layOut(input: GenerateInput) {
           used.set(best.key, (used.get(best.key) ?? 0) + 1); if (!usedAt.has(best.key)) usedAt.set(best.key, w.number); pageOps.add(best.op); pageTexts.add(best.p.text);
           if (slot.place === "challenge") pageKinds.add(printedForm(best.p).split(":")[0]);
           if (best.c.template && slot.place && STEP_STORY_PLACES.has(slot.place)) pageStories.add(templateWords(input, best.c));
+          if ((slot.place === "word-problems" || slot.place === "solve-it-two-ways" && w.page.type === "word-problems") && storyKind(best.p.text)) pageStoryKinds.add(storyKind(best.p.text)!);
           const bestStem = slot.place === "warm-up" || best.c.source === "explain" ? null : stemOf(best.p);
           if (bestStem) pageStems.set(bestStem, (pageStems.get(bestStem) ?? 0) + 1); pageTypes.set(best.type, (pageTypes.get(best.type) ?? 0) + 1);
           const tk = templateKey(best.c);
@@ -2539,6 +2547,21 @@ function repickPanels(input: GenerateInput, work: PageWork[], w: PageWork): void
   }
 }
 
+/** A block's questions on its own step first, its review of earlier steps after them under "Remember these". */
+function ownStepFirst(w: PageWork): void {
+  const own = (s: Slot) => !s.part.step || !s.contract?.template || s.contract.template.skill === s.part.step.skill && s.contract.template.step === s.part.step.step;
+  const order = new Map(w.slots.map((s, k) => [s, k]));
+  const contracts = [...w.slots].sort((a, b) => a.layoutSlot - b.layoutSlot || Number(!own(a)) - Number(!own(b)) || order.get(a)! - order.get(b)!);
+  // (Slot ids stay with their places: only the questions move, so a block's numbers read in order.)
+  const byBlock = new Map<number, Slot[]>();
+  for (const s of w.slots) byBlock.set(s.layoutSlot, [...(byBlock.get(s.layoutSlot) ?? []), s]);
+  for (const [block, slots] of byBlock) {
+    if (!["on-your-own", "practice-row", "finish-these"].includes(slots[0]?.place ?? "") || slots.some((s) => s.existing || !s.contract)) continue;
+    const sorted = contracts.filter((s) => s.layoutSlot === block).map((s) => s.contract!);
+    slots.forEach((s, k) => { s.contract = { ...sorted[k], item: { ...sorted[k].item, slot: s.id } }; });
+  }
+}
+
 /** A measured capacity is saved before any writer call or run fingerprint. */
 async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: PageWork[]): Promise<string | null> {
   if (input.itemPolicy === "approved-v1" && input.book) {
@@ -2586,6 +2609,8 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
       for (let round = 0; round < 64; round++) {
         // A worked example's task turns with the page's templates: once they change, it takes a free task again.
         repickPanels(input, work, w);
+        // (Measured in the order it prints: review last, under its label.)
+        ownStepFirst(w);
         const questions = w.slots.map((s, i) => {
           const c = s.contract;
           const b = c ? buildPlannedItem(c, c.item, { id: `budget:${w.number}:${s.id}`, workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: [c.item.skill] }) : s.existing ? standIn(input, w, s, i) : unapprovedBuild();
@@ -2652,6 +2677,8 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
           w.layout.slots[added.layoutSlot].items--;
           ceiling=w.slots.length; added=null; continue;
         }
+        // A worked example with its method has no room for its Watch out line too: the method stays, the line goes.
+        if (!w.page.noWatchOut && fit.problems.some(p => /panel must fit/.test(p.reason))) { w.page.noWatchOut = true; continue; }
         // A question wider than its own space takes the next task of its slot (a long count, a wide figure), before the
         // page loses a question.
         const wide = fit.problems.map(p => /\bquestion (\d+)(?: does not fit its space|'s text takes \d+ lines)/.exec(p.reason)?.[1]).find(Boolean);
@@ -2779,6 +2806,7 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
           if (slot.place === "challenge" && old) slot.part = { ...slot.part, skills: [old.item.skill] };
         }
       }
+      ownStepFirst(w);
       explainFirstStory(w, work);
       w.page.itemContracts = Object.fromEntries(w.slots.map(s=>[s.id,s.contract ?? null]));
       if (w.layout?.omissions.length) w.page.capacityOmissions = structuredClone(w.layout.omissions);
@@ -3067,11 +3095,13 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
     });
     // Checkpoints keep pre-review pages. These code-only repairs are deterministic
     // and repeat after a resume without spending another provider call.
-    // The plan page says the minutes the book's own day estimates give, rounded out to fives (the real U4 sample said
-    // "20 to 25 minutes" beside days estimated at 28.7); never copy written apart from the estimate.
+    // The plan page says "about N minutes" from the book's own day estimates, their mean to the nearest five (D-225: a
+    // day is about 30 minutes; the real U4 sample said "20 to 25 minutes" beside days estimated at 28.7). Never copy
+    // written apart from the estimate.
     const minutes = quality.days.map(d => d.minutes).filter(m => m > 0);
     if (minutes.length) {
-      const range = { min: Math.floor(Math.min(...minutes) / 5) * 5, max: Math.ceil(Math.max(...minutes) / 5) * 5 };
+      const about = Math.round(minutes.reduce((a, b) => a + b, 0) / minutes.length / 5) * 5;
+      const range = { min: about, max: about };
       pages = pages.map(p => p.content && (p.content.kind === "how-plan" || p.content.kind === "cover") ? { ...p, content: { ...p.content, minutes: range } } : p);
     }
   }

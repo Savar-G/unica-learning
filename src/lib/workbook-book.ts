@@ -13,6 +13,7 @@
 //
 // The words here are code's, never the AI's: headers, panel labels and explanations come from the plan and the
 // curriculum. Pure TypeScript: no Next.js, React, network, database, clock or randomness.
+import { templateNumbers, type TemplateSource } from "@/lib/question-package-template";
 import { likelihoodWord } from "@/lib/workbook-likelihood";
 import { workbookCoverTitle } from "@/lib/workbook-cover-titles";
 import { SKILL_TITLES } from "@/lib/workbook-skill-titles";
@@ -245,7 +246,9 @@ function exampleOf(p: QuestionPackage, level: number): PanelExample | null {
     if (c.kind === "template" || c.kind === "template-choice") {
       const r = item.regions.find((x) => x.id === c.region);
       const answer = r?.kind === "box" && r.answer ? valueText(r.answer) : r?.kind === "choice" ? r.answer ?? "?" : "?";
-      return { label: "Example", lines: [p.text, `Answer: [${answer}]`], answered: `Answer: [${answer}]` };
+      // The work, then the answer: a worked example shows its method, never an answer key alone (Codex at db3b1a0).
+      const how = templateMethod(c.source, p.text);
+      return { label: "Example", lines: [p.text, ...(how ? [how] : []), `Answer: [${answer}]`], answered: `Answer: [${answer}]` };
     }
     if (c.kind === "count" && item.figure) {
       const n = figureCount(item.figure);
@@ -256,7 +259,11 @@ function exampleOf(p: QuestionPackage, level: number): PanelExample | null {
     }
     if (c.kind === "sequence") {
       const line = c.terms.map((t) => ("region" in t ? `[${boxAnswer(t.region)}]` : valueText(t))).join(", ");
-      return { label: "Fill the gaps", lines: [line], answered: line };
+      const step = c.step.type === "number" ? c.step.value : null;
+      const how = step ? `${step > 0 ? "Add" : "Take away"} ${Math.abs(step)} each time.` : null;
+      // (A template's question first: "Count on. What are the next two numbers?" over its worked count.)
+      const asked = p.templateId && /[a-z]{3,}/i.test(p.text) ? [p.text] : [];
+      return { label: "Fill the gaps", lines: [...asked, ...(how ? [how] : []), line], answered: line };
     }
     if (c.kind === "relation") {
       const r = relationChoices(c);
@@ -298,6 +305,71 @@ function panelExample(questions: PageQuestion[], example: QuestionPackage | null
     if (own) return own;
   }
   return null;
+}
+
+const PLACE_NAMES: Record<number, string> = { 1: "ones", 10: "tens", 100: "hundreds", 1000: "thousands", 10000: "ten thousands", 100000: "hundred thousands", 1000000: "millions" };
+const SYMBOL: Record<string, string> = { "+": "+", "-": "−", "*": "×", "//": "÷" };
+
+/**
+ * A template example's worked method line, from its answer expression and its numbers: "8 − 5 = 3", "20 × 40 = 800",
+ * "The thousands digit of 97531 is 7.", or for a true or false the sum it checks. Null when the expression is not one
+ * code can word.
+ */
+export function templateMethod(src: TemplateSource, text: string): string | null {
+  const v = templateNumbers(src);
+  if (!v) return null;
+  const n = (k: string) => (/^\d+$/.test(k) ? Number(k) : v[k]);
+  const fmt = (x: number) => groupedNumber(x);
+  const binary = (e: string) => {
+    const m = e.trim().match(/^(\w+) (\+|-|\*|\/\/) (\w+)$/);
+    if (!m || n(m[1]) === undefined || n(m[3]) === undefined) return null;
+    const a = n(m[1]), b = n(m[3]);
+    const r = m[2] === "+" ? a + b : m[2] === "-" ? a - b : m[2] === "*" ? a * b : Math.floor(a / b);
+    return `${fmt(a)} ${SYMBOL[m[2]]} ${fmt(b)} = ${fmt(r)}`;
+  };
+  const resolve = (e: string, depth = 0): string | null => {
+    const b = binary(e);
+    if (b) return b;
+    const name = e.trim();
+    const d = src.derived.find(([k]) => k === name);
+    return d && depth < 3 ? resolve(d[1], depth + 1) : null;
+  };
+  // A digit of a number: "n // 1000 % 10", its value "n // 1000 % 10 * 1000".
+  const digit = src.answer.match(/^\(?(\w+) \/\/ (\d+)\)? % 10(?: \* (\d+))?$/);
+  if (digit && n(digit[1]) !== undefined && PLACE_NAMES[Number(digit[2])]) {
+    const d = Math.floor(n(digit[1]) / Number(digit[2])) % 10;
+    const place = PLACE_NAMES[Number(digit[2])];
+    return digit[3] ? `The ${place} digit of ${fmt(n(digit[1]))} is ${d}: ${d} × ${fmt(Number(digit[3]))} = ${fmt(d * Number(digit[3]))}.` : `Read the ${place} place: the ${place} digit of ${fmt(n(digit[1]))} is ${d}.`;
+  }
+  const more = text.match(/Which is (more|less): (\d+) \w[\w ]*? or (\d+)/i);
+  if (more) { const [a, b] = [Number(more[2]), Number(more[3])]; const big = Math.max(a, b), small = Math.min(a, b); return `${big} comes after ${small} when you count, so ${more[1].toLowerCase() === "more" ? big : small} is ${more[1].toLowerCase()}.`; }
+  const make = text.match(/(\d+) and (\d+) make (\d+)/);
+  if (make) return `Work it out: ${make[1]} + ${make[2]} = ${Number(make[1]) + Number(make[2])}.`;
+  const parts = text.match(/parts (\d+) and (\d+), whole (\d+)/i);
+  if (parts) return `Work it out: ${parts[1]} + ${parts[2]} = ${Number(parts[1]) + Number(parts[2])}.`;
+  // Counting facts the text states: the last number said is how many; one after, one before.
+  const last = text.match(/count (\d+) \w[\w ]*?, the last number you say is (\d+)/i);
+  if (last) return `When you count ${last[1]} things, the last number you say is ${last[1]}.`;
+  const after = text.match(/\b(?:just |right )?after (\d+) comes (\d+)/i) ?? text.match(/comes (?:just |right )?after (\d+)/i);
+  if (after) return `Count on 1 from ${after[1]}: ${Number(after[1]) + 1} comes next.`;
+  const before = text.match(/\b(?:just |right )?before (\d+)/i);
+  if (before) return `Count back 1 from ${before[1]}: ${Number(before[1]) - 1} comes just before.`;
+  const direct = resolve(src.answer);
+  if (direct) return `Work it out: ${direct}.`;
+  // A true or false: the sum it checks, from the derived values.
+  // (A sum whose two numbers the question prints.)
+  const printed = new Set((text.replace(/(\d)[\s\u00a0\u202f](?=\d{3}\b)/g, "$1").match(/\d+/g) ?? []).map(Number));
+  if (/'true'|'false'|'yes'|'no'/.test(src.answer)) for (const [, e] of src.derived) {
+    const m = e.trim().match(/^(\w+) (\+|-|\*|\/\/) (\w+)$/);
+    if (m && printed.has(n(m[1])) && printed.has(n(m[3]))) return `Work it out: ${binary(e)}.`;
+  }
+  return null;
+}
+
+/** A number as BC prints it: groups of three with a space from 10 000 up ("46 251"), 4 digits together ("4251"). */
+export function groupedNumber(x: number): string {
+  const s = String(x);
+  return Math.abs(x) >= 10000 && Number.isInteger(x) ? s.replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0") : s;
 }
 
 /** The sum with its answer in blue: "5 + 2 = [7]", and for a missing part "2 + [3] = 5". */
@@ -951,6 +1023,11 @@ export function dayPageContent(o: {
   const pages = plan.days.find((d) => d.day === o.day)?.pages.length ?? page.number;
   let row = 0;
   const blocks: Block[] = layout.slots.map((s, i): Block => {
+    // Questions of an earlier step than the part's own (late in a practice block): printed under "Remember these".
+    const ownStep = page.parts[s.part]?.step;
+    const review = ownStep && ["on-your-own", "practice-row", "finish-these"].includes(s.slot) ? questions.filter((q) => q.slot === i && q.package?.templateId && !q.package.templateId.startsWith(`${ownStep.skill}#${ownStep.step}.`)).map((q) => q.number) : [];
+    const firstReview = review.length ? Math.min(...review) : undefined;
+    const reviewFrom = firstReview !== undefined && questions.filter((q) => q.slot === i && q.package && q.number > firstReview).every((q) => review.includes(q.number)) ? { reviewFrom: firstReview } : {};
     const mine = questions.filter((q) => q.slot === i && q.package);
     const items = mine.map((q) => q.number);
     // A question with no package cannot print; its placeholder names it and why.
@@ -979,15 +1056,18 @@ export function dayPageContent(o: {
       const day = plan.days.find((d) => d.day === o.day);
       const sameStep = (x: PlannedPage) => x.parts.some((pt) => pt.step && part?.step && pt.step.skill === part.step.skill && pt.step.step === part.step.step && (x.type === "new-idea" || !!pt.faded?.watch));
       const earlier = (day?.pages ?? []).some((x) => x.number < page.number && sameStep(x));
-      const both = !earlier && printable(mistake?.wrong) && printable(mistake?.fix) && `${mistake.wrong} ${mistake.fix}`.length <= 150;
+      const both = !earlier && !page.noWatchOut && printable(mistake?.wrong) && printable(mistake?.fix) && `${mistake.wrong} ${mistake.fix}`.length <= 150;
       return { label: "How it works", lines: [step.example.problem, `Answer: [${step.example.answer}]`], remember: both ? `${mistake.wrong.replace(/\.?$/, ".")} No: ${mistake.fix.replace(/^[A-Z]/, (c) => c.toLowerCase())}` : null };
     };
     switch (s.slot) {
       case "worked-example": {
         const step = part?.step ? curriculum.skillSteps(part.step.skill)?.[part.step.step - 1] : undefined;
         const taught = teaching();
-        const ex = taught ? null : panel();
-        const lines = taught?.lines ?? ex?.lines ?? [];
+        // The page's own reserved example, worked with its method (Codex at 47c5fd78: Cedric's fixed example printed
+        // a task the repeat check never saw, and its answer alone); Cedric's example only when there is none.
+        const own = o.examples?.find((e) => e.slot === i)?.package;
+        const ex = own ? exampleOf(own, plan.level) : taught ? null : panel();
+        const lines = ex?.lines.length ? ex.lines : taught?.lines ?? [];
         return {
           slot: s.slot, items: [], label: taught ? step?.name : ex?.label,
           note: "Read how it works, then try it.",
@@ -1032,11 +1112,11 @@ export function dayPageContent(o: {
         return { slot: s.slot, items, who: "Sam", lines: work?.lines ?? [], ...withFigures, ...missing };
       }
       case "practice-row":
-        return { slot: s.slot, items, label: ROW_LABELS[Math.min(row++, ROW_LABELS.length - 1)], ...withFigures, ...missing };
+        return { slot: s.slot, items, label: ROW_LABELS[Math.min(row++, ROW_LABELS.length - 1)], ...withFigures, ...missing, ...reviewFrom };
       case "finish-these":
-        return { slot: s.slot, items, hints: items.map(() => null), ...withFigures, ...missing };
+        return { slot: s.slot, items, hints: items.map(() => null), ...withFigures, ...missing, ...reviewFrom };
       default:
-        return { slot: s.slot, items, ...withFigures, ...missing };
+        return { slot: s.slot, items, ...withFigures, ...missing, ...reviewFrom };
     }
   });
   const two = (n: number) => String(n).padStart(2, "0");

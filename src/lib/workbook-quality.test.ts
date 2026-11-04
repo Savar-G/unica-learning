@@ -139,7 +139,7 @@ it("keeps a hand-built question inside its slot's step range (#482 review at db3
   expect(workbookQuality([wide]).issues.some(i => i.kind === "range")).toBe(true);
 });
 
-it("fails a step template page below its adopted count, with the provisional U4 to U9 new idea floor of 2", () => {
+it("fails a step template page below its adopted count, with the U4 to U9 new idea floor of 2", () => {
   const floorIssue = (level: number, places: string[]) => {
     const p = page(3, 1, places.length);
     p.type = "new-idea";

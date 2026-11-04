@@ -20,18 +20,20 @@ import { fixedTemplateFonts } from "./workbook-template-fonts";
 const chromium=await findChromium();
 const run=promisify(execFile);
 
-it.skipIf(!chromium)("completes the full 40-page U4 review command with real fit and fullness checks",async()=>{
+// Two days (1 and 5: a new step, Friday 5, two Challenges) keep CI inside its 10 minutes; the full books run in the
+// sample command, not here.
+it.skipIf(!chromium)("completes the U4 review command for days 1 and 5 with real fit and fullness checks",async()=>{
   const out=await mkdtemp(join(tmpdir(),"workbook-u4-review-"));
   const env={...process.env};
   for(const key of ["OPENROUTER_API_KEY","OPENROUTER_API_KEY_FILE","ANTHROPIC_API_KEY","ANTHROPIC_API_KEY_FILE"]) delete env[key];
   // A zero exit without a book used to hide the capacity failure. Require the
   // actual draft, PDF, measured fullness, coverage and printed review summary.
-  const result=await run(process.execPath,["scripts/workbook-samples.mjs","--fake","--no-store","--levels","U4","--days","1,3,5,8,10","--concurrency","2","--out",out],{cwd:process.cwd(),env,timeout:600_000,maxBuffer:2_000_000});
+  const result=await run(process.execPath,["scripts/workbook-samples.mjs","--fake","--no-store","--levels","U4","--days","1,5","--concurrency","2","--out",out],{cwd:process.cwd(),env,timeout:600_000,maxBuffer:2_000_000});
   const draft:GeneratedWorkbook=JSON.parse(await readFile(join(out,"U4-draft.json"),"utf8"));
   const index=await readFile(join(out,"index.md"),"utf8");
   expect(result.stdout).toContain("done: 1 books");
-  expect(draft.pages).toHaveLength(44);
-  expect(draft.pages.filter(p=>p.day!==null)).toHaveLength(40);
+  expect(draft.pages).toHaveLength(20);
+  expect(draft.pages.filter(p=>p.day!==null)).toHaveLength(16);
   expect(draft.counts.failed).toBe(0);
   expect(draft.counts.failedPages).toBe(0);
   expect(draft.quality).toMatchObject({ready:true,dropped:0,issues:[]});
@@ -47,9 +49,9 @@ it.skipIf(!chromium)("completes the full 40-page U4 review command with real fit
   expect(index).toContain("## Failures (0)");
   expect(index).toContain("subscription 0; API 0 | PASS | HOLD");
   expect((await stat(join(out,"U4.pdf"))).size).toBeGreaterThan(10_000);
-  expect((await PDFDocument.load(await readFile(join(out,"U4.pdf")))).getPageCount()).toBe(44);
-  for(const day of [5,10]) expect(draft.pages.filter(p=>p.day===day).flatMap(p=>p.questions).filter(q=>q.part==="friday-5")).toHaveLength(5);
-  for(const day of [1,3,5,8,10]) expect(draft.pages.filter(p=>p.day===day).flatMap(p=>p.questions).filter(q=>q.place==="challenge")).toHaveLength(3);
+  expect((await PDFDocument.load(await readFile(join(out,"U4.pdf")))).getPageCount()).toBe(20);
+  for(const day of [5]) expect(draft.pages.filter(p=>p.day===day).flatMap(p=>p.questions).filter(q=>q.part==="friday-5")).toHaveLength(5);
+  for(const day of [1,5]) expect(draft.pages.filter(p=>p.day===day).flatMap(p=>p.questions).filter(q=>q.place==="challenge")).toHaveLength(3);
   // #482 review finding 3: the generated approved-v1 day-start page keeps 18 px below Name and Date (DESIGN 4).
   const starts=draft.pages.filter(p=>p.content?.kind==="day" && p.content.consistentLayout && p.pageOfDay===1).slice(0,2);
   expect(starts.length).toBe(2);

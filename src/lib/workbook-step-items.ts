@@ -169,10 +169,15 @@ export function sequenceOf(text: string, answer: string): { text: string; terms:
  * 890 packs of 3 pencils. How many pencils is that?". Other texts are unchanged.
  */
 export function plausibleGroups(text: string): string {
+  // Packs a person buys: up to 50 (the U16 review: "buys 810 packs of 20 apples"); more than that, a factory or a school
+  // fills them. The numbers stay, each once.
+  const many = (count: string, size: string, things: string, who: string) => Number(count) <= 50
+    ? `${who} buys ${count} packs of ${size} ${things}. How many ${things} is that?`
+    : `A factory fills ${count} boxes with ${size} ${things} in each. How many ${things} is that?`;
   const each = text.match(/^Each (\w+) holds (\d+) ([a-z ]+?)\. ([A-Z][a-z]+) fills (\d+) (?:of them|\w+)\. How many \3 (?:is that|in all|does (?:he|she|they) have(?: now)?|are in the \w+ now)\?$/);
-  if (each && Number(each[5]) > 12) return `${each[4]} buys ${each[5]} packs of ${each[2]} ${each[3]}. How many ${each[3]} is that?`;
+  if (each && Number(each[5]) > 12) return many(each[5], each[2], each[3], each[4]);
   const puts = text.match(/^([A-Z][a-z]+) puts (\d+) ([a-z ]+?) in each (\w+) and fills (\d+) of them\. How many \3 is that\?$/);
-  if (puts && Number(puts[5]) > 12) return `${puts[1]} buys ${puts[5]} packs of ${puts[2]} ${puts[3]}. How many ${puts[3]} is that?`;
+  if (puts && Number(puts[5]) > 12) return many(puts[5], puts[2], puts[3], puts[1]);
   return text;
 }
 
@@ -359,7 +364,10 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
   const top = Math.max(...pool.map(({ t }) => rank(t.difficulty)));
   const reserved = pool.filter(({ t }) => rank(t.difficulty) === top);
   // (And the step's other templates at the Challenge's difficulty: the Challenge is clearly the day's hardest.)
-  const harder = printable.filter((x) => rank(x.t.difficulty) >= top && !reserved.includes(x));
+  // (A choice at the Challenge's difficulty stays with practice: circling asks less than working out, so the Challenge is
+  // still the harder; the full U4 book's Day 5 had one practice template left otherwise.)
+  const circled = (t: StepTemplate) => ["true-false", "choose", "compare"].includes(t.format);
+  const harder = printable.filter((x) => (rank(x.t.difficulty) > top || rank(x.t.difficulty) === top && !circled(x.t)) && !reserved.includes(x));
   const rest = printable.filter((x) => !reserved.includes(x) && !harder.includes(x));
   // Outside the Challenge its templates are kept for it (Codex at 3134252: reserve scarce Challenge tasks), but for a
   // teaching page whose other templates print fewer than 3 formats, and a story page with no other story; the
@@ -426,6 +434,10 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
       if (r.level >= 13 && /(?:^|[^\d.])1 ?[×x] |[×x] ?1(?![\d.])/.test(text)) continue;
       // A Challenge asks no part of 0 ("? and 0 make 10", the real U4 sample).
       if (r.place === "challenge" && (/(?:^|[^\d.,])0 (?:and|\+)|(?:and|\+) 0(?![\d.,])/.test(text) || filled.answer === "0")) continue;
+      // "counting by 10, 3 marks above 40 is 70" names a graph's marks with no graph printed (the U16 review): the count
+      // in words.
+      text = text.replace(/^True or false: counting by (\d+), (\d+) marks? above (\d+) is (\d+)\.$/, (_, k: string, m: string, v: string, shown: string) =>
+        `True or false: start at ${v} and count on by ${k}s ${m === "1" ? "once" : m === "2" ? "twice" : `${m} times`}. You reach ${shown}.`);
       // "They gets": a person whose pronoun is they takes the plain verb (the U16 sample).
       text = text.replace(/\b(They|they) (has|does|is|was|[a-z]+?(?:ches|shes|xes|sses|oes)|[a-z]+s)\b/g, (_, who: string, verb: string) =>
         `${who} ${({ has: "have", does: "do", is: "are", was: "were" } as Record<string, string>)[verb] ?? (/(?:ch|sh|x|ss|o)es$/.test(verb) ? verb.slice(0, -2) : verb.slice(0, -1))}`);
@@ -435,7 +447,7 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
       // review). The numbers stay, each once.
       text = plausibleGroups(text);
       // (After the packs: "buys 570 packs of 1 toy cars" from "Each bag holds 1 toy car", the real U16 sample.)
-      if (r.level >= 13 && /\bpacks? of 1 [a-z]|\bholds? 1 [a-z]+s\b/i.test(text)) continue;
+      if (r.level >= 13 && /\bpacks? of 1 [a-z]|\bholds? 1 [a-z]+s\b|\bwith 1 [a-z]+s in each\b/i.test(text)) continue;
       // Colours that fit the things: no blue apples, acorns or leaves (#482 review at db3b1a0); other things are tried.
       if (/\b(?:red|blue|green|yellow|purple|orange)\b(?! slices)/i.test(text) && /\b(?:apples?|acorns?|leaves|leaf|carrots?|grapes?|berries|berry|cookies|cookie|pancakes?|muffins?|crackers?|orange slices|pumpkins?|bananas?|shells?|pinecones?|pebbles?)\b/i.test(text)) continue;
       // A big count of small things no one has ("10000 leaves", "53805 beads"): another fill takes other things (the U16

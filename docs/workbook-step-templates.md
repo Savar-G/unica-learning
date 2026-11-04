@@ -233,28 +233,29 @@ backwards") does not print.
   card uses stays below that card's difficulty; no part of 0.
 - **Stories:** a Number stories page prints stories on every pass while its steps
   have them, a story told again rather than a drill.
-- **Minutes:** the plan page says the range the book's own day estimates give,
-  rounded out to fives (28.0 to 28.9 a day: "25 to 30 minutes").
+- **Minutes:** the plan page says "about N minutes", the mean of the book's own day
+  estimates to the nearest five (D-225).
 
-## Provisional calls for U4 to U9 (2026-11-03)
+## Confirmed decisions (Savar, 2026-11-03)
 
-Made while Savar was away, to confirm. Each is one function in
-`src/lib/workbook-provisional.ts`, so it can be changed in one place:
-
-- **Solve it two ways** moves from Practice 2 to the Number stories page
-  (`twoWaysOnStoriesPage`). Practice 2 holds its 8 practice questions and Spot
-  the error, in closer rows. On that stories page, two ways counts as a story
-  (`twoWaysCountsAsStory`).
-- **New idea floor:** 2 practice questions beside the worked example and Spot
-  the error (`newIdeaFloor`); U10 and up keep 3. The book check
-  (`pageMinimum`) reads the same function. A page that cannot hold its floor
-  still fails and is reported.
-- **Repeats:** Days 1 to 10 never repeat a task. Only an extra practice page
-  may ask a task of the book once more, and only 40 or more pages after it was
-  first asked (`extraPracticeRepeats`). The sample index reports how many
-  extra practice questions do ("extra practice questions that repeat a book
-  task"). Fewer extra practice pages, then a labelled Notes page, are the
-  next steps if a book still runs out; neither has been needed yet.
+- **U4 to U9 (D-222),** each one function in `src/lib/workbook-early-levels.ts`:
+  - **Solve it two ways** sits on the Number stories page, not Practice 2
+    (`twoWaysOnStoriesPage`), and counts there as a story (`twoWaysCountsAsStory`).
+    Practice 2 holds its 8 practice questions and Spot the error, in closer rows.
+  - **New idea floor:** 2 practice questions beside the worked example and Spot the
+    error (`newIdeaFloor`); U10 and up keep 3. The book check (`pageMinimum`) reads
+    the same function. A page that cannot hold its floor fails and is reported.
+  - **Repeats:** Days 1 to 10 never repeat a task. Only an extra practice page may
+    ask a task of the book once more, and only 40 or more pages after it was first
+    asked (`extraPracticeRepeats`). The sample index reports how many do. Fewer
+    extra practice pages, then a labelled Notes page, are the next steps if a book
+    runs out.
+- **Spaced review (D-223):** a question type comes back with fresh numbers, never
+  an exact task (D-222 is the one exception).
+- **Challenge (D-224):** 3 questions a day, all harder than the day's practice.
+- **Page counts and time (D-225):** practice and review pages hold 8 to 10
+  questions; a day is about 30 minutes, and the How it works page says "about N
+  minutes" from the book's own day estimates (their mean to the nearest five).
 
 ## Report
 
