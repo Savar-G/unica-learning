@@ -387,7 +387,7 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
   // 2. What does Kai say next?" on Day 10); it is a review, not the day's practice of the step.
   const topPlace = r.place === "show-what-you-know" || r.place === "level-test";
   // (Never an easy one when the step has harder ones, before late attempts.)
-  if (topPlace) usable = printable.some(({ t }) => t.difficulty !== "easy") ? printable.filter(({ t }) => t.difficulty !== "easy") : printable;
+  if (topPlace) usable = r.hardOnly && printable.some(({ t }) => t.difficulty !== "easy") ? printable.filter(({ t }) => t.difficulty !== "easy") : printable;
   // Show what you know asks work to do, not mostly true or false (#482 review at db3b1a0).
   // (Every other card, so the page keeps three forms.)
   // (Among the harder ones only for a few attempts: a harder choice beats an easy number question.)
@@ -408,6 +408,7 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
   const people = contexts.people.map((p) => p.name);
   for (let k = 0; k < order.length; k++) {
     const { t, index } = order[(k + r.attempt) % order.length];
+    if (topPlace && t.difficulty === "easy" && printable.some(({ t }) => t.difficulty !== "easy")) continue;
     let prepared;
     try {
       // Priced objects need a purchase context. The shared counting list also has
