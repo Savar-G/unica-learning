@@ -72,7 +72,7 @@ export const HOUSE_TEMPLATES: readonly HouseTemplates[] = [
     templates: [
       hard("bare", "What is {a} × {b} - {c}?", "a * b - c", { a0: "operand1", b0: "operand2" }, { a: "a0", b: "b0", c: "(a0 % 9 + 1) * 10" }, "'0' not in str(a0) and a * b - c >= 5000"),
       hard("missing", "{a} × __ = {p} + {q}", "b", { a0: "operand1", b0: "operand2" }, { a: "a0", b: "b0", q: "(a0 % 5 + 1) * 10", p: "a * b - q" }, "'0' not in str(a0) and a * b - q >= 5000"),
-      hard("story", "{name} packs {b} crates with {a} apples in each. {name} sells {c} apples at the market. How many apples does {name} have now?", "a * b - c", { a0: "operand1", b0: "operand2" }, { a: "a0", b: "b0", c: "a * b // 3" }, "'0' not in str(a0) and c > 0"),
+      // (Its story is Cedric's v2 hard template, "A school orders {a} boxes of {b} pencils and {c} boxes of {d} pencils".)
     ],
   },
   {

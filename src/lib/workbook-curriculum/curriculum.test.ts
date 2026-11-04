@@ -16,7 +16,7 @@ describe("progression activation (#489)", () => {
     for (const skill of BC_CURRICULUM.skills) expect(active.skillSteps(skill.id)).toEqual(withHouse.steps.filter(s => s.skill === skill.id));
     expect(active.contexts).toEqual(BC_CURRICULUM.contexts);
     expect(bcStepProgressions()).toBe(active);
-    expect(active.levels.flatMap(l => active.levelSkills(l.id)!.flatMap(s => active.skillSteps(s.id)!))).toHaveLength(1622);
+    expect(active.levels.flatMap(l => active.levelSkills(l.id)!.flatMap(s => active.skillSteps(s.id)!))).toHaveLength(1623);
     expect(curriculumVersion("bc")).toBe(digestOf(withHouse));
   });
 

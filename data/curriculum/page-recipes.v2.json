@@ -1,0 +1,854 @@
+{
+ "name": "Unica workbook page recipes",
+ "version": 1,
+ "date": "2026-11-02",
+ "note": "Follows Cedric's decisions up to Nov 2, 2026. Where the curriculum spreadsheet's 'Workbook format' tab disagrees (fixed second unit B every day, parent line on the cover, level map on the back, parent-supported U4-U6), these recipes win.",
+ "page": {
+  "size_px": [
+   816,
+   1056
+  ],
+  "margin_px": 64,
+  "content_px": [
+   688,
+   928
+  ],
+  "header_max_px": 150,
+  "footer_px": 48,
+  "question_area_px": 730,
+  "column_gutter_px": 32,
+  "question_number_style": "1.",
+  "answer_boxes": "right-aligned to the column edge, one x position per column"
+ },
+ "header": {
+  "name_and_date": "only on the first page of each day",
+  "day_line": "Day N · Page n of P",
+  "instruction_line": "always one line under the title"
+ },
+ "workbook": {
+  "days": 10,
+  "consecutive_days": true,
+  "pages_multiple_of": 4,
+  "spare_pages": "extra_practice pages from this workbook's steps, never blank",
+  "cover": {
+   "title_pattern": "the topic in plain words",
+   "subtitle_pattern": "<Name> will <what they will learn, one sentence>",
+   "show": [
+    "Made for <Name>",
+    "Level U<n>",
+    "Workbook <k>"
+   ],
+   "never_show": [
+    "school grade",
+    "parent instructions",
+    "plan summary line"
+   ]
+  },
+  "how_page": {
+   "stuck": "Ask for help using Maya, the AI Teaching Assistant.",
+   "fix_it": "Anything your child got wrong in the previous workbook comes back as new questions."
+  },
+  "back_matter": "none (no My levels page; that lives in the app)"
+ },
+ "progression": {
+  "rule": "Each workbook follows the natural order of the level's skills and their steps. Every day moves on: new pages start at the next step, or the next skill once a skill's steps are done. Day 10 is clearly harder than Day 1.",
+  "new_steps_per_workbook_max": 8,
+  "numbers": "pick in code from the step's numbers ranges; easy items from the lower part of the range, hard items from the upper part",
+  "questions": "fill the step's templates (practice questions are models, not copies); a page's questions all belong to its step",
+  "review": "spaced: a step passed at 90% comes back after about 2 days, 1 week, 3 weeks and 2 months",
+  "challenge": "from the hardest step reached so far that day, never easier than the practice pages",
+  "no_fixed_second_topic": true,
+  "fallback": "If today's step has no template of a page's required format (for example no story template for a Number stories page), take that page's items from the latest earlier step of the same skill that has one, then from the previous skill. Never from a later step.",
+  "how_do_you_know": "A 'How do you know?' item is a story item with one extra line under it: 'How do you know? ____'. The generator adds it; it needs no explain template."
+ },
+ "special_days": [
+  {
+   "days": [
+    5,
+    10
+   ],
+   "replace": "review",
+   "with": {
+    "type": "friday5",
+    "title": "Friday 5",
+    "instruction": "Five questions from the last few weeks. No hints.",
+    "items": {
+     "min": 5,
+     "max": 5
+    },
+    "columns": 1,
+    "questions_from": "the last three weeks of work",
+    "formats": [
+     "bare",
+     "missing",
+     "story",
+     "true-false",
+     "compare",
+     "choose",
+     "picture",
+     "explain"
+    ],
+    "min_formats_on_page": 2
+   }
+  },
+  {
+   "days": [
+    10
+   ],
+   "replace": "challenge",
+   "with": {
+    "type": "show_what_you_know",
+    "title": "Show what you know",
+    "instruction": "Ten days of work. Show what you learned!",
+    "items": {
+     "min": 4,
+     "max": 6
+    },
+    "columns": 2,
+    "questions_from": "one item from each step this workbook, and the hardest ones again",
+    "formats": [
+     "bare",
+     "missing",
+     "story",
+     "true-false",
+     "compare",
+     "choose",
+     "picture",
+     "explain"
+    ],
+    "min_formats_on_page": 3
+   }
+  },
+  {
+   "days": [
+    4,
+    9
+   ],
+   "levels": "U19-U30",
+   "replace": "stories",
+   "with": {
+    "type": "math_in_the_world",
+    "title": "Math in the world",
+    "instruction": "Plan it, solve it, and explain your answer.",
+    "items": {
+     "min": 1,
+     "max": 1
+    },
+    "columns": 1,
+    "questions_from": "one multi-step real task using this workbook's steps",
+    "formats": [
+     "story",
+     "explain"
+    ],
+    "min_formats_on_page": 2,
+    "work_box_px": 360
+   }
+  }
+ ],
+ "fill_rules": [
+  "Lay out the page's items.",
+  "If more than 15% of the question area is empty, add one more item from the same step (up to the page's max) and lay out again.",
+  "If still more than 15% empty, spread the space evenly between items (up to 48 px extra per gap), never all at the bottom.",
+  "If items overflow, move the last item to the next page of the same type, or drop it if it is a duplicate."
+ ],
+ "variety_rules": [
+  "No sentence frame twice on one page, and at most twice in a day.",
+  "At least min_formats_on_page different formats per page.",
+  "Never the same item twice in a workbook.",
+  "True/false items: about half true, half false across a page."
+ ],
+ "banned_phrases": [
+  "Watch one",
+  "Finish two",
+  "Two to stretch you",
+  "stretch you",
+  "Unit A",
+  "Unit B",
+  "For the grown-up (from U4)",
+  "Draw (from U4)",
+  "regroup",
+  "benchmark",
+  "strategy",
+  "First step:"
+ ],
+ "notation": {
+  "divide": "÷",
+  "multiply": "×",
+  "powers": "superscript (n², 3⁴)",
+  "area_units": "cm², m²",
+  "volume_units": "cm³",
+  "pictures": "(picture: ...) is an art instruction, never printed as text"
+ },
+ "bands": [
+  {
+   "levels": "U1-U3",
+   "grade_internal": "Kindergarten",
+   "pages_per_day": 5,
+   "lead": "parent-led",
+   "parent_text_allowed": true,
+   "drawing_allowed": true,
+   "answer_box_px": 56,
+   "work_box_px": 120,
+   "max_words_per_question": 15,
+   "day": [
+    {
+     "type": "remember",
+     "title": "Remember these?",
+     "instruction": "Answer the questions about what you learned before.",
+     "items": {
+      "min": 4,
+      "max": 6
+     },
+     "columns": 2,
+     "questions_from": "earlier steps and skills (spaced review)",
+     "formats": [
+      "picture",
+      "bare",
+      "missing",
+      "choose"
+     ],
+     "min_formats_on_page": 3
+    },
+    {
+     "type": "new_idea",
+     "title": "<the skill name in plain words>",
+     "instruction": "Read how it works, then try it.",
+     "items": {
+      "min": 3,
+      "max": 4
+     },
+     "columns": 1,
+     "questions_from": "today's new step",
+     "formats": [
+      "bare",
+      "missing",
+      "true-false",
+      "compare",
+      "choose",
+      "picture"
+     ],
+     "min_formats_on_page": 2,
+     "worked_example": true,
+     "spot_the_error": false
+    },
+    {
+     "type": "practice",
+     "title": "<the skill name in plain words>",
+     "instruction": "Look at the example. Then answer the questions.",
+     "items": {
+      "min": 4,
+      "max": 6
+     },
+     "columns": 2,
+     "questions_from": "today's step",
+     "formats": [
+      "bare",
+      "missing",
+      "story",
+      "true-false",
+      "compare",
+      "choose",
+      "picture"
+     ],
+     "min_formats_on_page": 3
+    },
+    {
+     "type": "stories",
+     "title": "Number stories",
+     "instruction": "Read each story. Work it out in the box. Write the answer.",
+     "items": {
+      "min": 2,
+      "max": 3
+     },
+     "columns": 1,
+     "questions_from": "today's step",
+     "formats": [
+      "story",
+      "picture"
+     ],
+     "min_formats_on_page": 1,
+     "required_format": "story"
+    },
+    {
+     "type": "challenge",
+     "title": "Challenge",
+     "instruction": "Test yourself.",
+     "items": {
+      "min": 2,
+      "max": 3
+     },
+     "columns": 1,
+     "questions_from": "the hardest step reached so far",
+     "formats": [
+      "bare",
+      "missing",
+      "story",
+      "true-false",
+      "compare",
+      "choose",
+      "picture"
+     ],
+     "min_formats_on_page": 2
+    }
+   ]
+  },
+  {
+   "levels": "U4-U9",
+   "grade_internal": "Grades 1-2",
+   "pages_per_day": 8,
+   "lead": "child-led",
+   "parent_text_allowed": false,
+   "drawing_allowed": false,
+   "answer_box_px": 48,
+   "work_box_px": 120,
+   "max_words_per_question": 25,
+   "day": [
+    {
+     "type": "remember",
+     "title": "Remember these?",
+     "instruction": "Answer the questions about what you learned before.",
+     "items": {
+      "min": 8,
+      "max": 10
+     },
+     "columns": 2,
+     "questions_from": "earlier steps and skills (spaced review); from workbook 2, Fix it items on Days 1-5",
+     "formats": [
+      "bare",
+      "missing",
+      "story",
+      "true-false",
+      "compare",
+      "choose",
+      "picture",
+      "explain"
+     ],
+     "min_formats_on_page": 3
+    },
+    {
+     "type": "new_idea",
+     "title": "<the skill name in plain words>",
+     "instruction": "Read how it works, then try it.",
+     "items": {
+      "min": 3,
+      "max": 5
+     },
+     "columns": 2,
+     "questions_from": "today's new step",
+     "formats": [
+      "bare",
+      "missing",
+      "true-false",
+      "compare",
+      "choose",
+      "picture"
+     ],
+     "min_formats_on_page": 2,
+     "worked_example": true,
+     "worked_example_max_px": 260,
+     "spot_the_error": true
+    },
+    {
+     "type": "practice",
+     "title": "<the skill name in plain words>",
+     "instruction": "Look at the example. Then answer the questions.",
+     "items": {
+      "min": 8,
+      "max": 10
+     },
+     "columns": 2,
+     "questions_from": "today's step",
+     "formats": [
+      "bare",
+      "missing",
+      "story",
+      "true-false",
+      "compare",
+      "choose",
+      "picture"
+     ],
+     "min_formats_on_page": 3,
+     "sections": [
+      "Getting started (2-4)",
+      "On your own (4-6)"
+     ]
+    },
+    {
+     "type": "practice_2",
+     "title": "<the skill name in plain words>",
+     "instruction": "Each row is a little harder than the one before.",
+     "items": {
+      "min": 8,
+      "max": 10
+     },
+     "columns": 2,
+     "questions_from": "today's step, harder half of its range",
+     "formats": [
+      "bare",
+      "missing",
+      "story",
+      "true-false",
+      "compare",
+      "choose",
+      "picture",
+      "explain"
+     ],
+     "min_formats_on_page": 3,
+     "includes": [
+      "one solve-it-two-ways item",
+      "one spot-the-error item"
+     ]
+    },
+    {
+     "type": "stories",
+     "title": "Number stories",
+     "instruction": "Read each story. Work it out in the box. Write the answer.",
+     "items": {
+      "min": 3,
+      "max": 4
+     },
+     "columns": 1,
+     "questions_from": "today's step",
+     "formats": [
+      "story",
+      "picture",
+      "explain"
+     ],
+     "min_formats_on_page": 1,
+     "required_format": "story",
+     "story_type": "one-step picture stories",
+     "includes": [
+      "one 'How do you know?'"
+     ]
+    },
+    {
+     "type": "review",
+     "title": "<the skill name in plain words>",
+     "instruction": "Answer the questions. Use the example if you need help.",
+     "items": {
+      "min": 6,
+      "max": 8
+     },
+     "columns": 2,
+     "questions_from": "an earlier, different skill on its spaced schedule (not a fixed second topic)",
+     "formats": [
+      "bare",
+      "missing",
+      "story",
+      "true-false",
+      "compare",
+      "choose",
+      "picture",
+      "explain"
+     ],
+     "min_formats_on_page": 3
+    },
+    {
+     "type": "mixed",
+     "title": "Mixed review",
+     "instruction": "Choose how to solve each one, then write the answer.",
+     "items": {
+      "min": 8,
+      "max": 10
+     },
+     "columns": 2,
+     "questions_from": "steps done so far in this workbook",
+     "formats": [
+      "bare",
+      "missing",
+      "story",
+      "true-false",
+      "compare",
+      "choose",
+      "picture",
+      "explain"
+     ],
+     "min_formats_on_page": 3
+    },
+    {
+     "type": "challenge",
+     "title": "Challenge",
+     "instruction": "Test yourself.",
+     "items": {
+      "min": 3,
+      "max": 4
+     },
+     "columns": 1,
+     "questions_from": "the hardest step reached so far",
+     "formats": [
+      "bare",
+      "missing",
+      "story",
+      "true-false",
+      "compare",
+      "choose",
+      "picture",
+      "explain"
+     ],
+     "min_formats_on_page": 2
+    }
+   ]
+  },
+  {
+   "levels": "U10-U18",
+   "grade_internal": "Grades 3-5",
+   "pages_per_day": 8,
+   "lead": "child-led",
+   "parent_text_allowed": false,
+   "drawing_allowed": false,
+   "answer_box_px": 48,
+   "work_box_px": 140,
+   "max_words_per_question": 35,
+   "day": [
+    {
+     "type": "remember",
+     "title": "Remember these?",
+     "instruction": "Answer the questions about what you learned before.",
+     "items": {
+      "min": 8,
+      "max": 10
+     },
+     "columns": 2,
+     "questions_from": "earlier steps and skills (spaced review); from workbook 2, Fix it items on Days 1-5",
+     "formats": [
+      "bare",
+      "missing",
+      "story",
+      "true-false",
+      "compare",
+      "choose",
+      "picture",
+      "explain"
+     ],
+     "min_formats_on_page": 3
+    },
+    {
+     "type": "new_idea",
+     "title": "<the skill name in plain words>",
+     "instruction": "Read how it works, then try it.",
+     "items": {
+      "min": 3,
+      "max": 5
+     },
+     "columns": 2,
+     "questions_from": "today's new step",
+     "formats": [
+      "bare",
+      "missing",
+      "true-false",
+      "compare",
+      "choose",
+      "picture"
+     ],
+     "min_formats_on_page": 2,
+     "worked_example": true,
+     "worked_example_max_px": 260,
+     "spot_the_error": true,
+     "solved_two_ways": true
+    },
+    {
+     "type": "practice",
+     "title": "<the skill name in plain words>",
+     "instruction": "Look at the example. Then answer the questions.",
+     "items": {
+      "min": 8,
+      "max": 10
+     },
+     "columns": 2,
+     "questions_from": "today's step",
+     "formats": [
+      "bare",
+      "missing",
+      "story",
+      "true-false",
+      "compare",
+      "choose",
+      "picture"
+     ],
+     "min_formats_on_page": 3,
+     "sections": [
+      "Getting started (2-4)",
+      "On your own (4-6)"
+     ]
+    },
+    {
+     "type": "practice_2",
+     "title": "<the skill name in plain words>",
+     "instruction": "Each row is a little harder than the one before.",
+     "items": {
+      "min": 8,
+      "max": 10
+     },
+     "columns": 2,
+     "questions_from": "today's step, harder half of its range",
+     "formats": [
+      "bare",
+      "missing",
+      "story",
+      "true-false",
+      "compare",
+      "choose",
+      "picture",
+      "explain"
+     ],
+     "min_formats_on_page": 3,
+     "includes": [
+      "one solve-it-two-ways item",
+      "one spot-the-error item"
+     ]
+    },
+    {
+     "type": "stories",
+     "title": "Number stories",
+     "instruction": "Read each story. Work it out in the box. Write the answer.",
+     "items": {
+      "min": 3,
+      "max": 4
+     },
+     "columns": 1,
+     "questions_from": "today's step",
+     "formats": [
+      "story",
+      "explain",
+      "choose"
+     ],
+     "min_formats_on_page": 1,
+     "required_format": "story",
+     "story_type": "two-step stories",
+     "includes": [
+      "one 'How do you know?'"
+     ]
+    },
+    {
+     "type": "review",
+     "title": "<the skill name in plain words>",
+     "instruction": "Answer the questions. Use the example if you need help.",
+     "items": {
+      "min": 6,
+      "max": 8
+     },
+     "columns": 2,
+     "questions_from": "an earlier, different skill on its spaced schedule (not a fixed second topic)",
+     "formats": [
+      "bare",
+      "missing",
+      "story",
+      "true-false",
+      "compare",
+      "choose",
+      "picture",
+      "explain"
+     ],
+     "min_formats_on_page": 3
+    },
+    {
+     "type": "mixed",
+     "title": "Mixed review",
+     "instruction": "Choose how to solve each one, then write the answer.",
+     "items": {
+      "min": 3,
+      "max": 4
+     },
+     "columns": 1,
+     "questions_from": "steps done so far in this workbook",
+     "formats": [
+      "story",
+      "choose"
+     ],
+     "min_formats_on_page": 2,
+     "item_steps": [
+      "1. Tick the operation",
+      "2. Write the answer"
+     ]
+    },
+    {
+     "type": "challenge",
+     "title": "Challenge",
+     "instruction": "Test yourself.",
+     "items": {
+      "min": 3,
+      "max": 4
+     },
+     "columns": 1,
+     "questions_from": "the hardest step reached so far",
+     "formats": [
+      "bare",
+      "missing",
+      "story",
+      "true-false",
+      "compare",
+      "choose",
+      "picture",
+      "explain"
+     ],
+     "min_formats_on_page": 2
+    }
+   ]
+  },
+  {
+   "levels": "U19-U30",
+   "grade_internal": "Grades 6-9",
+   "pages_per_day": 6,
+   "lead": "child-led",
+   "parent_text_allowed": false,
+   "drawing_allowed": false,
+   "answer_box_px": 48,
+   "work_box_px": 160,
+   "max_words_per_question": 45,
+   "day": [
+    {
+     "type": "remember",
+     "title": "Remember these?",
+     "instruction": "Answer the questions about what you learned before.",
+     "items": {
+      "min": 6,
+      "max": 8
+     },
+     "columns": 2,
+     "questions_from": "earlier steps and skills (spaced review); from workbook 2, Fix it items on Days 1-5; on a day that starts a new step, one Try first problem",
+     "formats": [
+      "bare",
+      "missing",
+      "story",
+      "true-false",
+      "compare",
+      "choose",
+      "picture",
+      "explain"
+     ],
+     "min_formats_on_page": 3
+    },
+    {
+     "type": "new_idea",
+     "title": "<the skill name in plain words>",
+     "instruction": "Read how it works, then try it.",
+     "items": {
+      "min": 2,
+      "max": 4
+     },
+     "columns": 1,
+     "questions_from": "today's new step",
+     "formats": [
+      "bare",
+      "missing",
+      "true-false",
+      "compare",
+      "choose",
+      "picture",
+      "explain"
+     ],
+     "min_formats_on_page": 2,
+     "worked_example": true,
+     "worked_example_max_px": 280,
+     "spot_the_error": true,
+     "solved_two_ways": true
+    },
+    {
+     "type": "practice",
+     "title": "<the skill name in plain words>",
+     "instruction": "Look at the example. Then answer the questions.",
+     "items": {
+      "min": 6,
+      "max": 8
+     },
+     "columns": 2,
+     "questions_from": "today's step, rising through its range",
+     "formats": [
+      "bare",
+      "missing",
+      "story",
+      "true-false",
+      "compare",
+      "choose",
+      "picture",
+      "explain"
+     ],
+     "min_formats_on_page": 3,
+     "includes": [
+      "one spot-the-error item"
+     ]
+    },
+    {
+     "type": "stories",
+     "title": "Number stories",
+     "instruction": "Read each story. Work it out in the box. Write the answer.",
+     "items": {
+      "min": 2,
+      "max": 3
+     },
+     "columns": 1,
+     "questions_from": "today's step",
+     "formats": [
+      "story",
+      "explain",
+      "choose"
+     ],
+     "min_formats_on_page": 1,
+     "required_format": "story",
+     "includes": [
+      "one 'How do you know?'",
+      "one estimate-before-you-solve"
+     ]
+    },
+    {
+     "type": "review",
+     "title": "<the skill name in plain words>",
+     "instruction": "Answer the questions. Use the example if you need help.",
+     "items": {
+      "min": 6,
+      "max": 8
+     },
+     "columns": 2,
+     "questions_from": "an earlier, different skill on its spaced schedule, plus 2-3 mixed items from this workbook",
+     "formats": [
+      "bare",
+      "missing",
+      "story",
+      "true-false",
+      "compare",
+      "choose",
+      "picture",
+      "explain"
+     ],
+     "min_formats_on_page": 3
+    },
+    {
+     "type": "challenge",
+     "title": "Challenge",
+     "instruction": "Test yourself.",
+     "items": {
+      "min": 2,
+      "max": 3
+     },
+     "columns": 1,
+     "questions_from": "the hardest step reached so far",
+     "formats": [
+      "bare",
+      "missing",
+      "story",
+      "true-false",
+      "compare",
+      "choose",
+      "picture",
+      "explain"
+     ],
+     "min_formats_on_page": 2
+    }
+   ]
+  }
+ ],
+ "instructions_by_page_type": {
+  "remember": "Answer the questions about what you learned before.",
+  "new_idea": "Read how it works, then try it.",
+  "practice": "Look at the example. Then answer the questions.",
+  "practice_2": "Each row is a little harder than the one before.",
+  "stories": "Read each story. Work it out in the box. Write the answer.",
+  "review": "Answer the questions. Use the example if you need help.",
+  "mixed": "Choose how to solve each one, then write the answer.",
+  "challenge": "Test yourself.",
+  "friday5": "Five questions from the last few weeks. No hints.",
+  "show_what_you_know": "Ten days of work. Show what you learned!",
+  "math_in_the_world": "Plan it, solve it, and explain your answer.",
+  "extra_practice": "Extra practice on what you learned in this workbook."
+ }
+}

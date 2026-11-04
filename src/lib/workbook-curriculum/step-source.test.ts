@@ -10,16 +10,16 @@ import { parseStepProgressions, stepFieldProblems } from "./step-source";
 import { domainContains, domainProblems, prepareTemplate, seededRandom } from "./template";
 import { compileExpression, formatValue } from "./expression";
 import { auditTemplates } from "./template-audit";
-const source = parseStepProgressions(JSON.parse(readFileSync("data/curriculum/step-progressions-k9.json", "utf8")));
+const source = parseStepProgressions(JSON.parse(readFileSync("data/curriculum/step-progressions-k9.v1.json", "utf8")));
 const originalBytes = readFileSync("data/curriculum/step-progressions-k9.original.json");
 const original = parseStepProgressions(JSON.parse(originalBytes.toString()));
 const candidate = { ...BC_CURRICULUM, steps: source.steps, contexts: source.contexts };
-const baseline = JSON.parse(readFileSync("data/curriculum/template-audit.json", "utf8"));
+const baseline = JSON.parse(readFileSync("data/curriculum/template-audit.v1.json", "utf8"));
 describe("staged progression import", () => {
   it("imports all source steps with no curriculum problems", () => {
     expect(source.steps).toHaveLength(1622);
     expect(new Set(source.steps.map(s => s.skill)).size).toBe(541);
-    expect(BC_CURRICULUM.steps).toEqual(source.steps);
+    expect(BC_CURRICULUM.steps).toEqual(JSON.parse(readFileSync("data/curriculum/step-progressions-k9.json", "utf8")).steps);
     expect(BC_CURRICULUM.contexts).toEqual(source.contexts);
     expect(curriculumProblems(candidate, BC_SKILL_MAP)).toEqual([]);
   });
@@ -52,7 +52,7 @@ describe("staged progression import", () => {
   it("keeps the original bytes and records every corrected field without changing difficulty", () => {
     expect(createHash("sha256").update(originalBytes).digest("hex")).toBe("f22f6614a0f7013abde0b9228e1cf5ecdab4436fb99a6fbfabab73453a0726ea");
     type Patch = { skill: string; step: number; template: number | null; path: string[]; before: unknown; after: unknown; why: string };
-    const patches: Patch[] = JSON.parse(readFileSync("data/curriculum/author-changes.json", "utf8"));
+    const patches: Patch[] = JSON.parse(readFileSync("data/curriculum/author-changes.v1.json", "utf8"));
     const reconstructed = JSON.parse(originalBytes.toString());
     for (const p of patches) {
       const step = reconstructed.steps.find((s: { skill: string; number: number }) => s.skill === p.skill && s.number === p.step);

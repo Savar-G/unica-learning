@@ -36,7 +36,7 @@ import { renderSamplePages, samplePrintCache } from "./workbook-sample-render";
 import { samplePages, pagesMarkdown, writePageDiff } from "./workbook-sample-pages";
 import { browserStats, closeSampleBrowser } from "./workbook-sample-browser";
 import { execFileSync } from "node:child_process";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -50,7 +50,9 @@ import { ANTHROPIC_DEFAULT_MODEL, anthropicClient, type AnthropicUsage } from "@
 import { openRouterClient } from "@/lib/ai-openrouter";
 import type { Database } from "@/lib/database";
 import { chromiumPrintEngine } from "@/lib/print-engine-chromium";
-import { curriculumFor } from "@/lib/workbook-curriculum";
+import { BC_CURRICULUM, curriculumFor, curriculumFromData, curriculumProblems } from "@/lib/workbook-curriculum";
+import { parseStepProgressions } from "@/lib/workbook-curriculum/step-source";
+import { BC_SKILL_MAP } from "@/lib/assessment";
 import { workbookDraftStore } from "@/lib/workbook-draft-store";
 import { renderableDraft, renderFitCheck } from "@/lib/workbook-fit";
 import { generateWorkbook, type GeneratedWorkbook, type WorkbookDraftStore } from "@/lib/workbook-generator";
@@ -73,13 +75,21 @@ const NOTE = (level: string) => `Sample child for level ${level} (#363): made-up
 const { values } = parseArgs({
   options: {
     levels: { type: "string", default: "all" }, second: { type: "string", default: "" }, test: { type: "string", default: "" },
-    days: { type: "string" }, out: { type: "string", default: "/tmp/ui-review/samples" }, concurrency: { type: "string", default: "6" },
+    steps: { type: "string" }, days: { type: "string" }, out: { type: "string", default: "/tmp/ui-review/samples" }, concurrency: { type: "string", default: "6" },
     replay: { type: "string" }, diff: { type: "string" }, "check-only": { type: "boolean", default: false },
     fake: { type: "boolean", default: false }, api: { type: "boolean", default: false }, anthropic: { type: "boolean", default: false }, "family-only": { type: "boolean", default: false }, "no-store": { type: "boolean", default: false }, "subscription-only": { type: "boolean", default: false },
   },
 });
 if (values.days && (values.second || values.test)) throw new Error("--days is only for first review books.");
-const BC = curriculumFor("bc")!;
+// A local comparison can change only the data while it keeps the generator and plan inputs fixed.
+if (values.steps && !values["no-store"]) throw new Error("--steps requires --no-store");
+const source = values.steps ? parseStepProgressions(JSON.parse(await readFile(values.steps, "utf8"))) : null;
+const comparisonData = source ? { ...BC_CURRICULUM, steps: source.steps, contexts: source.contexts } : null;
+if (comparisonData) {
+  const problems = curriculumProblems(comparisonData, BC_SKILL_MAP);
+  if (problems.length) throw new Error(problems.join("\n"));
+}
+const BC = comparisonData ? curriculumFromData(comparisonData) : curriculumFor("bc")!;
 const allLevels = BC.levels.map((l) => l.id);
 const list = (s: string) => (s === "all" ? allLevels : s.split(",").map((x) => x.trim()).filter(Boolean));
 const levels = list(values.levels!);
@@ -293,6 +303,16 @@ await mkdir(out, { recursive: true });
 for (const source of [values.replay, values.diff]) {
   if (source && await realpath(source) === await realpath(out)) throw new Error("Replay, diff and output folders must differ.");
 }
+// A ref the checkout lacks (CI fetches one commit) is recorded as null, never a failed run.
+const gitRef = (ref: string) => { try { return execFileSync("git", ["rev-parse", ref], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { return null; } };
+await writeFile(`${out}/run-manifest.json`, JSON.stringify({
+  head: gitRef("HEAD"),
+  consistencyBase: gitRef("origin/site/workbook-consistency"),
+  bundleSha256: createHash("sha256").update(await readFile(process.argv[1])).digest("hex"),
+  dataSha256: createHash("sha256").update(await readFile(values.steps ?? "data/curriculum/step-progressions-k9.json")).digest("hex"),
+  steps: values.steps ?? "data/curriculum/step-progressions-k9.json", sampleId: process.env.WORKBOOK_SAMPLE_ID ?? null,
+  args: process.argv.slice(2), fake: values.fake, stored: store,
+}, null, 2));
 const template = workbookTemplate(await fixedTemplateFonts());
 // Profile the dependency seams; generation outside these spans includes planning and book checks.
 let phase = "fit";
@@ -450,6 +470,7 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
   ]);
   const changed = values.diff ? await timed("diff", () => writePageDiff({ label, before: values.diff!, out, pages })) : undefined;
   const pageUse = measuredPageUse(renderable.pages, measured).filter(p => draft.pages[p.page - 1]?.content?.kind === "day");
+  await writeFile(`${out}/${label}-measurements.json`, JSON.stringify({ pageUse, renderProblems }, null, 2));
   const browser = Object.fromEntries(Object.entries(browserStats).map(([key, value]) => [key, value - browserBefore[key as keyof typeof browserStats]]));
   const renderCache = { hits: engine.stats.hits - cacheBefore.hits, renders: engine.stats.renders - cacheBefore.renders };
   profile.total = { ms: performance.now() - t0, calls: 1, sheets: draft.pages.length };

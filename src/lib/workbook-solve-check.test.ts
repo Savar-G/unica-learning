@@ -44,8 +44,8 @@ describe("the solve check", () => {
     const sent = JSON.parse((ai.requests[0].content[0] as { text: string }).text);
     expect(sent).toEqual({
       questions: [
-        { id: "question", text: "Mia has 7 shells. She finds 5 more. How many now?", picture: null, shown: null, boxes: [{ id: "answer", asks: "a box for the answer" }] },
-        { id: "easier", text: "6 + 5 = ?", picture: null, shown: null, boxes: [{ id: "answer", asks: "a box for the answer" }] },
+        { id: "question", text: "Mia has 7 shells. She finds 5 more. How many now?", picture: null, shown: null, boxes: [{ id: "answer", asks: "a box for the answer", numberOnly: true }] },
+        { id: "easier", text: "6 + 5 = ?", picture: null, shown: null, boxes: [{ id: "answer", asks: "a box for the answer", numberOnly: true }] },
       ],
     });
     expect(JSON.stringify(ai.requests[0])).not.toMatch(/"12"|operation|operands|wrongAnswers/);

@@ -1,6 +1,7 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { checkQuestionPackage, type ItemCheck } from "@/lib/question-package";
-import { curriculumFor } from "@/lib/workbook-curriculum";
+import { BC_CURRICULUM, curriculumFor, curriculumFromData } from "@/lib/workbook-curriculum";
 import { buildStepItem, choicesFor, sequenceOf, stepBounds, stepOf, stepRangeProblem, stepRank, stepTemplateItem, templateProblem } from "@/lib/workbook-step-items";
 
 const BC = curriculumFor("bc")!;
@@ -106,8 +107,9 @@ describe("step template items (#489)", () => {
 
   it("circles the person a story's answer names, and checks it from the numbers", () => {
     const seen = new Set<string>();
+    const legacy = curriculumFromData({ ...BC_CURRICULUM, ...JSON.parse(readFileSync("data/curriculum/step-progressions-k9.v1.json", "utf8")) });
     for (let seed = 1; seed <= 60; seed++) {
-      const it = item("4.3-same-denominator", 1, "on-your-own", seed, 0, 14);
+      const it = stepTemplateItem({ curriculum: legacy, skill: "4.3-same-denominator", step: 1, place: "on-your-own", level: 14, day: 1, seed, attempt: 0, ordinal: 0 });
       if (!it || !/Who eats more/.test(it.text)) continue;
       expect(it.ref.kind).toBe("choice");
       expect(it.ref.choices).toEqual([it.text.split(" ")[0], "the friend"]);

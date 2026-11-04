@@ -21,8 +21,14 @@ describe("Unica Challenge templates", () => {
     expect(() => withHouseTemplates(BC_CURRICULUM, [{ ...HOUSE_TEMPLATES[0], name: "Another step" }])).toThrow(/written for/);
     expect(() => withHouseTemplates(BC_CURRICULUM, [{ ...HOUSE_TEMPLATES[0], skill: "no-such-skill" }])).toThrow(/does not have/);
   });
-  it("give every U16 day step three hard templates with a number answer", () => {
-    for (const h of HOUSE_TEMPLATES) expect(h.templates.filter((t) => t.difficulty === "hard").length).toBeGreaterThanOrEqual(3);
+  it("give every U16 day step three hard templates with a number answer, with Cedric's v2 ones, and repeat none of his", () => {
+    const numeric = (t: { format: string; answer: string }) => ["bare", "missing", "story"].includes(t.format) && !/['"]/.test(t.answer);
+    for (const h of HOUSE_TEMPLATES) {
+      const step = c.skillSteps(h.skill)![h.step - 1];
+      expect(step.templates!.filter((t) => t.difficulty === "hard" && numeric(t)).length, `${h.skill}#${h.step}`).toBeGreaterThanOrEqual(3);
+      const own = BC_CURRICULUM.steps.find((s) => s.skill === h.skill && s.number === h.step)!.templates ?? [];
+      for (const t of h.templates) expect(own.some((o) => o.text === t.text || o.answer === t.answer && o.format === t.format && o.difficulty === "hard")).toBe(false);
+    }
   });
   it("fill 200 times each: valid fields, a whole-number answer above 0, numbers in the step's range, more than one step", () => {
     for (const h of HOUSE_TEMPLATES) {

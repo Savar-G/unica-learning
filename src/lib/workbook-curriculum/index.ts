@@ -8,7 +8,7 @@ import type { CurriculumData, CurriculumKey, CurriculumLevel, CurriculumSkill, C
 
 export type * from "./types";
 export { curriculumProblems } from "./check";
-/** The complete imported BC data: Cedric's 1,622 steps with their number ranges, practice models, templates and contexts (#489). */
+/** The complete imported BC data: Cedric's 1,623 steps with their number ranges, practice models, templates and contexts (#489). */
 export { BC_CURRICULUM };
 
 /** The reads of one curriculum. An unknown level or skill id reads as null. */
@@ -32,7 +32,7 @@ export interface Curriculum {
   contexts?: TemplateContexts;
 }
 
-function curriculum(data: CurriculumData): Curriculum {
+export function curriculumFromData(data: CurriculumData): Curriculum {
   const byNumber = (a: { number: number }, b: { number: number }) => a.number - b.number;
   const levels = [...data.levels].sort(byNumber);
   const levelById = new Map<string, CurriculumLevel>(levels.map((l) => [l.id, l]));
@@ -67,9 +67,9 @@ function curriculum(data: CurriculumData): Curriculum {
 // The generator reads every imported step and its templates (#489). The 155 drafted steps it read before are gone.
 // (With Unica's own Challenge templates appended to their steps: house-templates.ts.)
 const BC_WITH_HOUSE = withHouseTemplates(BC_CURRICULUM);
-const CURRICULA: Record<CurriculumKey, Curriculum> = { bc: curriculum(BC_WITH_HOUSE) };
+const CURRICULA: Record<CurriculumKey, Curriculum> = { bc: curriculumFromData(BC_WITH_HOUSE) };
 
-/** All 1,622 validated BC steps and their template contexts: the same curriculum curriculumFor("bc") gives. */
+/** All 1,623 validated BC steps and their template contexts: the same curriculum curriculumFor("bc") gives. */
 export function bcStepProgressions(): Curriculum & { readonly contexts: TemplateContexts } {
   return CURRICULA.bc as Curriculum & { readonly contexts: TemplateContexts };
 }
