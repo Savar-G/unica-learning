@@ -2,6 +2,25 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import { runAiCallLog, type RunAiCall } from "@/lib/workbook-job-store";
 import { fallbackAiClient, type AiCallRecord } from "@/lib/ai-fallback";
+import { build } from "esbuild";
+import { fileURLToPath } from "node:url";
+
+it("bundles the standalone worker without cookie-based auth or next/headers", async () => {
+  // Match scripts/workbook-worker.mjs. Build only: never start the worker or read a live row.
+  const result = await build({
+    absWorkingDir: fileURLToPath(new URL("../../", import.meta.url)),
+    entryPoints: ["scripts/workbook-worker.ts"], outfile: "worker.mjs",
+    bundle: true, platform: "node", target: "node22", format: "esm", packages: "external", write: false, metafile: true,
+    plugins: [{ name: "server-only", setup(b) {
+      b.onResolve({ filter: /^server-only$/ }, () => ({ path: "server-only", namespace: "empty" }));
+      b.onLoad({ filter: /.*/, namespace: "empty" }, () => ({ contents: "", loader: "js" }));
+    } }],
+  });
+  expect(Object.keys(result.metafile.inputs)).not.toContain("src/lib/supabase-auth.ts");
+  expect(Object.keys(result.metafile.inputs)).toContain("src/lib/child-profile-server.ts");
+  const imports = Object.values(result.metafile.outputs).flatMap((o) => o.imports.map((i) => i.path));
+  expect(imports.some((p) => /^next\/headers(?:\.js)?$/.test(p))).toBe(false);
+});
 
 const call = (provider: AiCallRecord["provider"], ms = 1234.6): AiCallRecord => ({ name: "workbook_page", provider, model: "m", outcome: "answered", ms, usd: provider === "api" ? 0.1 : 0, note: null });
 const request = { name: "workbook_page", system: "s", schema: {}, content: [{ type: "text" as const, text: "t" }] };

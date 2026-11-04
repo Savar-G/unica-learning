@@ -1,7 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isGrade } from "@/lib/assessment";
-import { readChildProfile } from "@/lib/child-profile";
-import { childProfileStore } from "@/lib/child-profile-store";
 import { toJson, type Database, type Tables } from "@/lib/database";
 import { draftProblem, GENERATED_DRAFT_VERSION } from "@/lib/workbook-generator";
 import { newGate, type ProviderGate, type AiCallRecord, type AiProvider } from "@/lib/ai-fallback";
@@ -154,21 +152,21 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
   };
 }
 
-/** The child as the job reads it: grade, curriculum, current profile and stored workbooks, with the secret key. */
-export function workbookJobSource(admin: SupabaseClient<Database>): WorkbookJobSource {
+/** The child's display and plan inputs. The profile is prepared separately, only before a frame exists. */
+export function workbookJobSource(admin: SupabaseClient<Database>, prepareProfile: WorkbookJobSource["prepareProfile"]): WorkbookJobSource {
   return {
+    prepareProfile,
     async inputs(childId) {
-      const [child, books, profile] = await Promise.all([
+      const [child, books] = await Promise.all([
         admin.from("children").select("parent_id, first_name, grade, province").eq("id", childId).maybeSingle(),
         admin.from("workbooks").select("number, levels").eq("child_id", childId),
-        readChildProfile(childProfileStore(admin), childId),
       ]);
       const row = must(child, "child load");
       if (!row) return null;
       if (!isGrade(row.grade)) throw new Error(`workbook run child load: grade ${row.grade} is not K to 9`);
       return {
         parentId: row.parent_id, name: row.first_name, grade: row.grade, province: row.province,
-        profile: profile ? { revision: profile.revision, profile: profile.profile } : null,
+        profile: null,
         workbooks: must(books, "workbooks load") ?? [],
       };
     },

@@ -5,8 +5,16 @@
 // each child's stored workbook numbers; `now` is the clock.
 import type { RenderProblem } from "@/lib/workbook-render";
 import { draftProblem, type GeneratedPage, type StoredCall, type WorkbookDraftStore } from "@/lib/workbook-generator";
-import { READ_PAGE, readPaged, SLOT_ATTEMPTS, SOLVE_BATCH, type DraftRendering, type RunActor, type RunFrame, type RunSolve, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
+import { READ_PAGE, readPaged, SLOT_ATTEMPTS, SOLVE_BATCH, type ChildInputs, type DraftRendering, type RunActor, type RunFrame, type RunSolve, type WorkbookJobSource, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
 import type { SolveVerdict } from "@/lib/workbook-solve-check";
+
+/** The job's child reads and profile preparation in memory. Tests can use the real profile builds behind this seam. */
+export function memoryWorkbookJobSource(children: Record<string, ChildInputs>, prepareProfile: WorkbookJobSource["prepareProfile"]): WorkbookJobSource {
+  return {
+    inputs: async (childId) => children[childId] ? structuredClone(children[childId]) : null,
+    prepareProfile,
+  };
+}
 
 export interface MemoryAudit {
   at: string;

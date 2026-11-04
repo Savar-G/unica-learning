@@ -248,6 +248,8 @@ export interface RunFrame {
 export interface WorkbookJobSource {
   /** Null when there is no such child. */
   inputs(childId: string): Promise<ChildInputs | null>;
+  /** Refreshes the profiles only before the run has a frame. False refuses a book from incomplete assessment facts. */
+  prepareProfile(childId: string): Promise<{ ok: true; profile: ChildInputs["profile"] } | { ok: false }>;
 }
 
 /**
@@ -573,12 +575,15 @@ const generateInput = (run: WorkbookRun, frame: RunFrame, name: string): Generat
 async function runFrame(run: WorkbookRun, deps: WorkbookJobDeps & { ai: AiClient; solver: Solver }, lease: string, name: string, inputs: ChildInputs): Promise<RunFrame> {
   let frame = await deps.runs.frame(run.id);
   if (!frame) {
-    if ((await deps.runs.pages(run.id)).length > 0 || (await deps.runs.attempts(run.id)).size > 0) {
-      throw new Refusal("This run was started before a run's plan was stored, so it cannot go on safely. Start a new run.");
+    if (run.resumes > 0 || (await deps.runs.pages(run.id)).length > 0 || (await deps.runs.attempts(run.id)).size > 0) {
+      throw new Refusal("This run has no stored plan, so it cannot resume safely. Start a new run.");
     }
     const key = CURRICULUM_KEYS[inputs.province];
     const curriculum = key ? curriculumFor(key) : null;
     if (!key || !curriculum) throw new Refusal(`There is no workbook curriculum for ${inputs.province} yet. Only BC has one.`);
+    const prepared = await deps.source.prepareProfile(run.childId);
+    if (!prepared.ok) throw new Refusal(`We couldn't build ${name}'s profile from the assessment. Try again, or check the admin profile page.`);
+    inputs = { ...inputs, profile: prepared.profile };
     const planned = planNextWorkbook({ curriculum, grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number });
     if (!planned.ok) throw new Refusal(`The plan could not be made: ${planned.reason}.`);
     const made: RunFrame = {

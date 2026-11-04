@@ -8,6 +8,7 @@ import { runWorkbookEditWith } from "@/lib/workbook-edit-deps";
 import { randomBytes, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
+import { workbookProfileBuilder } from "@/lib/child-profile-server";
 import { chromiumPrintEngine } from "@/lib/print-engine-chromium";
 import { workbookAi, type WorkbookAiOptions } from "@/lib/workbook-ai";
 import { workbookFakeAi, workbookFakeSolver } from "@/lib/workbook-ai-fake";
@@ -54,7 +55,7 @@ export async function runWorkbookJobWith(admin: SupabaseClient<Database>, runId:
     return await runWorkbookJob(runId, {
       runs: workbookRunStore(admin),
       runner: place.subscription ? "mac" : "server",
-      source: workbookJobSource(admin),
+      source: workbookJobSource(admin, workbookProfileBuilder(admin, env)),
       drafts: workbookDraftStore(admin),
       files: workbookFiles(admin),
       ai: fake ?? live!.ai,
