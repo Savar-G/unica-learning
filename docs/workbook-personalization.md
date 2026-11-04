@@ -30,8 +30,8 @@ How reliable each signal is:
 - **Parent** means the parent's answer on the learning card. It says what the parent thinks, not what the child did.
 - **Soft** means AI-written text. It is a hypothesis, never a fact.
 
-| # | Signal | Where it lives | Reliability | First customer (`71ce22a1…`) |
-|---|---|---|---|---|
+| # | Signal | Where it lives | Reliability | First customer (`71ce22a1…`) | Savar |
+|---|---|---|---|---|---|
 | S1 | School grade | `children.grade` → `ChildLearnerProfile.grade` | Fact | Grade 4 |
 | S2 | Working level, its certainty and confidence | `learner_profiles.profile.level` (`working`, `certainty`, `confidence`) | Clear or early sign, from about 42 answers | Working level 5, certainty clear, confidence normal |
 | S3 | At the test ceiling | `profile.level.atCeiling` | Fact: the test could not measure higher | `true` |
@@ -55,7 +55,7 @@ How reliable each signal is:
 | S21 | Report | `public.reports.model`: `howWeHelp` (code), `summary` (AI, #68), `work[].comment` (AI) | `howWeHelp` is a code fact; the rest is soft | `howWeHelp` "ahead". The summary says "did very well in every area". One work image with no comment. |
 | S22 | Test length and device | `reports.minutes`, `assessments.device` | Fact | 55 minutes, desktop, mouse |
 
-The first customer has strong signals: a clear working level above his grade, at the ceiling, and quick facts. He has no weak signals, no mistakes with a code and no events, and the learning card is not answered. His book must be visibly his own from S1 to S15 and S19 to S21. S17 and S18 fall back to today's behaviour unless the parent fills in the card first (open question Q5).
+The first customer has strong signals: a clear working level above his grade, at the ceiling, and quick facts. He has no weak signals, no mistakes with a code and no events, and the learning card is not answered. His book must be visibly his own from S1 to S15 and S19 to S21. S17 and S18 fall back to today's behaviour: Savar chose not to email the parent the card first (Q5).
 
 ## 2. Profile build
 
@@ -347,19 +347,19 @@ The view goes on the admin draft page (`/admin/workbooks/[id]`) and the run page
 - **Live check, read-only.** Preview plan on the live admin for child `71ce22a1…` shows U16 and the same trace as the fixture. Nothing is stored except the profile rows B1 writes when a real run starts.
 - **Integration**, per the round guide: full seeded U4 and U16 fake books, then the Ahead and Catch up personas at their levels. Then a real U16 sample with `--replay` for Savar, with its Why this book page.
 
-## 8. Open questions for Savar
+## 8. Savar's answers (2026-11-04)
 
-| # | Question | Recommendation |
-|---|---|---|
-| Q1 | A unit secure on only 1 to 3 test answers: teach it in the first book, or skip it to review? | **Teach it** (P5a). Skipping left the first customer's U16 book with one unit. Marked pages move him on fast. |
-| Q2 | An early-sign weak standard (for example 1 of 2) below the start: move the start down, as today, or keep the start and check and review it? | **Keep the start, check and review it** (P6). Only clearly weak (0 of 2 or worse) moves the start. |
-| Q3 | An above-grade start needs a clear working level, normal confidence, no likely help and no rushing. Agree? | **Yes** (P2). Otherwise start at the first level of the school grade with the stretch shift. |
-| Q4 | At the test ceiling, start at the working level (U16) and stretch, or start higher (U17)? | **U16 and stretch** (P7, section 4 item 2). Start higher only after the U16 level test. |
-| Q5 | The first customer's learning card is empty. Email the parent the card before his book, or make it without? | **Email first**, with a 2-day wait, then make it either way. It fills interests, styles, goal and time. |
-| Q6 | Weekly time: print an "Extra" chip on the Challenge and last practice blocks above 20 or 25 required minutes, or leave weekly time out of book 1? | **The Extra chip** (section 4, item 7). It keeps pages full and the rules intact. |
-| Q7 | The day limit: D-229 says under 30 minutes, the code and your note of 2026-11-04 say under 35. Which is binding? | **Under 35**, recorded as D-232, with D-229 updated |
-| Q8 | The cover sentence: no grades, no numbers, at most 30 words. OK with the first customer's draft? | **Yes**. It is true and specific without scores. |
-| Q9 | May the report's AI summary or the profile's AI plan change the book beyond tie-breaks? | **No.** Soft signals only break ties, and the view shows what they suggested. |
+| # | Question | Recommendation | Savar |
+|---|---|---|---|
+| Q1 | A unit secure on only 1 to 3 test answers: teach it in the first book, or skip it to review? | **Teach it** (P5a). Skipping left the first customer's U16 book with one unit. Marked pages move him on fast. | Accepted: teach it |
+| Q2 | An early-sign weak standard (for example 1 of 2) below the start: move the start down, as today, or keep the start and check and review it? | **Keep the start, check and review it** (P6). Only clearly weak (0 of 2 or worse) moves the start. | Accepted: keep the start, check and review |
+| Q3 | An above-grade start needs a clear working level, normal confidence, no likely help and no rushing. Agree? | **Yes** (P2). Otherwise start at the first level of the school grade with the stretch shift. | Accepted |
+| Q4 | At the test ceiling, start at the working level (U16) and stretch, or start higher (U17)? | **U16 and stretch** (P7, section 4 item 2). Start higher only after the U16 level test. | Accepted: U16 and stretch |
+| Q5 | The first customer's learning card is empty. Email the parent the card before his book, or make it without? | **Email first**, with a 2-day wait, then make it either way. It fills interests, styles, goal and time. | **No email.** Make the book from his test alone |
+| Q6 | Weekly time: print an "Extra" chip on the Challenge and last practice blocks above 20 or 25 required minutes, or leave weekly time out of book 1? | **The Extra chip** (section 4, item 7). It keeps pages full and the rules intact. | Accepted: the Extra chip |
+| Q7 | The day limit: D-229 says under 30 minutes, the code and your note of 2026-11-04 say under 35. Which is binding? | **Under 35**, recorded as D-232, with D-229 updated | Accepted: under 35 (D-232) |
+| Q8 | The cover sentence: no grades, no numbers, at most 30 words. OK with the first customer's draft? | **Yes**. It is true and specific without scores. | Accepted |
+| Q9 | May the report's AI summary or the profile's AI plan change the book beyond tie-breaks? | **No.** Soft signals only break ties, and the view shows what they suggested. | Accepted: tie-breaks only |
 
 ## Ticket split
 
