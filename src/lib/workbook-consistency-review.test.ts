@@ -112,6 +112,17 @@ it("retains the saved policy and examples through generation and editing",async(
   const kept=await reviseWorkbookPage(o.input,{...o.deps,ai:renumber},storyPage,{question:q.number,note:"Keep the numbers."});
   expect(numbers(kept.questions.find(x=>x.number===q.number)!.package!.text)).toBe(numbers(q.itemPlan!.item.text));
   expect(renumber.requests).toHaveLength(0);
+  // A manual edit of a story's words is refused (Codex at 09a095cd: "Mia" to "Ben", "How many crayons" to "How many
+  // boxes" saved with code's key).
+  const text = q.itemPlan!.item.text;
+  const who = /\b([A-Z][a-z]+)\b/.exec(text.replace(/^(?:A|An|The|How|What)\b/, ""))![1];
+  const thing = /How many ([a-z]+)/.exec(text)?.[1];
+  const swaps = [text.replace(new RegExp(`\\b${who}\\b`, "g"), who === "Ben" ? "Mia" : "Ben"), ...(thing ? [text.replace(`How many ${thing}`, "How many boxes")] : [])];
+  for (const swapped of swaps) {
+    expect(swapped).not.toBe(text);
+    await expect(reviseWorkbookPage(o.input, o.deps, storyPage, { question: q.number, note: "Manual edit.", items: { [q.number]: { ...q.itemPlan!.item, text: swapped } } }))
+      .rejects.toThrow("Stories print the generator's own wording. Change the numbers or regenerate the question instead.");
+  }
   const drill=draft.pages.find(p=>p.questions.some(q=>q.itemPlan?.source==="code"))!;
   const code=drill.questions.find(q=>q.itemPlan?.source==="code")!;
   const forbidden=fakeAiClient({answer:()=>{throw new Error("a code drill reached AI");}});

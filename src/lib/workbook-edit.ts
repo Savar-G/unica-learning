@@ -1,5 +1,6 @@
 import { editCalls, EditCallLimitError, type EditCallStore } from "@/lib/workbook-edit-calls";
 import type { Json } from "@/lib/database.types";
+import { workbookQuality } from "@/lib/workbook-quality";
 import type { AiClient } from "@/lib/ai-client";
 import type { GeneratedWorkbook, GenerateInput, GenerateDeps } from "@/lib/workbook-generator";
 import { reviseWorkbookPage, WriterPersistenceError } from "@/lib/workbook-generator";
@@ -97,7 +98,10 @@ export async function runWorkbookEdit(id: string, deps: EditJobDeps): Promise<"d
           note: group.map((c) => `${c.question === null ? "Whole page" : `Question ${c.question}`}: ${c.note}`).join("\n"),
           items: Object.fromEntries(group.filter((c) => c.item && c.question !== null).map((c) => [c.question!, c.item])),
         });
-        const candidate = { ...draft, pages: draft.pages.map((p) => p.number === number ? next : p) };
+        // The whole-book check of the candidate book, before it renders (Codex at 09a095cd): its quality is fresh, never the
+        // last revision's "ready".
+        const pagesNext = draft.pages.map((p) => p.number === number ? next : p);
+        const candidate = { ...draft, pages: pagesNext, quality: workbookQuality(pagesNext) };
         const rendered = await deps.renderPage(snapshot, candidate, number);
         images.set(number, rendered.page); draft = candidate; changed++;
         result = { number, page: next, image: rendered.page, solves };
@@ -107,6 +111,8 @@ export async function runWorkbookEdit(id: string, deps: EditJobDeps): Promise<"d
       catch { await deps.store.release(id, lease).catch(() => false); return "failed"; }
     }
     if (!changed) throw new Error("No comments could be applied. The workbook is unchanged.");
+    // (The revision saves the book check of the book it saves.)
+    draft = { ...draft, quality: workbookQuality(draft.pages) };
     const qs = draft.pages.flatMap((p) => p.questions);
     draft.counts = { pages: draft.pages.length, questions: qs.length, checked: qs.filter((q) => q.check.status === "checked").length,
       notChecked: qs.filter((q) => q.check.status === "not-checked").length, failed: qs.filter((q) => q.check.status === "failed").length,

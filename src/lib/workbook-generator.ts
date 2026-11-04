@@ -77,6 +77,7 @@ import { textRoom, slotMax } from "@/lib/workbook-template";
 import { checkWholeBook, pageMinimum, questionMinutes, typeKey, type BookQuality } from "@/lib/workbook-quality";
 import { extraPracticeRepeats, twoWaysCountsAsStory } from "@/lib/workbook-early-levels";
 import { approvedQuestionTypes, buildPlannedItem, planItem, itemExamples, itemNumber, ITEM_EXAMPLES, STORY_EXPLAIN, type ItemPlan } from "@/lib/workbook-item-plan";
+import { isNumberStory } from "@/lib/workbook-code-story";
 import { cardFrame, cardFrameProblem, cardNumbers, type CardFrameUse, largestNumber, operationStory, printedForm, sentenceFrameOf, stemOf, storyKind, storyFrame, taskIdentity, taskType, wordedTask } from "@/lib/workbook-task-identity";
 import { COMPACT_STORY_FRAMES } from "@/lib/workbook-story-bank";
 import { isTwoStep } from "@/lib/workbook-curriculum/house-templates";
@@ -3434,13 +3435,17 @@ export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDep
     if (!Object.hasOwn(manual, q.number)) { built.push(result!.built[aiWhich.indexOf(which[k])]); continue; }
     const raw = manual[q.number] as { text?: unknown; easier?: { text?: unknown } };
     if (input.itemPolicy === "approved-v1" && slot.contract?.source === "code" && raw.text !== slot.contract.item.text) throw new Error("Code writes this drill. Change its numbers through the approved builder.");
+    // A story prints the generator's own words, a manual edit too (Codex at 09a095cd: an edit saved "Ben" over code's "Mia").
+    const storyText = slot.contract?.source === "story" ? slot.contract.item.text : !slot.contract && q.codeText ? q.codeText : null;
+    if (typeof raw.text === "string" && (storyText ? raw.text !== storyText : isNumberStory(raw.text) && raw.text !== q.package?.text))
+      throw new Error("Stories print the generator's own wording. Change the numbers or regenerate the question instead.");
     const builder = input.itemPolicy === "approved-v1" && !slot.existing ? (raw: unknown, place: Parameters<typeof buildQuestion>[1]) => slot.contract ? buildPlannedItem(slot.contract, raw, place) : unapprovedBuild() : buildQuestion;
     const b = builder(raw, { id: q.package?.id ?? `${input.workbookId}:p${page.number}q${q.number}`,
       workbookId: input.workbookId, page: page.number, question: q.number, level: input.plan.level,
       skills: slot.contract ? [...new Set([slot.contract.item.skill, ...slot.part.skills])] : slot.part.skills, signs: levelSigns(input.curriculum, input.plan.level), story: !!slot.place && STORY_CHECK_PLACES.has(slot.place) });
     if (b.package && typeof raw.text === "string") {
       b.package.text = raw.text;
-      if (input.itemPolicy !== "approved-v1" || slot.contract?.source !== "code") b.package.textSource = "human";
+      if (input.itemPolicy !== "approved-v1" || slot.contract?.source !== "code" && slot.contract?.source !== "story" && !q.codeText) b.package.textSource = "human";
       if (b.package.easierExample && typeof raw.easier?.text === "string") b.package.easierExample.text = raw.easier.text;
       const codeCheck = checkQuestionPackage(b.package);
       if (codeCheck.status !== "checked") throw new Error("The code cannot derive and check every answer from these fields.");
