@@ -18,6 +18,8 @@ import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace } from "@/lib/maya-trace";
 import { RECONNECT_GRACE_MS, voiceProviders } from "@/lib/maya-voice";
 import type { QuestionPackage } from "@/lib/question-package";
+import { mayaWorkbookFixture } from "@/lib/maya-workbook-fixture";
+import { selectWorkbookQuestion } from "@/lib/maya-workbook-question";
 import { VoiceCallRun, voiceSession, type CallUpdate, type Timers } from "./agent";
 import { FakeTTS } from "./fake-providers";
 import { makeProviders } from "./providers";
@@ -122,7 +124,7 @@ afterEach(async () => {
   cleanup = null;
 });
 
-async function voiceCall(options: { speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean } = {}) {
+async function voiceCall(options: { speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean; workbookReference?: string } = {}) {
   const clock = handTimers();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -143,7 +145,10 @@ async function voiceCall(options: { speech?: ProbeSTT; speaker?: Speaker; seed?:
     seed: () => options.seed ?? 42,
   };
   const calls = mayaCalls(seams);
-  const started = await calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: "admin-1" });
+  const fixture = options.workbookReference ? await mayaWorkbookFixture() : null;
+  const selected = fixture ? await selectWorkbookQuestion({ childId: fixture.ids.child, workbookId: fixture.ids.workbook, reference: options.workbookReference }, fixture.reader) : null;
+  if (selected && !selected.ok) throw Error(selected.error);
+  const started = await calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: selected?.ok ? selected.package : PKG, confirmWorkbook: !!selected?.ok, startedBy: "admin-1" });
   if (!started.ok) throw new Error(started.error);
   const config = voiceProviders({});
   if (!config.ok) throw new Error("fake providers");
@@ -182,6 +187,18 @@ async function voiceCall(options: { speech?: ProbeSTT; speaker?: Speaker; seed?:
 }
 
 describe("a voice call through LiveKit with the fake providers", () => {
+  it("confirms a spoken workbook reference before teaching through fake audio and board transport", async () => {
+    const c = await voiceCall({ workbookReference: "page four, number three", board: true });
+    await c.run.childJoined();
+    await waitFor(() => c.said().join(" ").includes("27 + 39."), "the workbook confirmation");
+    expect(c.said().join(" ")).toBe("Hi, I'm Maya, an AI helper. Let's do page 4, number 3: 27 + 39.");
+    expect(c.store.rows()[0].question).toMatchObject({ source: "workbook", page: 4, question: 3 });
+    const reply = await c.childSays("I don't know how to start.");
+    expect(reply.length).toBeGreaterThan(0);
+    await c.call.settled();
+    expect(c.store.rows()[0].live!.text.session.confirmWorkbook).toBe(true);
+    expect(c.said().join(" ").indexOf("Let's do page 4, number 3")).toBeLessThan(c.said().join(" ").lastIndexOf(reply));
+  });
   it("opens when the child joins, carries each spoken turn to Maya and her words back, and stores the call", async () => {
     const c = await voiceCall();
     await c.clock.advance(2);

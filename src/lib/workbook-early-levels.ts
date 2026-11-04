@@ -1,6 +1,6 @@
 /**
- * Provisional calls for the young levels, U4 to U9 (#482 review at db3b1a0, 2026-11-03), made while Savar was away and
- * awaiting his confirmation. Each call lives here only, so it changes in one place.
+ * The young levels' layout and repeat rules, U4 to U9 (D-222, Savar confirmed 2026-11-03; #482 review at db3b1a0).
+ * Each rule lives here only, so it changes in one place.
  */
 
 /** The levels the calls cover: U4 to U9 (U1 to U3 are parent-led and keep their own rules). */
@@ -14,7 +14,8 @@ export const twoWaysOnStoriesPage = (level: number) => isYoungLevel(level);
 
 /**
  * A new idea's practice questions beside its worked example and Spot the error: 2 at U4 to U9 (young children's larger
- * boxes), 3 from U10. A page that cannot hold its floor fails and is reported.
+ * boxes), 3 from U10 (from U19 Cedric's upper band takes three quarters: 2). A page that cannot hold its floor fails
+ * and is reported.
  */
 export const newIdeaFloor = (level: number) => (isYoungLevel(level) ? 2 : 3);
 

@@ -75,7 +75,7 @@ const MIX_MARK = "\u2064";
 const UNREAD_MARK = "\u2063";
 
 /** Every minus sign as "-": the true minus and the dashes speech-to-text may write. */
-const plainMinus = (text: string) => text.replace(/[\u2212\u2012\u2013\u2014\uFE63\uFF0D]/g, "-");
+export const plainMinus = (text: string) => text.replace(/[\u2212\u2012\u2013\u2014\uFE63\uFF0D]/g, "-");
 
 export interface NumbersRead {
   values: AnswerValue[];
@@ -98,7 +98,8 @@ export interface NumbersRead {
  * "negative" before a number makes it negative; "minus" or "-" after a number in the same sentence is a subtraction.
  * A sentence end or a new line (between two turns) ends a number, so "27. -66." is 27 and -66.
  */
-export function readNumbers(text: string): NumbersRead {
+export function readNumbers(text: string, options?: ReadOptions): NumbersRead {
+  text = prepared(text, options);
   if (text.includes(UNREAD_MARK)) return { values: [], unreadable: true, lastInOperation: false, notAnswer: [], operand: [] };
   // A hyphen between words joins a number ("sixty-six"); elsewhere it is a minus sign.
   const tokens = plainMinus(text).toLowerCase().replace(/\b(mm|cm|dm|km|m)²(?![a-z0-9])/g, "$1").replace(/\b(?:square|squared)\s+(?=(?:(?:milli|centi|deci|kilo)?met(?:re|er)s?|mm|cm|dm|km|m)\b)/g, "").replace(/([a-z])-(?=[a-z])/g, "$1 ").match(TOKEN) ?? [];
@@ -300,10 +301,12 @@ export const valuesIn = (text: string, options?: ReadOptions): AnswerValue[] => 
 /** How a turn is read: `fractions` reads the exact spoken fraction forms, in a call about a fraction question. */
 export interface ReadOptions {
   fractions?: boolean;
+  /** Scope reads complete operands too. Answer reading still rejects unfinished fraction calculations. */
+  operands?: boolean;
 }
 
 /** The text as the readers take it: in a fraction call, with its spoken fractions written (writtenFractions). */
-const prepared = (text: string, options?: ReadOptions) => (options?.fractions ? writtenFractions(text).replace(MIXED, `$1${MIX_MARK}$2/$3`) : text);
+const prepared = (text: string, options?: ReadOptions) => (options?.fractions ? writtenFractions(text, options).replace(MIXED, `$1${MIX_MARK}$2/$3`) : text);
 
 /** The denominator words code reads, one word each, singular and plural: "half" and "halves" are 2. */
 const DENOMINATORS = new Map<string, { value: number; plural: boolean }>();
@@ -334,7 +337,7 @@ const AFTER_ONE = /^(?:[.,!?;:\n+=×÷-]|of|and|or|is|plus|minus|so|equals|then|
  * "twenty-fourths" (two words), "three quarters of 8" (an operation), "a third time". Fail-closed: code writes the forms it
  * reads, and never guesses the rest (D-199).
  */
-export function writtenFractions(text: string): string {
+export function writtenFractions(text: string, options?: ReadOptions): string {
   const low = plainMinus(text).toLowerCase().replace(/([a-z])-(?=[a-z])/g, "$1 ");
   // A lower-case conversion that changes offsets cannot be parsed safely.
   if (low.length !== text.length) return UNREAD_MARK;
@@ -376,7 +379,7 @@ export function writtenFractions(text: string): string {
     const following = k + 1 < words.length ? low.slice(words[k + 1].at) : "";
     const explanation = EXPLANATION.exec(following);
     const explains = explanation !== null && /^[’']?$/.test(following.slice(0, explanation.index));
-    if (den && !den.plural && !(k + 1 >= words.length || AFTER_ONE.test(words[k + 1].t) || explains)) continue;
+    if (den && !den.plural && !(k + 1 >= words.length || AFTER_ONE.test(words[k + 1].t) || explains || (options?.operands && numeric(k + 1)))) continue;
     if (!n || !d || !adjacent(n.to, k) || (bar && !adjacent(k, d.from)) || d.value === 0 ||
         (den && (n.value === 1) === den.plural)) {
       invalid(k);
@@ -403,8 +406,8 @@ export function writtenFractions(text: string): string {
     const joins = (i: number) => /^(?:and|point|minus|negative|dash|over|\/|[+\-])$/.test(words[i]?.t ?? "") || numeric(i);
     const before = from - 1;
     const after = to + 1;
-    const attachedBefore = before >= 0 && adjacent(before, from) && joins(before);
-    const attachedAfter = after < words.length && adjacent(to, after) && (numeric(after) || /^(?:and|over|\/)$/.test(words[after].t) || DENOMINATORS.has(words[after].t));
+    const attachedBefore = before >= 0 && adjacent(before, from) && joins(before) && !(options?.operands && /^[+\-]$/.test(words[before].t) && before > 0);
+    const attachedAfter = after < words.length && adjacent(to, after) && ((numeric(after) && !options?.operands) || /^(?:and|over|\/)$/.test(words[after].t) || DENOMINATORS.has(words[after].t));
     if (attachedBefore || attachedAfter) invalid(k);
     else spans.push({ from, to, text: value, anchor: k });
   }
@@ -415,9 +418,11 @@ export function writtenFractions(text: string): string {
   const corrections = correctionRuns(low, (at) => fractionStarts.has(at)).filter((run) => run.clean);
   const expressionBoundary = (at: number) => {
     const word = words[at];
-    return /^[.!?;:\n]$/.test(word.t) || RESULT.test(word.t) || OPERATION.test(word.t) || EXPLANATION.test(word.t) ||
+    return (options?.operands && /^(?:minus|-)$/i.test(word.t)) || /^[.!?;:\n]$/.test(word.t) || RESULT.test(word.t) || OPERATION.test(word.t) || EXPLANATION.test(word.t) ||
       /^(?:so|then)$/.test(word.t) || corrections.some((run) => word.at >= run.index && word.end <= run.end);
   };
+  const recognizedNumbers = new Set(spans.filter(span => span.text !== UNREAD_MARK).flatMap(span =>
+    Array.from({ length: span.to - span.from + 1 }, (_, i) => span.from + i)));
   for (const span of spans) {
     if (span.text === UNREAD_MARK) continue;
     let expressionFrom = span.from;
@@ -427,7 +432,7 @@ export function writtenFractions(text: string): string {
     // Every numeric fragment in this expression must belong to the recognized
     // integer/fraction/mixed form. Never retain only the fraction of an unsupported mixed form.
     const unconsumedNumber = words.slice(expressionFrom, expressionTo + 1)
-      .some((_word, i) => { const at = expressionFrom + i; return (at < span.from || at > span.to) && numeric(at); });
+      .some((_word, i) => { const at = expressionFrom + i; return (at < span.from || at > span.to) && numeric(at) && !(options?.operands && recognizedNumbers.has(at)); });
     // Signs and "of" belong to this expression, not arithmetic in its explanation or an earlier corrected answer.
     const expression = words.slice(expressionFrom, expressionTo + 1);
     const ofPhrase = expression.some((w) => w.t === "of");
@@ -437,7 +442,10 @@ export function writtenFractions(text: string): string {
     // after a result or explanation word ("is", "because") does not touch it.
     const operand = [expressionFrom - 1, expressionTo + 1]
       .some((at) => at >= 0 && at < words.length && OPERATION.test(words[at].t));
-    if (unconsumedNumber || ofPhrase || signed || operand) {
+    const signAt = expressionFrom - 1;
+    const unary = options?.operands && signAt >= 0 && /^(?:minus|[+\-])$/.test(words[signAt].t) &&
+      readNumbers(low.slice(0, words[signAt].at)).values.length === 0;
+    if (unconsumedNumber || ofPhrase || signed || unary || (!options?.operands && operand)) {
       span.from = span.to = span.anchor;
       span.text = UNREAD_MARK;
     }
@@ -783,3 +791,40 @@ export function takenBack(said: string, options?: ReadOptions): { kept: AnswerVa
 
 /** The text offers numbers as a choice ("is it 66 or 56?"): none of them is the child's answer yet. */
 export const offersChoice = (text: string) => text.split(/\bor\b/i).filter((p) => valuesIn(p).length > 0).length > 1;
+
+/** A complete calculation in a plain request. This reuses the D-199 tokenizer and value reader. Other wording,
+ * claims, choices, metadata, partial calculations and unsupported number forms are uncertain, not outside work. */
+export function completeExpression(said: string): { operation: "add" | "subtract" | "multiply" | "divide"; operands: AnswerValue[] } | null {
+  if (readAnswer(said, { fractions: true }).choice) return null;
+  let text = plainMinus(said).toLowerCase().trim().replace(/[.!?]+$/, "");
+  text = text.replace(/^(?:what is|what's|how much is|calculate|solve|explain|can you (?:explain|solve|calculate)|help me (?:with|solve))\s+/, "");
+  const verb = /^(add|subtract|multiply|divide)\s+/.exec(text);
+  if (verb) text = text.slice(verb[0].length);
+  // A proposed result does not become another operand. A choice was already treated as uncertain above.
+  const result = /,?\s+\b(?:is it|is|equals?|makes?)\b|=/.exec(text);
+  if (result) text = text.slice(0, result.index).trim();
+  text = prepared(text.replace(/multiplied by/g, "times").replace(/divided by/g, "÷").replace(/take away/g, "minus"), { fractions: true, operands: true });
+  const matches = [...text.matchAll(TOKEN)];
+  const operators = new Map<string, "add" | "subtract" | "multiply" | "divide">(Object.entries({
+    "+": "add", plus: "add", "-": "subtract", minus: "subtract", less: "subtract",
+    "×": "multiply", "*": "multiply", x: "multiply", times: "multiply", "÷": "divide",
+  } as const));
+  const ops = new Set<string>(verb ? [verb[1]] : []);
+  let end = 0, previous = "", operationCount = 0;
+  for (const m of matches) {
+    if (!/^[\s,]*$/.test(text.slice(end, m.index))) return null;
+    const token = m[0];
+    const op = operators.get(token);
+    if (op && (!["-", "minus", "+"].includes(token) || (previous && !operators.has(previous)))) {
+      ops.add(op); operationCount++;
+    }
+    if (!op && !/^[\d.]/.test(token) && kindOf(token) === null && !["and", "point", "negative", "/", MIX_MARK].includes(token)) return null;
+    previous = token; end = m.index! + token.length;
+  }
+  if (!/^[\s,]*$/.test(text.slice(end)) || ops.size !== 1 || operators.has(previous) ||
+      ["and", "point", "negative", "/", MIX_MARK].includes(previous)) return null;
+  const read = readNumbers(text);
+  if (read.unreadable || read.values.length < 2 || (!verb &&
+      (operationCount !== read.values.length - 1 || !read.operand.slice(1).every(Boolean)))) return null;
+  return { operation: [...ops][0] as "add" | "subtract" | "multiply" | "divide", operands: read.values };
+}

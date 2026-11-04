@@ -214,7 +214,7 @@ export interface CallSeams {
   history: WordingHistoryStore;
   events: LearningEvents;
   /** Rebuilds the child's profile; true when it was built. Never throws. */
-  rebuild(childId: string): Promise<boolean>;
+  rebuild(childId: string, options?: { factsOnly: boolean }): Promise<boolean>;
   /**
    * The model to use: `null` asks for the model a new call uses now (the real one when the server has its key, else
    * the fake); an id asks for that model again, or null when it is no longer available.
@@ -302,6 +302,7 @@ export interface CallView {
   versions: CallRecord["versions"];
   transcript: TranscriptLine[];
   /** D-197: whether free talk was on, the review's model, and every piece of Maya's own words with both checks. */
+  scopeRefusals?: import("@/lib/maya").ScopeRefusal[];
   freeTalk: { on: boolean; reviewer: string | null; lines: FreeTalkLine[] };
   /** Maya's board batches, in order. */
   batches: Batch[];
@@ -322,6 +323,7 @@ export interface CallView {
 
 /** A new call. */
 export interface StartInput {
+  confirmWorkbook?: boolean;
   kind: CallKind;
   parentId: string;
   childId: string;
@@ -484,6 +486,7 @@ export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertStat
     versions: record.versions,
     transcript: transcriptOf(trace),
     freeTalk: freeTalkOf(trace),
+    scopeRefusals: structuredClone(trace.scopeRefusals ?? []),
     batches: observed ? history.events.flatMap(e => e.kind === "maya" ? [{ transactionId: e.batchId, commands: e.commands }] : []) : batchesOf(trace.board),
     boardHistory: history,
     technicalNotes: trace.turns.flatMap((t) => t.kind === "technical" ? [t.detail] : []),
@@ -577,9 +580,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   }
 
   /** A call's text session. Admin test calls have free talk on (D-197), with the model's review; a resumed call keeps its flag. */
-  function textSession(record: Pick<CallRecord, "id"> & { kind?: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number): TextSession {
+  function textSession(record: Pick<CallRecord, "id"> & { kind?: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean): TextSession {
     return createTextSession({
-      callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs, grade,
+      callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs, grade, confirmWorkbook,
       freeTalk: record.kind === "chat" ? false : freeTalkFor("admin_test"), reviewer: seams.reviewer?.(model.id) ?? null,
     });
   }
@@ -637,7 +640,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         current = { ...current, ...change, revision: current.revision + 1 };
       }
     }
-    if (current.learningEventId && !current.live && !current.profileRebuiltAt && (await seams.rebuild(current.childId))) {
+    const rebuilt = () => current.kind === "admin_test" && current.model === FAKE_MODEL_ID && current.question.source === "workbook"
+      ? seams.rebuild(current.childId, { factsOnly: true }) : seams.rebuild(current.childId);
+    if (current.learningEventId && !current.live && !current.profileRebuiltAt && (await rebuilt())) {
       const at = iso(seams.clock());
       if (await store.update(current.id, current.revision, { profileRebuiltAt: at })) current = { ...current, profileRebuiltAt: at, revision: current.revision + 1 };
     }
@@ -742,7 +747,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     const model = seams.model(null);
     if (!model) return { ok: false, error: "model_unavailable" };
     const id = input.id ?? seams.newId();
-    const session = textSession({ id, kind: input.kind }, pkg, model, mode === "voice" ? null : input.childName, undefined, seams.seed(), await readHistory(input.childId), input.limitMs, input.grade);
+    const session = textSession({ id, kind: input.kind }, pkg, model, mode === "voice" ? null : input.childName, undefined, seams.seed(), await readHistory(input.childId), input.limitMs, input.grade, input.confirmWorkbook);
     const empty = session.trace();
     const record: CallRecord = {
       id,

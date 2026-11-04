@@ -4375,6 +4375,14 @@ export type Database = {
             }
             Returns: number
           }
+      parent_maya_note_sessions: {
+        Args: { p_calls: string[] }
+        Returns: {
+          call_id: string
+          channel: string
+          started_at: string
+        }[]
+      }
       parent_reads_workbook: { Args: { p_workbook: string }; Returns: boolean }
       parent_reads_workbook_folder: {
         Args: { p_folder: string }

@@ -3,10 +3,10 @@ import type { DraftPage, MeasuredElement } from "./workbook-render";
 import type { GeneratedPage } from "./workbook-generator";
 import { STORY_EXPLAIN } from "./workbook-item-plan";
 import { likelihoodChoicesProblem, likelihoodWord } from "./workbook-likelihood";
-import { extraPracticeRepeats, newIdeaFloor, twoWaysCountsAsStory } from "./workbook-provisional";
+import { extraPracticeRepeats, newIdeaFloor, twoWaysCountsAsStory } from "./workbook-early-levels";
 import { dayTimeProblem, estimatedDayMinutes } from "./workbook-feedback-check";
 import { printedNumbers } from "./workbook-book";
-import { storyFrame, wordedTask, taskType, reasoningSteps, taskIdentity, printedForm, sentenceFrameOf, stemOf, largestNumber } from "./workbook-task-identity";
+import { storyFrame, wordedTask, taskType, reasoningSteps, taskIdentity, printedForm, sentenceFrameOf, stemOf, largestNumber, storyKind } from "./workbook-task-identity";
 import { dayDifficulty } from "./workbook-plan";
 
 export interface BookIssue { page: number; kind: "repeat" | "progress" | "variety" | "time" | "coverage" | "challenge" | "step" | "range"; reason: string }
@@ -18,7 +18,7 @@ export interface BookQuality {
    */
   steps?: { day: number; average: number }[];
   sources?: { template: number; handBuilt: number; existing: number; total: number };
-  /** Extra practice questions that ask a task of the book once more (the provisional U4 to U9 rule). */
+  /** Extra practice questions that ask a task of the book once more (the U4 to U9 rule, D-222). */
   extraRepeats?: number;
   failedRate: number;
   dropped: number;
@@ -55,14 +55,18 @@ export function typeKey(p: Pick<GeneratedPage, "type">, q: Pick<GeneratedPage["q
 /**
  * A page type's fewest practice and review items (Cedric's section 8 table; about 25% fewer from U19): capacity
  * plans fewer items than this only by reporting the omission, and the book check fails a page below it. (U4 to U9: a
- * new idea's floor is 2, a provisional call in workbook-provisional.ts.)
+ * new idea's floor is 2, D-222, workbook-early-levels.ts.)
  */
 export function pageMinimum(type: string, level: number, extra: boolean): number {
   // The adopted counts (Cedric's section 8, #482 review at db3b1a0): 8 to 10 practice questions on a practice or review
   // page, a new idea's 3 to 5 beside its Spot the error. Spot the error and Solve it two ways do not count toward them.
   // (A review page that also carries a Mixed set and a Challenge, 6 pages a day, has no adopted count: its Mixed set's 4.)
-  const n = extra || ["practice", "practice-2", "remember-these"].includes(type) ? 8 : type === "remember-these-mixed-set" ? 4
-    : type === "friday-5" ? 9 : type === "new-idea" ? newIdeaFloor(level) : type === "word-problems" || type === "challenge" ? 3 : type === "math-in-the-world" ? 2 : type === "show-what-you-know" ? 4 : 1;
+  // Every day page kind has its count (Codex at 47c5fd78); a warm-up page's is its one In your head question.
+  const FLOORS: Record<string, number> = { practice: 8, "practice-2": 8, "remember-these": 8, "remember-these-mixed-set": 4, "friday-5": 9,
+    "word-problems": 3, challenge: 3, "math-in-the-world": 2, "show-what-you-know": 4, "unit-b": 4, "level-test": 4, "mini-test": 4,
+    "already-know-it": 4, "warm-up": 1 };
+  const n = extra ? 8 : type === "new-idea" ? newIdeaFloor(level) : FLOORS[type] ?? 1;
+  // From U19 three quarters: Cedric's upper band (a new idea's 3 becomes 2 there, as his table has it; Savar, 2026-11-03).
   return level >= 19 ? Math.max(1, Math.round(n * .75)) : n;
 }
 
@@ -78,9 +82,27 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
   const types = new Map<string, number>();
   const all = pages.flatMap(p => p.questions).filter(q => q.package && q.place !== "warm-up");
   for (const p of pages) {
+    // A Number stories page mixes its kinds of story (the U4 review: three "gets 2 more"): two stories or more, two kinds.
+    if (p.type === "word-problems") {
+      const stories = p.questions.filter(q => q.package && ["word-problems", "solve-it-two-ways"].includes(q.place ?? "")).map(q => storyKind(q.package!.text)).filter(Boolean);
+      if (stories.length >= 2 && new Set(stories).size < 2) issues.push({ page: p.number, kind: "variety", reason: `the stories page tells one kind of story (${stories[0]}); it needs at least two` });
+    }
+    // A practice page practises its own step: at least half its practice questions (Codex at 47c5fd78: U16's Day 4
+    // Practice 2 printed 13 review questions and 1 on "Place value to millions").
+    if (p.content?.kind === "day" && p.content.level >= 4 && ["practice", "practice-2"].includes(p.type) && !p.content.extraPractice && p.expected?.length) {
+      const practice = p.questions.filter(q => q.package && q.check.status !== "failed" && !NOT_COUNTED.has(q.place ?? "") && q.place !== "remember-these");
+      const ownStep = (q: GeneratedPage["questions"][number]) => { const first = p.expected?.find(e => e.slot === q.slot)?.steps?.[0]; const t = q.itemPlan?.template; return !first || !t || first === `${t.skill}#${t.step}`; };
+      const own = practice.filter(ownStep).length;
+      // (Half, or 3 for a step with few printable templates.)
+      const need = Math.min(3, Math.ceil(practice.length / 2));
+      // (From U10: at U4 to U9 a small step can run out of new tasks late in the book, D-222, and its page prints its
+      // review under "Remember these".)
+      if (p.content.level >= 10 && practice.length >= 4 && own < need) issues.push({ page: p.number, kind: "step", reason: `the page practises its own step in ${own} of ${practice.length} questions; it needs ${need}` });
+    }
     // A step template page prints its type's adopted count of practice questions (Cedric's section 8); at U4 to U9 a
-    // new idea's is 2, and two ways counts as a story on the Number stories page (provisional, workbook-provisional.ts).
-    if (p.content?.kind === "day" && p.content.consistentLayout && p.questions.some(q => q.itemPlan?.template)) {
+    // new idea's is 2, and two ways counts as a story on the Number stories page (D-222, workbook-early-levels.ts).
+    // (Every page kind from U4, whatever wrote its questions: Codex at 47c5fd78 found a hand-built page skipped.)
+    if (p.content?.kind === "day" && p.content.consistentLayout && p.content.level >= 4) {
       const level = p.content.level;
       const counted = p.questions.filter(q => q.package && q.check.status !== "failed" && (!NOT_COUNTED.has(q.place ?? "") || q.place === "solve-it-two-ways" && twoWaysCountsAsStory(level, p.type))).length;
       const floor = pageMinimum(p.type, level, !!p.content.extraPractice);
@@ -147,13 +169,14 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     // Show what you know asks each step's hardest version: never an easy template of a step that has harder ones.
     for (const q of printed) {
       const t = q.itemPlan?.template;
-      if (q.place === "show-what-you-know" && t && t.difficulty === "easy" && t.hardest === false) issues.push({ page: p.number, kind: "progress", reason: `Show what you know question ${q.number} is an easy question of its step; this page asks each step's hardest` });
+      // (A step of this book's level: a late card reviewing an earlier level takes what is left of it.)
+      if (q.place === "show-what-you-know" && t && t.difficulty === "easy" && t.hardest === false && Math.floor(t.rank / 10000) === (q.package!.level ?? 0)) issues.push({ page: p.number, kind: "progress", reason: `Show what you know question ${q.number} is an easy question of its step; this page asks each step's hardest` });
     }
     // A stem with no person in it ("In N, which digit is in the thousands place?") twice a page at most (the U16 review).
     const pageStems = new Map<string, number>();
     const pageTemplates = new Map<string, number>();
     for (const q of printed) {
-      if (q.place === "how-do-you-know") continue;
+      if (q.place === "how-do-you-know" || q.place === "spot-the-error" || q.place === "solve-it-two-ways") continue;
       // A template is one stem too (outside the Challenge, which asks each of its few once).
       const t = q.itemPlan?.template;
       if (t && q.place !== "challenge") {
@@ -197,7 +220,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     const key = taskIdentity(pkg);
     const at = seen.get(key) ?? [];
     const limit = 1;
-    // (Provisional, U4 to U9: an extra practice page may ask a task of the book once more, 40 pages on.)
+    // (U4 to U9, D-222: an extra practice page may ask a task of the book once more, 40 pages on.)
     const spaced = at.length === 1 && p.day === null && extraPracticeRepeats(pkg.level, true, at[0], p.number);
     if (spaced) extraRepeats++;
     if (at.includes(p.number) || at.length >= limit && !spaced) issues.push({ page: p.number, kind: "repeat", reason: `question ${q.number} repeats pages ${at.join(", ")} (limit ${limit})` });
@@ -205,6 +228,16 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
   }
   for (const day of [...new Set(pages.flatMap(p => p.day === null ? [] : [p.day]))].sort((a, b) => a - b)) {
     const ofDay = pages.filter(p => p.day === day);
+    // A worked example shows its method: a line after the question that is not its answer alone (Codex at db3b1a0 and
+    // 47c5fd78: "Answer: 6 000" under "How it works" teaches nothing).
+    for (const p of ofDay) if (p.content?.kind === "day" && p.content.level >= 4) for (const b of p.content.blocks.filter(b => ["worked-example", "watch-one"].includes(b.slot))) {
+      // (A panel's explanation, the likelihood words' meanings, is its method too; a Watch out line is not.)
+      const lines = [...(b.methods ?? []).flatMap(m => m.lines), ...(b.lines ?? []), ...(b.explain ? [b.explain] : [])].filter(l => !/^Watch out:/.test(l));
+      if (!lines.length) continue;
+      const asked = new Set((p.panelExamples ?? []).flatMap(e => e ? [e.text] : []));
+      const method = lines.some((l, k) => k > 0 && !asked.has(l) && !/^Answer:/.test(l) && (l.replace(/\[[^\]]*\]/g, "").match(/[a-z]{2,}/gi) ?? []).length >= 2);
+      if (!method) issues.push({ page: p.number, kind: "coverage", reason: `the worked example shows its answer without a method ("${lines[0].slice(0, 40)}")` });
+    }
     // A worked example and a Watch out line once a day (the real U4 sample: one mistake on three pages of Day 1).
     const panelSeen = new Map<string, number>();
     for (const p of ofDay) if (p.content?.kind === "day") for (const b of p.content.blocks.filter(b => ["worked-example", "watch-one", "reminder"].includes(b.slot))) {
@@ -258,7 +291,9 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       // (easy, medium, hard), then the work (a computed answer above a circled choice), then on one template the larger
       // numbers. A context sentence or a larger unrelated number is no proof of more work.
       const level = (o: typeof q) => ["easy", "medium", "hard"].indexOf(o.itemPlan!.template!.difficulty);
-      const work = (o: typeof q) => o.itemPlan!.template!.kind === "choice" ? 0 : 1;
+      // (A circled choice, then a number to write, then a story to work out: "Which is more: 7 or 10?" asks less than
+      // "Leah has 9 shells and gets 1 more".)
+      const work = (o: typeof q) => o.itemPlan!.template!.kind === "choice" ? 0 : o.itemPlan!.template!.kind === "story" ? 2 : 1;
       const size = (o: typeof q) => Math.max(0, ...[o.package?.text ?? "", o.itemPlan!.template!.answer].flatMap(x => x.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number));
       const same = (a: typeof q, b: typeof q) => a.itemPlan!.template!.skill === b.itemPlan!.template!.skill && a.itemPlan!.template!.step === b.itemPlan!.template!.step && a.itemPlan!.template!.index === b.itemPlan!.template!.index;
       const above = (a: typeof q, b: typeof q) => level(a) !== level(b) ? level(a) > level(b) : work(a) !== work(b) ? work(a) > work(b) : same(a, b) && size(a) > size(b);

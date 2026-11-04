@@ -40,7 +40,9 @@ public curriculum page `/curriculum`.
 | U19 to U24 | Upper | 6 | Child-led | about 30 min | 40 to 45 min |
 | U25 to U30 | Upper | 6 | Child-led | about 30 min | 45 to 50 min |
 
-  These are planning estimates. Issue #479 caps generated days at 30 minutes. Real children have not been timed.
+  These are planning estimates. Issue #479 caps generated days at 30 minutes; a generated day is about 30 minutes, and the
+  How it works page says "about 30 minutes" from the book's own estimate (D-225, Savar confirmed 2026-11-03). Real
+  children have not been timed.
 - **Size of a book:** at 8 a day, cover + plan + 80 day pages = 82, padded to **84 (the maximum)**; at 6 a
   day, 62 padded to 64.
 - **Print and binding (D-191):** US Letter, colour, **saddle stitch**; blank pages go **at the end**.
@@ -275,7 +277,7 @@ practice 2, word problems, unit B, remember these + mixed set, challenge).
 | Cover parent line | Log (Oct 28): dropped | Skeleton: one sentence for the parent |
 | Plan page tick boxes | Samples: none | Skeleton: a tick box per day |
 | Writing line spacing | Notes and log: 34 px apart | Skeleton: at least 36 px below the prompt |
-| Challenge count | Samples: 4 cards on page 8 | 3 a day (Cedric's section 8, adopted; #482 review, 2026-11-03), was 1 to 2 (skeleton) |
+| Challenge count | Samples: 4 cards on page 8 | 3 a day (D-224, Savar confirmed 2026-11-03; Cedric's section 8), was 1 to 2 (skeleton) |
 | Mixed set wording | Log: "Operation:" left, "Answer" right | Skeleton and samples: "1 Tick the operation", "2 Write the answer" |
 | "Mum" | Samples | "Mom" |
 
@@ -284,7 +286,7 @@ practice 2, word problems, unit B, remember these + mixed set, challenge).
 1. **Early days (default set, Savar to review in the generated books):** the skeleton starts the warm-up at U8 and the
    Mixed set at U10. Below U8, page 1 is a "Remember these?" picture review; below U10, page 7 is "Remember these?" plus
    one-step picture stories.
-2. **Challenge (decided):** 3 challenge problems a day, all on the hardest step reached that day (Cedric's section 8 says 3 to 4; adopted as written, #482 review 2026-11-03). It replaces the skeleton's 1 to 2.
+2. **Challenge (decided, D-224):** 3 challenge problems a day, all harder than that day's practice, starting from the hardest step reached that day (Cedric's section 8 says 3 to 4; adopted as written, #482 review 2026-11-03). It replaces the skeleton's 1 to 2.
 3. **Parent-led days (U1 to U3, kept; Savar 2026-10-30):** no sample shows one. The skeleton's rules: icon instructions plus a short
    line, answers by circling, matching, colouring, drawing a line or writing one numeral, 6 to 10 items a page, large
    boxes.

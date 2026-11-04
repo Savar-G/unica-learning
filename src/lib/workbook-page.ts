@@ -53,6 +53,8 @@ export interface Block {
   items: number[];
   /** A panel or row label: "FACTOR PAIRS OF 24", "TWO DIGITS". */
   label?: string;
+  /** The first question of the block that reviews an earlier step: from it on, the block prints under "Remember these". */
+  reviewFrom?: number;
   /** A line beside the slot's chip: "Do as many as you can.", "Tick + or −, then write the answer.". */
   note?: string;
   /** Worked lines: Watch one, a reminder, the wrong work of Spot the error. */
@@ -86,6 +88,8 @@ export interface DayContent {
   fillingComplete?: boolean;
   /** Filling stopped at the day's time limit: the page is at its maximum, and its gaps may spread. */
   timeLimited?: boolean;
+  /** No further question could be added: the page's rows grow to fill it. */
+  atMaximum?: boolean;
   /** Extra row spacing, capped at 48 px by the measured capacity pass. */
   extraGap?: number;
   /** The printed page ID (D-187). */

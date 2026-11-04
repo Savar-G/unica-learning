@@ -139,7 +139,7 @@ it("keeps a hand-built question inside its slot's step range (#482 review at db3
   expect(workbookQuality([wide]).issues.some(i => i.kind === "range")).toBe(true);
 });
 
-it("fails a step template page below its adopted count, with the provisional U4 to U9 new idea floor of 2", () => {
+it("fails a step template page below its adopted count, with the U4 to U9 new idea floor of 2", () => {
   const floorIssue = (level: number, places: string[]) => {
     const p = page(3, 1, places.length);
     p.type = "new-idea";
@@ -181,4 +181,23 @@ it("fails a page that rates likelihood outside never, sometimes and always, and 
   expect(workbookQuality([p]).issues.some(i => i.reason.includes('rates likelihood with "likely"'))).toBe(true);
   const panel = (n: number) => { const q = page(n, 1, 1); q.content = { kind: "day", id: "t", level: 4, day: 1, page: n, pages: 8, topic: "Count", title: "Count", subtitle: "Write it.", grownUp: null, blocks: [{ slot: "watch-one", items: [], lines: [`${n}, [${n + 1}]`], explain: "Watch out: Mia wrote 9, 10, 12. No: after 10 comes 11." }] }; return q; };
   expect(workbookQuality([panel(4), panel(5)]).issues.some(i => i.kind === "repeat" && i.reason.includes("Watch out: Mia wrote"))).toBe(true);
+});
+
+it("fails a stories page of one kind of story and a worked example with no method, and keeps a task by its printed text", () => {
+  const stories = page(7, 1, 2);
+  stories.type = "word-problems";
+  stories.questions = stories.questions.map((q, i) => ({ ...q, place: "word-problems" as typeof q.place, package: { ...q.package!, text: `Kai has ${5 + i} blocks and wants 10. How many more?` } }));
+  expect(workbookQuality([stories]).issues.some(i => i.reason.includes("one kind of story"))).toBe(true);
+  stories.questions[1] = { ...stories.questions[1], package: { ...stories.questions[1].package!, text: "Ava has 6 shells. Ava gets 2 more. How many now?" } };
+  expect(workbookQuality([stories]).issues.some(i => i.reason.includes("one kind of story"))).toBe(false);
+
+  const panel = page(4, 1, 1);
+  panel.content = { kind: "day", id: "t", level: 4, day: 1, page: 2, pages: 8, topic: "Count", title: "Count", subtitle: "Write it.", grownUp: null, blocks: [{ slot: "worked-example", items: [], methods: [{ label: "How it works", lines: ["7 is 4 and ?", "Answer: [3]"] }] }] };
+  expect(workbookQuality([panel]).issues.some(i => i.reason.includes("without a method"))).toBe(true);
+  panel.content.blocks[0].methods![0].lines = ["7 is 4 and ?", "Work it out: 7 − 4 = 3. Answer: [3]"];
+  expect(workbookQuality([panel]).issues.some(i => i.reason.includes("without a method"))).toBe(false);
+
+  const a = page(3, 1, 1), b = page(5, 1, 1);
+  b.questions[0] = { ...b.questions[0], package: { ...a.questions[0].package!, textSource: "ai" } as typeof a.questions[0]["package"] };
+  expect(taskIdentity(a.questions[0].package!)).toBe(taskIdentity(b.questions[0].package!));
 });

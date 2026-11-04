@@ -30,7 +30,7 @@ import { simplestWords, teachSteps } from "./fractions";
  * a column's carry comes from, as step.regroup in addition. Version 6 (#407): fraction steps (common denominator,
  * numerators, simplest form) and check.equal, an equal fraction when the question asks for the simplest form.
  */
-export const LINES_VERSION = 7;
+export const LINES_VERSION = 8;
 
 export const LINE_IDS = [
   "about.ai",
@@ -64,6 +64,7 @@ export const LINE_IDS = [
   "input.other",
   "redirect.back",
   "redirect.decline",
+  "redirect.workbook",
   "close.solved",
   "close.together",
   "repair.sorry",
@@ -381,6 +382,7 @@ export const TEMPLATES = {
     "You can write your answer on the board instead.", "If it's easier, write your number on the board.", "Try writing it on the board for me.",
     "You can also write it on the board.", "Would you like to write it on the board instead?",
   ],
+  "redirect.workbook": ["I help with your Unica workbook. We can pick a question from it."],
   // The decline (#383, C29): for a request for sexual, violent or other harmful content. One fixed wording,
   // approved by Savar on 2026-11-01 (D-197). No detail, no echo of the request.
   "redirect.decline": ["I can't talk about this. I'm here to help with math."],
@@ -692,6 +694,15 @@ function placeParts(value: AnswerValue): { parts: string; total: string } | null
 /** The sentences of a question text, each with its own end mark. */
 const sentencesOf = (text: string) => text.split(/(?<=[.?!])\s+/).map((s) => s.trim()).filter(Boolean);
 
+/** Controller-owned opening. Only checked operation data is read aloud, never arbitrary workbook prose. */
+export function workbookOpening(pkg: OperationPackage): string | null {
+  return pkg.ref.source === "workbook" ? WORKBOOK_OPENING
+    .replace("{page}", String(pkg.ref.page)).replace("{number}", String(pkg.ref.question)).replace("{expr}", operationText(pkg.operation)) : null;
+}
+
+/** One fixed confirmation, outside the model's selectable wordings. */
+export const WORKBOOK_OPENING = "Hi, I'm Maya, an AI helper. Let's do page {page}, number {number}: {expr}.";
+
 /**
  * The lines of one checked question package, by situation. The session picks the ones an act may use now; every line
  * is filled from the package's checked numbers and steps.
@@ -788,6 +799,7 @@ export function packageLines(pkg: OperationPackage) {
     ],
     otherInput: (): LineOffer[] => [offer("input.other", "input.other", {})],
     redirect: (): LineOffer[] => [offer("redirect.back", "redirect.back", { expr })],
+    workbook: (): LineOffer[] => [offer("redirect.workbook", "redirect.workbook", {})],
     decline: (): LineOffer[] => [offer("redirect.decline", "redirect.decline", {})],
     closeSolved: (by: "child" | "maya"): LineOffer[] => [by === "child" ? offer("close.solved", "close.solved", { expr }) : offer("close.together", "close.together", { expr })],
     repair: (): LineOffer[] => [offer("repair.sorry", "repair.sorry", {})],
@@ -831,7 +843,7 @@ export function allLineTexts(pkg: OperationPackage, heardValues: readonly Answer
     ...l.hello(), ...l.question(), ...l.assess(), ...l.exampleIntro(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id)),
     ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
-    ...l.otherInput(), ...l.redirect(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("maya"), ...l.repair(),
+    ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("maya"), ...l.repair(),
   ];
   const extra = [...fixedOffers(), ...areaOffers(pkg)];
   return [...new Set([...offers, ...offers.map(spokenOffer), ...extra].flatMap((o) => o.texts.map(sentence)))];

@@ -65,7 +65,8 @@ export function taskIdentity(p: QuestionPackage): string {
   // prints no number is its words.
   const f = p.item?.format;
   const family = f === "spot-the-error" ? "error" : f === "two-ways" ? "two-ways" : f === "written-reason" ? "explain"
-    : f === "draw" || f === "colour-or-shade" ? "colour" : contextFrame(p.text) || p.textSource === "ai" ? "story" : "drill";
+    // (From the printed text alone: who wrote it, the AI or code, never changes the task, Codex at 47c5fd78.)
+    : f === "draw" || f === "colour-or-shade" ? "colour" : contextFrame(p.text) ? "story" : "drill";
   const numbers = printedTaskNumbers(p);
   // (Its words with the names taken out: "when Jon fills it" and "when Raj fills it" ask one thing.)
   // (And its places: "always sunny at the beach" and "at the rink" ask one thing, the real U4 sample.)
@@ -183,3 +184,19 @@ export function contextFrame(text: string): string | null {
     .replace(PLACE, "at _")
     .replace(/[^a-z#_ ]+/g, " ").replace(/\s+/g, " ").trim();
 }
+
+/**
+ * The kind of a number story (the U4 review: a stories page mixes them): compare ("wants 10. How many more?"),
+ * take away ("eats 3"), part and whole ("the rest are blue"), equal groups ("each", "packs of") or join ("gets 2 more").
+ * Null for a question that is no story.
+ */
+export function storyKind(text: string): "compare" | "take-away" | "part-whole" | "groups" | "join" | null {
+  const t = text.toLowerCase();
+  if (/\bwants?\b|\bneeds?\b|how many more\b|how many fewer\b|\bmore than\b|\bfewer than\b|\bdifference\b/.test(t)) return "compare";
+  if (/\beats?\b|\bgives?\b.*\baway\b|\bleft\b|\btakes? out\b|\bloses?\b|\bspends?\b|\buses?\b/.test(t)) return "take-away";
+  if (/\bthe rest\b|\bare not in\b|\bare in an? \w+\b/.test(t)) return "part-whole";
+  if (/\beach\b|\bpacks? of\b|\bper\b|\bshares?\b|\bequally\b|\bboxes with\b|\bcarries\b/.test(t)) return "groups";
+  if (/\bgets?\b|\bfinds?\b|\bmore\b|\bin all\b|\baltogether\b|\btogether\b|\bboth days\b|\bon monday\b/.test(t)) return "join";
+  return null;
+}
+

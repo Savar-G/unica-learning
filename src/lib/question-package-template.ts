@@ -113,6 +113,20 @@ export function templateAnswer(src: TemplateSource): { answer: string } | { prob
   }
 }
 
+/** The template's slot and derived values by name, as numbers where they are numbers (for a worked method line). */
+export function templateNumbers(src: TemplateSource): Record<string, number> | null {
+  try {
+    const budget = new EvaluationBudget();
+    const values: Record<string, ExpressionValue> = Object.create(null);
+    if (src.values) values.values = Object.freeze(src.values.map((v) => scalarValue(v, budget)));
+    for (const slot of src.slots) values[slot.name] = scalarValue(slot.value, budget);
+    for (const [name, expression] of src.derived) values[name] = compileExpression(expression, budget).evaluate(values, budget);
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(values)) { const n = Number(formatValue(v, budget)); if (k !== "values" && Number.isFinite(n)) out[k] = n; }
+    return out;
+  } catch { return null; }
+}
+
 /** A template answer as a typed answer value: a number, a fraction, a mixed number, else words. */
 export function templateAnswerValue(answer: string):
   | { type: "number"; value: number } | { type: "fraction"; numerator: number; denominator: number }
