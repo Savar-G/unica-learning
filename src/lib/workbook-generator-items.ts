@@ -28,7 +28,7 @@
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { readNumbers } from "@/lib/number-words";
 import { defaultItem, figureCount } from "@/lib/question-package-items";
-import { codeWordings, isWorded, operationQuestion, quantityStoryProblem, storyProblem, type WordingKind } from "@/lib/workbook-wording";
+import { codeWordings, isWorded, operationQuestion, quantityStoryProblem, storyProblem, takeAwayProblem, type WordingKind } from "@/lib/workbook-wording";
 import { PLACE_ORDER, written } from "@/lib/question-package-columns";
 import {
   checkQuestionPackage,
@@ -679,6 +679,13 @@ export const isCodeWorded = (p: QuestionPackage) => (p.textSource === "code" || 
 
 const fail = (reason: string, pkg: QuestionPackage | null = null, stepIds: string[] = []): BuiltQuestion => ({ check: { status: "failed", reason }, package: pkg, stepIds });
 
+/** A package's number answer: its answer, else its first number box (null for none). */
+export const numberAnswer = (p: QuestionPackage): number | null => {
+  if (p.answer?.value.type === "number") return p.answer.value.value;
+  const box = p.item?.regions.find((r) => r.kind === "box" && r.answer?.type === "number");
+  return box?.kind === "box" && box.answer?.type === "number" ? box.answer.value : null;
+};
+
 /** The standard (BC code) a skill id belongs to, or null. */
 const standardOf = (skill: string) => BC_SKILL_MAP.standards.find((s) => s.skills.some((k) => k.id === skill))?.code ?? null;
 
@@ -698,11 +705,11 @@ export function buildQuestion(raw: unknown, place: SlotPlace): BuiltQuestion {
     const story = (text: string) => place.story ? storyProblem(text, facts) : quantityStoryProblem(text, facts);
     if (built.wordings) {
       // Code's wordings that pass every text check, the first printed (one always does off a story place: the bare sum).
-      const sound = built.wordings.filter((w) => !kindProblem({ ...pkg, text: w }, raw) && !story(w));
+      const sound = built.wordings.filter((w) => !kindProblem({ ...pkg, text: w }, raw) && !story(w) && !takeAwayProblem(w, numberAnswer(pkg)));
       if (sound.length === 0) return fail(kindProblem(pkg, raw) ?? story(pkg.text) ?? "no wording of code's fits this story place", pkg, built.stepIds);
       return { ...built, package: { ...pkg, text: sound[0] }, wordings: sound };
     }
-    const problem = kindProblem(pkg, raw) ?? story(pkg.text);
+    const problem = kindProblem(pkg, raw) ?? story(pkg.text) ?? takeAwayProblem(pkg.text, numberAnswer(pkg));
     return problem ? fail(problem, pkg, built.stepIds) : built;
   } catch (e) {
     return fail(`code could not build the question: ${e instanceof Error ? e.message : String(e)}`);

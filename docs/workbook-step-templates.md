@@ -245,8 +245,11 @@ backwards") does not print.
   U4 to U9 panels may take 320 px; a panel with no room drops its Watch out line.
 - **Task identity** reads the printed task only: who wrote it never changes it.
 - **Page floors:** every day page kind has its count (`pageMinimum`, in the book
-  check for every page from U4, whatever wrote its questions). From U19 a new
-  idea's floor is 2: Cedric's upper band (Savar). Practice rows share 8 across
+  check for every page from U4, whatever wrote its questions). A new idea's floor
+  follows Cedric's band table: 2 at U4-U9, 3 at U10-U18, 2 at U19-U30 (his
+  layout spec: new_idea 2-4 items, 6 pages a day, one column). The confirmed
+  "3 from U10" is the U10-U18 band; the U19-U30 floor of 2 is not a bug (Savar,
+  2026-11-03; pinned in `workbook-quality.test.ts`). Practice rows share 8 across
   their rows (U16's Practice 2 had 14).
 - **Own step:** from U10 a practice page asks at least half its practice
   questions, or 3, on its own step. A block's own-step questions come first, its

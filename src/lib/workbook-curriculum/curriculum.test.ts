@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { BC_CURRICULUM, bcStepProgressions, curriculumFor, curriculumProblems, curriculumVersion, type CurriculumData, type CurriculumSkill } from "./index";
 import { digestOf } from "@/lib/workbook-digest";
+import { withHouseTemplates } from "./house-templates";
 import { DEFAULT_STEPS, planWorkbook } from "@/lib/workbook-plan";
 import { sampleChild, samplePlanInput } from "@/lib/workbook-sample-profiles";
 
@@ -10,11 +11,13 @@ const bc = bcStepProgressions();
 describe("progression activation (#489)", () => {
   it("gives the generator every imported step, template and context", () => {
     const active = curriculumFor("bc")!;
-    for (const skill of BC_CURRICULUM.skills) expect(active.skillSteps(skill.id)).toEqual(BC_CURRICULUM.steps.filter(s => s.skill === skill.id));
+    // (Cedric's steps, with Unica's Challenge templates appended to their steps: house-templates.ts.)
+    const withHouse = withHouseTemplates(BC_CURRICULUM);
+    for (const skill of BC_CURRICULUM.skills) expect(active.skillSteps(skill.id)).toEqual(withHouse.steps.filter(s => s.skill === skill.id));
     expect(active.contexts).toEqual(BC_CURRICULUM.contexts);
     expect(bcStepProgressions()).toBe(active);
     expect(active.levels.flatMap(l => active.levelSkills(l.id)!.flatMap(s => active.skillSteps(s.id)!))).toHaveLength(1622);
-    expect(curriculumVersion("bc")).toBe(digestOf(BC_CURRICULUM));
+    expect(curriculumVersion("bc")).toBe(digestOf(withHouse));
   });
 
   it("keeps the coin teaching plan unchanged with the approved three-page budget", () => {

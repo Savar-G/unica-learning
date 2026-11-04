@@ -3,6 +3,7 @@
 // network, database or clock. The planner and the generator read the content from here.
 import { digestOf } from "@/lib/workbook-digest";
 import { BC_CURRICULUM } from "./bc";
+import { withHouseTemplates } from "./house-templates";
 import type { CurriculumData, CurriculumKey, CurriculumLevel, CurriculumSkill, CurriculumStep, CurriculumUnit, TemplateContexts } from "./types";
 
 export type * from "./types";
@@ -64,7 +65,9 @@ function curriculum(data: CurriculumData): Curriculum {
 }
 
 // The generator reads every imported step and its templates (#489). The 155 drafted steps it read before are gone.
-const CURRICULA: Record<CurriculumKey, Curriculum> = { bc: curriculum(BC_CURRICULUM) };
+// (With Unica's own Challenge templates appended to their steps: house-templates.ts.)
+const BC_WITH_HOUSE = withHouseTemplates(BC_CURRICULUM);
+const CURRICULA: Record<CurriculumKey, Curriculum> = { bc: curriculum(BC_WITH_HOUSE) };
 
 /** All 1,622 validated BC steps and their template contexts: the same curriculum curriculumFor("bc") gives. */
 export function bcStepProgressions(): Curriculum & { readonly contexts: TemplateContexts } {
@@ -76,7 +79,7 @@ export function curriculumFor(key: string): Curriculum | null {
   return Object.hasOwn(CURRICULA, key) ? CURRICULA[key as CurriculumKey] : null;
 }
 
-const DATA: Record<CurriculumKey, CurriculumData> = { bc: BC_CURRICULUM };
+const DATA: Record<CurriculumKey, CurriculumData> = { bc: BC_WITH_HOUSE };
 const versions = new Map<string, string>();
 
 /**

@@ -151,6 +151,11 @@ it("fails a step template page below its adopted count, with the U4 to U9 new id
   expect(floorIssue(4, ["now-you", "now-you", "spot-the-error"])).toBeNull();
   expect(floorIssue(10, ["now-you", "now-you", "spot-the-error"])).toBe("the page prints 2 practice questions; a new-idea page needs 3");
   expect(floorIssue(4, ["now-you", "spot-the-error"])).toBe("the page prints 1 practice question; a new-idea page needs 2");
+  // The new-idea floor follows Cedric's band table: 2 at U4-U9, 3 at U10-U18, 2 at U19-U30 (new_idea 2-4 items, 6 pages
+  // a day, one column; Savar, 2026-11-03). Not a bug: the confirmed "3 from U10" is the U10-U18 band.
+  expect(floorIssue(18, ["now-you", "now-you"])).toBe("the page prints 2 practice questions; a new-idea page needs 3");
+  expect(floorIssue(19, ["now-you", "now-you"])).toBeNull();
+  expect(floorIssue(30, ["now-you"])).toBe("the page prints 1 practice question; a new-idea page needs 2");
 });
 
 it("counts a question stem with no person in it twice a page at most", () => {
@@ -161,7 +166,7 @@ it("counts a question stem with no person in it twice a page at most", () => {
   expect(workbookQuality([p]).issues.some(i => i.reason.includes("a third time on the page"))).toBe(false);
 });
 
-it("asks a step's only Challenge template once and takes the other cards from hard templates of earlier steps", () => {
+it("asks a step's only Challenge template once and keeps every card on the day's step (B3)", () => {
   const challenge = (rank: number, index: number, difficulty: string, kind = "story") => ({ skill: rank === 9 ? "5.1-place-value-million" : "4.4-add-within-10000", step: 1, index, rank, difficulty, kind, challengeTemplates: 1 });
   const p = page(10, 1, 3);
   p.type = "challenge";
@@ -170,7 +175,9 @@ it("asks a step's only Challenge template once and takes the other cards from ha
   practice.questions = practice.questions.map(q => ({ ...q, itemPlan: { template: challenge(9, 0, "easy", "box") } as unknown as typeof q.itemPlan }));
   const cards = (ts: ReturnType<typeof challenge>[]) => { p.questions = p.questions.map((q, i) => ({ ...q, place: "challenge" as typeof q.place, part: "challenge", itemPlan: { template: ts[i] } as unknown as typeof q.itemPlan })); return workbookQuality([practice, p]).issues.filter(i => i.kind === "challenge").map(i => i.reason); };
   expect(cards([challenge(9, 2, "medium"), challenge(9, 2, "medium"), challenge(9, 2, "medium")]).some(r => r.includes("only Challenge template again"))).toBe(true);
-  expect(cards([challenge(9, 2, "medium"), challenge(5, 4, "hard"), challenge(5, 3, "hard")])).toEqual([]);
+  // (An earlier step's "hard" card asks less than the day's practice, Codex at 24751f16, B3.)
+  expect(cards([challenge(9, 2, "medium"), challenge(5, 4, "hard"), challenge(5, 3, "hard")]).some(r => r.includes("question 2 must use the hardest step"))).toBe(true);
+  expect(cards([challenge(9, 2, "medium"), challenge(9, 4, "hard"), challenge(9, 3, "hard")])).toEqual([]);
   expect(cards([challenge(9, 2, "medium"), challenge(5, 1, "easy"), challenge(5, 3, "hard")]).some(r => r.includes("question 2 must use the hardest step"))).toBe(true);
 });
 
@@ -201,3 +208,32 @@ it("fails a stories page of one kind of story and a worked example with no metho
   b.questions[0] = { ...b.questions[0], package: { ...a.questions[0].package!, textSource: "ai" } as typeof a.questions[0]["package"] };
   expect(taskIdentity(a.questions[0].package!)).toBe(taskIdentity(b.questions[0].package!));
 });
+
+it("fails a take-away story that keeps its things, a drill on a stories page and a card frame printed too often", () => {
+  const p = page(7, 1, 2);
+  p.type = "word-problems";
+  const box = (q: GeneratedPage["questions"][number], text: string, value: number) => ({ ...q, place: "word-problems" as typeof q.place, package: { ...q.package!, text, answer: { value: { type: "number" as const, value }, accepted: [], unit: null } } });
+  p.questions = [box(p.questions[0], "Max has 1010 buttons, puts 17 in a jar. How many buttons does he have now?", 993), box(p.questions[1], "Ava has 6 shells. Ava gets 2 more. How many now?", 8)];
+  const reasons = () => workbookQuality([p]).issues.map(i => i.reason);
+  expect(reasons().some(r => r.includes("take-away story"))).toBe(true);
+  p.questions[0] = box(p.questions[0], "Max has 1010 buttons and gives 17 away. How many buttons does he have now?", 993);
+  expect(reasons().some(r => r.includes("take-away story"))).toBe(false);
+  p.questions[1] = box(p.questions[1], "Missing number: 10000 - ? = 4913", 5087);
+  expect(reasons().some(r => r.includes("on the stories page is no story"))).toBe(true);
+
+  // A card frame: twice a book, never on two Challenge days in a row, fresh numbers (Savar, 2026-11-03).
+  const card = (n: number, day: number, a: number, b: number) => { const c = page(n, day, 1); c.type = "challenge"; c.questions = [{ ...c.questions[0], place: "challenge" as typeof c.questions[0]["place"], package: { ...c.questions[0].package!, text: `Kai counts ${a} tickets on Monday and ${b} points on Friday. How many is that now?` } }]; return c; };
+  const frame = (pages: GeneratedPage[]) => workbookQuality(pages).issues.some(i => i.kind === "repeat" && i.reason.includes("frame"));
+  expect(frame([card(10, 1, 4000, 3000), card(30, 4, 4100, 3100)])).toBe(false);
+  expect(frame([card(10, 1, 4000, 3000), card(18, 2, 4100, 3100)])).toBe(true);
+  expect(frame([card(10, 1, 4000, 3000), card(30, 4, 4000, 3000)])).toBe(true);
+  expect(frame([card(10, 1, 4000, 3000), card(30, 4, 4100, 3100), card(50, 7, 4200, 3200)])).toBe(true);
+});
+
+it("keeps a task by its printed maths, not its distractors", () => {
+  const a = page(3, 1, 1).questions[0].package!;
+  const missing = { ...a, text: "6 is 1 and ?", item: { ...a.item!, format: "write-number" as const, regions: [{ id: "answer", kind: "box" as const, label: null, answer: { type: "number" as const, value: 5 } }], checks: [] } };
+  const chosen = { ...a, text: "6 is 1 and which number: 6 or 5?", item: { ...a.item!, format: "write-number" as const, regions: [{ id: "answer", kind: "choice" as const, mark: "circle" as const, label: null, choices: ["6", "5"], answer: "5" }], checks: [] } };
+  expect(taskIdentity(chosen as never)).toBe(taskIdentity(missing as never));
+});
+

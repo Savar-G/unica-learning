@@ -360,3 +360,31 @@ export function codeWordings(op: Operation, o: WordingOptions): string[] {
   const room = o.room ?? Infinity;
   return [...all.filter((w) => w.length <= room), ...all.filter((w) => w.length > room).sort((x, y) => x.length - y.length)];
 }
+
+/** A place-value unit after 1 is singular: "1 tens and 1 ones" reads "1 ten and 1 one" (the U16 review); "0 tens" and
+ * "21 tens" stay plural. Every place word, from millions to thousandths. */
+const PLACE_PLURAL = /(?<![\d.,\u00a0\u202f])1 ((?:ten |hundred )?(?:one|ten|hundred|thousand|million|tenth|hundredth|thousandth))s\b/g;
+export function singularPlaces(text: string): string {
+  return text.replace(PLACE_PLURAL, "1 $1");
+}
+
+/**
+ * A take-away story's verb really takes the things from the one who has them (Codex at 24751f16, P0: "Max has 1010
+ * buttons, puts 17 in a jar. How many buttons does he have now?" keyed 993, but he still has 1010). Fail closed: a
+ * story whose answer is one printed number less another and whose question asks what is had now or left needs a verb
+ * from TAKE_AWAY_VERBS, or a question that names the rest ("How many are not in the jar?"). Put-in, move-to and hide
+ * verbs never take away. Compare, missing-part and group questions are not take-aways.
+ */
+const TAKE_AWAY_VERBS = /\b(?:gives?|gave|sells?|sold|eats?|ate|loses?|lost|uses?(?: up)?|used(?: up)?|spends?|spent|takes? (?:out|away)|took (?:out|away)|removes?|removed|donates?|donated|sends?|sent|mails?|mailed|trades? away|traded away|pops?|popped|breaks?|broke|drinks?|drank|hands? out|handed out|shares? out|(?:flies|fly|flew|hops?|hopped|runs?|ran|swims?|swam|walks?|walked|goes|go|went|rolls?|rolled|blows?|blew|drives?|drove) away|(?:leaves?|left) (?:the|for)|cross(?:es)? out|crossed out|pours? out|poured out|(?:is|are|was|were) taken|cuts? off)\b/i;
+const ASKS_REST = /\bhow many\b[^.?!]*\b(?:have now|has now|(?:does|do|did) [a-z_]+ (?:still )?have|left|remain|remaining|are there now)\b/i;
+const NAMES_REST = /\bhow many\b[^.?!]*\b(?:not|outside|still out|still on the|still in the)\b/i;
+const NOT_TAKE_AWAY = /\b(?:more|fewer|less|than|wants?|needs?|difference|each|in all|altogether|together|equal|share|shares|groups?)\b/i;
+export function takeAwayProblem(text: string, answer: number | null | undefined): string | null {
+  if (answer === null || answer === undefined || !Number.isFinite(answer)) return null;
+  const question = text.split(/(?<=[.!?])\s+/).filter((s) => s.trim().endsWith("?")).at(-1) ?? "";
+  if (!ASKS_REST.test(question) || NOT_TAKE_AWAY.test(question)) return null;
+  const numbers = (text.replace(/(\d)[   ,](?=\d{3}\b)/g, "$1").match(/\d+(?:\.\d+)?/g) ?? []).map(Number);
+  if (!numbers.some((a) => numbers.some((b) => a > b && Math.abs(a - b - answer) < 1e-9))) return null;
+  if (TAKE_AWAY_VERBS.test(text) || NAMES_REST.test(question)) return null;
+  return `a take-away story takes the things away with a verb that removes them (gives away, sells, eats, loses, uses, spends, takes out) or asks for the rest ("How many are not in the jar?"); putting them in a jar keeps them`;
+}

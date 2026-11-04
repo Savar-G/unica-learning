@@ -12,12 +12,14 @@
 // - The AI may reword a story's text only (in real runs): the same numbers, every one of them, checked by code.
 // Pure TypeScript: no Next.js, React, network, database, clock or Math.random.
 import { likelihoodWord } from "./workbook-likelihood";
+import { singularPlaces, takeAwayProblem } from "./workbook-wording";
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import type { AnswerRegion, Item, ItemCheck, QuestionPackage } from "@/lib/question-package";
 import { checkQuestionPackage } from "@/lib/question-package";
 import { storedDomain, templateAnswerValue, templateScalar, type TemplateScalar, type TemplateSource } from "@/lib/question-package-template";
 import type { Curriculum, CurriculumStep, NumberDomain, NumberRange, StepTemplate, TemplateDifficulty } from "@/lib/workbook-curriculum";
 import { prepareTemplate, seededRandom, slotDomain } from "@/lib/workbook-curriculum/template";
+import { isTwoStep } from "@/lib/workbook-curriculum/house-templates";
 import type { AiItem, BuiltQuestion, SlotPlace } from "@/lib/workbook-generator-items";
 import type { SlotName } from "@/lib/workbook-page";
 
@@ -351,7 +353,9 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
   // A number to work out: a number answer, or a list of numbers (a count with boxes).
   const numberAnswer = (t: StepTemplate) => ["bare", "missing", "story"].includes(t.format) && (!/['"]/.test(t.answer) || /['"], ['"]/.test(t.answer));
   const printable = step.templates.map((t, index) => ({ t, index })).filter(({ t }) => !templateProblem(t, r.level)
-    && (r.place !== "solve-it-two-ways" || sumTemplate(t)) && (r.place !== "spot-the-error" || numberAnswer(t)));
+    && (r.place !== "solve-it-two-ways" || sumTemplate(t)) && (r.place !== "spot-the-error" || numberAnswer(t))
+    // (Code's two-step cards are the Challenge's last fill only, house-templates.ts.)
+    && (r.place === "challenge" || !isTwoStep(t)));
   // The step's hardest questions are the Challenge's (#482 review at 3134252: the Challenge is clearly harder than the
   // day's practice): its teaching pages take the easier ones, and the Challenge takes the hardest, with a number to
   // work out when the step has one, never a true or false or a choice (the U4 review). A late attempt may take others.
@@ -406,7 +410,7 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
   const order = usable
     .map((x, k) => ({ ...x, rank: wanted.indexOf(x.t.difficulty), turn: (k + r.seed) % usable.length }))
     // A Challenge takes the step's hardest template first (Cedric's section 9), whatever its format.
-    .sort((a, b) => (byDifficulty ? a.rank - b.rank : 0) || fit(a.t) - fit(b.t) || used(a.index) - used(b.index) || a.rank - b.rank || a.turn - b.turn);
+    .sort((a, b) => Number(isTwoStep(a.t)) - Number(isTwoStep(b.t)) || (byDifficulty ? a.rank - b.rank : 0) || fit(a.t) - fit(b.t) || used(a.index) - used(b.index) || a.rank - b.rank || a.turn - b.turn);
   const people = contexts.people.map((p) => p.name);
   for (let k = 0; k < order.length; k++) {
     const { t, index } = order[(k + r.attempt) % order.length];
@@ -423,7 +427,7 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
       // A template's blank ("Count on: 8, __, __.") prints as "?", as code's missing numbers do: a line of underscores
       // alone leaves too little ink to count as printed.
       // (A template's plural of a container: "boxs" is "boxes".)
-      let text = filled.text.replace(/_{2,}/g, "?").replace(/\?\s*\./g, "?").replace(/\b(box|dish|bench|glass|bush|lunchbox|pouch|batch)s\b/gi, "$1es");
+      let text = singularPlaces(filled.text.replace(/_{2,}/g, "?").replace(/\?\s*\./g, "?").replace(/\b(box|dish|bench|glass|bush|lunchbox|pouch|batch)s\b/gi, "$1es"));
       // A count with blanks ("Count on: 8, ?, ?.") prints its numbers with a box in each blank (the U4 review).
       const seq = sequenceOf(text, filled.answer);
       if (seq && r.place !== "spot-the-error" && r.place !== "solve-it-two-ways") text = seq.text;
@@ -463,6 +467,8 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
       }
       if (r.room !== undefined && text.length > r.room) continue;
       if (stepRangeProblem(step, text) || stepRangeProblem(step, filled.answer)) continue;
+      // A take-away takes the things away (Codex at 24751f16, P0): "puts 17 in a jar" keeps them.
+      if (takeAwayProblem(text, Number(filled.answer))) continue;
       // An answer that names a person ("'name' if a > b else 'friend'"): circle the name or "the friend".
       let answer = filled.answer;
       let labels: [string, string][] | null = null;

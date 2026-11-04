@@ -27,6 +27,7 @@ import {
 import type { TemplateFonts } from "@/lib/workbook-template-fixed";
 import { instructionProblem, feedbackItemProblem } from "@/lib/workbook-feedback-check";
 import { titleProblem } from "@/lib/workbook-titles";
+import { singularPlaces } from "@/lib/workbook-wording";
 
 const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const fontFace = (family: string, weights: string, woff2: Uint8Array) =>
@@ -670,7 +671,7 @@ function shapeSvg(shape: string, x: number, y: number, fill: string): string {
 /** A worked line, its [given] numbers in blue. */
 /** BC prints numbers from 10 000 up in groups of three with a space (4 digits together, decimals untouched). */
 export const bcNumbers = (t: string) => t.replace(/(?<![\d.,\u00a0])\d{5,}(?![\d]|[.,]\d)/g, (n) => n.replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0"));
-const worked = (line: WorkedLine) => bcNumbers(escape(line)).replace(/\[([^\]]*)\]/g, `<span class="blue">$1</span>`);
+const worked = (line: WorkedLine) => bcNumbers(escape(singularPlaces(line))).replace(/\[([^\]]*)\]/g, `<span class="blue">$1</span>`);
 
 // ---------- Questions and their answer regions ----------
 
@@ -820,7 +821,7 @@ function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: 
 /** The question's text, marked as its content. */
 /** A word with a hyphen ("ten-frame") never breaks at it: the line breaks before the word. */
 const keepHyphens = (html: string) => html.replace(/\b([A-Za-z]+(?:-[A-Za-z]+)+)\b/g, `<span style="white-space:nowrap">$1</span>`);
-const text = (q: DraftQuestion, cls = "qt") => `<span class="${cls}" ${mark.questionContent(q.number)}>${keepHyphens(bcNumbers(escape(q.package.text)))}</span>`;
+const text = (q: DraftQuestion, cls = "qt") => `<span class="${cls}" ${mark.questionContent(q.number)}>${keepHyphens(bcNumbers(escape(singularPlaces(q.package.text))))}</span>`;
 const isMath = (s: string) => /^[\d\s+−×÷=?.,()/$¢a-z]*$/i.test(s) && /\d/.test(s) && !/[a-z]{3,}/i.test(s);
 const qtext = (q: DraftQuestion) => text(q, isMath(q.package.text) ? "qm" : "qt");
 

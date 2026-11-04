@@ -2,11 +2,13 @@ import { pageFullness, pageSpace, fullnessProblem } from "./workbook-template";
 import type { DraftPage, MeasuredElement } from "./workbook-render";
 import type { GeneratedPage } from "./workbook-generator";
 import { STORY_EXPLAIN } from "./workbook-item-plan";
+import { takeAwayProblem } from "./workbook-wording";
+import { numberAnswer } from "./workbook-generator-items";
 import { likelihoodChoicesProblem, likelihoodWord } from "./workbook-likelihood";
 import { extraPracticeRepeats, newIdeaFloor, twoWaysCountsAsStory } from "./workbook-early-levels";
 import { dayTimeProblem, estimatedDayMinutes } from "./workbook-feedback-check";
 import { printedNumbers } from "./workbook-book";
-import { storyFrame, wordedTask, taskType, reasoningSteps, taskIdentity, printedForm, sentenceFrameOf, stemOf, largestNumber, storyKind } from "./workbook-task-identity";
+import { storyFrame, wordedTask, taskType, reasoningSteps, taskIdentity, printedForm, sentenceFrameOf, stemOf, largestNumber, storyKind, cardFrame, cardFrameProblem, cardNumbers, type CardFrameUse } from "./workbook-task-identity";
 import { dayDifficulty } from "./workbook-plan";
 
 export interface BookIssue { page: number; kind: "repeat" | "progress" | "variety" | "time" | "coverage" | "challenge" | "step" | "range"; reason: string }
@@ -73,6 +75,9 @@ export function pageMinimum(type: string, level: number, extra: boolean): number
 /** Spot the error and Solve it two ways do not count toward a page's practice questions. */
 const NOT_COUNTED: ReadonlySet<string> = new Set(["spot-the-error", "solve-it-two-ways", "warm-up", "how-do-you-know"]);
 
+/** Words of an answer expression that are not its numbers (functions and keywords). */
+const ANSWER_WORDS: ReadonlySet<string> = new Set(["if", "else", "and", "or", "not", "in", "str", "int", "max", "min", "abs", "round", "floor", "ceil", "sqrt", "isqrt", "gcd", "lcm", "sum", "len", "sorted", "Fraction", "True", "False"]);
+
 export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
   const issues: BookIssue[] = [];
   const days: DayQuality[] = [];
@@ -86,6 +91,17 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     if (p.type === "word-problems") {
       const stories = p.questions.filter(q => q.package && ["word-problems", "solve-it-two-ways"].includes(q.place ?? "")).map(q => storyKind(q.package!.text)).filter(Boolean);
       if (stories.length >= 2 && new Set(stories).size < 2) issues.push({ page: p.number, kind: "variety", reason: `the stories page tells one kind of story (${stories[0]}); it needs at least two` });
+    }
+    // A take-away story takes the things away (Codex at 24751f16, P0): every question, whatever wrote it.
+    for (const q of p.questions) {
+      const problem = q.package ? takeAwayProblem(q.package.text, numberAnswer(q.package)) : null;
+      if (problem) issues.push({ page: p.number, kind: "coverage", reason: `question ${q.number}: ${problem}` });
+    }
+    // A stories page prints stories only (the real U16 r13: "Missing number: 10 000 − ? = 4913" on Word problems):
+    // every question in its stories (two ways there too) has a person or a thing, whatever wrote it.
+    if (p.type === "word-problems") for (const q of p.questions) {
+      if (!q.package || !["word-problems", "picture-stories", "solve-it-two-ways"].includes(q.place ?? "")) continue;
+      if (!printedForm(q.package).startsWith("context:")) issues.push({ page: p.number, kind: "coverage", reason: `question ${q.number} on the stories page is no story ("${q.package.text.slice(0, 40)}")` });
     }
     // A practice page practises its own step: at least half its practice questions (Codex at 47c5fd78: U16's Day 4
     // Practice 2 printed 13 review questions and 1 on "Place value to millions").
@@ -192,6 +208,19 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     for (const q of p.questions.filter(q => q.place === "how-do-you-know" && !q.existing)) if (!STORY_EXPLAIN.test(q.package?.text ?? "") || !p.questions.some(s => ["word-problems", "picture-stories"].includes(s.place ?? "") && s.package && s.check.status !== "failed")) issues.push({ page: p.number, kind: "coverage", reason: "the explanation has no story on this page" });
   }
   for (const [type, count] of types) if (all.length >= 12 && count > all.length / 2) for (const p of pages.filter(p => p.questions.some(q => q.package && !q.existing && q.place !== "warm-up" && typeKey(p, q) === type))) issues.push({ page: p.number, kind: "variety", reason: `${type} exceeds half of the book's non-warm-up questions` });
+  // A Challenge or Show what you know frame twice a book at most, never on two Challenge days in a row, with fresh
+  // numbers (the U16 r13 review; Savar, 2026-11-03).
+  const cards = new Map<string, (CardFrameUse & { page: number })[]>();
+  for (const p of pages) for (const q of p.questions) {
+    if (!q.package || (q.place !== "challenge" && q.place !== "show-what-you-know")) continue;
+    const f = cardFrame(q.package);
+    if (!f) continue;
+    const use = { day: p.day, challenge: q.place === "challenge", numbers: cardNumbers(q.package), page: p.number };
+    const uses = cards.get(f) ?? [];
+    const problem = cardFrameProblem(uses, use);
+    if (problem) issues.push({ page: p.number, kind: "repeat", reason: `question ${q.number}: ${problem} (page ${uses.map((u) => u.page).join(", ")}: "${q.package.text.slice(0, 40)}")` });
+    cards.set(f, [...uses, use]);
+  }
   // A worked example gives its answer away: its task is never a question of the book, nor another page's example,
   // before or after it (#482 review at db3b1a0).
   const examples = new Map<string, number[]>();
@@ -278,10 +307,9 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     }
     // (A card from an earlier step: a hard template with a number to work out, beside a card of the day's hardest step
     // whose step keeps fewer than 3 Challenge templates.)
-    const reviewCard = (p: GeneratedPage, q: GeneratedPage["questions"][number]) => {
-      const t = q.itemPlan!.template!;
-      return t.rank < dayTop && t.difficulty === "hard" && t.kind !== "choice" && p.questions.some(o => o.place === "challenge" && o.itemPlan?.template?.rank === dayTop && (o.itemPlan.template.challengeTemplates ?? 3) < 3);
-    };
+    // (No card from an earlier step, Codex at 24751f16, B3: an earlier step's "hard" label asks less than the day's
+    // practice; a card is compared by its step's level and rank first, then its difficulty.)
+    const reviewCard = (_p: GeneratedPage, _q: GeneratedPage["questions"][number]) => false;
     for (const p of ofDay) for (const q of p.questions.filter(q => q.place === "challenge" && !q.existing && q.itemPlan?.template)) {
       const t = q.itemPlan!.template!;
       // Every question is on the hardest step reached that day (Cedric's brief; #482 review at db3b1a0), or is such a
@@ -296,7 +324,9 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       const work = (o: typeof q) => o.itemPlan!.template!.kind === "choice" ? 0 : o.itemPlan!.template!.kind === "story" ? 2 : 1;
       const size = (o: typeof q) => Math.max(0, ...[o.package?.text ?? "", o.itemPlan!.template!.answer].flatMap(x => x.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number));
       const same = (a: typeof q, b: typeof q) => a.itemPlan!.template!.skill === b.itemPlan!.template!.skill && a.itemPlan!.template!.step === b.itemPlan!.template!.step && a.itemPlan!.template!.index === b.itemPlan!.template!.index;
-      const above = (a: typeof q, b: typeof q) => level(a) !== level(b) ? level(a) > level(b) : work(a) !== work(b) ? work(a) > work(b) : same(a, b) && size(a) > size(b);
+      // (Then the numbers its answer combines, its steps: "a + b + c" asks two where "w - p" asks one, Codex at 24751f16.)
+      const steps = (o: typeof q) => new Set(((o.itemPlan!.template!.source?.answer ?? "").replace(/'[^']*'|"[^"]*"/g, "").match(/\b[a-z_][a-z_0-9]*\b/gi) ?? []).filter((v) => !ANSWER_WORDS.has(v))).size;
+      const above = (a: typeof q, b: typeof q) => level(a) !== level(b) ? level(a) > level(b) : work(a) !== work(b) ? work(a) > work(b) : steps(a) !== steps(b) ? steps(a) > steps(b) : same(a, b) && size(a) > size(b);
       const mine = questions.filter(o => o.itemPlan?.template && o.place !== "challenge" && o.place !== "warm-up" && !reviewParts.has(o.part) && ownStep(o) && o.itemPlan.template.rank === dayTop);
       // (A card from an earlier step is compared with the day's practice of the hardest step, not with a Spot the error or
       // two ways that check its story's work.)

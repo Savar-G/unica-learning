@@ -12,7 +12,9 @@ const STARTS: ReadonlySet<string> = new Set(["Will", "How", "What", "Which", "Is
     "Match", "Round", "Estimate", "Solve", "Who", "Where", "When", "Why", "She", "He", "They", "There", "This", "That", "These", "Those",
     "If", "On", "At", "From", "After", "Before", "Between", "Around", "About", "Ten", "Twenty", "Half", "One", "Two", "Three", "Four", "Five",
     "Six", "Seven", "Eight", "Nine", "Skip", "Sort", "Shade", "Mark", "Measure", "Plot", "Work", "Check", "Copy", "Complete", "Give", "Divide",
-    "Multiply", "Subtract", "Simplify", "Convert", "Describe", "Predict", "Continue", "Extend", "Build", "Record", "List", "Fix", "Most", "All"]);
+    "Multiply", "Subtract", "Simplify", "Convert", "Describe", "Predict", "Continue", "Extend", "Build", "Record", "List", "Fix", "Most", "All",
+    // ("Missing number: 10 000 - ? = 4913" is no one's story, the real U16 r13 Word problems.)
+    "Missing", "Number", "Numbers", "Answer", "Ones", "Tens", "Hundreds", "Thousands", "Pattern", "Rule", "Next", "Last", "First"]);
 
 /** Ignore incidental names, quantities and objects when comparing the task. */
 export function storyFrame(text: string): string {
@@ -103,12 +105,20 @@ export function printedForm(p: QuestionPackage): string {
 /** The numbers a question prints, the sequence's printed terms included, from least to greatest. */
 function printedTaskNumbers(p: QuestionPackage): number[] {
   const terms = (p.item?.checks ?? []).flatMap((c) => (c.kind === "sequence" ? c.terms.flatMap((t) => ("region" in t ? [] : t.type === "number" ? [t.value] : [])) : []));
-  return [...(p.text.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number), ...terms].sort((a, b) => a - b);
+  const printed = (p.text.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
+  // The choices a question prints are not its task (Codex at 24751f16: "6 is 1 and which number: 6 or 5?" asks "6 is 1
+  // and ?"): each printed choice's number is taken out once, and the answer stays through the key.
+  for (const r of p.item?.regions ?? []) if (r.kind === "choice") for (const c of r.choices) {
+    const at = /^-?\d+(?:\.\d+)?$/.test(c.trim()) ? printed.lastIndexOf(Number(c.trim())) : -1;
+    if (at >= 0) printed.splice(at, 1);
+  }
+  return [...printed, ...terms].sort((a, b) => a - b);
 }
 
 /** A question's answers as printed in its key: each box's value and each circled choice, in order. */
 function answersOf(p: QuestionPackage): string[] {
-  return (p.item?.regions ?? []).flatMap((r) => (r.kind === "box" && r.answer ? [JSON.stringify(r.answer)] : r.kind === "choice" && r.answer ? [r.answer.toLowerCase()] : []));
+  // (A number is one answer, written in a box or circled: "5".)
+  return (p.item?.regions ?? []).flatMap((r) => (r.kind === "box" && r.answer ? [r.answer.type === "number" ? String(r.answer.value) : JSON.stringify(r.answer)] : r.kind === "choice" && r.answer ? [r.answer.trim().toLowerCase()] : []));
 }
 
 /** The largest number a question prints or answers ("10 000" read as one number). */
@@ -143,7 +153,7 @@ function printedTemplateForm(p: QuestionPackage): string {
  */
 /** A place-value word ("thousands", "ten thousands") is part of a question's numbers, not its frame (the U16 review: "saw
  * the number on a sign ... hundreds place" and "... thousands place" are one frame). */
-const PLACE_VALUE = /\b(?:(?:ten|hundred) )?(?:ones|tens|hundreds|thousands|millions)\b/g;
+const PLACE_VALUE = /\b(?:(?:ten|hundred) )?(?:ones|tens|hundreds|thousands|millions)\b|(?<=[#0-9] )(?:(?:ten|hundred) )?(?:one|ten|hundred|thousand|million)\b/g;
 
 export function sentenceFrameOf(p: QuestionPackage): string | null {
   const frame = contextFrame(p.text)?.replace(PLACE_VALUE, "_place");
@@ -197,6 +207,41 @@ export function storyKind(text: string): "compare" | "take-away" | "part-whole" 
   if (/\bthe rest\b|\bare not in\b|\bare in an? \w+\b/.test(t)) return "part-whole";
   if (/\beach\b|\bpacks? of\b|\bper\b|\bshares?\b|\bequally\b|\bboxes with\b|\bcarries\b/.test(t)) return "groups";
   if (/\bgets?\b|\bfinds?\b|\bmore\b|\bin all\b|\baltogether\b|\btogether\b|\bboth days\b|\bon monday\b/.test(t)) return "join";
+  return null;
+}
+
+
+/**
+ * A Challenge or Show what you know card's frame: its words with names, things, places, numbers and place-value units
+ * taken out ("Write # _place, # _place, # _place and # _place as a number."; "_ counts # _ on monday ... on friday").
+ * The book prints each once on those pages (the U16 r13 review: one frame on the Challenge of Days 1, 5 and 10). Null
+ * for a question of fewer than 4 words, a bare sum.
+ */
+const CARD_WORDS: ReadonlySet<string> = new Set(["more", "less", "fewer", "of", "and", "or", "in", "on", "to", "is", "are", "make", "makes", "times", "each", "away", "left", "all", "as", "a", "the", "comes", "come", "than", "by", "with", "for", "from", "at", "then", "now", "this", "that", "it", "write", "what", "how", "which"]);
+export function cardFrame(p: QuestionPackage): string | null {
+  // (The thing a number counts is no new frame: "counts # tickets" and "counts # points" are one, the U16 r13 review.)
+  const base = storyFrame(p.text.replace(PLACE, " _ ")).replace(PLACE_VALUE, "_place");
+  // (Two words too: "# hockey cards" and "# beads" are one frame.)
+  const counted = new Set([...base.matchAll(/# ([a-z]+)(?: ([a-z]+))?/g)].flatMap((m) => CARD_WORDS.has(m[1]) ? [] : m[2] && !CARD_WORDS.has(m[2]) ? [m[1], m[2]] : [m[1]]));
+  const frame = (counted.size ? base.replace(new RegExp(`\\b(?:${[...counted].join("|")})\\b`, "g"), "_") : base).replace(/\s+/g, " ").trim();
+  return (frame.match(/[a-z]+/g) ?? []).length >= 4 ? frame : null;
+}
+
+/** One printed use of a card frame: its day, whether on a Challenge, and its printed numbers. */
+export interface CardFrameUse { day: number | null; challenge: boolean; numbers: string }
+
+/** A card's printed numbers, least to greatest: a frame printed again needs fresh ones. */
+export const cardNumbers = (p: QuestionPackage): string => (p.text.replace(/(\d)[\u00a0\u202f ](?=\d{3}\b)/g, "$1").match(/\d+(?:\.\d+)?/g) ?? []).map(Number).sort((a, b) => a - b).join(",");
+
+/**
+ * Why a card may not print its frame again, or null (Savar, 2026-11-03, relaxing the U16 r13 rule): a Challenge or Show
+ * what you know frame twice a book at most, never on two Challenge days in a row (nor twice on one day), always with
+ * fresh numbers.
+ */
+export function cardFrameProblem(uses: readonly CardFrameUse[], use: CardFrameUse): string | null {
+  if (uses.length >= 2) return "its frame is already printed twice in the book";
+  if (uses.some((u) => u.numbers === use.numbers)) return "its frame is printed again with the same numbers";
+  if (use.day !== null && uses.some((u) => u.day !== null && Math.abs(u.day - use.day!) <= 1 && (u.challenge && use.challenge || u.day === use.day))) return "its frame is on the Challenge of the day before or after";
   return null;
 }
 

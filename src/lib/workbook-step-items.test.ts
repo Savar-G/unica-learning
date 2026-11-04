@@ -92,8 +92,11 @@ describe("step template items (#489)", () => {
     const challenge = new Set<string>();
     for (let attempt = 0; attempt < 6; attempt++) {
       const c = item("1.1-count-to-20", 1, "challenge", 7, attempt)!;
-      expect(c.ref.index).toBe(hard);
-      expect(c.ref.challengeTemplates).toBe(1);
+      // (Cedric's hard template first; later attempts turn to code's two-step cards, all hard.)
+      if (attempt === 0) expect(c.ref.index).toBe(hard);
+      expect(c.ref.difficulty).toBe("hard");
+      // (Cedric's one, then code's five two-step cards for U4, Savar 2026-11-03: house-templates.ts.)
+      expect(c.ref.challengeTemplates).toBe(6);
       challenge.add(`${c.text} ${c.ref.answer}`);
     }
     // Later attempts find other tasks, so a page's three Challenge questions differ.

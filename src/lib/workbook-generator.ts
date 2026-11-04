@@ -77,8 +77,9 @@ import { textRoom, slotMax } from "@/lib/workbook-template";
 import { checkWholeBook, pageMinimum, questionMinutes, typeKey, type BookQuality } from "@/lib/workbook-quality";
 import { extraPracticeRepeats, twoWaysCountsAsStory } from "@/lib/workbook-early-levels";
 import { approvedQuestionTypes, buildPlannedItem, planItem, itemExamples, itemNumber, ITEM_EXAMPLES, STORY_EXPLAIN, type ItemPlan } from "@/lib/workbook-item-plan";
-import { largestNumber, printedForm, sentenceFrameOf, stemOf, storyKind, storyFrame, taskIdentity, taskType, wordedTask } from "@/lib/workbook-task-identity";
+import { cardFrame, cardFrameProblem, cardNumbers, type CardFrameUse, largestNumber, printedForm, sentenceFrameOf, stemOf, storyKind, storyFrame, taskIdentity, taskType, wordedTask } from "@/lib/workbook-task-identity";
 import { COMPACT_STORY_FRAMES } from "@/lib/workbook-story-bank";
+import { isTwoStep } from "@/lib/workbook-curriculum/house-templates";
 import { buildStepItem, challengeTemplateCount, hasHardNumberTemplate, NO_TEMPLATE_PLACES, STEP_STORY_PLACES, stepAiItem, stepBounds, stepOf, stepRank, stepTemplateItem, stepTemplateOf, sumTemplate, templateProblem } from "@/lib/workbook-step-items";
 
 /**
@@ -221,7 +222,7 @@ function storySteps(input: GenerateInput, slot: Slot, day: number, level: number
   const at = slot.part.step;
   if (!at || slot.place !== "word-problems") return [];
   // (Not "gets 1 more": one more is a count, not a story to work out; the U4 review.)
-  const sums = (skill: string, n: number | null) => !!stepOf(input.curriculum, skill, n)?.templates?.some((t) => t.format === "story" && sumTemplate(t) && !/\b1 (?:more|less|fewer)\b/.test(t.text) && !templateProblem(t, level));
+  const sums = (skill: string, n: number | null) => !!stepOf(input.curriculum, skill, n)?.templates?.some((t) => t.format === "story" && !isTwoStep(t) && sumTemplate(t) && !/\b1 (?:more|less|fewer)\b/.test(t.text) && !templateProblem(t, level));
   // The page's own step first when it has such stories; then this book's steps taught by today and the day's reviewed
   // steps, the most advanced first (the U16 review: Grade 5 stories, not "Hana has 9 leaves. She gets 7 more").
   const seen = new Set<string>([`${at.skill}#${at.step}`]);
@@ -253,6 +254,20 @@ function notAStory(input: GenerateInput, slot: Slot, c: ItemPlan, p: QuestionPac
   return storyPlace && !printedForm(p).startsWith("context:") && stepHasStory(input, c);
 }
 
+/** Whether a Challenge or Show what you know card's frame may not print here (twice a book, cardFrameProblem). */
+function cardFrameTaken(input: GenerateInput, work: PageWork[], slot: Slot, p: QuestionPackage): boolean {
+  if (slot.place !== "challenge" && slot.place !== "show-what-you-know") return false;
+  const f = cardFrame(p);
+  if (!f) return false;
+  const here = work.find((w) => w.slots.includes(slot));
+  const uses = work.flatMap((w) => w.slots.flatMap((s) => {
+    if (s === slot || (s.place !== "challenge" && s.place !== "show-what-you-know") || !s.contract) return [];
+    const q = contractPackage(input, w, s.contract);
+    return q && cardFrame(q) === f ? [{ day: w.day, challenge: s.place === "challenge", numbers: cardNumbers(q) }] : [];
+  }));
+  return !!cardFrameProblem(uses, { day: here?.day ?? null, challenge: slot.place === "challenge", numbers: cardNumbers(p) });
+}
+
 /** A template item's template words, its slots unfilled: one story whatever step lists it. */
 function templateWords(input: GenerateInput, c: ItemPlan): string {
   const t = c.template!;
@@ -274,7 +289,7 @@ function losesStoryKind(input: GenerateInput, w: PageWork, slot: Slot, p: Questi
 /** Whether a template item's step has a story template that prints at this level. */
 function stepHasStory(input: GenerateInput, c: ItemPlan): boolean {
   if (!c.template) return false;
-  return (stepOf(input.curriculum, c.template.skill, c.template.step)?.templates ?? []).some((t) => t.format === "story" && !templateProblem(t, input.plan.level));
+  return (stepOf(input.curriculum, c.template.skill, c.template.step)?.templates ?? []).some((t) => t.format === "story" && !isTwoStep(t) && !templateProblem(t, input.plan.level));
 }
 
 /** Whether a page already asks a template twice (outside its Challenge and warm-up): a template is one question stem. */
@@ -335,7 +350,7 @@ function slotSteps(input: GenerateInput, slot: Slot, day = 0): { steps?: string[
     // The allowed steps, independent of the question printed (#482 review at db3b1a0): the slot's step, a story page's
     // taught or reviewed steps, and for a practice slot the earlier steps its block may review.
     const reviewing = slot.place !== "challenge" ? earlierSteps(input, slot, day, input.plan.level, true).map((x) => `${x.skill}#${x.step}`)
-      : challengeReviewSlot(input, slot, input.plan.level, day) ? challengeReviewSteps(input, slot, day, input.plan.level).map((x) => `${x.skill}#${x.step}`) : [];
+      : [];
     const steps = [...new Set([`${slot.part.step.skill}#${slot.part.step.step}`, ...(stretch ? [`${stretch.skill}#${stretch.step}`] : []), ...stories, ...reviewing])];
     // The numbers those steps allow, for every question of the slot, a fallback builder's too.
     const all = steps.flatMap((k) => { const [skill, n] = k.split("#"); const st = stepOf(input.curriculum, skill, Number(n)); const b = st ? stepBounds(st) : null; return b ? [b] : []; });
@@ -764,6 +779,8 @@ interface Slot {
   existing?: boolean;
   /** How often the capacity stage gave the slot another task because its question was wider than its space. */
   refits?: number;
+  /** How often the capacity stage gave the slot a shorter question of an earlier step instead of dropping one. */
+  swaps?: number;
   /** The skill and the kind of question code chose for the slot (#380): the skill's kinds in turn through the book. */
   aim?: { skill: string; kind: QuestionKind; orElse: QuestionKind[] };
   /**
@@ -1127,7 +1144,7 @@ const SYSTEM = [
   "Formats a parent checks: written-reason (How do you know?); draw (Draw 6 dots; make a set). No operation, no figure.",
   "Pictures: figure names a picture kind (dots, ten-frame, number-line, base-ten, array) or null. Code draws it from the operation (dots for 3 + 4 are 3 and 4 dots; an array for 3 × 4) or from numbers (count: dots take each group, a ten-frame each part, base-ten the hundreds, tens and ones, an array the rows and columns); you never draw, size or place it. Picture stories below U10 should have dots or a ten-frame with small whole numbers.",
   "Keep to the part's kind: practice builds from easy to harder in small changes; Fix it uses new numbers on the skills listed, never a question named in 'avoid'; Friday 5, mini-tests and the level test have no hints.",
-  "Stories and every quantity-of-things question on practice and review pages, at every level, use plain story language; bare number sentences and pure equations stay as equations; code checks it and a story that breaks a rule is written again: (1) every story has a person, the slot's planned name, and real things: 'Gus has 2 plums.', never bare counts such as '2 plums' or '9 dots'; (2) one action per sentence: 'He finds 5 more.'; (3) the question names the counted thing again and says 'now' or asks plainly: 'How many plums does Gus have now?', never 'in all', 'altogether', 'total' or 'left over'; (4) things only do what they really can: '9 frogs. 7 hop away.' is fine, '9 dots. 7 hop off.' is wrong; (5) keep the math words the curriculum teaches (ten-frame, take away, equal groups, and so on): simplify only the everyday words.",
+  "Stories and every quantity-of-things question on practice and review pages, at every level, use plain story language; bare number sentences and pure equations stay as equations; code checks it and a story that breaks a rule is written again: (1) every story has a person, the slot's planned name, and real things: 'Gus has 2 plums.', never bare counts such as '2 plums' or '9 dots'; (2) one action per sentence: 'He finds 5 more.'; (3) the question names the counted thing again and says 'now' or asks plainly: 'How many plums does Gus have now?', never 'in all', 'altogether', 'total' or 'left over'; (4) things only do what they really can: '9 frogs. 7 hop away.' is fine, '9 dots. 7 hop off.' is wrong; (5) keep the math words the curriculum teaches (ten-frame, take away, equal groups, and so on): simplify only the everyday words; (6) a take-away takes the things away from the person with a verb that removes them (gives away, sells, eats, loses, uses, spends, takes out): 'Max puts 17 in a jar. How many does he have now?' is wrong, because he still has them; ask 'How many are not in the jar?' instead.",
   "Copy: short plain sentences a child can read; Canadian English (Mom, metre, litre, colour); money in Canadian dollars and cents; never a school grade, a brand name, or a prompt to scan or call anyone; no last names.",
   "Room: a slot may give its room: the most characters its question text has room for on the printed page (characters), in lines of about perLine characters. Count the characters of the text, spaces included, and stay within it: the page has no room for more, and nothing is shrunk to fit. Say it in short sentences: 'Gus has 2 plums. He finds 5 more. How many plums does Gus have now?', not a long story. On a card (lines 2 or 3), writing lines (written-reason) or a tall picture (number-line, base-ten) take the place of a line: then write one line at most. A ten-frame on a card is taller than its answer box: with a ten-frame, write one line. A written-reason card's lines take as much room as 2 lines of text, so a page of cards has at most 2 written-reason items. For another question with no number answer (Equal? Which has more?), use draw ('Draw 3 dots and 3 dots. Circle the bigger group.'): a parent checks it and it takes the room of an answer box. A write-number item always needs an operation.",
   "Vary: every page is written alone, and other days practise the same skills. So no two questions of a page are the same, and each slot gives a vary number: make it one of the item's numbers (its first number, its total or its count) when the rules allow, so the pages of different days differ.",
@@ -2052,9 +2069,12 @@ function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuesti
         // fixed sentence on two pages of Day 9).
         const own = w.panels.map((x, k) => (keep.indexOf(x.layoutSlot) === index ? examples[k] : null)).find(Boolean);
         const answer = own?.item?.regions.find((r) => r.kind === "choice")?.answer;
-        block.lines = own && answer ? [own.text, `Answer: [${answer}]`] : ["A stone cannot grow legs. Circle never."];
-        block.explain = "Never means it cannot happen. Sometimes means it can happen. Always means it happens every time.";
-        if (block.slot !== "worked-example") block.lines.push(block.explain);
+        // (The answer on its question's line, and the words' meanings short: the full U4 book's Day 9 panel took a third
+        // of its practice page.)
+        block.lines = own && answer ? [`${own.text} Answer: [${answer}]`] : ["A stone cannot grow legs. Answer: [never]"];
+        block.explain = "Never: it cannot happen. Sometimes: it can happen. Always: it happens every time.";
+        // (Once: a panel's lines and its explanation printed it twice, the full U4 book's Day 9.)
+        if (block.slot !== "worked-example") { block.lines.push(block.explain); block.explain = undefined; }
       }
     });
   }
@@ -2266,6 +2286,11 @@ function layOut(input: GenerateInput) {
         break;
       }
     }
+    // A Challenge or Show what you know frame once a book (the U16 r13 review: "Write N thousands, ... as a number" on
+    // the Challenge of Days 1, 5 and 10): a step with no other hard frame takes the hard items of steps reached so far.
+    const cardFrames = new Map<string, CardFrameUse[]>();
+    const cardUse = (w: PageWork, slot: Slot, p: QuestionPackage): CardFrameUse => ({ day: w.day, challenge: slot.place === "challenge", numbers: cardNumbers(p) });
+    const cardPlace = (slot: Slot) => slot.place === "challenge" || slot.place === "show-what-you-know";
     for (const w of planning) {
       const pageOps = new Set<string>();
       // The same words twice on a page read as one question asked again, whatever its format family.
@@ -2348,7 +2373,8 @@ function layOut(input: GenerateInput) {
             if (tk && strict && slot.place !== "challenge" && slot.place !== "warm-up" && (dayTemplates.get(tk) ?? 0) >= (ownTemplate ? 8 : 4)) continue;
             // (A quarter while other tasks are left: the real U4 sample printed four "counts N in a circle" in a row.)
             // A Challenge asks each of its step's few Challenge templates once when earlier steps can bring its other cards.
-            if (tk && slot.place === "challenge" && (c.template?.challengeTemplates ?? 3) < 3 && (pageTemplates.get(tk) ?? 0) >= 1 && challengeReviewSteps(input, slot, w.day, input.plan.level).length) continue;
+            // (Each of its templates once while it has three: two "orders N boxes" cards on one Challenge, the U16 sample.)
+            if (tk && slot.place === "challenge" && (pageTemplates.get(tk) ?? 0) >= 1 && ((c.template?.challengeTemplates ?? 3) >= 3 || challengeReviewSteps(input, slot, w.day, input.plan.level).length)) continue;
             if (tooEasyStory(input, slot, c, p)) continue;
             const stepKey = c.template ? `${c.template.skill}#${c.template.step}` : null;
             const difficultyRank = c.template ? ["easy", "medium", "hard"].indexOf(c.template.difficulty) : -1;
@@ -2360,7 +2386,11 @@ function layOut(input: GenerateInput) {
             if (strict && slot.place === "challenge" && w.page.type === "challenge" && (pageKinds.has(printedForm(p).split(":")[0]) || candidate >= 256)) continue;
             // A stories page prints stories on every pass while its steps have them: a story again with other numbers, never
             // a drill ("What is 2 more than 5?" on the real U4 sample's Number stories page).
-            if ((strict || candidate < 768) && (notAStory(input, slot, c, p) || slot.place === "solve-it-two-ways" && w.page.type === "word-problems" && !printedForm(p).startsWith("context:") && stepHasStory(input, c))) continue;
+            // (On every pass: a late fallback printed "Missing number: 10 000 − ? = 4913" on the real U16 r13 Word problems.)
+            if (notAStory(input, slot, c, p, w.page.type)) continue;
+            if (cardPlace(slot) && cardFrame(p) && cardFrameProblem(cardFrames.get(cardFrame(p)!) ?? [], cardUse(w, slot, p))) continue;
+            // (A Challenge card is on the day's step, Codex at 24751f16, B3: a card of an earlier step asks less.)
+            if (slot.place === "challenge" && w.page.type === "challenge" && c.template && slot.part.step && `${c.template.skill}#${c.template.step}` !== `${slot.part.step.skill}#${slot.part.step.step}`) continue;
             // A template is one question stem: twice a page (the U16 review: six "In N, which digit is in the thousands
             // place?" on one page; the real U4 sample: four "counts N in a circle" in a row).
             if (tk && slot.place !== "challenge" && slot.place !== "warm-up" && (pageTemplates.get(tk) ?? 0) >= 2) continue;
@@ -2394,6 +2424,7 @@ function layOut(input: GenerateInput) {
         }
         if (best) {
           used.set(best.key, (used.get(best.key) ?? 0) + 1); if (!usedAt.has(best.key)) usedAt.set(best.key, w.number); pageOps.add(best.op); pageTexts.add(best.p.text);
+          if (cardPlace(slot) && cardFrame(best.p)) cardFrames.set(cardFrame(best.p)!, [...(cardFrames.get(cardFrame(best.p)!) ?? []), cardUse(w, slot, best.p)]);
           if (slot.place === "challenge") pageKinds.add(printedForm(best.p).split(":")[0]);
           if (best.c.template && slot.place && STEP_STORY_PLACES.has(slot.place)) pageStories.add(templateWords(input, best.c));
           if ((slot.place === "word-problems" || slot.place === "solve-it-two-ways" && w.page.type === "word-problems") && storyKind(best.p.text)) pageStoryKinds.add(storyKind(best.p.text)!);
@@ -2571,7 +2602,9 @@ function stemCount(input: GenerateInput, w: PageWork, stem: string, except?: Slo
 
 /** How tall a planned question prints, in characters of text: a figure counts as 200. */
 const plannedTallness = (s: { contract?: ItemPlan | null }) => (s.contract?.item.text.length ?? 0)
-  + (s.contract?.item.figure || s.contract?.type === "count" ? 200 : 0);
+  + (s.contract?.item.figure || s.contract?.type === "count" ? 200 : 0)
+  // (Never, sometimes and always print on a row of their own under the question: about 60 characters of height.)
+  + (s.contract?.type === "likelihood" || /\bnever, sometimes or always\b/i.test(s.contract?.item.text ?? "") ? 60 : 0);
 
 /** A block's questions on its own step first, its review of earlier steps after them under "Remember these". */
 function ownStepFirst(w: PageWork): void {
@@ -2681,7 +2714,7 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
               if (sentence && (onPage.has(sentence) || today.filter(x=>x===sentence).length>=2)) continue;
               const stem=c.source==="explain" ? null : stemOf(built.package);
               if (stem && !NUMBER_PLACES.has(slot.place ?? "") && stemCount(input,w,stem)>=2) continue;
-              if (tooEasyStory(input,slot,c,built.package) || notAStory(input,slot,c,built.package,w.page.type)) continue;
+              if (tooEasyStory(input,slot,c,built.package) || notAStory(input,slot,c,built.package,w.page.type) || cardFrameTaken(input,work,slot,built.package)) continue;
               if (!["word-problems","challenge"].includes(w.page.type)) {
                 const type=taskType(built.package);
                 const same=w.slots.filter(s=>s.contract).filter(s=>{
@@ -2737,7 +2770,7 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
             if (stem && !NUMBER_PLACES.has(wideSlot.place ?? "") && stemCount(input, w, stem, wideSlot)>=2) continue;
             if (tooEasyStory(input, wideSlot, c, b.package)) continue;
             if (templateTwice(w, wideSlot, c)) continue;
-            if (notAStory(input, wideSlot, c, b.package, w.page.type) || losesStoryKind(input, w, wideSlot, b.package)) continue;
+            if (notAStory(input, wideSlot, c, b.package, w.page.type) || losesStoryKind(input, w, wideSlot, b.package) || cardFrameTaken(input, work, wideSlot, b.package)) continue;
             if (wideSlot.place !== "challenge" && wideSlot.place !== "show-what-you-know" && reachesChallenge(work, w.day, c)) continue;
             other = c;
           }
@@ -2779,7 +2812,7 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
             if (tooEasyStory(input, longest, c, b.package)) continue;
             if (templateTwice(w, longest, c)) continue;
             // (A stories page's question stays a story: a drill is shorter, "What is 2 more than 8?".)
-            if (notAStory(input, longest, c, b.package, w.page.type) || losesStoryKind(input, w, longest, b.package)) continue;
+            if (notAStory(input, longest, c, b.package, w.page.type) || losesStoryKind(input, w, longest, b.package) || cardFrameTaken(input, work, longest, b.package)) continue;
             // Shorter to read is not always quicker to do: the day's estimate must not grow (U16's Day 10).
             const had = longest.contract!;
             const minutesBefore = plannedDayMinutes(input, work, w.day);
@@ -2814,6 +2847,35 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
           w.layout.slots[fewer.layoutSlot].items--;
           ceiling=Math.min(ceiling,w.slots.length); continue;
         }
+        // Still too tall: before a question goes, the tallest practice question takes a shorter one of an earlier step
+        // the book taught (Savar, 2026-11-03, the full U4 book's likelihood days: mix in review rather than lose work).
+        let swapped = false;
+        // (A hand-built likelihood card too: "Will a sock lay an egg?" with its three words prints taller than "8 is 5 and ?".)
+        for (const tall of [...w.slots].filter(s => s.contract && !s.existing && (s.swaps ?? 0) < 3 && ["on-your-own", "finish-these", "practice-row", "now-you", "unit-b-practice", "remember-these"].includes(s.place ?? "")).sort((a, b) => plannedTallness(b) - plannedTallness(a)).slice(0, 4)) {
+          const was = plannedTallness(tall);
+          const planned = (p: PageWork) => p.slots.flatMap(s => { const pkg = s.contract && s !== tall ? contractPackage(input, p, s.contract) : null; return pkg && s.place !== "warm-up" ? [pkg] : []; });
+          const taken = new Set([...work.flatMap(p => planned(p).map(taskIdentity)), ...work.flatMap(p => panelTasks(input, p))]);
+          const onPage = new Set(planned(w).flatMap(p => sentenceFrameOf(p) ?? []));
+          const today = work.filter(p => p.day === w.day).flatMap(p => planned(p).flatMap(q => sentenceFrameOf(q) ?? []));
+          // (A review card whose part reviews the day's new idea only takes the page's practice part, its earlier steps.)
+          const practicePart = w.slots.find((s) => s.part !== tall.part && s.part.step && ["on-your-own", "finish-these", "practice-row"].includes(s.place ?? ""))?.part;
+          const parts = tall.place === "remember-these" && practicePart ? [tall.part, practicePart] : [tall.part];
+          for (let k = 0; k < parts.length * 192 && !swapped; k++) {
+            const part = parts[Math.floor(k / 192)], attempt = LATE_ATTEMPT + (k % 192);
+            const c = contractFor(input, w, { ...tall, part, contract: undefined }, attempt);
+            if (!c?.template || plannedTallness({ contract: c }) > was - 20) continue;
+            const b = buildPlannedItem(c, c.item, { id: "capacity", workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [c.item.skill] });
+            if (!b.package || b.check.status === "failed" || scheduledItemProblem(b.package, input.curriculum, w.day, tall.place ?? "") || taken.has(taskIdentity(b.package))) continue;
+            if (reachesChallenge(work, w.day, c) || templateTwice(w, tall, c) || tooEasyStory(input, tall, c, b.package) || notAStory(input, tall, c, b.package, w.page.type)) continue;
+            const sentence = sentenceFrameOf(b.package);
+            if (sentence && (onPage.has(sentence) || today.filter(x => x === sentence).length >= 2)) continue;
+            const stem = stemOf(b.package);
+            if (stem && stemCount(input, w, stem, tall) >= 2) continue;
+            tall.contract = c; tall.part = part; tall.swaps = (tall.swaps ?? 0) + 1; swapped = true;
+          }
+          if (swapped) break;
+        }
+        if (swapped) continue;
         // Still too tall: an item goes below the minimum, and the page reports it (an omission fails the book check).
         const forced = w.layout && w.slots.length > 1 ? w.slots.findLast(s => s.place === "try-first") ?? w.slots.findLast(s => !s.contract && !s.existing && DROP_PLACES.has(s.place ?? ""))
           ?? w.slots.findLast(s => s.contract?.template && DROP_PLACES.has(s.place ?? "") && s.place !== "challenge") ?? w.slots.findLast(s => s.contract?.template && DROP_PLACES.has(s.place ?? "")) : undefined;
