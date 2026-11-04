@@ -6916,5 +6916,344 @@
     "after": "1 <= p < w and w >= 3 and w >= 2",
     "why": "The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.",
     "kind": "quality-fallback"
+  },
+  {
+    "skill": "9.2-power-parts",
+    "step": 2,
+    "template": 3,
+    "path": [
+      "check"
+    ],
+    "before": "b != e",
+    "after": "b != e and b ** e != e ** b",
+    "why": "Exclude equal-valued swapped powers such as 4² and 2⁴. The question must have exactly one option with the value of its repeated product. Keep its format, difficulty and number ranges."
+  },
+  {
+    "skill": "K3-make-10",
+    "step": 3,
+    "template": null,
+    "path": [
+      "mistakes"
+    ],
+    "before": [
+      {
+        "answer": "4",
+        "why": "repeats the number",
+        "kind": "conceptual",
+        "misconception": "known-as-unknown"
+      }
+    ],
+    "after": [
+      {
+        "answer": "4",
+        "why": "repeats the number",
+        "kind": "careless",
+        "misconception": null
+      }
+    ],
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "K3-make-10",
+    "step": 3,
+    "template": 1,
+    "path": [
+      "text"
+    ],
+    "before": "__ and {p} make {w}.",
+    "after": "{p} and __ make {w}.",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "K3-make-10",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "format"
+    ],
+    "before": "story",
+    "after": "missing",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "K3-make-10",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "{name} has some {things}, gets {p} more, and has {w} in all. How many did {name} start with?",
+    "after": "__ and {p} make {w}.",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "K3-make-10",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "check"
+    ],
+    "before": "p < w and p >= 2",
+    "after": "p <= w",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "K3-make-10",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "format"
+    ],
+    "before": "choose",
+    "after": "story",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "K3-make-10",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "difficulty"
+    ],
+    "before": "medium",
+    "after": "hard",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "K3-make-10",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "__ and {p} make {w}. Which is right? A) {x}  B) {y}",
+    "after": "{name} has {p} {things} and wants {w}. How many more?",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "K3-make-10",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "answer"
+    ],
+    "before": "'A' if f == 0 else 'B'",
+    "after": "w - p",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "K3-make-10",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "p": "part",
+      "w": "whole",
+      "f": "flip"
+    },
+    "after": {
+      "p": "part",
+      "w": "whole"
+    },
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "K3-make-10",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "r": "w - p",
+      "v": "r + 1 if r < w else r - 1",
+      "x": "r if f == 0 else v",
+      "y": "v if f == 0 else r"
+    },
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback",
+    "afterAbsent": true
+  },
+  {
+    "skill": "K3-make-10",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "check"
+    ],
+    "before": "p <= w",
+    "after": "p < w",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 1,
+    "template": 3,
+    "path": [
+      "format"
+    ],
+    "before": "picture",
+    "after": "story",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 1,
+    "template": 3,
+    "path": [
+      "text"
+    ],
+    "before": "(picture: {n} dots in two rows) How many dots?",
+    "after": "{name} has {n} {things}. {name} gets 1 more. How many {things} now?",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 1,
+    "template": 3,
+    "path": [
+      "answer"
+    ],
+    "before": "n",
+    "after": "n + 1",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 1,
+    "template": 3,
+    "path": [
+      "check"
+    ],
+    "before": "n >= 2",
+    "after": "n + 1 <= 9 and n >= 2",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 2,
+    "template": 3,
+    "path": [
+      "format"
+    ],
+    "before": "picture",
+    "after": "story",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 2,
+    "template": 3,
+    "path": [
+      "text"
+    ],
+    "before": "(picture: a ten-frame with {n} dots) How many dots?",
+    "after": "{name} has {n} {things}. {name} gets 1 more. How many {things} now?",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 2,
+    "template": 3,
+    "path": [
+      "answer"
+    ],
+    "before": "n",
+    "after": "n + 1",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 2,
+    "template": 3,
+    "path": [
+      "check"
+    ],
+    "before": "n >= 2",
+    "after": "n + 1 <= 11 and n >= 2",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 3,
+    "template": 3,
+    "path": [
+      "text"
+    ],
+    "before": "{name} has {w} {things}. {p} of them {be} red and the rest are blue. How many are blue?",
+    "after": "{name} has {w} {things}. {p} are red and the rest are blue. How many are blue?",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 3,
+    "template": 3,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "be": "'is' if p == 1 else 'are'"
+    },
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback",
+    "afterAbsent": true
+  },
+  {
+    "skill": "1.2-decompose-within-10",
+    "step": 1,
+    "template": 1,
+    "path": [
+      "text"
+    ],
+    "before": "{w} = {p} + __",
+    "after": "{w} is {p} and __",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.2-decompose-within-10",
+    "step": 1,
+    "template": 2,
+    "path": [
+      "text"
+    ],
+    "before": "True or false: {w} = {p} + {q}.",
+    "after": "True or false: {p} and {q} make {w}.",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.2-decompose-within-10",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "{w} = __ + {p}. Which goes in the blank: {x} or {y}?",
+    "after": "{w} is {p} and which number: {x} or {y}?",
+    "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
+    "kind": "quality-fallback"
   }
 ]

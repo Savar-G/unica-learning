@@ -4131,3 +4131,369 @@ After:
 ```json
 "1 <= p < w and w >= 3 and w >= 2"
 ```
+
+## 9.2-power-parts step 2 template 3 check
+
+Exclude equal-valued swapped powers such as 4² and 2⁴. The question must have exactly one option with the value of its repeated product. Keep its format, difficulty and number ranges.
+
+Before:
+```json
+"b != e"
+```
+After:
+```json
+"b != e and b ** e != e ** b"
+```
+
+## K3-make-10 step 3 template all mistakes
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+[
+  {
+    "answer": "4",
+    "why": "repeats the number",
+    "kind": "conceptual",
+    "misconception": "known-as-unknown"
+  }
+]
+```
+After:
+```json
+[
+  {
+    "answer": "4",
+    "why": "repeats the number",
+    "kind": "careless",
+    "misconception": null
+  }
+]
+```
+
+## K3-make-10 step 3 template 1 text
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"__ and {p} make {w}."
+```
+After:
+```json
+"{p} and __ make {w}."
+```
+
+## K3-make-10 step 3 template 4 format
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"story"
+```
+After:
+```json
+"missing"
+```
+
+## K3-make-10 step 3 template 4 text
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"{name} has some {things}, gets {p} more, and has {w} in all. How many did {name} start with?"
+```
+After:
+```json
+"__ and {p} make {w}."
+```
+
+## K3-make-10 step 3 template 4 check
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"p < w and p >= 2"
+```
+After:
+```json
+"p <= w"
+```
+
+## K3-make-10 step 3 template 5 format
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"choose"
+```
+After:
+```json
+"story"
+```
+
+## K3-make-10 step 3 template 5 difficulty
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"medium"
+```
+After:
+```json
+"hard"
+```
+
+## K3-make-10 step 3 template 5 text
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"__ and {p} make {w}. Which is right? A) {x}  B) {y}"
+```
+After:
+```json
+"{name} has {p} {things} and wants {w}. How many more?"
+```
+
+## K3-make-10 step 3 template 5 answer
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"'A' if f == 0 else 'B'"
+```
+After:
+```json
+"w - p"
+```
+
+## K3-make-10 step 3 template 5 slots
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+{
+  "p": "part",
+  "w": "whole",
+  "f": "flip"
+}
+```
+After:
+```json
+{
+  "p": "part",
+  "w": "whole"
+}
+```
+
+## K3-make-10 step 3 template 5 derived
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+{
+  "r": "w - p",
+  "v": "r + 1 if r < w else r - 1",
+  "x": "r if f == 0 else v",
+  "y": "v if f == 0 else r"
+}
+```
+After:
+```json
+(absent)
+```
+
+## K3-make-10 step 3 template 5 check
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"p <= w"
+```
+After:
+```json
+"p < w"
+```
+
+## 1.1-subitize-to-10 step 1 template 3 format
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"picture"
+```
+After:
+```json
+"story"
+```
+
+## 1.1-subitize-to-10 step 1 template 3 text
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"(picture: {n} dots in two rows) How many dots?"
+```
+After:
+```json
+"{name} has {n} {things}. {name} gets 1 more. How many {things} now?"
+```
+
+## 1.1-subitize-to-10 step 1 template 3 answer
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"n"
+```
+After:
+```json
+"n + 1"
+```
+
+## 1.1-subitize-to-10 step 1 template 3 check
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"n >= 2"
+```
+After:
+```json
+"n + 1 <= 9 and n >= 2"
+```
+
+## 1.1-subitize-to-10 step 2 template 3 format
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"picture"
+```
+After:
+```json
+"story"
+```
+
+## 1.1-subitize-to-10 step 2 template 3 text
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"(picture: a ten-frame with {n} dots) How many dots?"
+```
+After:
+```json
+"{name} has {n} {things}. {name} gets 1 more. How many {things} now?"
+```
+
+## 1.1-subitize-to-10 step 2 template 3 answer
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"n"
+```
+After:
+```json
+"n + 1"
+```
+
+## 1.1-subitize-to-10 step 2 template 3 check
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"n >= 2"
+```
+After:
+```json
+"n + 1 <= 11 and n >= 2"
+```
+
+## 1.1-subitize-to-10 step 3 template 3 text
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"{name} has {w} {things}. {p} of them {be} red and the rest are blue. How many are blue?"
+```
+After:
+```json
+"{name} has {w} {things}. {p} are red and the rest are blue. How many are blue?"
+```
+
+## 1.1-subitize-to-10 step 3 template 3 derived
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+{
+  "be": "'is' if p == 1 else 'are'"
+}
+```
+After:
+```json
+(absent)
+```
+
+## 1.2-decompose-within-10 step 1 template 1 text
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"{w} = {p} + __"
+```
+After:
+```json
+"{w} is {p} and __"
+```
+
+## 1.2-decompose-within-10 step 1 template 2 text
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"True or false: {w} = {p} + {q}."
+```
+After:
+```json
+"True or false: {p} and {q} make {w}."
+```
+
+## 1.2-decompose-within-10 step 1 template 4 text
+
+On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.
+
+Before:
+```json
+"{w} = __ + {p}. Which goes in the blank: {x} or {y}?"
+```
+After:
+```json
+"{w} is {p} and which number: {x} or {y}?"
+```

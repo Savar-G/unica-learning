@@ -8,6 +8,7 @@ import { aiSolver, sameAnswer, solveCheck } from "@/lib/workbook-solve-check";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { buildQuestion } from "@/lib/workbook-generator-items";
 import { storyProblem } from "@/lib/workbook-wording";
+import { templateMethod } from "@/lib/workbook-book";
 import { BC_CURRICULUM, curriculumFor, type NumberRange } from "./index";
 import { parseStepProgressions } from "./step-source";
 import { prepareTemplate, seededRandom } from "./template";
@@ -22,6 +23,16 @@ const originalCounts = new Map(original.steps.map(s => [`${s.skill}#${s.number}`
 const BC = curriculumFor("bc")!;
 
 describe("v2 data and answer contracts", () => {
+  it.each([
+    ["True or false: 7 = 1 + 7.", "1 + 7 = 8", "false"],
+    ["True or false: 7 = 3 + 5.", "3 + 5 = 8", "false"],
+    ["True or false: 7 = 3 + 4.", "3 + 4 = 7", "true"],
+  ])("shows the calculation for the worked example %s", (text, calculation, answer) => {
+    const method = templateMethod({ answer: `'${answer}'`, check: null, derived: [], slots: [], values: null }, text);
+    expect(method).toContain(calculation);
+    expect(method).not.toMatch(/^Answer:/);
+  });
+
   it("recovers the real U16 bare Mixed set as the same checked operation in a story", () => {
     const raw = { skill: "4.4-add-within-10000", text: "142 + 1389 = ?", format: "tick-and-number", difficulty: 2, operation: { kind: "add", operands: [142, 1389] }, wrongAnswers: [{ value: { type: "number", value: 1421 }, cause: "no-regroup", description: "Forgot the carry", step: "tens" }], easier: { text: "122 + 1239 = ?", operation: { kind: "add", operands: [122, 1239] } }, figure: null };
     const place = { id: "q", workbookId: "w", page: 9, question: 4, level: 16, skills: [raw.skill], story: true, wording: { name: "Mia", thing: "books", names: ["Mia"], things: ["books"], kinds: ["story" as const], step: false, subtraction: true } };
@@ -92,6 +103,17 @@ describe("v2 data and answer contracts", () => {
         if (expressionIsTrue(check.evaluate({ a: BigInt(a), b: BigInt(b), g: BigInt(g) }))) accepted.push(a * 10000 + b * 100 + g);
       }
       expect(accepted.sort((a, b) => a - b)).toEqual([...expected].sort((a, b) => a - b));
+    }
+  });
+
+  it("offers exactly one power with the repeated product's value", () => {
+    const step = BC.skillSteps("9.2-power-parts")!.find(s => s.number === 2)!;
+    const fill = prepareTemplate(step, step.templates![2], BC.contexts!);
+    for (let seed = 0; seed < 80; seed++) {
+      const item = fill.fill(seededRandom(seed));
+      const base = Number(formatValue(item.values.b)), exponent = Number(formatValue(item.values.e));
+      const target = base ** exponent;
+      expect([target, exponent ** base, base * exponent].filter(value => value === target), item.text).toHaveLength(1);
     }
   });
 
@@ -207,6 +229,25 @@ describe("v2 data and answer contracts", () => {
   });
 
   it.each([
+    ["8.10-model", 1, 3, 26, "14"],
+    ["6.12-parallelogram-area", 1, 1, 22, "25"],
+  ] as const)("keeps the numeric measurement answer format for %s", async (skill, stepNumber, index, level, answer) => {
+    const step = BC.skillSteps(skill)!.find(s => s.number === stepNumber)!;
+    const curriculum = { ...BC, skillSteps: (id: string) => id === skill ? [{ ...step, templates: [step.templates![index]] }] : BC.skillSteps(id) };
+    const filled = stepTemplateItem({ curriculum, skill, step: stepNumber, place: "on-your-own", level, day: 1, ordinal: 0, seed: 7, attempt: 0 })!;
+    const built = buildStepItem(filled.ref, filled.text, { id: "q", workbookId: "w", page: 2, question: 1, level, skills: [skill] }, "ai");
+    expect(built.check.status).toBe("checked");
+    const ai = fakeAiClient({ answer: request => {
+      const sent = JSON.parse((request.content[0] as { text: string }).text);
+      expect(sent.questions[0].boxes[0]).toMatchObject({ numberOnly: true });
+      expect(request.system).toContain("numberOnly");
+      expect(JSON.stringify(sent)).not.toContain(`"${answer}"`);
+      return { answers: [{ question: "question", box: "answer", answer }], problem: null };
+    } });
+    expect((await solveCheck(aiSolver(ai), built.package!, 1000))?.verdict).toEqual({ status: "agreed" });
+  });
+
+  it.each([
     ["9.8-bank-record", 2, 0, 30, /^\$\d+\.\d{2}$/],
     ["5.12-area-rectangle", 2, 1, 16, /^\d+ m²$/],
   ] as const)("preserves %s money and units in the number check, solve check and key display", async (skill, stepNumber, index, level, answerPattern) => {
@@ -223,7 +264,12 @@ describe("v2 data and answer contracts", () => {
     if (region.kind !== "box" || !region.answer) throw new Error("missing answer box");
     expect(valueText(region.answer)).toBe(filled.ref.answer);
     expect(sameAnswer(filled.ref.answer.replace(/[$]| m²/g, ""), [filled.ref.answer], false)).toBe(false);
-    const solver = aiSolver(fakeAiClient({ answer: () => ({ answers: [{ question: "question", box: region.id, answer: filled.ref.answer }], problem: null }) }));
+    const solver = aiSolver(fakeAiClient({ answer: request => {
+      const sent = JSON.parse((request.content[0] as { text: string }).text);
+      expect(sent.questions[0].boxes[0]).not.toHaveProperty("numberOnly");
+      return { answers: [{ question: "question", box: region.id, answer: filled.ref.answer }], problem: null };
+    } }));
     expect((await solveCheck(solver, pkg, 1000))?.verdict).toEqual({ status: "agreed" });
+    if (skill === "5.12-area-rectangle") expect(sameAnswer(filled.ref.answer.replace("m²", "cm²"), [filled.ref.answer], false)).toBe(false);
   });
 });

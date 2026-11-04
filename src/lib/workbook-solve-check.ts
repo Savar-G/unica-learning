@@ -19,9 +19,11 @@ import { isCodeWorded } from "@/lib/workbook-generator-items";
 export interface PrintedBox {
   id: string;
   asks: string;
+  /** The box's numeric answer format, without its value. */
+  numberOnly?: true;
 }
 
-/** A question as it is printed: nothing of the key, the operation or the AI's data beyond what the page shows. */
+/** The printed question and its answer format, without key values, operations or the writer's other data. */
 export interface PrintedQuestion {
   /** "question", or "easier" for the easier example a parent may read aloud. */
   id: string;
@@ -115,7 +117,7 @@ export function printedQuestion(p: QuestionPackage): { question: PrintedQuestion
   const operationBoxes = new Set((p.item?.checks ?? []).flatMap((c) => (c.kind === "operation" ? [c.region] : [])));
   for (const r of regions) {
     if (r.kind === "box" && r.answer) {
-      boxes.push({ id: r.id, asks: r.label ? `a box labelled "${r.label}"` : "a box for the answer" });
+      boxes.push({ id: r.id, asks: r.label ? `a box labelled "${r.label}"` : "a box for the answer", ...(r.answer.type === "number" ? { numberOnly: true as const } : {}) });
       const accepted = operationBoxes.has(r.id) ? p.answer?.accepted ?? [] : [];
       key.push({ question: "question", box: r.id, right: [r.answer, ...accepted].map(valueText), choice: false });
     }
@@ -139,7 +141,7 @@ export function toSolve(p: QuestionPackage): SolveRequest {
   const key = main ? [...main.key] : [];
   const e = p.easierExample;
   if (e) {
-    questions.push({ id: "easier", text: e.text, picture: null, shown: null, boxes: [{ id: "answer", asks: "a box for the answer" }] });
+    questions.push({ id: "easier", text: e.text, picture: null, shown: null, boxes: [{ id: "answer", asks: "a box for the answer", ...(e.answer.type === "number" ? { numberOnly: true as const } : {}) }] });
     key.push({ question: "easier", box: "answer", right: [valueText(e.answer)], choice: false });
   }
   return { questions, key };
@@ -234,7 +236,7 @@ export const SOLVE_SCHEMA = solveSchema();
 const SYSTEM = [
   "You check printed math questions from a workbook for a child aged 6 to 12. Each question is given as the child sees it: its text, the picture in words, what the card prints beside the text, and its answer boxes and choices.",
   "Name each question by its id (\"question\" or \"easier\") and each box by its id, exactly as given; never by its text. Answer every box and choice of every question, as a careful child who reads the question exactly as printed would. Write a box's answer exactly in one of these forms: a count or a plain number as the number only, in digits, with no word after it and no extra zeros (12, not 12 shells; 1250 or 1,250; 0.5; -3), a fraction as 3/4 or 1 1/2, a remainder as 9 R 2, money as $4.75 or 75¢, an amount with its unit symbol as the question writes it (2.5 km, 1 h 30 min), a time as 3:30 p.m. or 15:30, a word in lower case (even, yes). Never convert a unit. For a choice, give one of its options exactly as printed.",
-  "For a measurement, include the requested unit even when the question names it in words. Write square metres as m², square centimetres as cm², cubic metres as m³ and cubic centimetres as cm³. Keep the unit's scale. Write dollar amounts with $ and two decimal places, including whole dollars such as $12.00.",
+  "A box marked numberOnly takes the number only, without a unit, including when its question describes a measurement. This answer format takes priority over the unit rules. For other measurement boxes, include the requested unit even when the question names it in words. Write square metres as m², square centimetres as cm², cubic metres as m³ and cubic centimetres as cm³. Keep the unit's scale. Write dollar amounts with $ and two decimal places, including whole dollars such as $12.00.",
   "Use only what is printed. Do not guess what the writer meant. If a question cannot be answered as printed (it is unclear, it leaves out a number, or its boxes do not take what it asks), say which and why in problem; else problem is null.",
 ].join("\n");
 

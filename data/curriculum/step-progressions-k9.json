@@ -16142,8 +16142,8 @@
     {
      "answer": "4",
      "why": "repeats the number",
-     "kind": "conceptual",
-     "misconception": "known-as-unknown"
+     "kind": "careless",
+     "misconception": null
     }
    ],
    "spotTheError": {
@@ -16205,7 +16205,7 @@
     {
      "format": "missing",
      "difficulty": "easy",
-     "text": "__ and {p} make {w}.",
+     "text": "{p} and __ make {w}.",
      "answer": "w - p",
      "slots": {
       "p": "part",
@@ -16240,33 +16240,26 @@
      "check": "p <= w"
     },
     {
-     "format": "story",
+     "format": "missing",
      "difficulty": "hard",
-     "text": "{name} has some {things}, gets {p} more, and has {w} in all. How many did {name} start with?",
+     "text": "__ and {p} make {w}.",
      "answer": "w - p",
      "slots": {
       "p": "part",
       "w": "whole"
      },
-     "check": "p < w and p >= 2"
+     "check": "p <= w"
     },
     {
-     "format": "choose",
-     "difficulty": "medium",
-     "text": "__ and {p} make {w}. Which is right? A) {x}  B) {y}",
-     "answer": "'A' if f == 0 else 'B'",
+     "format": "story",
+     "difficulty": "hard",
+     "text": "{name} has {p} {things} and wants {w}. How many more?",
+     "answer": "w - p",
      "slots": {
       "p": "part",
-      "w": "whole",
-      "f": "flip"
+      "w": "whole"
      },
-     "derived": {
-      "r": "w - p",
-      "v": "r + 1 if r < w else r - 1",
-      "x": "r if f == 0 else v",
-      "y": "v if f == 0 else r"
-     },
-     "check": "p <= w"
+     "check": "p < w"
     }
    ],
    "calibration": {
@@ -24402,14 +24395,14 @@
      "check": "n >= 2"
     },
     {
-     "format": "picture",
+     "format": "story",
      "difficulty": "medium",
-     "text": "(picture: {n} dots in two rows) How many dots?",
-     "answer": "n",
+     "text": "{name} has {n} {things}. {name} gets 1 more. How many {things} now?",
+     "answer": "n + 1",
      "slots": {
       "n": "count"
      },
-     "check": "n >= 2"
+     "check": "n + 1 <= 9 and n >= 2"
     },
     {
      "format": "compare",
@@ -24539,14 +24532,14 @@
      "check": "n >= 2"
     },
     {
-     "format": "picture",
+     "format": "story",
      "difficulty": "medium",
-     "text": "(picture: a ten-frame with {n} dots) How many dots?",
-     "answer": "n",
+     "text": "{name} has {n} {things}. {name} gets 1 more. How many {things} now?",
+     "answer": "n + 1",
      "slots": {
       "n": "count"
      },
-     "check": "n >= 2"
+     "check": "n + 1 <= 11 and n >= 2"
     },
     {
      "format": "compare",
@@ -24684,16 +24677,13 @@
     {
      "format": "story",
      "difficulty": "medium",
-     "text": "{name} has {w} {things}. {p} of them {be} red and the rest are blue. How many are blue?",
+     "text": "{name} has {w} {things}. {p} are red and the rest are blue. How many are blue?",
      "answer": "w - p",
      "slots": {
       "w": "whole",
       "p": "part"
      },
-     "check": "1 <= p < w and w >= 3 and w >= 2",
-     "derived": {
-      "be": "'is' if p == 1 else 'are'"
-     }
+     "check": "1 <= p < w and w >= 3 and w >= 2"
     },
     {
      "format": "choose",
@@ -27604,7 +27594,7 @@
     {
      "format": "missing",
      "difficulty": "easy",
-     "text": "{w} = {p} + __",
+     "text": "{w} is {p} and __",
      "answer": "w - p",
      "slots": {
       "w": "whole",
@@ -27615,7 +27605,7 @@
     {
      "format": "true-false",
      "difficulty": "easy",
-     "text": "True or false: {w} = {p} + {q}.",
+     "text": "True or false: {p} and {q} make {w}.",
      "answer": "'true' if flip == 0 else 'false'",
      "slots": {
       "w": "whole",
@@ -27644,7 +27634,7 @@
     {
      "format": "choose",
      "difficulty": "medium",
-     "text": "{w} = __ + {p}. Which goes in the blank: {x} or {y}?",
+     "text": "{w} is {p} and which number: {x} or {y}?",
      "answer": "rt",
      "slots": {
       "w": "whole",
@@ -251231,7 +251221,7 @@
       "ob": "xr if pos == 1 else xw1 if pos == 0 else xw2",
       "oc": "xr if pos == 2 else xw2"
      },
-     "check": "b != e"
+     "check": "b != e and b ** e != e ** b"
     },
     {
      "format": "bare",

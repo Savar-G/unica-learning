@@ -64,7 +64,7 @@ import { solveCheck, solveReason, type SolveLog, type Solver, type SolveVerdict 
 import { digestOf } from "@/lib/workbook-digest";
 import { BOYS, fillFrame, frameDoes, framePair, framesFor, GIRLS, PEOPLE, THINGS, quantityStoryProblem, storyProblem, type Action, type WordingKind } from "@/lib/workbook-wording";
 import {
-  bookPageContent, dayPageContent, layoutDayPage, mistakesFor, levelSigns, rangeProblem, samFix, samProblem, skillRange, slotRanges, PANEL_SLOTS, SLOT_FORMATS, STRICT_SLOTS,
+  bookPageContent, dayPageContent, layoutDayPage, mistakesFor, levelSigns, rangeProblem, samFix, samProblem, skillRange, slotRanges, templateMethod, PANEL_SLOTS, SLOT_FORMATS, STRICT_SLOTS,
   type DayLayout, type NumberRange,
 } from "@/lib/workbook-book";
 import { pageId, type Omission, type PageContent, type SlotName } from "@/lib/workbook-page";
@@ -189,6 +189,8 @@ function templateContractFor(input: GenerateInput, w: PageWork, slot: Slot, atte
     seed: hashOf(`${input.workbookId}:${w.number}:${slot.id}`) % 1_000_000_007, attempt, ordinal, usedOnPage: used, room, avoid: input.book?.child || null,
   });
   if (!filled) return null;
+  // Likelihood panels supply the definitions in contentOf; other templates need their own method.
+  if (panel && !/likelihood/.test(at.skill) && filled.ref.kind !== "sequence" && !templateMethod(filled.ref.source, filled.text)) return null;
   // Only a story template goes to the writer for its words; code keeps every other text as the template wrote it.
   const story = filled.ref.kind === "story" && filled.ref.format === "story" && !panel;
   return {
@@ -2693,11 +2695,14 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         const questions = w.slots.map((s, i) => {
           const c = s.contract;
           const b = c ? buildPlannedItem(c, c.item, { id: `budget:${w.number}:${s.id}`, workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: [c.item.skill] }) : s.existing ? standIn(input, w, s, i) : unapprovedBuild();
+          // Measure the name that writeSlots prints. A shorter replacement can remove a wrapped line.
+          if (b.package && s.place && s.place !== "spot-the-error") b.package = withoutSam(b.package, s.planned?.name ?? null);
           return generated(w, i, b, 1);
         });
         const examples = w.panels.map(p => {
           const c = contractFor(input, w, panelSlot(w, p), p.attempt ?? 0);
-          return c ? buildPlannedItem(c, c.item, { id: `budget:${w.number}:${p.id}`, workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [p.skill] }).package : null;
+          const pkg = c ? buildPlannedItem(c, c.item, { id: `budget:${w.number}:${p.id}`, workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [p.skill] }).package : null;
+          return pkg ? withoutSam(pkg, null) : null;
         });
         const fit = await fitCheck.fits(fitPage(w, "token-000000000001", questions, contentOf(input, w, questions, examples)), {
           id: input.workbookId, childId: input.childId, number: input.number, levels: [input.plan.level], profileBuild: input.profileBuild,

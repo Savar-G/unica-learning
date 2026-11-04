@@ -1,5 +1,7 @@
 # Workbook step progressions v2
 
+The [merged-base follow-up](workbook-steps-v2-merged-review.md) records the current corrections, data fallback and U4/U16 checks on base `24751f16`. This file preserves the earlier comparison on `85578a5b`.
+
 Issue: [#505](https://github.com/Savar-G/unica-learning/issues/505). PR base: `site/workbook-consistency` at `85578a5b4c4ed3b3fc7bc45e3aeaf8e810ffb40f`. This branch includes that commit. The final fetch found no newer base.
 
 All 11 matched comparison rows pass. Each pair uses the same generator bundle, consistency base, sample profile and seed. The result does not mean that every book is ready: the full U10 book still has five page fit failures. The full U26 book still has one failed question, eight page fit failures and nine room omissions. Each count is equal to or lower than its v1 control. No failure is hidden.

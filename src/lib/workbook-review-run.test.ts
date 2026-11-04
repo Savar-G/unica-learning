@@ -24,7 +24,8 @@ const run=promisify(execFile);
 // sample command, not here.
 it.skipIf(!chromium)("completes the U4 review command for days 1 and 5 with real fit and fullness checks",async()=>{
   const out=await mkdtemp(join(tmpdir(),"workbook-u4-review-"));
-  const env={...process.env};
+  // This seed lost final fullness after a template changed between capacity and output.
+  const env:NodeJS.ProcessEnv={...process.env,WORKBOOK_SAMPLE_ID:"67126ea6-8ac8-4065-8036-5ae4da161812"};
   for(const key of ["OPENROUTER_API_KEY","OPENROUTER_API_KEY_FILE","ANTHROPIC_API_KEY","ANTHROPIC_API_KEY_FILE"]) delete env[key];
   // A zero exit without a book used to hide the capacity failure. Require the
   // actual draft, PDF, measured fullness, coverage and printed review summary.

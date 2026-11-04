@@ -248,8 +248,9 @@ function exampleOf(p: QuestionPackage, level: number): PanelExample | null {
       const answer = r?.kind === "box" && r.answer ? valueText(r.answer) : r?.kind === "choice" ? r.answer ?? "?" : "?";
       // The work, then the answer: a worked example shows its method, never an answer key alone (Codex at db3b1a0).
       const how = templateMethod(c.source, p.text);
+      if (!how) return null;
       // (The method and its answer on one line: "Work it out: 7 − 4 = 3. Answer: 3", a line less on a full page.)
-      return { label: "Example", lines: [p.text, how ? `${how} Answer: [${answer}]` : `Answer: [${answer}]`], answered: `Answer: [${answer}]` };
+      return { label: "Example", lines: [p.text, `${how} Answer: [${answer}]`], answered: `Answer: [${answer}]` };
     }
     if (c.kind === "count" && item.figure) {
       const n = figureCount(item.figure);
@@ -346,6 +347,13 @@ export function templateMethod(src: TemplateSource, text: string): string | null
   if (more) { const [a, b] = [Number(more[2]), Number(more[3])]; const big = Math.max(a, b), small = Math.min(a, b); return `${big} comes after ${small} when you count, so ${more[1].toLowerCase() === "more" ? big : small} is ${more[1].toLowerCase()}.`; }
   const make = text.match(/(\d+) and (\d+) make (\d+)/);
   if (make) return `Work it out: ${make[1]} + ${make[2]} = ${Number(make[1]) + Number(make[2])}.`;
+  // An equality can put its total first: checking the calculation explains both true and false claims.
+  const equality = text.match(/\b\d+\s*=\s*(\d+)\s*([+−×÷])\s*(\d+)(?!\d|\.\d|\/\d|[⁰¹²³⁴⁵⁶⁷⁸⁹])/);
+  if (equality) {
+    const a = Number(equality[1]), b = Number(equality[3]);
+    const result = equality[2] === "+" ? a + b : equality[2] === "−" ? a - b : equality[2] === "×" ? a * b : b ? a / b : NaN;
+    if (Number.isInteger(result)) return `Work it out: ${fmt(a)} ${equality[2]} ${fmt(b)} = ${fmt(result)}.`;
+  }
   const parts = text.match(/parts (\d+) and (\d+), whole (\d+)/i);
   if (parts) return `Work it out: ${parts[1]} + ${parts[2]} = ${Number(parts[1]) + Number(parts[2])}.`;
   // Counting facts the text states: the last number said is how many; one after, one before.
