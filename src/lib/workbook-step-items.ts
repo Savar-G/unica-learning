@@ -336,7 +336,7 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
 function stepTemplateItemUncached(r: StepItemRequest): { ref: StepTemplateRef; text: string; numbers: number[] } | null {
   // Show what you know takes its step's hardest version that fits its card; when none of the harder ones fits (a
   // long story on a 3-line card), the easy one with the largest numbers, the hardest that fits.
-  if ((r.place === "show-what-you-know" || r.place === "level-test") && r.attempt < 256 && !r.allEasy) {
+  if ((r.place === "show-what-you-know" || r.place === "level-test") && !r.allEasy) {
     // (Its own and the next attempts' numbers: the planner may take another step after a refused attempt.)
     for (let k = 0; k < 48; k += 3) { const hard = stepTemplateFill({ ...r, attempt: r.attempt + k, hardOnly: true }); if (hard) return hard; }
     const any = stepTemplateFill(r);
@@ -408,7 +408,6 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
   const people = contexts.people.map((p) => p.name);
   for (let k = 0; k < order.length; k++) {
     const { t, index } = order[(k + r.attempt) % order.length];
-    if (topPlace && t.difficulty === "easy" && printable.some(({ t }) => t.difficulty !== "easy")) continue;
     let prepared;
     try {
       // Priced objects need a purchase context. The shared counting list also has
