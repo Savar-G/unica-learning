@@ -303,9 +303,11 @@ await mkdir(out, { recursive: true });
 for (const source of [values.replay, values.diff]) {
   if (source && await realpath(source) === await realpath(out)) throw new Error("Replay, diff and output folders must differ.");
 }
+// A ref the checkout lacks (CI fetches one commit) is recorded as null, never a failed run.
+const gitRef = (ref: string) => { try { return execFileSync("git", ["rev-parse", ref], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { return null; } };
 await writeFile(`${out}/run-manifest.json`, JSON.stringify({
-  head: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
-  consistencyBase: execFileSync("git", ["rev-parse", "origin/site/workbook-consistency"], { encoding: "utf8" }).trim(),
+  head: gitRef("HEAD"),
+  consistencyBase: gitRef("origin/site/workbook-consistency"),
   bundleSha256: createHash("sha256").update(await readFile(process.argv[1])).digest("hex"),
   dataSha256: createHash("sha256").update(await readFile(values.steps ?? "data/curriculum/step-progressions-k9.json")).digest("hex"),
   steps: values.steps ?? "data/curriculum/step-progressions-k9.json", sampleId: process.env.WORKBOOK_SAMPLE_ID ?? null,
