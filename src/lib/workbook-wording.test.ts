@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FRAMES, fillFrame, GIRLS, BOYS, storyProblem, quantityStoryProblem, singularPlaces, takeAwayProblem, THINGS } from "@/lib/workbook-wording";
+import { FRAMES, fillFrame, GIRLS, BOYS, storyProblem, quantityStoryProblem, singularPlaces, takeAwayProblem, printedMinus, hyphenMinus, THINGS } from "@/lib/workbook-wording";
 
 // Plain story language (D-201): code's own story wordings keep every rule, and storyProblem refuses a story that breaks
 // one it can check exactly.
@@ -101,3 +101,15 @@ describe("place words and take-away stories (U16 r13, Codex at 24751f16)", () =>
     ] as const) expect(takeAwayProblem(text, answer), text).toBeNull();
   });
 });
+
+describe("minus signs (the U16 r14 review)", () => {
+  it("prints a minus between numbers as − and finds a hyphen left there", () => {
+    expect(printedMinus("What is 90 × 870 - 100?")).toBe("What is 90 × 870 \u2212 100?");
+    expect(printedMinus("8090 - ? = 80 × 100")).toBe("8090 \u2212 ? = 80 × 100");
+    expect(printedMinus("A ten-frame shows 7. Twenty-one is 21.")).toBe("A ten-frame shows 7. Twenty-one is 21.");
+    expect(hyphenMinus("10 000 - ? = 4913")).toBe(true);
+    expect(hyphenMinus(printedMinus("10 000 - ? = 4913"))).toBe(false);
+    expect(hyphenMinus("a ten-frame")).toBe(false);
+  });
+});
+

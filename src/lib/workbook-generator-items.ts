@@ -28,7 +28,7 @@
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { readNumbers } from "@/lib/number-words";
 import { defaultItem, figureCount } from "@/lib/question-package-items";
-import { codeWordings, isWorded, operationQuestion, quantityStoryProblem, storyProblem, takeAwayProblem, type WordingKind } from "@/lib/workbook-wording";
+import { codeWordings, isWorded, operationQuestion, printedMinus, quantityStoryProblem, storyProblem, takeAwayProblem, type WordingKind } from "@/lib/workbook-wording";
 import { PLACE_ORDER, written } from "@/lib/question-package-columns";
 import {
   checkQuestionPackage,
@@ -695,7 +695,9 @@ const standardOf = (skill: string) => BC_SKILL_MAP.standards.find((s) => s.skill
  */
 export function buildQuestion(raw: unknown, place: SlotPlace): BuiltQuestion {
   try {
-    const built = build(raw, place);
+    const made = build(raw, place);
+    // (A minus prints as "−" whoever wrote the text, the U16 r14 review.)
+    const built = made.package ? { ...made, package: { ...made.package, text: printedMinus(made.package.text) }, ...(made.wordings ? { wordings: made.wordings.map(printedMinus) } : {}) } : made;
     if (built.check.status === "failed" || !built.package || !isObject(raw)) return built;
     const pkg = built.package;
     // Every quantity question, including practice and review pictures, follows D-201 at every level.

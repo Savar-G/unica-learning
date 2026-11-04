@@ -12,7 +12,7 @@
 // - The AI may reword a story's text only (in real runs): the same numbers, every one of them, checked by code.
 // Pure TypeScript: no Next.js, React, network, database, clock or Math.random.
 import { likelihoodWord } from "./workbook-likelihood";
-import { singularPlaces, takeAwayProblem } from "./workbook-wording";
+import { printedMinus, singularPlaces, takeAwayProblem } from "./workbook-wording";
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import type { AnswerRegion, Item, ItemCheck, QuestionPackage } from "@/lib/question-package";
 import { checkQuestionPackage } from "@/lib/question-package";
@@ -309,7 +309,8 @@ export function challengeTemplateCount(curriculum: Curriculum, skill: string, st
   const printable = (stepOf(curriculum, skill, step)?.templates ?? []).filter((t) => !templateProblem(t, level));
   const hardest = printable.filter(t => difficultyRank(t.difficulty) === Math.max(...printable.map(t => difficultyRank(t.difficulty))));
   const numeric = hardest.filter(numberAnswerOf);
-  return (numeric.length ? numeric : hardest).length;
+  const reserved = numeric.length ? numeric : hardest;
+  return reserved.length + printable.filter((t) => isTwoStep(t) && !reserved.includes(t)).length;
 }
 
 /** Whether a step has a hard template with a number to work out, that prints at this level. */
@@ -394,7 +395,8 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
   if (!usable.length) usable = printable;
   // A Number stories page asks stories when the step has them (the review: no drills on a page of stories).
   if (r.place && STEP_STORY_PLACES.has(r.place) && r.place !== "challenge" && r.attempt < 256 && usable.some(({ t }) => t.format === "story")) usable = usable.filter(({ t }) => t.format === "story");
-  if (r.place === "challenge" && r.attempt < 256) usable = reserved;
+  // (Code's two-step cards follow the step's own, the Challenge's last fill: house-templates.ts.)
+  if (r.place === "challenge" && r.attempt < 256) usable = [...reserved, ...printable.filter((x) => isTwoStep(x.t) && !reserved.includes(x))];
   // Show what you know asks each step's hardest version, the Challenge's templates too (the real U4 sample: "Kai says
   // 2. What does Kai say next?" on Day 10); it is a review, not the day's practice of the step.
   const topPlace = r.place === "show-what-you-know" || r.place === "level-test";
@@ -438,7 +440,7 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
       // A template's blank ("Count on: 8, __, __.") prints as "?", as code's missing numbers do: a line of underscores
       // alone leaves too little ink to count as printed.
       // (A template's plural of a container: "boxs" is "boxes".)
-      let text = singularPlaces(filled.text.replace(/_{2,}/g, "?").replace(/\?\s*\./g, "?").replace(/\b(box|dish|bench|glass|bush|lunchbox|pouch|batch)s\b/gi, "$1es"));
+      let text = printedMinus(singularPlaces(filled.text.replace(/_{2,}/g, "?").replace(/\?\s*\./g, "?").replace(/\b(box|dish|bench|glass|bush|lunchbox|pouch|batch)s\b/gi, "$1es")));
       // A count with blanks ("Count on: 8, ?, ?.") prints its numbers with a box in each blank (the U4 review).
       const seq = sequenceOf(text, filled.answer);
       if (seq && r.place !== "spot-the-error" && r.place !== "solve-it-two-ways") text = seq.text;

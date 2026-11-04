@@ -288,6 +288,49 @@ backwards") does not print.
   questions; a day is about 30 minutes, and the How it works page says "about N
   minutes" from the book's own day estimates (their mean to the nearest five).
 
+## Codex at 24751f16, U16 r13 and the full books (2026-11-03)
+
+- **Take-away stories (B1):** a story whose answer is one printed number less
+  another, and whose question asks what is had now or left, takes the things
+  away with a verb from an allow-list (gives away, sells, eats, loses, uses,
+  spends, takes out, ...) or asks for the rest ("How many are not in the
+  jar?"). `takeAwayProblem` (workbook-wording.ts) refuses a template fill, an
+  AI item and, in the book check, any printed question; the AI prompt says it.
+  "Puts 17 in a jar. How many does he have now?" fails.
+- **Task identity (B2):** a question's printed choices are not its task: "6 is 1
+  and which number: 6 or 5?" is "6 is 1 and ?". A number answer is one answer,
+  boxed or circled. A story is typed by its printed words, whoever wrote them.
+- **Challenge (B3, D-224):** every card is on the day's hardest step and above
+  every question of that step's practice that day: its difficulty, then its work
+  (a circled choice, a number, a story), then the numbers its answer combines.
+  A card of an earlier step fails, whatever its label.
+- **Unica Challenge templates (U16):** Cedric's U16 day steps kept one medium
+  Challenge template each, so 3 cards a day could not all be harder than
+  practice. `src/lib/workbook-curriculum/house-templates.ts` adds 3 hard
+  templates with a number answer and two steps to each U16 day step (4 to
+  5.9-multiply-tens step 3, the day step two days running; 2 to
+  5.9-distributive step 1, whose story is Cedric's v2 hard template). They are
+  appended when the curriculum loads, checked against the step's name, and
+  logged in `data/curriculum/author-changes.md`. Their numbers sit in the top
+  half of the step's range.
+- **Two-step cards (U4):** each U4 number step gets code's two-step cards from
+  its own range ("What is 7 + 7 + 6?", "10 is 4 and 4 and ?", "has 20, gives 15
+  away, then gets 5 more"); likelihood steps get cards that reason from a bag's
+  cubes. They are the Challenge's last fill only, after the step's own
+  templates.
+- **Card frames:** a Challenge or Show what you know frame (its words without
+  names, things, places and numbers) prints twice a book at most, never on two
+  Challenge days in a row nor twice a day, and with fresh numbers (Savar).
+- **Stories pages** print stories only, every pass, and the book check fails a
+  drill there. "Missing number: 10 000 - ? = 4913" read "Missing" as a name.
+- **Place words** after 1 are singular in every printed text: "1 ten", "1 one".
+- **Room:** before a practice question is dropped, the tallest takes a shorter
+  question of an earlier step the book taught. A likelihood panel prints its
+  meanings once, with the answer on the question's line. A block of review only
+  prints "Remember these" alone.
+- **New-idea floors** follow Cedric's band table: 2 at U4-U9, 3 at U10-U18, 2 at
+  U19-U30.
+
 ## Report
 
 The sample index's quality row adds step progression (each day's average

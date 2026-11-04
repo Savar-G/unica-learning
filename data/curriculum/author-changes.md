@@ -4497,3 +4497,40 @@ After:
 ```json
 "{w} is {p} and which number: {x} or {y}?"
 ```
+
+## Unica Challenge templates (2026-11-03)
+
+Savar approved writing hard Challenge templates for the U16 day steps that had too few, so that every U16 day prints 3 Challenge cards that are harder than its practice (D-224; Codex at 24751f16, B3). Cedric's data is unchanged: the templates live in `src/lib/workbook-curriculum/house-templates.ts` and are appended to their steps when the curriculum loads. Each has a number answer, takes two steps, and keeps its numbers in the step's range (top half for Show what you know). None repeats a v2 hard template.
+
+| Skill | Step | Format | Template | Answer |
+|---|---:|---|---|---|
+| 5.1-place-value-million | 1 | missing | `{n} + 1000 + 100 = __` | `n + 1100` |
+| 5.1-place-value-million | 1 | bare | `In {n}, what is the value of the thousands digit plus the value of the tens digit?` | `n // 1000 % 10 * 1000 + n // 10 % 10 * 10` |
+| 5.1-place-value-million | 1 | story | `{name}'s bike lock code is {n}. {They} adds 1000 to it, then takes 10 off. What is the new code?` | `n + 990` |
+| 5.1-place-value-million | 2 | missing | `{n} + 10000 + 1000 = __` | `n + 11000` |
+| 5.1-place-value-million | 2 | bare | `What is the value of the ten thousands digit of {n} plus the value of its hundreds digit?` | `n // 10000 % 10 * 10000 + n // 100 % 10 * 100` |
+| 5.1-place-value-million | 2 | story | `{name}'s town has {n} people. {add} people move in and 1000 people move away. How many people live in the town now?` | `n + add - 1000` |
+| 5.1-place-value-million | 3 | missing | `{n} + 100 + 10 = __` | `n + 110` |
+| 5.1-place-value-million | 3 | bare | `In {n}, what is the value of the hundred thousands digit plus the value of the thousands digit?` | `n // 100000 % 10 * 100000 + n // 1000 % 10 * 1000` |
+| 5.1-place-value-million | 3 | story | `{name}'s school collects {n} cans for recycling. It collects {add} more and sends 100 away. How many cans does the school have now?` | `n + add - 100` |
+| 5.9-multiply-tens | 1 | bare | `What is {a} × {b} + {a} × {c}?` | `a * (b + c)` |
+| 5.9-multiply-tens | 1 | missing | `{a} × __ = {p} - {q}` | `b` |
+| 5.9-multiply-tens | 1 | story | `{name}'s shop has {a} boxes with {b} {things} in each. It sells {c} {things}. How many {things} are left?` | `a * b - c` |
+| 5.9-multiply-tens | 2 | bare | `What is {a} × {b} - {c}?` | `a * b - c` |
+| 5.9-multiply-tens | 2 | missing | `__ × {a} = {p} + {q}` | `b` |
+| 5.9-multiply-tens | 2 | story | `{name}'s school orders {a} boxes with {b} {things} in each. It gives away {c} {things}. How many {things} does the school have now?` | `a * b - c` |
+| 5.9-multiply-tens | 3 | bare | `What is {a} × {b} + {c}?` | `a * b + c` |
+| 5.9-multiply-tens | 3 | missing | `{p} - __ = {a} × {b}` | `c` |
+| 5.9-multiply-tens | 3 | story | `{name}'s school sends {k} full buses of {a} people to a game, and {c} people leave early. How many people are still at the game?` | `a * k - c` |
+| 5.9-multiply-tens | 3 | story | `A game gives {a} points for each level. {name} plays {k} levels, then loses {c} points. How many points does {name} have now?` | `a * k - c` |
+| 5.9-distributive | 1 | bare | `What is {a} × {b} - {c}?` | `a * b - c` |
+| 5.9-distributive | 1 | missing | `{a} × __ = {p} + {q}` | `b` |
+| 5.9-distributive | 2 | bare | `What is {a} × {b} + {c}?` | `a * b + c` |
+| 5.9-distributive | 2 | missing | `__ × {b} = {p} - {q}` | `a` |
+| 5.9-distributive | 2 | story | `{name}'s farm packs {a} eggs each day for {b} days. It sells {c} eggs. How many eggs does the farm have now?` | `a * b - c` |
+| 5.10-pattern-rule | 1 | bare | `A pattern starts at {s} and adds {d} each time. What is its 8th term plus its 2nd term?` | `2 * s + 8 * d` |
+| 5.10-pattern-rule | 1 | missing | `A pattern starts at {s} and adds __ each time. Its 9th term is {t}.` | `d` |
+| 5.10-pattern-rule | 1 | story | `{name} has {s} {things} and gets {d} more each day. How many {things} does {name} have after 8 days?` | `s + 8 * d` |
+
+Code's two-step Challenge cards for U4 (Savar: the last fill of a short U4 Challenge) are made from each U4 number step's own range by `twoStepTemplates` in the same file, not stored here; likelihood steps get three cards that reason from a bag's cubes.
+

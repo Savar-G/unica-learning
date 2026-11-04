@@ -44,7 +44,9 @@ export function taskType(p: QuestionPackage): string {
   if (["draw", "colour-or-shade"].includes(p.item?.format ?? "")) return p.item?.figure?.kind === "dots" ? "colour-row" : "fill-frame";
   if (p.item?.format === "circle") return "likelihood";
   if (p.item?.format === "written-reason") return "explain";
-  if (p.textSource === "ai") return `story:${p.operation?.kind ?? "explain"}`;
+  // (A story by its printed words, whoever wrote them: the planner and the book check read one type, the full U16 book's
+  // Mixed set took three "then 17 more" stories as "add".)
+  if (p.textSource === "ai" || contextFrame(p.text)) return `story:${p.operation?.kind ?? "explain"}`;
   return `${p.operation?.kind ?? check?.kind ?? p.item?.format}`;
 }
 
@@ -97,7 +99,7 @@ export function printedForm(p: QuestionPackage): string {
   if (f === "two-ways") return "two-ways";
   const check = p.item?.checks[0];
   if (check?.kind === "sequence") return `sequence:${check.step.type === "number" && check.step.value < 0 ? "back" : "on"}`;
-  if (p.operation?.kind === "missing-addend" || /\?\s*[+\-×÷]|[+\-×÷]\s*\?/.test(p.text)) return "missing";
+  if (p.operation?.kind === "missing-addend" || /\?\s*[+\-−×÷]|[+\-−×÷]\s*\?/.test(p.text)) return "missing";
   if (p.operation) return "bare";
   return check?.kind ?? f ?? "other";
 }
@@ -174,7 +176,9 @@ export function stemOf(p: QuestionPackage): string | null {
 /** A place in a story ("at the zoo", "at school", "in the park"). */
 const PLACE = /\b(?:at|in|to|on|near) (?:the |a )?(?:zoo|school|pool|beach|farm|library|park|camp|store|rink|fair|museum|market|gym|cafe|lake|garden|playground|field|arena|mall|shop|bakery|class|classroom|home|party|game|show|cabin|ferry|bus|train|track)\b/g;
 
-const CONTEXT_WORDS = new Set([...THINGS, ...THINGS.map(x => x.replace(/s$/, "")), "dog", "dogs", "cat", "cats", "bird", "birds", "fish", "frogs", "ducks"]);
+const CONTEXT_WORDS = new Set([...THINGS, ...THINGS.map(x => x.replace(/s$/, "")), "dog", "dogs", "cat", "cats", "bird", "birds", "fish", "frogs", "ducks",
+  // (A school, shop or farm and what it counts is a story's context too: Cedric's v2 "A school orders 9 boxes of 490 pencils".)
+  "school", "shop", "store", "farm", "class", "team", "club", "library", "bakery", "pencils", "people", "eggs", "seats"]);
 
 /**
  * A text's context frame (Cedric's section 9: "change the context, not only the name"): names and numbers taken out,

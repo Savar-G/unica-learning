@@ -388,3 +388,13 @@ export function takeAwayProblem(text: string, answer: number | null | undefined)
   if (TAKE_AWAY_VERBS.test(text) || NAMES_REST.test(question)) return null;
   return `a take-away story takes the things away with a verb that removes them (gives away, sells, eats, loses, uses, spends, takes out) or asks for the rest ("How many are not in the jar?"); putting them in a jar keeps them`;
 }
+
+/** A minus between numbers prints as "−", never a hyphen: "90 × 870 - 100" reads "90 × 870 − 100" (the U16 r14 review). */
+const HYPHEN_MINUS = /([\d?_)\]])(\s*)-(\s*)(?=[\d?_(\[])/g;
+export function printedMinus(text: string): string {
+  return text.replace(HYPHEN_MINUS, "$1$2\u2212$3");
+}
+
+/** Whether a printed text still has a hyphen between numbers (the book check fails it). */
+export const hyphenMinus = (text: string): boolean => /[\d?_)][ \u00a0]*-[ \u00a0]*[\d?_(]/.test(text);
+

@@ -2,7 +2,7 @@ import { pageFullness, pageSpace, fullnessProblem } from "./workbook-template";
 import type { DraftPage, MeasuredElement } from "./workbook-render";
 import type { GeneratedPage } from "./workbook-generator";
 import { STORY_EXPLAIN } from "./workbook-item-plan";
-import { takeAwayProblem } from "./workbook-wording";
+import { hyphenMinus, takeAwayProblem } from "./workbook-wording";
 import { numberAnswer } from "./workbook-generator-items";
 import { likelihoodChoicesProblem, likelihoodWord } from "./workbook-likelihood";
 import { extraPracticeRepeats, newIdeaFloor, twoWaysCountsAsStory } from "./workbook-early-levels";
@@ -92,6 +92,8 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       const stories = p.questions.filter(q => q.package && ["word-problems", "solve-it-two-ways"].includes(q.place ?? "")).map(q => storyKind(q.package!.text)).filter(Boolean);
       if (stories.length >= 2 && new Set(stories).size < 2) issues.push({ page: p.number, kind: "variety", reason: `the stories page tells one kind of story (${stories[0]}); it needs at least two` });
     }
+    // A minus between numbers prints as "−" (the U16 r14 review): a hyphen there fails.
+    for (const q of p.questions) if (q.package && hyphenMinus(q.package.text)) issues.push({ page: p.number, kind: "coverage", reason: `question ${q.number} prints a hyphen as a minus ("${q.package.text.slice(0, 40)}")` });
     // A take-away story takes the things away (Codex at 24751f16, P0): every question, whatever wrote it.
     for (const q of p.questions) {
       const problem = q.package ? takeAwayProblem(q.package.text, numberAnswer(q.package)) : null;
@@ -305,16 +307,13 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
         seenTemplates.add(k);
       }
     }
-    // (A card from an earlier step: a hard template with a number to work out, beside a card of the day's hardest step
-    // whose step keeps fewer than 3 Challenge templates.)
     // (No card from an earlier step, Codex at 24751f16, B3: an earlier step's "hard" label asks less than the day's
     // practice; a card is compared by its step's level and rank first, then its difficulty.)
-    const reviewCard = (_p: GeneratedPage, _q: GeneratedPage["questions"][number]) => false;
     for (const p of ofDay) for (const q of p.questions.filter(q => q.place === "challenge" && !q.existing && q.itemPlan?.template)) {
       const t = q.itemPlan!.template!;
       // Every question is on the hardest step reached that day (Cedric's brief; #482 review at db3b1a0), or is such a
       // card from an earlier step.
-      if (t.rank < dayTop && !reviewCard(p, q)) issues.push({ page: p.number, kind: "challenge", reason: `Day ${day}'s Challenge question ${q.number} must use the hardest step reached that day, never an easier step than practice` });
+      if (t.rank < dayTop) issues.push({ page: p.number, kind: "challenge", reason: `Day ${day}'s Challenge question ${q.number} must use the hardest step reached that day, never an easier step than practice` });
       // Every question asks more than every question of the day's teaching on that step: Cedric's template difficulty
       // (easy, medium, hard), then the work (a computed answer above a circled choice), then on one template the larger
       // numbers. A context sentence or a larger unrelated number is no proof of more work.
@@ -328,17 +327,8 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       const steps = (o: typeof q) => new Set(((o.itemPlan!.template!.source?.answer ?? "").replace(/'[^']*'|"[^"]*"/g, "").match(/\b[a-z_][a-z_0-9]*\b/gi) ?? []).filter((v) => !ANSWER_WORDS.has(v))).size;
       const above = (a: typeof q, b: typeof q) => level(a) !== level(b) ? level(a) > level(b) : work(a) !== work(b) ? work(a) > work(b) : steps(a) !== steps(b) ? steps(a) > steps(b) : same(a, b) && size(a) > size(b);
       const mine = questions.filter(o => o.itemPlan?.template && o.place !== "challenge" && o.place !== "warm-up" && !reviewParts.has(o.part) && ownStep(o) && o.itemPlan.template.rank === dayTop);
-      // (A card from an earlier step is compared with the day's practice of the hardest step, not with a Spot the error or
-      // two ways that check its story's work.)
-      // (And above that day's questions of its own step outside the reviews: the real U4 sample's "? and 9 make 10"
-      // beside practice's "has 4 cookies and wants 10".)
-      const ownStepQs = reviewCard(p, q) ? questions.filter(o => o !== q && o.itemPlan?.template && o.place !== "challenge" && o.place !== "warm-up" && !reviewParts.has(o.part) && !["word-problems", "picture-stories", "math-in-the-world"].includes(o.place ?? "") && o.itemPlan.template.skill === t.skill && o.itemPlan.template.step === t.step) : [];
-      // A card from an earlier step: above that step's questions of the day, and no easier than the hardest step's
-      // practice (a hard card beside its hard practice is as hard, by another step: the review's "use hard items from
-      // earlier taught steps").
-      const against = reviewCard(p, q) ? [...mine.filter(o => o.place !== "spot-the-error" && o.place !== "solve-it-two-ways"), ...ownStepQs] : mine;
-      const harder = reviewCard(p, q) ? ownStepQs.every(o => above(q, o)) && mine.every(o => level(q) >= level(o)) : against.every(o => above(q, o));
-      if (against.length && !harder) issues.push({ page: p.number, kind: "challenge", reason: `Day ${day}'s Challenge question ${q.number} is no harder than that day's practice of its step` });
+      // (Every card is on the day's hardest step, so it is compared with that step's practice of the day.)
+      if (mine.length && !mine.every(o => above(q, o))) issues.push({ page: p.number, kind: "challenge", reason: `Day ${day}'s Challenge question ${q.number} is no harder than that day's practice of its step` });
     }
     for (const p of ofDay) for (const q of p.questions.filter(q => q.place === "challenge" && !q.existing && !q.itemPlan?.template)) {
       const pkg = q.package;

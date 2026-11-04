@@ -27,7 +27,7 @@ import {
 import type { TemplateFonts } from "@/lib/workbook-template-fixed";
 import { instructionProblem, feedbackItemProblem } from "@/lib/workbook-feedback-check";
 import { titleProblem } from "@/lib/workbook-titles";
-import { singularPlaces } from "@/lib/workbook-wording";
+import { printedMinus, singularPlaces } from "@/lib/workbook-wording";
 
 const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const fontFace = (family: string, weights: string, woff2: Uint8Array) =>
@@ -679,7 +679,7 @@ function shapeSvg(shape: string, x: number, y: number, fill: string): string {
 /** A worked line, its [given] numbers in blue. */
 /** BC prints numbers from 10 000 up in groups of three with a space (4 digits together, decimals untouched). */
 export const bcNumbers = (t: string) => t.replace(/(?<![\d.,\u00a0])\d{5,}(?![\d]|[.,]\d)/g, (n) => n.replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0"));
-const worked = (line: WorkedLine) => bcNumbers(escape(singularPlaces(line))).replace(/\[([^\]]*)\]/g, `<span class="blue">$1</span>`);
+const worked = (line: WorkedLine) => bcNumbers(escape(printedMinus(singularPlaces(line)))).replace(/\[([^\]]*)\]/g, `<span class="blue">$1</span>`);
 
 // ---------- Questions and their answer regions ----------
 
@@ -829,7 +829,7 @@ function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: 
 /** The question's text, marked as its content. */
 /** A word with a hyphen ("ten-frame") never breaks at it: the line breaks before the word. */
 const keepHyphens = (html: string) => html.replace(/\b([A-Za-z]+(?:-[A-Za-z]+)+)\b/g, `<span style="white-space:nowrap">$1</span>`);
-const text = (q: DraftQuestion, cls = "qt") => `<span class="${cls}" ${mark.questionContent(q.number)}>${keepHyphens(bcNumbers(escape(singularPlaces(q.package.text))))}</span>`;
+const text = (q: DraftQuestion, cls = "qt") => `<span class="${cls}" ${mark.questionContent(q.number)}>${keepHyphens(bcNumbers(escape(printedMinus(singularPlaces(q.package.text)))))}</span>`;
 const isMath = (s: string) => /^[\d\s+−×÷=?.,()/$¢a-z]*$/i.test(s) && /\d/.test(s) && !/[a-z]{3,}/i.test(s);
 const qtext = (q: DraftQuestion) => text(q, isMath(q.package.text) ? "qm" : "qt");
 
@@ -927,6 +927,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     return own ? `<div data-measure="chip-${i}">${chipHtml(own, b.note ?? note ?? NOTES[b.slot])}</div>` : "";
   };
   const firstOfPage = i === 0 && (ctx.page.type === "remember-these" || ctx.page.type === "remember-these-mixed-set");
+  const allReview = b.reviewFrom !== undefined && qs.length > 0 && qs[0].number >= b.reviewFrom;
 
   switch (b.slot) {
     case "warm-up":
@@ -987,9 +988,10 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     case "watch-one":
       return chipHtml(PRACTICE, b.note) + `<div class="panel p-pr" data-measure="panel-${i}" style="display:flex;flex-direction:column;gap:8px"><div class="lab">Read the example${b.label ? ` · ${escape(b.label)}` : ""}</div><div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div>${b.explain ? `<span>${escape(b.explain)}</span>` : ""}</div>`;
     case "finish-these":
-      return `<div class="lab" data-measure="heading-${i}">Getting started</div>` + items(c.consistentLayout || ctx.six ? "two" : "list");
+      // (A block of review only prints "Remember these" alone, never under "Getting started" as the page's skill.)
+      return (allReview ? "" : `<div class="lab" data-measure="heading-${i}">Getting started</div>`) + items(c.consistentLayout || ctx.six ? "two" : "list");
     case "on-your-own": {
-      const head = prev === "finish-these" ? `<div class="lab" data-measure="heading-${i}">On your own</div>` : chipHtml(PRACTICE, b.note);
+      const head = prev === "finish-these" ? (allReview ? "" : `<div class="lab" data-measure="heading-${i}">On your own</div>`) : chipHtml(PRACTICE, b.note);
       // Column sums on the 8-page day; the 6-page practice page lists them, as in the sample (DESIGN.md 7.2).
       const columns = band.name === "mid" && !parent && !ctx.six && qs.length > 0 && !b.figures?.some(Boolean) && qs.every((q) => ["add", "subtract", "multiply"].includes(q.package.operation?.kind ?? "") && packageItem(q.package).regions.length === 1);
       return head + (columns ? list((q) => columnItem(q, band), "cols") : items(c.consistentLayout || ctx.six ? "two" : "list"));

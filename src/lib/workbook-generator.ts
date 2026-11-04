@@ -2337,6 +2337,7 @@ function layOut(input: GenerateInput) {
       const pageStories = new Set<string>();
       const pageStoryKinds = new Set<string>();
       const pageTypes = new Map<string, number>();
+      const partTypes = new Map<string, number>();
       const truthCounts = new Map<string, number>();
       // One template a third of the page at most, half when nothing else is left (the U4 review: six "counts N in a
       // circle and says M" on one page pass as six contexts).
@@ -2399,6 +2400,10 @@ function layOut(input: GenerateInput) {
             // A Challenge page asks the step's few hardest templates: it may print fewer forms (the book check agrees).
             const fewChallenge = w.page.type === "challenge" && slot.place === "challenge" && (c.template?.challengeTemplates ?? 3) < 3;
             if (w.slots.length >= 3 && !fewChallenge && (pageTypes.get(type) ?? 0) >= Math.ceil(w.slots.length / 2)) continue;
+            // (And half of its own part while the part has 4 or more: a Mixed set is the page when its other part plans away,
+            // the full U16 book's Day 2 printed three "then 17 more" stories of four.)
+            const partSlots = w.slots.filter((x) => x.part === slot.part && x.place !== "warm-up").length;
+            if (partSlots >= 4 && !fewChallenge && (partTypes.get(`${slot.layoutSlot}|${type}`) ?? 0) >= Math.ceil(partSlots / 2)) continue;
             const truth = truthOf(c);
             if (strict && truth && ["true", "false"].includes(truth) && (truthCounts.get(truth) ?? 0) > (truthCounts.get(truth === "true" ? "false" : "true") ?? 0)) continue;
             const tk = templateKey(c);
@@ -2473,7 +2478,7 @@ function layOut(input: GenerateInput) {
           if (best.c.template && slot.place && STEP_STORY_PLACES.has(slot.place)) pageStories.add(templateWords(input, best.c));
           if ((slot.place === "word-problems" || slot.place === "solve-it-two-ways" && w.page.type === "word-problems") && storyKind(best.p.text)) pageStoryKinds.add(storyKind(best.p.text)!);
           const bestStem = slot.place === "warm-up" || best.c.source === "explain" || NUMBER_PLACES.has(slot.place ?? "") ? null : stemOf(best.p);
-          if (bestStem) pageStems.set(bestStem, (pageStems.get(bestStem) ?? 0) + 1); pageTypes.set(best.type, (pageTypes.get(best.type) ?? 0) + 1);
+          if (bestStem) pageStems.set(bestStem, (pageStems.get(bestStem) ?? 0) + 1); pageTypes.set(best.type, (pageTypes.get(best.type) ?? 0) + 1); partTypes.set(`${slot.layoutSlot}|${best.type}`, (partTypes.get(`${slot.layoutSlot}|${best.type}`) ?? 0) + 1);
           const tk = templateKey(best.c);
           if (tk && !NUMBER_PLACES.has(slot.place ?? "")) pageTemplates.set(tk, (pageTemplates.get(tk) ?? 0) + 1);
           if (tk && slot.place !== "challenge" && slot.place !== "warm-up") dayTemplates.set(tk, (dayTemplates.get(tk) ?? 0) + 1);
