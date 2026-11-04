@@ -72535,7 +72535,7 @@
      "slots": {
       "g": "group_size",
       "n": "groups",
-      "f": "template_f"
+      "f": "template_flip"
      },
      "derived": {
       "e": "g * n + (1 + g % 9) * (1 - 2 * f)"
@@ -72556,12 +72556,11 @@
     },
     {
      "format": "explain",
-     "difficulty": "medium",
-     "text": "A pile looks like about {k} groups of {g}. Explain in one sentence: how do you estimate how many are in the pile?",
+     "difficulty": "hard",
+     "text": "Explain in one sentence: how can a group of {g} help you estimate a big pile?",
      "answer": "'count how many groups of that size fit, then multiply'",
      "slots": {
-      "g": "group_size",
-      "k": "groups"
+      "g": "group_size"
      }
     }
    ],

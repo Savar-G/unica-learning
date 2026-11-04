@@ -6337,5 +6337,66 @@
     "after": "'true' if n // 10000 % 10 > n // 100 % 10 else 'false'",
     "why": "Retain the v1 hard comparison at this step after the matched full U16 comparison on base 5151b73f. The prior candidate reduced mean fullness from 73.857% to 73.767%. This fallback restores it to 74.032%, with the same minimum fullness and zero failures, omissions, fit errors and variety errors. The selected-day comparison also passes. Keep all five template positions; the distinct medium comparison uses the ten thousands and hundreds places.",
     "kind": "quality-fallback"
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 2,
+    "template": 4,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "g": "group_size",
+      "n": "groups",
+      "f": "template_f"
+    },
+    "after": {
+      "g": "group_size",
+      "n": "groups",
+      "f": "template_flip"
+    },
+    "why": "The matched U10 selected-day comparison reduced minimum fullness from 50.64% to 49.18% with v2 estimate templates. Restore this step from patched v1. Trial r37 passes both the selected-day and full-book comparisons with no worse failures, omissions, fullness, render errors or variety. Keep all six template positions and easy and hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 2,
+    "template": 6,
+    "path": [
+      "difficulty"
+    ],
+    "before": "medium",
+    "after": "hard",
+    "why": "The matched U10 selected-day comparison reduced minimum fullness from 50.64% to 49.18% with v2 estimate templates. Restore this step from patched v1. Trial r37 passes both the selected-day and full-book comparisons with no worse failures, omissions, fullness, render errors or variety. Keep all six template positions and easy and hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 2,
+    "template": 6,
+    "path": [
+      "text"
+    ],
+    "before": "A pile looks like about {k} groups of {g}. Explain in one sentence: how do you estimate how many are in the pile?",
+    "after": "Explain in one sentence: how can a group of {g} help you estimate a big pile?",
+    "why": "The matched U10 selected-day comparison reduced minimum fullness from 50.64% to 49.18% with v2 estimate templates. Restore this step from patched v1. Trial r37 passes both the selected-day and full-book comparisons with no worse failures, omissions, fullness, render errors or variety. Keep all six template positions and easy and hard coverage.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "3.1-estimate-quantity",
+    "step": 2,
+    "template": 6,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "g": "group_size",
+      "k": "groups"
+    },
+    "after": {
+      "g": "group_size"
+    },
+    "why": "The matched U10 selected-day comparison reduced minimum fullness from 50.64% to 49.18% with v2 estimate templates. Restore this step from patched v1. Trial r37 passes both the selected-day and full-book comparisons with no worse failures, omissions, fullness, render errors or variety. Keep all six template positions and easy and hard coverage.",
+    "kind": "quality-fallback"
   }
 ]

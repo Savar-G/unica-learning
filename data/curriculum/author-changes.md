@@ -3510,3 +3510,68 @@ After:
 ```json
 "'true' if n // 10000 % 10 > n // 100 % 10 else 'false'"
 ```
+
+## 3.1-estimate-quantity step 2 template 4 slots
+
+The matched U10 selected-day comparison reduced minimum fullness from 50.64% to 49.18% with v2 estimate templates. Restore this step from patched v1. Trial r37 passes both the selected-day and full-book comparisons with no worse failures, omissions, fullness, render errors or variety. Keep all six template positions and easy and hard coverage.
+
+Before:
+```json
+{
+  "g": "group_size",
+  "n": "groups",
+  "f": "template_f"
+}
+```
+After:
+```json
+{
+  "g": "group_size",
+  "n": "groups",
+  "f": "template_flip"
+}
+```
+
+## 3.1-estimate-quantity step 2 template 6 difficulty
+
+The matched U10 selected-day comparison reduced minimum fullness from 50.64% to 49.18% with v2 estimate templates. Restore this step from patched v1. Trial r37 passes both the selected-day and full-book comparisons with no worse failures, omissions, fullness, render errors or variety. Keep all six template positions and easy and hard coverage.
+
+Before:
+```json
+"medium"
+```
+After:
+```json
+"hard"
+```
+
+## 3.1-estimate-quantity step 2 template 6 text
+
+The matched U10 selected-day comparison reduced minimum fullness from 50.64% to 49.18% with v2 estimate templates. Restore this step from patched v1. Trial r37 passes both the selected-day and full-book comparisons with no worse failures, omissions, fullness, render errors or variety. Keep all six template positions and easy and hard coverage.
+
+Before:
+```json
+"A pile looks like about {k} groups of {g}. Explain in one sentence: how do you estimate how many are in the pile?"
+```
+After:
+```json
+"Explain in one sentence: how can a group of {g} help you estimate a big pile?"
+```
+
+## 3.1-estimate-quantity step 2 template 6 slots
+
+The matched U10 selected-day comparison reduced minimum fullness from 50.64% to 49.18% with v2 estimate templates. Restore this step from patched v1. Trial r37 passes both the selected-day and full-book comparisons with no worse failures, omissions, fullness, render errors or variety. Keep all six template positions and easy and hard coverage.
+
+Before:
+```json
+{
+  "g": "group_size",
+  "k": "groups"
+}
+```
+After:
+```json
+{
+  "g": "group_size"
+}
+```
