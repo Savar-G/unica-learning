@@ -64,7 +64,7 @@ import { solveCheck, solveReason, type SolveLog, type Solver, type SolveVerdict 
 import { digestOf } from "@/lib/workbook-digest";
 import { BOYS, fillFrame, frameDoes, framePair, framesFor, GIRLS, PEOPLE, THINGS, quantityStoryProblem, storyProblem, type Action, type WordingKind } from "@/lib/workbook-wording";
 import {
-  bookPageContent, dayPageContent, layoutDayPage, mistakesFor, levelSigns, rangeProblem, samFix, samProblem, skillRange, slotRanges, PANEL_SLOTS, SLOT_FORMATS, STRICT_SLOTS,
+  bookPageContent, dayPageContent, layoutDayPage, mistakesFor, levelSigns, rangeProblem, samFix, samProblem, skillRange, slotRanges, templateMethod, PANEL_SLOTS, SLOT_FORMATS, STRICT_SLOTS,
   type DayLayout, type NumberRange,
 } from "@/lib/workbook-book";
 import { pageId, type Omission, type PageContent, type SlotName } from "@/lib/workbook-page";
@@ -95,9 +95,20 @@ function slotStep(input: GenerateInput, slot: Slot, attempt: number, level: numb
       const steps = challengeReviewSteps(input, slot, day, level);
       if (steps.length) return steps[(review - 1 + Math.floor(attempt / 6)) % steps.length];
     }
+    if (slot.place === "solve-it-two-ways") {
+      const sums = (x: { skill: string; step: number }) => stepOf(input.curriculum, x.skill, x.step)?.templates?.some(t => sumTemplate(t) && !templateProblem(t, level));
+      const own = { skill: part.step.skill, step: part.step.step };
+      if (!sums(own)) {
+        const rank = stepRank(input.curriculum, own.skill, own.step) ?? 0;
+        const prior = earlierSteps(input, slot, day, level, true)
+          .filter(x => (stepRank(input.curriculum, x.skill, x.step) ?? Infinity) < rank && sums(x))
+          .sort((a, b) => (stepRank(input.curriculum, b.skill, b.step) ?? 0) - (stepRank(input.curriculum, a.skill, a.step) ?? 0));
+        if (prior.length) return prior[Math.floor(attempt / 6) % prior.length];
+      }
+    }
     const stretch = challengeStretch(input, slot, level, day, attempt);
     const stories = storySteps(input, slot, day, level);
-    if (stories.length) return stories[((Number(slot.id.split(".")[1]) || 1) - 1 + Math.floor(attempt / 6)) % stories.length];
+    if (stories.length) return stories[Math.floor(attempt / 6) % stories.length];
     // The last questions of a practice block review an earlier step (the U16 and U4 reviews: a day mixes the new step
     // with earlier ones, not one task twenty times).
     const ordinal = Number(slot.id.split(".")[1]) || 1;
@@ -178,6 +189,8 @@ function templateContractFor(input: GenerateInput, w: PageWork, slot: Slot, atte
     seed: hashOf(`${input.workbookId}:${w.number}:${slot.id}`) % 1_000_000_007, attempt, ordinal, usedOnPage: used, room, avoid: input.book?.child || null,
   });
   if (!filled) return null;
+  // Likelihood panels supply the definitions in contentOf; other templates need their own method.
+  if (panel && !/likelihood/.test(at.skill) && filled.ref.kind !== "sequence" && !templateMethod(filled.ref.source, filled.text)) return null;
   // Only a story template goes to the writer for its words; code keeps every other text as the template wrote it.
   const story = filled.ref.kind === "story" && filled.ref.format === "story" && !panel;
   return {
@@ -217,20 +230,39 @@ function taughtSteps(input: GenerateInput, day: number, level: number): { skill:
  * review: "Amara says 3. What does Amara say next?" is no story to work out): the steps the day reviews whose stories
  * add, take away, share or group. Empty when the page's own step has such a story.
  */
+const storyFallbacks = new WeakMap<Curriculum, Map<string, { skill: string; step: number }[]>>();
+
 function storySteps(input: GenerateInput, slot: Slot, day: number, level: number): { skill: string; step: number }[] {
   const at = slot.part.step;
   if (!at || slot.place !== "word-problems") return [];
   // (Not "gets 1 more": one more is a count, not a story to work out; the U4 review.)
-  const sums = (skill: string, n: number | null) => !!stepOf(input.curriculum, skill, n)?.templates?.some((t) => t.format === "story" && sumTemplate(t) && !/\b1 (?:more|less|fewer)\b/.test(t.text) && !templateProblem(t, level));
+  const sums = (skill: string, n: number | null) => !!stepOf(input.curriculum, skill, n)?.templates?.some((t) => t.format === "story" && sumTemplate(t, true) && !/\b1 (?:more|less|fewer)\b/.test(t.text) && !templateProblem(t, level));
   // The page's own step first when it has such stories; then this book's steps taught by today and the day's reviewed
   // steps, the most advanced first (the U16 review: Grade 5 stories, not "Hana has 9 leaves. She gets 7 more").
+  // If this step has no usable story, look backwards within the skill, then through
+  // earlier skills. The required story format must not advance the child's step.
+  if (!sums(at.skill, at.step)) {
+    let cached = storyFallbacks.get(input.curriculum);
+    if (!cached) { cached = new Map(); storyFallbacks.set(input.curriculum, cached); }
+    const key = `${at.skill}#${at.step}:${level}`;
+    const saved = cached.get(key);
+    if (saved?.length) return saved;
+    const rank = stepRank(input.curriculum, at.skill, at.step) ?? 0;
+    const prior = input.curriculum.levels.flatMap(l => input.curriculum.levelSkills(l.id) ?? [])
+      .flatMap(s => (input.curriculum.skillSteps(s.id) ?? []).map(st => ({ skill: s.id, step: st.number })))
+      .filter(x => (stepRank(input.curriculum, x.skill, x.step) ?? Infinity) < rank && sums(x.skill, x.step)
+        && (level < 16 || (stepBounds(stepOf(input.curriculum, x.skill, x.step)!)?.max ?? 0) >= 100))
+      .sort((a, b) => (stepRank(input.curriculum, b.skill, b.step) ?? 0) - (stepRank(input.curriculum, a.skill, a.step) ?? 0));
+    cached.set(key, prior);
+    if (prior.length) return prior;
+  }
   const seen = new Set<string>([`${at.skill}#${at.step}`]);
   const own = sums(at.skill, at.step) ? [{ skill: at.skill, step: at.step }] : [];
   const reviewed = (input.plan.days.find((d) => d.day === day)?.pages ?? []).flatMap((p) => p.parts.flatMap((x) => x.reviewSteps ?? []));
   const usable = (x: { skill: string; step: number | null }) => {
     const step = stepOf(input.curriculum, x.skill, x.step);
     const k = `${x.skill}#${step?.number}`;
-    if (!step || seen.has(k) || !sums(x.skill, step.number)) return [];
+    if (!step || seen.has(k) || !sums(x.skill, step.number) || (stepRank(input.curriculum, x.skill, step.number) ?? Infinity) > (stepRank(input.curriculum, at.skill, at.step) ?? 0)) return [];
     seen.add(k);
     return [{ skill: x.skill, step: step.number }];
   };
@@ -2241,6 +2273,11 @@ function layOut(input: GenerateInput) {
     // real U4 sample: "? and 9 make 10" beside practice's "has 4 cookies and wants 10", both hard).
     const cardStepsOf = byDay<number>();
     const sizeOf = itemSize;
+    const truthOf = (c: ItemPlan): string | null => {
+      if (c.template?.format !== "true-false") return null;
+      const answer = c.template.answer.toLowerCase();
+      return ["true", "yes"].includes(answer) ? "true" : ["false", "no"].includes(answer) ? "false" : null;
+    };
     // Every day's Challenge is planned first, so its step's hardest tasks are its own before any page spends them, an
     // earlier day's practice too (#482 review at 3134252: reserve scarce Challenge tasks; the U4 review: Day 3's
     // practice took the "7 + 1" Day 5's Challenge needed).
@@ -2275,6 +2312,7 @@ function layOut(input: GenerateInput) {
       const pageStories = new Set<string>();
       const pageStoryKinds = new Set<string>();
       const pageTypes = new Map<string, number>();
+      const truthCounts = new Map<string, number>();
       // One template a third of the page at most, half when nothing else is left (the U4 review: six "counts N in a
       // circle and says M" on one page pass as six contexts).
       const pageTemplates = new Map<string, number>();
@@ -2336,6 +2374,8 @@ function layOut(input: GenerateInput) {
             // A Challenge page asks the step's few hardest templates: it may print fewer forms (the book check agrees).
             const fewChallenge = w.page.type === "challenge" && slot.place === "challenge" && (c.template?.challengeTemplates ?? 3) < 3;
             if (w.slots.length >= 3 && !fewChallenge && (pageTypes.get(type) ?? 0) >= Math.ceil(w.slots.length / 2)) continue;
+            const truth = truthOf(c);
+            if (strict && truth && ["true", "false"].includes(truth) && (truthCounts.get(truth) ?? 0) > (truthCounts.get(truth === "true" ? "false" : "true") ?? 0)) continue;
             const tk = templateKey(c);
             const kk = kindKey(c);
             // (Show what you know reviews the book with each step's hardest version: the Challenge's limits on practice
@@ -2393,6 +2433,10 @@ function layOut(input: GenerateInput) {
           // of a form the page has (another of its block stays), as a step with small ranges runs out (#489).
         }
         if (best) {
+          const truth = truthOf(best.c);
+          if (truth) {
+            truthCounts.set(truth, (truthCounts.get(truth) ?? 0) + 1);
+          }
           used.set(best.key, (used.get(best.key) ?? 0) + 1); if (!usedAt.has(best.key)) usedAt.set(best.key, w.number); pageOps.add(best.op); pageTexts.add(best.p.text);
           if (slot.place === "challenge") pageKinds.add(printedForm(best.p).split(":")[0]);
           if (best.c.template && slot.place && STEP_STORY_PLACES.has(slot.place)) pageStories.add(templateWords(input, best.c));
@@ -2492,11 +2536,21 @@ const droppable = (w: PageWork, level = 0) => {
   return w.slots.findLast(s => can(s) && !s.contract && !s.existing) ?? pick ?? w.slots.findLast(can);
 };
 
-/** A day's estimated minutes from its planned items, as the book check estimates them (existing-path items as facts). */
+const unwrittenPackages = new WeakMap<Slot, QuestionPackage | null>();
+
+/** A day's estimated minutes from its planned items and the existing writer's declared formats. */
 function plannedDayMinutes(input: GenerateInput, work: PageWork[], day: number): number {
   const pages = work.filter((p) => p.day === day && !p.page.extraPractice);
-  const packages = pages.flatMap((p) => p.slots.flatMap((s) => { const pkg = s.contract ? contractPackage(input, p, s.contract) : null; return pkg ? [pkg] : []; }));
-  const others = pages.reduce((n, p) => n + p.slots.filter((s) => !s.contract).length, 0);
+  // Include the existing writer's reading and answer format. A mixed-set story
+  // takes more time than a bare fact, even when its words are not written yet.
+  let others = 0;
+  const packages = pages.flatMap((p) => p.slots.flatMap((s, i) => {
+    if (!s.contract && s.existing && !unwrittenPackages.has(s)) unwrittenPackages.set(s, standIn(input, p, s, i).package);
+    const pkg = s.contract ? contractPackage(input, p, s.contract) : unwrittenPackages.get(s);
+    if (pkg) return [pkg];
+    others++;
+    return [];
+  }));
   const panels = pages.reduce((n, p) => n + p.panels.length, 0);
   // A story the writer words reads longer than code's text (the U16 sample: Day 10 planned under 29.3, printed at 30.2).
   const worded = pages.reduce((n, p) => n + p.slots.filter((s) => s.contract?.source === "story").length, 0) * .15;
@@ -2641,11 +2695,14 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         const questions = w.slots.map((s, i) => {
           const c = s.contract;
           const b = c ? buildPlannedItem(c, c.item, { id: `budget:${w.number}:${s.id}`, workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: [c.item.skill] }) : s.existing ? standIn(input, w, s, i) : unapprovedBuild();
+          // Measure the name that writeSlots prints. A shorter replacement can remove a wrapped line.
+          if (b.package && s.place && s.place !== "spot-the-error") b.package = withoutSam(b.package, s.planned?.name ?? null);
           return generated(w, i, b, 1);
         });
         const examples = w.panels.map(p => {
           const c = contractFor(input, w, panelSlot(w, p), p.attempt ?? 0);
-          return c ? buildPlannedItem(c, c.item, { id: `budget:${w.number}:${p.id}`, workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [p.skill] }).package : null;
+          const pkg = c ? buildPlannedItem(c, c.item, { id: `budget:${w.number}:${p.id}`, workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [p.skill] }).package : null;
+          return pkg ? withoutSam(pkg, null) : null;
         });
         const fit = await fitCheck.fits(fitPage(w, "token-000000000001", questions, contentOf(input, w, questions, examples)), {
           id: input.workbookId, childId: input.childId, number: input.number, levels: [input.plan.level], profileBuild: input.profileBuild,
@@ -3083,7 +3140,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
         const forms=()=>new Set(current.flatMap(o=>o.package && o.place!=="warm-up" ? [printedForm(o.package)] : []));
         const fewForms=issues.some(i=>/contexts? or formats?/.test(i.reason)) && forms().size<3 && !!q.package && q.place!=="warm-up" && current.filter(o=>o.package && printedForm(o.package)===printedForm(q.package!)).length>=2;
         const frameAgain=issues.some(i=>i.reason.startsWith(`question ${q.number} uses the sentence frame`) || /sentence frame/.test(i.reason) && i.reason.includes("times") && !!q.package && i.reason.includes(`"${sentenceFrameOf(q.package)}"`));
-        if(issues.every(i=>i.kind==="variety") && q.package && (counts.get(kindOf(q)) ?? 0)<=limit && !fewForms && !frameAgain) return q;
+        if(fixable.every(i=>i.kind==="variety") && q.package && (counts.get(kindOf(q)) ?? 0)<=limit && !fewForms && !frameAgain) return q;
         const others=pages.flatMap(p=>p.questions.filter(other=>p.number!==page.number || other.number!==q.number)).concat(current.slice(0,index));
         const keys=new Set([...others.flatMap(other=>other.package && other.place!=="warm-up" ? [keyOf(other.package)] : []), ...pages.flatMap(p=>(p.panelExamples ?? []).flatMap(e=>e ? [keyOf(e)] : []))]);
         const frames=new Set(others.flatMap(other=>other.package && wordedTask(other.package) ? [storyFrame(other.package.text)] : []));

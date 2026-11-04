@@ -166,7 +166,7 @@ export function planLevel(curriculum: Curriculum, levelId: string): PlanLevel | 
         id: s.id,
         delivery: s.delivery,
         pages: s.pages,
-        steps: (curriculum.skillSteps(s.id) ?? []).map((step) => ({ pages: step.pages, ...(step.templates?.length ? { sums: step.templates.some((t) => !templateProblem(t, level.number) && sumTemplate(t)) } : {}) })),
+        steps: (curriculum.skillSteps(s.id) ?? []).map((step) => ({ pages: step.pages, ...(step.templates?.length ? { sums: step.templates.some((t) => t.difficulty !== "hard" && !templateProblem(t, level.number) && sumTemplate(t)) } : {}) })),
       })),
     })),
     fluency: fluencyFrom ? warmUp(fluencyFrom) : [],

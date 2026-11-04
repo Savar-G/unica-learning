@@ -193,7 +193,7 @@ export function textRoom(slot: SlotName, level: number, pages = 8, consistent = 
       // A story's full line beside its number (26 + 12) and a picture.
       return textRoomOf(CONTENT_W - 38 - 160, band.story, 3);
     case "mixed-set":
-      return textRoomOf(CONTENT_W - 22 - 12, band.name === "mid" ? 14 : band.story, 2);
+      return textRoomOf((consistent ? (CONTENT_W - 32) / 2 : CONTENT_W) - 22 - 12, band.name === "mid" ? 14 : band.story, 2);
     case "challenge":
       return textRoomOf(CONTENT_W - 35 - badge - 32 - box, band.body, 4);
     case "math-in-the-world":
@@ -461,8 +461,9 @@ const CSS = `
 .pg.consistent .pcards{flex:none;grid-auto-rows:auto;column-gap:32px;row-gap:calc(12px + var(--extra-gap,0px))}
 .pg.consistent .cols{flex:none;align-content:start;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:calc(12px + var(--extra-gap,0px))}
 .pg.consistent .cols .ab{height:48px}
-.pg.consistent .places-item .rgs{display:grid;grid-template-columns:repeat(var(--places),minmax(0,1fr));gap:8px;flex-basis:100%;width:100%;margin-left:0}
+.pg.consistent .places-item .rgs{display:grid;grid-template-columns:repeat(var(--places),minmax(0,1fr));gap:8px;flex-basis:100%;width:100%;margin-left:0;align-items:stretch}
 .pg.consistent .places-item .rg{display:flex;flex-direction:column;gap:6px}
+.pg.consistent .places-wide .rg{justify-content:flex-end}
 .pg.consistent .places-item .rl{font-size:var(--small);white-space:normal;text-align:center}
 .pg.consistent .col .sum{margin-left:auto}
 .pg.consistent.mid .col .sum{font-size:20px}
@@ -474,6 +475,7 @@ const CSS = `
 .pg.consistent .seq-item .qt{font-size:18px}
 .pg.consistent .seq-below .rgs{flex-basis:100%;margin-left:0;padding-left:34px}
 .pg.consistent .two>.seq-wide,.pg.consistent .cols>.seq-wide{grid-column:1/-1}
+.pg.consistent .two>.places-wide,.pg.consistent .cols>.places-wide{grid-column:1/-1}
 .pg.consistent .outl{padding:6px 16px;gap:6px}
 .pg.consistent .error-item{display:flex;flex-direction:column;gap:6px}
 .pg.consistent .error-item>.q:first-child{flex-wrap:nowrap;align-items:flex-start}.pg.consistent .error-item>.q:first-child .wk{flex:1 1 0}
@@ -490,6 +492,12 @@ const CSS = `
 .pg.consistent .mx .sl{min-width:0}
 .pg.consistent .chc{padding:12px;gap:8px}
 .pg.consistent .chc .act{display:flex;gap:16px;align-items:flex-end;flex:1}
+.pg.consistent .chs.side3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.pg.consistent .chs.side3 .top{gap:8px}
+.pg.consistent .chs.side3 .act{flex-direction:column;align-items:stretch;gap:8px}
+.pg.consistent .chs.side3 .act .wb{width:100%;min-width:0}
+.pg.consistent .chs.side3 .act .rg{align-self:flex-end}
+.pg.consistent.older-extra .ab{height:88px}
 .pg.consistent .chc.nowork{flex:0 0 auto}.pg.consistent .chc.nowork .act{flex:0 0 auto;align-items:flex-start}
 .pg.consistent [data-slot="word-problems"] .story{flex:1}
 .pg.consistent [data-slot="word-problems"] .story.nowork{flex:0 0 auto}
@@ -832,7 +840,8 @@ function lineItem(q: DraftQuestion, band: Band, hint?: WorkedLine | null, work =
   const pictured = packageItem(q.package).regions.some((r) => r.kind === "picture");
   const sequence = packageItem(q.package).checks.some(c=>c.kind === "sequence");
   const places = packageItem(q.package).checks.some(c=>c.kind === "places");
-  const columns = Math.min(4,packageItem(q.package).regions.length);
+  const placesWide = band.consistentLayout && places && packageItem(q.package).regions.length > 4;
+  const columns = Math.min(placesWide ? 9 : 4,packageItem(q.package).regions.length);
   const split = regionsSplit(q, { band, work, labels: true, bare: packageItem(q.package).format === "written-reason", figure: pictured ? figure : null });
   // A picture the child reads (dots to count, a pattern) sits under the question, before any work box.
   const inline = split.inline;
@@ -842,7 +851,7 @@ function lineItem(q: DraftQuestion, band: Band, hint?: WorkedLine | null, work =
   const below = sequence && band.consistentLayout && q.package.text.length > 16;
   // Four boxes or more do not fit half a page's width: the count takes the whole row.
   const wide = below && wideSequence(q);
-  return `<div class="q${sequence ? " seq-item" : ""}${below ? " seq-below" : ""}${wide ? " seq-wide" : ""}${places ? " places-item" : ""}" ${mark.question(q.number)}><span class="n">${questionNumber(q.number)}</span><span class="qb">${qtext(q)}${hint ? ` <span class="qm">${worked(hint)}</span>` : ""}</span>`
+  return `<div class="q${sequence ? " seq-item" : ""}${below ? " seq-below" : ""}${wide ? " seq-wide" : ""}${places ? " places-item" : ""}${placesWide ? " places-wide" : ""}" ${mark.question(q.number)}><span class="n">${questionNumber(q.number)}</span><span class="qb">${qtext(q)}${hint ? ` <span class="qm">${worked(hint)}</span>` : ""}</span>`
     + `<span class="rgs"${places ? ` style="--places:${columns}"` : ""}>${inline}</span>${full ? `<div class="full">${full}</div>` : ""}</div>`;
 }
 
@@ -1075,8 +1084,9 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       }
 
       const side = ctx.six && qs.length === 2;
+      const three = ctx.six && qs.length === 3;
       const work = c.consistentLayout ? workMinimum(c.level) : "fill" as const;
-      return chip() + `<div class="chs${side ? " side2" : ""}">${qs.map((q) => {
+      return chip() + `<div class="chs${side ? " side2" : three ? " side3" : ""}">${qs.map((q) => {
         const { inline, full } = regionsSplit(q, { band, work });
         // (A card with nothing to work in, a count with boxes, keeps its height: its boxes sit under the question, never at
         // the foot of an empty card, the real U4 sample.)
@@ -1131,7 +1141,7 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
   // A page at its day's time limit holds no more questions: its rows grow to fill it, each with more room to work
   // (Codex at 47c5fd78: the time limit must not excuse a half-empty page).
   const stretch = c.consistentLayout && c.fillingComplete && c.atMaximum ? " stretch" : "";
-  return `<div class="pg ${band.name}${c.consistentLayout ? " consistent" : ""}${stretch} f-${familyOf(page, c)}" data-page-type="${page.type}" style="--work-min:${c.consistentLayout ? workMinimum(c.level) : 64}px">${scanMarks}<div class="frame">${header}<main class="ct" style="--extra-gap:${Math.max(0,Math.min(48,c.extraGap ?? 0))}px" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
+  return `<div class="pg ${band.name}${c.consistentLayout ? " consistent" : ""}${c.extraPractice && c.level >= 19 ? " older-extra" : ""}${stretch} f-${familyOf(page, c)}" data-page-type="${page.type}" style="--work-min:${c.consistentLayout ? workMinimum(c.level) : 64}px">${scanMarks}<div class="frame">${header}<main class="ct" style="--extra-gap:${Math.max(0,Math.min(48,c.extraGap ?? 0))}px" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
 }
 
 /** A failed question with nothing to print: a red placeholder with its number and why (review drafts only). */

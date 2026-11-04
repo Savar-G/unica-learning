@@ -1,0 +1,13 @@
+{
+  "steps": 1622,
+  "skills": 541,
+  "templates": 7321,
+  "fillsPerTemplate": 30,
+  "trials": 219630,
+  "passedFills": 219630,
+  "failedFills": 0,
+  "failedTemplates": 0,
+  "maxAttemptsUsed": 15,
+  "failures": [],
+  "importProblems": []
+}

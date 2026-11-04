@@ -756,8 +756,11 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
   const problem = operationProblem(candidate);
   if (problem) return fail(`the operation: ${problem}`);
   const op = candidate as Operation;
-  // Code writes the text of a whole-number question at U1 to U9 (round 7): the AI's words are not printed.
-  const worded = !place.preserveText && place.level <= 9 && isWorded(op);
+  // A bare Mixed set gives away the operation the child must choose. Code can word
+  // that exact operation as a story, with the same checks and planned context.
+  const bareMixed = place.story && format === "tick-and-number" && raw.text === operationQuestion(op);
+  // Code writes whole-number questions at U1 to U9 and this bounded recovery at later levels.
+  const worded = !place.preserveText && (place.level <= 9 || bareMixed) && isWorded(op);
   // The box takes the operation's number, so the question must ask for that number, never yes or no or a choice.
   const asks = !worded && typeof raw.text === "string" ? choiceAsked(raw.text) : null;
   if (asks) return fail(`the question asks ${asks}, but its answer is the operation's number: ask for a number (How far is 8 from 10?), or use draw`);
@@ -823,7 +826,7 @@ function wordingsFor(op: Operation, format: GeneratedFormat, figure: Figure | nu
   const name = offered(w?.names, raw.name) ?? w?.name ?? DEFAULT_NAMES[((variant % DEFAULT_NAMES.length) + DEFAULT_NAMES.length) % DEFAULT_NAMES.length];
   const thing = offered(w?.things, raw.thing) ?? w?.thing ?? DEFAULT_THINGS[((variant % DEFAULT_THINGS.length) + DEFAULT_THINGS.length) % DEFAULT_THINGS.length];
   const words = typeof raw.text === "string" && /[a-z]{3,}/i.test(raw.text);
-  return codeWordings(op, {
+  const wordings = codeWordings(op, {
     format, figure, name, thing,
     kinds: w?.kinds ?? (words ? ["story", "picture", "missing-part", "fact"] : ["fact", "missing-part"]),
     step: w?.step ?? false,
@@ -832,6 +835,9 @@ function wordingsFor(op: Operation, format: GeneratedFormat, figure: Figure | nu
     // The planned wording names the planned person and thing.
     planned: w && name === w.name && thing === w.thing ? w.planned ?? null : null,
   });
+  // Later levels use this function only to recover an exact bare Mixed set.
+  // Keep its planned person and object instead of a fixed animal story.
+  return place.level <= 9 ? wordings : wordings.filter(text => text.startsWith(`${name} `) && text.includes(thing));
 }
 
 /**

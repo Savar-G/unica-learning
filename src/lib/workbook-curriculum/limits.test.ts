@@ -5,7 +5,7 @@ import { compileExpression, evaluateExpression, FractionValue } from "./expressi
 import { parseStepProgressions, stepFieldProblems } from "./step-source";
 import { prepareTemplate, seededRandom } from "./template";
 import type { StepTemplate } from "./types";
-const source = parseStepProgressions(JSON.parse(readFileSync("data/curriculum/step-progressions-k9.json", "utf8")));
+const source = parseStepProgressions(JSON.parse(readFileSync("data/curriculum/step-progressions-k9.v1.json", "utf8")));
 const simple: StepTemplate = { format: "bare", difficulty: "easy", text: "ok", slots: {}, answer: "1" };
 describe("input and value admission caps", () => {
   it("checks both import and production preparation before compiling excess input", () => {
