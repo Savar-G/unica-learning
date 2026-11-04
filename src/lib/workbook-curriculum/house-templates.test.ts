@@ -3,7 +3,7 @@ import { BC_CURRICULUM, bcStepProgressions } from "@/lib/workbook-curriculum";
 import { HOUSE_TEMPLATES, isTwoStep, withHouseTemplates } from "./house-templates";
 import { stepFieldProblems } from "./step-source";
 import { prepareTemplate, seededRandom } from "./template";
-import { stepRangeProblem } from "@/lib/workbook-step-items";
+import { sequenceOf, stepRangeProblem } from "@/lib/workbook-step-items";
 import { takeAwayProblem } from "@/lib/workbook-wording";
 
 describe("Unica Challenge templates", () => {
@@ -78,7 +78,7 @@ describe("code's two-step Challenge cards (U4)", () => {
   });
 });
 
-describe("Unica's shorter U4 wording", () => {
+describe("Unica's shorter level wording", () => {
   const c = bcStepProgressions();
   it("rewrites only templates whose text is still Cedric's, with their own slots, shorter, and fills them", async () => {
     const { LEVEL_REWRITES, templateAtLevel } = await import("./house-templates");
@@ -89,17 +89,33 @@ describe("Unica's shorter U4 wording", () => {
       expect(t.text, `${r.skill}#${r.step}.${r.template}`).toBe(r.from);
       expect(r.to.length).toBeLessThan(r.from.length);
       for (const h of holes(r.to)) expect(holes(r.from).has(h), `${r.skill}#${r.step}.${r.template} {${h}}`).toBe(true);
-      const shown = templateAtLevel(4, step, r.template - 1, t);
+      const shown = templateAtLevel(r.level, step, r.template - 1, t);
       expect(shown.text).toBe(r.to);
       expect(templateAtLevel(1, step, r.template - 1, t).text).toBe(r.from);
+      if (r.level !== 16) expect(templateAtLevel(16, step, r.template - 1, t)).toEqual(t);
+      expect(templateAtLevel(r.level, step, r.template - 1, { ...t, text: "Changed source" }).text).toBe("Changed source");
       expect({ ...shown, text: t.text }).toEqual(t);
       const prepared = prepareTemplate(step, shown, c.contexts);
+      const original = prepareTemplate(step, t, c.contexts);
+      let filled = 0;
       for (let seed = 1; seed <= 40; seed++) {
         let item;
         try { item = prepared.fill(seededRandom(seed)); } catch { continue; }
+        filled++;
+        const before = original.fill(seededRandom(seed));
+        expect(item.answer, item.text).toBe(before.answer);
+        for (const key of Object.keys(t.slots)) expect(item.values[key], `${item.text}: ${key}`).toEqual(before.values[key]);
         expect(item.text).not.toMatch(/\{/);
         expect(takeAwayProblem(item.text, Number(item.answer)), item.text).toBeNull();
+        if (/^Count (?:on|back):/.test(r.from)) {
+          const sequence = sequenceOf(item.text.replaceAll("__", "?"), item.answer);
+          const oldSequence = sequenceOf(before.text.replaceAll("__", "?"), before.answer);
+          expect(sequence).not.toBeNull();
+          expect(sequence!.terms).toEqual(oldSequence!.terms);
+          expect(sequence!.step).toBe(oldSequence!.step);
+        }
       }
+      expect(filled, `${r.skill}#${r.step}.${r.template}`).toBeGreaterThan(0);
     }
   });
 });

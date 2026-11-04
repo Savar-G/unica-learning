@@ -174,31 +174,48 @@ export function withHouseTemplates(data: CurriculumData, house: readonly HouseTe
 }
 
 /**
- * Shorter words for the wordiest templates a U4 book prints (Savar, 2026-11-04: 8 practice questions fit a U4 page with
- * its panel). Each keeps its slots, its answer, its difficulty and what it asks; only the printed words change, and only
- * in a U4 book (the Kindergarten books keep Cedric's). The step's text is checked: a changed template is not rewritten.
+ * Shorter words for U4's long templates and U16's hundreds-place question. Each keeps its slots, answer, difficulty
+ * and task. Only the named level changes; other levels keep Cedric's words. U4's part-part-whole form prints the
+ * given parts and whole without a picture note. The source text is checked: a changed template is not rewritten.
  * Logged in data/curriculum/author-changes.md ("Unica's shorter U4 wording").
  */
 export interface LevelRewrite { level: number; skill: string; step: number; template: number; from: string; to: string }
 
-const CLAIM_PARTS = "{w} {things}, {p} in a {container}. {name}: the rest is {claim}. Right? If not, fix it.";
 export const LEVEL_REWRITES: readonly LevelRewrite[] = [
-  { level: 4, skill: "K3-part-part-whole", step: 3, template: 5, from: "Out of {w} {things}, {name} puts {p} in a {container}. {name} says the rest is {claim}. Is that right? If not, say how many.", to: CLAIM_PARTS },
-  { level: 4, skill: "K1-count-scattered", step: 3, template: 4, from: "{name} counts {c} {things} in a circle and says {a}. Is that right? If not, say the right number.", to: "{c} {things} in a circle. {name} counts {a}. Right? If not, fix it." },
-  { level: 4, skill: "K1-write-numerals", step: 3, template: 4, from: "{name} wrote {a} for the number {n}. Is that right? If not, write the right number.", to: "{name} writes {a} for {n}. Right? If not, fix it." },
-  { level: 4, skill: "K5-two-more-less", step: 3, template: 5, from: "{name} says 2 more than {s} is {claim}. Is that right? If not, say the right number.", to: "{name} says 2 more than {s} is {claim}. Right? If not, fix it." },
+  { level: 16, skill: "5.1-place-value-million", step: 3, template: 2, from: "What is the value of the digit in the hundreds place of {n}?", to: "{n}: value of the hundreds digit?" },
+  { level: 4, skill: "K3-part-part-whole", step: 3, template: 1, from: "(picture: part {sa}, part {sb}, whole {sc}) Find the missing number.", to: "Parts {sa}, {sb}. Whole {sc}." },
   { level: 4, skill: "K5-two-more-less", step: 3, template: 3, from: "{name} has {s} {things}. {name} gets 2 more. How many {things} does {name} have now?", to: "{name} has {s} {things} and gets 2 more. How many {things} now?" },
+  { level: 4, skill: "K1-count-scattered", step: 3, template: 4, from: "{name} counts {c} {things} in a circle and says {a}. Is that right? If not, say the right number.", to: "{c} {things} in a circle. {name} counts {a}. Right? If not, fix it." },
   ...[1, 2, 3].map((step) => ({ level: 4, skill: "1.2-decompose-within-10", step, template: 3, from: "{name} has {w} {things}. {p} of them {be} red and the rest are blue. How many are blue?", to: "{w} {things}: {p} red, the rest blue. How many are blue?" })),
-  ...[1, 2].map((step) => ({ level: 4, skill: "1.2-decompose-within-10", step, template: 5, from: "{name} says {w} is {a} and {claim}. Is that right? If not, write what goes with {a}.", to: "{name} says {w} is {a} and {claim}. Right? If not, fix it." })),
   ...[1, 2].map((step) => ({ level: 4, skill: "1.1-subitize-to-10", step, template: 2, from: "True or false: if you count {n} {things}, the last number you say is {shown}.", to: "True or false: counting {n} {things}, you end on {shown}." })),
   ...[1, 2].map((step) => ({ level: 4, skill: "1.1-subitize-to-10", step, template: 3, from: "{name} has {n} {things}. {name} gets 1 more. How many {things} now?", to: "{name} has {n} {things} and gets 1 more. How many {things} now?" })),
-  { level: 4, skill: "1.1-subitize-to-10", step: 3, template: 3, from: "{name} has {w} {things}. {p} are red and the rest are blue. How many are blue?", to: "{name} has {w} {things}. {p} are red, the rest blue. How many blue?" },
-  { level: 4, skill: "1.10-likelihood-words", step: 1, template: 4, from: "{name} thinks about this: {ev}. Circle never, sometimes or always.", to: "Think: {ev}. Circle never, sometimes or always." },
-  { level: 4, skill: "1.10-likelihood-words", step: 1, template: 1, from: "{name} says {animals} can drive a car. Circle never, sometimes or always.", to: "Can {animals} drive a car? Circle never, sometimes or always." },
-  ...[1, 2].map((step) => ({ level: 4, skill: "1.1-count-to-20", step, template: 2, from: "{name} counts {things}. {name} says {s}. What does {name} say next?", to: "{name} counts {things} and says {s}. What comes next?" })),
-  { level: 4, skill: "1.1-count-to-20", step: 3, template: 2, from: "{name} counts down from {s} at the rink. What does {name} say next?", to: "{name} counts down from {s}. What comes next?" },
-  ...[1, 2].map((step) => ({ level: 4, skill: "1.1-count-to-20", step, template: 4, from: "Which number comes right after {s}: {x} or {y}?", to: "What comes after {s}: {x} or {y}?" })),
-  { level: 4, skill: "1.1-count-to-20", step: 3, template: 4, from: "Which number comes right before {s}: {x} or {y}?", to: "What comes before {s}: {x} or {y}?" },
+  { level: 4, skill: "1.1-count-to-20", step: 1, template: 1, from: "Count on: {s}, __, __. What are the next two numbers?", to: "Count on: {s}, __, __." },
+  { level: 4, skill: "1.1-count-to-20", step: 2, template: 1, from: "Count on: {s}, __, __. What are the next two numbers?", to: "Count on: {s}, __, __." },
+  { level: 4, skill: "1.1-count-to-20", step: 1, template: 5, from: "Count on: {s}, __, __, __, __. Write the next four numbers.", to: "Count on: {s}, __, __, __, __." },
+  { level: 4, skill: "1.1-count-to-20", step: 2, template: 5, from: "Count on: {s}, __, __, __, __. Write the next four numbers.", to: "Count on: {s}, __, __, __, __." },
+  { level: 4, skill: "1.1-count-to-20", step: 3, template: 1, from: "Count back: {s}, __, __. What are the next two numbers?", to: "Count back: {s}, __, __." },
+  { level: 4, skill: "1.1-count-to-20", step: 3, template: 5, from: "Count back: {s}, __, __, __, __. Write the next four numbers.", to: "Count back: {s}, __, __, __, __." },
+  { level: 4, skill: "1.1-count-to-20", step: 1, template: 2, from: "{name} counts {things}. {name} says {s}. What does {name} say next?", to: "{name} counts {things}: {s}. What comes next?" },
+  { level: 4, skill: "1.1-count-to-20", step: 2, template: 2, from: "{name} counts {things}. {name} says {s}. What does {name} say next?", to: "{name} counts {things}: {s}. What comes next?" },
+  { level: 4, skill: "1.1-count-to-20", step: 3, template: 2, from: "{name} counts down from {s} at the rink. What does {name} say next?", to: "{name} counts back: {s}. What comes next?" },
+  { level: 4, skill: "1.1-count-to-20", step: 1, template: 4, from: "Which number comes right after {s}: {x} or {y}?", to: "After {s}: {x} or {y}?" },
+  { level: 4, skill: "1.1-count-to-20", step: 2, template: 4, from: "Which number comes right after {s}: {x} or {y}?", to: "After {s}: {x} or {y}?" },
+  { level: 4, skill: "1.1-count-to-20", step: 3, template: 4, from: "Which number comes right before {s}: {x} or {y}?", to: "Before {s}: {x} or {y}?" },
+  { level: 4, skill: "1.1-subitize-to-10", step: 3, template: 3, from: "{name} has {w} {things}. {p} are red and the rest are blue. How many are blue?", to: "{w} {things}: {p} red, the rest blue. How many blue?" },
+  { level: 4, skill: "1.10-likelihood-words", step: 1, template: 1, from: "{name} says {animals} can drive a car. Circle never, sometimes or always.", to: "Can {animals} drive a car?" },
+  { level: 4, skill: "1.10-likelihood-words", step: 1, template: 3, from: "The sun will rise tomorrow. Circle never, sometimes or always.", to: "The sun will rise tomorrow. How often?" },
+  { level: 4, skill: "1.10-likelihood-words", step: 1, template: 4, from: "{name} thinks about this: {ev}. Circle never, sometimes or always.", to: "{ev}. How often?" },
+  { level: 4, skill: "1.10-likelihood-words", step: 1, template: 5, from: "{st}. Is that never, sometimes or always?", to: "{st}. How often?" },
+  { level: 4, skill: "K3-part-part-whole", step: 3, template: 5, from: "Out of {w} {things}, {name} puts {p} in a {container}. {name} says the rest is {claim}. Is that right? If not, say how many.", to: "{w} {things}. {p} put away. {claim} left out? Fix if wrong." },
+  { level: 4, skill: "K3-make-10", step: 3, template: 5, from: "{name} has {p} {things} and wants {w}. How many more?", to: "{p} {things}. How many more make {w}?" },
+  { level: 4, skill: "K5-two-more-less", step: 3, template: 5, from: "{name} says 2 more than {s} is {claim}. Is that right? If not, say the right number.", to: "2 more than {s} is {claim}. Right? Fix if wrong." },
+  { level: 4, skill: "K1-write-numerals", step: 3, template: 4, from: "{name} wrote {a} for the number {n}. Is that right? If not, write the right number.", to: "{name} writes {a} for {n}. Right? Fix if wrong." },
+  { level: 4, skill: "1.2-decompose-within-10", step: 1, template: 5, from: "{name} says {w} is {a} and {claim}. Is that right? If not, write what goes with {a}.", to: "{w} is {a} and {claim}. Right? Fix if wrong." },
+  { level: 4, skill: "1.2-decompose-within-10", step: 2, template: 5, from: "{name} says {w} is {a} and {claim}. Is that right? If not, write what goes with {a}.", to: "{w} is {a} and {claim}. Right? Fix if wrong." },
+  { level: 4, skill: "K5-two-more-less", step: 3, template: 1, from: "What is 2 more than {s}?", to: "2 more than {s}?" },
+  { level: 4, skill: "K1-number-sequence", step: 3, template: 1, from: "What comes just after {n}?", to: "What comes after {n}?" },
+  { level: 4, skill: "K1-number-sequence", step: 3, template: 4, from: "What comes just before {n}? A) {x}  B) {y}", to: "Before {n}? A) {x} B) {y}" },
+  { level: 4, skill: "K1-number-sequence", step: 3, template: 5, from: "{name} counts up and says {n}, then {m}. Which number did {name} skip?", to: "{name} counts up: {n}, then {m}. What was skipped?" },
 ];
 
 /** A template as a book of this level prints it: Unica's shorter words where there are some, else Cedric's. */

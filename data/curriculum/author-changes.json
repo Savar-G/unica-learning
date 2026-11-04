@@ -7255,5 +7255,382 @@
     "after": "{w} is {p} and which number: {x} or {y}?",
     "why": "On base 24751f16, the matched U4 v2 sample reduced minimum fullness from 63.0372% to 60.5730% and mean fullness from 85.1544% to 84.1313%. Retain the v1 make-10 step 3, the medium story at subitize templates 3, and the missing/true-false/choice content at decompose step 1 templates 1, 2 and 4. This group restores minimum fullness to 67.0487% and mean to 85.3161%, with zero failures, omissions, render errors or variety issues. Keep the remaining v2 content, every template position and easy/hard coverage.",
     "kind": "quality-fallback"
+  },
+  {
+    "kind": "level-wording",
+    "level": 16,
+    "skill": "5.1-place-value-million",
+    "step": 3,
+    "template": 2,
+    "path": [
+      "text"
+    ],
+    "before": "What is the value of the digit in the hundreds place of {n}?",
+    "after": "{n}: value of the hundreds digit?",
+    "why": "Keep the hundreds-place value task, range and difficulty. Remove repeated words so a third question on the page own step fits before the planner takes earlier review work."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "K3-part-part-whole",
+    "step": 3,
+    "template": 1,
+    "path": [
+      "text"
+    ],
+    "before": "(picture: part {sa}, part {sb}, whole {sc}) Find the missing number.",
+    "after": "Parts {sa}, {sb}. Whole {sc}.",
+    "why": "Print the same parts, whole and missing position as a short number question instead of an unsupported picture note. Keep every value, answer and difficulty. This gives U4 capacity selection a shorter form of the same task."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "1.1-count-to-20",
+    "step": 1,
+    "template": 1,
+    "path": [
+      "text"
+    ],
+    "before": "Count on: {s}, __, __. What are the next two numbers?",
+    "after": "Count on: {s}, __, __.",
+    "why": "The printed sequence already shows every answer blank. Keep the direction, start, number of terms and answers. Remove the repeated instruction so eight questions fit."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "1.1-count-to-20",
+    "step": 2,
+    "template": 1,
+    "path": [
+      "text"
+    ],
+    "before": "Count on: {s}, __, __. What are the next two numbers?",
+    "after": "Count on: {s}, __, __.",
+    "why": "The printed sequence already shows every answer blank. Keep the direction, start, number of terms and answers. Remove the repeated instruction so eight questions fit."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "1.1-count-to-20",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "Count on: {s}, __, __, __, __. Write the next four numbers.",
+    "after": "Count on: {s}, __, __, __, __.",
+    "why": "The printed sequence already shows every answer blank. Keep the direction, start, number of terms and answers. Remove the repeated instruction so eight questions fit."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "1.1-count-to-20",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "Count on: {s}, __, __, __, __. Write the next four numbers.",
+    "after": "Count on: {s}, __, __, __, __.",
+    "why": "The printed sequence already shows every answer blank. Keep the direction, start, number of terms and answers. Remove the repeated instruction so eight questions fit."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "1.1-count-to-20",
+    "step": 3,
+    "template": 1,
+    "path": [
+      "text"
+    ],
+    "before": "Count back: {s}, __, __. What are the next two numbers?",
+    "after": "Count back: {s}, __, __.",
+    "why": "The printed sequence already shows every answer blank. Keep the direction, start, number of terms and answers. Remove the repeated instruction so eight questions fit."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "1.1-count-to-20",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "Count back: {s}, __, __, __, __. Write the next four numbers.",
+    "after": "Count back: {s}, __, __, __, __.",
+    "why": "The printed sequence already shows every answer blank. Keep the direction, start, number of terms and answers. Remove the repeated instruction so eight questions fit."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "1.1-count-to-20",
+    "step": 1,
+    "template": 2,
+    "path": [
+      "text"
+    ],
+    "before": "{name} counts {things} and says {s}. What comes next?",
+    "after": "{name} counts {things}: {s}. What comes next?",
+    "why": "Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "1.1-count-to-20",
+    "step": 2,
+    "template": 2,
+    "path": [
+      "text"
+    ],
+    "before": "{name} counts {things} and says {s}. What comes next?",
+    "after": "{name} counts {things}: {s}. What comes next?",
+    "why": "Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "1.1-count-to-20",
+    "step": 3,
+    "template": 2,
+    "path": [
+      "text"
+    ],
+    "before": "{name} counts down from {s}. What comes next?",
+    "after": "{name} counts back: {s}. What comes next?",
+    "why": "Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "1.1-count-to-20",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "What comes after {s}: {x} or {y}?",
+    "after": "After {s}: {x} or {y}?",
+    "why": "Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "1.1-count-to-20",
+    "step": 2,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "What comes after {s}: {x} or {y}?",
+    "after": "After {s}: {x} or {y}?",
+    "why": "Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "1.1-count-to-20",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "What comes before {s}: {x} or {y}?",
+    "after": "Before {s}: {x} or {y}?",
+    "why": "Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "1.1-subitize-to-10",
+    "step": 3,
+    "template": 3,
+    "path": [
+      "text"
+    ],
+    "before": "{name} has {w} {things}. {p} are red, the rest blue. How many blue?",
+    "after": "{w} {things}: {p} red, the rest blue. How many blue?",
+    "why": "Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "1.10-likelihood-words",
+    "step": 1,
+    "template": 1,
+    "path": [
+      "text"
+    ],
+    "before": "Can {animals} drive a car? Circle never, sometimes or always.",
+    "after": "Can {animals} drive a car?",
+    "why": "Keep the event and its likelihood. The answer region already prints all three choices. Remove the repeated direction so eight questions fit at the U4 type size."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "1.10-likelihood-words",
+    "step": 1,
+    "template": 3,
+    "path": [
+      "text"
+    ],
+    "before": "The sun will rise tomorrow. Circle never, sometimes or always.",
+    "after": "The sun will rise tomorrow. How often?",
+    "why": "Keep the event and its likelihood. The answer region already prints all three choices. Remove the repeated direction so eight questions fit at the U4 type size."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "1.10-likelihood-words",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "Think: {ev}. Circle never, sometimes or always.",
+    "after": "{ev}. How often?",
+    "why": "Keep the event and its likelihood. The answer region already prints all three choices. Remove the repeated direction so eight questions fit at the U4 type size."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "1.10-likelihood-words",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "{st}. Is that never, sometimes or always?",
+    "after": "{st}. How often?",
+    "why": "Keep the event and its likelihood. The answer region already prints all three choices. Remove the repeated direction so eight questions fit at the U4 type size."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "K3-part-part-whole",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "{w} {things}, {p} in a {container}. {name}: the rest is {claim}. Right? If not, fix it.",
+    "after": "{w} {things}. {p} put away. {claim} left out? Fix if wrong.",
+    "why": "Keep the whole, the part put away and the claim to check. Ask about the things left out, so putting things away does not imply loss of ownership. Remove the repeated name and container detail."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "K3-make-10",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "{name} has {p} {things} and wants {w}. How many more?",
+    "after": "{p} {things}. How many more make {w}?",
+    "why": "Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "K5-two-more-less",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "{name} says 2 more than {s} is {claim}. Right? If not, fix it.",
+    "after": "2 more than {s} is {claim}. Right? Fix if wrong.",
+    "why": "Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "K1-write-numerals",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "{name} writes {a} for {n}. Right? If not, fix it.",
+    "after": "{name} writes {a} for {n}. Right? Fix if wrong.",
+    "why": "Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "1.2-decompose-within-10",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "{name} says {w} is {a} and {claim}. Right? If not, fix it.",
+    "after": "{w} is {a} and {claim}. Right? Fix if wrong.",
+    "why": "Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "1.2-decompose-within-10",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "{name} says {w} is {a} and {claim}. Right? If not, fix it.",
+    "after": "{w} is {a} and {claim}. Right? Fix if wrong.",
+    "why": "Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "K5-two-more-less",
+    "step": 3,
+    "template": 1,
+    "path": [
+      "text"
+    ],
+    "before": "What is 2 more than {s}?",
+    "after": "2 more than {s}?",
+    "why": "Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "K1-number-sequence",
+    "step": 3,
+    "template": 1,
+    "path": [
+      "text"
+    ],
+    "before": "What comes just after {n}?",
+    "after": "What comes after {n}?",
+    "why": "Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "K1-number-sequence",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "What comes just before {n}? A) {x}  B) {y}",
+    "after": "Before {n}? A) {x} B) {y}",
+    "why": "Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text."
+  },
+  {
+    "kind": "level-wording",
+    "level": 4,
+    "skill": "K1-number-sequence",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "{name} counts up and says {n}, then {m}. Which number did {name} skip?",
+    "after": "{name} counts up: {n}, then {m}. What was skipped?",
+    "why": "Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text."
   }
 ]

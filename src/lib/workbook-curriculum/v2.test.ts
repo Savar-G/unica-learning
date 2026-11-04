@@ -13,6 +13,7 @@ import { BC_CURRICULUM, curriculumFor, type NumberRange } from "./index";
 import { parseStepProgressions } from "./step-source";
 import { prepareTemplate, seededRandom } from "./template";
 import { compileExpression, expressionIsTrue, formatValue } from "./expression";
+import { LEVEL_REWRITES } from "./house-templates";
 
 const read = (name: string) => readFileSync(`data/curriculum/${name}`, "utf8");
 const raw = parseStepProgressions;
@@ -49,11 +50,22 @@ describe("v2 data and answer contracts", () => {
   });
 
   it("replays every recorded change and keeps all template positions with easy and hard coverage", () => {
-    const patches = JSON.parse(read("author-changes.json")) as { skill: string; step: number; template: number | null; path: string[]; before: unknown; after: unknown; why: string; kind?: "quality-fallback" | "wording-rewrite"; beforeAbsent?: boolean; afterAbsent?: boolean }[];
+    const patches = JSON.parse(read("author-changes.json")) as { skill: string; step: number; template: number | null; path: string[]; before: unknown; after: unknown; why: string; kind?: "quality-fallback" | "wording-rewrite" | "level-wording"; level?: number; beforeAbsent?: boolean; afterAbsent?: boolean }[];
     for (const patch of patches) {
       const step = original.steps.find(s => s.skill === patch.skill && s.number === patch.step)!;
       const target = (patch.template === null ? step : step.templates![patch.template - 1]) as unknown as Record<string, unknown>;
       expect(patch.path).toHaveLength(1);
+      if (patch.kind === "level-wording") {
+        const rewrite = LEVEL_REWRITES.find(r => r.level === patch.level && r.skill === patch.skill && r.step === patch.step && r.template === patch.template);
+        expect(rewrite).toBeDefined();
+        expect(patch.path).toEqual(["text"]);
+        expect(target.text).toBe(rewrite!.from);
+        expect(patch.after).toBe(rewrite!.to);
+        expect(typeof patch.before).toBe("string");
+        expect(rewrite!.to.length).toBeLessThan((patch.before as string).length);
+        expect(patch.why).not.toBe("");
+        continue;
+      }
       if (patch.kind !== "quality-fallback") expect(patch.path[0]).not.toBe("difficulty");
       if (patch.kind !== "quality-fallback") expect(patch.path[0]).not.toBe("format");
       if (!patch.kind) expect(patch.path[0]).not.toBe("text");
