@@ -11,6 +11,7 @@ import { dayTimeProblem, estimatedDayMinutes } from "./workbook-feedback-check";
 import { printedNumbers } from "./workbook-book";
 import { storyFrame, wordedTask, taskType, reasoningSteps, taskIdentity, printedForm, sentenceFrameOf, stemOf, largestNumber, storyKind, cardFrame, cardFrameProblem, cardNumbers, operationStory, type CardFrameUse } from "./workbook-task-identity";
 import { dayDifficulty } from "./workbook-plan";
+import { circleProblem, repeatedInstruction } from "./workbook-layout-check";
 
 export interface BookIssue { page: number; kind: "repeat" | "progress" | "variety" | "time" | "coverage" | "challenge" | "step" | "range"; reason: string }
 export interface DayQuality { day: number; minutes: number; formats: number; largestNumber: number }
@@ -98,8 +99,12 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       else if ((p.content?.kind === "day" ? p.content.level : 0) >= 10 && new Set(stories).size < Math.min(3, stories.length)) issues.push({ page: p.number, kind: "variety", reason: `the stories page tells ${stories.length} stories of ${new Set(stories).size} kinds; it needs ${Math.min(3, stories.length)} (join, take-away, compare)` });
     }
     // A circled choice on a page whose instruction never says to circle fails (Savar, 2026-11-04).
-    if (p.content?.kind === "day" && p.questions.some(q => q.package && q.place !== "warm-up" && (q.package.item?.regions ?? []).some(r => r.kind === "choice" && r.mark !== "tick")) && !/\bcircle\b/i.test(p.content.subtitle ?? ""))
-      issues.push({ page: p.number, kind: "coverage", reason: "the page has a question to circle, but its instruction does not say to circle" });
+    // (Every page type: src/lib/workbook-layout-check.ts.)
+    const circle = circleProblem(p.content?.kind === "day" ? p.content : null, p.questions);
+    if (circle) issues.push({ page: p.number, kind: "coverage", reason: circle });
+    // No sentence of the page's instruction lines printed twice (Savar, 2026-11-04: U16 r16's New idea page).
+    const twice = p.content?.kind === "day" ? repeatedInstruction([p.content.subtitle, p.content.grownUp, ...p.content.blocks.map(b => b.note)]) : null;
+    if (twice) issues.push({ page: p.number, kind: "coverage", reason: `the page prints "${twice}" twice` });
     // A minus between numbers prints as "−" (the U16 r14 review): a hyphen there fails.
     for (const q of p.questions) if (q.package && hyphenMinus(q.package.text)) issues.push({ page: p.number, kind: "coverage", reason: `question ${q.number} prints a hyphen as a minus ("${q.package.text.slice(0, 40)}")` });
     // A story's numbers and question are code's (Codex at e6d79b6a, B1): its plan's text, or code's wording of its

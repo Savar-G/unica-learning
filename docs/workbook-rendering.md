@@ -109,6 +109,27 @@ question, when:
 - an answer box or choice strip covers its question's own text,
 - a work box is under 44 px, or writing lines are closer than 36 px under the prompt and 34 px apart.
 
+On a page of the measured layout, the fit check also runs the layout checks of Savar's page reviews
+(`src/lib/workbook-layout-check.ts`, #513). They read the real print engine's lines: each marked text's first line,
+its baseline, its font and how much of it a box cuts off. The layout checks fail a page when:
+
+- its foot has room for another row of its questions: 60 px at most, less where the rows are shorter (`bottomGapLimit`,
+  part of the fullness check),
+- a slot's rows are more than 4 px unevenly apart, a section label has less room above it than the row gap or the
+  page's other labels, or less above than below, or anything sits closer than 4 px to the next row (a page at its
+  maximum grows its rows, so the label rules do not apply there),
+- the two questions of a row have their numbers or first lines on different baselines, an answer box's top is not at its
+  question's first line (or centred on a one-line fact), a circle target is off that line's baseline, or an answer
+  space is short of its column's edge,
+- a question number is in another font than the page's other numbers, or off its sentence's baseline,
+- an instruction sentence is printed twice (the page's instruction, a chip's note),
+- a box cuts a line of text (more than its font's spare height at the top or bottom, or 1 px at a side).
+
+These problems have the kind `layout`: the generator's loops never add, drop or rewrite questions for them, and the
+page is reported as failed. The book check runs the circle check (a page with a question to circle says "circle") and the
+repeated-instruction check on the page's words. The test print engine gives no lines, so its renders skip the measured
+checks.
+
 Every element that clips its content is a measured slot, so nothing is clipped silently. `proofPages` prints the
 failing pages again with the failure on them (a red banner with each reason, the questions outlined, the content
 area's bottom edge dashed), for a reviewer.

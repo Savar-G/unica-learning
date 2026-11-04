@@ -299,7 +299,7 @@ it("prints a period after each question number in every page family",()=>{
     for(const page of draft.pages) for(const consistentLayout of [false,true]) {
       const p={...page,content:page.content?.kind==="day"?{...page.content,consistentLayout}:page.content};
       const html=template.page(p,{qr:`<div data-measure="qr"></div>`,qrUrl:"https://unicalearning.com/tutor/p/test"},draft)!;
-      for(const q of p.questions) expect(html,`${level} ${p.type} q${q.number}`).toMatch(new RegExp(`<span class="(?:n|gn|sn|badge)">${q.number}\\.</span>`));
+      for(const q of p.questions) expect(html,`${level} ${p.type} q${q.number}`).toMatch(new RegExp(`<span class="(?:n|gn|sn|badge)"(?: data-measure="number-${q.number}")?>${q.number}\\.</span>`));
     }
   }
 });

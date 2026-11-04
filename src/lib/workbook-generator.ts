@@ -514,7 +514,11 @@ export type { QuestionCheck } from "@/lib/workbook-generator-items";
 
 /** A fit problem on a page: the question, or null for the page. */
 export interface FitProblem {
-  kind?: "fullness";
+  /**
+   * "fullness": the page has room left; "layout": a layout check of the template (spacing, alignment, clipped text),
+   * which more or fewer questions do not mend: the loops below leave the page as it is and report it.
+   */
+  kind?: "fullness" | "layout";
   question: number | null;
   reason: string;
 }
@@ -2813,7 +2817,8 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
           w.page.compactPanel = true; w.page.refills = 0; continue;
         }
         if (fit.ok && !short) break;
-        if (short || !fit.ok && fit.problems.every(p => p.kind === "fullness")) {
+        if (!fit.ok && !short && fit.problems.every(p => p.kind === "layout")) break;
+        if (short || !fit.ok && fit.problems.every(p => p.kind === "fullness" || p.kind === "layout")) {
           added = null;
           const open = (s: Slot) => !s.existing && ["remember-these","on-your-own","finish-these","practice-row","unit-b-practice","now-you","word-problems","challenge"].includes(s.place ?? "") && !!s.place && w.slots.filter(x=>x.layoutSlot===s.layoutSlot).length < slotMax(s.place,{level:input.plan.level,pages:input.plan.pagesADay.max,consistentLayout:true,extraPractice:!!w.page.extraPractice});
           // (A page refilling below its planned count adds to its practice, which may take a short question of an earlier
@@ -3189,7 +3194,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
       examples = pass.examples;
       let fit = await check(questions);
       let attempts: 1 | 2 = 1;
-      const shorter = fit.ok || fit.problems.every(p => p.kind === "fullness") ? null : await shorterRewrite(input, deps, w, questions, shorterNote(input, w, questions, fit.problems), memory);
+      const shorter = fit.ok || fit.problems.every(p => p.kind === "fullness" || p.kind === "layout") ? null : await shorterRewrite(input, deps, w, questions, shorterNote(input, w, questions, fit.problems), memory);
       if (shorter) {
         questions = shorter;
         fit = await check(questions);
@@ -3209,7 +3214,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
       let kept = questions;
       let left = fit;
       // A page keeps at least one question: its panels take their sums from its questions.
-      while (!left.ok && !left.problems.every(p => p.kind === "fullness") && kept.length > 1) {
+      while (!left.ok && !left.problems.every(p => p.kind === "fullness" || p.kind === "layout") && kept.length > 1) {
         const candidates = input.itemPolicy === "approved-v1" ? kept.filter(q=>q.existing) : kept;
         const selected = toLeaveOut(candidates, left.problems);
         const out = selected ? {...selected,index:kept.indexOf(candidates[selected.index])} : null;
@@ -3218,7 +3223,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
         kept = renumbered(kept.filter((_, k) => k !== out.index));
         left = await check(kept);
       }
-      if ((left.ok || left.problems.every(p => p.kind === "fullness")) && leftOut.length > 0) {
+      if ((left.ok || left.problems.every(p => p.kind === "fullness" || p.kind === "layout")) && leftOut.length > 0) {
         questions = kept;
         fit = left;
       } else leftOut.length = 0;

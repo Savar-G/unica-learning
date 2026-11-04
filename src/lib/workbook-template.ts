@@ -28,6 +28,7 @@ import type { TemplateFonts } from "@/lib/workbook-template-fixed";
 import { instructionProblem, feedbackItemProblem } from "@/lib/workbook-feedback-check";
 import { titleProblem } from "@/lib/workbook-titles";
 import { printedMinus, singularPlaces } from "@/lib/workbook-wording";
+import { bottomGapLimit, layoutProblems } from "@/lib/workbook-layout-check";
 
 /**
  * Numbers of 1,000 and up print with commas, everywhere a page prints text (Savar, 2026-11-03, D-230, replacing the BC
@@ -461,7 +462,7 @@ const CSS = `
 .pg.consistent .blk{flex:0 0 auto;gap:calc(6px + var(--extra-gap,0px))}
 .pg.consistent .blk.grow{flex:1 0 auto}
 .pg.consistent .ft{top:939px;height:48px}
-.pg.consistent [data-measure^="review-"]{margin:4px 0 2px}
+.pg.consistent [data-measure^="review-"]{margin:0}
 .pg.consistent.stretch .ct>.blk:has(>:is(.two,.cols,.list,.facts,.pcards,.mxs)){flex:1 0 auto;display:flex;flex-direction:column}
 .pg.consistent.stretch .ct>.blk>:is(.two,.cols,.facts,.pcards,.mxs){flex:1 0 auto;grid-auto-rows:auto;align-content:stretch}
 .pg.consistent.stretch .ct>.blk>.list{flex:1 0 auto}.pg.consistent.stretch .ct>.blk>.list>*{flex:1 0 auto}
@@ -529,6 +530,38 @@ const CSS = `
 .pg.consistent [data-slot="word-problems"] .story{flex:1}
 .pg.consistent [data-slot="word-problems"] .story.nowork{flex:0 0 auto}
 .story.nowork .head{align-items:center}.story.nowork .qb{flex:1 1 0}
+/* The layout checks (Savar's page reviews, 2026-11-04; src/lib/workbook-layout-check.ts). One gap before every section
+   label, wider than the 6 px under it and no narrower than the rows' gap: 12 px (10 on Practice 2, whose rows are 4 px
+   apart, D-226, and at U4 to U9). */
+.pg.consistent .ct{gap:calc(12px + var(--extra-gap,0px))}
+.pg.consistent .blk>:is(.lab,.chiprow,[data-measure^="chip-"]):not(:first-child){margin-top:6px}
+.pg.consistent[data-page-type="practice-2"] .ct{gap:calc(10px + var(--extra-gap,0px))}
+.pg.consistent[data-page-type="practice-2"] .blk>:is(.lab,.chiprow,[data-measure^="chip-"]):not(:first-child){margin-top:4px}
+/* (U4 to U9: rows 6 px apart, 10 px before a label.) */
+.pg.consistent.early .ct{gap:calc(10px + var(--extra-gap,0px))}
+.pg.consistent.early .blk>:is(.lab,.chiprow,[data-measure^="chip-"]):not(:first-child){margin-top:4px}
+/* A question's number and first line share their baseline, and its answer box's top is that line's top. */
+.pg.consistent :is(.two,.list)>.q{align-items:flex-start}
+.pg.consistent :is(.two,.list)>.q>:is(.n,.qb){padding-top:0;align-self:baseline}
+/* Circle targets on the question's first line: true or false, yes or no, letters or numbers share its baseline (on a
+   test card too, its number with them). */
+.pg.consistent :is(.two,.list)>.q>.rgs:has(>.circ){align-self:baseline}
+.pg.consistent .tc>.q>:is(.badge,.qb,.rgs:has(>.circ)){align-self:baseline}
+.pg.consistent .q .circ:not(.words){min-height:var(--box);padding:0 18px;align-items:baseline}
+.pg.consistent :is(.two,.list,.tc)>.q>.rgs>.circ:not(.words) .co{font-size:var(--body)}
+.pg.consistent .circ.words .co{align-items:flex-start}
+/* A fact's number in the page's one number style, on the fact's baseline. */
+.pg.consistent .facts .fl{display:flex;align-items:baseline;gap:10px;flex:1 1 auto;min-width:0}
+.pg.consistent .facts .fl>.n{min-width:22px}
+/* A stories page's numbers are all story numbers (Use 2 ways, Remember these), each on its sentence's baseline. */
+.pg.consistent[data-page-type="word-problems"] [data-measure^="number-"]{font-family:"Unica Sans",Helvetica,Arial,sans-serif;font-weight:300;font-size:26px;line-height:1;min-width:26px}
+.pg.consistent .tw>.q{align-items:baseline}
+/* (After the stories, the same gap as between two stories: the block gap less the blocks' gap within a slot.) */
+.pg.consistent .ct>[data-slot="word-problems"]+[data-slot="solve-it-two-ways"]{margin-top:-6px}
+.pg.consistent.early .ct>[data-slot="word-problems"]+[data-slot="solve-it-two-ways"]{margin-top:-4px}
+/* A Challenge page at its maximum: cards with nothing to work in grow too, so no room is left under the last one (the
+   full U4 book's Day 10). */
+.pg.consistent.stretch .chs>.chc.nowork{flex:1 0 auto}
 .pg.consistent .story .act{flex:1}
 .pg.consistent .story .act .wb,.pg.consistent .chc .act .wb{height:auto!important;min-height:var(--work-min);align-self:stretch}
 `;
@@ -886,6 +919,8 @@ function lineItem(q: DraftQuestion, band: Band, hint?: WorkedLine | null, work =
 /** A fact in a grid: small grey number, the fact, the box. */
 function factItem(q: DraftQuestion, band: Band): string {
   const { inline } = regionsSplit(q, { band });
+  // (The measured layout: the number in the page's number style, on the fact's baseline.)
+  if (band.consistentLayout) return `<div class="q" ${mark.question(q.number)}><span class="fl"><span class="n">${questionNumber(q.number)}</span>${text(q, "qm")}</span>${inline}</div>`;
   return `<div class="q" ${mark.question(q.number)}><span class="gn">${questionNumber(q.number)}</span>${text(q, "qm")}${inline}</div>`;
 }
 
@@ -1170,12 +1205,18 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
     + `<p class="st" ${mark.slot("subtitle")}>${escape(c.subtitle)}</p>`
     + (c.level <= 3 && c.grownUp ? `<p class="gu" ${mark.slot("grown-up")}><b>For the grown-up:</b> ${escape(c.grownUp)}</p>` : "") + `</header>`;
   // A Challenge block takes the free room of its page: its work boxes grow into it (DESIGN.md section 4).
-  const blocks = c.blocks.map((b, i) => `<section class="blk${GROW.has(b.slot) || c.consistentLayout && b.slot === "word-problems" ? " grow" : ""}"${b.slot === "in-your-head" ? ` style="flex:0 0 auto"` : ""} data-slot="${b.slot}" data-measure="block-${i}">${blockHtml(b, i, ctx).replace(/<div class="chiprow">([\s\S]*?)<\/div>/g, (_row, inner: string, at: number) => `<div class="chiprow" data-measure="chip-${i}-${at}">${inner.replace('<span class="chip ', `<span data-measure="chipbadge-${i}-${at}" class="chip `).replace('<span class="side">', `<span data-measure="chipnote-${i}-${at}" class="side">`)}</div>`).replace(/<div class="lab"([^>]*)>/g, (tag, attrs: string, at: number) => attrs.includes("data-measure") ? tag : `<div class="lab" data-measure="label-${i}-${at}"${attrs}>`)}${missingHtml(b)}</section>`).join("");
+  const blocks = c.blocks.map((b, i) => `<section class="blk${GROW.has(b.slot) || c.consistentLayout && b.slot === "word-problems" ? " grow" : ""}"${b.slot === "in-your-head" ? ` style="flex:0 0 auto"` : ""} data-slot="${b.slot}" data-measure="block-${i}">${blockHtml(b, i, ctx).replace(/<div class="chiprow">([\s\S]*?)<\/div>/g, (_row, inner: string, at: number) => `<div class="chiprow" data-measure="chip-${i}-${at}">${inner.replace('<span class="chip ', `<span data-measure="chipbadge-${i}-${at}" class="chip `).replace('<span class="side">', `<span data-measure="chipnote-${i}-${at}" class="side">`)}</div>`).replace(/<div class="lab"([^>]*)>/g, (tag, attrs: string, at: number) => attrs.includes("data-measure") ? tag : `<div class="lab" data-measure="label-${i}-${at}"${attrs}>`).replace(NUMBER_SPAN, (_tag, cls: string, n: string) => `<span class="${cls}" data-measure="number-${n}">${n}.</span>`).replace(FRAME, (_tag, cls: string, at: number) => `<div class="${cls}" data-measure="frame-${i}-${at}"`)}${missingHtml(b)}</section>`).join("");
   // A page at its day's time limit holds no more questions: its rows grow to fill it, each with more room to work
   // (Codex at 47c5fd78: the time limit must not excuse a half-empty page).
   const stretch = c.consistentLayout && c.fillingComplete && c.atMaximum ? " stretch" : "";
   return `<div class="pg ${band.name}${c.consistentLayout ? " consistent" : ""}${c.extraPractice && c.level >= 19 ? " older-extra" : ""}${stretch} f-${familyOf(page, c)}" data-page-type="${page.type}" style="--work-min:${c.consistentLayout ? workMinimum(c.level) : 64}px">${scanMarks}<div class="frame">${header}<main class="ct" style="--extra-gap:${Math.max(0,Math.min(48,c.extraGap ?? 0))}px" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
 }
+
+/** Each question's printed number ("3."), marked for the layout checks (src/lib/workbook-layout-check.ts). */
+const NUMBER_SPAN = /<span class="(n|gn|badge|sn)">(\d+)\.<\/span>/g;
+
+/** The outlined and shaded boxes that hold questions (Now it's your turn, Spot the error, Mental math, Fix it). */
+const FRAME = /<div class="(outl|panel p-hd|panel p-fx)"/g;
 
 /** A failed question with nothing to print: a red placeholder with its number and why (review drafts only). */
 const missingHtml = (b: Block) => (b.missing ?? []).map((m) =>
@@ -1247,7 +1288,8 @@ export function fullnessProblem(page: DraftPage, measured: ReadonlyMap<string, M
   if (!use) return "The page fullness could not be measured.";
   if (use.largestGap>60.5) return `The page has a ${Math.round(use.largestGap)} px unoccupied gap; allow 12 px plus at most 48 px extra.`;
   // Never a gap at the bottom (Savar, 2026-11-04: "space for another question"): a page fills, or spreads its rows.
-  if (page.content?.kind==="day" && use.bottom>60.5) return `The page leaves ${Math.round(use.bottom)} px empty at the bottom; add a question, or spread the rows evenly.`;
+  // (60 px, or less where the page's rows are shorter: room for another row is never left, src/lib/workbook-layout-check.ts.)
+  if (page.content?.kind==="day" && use.bottom>bottomGapLimit(page,measured)+.5) return `The page leaves ${Math.round(use.bottom)} px empty at the bottom; add a question, or spread the rows evenly.`;
   if (use.fraction>=.85) return null;
   // At the page maximum, Cedric permits evenly distributed spacing. Report the
   // true occupied fraction separately; never relabel a gap as occupied space.
@@ -1365,7 +1407,9 @@ export function workbookTemplate(fonts?: TemplateFonts): WorkbookTemplate {
         case "blank": return blankPage(page, parts, c);
       }
     },
-    fit: (page, measured) => fitProblems(page, measured),
+    // (With the layout checks of Savar's page reviews: spacing, alignment, one number style, no repeated instruction,
+    // no clipped text.)
+    fit: (page, measured) => [...fitProblems(page, measured), ...layoutProblems(page, measured)],
     answerMin: ANSWER_MIN,
   };
 }

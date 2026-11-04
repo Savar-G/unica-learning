@@ -10,7 +10,9 @@
 // high, at least 85% of it lies inside every box that clips it (up to its sheet), and its own glyphs leave ink: the
 // engine takes the sheet's PNG again with the glyphs of the line's piece of text gone and every glyph that could reach
 // it kept, and the line's pixels must change. So text that is hidden, tiny, clipped, white on white or covered (by a
-// box, or by another line that brings its own ink to the same place) does not pass.
+// box, or by another line that brings its own ink to the same place) does not pass. For the template's layout checks
+// (src/lib/workbook-layout-check.ts) it also gives each marked element with text its first line (rect and baseline),
+// that line's font and how much of its lines a box cuts off.
 //
 // The ink check, after the PDF and page images: each piece of marked text is put in a plain span (the engine checks
 // that no line moved), and a check image hides a set of spans with opacity 0. A set holds pieces whose glyphs cannot
@@ -62,7 +64,20 @@ const MEASURE = `(() => { const ids = new Map(); const found = [...document.quer
     }
     return false;
   };
-  const unclipped = (p, q) => {
+  // A text's baseline: its line box's top plus its font's ascent (the line box Chromium gives a text is the font's
+  // ascent and descent).
+  const ctx = document.createElement("canvas").getContext("2d");
+  const ascents = new Map();
+  const ascent = (css) => {
+    if (!ascents.has(css)) { ctx.font = css; ascents.set(css, ctx.measureText("Hg").fontBoundingBoxAscent); }
+    return ascents.get(css);
+  };
+  const fontOf = (p) => {
+    const s = getComputedStyle(p);
+    return { css: s.fontStyle + " " + s.fontWeight + " " + s.fontSize + " " + s.fontFamily, key: s.fontFamily.split(",")[0].replace(/"/g, "") + " " + s.fontWeight + " " + s.fontSize };
+  };
+  // The part of a line that no box clips: its rect cut by every box that clips it, up to the sheet.
+  const visibleRect = (p, q) => {
     let l = q.left, t = q.top, r = q.right, b = q.bottom;
     for (let a = p; a && a !== sheet.parentElement; a = a.parentElement) {
       const s = getComputedStyle(a);
@@ -70,11 +85,22 @@ const MEASURE = `(() => { const ids = new Map(); const found = [...document.quer
       const c = a.getBoundingClientRect();
       l = Math.max(l, c.left); t = Math.max(t, c.top); r = Math.min(r, c.right); b = Math.min(b, c.bottom);
     }
+    return { l, t, r, b };
+  };
+  const unclipped = (p, q) => {
+    const { l, t, r, b } = visibleRect(p, q);
     return r > l && b > t ? ((r - l) * (b - t)) / (q.width * q.height) : 0;
+  };
+  // How many pixels of a line each box edge cuts off (the whole line when nothing of it shows).
+  const cutOf = (p, q) => {
+    const { l, t, r, b } = visibleRect(p, q);
+    if (!(r > l && b > t)) return { top: q.height, bottom: q.height, left: q.width, right: q.width };
+    return { top: t - q.top, bottom: q.bottom - b, left: l - q.left, right: q.right - r };
   };
   return [sheet, ...sheet.querySelectorAll("[data-measure]")].map((el) => {
     const r = el.getBoundingClientRect();
     const runs = [];
+    let firstLine, font, clip;
     if (el !== sheet) {
       const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
       for (let t = walk.nextNode(); t; t = walk.nextNode()) {
@@ -88,6 +114,16 @@ const MEASURE = `(() => { const ids = new Map(); const found = [...document.quer
         if (!rects.length) runs.push({ node, css: false, x: 0, y: 0, width: 0, height: 0, unclipped: 0 });
         for (const q of rects) {
           runs.push({ node, css, x: q.left - origin.left, y: q.top - origin.top, width: q.width, height: q.height, unclipped: unclipped(t.parentElement, q) });
+          if (css) {
+            const c = cutOf(t.parentElement, q);
+            clip = clip ? { top: Math.max(clip.top, c.top), bottom: Math.max(clip.bottom, c.bottom), left: Math.max(clip.left, c.left), right: Math.max(clip.right, c.right) } : c;
+          }
+        }
+        if (!firstLine && rects.length) {
+          const q = rects[0];
+          const f = fontOf(t.parentElement);
+          font = f.key;
+          firstLine = { x: q.left - origin.left, y: q.top - origin.top, width: q.width, height: q.height, baseline: q.top - origin.top + ascent(f.css) };
         }
       }
     }
@@ -97,6 +133,7 @@ const MEASURE = `(() => { const ids = new Map(); const found = [...document.quer
       x: r.left - origin.left, y: r.top - origin.top, width: r.width, height: r.height,
       clientWidth: el.clientWidth, clientHeight: el.clientHeight, scrollWidth: el.scrollWidth, scrollHeight: el.scrollHeight,
       runs,
+      ...(firstLine ? { firstLine, font, clip: clip ?? { top: 0, bottom: 0, left: 0, right: 0 } } : {}),
     };
   });
 });
