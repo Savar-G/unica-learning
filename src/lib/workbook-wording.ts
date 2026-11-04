@@ -10,6 +10,7 @@
 // subtract [t, b], missing-addend [a, t], multiply [a, b], divide [t, b].
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness.
 import { operationResult, operationText, type Figure, type Operation } from "@/lib/question-package";
+import { INTEREST_THINGS } from "@/lib/workbook-interests";
 
 /** What a wording asks: put together, take away, a missing part, compare, the ten-frame, equal groups, sharing. */
 export type Action = "join" | "separate" | "part" | "compare" | "frame" | "groups" | "share";
@@ -170,11 +171,15 @@ export const BOYS = ["Ben", "Leo", "Tom", "Raj", "Eli", "Gus", "Dan", "Kai", "Om
 export const PEOPLE = GIRLS.flatMap((g, i) => [g, BOYS[i]]);
 
 /** Words counted after the number 1, which take their singular. */
-const COUNTED = ["dots", "cats", "dogs", "groups", "bags", "rows", "boxes", "plates", "friends", "squares", "hops", "counters", "frogs", "birds", "ducks", ...THINGS];
+const COUNTED = ["dots", "cats", "dogs", "groups", "bags", "rows", "boxes", "plates", "friends", "squares", "hops", "counters", "frogs", "birds", "ducks", ...THINGS, ...INTEREST_THINGS];
 const PLURAL_AFTER_1 = new RegExp(`\\b1 ((?:red |orange |blue |big |small )?)(${[...new Set(COUNTED)].join("|")})\\b`, "g");
 /** One of each thing: after the number 1 a story counts one shell, not 1 shells. */
 const ONE: Record<string, string> = { leaves: "leaf", shoes: "shoe", boxes: "box" };
 const singular = (w: string) => ONE[w] ?? w.replace(/s$/, "");
+// Match a compound noun as one word-list entry, including its singular after 1.
+const INTEREST_NOUNS = [...new Set(INTEREST_THINGS.flatMap((w) => [w, singular(w)]))].sort((a, b) => b.length - a.length).join("|");
+const NOUN_WORDS = new RegExp(`\\b(?:${INTEREST_NOUNS}|[a-z]+)\\b`, "g");
+const COUNTED_NOUNS = new RegExp(`\\b(?:\\d+(?:\\.\\d+)?|many|more|some|count the) (?:red |orange |blue |green |big |small )?(${INTEREST_NOUNS}|[a-z]+)\\b`, "g");
 
 /** A person's pronouns: she and her, he and him; the name again for a name code does not know. */
 function pronouns(name: string): { he: string; him: string } {
@@ -208,14 +213,14 @@ export function fillFrame(f: string, n: FrameNumbers, name: string, thing: strin
 }
 
 /** Concrete things that quantity cards count. Number-line hops and place-value names are math, not things. */
-const REAL_THINGS = ["dots", "cats", "dogs", "bags", "boxes", "plates", "friends", "squares", "counters", "frogs", "birds", "ducks", ...THINGS];
+const REAL_THINGS = ["dots", "cats", "dogs", "bags", "boxes", "plates", "friends", "squares", "counters", "frogs", "birds", "ducks", ...THINGS, ...INTEREST_THINGS];
 
 /** Check quantity questions on any page, at any level. Pure number questions have no counted thing. */
 export function quantityStoryProblem(text: string, facts: StoryFacts = {}): string | null {
   const things = [...REAL_THINGS, ...(facts.thing ? [facts.thing] : []), ...(facts.things ?? [])];
   // A geometric square or a square root is a curriculum term. Counted squares are things.
   const wording = text.toLowerCase().replace(/\bsquare (?:roots?|units?|centimetres?|metres?|kilometres?|millimetres?|inches|feet)\b/g, "");
-  const nouns = new Set([...wording.matchAll(/\b(?:\d+(?:\.\d+)?|many|more|some|count the) (?:red |orange |blue |green |big |small )?([a-z]+)\b/g)].map((m) => m[1]));
+  const nouns = new Set([...wording.matchAll(COUNTED_NOUNS)].map((m) => m[1]));
   const quantity = text.includes("?") && (/\b(?:dots?|counters?)\b/.test(wording) || things.some((thing) => nouns.has(thing) || nouns.has(singular(thing))));
   return quantity ? storyProblem(text, facts) : null;
 }
@@ -245,8 +250,8 @@ export function storyProblem(text: string, facts: StoryFacts = {}): string | nul
   const question = sentences.filter((x) => x.endsWith("?")).at(-1) ?? "";
   const story = sentences.filter((x) => x !== question).join(" ");
   const things = [...new Set([...(facts.thing ? [facts.thing] : []), ...(facts.things ?? []), ...REAL_THINGS])];
-  const storyWords = new Set(story.toLowerCase().match(/[a-z]+/g));
-  const questionWords = new Set(question.toLowerCase().match(/[a-z]+/g));
+  const storyWords = new Set(story.toLowerCase().match(NOUN_WORDS));
+  const questionWords = new Set(question.toLowerCase().match(NOUN_WORDS));
   const named = (words: Set<string>, thing: string) => words.has(thing) || words.has(singular(thing));
   const countedThings = things.filter((thing) => named(storyWords, thing));
   // Sharing may ask for bags rather than their contents. Both must occur in the story.

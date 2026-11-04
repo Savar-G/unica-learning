@@ -9,6 +9,7 @@
 import { bcStepProgressions } from "@/lib/workbook-curriculum";
 import type { QuestionPackage } from "@/lib/question-package";
 import { PEOPLE, printedMinus, THINGS } from "@/lib/workbook-wording";
+import { INTEREST_PLACES, INTEREST_THINGS } from "@/lib/workbook-interests";
 
 let lists: { names: RegExp; things: RegExp } | null = null;
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -18,7 +19,7 @@ function wordLists() {
   if (lists) return lists;
   const c = bcStepProgressions().contexts;
   const names = [...new Set([...PEOPLE, ...(c?.people ?? []).map((p) => p.name), "Sam"])];
-  const things = [...new Set([...THINGS, ...(c?.things ?? []), ...(c?.foods ?? []), ...(c?.animals ?? []), ...(c?.containers ?? []), "points", "tickets", "people"].flatMap(forms))]
+  const things = [...new Set([...THINGS, ...INTEREST_THINGS, ...(c?.things ?? []), ...(c?.foods ?? []), ...(c?.animals ?? []), ...(c?.containers ?? []), "points", "tickets", "people"].flatMap(forms).concat(INTEREST_PLACES, c?.places ?? []))]
     .filter((w) => w.length > 1).sort((a, b) => b.length - a.length);
   lists = { names: new RegExp(`\\b(?:${names.map(escape).join("|")})(?:'s)?\\b`, "g"), things: new RegExp(`\\b(?:${things.map(escape).join("|")})\\b`, "gi") };
   return lists;
