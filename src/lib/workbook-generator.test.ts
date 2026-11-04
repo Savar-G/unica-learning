@@ -1038,7 +1038,10 @@ describe("items whose kind does not match their text (round 3)", () => {
     }, { ...place, level, skills: ["K5-take-away-change"] });
     let level = 10;
     expect(sum("Red 6, blue 4. How many red?", 6, 0).check).toMatchObject({ status: "failed", reason: expect.stringContaining("adding or taking away 0") });
-    expect(sum("There are 7 cats: 3 and 4. How many?", 3, 4).check).toMatchObject({ status: "failed", reason: "the question gives its own answer (7) in its text: ask for it instead" });
+    // (A story the writer wrote takes code's wording at every level, Codex at e6d79b6a, B1: its answer is never printed.)
+    const story = sum("There are 7 cats: 3 and 4. How many?", 3, 4);
+    expect(story.check.status).toBe("checked");
+    expect(story.package!.text).not.toMatch(/\b7\b/);
     expect(sum("Mia has 3 cats. She gets 4 more. How many cats does she have now?", 3, 4).check.status).toBe("checked");
     // At U3 code writes the text from the sum (round 7): never the answer, and adding 0 still fails.
     level = 3;
@@ -1158,7 +1161,8 @@ describe("round 4 (#380): relations, explicit pictures, kinds in turn, question 
     // The text says 8 dots: the picture shows 8, whatever figureShows says.
     expect(item("Ten-frame: 8 dots. 5 and how many more?", "part").package!.item!.figure).toEqual({ kind: "ten-frame", counters: [8] });
     expect(item("Ten-frame: 5 dots. How many more make 8?", "total").package!.item!.figure).toEqual({ kind: "ten-frame", counters: [5] });
-    expect(item("Mia has 5. How many more make 8?", null).check).toMatchObject({ status: "failed", reason: expect.stringContaining("say what the picture of a missing part shows") });
+    // (A story the writer wrote takes code's wording, Codex at e6d79b6a, B1: never the writer's words.)
+    expect(item("Mia has 5. How many more make 8?", null).package?.text).not.toBe("Mia has 5. How many more make 8?");
     // Another sum: a number the text says the picture shows must be what it shows.
     const sum = (text: string) => buildQuestion({
       ...empty, slot: "1.1", skill: "K3-ten-frame", text, format: "write-number", operation: addOp(5, 2), figure: "ten-frame",
@@ -1453,8 +1457,14 @@ describe("round 5 (#380): code plans the book's numbers and names, rooms and row
     const others = draft.pages.flatMap((p) => p.questions).filter((q) => q.package && q.place !== "spot-the-error" && q.package.operation);
     expect(others.length).toBeGreaterThan(50);
     expect(others.some((q) => /\bSam\b/.test(JSON.stringify(q.package)))).toBe(false);
-    const names = new Set(others.map((q) => q.package!.text.split(" ")[0]));
-    expect([...names].every((x) => ["Ben", "Leo", "Tom", "Raj", "Eli", "Gus", "Dan", "Kai", "Omar", "Max", "Ian", "Jon", "Ali", "Ned"].includes(x)), [...names].join(",")).toBe(true);
+    // (A story takes code's wording, Codex at e6d79b6a, B1: code's planned person, whose pronoun its frame gives; a he is a
+    // boy's name, a she a girl's.)
+    const boys = ["Ben", "Leo", "Tom", "Raj", "Eli", "Gus", "Dan", "Kai", "Omar", "Max", "Ian", "Jon", "Ali", "Ned"];
+    for (const q of others) {
+      const who = q.package!.text.split(" ")[0];
+      if (/\b[Hh]e\b/.test(q.package!.text)) expect(boys.includes(who), q.package!.text).toBe(true);
+      if (/\b[Ss]he\b/.test(q.package!.text)) expect(boys.includes(who), q.package!.text).toBe(false);
+    }
   });
 
   it("writes a text past its room again, shorter; keeps the first version when the redo is not shorter, never failed for length", async () => {
@@ -1600,10 +1610,12 @@ describe("round 6 (#380): the printed question asks what the answer key answers"
 
   it("fails an operation whose numbers are not the ones its text names", () => {
     // "Gus finds 2 plums, then 5 more" worked as 2 + 6 would print 8 as the answer to 7.
-    expect(sum("Gus finds 2 plums. He finds 5 more. How many plums did he find?", addOp(2, 6)).check).toMatchObject({ status: "failed", reason: expect.stringContaining("the text does not name 6") });
+    // (The writer's story takes code's wording of 2 + 6, B1: it names the operation's numbers.)
+    expect(named(sum("Gus finds 2 plums. He finds 5 more. How many plums did he find?", addOp(2, 6)).package!.text).sort((a, b) => a - b)).toEqual([2, 6]);
     expect(sum("Gus finds 2 plums. He finds 5 more. How many plums did he find?", addOp(2, 5)).check.status).toBe("checked");
     expect(sum("Mia has 8 cups. She takes away 3. How many cups does she have now?", subOp(8, 3)).check.status).toBe("checked");
-    expect(sum("8 cups. Mia takes 3. How many are left?", subOp(9, 3)).check).toMatchObject({ status: "failed" });
+    // (The writer's story takes code's wording of 9 - 3, B1: it names the operation's numbers.)
+    expect(named(sum("8 cups. Mia takes 3. How many are left?", subOp(9, 3)).package!.text).sort((a, b) => a - b)).toEqual([3, 9]);
     // Up to U9 code prints its own wording, which names only the numbers the operation works (round 7).
     const coded = sum("Mia has 3 cups and 2 hats. She gets 4 cups. How many cups?", addOp(3, 4), {}, "K5-take-away-change", 3);
     expect(coded.check.status).toBe("checked");
@@ -1611,8 +1623,9 @@ describe("round 6 (#380): the printed question asks what the answer key answers"
   });
 
   it("fails a take-away worded as putting together, and a sum worded as a take-away", () => {
-    expect(sum("8 cups. Mia takes 3. How many are left?", addOp(8, 3)).check).toMatchObject({ status: "failed", reason: expect.stringContaining("how many are left") });
-    expect(sum("8 cups and 3 more. How many in all?", subOp(8, 3), { wrongAnswers: [{ value: num(9), cause: "count", description: "x", step: null }] }).check).toMatchObject({ status: "failed", reason: expect.stringContaining("how many in all") });
+    // (A story takes code's wording of its operation, B1: a take-away is worded as one, a sum as a sum.)
+    expect(sum("8 cups. Mia takes 3. How many are left?", addOp(8, 3)).package!.text).not.toMatch(/\bleft\b/);
+    expect(sum("8 cups and 3 more. How many in all?", subOp(8, 3), { wrongAnswers: [{ value: num(9), cause: "count", description: "x", step: null }] }).package!.text).not.toMatch(/in all|more/);
   });
 
   it("lets a picture show a number its text does not name", () => {
@@ -1627,8 +1640,9 @@ describe("round 6 (#380): the printed question asks what the answer key answers"
     expect(b.check.status).toBe("checked");
     expect(b.package!.easierExample).toMatchObject({ text: "7 - 3 = ?", answer: { type: "number", value: 4 } });
     // One that names its own numbers stays (at U10; at U1 to U9 code writes it from its operation, round 7).
+    // (A story's easier example is code's too, B1.)
     expect(sum("Mia has 8 cups. She takes away 3. How many cups does she have now?", subOp(8, 3), { easier: { text: "7 cups. Mia takes 3. How many are left?", operation: subOp(7, 3) } }).package!.easierExample!.text)
-      .toBe("7 cups. Mia takes 3. How many are left?");
+      .toBe("7 - 3 = ?");
     expect(sum("Mia has 8 cups. She takes away 3. How many cups does she have now?", subOp(8, 3), { easier: { text: "7 cups. Mia takes 3. How many are left?", operation: subOp(7, 3) } }, "K5-take-away-change", 3).package!.easierExample!.text)
       .toBe("7 - 3 = ?");
   });
@@ -1806,11 +1820,15 @@ describe("plain story language on a story place (D-201)", () => {
   }, { id: "q1", workbookId: WORKBOOK, page: 3, question: 1, level, skills: ["K5-add-on-change"], ...(level <= 9 ? { wording } : {}), ...place });
 
   it("sends an AI story with a banned phrase or no person to be written again (U10 and up: the AI's words print)", () => {
-    expect(story("Raj has 3 apples and finds 4 more. How many apples in all?", 12).check).toEqual({ status: "failed", reason: expect.stringMatching(/never says "in all"/) });
-    expect(story("3 apples. 4 more. How many apples are there now?", 12).check).toEqual({ status: "failed", reason: expect.stringMatching(/a person with a first name/) });
+    // (The writer's story takes code's wording at every level, B1: no banned phrase prints.)
+    const coded = story("Raj has 3 apples and finds 4 more. How many apples in all?", 12);
+    expect(coded.check).toEqual({ status: "checked" });
+    expect(coded.package!.text).not.toMatch(/in all/);
+    expect(story("3 apples. 4 more. How many apples are there now?", 12).package!.text).not.toBe("3 apples. 4 more. How many apples are there now?");
     expect(story("Raj has 3 apples. He finds 4 more. How many apples does Raj have now?", 12).check).toEqual({ status: "checked" });
     // Quantity questions on practice and review pages use the same checks.
-    expect(story("3 apples. 4 more. How many apples are there now?", 12, {}).check).toEqual({ status: "failed", reason: expect.stringMatching(/a person/) });
+    // (Code's wording replaces the writer's story there too, B1.)
+    expect(story("3 apples. 4 more. How many apples are there now?", 12, {}).package!.text).not.toBe("3 apples. 4 more. How many apples are there now?");
   });
 
   it("prints only a code wording with a person and the planned thing named again at U1 to U9", () => {
@@ -1906,7 +1924,8 @@ describe("round 7 (#380, R380-12-1): code writes the text where it can, a solve 
     const logs: SolveLog[] = [];
     const ai = fakeAiClient({
       answer: (r) => fill(r, (s, q) => (q.day === 1 && q.page === 1 && s.slot === "1.1"
-        ? goodItem(s, { text: "Mia has 7 shells. She gives away 5. How many shells does she have now?", operation: addOp(7, 5), easier: { text: "6 + 5 = ?", operation: addOp(6, 5) }, wrongAnswers: [{ value: num(2), cause: "operation", description: "x", step: null }] })
+        // (Not a story: a story takes code's wording of its operation, B1, so the solve check meets a non-story here.)
+        ? goodItem(s, { text: "What is 7 take away 5?", operation: addOp(7, 5), easier: { text: "6 + 5 = ?", operation: addOp(6, 5) }, wrongAnswers: [{ value: num(2), cause: "operation", description: "x", step: null }] })
         : goodItem(s))),
     });
     const draft = await generate(deps({ ai, solver, onSolve: (l) => logs.push(l) }));

@@ -3,12 +3,13 @@ import type { DraftPage, MeasuredElement } from "./workbook-render";
 import type { GeneratedPage } from "./workbook-generator";
 import { STORY_EXPLAIN } from "./workbook-item-plan";
 import { hyphenMinus, takeAwayProblem } from "./workbook-wording";
+import { codeStoryProblem } from "./workbook-code-story";
 import { numberAnswer } from "./workbook-generator-items";
 import { likelihoodChoicesProblem, likelihoodWord } from "./workbook-likelihood";
 import { extraPracticeRepeats, newIdeaFloor, twoWaysCountsAsStory } from "./workbook-early-levels";
 import { dayTimeProblem, estimatedDayMinutes } from "./workbook-feedback-check";
 import { printedNumbers } from "./workbook-book";
-import { storyFrame, wordedTask, taskType, reasoningSteps, taskIdentity, printedForm, sentenceFrameOf, stemOf, largestNumber, storyKind, cardFrame, cardFrameProblem, cardNumbers, type CardFrameUse } from "./workbook-task-identity";
+import { storyFrame, wordedTask, taskType, reasoningSteps, taskIdentity, printedForm, sentenceFrameOf, stemOf, largestNumber, storyKind, cardFrame, cardFrameProblem, cardNumbers, operationStory, type CardFrameUse } from "./workbook-task-identity";
 import { dayDifficulty } from "./workbook-plan";
 
 export interface BookIssue { page: number; kind: "repeat" | "progress" | "variety" | "time" | "coverage" | "challenge" | "step" | "range"; reason: string }
@@ -83,7 +84,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
   const days: DayQuality[] = [];
   const seen = new Map<string, number[]>();
   let extraRepeats = 0;
-  const frames = new Map<string, number>();
+  const storyUses = new Map<string, { page: number; day: number | null }[]>();
   const types = new Map<string, number>();
   const all = pages.flatMap(p => p.questions).filter(q => q.package && q.place !== "warm-up");
   for (const p of pages) {
@@ -92,8 +93,17 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       const stories = p.questions.filter(q => q.package && ["word-problems", "solve-it-two-ways"].includes(q.place ?? "")).map(q => storyKind(q.package!.text)).filter(Boolean);
       if (stories.length >= 2 && new Set(stories).size < 2) issues.push({ page: p.number, kind: "variety", reason: `the stories page tells one kind of story (${stories[0]}); it needs at least two` });
     }
+    // A circled choice on a page whose instruction never says to circle fails (Savar, 2026-11-04).
+    if (p.content?.kind === "day" && p.questions.some(q => q.package && q.place !== "warm-up" && (q.package.item?.regions ?? []).some(r => r.kind === "choice" && r.mark !== "tick")) && !/\bcircle\b/i.test(p.content.subtitle ?? ""))
+      issues.push({ page: p.number, kind: "coverage", reason: "the page has a question to circle, but its instruction does not say to circle" });
     // A minus between numbers prints as "−" (the U16 r14 review): a hyphen there fails.
     for (const q of p.questions) if (q.package && hyphenMinus(q.package.text)) issues.push({ page: p.number, kind: "coverage", reason: `question ${q.number} prints a hyphen as a minus ("${q.package.text.slice(0, 40)}")` });
+    // A story's numbers and question are code's (Codex at e6d79b6a, B1): its plan's text, or code's wording of its
+    // operation, with only the person and the thing changed.
+    for (const q of p.questions) {
+      const problem = q.package && q.place !== "how-do-you-know" && q.package.item?.format !== "two-ways" ? codeStoryProblem(q.package, q.itemPlan?.item?.text) : null;
+      if (problem) issues.push({ page: p.number, kind: "coverage", reason: `question ${q.number}: ${problem}` });
+    }
     // A take-away story takes the things away (Codex at 24751f16, P0): every question, whatever wrote it.
     for (const q of p.questions) {
       const problem = q.package ? takeAwayProblem(q.package.text, numberAnswer(q.package)) : null;
@@ -103,7 +113,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     // every question in its stories (two ways there too) has a person or a thing, whatever wrote it.
     if (p.type === "word-problems") for (const q of p.questions) {
       if (!q.package || !["word-problems", "picture-stories", "solve-it-two-ways"].includes(q.place ?? "")) continue;
-      if (!printedForm(q.package).startsWith("context:")) issues.push({ page: p.number, kind: "coverage", reason: `question ${q.number} on the stories page is no story ("${q.package.text.slice(0, 40)}")` });
+      if (!printedForm(q.package).startsWith("context:") || !operationStory(q.package, q.itemPlan?.template?.source?.answer)) issues.push({ page: p.number, kind: "coverage", reason: `question ${q.number} on the stories page is no story with an operation ("${q.package.text.slice(0, 40)}")` });
     }
     // A practice page practises its own step: at least half its practice questions (Codex at 47c5fd78: U16's Day 4
     // Practice 2 printed 13 review questions and 1 on "Place value to millions").
@@ -242,10 +252,13 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     const pkg = q.package;
     if (q.place === "how-do-you-know" && STORY_EXPLAIN.test(pkg.text)) continue;
     // A step template item's sentence frames are limited by page and day instead (#489).
+    // A story frame: code's own wordings print now (Codex at e6d79b6a, B1), so a frame comes back at most 3 times a book
+    // (the planner's shape limit), never twice a day.
     if (!q.existing && wordedTask(pkg) && !q.itemPlan?.template) {
-      const frame = storyFrame(pkg.text), before = frames.get(frame);
-      if (before !== undefined) issues.push({ page: p.number, kind: "repeat", reason: `question ${q.number} repeats the story or event frame on page ${before}` });
-      else frames.set(frame, p.number);
+      const frame = storyFrame(pkg.text), before = storyUses.get(frame) ?? [];
+      const sameDay = before.find((u) => u.day !== null && u.day === p.day);
+      if (before.length >= 3 || sameDay) issues.push({ page: p.number, kind: "repeat", reason: `question ${q.number} repeats the story or event frame on page ${(sameDay ?? before[0]).page}` });
+      storyUses.set(frame, [...before, { page: p.number, day: p.day }]);
     }
     // The task's mathematical data, not its printed form: "? = 9 × 2" repeats "9 × 2 = ?".
     const key = taskIdentity(pkg);
@@ -354,7 +367,7 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
     const minutes = Math.max(questions.reduce((n, q) => n + questionMinutes(q), 0) + ofDay.length * .35, estimatedDayMinutes(packages, panels));
     const largestNumber = Math.max(0, ...questions.flatMap(q => q.package ? printedNumbers({...q.package, wrongAnswers: [], easierExample: null}).map(Math.abs) : []));
     days.push({ day, minutes: Math.round(minutes * 10) / 10, formats: formats.size, largestNumber });
-    if (minutes >= 30 || dayTimeProblem(packages, panels)) for (const p of ofDay) issues.push({ page: p.number, kind: "time", reason: `Day ${day} is estimated at ${minutes.toFixed(1)} minutes; keep it below 30` });
+    if (minutes >= 35 || dayTimeProblem(packages, panels)) for (const p of ofDay) issues.push({ page: p.number, kind: "time", reason: `Day ${day} is estimated at ${minutes.toFixed(1)} minutes; keep it below 35` });
     if (questions.length >= 8 && formats.size < 2) for (const p of ofDay) issues.push({ page: p.number, kind: "variety", reason: `Day ${day} uses only ${formats.size} answer format` });
   }
   // Compare the numbers of the same skills, so changing Unit B does not hide a

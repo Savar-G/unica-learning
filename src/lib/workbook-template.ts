@@ -29,7 +29,15 @@ import { instructionProblem, feedbackItemProblem } from "@/lib/workbook-feedback
 import { titleProblem } from "@/lib/workbook-titles";
 import { printedMinus, singularPlaces } from "@/lib/workbook-wording";
 
-const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+/**
+ * Numbers of 1,000 and up print with commas, everywhere a page prints text (Savar, 2026-11-03, D-226, replacing the BC
+ * spaces): 4,998, 97,531, 1,000,000. A number written in spaced groups ("10 000") is one number. The stored texts keep
+ * plain digits, so every check reads them as before; a child may write either.
+ */
+export const commaNumbers = (t: string) => t
+  .replace(/(?<![\d.,])(\d{1,3})((?:[ \u00a0\u202f]\d{3})+)(?![\d]|[.,]\d)/g, (_, a: string, rest: string) => a + rest.replace(/[ \u00a0\u202f]/g, ""))
+  .replace(/(?<![\d.,:])\d{4,}(?![\d]|[,:]\d)/g, (n) => n.replace(/\B(?=(\d{3})+(?!\d))/g, ","));
+const escape = (s: string) => commaNumbers(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const fontFace = (family: string, weights: string, woff2: Uint8Array) =>
   `@font-face{font-family:"${family}";font-weight:${weights};src:url(data:font/woff2;base64,${Buffer.from(woff2).toString("base64")}) format("woff2")}`;
 
@@ -339,6 +347,7 @@ const CSS = `
 .p-pr{background:#E3F5EC}.p-pr .lab{color:#064E32}
 .p-rv{background:#FFF6D6;border-radius:16px}.p-rv .lab{color:#5A4300}
 .p-fx{background:#FDECEC}.p-hd{background:#F1F1F4;border-radius:10px}
+.wo{font-size:.85em;color:#5F5F6B}.note-mm{font-size:.85em;color:#5F5F6B;margin-top:4px}
 .outl{border:1.5px solid #3366F0;border-radius:12px;padding:12px 20px 12px;background:#fff;display:flex;flex-direction:column;gap:8px}
 .outl .lab{color:#1B3FA6}
 .wk{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-size:var(--math);line-height:1.5}
@@ -452,7 +461,7 @@ const CSS = `
 .pg.consistent .blk{flex:0 0 auto;gap:calc(6px + var(--extra-gap,0px))}
 .pg.consistent .blk.grow{flex:1 0 auto}
 .pg.consistent .ft{top:939px;height:48px}
-.pg.consistent [data-measure^="review-"]{margin:-4px 0 -4px}
+.pg.consistent [data-measure^="review-"]{margin:4px 0 2px}
 .pg.consistent.stretch .ct>.blk:has(>:is(.two,.cols,.list,.facts,.pcards,.mxs)){flex:1 0 auto;display:flex;flex-direction:column}
 .pg.consistent.stretch .ct>.blk>:is(.two,.cols,.facts,.pcards,.mxs){flex:1 0 auto;grid-auto-rows:auto;align-content:stretch}
 .pg.consistent.stretch .ct>.blk>.list{flex:1 0 auto}.pg.consistent.stretch .ct>.blk>.list>*{flex:1 0 auto}
@@ -489,6 +498,20 @@ const CSS = `
 .pg.consistent .error-item .strip{min-height:48px}
 .pg.consistent .ways2 .wb{height:var(--work-min)}
 .pg.consistent .mxs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:calc(12px + var(--extra-gap,0px))}
+/* Savar, 2026-11-04: a row's cards top-aligned, each number on its text's first line; a story's number on its text's
+   baseline, with one gap under its work box; one gap before every section label. */
+.pg.consistent .mxs{align-items:start}.mx>.q{align-items:baseline}.mx>.q>.n{padding-top:0}
+.story .head{align-items:baseline}
+/* Savar, 2026-11-04: true and false are two circle targets in the answer-box column, apart enough to circle one, top-
+   aligned with the question's first line; Spot the error's number on its sentence's baseline; a test card's box in one
+   place, at its top right. */
+.circ.words{flex-direction:column;align-items:center;justify-content:flex-start;gap:12px;min-height:0;min-width:var(--box);padding:0;align-self:flex-start}
+.circ.words .co{display:inline-flex;align-items:center;justify-content:center;min-height:28px;min-width:var(--box);padding:0 8px;line-height:1}
+.circ.words.likelihood{flex-direction:row;gap:12px;min-width:0}.circ.words.likelihood .co{min-width:0;min-height:44px;padding:0 6px}
+.q .rgs:has(>.circ.words){align-self:flex-start}
+.error-item>.q:first-child{align-items:baseline}
+.tc>.q{flex-wrap:nowrap;align-items:flex-start}.tc>.q>.qb{flex:1 1 0;min-width:0}.tc>.q>.rgs{margin-left:auto;flex:none;align-self:flex-start}
+.pg.consistent [data-slot="word-problems"] .story{padding-bottom:14px}
 .pg.consistent .mx .stp{flex-wrap:wrap}
 .pg.consistent .mx .sl{min-width:0}
 .pg.consistent .chc{padding:12px;gap:8px}
@@ -678,7 +701,8 @@ function shapeSvg(shape: string, x: number, y: number, fill: string): string {
 
 /** A worked line, its [given] numbers in blue. */
 /** BC prints numbers from 10 000 up in groups of three with a space (4 digits together, decimals untouched). */
-export const bcNumbers = (t: string) => t.replace(/(?<![\d.,\u00a0])\d{5,}(?![\d]|[.,]\d)/g, (n) => n.replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0"));
+/** (The BC spaces are gone, D-226: numbers print with commas through `escape`.) */
+export const bcNumbers = (t: string) => t;
 const worked = (line: WorkedLine) => bcNumbers(escape(printedMinus(singularPlaces(line)))).replace(/\[([^\]]*)\]/g, `<span class="blue">$1</span>`);
 
 // ---------- Questions and their answer regions ----------
@@ -936,7 +960,8 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       if (parent) return chip() + items();
       return chip() + `<div class="panel p-fx"><div class="inner">${qs.map((q, k) => cardItem(q, band, 80, "card", b.figures?.[k])).join("")}</div></div>`;
     case "in-your-head":
-      return `<div class="panel p-hd"><div class="lab">${escape(b.label ?? "In your head")}</div><div class="list" style="margin-top:10px">${qs.map((q) => lineItem(q, band)).join("")}</div></div>`;
+      // (Savar, 2026-11-04: "In your head" said nothing; mental math says what to do.)
+      return `<div class="panel p-hd"><div class="lab">${escape(b.label && !/^in your head$/i.test(b.label) ? b.label : "Mental math")}</div><div class="note-mm" data-measure="note-${i}">Work it out without writing it down.</div><div class="list" style="margin-top:10px">${qs.map((q) => lineItem(q, band)).join("")}</div></div>`;
     case "remember-these":
       return (firstOfPage ? "" : chip()) + items(parent ? "pcards" : "two");
     case "try-first":
@@ -944,19 +969,21 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
         + `<div class="outl"><div class="lab">Try this first</div>${qs.map((q, k) => lineItem(q, band, null, 80, b.figures?.[k])).join("")}</div>`;
     case "worked-example": {
       const head = prev === "try-first" ? "" : chipHtml(NEW_IDEA, b.note);
-      const label = `<div class="lab">Worked example${b.label ? ` · ${escape(b.label)}` : ""}</div>`;
+      const label = `<div class="lab">Worked example${b.label && !/^example$/i.test(b.label) ? ` · ${escape(b.label)}` : ""}</div>`;
+      // A Watch out line is a note under the example: smaller and lighter (Savar, 2026-11-04).
+      const note = (t: string) => `<span class="${/^Watch out:/.test(t) ? "wo" : ""}">${escape(t)}</span>`;
       const ways = b.methods && b.methods.length > 0
         ? `<div class="ways" style="grid-template-columns:repeat(${b.methods.length},minmax(0,1fr))">${b.methods.map((m, k) => `<div class="in"><div class="lab">Method ${k + 1}${m.label ? ` · ${escape(m.label)}` : ""}</div><div class="wk">${m.lines.map(worked).join("<br>")}</div></div>`).join("")}</div>`
         : "";
       const why = b.figure || b.explain
         ? `<div class="${b.figure ? "fig2" : "full-width"}">${b.figure ? figureSvg(b.figure, band.name === "mid" ? 1 : 1.3,c.consistentLayout ? 40 : 30) : ""}<div class="why"><div class="lab">What's going on</div><span>${escape(b.explain ?? "")}</span></div></div>`
         : "";
-      return head + `<div class="panel p-ni" data-measure="panel-${i}" style="display:flex;flex-direction:column;gap:12px">${label}${ways}${ways && b.explain && !b.figure ? `<span>${escape(b.explain)}</span>` : why}</div>`;
+      return head + `<div class="panel p-ni" data-measure="panel-${i}" style="display:flex;flex-direction:column;gap:12px">${label}${ways}${ways && b.explain && !b.figure ? note(b.explain) : why}</div>`;
     }
     case "now-you":
       return parent
         ? items()
-        : `<div class="outl"><div class="lab" data-measure="heading-${i}">Now you${b.label ? `: ${escape(b.label)}` : ""}</div><div class="two">${qs.map((q, k) => lineItem(q, band, null, 80, b.figures?.[k])).join("")}</div></div>`;
+        : `<div class="outl"><div class="lab" data-measure="heading-${i}">Now it's your turn${b.label ? `: ${escape(b.label)}` : ""}</div><div class="two">${qs.map((q, k) => lineItem(q, band, null, 80, b.figures?.[k])).join("")}</div></div>`;
     case "spot-the-error": {
       if (!c.consistentLayout) {
 
@@ -986,7 +1013,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
     }
 
     case "watch-one":
-      return chipHtml(PRACTICE, b.note) + `<div class="panel p-pr" data-measure="panel-${i}" style="display:flex;flex-direction:column;gap:8px"><div class="lab">Read the example${b.label ? ` · ${escape(b.label)}` : ""}</div><div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div>${b.explain ? `<span>${escape(b.explain)}</span>` : ""}</div>`;
+      return chipHtml(PRACTICE, b.note) + `<div class="panel p-pr" data-measure="panel-${i}" style="display:flex;flex-direction:column;gap:8px"><div class="lab">Read the example${b.label && !/^example$/i.test(b.label) ? ` · ${escape(b.label)}` : ""}</div><div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div>${b.explain ? `<span class="${/^Watch out:/.test(b.explain) ? "wo" : ""}">${escape(b.explain)}</span>` : ""}</div>`;
     case "finish-these":
       // (A block of review only prints "Remember these" alone, never under "Getting started" as the page's skill.)
       return (allReview ? "" : `<div class="lab" data-measure="heading-${i}">Getting started</div>`) + items(c.consistentLayout || ctx.six ? "two" : "list");
@@ -1216,10 +1243,12 @@ export function fullnessProblem(page: DraftPage, measured: ReadonlyMap<string, M
   const use=pageSpace(page,measured);
   if (!use) return "The page fullness could not be measured.";
   if (use.largestGap>60.5) return `The page has a ${Math.round(use.largestGap)} px unoccupied gap; allow 12 px plus at most 48 px extra.`;
+  // Never a gap at the bottom (Savar, 2026-11-04: "space for another question"): a page fills, or spreads its rows.
+  if (page.content?.kind==="day" && use.bottom>60.5) return `The page leaves ${Math.round(use.bottom)} px empty at the bottom; add a question, or spread the rows evenly.`;
   if (use.fraction>=.85) return null;
   // At the page maximum, Cedric permits evenly distributed spacing. Report the
   // true occupied fraction separately; never relabel a gap as occupied space.
-  if (page.content?.kind==="day" && page.content.fillingComplete && use.span>=.85 && use.bottom<=measured.get("slot-content")!.clientHeight*.15) return null;
+  if (page.content?.kind==="day" && page.content.fillingComplete && use.span>=.92) return null;
   return `Questions and teaching panels occupy ${Math.round(100*use.fraction)}% of the page height; add an item up to the page maximum, then spread gaps by at most 48 px.`;
 }
 

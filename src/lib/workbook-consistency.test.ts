@@ -66,7 +66,7 @@ it("replays approved calls after a page checkpoint fails, without repeating a wr
   let tokens = 0, fail = true;
   const deps: GenerateDeps = { ai, solver: keySolver(), fit: { fits: async () => ({ok:true}) }, concurrency: 1,
     store: { save: async d => ({status:"saved",draftId:d.id}), draft: async()=>null }, qrToken: () => `token-${String(++tokens).padStart(12, "0")}`,
-    pages: { load: async()=>[...pages.values()], save: async p=>{ if (fail && p.questions.some(q=>q.package?.textSource === "ai")) {fail=false; throw new Error("checkpoint failed");} if (!pages.has(p.number)) pages.set(p.number,p); } },
+    pages: { load: async()=>[...pages.values()], save: async p=>{ if (fail && p.questions.length > 0) {fail=false; throw new Error("checkpoint failed");} if (!pages.has(p.number)) pages.set(p.number,p); } },
     calls: { load: async numbers => [...calls].flatMap(([key,call])=>{const [page,seq]=key.split(":").map(Number); return numbers.includes(page)?[{page,seq,call}]:[];}), save: async(page,seq,call)=>{ calls.set(`${page}:${seq}`,structuredClone(call)); }, solves:async()=>new Map(), saveSolve:async()=>{} },
   };
   await expect(generateWorkbook(input,deps)).rejects.toThrow("checkpoint failed");

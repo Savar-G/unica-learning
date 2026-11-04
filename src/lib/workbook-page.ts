@@ -232,9 +232,13 @@ function partSlots(part: PlannedPart, page: PlannedPage, level: number): { slots
         { slot: "on-your-own", items: full ? Math.min(own, 2) : early ? Math.min(own, 3) : own },
       ], full ? "On your own takes 2 items beside Solve it two ways and Spot the error" : "On your own takes 3 items at U1 to U9");
     }
-    // The stories, then one "How do you know?" with two writing lines.
+    // The stories, then one "How do you know?" with two writing lines, where the stories have no work box (U1 to U3,
+    // parent-led). From U4 each story has its "Show your work" box: the line asked the same again (Savar, 2026-11-04),
+    // so its work boxes take its room.
     case "word-problems":
-      return laid([{ slot: "word-problems", items: Math.min(part.items, has("remember-these") || early ? 2 : 3) }, { slot: "how-do-you-know", items: 1 }], "the stories page holds 2 stories beside a Remember these? block or at U1 to U9");
+      return level >= 4
+        ? laid([{ slot: "word-problems", items: Math.min(part.items, has("remember-these") || early ? 2 : 3) }], "the stories page holds 2 stories beside a Remember these? block or at U4 to U9, else 3")
+        : laid([{ slot: "word-problems", items: Math.min(part.items, has("remember-these") || early ? 2 : 3) }, { slot: "how-do-you-know", items: 1 }], "the stories page holds 2 stories beside a Remember these? block or at U1 to U9");
     case "picture-stories":
       return laid([{ slot: "picture-stories", items: Math.min(part.items, has("remember-these") && early ? 2 : part.items) }], "2 picture stories fit beside Remember these? at U1 to U9");
     // The plan (writing lines), the lettered parts, and the final answer with its work box.

@@ -104,12 +104,21 @@ export function printedForm(p: QuestionPackage): string {
   return check?.kind ?? f ?? "other";
 }
 
-/** The numbers a question prints, the sequence's printed terms included, from least to greatest. */
+/**
+ * The numbers a task works with, least to greatest (Codex at e6d79b6a, B2): the operands of the operation code picked,
+ * when it has one; else the numbers it prints, the sequence's printed terms included, without its distractors (a number
+ * printed as a choice, or after "which number:"), whatever region the answer takes. "8
+ * is 6 and which number: 2 or 3?" works with 8 and 6, as "8 is 6 and ?" does.
+ */
 function printedTaskNumbers(p: QuestionPackage): number[] {
+  const ops = p.operation?.operands as unknown[] | undefined;
+  if (ops?.length && ops.every((x) => typeof x === "number" && Number.isFinite(x))) return [...(ops as number[])].sort((a, b) => a - b);
   const terms = (p.item?.checks ?? []).flatMap((c) => (c.kind === "sequence" ? c.terms.flatMap((t) => ("region" in t ? [] : t.type === "number" ? [t.value] : [])) : []));
-  const printed = (p.text.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
-  // The choices a question prints are not its task (Codex at 24751f16: "6 is 1 and which number: 6 or 5?" asks "6 is 1
-  // and ?"): each printed choice's number is taken out once, and the answer stays through the key.
+  const shown = p.text.replace(/(\d)[\u00a0\u202f ](?=\d{3}\b)/g, "$1")
+    // (The distractors: "and which number: 2 or 3?" offers the answer among others. A comparison's numbers, "Which is
+    // more: 8 or 6?", are its task and stay.)
+    .replace(/\bwhich number\b:?[^?]*\?/gi, " ?");
+  const printed = (shown.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
   for (const r of p.item?.regions ?? []) if (r.kind === "choice") for (const c of r.choices) {
     const at = /^-?\d+(?:\.\d+)?$/.test(c.trim()) ? printed.lastIndexOf(Number(c.trim())) : -1;
     if (at >= 0) printed.splice(at, 1);
@@ -247,5 +256,15 @@ export function cardFrameProblem(uses: readonly CardFrameUse[], use: CardFrameUs
   if (uses.some((u) => u.numbers === use.numbers)) return "its frame is printed again with the same numbers";
   if (use.day !== null && uses.some((u) => u.day !== null && Math.abs(u.day - use.day!) <= 1 && (u.challenge && use.challenge || u.day === use.day))) return "its frame is on the Challenge of the day before or after";
   return null;
+}
+
+/**
+ * Whether a story works an operation (Savar, 2026-11-04: "Ethan saw the number 33,848 on a sign ... the value of the
+ * digit in the hundreds place" is a place-value question dressed as a story): its template's answer adds, takes away or
+ * multiplies its numbers without reading a digit (no %), or the operation code picked for it.
+ */
+export function operationStory(p: QuestionPackage, templateAnswer?: string | null): boolean {
+  if (templateAnswer) return /[+\-*]/.test(templateAnswer.replace(/'[^']*'|"[^"]*"/g, "")) && !/%|'|"/.test(templateAnswer);
+  return ["add", "subtract", "multiply", "divide", "missing-addend", "evaluate"].includes(p.operation?.kind ?? "");
 }
 

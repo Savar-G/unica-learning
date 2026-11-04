@@ -333,11 +333,52 @@ backwards") does not print.
 - **Minus signs** print as "−" between numbers in every text (templates, AI
   items, panels); the book check fails a hyphen there, and the solve check reads
   both.
-- **Refill:** a page that lost a question for room takes one again (a short one,
-  on its practice) once it has room, and the omission is made good; a review
-  page's extra questions leave the day's later practice pages about 0.4 minutes
-  each. The full U4 book still has three pages below 8 (Days 1 and 9): see the
-  report.
+- **Refill:** a practice page that lost a question for room takes one again (a
+  short one) once it has room, and the omission is made good; a review page's
+  extra questions leave the day's later practice pages about 0.4 minutes each.
+  A late attempt (an earlier step the book taught) may take that step's hard
+  templates, and a "Remember these" card whose part reviews one used-up step
+  takes the page's practice part. A panel takes only an example it can work.
+
+## Codex at e6d79b6a: stories and tasks redesigned (2026-11-04)
+
+- **B1, a story's words are code's** (`workbook-code-story.ts`). Code writes
+  every story: a step template, a planned item, or code's wording of the item's
+  operation. A story prints code's text with only its person, thing and pronouns
+  changed (`storyKey`); the writer's rewording of anything else falls back to
+  code's text, a story the writer wrote takes code's wording at every level,
+  and the book check fails a printed story that is not code's. The take-away
+  check binds the removal verb to the number taken ("gives 17 away"), not to a
+  word elsewhere ("a jar he uses for beads"); a test enumerates code's frames.
+- **B2, a task is its maths:** the operands of the operation code picked; else
+  its printed numbers without its distractors (a choice, or numbers after
+  "which number:"), whatever region the answer takes. "8 is 6 and ?" and "8 is
+  6 and which number: 2 or 3?" are one task.
+- **U4 wording:** the wordiest templates a U4 book prints are shorter in a U4
+  book only (`LEVEL_REWRITES`, logged in `data/curriculum/author-changes.md`):
+  each keeps its slots, answer, difficulty and claim.
+
+## Savar's U16 r13 and r16 reviews (2026-11-04)
+
+- **Numbers** of 1,000 and up print with commas everywhere (D-226, replacing the
+  BC spaces); stored texts keep plain digits, and the solve check takes either.
+- **Titles** read naturally ("Place value up to 100,000"; "up to" is one word
+  of the 4). "Now you" is "Now it's your turn"; "In your head" is "Mental math"
+  with "Work it out without writing it down."; a panel header names "Example"
+  once; a Watch out line is a smaller, lighter note.
+- **Circle:** every page with a circled choice says what to circle, and the book
+  check fails one that does not. True and false are two targets, 12 px apart, in
+  the answer-box column, top-aligned with the question.
+- **Stories pages** from U4 drop "How did you work out question 1?" (every story
+  has its work box) and count only stories with an operation.
+- **Room:** a day fills up to about 33 minutes and fails at 35; a day page never
+  leaves more than 60 px empty at its bottom (it adds a question, or spreads its
+  rows); a page fills up to its floor; a U4 to U9 practice page whose floor does
+  not fit beside its example panel prints a one-line reminder instead.
+- **Alignment:** a row's cards top-aligned with each number on its text's first
+  line; one gap before every section label; a test card's box at its top right.
+- **Open:** the full U4 book (fixed seed) has three practice pages one to three
+  questions short of 8 (Days 1 and 9): U4's large type holds 7 there.
 
 ## Report
 

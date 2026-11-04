@@ -264,6 +264,8 @@ export interface PlannedPage {
   refills?: number;
   /** The worked example's panel had no room for its Watch out line beside its method (U4's large type). */
   noWatchOut?: boolean;
+  /** A practice page whose floor does not fit beside its full example panel prints a one-line reminder instead (U4 to U9). */
+  compactPanel?: boolean;
   /** Approved pipeline capacity. The writer and layout consume this same budget. */
   capacity?: import("./workbook-page").PlannedSlot[];
   capacityChecked?: boolean;

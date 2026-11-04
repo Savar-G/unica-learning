@@ -15,11 +15,12 @@ function page(number: number, day: number, count = 2): GeneratedPage {
 }
 
 it("checks actual progression, repeats, format variety and day time", () => {
-  const early = page(3, 1), late = page(4, 8, 100);
-  late.questions = Array.from({length: 100}, (_, i) => ({...early.questions[i % 2], number: i + 1}));
+  // (A day fails at 35 minutes, Savar 2026-11-04: 160 questions are well past it.)
+  const early = page(3, 1), late = page(4, 8, 160);
+  late.questions = Array.from({length: 160}, (_, i) => ({...early.questions[i % 2], number: i + 1}));
   const q = workbookQuality([early, late]);
   expect(new Set(q.issues.map(i => i.kind))).toEqual(new Set(["repeat", "progress", "variety", "time"]));
-  expect(q.days[1].minutes).toBeGreaterThan(30);
+  expect(q.days[1].minutes).toBeGreaterThan(35);
   expect(q.ready).toBe(false);
 });
 

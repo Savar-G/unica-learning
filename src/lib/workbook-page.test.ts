@@ -142,7 +142,10 @@ describe("pageSlots", () => {
   });
 
   it("adds a How do you know? to the stories and splits Math in the world into its plan, parts and final answer", () => {
-    expect(names(pageSlots(page("word-problems", [part("word-problems", 3)]), 12))).toEqual(["word-problems:3", "how-do-you-know:1"]);
+    // (From U4 every story has its work box: the How do you know? line goes and its room goes to the work boxes, Savar
+    // 2026-11-04; a parent-led page keeps it.)
+    expect(names(pageSlots(page("word-problems", [part("word-problems", 3)]), 12))).toEqual(["word-problems:3"]);
+    expect(names(pageSlots(page("word-problems", [part("word-problems", 3)]), 3))).toEqual(["word-problems:2", "how-do-you-know:1"]);
     expect(names(pageSlots(page("math-in-the-world", [part("math-in-the-world", 1)]), 22))).toEqual(["math-in-the-world:3"]);
   });
 

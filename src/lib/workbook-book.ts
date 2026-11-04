@@ -14,6 +14,7 @@
 // The words here are code's, never the AI's: headers, panel labels and explanations come from the plan and the
 // curriculum. Pure TypeScript: no Next.js, React, network, database, clock or randomness.
 import { templateAnswer, templateNumbers, type TemplateSource } from "@/lib/question-package-template";
+import { TITLE_WORDS_MAX, titleWords } from "@/lib/workbook-title-rules";
 import { likelihoodWord } from "@/lib/workbook-likelihood";
 import { workbookCoverTitle } from "@/lib/workbook-cover-titles";
 import { SKILL_TITLES } from "@/lib/workbook-skill-titles";
@@ -123,7 +124,23 @@ export function dayHeader(curriculum: Curriculum, page: PlannedPage, level: numb
  * numbers): a skill title's closing range ("to millions", "to 1000") becomes the step's, rounded up to a power of ten
  * ("Place value to 100 000"), when the step stops below it.
  */
+/**
+ * A title that names a range reads naturally (Savar, 2026-11-04): "Place value up to 100,000", not "Place value to 100
+ * 000". A title that starts with what the child does keeps its "to" ("Count on to 20", "Add within 10 to 20").
+ */
+const DOING = /^(?:count|add|subtract|multiply|divide|skip|round|compare|order|read|write|make|share|split|jump|hop|find|show|use|using|go|get|move|match|sort|estimate)\b/i;
+export function naturalTitle(title: string): string {
+  if (DOING.test(title.trim())) return title;
+  const up = title.replace(/(?<!\bup )\bto ((?:\d[\d ,\u00a0]*\d|\d)|millions|a million|thousands)$/i, "up to $1");
+  // (A title keeps 4 words at most, "up to" one of them: "Number stories to 20" stays.)
+  return titleWords(up).length <= TITLE_WORDS_MAX ? up : title;
+}
+
 function stepTitle(curriculum: Curriculum, title: string, step: { skill: string; step: number | null } | null, type: string): string {
+  return naturalTitle(stepRangeTitle(curriculum, title, step, type));
+}
+
+function stepRangeTitle(curriculum: Curriculum, title: string, step: { skill: string; step: number | null } | null, type: string): string {
   if (!step?.step || ["challenge", "word-problems", "remember-these", "show-what-you-know", "friday-5", "level-test"].includes(type)) return title;
   const at = curriculum.skillSteps(step.skill)?.[step.step - 1];
   const m = title.match(/^(.*\bto) (millions|a million|thousands|\d[\d ]*)$/i);

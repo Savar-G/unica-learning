@@ -19,7 +19,7 @@ import { checkQuestionPackage } from "@/lib/question-package";
 import { storedDomain, templateAnswerValue, templateScalar, type TemplateScalar, type TemplateSource } from "@/lib/question-package-template";
 import type { Curriculum, CurriculumStep, NumberDomain, NumberRange, StepTemplate, TemplateDifficulty } from "@/lib/workbook-curriculum";
 import { prepareTemplate, seededRandom, slotDomain } from "@/lib/workbook-curriculum/template";
-import { isTwoStep } from "@/lib/workbook-curriculum/house-templates";
+import { isChallengeOnly, isTwoStep, templateAtLevel } from "@/lib/workbook-curriculum/house-templates";
 import type { AiItem, BuiltQuestion, SlotPlace } from "@/lib/workbook-generator-items";
 import type { SlotName } from "@/lib/workbook-page";
 
@@ -362,8 +362,10 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
   const numberAnswer = numberAnswerOf;
   const printable = step.templates.map((t, index) => ({ t, index })).filter(({ t }) => !templateProblem(t, r.level)
     && (r.place !== "solve-it-two-ways" || sumTemplate(t)) && (r.place !== "spot-the-error" || numberAnswer(t))
-    // (Code's two-step cards are the Challenge's last fill only, house-templates.ts.)
-    && (r.place === "challenge" || !isTwoStep(t)));
+    // (Code's two-step cards are the Challenge's last fill only; Unica's Challenge templates the Challenge's and Show what
+    // you know's, house-templates.ts.)
+    && (r.place === "challenge" || !isTwoStep(t))
+    && (r.place === "challenge" || r.place === "show-what-you-know" || r.place === "level-test" || !isChallengeOnly(t)));
   // The step's hardest questions are the Challenge's (#482 review at 3134252: the Challenge is clearly harder than the
   // day's practice): its teaching pages take the easier ones, and the Challenge takes the hardest, with a number to
   // work out when its hardest set has one (the U4 review).
@@ -393,6 +395,10 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
   if (reviewPlace && (r.curriculum.levelOfSkill(r.skill)?.number ?? r.level) < r.level) usable = printable;
   else if (reviewPlace && r.attempt >= 192) usable = printable.filter((x) => !harder.includes(x));
   if (!usable.length) usable = printable;
+  // Late attempts (an earlier step the book taught, when the page's own tasks ran out) take that step's hard templates
+  // too: its Challenge was days before (Savar, 2026-11-04: the full U4 book's Day 9 falls back to hard review items).
+  // (U4 to U9 only: from U10 the hard ones stay the Challenge's, and a page keeps its own step.)
+  if (r.level <= 9 && r.attempt >= 320 && r.place !== "challenge" && r.place !== "show-what-you-know" && r.place !== "level-test" && (r.curriculum.levelOfSkill(r.skill)?.number ?? r.level) <= r.level) usable = printable;
   // A Number stories page asks stories when the step has them (the review: no drills on a page of stories).
   if (r.place && STEP_STORY_PLACES.has(r.place) && r.place !== "challenge" && r.attempt < 256 && usable.some(({ t }) => t.format === "story")) usable = usable.filter(({ t }) => t.format === "story");
   // (Code's two-step cards follow the step's own, the Challenge's last fill: house-templates.ts.)
@@ -427,7 +433,7 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
       // Priced objects need a purchase context. The shared counting list also has
       // leaves and acorns, which do not fit these price questions.
       const purchase = t.text.includes("{things}") && /\$|\bdollars?\b|\b(?:buys?|bought)\b|Each \{container\} holds|puts .* in each \{container\}/.test(t.text);
-      prepared = prepareTemplate(step, t, purchase ? { ...contexts, things: ["books", "notebooks", "tickets", "toy cars"] } : contexts);
+      prepared = prepareTemplate(step, templateAtLevel(r.level, step, index, t), purchase ? { ...contexts, things: ["books", "notebooks", "tickets", "toy cars"] } : contexts);
     } catch { continue; }
     const random = seededRandom(((r.seed * 31 + r.attempt * 7919 + k * 104729) % 2147483647) + 1);
     // A Challenge takes the fill with the largest numbers of several, the top of the step's range (the U4 review); a

@@ -77,7 +77,7 @@ import { textRoom, slotMax } from "@/lib/workbook-template";
 import { checkWholeBook, pageMinimum, questionMinutes, typeKey, type BookQuality } from "@/lib/workbook-quality";
 import { extraPracticeRepeats, twoWaysCountsAsStory } from "@/lib/workbook-early-levels";
 import { approvedQuestionTypes, buildPlannedItem, planItem, itemExamples, itemNumber, ITEM_EXAMPLES, STORY_EXPLAIN, type ItemPlan } from "@/lib/workbook-item-plan";
-import { cardFrame, cardFrameProblem, cardNumbers, type CardFrameUse, largestNumber, printedForm, sentenceFrameOf, stemOf, storyKind, storyFrame, taskIdentity, taskType, wordedTask } from "@/lib/workbook-task-identity";
+import { cardFrame, cardFrameProblem, cardNumbers, type CardFrameUse, largestNumber, operationStory, printedForm, sentenceFrameOf, stemOf, storyKind, storyFrame, taskIdentity, taskType, wordedTask } from "@/lib/workbook-task-identity";
 import { COMPACT_STORY_FRAMES } from "@/lib/workbook-story-bank";
 import { isTwoStep } from "@/lib/workbook-curriculum/house-templates";
 import { buildStepItem, challengeTemplateCount, hasHardNumberTemplate, NO_TEMPLATE_PLACES, STEP_STORY_PLACES, stepAiItem, stepBounds, stepOf, stepRank, stepTemplateItem, stepTemplateOf, sumTemplate, templateProblem } from "@/lib/workbook-step-items";
@@ -283,7 +283,9 @@ function storySteps(input: GenerateInput, slot: Slot, day: number, level: number
 function notAStory(input: GenerateInput, slot: Slot, c: ItemPlan, p: QuestionPackage, pageType?: string): boolean {
   // (Two ways on a Number stories page is one of its stories, U4 to U9, D-222.)
   const storyPlace = STEP_STORY_PLACES.has(slot.place ?? "warm-up") && slot.place !== "challenge" || slot.place === "solve-it-two-ways" && pageType === "word-problems";
-  return storyPlace && !printedForm(p).startsWith("context:") && stepHasStory(input, c);
+  if (storyPlace && !printedForm(p).startsWith("context:") && stepHasStory(input, c)) return true;
+  // (A stories page's story works an operation, Savar 2026-11-04: never a place-value question dressed as a story.)
+  return pageType === "word-problems" && storyPlace && !operationStory(p, c.template?.source?.answer);
 }
 
 /** Whether a Challenge or Show what you know card's frame may not print here (twice a book, cardFrameProblem). */
@@ -299,6 +301,9 @@ function cardFrameTaken(input: GenerateInput, work: PageWork[], slot: Slot, p: Q
   }));
   return !!cardFrameProblem(uses, { day: here?.day ?? null, challenge: slot.place === "challenge", numbers: cardNumbers(p) });
 }
+
+/** Whether a panel can work its example: a sum, a count, a sequence, an order or a relation code works out. */
+const workableExample = (pkg: QuestionPackage): boolean => !!pkg.operation || !!pkg.item?.checks.some((c) => c.kind === "count" || c.kind === "sequence" || c.kind === "order" || c.kind === "relation" || c.kind === "template" || c.kind === "template-choice");
 
 /** A template item's template words, its slots unfilled: one story whatever step lists it. */
 function templateWords(input: GenerateInput, c: ItemPlan): string {
@@ -1592,7 +1597,7 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
     if (out.error && !out.items.has(x.id) && (input.itemPolicy !== "approved-v1" || c)) b.check = { status: "failed", reason: `the AI gave no answer: ${out.error}` };
     if (b.package) b.package = withoutSam(b.package, null);
     const pkg = b.package;
-    if (b.check.status !== "failed" && pkg && !pkg.operation && !pkg.item?.checks.some((c) => c.kind === "count" || c.kind === "sequence" || c.kind === "order" || c.kind === "relation" || c.kind === "template" || c.kind === "template-choice")) {
+    if (b.check.status !== "failed" && pkg && !workableExample(pkg)) {
       b.check = { status: "failed", reason: "a panel's worked example is a sum, a count, a sequence, an order or a relation code can work out" };
     }
     if (b.check.status !== "failed" && pkg) {
@@ -2104,11 +2109,17 @@ function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuesti
         // (The answer on its question's line, and the words' meanings short: the full U4 book's Day 9 panel took a third
         // of its practice page.)
         block.lines = own && answer ? [`${own.text} Answer: [${answer}]`] : ["A stone cannot grow legs. Answer: [never]"];
-        block.explain = "Never: it cannot happen. Sometimes: it can happen. Always: it happens every time.";
+        block.explain = "Never: it cannot happen. Sometimes: it may happen. Always: every time.";
         // (Once: a panel's lines and its explanation printed it twice, the full U4 book's Day 9.)
         if (block.slot !== "worked-example") { block.lines.push(block.explain); block.explain = undefined; }
       }
     });
+  }
+  if (content.kind === "day" && w.page.compactPanel) for (const block of content.blocks) {
+    if (block.slot !== "watch-one") continue;
+    // (One line: the example with its answer.)
+    const line = (block.lines ?? []).find((l) => /\[[^\]]+\]/.test(l)) ?? block.lines?.[0];
+    Object.assign(block, { slot: "reminder", label: "Remember", lines: line ? [line] : [], methods: [], explain: undefined, figure: undefined });
   }
   if (content.kind === "day") {
     content.extraGap = w.page.extraGap ?? 0;
@@ -2118,14 +2129,20 @@ function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuesti
     if (w.page.atMaximum) content.atMaximum = true;
     // The page's instruction says what its questions ask (the U4 review, item 15), on practice and review pages; the
     // other pages keep their own line.
-    if (["practice", "practice-2", "remember-these", "remember-these-mixed-set"].includes(w.page.type)) {
+    // What to circle, said on every page that has a circled choice (Savar, 2026-11-04: true or false never said to
+    // circle): "Circle true or false.", "Circle yes or no.", else "Circle your answer.".
+    const circled = questions.filter(q => q.package && q.place !== "warm-up").flatMap(q => (q.package!.item?.regions ?? []).flatMap(r => r.kind === "choice" && r.mark !== "tick" ? [r.choices.map(c => c.toLowerCase()).sort().join(",")] : []));
+    const circleLine = !circled.length ? null : circled.every(c => c === "false,true") ? "Circle true or false." : circled.every(c => c === "no,yes") ? "Circle yes or no." : "Circle your answer.";
+    // (A new idea page's chip says "Read how it works, then try it.": its instruction line says what to write and circle,
+    // never the same words twice, Savar 2026-11-04.)
+    if (["practice", "practice-2", "remember-these", "remember-these-mixed-set", "new-idea"].includes(w.page.type)) {
       const formats = new Set(questions.filter(q => q.package && q.place !== "warm-up").map(q => q.package!.item?.format ?? "write-number"));
-      const circle = formats.has("circle"), boxes = formats.has("boxes"), write = [...formats].some(f => !["circle", "boxes"].includes(f));
-      const line = circle && !boxes && !write ? "Circle the answer." : circle && boxes ? "Fill in the boxes, write the answer or circle it."
-        : circle ? "Write the answer, or circle it." : boxes && write ? "Fill in the missing numbers and write the answers." : boxes ? "Fill in the missing numbers." : null;
-      if (line) content.subtitle = line;
-    }
-    if (w.page.extraPractice) Object.assign(content, { extraPractice: true, title: "Extra practice", subtitle: "Answer questions from this workbook." });
+      const circle = !!circleLine, boxes = formats.has("boxes"), write = [...formats].some(f => !["circle", "boxes"].includes(f));
+      const writes = questions.some(q => q.package && q.place !== "warm-up" && (q.package.item?.regions ?? []).some(r => r.kind === "box"));
+      const parts = [boxes ? (writes && write ? "Fill in the missing numbers and write the answers in the boxes." : "Fill in the missing numbers.") : writes ? "Write the answer in the box." : null, circle ? circleLine : null].filter(Boolean);
+      if (parts.length) content.subtitle = parts.join(" ");
+    } else if (circleLine && !/\bcircle\b/i.test(content.subtitle ?? "")) content.subtitle = `${content.subtitle ? `${content.subtitle.replace(/\s*$/, "")} ` : ""}${circleLine}`;
+    if (w.page.extraPractice) Object.assign(content, { extraPractice: true, title: "Extra practice", subtitle: `Answer questions from this workbook.${circleLine ? ` ${circleLine}` : ""}` });
   }
   return content;
 }
@@ -2315,6 +2332,8 @@ function layOut(input: GenerateInput) {
         const c = contractFor(input, w, panelSlot(w, panel), attempt);
         const pkg = c ? contractPackage(input, w, c) : null;
         if (!pkg) { if (attempt === 0) break; continue; }
+        // (One the panel can work: a colouring task fails as an example and the panel takes a question's place.)
+        if (!workableExample(pkg) && attempt < 63) continue;
         const key = taskIdentity(pkg);
         if (used.has(key)) continue;
         panel.attempt = attempt;
@@ -2381,10 +2400,15 @@ function layOut(input: GenerateInput) {
         // A page that still needs a third form, and whose step's templates print no other, takes #482's builder for the
         // skill when it prints one (#482 review at 3134252: valid alternatives before a repeated form).
         const builder = templated && slot.place !== "challenge" ? slot.part.step?.skill ?? skill : null;
-        const passes: { strict: boolean; override?: string }[] = [{ strict: true }, ...(builder && needForm ? [{ strict: true, override: builder }] : []), { strict: false }, ...(builder ? [{ strict: false, override: builder }] : [])];
-        for (const { strict, override } of passes) {
+        // (Last, a review card whose part reviews one exhausted step takes the page's practice part, its earlier steps'
+        // hard review items: the full U4 book's Day 9 "Remember these" had no likelihood task left, Savar 2026-11-04.)
+        const practicePart = slot.place === "remember-these" ? w.slots.find((s) => s.part !== slot.part && s.part.step && ["on-your-own", "finish-these", "practice-row"].includes(s.place ?? ""))?.part : undefined;
+        const passes: { strict: boolean; override?: string; borrow?: boolean }[] = [{ strict: true }, ...(builder && needForm ? [{ strict: true, override: builder }] : []), { strict: false }, ...(builder ? [{ strict: false, override: builder }] : []), ...(practicePart ? [{ strict: false, borrow: true }] : [])];
+        for (const { strict, override, borrow } of passes) {
+          if (borrow && practicePart) slot.part = practicePart;
           for (let candidate = 0; candidate < (strict ? 512 : 1024) && !best; candidate++) {
-            const c = contractFor(input, w, slot, candidate, override);
+            if (borrow && candidate >= 512) break;
+            const c = contractFor(input, w, slot, borrow ? LATE_ATTEMPT + candidate : candidate, override);
             if (!c) continue;
             // A template item's sentence frames are limited by page and day instead (Cedric's section 9).
             const frame = !c.template && (c.source === "story" || c.type === "likelihood") ? storyFrame(c.item.text) : null;
@@ -2540,14 +2564,14 @@ function keptPageProblem(input: GenerateInput, w: PageWork | undefined, p: Gener
   return null;
 }
 
-/** Page filling stops adding items once the day's estimate reaches this; the book check's limit is 30 (#489). */
-const DAY_MINUTES_FILL = 28.3;
+/** Page filling stops adding items once the day's estimate reaches this; the book check fails a day at 35 (Savar, 2026-11-04: the time is an estimate; fill the page, never reach 35). */
+const DAY_MINUTES_FILL = 32.3;
 /** The same, on a day with existing-writer slots, whose planned minutes are a guess (the writer's text comes later). */
-const DAY_MINUTES_FILL_ESTIMATED = 27.5;
+const DAY_MINUTES_FILL_ESTIMATED = 31.5;
 /** A day's review pages fill first, up to this (short questions; a margin under 30 for the writer's stories). */
-const DAY_MINUTES_REVIEW = 28.8;
+const DAY_MINUTES_REVIEW = 32.8;
 /** Above this estimate a day plans template practice items fewer before any writing. */
-const DAY_MINUTES_MOST = 29.3;
+const DAY_MINUTES_MOST = 33.3;
 
 /** Places whose items capacity may plan fewer of: practice and review, never a teaching panel, Friday 5 or a test. */
 const DROP_PLACES: ReadonlySet<string> = new Set(["remember-these", "on-your-own", "finish-these", "practice-row", "unit-b-practice", "now-you", "word-problems", "challenge", "picture-stories", "show-what-you-know", "mixed-set", "math-in-the-world"]);
@@ -2642,10 +2666,10 @@ function repickPanels(input: GenerateInput, work: PageWork[], w: PageWork): void
     ...work.filter((p) => p !== w).flatMap((p) => panelTasks(input, p)),
   ]);
   for (const panel of w.panels) {
-    const task = (attempt: number) => { const c = contractFor(input, w, panelSlot(w, panel), attempt); const pkg = c ? contractPackage(input, w, c) : null; return pkg ? taskIdentity(pkg) : null; };
+    const task = (attempt: number) => { const c = contractFor(input, w, panelSlot(w, panel), attempt); const pkg = c ? contractPackage(input, w, c) : null; return pkg && workableExample(pkg) ? taskIdentity(pkg) : null; };
     const now = task(panel.attempt ?? 0);
-    if (now === null) continue;
-    if (taken.has(now)) for (let attempt = 0; attempt < 64; attempt++) {
+    // (One it cannot work, or one the book asks, takes another.)
+    if (now === null || taken.has(now)) for (let attempt = 0; attempt < 64; attempt++) {
       const t = task(attempt);
       if (t && !taken.has(t)) { panel.attempt = attempt; break; }
     }
@@ -2749,14 +2773,27 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         });
         // (A page that fits below its planned count fills on too: 5 large questions met the fullness check, the full U4
         // book's Day 9, where the floor is 8.)
-        const short = fit.ok && w.slots.length < minimum && (w.page.refills ?? 0) < 8;
+        // (Refills stop well before the round limit, so the page's last state is always one that was checked.)
+        // (Practice pages only: their floor is 8, Savar's 8 to 10; a new idea's is 2.)
+        const refillPage = ["practice", "practice-2", "word-problems"].includes(w.page.type);
+        // (Below the page's floor too, whatever the plan gave it: 7 practice questions fit a U4 page and met its
+        // fullness, while its floor is 8, Savar's 8 to 10.)
+        const counted = w.slots.filter((s) => !["spot-the-error", "solve-it-two-ways", "warm-up", "how-do-you-know"].includes(s.place ?? "")).length;
+        const belowFloor = !w.page.extraPractice && counted < pageMinimum(w.page.type, input.plan.level, false);
+        const wanted = Math.max(minimum, w.slots.length + (belowFloor ? 1 : 0));
+        const short = refillPage && fit.ok && w.slots.length < wanted && (w.page.refills ?? 0) < 8 && round < 48;
+        // (Its floor does not fit beside the full example panel, two refills on: the panel becomes a one-line reminder,
+        // U4 to U9, Savar 2026-11-04 "make the practice-page panel a one-line reminder rather than a full panel".)
+        if (belowFloor && (fit.ok || (w.page.refills ?? 0) >= 2) && !w.page.compactPanel && input.plan.level <= 9 && ["practice", "practice-2"].includes(w.page.type) && w.panels.some((x) => x.place === "watch-one")) {
+          w.page.compactPanel = true; w.page.refills = 0; continue;
+        }
         if (fit.ok && !short) break;
         if (short || !fit.ok && fit.problems.every(p => p.kind === "fullness")) {
           added = null;
           const open = (s: Slot) => !s.existing && ["remember-these","on-your-own","finish-these","practice-row","unit-b-practice","now-you","word-problems","challenge"].includes(s.place ?? "") && !!s.place && w.slots.filter(x=>x.layoutSlot===s.layoutSlot).length < slotMax(s.place,{level:input.plan.level,pages:input.plan.pagesADay.max,consistentLayout:true,extraPractice:!!w.page.extraPractice});
           // (A page refilling below its planned count adds to its practice, which may take a short question of an earlier
           // step, not to a review of one tall kind: the full U4 book's Day 9.)
-          const refilling = w.slots.length >= ceiling && w.slots.length < minimum;
+          const refilling = refillPage && w.slots.length >= ceiling && w.slots.length < wanted;
           const target = (refilling ? w.slots.findLast(s => open(s) && ["on-your-own", "finish-these", "practice-row"].includes(s.place ?? "")) : undefined) ?? w.slots.findLast(open);
           // An added item must keep the day's estimate under 30 minutes, with a margin (#489: templates read longer).
           // (A refill back to the planned count may use the day's last minutes, under 30: the full U4 book's Day 1 page 6.)
@@ -2767,7 +2804,7 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
           // The day at its time limit is the page's maximum: its gaps may spread (the report shows its occupied height).
           // (A page below its planned count takes questions again once it has room: a drop lowered its ceiling while a
           // tall question was still on it, the full U4 book's Day 9 at 24 minutes with 4 of 8 questions.)
-          const refill = w.slots.length < minimum && (w.page.refills ?? 0) < 8;
+          const refill = refillPage && w.slots.length < wanted && (w.page.refills ?? 0) < 8 && round < 48;
           if (target && (w.slots.length < ceiling || refill) && w.layout && !timeOk) w.page.timeLimited = true;
           if (target && (w.slots.length < ceiling || refill) && w.layout && timeOk) {
             if (w.slots.length >= ceiling) w.page.refills = (w.page.refills ?? 0) + 1;
@@ -2795,10 +2832,11 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
               if (stem && !NUMBER_PLACES.has(slot.place ?? "") && stemCount(input,w,stem)>=2) continue;
               if (tooEasyStory(input,slot,c,built.package) || notAStory(input,slot,c,built.package,w.page.type) || cardFrameTaken(input,work,slot,built.package)) continue;
               if (!["word-problems","challenge"].includes(w.page.type)) {
-                const type=taskType(built.package);
-                const same=w.slots.filter(s=>s.contract).filter(s=>{
+                // (Counted as the book check counts them: a template item by its printed form.)
+                const type=typeKey(w.page,{itemPlan:c,package:built.package});
+                const same=w.slots.filter(s=>s.contract && s.place!=="warm-up").filter(s=>{
                   const p=buildPlannedItem(s.contract!,s.contract!.item,{id:"capacity",workbookId:input.workbookId,page:w.number,question:1,level:input.plan.level,skills:[s.contract!.item.skill]}).package;
-                  return p && taskType(p)===type;
+                  return p && typeKey(w.page,{itemPlan:s.contract!,package:p})===type;
                 }).length;
                 if (same>=Math.ceil((w.slots.length+1)/2)) continue;
               }
@@ -2808,6 +2846,8 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
             }
             if (added) {
               w.slots.splice(w.slots.findLastIndex(s=>s.layoutSlot===layoutSlot)+1,0,added); w.layout.slots[layoutSlot].items++;
+              // (A new question is measured with the page's normal gaps: grown gaps would push it off the page.)
+              w.page.extraGap = 0; w.page.atMaximum = false;
               // (A question taken again where one was dropped for room: the part's omission is made good.)
               const part = (Number(added.id.split(".")[0]) || 1) - 1;
               const lost = w.layout.omissions.find(o => o.part === part && o.requested > o.placed && !o.time) ?? w.layout.omissions.find(o => o.requested > o.placed && !o.time);
@@ -2815,6 +2855,10 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
               continue;
             }
             ceiling=w.slots.length;
+          }
+          // (Nothing more fits beside the full example panel, below the floor: the panel becomes a one-line reminder.)
+          if (belowFloor && !w.page.compactPanel && input.plan.level <= 9 && ["practice", "practice-2"].includes(w.page.type) && w.panels.some((x) => x.place === "watch-one")) {
+            w.page.compactPanel = true; w.page.refills = 0; ceiling = Math.max(ceiling, w.slots.length + 2); continue;
           }
           if (short) break;
           if (!w.page.fillingComplete) { w.page.fillingComplete=true; continue; }
@@ -2916,7 +2960,7 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         }
         if (shortened) continue;
         // Then a worked example takes a shorter free task (the real U4 sample: a three-line example cost two questions).
-        const taskOf = (panel: Panel, attempt: number) => { const c = contractFor(input, w, panelSlot(w, panel), attempt); const pkg = c ? contractPackage(input, w, c) : null; return c && pkg ? { text: c.item.text, task: taskIdentity(pkg) } : null; };
+        const taskOf = (panel: Panel, attempt: number) => { const c = contractFor(input, w, panelSlot(w, panel), attempt); const pkg = c ? contractPackage(input, w, c) : null; return c && pkg && workableExample(pkg) ? { text: c.item.text, task: taskIdentity(pkg) } : null; };
         const usedTasks = new Set([...work.flatMap((p) => p.slots.flatMap((s) => { const pkg = s.contract ? contractPackage(input, p, s.contract) : null; return pkg && s.place !== "warm-up" ? [taskIdentity(pkg)] : []; })), ...work.filter((p) => p !== w).flatMap((p) => panelTasks(input, p))]);
         let shorterPanel = false;
         for (const panel of w.panels) {
@@ -2941,7 +2985,8 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         // the book taught (Savar, 2026-11-03, the full U4 book's likelihood days: mix in review rather than lose work).
         let swapped = false;
         // (A hand-built likelihood card too: "Will a sock lay an egg?" with its three words prints taller than "8 is 5 and ?".)
-        for (const tall of [...w.slots].filter(s => s.contract && !s.existing && (s.swaps ?? 0) < 3 && ["on-your-own", "finish-these", "practice-row", "now-you", "unit-b-practice", "remember-these"].includes(s.place ?? "")).sort((a, b) => plannedTallness(b) - plannedTallness(a)).slice(0, 4)) {
+        // (U4 to U9: from U10 a practice page keeps its own step, so a review question never replaces one there.)
+        if (input.plan.level <= 9) for (const tall of [...w.slots].filter(s => s.contract && !s.existing && (s.swaps ?? 0) < 3 && ["on-your-own", "finish-these", "practice-row", "now-you", "unit-b-practice", "remember-these"].includes(s.place ?? "")).sort((a, b) => plannedTallness(b) - plannedTallness(a)).slice(0, 4)) {
           const was = plannedTallness(tall);
           const planned = (p: PageWork) => p.slots.flatMap(s => { const pkg = s.contract && s !== tall ? contractPackage(input, p, s.contract) : null; return pkg && s.place !== "warm-up" ? [pkg] : []; });
           const taken = new Set([...work.flatMap(p => planned(p).map(taskIdentity)), ...work.flatMap(p => panelTasks(input, p))]);
@@ -2961,6 +3006,10 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
             if (sentence && (onPage.has(sentence) || today.filter(x => x === sentence).length >= 2)) continue;
             const stem = stemOf(b.package);
             if (stem && stemCount(input, w, stem, tall) >= 2) continue;
+            // (Half a page of one kind at most, as the book check counts kinds.)
+            const kind = typeKey(w.page, { itemPlan: c, package: b.package });
+            const others = w.slots.filter((s) => s !== tall && s.contract && s.place !== "warm-up").map((s) => { const q = contractPackage(input, w, s.contract!); return q ? typeKey(w.page, { itemPlan: s.contract!, package: q }) : ""; });
+            if (others.filter((k) => k === kind).length + 1 > Math.ceil((others.length + 1) / 2)) continue;
             tall.contract = c; tall.part = part; tall.swaps = (tall.swaps ?? 0) + 1; swapped = true;
           }
           if (swapped) break;

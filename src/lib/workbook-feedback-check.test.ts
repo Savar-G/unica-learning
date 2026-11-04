@@ -68,14 +68,15 @@ describe("Savar's workbook feedback as permanent checks", () => {
     const m={visible:true,clientHeight:700,y:200,height:700} as MeasuredElement;
     measured.set("slot-content",m);
     for(const question of page.questions) measured.set(`question-${question.number}`,{...m,height:500});
-    expect(fullnessProblem(page,measured)).toMatch(/occupy/);
-    for(const question of page.questions) measured.set(`question-${question.number}`,{...m,height:600});
+    // (A day page never leaves its bottom empty, Savar 2026-11-04.)
+    expect(fullnessProblem(page,measured)).toMatch(/occupy|empty at the bottom/);
+    for(const question of page.questions) measured.set(`question-${question.number}`,{...m,height:660});
     expect(fullnessProblem(page,measured)).toBeNull();
   });
-  it("includes worked-example reading time and refuses a day estimate above 30 minutes", () => {
+  it("includes worked-example reading time and refuses a day estimate of 35 minutes or more", () => {
     expect(estimatedDayMinutes(Array.from({length:50},()=>q()),4)).toBe(19);
     expect(estimatedDayMinutes(Array.from({length:100},()=>q()),4)).toBeGreaterThan(30);
-    expect(dayTimeProblem(Array.from({length:100},()=>q()),4)).toMatch(/limit is 30/);
+    expect(dayTimeProblem(Array.from({length:200},()=>q()),4)).toMatch(/under 35/);
   });
 });
 

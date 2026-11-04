@@ -4534,3 +4534,29 @@ Savar approved writing hard Challenge templates for the U16 day steps that had t
 
 Code's two-step Challenge cards for U4 (Savar: the last fill of a short U4 Challenge) are made from each U4 number step's own range by `twoStepTemplates` in the same file, not stored here; likelihood steps get three cards that reason from a bag's cubes.
 
+## Unica's shorter U4 wording (2026-11-04)
+
+Savar confirmed 8 to 10 practice questions a page, so the wordiest templates a U4 book prints are shorter there (option A, Codex at e6d79b6a's B4 follow-up). Only the printed words change, and only in a U4 book: each keeps its slots, answer, difficulty and what it asks; the Kindergarten books keep Cedric's words. The rewrites live in `LEVEL_REWRITES` in `src/lib/workbook-curriculum/house-templates.ts`, and a test checks each still matches Cedric's text.
+
+| Skill | Step | Template | Cedric's text | U4 text |
+|---|---:|---:|---|---|
+| K3-part-part-whole | 3 | 5 | `Out of {w} {things}, {name} puts {p} in a {container}. {name} says the rest is {claim}. Is that right? If not, say how many.` | `{w} {things}: {p} in a {container}. {name} says the rest is {claim}. Is that right? If not, fix it.` |
+| K1-count-scattered | 3 | 4 | `{name} counts {c} {things} in a circle and says {a}. Is that right? If not, say the right number.` | `{c} {things} in a circle. {name} counts {a}. Is that right? If not, fix it.` |
+| K1-write-numerals | 3 | 4 | `{name} wrote {a} for the number {n}. Is that right? If not, write the right number.` | `{name} writes {a} for {n}. Is that right? If not, fix it.` |
+| K5-two-more-less | 3 | 5 | `{name} says 2 more than {s} is {claim}. Is that right? If not, say the right number.` | `{name} says 2 more than {s} is {claim}. Is that right? If not, fix it.` |
+| K5-two-more-less | 3 | 3 | `{name} has {s} {things}. {name} gets 2 more. How many {things} does {name} have now?` | `{name} has {s} {things} and gets 2 more. How many {things} now?` |
+| 1.1-subitize-to-10 | 3 | 3 | `{name} has {w} {things}. {p} are red and the rest are blue. How many are blue?` | `{name} has {w} {things}. {p} are red, the rest blue. How many blue?` |
+| 1.10-likelihood-words | 1 | 4 | `{name} thinks about this: {ev}. Circle never, sometimes or always.` | `Think: {ev}. Circle never, sometimes or always.` |
+| 1.10-likelihood-words | 1 | 1 | `{name} says {animals} can drive a car. Circle never, sometimes or always.` | `Can {animals} drive a car? Circle never, sometimes or always.` |
+| 1.1-count-to-20 | 3 | 2 | `{name} counts down from {s} at the rink. What does {name} say next?` | `{name} counts down from {s}. What comes next?` |
+| 1.2-decompose-within-10 | 1 | 3 | `{name} has {w} {things}. {p} of them {be} red and the rest are blue. How many are blue?` | `{w} {things}: {p} red, the rest blue. How many are blue?` |
+| 1.2-decompose-within-10 | 2 | 3 | `{name} has {w} {things}. {p} of them {be} red and the rest are blue. How many are blue?` | `{w} {things}: {p} red, the rest blue. How many are blue?` |
+| 1.2-decompose-within-10 | 3 | 3 | `{name} has {w} {things}. {p} of them {be} red and the rest are blue. How many are blue?` | `{w} {things}: {p} red, the rest blue. How many are blue?` |
+| 1.2-decompose-within-10 | 1 | 5 | `{name} says {w} is {a} and {claim}. Is that right? If not, write what goes with {a}.` | `{name} says {w} is {a} and {claim}. Is that right? If not, fix it.` |
+| 1.2-decompose-within-10 | 2 | 5 | `{name} says {w} is {a} and {claim}. Is that right? If not, write what goes with {a}.` | `{name} says {w} is {a} and {claim}. Is that right? If not, fix it.` |
+| 1.1-subitize-to-10 | 1 | 2 | `True or false: if you count {n} {things}, the last number you say is {shown}.` | `True or false: counting {n} {things}, you end on {shown}.` |
+| 1.1-subitize-to-10 | 2 | 2 | `True or false: if you count {n} {things}, the last number you say is {shown}.` | `True or false: counting {n} {things}, you end on {shown}.` |
+| 1.1-subitize-to-10 | 1 | 3 | `{name} has {n} {things}. {name} gets 1 more. How many {things} now?` | `{name} has {n} {things} and gets 1 more. How many {things} now?` |
+| 1.1-subitize-to-10 | 2 | 3 | `{name} has {n} {things}. {name} gets 1 more. How many {things} now?` | `{name} has {n} {things} and gets 1 more. How many {things} now?` |
+| 1.1-count-to-20 | 1 | 2 | `{name} counts {things}. {name} says {s}. What does {name} say next?` | `{name} counts {things} and says {s}. What comes next?` |
+| 1.1-count-to-20 | 2 | 2 | `{name} counts {things}. {name} says {s}. What does {name} say next?` | `{name} counts {things} and says {s}. What comes next?` |

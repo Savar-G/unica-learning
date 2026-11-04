@@ -101,5 +101,6 @@ export function estimatedDayMinutes(questions: readonly QuestionPackage[], panel
 
 export function dayTimeProblem(questions: readonly QuestionPackage[], panels = 0): string | null {
   const minutes=estimatedDayMinutes(questions,panels);
-  return minutes > 30 ? `The day needs an estimated ${minutes} minutes; the limit is 30.` : null;
+  // (An estimate: a day fills its pages up to about 33 minutes and never reaches 35, Savar 2026-11-04.)
+  return minutes >= 35 ? `The day needs an estimated ${minutes} minutes; it must stay under 35.` : null;
 }

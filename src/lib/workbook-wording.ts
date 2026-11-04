@@ -375,18 +375,40 @@ export function singularPlaces(text: string): string {
  * from TAKE_AWAY_VERBS, or a question that names the rest ("How many are not in the jar?"). Put-in, move-to and hide
  * verbs never take away. Compare, missing-part and group questions are not take-aways.
  */
-const TAKE_AWAY_VERBS = /\b(?:gives?|gave|sells?|sold|eats?|ate|loses?|lost|uses?(?: up)?|used(?: up)?|spends?|spent|takes? (?:out|away)|took (?:out|away)|removes?|removed|donates?|donated|sends?|sent|mails?|mailed|trades? away|traded away|pops?|popped|breaks?|broke|drinks?|drank|hands? out|handed out|shares? out|(?:flies|fly|flew|hops?|hopped|runs?|ran|swims?|swam|walks?|walked|goes|go|went|rolls?|rolled|blows?|blew|drives?|drove) away|(?:leaves?|left) (?:the|for)|cross(?:es)? out|crossed out|pours? out|poured out|(?:is|are|was|were) taken|cuts? off)\b/i;
+const REMOVES = "gives?|gave|sells?|sold|eats?|ate|loses?|lost|uses?|used|spends?|spent|takes?|took|removes?|removed|donates?|donated|sends?|sent|mails?|mailed|trades?|traded|pops?|popped|breaks?|broke|drinks?|drank|hands?|handed|shares?|shared|pours?|poured|cuts?|crosses|crossed";
+/** A removal verb right before the number taken ("gives 17", "gives away 17", "takes out 120", "eats 8 of them"). */
+const REMOVED_BEFORE = new RegExp(`\\b(?:${REMOVES})(?: (?:away|out|off|up|back))?(?: (?:the|all|another|its|his|her|their|only))? $`, "i");
+/** The number taken followed by what takes it away ("120 people leave early", "6 fly away", "690 are sold"). */
+const REMOVED_AFTER = /^(?: [a-z]+){0,2} (?:away|out|off|are sold|were sold|are eaten|were eaten|are used|were used|are lost|were lost|are given away|are taken|were taken|leave|leaves|left the|go home|went home|get off|got off|pop|popped|melt|melted|break|broke)\b/i;
 const ASKS_REST = /\bhow many\b[^.?!]*\b(?:have now|has now|(?:does|do|did) [a-z_]+ (?:still )?have|left|remain|remaining|are there now)\b/i;
 const NAMES_REST = /\bhow many\b[^.?!]*\b(?:not|outside|still out|still on the|still in the)\b/i;
 const NOT_TAKE_AWAY = /\b(?:more|fewer|less|than|wants?|needs?|difference|each|in all|altogether|together|equal|share|shares|groups?)\b/i;
+
+/**
+ * A take-away story's verb really takes the things away (Codex at 24751f16 and e6d79b6a, B1): the number taken is the
+ * object of a removal verb in its own clause ("gives 17 away", "takes out 120"), or what it counts goes away ("120
+ * people leave early"); or the question asks for the rest ("How many are not in the jar?"). A removal word elsewhere ("a
+ * jar he uses for beads") does not count. Fail closed for a story whose answer is one printed number less another and
+ * whose question asks what is had now or left. Stories are code's (workbook-code-story.ts): this holds code's frames.
+ */
 export function takeAwayProblem(text: string, answer: number | null | undefined): string | null {
   if (answer === null || answer === undefined || !Number.isFinite(answer)) return null;
-  const question = text.split(/(?<=[.!?])\s+/).filter((s) => s.trim().endsWith("?")).at(-1) ?? "";
-  if (!ASKS_REST.test(question) || NOT_TAKE_AWAY.test(question)) return null;
-  const numbers = (text.replace(/(\d)[   ,](?=\d{3}\b)/g, "$1").match(/\d+(?:\.\d+)?/g) ?? []).map(Number);
-  if (!numbers.some((a) => numbers.some((b) => a > b && Math.abs(a - b - answer) < 1e-9))) return null;
-  if (TAKE_AWAY_VERBS.test(text) || NAMES_REST.test(question)) return null;
-  return `a take-away story takes the things away with a verb that removes them (gives away, sells, eats, loses, uses, spends, takes out) or asks for the rest ("How many are not in the jar?"); putting them in a jar keeps them`;
+  const plain = text.replace(/(\d)[\u00a0\u202f ,](?=\d{3}\b)/g, "$1");
+  const sentences = plain.split(/(?<=[.!?])\s+/);
+  const question = sentences.filter((s) => s.trim().endsWith("?")).at(-1) ?? "";
+  // (A comparison anywhere, "13 fewer stickers than a friend who has 24", is no take-away.)
+  // (Two steps, a take-away then more, "gives 6 away, then gets 3 more", is no single take-away either.)
+  if (!ASKS_REST.test(question) || NOT_TAKE_AWAY.test(question) || /\b(?:more|fewer|less)\b[^.?!]*\bthan\b/i.test(plain) || /\b(?:gets|finds|buys|adds|picks|collects) \d+ more\b/i.test(plain)) return null;
+  const found = [...plain.matchAll(/\d+(?:\.\d+)?/g)].map((m) => ({ n: Number(m[0]), at: m.index!, end: m.index! + m[0].length }));
+  const pairs = found.flatMap((a) => found.filter((b) => a.n > b.n && Math.abs(a.n - b.n - answer) < 1e-9).map((b) => ({ a, b })));
+  if (!pairs.length) return null;
+  if (NAMES_REST.test(question)) return null;
+  const removed = pairs.some(({ b }) => {
+    const start = plain.lastIndexOf(".", b.at) + 1;
+    const before = plain.slice(Math.max(start, b.at - 40), b.at);
+    return REMOVED_BEFORE.test(before) || REMOVED_AFTER.test(plain.slice(b.end, b.end + 40));
+  });
+  return removed ? null : `a take-away story takes the things away with a verb that removes them (gives away, sells, eats, loses, uses, spends, takes out) or asks for the rest ("How many are not in the jar?"); putting them in a jar keeps them`;
 }
 
 /** A minus between numbers prints as "−", never a hyphen: "90 × 870 - 100" reads "90 × 870 − 100" (the U16 r14 review). */

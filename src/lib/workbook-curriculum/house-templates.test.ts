@@ -77,3 +77,29 @@ describe("code's two-step Challenge cards (U4)", () => {
     expect(c.skillSteps("5.9-multiply-tens")![0].templates!.some(isTwoStep)).toBe(false);
   });
 });
+
+describe("Unica's shorter U4 wording", () => {
+  const c = bcStepProgressions();
+  it("rewrites only templates whose text is still Cedric's, with their own slots, shorter, and fills them", async () => {
+    const { LEVEL_REWRITES, templateAtLevel } = await import("./house-templates");
+    const holes = (s: string) => new Set([...s.matchAll(/\{([A-Za-z_0-9]+)\}/g)].map((m) => m[1]));
+    for (const r of LEVEL_REWRITES) {
+      const step = c.skillSteps(r.skill)![r.step - 1];
+      const t = step.templates![r.template - 1];
+      expect(t.text, `${r.skill}#${r.step}.${r.template}`).toBe(r.from);
+      expect(r.to.length).toBeLessThan(r.from.length);
+      for (const h of holes(r.to)) expect(holes(r.from).has(h), `${r.skill}#${r.step}.${r.template} {${h}}`).toBe(true);
+      const shown = templateAtLevel(4, step, r.template - 1, t);
+      expect(shown.text).toBe(r.to);
+      expect(templateAtLevel(1, step, r.template - 1, t).text).toBe(r.from);
+      expect({ ...shown, text: t.text }).toEqual(t);
+      const prepared = prepareTemplate(step, shown, c.contexts);
+      for (let seed = 1; seed <= 40; seed++) {
+        let item;
+        try { item = prepared.fill(seededRandom(seed)); } catch { continue; }
+        expect(item.text).not.toMatch(/\{/);
+        expect(takeAwayProblem(item.text, Number(item.answer)), item.text).toBeNull();
+      }
+    }
+  });
+});

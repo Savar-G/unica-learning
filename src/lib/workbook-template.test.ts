@@ -212,21 +212,20 @@ describe("the fit check", () => {
     const stories = first(draft, "word-problems");
     const c = stories.content!;
     if (c.kind !== "day") throw new Error("not a day page");
-    const why = c.blocks.find((b) => b.slot === "how-do-you-know")!.items[0];
     const story = c.blocks.find((b) => b.slot === "word-problems")!.items[0];
-    const engine = fakePrintEngine({
-      rects: {
-        ...AREA,
-        [`1 question-${why}-answer`]: { x: 64, y: 700, width: 688, height: 60 },
-        [`1 question-${why}`]: { x: 64, y: 690, width: 688, height: 80 },
-        [`1 region-${story}-work`]: { x: 64, y: 300, width: 500, height: 30 },
-      },
-    });
-    const result = await render(only(draft, stories), engine);
-    expect(result.status === "failed" && result.problems.map((p) => [p.question, p.slot, p.reason.replace(/^.*: /, "")])).toEqual([
+    // (From U4 the stories carry work boxes and no How do you know? line, Savar 2026-11-04.)
+    expect(c.blocks.some((b) => b.slot === "how-do-you-know")).toBe(false);
+    const boxed = await render(only(draft, stories), fakePrintEngine({ rects: { ...AREA, [`1 region-${story}-work`]: { x: 64, y: 300, width: 500, height: 30 } } }));
+    expect(boxed.status === "failed" && boxed.problems.map((p) => [p.question, p.slot, p.reason.replace(/^.*: /, "")])).toEqual([
       [story, "word-problems", `question ${story}'s work box height is 30 px; the design allows no less than 64`],
-      [why, "how-do-you-know", `question ${why}'s writing space is 60 px; the design allows no less than 70`],
     ]);
+    // A parent-led stories page (U1 to U3) keeps its writing lines.
+    const early = book("U3");
+    const page = early.pages.find((p) => p.content?.kind === "day" && p.content.blocks.some((b) => b.slot === "how-do-you-know"));
+    if (!page || page.content?.kind !== "day") return;
+    const why = page.content.blocks.find((b) => b.slot === "how-do-you-know")!.items[0];
+    const lined = await render(only(early, page), fakePrintEngine({ rects: { ...AREA, [`1 question-${why}-answer`]: { x: 64, y: 700, width: 688, height: 60 }, [`1 question-${why}`]: { x: 64, y: 690, width: 688, height: 80 } } }));
+    expect(lined.status === "failed" && lined.problems.some((p) => p.question === why && /writing space is 60 px/.test(p.reason))).toBe(true);
   });
 });
 

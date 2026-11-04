@@ -26,6 +26,7 @@
 // key goes to the solve check (src/lib/workbook-solve-check.ts) in the generator.
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness.
 import { BC_SKILL_MAP } from "@/lib/assessment";
+import { isNumberStory } from "@/lib/workbook-code-story";
 import { readNumbers } from "@/lib/number-words";
 import { defaultItem, figureCount } from "@/lib/question-package-items";
 import { codeWordings, isWorded, operationQuestion, printedMinus, quantityStoryProblem, storyProblem, takeAwayProblem, type WordingKind } from "@/lib/workbook-wording";
@@ -769,7 +770,12 @@ function build(raw: unknown, place: SlotPlace): BuiltQuestion {
   // that exact operation as a story, with the same checks and planned context.
   const bareMixed = place.story && format === "tick-and-number" && raw.text === operationQuestion(op);
   // Code writes whole-number questions at U1 to U9 and this bounded recovery at later levels.
-  const worded = !place.preserveText && (place.level <= 9 || bareMixed) && isWorded(op);
+  // A story the writer wrote takes code's wording at every level: its numbers and question are code's (Codex at e6d79b6a,
+  // B1: "puts 17 in a jar" keyed as a take-away).
+  // (Not Solve it two ways: it asks for two methods of a sum, and code's wordings are stories or bare sums.)
+  const writersStory = !place.preserveText && format !== "two-ways" && typeof raw.text === "string" && isNumberStory(raw.text);
+  if (writersStory && !isWorded(op)) return fail("a story's numbers and question come from code, and code has no wording for this operation");
+  const worded = !place.preserveText && (place.level <= 9 || bareMixed || writersStory) && isWorded(op);
   // The box takes the operation's number, so the question must ask for that number, never yes or no or a choice.
   const asks = !worded && typeof raw.text === "string" ? choiceAsked(raw.text) : null;
   if (asks) return fail(`the question asks ${asks}, but its answer is the operation's number: ask for a number (How far is 8 from 10?), or use draw`);
