@@ -16,6 +16,8 @@
 //
 // Usage: npm run workbooks:samples -- [--levels U1,U2,...|all] [--second U5,U12] [--test U12] [--out <folder>]
 //          [--concurrency 6] [--fake] [--api] [--anthropic] [--no-store] [--family-only]
+//          [--days 1,5,10] [--check-only] [--replay <previous folder>] [--diff <previous folder>]
+// Fast loop and review rules: docs/workbook-fast-loop.md; npm run workbook:fast -- --levels U16.
 // --family-only makes (or finds) the test family and its children, prints them, and stops: no AI, no books.
 // The AI (D-200): by default Savar's Claude subscription through `claude -p` (src/lib/workbook-ai.ts: WORKBOOK_CLAUDE_MODEL,
 // WORKBOOK_CLAUDE_SOLVE_MODEL, WORKBOOK_CLAUDE_CONFIG_DIR), with the API (OpenRouter: OPENROUTER_API_KEY or
@@ -29,9 +31,13 @@
 // <label>-solve.jsonl and costed apart. With --fake the solve check answers from the key (free). --fake uses a fake AI for a dry run of the
 // layout: its books are marked FAKE in index.md and are never stored. The secret key: SUPABASE_SECRET_KEY, else the
 // Supabase Management API with SUPABASE_ACCESS_TOKEN or the Keychain item "supabase-pagewise". No key is printed.
+import { sampleAiCache } from "./workbook-sample-cache";
+import { renderSamplePages, samplePrintCache } from "./workbook-sample-render";
+import { samplePages, pagesMarkdown, writePageDiff } from "./workbook-sample-pages";
+import { browserStats, closeSampleBrowser } from "./workbook-sample-browser";
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import sharp from "sharp";
@@ -53,7 +59,7 @@ import { generateWorkbook, type GeneratedWorkbook, type WorkbookDraftStore } fro
 import { measuredPageUse, workbookQuality, type PageUse } from "@/lib/workbook-quality";
 import { reviewDays } from "@/lib/workbook-review-days";
 import { planWorkbook } from "@/lib/workbook-plan";
-import { renderWorkbook, reviewPrint, type PrintEngine, type RenderProblem, type MeasuredElement } from "@/lib/workbook-render";
+import { type PrintEngine, type PrintJob, type RenderProblem, type MeasuredElement } from "@/lib/workbook-render";
 import { sampleChild, samplePlanInput, type SampleBookKind, type SampleChild } from "@/lib/workbook-sample-profiles";
 import { workbookFiles } from "@/lib/workbook-store";
 import { workbookTemplate } from "@/lib/workbook-template";
@@ -70,6 +76,7 @@ const { values } = parseArgs({
   options: {
     levels: { type: "string", default: "all" }, second: { type: "string", default: "" }, test: { type: "string", default: "" },
     steps: { type: "string" }, days: { type: "string" }, out: { type: "string", default: "/tmp/ui-review/samples" }, concurrency: { type: "string", default: "6" },
+    replay: { type: "string" }, diff: { type: "string" }, "check-only": { type: "boolean", default: false },
     fake: { type: "boolean", default: false }, api: { type: "boolean", default: false }, anthropic: { type: "boolean", default: false }, "family-only": { type: "boolean", default: false }, "no-store": { type: "boolean", default: false }, "subscription-only": { type: "boolean", default: false },
   },
 });
@@ -87,7 +94,10 @@ const allLevels = BC.levels.map((l) => l.id);
 const list = (s: string) => (s === "all" ? allLevels : s.split(",").map((x) => x.trim()).filter(Boolean));
 const levels = list(values.levels!);
 for (const l of [...levels, ...list(values.second!), ...list(values.test!)]) if (!allLevels.includes(l as never)) throw new Error(`no level ${l}`);
-const store = !values["no-store"] && !values.fake;
+const concurrency = Number(values.concurrency);
+if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 16) throw new Error("--concurrency must be an integer from 1 to 16.");
+if (values["check-only"] && values.diff) throw new Error("Use --diff with a full fake sample, after --check-only.");
+const store = !values["no-store"] && !values.fake && !values["check-only"];
 if (values["subscription-only"] && (values.api || values.anthropic)) throw new Error("--subscription-only cannot use an API provider");
 
 // ---------- Keys ----------
@@ -282,11 +292,17 @@ interface BookResult {
   calls: number;
   minutes: number;
   pageUse: PageUse[];
+  profile: typeof profile;
+  replay: Awaited<ReturnType<typeof sampleAiCache>>["counts"];
+  changed?: number[];
   error?: string;
 }
 
 const out = values.out!;
 await mkdir(out, { recursive: true });
+for (const source of [values.replay, values.diff]) {
+  if (source && await realpath(source) === await realpath(out)) throw new Error("Replay, diff and output folders must differ.");
+}
 await writeFile(`${out}/run-manifest.json`, JSON.stringify({
   head: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
   consistencyBase: execFileSync("git", ["rev-parse", "origin/site/workbook-consistency"], { encoding: "utf8" }).trim(),
@@ -296,24 +312,35 @@ await writeFile(`${out}/run-manifest.json`, JSON.stringify({
   args: process.argv.slice(2), fake: values.fake, stored: store,
 }, null, 2));
 const template = workbookTemplate(await fixedTemplateFonts());
-// Chromium can fail to start when several start at once: each print gets up to 3 tries, so one failed launch does not
-// lose a whole book.
+// Profile the dependency seams; generation outside these spans includes planning and book checks.
+let phase = "fit";
+const profile: Record<string, { ms: number; calls: number; sheets: number }> = {};
+const fitPages: Record<string, number> = {};
+const printPages: Record<string, number> = {};
+async function timed<T>(name: string, run: () => Promise<T>): Promise<T> {
+  const start = performance.now();
+  try { return await run(); }
+  finally {
+    const p = profile[name] ??= { ms: 0, calls: 0, sheets: 0 };
+    p.ms += performance.now() - start;
+    p.calls++;
+  }
+}
 const chromium = chromiumPrintEngine();
-let lastMeasured: MeasuredElement[] = [];
-const engine: PrintEngine = {
+const rawEngine: PrintEngine = {
   async print(job) {
-    for (let attempt = 1; ; attempt++) {
-      try {
-        const printed = await chromium.print(job);
-        lastMeasured = printed.measured;
-        return printed;
-      } catch (e) {
-        if (attempt >= 3) throw e;
-        await new Promise((r) => setTimeout(r, 1500 * attempt));
-      }
+    for (const match of job.html.matchAll(/data-measure="page-number">(\d+)</g)) {
+      const key = `${match[1]}:${phase}`;
+      printPages[key] = (printPages[key] ?? 0) + 1;
     }
+    const p = profile[phase] ??= { ms: 0, calls: 0, sheets: 0 };
+    p.sheets += job.sheets;
+    const printed = await timed(phase, () => chromium.print(job));
+    return printed;
   },
 };
+
+const engine = samplePrintCache(rawEngine);
 
 async function contactSheet(images: Uint8Array[], draft: GeneratedWorkbook, problems: RenderProblem[], file: string) {
   // The first 8 pages, then failing pages (up to 4), then one of each key day page type not yet shown.
@@ -343,70 +370,125 @@ async function contactSheet(images: Uint8Array[], draft: GeneratedWorkbook, prob
 }
 
 async function oneBook(db: SupabaseClient<Database> | null, family: Family | null, level: string, kind: SampleBookKind, ai: AiClient, drafts: WorkbookDraftStore | null): Promise<BookResult> {
+  for (const name of Object.keys(profile)) delete profile[name];
+  for (const name of Object.keys(fitPages)) delete fitPages[name];
+  for (const name of Object.keys(printPages)) delete printPages[name];
+  engine.clear();
+  const browserBefore = { ...browserStats };
+  const cacheBefore = { ...engine.stats };
+  const t0 = performance.now();
   const child = family?.children.get(level)?.child ?? sampleChild(BC, level)!;
   const childId = family?.children.get(level)?.id ?? randomUUID();
   const parentId = family?.parentId ?? randomUUID();
   const label = `${level}${kind === "first" ? "" : kind === "second" ? "-workbook-2" : "-test-workbook"}`;
   const input = samplePlanInput(BC, child, kind);
+  const planStart = performance.now();
   const planned = planWorkbook(input);
+  profile.plan = { ms: performance.now() - planStart, calls: 1, sheets: 0 };
   if (!planned.ok) throw new Error(`${label}: plan refused: ${planned.reason}`);
-  // WORKBOOK_SAMPLE_ID repeats a reviewed book's seed (its template fills), e.g. the full U16 regression.
-  const workbookId = process.env.WORKBOOK_SAMPLE_ID ?? randomUUID();
+  // Reuse the previous sample's seed, so selection/layout changes keep identical requests reusable.
+  let prior: GeneratedWorkbook | undefined;
+  const previous = values.replay ?? values.diff;
+  if (previous) {
+    prior = await readFile(`${previous}/${label}-draft.json`, "utf8").then(text => JSON.parse(text) as GeneratedWorkbook)
+      .catch(error => { if (error.code === "ENOENT") return undefined; throw error; });
+  }
+  const workbookId = process.env.WORKBOOK_SAMPLE_ID ?? prior?.id ?? randomUUID();
+  const cache = await sampleAiCache(`${out}/${label}-ai-cache.jsonl`, values.replay);
+  const writer = cache.client(ai);
+  const reader = values.fake ? solver : cache.solver(solver);
   costKey = label;
-  const t0 = Date.now();
   const solveLogs: SolveLog[] = [];
-  let layoutToken=0;
-  const result = await generateWorkbook(
+  const fitMeasured = new Map<number, MeasuredElement[]>();
+  let layoutToken = 0;
+  phase = "fit";
+  const result = await timed("generation", () => generateWorkbook(
     { workbookId, childId, number: input.workbook.number, profileBuild: null, plan: reviewDays(planned.plan, values.days), curriculum: BC, book: { child: child.name }, itemPolicy: "approved-v1" },
     {
-      ai, fit: renderFitCheck({ template, engine, parentId, fullness: true }), concurrency: Number(values.concurrency),
+      ai: { model: writer.model, json: (request, signal) => timed("item-writing", () => writer.json(request, signal)) },
+      fit: { async fits(page, book) {
+        const stage = page.questions.some(q => q.package.id.startsWith("budget:")) ? "capacity-fit" : "final-fit";
+        const name = `${page.number}:${stage}`;
+        fitPages[name] = (fitPages[name] ?? 0) + 1;
+        let measured: MeasuredElement[] = [];
+        let lastJob: PrintJob | undefined;
+        const fit = renderFitCheck({ template, parentId, fullness: true, engine: { print: async job => {
+          lastJob = job;
+          const output = await engine.print(job);
+          measured = output.measured;
+          return output;
+        } } });
+        const verdict = await timed(stage, () => fit.fits(page, book));
+        if (verdict.ok && stage === "final-fit" && lastJob) engine.retain(page.number, lastJob);
+        fitMeasured.set(page.number, measured);
+        return verdict;
+      } }, concurrency,
       store: drafts ?? { save: async () => ({ status: "saved", draftId: workbookId }), draft: async () => null },
-      qrToken: () => values.fake && values["no-store"] ? `token-${String(++layoutToken).padStart(12,"0")}` : randomBytes(16).toString("base64url"), timeLimitMs: values.fake ? 900_000 : 240_000,
+      qrToken: () => !store ? `token-${String(++layoutToken).padStart(12, "0")}` : randomBytes(16).toString("base64url"),
+      timeLimitMs: values.fake ? 900_000 : 240_000,
       progress: (done, total) => { if (done % 10 === 0 || done === total) console.log(`  ${label}: ${done}/${total} day pages`); },
-      solver, solveTimeLimitMs: 60_000, now: () => Date.now(), onSolve: (log) => { solveLogs.push(log); },
+      solver: { model: reader.model, solve: (request, signal) => timed("solve", () => reader.solve(request, signal)) },
+      solveTimeLimitMs: 60_000, now: () => Date.now(), onSolve: log => { solveLogs.push(log); },
     },
-  );
-  await writeFile(`${out}/${label}-solve.jsonl`, solveLogs.map((l) => `${JSON.stringify(l)}\n`).join(""));
+  ));
+  await writeFile(`${out}/${label}-solve.jsonl`, solveLogs.map(l => `${JSON.stringify(l)}\n`).join(""));
   if (result.status !== "stored") throw new Error(`${label}: ${result.status === "refused" ? result.reason : "paused"}`);
   const draft = result.draft;
   const renderable = renderableDraft(draft);
-  const fileKey = randomBytes(6).toString("base64url");
-  const strict = await renderWorkbook({ draft: renderable, parentId, template, engine, fileKey });
-  // Every failure shows on its page: the render's, each failed question's (one with no package also has a placeholder
-  // in its slot) and each page the fit check failed. The strict PDF is used only when there is none.
   const problems: RenderProblem[] = [
-    ...(strict.status === "failed" ? strict.problems : []),
-    ...draft.pages.flatMap((p) => p.questions.flatMap((q) => (q.check.status === "failed"
-      ? [{ page: p.number, question: q.package ? q.number : null, reason: `question ${q.number} failed: ${q.check.reason}` }] : []))),
-    ...draft.pages.flatMap((p) => (p.fit.status === "failed" ? p.fit.problems.map((x) => ({ page: p.number, question: x.question, reason: `fit check: ${x.reason}` })) : [])),
+    ...draft.pages.flatMap(p => p.questions.flatMap(q => q.check.status === "failed"
+      ? [{ page: p.number, question: q.number, reason: `question ${q.number} failed: ${q.check.reason}` }] : [])),
+    ...draft.pages.flatMap(p => p.fit.status === "failed" ? p.fit.problems.map(x => ({ page: p.number, question: x.question, reason: `fit check: ${x.reason}` })) : []),
   ];
-  const printed = strict.status === "rendered" && problems.length === 0
-    ? { pdf: strict.files[0].bytes, images: strict.files.slice(1).map((f) => f.bytes) }
-    : await reviewPrint({ draft: renderable, template, engine, problems });
-  const pdf = `${out}/${label}.pdf`;
-  const sheet = `${out}/${label}-contact.png`;
-  const pageUse = measuredPageUse(renderable.pages, lastMeasured).filter(p => draft.pages[p.page - 1]?.content?.kind === "day");
-  await writeFile(`${out}/${label}-draft.json`, JSON.stringify(draft, null, 2));
-  await writeFile(`${out}/${label}-measurements.json`, JSON.stringify({ pageUse, renderProblems: strict.status === "failed" ? strict.problems : [] }, null, 2));
-  await writeFile(pdf, printed.pdf);
-  await mkdir(`${out}/pages/${label}`, { recursive: true });
-  await Promise.all(printed.images.map((png, i) => writeFile(`${out}/pages/${label}/p${String(i + 1).padStart(2, "0")}.png`, png)));
-  await contactSheet(printed.images, draft, problems, sheet);
-  if (db && drafts) {
-    const files = workbookFiles(db);
-    const folder = `${parentId}/${workbookId}`;
-    await files.put({ path: `${folder}/review-${fileKey}.pdf`, contentType: "application/pdf", bytes: printed.pdf });
-    for (const [i, png] of printed.images.entries()) await files.put({ path: `${folder}/review-${fileKey}-page-${i + 1}.png`, contentType: "image/png", bytes: png });
+  let measured = renderable.pages.flatMap((page, i) => (fitMeasured.get(page.number) ?? []).map(m => ({ ...m, sheet: i })));
+  let renderProblems: RenderProblem[] = [];
+  const pdf = `${out}/${label}.pdf`, sheet = `${out}/${label}-contact.png`;
+  if (!values["check-only"]) {
+    phase = "output-print";
+    const printed = await timed("full-output", () => renderSamplePages({ draft: renderable, parentId, template, engine, problems, concurrency,
+      onPhase(name, ms) { const p = profile[name] ??= { ms: 0, calls: 0, sheets: 0 }; p.ms += ms; p.calls++; },
+    }));
+    measured = printed.measured;
+    renderProblems = printed.strictProblems;
+    await writeFile(pdf, printed.pdf);
+    await mkdir(`${out}/pages/${label}`, { recursive: true });
+    await Promise.all(printed.images.map((png, i) => writeFile(`${out}/pages/${label}/p${String(i + 1).padStart(2, "0")}.png`, png)));
+    await timed("contact-sheet", () => contactSheet(printed.images, draft, printed.problems, sheet));
+    if (db && drafts) {
+      const files = workbookFiles(db), folder = `${parentId}/${workbookId}`, fileKey = randomBytes(6).toString("base64url");
+      await files.put({ path: `${folder}/review-${fileKey}.pdf`, contentType: "application/pdf", bytes: printed.pdf });
+      for (const [i, png] of printed.images.entries()) await files.put({ path: `${folder}/review-${fileKey}-page-${i + 1}.png`, contentType: "image/png", bytes: png });
+    }
   }
-  const c = costs.get(label);
-  const sc = solveCosts.get(label);
+  await writeFile(`${out}/${label}-draft.json`, JSON.stringify(draft, null, 2));
+  const pages = await timed("text-dump", async () => samplePages(draft, template, [...problems, ...renderProblems]));
+  await Promise.all([
+    writeFile(`${out}/${label}-pages.md`, pagesMarkdown(label, pages)),
+    writeFile(`${out}/${label}-pages.json`, JSON.stringify(pages, null, 2)),
+  ]);
+  const changed = values.diff ? await timed("diff", () => writePageDiff({ label, before: values.diff!, out, pages })) : undefined;
+  const pageUse = measuredPageUse(renderable.pages, measured).filter(p => draft.pages[p.page - 1]?.content?.kind === "day");
+  await writeFile(`${out}/${label}-measurements.json`, JSON.stringify({ pageUse, renderProblems }, null, 2));
+  const browser = Object.fromEntries(Object.entries(browserStats).map(([key, value]) => [key, value - browserBefore[key as keyof typeof browserStats]]));
+  const renderCache = { hits: engine.stats.hits - cacheBefore.hits, renders: engine.stats.renders - cacheBefore.renders };
+  profile.total = { ms: performance.now() - t0, calls: 1, sheets: draft.pages.length };
+  await writeFile(`${out}/${label}-profile.json`, JSON.stringify({ profile, fitPages, printPages, browser, renderCache, replay: cache.counts }, null, 2));
+  console.log(`  ${label} profile: ${JSON.stringify({ profile, browser, renderCache })}`);
+  console.log(`  ${label} replay: ${cache.counts.replayed} replayed, ${cache.counts.new} new (${cache.counts.solveReplayed} replayed solve checks).`);
+  const quality = draft.quality ?? workbookQuality(draft.pages);
+  console.log(`  ${label} quality: ready=${quality.ready}; failed=${draft.counts.failed}; fit failures=${draft.counts.failedPages}; render problems=${renderProblems.length}; dropped=${quality.dropped}`);
+  if (values["check-only"]) {
+    for (const problem of problems) console.log(`  FAIL p${problem.page}${problem.question ? ` q${problem.question}` : ""}: ${problem.reason}`);
+    for (const issue of quality.issues) console.log(`  FAIL p${issue.page}: ${issue.kind}: ${issue.reason}`);
+    if (!quality.ready || problems.length) process.exitCode = 1;
+  }
+  const c = costs.get(label), sc = solveCosts.get(label);
   return {
-    label, level, kind, child, pageUse, draftId: workbookId, stored: !!drafts, pdf, sheet, draft, renderProblems: strict.status === "failed" ? strict.problems : [],
-    omissions: draft.pages.reduce((n, p) => n + (p.omissions?.length ?? 0), 0), usd: c?.usd ?? 0, calls: c?.calls ?? 0, minutes: (Date.now() - t0) / 60000,
-    solve: {
-      checks: solveLogs.length, disagreed: solveLogs.filter((l) => l.verdict.status === "disagreed").length,
-      failed: solveLogs.filter((l) => l.verdict.status === "failed").length, usd: sc?.usd ?? 0,
-    },
+    label, level, kind, child, pageUse, profile: structuredClone(profile), replay: { ...cache.counts }, changed,
+    draftId: workbookId, stored: !!drafts, pdf, sheet, draft, renderProblems,
+    omissions: draft.pages.reduce((n, p) => n + (p.omissions?.length ?? 0), 0), usd: c?.usd ?? 0, calls: c?.calls ?? 0, minutes: (performance.now() - t0) / 60000,
+    solve: { checks: solveLogs.length, disagreed: solveLogs.filter(l => l.verdict.status === "disagreed").length,
+      failed: solveLogs.filter(l => l.verdict.status === "failed").length, usd: sc?.usd ?? 0 },
   };
 }
 
@@ -459,6 +541,7 @@ const jobs: { level: string; kind: SampleBookKind }[] = [
 ];
 const results: BookResult[] = [];
 // Books run one at a time (their day pages run --concurrency at once), so each AI call's cost counts to its book.
+try {
 for (const job of jobs) {
   console.log(`${job.level} ${job.kind}: drafting`);
   try {
@@ -468,18 +551,20 @@ for (const job of jobs) {
     console.log(`  ${r.label}: ${r.solve.checks} solve checks (${solver.model}), ${r.solve.disagreed} read another way, ${r.solve.failed} failed or late, USD ${r.solve.usd.toFixed(4)}; log ${out}/${r.label}-solve.jsonl`);
     if (providerCounts.has(r.label)) console.log(`  ${r.label}: ${providerLine(r.label)}`);
   } catch (e) {
+    process.exitCode = 1;
     console.error(`  ${job.level} ${job.kind}: ERROR ${e instanceof Error ? e.message : String(e)}`);
     results.push({ label: `${job.level}-${job.kind}`, level: job.level, kind: job.kind, error: e instanceof Error ? e.message : String(e) } as BookResult);
   }
   await writeIndex();
 }
+} finally { await closeSampleBrowser(); }
 
 async function writeIndex() {
   const ok = results.filter((r) => !r.error);
   const total = ok.reduce((n, r) => n + r.usd + r.solve.usd, 0);
   const rows = results.map((r) => r.error
     ? `| ${r.label} | | | | | | | | | ERROR: ${r.error.replace(/\|/g, "/")} |`
-    : `| [${r.label}](${r.label}.pdf) | ${r.child.name} | ${r.draft.counts.pages} | ${r.draft.counts.questions} | ${r.draft.counts.failed} | ${new Set([...r.renderProblems.map((p) => p.page), ...r.draft.pages.filter((p) => p.fit.status === "failed").map((p) => p.number)]).size} | ${r.draft.counts.notChecked} | ${r.draft.pages.reduce((n, p) => n + (p.leftOut?.length ?? 0), 0)} | ${values.fake ? "FAKE AI" : `USD ${r.usd.toFixed(2)}`} | [sheet](${r.label}-contact.png) |`);
+    : `| ${values["check-only"] ? r.label : `[${r.label}](${r.label}.pdf)`} | ${r.child.name} | ${r.draft.counts.pages} | ${r.draft.counts.questions} | ${r.draft.counts.failed} | ${new Set([...r.renderProblems.map((p) => p.page), ...r.draft.pages.filter((p) => p.fit.status === "failed").map((p) => p.number)]).size} | ${r.draft.counts.notChecked} | ${r.draft.pages.reduce((n, p) => n + (p.leftOut?.length ?? 0), 0)} | ${values.fake ? "FAKE AI" : `USD ${r.usd.toFixed(2)}`} | ${values["check-only"] ? "not made" : `[sheet](${r.label}-contact.png)`} |`);
   const failures = ok.flatMap((r) => [
     ...r.draft.pages.flatMap((p) => p.questions.filter((q) => q.check.status === "failed").map((q) => `- ${r.label} p${p.number} q${q.number} (${q.place ?? q.part}): ${(q.check as { reason: string }).reason}`)),
     ...r.renderProblems.map((p) => `- ${r.label} p${p.page}${p.question ? ` q${p.question}` : ""}${p.slot ? ` [${p.slot}]` : ""}: ${p.reason}`),
@@ -491,7 +576,10 @@ async function writeIndex() {
     `# Sample workbooks (#363)${values.days ? `: review days ${values.days} only` : ""}${values.fake ? " - FAKE AI DRY RUN, NOT SAMPLES" : ""}`,
     "",
     `Model: ${ai.model}; solve check: ${solver.model}. Books: ${ok.length}. Total AI cost (solve checks included): USD ${total.toFixed(2)}. Draft rows: public.workbook_drafts${store ? "" : " (not stored)"}.`,
-    "Nothing is sent to print or shipped. Failed pages are drawn with a red banner in the PDF and the page images.",
+    values["check-only"] ? "Check only: no full-book PDF, review print or contact sheet." : "Nothing is sent to print or shipped. Failed pages are drawn with a red banner in the PDF and the page images.",
+    "",
+    "## Fast loop evidence",
+    ...ok.map(r => `- ${r.label}: [printed text](${r.label}-pages.md); ${r.replay.replayed} replayed AI calls, ${r.replay.new} new calls (writer ${r.replay.writeReplayed}/${r.replay.writeNew}; solve ${r.replay.solveReplayed}/${r.replay.solveNew}, replayed/new).${r.changed ? ` [Changed pages](${r.label}-diff.md): ${r.changed.join(", ") || "none"}; [changed sheet](${r.label}-changed.png).` : ""} [Profile](${r.label}-profile.json).`),
     "",
     "| Book | Child | Pages | Questions | Failed questions | Failed pages | Not checked by code | Left out after fit | AI cost | Contact sheet |",
     "|---|---|---|---|---|---|---|---|---|---|",
@@ -518,7 +606,7 @@ async function writeIndex() {
       const steps = q.steps?.length ? `${q.steps.map(d => `${d.day}: ${d.average}`).join("; ")} (${q.steps.length >= 2 && q.steps.at(-1)!.average > q.steps[0].average ? "rises" : "flat"})` : "none";
       const src = q.sources;
       const coverage = src && src.total ? `${(src.template / src.total * 100).toFixed(1)}% templates; ${src.handBuilt} hand-built; ${src.existing} existing writer` : "none";
-      return `| ${r.label} | ${(q.failedRate * 100).toFixed(2)}% | ${q.dropped} | ${fullness} | ${q.days.map(d=>`${d.day}: ${d.minutes.toFixed(1)}`).join("; ")} | ${steps} | ${coverage} | subscription ${calls?.subscription ?? 0}; API ${calls?.api ?? 0} | ${passed ? "PASS" : "FAIL"} | ${!values.fake && passed ? "technical checks pass; approval pending" : "HOLD"} |`;
+      return `| ${r.label} | ${(q.failedRate * 100).toFixed(2)}% | ${q.dropped} | ${fullness} | ${q.days.map(d=>`${d.day}: ${d.minutes.toFixed(1)}`).join("; ")} | ${steps} | ${coverage} | subscription ${calls?.subscription ?? 0}; API ${calls?.api ?? 0} | ${passed ? "PASS" : "FAIL"} | ${!values.fake && !values["check-only"] && passed ? "technical checks pass; approval pending" : "HOLD"} |`;
     }),
     ...ok.map(r => `- ${r.label}: largest unoccupied gap ${Math.max(...r.pageUse.map(p=>p.largestGap ?? 0)).toFixed(1)} px; extra practice pages ${r.draft.pages.filter(p=>p.content?.kind === "day" && p.content.extraPractice).length}; spacing failures ${r.pageUse.filter(p=>p.problem).length}.`),
     ...ok.map(r => `- ${r.label}: extra practice questions that repeat a book task (U4 to U9, 40 pages on): ${(r.draft.quality ?? workbookQuality(r.draft.pages)).extraRepeats ?? 0}; time trims ${r.draft.pages.reduce((n,p)=>n+(p.omissions ?? []).filter(o=>o.time).reduce((m,o)=>m+o.requested-o.placed,0),0)}.`),
