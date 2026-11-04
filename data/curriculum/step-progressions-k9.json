@@ -24423,17 +24423,18 @@
      "check": "n != m and m >= 2 and n >= 2"
     },
     {
-     "format": "story",
-     "text": "(picture: a die showing {a} and a die showing {b}) How many dots in all?",
-     "answer": "a + b",
+     "format": "true-false",
+     "difficulty": "hard",
+     "text": "{name} counts {n} {things} and says {shown}. Is {name} right? Write true or false.",
+     "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "m": "count"
+      "n": "count",
+      "flip": "flip"
      },
      "derived": {
-      "a": "m - 4",
-      "b": "1 + m % 4"
+      "shown": "(n) if flip == 0 else ((n) + 1 if (n) < 8 else (n) - 1)"
      },
-     "difficulty": "hard"
+     "check": "n >= 2"
     }
    ],
    "calibration": {
@@ -24559,13 +24560,18 @@
      "check": "n != m and m >= 2 and n >= 2"
     },
     {
-     "format": "story",
-     "text": "(picture: ten-frame with {m} dots) How many empty squares are there?",
-     "answer": "10 - m",
+     "format": "true-false",
+     "difficulty": "hard",
+     "text": "{name} counts {n} {things} and says {shown}. Is {name} right? Write true or false.",
+     "answer": "'true' if flip == 0 else 'false'",
      "slots": {
-      "m": "count"
+      "n": "count",
+      "flip": "flip"
      },
-     "difficulty": "hard"
+     "derived": {
+      "shown": "(n) if flip == 0 else ((n) + 1 if (n) < 10 else (n) - 1)"
+     },
+     "check": "n >= 2"
     }
    ],
    "calibration": {
@@ -24709,20 +24715,14 @@
     },
     {
      "format": "story",
-     "text": "(picture: {w} dots, {p} of them circled) {name} says {claim} are not circled. Is that right? If not, write the right number.",
-     "answer": "'yes' if f == 0 else str(right)",
+     "difficulty": "hard",
+     "text": "{name} picks {w} {foods}. {name} eats {p} of them. How many {foods} are left?",
+     "answer": "w - p",
      "slots": {
       "w": "whole",
-      "p": "part",
-      "f": "flip"
+      "p": "part"
      },
-     "derived": {
-      "right": "w - p",
-      "wrong": "w - p + 1",
-      "claim": "right if f == 0 else wrong"
-     },
-     "check": "p < w and w >= 3",
-     "difficulty": "hard"
+     "check": "1 <= p < w and w >= 3 and w >= 2"
     }
    ],
    "calibration": {
@@ -70021,22 +70021,16 @@
     {
      "format": "choose",
      "difficulty": "medium",
-     "text": "{q} in {n}: the {p1} digit or the {p2} digit?",
-     "answer": "ans",
+     "text": "Which is worth more in {n}: the hundreds digit or the tens digit?",
+     "answer": "'the hundreds digit'",
      "slots": {
-      "n0": "number",
-      "sv": "template_sv",
-      "sw": "template_sw"
+      "n0": "number"
      },
      "derived": {
       "nh": "n0 // 100",
       "nt": "1 + n0 // 10 % 9",
       "no": "1 + n0 % 9",
-      "n": "100 * nh + 10 * nt + no",
-      "q": "'Which is worth more' if sv == 0 else 'Which is worth less'",
-      "p1": "'hundreds' if sw == 0 else 'tens'",
-      "p2": "'tens' if sw == 0 else 'hundreds'",
-      "ans": "'the hundreds digit' if sv == 0 else 'the tens digit'"
+      "n": "100 * nh + 10 * nt + no"
      }
     },
     {
@@ -219603,12 +219597,7 @@
      "text": "Is {a} a perfect square, a perfect cube, both or neither?",
      "answer": "'both' if (isqrt(a)**2 == a) and (round(a**(1/3))**3 == a) else ('a perfect square' if (isqrt(a)**2 == a) else ('a perfect cube' if (round(a**(1/3))**3 == a) else 'neither'))",
      "slots": {
-      "k": "number"
-     },
-     "derived": {
-      "r": "k % 10 + 1",
-      "m": "(k // 10) % 4",
-      "a": "r * r if m == 0 else (r ** 3 if m == 1 else ((k % 3 + 1) ** 6 if m == 2 else k))"
+      "a": "number"
      }
     },
     {
@@ -225185,7 +225174,7 @@
     {
      "format": "compare",
      "difficulty": "easy",
-     "text": "Car A goes {d1} km in {k1} h. Car B goes {d2} km in {j1} h. Which is faster? Write A or B.",
+     "text": "Which is faster? A: {d1} km in {k1} h. B: {d2} km in {j1} h.",
      "answer": "'A' if a > c else 'B'",
      "slots": {
       "a": "unit_rate",
@@ -228834,12 +228823,12 @@
      "format": "compare",
      "difficulty": "medium",
      "text": "Which is larger, √{A} or ∛{v}? Write the larger one.",
-     "answer": "'√' + str(A) if p > q else '∛' + str(v)",
+     "answer": "'the square root' if p > q else 'the cube root'",
      "slots": {
       "p": "edge",
       "q": "edge"
      },
-     "check": "p != q and p >= 3 and q >= 3",
+     "check": "p != q",
      "derived": {
       "A": "p * p",
       "v": "q ** 3"
@@ -228848,13 +228837,10 @@
     {
      "format": "story",
      "difficulty": "hard",
-     "text": "A cube-shaped bin holds {V} cm³. What is the total area of its six faces, in cm²?",
-     "answer": "6 * e * e",
+     "text": "A cube-shaped {container} has edges of {e} cm. What is the total area of its six faces in cm²?",
+     "answer": "6*e*e",
      "slots": {
-      "e": "template_e"
-     },
-     "derived": {
-      "V": "e * e * e"
+      "e": "edge"
      }
     }
    ],

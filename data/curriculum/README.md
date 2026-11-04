@@ -10,7 +10,7 @@ Issue #505. This import builds on PR #482.
 - `author-changes.v1.json`, `.md` and `README.v1.md`: the v1 import history.
 - `page-recipes.v2.json` and `new-mistake-codes.v2.json`: unchanged v2 references.
 
-All 1,623 steps and all 7,999 v2 templates remain. Every step has an easy and a hard template. The active audit fills every template 30 times. It reports 239,970 passed fills, zero failed fills and zero import problems. The evaluator input limits are unchanged.
+All 1,623 steps and all 7,999 v2 template positions remain. Matched comparisons retain v1 content in three U4 steps, two U10 steps, ten U16 steps and two U26 steps. They also retain a v1 sampling domain in one U14 step. The change record identifies each affected template. Every step has an easy and a hard template. The active audit fills every template 30 times. It reports 239,970 passed fills, zero failed fills and zero import problems. The evaluator input limits are unchanged.
 
 The corrected expressions use explicit derived values for numeric sorting, option labels, money formatting and repeated multiplication. Lowest-terms fractions use separate numerator, denominator and expansion ranges. The unused sales-tax cents lists are removed; its templates already derive the prices and taxes from separate named inputs.
 

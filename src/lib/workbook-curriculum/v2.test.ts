@@ -129,6 +129,15 @@ describe("v2 data and answer contracts", () => {
   });
 
   it("keeps numeric cases of conditional hard stories available to the Challenge", () => {
+    for (const step of [1, 2, 3]) {
+      const item = stepTemplateItem({ curriculum: BC, skill: "1.1-subitize-to-10", step, place: "challenge", level: 4, day: 5, ordinal: 0, seed: 7, attempt: 0 });
+      expect(item?.ref.difficulty).toBe("hard");
+      expect(item?.text).not.toMatch(/\(picture:/);
+      if (step === 3) {
+        expect(item?.ref.kind).toBe("story");
+        expect(item?.ref.answer).toMatch(/^\d+$/);
+      }
+    }
     expect(hasHardNumberTemplate(BC, "K3-part-part-whole", 3, 4)).toBe(true);
     for (let seed = 1; seed <= 12; seed++) {
       const item = stepTemplateItem({ curriculum: BC, skill: "K3-part-part-whole", step: 3, place: "challenge", level: 4, day: 1, ordinal: 0, seed, attempt: 0 })!;

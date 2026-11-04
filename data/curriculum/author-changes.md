@@ -3601,3 +3601,533 @@ After:
 ```json
 "'A' if k == 0 else ('B' if k == 1 else 'C')"
 ```
+
+## 3.1-place-value-1000 step 1 template 4 text
+
+Retain the v1 medium choice template at position 4 after the matched selected-day U10 comparison lost mean fullness (72.2534% to 71.9931%). Keep the v2 hard place-value calculation. The restored choice passes both selected-day and full-book comparisons.
+
+Before:
+```json
+"{q} in {n}: the {p1} digit or the {p2} digit?"
+```
+After:
+```json
+"Which is worth more in {n}: the hundreds digit or the tens digit?"
+```
+
+## 3.1-place-value-1000 step 1 template 4 answer
+
+Retain the v1 medium choice template at position 4 after the matched selected-day U10 comparison lost mean fullness (72.2534% to 71.9931%). Keep the v2 hard place-value calculation. The restored choice passes both selected-day and full-book comparisons.
+
+Before:
+```json
+"ans"
+```
+After:
+```json
+"'the hundreds digit'"
+```
+
+## 3.1-place-value-1000 step 1 template 4 slots
+
+Retain the v1 medium choice template at position 4 after the matched selected-day U10 comparison lost mean fullness (72.2534% to 71.9931%). Keep the v2 hard place-value calculation. The restored choice passes both selected-day and full-book comparisons.
+
+Before:
+```json
+{
+  "n0": "number",
+  "sv": "template_sv",
+  "sw": "template_sw"
+}
+```
+After:
+```json
+{
+  "n0": "number"
+}
+```
+
+## 3.1-place-value-1000 step 1 template 4 derived
+
+Retain the v1 medium choice template at position 4 after the matched selected-day U10 comparison lost mean fullness (72.2534% to 71.9931%). Keep the v2 hard place-value calculation. The restored choice passes both selected-day and full-book comparisons.
+
+Before:
+```json
+{
+  "nh": "n0 // 100",
+  "nt": "1 + n0 // 10 % 9",
+  "no": "1 + n0 % 9",
+  "n": "100 * nh + 10 * nt + no",
+  "q": "'Which is worth more' if sv == 0 else 'Which is worth less'",
+  "p1": "'hundreds' if sw == 0 else 'tens'",
+  "p2": "'tens' if sw == 0 else 'hundreds'",
+  "ans": "'the hundreds digit' if sv == 0 else 'the tens digit'"
+}
+```
+After:
+```json
+{
+  "nh": "n0 // 100",
+  "nt": "1 + n0 // 10 % 9",
+  "no": "1 + n0 % 9",
+  "n": "100 * nh + 10 * nt + no"
+}
+```
+
+## 8.1-identify-perfect step 3 template 1 slots
+
+Retain v1 template content and its named number domains after the matched U26 comparisons lost review questions and mean fullness. These two steps pass the selected-day and full-book comparisons together. Keep every v2 template position, easy coverage and hard coverage. Do not restore invalid v1 triangle dimensions.
+
+Before:
+```json
+{
+  "k": "number"
+}
+```
+After:
+```json
+{
+  "a": "number"
+}
+```
+
+## 8.1-identify-perfect step 3 template 1 derived
+
+Retain v1 template content and its named number domains after the matched U26 comparisons lost review questions and mean fullness. These two steps pass the selected-day and full-book comparisons together. Keep every v2 template position, easy coverage and hard coverage. Do not restore invalid v1 triangle dimensions.
+
+Before:
+```json
+{
+  "r": "k % 10 + 1",
+  "m": "(k // 10) % 4",
+  "a": "r * r if m == 0 else (r ** 3 if m == 1 else ((k % 3 + 1) ** 6 if m == 2 else k))"
+}
+```
+After:
+```json
+(absent)
+```
+
+## 8.2-cube-root step 3 template 3 answer
+
+Retain v1 template content and its named number domains after the matched U26 comparisons lost review questions and mean fullness. These two steps pass the selected-day and full-book comparisons together. Keep every v2 template position, easy coverage and hard coverage. Do not restore invalid v1 triangle dimensions.
+
+Before:
+```json
+"'√' + str(A) if p > q else '∛' + str(v)"
+```
+After:
+```json
+"'the square root' if p > q else 'the cube root'"
+```
+
+## 8.2-cube-root step 3 template 3 check
+
+Retain v1 template content and its named number domains after the matched U26 comparisons lost review questions and mean fullness. These two steps pass the selected-day and full-book comparisons together. Keep every v2 template position, easy coverage and hard coverage. Do not restore invalid v1 triangle dimensions.
+
+Before:
+```json
+"p != q and p >= 3 and q >= 3"
+```
+After:
+```json
+"p != q"
+```
+
+## 8.2-cube-root step 3 template 4 text
+
+Retain v1 template content and its named number domains after the matched U26 comparisons lost review questions and mean fullness. These two steps pass the selected-day and full-book comparisons together. Keep every v2 template position, easy coverage and hard coverage. Do not restore invalid v1 triangle dimensions.
+
+Before:
+```json
+"A cube-shaped bin holds {V} cm³. What is the total area of its six faces, in cm²?"
+```
+After:
+```json
+"A cube-shaped {container} has edges of {e} cm. What is the total area of its six faces in cm²?"
+```
+
+## 8.2-cube-root step 3 template 4 answer
+
+Retain v1 template content and its named number domains after the matched U26 comparisons lost review questions and mean fullness. These two steps pass the selected-day and full-book comparisons together. Keep every v2 template position, easy coverage and hard coverage. Do not restore invalid v1 triangle dimensions.
+
+Before:
+```json
+"6 * e * e"
+```
+After:
+```json
+"6*e*e"
+```
+
+## 8.2-cube-root step 3 template 4 slots
+
+Retain v1 template content and its named number domains after the matched U26 comparisons lost review questions and mean fullness. These two steps pass the selected-day and full-book comparisons together. Keep every v2 template position, easy coverage and hard coverage. Do not restore invalid v1 triangle dimensions.
+
+Before:
+```json
+{
+  "e": "template_e"
+}
+```
+After:
+```json
+{
+  "e": "edge"
+}
+```
+
+## 8.2-cube-root step 3 template 4 derived
+
+Retain v1 template content and its named number domains after the matched U26 comparisons lost review questions and mean fullness. These two steps pass the selected-day and full-book comparisons together. Keep every v2 template position, easy coverage and hard coverage. Do not restore invalid v1 triangle dimensions.
+
+Before:
+```json
+{
+  "V": "e * e * e"
+}
+```
+After:
+```json
+(absent)
+```
+
+## 8.4-rates step 3 template 1 text
+
+Shorten the easy rate comparison while keeping the two distances, the two different times, the answer and the difficulty. The previous wording caused one extra Day 3 room omission in the full U26 book. This wording restores that review question and passes the selected-day and full-book comparisons.
+
+Before:
+```json
+"Car A goes {d1} km in {k1} h. Car B goes {d2} km in {j1} h. Which is faster? Write A or B."
+```
+After:
+```json
+"Which is faster? A: {d1} km in {k1} h. B: {d2} km in {j1} h."
+```
+
+## 1.1-subitize-to-10 step 1 template 5 text
+
+Replace an unprinted picture reference with a short description of the same quantities and operation. Keep the story format, hard difficulty, ranges, derived values and answer. The public Challenge test previously selected medium templates. This first rewrite still triggered the picture admission rule; the next entries record its correction.
+
+Before:
+```json
+"(picture: a die showing {a} and a die showing {b}) How many dots in all?"
+```
+After:
+```json
+"One die shows {a} dots. Another shows {b} dots. How many dots in all?"
+```
+
+## 1.1-subitize-to-10 step 2 template 5 text
+
+Replace an unprinted picture reference with a short description of the same quantities and operation. Keep the story format, hard difficulty, ranges, derived values and answer. The public Challenge test previously selected medium templates. This first rewrite still triggered the picture admission rule; the next entries record its correction.
+
+Before:
+```json
+"(picture: ten-frame with {m} dots) How many empty squares are there?"
+```
+After:
+```json
+"A ten-frame has 10 squares. {m} squares have dots. How many squares are empty?"
+```
+
+## 1.1-subitize-to-10 step 3 template 5 text
+
+Replace an unprinted picture reference with a short description of the same quantities and operation. Keep the story format, hard difficulty, ranges, derived values and answer. The public Challenge test previously selected medium templates. This first rewrite still triggered the picture admission rule; the next entries record its correction.
+
+Before:
+```json
+"(picture: {w} dots, {p} of them circled) {name} says {claim} are not circled. Is that right? If not, write the right number."
+```
+After:
+```json
+"{name} has {w} counters and covers {p}. {name} says {claim} are uncovered. Is that right? If not, write the right number."
+```
+
+## 1.1-subitize-to-10 step 1 template 5 text
+
+Use numbers, full spaces and beads in the text-only version. The first rewrite still named dots or counters, which the public picture admission rule rejects. Keep every mathematical quantity, answer, story format and hard difficulty.
+
+Before:
+```json
+"One die shows {a} dots. Another shows {b} dots. How many dots in all?"
+```
+After:
+```json
+"One die has the number {a}. Another has the number {b}. What is the total?"
+```
+
+## 1.1-subitize-to-10 step 2 template 5 text
+
+Use numbers, full spaces and beads in the text-only version. The first rewrite still named dots or counters, which the public picture admission rule rejects. Keep every mathematical quantity, answer, story format and hard difficulty.
+
+Before:
+```json
+"A ten-frame has 10 squares. {m} squares have dots. How many squares are empty?"
+```
+After:
+```json
+"A ten-frame has 10 spaces. {m} spaces are full. How many spaces are empty?"
+```
+
+## 1.1-subitize-to-10 step 3 template 5 text
+
+Use numbers, full spaces and beads in the text-only version. The first rewrite still named dots or counters, which the public picture admission rule rejects. Keep every mathematical quantity, answer, story format and hard difficulty.
+
+Before:
+```json
+"{name} has {w} counters and covers {p}. {name} says {claim} are uncovered. Is that right? If not, write the right number."
+```
+After:
+```json
+"{name} has {w} beads and covers {p}. {name} says {claim} are uncovered. Is that right? If not, write the right number."
+```
+
+## 1.1-subitize-to-10 step 1 template 5 format
+
+The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.
+
+Before:
+```json
+"story"
+```
+After:
+```json
+"true-false"
+```
+
+## 1.1-subitize-to-10 step 1 template 5 text
+
+The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.
+
+Before:
+```json
+"One die has the number {a}. Another has the number {b}. What is the total?"
+```
+After:
+```json
+"{name} counts {n} {things} and says {shown}. Is {name} right? Write true or false."
+```
+
+## 1.1-subitize-to-10 step 1 template 5 answer
+
+The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.
+
+Before:
+```json
+"a + b"
+```
+After:
+```json
+"'true' if flip == 0 else 'false'"
+```
+
+## 1.1-subitize-to-10 step 1 template 5 slots
+
+The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.
+
+Before:
+```json
+{
+  "m": "count"
+}
+```
+After:
+```json
+{
+  "n": "count",
+  "flip": "flip"
+}
+```
+
+## 1.1-subitize-to-10 step 1 template 5 derived
+
+The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.
+
+Before:
+```json
+{
+  "a": "m - 4",
+  "b": "1 + m % 4"
+}
+```
+After:
+```json
+{
+  "shown": "(n) if flip == 0 else ((n) + 1 if (n) < 8 else (n) - 1)"
+}
+```
+
+## 1.1-subitize-to-10 step 1 template 5 check
+
+The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.
+
+Before:
+```json
+(absent)
+```
+After:
+```json
+"n >= 2"
+```
+
+## 1.1-subitize-to-10 step 2 template 5 format
+
+The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.
+
+Before:
+```json
+"story"
+```
+After:
+```json
+"true-false"
+```
+
+## 1.1-subitize-to-10 step 2 template 5 text
+
+The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.
+
+Before:
+```json
+"A ten-frame has 10 spaces. {m} spaces are full. How many spaces are empty?"
+```
+After:
+```json
+"{name} counts {n} {things} and says {shown}. Is {name} right? Write true or false."
+```
+
+## 1.1-subitize-to-10 step 2 template 5 answer
+
+The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.
+
+Before:
+```json
+"10 - m"
+```
+After:
+```json
+"'true' if flip == 0 else 'false'"
+```
+
+## 1.1-subitize-to-10 step 2 template 5 slots
+
+The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.
+
+Before:
+```json
+{
+  "m": "count"
+}
+```
+After:
+```json
+{
+  "n": "count",
+  "flip": "flip"
+}
+```
+
+## 1.1-subitize-to-10 step 2 template 5 derived
+
+The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.
+
+Before:
+```json
+(absent)
+```
+After:
+```json
+{
+  "shown": "(n) if flip == 0 else ((n) + 1 if (n) < 10 else (n) - 1)"
+}
+```
+
+## 1.1-subitize-to-10 step 2 template 5 check
+
+The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.
+
+Before:
+```json
+(absent)
+```
+After:
+```json
+"n >= 2"
+```
+
+## 1.1-subitize-to-10 step 3 template 5 text
+
+The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.
+
+Before:
+```json
+"{name} has {w} beads and covers {p}. {name} says {claim} are uncovered. Is that right? If not, write the right number."
+```
+After:
+```json
+"{name} picks {w} {foods}. {name} eats {p} of them. How many {foods} are left?"
+```
+
+## 1.1-subitize-to-10 step 3 template 5 answer
+
+The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.
+
+Before:
+```json
+"'yes' if f == 0 else str(right)"
+```
+After:
+```json
+"w - p"
+```
+
+## 1.1-subitize-to-10 step 3 template 5 slots
+
+The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.
+
+Before:
+```json
+{
+  "w": "whole",
+  "p": "part",
+  "f": "flip"
+}
+```
+After:
+```json
+{
+  "w": "whole",
+  "p": "part"
+}
+```
+
+## 1.1-subitize-to-10 step 3 template 5 derived
+
+The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.
+
+Before:
+```json
+{
+  "right": "w - p",
+  "wrong": "w - p + 1",
+  "claim": "right if f == 0 else wrong"
+}
+```
+After:
+```json
+(absent)
+```
+
+## 1.1-subitize-to-10 step 3 template 5 check
+
+The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.
+
+Before:
+```json
+"p < w and w >= 3"
+```
+After:
+```json
+"1 <= p < w and w >= 3 and w >= 2"
+```

@@ -6422,5 +6422,499 @@
     "after": "'A' if k == 0 else ('B' if k == 1 else 'C')",
     "why": "The full U14 comparison could not print this hard story as a choice and fell back to an easier builder on Day 9. Use explicit A/B/C choices with the same sum-of-slices comparison. Permit equal pizzas for the greater-than-one case. The shorter prompt retains the story format and hard difficulty. Trial r50 passes the full U14 comparison with zero failed questions, omissions, fit failures or render errors.",
     "kind": "wording-rewrite"
+  },
+  {
+    "skill": "3.1-place-value-1000",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "{q} in {n}: the {p1} digit or the {p2} digit?",
+    "after": "Which is worth more in {n}: the hundreds digit or the tens digit?",
+    "why": "Retain the v1 medium choice template at position 4 after the matched selected-day U10 comparison lost mean fullness (72.2534% to 71.9931%). Keep the v2 hard place-value calculation. The restored choice passes both selected-day and full-book comparisons.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "3.1-place-value-1000",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "answer"
+    ],
+    "before": "ans",
+    "after": "'the hundreds digit'",
+    "why": "Retain the v1 medium choice template at position 4 after the matched selected-day U10 comparison lost mean fullness (72.2534% to 71.9931%). Keep the v2 hard place-value calculation. The restored choice passes both selected-day and full-book comparisons.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "3.1-place-value-1000",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "n0": "number",
+      "sv": "template_sv",
+      "sw": "template_sw"
+    },
+    "after": {
+      "n0": "number"
+    },
+    "why": "Retain the v1 medium choice template at position 4 after the matched selected-day U10 comparison lost mean fullness (72.2534% to 71.9931%). Keep the v2 hard place-value calculation. The restored choice passes both selected-day and full-book comparisons.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "3.1-place-value-1000",
+    "step": 1,
+    "template": 4,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "nh": "n0 // 100",
+      "nt": "1 + n0 // 10 % 9",
+      "no": "1 + n0 % 9",
+      "n": "100 * nh + 10 * nt + no",
+      "q": "'Which is worth more' if sv == 0 else 'Which is worth less'",
+      "p1": "'hundreds' if sw == 0 else 'tens'",
+      "p2": "'tens' if sw == 0 else 'hundreds'",
+      "ans": "'the hundreds digit' if sv == 0 else 'the tens digit'"
+    },
+    "after": {
+      "nh": "n0 // 100",
+      "nt": "1 + n0 // 10 % 9",
+      "no": "1 + n0 % 9",
+      "n": "100 * nh + 10 * nt + no"
+    },
+    "why": "Retain the v1 medium choice template at position 4 after the matched selected-day U10 comparison lost mean fullness (72.2534% to 71.9931%). Keep the v2 hard place-value calculation. The restored choice passes both selected-day and full-book comparisons.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "8.1-identify-perfect",
+    "step": 3,
+    "template": 1,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "k": "number"
+    },
+    "after": {
+      "a": "number"
+    },
+    "why": "Retain v1 template content and its named number domains after the matched U26 comparisons lost review questions and mean fullness. These two steps pass the selected-day and full-book comparisons together. Keep every v2 template position, easy coverage and hard coverage. Do not restore invalid v1 triangle dimensions.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "8.1-identify-perfect",
+    "step": 3,
+    "template": 1,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "r": "k % 10 + 1",
+      "m": "(k // 10) % 4",
+      "a": "r * r if m == 0 else (r ** 3 if m == 1 else ((k % 3 + 1) ** 6 if m == 2 else k))"
+    },
+    "why": "Retain v1 template content and its named number domains after the matched U26 comparisons lost review questions and mean fullness. These two steps pass the selected-day and full-book comparisons together. Keep every v2 template position, easy coverage and hard coverage. Do not restore invalid v1 triangle dimensions.",
+    "kind": "quality-fallback",
+    "afterAbsent": true
+  },
+  {
+    "skill": "8.2-cube-root",
+    "step": 3,
+    "template": 3,
+    "path": [
+      "answer"
+    ],
+    "before": "'√' + str(A) if p > q else '∛' + str(v)",
+    "after": "'the square root' if p > q else 'the cube root'",
+    "why": "Retain v1 template content and its named number domains after the matched U26 comparisons lost review questions and mean fullness. These two steps pass the selected-day and full-book comparisons together. Keep every v2 template position, easy coverage and hard coverage. Do not restore invalid v1 triangle dimensions.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "8.2-cube-root",
+    "step": 3,
+    "template": 3,
+    "path": [
+      "check"
+    ],
+    "before": "p != q and p >= 3 and q >= 3",
+    "after": "p != q",
+    "why": "Retain v1 template content and its named number domains after the matched U26 comparisons lost review questions and mean fullness. These two steps pass the selected-day and full-book comparisons together. Keep every v2 template position, easy coverage and hard coverage. Do not restore invalid v1 triangle dimensions.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "8.2-cube-root",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "text"
+    ],
+    "before": "A cube-shaped bin holds {V} cm³. What is the total area of its six faces, in cm²?",
+    "after": "A cube-shaped {container} has edges of {e} cm. What is the total area of its six faces in cm²?",
+    "why": "Retain v1 template content and its named number domains after the matched U26 comparisons lost review questions and mean fullness. These two steps pass the selected-day and full-book comparisons together. Keep every v2 template position, easy coverage and hard coverage. Do not restore invalid v1 triangle dimensions.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "8.2-cube-root",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "answer"
+    ],
+    "before": "6 * e * e",
+    "after": "6*e*e",
+    "why": "Retain v1 template content and its named number domains after the matched U26 comparisons lost review questions and mean fullness. These two steps pass the selected-day and full-book comparisons together. Keep every v2 template position, easy coverage and hard coverage. Do not restore invalid v1 triangle dimensions.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "8.2-cube-root",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "e": "template_e"
+    },
+    "after": {
+      "e": "edge"
+    },
+    "why": "Retain v1 template content and its named number domains after the matched U26 comparisons lost review questions and mean fullness. These two steps pass the selected-day and full-book comparisons together. Keep every v2 template position, easy coverage and hard coverage. Do not restore invalid v1 triangle dimensions.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "8.2-cube-root",
+    "step": 3,
+    "template": 4,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "V": "e * e * e"
+    },
+    "why": "Retain v1 template content and its named number domains after the matched U26 comparisons lost review questions and mean fullness. These two steps pass the selected-day and full-book comparisons together. Keep every v2 template position, easy coverage and hard coverage. Do not restore invalid v1 triangle dimensions.",
+    "kind": "quality-fallback",
+    "afterAbsent": true
+  },
+  {
+    "skill": "8.4-rates",
+    "step": 3,
+    "template": 1,
+    "path": [
+      "text"
+    ],
+    "before": "Car A goes {d1} km in {k1} h. Car B goes {d2} km in {j1} h. Which is faster? Write A or B.",
+    "after": "Which is faster? A: {d1} km in {k1} h. B: {d2} km in {j1} h.",
+    "why": "Shorten the easy rate comparison while keeping the two distances, the two different times, the answer and the difficulty. The previous wording caused one extra Day 3 room omission in the full U26 book. This wording restores that review question and passes the selected-day and full-book comparisons.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "(picture: a die showing {a} and a die showing {b}) How many dots in all?",
+    "after": "One die shows {a} dots. Another shows {b} dots. How many dots in all?",
+    "why": "Replace an unprinted picture reference with a short description of the same quantities and operation. Keep the story format, hard difficulty, ranges, derived values and answer. The public Challenge test previously selected medium templates. This first rewrite still triggered the picture admission rule; the next entries record its correction.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "(picture: ten-frame with {m} dots) How many empty squares are there?",
+    "after": "A ten-frame has 10 squares. {m} squares have dots. How many squares are empty?",
+    "why": "Replace an unprinted picture reference with a short description of the same quantities and operation. Keep the story format, hard difficulty, ranges, derived values and answer. The public Challenge test previously selected medium templates. This first rewrite still triggered the picture admission rule; the next entries record its correction.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "(picture: {w} dots, {p} of them circled) {name} says {claim} are not circled. Is that right? If not, write the right number.",
+    "after": "{name} has {w} counters and covers {p}. {name} says {claim} are uncovered. Is that right? If not, write the right number.",
+    "why": "Replace an unprinted picture reference with a short description of the same quantities and operation. Keep the story format, hard difficulty, ranges, derived values and answer. The public Challenge test previously selected medium templates. This first rewrite still triggered the picture admission rule; the next entries record its correction.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "One die shows {a} dots. Another shows {b} dots. How many dots in all?",
+    "after": "One die has the number {a}. Another has the number {b}. What is the total?",
+    "why": "Use numbers, full spaces and beads in the text-only version. The first rewrite still named dots or counters, which the public picture admission rule rejects. Keep every mathematical quantity, answer, story format and hard difficulty.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "A ten-frame has 10 squares. {m} squares have dots. How many squares are empty?",
+    "after": "A ten-frame has 10 spaces. {m} spaces are full. How many spaces are empty?",
+    "why": "Use numbers, full spaces and beads in the text-only version. The first rewrite still named dots or counters, which the public picture admission rule rejects. Keep every mathematical quantity, answer, story format and hard difficulty.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "{name} has {w} counters and covers {p}. {name} says {claim} are uncovered. Is that right? If not, write the right number.",
+    "after": "{name} has {w} beads and covers {p}. {name} says {claim} are uncovered. Is that right? If not, write the right number.",
+    "why": "Use numbers, full spaces and beads in the text-only version. The first rewrite still named dots or counters, which the public picture admission rule rejects. Keep every mathematical quantity, answer, story format and hard difficulty.",
+    "kind": "wording-rewrite"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "format"
+    ],
+    "before": "story",
+    "after": "true-false",
+    "why": "The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "One die has the number {a}. Another has the number {b}. What is the total?",
+    "after": "{name} counts {n} {things} and says {shown}. Is {name} right? Write true or false.",
+    "why": "The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "answer"
+    ],
+    "before": "a + b",
+    "after": "'true' if flip == 0 else 'false'",
+    "why": "The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "m": "count"
+    },
+    "after": {
+      "n": "count",
+      "flip": "flip"
+    },
+    "why": "The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "a": "m - 4",
+      "b": "1 + m % 4"
+    },
+    "after": {
+      "shown": "(n) if flip == 0 else ((n) + 1 if (n) < 8 else (n) - 1)"
+    },
+    "why": "The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 1,
+    "template": 5,
+    "path": [
+      "check"
+    ],
+    "after": "n >= 2",
+    "why": "The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.",
+    "kind": "quality-fallback",
+    "beforeAbsent": true
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "format"
+    ],
+    "before": "story",
+    "after": "true-false",
+    "why": "The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "A ten-frame has 10 spaces. {m} spaces are full. How many spaces are empty?",
+    "after": "{name} counts {n} {things} and says {shown}. Is {name} right? Write true or false.",
+    "why": "The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "answer"
+    ],
+    "before": "10 - m",
+    "after": "'true' if flip == 0 else 'false'",
+    "why": "The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "m": "count"
+    },
+    "after": {
+      "n": "count",
+      "flip": "flip"
+    },
+    "why": "The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "derived"
+    ],
+    "after": {
+      "shown": "(n) if flip == 0 else ((n) + 1 if (n) < 10 else (n) - 1)"
+    },
+    "why": "The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.",
+    "kind": "quality-fallback",
+    "beforeAbsent": true
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 2,
+    "template": 5,
+    "path": [
+      "check"
+    ],
+    "after": "n >= 2",
+    "why": "The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.",
+    "kind": "quality-fallback",
+    "beforeAbsent": true
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "text"
+    ],
+    "before": "{name} has {w} beads and covers {p}. {name} says {claim} are uncovered. Is that right? If not, write the right number.",
+    "after": "{name} picks {w} {foods}. {name} eats {p} of them. How many {foods} are left?",
+    "why": "The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "answer"
+    ],
+    "before": "'yes' if f == 0 else str(right)",
+    "after": "w - p",
+    "why": "The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "slots"
+    ],
+    "before": {
+      "w": "whole",
+      "p": "part",
+      "f": "flip"
+    },
+    "after": {
+      "w": "whole",
+      "p": "part"
+    },
+    "why": "The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.",
+    "kind": "quality-fallback"
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "derived"
+    ],
+    "before": {
+      "right": "w - p",
+      "wrong": "w - p + 1",
+      "claim": "right if f == 0 else wrong"
+    },
+    "why": "The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.",
+    "kind": "quality-fallback",
+    "afterAbsent": true
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 3,
+    "template": 5,
+    "path": [
+      "check"
+    ],
+    "before": "p < w and w >= 3",
+    "after": "1 <= p < w and w >= 3 and w >= 2",
+    "why": "The text-only hard v2 stories fill, but the matched U4 comparison reduced mean fullness from 81.9172% to 81.0021%. Retaining v1 hard content in steps 2 and 3 still gave 81.9046%. Retain the v1 hard template at position 5 in all three steps. This restores nine hard Challenge cards and passes every U4 regression metric. Keep the other v2 templates.",
+    "kind": "quality-fallback"
   }
 ]
