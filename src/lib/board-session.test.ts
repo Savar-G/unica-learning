@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { childStrokes, createHistory, loadDraft, mayaWrites, penHolder, type BoardHistory, type InkStroke } from "@/lib/board-history";
+import { boardScene, childStrokes, createHistory, loadDraft, mayaWrites, penHolder, rebaseOnto, refusedBatches, replayFrame, replayOf, withChildInk, type BoardHistory, type InkStroke } from "@/lib/board-history";
+import { boardPaths } from "@/lib/board";
 import { createFakeTimers, createMemoryChannels, createMemoryDraftStore, createMemoryLocks } from "@/lib/board-history-memory";
 import { createBoardSession, type SessionNote } from "@/lib/board-session";
 import { HAND_OVER_MS, OPEN_RETRY_MS, OPEN_TRIES, leaseLocks, openBoardTab, type BoardChannel } from "@/lib/board-tab";
@@ -266,5 +267,117 @@ describe("a stroke in progress, and every way out of holding the board", () => {
     const c = await b.open("c");
     expect(c.draw(0.5)).toBe(false);
     expect(c.notes).toContain("elsewhere");
+  });
+});
+
+describe("Maya's replies in a chat (#534)", () => {
+  const REPLY = {
+    transactionId: "reply-1",
+    commands: [{ op: "columns", id: "work", operation: "add", operands: [{ id: "a", value: "27" }, { id: "b", value: "39" }], place: { region: "main" } }],
+  };
+  const mayaIds = (h: BoardHistory) => h.events.flatMap((e) => (e.kind === "maya" ? [e.batchId] : []));
+
+  it("Maya's reply takes the pen while she writes, never removes the child's ink, and the pen comes back", async () => {
+    const b = browser();
+    const t = await b.first();
+    expect(t.draw(0.1)).toBe(true);
+    const ink = childStrokes(t.session.view().history);
+    expect(ink).toHaveLength(1);
+
+    expect(t.session.mayaReply([QUESTION, REPLY])).toBe(1);
+    const written = t.session.view().history;
+    expect(mayaIds(written)).toEqual(["desk-question", "reply-1"]);
+    expect(childStrokes(written)).toEqual(ink);
+    expect(penHolder(written)).toBe("maya");
+    expect(t.draw(0.3)).toBe(false);
+    expect(t.notes).toContain("pen_with_maya");
+
+    t.session.handBack();
+    expect(penHolder(t.session.view().history)).toBe("child");
+    expect(t.draw(0.3)).toBe(true);
+    // The same reply again writes nothing.
+    expect(t.session.mayaReply([QUESTION, REPLY])).toBe(0);
+    // The draft holds Maya's work and both of the child's lines.
+    const stored = loadDraft(b.store, KEY)!;
+    expect(mayaIds(stored)).toEqual(["desk-question", "reply-1"]);
+    expect(childStrokes(stored)).toHaveLength(2);
+  });
+
+  it("a stroke in progress when Maya's reply comes ends and is kept, never dropped", async () => {
+    const b = browser();
+    const t = await b.first();
+    t.begin(0.2);
+    expect(t.session.mayaReply([REPLY])).toBe(1);
+    expect(places(b, 0.2, t.session.view().kept)).toEqual({ stored: 1, kept: 0 });
+    expect(t.session.view().live).toBeNull();
+  });
+
+  it("a tab showing the board read-only writes no reply", async () => {
+    const b = browser();
+    await b.first();
+    const c = await b.open("c");
+    expect(c.session.mayaReply([REPLY])).toBe(0);
+    expect(mayaIds(loadDraft(b.store, KEY)!)).toEqual(["desk-question"]);
+  });
+
+  it("R625b-1: a reply the desk refused (it would cover the child's line) is not drawn in the replay, whatever the call's times say", () => {
+    let t = 0;
+    const desk = createBoardSession({ initial: createHistory(), restored: false, clock: () => t, wall: () => t, noStore: true });
+    const glow = { transactionId: "glow", commands: [{ op: "mark", id: "onesGlow", target: { objectId: "question", part: "column", column: "ones" }, style: "highlight", ink: "yellow" }] };
+    expect(desk.mayaReply([QUESTION])).toBe(1);
+    desk.handBack();
+    // The child draws across the sum at 6 s.
+    const digits = boardPaths(boardScene(desk.view().history)).filter((p) => p.objectId === "question").flatMap((p) => p.pts);
+    const y = (Math.min(...digits.map((p) => p[1])) + Math.max(...digits.map((p) => p[1]))) / 2;
+    t = 6000;
+    expect(desk.penDown([Math.min(...digits.map((p) => p[0])) - 0.02, y], false, 800)).toBe(true);
+    t = 6300;
+    desk.penMove([[Math.max(...digits.map((p) => p[0])) + 0.02, y]]);
+    desk.penUp();
+    // Maya's highlight was recorded at 5 s, but it reached the child's board at 7 s, over the line: the desk refused it.
+    t = 7000;
+    expect(desk.mayaReply([QUESTION, glow])).toBe(0);
+    expect(desk.mayaReply([QUESTION, glow])).toBe(0);
+    let call = mayaWrites(createHistory(), QUESTION, 0);
+    if (!call.ok) throw new Error("question");
+    call = mayaWrites(call.history, glow, 5000);
+    if (!call.ok) throw new Error("glow");
+    const merged = withChildInk(call.history, desk.view().history);
+    expect(childStrokes(merged)).toHaveLength(1);
+    expect(refusedBatches(merged)).toEqual(["glow"]);
+    const frame = replayFrame(replayOf(merged), Infinity);
+    expect(frame.maya.some((s) => s.path.objectId === "onesGlow")).toBe(false);
+    expect(frame.child).toHaveLength(1);
+  });
+
+  it("R625b-4: a board rebuilt without its draft takes the call's saved board back, and keeps its own newer lines", () => {
+    let t = 0;
+    const first = createBoardSession({ initial: createHistory(), restored: false, clock: () => t, wall: () => t, noStore: true });
+    first.mayaReply([QUESTION]);
+    first.handBack();
+    for (const x of [0.1, 0.2, 0.3]) {
+      t += 1000;
+      first.penDown([x, 0.8], false, 800);
+      t += 100;
+      first.penMove([[x + 0.05, 0.82]]);
+      first.penUp();
+    }
+    const saved = first.view().history;
+    // The same chat after the draft was lost: a fresh board, one new line, a lower revision.
+    t = 0;
+    const fresh = createBoardSession({ initial: createHistory(), restored: false, clock: () => t, wall: () => t, noStore: true });
+    fresh.mayaReply([QUESTION]);
+    fresh.handBack();
+    t = 500;
+    fresh.penDown([0.6, 0.6], false, 800);
+    t = 600;
+    fresh.penMove([[0.65, 0.62]]);
+    fresh.penUp();
+    expect(fresh.view().history.revision).toBeLessThan(saved.revision);
+    const rebased = rebaseOnto(saved, fresh.view().history, 20_000);
+    expect(childStrokes(rebased).map((s) => s.pts[0][0])).toEqual([0.1, 0.2, 0.3, 0.6]);
+    expect(rebased.revision).toBeGreaterThan(saved.revision);
+    // Nothing new: the board stays as it is.
+    expect(rebaseOnto(saved, saved, 20_000)).toBe(saved);
   });
 });

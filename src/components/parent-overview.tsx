@@ -7,12 +7,14 @@ import { learningPath } from "@/lib/learning-style";
 import { WEEK_SECONDS } from "@/lib/maya-minutes";
 import type { ChildMinutes } from "@/lib/maya-minutes-server";
 import type { ActionItem, OverviewView } from "@/lib/parent-view";
+import { reportPath, unreliableAreasText } from "@/lib/report-view";
 import "./parent-overview.css";
 
 // The Overview (#560, spec #544, D-243, D-248): the tiles, the area bars and one thing to do, in the mock's white cards
 // (round r544) and the report's ruler colours: At grade green, Building up tangerine, Ahead sky. A tile or a section with
 // no data does not appear. No streaks, time spent, percent right, counts of wrong answers or comparison with other
-// children. The copy names the child; it never says she or her.
+// children. The copy names the child; it never says she or her. A test the report calls unreliable has no bars: one
+// sentence and the report's link take their place (D-258, #579).
 
 const LABELS: Record<AreaLabel, string> = { ahead: "Ahead", "at-grade": "At grade", "building-up": "Building up" };
 
@@ -61,7 +63,14 @@ export function ParentOverview({ overview, maya }: { overview: OverviewView; may
           )}
         </div>
       )}
-      {level && areas.length > 0 && (
+      {level?.unreliable && (
+        <section className="po-card po-areas" aria-labelledby="po-areas">
+          <h2 id="po-areas">Level by area</h2>
+          <p className="po-sub">{unreliableAreasText(child.firstName)}</p>
+          {child.reportIds[0] && <Link className="po-more" href={reportPath(child.reportIds[0])}>See the report <span aria-hidden="true">→</span></Link>}
+        </section>
+      )}
+      {level && !level.unreliable && areas.length > 0 && (
         <section className="po-card po-areas" aria-labelledby="po-areas">
           <h2 id="po-areas">Level by area</h2>
           <p className="po-sub">From the test on {date(level.testedOn)}. The line marks {child.firstName}&apos;s school grade, {gradeLabel(child.schoolGrade)}.</p>

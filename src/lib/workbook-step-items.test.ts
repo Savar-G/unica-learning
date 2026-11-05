@@ -113,6 +113,9 @@ describe("step template items (#489)", () => {
 
   it("reads the choices a text offers and ranks steps through the curriculum", () => {
     expect(choicesFor("Is it a cone or a cube?", "cone")).toEqual(["cone", "cube"]);
+    for (const punctuation of [",", ":", "?"]) {
+      expect(choicesFor(`Which is greater${punctuation} 8 × 7 or 6 × 6?`, "8 × 7")).toEqual(["8 × 7", "6 × 6"]);
+    }
     expect(choicesFor("True or false: 8 comes after 7.", "True")).toEqual(["True", "false"]);
     // Letters print as capitals (the U4 review: never "A b").
     expect(choicesFor("Which is right? A: 14  B: 15  C: 13", "A")).toEqual(["A", "B", "C"]);

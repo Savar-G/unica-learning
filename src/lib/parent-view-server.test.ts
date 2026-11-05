@@ -189,7 +189,7 @@ describe("the Supabase reader of the Overview (#560)", () => {
   it("replays the stored test with the assessment core and keeps the stored report's level", async () => {
     const session = take();
     const r = overviewReader(scored(session));
-    expect(await r.reader.testResult(TEST)).toEqual({ level: modelOf(finish(session)).level, answers: testAreaAnswers(session) });
+    expect(await r.reader.testResult(TEST)).toEqual({ level: modelOf(finish(session)).level, answers: testAreaAnswers(session), unreliable: false });
     expect(select(r.admin, "assessments").get("parent_id")).toBe(`eq.${PARENT}`);
     expect(select(r.admin, "assessments").get("id")).toBe(`eq.${TEST}`);
     expect(select(r.session, "reports").get("select")).toBe("model");
@@ -202,6 +202,20 @@ describe("the Supabase reader of the Overview (#560)", () => {
     expect(view?.level?.working).toBe(finish(session).workingLevel);
     expect(view?.areas.length).toBeGreaterThan(0);
   });
+  it("a test the report calls unreliable (pace.unreliable) gives no bars on the Overview and in the monthly summary (D-258)", async () => {
+    const session = take(16);
+    const placement = finish(session);
+    expect(placement.pace?.unreliable).toBe(true);
+    const rows = { ...scored(session), workbook_delivery_receipts: [{ child_id: CHILD, workbook_id: WORKBOOK, delivered_at: "2026-09-20T18:00:00Z" }] };
+    // The replay adds up: only the report's flag takes the bars away.
+    expect(await overviewReader(rows).reader.testResult(TEST)).toEqual({ level: modelOf(placement).level, answers: testAreaAnswers(session), unreliable: true });
+    const overview = await readOverview(overviewReader(rows).reader, CHILD, NOW);
+    expect(overview?.level).toMatchObject({ working: placement.workingLevel, unreliable: true });
+    expect(overview?.areas).toEqual([]);
+    const summary = await readMonthlySummary(overviewReader(rows).reader, CHILD, "2026-10", NOW);
+    expect(summary?.level?.unreliable).toBe(true);
+    expect(summary?.areas).toEqual([]);
+  });
   it("a score stored before the rushing rule differs from the replay: the Level tile stays and no bar shows", async () => {
     const session = take(4);
     // As a test stored before #189: the report counted the rushed answers, and the stored score has no pace.
@@ -209,7 +223,7 @@ describe("the Supabase reader of the Overview (#560)", () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const old = { ...counted, pace: undefined };
     const r = overviewReader(scored(session, { assessments: [{ ...scored(session).assessments[0], placement: old }] }, modelOf(old)));
-    expect(await r.reader.testResult(TEST)).toEqual({ level: modelOf(old).level, answers: null });
+    expect(await r.reader.testResult(TEST)).toEqual({ level: modelOf(old).level, answers: null, unreliable: false });
     const view = await readOverview(r.reader, CHILD, NOW);
     expect(view?.level?.working).toBe(old.workingLevel);
     expect(view?.areas).toEqual([]);
@@ -219,7 +233,7 @@ describe("the Supabase reader of the Overview (#560)", () => {
   it("a test with no stored score has no bars", async () => {
     const session = take();
     const r = overviewReader(scored(session, { assessments: [{ ...scored(session).assessments[0], placement: null }] }));
-    expect(await r.reader.testResult(TEST)).toEqual({ level: modelOf(finish(session)).level, answers: null });
+    expect(await r.reader.testResult(TEST)).toEqual({ level: modelOf(finish(session)).level, answers: null, unreliable: false });
   });
   it("a score stored again after the report was made (a rescore) gives no bars beside the report's older level, on the Overview and the monthly summary", async () => {
     const session = take();
@@ -230,7 +244,7 @@ describe("the Supabase reader of the Overview (#560)", () => {
     expect(before.workingLevel).not.toBe(now.workingLevel);
     const rows = { ...scored(session, {}, modelOf(before)), workbook_delivery_receipts: [{ child_id: CHILD, workbook_id: WORKBOOK, delivered_at: "2026-09-20T18:00:00Z" }] };
     const r = overviewReader(rows);
-    expect(await r.reader.testResult(TEST)).toEqual({ level: modelOf(before).level, answers: null });
+    expect(await r.reader.testResult(TEST)).toEqual({ level: modelOf(before).level, answers: null, unreliable: false });
     const overview = await readOverview(r.reader, CHILD, NOW);
     expect(overview?.level?.working).toBe(0);
     expect(overview?.areas).toEqual([]);
@@ -271,7 +285,7 @@ describe("the Supabase reader of the Overview (#560)", () => {
   it("a stored test that cannot be replayed keeps the level with no answers, and is logged", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const r = overviewReader(scored(take(), { answers: [] }));
-    expect(await r.reader.testResult(TEST)).toEqual({ level: modelOf(finish(take())).level, answers: null });
+    expect(await r.reader.testResult(TEST)).toEqual({ level: modelOf(finish(take())).level, answers: null, unreliable: false });
     expect(log).toHaveBeenCalledWith("[parent-view] test replay failed", expect.any(String));
     log.mockRestore();
   });

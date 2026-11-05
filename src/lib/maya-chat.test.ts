@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { chatFamilyGate, chatLimitLabel, chatServesGrade, getsNoParentNotes, rehearsalRefusal, chatUsage, chatWindow, chatCapLine, childChatView } from "@/lib/maya-chat";
-import { mayaCalls, type CallResult, type CallSeams } from "@/lib/maya-call";
+import { INK_AFTER_END_MS, INK_SAVE_GAP_MS, mayaCalls, type CallResult, type CallSeams, type CallStore } from "@/lib/maya-call";
 import { memoryCallStore } from "@/lib/maya-call-memory";
 import { memoryWordingHistoryStore, SAFETY_GUIDANCE } from "@/lib/maya";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
@@ -9,6 +9,9 @@ import { ruleMayaModel, fakeMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace } from "@/lib/maya-trace";
 import { NOTE_CALL_KINDS } from "@/lib/maya-call-note";
+import { childStrokes, createHistory, decodeHistory, drawStroke, encodeHistory, mayaWrites, replayFrame, takePen, type Change } from "@/lib/board-history";
+import type { Batch } from "@/lib/board";
+import { callReplay } from "@/lib/maya-call-review";
 
 const parent = "11111111-1111-4111-8111-111111111111", child = "22222222-2222-4222-8222-222222222222";
 const pkg = { ...SAMPLE_PACKAGES["add-27-39"], ref: { source: "workbook" as const, workbookId: "33333333-3333-4333-8333-333333333333", page: 1, question: 1 } };
@@ -156,5 +159,143 @@ describe("family days and release switch", () => {
     expect(rehearsalRefusal({ test: false, listed: true })).toBe("not_test_family");
     expect(rehearsalRefusal({ test: true, listed: false })).toBe("not_listed");
     expect(rehearsalRefusal({ test: true, listed: true })).toBeNull();
+  });
+});
+
+describe("#534: the child's ink is saved with the chat", () => {
+  const owner = { parentId: parent, childId: child };
+  const accepted = (change: Change) => { if (!change.ok) throw Error(change.reason); return change.history; };
+  /** The desk's copy of the chat's board: Maya's batches as the chat showed them, then the child's lines. */
+  function deskBoard(batches: readonly Batch[], lines: number) {
+    let h = createHistory();
+    for (const b of batches) h = accepted(mayaWrites(h, b, 1));
+    h = accepted(takePen(h, 4000));
+    for (let i = 0; i < lines; i++) {
+      const at = 4100 + i * 1000;
+      h = accepted(drawStroke(h, { erase: false, w: 5, boardWidth: 800, page: 1, pts: [[0.1 + i * 0.05, 0.6, at], [0.14 + i * 0.05, 0.64, at + 300]] }));
+    }
+    return h;
+  }
+
+  it("keeps the ink beside the chat without changing its revision, and the admin replay shows it with Maya's work", async () => {
+    const s = await clocked();
+    const r = s.r;
+    const id = r.view.id;
+    expect(await s.calls.saveInk(id, owner, encodeHistory(deskBoard(r.view.batches, 1)))).toEqual({ ok: true });
+    // The chat's next message still goes in at the revision the child's desk holds.
+    expect(s.memory.rows()[0].revision).toBe(r.view.revision);
+    const next = success(await s.calls.input(id, r.view.revision, { type: "child", text: "I don't know" }, "Leah"));
+    // A newer copy replaces the older one; an older copy that comes late changes nothing.
+    const two = deskBoard(next.view.batches, 2);
+    s.advance(INK_SAVE_GAP_MS);
+    expect(await s.calls.saveInk(id, owner, encodeHistory(two))).toEqual({ ok: true });
+    s.advance(INK_SAVE_GAP_MS);
+    // An older copy is a conflict, never a silent success: the desk gets the kept board back to build on (R625b-4).
+    expect(await s.calls.saveInk(id, owner, encodeHistory(deskBoard(r.view.batches, 1)))).toMatchObject({ ok: false, error: "stale", board: { revision: two.revision } });
+    const ended = success(await s.calls.input(id, next.view.revision, { type: "end" }, "Leah"));
+    expect(ended.view.status).toBe("ended");
+
+    const view = (await s.calls.view(id))!;
+    expect(view.batches.length).toBeGreaterThan(0);
+    const saved = view.boardHistory;
+    // Maya's batches are the call's own; the child's lines come from the desk.
+    expect(saved.events.flatMap((e) => (e.kind === "maya" ? [e.batchId] : []))).toEqual(view.batches.map((b) => b.transactionId));
+    // The child's lines, moved onto the call's clock.
+    const where = (h: typeof saved) => childStrokes(h).map((k) => k.pts.map(([x, y]) => [x, y]));
+    expect(where(saved)).toEqual(where(two));
+    const firstBatch = saved.events.find((e) => e.kind === "maya");
+    expect(childStrokes(saved)[0].pts[0][2]).toBeGreaterThanOrEqual(firstBatch?.kind === "maya" ? firstBatch.t : 0);
+    expect(decodeHistory(encodeHistory(saved))).not.toBeNull();
+    const frame = replayFrame(callReplay(view), Infinity);
+    expect(frame.child).toHaveLength(2);
+    expect(frame.maya.length).toBe(replayFrame(callReplay({ ...view, boardHistory: { v: 1, revision: 0, events: saved.events.filter((e) => e.kind === "maya") } }), Infinity).maya.length);
+  });
+
+  it("refuses a board that does not read back, and an unknown call", async () => {
+    const s = setup();
+    const r = success(await s.start());
+    expect(await s.calls.saveInk(r.view.id, owner, "not a board")).toEqual({ ok: false, error: "invalid_input" });
+    expect(await s.calls.saveInk("99999999-9999-4999-8999-999999999999", owner, encodeHistory(createHistory()))).toEqual({ ok: false, error: "not_found" });
+    expect(s.store.rows()[0].childInk ?? null).toBeNull();
+  });
+
+  /** A chat on a store and module that share a clock the test moves. */
+  async function clocked(wrap?: (store: CallStore) => CallStore) {
+    let now = Date.parse("2026-11-02T17:00:00Z");
+    const memory = memoryCallStore({ testFamilies: [], clock: () => now });
+    const s = setup({ store: wrap ? wrap(memory) : memory, clock: () => now });
+    const r = success(await s.start());
+    return { ...s, memory, r, advance: (ms: number) => (now += ms) };
+  }
+
+  it("R625-2: a slow save from the board's earlier holder never replaces newer ink, however the two interleave", async () => {
+    let hold: (() => void) | null = null;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const c = await clocked((store) => ({
+      ...store,
+      // The first read after the trap is set answers with what it read, but only after the newer save has written.
+      async get(id) {
+        const read = await store.get(id);
+        if (hold) { const wait = hold; hold = null; wait(); await held; }
+        return read;
+      },
+    }));
+    c.advance(5000);
+    const older = deskBoard(c.r.view.batches, 1), newer = deskBoard(c.r.view.batches, 2);
+    const reading = new Promise<void>((resolve) => (hold = resolve));
+    const slow = c.calls.saveInk(c.r.view.id, owner, encodeHistory(older));
+    // A module that compares in the store's one write never reads first: then the slow save simply lands first.
+    await Promise.race([reading, slow]);
+    c.advance(INK_SAVE_GAP_MS);
+    expect(await c.calls.saveInk(c.r.view.id, owner, encodeHistory(newer))).toEqual({ ok: true });
+    release();
+    await slow;
+    expect(c.memory.rows()[0].childInk?.revision).toBe(newer.revision);
+    expect(childStrokes(c.memory.rows()[0].childInk!)).toHaveLength(2);
+    // The store compares and writes in one step: an older board after a newer one writes nothing.
+    c.advance(INK_SAVE_GAP_MS);
+    expect(await c.memory.saveInk(c.r.view.id, owner, older)).toBe("stale");
+    expect(c.memory.rows()[0].childInk?.revision).toBe(newer.revision);
+  });
+
+  it("R625-6: takes at most one board a second per chat, and none once the chat ended more than a few minutes ago", async () => {
+    const c = await clocked();
+    const id = c.r.view.id;
+    expect(await c.calls.saveInk(id, owner, encodeHistory(deskBoard(c.r.view.batches, 1)))).toEqual({ ok: true });
+    c.advance(200);
+    expect(await c.calls.saveInk(id, owner, encodeHistory(deskBoard(c.r.view.batches, 2)))).toEqual({ ok: false, error: "busy" });
+    c.advance(INK_SAVE_GAP_MS);
+    expect(await c.calls.saveInk(id, owner, encodeHistory(deskBoard(c.r.view.batches, 2)))).toEqual({ ok: true });
+    const ended = success(await c.calls.input(id, c.memory.rows()[0].revision, { type: "end" }, "Leah"));
+    expect(ended.view.status).toBe("ended");
+    // A line finished just after the end still goes in; a board long after it does not.
+    c.advance(INK_SAVE_GAP_MS);
+    expect(await c.calls.saveInk(id, owner, encodeHistory(deskBoard(c.r.view.batches, 3)))).toEqual({ ok: true });
+    c.advance(INK_AFTER_END_MS + 1);
+    expect(await c.calls.saveInk(id, owner, encodeHistory(deskBoard(c.r.view.batches, 4)))).toEqual({ ok: false, error: "closed" });
+    expect(childStrokes(c.memory.rows()[0].childInk!)).toHaveLength(3);
+  });
+
+  it("R625b-4: an older board is a conflict that hands back the kept board, never a silent success", async () => {
+    const c = await clocked();
+    const id = c.r.view.id;
+    const newer = deskBoard(c.r.view.batches, 3), older = deskBoard(c.r.view.batches, 1);
+    expect(await c.calls.saveInk(id, owner, encodeHistory(newer))).toEqual({ ok: true });
+    c.advance(INK_SAVE_GAP_MS);
+    const answer = await c.calls.saveInk(id, owner, encodeHistory(older));
+    expect(answer).toMatchObject({ ok: false, error: "stale" });
+    expect(answer.ok === false && answer.error === "stale" && childStrokes(answer.board)).toHaveLength(3);
+    expect(childStrokes(c.memory.rows()[0].childInk!)).toHaveLength(3);
+  });
+
+  it("R625b-5: keeps a board only for a chat of that parent and child", async () => {
+    const c = await clocked();
+    const id = c.r.view.id;
+    const board = encodeHistory(deskBoard(c.r.view.batches, 1));
+    expect(await c.calls.saveInk(id, { parentId: parent, childId: "55555555-5555-4555-8555-555555555555" }, board)).toEqual({ ok: false, error: "not_found" });
+    expect(await c.calls.saveInk(id, { parentId: "66666666-6666-4666-8666-666666666666", childId: child }, board)).toEqual({ ok: false, error: "not_found" });
+    expect(c.memory.rows()[0].childInk ?? null).toBeNull();
+    expect(await c.calls.saveInk(id, owner, board)).toEqual({ ok: true });
   });
 });
