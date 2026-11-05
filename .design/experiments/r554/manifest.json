@@ -4,13 +4,48 @@
   "picked": null,
   "how_taken": "npm run dev (port 3554) with the T3 preview browser, signed in as the test family QA E2E Three, with a restricted Stripe test-mode key. Preview resize keeps a desktop user agent; this page's phone layout comes from CSS only. Screenshots at 1440 wide are saved at 1280. The round Next.js button in the corner is the dev overlay. A second child (Mina) and test-mode subscriptions existed only for these pictures and were removed.",
   "screens": [
-    { "file": "two-children-desktop.png", "shows": "Two children on two Stripe Customers: next charge per child, one invoice list across both, receipt links, Update card" },
-    { "file": "two-children-phone.png", "shows": "The same at 390 wide: invoices on two lines, bottom bar" },
-    { "file": "card-updated-desktop.png", "shows": "Back from Stripe's hosted page in test mode: the note, after the new card became that subscription's default" },
-    { "file": "stripe-failed-desktop.png", "shows": "Stripe could not answer for one Customer: that child's plan cannot load, no invoice list and no claim about invoices. Taken before the note's top margin was added." },
-    { "file": "stripe-failed-phone.png", "shows": "The same at 390 wide" },
-    { "file": "not-started-desktop.png", "shows": "A saved card with no plan started, and no invoices yet" },
-    { "file": "stuck-start-card.png", "shows": "Review round 4, /admin/next-steps at 1280 wide, cropped to the Plan start column: a start with no plan found after 24 hours, on the test family's card (synthetic record)" },
-    { "file": "stuck-start-closed.png", "shows": "The same card after 'I checked Stripe: close this start' and its confirmation" }
-  ]
+    {
+      "file": "two-children-desktop.png",
+      "shows": "Two children on two Stripe Customers: next charge per child, one invoice list across both, receipt links, Update card"
+    },
+    {
+      "file": "two-children-phone.png",
+      "shows": "The same at 390 wide: invoices on two lines, bottom bar"
+    },
+    {
+      "file": "card-updated-desktop.png",
+      "shows": "Back from Stripe's hosted page in test mode: the note, after the new card became that subscription's default"
+    },
+    {
+      "file": "stripe-failed-desktop.png",
+      "shows": "Stripe could not answer for one Customer: that child's plan cannot load, no invoice list and no claim about invoices. Taken before the note's top margin was added."
+    },
+    {
+      "file": "stripe-failed-phone.png",
+      "shows": "The same at 390 wide"
+    },
+    {
+      "file": "not-started-desktop.png",
+      "shows": "A saved card with no plan started, and no invoices yet"
+    },
+    {
+      "file": "stuck-start-card.png",
+      "shows": "Review round 4, /admin/next-steps at 1280 wide, cropped to the Plan start column: a start with no plan found after 24 hours, on the test family's card (synthetic record)"
+    },
+    {
+      "file": "stuck-start-closed.png",
+      "shows": "The same card after 'I checked Stripe: close this start' and its confirmation"
+    }
+  ],
+  "review_round_6": {
+    "how_taken": "T3 preview browser on npm run dev port 3593, real FamilyDelete component in a temporary local route. API responses were intercepted in the browser. No authenticated family, database mutation, email send or Stripe call. The temporary route was removed before commit.",
+    "screens": [
+      "plan-start-delete-desktop.png",
+      "plan-start-delete-phone.png"
+    ],
+    "checks": [
+      "An unresolved start refuses Email me a code, shows the team message and keeps the code form hidden.",
+      "The alert fits at 1280 and 390 CSS pixels, with no horizontal overflow."
+    ]
+  }
 }

@@ -72,7 +72,7 @@ function world({ noCreate = false } = {}) {
   const select = { select: () => select, eq: () => select, maybeSingle: async () => ({ data: { id: CARD, child_id: "c1", parent_id: PARENT, card_saved_at: "2026-10-01", stripe_customer_id: "cus_1", price: 79.99, plan: "one" }, error: null }) };
   h.session = { db: { rpc: () => select } };
   const press = () => POST(new Request(`https://example.test/api/admin/cards/${CARD}/start`, { method: "POST", headers: { origin: "https://example.test", "content-type": "application/json" }, body: JSON.stringify({ deliveryConfirmed: true }) }), { params: Promise.resolve({ id: CARD }) } as never);
-  const remove = () => requestFamilyDelete(PARENT, { password: "right", confirm: DELETE_WORD }, async () => "ok", { store: memoryDeleteStore(family), plans: memoryPlans(family) });
+  const remove = () => requestFamilyDelete(PARENT, { code: "123456", confirm: DELETE_WORD }, async () => "ok", { store: memoryDeleteStore(family), plans: memoryPlans(family) });
   const seams: CardCheckSeams = {
     rows: billing.store, stripe: stripeCards(stripe.client), canWrite: () => true,
     announcePlan: async () => ({ status: "sent", emailId: "email-1" }), planEmailClaim: async () => "sent", alertTeam: async () => ({ status: "sent", emailId: "alert-1" }),

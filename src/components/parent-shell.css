@@ -133,7 +133,9 @@
 .support-page .pd-delete .btn.danger { background: var(--red); border-color: var(--red); color: #fff; }
 .support-page .pd-delete .btn.danger:hover:not(:disabled) { background: #b92620; border-color: #b92620; color: #fff; }
 .support-page .pd-delete .btn.danger:disabled { opacity: 0.45; cursor: not-allowed; }
-.support-page .pd-delete .fld .hint { font-size: 14px; }
+.support-page .pd-delete-ask { margin-top: 24px; }
+.support-page .pd-delete-ask .acct-alert { margin-bottom: 16px; }
+.support-page .pd-delete-sent { margin: 0 0 20px; overflow-wrap: anywhere; }
 
 /* The phone */
 .pd-top, .pd-bar, .pd-main-kid { display: none; }

@@ -1,8 +1,8 @@
 import { cookies } from "next/headers";
 import { after } from "next/server";
-import { passwordProver } from "@/lib/desk-server";
+import { codeProof } from "@/lib/family-delete-code";
 import { FAMILY_DELETED_PATH, PLANS_STOPPED_COOKIE, requestFamilyDelete } from "@/lib/family-delete";
-import { familyDeleteAlert, finishFamilyDelete, stripeFamilyPlans, supabaseDeleteStore } from "@/lib/family-delete-server";
+import { familyDeleteAlert, finishFamilyDelete, stripeFamilyPlans, supabaseDeleteCodes, supabaseDeleteStore } from "@/lib/family-delete-server";
 import { familyRetryTime } from "@/lib/family-time-server";
 import { parentDashboardAccess } from "@/lib/parent-dashboard-access";
 import { LAST_CHILD_COOKIE } from "@/lib/parent-shell";
@@ -13,7 +13,7 @@ import { adminClient, sessionClient } from "@/lib/supabase-auth";
 export const maxDuration = 120;
 
 const reply = (status: number, body: Record<string, unknown>) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
-const STATUS = { invalid: 400, wrong_password: 403, protected: 403, not_found: 404, busy: 409, plan_start: 409, locked: 429, not_finished: 502, unavailable: 503 } as const;
+const STATUS = { invalid: 400, wrong_code: 403, code_ended: 403, protected: 403, not_found: 404, busy: 409, plan_start: 409, locked: 429, not_finished: 502, unavailable: 503 } as const;
 
 /**
  * Ends every device's session, with one retry. Supabase answers a failure as `{ error }`, and only a broken network call
@@ -33,9 +33,9 @@ async function endEverySession(db: Awaited<ReturnType<typeof sessionClient>>): P
   return false;
 }
 
-// The parent deletes the whole family (#556): body `{ password, confirm }`. JSON and the site's origin only. While the
-// child's desk is open, src/proxy.ts answers this path with 423. The parent and the email come from the session, and the
-// password is checked on a client of its own. See src/lib/family-delete.ts for the order of the steps.
+// The parent deletes the whole family (#556, D-255): body `{ code, confirm }`, with the code from .../delete/code. JSON and the
+// site's origin only. While the child's desk is open, src/proxy.ts answers this path with 423. The parent and the email come
+// from the Auth server's answer for this session, never the body. See src/lib/family-delete.ts for the order of the steps.
 export async function POST(request: Request) {
   if (request.headers.get("origin") !== new URL(request.url).origin) return reply(403, { ok: false, error: "forbidden" });
   if (!request.headers.get("content-type")?.startsWith("application/json")) return reply(415, { ok: false, error: "bad_json" });
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
   const parent = user.id.toLowerCase();
   let result;
   try {
-    result = await requestFamilyDelete(parent, body, passwordProver(user.id, user.email), { store: supabaseDeleteStore(service), plans: stripeFamilyPlans(service, s) });
+    result = await requestFamilyDelete(parent, body, codeProof(supabaseDeleteCodes(service), parent, user.email), { store: supabaseDeleteStore(service), plans: stripeFamilyPlans(service, s) });
   } catch (e) {
     console.error("[family-delete] request failed", e instanceof Error ? e.message : "failed");
     return reply(503, { ok: false, error: "unavailable" });

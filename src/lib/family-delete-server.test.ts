@@ -1,11 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 const mail = vi.hoisted(() => ({ send: vi.fn() }));
 vi.mock("@/lib/email-delivery", () => ({ sendEmail: mail.send }));
-const { familyDeleteAlert, stripeFamilyPlans, supabaseDeleteStore } = await import("@/lib/family-delete-server");
+const { familyDeleteAlert, stripeFamilyPlans, supabaseDeleteCodes, supabaseDeleteStore } = await import("@/lib/family-delete-server");
 
 const parent = "11111111-1111-4111-8111-111111111111";
 const json = (answer: unknown, status = 200) => new Response(JSON.stringify(answer), { status, headers: { "content-type": "application/json" } });
@@ -96,6 +96,49 @@ describe("the database seam", () => {
   it("throws on an answer the function never gives", async () => {
     await expect(supabaseDeleteStore(database({ request_parent_family_deletion_held: "maybe" })).request(parent, "token-1")).rejects.toThrow("unexpected");
     await expect(supabaseDeleteStore(database({ begin_family_delete_hold: "maybe" })).hold(parent, "token-1")).rejects.toThrow("unexpected");
+  });
+});
+
+describe("the code seam", () => {
+  const POLICY = { ttlMs: 600_000, perWindow: 3, windowMs: 3_600_000, perDay: 6, dayMs: 86_400_000 };
+  afterEach(() => { vi.useRealTimers(); });
+  it("passes the limits in seconds and sends only the hash", async () => {
+    const calls: { name: string; args: Record<string, unknown> }[] = [];
+    const codes = supabaseDeleteCodes(database({ begin_family_delete_code: [{ out_status: "ok", out_retry_at: null }] }, calls));
+    expect(await codes.begin(parent, "scrypt$hash", POLICY)).toEqual({ kind: "ok" });
+    expect(calls).toEqual([{ name: "begin_family_delete_code", args: { p_parent: parent, p_hash: "scrypt$hash", p_ttl_seconds: 600, p_per_window: 3, p_window_seconds: 3600, p_per_day: 6, p_day_seconds: 86400 } }]);
+  });
+  it("sends no time of the app's, so an app clock 5 minutes ahead cannot extend a code or free a limit", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const answers: Record<string, unknown>[] = [];
+    for (const appTime of ["2026-11-05T01:00:00Z", "2026-11-05T01:05:00Z"]) {
+      vi.setSystemTime(Date.parse(appTime));
+      const calls: { name: string; args: Record<string, unknown> }[] = [];
+      await supabaseDeleteCodes(database({ begin_family_delete_code: [{ out_status: "ok", out_retry_at: null }] }, calls)).begin(parent, "h", POLICY);
+      answers.push(calls[0].args);
+    }
+    expect(answers[1]).toEqual(answers[0]);
+    expect(answers[1]).not.toHaveProperty("p_now");
+    expect(JSON.stringify(answers[1])).not.toContain("2026");
+  });
+  it.each(["too_many", "locked"])("reads %s with its time", async (status) => {
+    const codes = supabaseDeleteCodes(database({ begin_family_delete_code: [{ out_status: status, out_retry_at: "2026-11-05T01:00:00Z" }] }));
+    expect(await codes.begin(parent, "h", POLICY)).toEqual({ kind: status, until: Date.parse("2026-11-05T01:00:00Z") });
+  });
+  it("reads the hash of the code the database says is live, and nothing when it says none is", async () => {
+    expect(await supabaseDeleteCodes(database({ read_family_delete_code: [{ out_hash: "h", out_expires_at: "2026-11-05T01:00:00Z" }] })).read(parent)).toBe("h");
+    expect(await supabaseDeleteCodes(database({ read_family_delete_code: [{ out_hash: null, out_expires_at: null }] })).read(parent)).toBeNull();
+    expect(await supabaseDeleteCodes(database({ read_family_delete_code: [] })).read(parent)).toBeNull();
+  });
+  it("spends with the hash that was checked, and sends no time: the database's clock decides", async () => {
+    const calls: { name: string; args: Record<string, unknown> }[] = [];
+    expect(await supabaseDeleteCodes(database({ consume_family_delete_code: true }, calls)).spend(parent, "h")).toBe(true);
+    expect(calls).toEqual([{ name: "consume_family_delete_code", args: { p_parent: parent, p_hash: "h" } }]);
+  });
+  it("throws on an answer the functions never give", async () => {
+    await expect(supabaseDeleteCodes(database({ begin_family_delete_code: [{ out_status: "maybe", out_retry_at: null }] })).begin(parent, "h", POLICY)).rejects.toThrow("unexpected");
+    await expect(supabaseDeleteCodes(database({ begin_family_delete_code: [{ out_status: "too_many", out_retry_at: null }] })).begin(parent, "h", POLICY)).rejects.toThrow("unexpected");
+    await expect(supabaseDeleteCodes(database({ consume_family_delete_code: "yes" })).spend(parent, "h")).rejects.toThrow("unexpected");
   });
 });
 

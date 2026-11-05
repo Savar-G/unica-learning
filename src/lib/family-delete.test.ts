@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { DELETE_POLICY, DELETE_WORD, requestFamilyDelete } from "@/lib/family-delete";
+import { DELETE_POLICY, DELETE_WORD, requestFamilyDelete, type ProveCode } from "@/lib/family-delete";
 import { HOLD_LEASE_MS, memoryDeleteStore, memoryFamily, memoryPlanStart, memoryPlans, type MemoryFamily } from "@/lib/family-delete-memory";
-import type { ProvePassword } from "@/lib/parent-pin";
 
 const PARENT = "11111111-1111-4111-8111-111111111111";
-const right: ProvePassword = async (password) => (password === "right password" ? "ok" : "wrong");
-const form = (password = "right password", confirm: unknown = DELETE_WORD) => ({ password, confirm });
+const RIGHT = "123456", WRONG = "000000";
+const right: ProveCode = async (code) => (code === RIGHT ? "ok" : "wrong");
+const form = (code = RIGHT, confirm: unknown = DELETE_WORD) => ({ code, confirm });
 
 function harness(over: Partial<MemoryFamily> = {}) {
   const family = memoryFamily(over);
@@ -21,11 +21,14 @@ function harness(over: Partial<MemoryFamily> = {}) {
 
 describe("the deliberate form", () => {
   it.each([
-    [{ password: "right password" }],
-    [{ password: "right password", confirm: "delete" }],
-    [{ password: "", confirm: DELETE_WORD }],
-    [{ password: 7, confirm: DELETE_WORD }],
-    [{ password: "x".repeat(1001), confirm: DELETE_WORD }],
+    [{ code: RIGHT }],
+    [{ code: RIGHT, confirm: "delete" }],
+    [{ code: "", confirm: DELETE_WORD }],
+    [{ code: 123456, confirm: DELETE_WORD }],
+    [{ code: "12345", confirm: DELETE_WORD }],
+    [{ code: "1234567", confirm: DELETE_WORD }],
+    [{ code: "12345a", confirm: DELETE_WORD }],
+    [{ password: "right password", confirm: DELETE_WORD }],
     [null],
   ])("refuses %j and costs no try", async (input) => {
     const h = harness({ plans: { cus_1: ["sub_1"] } });
@@ -72,20 +75,20 @@ describe("an open plan start record (review round 5 of PR #593)", () => {
   });
 });
 
-describe("the password check", () => {
-  it("refuses a wrong password, counts it, and changes nothing else", async () => {
+describe("the code check", () => {
+  it("refuses a wrong code, counts it, and changes nothing else", async () => {
     const h = harness({ plans: { cus_1: ["sub_1"] } });
-    expect(await h.send(form("wrong"))).toEqual({ ok: false, error: "wrong_password", attemptsLeft: 4 });
+    expect(await h.send(form(WRONG))).toEqual({ ok: false, error: "wrong_code", attemptsLeft: 4 });
     expect(h.family.plans.cus_1).toEqual(["sub_1"]);
     expect(h.family.fenced).toBe(false);
   });
-  it("allows 5 tries, then locks for 15 minutes, even for the right password", async () => {
+  it("allows 5 tries, then locks for 15 minutes, even for the right code", async () => {
     const h = harness({ plans: { cus_1: ["sub_1"] } });
     const left: unknown[] = [];
-    for (let i = 0; i < 4; i++) left.push(await h.send(form("wrong")));
+    for (let i = 0; i < 4; i++) left.push(await h.send(form(WRONG)));
     expect(left.map((r) => (r as { attemptsLeft: number }).attemptsLeft)).toEqual([4, 3, 2, 1]);
     const fifth = h.now + DELETE_POLICY.lockMs;
-    expect(await h.send(form("wrong"))).toEqual({ ok: false, error: "locked", retryAt: fifth });
+    expect(await h.send(form(WRONG))).toEqual({ ok: false, error: "locked", retryAt: fifth });
     let asked = 0;
     expect(await h.send(form(), async () => { asked++; return "ok"; })).toEqual({ ok: false, error: "locked", retryAt: fifth });
     expect(asked).toBe(0);
@@ -93,24 +96,31 @@ describe("the password check", () => {
   });
   it("gives a fresh count when the lock has ended", async () => {
     const h = harness();
-    for (let i = 0; i < 5; i++) await h.send(form("wrong"));
+    for (let i = 0; i < 5; i++) await h.send(form(WRONG));
     h.advance(DELETE_POLICY.lockMs + 1);
-    expect(await h.send(form("wrong"))).toEqual({ ok: false, error: "wrong_password", attemptsLeft: 4 });
+    expect(await h.send(form(WRONG))).toEqual({ ok: false, error: "wrong_code", attemptsLeft: 4 });
   });
   it("counts guesses sent together", async () => {
     const h = harness();
-    const answers = await Promise.all(Array.from({ length: 7 }, () => h.send(form("wrong"))));
+    const answers = await Promise.all(Array.from({ length: 7 }, () => h.send(form(WRONG))));
     expect(answers.filter((a) => !a.ok && a.error === "locked")).toHaveLength(3);
   });
-  it("clears the count after the right password", async () => {
+  it("clears the count after the right code", async () => {
     const h = harness({ holds: 1 });
-    await h.send(form("wrong"));
+    await h.send(form(WRONG));
     await h.send();
     expect(h.family.attempts).toEqual({ failed: 0, lockedUntil: null });
   });
-  it("changes nothing when Auth cannot answer", async () => {
+  it("says a code has ended, counts the try, and changes nothing else", async () => {
     const h = harness({ plans: { cus_1: ["sub_1"] } });
-    expect(await h.send(form(), async () => "unavailable")).toEqual({ ok: false, error: "unavailable" });
+    expect(await h.send(form(), async () => "ended")).toEqual({ ok: false, error: "code_ended" });
+    expect(h.family.attempts.failed).toBe(1);
+    expect(h.family.plans.cus_1).toEqual(["sub_1"]);
+    expect(h.family.fenced).toBe(false);
+  });
+  it("throws and changes nothing when the code cannot be read", async () => {
+    const h = harness({ plans: { cus_1: ["sub_1"] } });
+    await expect(h.send(form(), async () => { throw new Error("Database down"); })).rejects.toThrow("Database down");
     expect(h.family.plans.cus_1).toEqual(["sub_1"]);
     expect(h.family.fenced).toBe(false);
   });

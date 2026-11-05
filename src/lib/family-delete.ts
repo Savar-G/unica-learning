@@ -1,8 +1,8 @@
-import type { ProvePassword } from "@/lib/parent-pin";
-
-// A parent deletes the whole family from the Account tab (#556, spec #544, D-247). The order of the steps is the point:
+// A parent deletes the whole family from the Account tab (#556, spec #544, D-247, D-255). The order of the steps is the point:
 //
-// 1. The form, then the password: each try is counted before the password is checked, 5 tries, then 15 minutes locked.
+// 1. The form, then the one-time code from the account's email (src/lib/family-delete-code.ts): each try is counted before
+//    the code is checked, 5 tries, then 15 minutes locked. A right code is spent here, whatever happens next, so a retry
+//    after any later failure needs a new code.
 // 2. A check that changes nothing: an admin account, a family with a card hold, a family with an open plan start record, or a family
 //    already gone stops here. An open record means that Stripe may still make a plan no read can see yet, so only the team can end it
 //    (#554). Steps 5 and 7 check it again, as a record can open in between.
@@ -20,8 +20,19 @@ import type { ProvePassword } from "@/lib/parent-pin";
 // plan no longer reads as running, and the request is written once. The module has no Next.js, Stripe or database import.
 // Seams: src/lib/family-delete-server.ts (the live site), src/lib/family-delete-memory.ts (tests).
 
-/** The word a parent types, as well as the password, so that no single slip deletes a family. */
+/** The word a parent types, as well as the code, so that no single slip deletes a family. */
 export const DELETE_WORD = "DELETE";
+
+/** The code's digits. Here and not in the code's own module, because the browser's form needs it. */
+export const DELETE_CODE_LENGTH = 6;
+const CODE_FORM = new RegExp(`^[0-9]{${DELETE_CODE_LENGTH}}$`);
+export const validDeleteCode = (code: unknown): code is string => typeof code === "string" && CODE_FORM.test(code);
+
+/**
+ * Whether `code` is the live code of this parent, and spends it when it is. "ended": no live code (never sent, too old, or
+ * spent). "wrong": a live code exists and this is not it. Throws when the code cannot be read: nothing changes then.
+ */
+export type ProveCode = (code: string) => Promise<"ok" | "wrong" | "ended">;
 
 /** The plain confirmation, outside the account pages: the session has ended when the parent lands on it. */
 export const FAMILY_DELETED_PATH = "/family-deleted";
@@ -52,7 +63,7 @@ export type AttemptClaim =
   | { kind: "open"; attemptsLeft: number; lockedUntil: number | null };
 
 export interface FamilyDeleteStore {
-  /** Counts one try, in one atomic step, before the password is checked. */
+  /** Counts one try, in one atomic step, before the code is checked. */
   claimAttempt(parent: string, now: number, policy: DeletePolicy): Promise<AttemptClaim>;
   clearAttempts(parent: string): Promise<void>;
   /** Changes nothing. */
@@ -79,8 +90,8 @@ export interface FamilyPlans {
 
 export type FamilyDeleteResult =
   | { ok: true; plansStopped: number }
-  | { ok: false; error: "invalid" | "unavailable" | "busy" | "protected" | "not_found" }
-  | { ok: false; error: "wrong_password"; attemptsLeft: number }
+  | { ok: false; error: "invalid" | "unavailable" | "busy" | "protected" | "not_found" | "code_ended" }
+  | { ok: false; error: "wrong_code"; attemptsLeft: number }
   | { ok: false; error: "locked"; retryAt: number }
   /** Stopping or queueing failed. No request exists, the family's data is all there, and `plansStopped` plans ended. */
   | { ok: false; error: "not_finished"; plansStopped: number }
@@ -95,18 +106,17 @@ export interface FamilyDeleteSeams {
   newToken?: () => string;
 }
 
-export async function requestFamilyDelete(parent: string, input: unknown, prove: ProvePassword, { store, plans, now = Date.now, policy = DELETE_POLICY, newToken = () => crypto.randomUUID() }: FamilyDeleteSeams): Promise<FamilyDeleteResult> {
-  const { password, confirm } = (input ?? {}) as { password?: unknown; confirm?: unknown };
+export async function requestFamilyDelete(parent: string, input: unknown, prove: ProveCode, { store, plans, now = Date.now, policy = DELETE_POLICY, newToken = () => crypto.randomUUID() }: FamilyDeleteSeams): Promise<FamilyDeleteResult> {
+  const { code, confirm } = (input ?? {}) as { code?: unknown; confirm?: unknown };
   // A malformed form cannot be right, so it costs no try.
-  if (confirm !== DELETE_WORD || typeof password !== "string" || password === "" || password.length > 1000) return { ok: false, error: "invalid" };
+  if (confirm !== DELETE_WORD || !validDeleteCode(code)) return { ok: false, error: "invalid" };
 
   const claim = await store.claimAttempt(parent, now(), policy);
   if (claim.kind === "locked") return { ok: false, error: "locked", retryAt: claim.until };
-  const proof = await prove(password);
-  if (proof === "unavailable") return { ok: false, error: "unavailable" };
-  if (proof === "wrong") {
+  const proof = await prove(code);
+  if (proof !== "ok") {
     if (claim.attemptsLeft <= 0 && claim.lockedUntil !== null) return { ok: false, error: "locked", retryAt: claim.lockedUntil };
-    return { ok: false, error: "wrong_password", attemptsLeft: claim.attemptsLeft };
+    return proof === "ended" ? { ok: false, error: "code_ended" } : { ok: false, error: "wrong_code", attemptsLeft: claim.attemptsLeft };
   }
   await store.clearAttempts(parent);
 
