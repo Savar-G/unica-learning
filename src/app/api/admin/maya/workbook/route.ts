@@ -1,6 +1,7 @@
 import { adminSession } from "@/lib/admin-store";
 import { serverMayaCalls } from "@/lib/maya-call-server";
 import { selectWorkbookQuestion, type WorkbookSelectionInput } from "@/lib/maya-workbook-question";
+import { serverMayaNotice } from "@/lib/maya-notice-server";
 import { livekitProject } from "@/lib/maya-voice";
 import { mintVoiceToken } from "@/lib/maya-voice-token";
 import { adminWorkbookReader } from "@/lib/maya-workbook-server";
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
     const result = body.mode === "voice" ? await calls.startVoice(input) : await calls.start(input);
     if (!result.ok) return Response.json(result, { status: 409, headers });
     if (project) {
-      const ticket = await mintVoiceToken({ call: result.view, parentId: selected.parentId, childId: selected.childId, project, name: null });
+      const ticket = await mintVoiceToken({ call: result.view, notice: serverMayaNotice(), parentId: selected.parentId, childId: selected.childId, project, name: null });
       if (!ticket.ok) return Response.json({ ok: false, error: "failed" }, { status: 500, headers });
       return Response.json({ ok: true, callId: result.view.id, ticket: ticket.ticket }, { headers });
     }

@@ -175,7 +175,7 @@ describe.skipIf(!chromium)("renderWorkbook with Chromium", () => {
 describe.skipIf(!chromium)("the monthly summary with Chromium", () => {
   const view: MonthlySummaryView = {
     firstName: "Leah", schoolGrade: 3, month: "2026-10", madeOn: "2026-11-05",
-    level: { working: 4, earlySign: false, testedOn: "2026-09-10" },
+    level: { working: 4, earlySign: false, testedOn: "2026-09-10", unreliable: false },
     areas: [
       { area: "number", name: "Number and operations", level: 4, label: "ahead", earlySign: false },
       { area: "fractions", name: "Fractions and decimals", level: 2, label: "building-up", earlySign: true },
@@ -205,7 +205,7 @@ describe.skipIf(!chromium)("the monthly summary with Chromium", () => {
     ...view,
     firstName,
     schoolGrade: 9,
-    level: { working: 0, earlySign: true, testedOn: "2026-09-10" },
+    level: { working: 0, earlySign: true, testedOn: "2026-09-10", unreliable: false },
     areas: view.areas.map((a) => ({ ...a, level: 0, label: "building-up", earlySign: true })),
     mailed: [1, 2, 3, 4].map((number) => ({ number, shippedOn: `2026-10-${String(number * 7).padStart(2, "0")}` })),
     daysScanned: 30, mayaCalls: 31,

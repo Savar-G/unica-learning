@@ -45,6 +45,14 @@ describe("workbook teaching operations", () => {
     expect(toSolve(attached)).toEqual(toSolve(original));
   });
 
+  it("gives one task identity whatever the key order of its figure (a page read back from jsonb, Codex on #631)", () => {
+    const made = question();
+    const stored = question();
+    made.item!.figure = { kind: "number-line", min: 0, max: 10, step: 1 } as unknown as NonNullable<QuestionPackage["item"]>["figure"];
+    stored.item!.figure = { step: 1, max: 10, min: 0, kind: "number-line" } as unknown as NonNullable<QuestionPackage["item"]>["figure"];
+    expect(taskIdentity(stored)).toBe(taskIdentity(made));
+  });
+
   it("uses a number bond's whole and known part, not an operation guessed from the answer", () => {
     const bond = question("a - b", 10, 7, 3);
     bond.text = "7 + ? = 10";

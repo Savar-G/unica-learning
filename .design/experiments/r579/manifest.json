@@ -1,0 +1,18 @@
+{
+  "round": "r579",
+  "ticket": "#579 (D-258): no area bars on a test the report calls unreliable",
+  "route": "Build check, not a design round. The sentence sits in the Overview's existing Level by area card, in the report's words. Hidden behind PARENT_DASHBOARD_ENABLED until Savar approves on the review page (D-236).",
+  "picked": null,
+  "files": {
+    "overview-unreliable-desktop.png": "The Overview at 1440 by 1000 on npm run dev (Aside, --account u0), signed in as test family 988b64d2 (child QA E2E Three, in test_accounts). For the check only, its report's stored model was given the reliability note (reliability: 25 of 36 very fast) and restored byte for byte after the screenshots. The Level tile stays; the Level by area card holds one sentence and a link to the report in place of the bars.",
+    "overview-unreliable-phone.png": "The same at 390 by 844 (CSS size, desktop user agent). scrollWidth 375 of 390: no horizontal scroll."
+  },
+  "invariants": [
+    "A test the report calls unreliable (model.reliability, from pace.unreliable) shows no area bars, on the Overview and in the monthly summary PDF",
+    "One sentence takes their place and names the child, never she or her",
+    "The Level tile stays, as the report keeps the level beside its note",
+    "A reliable test's bars are unchanged"
+  ],
+  "viewports": { "desktop": [1440, 1000], "phone": [390, 844] },
+  "date": "2026-11-05"
+}

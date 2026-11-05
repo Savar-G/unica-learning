@@ -14,7 +14,7 @@ Round 2 result: Meta 0 of 101 visits opened `/start`, and Reels took CA$33.97 of
 Test question: which message gets a parent to open the free assessment? Decision rule: an ad wins only with at least 3 opens and at least twice the opens of the next ad. Otherwise it is a tie, and the next step is a test of the home page. CA$100 is a screen, not proof: about 245 visits per ad are necessary to separate 3% from 9%.
 
 Settings on all three ad sets (Leads objective, website, ad set budgets):
-- Schedule: Nov 6, 9:01 PM to Nov 13, 9:01 PM, Vancouver time.
+- Schedule: Nov 6, 6:00 AM to Nov 13, 9:01 PM, Vancouver time (Savar moved the start from 9:01 PM on 2026-11-05).
 - Goal: "Opened free assessment (/start)" (custom conversion 1133997208992685, URL contains `unicalearning.com/start`, category Lead). Bid: highest volume.
 - Audience: British Columbia, age 28 to 54 (firm), all genders, English. Detailed targeting: parents of children 3-5, 6-8, 9-12 and 13-17 (Meta treats it as a suggestion). Advantage+ audience and placements off.
 - Placements: Facebook and Instagram Feed, Stories and Reels, and WhatsApp Status. Savar kept the vertical placements, because people use them most. In-stream, search and apps are off.
@@ -33,6 +33,7 @@ Meta B3, "B3 - struggling (static)", tag `struggling`
 - Headline: Find out where your child is stuck in math
 
 Meta C1, "C1 - all of this (static)", tag `all-of-this`
+- Image changed by Savar on 2026-11-05, before the start: `final/unica-r3-c1-personalized.png`, headline on the image "Personalized math program for your child." It replaces "One free test for your child. Then all of this." It has no QR code: a version with the Nov booth QR code ran in review for a few minutes, and Savar replaced it, because a scan would not count as a Meta visit.
 - Primary text: Here's everything your child gets with Unica's personalized math learning program: a free online math assessment, practice made from it and mailed home, Maya, the AI Teaching Assistant, for when they're stuck, an app that marks each page from a photo, a parent dashboard, and new practice built from all of it. / Ages 5-14, BC curriculum. First month free, then CAD 79.99 a month. Cancel anytime.
 - Headline: Math practice made for your child
 

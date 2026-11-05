@@ -32,6 +32,8 @@ export interface MemoryTest extends Owned {
   resumeUntil: number;
   completedAt: number | null;
   answeredAll?: boolean;
+  /** The stored test's `pace.unreliable` (#189). */
+  unreliable?: boolean;
 }
 export interface MemoryReport extends Owned {
   /** Defaults to `report-<assessmentId>`. */
@@ -69,6 +71,8 @@ export interface MemoryResult extends Owned {
   assessmentId: string;
   level: ReportModel["level"];
   answers: AreaAnswer[] | null;
+  /** The stored report has the reliability note; false when left out. */
+  unreliable?: boolean;
 }
 export interface MemoryScan extends Owned {
   workbookId: string;
@@ -185,7 +189,7 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
         // As the database: only the family's own test, and only one with a report.
         const reported = own(tables.reports).some((r) => r.assessmentId === assessmentId);
         const row = own(tables.results).find((r) => r.assessmentId === assessmentId);
-        return reported && row ? row : null;
+        return reported && row ? { level: row.level, answers: row.answers, unreliable: row.unreliable ?? false } : null;
       },
       async savedScans() {
         read("scans");
