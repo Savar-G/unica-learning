@@ -55,6 +55,8 @@ type DeskProps = {
   notice?: string | null;
   chatUsage?: ChatUsage | null;
   /** Why this child has no chat (a younger child), in place of "start soon". */
+  /** Why chat is off until a parent agrees to the notice (#529), in place of "start soon". */
+  noticeLine?: string | null;
   chatNote?: string | null;
 } & (
   | { problem: string; books?: undefined }
@@ -169,7 +171,7 @@ export function Desk(props: DeskProps) {
             </button>
           )}
           {props.chatUsage ? <ChatControls key={picked} state={chat} picked={picked !== null} /> : <>
-          <p className="desk-soon">{props.chatNote ?? "Chat and calls with Maya start soon."}</p>
+          <p className="desk-soon">{props.noticeLine ?? props.chatNote ?? "Chat and calls with Maya start soon."}</p>
           <div className="desk-compose">
             <input type="text" disabled placeholder="Write to Maya" aria-label="Write to Maya" />
             <button type="button" disabled aria-label="Send"><Icon name="send" size={20} /></button>
@@ -184,7 +186,8 @@ export function Desk(props: DeskProps) {
           <button type="button" disabled aria-pressed={!props.chatUsage}><Icon name="board" size={18} />Call + board</button>
         </div>}
 
-        {chat.chat ? <ChatBoard chat={chat.chat} still={still} /> : <OurBoard
+        {chat.chat ? <ChatBoard chat={chat.chat} still={still} carry={{ book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: card?.number ?? null }}
+          saved={chat.savedBoard?.id === chat.chat.id ? chat.savedBoard.history : null} onBoard={(h) => chat.saveBoard(chat.chat!.id, h)} /> : <OurBoard
           key={`${ready?.book.id ?? "none"}:${ready?.page.number ?? 0}:${card?.number ?? "none"}`}
           question={card?.board ?? null}
           at={{ book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: card?.number ?? null }}

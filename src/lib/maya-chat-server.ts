@@ -7,8 +7,11 @@ import { stripe } from "@/lib/stripe";
 import { readBookingCustomers } from "@/lib/retention-stripe";
 import { chatFamilyGate, chatGradeLine, chatServesGrade, chatUsage, chatWindow, childChatView, type ChatUsage, type ChatReply } from "@/lib/maya-chat";
 import { mayaCalls, recordView, type CallRecord } from "@/lib/maya-call";
+import type { BoardHistory } from "@/lib/board-history";
 import { callSeams } from "@/lib/maya-call-seams";
 import { mayaCallStore } from "@/lib/maya-call-store";
+import { mayaNotice } from "@/lib/maya-notice";
+import { noticeStore } from "@/lib/maya-notice-store";
 import { workbookStore } from "@/lib/workbook-store";
 import { type FamilyZone } from "@/lib/family-time";
 import type { WorkbookQuestionRef } from "@/lib/question-package";
@@ -88,6 +91,24 @@ export interface ChatContext { db: DB; parent: string; child: string; name: stri
 export type ChatAction = { type: "start"; id: string; question: WorkbookQuestionRef } | { type: "read"; id: string } |
   { type: "child"; id: string; messageId: string; revision: number; text: string } | { type: "end"; id: string; revision: number };
 
+/**
+ * The chat's board from the child's desk (#534): the desk's copy of the board, kept with the call so the admin replay
+ * shows the child's ink. Only for a chat of this parent and child (the store checks it too, R625b-5), live or ended a
+ * few minutes ago at most, and one board a second (R625-6). An older copy than the kept one is a conflict: the answer
+ * carries the kept board (R625b-4). Never changes the chat's revision.
+ */
+export async function saveChatBoard(ctx: ChatContext, id: string, board: string): ReturnType<ReturnType<typeof mayaCalls>["saveInk"]> {
+  const { db, parent, child } = ctx;
+  return mayaCalls({ ...callSeams(db), canChat: async (p, c) => p === parent && c === child }).saveInk(id, { parentId: parent, childId: child }, board);
+}
+
+/** The board the call keeps for a chat of this child (R625b-4), for a desk that has no draft of it; null when none. */
+export async function readChatBoard(ctx: ChatContext, id: string): Promise<BoardHistory | null> {
+  const record = await mayaCallStore(ctx.db).get(id);
+  if (!record || record.kind !== "chat" || record.parentId !== ctx.parent || record.childId !== ctx.child) return null;
+  return record.childInk ?? null;
+}
+
 /** One authorized desk request. The database serializes message admission before the shared call module runs. */
 export async function runChat(ctx: ChatContext, action: ChatAction): Promise<ChatReply> {
   const { db, parent, child, name, zone } = ctx;
@@ -125,6 +146,8 @@ export async function runChat(ctx: ChatContext, action: ChatAction): Promise<Cha
   let record = await store.get(action.id);
   if (record && !owned(record)) return reply(null, "not_found", "refused");
   if (action.type === "start") {
+    // No new chat without a parent's agreement (#529). A chat already under way can still be read, answered and ended.
+    if (!record && !await mayaNotice(noticeStore(db)).accepted(parent)) return reply(null, "notice_required", "refused");
     const ref = action.question;
     const books = workbookStore(db);
     const book = await books.workbook(ref.workbookId);

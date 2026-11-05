@@ -113,6 +113,8 @@ export interface TestResultRecord {
    * (a test scored again after its report was made).
    */
   answers: AreaAnswer[] | null;
+  /** The stored report has the reliability note (#189): `pace.unreliable`, so the report offers a new test. */
+  unreliable: boolean;
 }
 export interface SavedScanRecord {
   workbookId: string;
@@ -280,6 +282,11 @@ export interface LevelTileView {
   earlySign: boolean;
   /** The day the test finished, in family time. */
   testedOn: string;
+  /**
+   * The report calls the test unreliable (its reliability note, `pace.unreliable`): no area bars, and one sentence in
+   * their place (D-258, #579). The Level tile stays, as the report keeps the level beside its note.
+   */
+  unreliable: boolean;
 }
 
 /** One thing to do, in the spec's order; the Overview shows only the first that applies (D-248). */
@@ -289,7 +296,7 @@ export interface OverviewView {
   child: ChildView;
   /** From the newest finished test. Null before the first one, and while its report is not ready. */
   level: LevelTileView | null;
-  /** One bar per reported area with answers, from the same test; empty when `level` is null. */
+  /** One bar per reported area with answers, from the same test; empty when `level` is null or unreliable. */
   areas: AreaBarView[];
   /** The newest finished test's report is not ready, so no older result shows in its place. */
   resultPreparing: boolean;
@@ -381,12 +388,17 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
 async function testLevel(reader: ParentViewReader, test: TestRecord, schoolGrade: Grade, zone: FamilyZone): Promise<{ level: LevelTileView | null; areas: AreaBarView[] }> {
   const result = await reader.testResult(test.id);
   if (!result) return { level: null, areas: [] };
+  // D-258 (#579): a test the report calls unreliable shows no bars. A fall back to the overall level would invent a
+  // weakness (D-108). Only the stored report's note decides: the sentence says the report offers a new test, and a
+  // rescore can change the test's pace flag without changing the report the parent reads.
+  const unreliable = result.unreliable;
   const level: LevelTileView = {
     working: result.level.working,
     earlySign: result.level.confidence === "low" || storedLevelCertainty(result.level) === "early-sign",
     testedOn: localDay(test.completedAt!, zone),
+    unreliable,
   };
-  const areas: AreaBarView[] = result.answers
+  const areas: AreaBarView[] = result.answers && !unreliable
     ? areaLevels({ answers: result.answers, schoolGrade, workingLevel: result.level.working })
       .map((a) => ({ area: a.area, name: REPORTED_STRAND_NAMES[a.area], level: a.level, label: a.label, earlySign: a.certainty !== "clear" }))
     : [];
@@ -409,7 +421,7 @@ export interface MonthlySummaryView {
   madeOn: string;
   /** From the newest test finished by the month's end with its report ready; null with none. */
   level: LevelTileView | null;
-  /** From the same test; empty with no level, or a test that cannot be replayed. */
+  /** From the same test; empty with no level, a test that cannot be replayed, or a test the report calls unreliable. */
   areas: AreaBarView[];
   /** The child's workbooks shipped in the month, oldest first, with the day each shipped. */
   mailed: { number: number; shippedOn: string }[];

@@ -1,0 +1,14 @@
+/* Copied values from src/ds/styles/warm.css and src/components/maya-board.css (2026-11-05), so the round keeps its look when the site changes. */
+[data-look="warm"], :root {
+  --sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --mono: "Geist Mono", ui-monospace, monospace;
+  --ink: #0c0c0e; --ink-2: #44444c; --ink-3: #8a8a93;
+  --line: #e4e4e7; --line-soft: #ececef;
+  --card: #f4f4f5; --soft: #f8f8f9;
+  --accent: #ff6a3d; --accent-soft: #fff1ea;
+  --sun: #ffc93c; --sky: #5b8def; --tang: #ff6a3d; --leaf: #2fb37a;
+  --g1: #ffc93c; --g2: #ff9466; --g3: #8fb4ff; --g4: #a6e8cb;
+  --board-blue: #3366f0; --board-red: #e0322b; --board-green: #16a06a; --board-yellow: #ffd23f;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: #fff; color: var(--ink); font-family: var(--sans); -webkit-font-smoothing: antialiased; }

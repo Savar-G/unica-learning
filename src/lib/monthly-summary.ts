@@ -11,6 +11,7 @@ import { gradeLabel, type AreaLabel, type Level } from "@/lib/assessment";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { formatCalendarDate } from "@/lib/family-time";
 import type { MonthlySummaryView } from "@/lib/parent-view";
+import { unreliableAreasText } from "@/lib/report-view";
 import { IMAGE_SCALE, PRINT_PAGE, type PrintEngine } from "@/lib/workbook-render";
 import type { TemplateFonts } from "@/lib/workbook-template-fixed";
 
@@ -88,6 +89,8 @@ function levelCard(v: MonthlySummaryView): string {
 }
 
 function areasCard(v: MonthlySummaryView): string {
+  // D-258 (#579): a test the report calls unreliable has no bars, only the sentence the Overview shows.
+  if (v.level?.unreliable) return `<section class="card"><p class="label">Level by area</p><p class="sub">${escape(unreliableAreasText(v.firstName))}</p></section>`;
   if (!v.level || v.areas.length === 0) return "";
   const n = Math.max(8, v.schoolGrade, v.level.working, ...v.areas.map((a) => a.level)) + 1;
   const ticks = Array.from({ length: n }, (_, l) => `<span${l === v.schoolGrade ? ` class="is-grade"` : ""}>${tick(l)}</span>`).join("");

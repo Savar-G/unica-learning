@@ -1,4 +1,5 @@
 import type { EditCall } from "@/lib/workbook-edit-calls";
+import { choiceInstruction } from "@/lib/workbook-layout-check";
 // The workbook generator (#311, spec #296): a two-week plan (#308, src/lib/workbook-plan.ts) in, one coherent draft
 // workbook out, stored as one unit through the draft store. The plan fixes every page and part; the AI fills the
 // question slots of each page with content only (src/lib/workbook-generator-items.ts), one call per page; code
@@ -62,7 +63,7 @@ import { buildQuestion, isCodeWorded, ITEMS_SCHEMA, kindProblem, relationWording
 import { attachWorkbookMayaOperations, withWorkbookMayaOperation, printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 import { isOneMoreLessSkill } from "@/lib/number-words";
 import { solveCheck, solveReason, type SolveLog, type Solver, type SolveVerdict } from "@/lib/workbook-solve-check";
-import { digestOf } from "@/lib/workbook-digest";
+import { canonical, digestOf } from "@/lib/workbook-digest";
 import { BOYS, fillFrame, frameDoes, framePair, framesFor, GIRLS, PEOPLE, THINGS, quantityStoryProblem, storyProblem, type Action, type WordingKind } from "@/lib/workbook-wording";
 import {
   bookPageContent, dayPageContent, layoutDayPage, mistakesFor, rangeProblem, samAnswer, skillSigns, samFix, samProblem, skillRange, slotRanges, templateMethod, PANEL_SLOTS, SLOT_FORMATS, STRICT_SLOTS,
@@ -2314,10 +2315,8 @@ function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuesti
     if (w.page.atMaximum) content.atMaximum = true;
     // The page's instruction says what its questions ask (the U4 review, item 15), on practice and review pages; the
     // other pages keep their own line.
-    // What to circle, said on every page that has a circled choice (Savar, 2026-11-04: true or false never said to
-    // circle): "Circle true or false.", "Circle yes or no.", else "Circle your answer.".
-    const circled = questions.filter(q => q.package && q.place !== "warm-up").flatMap(q => (q.package!.item?.regions ?? []).flatMap(r => r.kind === "choice" && r.mark !== "tick" ? [r.choices.map(c => c.toLowerCase()).sort().join(",")] : []));
-    const circleLine = !circled.length ? null : circled.every(c => c === "false,true") ? "Circle true or false." : circled.every(c => c === "no,yes") ? "Circle yes or no." : "Circle your answer.";
+    // Name every choice kind, including Spot the error's yes/no beside true/false practice.
+    const circleLine = choiceInstruction(questions);
     // (A new idea page's chip says "Read how it works, then try it.": its instruction line says what to write and circle,
     // never the same words twice, Savar 2026-11-04.)
     if (["practice", "practice-2", "remember-these", "remember-these-mixed-set", "new-idea"].includes(w.page.type)) {
@@ -2767,7 +2766,9 @@ function layOut(input: GenerateInput) {
  */
 export function bookOutline(input: GenerateInput): string {
   const { work, total } = layOut(input.book ? { ...input, book: { child: "" } } : input);
-  return digestOf({
+  // Canonical: the run's stored plan comes back from jsonb with its keys in another order (2026-11-05, the first
+  // customer's run failed its own check on the first call).
+  return digestOf(canonical({
     number: input.number, level: input.plan.level, total, laidOut: !!input.book, ...(input.itemPolicy === "approved-v1" ? { itemPipeline: { version: 6, examples: ITEM_EXAMPLES, compactExamples: COMPACT_STORY_FRAMES } } : {}),
     pages: work.map((w) => ({
       number: w.number, day: w.day, page: w.page.number, type: w.page.type, layout: w.layout, panels: w.panels,
@@ -2776,7 +2777,7 @@ export function bookOutline(input: GenerateInput): string {
         room: x.place ? roomOf(input, x.place, w.day) ?? null : null, planned: x.planned ?? null, ...(input.itemPolicy === "approved-v1" ? { contract: contractFor(input, w, x), existing: !!x.existing } : {}),
       })),
     })),
-  });
+  }));
 }
 
 /** Why a kept day page does not fit the page the plan has at its number (R379-8-2), or null. */

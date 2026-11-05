@@ -1,0 +1,99 @@
+{
+  "issue": 529,
+  "route": "direct",
+  "surface": "product and public text",
+  "constraint_mode": "existing-system",
+  "approval": "Pending. Savar must approve the privacy and terms wording and the notice before merge.",
+  "browser": "T3 preview tools, incognito profile. aside status hung at 'Waiting for Aside to restart', so the brief's fallback applied.",
+  "model": "No model calls. The local server had no OPENROUTER_API_KEY, and the check stopped before a chat ran.",
+  "fixture": "The marked test family QA E2E Three (grade 3, shipped workbook, PIN set). Its acceptance row was made by the real form, then removed through the Management API, both rounds, so the family still sees the notice.",
+  "viewports": {
+    "laptop": [
+      1440,
+      800
+    ],
+    "tablet": [
+      820,
+      1600
+    ],
+    "phone": [
+      390,
+      844
+    ]
+  },
+  "screenshots": [
+    {
+      "path": ".design/experiments/r529/parent-home-card-laptop.png",
+      "state": "Parent home with the notice card, for a family with chat open and no agreement. The cookie banner covers part of the row; a real visit shows it only until the choice.",
+      "viewport": "laptop",
+      "sha256": "5f3e073663adf36e9b181cde8a9e83042b4221bfc986892836d36ea2576781e1"
+    },
+    {
+      "path": ".design/experiments/r529/notice-laptop.png",
+      "state": "The notice, reached from Open the desk.",
+      "viewport": "laptop",
+      "sha256": "08e180e4a4e84395abdfac870a9a1e85ca40f85af36432402af4a91b3218c46f"
+    },
+    {
+      "path": ".design/experiments/r529/notice-tablet.png",
+      "state": "The notice.",
+      "viewport": "tablet",
+      "sha256": "7e0f00f812c3445550aeb5cd02481f432a7b73faefada19fb649f9e2633295ae"
+    },
+    {
+      "path": ".design/experiments/r529/notice-phone.png",
+      "state": "The notice. Full-height capture.",
+      "viewport": "phone",
+      "sha256": "bf2b60f3e07f5d254f3f750e097997a6cb08fb29c54bf8bb6313728e843a86ad"
+    },
+    {
+      "path": ".design/experiments/r529/notice-saved-laptop.png",
+      "state": "After I agree: the answer is saved, with no promise of access to chat, and Open the desk next.",
+      "viewport": "laptop",
+      "sha256": "114902da56b7bec532f3b7c4a7296062eb8e516960d642ee27f619364631269a"
+    },
+    {
+      "path": ".design/experiments/r529/desk-no-agreement-laptop.png",
+      "state": "Desk with no agreement: chat off, with the line Ask a grown-up to turn on Maya from their account.",
+      "viewport": "laptop",
+      "sha256": "252dc99cadf677ebe962deb683399c50d0dd0bfa7f94cf0d62f6d0a6b5968c9e"
+    },
+    {
+      "path": ".design/experiments/r529/desk-no-agreement-tablet.png",
+      "state": "The same desk.",
+      "viewport": "tablet",
+      "sha256": "74d17a66b8aad7cceeb08f21feeb81f5d99525bccb6a0f32e589c0a78daf3795"
+    },
+    {
+      "path": ".design/experiments/r529/desk-no-agreement-phone.png",
+      "state": "The same desk.",
+      "viewport": "phone",
+      "sha256": "2feb599904f570b49c3ea07640990ece66d7fec7310fecd40dfb6f2d69639053"
+    },
+    {
+      "path": ".design/experiments/r529/privacy-maya-laptop.png",
+      "state": "Privacy policy: the Maya and voice sections.",
+      "viewport": "laptop",
+      "sha256": "116b9a102055571c229f4cffc392d55eff6467636dfbd748c5989d34e7e9c0ce"
+    },
+    {
+      "path": ".design/experiments/r529/terms-maya-phone.png",
+      "state": "Terms: the Maya section.",
+      "viewport": "phone",
+      "sha256": "c1b8934affb2be2e1bb169064149f9955b450c46324d3feede207d87e3738b78"
+    },
+    {
+      "path": ".design/experiments/r529/dashboard-card-laptop.png",
+      "state": "The dashboard home (#551, test families): the notice card, after the rebase on main.",
+      "viewport": "laptop",
+      "sha256": "749547a8328d639d90918faf9d831c7abb2d9de3ca376dc0b0f817368549d78c"
+    },
+    {
+      "path": ".design/experiments/r529/dashboard-card-phone.png",
+      "state": "The same card at phone width. Width changed in the browser only; the user agent stayed a laptop's.",
+      "viewport": "phone",
+      "sha256": "8b8793c924bd8bc0eff386f003fbaa6156eb652c35cdd0e6ef0ba845f932ed9b"
+    }
+  ],
+  "review_round": "Codex review of 110919a: screens retaken after the five fixes. Notice, privacy, terms and the laptop desk retaken again on the merge with #584 (Grade 3 limit). Tablet and phone desk, the Parent home card and the dashboard cards are from before these text changes; those screens did not change."
+}
