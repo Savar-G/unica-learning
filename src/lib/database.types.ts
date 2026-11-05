@@ -456,6 +456,66 @@ export type Database = {
           },
         ]
       }
+      child_plan_states: {
+        Row: {
+          child_id: string
+          ending_free: boolean
+          ends_at: string | null
+          event_at: string | null
+          event_id: string | null
+          kind: string
+          monthly_cents: number | null
+          next_charge_at: string | null
+          parent_id: string
+          read_at: string
+          read_order: number | null
+          updated_at: string
+        }
+        Insert: {
+          child_id: string
+          ending_free?: boolean
+          ends_at?: string | null
+          event_at?: string | null
+          event_id?: string | null
+          kind: string
+          monthly_cents?: number | null
+          next_charge_at?: string | null
+          parent_id: string
+          read_at: string
+          read_order?: number | null
+          updated_at?: string
+        }
+        Update: {
+          child_id?: string
+          ending_free?: boolean
+          ends_at?: string | null
+          event_at?: string | null
+          event_id?: string | null
+          kind?: string
+          monthly_cents?: number | null
+          next_charge_at?: string | null
+          parent_id?: string
+          read_at?: string
+          read_order?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "child_plan_states_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "child_plan_states_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       child_profiles: {
         Row: {
           assessment_id: string | null
@@ -4499,6 +4559,35 @@ export type Database = {
         Args: { p_run: string; p_runner: string; p_stale_seconds: number }
         Returns: string
       }
+      save_child_plan_state:
+        | {
+            Args: {
+              p_customer: string
+              p_ending_free: boolean
+              p_ends_at: string
+              p_event_at: string
+              p_event_id: string
+              p_kind: string
+              p_monthly_cents: number
+              p_next_charge_at: string
+              p_read_at: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_customer: string
+              p_ending_free: boolean
+              p_ends_at: string
+              p_event_at: string
+              p_event_id: string
+              p_kind: string
+              p_monthly_cents: number
+              p_next_charge_at: string
+              p_read_order: number
+            }
+            Returns: string
+          }
       save_family_payment_progress: {
         Args: {
           after_id: string
@@ -4616,6 +4705,7 @@ export type Database = {
         }
         Returns: Json
       }
+      take_plan_read_order: { Args: never; Returns: number }
       use_workbook_run_attempts: {
         Args: {
           p_lease: string

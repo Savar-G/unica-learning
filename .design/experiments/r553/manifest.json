@@ -1,0 +1,19 @@
+{
+  "round": "r553",
+  "ticket": "#553 (spec #544): the Maya tab. Not a choice round: checks of what was built, for Savar's one review page (D-249).",
+  "picked": "The Maya tab is the existing notes page, /account/notes/<child>, inside the dashboard frame: eyebrow Maya, the child's name, the minutes card, then one note per call. The transcript stays at /account/notes/<child>/<call>, one click down, with Back to Maya.",
+  "how_taken": "npm run dev on production data, signed in as the test family savar.gupta1922+e2e (child QA E2E Three), with the T3 preview browser at 1440 x 900 (saved at 1280) and 390 x 844. The round N button is the Next.js dev overlay.",
+  "local_edits_reverted": [
+    "No test family has a confirmed delivery, so no child reaches the active stage that carries the Maya tab. A local edit, since reverted, added one delivery for this child in the reader (src/lib/parent-view-server.ts). Nothing was written to the database.",
+    "The database refuses notes for test families, and production holds no notes at all. For the pictures with notes, a local edit, since reverted, returned two sample notes (one call, one chat) from src/lib/parent-maya-notes.ts. The minutes and the chat line are real reads."
+  ],
+  "screens": [
+    { "file": "maya-tab-desktop.png", "sample_notes": true, "shows": "Maya current in the sidebar; Maya this week card; two notes, each with Read the call or Read the chat" },
+    { "file": "transcript-desktop.png", "sample_notes": true, "shows": "One click down: the note, the question and the transcript; Back to Maya; Maya stays current" },
+    { "file": "overview-desktop.png", "sample_notes": true, "shows": "The Overview no longer repeats the minutes or the latest note once the Maya tab holds them" },
+    { "file": "maya-tab-phone.png", "sample_notes": true, "shows": "Phone: child block on top, Maya current in the bottom bar" },
+    { "file": "transcript-phone.png", "sample_notes": true, "shows": "Phone: the transcript page, Back to Maya" },
+    { "file": "maya-tab-no-notes-phone.png", "sample_notes": false, "shows": "Phone, real data only: minutes and There are no notes from Maya yet" }
+  ],
+  "not_built": "No pattern line: no code counts a pattern across calls today, so the line is left out."
+}

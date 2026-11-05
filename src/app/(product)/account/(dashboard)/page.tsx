@@ -17,10 +17,11 @@ import { workbookStore } from "@/lib/workbook-store";
 import type { WorkbookSummary } from "@/lib/workbook-content";
 import { AddChild, SaveTimeZone, SendLink, SignOut, StartTest, TrackOnce } from "@/components/account";
 import { parentChatUsage } from "@/lib/maya-chat-server";
-import { ChatUsageRow } from "@/components/chat-usage";
-import { parentMinutes, type ChildMinutes } from "@/lib/maya-minutes-server";
-import type { ChatUsage } from "@/lib/maya-chat";
-import { DEMO_DAILY_MINUTES, WEEK_SECONDS } from "@/lib/maya-minutes";
+import { DeskRow, MinutesRow } from "@/components/parent-home-rows";
+import { ParentDashboardHome } from "@/components/parent-dashboard-home";
+import { parentDashboard } from "@/lib/parent-dashboard-server";
+import { parentMinutes } from "@/lib/maya-minutes-server";
+import { DEMO_DAILY_MINUTES } from "@/lib/maya-minutes";
 import { SupportPage } from "@/components/support-page";
 import { scanPagesAccess } from "@/lib/scan-pages-access";
 import { latestParentMayaNotes } from "@/lib/parent-maya-notes";
@@ -57,7 +58,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   const newestReport = new Map((reports ?? []).map((r) => [r.child_id, reportPath(r.id)]));
   const reportFor = (id: string, state: StartState) => (state.kind === "wait" ? testReport.get(`${id}@${state.completedAt}`) : newestReport.get(id));
   const phone = isPhone(await headers());
-  const { sent, password, existing, pin, desk } = await searchParams;
+  const { sent, password, existing, pin, desk, child } = await searchParams;
 
   const children = kids ?? [];
   const timeZone = familyZone({ timeZone: parent.time_zone, postal: parent.postal, province: familyProvince(children) });
@@ -67,6 +68,12 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
     currentWorkbooks(db, children.map((c) => c.id)), pinIsSet(parentUser), parentMinutes(db, parentUser, timeZone, children),
     parentChatUsage(db, parentUser, children, timeZone), scanPagesAccess(parentUser), latestParentMayaNotes(db, parentUser, children.map((c) => c.id)),
   ]);
+  // The dashboard (#551), for the families its switch opens to. Everyone else gets today's Parent home below.
+  const dashboard = await parentDashboard();
+  if (dashboard) {
+    const facts = { dashboard, kids: children, phone, sent: sent === "1", timeZone, states, reportFor, current, minutes, chats, notes, scansEnabled };
+    return <ParentDashboardHome {...facts} addressChild={typeof child === "string" ? child : null} alerts={{ password: password === "1", pin: pin === "1", deskError: desk === "error", existing: existing === "1" }} parentEmail={parent.email} />;
+  }
   return (
     <SupportPage label="Your account" title={`Hi, ${parent.name.split(" ")[0]}.`}>
       {password === "1" && <p role="status" className="acct-alert acct-saved">Your password is saved.</p>}
@@ -123,42 +130,4 @@ async function currentWorkbooks(db: Awaited<ReturnType<typeof sessionClient>>, c
     console.error("[account] workbooks load failed", error instanceof Error ? error.message : error);
     return new Map();
   }
-}
-
-/** The child's workbook and "Open the desk" (a form POST, so it works without JavaScript). No PIN yet: set one first. */
-function DeskRow({ childId, name, workbook, pinSet }: { childId: string; name: string; workbook: WorkbookSummary; pinSet: boolean | null }) {
-  return (
-    <div className="acct-desk">
-      <span>
-        <b>Workbook {workbook.number}</b>
-        <span className="small">{pinSet === false
-          ? `${name} needs your PIN to leave the desk. Set your PIN, then open the desk.`
-          : `On the desk, ${name} sees this workbook. Leaving the desk needs your PIN.`}</span>
-      </span>
-      {pinSet === false ? (
-        <Link className="btn ghost" href="/account/pin?desk=1">Set your PIN</Link>
-      ) : (
-        <form method="post" action="/api/desk/open">
-          <input type="hidden" name="child" value={childId} />
-          <button type="submit" className="btn">Open the desk <span aria-hidden="true">→</span></button>
-        </form>
-      )}
-    </div>
-  );
-}
-
-/** The child's minutes with Maya this week (#330): used, left, and the day they come back. */
-function MinutesRow({ name, minutes, chat }: { name: string; minutes?: ChildMinutes; chat?: ChatUsage }) {
-  const week = WEEK_SECONDS / 60;
-  return (
-    <div className="acct-desk">
-      <span>
-        <b>Maya this week</b>
-        {minutes && <span className="small">{minutes.left > 0
-          ? `${name} used ${minutes.used} of ${week} minutes. ${minutes.left} ${minutes.left === 1 ? "minute" : "minutes"} left. The minutes start again on ${minutes.backOn}.`
-          : `${name} used all ${week} minutes. Maya is back on ${minutes.backOn}.`}</span>}
-        {chat && <ChatUsageRow name={name} usage={chat} />}
-      </span>
-    </div>
-  );
 }

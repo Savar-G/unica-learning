@@ -26,6 +26,7 @@ import { callsOn } from "@/lib/maya-call-seams";
 import { mayaCallStore } from "@/lib/maya-call-store";
 import { callOfRoom, checkJoiner, JOIN_WAIT_MS, VOICE_AGENT_NAME, voiceProviders, type VoiceCallFacts } from "@/lib/maya-voice";
 import { VoiceCallRun, voiceSession, type CallUpdate } from "./agent";
+import { voiceTurnReport, type VoiceTurnSample } from "./turn-timing";
 import { makeProviders } from "./providers";
 import { referenceJob, referenceRoomName } from "@/lib/maya-workbook-speech";
 import { runWorkbookReference } from "./workbook-reference";
@@ -116,10 +117,19 @@ export default defineAgent({
       samples.push(sample);
       log("board cue", { callId, fakeAudio: made.tts.provider === "fake", ...sample });
     } });
-    const run = new VoiceCallRun(session, opened.call, { board, notify, closed: async () => {
-      log("board cue report", { callId, fakeAudio: made.tts.provider === "fake", groups: cueReport(samples) });
-      await ctx.shutdown("call ended");
-    } });
+    const turnSamples: VoiceTurnSample[] = [];
+    const ackLimit = Number(process.env.MAYA_ACK_LIMIT_MS);
+    const run = new VoiceCallRun(session, opened.call, { board, notify,
+      ...(process.env.MAYA_ACK_LIMIT_MS?.trim() && Number.isFinite(ackLimit) && ackLimit >= 0 ? { ackLimitMs: ackLimit } : {}),
+      measureTurn: sample => {
+        turnSamples.push(sample);
+        log("voice turn", { callId, fakeProviders: { speechToText: made.stt.provider === "fake", voice: made.tts.provider === "fake" }, ...sample });
+      },
+      closed: async () => {
+        log("board cue report", { callId, fakeAudio: made.tts.provider === "fake", groups: cueReport(samples) });
+        log("voice turn report", { callId, fakeProviders: { speechToText: made.stt.provider === "fake", voice: made.tts.provider === "fake" }, ...voiceTurnReport(turnSamples) });
+        await ctx.shutdown("call ended");
+      } });
     ctx.addShutdownCallback(() => run.finish({ detail: "the voice worker stopped" }));
 
     const local = ctx.room.localParticipant!;
@@ -158,6 +168,7 @@ export default defineAgent({
       record: false,
     });
     run.attachBoardAudio();
+    run.attachTurnTiming();
     await run.childJoined();
     log("call running", callId, providers.ids.speechToText, providers.ids.voice);
   },

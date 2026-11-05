@@ -135,6 +135,9 @@ export interface CoverContent {
 }
 
 export interface PlanRow {
+  /** L1 writes these from the generated day so a separately printed plan keeps its estimate. */
+  requiredMinutes?: number;
+  extra?: boolean;
   day: number;
   /** Unit A's topic, and Unit B's (or what the day does instead) under it. */
   topic: string;

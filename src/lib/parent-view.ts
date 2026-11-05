@@ -21,6 +21,7 @@ export interface ChildRecord {
 export type TestRecord = Attempt & { childId: string };
 /** A report, with the curriculum of its test. */
 export interface ReportRecord {
+  id: string;
   childId: string;
   assessmentId: string;
   curriculum: CurriculumId;
@@ -57,6 +58,8 @@ export interface ChildView extends StageView {
   schoolGrade: Grade;
   /** The newest shipped workbook, which opens the desk; null before the first one ships. */
   currentWorkbook: { number: number } | null;
+  /** The child's reports, newest test first. */
+  reportIds: string[];
 }
 
 /** Where a child's test stands at `now`. Only the latest finished test counts, unless a test is open. */
@@ -66,6 +69,12 @@ function testFact(tests: readonly TestRecord[], reports: readonly ReportRecord[]
   if (!latest) return { state: "none" };
   const report = reports.find((r) => r.assessmentId === latest.id);
   return report ? { state: "report_ready", curriculum: report.curriculum } : { state: "running" };
+}
+
+/** The reports' ids, newest test first. */
+function reportIds(tests: readonly TestRecord[], reports: readonly ReportRecord[]): string[] {
+  const finished = (r: ReportRecord) => tests.find((t) => t.id === r.assessmentId)?.completedAt ?? 0;
+  return [...reports].sort((a, b) => finished(b) - finished(a)).map((r) => r.id);
 }
 
 /**
@@ -89,13 +98,14 @@ export async function listChildren(reader: ParentViewReader, now: number): Promi
   ]);
   return children.map((child): ChildView => {
     const newest = Math.max(...workbooks.filter((w) => w.childId === child.id).map((w) => w.number), 0);
+    const own = { tests: tests.filter((t) => t.childId === child.id), reports: reports.filter((r) => r.childId === child.id) };
     const view = childStage({
-      test: testFact(tests.filter((t) => t.childId === child.id), reports.filter((r) => r.childId === child.id), now),
+      test: testFact(own.tests, own.reports, now),
       cardSaved: cards.some((c) => c.childId === child.id),
       delivered: deliveries.some((d) => d.childId === child.id),
       plan: plans.find((p) => p.childId === child.id)?.kind ?? "unknown",
     }, switches);
-    return { id: child.id, firstName: child.firstName, schoolGrade: child.grade, ...view, currentWorkbook: newest > 0 ? { number: newest } : null };
+    return { id: child.id, firstName: child.firstName, schoolGrade: child.grade, ...view, currentWorkbook: newest > 0 ? { number: newest } : null, reportIds: reportIds(own.tests, own.reports) };
   });
 }
 

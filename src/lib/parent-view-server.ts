@@ -32,9 +32,9 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       return withAnswers(attemptStore(admin), parent);
     },
     async reports() {
-      const { data, error } = await session.from("reports").select("child_id, assessment_id, assessment:assessments!inner(province)");
+      const { data, error } = await session.from("reports").select("id, child_id, assessment_id, assessment:assessments!inner(province)");
       if (error) throw new Error(`reports read: ${error.message}`);
-      return data.map((r) => ({ childId: r.child_id, assessmentId: r.assessment_id, curriculum: r.assessment.province }));
+      return data.map((r) => ({ id: r.id, childId: r.child_id, assessmentId: r.assessment_id, curriculum: r.assessment.province }));
     },
     async cardsSaved() {
       const { data, error } = await session.from("card_setups").select("child_id").not("card_saved_at", "is", null);

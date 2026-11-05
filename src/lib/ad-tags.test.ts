@@ -153,6 +153,8 @@ describe("ad tags on the child's desk", () => {
   it("block every desk page", () => {
     for (const path of ["/tutor", "/tutor/", QR, "/tutor/forgot-pin", "/Tutor", "/%74utor/p/x", "//tutor/p/x"]) expect(adsBlockedPath(path), path).toBe(true);
     for (const path of ["/tutoring", "/our-story"]) expect(adsBlockedPath(path), path).toBe(false);
+    for (const path of ["/account/settings", "/account/settings/", "/Account/Settings"]) expect(adsBlockedPath(path), path).toBe(true);
+    expect(adsBlockedPath("/account"), "/account").toBe(false);
   });
 
   it("never load on a QR code page, even after consent, and send no page location", () => {

@@ -26,11 +26,11 @@ async function childName(db: SupabaseClient<Database>, childId: string): Promise
   return error ? null : (data?.first_name ?? null);
 }
 
-/** The note module with the secret key. */
-export function serverCallNotes(admin: SupabaseClient<Database>): CallNotes {
+/** The note module with the secret key. `codeOnly`: no AI warm sentence (the sweep of abandoned calls, #528). */
+export function serverCallNotes(admin: SupabaseClient<Database>, options: { codeOnly?: boolean } = {}): CallNotes {
   return callNotes({
     store: mayaCallNoteStore(admin),
-    ai: noteAiClient(),
+    ai: options.codeOnly ? null : noteAiClient(),
     isTestFamily: (p) => isTestFamily(admin, p),
     childName: (id) => childName(admin, id),
     clock: () => Date.now(),
@@ -41,8 +41,8 @@ export function serverCallNotes(admin: SupabaseClient<Database>): CallNotes {
  * The `note` seam of the call module: writes the note of an ended call. "done" when the note is stored or refused for
  * good (a test call or a test family); "pending" otherwise, so the call keeps the note's inputs for a retry.
  */
-export function writeNoteAfterCall(admin: SupabaseClient<Database>) {
-  const notes = serverCallNotes(admin);
+export function writeNoteAfterCall(admin: SupabaseClient<Database>, options: { codeOnly?: boolean } = {}) {
+  const notes = serverCallNotes(admin, options);
   return async ({ call, package: pkg, event }: { call: CallRecord; package: QuestionPackage; event: NewLearningEvent | null }): Promise<NoteStep> => {
     const result = await notes.write({ call, package: pkg, event });
     return noteStep(result, call.id);
