@@ -1154,6 +1154,7 @@ const PROGRESS_CHUNK = 50;
 /** One row of public.admin_test_progress_for() (migration add_admin_test_progress_for). */
 type ProgressQueryRow = {
   id: string; status: AssessmentStatus; route: Route | null;
+  block_lengths?: number[] | null; blocks_locked?: number | null; blocks_complete?: boolean | null;
   started_at: string; last_answer_at: string | null; completed_at: string | null; resume_until: string;
   break_started_at: string | null; break_ended_at: string | null;
   stage3_route: Stage3Route | null;
@@ -1173,6 +1174,7 @@ export async function progressRows(a: AdminSession, ids: readonly string[]): Pro
   const rows = (await Promise.all(chunks.map(async (chunk) =>
     must<ProgressQueryRow[]>(await a.db.rpc("admin_test_progress_for", { ids: chunk }), "test progress")))).flat();
   return new Map(rows.map((r) => [r.id, {
+    ...(r.block_lengths && { blocks: { lengths: r.block_lengths, locked: r.blocks_locked ?? 0, complete: r.blocks_complete ?? false } }),
     status: r.status, route: r.route, stage3Route: r.stage3_route, answered: r.answered, nextPrompt: r.next_prompt,
     lengths: { stage1: r.stage1, up: r.up, stay: r.stay, down: r.down, stage3Up: r.stage3_up, stage3Down: r.stage3_down },
     lastShown: r.last_shown_position === null || !r.last_shown_at ? null : { position: r.last_shown_position, at: r.last_shown_at },
@@ -1191,6 +1193,7 @@ export function detailProgress(d: TestDetail): ProgressInput {
   const stage3Route = d.test.stage3_route as Stage3Route | null;
   const onRoute = givenQuestions(stored, route, stage3Route);
   return {
+    ...(stored.adaptive && { blocks: { lengths: stored.adaptive.blocks.map(b => b.questions.length), locked: stored.adaptive.locked, complete: stored.adaptive.complete } }),
     status: d.test.status, route, stage3Route, answered: n,
     nextPrompt: n < stored.stage1.length || route ? (onRoute[n]?.prompt ?? null) : null,
     lengths: { stage1: stored.stage1.length, up: stored.stage2.up.length, stay: stored.stage2.stay.length, down: stored.stage2.down.length, stage3Up: stored.stage3?.up.length ?? 0, stage3Down: stored.stage3?.down.length ?? 0 },

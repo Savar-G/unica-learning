@@ -89,3 +89,5 @@ export { PROFILE_AI_SCHEMA, PROFILE_AI_TEXT_MAX, checkProfileAi, profileAiFacts,
 export * from "./findings";
 // The copy without names (#201): each test of a family, copied before the family is deleted.
 export * from "./anonymous-copy";
+
+export * from "./adaptive";

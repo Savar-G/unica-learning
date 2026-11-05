@@ -19,7 +19,7 @@ export default function MathAssessmentPage() {
           <p className="res-lead">A free online math assessment for children from Kindergarten to Grade 9 in Canada. Your child answers the questions. You get a report with their math level and gaps.</p>
         </header>
         <div className="res-body">
-          <KeyFacts items={["No card is needed for the assessment or report.", "Use a laptop or tablet. Your child takes the test alone, in one sitting.", "The questions adapt to how your child does.", "The report arrives by email and stays in your parent account."]} />
+          <KeyFacts items={["No card is needed for the assessment or report.", "Use a laptop or tablet. Your child takes the test alone. They can pause and return to their saved answers.", "The questions adapt to how your child does.", "The report arrives by email and stays in your parent account."]} />
           <AssessmentCta slug="assessment-guide">See which math skills need practice. No paid plan is required.</AssessmentCta>
           <Section title="What the assessment checks">
             <p>The assessment checks math skills such as numbers and operations, fractions, patterns, and shapes and measurement. The questions start at your child&apos;s school grade and adjust to their answers. It also checks number facts.</p>

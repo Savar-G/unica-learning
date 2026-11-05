@@ -883,6 +883,7 @@ export type Database = {
           call_ids: string[] | null
           child_id: string | null
           clicks: number
+          copy_redacted: boolean
           created_at: string
           day: string | null
           email_id: string | null
@@ -904,6 +905,7 @@ export type Database = {
           call_ids?: string[] | null
           child_id?: string | null
           clicks?: number
+          copy_redacted?: boolean
           created_at?: string
           day?: string | null
           email_id?: string | null
@@ -925,6 +927,7 @@ export type Database = {
           call_ids?: string[] | null
           child_id?: string | null
           clicks?: number
+          copy_redacted?: boolean
           created_at?: string
           day?: string | null
           email_id?: string | null
@@ -4656,6 +4659,14 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      admin_set_maya_chat_family: {
+        Args: { p_change: string; p_enabled: boolean; p_parent: string }
+        Returns: string
+      }
+      admin_set_test_account: {
+        Args: { p_parent: string; p_test: boolean }
+        Returns: undefined
       }
       admin_team_ids: { Args: never; Returns: string[] }
       admin_template_stats: {
