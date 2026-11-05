@@ -48,6 +48,8 @@ export type WorkedLine = string;
 
 /** One slot's content on a page. Which fields a slot reads is in the template; the rest are left out. */
 export interface Block {
+  /** L1/G1 contract: copy PlannedPart.extra to every block of that part. */
+  extra?: boolean;
   slot: SlotName;
   /** The questions in the slot, by their number on the page, in reading order. */
   items: number[];
@@ -83,6 +85,9 @@ export interface Block {
 /** A day page's content: its header and its slots. */
 export interface DayContent {
   kind: "day";
+  /** L1/G1 contract: copy PlannedDay.time.target when personal.adjustments.requiredMinutes is non-null.
+   * Leave absent without a required-time budget, so the previous time gate stays unchanged. */
+  requiredTimeTarget?: number;
   extraPractice?: boolean;
   consistentLayout?: boolean;
   fillingComplete?: boolean;

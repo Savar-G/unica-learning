@@ -16,6 +16,12 @@ The short command sets `--fake --no-store --check-only --levels U4,U16 --days 1,
 npx vitest run src/lib/workbook-sample-tools.test.ts
 ```
 
+For personalization work, `--persona` makes one first book from a made-up profile (`src/lib/workbook-sample-profiles.ts`): `first-customer`, `ahead`, `catch-up`, `on-level` or `rushed`. It needs `--no-store`. Without `--levels`, the book is placed and planned as the workbook job does (production placement). With one `--levels` level, it is a probe: that level's sample input with the persona's standards and book signals.
+
+```sh
+node scripts/workbook-samples.mjs --fake --no-store --check-only --persona first-customer --out /tmp/ui-review/first-customer-full
+```
+
 Check-only runs the planner, item writer, solve checks, book check and strict page fit checks. It prints the quality line and all failures. It writes the draft, AI cache, solve log, text dump, page manifest, profile and index. It makes no full-book PDF, review print, page image files or contact sheet. A quality failure gives a nonzero exit code. Fit checks still use temporary per-page PDFs and images in memory to check physical page count, QR codes and printed ink.
 
 ## 2. Review the fake change

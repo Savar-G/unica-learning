@@ -60,7 +60,9 @@ import { measuredPageUse, workbookQuality, type PageUse } from "@/lib/workbook-q
 import { reviewDays } from "@/lib/workbook-review-days";
 import { planWorkbook } from "@/lib/workbook-plan";
 import { type PrintEngine, type PrintJob, type RenderProblem, type MeasuredElement } from "@/lib/workbook-render";
-import { sampleChild, samplePlanInput, type SampleBookKind, type SampleChild } from "@/lib/workbook-sample-profiles";
+import { bookPersona, firstCustomerProfile, sampleChild, samplePlanInput, type BookPersona, type SampleBookKind, type SampleChild } from "@/lib/workbook-sample-profiles";
+import { planNextWorkbook } from "@/lib/workbook-placement";
+import { bookSignals } from "@/lib/workbook-signals";
 import { workbookFiles } from "@/lib/workbook-store";
 import { workbookTemplate } from "@/lib/workbook-template";
 import { aiSolver, keySolver, type SolveLog, type Solver } from "@/lib/workbook-solve-check";
@@ -78,8 +80,14 @@ const { values } = parseArgs({
     steps: { type: "string" }, days: { type: "string" }, out: { type: "string", default: "/tmp/ui-review/samples" }, concurrency: { type: "string", default: "6" },
     replay: { type: "string" }, diff: { type: "string" }, "check-only": { type: "boolean", default: false },
     fake: { type: "boolean", default: false }, api: { type: "boolean", default: false }, anthropic: { type: "boolean", default: false }, "family-only": { type: "boolean", default: false }, "no-store": { type: "boolean", default: false }, "subscription-only": { type: "boolean", default: false },
+    persona: { type: "string" },
   },
 });
+// G1: --persona plans one first book from a made-up profile with production placement (P0 to P9), not the level sample.
+const PERSONAS = ["first-customer", "ahead", "catch-up", "on-level", "rushed"] as const;
+type PersonaName = (typeof PERSONAS)[number];
+if (values.persona && !PERSONAS.includes(values.persona as PersonaName)) throw new Error(`--persona must be one of ${PERSONAS.join(", ")}`);
+if (values.persona && (values.second || values.test || values["family-only"] || !values["no-store"])) throw new Error("--persona makes one first book with --no-store.");
 if (values.days && (values.second || values.test)) throw new Error("--days is only for first review books.");
 // A local comparison can change only the data while it keeps the generator and plan inputs fixed.
 if (values.steps && !values["no-store"]) throw new Error("--steps requires --no-store");
@@ -382,10 +390,11 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
   const child = family?.children.get(level)?.child ?? sampleChild(BC, level)!;
   const childId = family?.children.get(level)?.id ?? randomUUID();
   const parentId = family?.parentId ?? randomUUID();
-  const label = `${level}${kind === "first" ? "" : kind === "second" ? "-workbook-2" : "-test-workbook"}`;
+  const persona = values.persona as PersonaName | undefined;
+  const label = `${level}${persona ? `-${persona}` : kind === "first" ? "" : kind === "second" ? "-workbook-2" : "-test-workbook"}`;
   const input = samplePlanInput(BC, child, kind);
   const planStart = performance.now();
-  const planned = planWorkbook(input);
+  const planned = persona && !forcedLevel ? personaPlan(persona) : planWorkbook(persona ? personaProbe(persona, input) : input);
   profile.plan = { ms: performance.now() - planStart, calls: 1, sheets: 0 };
   if (!planned.ok) throw new Error(`${label}: plan refused: ${planned.reason}`);
   // Reuse the previous sample's seed, so selection/layout changes keep identical requests reusable.
@@ -536,7 +545,28 @@ const family = db ? await testFamily(db) : null;
 if (family) console.log(`test family ${family.parentId}: ${family.children.size} children`);
 const drafts = db ? workbookDraftStore(db) : null;
 
-const jobs: { level: string; kind: SampleBookKind }[] = [
+function personaProfile(persona: PersonaName) {
+  return persona === "first-customer" ? firstCustomerProfile() : bookPersona(persona as BookPersona).profile;
+}
+/** A persona's first book, placed and planned as the workbook job does (Grade 4, no workbooks yet). */
+function personaPlan(persona: PersonaName) {
+  return planNextWorkbook({ curriculum: BC, grade: 4, profile: personaProfile(persona), workbooks: [], number: 1 });
+}
+/**
+ * A forced-level probe (--persona with --levels): the level's sample input with the persona's standards (early-sign
+ * secure as developing, P5a) and its book signals, as the PR #523 review probes did. It keeps lower-level weak units in
+ * a level that would not place them, so the stories and Mixed set rules are checked on a wider plan.
+ */
+function personaProbe(persona: PersonaName, input: ReturnType<typeof samplePlanInput>): ReturnType<typeof samplePlanInput> {
+  const p = personaProfile(persona);
+  return { ...input, grade: p.grade, profile: { standards: p.standards.map(s => s.status === "secure" && s.certainty !== "clear" ? { ...s, status: "developing" as const } : s) }, personal: bookSignals({ grade: p.grade, profile: p }) };
+}
+const forcedLevel = values.persona && process.argv.some(a => a === "--levels" || a.startsWith("--levels=")) ? levels : null;
+if (forcedLevel && forcedLevel.length !== 1) throw new Error("--persona with --levels takes one level.");
+const personaLevel = values.persona ? forcedLevel?.[0] ?? personaPlan(values.persona as PersonaName).levelId : null;
+if (values.persona && !personaLevel) throw new Error(`persona ${values.persona}: no placement`);
+if (personaLevel) console.log(`persona ${values.persona}: placed at ${personaLevel}`);
+const jobs: { level: string; kind: SampleBookKind }[] = personaLevel ? [{ level: personaLevel, kind: "first" }] : [
   ...levels.map((level) => ({ level, kind: "first" as const })),
   ...list(values.second!).map((level) => ({ level, kind: "second" as const })),
   ...list(values.test!).map((level) => ({ level, kind: "test" as const })),
