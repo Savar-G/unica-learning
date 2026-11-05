@@ -19,7 +19,11 @@ const notes = vi.hoisted(() => ({ latest: new Map<string, ParentNote>() }));
 vi.mock("@/lib/parent-maya-notes", async (original) => ({ ...await original<typeof import("@/lib/parent-maya-notes")>(), latestParentMayaNotes: async () => notes.latest }));
 
 const dashboard = vi.hoisted(() => ({ value: null as import("@/lib/parent-dashboard-server").ParentDashboard | null }));
-vi.mock("@/lib/parent-dashboard-server", () => ({ parentDashboard: async () => dashboard.value }));
+const overview = vi.hoisted(() => ({ value: null as import("@/lib/parent-view").OverviewView | null, reads: 0 }));
+vi.mock("@/lib/parent-dashboard-server", () => ({
+  parentDashboard: async () => dashboard.value,
+  dashboardOverview: async () => { overview.reads++; return overview.value; },
+}));
 const family = vi.hoisted(() => ({ postal: "V3S 1A1" as string | null, timeZone: null as string | null, olderChild: false, card: false }));
 const opensAt = Date.parse("2026-11-18T04:29:00Z");
 vi.mock("@/lib/test-attempt-server", () => ({
@@ -51,7 +55,7 @@ vi.mock("@/lib/supabase-auth", () => ({
   }),
 }));
 
-beforeEach(() => { minutes.value = new Map(); dashboard.value = null; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; scanning.enabled = false; notes.latest = new Map(); });
+beforeEach(() => { minutes.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; scanning.enabled = false; notes.latest = new Map(); });
 
 it("shows only the latest note and its links on the matching child's card, without an empty notes section", async () => {
   family.olderChild = true;
@@ -148,6 +152,9 @@ it("gives a family the switch does not open to today's Parent home, byte for byt
   const out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ password: "1", pin: "1", existing: "1" }) })));
   await expect(out).toMatchFileSnapshot("./parent-home.golden.html");
   expect(out).not.toContain("pd-");
+  // #560: the Overview is never read or shown for this family.
+  expect(overview.reads).toBe(0);
+  expect(out).not.toContain("po-");
 });
 
 describe("a family the switch opens to", () => {
@@ -264,6 +271,77 @@ describe("a family the switch opens to", () => {
       const out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
       expect(out).toContain("Your account");
       expect(out).not.toContain("pd-");
+    });
+  });
+
+  describe("the Overview (#560)", () => {
+    const tabs = ["overview", "workbooks", "maya", "assessment", "account"] as const;
+    const asha = (t: readonly (typeof tabs)[number][] = tabs) => ({ ...view("c1", "Asha"), stage: "active" as const, opensOn: "overview" as const, tabs: [...t], currentWorkbook: { number: 2 } });
+    const full = (t?: readonly (typeof tabs)[number][]): import("@/lib/parent-view").OverviewView => ({
+      child: asha(t),
+      level: { working: 4, earlySign: true, testedOn: "2026-10-31" },
+      areas: [
+        { area: "number", name: "Number and operations", level: 3, label: "at-grade", earlySign: false },
+        { area: "fractions", name: "Fractions and decimals", level: 2, label: "building-up", earlySign: true },
+        { area: "shapes", name: "Shapes, measurement and data", level: 4, label: "ahead", earlySign: false },
+      ],
+      workbook: { number: 2, scannedDays: 3, days: 10 },
+      action: "learning_card_empty",
+    });
+    const render = async (value: import("@/lib/parent-view").OverviewView | null, t?: readonly (typeof tabs)[number][]) => {
+      dashboard.value = { children: [view("z-old", "Sam"), asha(t)], remembered: null, pinSet: true, timeZoneSaved: true };
+      overview.value = value;
+      return renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ child: "c1" }) })));
+    };
+
+    it("shows the tiles, the area bars and one thing to do, naming the child", async () => {
+      minutes.value = new Map([["c1", { used: 12, left: 18, backOn: "Monday, November 9" }]]);
+      const out = await render(full());
+      expect(out).toContain("Working at Grade 4");
+      expect(out).toContain("In Grade 3 at school.");
+      expect(out).toContain("Early sign");
+      expect(out).toContain("From the test on October 31.");
+      expect(out).toContain("Workbook 2</p>");
+      expect(out).toContain("3 of 10 days scanned");
+      expect(out).toContain("12 of 30 minutes");
+      expect(out).toContain("Level by area");
+      expect(out).toContain("The line marks Asha&#x27;s school grade, Grade 3.");
+      for (const label of ["At grade", "Building up · Early sign", "Ahead"]) expect(out).toContain(label);
+      expect(out.match(/class="po-card po-action/g)).toHaveLength(1);
+      expect(out).toContain("Tell us how Asha learns");
+      expect(out).toContain('href="/account/learning/c1"');
+      expect(out).not.toMatch(/\b(?:she|her|hers|he|his|him)\b/i);
+      expect(out).not.toMatch(/\d\s*%|streak|percent|wrong|other children/i);
+    });
+
+    it("shows Maya this week only for a child with the Maya tab", async () => {
+      minutes.value = new Map([["c1", { used: 12, left: 18, backOn: "Monday, November 9" }]]);
+      expect(await render(full())).toContain('id="po-maya"');
+      // Without the tab the home page keeps its own minutes row, as before.
+      expect(await render(full(), tabs.filter((t) => t !== "maya"))).not.toContain('id="po-maya"');
+    });
+
+    it("a tile or a section with no data does not appear, and no card shows when none applies", async () => {
+      const out = await render({ ...full(), level: null, areas: [], workbook: null, action: null });
+      expect(out).not.toContain("po-tiles");
+      expect(out).not.toContain("Level by area");
+      expect(out).not.toContain("po-action");
+      expect(out).not.toContain("days scanned");
+    });
+
+    it.each([
+      ["start_test", "Start the test", "#pd-test"],
+      ["payment_failed", "The last payment for Asha&#x27;s plan did not go through.", "/account/plan"],
+      ["no_pin", "Set a 4-digit PIN before Asha uses the desk.", "/account/pin"],
+    ] as const)("the card for %s", async (action, text, href) => {
+      const out = await render({ ...full(), action });
+      expect(out).toContain(text);
+      expect(out).toContain(`href="${href}"`);
+      expect(out).not.toMatch(/\b(?:she|her)\b/i);
+    });
+
+    it("shows nothing of the Overview for another child than the one read", async () => {
+      expect(await render({ ...full(), child: { ...asha(), id: "z-old" } })).not.toContain("po-");
     });
   });
 });

@@ -1,0 +1,62 @@
+/* The Overview (#560): the mock's white bordered cards with mono labels, in the warm look's tokens. The colours follow
+   the report's ruler: At grade leaf, Building up tangerine, Ahead sky. An Early sign is lighter. */
+.po { display: grid; gap: 14px; margin: 28px 0 28px; }
+.po-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.po-card { --c: var(--leaf); padding: 20px 22px; border: 1px solid var(--line); border-radius: 14px; background: #fff; min-width: 0; }
+.po-label { margin: 0 0 10px; font: 400 12px/1.3 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+.support-page .po-value { margin: 0; font-size: clamp(22px, 2.2vw, 26px); font-weight: 300; letter-spacing: -0.02em; line-height: 1.2; color: var(--ink); overflow-wrap: anywhere; }
+.support-page .po-sub { margin: 8px 0 0; font-size: 15px; line-height: 1.45; color: var(--ink-2); }
+.support-page .po-card h2 { margin: 0; font-size: 19px; font-weight: 500; letter-spacing: -0.01em; }
+.support-page .po-foot, .support-page .po-note { margin: 12px 0 0; font: 400 12px/1.4 var(--mono); color: var(--ink-2); }
+.po-more { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 4px; color: var(--ink); font-size: 15px; }
+.po-chip { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--soft); border: 1px solid var(--line); font: 400 12px/1.4 var(--mono); color: var(--ink-2); white-space: nowrap; }
+
+.is-building-up { --c: var(--tang); }
+.is-ahead { --c: var(--sky); }
+
+/* The Level tile's ruler: the report's ruler, small. */
+.po-level { grid-column: span 2; }
+.po-ruler {
+  position: relative; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); align-items: center;
+  height: 44px; margin-top: 16px; border-radius: 10px; background: var(--soft); border: 1px solid var(--line-soft);
+}
+.po-tick { position: relative; z-index: 1; text-align: center; font: 400 13px/1 var(--mono); color: #6b6b74; }
+.po-tick.is-work { color: #fff; font-weight: 600; }
+.po-gap {
+  position: absolute; top: 6px; bottom: 6px; border-radius: 7px;
+  left: calc(var(--lo) / var(--n) * 100% + 3px); width: calc((var(--hi) - var(--lo) + 1) / var(--n) * 100% - 6px);
+  background: color-mix(in srgb, var(--c) 16%, #fff);
+}
+.po-pin { position: absolute; top: 50%; border-radius: 50%; transform: translate(-50%, -50%); }
+.po-pin.is-work { left: calc((var(--work) + 0.5) / var(--n) * 100%); width: 28px; height: 28px; background: var(--c); }
+.po-pin.is-grade { left: calc((var(--grade) + 0.5) / var(--n) * 100%); width: 36px; height: 36px; border: 1.5px dashed var(--ink); }
+
+/* The area bars, with the school grade line. */
+.po-bars { --label: 190px; margin-top: 18px; }
+.po-axis, .po-bar { display: grid; grid-template-columns: var(--label) minmax(0, 1fr); gap: 16px; align-items: center; }
+.po-ticks { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); font: 400 12px/1 var(--mono); color: var(--ink-3); text-align: center; }
+.po-ticks .is-grade { color: var(--ink); font-weight: 600; }
+.support-page .po-bars ul { list-style: none; margin: 8px 0 0; padding: 0; }
+.support-page .po-bar { margin: 0; padding: 10px 0; border-top: 1px solid var(--line-soft); }
+.po-area { display: grid; gap: 2px; min-width: 0; }
+.po-area b { font-weight: 500; font-size: 15px; line-height: 1.3; }
+.po-area span { font: 400 12px/1.3 var(--mono); color: var(--c); }
+.po-bar.is-at-grade .po-area span { color: #1d7f55; }
+.po-bar.is-building-up .po-area span { color: #b43d12; }
+.po-bar.is-ahead .po-area span { color: #2f5fc4; }
+.po-track { position: relative; height: 12px; border-radius: 999px; background: var(--card); }
+.po-fill { position: absolute; left: 0; top: 0; bottom: 0; width: calc((var(--level) + 0.5) / var(--n) * 100%); border-radius: 999px; background: var(--c); }
+.po-bar.is-early .po-fill { background: color-mix(in srgb, var(--c) 35%, #fff); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 55%, #fff); }
+.po-line { position: absolute; top: -6px; bottom: -6px; left: calc((var(--grade) + 0.5) / var(--n) * 100%); width: 2px; margin-left: -1px; background: var(--ink); border-radius: 1px; }
+
+/* The one thing to do */
+.po-action { display: grid; justify-items: start; gap: 0; border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: var(--accent-soft); }
+.po-action .btn { margin-top: 16px; }
+
+@media (max-width: 699px) {
+  .po { margin-top: 20px; }
+  .po-level { grid-column: auto; }
+  .po-card { padding: 18px 16px; }
+  .po-axis, .po-bar { grid-template-columns: 1fr; gap: 8px; }
+  .po-axis > span:first-child { display: none; }
+}
