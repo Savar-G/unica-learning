@@ -15,7 +15,7 @@ import { MayaBoard } from "@/components/maya-board";
 import { applyBatch, createScene, boardView } from "@/lib/board";
 import type { BoardSnapshot } from "@/lib/board-protocol";
 import { fitView } from "@/lib/board-svg";
-import { replayFrame } from "@/lib/board-history";
+import { refusedBatches, replayFrame } from "@/lib/board-history";
 import { callReplay } from "@/lib/maya-call-review";
 import type { PlayStep } from "@/lib/board-svg";
 import type { Outcome } from "@/lib/maya";
@@ -225,6 +225,8 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
   const voiceShown = useRef(-1);
   const [shown, setShown] = useState(initial.status === "ended" ? firstBoard.steps.length : 0);
   const saved = useMemo(() => callReplay(view), [view]);
+  // Maya's steps the board could not draw over the child's writing (R625-1): left out of the replay, and said so.
+  const notDrawn = useMemo(() => refusedBatches(view.boardHistory).length, [view]);
   const [position, setPosition] = useState(Infinity);
   const cursor = useRef(Infinity);
   const [playing, setPlaying] = useState(false);
@@ -442,6 +444,7 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
               </div>
               {view.boardHistory.events.length === 0 ? <p className="mc-board-empty">No board work was saved for this call.</p> :
                 <MayaBoard steps={board.steps} viewBox={saved.viewBox} label={boardLabel} frame={replayFrame(saved, position)} />}
+              {notDrawn > 0 && <p className="adm-note">{notDrawn === 1 ? "1 step of Maya's is not drawn here: it would have covered the child's writing, so the child's board did not show it either." : `${notDrawn} steps of Maya's are not drawn here: they would have covered the child's writing, so the child's board did not show them either.`}</p>}
               <p className="adm-note">{reduced ? "The board stays still because your device asks for less motion. Select a time or a transcript turn to review it." : "The board and the highlighted turn follow the same time. Select a turn to see the board then."}</p>
             </>
           ) : board.steps.length === 0 ? (

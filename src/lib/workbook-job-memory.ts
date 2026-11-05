@@ -45,7 +45,9 @@ export function memoryRunStore(o: {
   const calls = new Map<string, Map<string, { page: number; seq: number; call: StoredCall }>>();
   const frames = new Map<string, RunFrame>();
   // The database keeps JSON (jsonb): a stored call comes back as JSON does.
-  const json = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
+  // Stored as jsonb is: Postgres keeps no key order (shorter keys first, then bytewise), so a value read back has its
+  // keys in that order. Kept here so a check that depends on key order fails in tests as it does in Supabase.
+  const json = <T>(x: T): T => jsonbOrder(JSON.parse(JSON.stringify(x))) as T;
   const audit: MemoryAudit[] = [];
   const revisions: MemoryRevision[] = [];
   const iso = () => o.now().toISOString();
@@ -124,7 +126,7 @@ export function memoryRunStore(o: {
       return { refused };
     },
     async pages(id) {
-      return [...(pages.get(id)?.values() ?? [])].map((p) => structuredClone(p));
+      return [...(pages.get(id)?.values() ?? [])].map((p) => json(p));
     },
     async calls(id, numbers) {
       return [...(calls.get(id)?.values() ?? [])].filter((c) => numbers.includes(c.page)).sort((a, b) => a.page - b.page || a.seq - b.seq).map(json);
@@ -176,7 +178,7 @@ export function memoryRunStore(o: {
       if (!r) return false;
       r.heartbeatAt = iso();
       if (!pages.has(id)) pages.set(id, new Map());
-      if (!pages.get(id)!.has(page.number)) pages.get(id)!.set(page.number, structuredClone(page));
+      if (!pages.get(id)!.has(page.number)) pages.get(id)!.set(page.number, json(page));
       return true;
     },
     async claim(id, lease, runner = "server") {
@@ -243,4 +245,14 @@ export function memoryRunStore(o: {
     },
   };
   return { ...store, runs, audit, revisions, pageStore: pages, attemptStore: attempts, solveStore: solves, callStore: calls, frameStore: frames };
+}
+
+/** A parsed JSON value with its object keys in Postgres jsonb order: shorter keys first, then bytewise. */
+export function jsonbOrder(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(jsonbOrder);
+  if (v && typeof v === "object") {
+    const keys = Object.keys(v).sort((a, b) => a.length - b.length || (a < b ? -1 : a > b ? 1 : 0));
+    return Object.fromEntries(keys.map((k) => [k, jsonbOrder((v as Record<string, unknown>)[k])]));
+  }
+  return v;
 }
