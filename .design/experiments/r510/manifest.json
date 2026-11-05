@@ -1,0 +1,11 @@
+{"round":"r510","surface":"meta-feed-ads","size":"1080x1350","open_decision":"Which ads join the current strongest ad in the next Meta batch",
+ "invariants":["Unica brand tokens","Ages 5 to 14","First month free, then CAD 79.99 a month","No competitor names","No claimed results"],
+ "variants":[
+ {"id":"k-program-first","source":"live ad","bet":"Control: the best Meta ad with the current offer"},
+ {"id":"b2a-right-level-workbooks","source":"Savar B2","bet":"Diagnostic question plus real workbook content"},
+ {"id":"b2b-right-level-ruler","source":"Savar B2","bet":"Diagnostic question plus one simple picture"},
+ {"id":"b3-free-report","source":"Savar B3","bet":"The free report is the offer and the picture"},
+ {"id":"c1-carousel","source":"Savar C1","bet":"One readable part of the program on each card"},
+ {"id":"n1-wrong-answer","source":"research","bet":"A small puzzle that demonstrates the product"},
+ {"id":"n2-price-compare","source":"research","bet":"Price anchor against named categories"}],
+ "status":"Savar chose B2, B3 and C1; published 2026-11-05 for 2026-11-06 to 2026-11-13; see .design/ads/2026-10-bc-launch/ads-plan.md, Round 3"}
