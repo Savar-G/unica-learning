@@ -124,10 +124,20 @@ describe("G1 warm-up facts are code's (item 4)", () => {
     const taken = new Set<string>();
     const facts = Array.from({ length: 12 }, (_, k) => { const f = warmUpFact(BC, plan, "5.9-recall-facts", k * 7, taken)!; taken.add(f.text); return f; });
     expect(facts.every((f) => f.kind === "multiply" && f.operands.some((x) => x === 3 || x === 4))).toBe(true);
+    expect(facts.every(f => f.declaration?.source === "warm-up" && f.declaration.reference.skill === "5.9-recall-facts" && f.declaration.reference.step === 1)).toBe(true);
     expect(new Set(facts.map((f) => f.text)).size).toBe(12);
     const tens = warmUpFact(BC, plan, "5.8-extend-facts", 3, new Set())!;
     expect(tens.operands.every((x) => x % 10 === 0)).toBe(true);
+    expect(tens.declaration).toBeUndefined();
     expect(warmUpFact(BC, plain("U16"), "5.9-recall-facts", 0, new Set())).toBeNull();
+  });
+  it("never declares the hundreds step for either of Codex's tens reproductions", () => {
+    for (const operands of [[190, 100], [150, 100]]) {
+      const generated = Array.from({ length: 90 }, (_, seed) => warmUpFact(BC, plan, "5.8-extend-facts", seed, new Set())!)
+        .filter(f => f.kind === "subtract" && f.operands.every((n, i) => n === operands[i]));
+      expect(generated.length).toBeGreaterThan(0);
+      for (const fact of generated) expect(fact.declaration).toBeUndefined();
+    }
   });
   const day = (ops: [string, number, number][]) => [{ number: 3, day: 1, questions: ops.map(([kind, a, b]) => ({ place: "warm-up", package: { operation: { kind, operands: [a, b] } } })) }];
   it("fails a day whose printed warm-up is the known families' addition, labels aside", () => {

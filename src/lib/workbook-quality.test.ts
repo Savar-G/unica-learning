@@ -14,6 +14,24 @@ function page(number: number, day: number, count = 2): GeneratedPage {
   }) };
 }
 
+it.each(["Circle true or false.", "Circle yes or no.", "Circle your answer."])("rejects a mixed-choice page whose instruction is only '%s'", (subtitle) => {
+  const p = page(3, 1);
+  p.content = { kind: "day", id: "mixed-choices", level: 16, day: 1, page: 1, pages: 8,
+    topic: "Numbers", title: "Numbers", subtitle, grownUp: null, blocks: [{ slot: "on-your-own", items: [1] }, { slot: "spot-the-error", items: [2] }] };
+  const choices = [["true", "false"], ["Yes", "No"]];
+  p.questions = p.questions.map((q, i) => ({ ...q, place: i ? "spot-the-error" : "on-your-own", package: { ...q.package!, item: {
+    ...q.package!.item!, regions: [{ id: "answer", kind: "choice", mark: i ? "tick" : "circle", label: null, choices: choices[i], answer: choices[i][0] }],
+  } } }));
+  expect(workbookQuality([p]).issues).toContainEqual(expect.objectContaining({ page: 3, kind: "coverage", reason: expect.stringMatching(/instruction does not (name|say)/) }));
+  expect(workbookQuality([p]).ready).toBe(false);
+  p.content.subtitle = "Write the answer in the box. Circle your answers.";
+  expect(workbookQuality([p]).issues.filter(i => /instruction/.test(i.reason))).toEqual([]);
+  for (const i of [0, 1]) {
+    const single = { ...p, questions: [p.questions[i]], content: { ...p.content, subtitle: i ? "Circle yes or no." : "Circle true or false." } };
+    expect(workbookQuality([single]).issues.filter(issue => /instruction/.test(issue.reason))).toEqual([]);
+  }
+});
+
 it("checks actual progression, repeats, format variety and day time", () => {
   // (A day fails at 35 minutes, Savar 2026-11-04: 160 questions are well past it.)
   const early = page(3, 1), late = page(4, 8, 160);

@@ -11,6 +11,12 @@
 // (`learningEvent` of the session, key `call:<id>`, so a retry stores it once) and rebuilds the child's profile.
 // "end" on an ended call whose event, rebuild or parent note failed runs those again.
 //
+// The child's ink in a chat (#534): the child's desk sends its copy of the chat's board (Maya's batches and the child's
+// strokes, src/lib/board-history.ts) with `saveInk`. It is kept beside the call (`childInk`) and never raises the
+// revision, so the chat's next message still goes in at the revision the desk holds. The call's board (`callView`) is
+// Maya's batches as the call recorded them with the child's ink from that copy (`withChildInk`), as the admin replay
+// plays it.
+//
 // The child's wording history (D-196, #375): `start` reads it before the session is made, so Maya prefers the wordings
 // the child has not heard lately; the session keeps it in its saved state for the call's later requests. When the call
 // ends, the wordings it said are added to it (before the learning event; again on a retried "end" while the call keeps
@@ -48,11 +54,11 @@ import { voiceBoardHistory } from "@/lib/voice-board-history";
 import type { BoardSnapshot } from "@/lib/board-protocol";
 import { speechWords, type BoardCue } from "@/lib/board-speech";
 import { applyBatch, boardView, createScene, type Batch } from "@/lib/board";
-import { createHistory, mayaWrites, type BoardHistory } from "@/lib/board-history";
+import { createHistory, decodeHistory, mayaWrites, withChildInk, type BoardHistory } from "@/lib/board-history";
 import { fitView, type PlayStep } from "@/lib/board-svg";
 import type { LearningEvents, NewLearningEvent } from "@/lib/learning-events";
 import type { NoteStep } from "@/lib/maya-call-note";
-import { heardWordings, learningEvent, type Outcome, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
+import { heardWordings, learningEvent, limitsOf, SAFETY_GUIDANCE, type Outcome, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
 import { freeTalkFor } from "@/lib/maya-free-talk";
 import type { MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
@@ -161,6 +167,11 @@ export interface CallRecord {
   live: { package: QuestionPackage; text: SavedTextSession; cancelled?: true; pendingVoice?: VoiceTurn; acknowledged?: string[] } | null;
   trace: MayaTrace | null;
   boardHistory: BoardHistory | null;
+  /**
+   * A text call's board as the child's desk last sent it (#534): its strokes are the child's ink of the call. Saved
+   * without raising the revision; absent or null when the desk sent none.
+   */
+  childInk?: BoardHistory | null;
   learningEventId: string | null;
   profileRebuiltAt: string | null;
   /** An ended call whose parent note is not written yet: the note's inputs, kept for a retry. Null once done. */
@@ -206,6 +217,13 @@ export interface CallStore {
    * holds stale. True when the call had a pending note.
    */
   clearNote(id: string): Promise<boolean>;
+  /**
+   * Keeps a text call's board from the child's desk (#534), without raising its revision, in one step (R625-2): it
+   * compares and writes together, so of two saves the newer board stays whatever their order. `closed`: the call ended
+   * more than INK_AFTER_END_MS ago. `busy`: a board was saved less than INK_SAVE_GAP_MS ago. `stale`: the kept board has
+   * a higher revision; nothing was written. `not_found`: no chat with this id of this parent and child (R625b-5).
+   */
+  saveInk(id: string, owner: InkOwner, ink: BoardHistory): Promise<InkSave>;
 }
 
 export interface CallSeams {
@@ -258,6 +276,16 @@ export type CallInput = { type: "child"; text: string } | { type: "tick" } | { t
 
 /** The most characters of one typed child turn. */
 export const MAX_CHILD_TEXT = 500;
+/** The longest board a desk may send with a call, as JSON text (#534); the database keeps under 2 MB. */
+export const MAX_INK_TEXT = 1_000_000;
+/** One board a second per call at most (R625-6): the desk sends one 1.5 s after a change, and again before the end. */
+export const INK_SAVE_GAP_MS = 1000;
+/** A board is taken this long after the call ended, and not later (R625-6). */
+export const INK_AFTER_END_MS = 5 * 60_000;
+/** What one save of the desk's board did (`CallStore.saveInk`). */
+export type InkSave = "saved" | "stale" | "busy" | "closed" | "not_found";
+/** Whose desk sends a chat's board: the store keeps it only for a chat of this parent and child. */
+export interface InkOwner { parentId: string; childId: string }
 
 /** One line of the transcript, as the admin reads it. */
 export interface TranscriptLine {
@@ -350,10 +378,12 @@ export interface VoiceTurn {
   /** The call ended with this input. */
   ended: boolean;
   /**
-   * Safety guidance after a child's disclosure, or the deadline close (`gate` and `step` in src/lib/maya/session.ts): the
-   * worker says it at once and waits for nothing that came before it.
+   * Safety guidance after a child's disclosure, or words past the closing time (`gate` and `step` in
+   * src/lib/maya/session.ts): the worker says them at once and waits for nothing that came before them.
    */
   priority?: boolean;
+  /** The exact safety guidance among `say`, which the worker says once more if it was cut (#589). */
+  guidance?: string;
   /** How long this input spent on the model, its repair and the free-talk reviews (#532). Absent when no input ran. */
   time?: { modelMs: number; repairMs: number; reviewMs: number };
 }
@@ -373,6 +403,13 @@ export interface VoiceCall {
   readonly replaced: boolean;
   /** The revision of the last save. */
   readonly revision: number;
+  /** An input is still running: a close call can be out after its guidance went out (#589). */
+  readonly working: boolean;
+  /**
+   * Hears safety guidance as soon as the session accepts it, before the model is asked for the close (#589). The input's
+   * own turn then holds only what comes after it. The save follows behind, as `settled` shows.
+   */
+  onGuidance(listener: (turn: VoiceTurn) => void): void;
   /** Saved accepted final words when this handle restored a controller that had already ended. */
   readonly pendingFinal: VoiceTurn | null;
   readonly boardSnapshot: BoardSnapshot;
@@ -411,6 +448,12 @@ export interface MayaCalls {
   /** Opens a live voice call in the worker, with the providers that carry it. */
   openVoice(id: string, providers: { speechToText: string; voice: string }, childName: string | null): Promise<OpenVoiceResult>;
   input(id: string, revision: number, input: CallInput, childName: string | null): Promise<CallResult>;
+  /**
+   * Keeps the child's desk copy of a chat's board (#534): the encoded board history, for a chat of this parent and
+   * child, live or ended a few minutes ago. Never raises the call's revision. A copy older than the one kept (a lower
+   * revision) is a conflict (R625b-4): nothing is written, and `board` is the kept copy for the desk to build on.
+   */
+  saveInk(id: string, owner: InkOwner, board: string): Promise<{ ok: true } | { ok: false; error: "not_found" | "invalid_input" | "busy" | "closed" } | { ok: false; error: "stale"; board: BoardHistory }>;
   view(id: string): Promise<CallView | null>;
 }
 
@@ -477,10 +520,22 @@ export function boardPlayback(batches: readonly Batch[]): { steps: PlayStep[]; v
   return { steps, viewBox: fitView(steps.flatMap((s) => s.drawn), 0.03) };
 }
 
+/**
+ * The latest time of the child's ink on a call's board, in ms from the call's start (R625-3): the call's end (or its last
+ * turn while live), plus the time a board is still taken after the end.
+ */
+function inkWindowEnd(trace: MayaTrace): number {
+  const start = trace.turns.find((t) => t.kind === "start")?.at ?? 0;
+  const end = trace.endedAt ? Date.parse(trace.endedAt) : Math.max(start, ...trace.turns.map((t) => t.at));
+  return Math.max(0, end - start) + INK_AFTER_END_MS;
+}
+
 export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertState[] = []): CallView {
   // A missing delivery field identifies the legacy contract. An explicit empty delivery is authoritative.
   const observed = record.mode === "voice" && record.boardHistory?.delivery !== undefined;
-  const history = record.boardHistory ?? boardHistoryOf(trace);
+  const recorded = record.boardHistory ?? boardHistoryOf(trace);
+  // A text call's board carries the child's ink from the desk (#534); a voice call's ink is in its observed board.
+  const history = record.mode === "text" ? withChildInk(recorded, record.childInk ?? null, { endMs: inkWindowEnd(trace) }) : recorded;
   return {
     id: record.id,
     kind: record.kind,
@@ -594,8 +649,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   }
 
   /** A call's text session. Admin test calls have free talk on (D-197), with the model's review; a resumed call keeps its flag. */
-  function textSession(record: Pick<CallRecord, "id"> & { kind?: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean): TextSession {
+  function textSession(record: Pick<CallRecord, "id"> & { kind?: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void): TextSession {
     return createTextSession({
+      onGuidance,
       callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs, grade, confirmWorkbook,
       freeTalk: record.kind === "chat" ? false : freeTalkFor("admin_test"), reviewer: seams.reviewer?.(model.id) ?? null,
     });
@@ -844,13 +900,22 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       if (!(await store.update(found.id, found.revision, claim))) return { ok: false, error: "conflict" };
       let record: CallRecord = { ...found, ...claim, revision: found.revision + 1 };
       const pkg = found.live.package;
-      const session = textSession(record, pkg, model, null, restored);
+      let hearGuidance: ((turn: VoiceTurn) => void) | null = null;
+      // Every trace turn before this index has been told to the worker in an earlier turn.
+      let told = 0;
+      const session = textSession(record, pkg, model, null, restored, undefined, undefined, undefined, undefined, undefined, (out) => {
+        persist(out);
+        const from = told;
+        told = session.trace().turns.length;
+        // Only a worker that lost the call to another stays silent.
+        if (!replaced && record.status !== "ended") hearGuidance?.(voiceTurn(out, from));
+      });
+      told = session.trace().turns.length;
       const last = restored.turns.at(-1);
       const pendingFinal: VoiceTurn | null = restored.session.outcome ? record.live?.pendingVoice ?? {
         say: last?.kind === "maya" && last.stateAfter === "CLOSE" ? [...(last.output?.say ?? [])] : [],
         newBatches: 0, safetyMessage: null, ended: true,
       } : null;
-      const seen: ConnectionEvent[] = [];
       const acknowledged = [...(found.live.acknowledged ?? [])];
       let lost = false;
       let replaced = false;
@@ -861,14 +926,13 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           console.error("[maya voice] save failed", record.id, e instanceof Error ? e.message : String(e));
         });
       };
-      /** The connected seconds when the call ends: from every stored event of the call (a restarted worker's too). */
+      /**
+       * The connected seconds when the call ends: from every stored event of the call (a restarted worker's too). A read
+       * that fails throws, which refuses the end: this worker's own events are not all of the call's (after a restart it
+       * has none), so the call stays live and the sweep ends it from the stored times later (#586).
+       */
       const connected = async (endedAt: number): Promise<CallChange> => {
-        let events: ConnectionEvent[] = seen;
-        try {
-          events = await log.read(record.id);
-        } catch (e) {
-          console.error("[maya voice] connections read failed", record.id, e instanceof Error ? e.message : String(e));
-        }
+        const events = await log.read(record.id);
         // The outcome can precede final playout. Count room time through the media close.
         return { connectedSeconds: connectedSeconds(events, Math.max(endedAt, seams.clock(), ...events.map((e) => e.at))) };
       };
@@ -889,13 +953,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         });
       const none: VoiceTurn = { say: [], newBatches: 0, safetyMessage: null, ended: false };
       const inactive = () => lost || record.status === "ended";
-      const turn = async (run: () => Promise<TextOutput>): Promise<VoiceTurn> => {
-        if (inactive()) return none;
-        const before = session.trace().turns.length;
-        const out = await run();
-        persist(out);
-        await queue;
-        if (inactive()) return none;
+      /** What the worker needs of one output: the trace turns from `before` on give its times and each batch's cue. */
+      const voiceTurn = (out: TextOutput, before: number): VoiceTurn => {
         // Preserve the controller turn association. Do not spread batches evenly across an entire reply.
         // Each current board offer follows the last word of its accepted controller turn.
         let word = 0;
@@ -914,8 +973,25 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         }
         const boardCues = out.board.map(batch => ({ batch, word: ends.get(batch.transactionId) ?? speechWords(out.say.join(" ")).length }));
         const state = session.session;
-        const priority = state.safety.flagged || state.state === "TIME_CLOSE" || state.outcome?.reason === "time_limit";
-        return { say: out.say, newBatches: out.board.length, boardCues, safetyMessage: out.safetyMessage, ended: out.ended !== null, priority, time };
+        // The close keeps its priority after it ended the call: a reply that crosses the closing time can end as "solved".
+        const closing = state.startedAt !== null && state.now !== null && state.now - state.startedAt >= limitsOf(state).closingAtMs;
+        const priority = state.safety.flagged || state.state === "TIME_CLOSE" || state.outcome?.reason === "time_limit" || closing;
+        const guidance = out.say.find((text) => (Object.values(SAFETY_GUIDANCE) as string[]).includes(text));
+        return { say: out.say, newBatches: out.board.length, boardCues, safetyMessage: out.safetyMessage, ended: out.ended !== null, priority, time, ...(guidance ? { guidance } : {}) };
+      };
+      let working = 0;
+      const turn = async (run: () => Promise<TextOutput>): Promise<VoiceTurn> => {
+        if (inactive()) return none;
+        const before = session.trace().turns.length;
+        working++;
+        let out: TextOutput;
+        try { out = await run(); } finally { working--; }
+        persist(out);
+        await queue;
+        if (inactive()) return none;
+        const from = Math.max(before, told);
+        told = session.trace().turns.length;
+        return voiceTurn(out, from);
       };
       const call: VoiceCall = {
         id: record.id,
@@ -934,6 +1010,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         get revision() {
           return record.revision;
         },
+        get working() { return working > 0; },
+        onGuidance(listener) { hearGuidance = listener; },
         get pendingFinal() {
           return pendingFinal ? structuredClone(pendingFinal) : null;
         },
@@ -990,7 +1068,6 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
               const at = await log.append({ ...event, callId: record.id, parentId: record.parentId, childId: record.childId }, record.revision);
               if (at === null) { lost = true; replaced = true; return; }
               record = { ...record, revision: record.revision + 1 };
-              seen.push({ kind, at });
             } catch (e) {
               lost = true;
               console.error("[maya voice] connection event not stored", record.id, kind, e instanceof Error ? e.message : String(e));
@@ -1043,8 +1120,13 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const session = textSession(record, record.live.package, idleModel(record), childName, record.live.text);
         const detail = started === null ? "Maya did not join the voice call" : "the voice call stopped without an end";
         // Connection times that cannot be read refuse the end (the read throws), so a later end settles the minutes from
-        // them rather than at 0 seconds (#528 review).
-        const ended = await end(record, record.live.package, session, { detail }, async (endedAt) => ({ connectedSeconds: connectedSeconds(seams.connections ? await seams.connections.read(record.id) : [], endedAt) }), started === null);
+        // them rather than at 0 seconds (#528 review). As in the worker's own end, the room time counts through the last
+        // stored event: the final speech after the outcome (a "solved" close, say) is connected time too (#586 review).
+        const stored = async (endedAt: number): Promise<CallChange> => {
+          const events = seams.connections ? await seams.connections.read(record.id) : [];
+          return { connectedSeconds: connectedSeconds(events, Math.max(endedAt, ...events.map((e) => e.at))) };
+        };
+        const ended = await end(record, record.live.package, session, { detail }, stored, started === null);
         return ended ? result(ended, ended.trace!, null) : { ok: false, error: "conflict" };
       }
       const { package: pkg, text: saved } = record.live;
@@ -1069,6 +1151,18 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       }
       if (!saved2) return { ok: false, error: "conflict" };
       return result(saved2, saved2.trace ?? session.trace(), out);
+    },
+
+    async saveInk(id, owner, board) {
+      if (typeof board !== "string" || board.length > MAX_INK_TEXT) return { ok: false, error: "invalid_input" };
+      const ink = decodeHistory(board);
+      if (!ink) return { ok: false, error: "invalid_input" };
+      // The store compares and writes in one step: a copy that comes after a newer one (a slow request) writes nothing.
+      const saved = await store.saveInk(id, owner, ink);
+      if (saved === "saved") return { ok: true };
+      if (saved !== "stale") return { ok: false, error: saved };
+      const kept = (await store.get(id))?.childInk ?? null;
+      return kept ? { ok: false, error: "stale", board: kept } : { ok: false, error: "not_found" };
     },
 
     async view(id) {

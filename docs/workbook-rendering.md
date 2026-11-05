@@ -229,6 +229,28 @@ Check with `/api/workbook-render-check?pages=<3 to 60>` and `Authorization: Bear
 sizes. It is off in production unless the variable `RENDER_CHECK` is `on`, and each function instance runs one check
 at a time (a second call while one runs gets 429).
 
+## The monthly summary PDF (#562)
+
+The same print engine prints the parent's monthly summary (`src/lib/monthly-summary.ts`): one Letter page per child per
+calendar month in family time, made on request by `GET /api/account/children/<id>/monthly-summary?month=YYYY-MM` and
+never stored. The page has one measured mark, an empty `summary-end` after the footer; the render fails when that mark
+lies past 24 px above the page's bottom edge or the PDF has more than one page, so a long summary is never cut off. The
+mark has no text, so the ink check has nothing to do. The route allows 60 s (`maxDuration`); each function instance
+renders at most 2 summaries at once, and a parent may try 5 times in 10 minutes, counted in the database so that every
+instance shares one count (`public.monthly_summary_renders`, through `claim_monthly_summary_render` under a per-parent
+lock). A busy instance does not count the try. The page fits the fullest summary a family can have: a 60-character name
+(the longest `public.children` allows; a long name gets a smaller heading), an Early sign level, four area bars and four
+workbooks mailed in the month (`src/lib/print-engine-chromium.test.ts`). The child's name is escaped, so a name with
+markup prints as text and loads nothing, though the engine runs scripts and allows network requests for its other
+callers (checked with real Chromium in the same test file).
+
+`outputFileTracingIncludes` in `next.config.ts` gives every route that runs Chromium the serverless build's files. Its
+keys are route globs, which Turbopack matches itself, so a dynamic segment's brackets are escaped
+(`/api/account/children/\[id\]/monthly-summary`); unescaped, `[id]` is a character class and the route gets no
+Chromium. Checked in two builds on 5 November 2026: with the brackets unescaped, the `route.js.nft.json` of each of the
+three dynamic Chromium routes listed no file of `@sparticuz/chromium/bin` and no `THIRD_PARTY_NOTICES.md`; escaped, each
+listed the 4 browser files and the notices.
+
 ## The sample workbook
 
 `node scripts/load-workbook-sample.mjs --child <id>` renders and stores a new sample for a test family.

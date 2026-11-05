@@ -1,8 +1,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import jsQR from "jsqr";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { chromiumPrintEngine, findChromium } from "@/lib/print-engine-chromium";
+import { renderMonthlySummary } from "@/lib/monthly-summary";
+import type { MonthlySummaryView } from "@/lib/parent-view";
+import { browserStartPlan, chromiumPrintEngine, findChromium, startBrowser } from "@/lib/print-engine-chromium";
 import { renderWorkbook, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleDraft } from "@/lib/workbook-sample";
 import { fixedTemplate } from "@/lib/workbook-template-fixed";
@@ -17,6 +21,49 @@ const PARENT = "11111111-1111-4111-8111-111111111111";
 const CHILD = "22222222-2222-4222-8222-222222222222";
 const WORKBOOK = "55555555-5555-4555-8555-555555555555";
 const TOKENS = ["Xq3vR8kLm2NpT7wYzA4bCd", "Ht6sJ9uEo1GiK5lMnB8vFr", "Wp2cQ7xZa4DyS0eR3tUgLk"];
+
+describe("starting Chromium on a busy machine", () => {
+  const noWait = async () => {};
+  const { waitsMs } = browserStartPlan({});
+
+  it("tries again when Chromium does not start, and uses the browser that started", async () => {
+    let tries = 0;
+    const waits: number[] = [];
+    const browser = await startBrowser(async () => {
+      tries++;
+      if (tries === 1) throw new Error("Failed to launch the browser process:  Code: null");
+      if (tries === 2) throw new Error("Timed out after 30000 ms while waiting for the WS endpoint URL to appear in stdout!");
+      return "browser";
+    }, waitsMs, async (ms) => { waits.push(ms); });
+    expect(browser).toBe("browser");
+    expect(tries).toBe(3);
+    expect(waits).toEqual([5_000, 15_000]);
+  });
+
+  it("gives the last error after the last try", async () => {
+    let tries = 0;
+    await expect(startBrowser(async () => { tries++; throw new Error(`no start ${tries}`); }, waitsMs, noWait)).rejects.toThrow("no start 3");
+    expect(tries).toBe(3);
+  });
+
+  it("starts once when the first try works", async () => {
+    let tries = 0;
+    await expect(startBrowser(async () => ++tries, waitsMs, noWait)).resolves.toBe(1);
+  });
+
+  it("gives a Vercel function one try inside its time limit, and the Mac 3 longer tries", async () => {
+    const server = browserStartPlan({ VERCEL: "1" });
+    expect(server).toEqual({ timeoutMs: 30_000, waitsMs: [0] });
+    let tries = 0;
+    await expect(startBrowser(async () => { tries++; throw new Error("no start"); }, server.waitsMs, noWait)).rejects.toThrow("no start");
+    expect(tries).toBe(1);
+    const mac = browserStartPlan({});
+    expect(mac.timeoutMs).toBe(120_000);
+    expect(mac.waitsMs).toHaveLength(3);
+    // A function can begin printing with 150 s left, so its one start must fit in that.
+    expect(server.timeoutMs).toBeLessThan(150_000);
+  });
+});
 
 const chromium = await findChromium();
 const draft = () => sampleDraft({ workbookId: WORKBOOK, childId: CHILD, qrTokens: TOKENS });
@@ -163,5 +210,77 @@ describe.skipIf(!chromium)("renderWorkbook with Chromium", () => {
       status: "failed",
       problems: [1, 2, 3, 4].map((q) => ({ page: 2, question: q, reason: `question ${q} has no answer space` })),
     });
+  }, 60_000);
+});
+
+// The monthly summary (#562) with real Chromium: one page, at the page image's size, and a summary too long for one page
+// fails instead of being cut off.
+describe.skipIf(!chromium)("the monthly summary with Chromium", () => {
+  const view: MonthlySummaryView = {
+    firstName: "Leah", schoolGrade: 3, month: "2026-10", madeOn: "2026-11-05",
+    level: { working: 4, earlySign: false, testedOn: "2026-09-10", unreliable: false },
+    areas: [
+      { area: "number", name: "Number and operations", level: 4, label: "ahead", earlySign: false },
+      { area: "fractions", name: "Fractions and decimals", level: 2, label: "building-up", earlySign: true },
+      { area: "algebra", name: "Patterns and algebra", level: 3, label: "at-grade", earlySign: false },
+      { area: "shapes", name: "Shapes, measurement and data", level: 3, label: "at-grade", earlySign: true },
+    ],
+    mailed: [{ number: 2, shippedOn: "2026-10-14" }, { number: 3, shippedOn: "2026-10-28" }],
+    daysScanned: 9, mayaCalls: 4,
+    next: { earliest: "2026-11-11", latest: "2026-11-25" },
+  };
+
+  it("prints the summary on one Letter page", async () => {
+    const out = await renderMonthlySummary({ view, engine: chromiumPrintEngine(), fonts: await fixedTemplateFonts() });
+    if (out.status !== "rendered") throw new Error(JSON.stringify(out));
+    expect(new TextDecoder("latin1").decode(out.pdf).match(/\/Type\s*\/Page\b/g)?.length).toBe(1);
+    expect(await sharp(out.png).metadata()).toMatchObject({ width: 1275, height: 1650 });
+    if (process.env.RENDER_OUT) {
+      await mkdir(process.env.RENDER_OUT, { recursive: true });
+      await writeFile(`${process.env.RENDER_OUT}/monthly-summary.pdf`, out.pdf);
+      await writeFile(`${process.env.RENDER_OUT}/monthly-summary.png`, out.png);
+    }
+  }, 60_000);
+
+  // The most a real summary holds: the longest name a child may have (60 characters, public.children), an Early sign
+  // level, all four areas with Early sign, and more workbooks mailed in one month than a family gets.
+  const most = (firstName: string): MonthlySummaryView => ({
+    ...view,
+    firstName,
+    schoolGrade: 9,
+    level: { working: 0, earlySign: true, testedOn: "2026-09-10", unreliable: false },
+    areas: view.areas.map((a) => ({ ...a, level: 0, label: "building-up", earlySign: true })),
+    mailed: [1, 2, 3, 4].map((number) => ({ number, shippedOn: `2026-10-${String(number * 7).padStart(2, "0")}` })),
+    daysScanned: 30, mayaCalls: 31,
+  });
+  it.each([
+    ["words", "Maximiliana Alexandrina Josephine Wilhelmina Bartholomew Ann"],
+    ["one word", "W".repeat(60)],
+  ])("fits the fullest summary on one page with a 60-character name in %s", async (_, firstName) => {
+    expect(firstName).toHaveLength(60);
+    const out = await renderMonthlySummary({ view: most(firstName), engine: chromiumPrintEngine(), fonts: await fixedTemplateFonts() });
+    expect(out.status).toBe("rendered");
+  }, 60_000);
+
+  // The print engine leaves scripts and networking on for its other callers, so the summary must never put the name in
+  // as markup: a crafted name prints as text and asks for nothing.
+  it("prints a crafted name as text: it runs no script and loads nothing", async () => {
+    const asked: string[] = [];
+    const server = createServer((req, res) => { asked.push(req.url ?? ""); res.end("x"); });
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const at = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      const firstName = `<img src="${at}/img"><script>fetch("${at}/script")</script>`;
+      const out = await renderMonthlySummary({ view: { ...view, firstName }, engine: chromiumPrintEngine(), fonts: await fixedTemplateFonts() });
+      expect(out.status).toBe("rendered");
+      expect(asked).toEqual([]);
+    } finally {
+      server.close();
+    }
+  }, 60_000);
+
+  it("fails a summary too long for one page", async () => {
+    const long = { ...view, mailed: Array.from({ length: 40 }, (_, i) => ({ number: i + 1, shippedOn: "2026-10-14" })) };
+    expect(await renderMonthlySummary({ view: long, engine: chromiumPrintEngine(), fonts: await fixedTemplateFonts() })).toEqual({ status: "failed", reason: "the summary does not fit on one page" });
   }, 60_000);
 });

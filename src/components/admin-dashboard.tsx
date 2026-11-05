@@ -117,7 +117,7 @@ export function DashboardView({ d, ctx, progress }: { d: Dashboard; ctx: Ctx; pr
                   <td><b>{e.label}</b></td><td className="dash-muted">{e.subject}</td><td>{e.to}</td><td>{e.trigger}</td>
                   <td className="dash-num">{e.sentInRange}</td><td className="dash-num">{e.sent}</td>
                   <td className="dash-num">{e.failed > 0 ? <b className="dash-bad-text">{e.failed}</b> : 0}</td>
-                  <td className="dash-num">{e.kind === "alert" || e.kind === "maya_daily" || e.kind === "maya_weekly" || isUnsubscribe(e.kind) || e.sent === 0 ? "-" : <>{e.clicked}<span className="dash-sub">{Math.round((100 * e.clicked) / e.sent)}% of sent</span></>}</td>
+                  <td className="dash-num">{e.kind === "alert" || e.kind === "maya_daily" || e.kind === "maya_weekly" || e.kind === "monthly_summary" || isUnsubscribe(e.kind) || e.sent === 0 ? "-" : <>{e.clicked}<span className="dash-sub">{Math.round((100 * e.clicked) / e.sent)}% of sent</span></>}</td>
                   <td className="dash-nowrap">{e.last ? <>{at(e.last)}<span className="dash-sub">{ago(e.last, d.now)}</span></> : "-"}</td>
                 </tr>
               ))}
@@ -131,7 +131,7 @@ export function DashboardView({ d, ctx, progress }: { d: Dashboard; ctx: Ctx; pr
               <span className={`dash-dot is-${emailDot(e)}`} />
               <div>
                 <b>{EMAIL_LABEL[e.kind]}</b> {e.kind === "alert" ? "about" : isUnsubscribe(e.kind) ? "by" : "to"} <Link href={familyHref(ctx, e.familyId)}>{e.familyName}</Link>
-                <span className="dash-sub">{e.status === "failed" ? `Failed: ${e.error ?? "unknown error"}` : e.status === "pending" ? "Waiting to send" : e.kind === "unsubscribe" ? "Reminders turned off" : e.kind === "maya_unsubscribe" ? "Maya emails turned off" : deliveryLine(e)?.bad ? deliveryLine(e)!.text : e.subject} · {at(e.at)}</span>
+                <span className="dash-sub">{e.status === "failed" ? `Failed: ${e.error ?? "unknown error"}` : e.status === "pending" ? "Waiting to send" : e.kind === "unsubscribe" ? "Reminders turned off" : e.kind === "maya_unsubscribe" ? "Maya emails turned off" : e.kind === "monthly_summary_unsubscribe" ? "Monthly summary emails turned off" : deliveryLine(e)?.bad ? deliveryLine(e)!.text : e.subject} · {at(e.at)}</span>
               </div>
             </li>
           ))}

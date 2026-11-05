@@ -54,6 +54,12 @@ async function resolveCards(cards: readonly FamilyCard[], resolve?: (booking: Bo
   } catch { return "unknown"; }
 }
 
+/** Every Stripe customer of the family, once each, old bookings too. "unknown" when a booking cannot be resolved. */
+export async function familyCustomers(cards: readonly FamilyCard[], resolve: (booking: BookingLink) => Promise<string[]>): Promise<string[] | "unknown"> {
+  const linked = await resolveCards(cards, resolve);
+  return linked === "unknown" ? "unknown" : customersOf(linked);
+}
+
 /**
  * Read every Stripe customer of the family, four at a time, and add the site's record of a saved card. One failed read
  * makes the whole family unknown: no later customer is started, and every started read is awaited.

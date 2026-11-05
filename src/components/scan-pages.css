@@ -19,3 +19,17 @@
   .scan-pages:has(.scan-file) { padding-bottom: 80px; }
   .scan-file { position: fixed; left: 16px; right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 20; min-height: 48px; box-shadow: 0 0 0 8px var(--paper, #fff); }
 }
+.scan-preview { display: grid; gap: 12px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.scan-preview h3 { margin: 0; font-size: 18px; }
+.scan-preview p { margin: 0; }
+.scan-preview .btn { justify-self: start; min-height: 44px; }
+.scan-preview-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 20px; align-items: start; }
+.scan-straight { margin: 0; display: grid; gap: 8px; font-size: 14px; color: var(--ink-2); }
+.scan-straight img { display: block; width: 100%; height: auto; border: 1px solid var(--line); }
+.scan-answers { display: grid; gap: 12px; }
+.scan-preview ol.scan-crops { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px; }
+.scan-preview .scan-crops li { display: grid; gap: 6px; align-content: start; margin: 0; }
+.scan-number { font-size: 14px; font-weight: 600; color: var(--ink); }
+.scan-crops img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; }
+.scan-holder { display: block; width: 100%; background: var(--card); border: 1px solid var(--line); border-radius: 4px; }
+@media (max-width: 700px) { .scan-preview-layout { grid-template-columns: minmax(0, 1fr); } .scan-preview ol.scan-crops { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); } }

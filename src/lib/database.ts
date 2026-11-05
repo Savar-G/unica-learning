@@ -7,6 +7,7 @@ import type { AnonymousTestCopy, AttemptStatus, FactsTest, HelpAnswer, Placement
 import type { KnownPlan } from "@/lib/parent-plan";
 import type { LogKind, LogStatus } from "@/lib/reminders";
 import type { PlanId } from "@/lib/site";
+import type { ScanCalibrationResult } from "@/lib/scan-crops";
 import type { TestDevice } from "@/lib/test-context";
 import type { StoredReview } from "@/lib/work-review";
 import type { WorkbookStatus } from "@/lib/workbook-content";
@@ -48,7 +49,7 @@ type ColumnTypes = KnownColumns<{
     kind: CallKind; mode: CallRecord["mode"]; question_source: QuestionRef["source"]; status: CallStatus; versions: CallRecord["versions"];
     outcome_reason: Outcome["reason"] | null; assistance: Outcome["assistance"] | null; paper_status: Outcome["paperStatus"] | null;
     understanding: Outcome["understanding"] | null; safety_severity: Outcome["safetySeverity"]; live: NonNullable<CallRecord["live"]> | null;
-    trace: MayaTrace | null; board_history: BoardHistory | null; flag: FlagLevel | null; note_pending: CallRecord["notePending"];
+    trace: MayaTrace | null; board_history: BoardHistory | null; child_ink: BoardHistory | null; flag: FlagLevel | null; note_pending: CallRecord["notePending"];
   };
   maya_call_notes: { facts: NoteFacts; sentences: string[]; writer: CallNote["writer"]; transcript: NoteTranscriptLine[] };
   maya_call_connections: { kind: ConnectionKind };
@@ -58,6 +59,7 @@ type ColumnTypes = KnownColumns<{
   parents: { source: Record<string, string> };
   reports: { model: ReportModel };
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };
+  scan_calibrations: { state: "running" | "ready" | "refused"; result: ScanCalibrationResult | null };
   workbooks: { status: WorkbookStatus; print_manifest: ScanManifest | null };
   workbook_pages: { print_contract: PagePrintContract | null };
   workbook_questions: { regions: PrintedRegion[] | null; teaching: TeachingContext | null };

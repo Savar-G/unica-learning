@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
-import { createSession, finish, nextQuestion, storedTest, submitAnswer, testAreaAnswers, testStep, type Session } from "@/lib/assessment";
+import { createSession, finish, nextQuestion, reportModel, storedTest, submitAnswer, testAreaAnswers, testStep, type Placement, type Session } from "@/lib/assessment";
 import { checked } from "@/lib/assessment/scripted-child";
-import { listChildren, readOverview, readWorkbooks } from "@/lib/parent-view";
+import { listChildren, readMonthlySummary, readOverview, readWorkbooks } from "@/lib/parent-view";
 import { parentViewReader } from "@/lib/parent-view-server";
 
 // The parent view's Supabase reader, through its interface, against a fake PostgREST. It checks what the memory reader
@@ -140,9 +140,10 @@ describe("the Supabase reader of the Overview (#560)", () => {
     }
     return session;
   };
-  const level = { working: 3, grade: 3, atCeiling: false, confidence: "normal", certainty: "clear" };
-  const scored = (session: Session, over: Record<string, unknown> = {}) => ({
-    reports: [{ id: "report-1", child_id: CHILD, assessment_id: TEST, assessment: { province: "BC" }, model: { level } }],
+  /** The report the report job made from a stored score. */
+  const modelOf = (placement: Placement) => reportModel(placement, { workReviews: [] });
+  const scored = (session: Session, over: Record<string, unknown> = {}, model = modelOf(finish(session))) => ({
+    reports: [{ id: "report-1", child_id: CHILD, assessment_id: TEST, assessment: { province: "BC" }, model }],
     assessments: [{ ...(ROWS.assessments as object[])[0], test: storedTest(session), route: session.route, break_started_at: null, break_ended_at: null, help: null, placement: finish(session) }],
     answers: session.answers.map((a) => ({ question_id: a.questionId, response: a.response, time_ms: a.timeMs })),
     ...over,
@@ -155,7 +156,8 @@ describe("the Supabase reader of the Overview (#560)", () => {
     const fake = (requests: URL[]) => createClient<never>("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input) => {
       const url = new URL(String(input));
       requests.push(url);
-      return Response.json(all[url.pathname.replace("/rest/v1/", "")] ?? []);
+      // A count (HEAD) reads its number from this header; no Maya call in these rows.
+      return Response.json(all[url.pathname.replace("/rest/v1/", "")] ?? [], { headers: { "content-range": "*/0" } });
     } } }) as never;
     return { session, admin, reader: parentViewReader(fake(session), PARENT, fake(admin), {}) };
   }
@@ -164,7 +166,7 @@ describe("the Supabase reader of the Overview (#560)", () => {
   it("replays the stored test with the assessment core and keeps the stored report's level", async () => {
     const session = take();
     const r = overviewReader(scored(session));
-    expect(await r.reader.testResult(TEST)).toEqual({ level, answers: testAreaAnswers(session) });
+    expect(await r.reader.testResult(TEST)).toEqual({ level: modelOf(finish(session)).level, answers: testAreaAnswers(session), unreliable: false });
     expect(select(r.admin, "assessments").get("parent_id")).toBe(`eq.${PARENT}`);
     expect(select(r.admin, "assessments").get("id")).toBe(`eq.${TEST}`);
     expect(select(r.session, "reports").get("select")).toBe("model");
@@ -174,18 +176,33 @@ describe("the Supabase reader of the Overview (#560)", () => {
     const session = take(4);
     expect(testAreaAnswers(session).length).toBe(session.answers.length - 4);
     const view = await readOverview(overviewReader(scored(session)).reader, CHILD, NOW);
-    expect(view?.level?.working).toBe(3);
+    expect(view?.level?.working).toBe(finish(session).workingLevel);
     expect(view?.areas.length).toBeGreaterThan(0);
+  });
+  it("a test the report calls unreliable (pace.unreliable) gives no bars on the Overview and in the monthly summary (D-258)", async () => {
+    const session = take(16);
+    const placement = finish(session);
+    expect(placement.pace?.unreliable).toBe(true);
+    const rows = { ...scored(session), workbook_delivery_receipts: [{ child_id: CHILD, workbook_id: WORKBOOK, delivered_at: "2026-09-20T18:00:00Z" }] };
+    // The replay adds up: only the report's flag takes the bars away.
+    expect(await overviewReader(rows).reader.testResult(TEST)).toEqual({ level: modelOf(placement).level, answers: testAreaAnswers(session), unreliable: true });
+    const overview = await readOverview(overviewReader(rows).reader, CHILD, NOW);
+    expect(overview?.level).toMatchObject({ working: placement.workingLevel, unreliable: true });
+    expect(overview?.areas).toEqual([]);
+    const summary = await readMonthlySummary(overviewReader(rows).reader, CHILD, "2026-10", NOW);
+    expect(summary?.level?.unreliable).toBe(true);
+    expect(summary?.areas).toEqual([]);
   });
   it("a score stored before the rushing rule differs from the replay: the Level tile stays and no bar shows", async () => {
     const session = take(4);
     // As a test stored before #189: the report counted the rushed answers, and the stored score has no pace.
     const counted = finish({ ...session, answers: session.answers.map((a) => ({ ...a, timeMs: 9_000 })) });
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    const r = overviewReader(scored(session, { assessments: [{ ...scored(session).assessments[0], placement: { ...counted, pace: undefined } }] }));
-    expect(await r.reader.testResult(TEST)).toEqual({ level, answers: null });
+    const old = { ...counted, pace: undefined };
+    const r = overviewReader(scored(session, { assessments: [{ ...scored(session).assessments[0], placement: old }] }, modelOf(old)));
+    expect(await r.reader.testResult(TEST)).toEqual({ level: modelOf(old).level, answers: null, unreliable: false });
     const view = await readOverview(r.reader, CHILD, NOW);
-    expect(view?.level?.working).toBe(3);
+    expect(view?.level?.working).toBe(old.workingLevel);
     expect(view?.areas).toEqual([]);
     expect(log).not.toHaveBeenCalled();
     log.mockRestore();
@@ -193,7 +210,33 @@ describe("the Supabase reader of the Overview (#560)", () => {
   it("a test with no stored score has no bars", async () => {
     const session = take();
     const r = overviewReader(scored(session, { assessments: [{ ...scored(session).assessments[0], placement: null }] }));
-    expect(await r.reader.testResult(TEST)).toEqual({ level, answers: null });
+    expect(await r.reader.testResult(TEST)).toEqual({ level: modelOf(finish(session)).level, answers: null, unreliable: false });
+  });
+  it("a score stored again after the report was made (a rescore) gives no bars beside the report's older level, on the Overview and the monthly summary", async () => {
+    const session = take();
+    const now = finish(session);
+    // The report was made from an earlier score: Kindergarten, with other counts. The stored score and the replay agree
+    // with each other, and not with the report the parent reads.
+    const before: Placement = { ...now, workingLevel: 0, confidence: "low", strands: now.strands.map((s) => ({ ...s, correct: 0 })) };
+    expect(before.workingLevel).not.toBe(now.workingLevel);
+    const rows = { ...scored(session, {}, modelOf(before)), workbook_delivery_receipts: [{ child_id: CHILD, workbook_id: WORKBOOK, delivered_at: "2026-09-20T18:00:00Z" }] };
+    const r = overviewReader(rows);
+    expect(await r.reader.testResult(TEST)).toEqual({ level: modelOf(before).level, answers: null, unreliable: false });
+    const overview = await readOverview(r.reader, CHILD, NOW);
+    expect(overview?.level?.working).toBe(0);
+    expect(overview?.areas).toEqual([]);
+    const summary = await readMonthlySummary(overviewReader(rows).reader, CHILD, "2026-10", NOW);
+    expect(summary?.level?.working).toBe(0);
+    expect(summary?.areas).toEqual([]);
+    // The same rows with the report made from the stored score show the bars.
+    const fresh = { ...rows, reports: scored(session).reports };
+    expect((await readMonthlySummary(overviewReader(fresh).reader, CHILD, "2026-10", NOW))?.areas.length).toBeGreaterThan(0);
+  });
+  it("a report whose level matches but whose area counts differ from the stored score gives no bars", async () => {
+    const session = take();
+    const now = finish(session);
+    const other: Placement = { ...now, strands: now.strands.map((s, i) => (i === 0 ? { ...s, total: s.total + 1 } : s)) };
+    expect(await overviewReader(scored(session, {}, modelOf(other))).reader.testResult(TEST)).toMatchObject({ answers: null });
   });
   it("reads the stored score with the secret key, filtered on the parent", async () => {
     const r = overviewReader(scored(take()));
@@ -219,24 +262,51 @@ describe("the Supabase reader of the Overview (#560)", () => {
   it("a stored test that cannot be replayed keeps the level with no answers, and is logged", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const r = overviewReader(scored(take(), { answers: [] }));
-    expect(await r.reader.testResult(TEST)).toEqual({ level, answers: null });
+    expect(await r.reader.testResult(TEST)).toEqual({ level: modelOf(finish(take())).level, answers: null, unreliable: false });
     expect(log).toHaveBeenCalledWith("[parent-view] test replay failed", expect.any(String));
     log.mockRestore();
   });
   it("reads saved scans, a workbook's pages and the learning card with the parent's session, and no raw profile, event or call table", async () => {
     const r = overviewReader({
       ...scored(take()),
-      scan_photos: [{ workbook_id: WORKBOOK, page_id: "p1", expires_at: "2027-01-01T00:00:00Z" }],
+      scan_photos: [{ workbook_id: WORKBOOK, page_id: "p1", expires_at: "2027-01-01T00:00:00Z", created_at: "2026-10-20T18:00:00Z" }],
       workbook_pages: [{ id: "p1", day_label: "Day 1" }],
       children: [{ id: CHILD, first_name: "Leah", grade: 3, learning_styles: null, interests: ["space"], learning_note: null, math_feeling: null, learning_goal: null, weekly_time: null }],
     });
-    expect(await r.reader.savedScans()).toEqual([{ workbookId: WORKBOOK, pageId: "p1", expiresAt: "2027-01-01T00:00:00Z" }]);
+    expect(await r.reader.savedScans()).toEqual([{ workbookId: WORKBOOK, pageId: "p1", expiresAt: "2027-01-01T00:00:00Z", takenAt: "2026-10-20T18:00:00Z" }]);
     expect(select(r.session, "scan_photos").get("state")).toBe("eq.saved");
     expect(await r.reader.workbookPages(WORKBOOK)).toEqual([{ id: "p1", dayLabel: "Day 1" }]);
     expect(select(r.session, "workbook_pages").get("workbook_id")).toBe(`eq.${WORKBOOK}`);
     expect((await r.reader.learningCards())[0]).toMatchObject({ childId: CHILD, interests: ["space"] });
     await readOverview(r.reader, CHILD, NOW);
-    expect(tables(r.session)).toEqual(["card_setups", "children", "parents", "reports", "scan_photos", "workbook_delivery_receipts", "workbook_pages", "workbooks"]);
+    expect(tables(r.session)).toEqual(["card_setups", "children", "parents", "reports", "scan_photos", "workbook_delivery_corrections", "workbook_delivery_receipts", "workbook_pages", "workbooks"]);
     expect(tables(r.admin)).toEqual(["admin_users", "answers", "assessments", "test_accounts"]);
+  });
+});
+
+describe("the Supabase reader of the monthly summary (#562)", () => {
+  // October 2026 in Toronto: from 04:00 UTC on October 1 to 04:00 UTC on November 1.
+  const FROM = Date.parse("2026-10-01T04:00:00Z");
+  const TO = Date.parse("2026-11-01T04:00:00Z");
+  it("counts the child's Maya calls of the month in the database, with the parent's session alone, and reads no row", async () => {
+    const asked: { url: URL; method: string; prefer: string | null }[] = [];
+    const own = parentViewReader(createClient<never>("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input, init) => {
+      asked.push({ url: new URL(String(input)), method: init?.method ?? "GET", prefer: new Headers(init?.headers).get("prefer") });
+      // A thousand calls in September would fill a page of rows; a count has no page.
+      return new Response(null, { status: 200, headers: { "content-range": "*/1" } });
+    } } }) as never, PARENT, null);
+    expect(await own.mayaCalls(CHILD, FROM, TO)).toBe(1);
+    expect(asked).toHaveLength(1);
+    const { url, method, prefer } = asked[0];
+    expect(url.pathname).toBe("/rest/v1/maya_minute_grants");
+    expect(method).toBe("HEAD");
+    expect(prefer).toContain("count=exact");
+    expect(url.searchParams.get("kind")).toBe("eq.child");
+    expect(url.searchParams.get("child_id")).toBe(`eq.${CHILD}`);
+    expect(url.searchParams.get("used_seconds")).toBe("gt.0");
+    expect(url.searchParams.getAll("created_at")).toEqual(["gte.2026-10-01T04:00:00.000Z", "lt.2026-11-01T04:00:00.000Z"]);
+  });
+  it("throws when the ledger cannot be counted", async () => {
+    await expect(reader("maya_minute_grants").reader.mayaCalls(CHILD, FROM, TO)).rejects.toThrow("maya calls read");
   });
 });

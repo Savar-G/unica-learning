@@ -1,7 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/database";
-import type { CallChange, CallRecord, CallStore, ConnectionLog } from "@/lib/maya-call";
+import type { Database, Json } from "@/lib/database";
+import { encodeHistory } from "@/lib/board-history";
+import { INK_AFTER_END_MS, INK_SAVE_GAP_MS, type CallChange, type CallRecord, type CallStore, type ConnectionLog } from "@/lib/maya-call";
 import type { SweepCallSource, SweepCursor } from "@/lib/maya-call-sweep";
 import type { QuestionRef } from "@/lib/question-package";
 
@@ -94,6 +95,7 @@ export function fromCallRow(r: Row): CallRecord {
     live: r.live,
     trace: r.trace,
     boardHistory: r.board_history,
+    childInk: r.child_ink,
     learningEventId: r.learning_event_id,
     profileRebuiltAt: r.profile_rebuilt_at,
     notePending: r.note_pending,
@@ -161,6 +163,18 @@ export function mayaCallStore(admin: SupabaseClient<Database>): CallStore {
       if (error) throw new Error(`maya call pending notes: ${error.message}`);
       return (data ?? []).map(fromCallRow);
     },
+    async saveInk(id, owner, ink) {
+      if (!UUID.test(id) || !UUID.test(owner.parentId) || !UUID.test(owner.childId)) return "not_found";
+      // One statement compares and writes (R625-2); the revision and the call's write time stay (#534). The board goes as
+      // the JSON of its saved copy: Maya's commands are plain JSON, which their type (unknown) does not say.
+      const { data, error } = await admin.rpc("save_maya_call_ink", {
+        p_id: id.toLowerCase(), p_parent: owner.parentId.toLowerCase(), p_child: owner.childId.toLowerCase(),
+        p_ink: JSON.parse(encodeHistory(ink)) as Json, p_gap_ms: INK_SAVE_GAP_MS, p_after_end_ms: INK_AFTER_END_MS,
+      });
+      if (error) throw new Error(`maya call save ink: ${error.message}`);
+      if (data === "saved" || data === "stale" || data === "busy" || data === "closed" || data === "not_found") return data;
+      throw new Error(`maya call save ink: unexpected answer ${String(data)}`);
+    },
     async clearNote(id) {
       if (!UUID.test(id)) return false;
       const { data, error } = await admin
@@ -209,6 +223,21 @@ export function sweepCallSource(admin: SupabaseClient<Database>): SweepCallSourc
       const { data, error } = await q.order("ended_at", { ascending: true }).order("id", { ascending: true }).limit(bounded(limit));
       if (error) throw new Error(`maya unfinished calls: ${error.message}`);
       return (data ?? []).map(fromCallRow);
+    },
+    // The sweep's place in each list (#586): public.maya_call_sweep_cursors, one row per kind.
+    async readPlace(kind) {
+      const { data, error } = await admin.from("maya_call_sweep_cursors").select("at, call_id, until_at").eq("kind", kind).maybeSingle();
+      if (error) throw new Error(`maya sweep place: ${error.message}`);
+      return data?.at && data.call_id && data.until_at ? { after: { at: data.at, id: data.call_id }, until: data.until_at } : null;
+    },
+    async writePlace(kind, place) {
+      const good = (at: string) => STORED_TIME.test(at) && Number.isFinite(Date.parse(at));
+      if (place && (!good(place.after.at) || !good(place.until) || !UUID.test(place.after.id))) throw new Error("maya sweep: bad cursor");
+      const { error } = await admin.from("maya_call_sweep_cursors").upsert(
+        { kind, at: place?.after.at ?? null, call_id: place?.after.id.toLowerCase() ?? null, until_at: place?.until ?? null, updated_at: new Date().toISOString() },
+        { onConflict: "kind" },
+      );
+      if (error) throw new Error(`maya sweep place write: ${error.message}`);
     },
   };
 }

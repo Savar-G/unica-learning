@@ -8,7 +8,8 @@ vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({}) }));
 import { MayaCall } from "./admin-maya";
 import { boardPlayback, recordView } from "@/lib/maya-call";
-import { createHistory, mayaWrites, takePen, givePen, drawStroke, historyFromRecording, replayFrame, type Change, type BoardHistory } from "@/lib/board-history";
+import { boardScene, createHistory, mayaWrites, takePen, givePen, drawStroke, historyFromRecording, replayFrame, withChildInk, type Change, type BoardHistory } from "@/lib/board-history";
+import { boardPaths } from "@/lib/board";
 import { pathData } from "@/lib/board-svg";
 import { callReplay } from "@/lib/maya-call-review";
 import { reviewFixture } from "@/lib/maya-call-review-fixture";
@@ -126,4 +127,19 @@ it("R442-2: renders the saved geometry when child ink moves Maya's writing", () 
   const host = document.createElement("div");
   host.innerHTML = renderToStaticMarkup(createElement(MayaBoard, { steps: board.steps, viewBox: saved.viewBox, label: "Saved board", frame }));
   expect([...host.querySelectorAll("svg > path")].map((p) => p.getAttribute("d"))).toEqual(frame.maya.map((s) => pathData(s.path.pts)));
+});
+
+it("R625-1: keeps the child's line in the replay and says which of Maya's steps could not be drawn over it", async () => {
+  const accepted = (change: Change) => { if (!change.ok) throw new Error(change.reason); return change.history; };
+  const sum = { transactionId: "sum", commands: [{ op: "columns", id: "sum", operation: "add", operands: [{ id: "top", value: "27" }, { id: "bottom", value: "39" }], place: { region: "main" } }] };
+  const glow = { transactionId: "glow", commands: [{ op: "mark", id: "onesGlow", target: { objectId: "sum", part: "column", column: "ones" }, style: "highlight", ink: "yellow" }] };
+  const call = accepted(mayaWrites(accepted(mayaWrites(createHistory(), sum, 0)), glow, 10_000));
+  const pts = boardPaths(boardScene(call)).filter((p) => p.objectId === "sum").flatMap((p) => p.pts);
+  const y = (Math.min(...pts.map((p) => p[1])) + Math.max(...pts.map((p) => p[1]))) / 2;
+  let desk = accepted(takePen(accepted(mayaWrites(createHistory(), sum, 0)), 1000));
+  desk = accepted(drawStroke(desk, { erase: false, w: 5, boardWidth: 800, page: 1, pts: [[Math.min(...pts.map((p) => p[0])) - 0.02, y, 2000], [Math.max(...pts.map((p) => p[0])) + 0.02, y, 2300]] }));
+  await mount(false, false, withChildInk(call, desk));
+  await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Show finished")!.click());
+  expect(host.querySelector("svg.maya-board g[aria-label] path")).not.toBeNull();
+  expect(host.textContent).toContain("1 step of Maya's is not drawn here");
 });

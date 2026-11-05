@@ -245,6 +245,12 @@ export function reliabilityNote(v: ReportView, retake?: RetakeState): Reliabilit
   };
 }
 
+/**
+ * D-258 (#579): the one sentence in place of the area bars of a test whose report has the reliability note, on the
+ * Overview and in the monthly summary. The report, which this points to, offers the new test.
+ */
+export const unreliableAreasText = (name: string) => `The last test may not show ${name}'s level reliably, so the report offers ${name} a new test with new questions.`;
+
 /** Share right, in whole percent, for the meter. */
 export const sharePercent = (s: { correct: number; total: number }) => (s.total > 0 ? Math.round((s.correct / s.total) * 100) : 0);
 

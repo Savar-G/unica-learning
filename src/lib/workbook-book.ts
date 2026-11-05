@@ -18,6 +18,7 @@ import { templateAnswer, templateNumbers, type TemplateSource } from "@/lib/ques
 import { TITLE_WORDS_MAX, titleWords } from "@/lib/workbook-title-rules";
 import { likelihoodWord } from "@/lib/workbook-likelihood";
 import { workbookCoverTitle } from "@/lib/workbook-cover-titles";
+import { workbookCoverLine } from "@/lib/workbook-cover-line";
 import { SKILL_TITLES } from "@/lib/workbook-skill-titles";
 import {
   operationResult,
@@ -1254,8 +1255,8 @@ export function bookPageContent(o: {
       return {
         kind: "cover", id: id("COVER"), level, child, workbook, levelTitle: title, title: coverTitleLines(title),
         madeFrom: workbook === 1 ? "assessment" : "last-workbook", pagesADay, minutes: { ...plan.timeTarget },
-        sentence: level === 4 ? `${child} will count, read and write numbers up to 20, and learn how numbers split into smaller parts.`
-          : `${child} will ${coverSkills(plan).map(x => x[0].toLowerCase() + x.slice(1)).join(", ").replace(/, ([^,]+)$/, ", and $1")}.`,
+        sentence: workbookCoverLine(plan, child, workbook) ?? (level === 4 ? `${child} will count, read and write numbers up to 20, and learn how numbers split into smaller parts.`
+          : `${child} will ${coverSkills(plan).map(x => x[0].toLowerCase() + x.slice(1)).join(", ").replace(/, ([^,]+)$/, ", and $1")}.`),
         bullets: [],
         parentLine: "",
       };

@@ -8,6 +8,10 @@
 // within the limit can say a code-written acknowledgement first (src/lib/maya-voice-ack.ts), as a segment of its own with
 // an empty board plan. The answer's board is staged only after that segment has played. A child who talks cancels it, and
 // safety guidance or the deadline close stops it at once.
+//
+// Safety guidance reaches this worker as soon as the session accepts it, with the close call still out (#589). It stops
+// the reply and queues at once. A child who is talking is heard first: LiveKit holds interruptible speech until they stop,
+// and a disclosure must not be talked over. Words after the guidance wait for it.
 // VoiceCallRun also measures each child turn (./turn-timing.ts).
 //
 // VoiceCallRun owns the call's life around the speech: the opening when the child is there, the ticks the session asks
@@ -150,12 +154,26 @@ interface TurnPace {
   closed: boolean;
   /** This reply's speech. LiveKit stops reading the stream when it is interrupted, and does not cancel it. */
   handle: voice.SpeechHandle | null;
+  /** Safety guidance of this turn already went out: its marks are taken, and only the close can follow. */
+  guided: boolean;
+  /** The phrase's end never came, so its speech was stopped at the limit. */
+  ackStopped: boolean;
+  /** The answer goes out as speech of its own, so the end of this reply's stream does not end the turn. */
+  ownSpeech: boolean;
   limit: unknown;
   hold: unknown;
   ack: Promise<void> | null;
   ackOver: (() => void) | null;
   write(chunk: string | FlushSentinel): void;
+  /** Ends the reply's stream. Nothing more can be written to it. */
+  end(): void;
 }
+
+const timeOf = (turns: readonly VoiceTurn[]) => ({
+  modelMs: turns.reduce((sum, t) => sum + (t.time?.modelMs ?? 0), 0),
+  repairMs: turns.reduce((sum, t) => sum + (t.time?.repairMs ?? 0), 0),
+  reviewMs: turns.reduce((sum, t) => sum + (t.time?.reviewMs ?? 0), 0),
+});
 
 export class VoiceCallRun {
   private lastTickAt: number | null = null;
@@ -174,6 +192,12 @@ export class VoiceCallRun {
   private boardAudio: CuePlaybackOutput | null = null;
   private childStoppedAt: number | null = null;
   private pace: TurnPace | null = null;
+  /** The guidance on its way to the child. */
+  private guidance: { speech: voice.SpeechHandle; over: Promise<void>; scope: SpeechScope | null; cut: boolean; repeated: boolean } | null = null;
+  /** Guidance cut while the child was away. They hear it when they are back. */
+  private guidanceOwed: string | null = null;
+  /** The last words of a call that ended while the child was away. They come first when the child is back, and then the stored call ends. */
+  private finalOwed: VoiceTurn | null = null;
   readonly agent: MayaVoiceAgent;
   /** Immutable revision claimed when this worker opened the call. */
   readonly segment: number;
@@ -195,6 +219,7 @@ export class VoiceCallRun {
     this.segment = call.revision;
     this.agent = new MayaVoiceAgent(call, turn => this.after(turn), options.board ? { sync: options.board, scope: () => this.boardScope } : undefined,
       (stoppedAt, work) => this.reply(stoppedAt, work));
+    call.onGuidance(turn => this.guidanceNow(turn));
     session.on(voice.AgentSessionEventTypes.UserStateChanged, ev => {
       if (ev.newState === "speaking") {
         if (this.pace) this.cutAck(this.pace);
@@ -242,21 +267,22 @@ export class VoiceCallRun {
     const speechEndedAt = stoppedAt === undefined ? this.childStoppedAt ?? heardAt : heardAt - Math.max(0, Date.now() - stoppedAt * 1000);
     const pace: TurnPace = {
       clock: new TurnClock(this.timers.now, speechEndedAt, heardAt), generation: this.generation,
-      writable: true, ready: false, closed: false, handle: this.speech, limit: null, hold: null, ack: null, ackOver: null, write: () => {},
+      writable: true, ready: false, closed: false, handle: this.speech, guided: false, ackStopped: false, ownSpeech: false, limit: null, hold: null, ack: null, ackOver: null, write: () => {}, end: () => {},
     };
     this.pace = pace;
     return new ReadableStream<string | FlushSentinel>({
       start: controller => {
         pace.write = chunk => { if (pace.writable) controller.enqueue(chunk); };
+        pace.end = () => { if (pace.writable) { pace.writable = false; controller.close(); } };
         this.runTurn(pace, speechEndedAt, work).then(
-          () => { if (pace.writable) { pace.writable = false; controller.close(); } },
+          () => pace.end(),
           error => { this.closeTurn(pace); if (pace.writable) { pace.writable = false; controller.error(error); } },
         );
       },
       cancel: () => {
         pace.writable = false;
         this.cutAck(pace);
-        this.closeTurn(pace);
+        if (!pace.ownSpeech) this.closeTurn(pace);
       },
     });
   }
@@ -275,15 +301,15 @@ export class VoiceCallRun {
       pace.ready = true;
       this.clearLimit(pace);
     }
-    pace.clock.ready({
-      modelMs: turns.reduce((sum, t) => sum + (t.time?.modelMs ?? 0), 0),
-      repairMs: turns.reduce((sum, t) => sum + (t.time?.repairMs ?? 0), 0),
-      reviewMs: turns.reduce((sum, t) => sum + (t.time?.reviewMs ?? 0), 0),
-    });
+    // The guidance went out on its own, and this turn's marks with it. What is left is the close.
+    if (pace.guided) return this.sayFirst(null, turns);
+    pace.clock.ready(timeOf(turns));
     // Safety comes first, and the deadline close with it: nothing that came before them holds them back.
     if (turns.some(t => t.priority)) return this.sayFirst(pace, turns);
     // A new plan takes the audio from the old one, so the answer's board waits until the acknowledgement has played.
     if (pace.ack) await pace.ack;
+    // Its end never came: its speech was stopped at the limit, so a word in this reply could not be read.
+    if (pace.ackStopped) return this.sayFirst(pace, turns);
     pace.clock.held();
     const said: string[] = [];
     // A dropped turn must not stage: its speech cannot play, and its plan would take the board from the turn that
@@ -295,26 +321,105 @@ export class VoiceCallRun {
     pace.write(text);
   }
 
+  /** The session accepted safety guidance, and the input behind it can still be waiting for the model's close (#589). */
+  private guidanceNow(turn: VoiceTurn) {
+    const pace = this.pace;
+    if (pace) {
+      pace.guided = true;
+      pace.ready = true;
+      this.clearLimit(pace);
+      // A phrase still on its way never starts, and this turn's sample can be taken before that work comes back.
+      if (pace.ack) pace.clock.ackSkipped("closing");
+      pace.clock.ready(timeOf([turn]));
+    }
+    void this.sayFirst(pace, [turn]).catch(() => this.finish({ detail: "the safety guidance failed" }));
+    // The reply is stopped, and its stream must not stay open for the close call.
+    pace?.end();
+  }
+
   /**
    * Stops the reply and queues the words as speech of their own. LiveKit plays a reply's segments in order, so words added
-   * to the reply could not start until the phrase ended, and words in a stopped reply are never read at all.
+   * to the reply could not start until the phrase ended, and words in a stopped reply are never read at all. Null: the
+   * marks of this turn are already taken.
    */
-  private async sayFirst(pace: TurnPace, turns: VoiceTurn[]) {
-    this.cutAck(pace);
-    pace.clock.held();
+  private async sayFirst(pace: TurnPace | null, turns: VoiceTurn[]) {
+    if (pace) {
+      pace.ownSpeech = true;
+      this.cutAck(pace);
+      pace.clock.held();
+    }
     const text = turns.flatMap(t => t.say).join(" ");
+    const guidance = turns.findLast(t => t.guidance)?.guidance;
     const last = turns.at(-1)!;
     let speech: voice.SpeechHandle | null = null;
     if (text) {
-      pace.handle?.interrupt(true);
+      pace?.handle?.interrupt(true);
+      // New guidance goes first. Anything else waits: a queued speech takes the board plan that is current when it starts,
+      // so a later plan would take the guidance's audio.
+      if (guidance) this.dropGuidance();
+      else await this.guidance?.over;
+      // Guidance is for the child who is here now, or who comes back. Other words belong to the connection that asked.
+      if (guidance && !this.childHere && !this.finishing) {
+        this.guidanceOwed = guidance;
+        return this.closeTurn(pace);
+      }
+      const generation = guidance ? this.generation : pace?.generation ?? this.generation;
       // A plan with no batches has nothing to wait for, and a late board answer must not hold back these words.
       try { await this.stageBoard(last, !!last.boardCues?.length); }
-      catch { if (pace.generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return this.closeTurn(pace); }
-      if (this.finishing || !this.childHere || pace.generation !== this.generation) return this.closeTurn(pace);
-      pace.clock.staged();
+      catch { if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return this.closeTurn(pace); }
+      if (this.finishing || !this.childHere || generation !== this.generation) {
+        this.finalDropped({ ...last, say: turns.flatMap(t => t.say) });
+        return this.closeTurn(pace);
+      }
+      pace?.clock.staged();
       speech = this.session.say(text, { addToChatCtx: true });
+      if (guidance) this.followGuidance(guidance, speech);
     } else this.closeTurn(pace, "no_words");
     for (const turn of turns) await this.after(turn, speech, () => false);
+  }
+
+  /**
+   * A call's last words that the child was not there to hear. The controller has ended, so no later input can end the
+   * stored call, and it would stay live until the deadline, with its note, alert and learning event waiting.
+   */
+  private finalDropped(turn: VoiceTurn) {
+    if (!turn.ended || this.finishing) return;
+    // A later ended turn with no words (a late transcript) keeps the close the child is already owed.
+    if (!this.childHere) { if (turn.say.length || !this.finalOwed) this.finalOwed = turn; return; }
+    void this.sayFirst(null, [turn]).catch(() => this.finish({ detail: "the final speech failed" }));
+  }
+
+  /** A guidance a newer one replaces stops, and is not said again. */
+  private dropGuidance() {
+    const old = this.guidance;
+    this.guidance = null;
+    old?.speech.interrupt(true);
+  }
+
+  /** Follows the guidance's speech. If it was cut it plays once more, and words after it wait for that too. */
+  private followGuidance(text: string, speech: voice.SpeechHandle, repeated = false) {
+    const followed = { speech, scope: this.boardScope, cut: false, repeated, over: Promise.resolve() };
+    const run = async () => {
+      await speech.waitForPlayout();
+      if (this.guidance !== followed) return;
+      if ((followed.cut || speech.interrupted) && !followed.repeated && !this.finishing) {
+        if (this.childHere) await this.repeatGuidance(text);
+        else this.guidanceOwed = text;
+      }
+      if (this.guidance === followed) this.guidance = null;
+    };
+    this.guidance = followed;
+    followed.over = run().catch(() => { if (this.guidance === followed) this.guidance = null; });
+  }
+
+  /** The once more. Its plan has no batches, as the guidance has none. */
+  private async repeatGuidance(text: string) {
+    // A reply can hold the queue, as it waits for the model's close. It has no words to say in a flagged call.
+    this.pace?.handle?.interrupt(true);
+    await this.stageBoard({}, false);
+    const speech = this.session.say(text, { addToChatCtx: true });
+    this.followGuidance(text, speech, true);
+    await speech.waitForPlayout();
   }
 
   /** No newer turn replaced this one, and its speech can still play. */
@@ -326,6 +431,7 @@ export class VoiceCallRun {
     // The answer, the child, the call and the safety state can each change during an await below, so all of it is read
     // again after each one, and nothing awaits between the last reading and queuing the phrase.
     const stopped = () => {
+      if (pace.guided) { skip("closing"); return true; }
       if (pace.ready || this.pace !== pace || !pace.writable) return true;
       const state = this.call.session;
       const why: AckSkip | null = !this.childHere || this.finishing || pace.generation !== this.generation ? "child_away"
@@ -347,7 +453,12 @@ export class VoiceCallRun {
     pace.clock.ackQueued(phrase.id);
     await new Promise<void>(resolve => {
       pace.ackOver = resolve;
-      pace.hold = this.timers.set(ACK_HOLD_LIMIT_MS, () => this.cutAck(pace));
+      // A speech whose playback never ends holds LiveKit's queue, so the answer must not depend on it.
+      pace.hold = this.timers.set(ACK_HOLD_LIMIT_MS, () => {
+        pace.ackStopped = pace.ownSpeech = true;
+        pace.handle?.interrupt(true);
+        this.cutAck(pace);
+      });
       pace.write(phrase.text);
       pace.write(FlushSentinel);
     });
@@ -389,6 +500,8 @@ export class VoiceCallRun {
   private stopBoard(scope: SpeechScope) {
     const board = this.options.board;
     if (!board?.owns(scope)) return;
+    // A retired plan's audio never reaches the child, whatever its speech handle says afterwards.
+    if (this.guidance?.scope === scope && !this.guidance.repeated) this.guidance.cut = true;
     this.boardAudio?.cancelPending(scope);
     if (this.childHere) this.boardTask(board.interrupt(scope), scope);
     else board.detach(scope);
@@ -447,6 +560,17 @@ export class VoiceCallRun {
     if (this.call.lost) return this.finish({ detail: "the connection could not be saved" });
     this.speechEndedAt = this.timers.now();
     this.lastTickAt = this.timers.now();
+    const owed = this.guidanceOwed;
+    const lastWords = this.finalOwed;
+    this.guidanceOwed = this.finalOwed = null;
+    if (owed || lastWords) {
+      // The guidance first. Then the call that ended while the child was away ends here, after its own last words.
+      void (async () => {
+        if (owed) await this.repeatGuidance(owed);
+        if (lastWords) await this.sayFirst(null, [lastWords]);
+        else if (this.call.ended) await this.finish({ reason: "child_stopped" });
+      })().catch(() => this.finish({ detail: "the final speech failed" }));
+    }
     // Bound the opening model request too, before the first session state can be saved.
     this.scheduleLimit(this.call.session.startedAt ?? this.timers.now());
     const final = this.call.pendingFinal;
@@ -458,7 +582,15 @@ export class VoiceCallRun {
         await this.after(final, speech, () => false);
       } catch { await this.finish({ detail: "the saved final speech failed" }); }
     } else if (this.call.session.startedAt === null) this.session.generateReply();
-    else this.schedule();
+    else {
+      this.schedule();
+      // A new worker took over after the guidance: the close call the old one waited for is gone.
+      const { state, safety, outcome } = this.call.session;
+      if (state === "SAFETY" && safety.guided && !outcome && !this.call.working) {
+        if (this.tickTimer !== null) this.timers.clear(this.tickTimer);
+        this.tickTimer = this.timers.set(0, () => void this.tick());
+      }
+    }
   }
 
   async childLeft(how: "hang_up" | "dropped") {
@@ -488,7 +620,7 @@ export class VoiceCallRun {
     const started = this.call.session.startedAt;
     if (started !== null && this.timers.now() >= started + limitsOf(this.call.session).endAtMs) return this.finish({}, true);
     if (!this.childHere || this.call.ended) return;
-    const busy = this.session.agentState === "speaking" || this.session.agentState === "thinking" || this.session.userState === "speaking";
+    const busy = this.session.agentState === "speaking" || this.session.agentState === "thinking" || this.session.userState === "speaking" || this.call.working;
     if (busy) { this.tickTimer = this.timers.set(1000, () => void this.tick()); return; }
     this.lastTickAt = this.timers.now();
     const generation = this.generation;
@@ -496,9 +628,14 @@ export class VoiceCallRun {
       const turn = await this.call.tick();
       if (this.call.lost) return this.finish({ detail: "the call could not be saved" });
       if (this.finishing) return;
-      await this.stageBoard(turn);
-      if (generation !== this.generation || !this.childHere || this.finishing) return;
       // A check-in's sound is not an earlier answer's.
+      if (turn.priority) {
+        // The same way as a child's reply: a new plan must not take the audio of guidance that is still playing.
+        this.closeTurn();
+        return await this.sayFirst(null, [turn]);
+      }
+      await this.stageBoard(turn);
+      if (generation !== this.generation || !this.childHere || this.finishing) return this.finalDropped(turn);
       this.closeTurn();
       const speech = turn.say.length ? this.session.say(turn.say.join(" "), { addToChatCtx: true }) : null;
       await this.after(turn, speech, () => false);
@@ -508,19 +645,19 @@ export class VoiceCallRun {
   private async after(turn: VoiceTurn, handle = this.speech, stage: () => boolean = () => true): Promise<boolean> {
     await this.call.settled();
     if (this.call.lost) { void this.finish({ detail: "the call could not be saved" }); return false; }
-    if (this.finishing || !this.childHere) return false;
+    if (this.finishing || !this.childHere) { this.finalDropped(turn); return false; }
     const generation = this.generation;
     if (stage()) {
       try { await this.stageBoard(turn); }
       catch { if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return false; }
     }
-    if (this.finishing || generation !== this.generation || !this.childHere) return false;
+    if (this.finishing || generation !== this.generation || !this.childHere) { this.finalDropped(turn); return false; }
     this.options.notify({ revision: this.call.revision, segment: this.segment, ended: false });
     this.scheduleLimit();
     if (turn.ended) {
       // Do not await inside llmNode: the speech handle needs its text before it can finish.
       void (async () => {
-        try { await handle?.waitForPlayout(); await this.options.board?.settled(); }
+        try { await handle?.waitForPlayout(); await this.guidance?.over; await this.options.board?.settled(); }
         catch { await this.finish({ detail: "the final speech failed" }); return; }
         await this.finish({ reason: "child_stopped" });
       })();

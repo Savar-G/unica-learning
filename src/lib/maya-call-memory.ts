@@ -1,5 +1,5 @@
-import type { CallChange, CallConnection, CallRecord, CallStore, ConnectionLog } from "@/lib/maya-call";
-import type { SweepCallSource, SweepCursor } from "@/lib/maya-call-sweep";
+import { INK_AFTER_END_MS, INK_SAVE_GAP_MS, type CallChange, type CallConnection, type CallRecord, type CallStore, type ConnectionLog } from "@/lib/maya-call";
+import type { SweepCallSource, SweepCursor, SweepKind, SweepPlace } from "@/lib/maya-call-sweep";
 
 // The call store of Maya's calls (src/lib/maya-call.ts, #323) in memory, for tests. It keeps the database's rules: an
 // admin test call names a test family (the trigger of migration add_maya_calls), an update writes only at the revision
@@ -17,8 +17,11 @@ const afterCursor = (at: string, id: string, c: SweepCursor | null) => !c || Dat
 /** `clock`: the time of each write (the database's updated_at), which the sweep reads; default the system clock. */
 export function memoryCallStore(options: { testFamilies: readonly string[]; clock?: () => number }): MemoryCallStore {
   const rows = new Map<string, CallRecord>();
+  const places = new Map<SweepKind, SweepPlace | null>();
   const written = new Map<string, number>();
   const wrote = (id: string) => written.set(id, (options.clock ?? Date.now)());
+  /** When each call's board from the desk was last saved (child_ink_at). */
+  const inkAt = new Map<string, number>();
   const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x));
   return {
     async insert(c) {
@@ -57,6 +60,19 @@ export function memoryCallStore(options: { testFamilies: readonly string[]; cloc
       wrote(id);
       return true;
     },
+    async saveInk(id, owner, ink) {
+      // No await between the checks and the write: the database function is one statement too.
+      const now = (options.clock ?? Date.now)();
+      const r = rows.get(id);
+      if (!r || r.mode !== "text" || r.kind !== "chat" || r.parentId !== owner.parentId || r.childId !== owner.childId) return "not_found";
+      if (r.status === "ended" && r.endedAt && Date.parse(r.endedAt) < now - INK_AFTER_END_MS) return "closed";
+      if ((inkAt.get(id) ?? -Infinity) > now - INK_SAVE_GAP_MS) return "busy";
+      if (r.childInk && r.childInk.revision > ink.revision) return "stale";
+      // Not a change of the call's work: the revision and the write time stay.
+      rows.set(id, { ...r, childInk: copy(ink) });
+      inkAt.set(id, now);
+      return "saved";
+    },
     appendConnection(event, revision, commit) {
       const r = rows.get(event.callId);
       if (!r || r.revision !== revision || r.mode !== "voice" || r.parentId !== event.parentId || r.childId !== event.childId) return false;
@@ -79,6 +95,12 @@ export function memoryCallStore(options: { testFamilies: readonly string[]; cloc
         .sort((a, b) => Date.parse(a.endedAt!) - Date.parse(b.endedAt!) || a.id.localeCompare(b.id))
         .slice(0, limit)
         .map(copy);
+    },
+    async readPlace(kind) {
+      return copy(places.get(kind) ?? null);
+    },
+    async writePlace(kind, place) {
+      places.set(kind, copy(place));
     },
     rows: () => [...rows.values()].map(copy),
   };

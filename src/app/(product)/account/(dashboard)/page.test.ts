@@ -12,7 +12,9 @@ vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 const minutes = vi.hoisted(() => ({ value: new Map<string, import("@/lib/maya-minutes-server").ChildMinutes>() }));
 vi.mock("@/lib/maya-minutes-server", () => ({ parentMinutes: async () => minutes.value }));
 vi.mock("@/lib/parent-pin-server", () => ({ pinIsSet: async () => false }));
-vi.mock("@/lib/workbook-store", () => ({ workbookStore: () => ({ childWorkbooks: async () => [] }) }));
+const mayaNotice = vi.hoisted(() => ({ due: false, books: [] as { id: string; childId: string; number: number; status: string }[] }));
+vi.mock("@/lib/workbook-store", () => ({ workbookStore: () => ({ childWorkbooks: async (child: string) => mayaNotice.books.filter((b) => b.childId === child) }) }));
+vi.mock("@/lib/maya-notice-server", () => ({ mayaNoticeDue: async () => mayaNotice.due }));
 const scanning = vi.hoisted(() => ({ enabled: false }));
 vi.mock("@/lib/scan-pages-access", () => ({ scanPagesAccess: async () => scanning.enabled }));
 const notes = vi.hoisted(() => ({ latest: new Map<string, ParentNote>() }));
@@ -24,13 +26,13 @@ vi.mock("@/lib/parent-dashboard-server", () => ({
   parentDashboard: async () => dashboard.value,
   dashboardOverview: async () => { overview.reads++; return overview.value; },
 }));
-const family = vi.hoisted(() => ({ postal: "V3S 1A1" as string | null, timeZone: null as string | null, olderChild: false, card: false }));
+const family = vi.hoisted(() => ({ postal: "V3S 1A1" as string | null, timeZone: null as string | null, olderChild: false, card: false, signedOut: false }));
 const opensAt = Date.parse("2026-11-18T04:29:00Z");
 vi.mock("@/lib/test-attempt-server", () => ({
   parentStartStates: async () => new Map([["c1", { kind: "wait", completedAt: Date.parse("2026-10-19T04:29:00Z"), opensAt: Date.parse("2026-11-18T04:29:00Z") }]]),
 }));
 vi.mock("@/lib/supabase-auth", () => ({
-  parentId: async () => "p1",
+  parentId: async () => (family.signedOut ? null : "p1"),
   sessionClient: async () => ({
     from: (table: string) => ({
       select: (columns: string) => {
@@ -55,7 +57,13 @@ vi.mock("@/lib/supabase-auth", () => ({
   }),
 }));
 
-beforeEach(() => { minutes.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; scanning.enabled = false; notes.latest = new Map(); });
+beforeEach(() => { minutes.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; family.signedOut = false; scanning.enabled = false; notes.latest = new Map(); });
+
+it("a signed-out parent signs in and comes back to the child the link named (#563)", async () => {
+  family.signedOut = true;
+  await expect(Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ child: "c1" }) })).rejects.toThrow("REDIRECT /sign-in?next=%2Faccount%3Fchild%3Dc1");
+  await expect(Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })).rejects.toThrow(/REDIRECT \/sign-in$/);
+});
 
 it("shows only the latest note and its links on the matching child's card, without an empty notes section", async () => {
   family.olderChild = true;
@@ -164,6 +172,30 @@ describe("a family the switch opens to", () => {
     return renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve(query) })));
   };
   beforeEach(() => { family.olderChild = true; });
+
+  // #529: the notice card is for a family with Maya open, no agreement and a desk to open.
+  it("shows the Maya notice card only when it is due and a child has a workbook, in both homes", async () => {
+    const render = async () => renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
+    const card = 'href="/account/maya-notice">Read the notice';
+    try {
+      mayaNotice.due = true;
+      expect(await render()).not.toContain(card);
+      mayaNotice.books = [{ id: "w1", childId: "c1", number: 1, status: "shipped" }];
+      expect(await render()).toContain(card);
+      mayaNotice.due = false;
+      expect(await render()).not.toContain(card);
+      mayaNotice.due = true;
+      // The dashboard's test-start view returns early, so check it and the overview.
+      dashboard.value = { children: [view("c1", "Asha")], remembered: null, pinSet: true, timeZoneSaved: true };
+      expect(await render()).toContain(card);
+      dashboard.value = { children: [{ ...view("c1", "Asha"), opensOn: "overview" }], remembered: null, pinSet: true, timeZoneSaved: true };
+      expect(await render()).toContain(card);
+    } finally {
+      mayaNotice.due = false;
+      mayaNotice.books = [];
+      dashboard.value = null;
+    }
+  });
 
   it("opens on the last child viewed, with only that child's part", async () => {
     dashboard.value = null;
@@ -279,7 +311,7 @@ describe("a family the switch opens to", () => {
     const asha = (t: readonly (typeof tabs)[number][] = tabs) => ({ ...view("c1", "Asha"), stage: "active" as const, opensOn: "overview" as const, tabs: [...t], currentWorkbook: { number: 2 } });
     const full = (t?: readonly (typeof tabs)[number][]): import("@/lib/parent-view").OverviewView => ({
       child: asha(t),
-      level: { working: 4, earlySign: true, testedOn: "2026-10-31" },
+      level: { working: 4, earlySign: true, testedOn: "2026-10-31", unreliable: false },
       areas: [
         { area: "number", name: "Number and operations", level: 3, label: "at-grade", earlySign: false },
         { area: "fractions", name: "Fractions and decimals", level: 2, label: "building-up", earlySign: true },
@@ -289,6 +321,7 @@ describe("a family the switch opens to", () => {
       resultLate: false,
       workbook: { number: 2, scannedDays: 3, days: 10 },
       action: "learning_card_empty",
+      summaryMonth: null,
     });
     const render = async (value: import("@/lib/parent-view").OverviewView | null, t?: readonly (typeof tabs)[number][]) => {
       dashboard.value = { children: [view("z-old", "Sam"), asha(t)], remembered: null, pinSet: true, timeZoneSaved: true };
@@ -316,6 +349,18 @@ describe("a family the switch opens to", () => {
       expect(out).not.toMatch(/\d\s*%|streak|percent|wrong|other children/i);
     });
 
+    it("a test the report calls unreliable: no bars, one sentence and the report's link in their place (D-258)", async () => {
+      const out = await render({ ...full(), child: { ...asha(), reportIds: ["r2", "r1"] }, level: { ...full().level!, unreliable: true }, areas: [] });
+      expect(out).toContain("Working at Grade 4");
+      expect(out).toContain("Level by area");
+      expect(out).toContain("The last test may not show Asha&#x27;s level reliably, so the report offers Asha a new test with new questions.");
+      expect(out).toContain('href="/account/report/r2">See the report');
+      expect(out).not.toContain("po-bar");
+      expect(out).not.toContain("The line marks");
+      expect(out).not.toMatch(/\b(?:she|her)\b/i);
+      expect(await render(full())).not.toContain("may not show");
+    });
+
     it("shows Maya this week only for a child with the Maya tab", async () => {
       minutes.value = new Map([["c1", { used: 12, left: 18, backOn: "Monday, November 9" }]]);
       expect(await render(full())).toContain('id="po-maya"');
@@ -329,6 +374,16 @@ describe("a family the switch opens to", () => {
       expect(out).not.toContain("Level by area");
       expect(out).not.toContain("po-action");
       expect(out).not.toContain("days scanned");
+    });
+
+    it("offers the monthly summary PDF of the month the view names, and nothing without one (#562)", async () => {
+      const out = await render({ ...full(), summaryMonth: "2026-10" });
+      expect(out).toContain('id="po-summary"');
+      expect(out).toContain("October 2026");
+      expect(out).toContain('href="/api/account/children/c1/monthly-summary?month=2026-10"');
+      expect(out).toContain("One page on Asha&#x27;s month");
+      expect(out).not.toMatch(/\b(?:she|her|hers|he|his|him)\b/i);
+      expect(await render(full())).not.toContain("po-summary");
     });
 
     it("asks the parent to email us when the new result is late", async () => {

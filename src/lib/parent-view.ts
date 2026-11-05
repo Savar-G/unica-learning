@@ -4,8 +4,9 @@ import {
   type AreaAnswer, type AreaLabel, type Attempt, type Grade, type Level, type ReportModel, type ReportedStrand,
 } from "@/lib/assessment";
 import { childStage, type StageView, type TabSwitches, type TestFact } from "@/lib/child-stage";
-import { familyZone, localDay } from "@/lib/family-time";
+import { addMonths, familyZone, localDateTime, localDay, localMonth, type FamilyZone } from "@/lib/family-time";
 import type { LearningRow } from "@/lib/learning-style";
+import { firstDeliveryMonth, offeredSummaryMonth } from "@/lib/monthly-summary-offer";
 import { nextBook, type NextBook } from "@/lib/next-book";
 import type { ParentPlan } from "@/lib/parent-plan";
 import type { CurriculumId } from "@/lib/signup";
@@ -17,7 +18,8 @@ import { workbookDelivery } from "@/lib/workbook-email";
 //   - in memory (src/lib/parent-view-memory.ts), for tests.
 // The output holds only fields named here, copied one by one. The reader has no read of child_profiles,
 // learner_profiles, learning_events or maya_calls, because parents get nothing from them directly (#295). Later tickets
-// add the Progress (#561) read. The Workbooks read (#558) is `readWorkbooks`; the Overview read (#560) is `readOverview`.
+// add the Progress (#561) read. The Workbooks read (#558) is `readWorkbooks`; the Overview read (#560) is `readOverview`;
+// the monthly summary's (#562) is `readMonthlySummary`.
 
 export interface ChildRecord {
   id: string;
@@ -94,20 +96,33 @@ export interface ParentViewReader {
   learningCards(): Promise<LearningCardRecord[]>;
   /** Whether the parent has a PIN; null when it cannot be read. */
   pinSet(): Promise<boolean | null>;
+  /**
+   * How many of the child's Maya calls that counted minutes (a call that used no time is not one) started from `from`
+   * up to, not including, `to` (epoch ms). Only a number: never a call's words, notes or outcome.
+   */
+  mayaCalls(childId: string, from: number, to: number): Promise<number>;
 }
 
 /** A finished test, as the report reads it. */
 export interface TestResultRecord {
   /** The stored report's level (public.reports.model), before storedLevelCertainty. */
   level: ReportModel["level"];
-  /** One answer per scored question, tagged with its reported area and grade (testAreaAnswers); null when the stored test cannot be replayed, or the replay does not add up to the stored score. */
+  /**
+   * One answer per scored question, tagged with its reported area and grade (testAreaAnswers); null when the stored test
+   * cannot be replayed, the replay does not add up to the stored score, or the stored report does not show that score
+   * (a test scored again after its report was made).
+   */
   answers: AreaAnswer[] | null;
+  /** The stored report has the reliability note (#189): `pace.unreliable`, so the report offers a new test. */
+  unreliable: boolean;
 }
 export interface SavedScanRecord {
   workbookId: string;
   pageId: string;
   /** The photo expires then; an expired photo no longer counts. */
   expiresAt: string;
+  /** When the photo was taken (uploaded). */
+  takenAt: string;
 }
 export interface WorkbookPageRecord {
   id: string;
@@ -267,6 +282,11 @@ export interface LevelTileView {
   earlySign: boolean;
   /** The day the test finished, in family time. */
   testedOn: string;
+  /**
+   * The report calls the test unreliable (its reliability note, `pace.unreliable`): no area bars, and one sentence in
+   * their place (D-258, #579). The Level tile stays, as the report keeps the level beside its note.
+   */
+  unreliable: boolean;
 }
 
 /** One thing to do, in the spec's order; the Overview shows only the first that applies (D-248). */
@@ -276,7 +296,7 @@ export interface OverviewView {
   child: ChildView;
   /** From the newest finished test. Null before the first one, and while its report is not ready. */
   level: LevelTileView | null;
-  /** One bar per reported area with answers, from the same test; empty when `level` is null. */
+  /** One bar per reported area with answers, from the same test; empty when `level` is null or unreliable. */
   areas: AreaBarView[];
   /** The newest finished test's report is not ready, so no older result shows in its place. */
   resultPreparing: boolean;
@@ -285,6 +305,11 @@ export interface OverviewView {
   /** The current workbook and its scanned days; null when no day of it is scanned. */
   workbook: { number: number; scannedDays: number; days: number } | null;
   action: ActionItem | null;
+  /**
+   * The monthly summary's month (YYYY-MM, family time) that the Overview offers: the last finished month, from the
+   * month after the child's first confirmed delivery (D-248). Null before then.
+   */
+  summaryMonth: string | null;
 }
 
 /** The stages whose Overview has an action card (spec #544, "Action card triggers"). */
@@ -332,16 +357,7 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
     .filter((t) => t.status === "completed" && t.completedAt !== null)
     .reduce<TestRecord | null>((best, t) => (!best || t.completedAt! > best.completedAt! ? t : best), null);
   const reportReady = latest !== null && reports.some((r) => r.assessmentId === latest.id);
-  const result = reportReady ? await reader.testResult(latest.id) : null;
-  const level: LevelTileView | null = latest && result ? {
-    working: result.level.working,
-    earlySign: result.level.confidence === "low" || storedLevelCertainty(result.level) === "early-sign",
-    testedOn: localDay(latest.completedAt!, zone),
-  } : null;
-  const areas: AreaBarView[] = result?.answers
-    ? areaLevels({ answers: result.answers, schoolGrade: child.schoolGrade, workingLevel: result.level.working })
-      .map((a) => ({ area: a.area, name: REPORTED_STRAND_NAMES[a.area], level: a.level, label: a.label, earlySign: a.certainty !== "clear" }))
-    : [];
+  const { level, areas } = reportReady ? await testLevel(reader, latest, child.schoolGrade, zone) : { level: null, areas: [] };
 
   const book = workbooks.filter((w) => w.childId === child.id).sort((a, b) => b.number - a.number)[0];
   const bookScans = book ? scans.filter((s) => s.workbookId === book.id) : [];
@@ -364,5 +380,111 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
 
   const resultPreparing = latest !== null && !reportReady;
   const resultLate = resultPreparing && now - latest!.completedAt! > RESULT_LATE_MS;
-  return { child, level, areas, resultPreparing, resultLate, workbook, action };
+  const summaryMonth = offeredSummaryMonth(await readFirstDeliveryMonth(reader, child.id, zone), now, zone);
+  return { child, level, areas, resultPreparing, resultLate, workbook, action, summaryMonth };
+}
+
+/** The Level tile and the area bars of one finished test with a report, scored by the assessment core. */
+async function testLevel(reader: ParentViewReader, test: TestRecord, schoolGrade: Grade, zone: FamilyZone): Promise<{ level: LevelTileView | null; areas: AreaBarView[] }> {
+  const result = await reader.testResult(test.id);
+  if (!result) return { level: null, areas: [] };
+  // D-258 (#579): a test the report calls unreliable shows no bars. A fall back to the overall level would invent a
+  // weakness (D-108). Only the stored report's note decides: the sentence says the report offers a new test, and a
+  // rescore can change the test's pace flag without changing the report the parent reads.
+  const unreliable = result.unreliable;
+  const level: LevelTileView = {
+    working: result.level.working,
+    earlySign: result.level.confidence === "low" || storedLevelCertainty(result.level) === "early-sign",
+    testedOn: localDay(test.completedAt!, zone),
+    unreliable,
+  };
+  const areas: AreaBarView[] = result.answers && !unreliable
+    ? areaLevels({ answers: result.answers, schoolGrade, workingLevel: result.level.working })
+      .map((a) => ({ area: a.area, name: REPORTED_STRAND_NAMES[a.area], level: a.level, label: a.label, earlySign: a.certainty !== "clear" }))
+    : [];
+  return { level, areas };
+}
+
+/** The family-time month of the child's first confirmed delivery, through the reader. */
+async function readFirstDeliveryMonth(reader: ParentViewReader, childId: string, zone: FamilyZone): Promise<string | null> {
+  const [deliveries, corrections] = await Promise.all([reader.deliveries(), reader.deliveryCorrections()]);
+  return firstDeliveryMonth(deliveries, corrections, childId, zone);
+}
+
+/** The monthly summary (#562, D-248): one child's calendar month in family time, for the one-page PDF. */
+export interface MonthlySummaryView {
+  firstName: string;
+  schoolGrade: Grade;
+  /** YYYY-MM in family time. */
+  month: string;
+  /** The day the summary was made, in family time. */
+  madeOn: string;
+  /** From the newest test finished by the month's end with its report ready; null with none. */
+  level: LevelTileView | null;
+  /** From the same test; empty with no level, a test that cannot be replayed, or a test the report calls unreliable. */
+  areas: AreaBarView[];
+  /** The child's workbooks shipped in the month, oldest first, with the day each shipped. */
+  mailed: { number: number; shippedOn: string }[];
+  /** Days of work scanned in the month: a day of a shipped workbook whose every page has a saved photo, counted in the month of its last photo. */
+  daysScanned: number;
+  /** The child's Maya calls that started in the month. */
+  mayaCalls: number;
+  /** The next book's range today; null when there is no range to show. */
+  next: { earliest: string; latest: string } | null;
+}
+
+/**
+ * One child's monthly summary (#562). Null for a child that is not the parent's, a stage with no Overview, and a month
+ * the Overview does not offer: before the month of the first confirmed delivery, the current month and later. Nothing
+ * comes from a transcript, a photo, a raw profile, a learning event or an AI finding; no percent right, no count of
+ * wrong answers, no other child. "Skills mastered that month" waits for the skill map (#578, #575).
+ */
+export async function readMonthlySummary(reader: ParentViewReader, childId: string, month: string, now: number): Promise<MonthlySummaryView | null> {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return null;
+  const [child, children, family] = await Promise.all([readChild(reader, childId, now), reader.children(), reader.family()]);
+  if (!child || !child.tabs.includes("overview")) return null;
+  const zone = familyZone({ timeZone: family.timeZone, postal: family.postal, province: children[0]?.province ?? null });
+  const first = await readFirstDeliveryMonth(reader, child.id, zone);
+  if (first === null || month < first || month >= localMonth(now, zone)) return null;
+  const inMonth = (at: string | number) => localMonth(at, zone) === month;
+
+  const [tests, reports, workbooks, scans, mayaCalls, books] = await Promise.all([
+    reader.tests(), reader.reports(), reader.shippedWorkbooks(), reader.savedScans(),
+    reader.mayaCalls(child.id, localDateTime(`${month}-01`, zone), localDateTime(`${addMonths(month, 1)}-01`, zone)),
+    readWorkbooks(reader, child.id, now),
+  ]);
+  // The newest test that finished by the month's end, as the Overview would have shown it then.
+  const latest = tests
+    .filter((t) => t.childId === child.id && t.status === "completed" && t.completedAt !== null && localMonth(t.completedAt, zone) <= month)
+    .reduce<TestRecord | null>((best, t) => (!best || t.completedAt! > best.completedAt! ? t : best), null);
+  const { level, areas } = latest && reports.some((r) => r.assessmentId === latest.id)
+    ? await testLevel(reader, latest, child.schoolGrade, zone)
+    : { level: null, areas: [] };
+
+  const own = workbooks.filter((w) => w.childId === child.id);
+  const mailed = own.filter((w) => w.shippedAt !== null && inMonth(w.shippedAt)).sort((a, b) => a.number - b.number)
+    .map((w) => ({ number: w.number, shippedOn: localDay(w.shippedAt!, zone) }));
+
+  let daysScanned = 0;
+  const bookIds = new Set(scans.filter((s) => own.some((w) => w.id === s.workbookId)).map((s) => s.workbookId));
+  for (const id of bookIds) {
+    // Each page's first saved photo; a day is scanned when its last page got one.
+    const firstPhoto = new Map<string, number>();
+    for (const s of scans) {
+      if (s.workbookId !== id) continue;
+      const at = Date.parse(s.takenAt);
+      if (Number.isFinite(at)) firstPhoto.set(s.pageId, Math.min(firstPhoto.get(s.pageId) ?? Infinity, at));
+    }
+    const days = new Map<string, number | null>();
+    for (const p of await reader.workbookPages(id)) {
+      if (p.dayLabel === null) continue;
+      const at = firstPhoto.get(p.id) ?? null;
+      const so = days.has(p.dayLabel) ? days.get(p.dayLabel)! : 0;
+      days.set(p.dayLabel, so === null || at === null ? null : Math.max(so, at));
+    }
+    daysScanned += [...days.values()].filter((at) => at !== null && inMonth(at)).length;
+  }
+
+  const next = books?.next.kind === "range" ? { earliest: books.next.earliest, latest: books.next.latest } : null;
+  return { firstName: child.firstName, schoolGrade: child.schoolGrade, month, madeOn: localDay(now, zone), level, areas, mailed, daysScanned, mayaCalls, next };
 }

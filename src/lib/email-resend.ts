@@ -10,7 +10,7 @@ import { FOUNDERS_SENDER_NAME } from "@/lib/contact";
 
 const ENDPOINT = "https://api.resend.com/emails";
 /** A slow Resend never holds a request open longer than this. */
-const TIME_LIMIT_MS = 15_000;
+export const TIME_LIMIT_MS = 15_000;
 
 /** Why a parent email cannot go now (the key or EMAIL_FROM is not set), or null. */
 export function resendConfigProblem(): string | null {

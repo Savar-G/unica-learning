@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AddChild, SignOut } from "@/components/account";
+import { FamilyDelete } from "@/components/family-delete";
 import { SupportPage } from "@/components/support-page";
 import { pageMetadata } from "@/lib/metadata";
 import { parentDashboard } from "@/lib/parent-dashboard-server";
@@ -27,10 +28,12 @@ export default async function AccountSettings() {
         {cards?.some((c) => c.card_saved_at) && <li><Link href="/account/plan">Manage or cancel plan</Link></li>}
         <li><Link href="/account/password">Add or change your password</Link></li>
         <li><Link href="/account/pin">Set or change your PIN</Link></li>
+        <li><Link href="/account/maya-notice">Maya notice</Link></li>
       </ul>
       {await childDetails(db)}
       <AddChild province={kids?.at(-1)?.province ?? "BC"} />
       <p className="small acct-out">Signed in. <SignOut /></p>
+      <FamilyDelete />
     </SupportPage>
   );
 }

@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { userAgent } from "next/server";
 import QRCode from "qrcode";
 import { scanSession } from "@/lib/scan-photo-server";
+import { markedFamily } from "@/lib/scan-pages-access";
 import { SupportPage } from "@/components/support-page";
 import { ScanPages } from "@/components/scan-pages";
 import { ScanEmailLink } from "@/components/scan-email-link";
@@ -31,13 +32,15 @@ function origin(h: Headers): string {
 
 export default async function ScanPage({ searchParams }: PageProps<"/account/scan">) {
   if (!(await parentId(await sessionClient()))) redirect(scanSignInPath);
-  const { db, parent } = await scanSession();
-  const [kids, notice, dashboard, h, query] = await Promise.all([
+  const { db, admin, parent } = await scanSession();
+  const [kids, notice, dashboard, h, query, preview] = await Promise.all([
     db.from("children").select("id,first_name").eq("parent_id", parent).order("created_at"),
     db.from("scan_photo_notices").select("parent_id").eq("parent_id", parent).maybeSingle(),
     parentDashboard(),
     headers(),
     searchParams,
+    // Test families and admins only, whatever the Scan pages switch says (D-252).
+    markedFamily(parent, admin),
   ]);
   const list = kids.data ?? [];
   // The child in view in the dashboard (the last child viewed), else the oldest; the camera flow opens on that child.
@@ -49,7 +52,7 @@ export default async function ScanPage({ searchParams }: PageProps<"/account/sca
     const ordered = inView ? [inView, ...list.filter((k) => k.id !== inView.id)] : list;
     return <SupportPage label="Your account" title="Scan pages">
       {back}
-      <ScanPages childrenList={ordered} parent={parent} noticeAcknowledged={Boolean(notice.data)} />
+      <ScanPages childrenList={ordered} parent={parent} noticeAcknowledged={Boolean(notice.data)} preview={preview} />
     </SupportPage>;
   }
 
