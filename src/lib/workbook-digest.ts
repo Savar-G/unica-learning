@@ -21,3 +21,18 @@ export function digestOf(value: unknown): string {
   const text = JSON.stringify(value) ?? "undefined";
   return [cyrb53(text, 0), cyrb53(text, 1)].map((h) => h.toString(16).padStart(14, "0")).join("");
 }
+
+/**
+ * A JSON value in one form whatever its key order: keys sorted, undefined members left out. A value read back from a
+ * jsonb column (Postgres orders keys by length, then bytes) gives the same text as the value that was stored.
+ */
+export function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([k, v]) => [k, canonical(v)]));
+  }
+  return value;
+}

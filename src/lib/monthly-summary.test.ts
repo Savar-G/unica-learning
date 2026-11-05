@@ -7,7 +7,7 @@ import { fakePrintEngine } from "@/lib/print-engine-fake";
 
 const full: MonthlySummaryView = {
   firstName: "Leah", schoolGrade: 3, month: "2026-10", madeOn: "2026-11-05",
-  level: { working: 4, earlySign: false, testedOn: "2026-09-10" },
+  level: { working: 4, earlySign: false, testedOn: "2026-09-10", unreliable: false },
   areas: [
     { area: "number", name: "Number and operations", level: 4, label: "ahead", earlySign: false },
     { area: "fractions", name: "Fractions and decimals", level: 2, label: "building-up", earlySign: true },
@@ -54,6 +54,15 @@ describe("the summary page", () => {
     expect(calls).not.toContain("nothing to show");
     // Area bars need the level they came with.
     expect(words({ ...full, level: null })).not.toContain("Level by area");
+  });
+
+  it("a test the report calls unreliable: one sentence in place of the bars, naming the child (D-258)", () => {
+    const text = words({ ...full, level: { ...full.level!, unreliable: true }, areas: [] });
+    expect(text).toContain("Level by area The last test may not show Leah's level reliably, so the report offers Leah a new test with new questions.");
+    expect(text).not.toContain("Number and operations");
+    expect(text).not.toContain("The line marks the school grade");
+    expect(text).not.toMatch(/\b(?:she|her)\b/i);
+    expect(words(full)).not.toContain("may not show");
   });
 
   it("an estimated level says Early sign", () => {

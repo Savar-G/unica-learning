@@ -5,6 +5,17 @@ import { DEMO_DAILY_MINUTES, WEEK_SECONDS } from "@/lib/maya-minutes";
 import type { ChildMinutes } from "@/lib/maya-minutes-server";
 import type { WorkbookSummary } from "@/lib/workbook-content";
 
+/** The parent notice before a child's first chat (#529): one card for the family, above the children. */
+export function MayaNoticeCard() {
+  return (
+    <div className="acct-card acct-notice">
+      <h2>Before your child uses Maya.</h2>
+      <p>Please read a short notice and agree. A child cannot do this for you.</p>
+      <Link className="btn" href="/account/maya-notice">Read the notice</Link>
+    </div>
+  );
+}
+
 /** What the desk shows the child, and what it needs from the parent. */
 export function DeskText({ name, workbook, pinSet }: { name: string; workbook: WorkbookSummary; pinSet: boolean | null }) {
   return (

@@ -46,9 +46,9 @@ export function serverMayaCalls(origin?: string, scripted = false): MayaCalls | 
 export async function voiceCallFacts(id: string) {
   const db = adminClient();
   if (!db || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
-  const { data, error } = await db.from("maya_calls").select("id, parent_id, child_id, mode, status").eq("id", id.toLowerCase()).maybeSingle();
+  const { data, error } = await db.from("maya_calls").select("id, parent_id, child_id, kind, mode, status").eq("id", id.toLowerCase()).maybeSingle();
   if (error) throw new Error(`voice call load: ${error.message}`);
-  return data && { id: data.id, parentId: data.parent_id, childId: data.child_id, mode: data.mode, status: data.status };
+  return data && { id: data.id, parentId: data.parent_id, childId: data.child_id, kind: data.kind, mode: data.mode, status: data.status };
 }
 
 /** What a new call needs about a test question: the family, the child's first name and the package. */

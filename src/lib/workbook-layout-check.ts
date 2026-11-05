@@ -314,10 +314,43 @@ export function repeatedInstruction(lines: readonly (string | null | undefined)[
 export const circled = (questions: readonly { package: QuestionPackage | null; place?: string | null }[]) =>
   questions.filter((q) => q.package && q.place !== "warm-up" && (q.package.item?.regions ?? []).some((r) => r.kind === "choice" && r.mark !== "tick"));
 
-/** Check 5: a day page with a question to circle whose instruction does not say "circle"; null when it does. */
+type ChoiceQuestions = readonly { package: QuestionPackage | null; place?: string | null }[];
+
+/** Spot the error prints yes/no even when its region uses tick marks. Other tick choices have their own labels. */
+function choiceKinds(questions: ChoiceQuestions): string[] {
+  const kinds = new Set(questions.filter(q => q.package && q.place !== "warm-up").flatMap(q =>
+    (q.package!.item?.regions ?? []).flatMap(r => {
+      if (r.kind !== "choice") return [];
+      const pair = r.choices.map(c => c.trim().toLowerCase()).sort().join(",");
+      return pair === "false,true" ? ["true or false"] : pair === "no,yes" ? ["yes or no"] : r.mark !== "tick" ? ["your answer"] : [];
+    })));
+  return ["true or false", "yes or no", "your answer"].filter(kind => kinds.has(kind));
+}
+
+/** Name each printed choice kind, keeping the existing wording for a single kind. */
+export function choiceInstruction(questions: ChoiceQuestions): string | null {
+  const kinds = choiceKinds(questions);
+  if (!kinds.length) return null;
+  // (More than one kind: one short line. "Circle true or false, or another answer." wrapped and stopped U4's Day 10
+  // review pages filling, 14 questions to 8, Codex on #633.)
+  return kinds.length === 1 ? `Circle ${kinds[0]}.` : "Circle your answers.";
+}
+
+/** Check 5: every circled page says "circle" and names each printed choice kind (true or false, yes or no, any other). */
 export function circleProblem(content: DayContent | null | undefined, questions: readonly { package: QuestionPackage | null; place?: string | null }[]): string | null {
-  if (!content || circled(questions).length === 0 || /\bcircle\b/i.test(content.subtitle ?? "")) return null;
-  return "the page has a question to circle, but its instruction does not say to circle";
+  if (!content) return null;
+  const instruction = content.subtitle ?? "";
+  if (circled(questions).length && !/\bcircle\b/i.test(instruction)) return "the page has a question to circle, but its instruction does not say to circle";
+  // (Every kind, other choices too: "Circle true or false" on a page that also prints never/sometimes/always passed,
+  // Codex on #633.)
+  const kinds = choiceKinds(questions);
+  // A page with more than one kind says "Circle your answers." (each kind is then a choice to circle).
+  if (kinds.length > 1) return /\bcircle\s+your\s+answers\b/i.test(instruction) ? null : `the page prints ${kinds.join(", ")}, but its instruction does not say "Circle your answers."`;
+  const missing = kinds.find(kind => kind === "true or false"
+    ? !/\b(?:true\s+or\s+false|false\s+or\s+true)\b/i.test(instruction)
+    : kind === "yes or no" ? !/\b(?:yes\s+or\s+no|no\s+or\s+yes)\b/i.test(instruction)
+    : !/\b(?:your|another)\s+answer\b/i.test(instruction));
+  return missing ? `the page prints ${missing}, but its instruction does not name ${missing}` : null;
 }
 
 /**

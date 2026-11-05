@@ -1,6 +1,7 @@
 import { adminSession } from "@/lib/admin-store";
 import { isUuid } from "@/lib/assessment-store";
 import { serverMayaCalls, testQuestion } from "@/lib/maya-call-server";
+import { serverMayaNotice } from "@/lib/maya-notice-server";
 import { livekitProject } from "@/lib/maya-voice";
 import { mintVoiceToken } from "@/lib/maya-voice-token";
 
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
     const result = await calls.startVoice({ kind: "admin_test", ...question, startedBy: admin.userId });
     if (!result.ok) return Response.json(result, { status: result.error === "not_test_family" ? 403 : 409 });
     const v = result.view;
-    const minted = await mintVoiceToken({ call: { id: v.id, parentId: v.parentId, childId: v.childId, mode: v.mode, status: v.status }, parentId: question.parentId, childId: question.childId, project, name: question.childName });
+    const minted = await mintVoiceToken({ call: { id: v.id, parentId: v.parentId, childId: v.childId, kind: v.kind, mode: v.mode, status: v.status }, notice: serverMayaNotice(), parentId: question.parentId, childId: question.childId, project, name: question.childName });
     if (!minted.ok) return Response.json({ ok: false, error: "failed" }, { status: 500 });
     return Response.json({ ok: true, callId: v.id, ticket: minted.ticket }, { headers: noStore });
   } catch (e) {
