@@ -37,3 +37,9 @@ Aside, account u0, local Next development server, real session for a marked test
 Both QA tabs were closed. No report email, paid model call or workbook generation ran. Browser proof covers the first routing decision, review and resume. The full completion paths and grade ranges are covered by the core and attempt tests.
 
 `npx eslint src` and `npx tsc --noEmit` passed. The production build and independent review are recorded in the PR when complete.
+
+## Review fixes
+
+The independent reviewer found S1, S2 and S3 in `review-ledger.md`. All three were reproduced with failing public-interface checks before the source fixes. The corrected regressions pass together: four files, 298 tests. This includes refusal to finish when an area's only answers were excluded as rushed, all pool rows and selected positions in the export, and unknown responses plus their change history in deletion copies.
+
+The full 400-file run above preceded the rebase to `97c96c22d52dc94b3c05e01968a79eb8f922abd7`. The assessment, attempt, report and placement checks then passed on that base: 54 files and 5674 tests. The review fixes have the additional 298-test run. The final PR checks establish the result on the pushed head.

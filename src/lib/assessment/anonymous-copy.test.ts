@@ -9,6 +9,8 @@ import {
   copyFamilyTests,
   copyFieldNames,
   copyPreview,
+  createAdaptiveSession,
+  UNKNOWN_RESPONSE,
   createFacts,
   createSession,
   finish,
@@ -170,6 +172,21 @@ describe("the copy without names", () => {
     expect(anonymousTestCopy({ ...source(), testFamily: true }).testFamily).toBe(true);
     expect(anonymousTestCopy({ ...source(), testFamily: false }).testFamily).toBe(false);
     expect(anonymousTestCopy({ ...source(), testFamily: "yes" }).testFamily).toBe(false);
+  });
+
+  it("keeps explicit unknown responses and changes for both adaptive formats", () => {
+    const session = createAdaptiveSession({ grade: 4, province: "BC" }, 1);
+    const questions = (["choice", "number"] as const).map(format => session.adaptive!.pool.find(q => q.format === format)!);
+    const copy = anonymousTestCopy({ ...source(), grade: 4, stored: storedTest(session), placement: null, profile: null, shows: [],
+      answers: questions.map((q,position) => ({ position, questionId: q.id, templateId: q.templateId, response: UNKNOWN_RESPONSE, correct: false, misconception: null, timeMs: 20_000,
+        changes: [{ value: UNKNOWN_RESPONSE, atMs: 15_000 }, { value: "private words", atMs: 16_000 }],
+      })),
+    });
+    expect(copy.questions).toHaveLength(2);
+    for (const q of copy.questions) {
+      expect(q.response).toBe(UNKNOWN_RESPONSE);
+      expect(q.changes).toEqual([{ value: UNKNOWN_RESPONSE, atMs: 15_000 }, { value: null, atMs: 16_000 }]);
+    }
   });
 
   it("keeps the test month, the route and every question as shown, with each response, mark and misconception", () => {

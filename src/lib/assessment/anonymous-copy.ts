@@ -7,6 +7,7 @@
 // text. Every time is milliseconds since the test started: an exact date and time could be matched to other records of
 // the family. Pure: the source is what the database function family_copy_sources returns for one test
 // (supabase/migrations/20261016_test_copies_without_names.sql).
+import { UNKNOWN_RESPONSE } from "./adaptive";
 import { BANKS } from "./bank";
 import { isGrade } from "./grades";
 import { fromRemovedRound } from "./session";
@@ -160,6 +161,7 @@ const ANSWER_MAX = 12;
 function shownResponse(value: unknown, format: string | null, choices: string[] | null, emptyOk: boolean): string | null {
   if (typeof value !== "string") return null;
   if (value === "") return emptyOk ? "" : null;
+  if (value === UNKNOWN_RESPONSE) return value;
   if (format === "choice") return choices?.includes(value) ? value : null;
   return value.length <= ANSWER_MAX && NUMBER.test(value) ? value : null;
 }

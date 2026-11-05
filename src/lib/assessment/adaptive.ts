@@ -78,6 +78,7 @@ export function lockAdaptiveBlock(session: Session): Session {
   const answers = session.answers.slice(-block.questions.length);
   const right = answers.filter(x => x.correct).length;
   const out = leftOutOfScore(session.answers);
+  const scoredQuestions = questions.filter((_, i) => !out[i]);
   const tally = (level: number) => session.answers.filter((_, i) => questions[i].level === level && !out[i]);
   const pass = (level: number) => { const rows = tally(level); return atLeast(rows.filter(x => x.correct).length, rows.length, WORKING_LEVEL_PERCENT); };
   const here = tally(block.level);
@@ -110,7 +111,7 @@ export function lockAdaptiveBlock(session: Session): Session {
     const evidence = adaptiveEvidence(session);
     const missing = bandFor(session.profile.grade).strands.flatMap(strand => {
       const required = Math.min(STRAND_MINIMUM_QUESTIONS, a.pool.filter(q => q.level <= session.profile.grade && REPORTED_STRAND[q.strand] === strand).length);
-      const count = questions.filter(q => q.level <= session.profile.grade && REPORTED_STRAND[q.strand] === strand).length;
+      const count = scoredQuestions.filter(q => q.level <= session.profile.grade && REPORTED_STRAND[q.strand] === strand).length;
       return Array.from({ length: Math.max(0, required - count) }, () => strand);
     });
     if (missing.length) {
@@ -128,7 +129,7 @@ export function lockAdaptiveBlock(session: Session): Session {
   else {
     a.complete = true;
     a.sufficientEvidence = adaptiveEvidence(session).sufficient && bandFor(session.profile.grade).strands.every(strand =>
-      questions.filter(q => q.level <= session.profile.grade && REPORTED_STRAND[q.strand] === strand).length >= Math.min(STRAND_MINIMUM_QUESTIONS, a.pool.filter(q => q.level <= session.profile.grade && REPORTED_STRAND[q.strand] === strand).length));
+      scoredQuestions.filter(q => q.level <= session.profile.grade && REPORTED_STRAND[q.strand] === strand).length >= Math.min(STRAND_MINIMUM_QUESTIONS, a.pool.filter(q => q.level <= session.profile.grade && REPORTED_STRAND[q.strand] === strand).length));
   }
   return { ...session, adaptive: a };
 }

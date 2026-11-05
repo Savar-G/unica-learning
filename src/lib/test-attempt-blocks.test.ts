@@ -1,11 +1,11 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { createAdaptiveSession, givenQuestions, nextQuestion, restoreSession, startAttempt, storedTest, UNKNOWN_RESPONSE } from "@/lib/assessment";
+import { createAdaptiveSession, givenQuestions, nextQuestion, restoreSession, startAttempt, storedTest, UNKNOWN_RESPONSE, REPORTED_STRAND } from "@/lib/assessment";
 import { answerQuestion, changeAnswer, doneChecking, finishTest, nextStep, StoreError } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 const now = Date.UTC(2026,10,5,18);
-function family() {
-  const s = createAdaptiveSession({ grade: 4, province: "BC" }, 7);
-  const row: MemoryTest = { ...startAttempt("a1",now), parentId:"p1",childId:"c1",seed:7,test:storedTest(s),answers:[] };
+function family(seed = 7) {
+  const s = createAdaptiveSession({ grade: 4, province: "BC" }, seed);
+  const row: MemoryTest = { ...startAttempt("a1",now), parentId:"p1",childId:"c1",seed,test:storedTest(s),answers:[] };
   return memoryAttemptStore({ tests:[row] });
 }
 async function answerBlock(m: ReturnType<typeof family>) {
@@ -52,6 +52,23 @@ describe("durable assessment block locks",()=>{
     delete m.fail.lockBlock;
     expect(await doneChecking(m.store,"p1","a1","block-1",now+20_000)).toMatchObject({ok:true});
   });
+  it("cannot finish when an area's only answers are excluded as rushed", async () => {
+    const m = family(1);
+    let result = await nextStep(m.store, "p1", "a1", now);
+    for (let i = 0; i < 100 && result.ok && result.step.status !== "complete"; i++) {
+      if (result.step.status === "check") result = await doneChecking(m.store, "p1", "a1", result.step.section, now + (i + 1) * 1000);
+      else {
+        const row = m.tests[0];
+        const q = nextQuestion(restoreSession(row.test, row.answers))!;
+        result = await answerQuestion(m.store, "p1", "a1", { questionId: q.id, response: REPORTED_STRAND[q.strand] === "shapes" ? q.wrong[0].value : q.answer, timeMs: 100, work: { png: null, text: "" } }, now + (i + 1) * 1000);
+      }
+    }
+    expect(result).toMatchObject({ ok: true, step: { status: "complete", sufficientEvidence: false } });
+    expect(await finishTest(m.store, "p1", "a1", "no", now + 120_000)).toMatchObject({ ok: false, error: "incomplete" });
+    expect(m.tests[0].status).toBe("in_progress");
+    expect(m.tests[0].placement).toBeUndefined();
+  });
+
   it("withholds a result for an unfinished assessment or a family that does not own it",async()=>{
     const m=family(); await answerBlock(m);
     expect(await finishTest(m.store,"p1","a1","no",now+10_000)).toMatchObject({ok:false,error:"incomplete"});

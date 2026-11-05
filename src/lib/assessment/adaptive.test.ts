@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ADAPTIVE_QUESTION_LIMIT, BLOCK_SIZE, createAdaptiveSession, finish, givenQuestions, lockAdaptiveBlock, nextQuestion, restoreSession, storedTest, submitAnswer, testStep, UNKNOWN_RESPONSE, paceOf, flagsFor, type Grade, type Session, type Province } from "@/lib/assessment";
+import { ADAPTIVE_QUESTION_LIMIT, BLOCK_SIZE, createAdaptiveSession, finish, givenQuestions, lockAdaptiveBlock, nextQuestion, restoreSession, storedTest, submitAnswer, testStep, UNKNOWN_RESPONSE, paceOf, flagsFor, REPORTED_STRAND, type Grade, type Session, type Province } from "@/lib/assessment";
 
 function run(grade: Grade, ability: number, seed: number, province: Province = "BC"): Session {
   let s = createAdaptiveSession({ grade, province }, seed);
@@ -46,6 +46,32 @@ describe("six-question assessment blocks", () => {
     expect(testStep(locked)).toMatchObject({ status: "complete", sufficientEvidence: false });
     expect(() => finish(locked)).toThrow("not complete");
   });
+
+  for (const rush of ["all", "first block"] as const) {
+    it(`does not use ${rush} rushed answers as area evidence`, () => {
+      let session = createAdaptiveSession({ grade: 4, province: "BC" }, 1);
+      for (let i = 0; i < 100; i++) {
+        const step = testStep(session);
+        if (step.status === "complete") break;
+        if (step.status === "check") session = lockAdaptiveBlock(session);
+        else {
+          const q = nextQuestion(session)!;
+          const fast = rush === "all" || session.answers.length < 6;
+          const wrong = rush === "all" ? REPORTED_STRAND[q.strand] === "shapes" : fast;
+          session = submitAnswer(session, { questionId: q.id, response: wrong ? q.wrong[0].value : q.answer, timeMs: fast ? 100 : 20_000 });
+        }
+      }
+      expect(testStep(session).status).toBe("complete");
+      if (rush === "all") {
+        expect(session.adaptive!.sufficientEvidence).toBe(false);
+        expect(() => finish(session)).toThrow("not complete");
+      } else {
+        expect(session.adaptive!.sufficientEvidence).toBe(true);
+        expect(finish(session).strands).toHaveLength(4);
+        expect(finish(session).strands.every(s => s.total >= 6)).toBe(true);
+      }
+    });
+  }
 
   for (const province of ["BC", "ON", "AB", "other"] as const) {
     for (const grade of [0,1,2,3,4,5,6,7,8,9] as Grade[]) {
