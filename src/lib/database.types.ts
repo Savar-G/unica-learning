@@ -757,6 +757,7 @@ export type Database = {
           parent_id: string
           sent_at: string | null
           status: string | null
+          summary_month: string | null
           unsubscribe_hash: string | null
           week_start: string | null
         }
@@ -777,6 +778,7 @@ export type Database = {
           parent_id: string
           sent_at?: string | null
           status?: string | null
+          summary_month?: string | null
           unsubscribe_hash?: string | null
           week_start?: string | null
         }
@@ -797,6 +799,7 @@ export type Database = {
           parent_id?: string
           sent_at?: string | null
           status?: string | null
+          summary_month?: string | null
           unsubscribe_hash?: string | null
           week_start?: string | null
         }

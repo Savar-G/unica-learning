@@ -66,6 +66,15 @@ export interface SendLedger<K, H> {
   keepCopy?(handle: H, key: K, copy: EmailCopy): Promise<void>;
 }
 
+/** A send ledger that can give a claim back when the send never started. */
+export interface ReleasableLedger<K, H> extends SendLedger<K, H> {
+  /**
+   * Nothing was sent: gives the claim back as if it was never taken, so the attempt does not count. Answers false when it
+   * could not, and the claim stays held. Never throws.
+   */
+  release(handle: H, key: K): Promise<boolean>;
+}
+
 /** The email as it was handed to the transport, for the ledger's copy (D-103). */
 export interface EmailCopy {
   /** The sender address the transport used; null when it had none (the email was refused). */
@@ -79,6 +88,9 @@ export interface EmailCopy {
 /** What a send once did. "busy": another run holds the claim, or the email already went; nothing was sent. */
 export type DeliveryOutcome = SendResult | { status: "busy" };
 
+/** What a send once with a time check did. "not_sent": the time ran out after the claim; `released` says if the claim went back. */
+export type TimedDeliveryOutcome = DeliveryOutcome | { status: "not_sent"; released: boolean };
+
 /**
  * Sends one email at most once per key: claims the key in the ledger, sends through the transport, then records the
  * outcome. Throws only when the claim itself fails (a store error); nothing was sent then.
@@ -91,6 +103,32 @@ export async function sendEmailOnce<K, H>(
 ): Promise<DeliveryOutcome> {
   const handle = await ledger.claim(key, claimFields);
   if (handle === null) return { status: "busy" };
+  return deliverClaimed(ledger, handle, key, message, transport);
+}
+
+/**
+ * sendEmailOnce with one more check: after the claim, `inTime` decides if the send may start. When it may not, nothing
+ * goes and the claim is given back. Throws only when the claim itself fails.
+ */
+export async function sendEmailOnceInTime<K, H>(
+  ledger: ReleasableLedger<K, H>,
+  key: K,
+  message: EmailMessage,
+  { transport = resendTransport(), claimFields = {}, inTime }: { transport?: MailTransport; claimFields?: Record<string, string>; inTime(): boolean },
+): Promise<TimedDeliveryOutcome> {
+  const handle = await ledger.claim(key, claimFields);
+  if (handle === null) return { status: "busy" };
+  if (inTime()) return deliverClaimed(ledger, handle, key, message, transport);
+  try {
+    return { status: "not_sent", released: await ledger.release(handle, key) };
+  } catch (e) {
+    console.error("[email] release failed; the claim stays held", e instanceof Error ? e.message : e);
+    return { status: "not_sent", released: false };
+  }
+}
+
+/** Sends a claimed email, then records the outcome and the copy. */
+async function deliverClaimed<K, H>(ledger: SendLedger<K, H>, handle: H, key: K, message: EmailMessage, transport: MailTransport): Promise<SendResult> {
   const result = await sendThrough(transport, message);
   // The ledger's writes never throw by contract. If one does anyway, the email's outcome still reaches the caller; a
   // write that did not happen leaves the claim held, so the email is not sent again.

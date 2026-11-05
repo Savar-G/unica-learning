@@ -4,14 +4,16 @@ import type { Database } from "@/lib/database";
 import { adminClient } from "@/lib/supabase-auth";
 
 /** A family marked in `test_accounts` or a user in `admin_users`, read on each call. No secret key, or a failed read, is not marked. */
-export async function markedFamily(parent: string, db: SupabaseClient<Database> | null): Promise<boolean> {
+export async function markedFamily(parent: string, db: SupabaseClient<Database> | null, signal?: AbortSignal): Promise<boolean> {
   if (!db) return false;
   try {
-    const [test, admin] = await Promise.all([
-      db.from("test_accounts").select("parent_id").eq("parent_id", parent).maybeSingle(),
-      db.from("admin_users").select("user_id").eq("user_id", parent).maybeSingle(),
+    const test = db.from("test_accounts").select("parent_id").eq("parent_id", parent);
+    const admin = db.from("admin_users").select("user_id").eq("user_id", parent);
+    const [testRow, adminRow] = await Promise.all([
+      (signal ? test.abortSignal(signal) : test).maybeSingle(),
+      (signal ? admin.abortSignal(signal) : admin).maybeSingle(),
     ]);
-    return (!test.error && test.data?.parent_id === parent) || (!admin.error && admin.data?.user_id === parent);
+    return (!testRow.error && testRow.data?.parent_id === parent) || (!adminRow.error && adminRow.data?.user_id === parent);
   } catch { return false; }
 }
 

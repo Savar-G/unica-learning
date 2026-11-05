@@ -1,0 +1,45 @@
+{
+  "round": "r563",
+  "ticket": "#563 (spec #544, parent dashboard): monthly summary email",
+  "route": "Built in src/ behind the dashboard switch (PARENT_DASHBOARD_ENABLED off: test families and admins only, D-236). Images for Savar's one review page (D-249). Not a variant round: the email uses the approved email design A (src/lib/email-brand.ts) and the reminder email's button.",
+  "picked": null,
+  "picked_by": "waiting for Savar's review page (D-249)",
+  "captured": "2026-11-05, T3 preview, because the Aside CLI did not start on two tries ('Aside didn't finish starting within 60s'). The email HTML and text come from the real monthlyEmail function with sample names: RENDER_OUT=.design/experiments/r563 npx vitest run src/lib/monthly-summary-email.test.ts. No email was sent to make them. The unsubscribe page is the real page on next dev against the hosted database, with a test family's check row, deleted afterwards. The cookie banner was removed from that image.",
+  "viewports": {
+    "desktop": [
+      1280,
+      900
+    ],
+    "phone": [
+      390,
+      1000
+    ]
+  },
+  "shots": [
+    {
+      "file": "desktop-1280-one-child.png",
+      "viewport": "desktop",
+      "state": "One child: one button to the child's Overview, the CASL footer and Turn off monthly summary emails"
+    },
+    {
+      "file": "phone-390-two-children.png",
+      "viewport": "phone",
+      "state": "Two children: both named, one button each, no horizontal scroll (scrollWidth 390)"
+    },
+    {
+      "file": "phone-390-unsubscribe-off.png",
+      "viewport": "phone",
+      "state": "The unsubscribe page after the link was opened: Monthly summary emails are off"
+    }
+  ],
+  "files": [
+    "one-child.html",
+    "one-child.txt",
+    "two-children.html",
+    "two-children.txt"
+  ],
+  "not_captured": [
+    "The email in a real mail app: no email was sent during this work.",
+    "The Overview that the link opens: unchanged by this ticket (#560, #562)."
+  ]
+}
