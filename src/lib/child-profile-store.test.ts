@@ -55,7 +55,7 @@ const WORKBOOKS = [
   { id: "00000000-0000-4000-8000-0000000000b3", number: 3, status: "draft" as const, standards: ["3.6"] },
 ];
 
-function fakePostgrest(): ChildProfileStore {
+function fakePostgrest(seedHistory: Record<string, unknown>[] = []): ChildProfileStore {
   const tables: Record<string, Record<string, unknown>[]> = {
     children: [
       { id: CHILD, parent_id: PARENT, grade: 3, learning_styles: ["pictures"], interests: [], learning_note: "private note", math_feeling: "avoids", learning_goal: null, weekly_time: null },
@@ -71,21 +71,32 @@ function fakePostgrest(): ChildProfileStore {
     workbooks: WORKBOOKS.map((w) => ({ id: w.id, child_id: CHILD, number: w.number, status: w.status })),
     workbook_questions: WORKBOOKS.flatMap((w) => w.standards.map((standard) => ({ workbook_id: w.id, package: { skill: { standard } } }))),
   };
-  const history: { child_id: string; standard: string; state: string }[] = [];
+  tables.skill_state_history = [...seedHistory];
   const fenced = [FENCED_PARENT];
   const db = createClient("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input, init) => {
     // A request whose signal is aborted fails as fetch fails.
     if (init?.signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
     const url = new URL(String(input));
     const table = url.pathname.replace("/rest/v1/", "");
-    // public.record_skill_state_changes: the fence, then the build token, then one row per changed state.
-    if (table === "rpc/record_skill_state_changes") {
-      const { p_child, p_parent, p_build, p_states } = JSON.parse(String(init?.body));
+    // public.save_child_profile_and_skill_changes: the profile as a save stores it, then its rows, or neither.
+    if (table === "rpc/save_child_profile_and_skill_changes") {
+      const { p_child, p_parent, p_assessment, p_expected, p_schema_version, p_profile, p_changes } = JSON.parse(String(init?.body));
       if (fenced.includes(p_parent)) return Response.json({ code: "55000", message: "family_unavailable" }, { status: 400 });
-      if (!tables.child_profiles.some((r) => r.child_id === p_child && r.parent_id === p_parent && r.build_token === p_build)) return Response.json(null);
-      const changed = (p_states as { standard: string; state: string }[]).filter((s) => (history.findLast((h) => h.child_id === p_child && h.standard === s.standard)?.state ?? "not_started") !== s.state);
-      history.push(...changed.map((s) => ({ child_id: p_child, standard: s.standard, state: s.state })));
-      return Response.json(changed.length);
+      if (p_assessment && tables.assessments.find((t) => t.id === p_assessment)?.parent_id !== p_parent) return Response.json({ code: "55000", message: "family_scope" }, { status: 400 });
+      const row = { parent_id: p_parent, assessment_id: p_assessment, build_token: crypto.randomUUID(), schema_version: p_schema_version, profile: p_profile, built_at: new Date().toISOString() };
+      let revision = 1;
+      if (p_expected === null) {
+        if (!tables.children.some((c) => c.id === p_child && c.parent_id === p_parent)) return Response.json({ code: "23503", message: 'insert or update on table "child_profiles" violates foreign key constraint "child_profiles_child_id_parent_id_fkey"' }, { status: 409 });
+        if (tables.child_profiles.some((r) => r.child_id === p_child)) return Response.json({ code: "23505", message: "duplicate key" }, { status: 409 });
+        tables.child_profiles.push({ ...row, child_id: p_child, revision });
+      } else {
+        const stored = tables.child_profiles.find((r) => r.child_id === p_child && r.build_token === p_expected);
+        if (!stored) return Response.json(null);
+        revision = Number(stored.revision) + 1;
+        Object.assign(stored, row, { revision });
+      }
+      tables.skill_state_history.push(...(p_changes as Record<string, unknown>[]).map((c) => ({ child_id: p_child, ...c })));
+      return Response.json({ revision, build_token: row.build_token });
     }
     const rows = tables[table];
     if (!rows) throw new Error(`unexpected request ${url.pathname}`);
@@ -177,21 +188,43 @@ describe.each([["Supabase", fakePostgrest], ["in-memory", memory]] as const)("th
     expect(inputs.tests.map((t) => t.assessmentId).sort()).toEqual([OLD, NEW]);
     expect(inputs.tests.find((t) => t.assessmentId === NEW)).toEqual({ assessmentId: NEW, completedAt: expect.stringMatching(/^2026-10-20T18:00:00/), profile: expect.objectContaining({ buildId: "build-new" }) });
     expect([...new Set(inputs.workbookStandards)].sort()).toEqual(["3.2", "3.3"]);
-    expect(await store.skillInputs(OTHER_CHILD)).toEqual({ tests: [], workbookStandards: [] });
+    expect(await store.skillInputs(OTHER_CHILD)).toEqual({ tests: [], workbookStandards: [], history: [] });
   });
 
-  it("adds a history row only for a changed state, only from the stored build, and never for a family being deleted", async () => {
+  it("stores a build and its history rows together, in order, or neither", async () => {
     const store = open();
-    const mastered = { standard: "3.3", state: "mastered", reason: "secure_on_test", evidence: "test" } as const;
-    const quiet = { standard: "3.4", state: "not_started", reason: "no_evidence", evidence: "none" } as const;
-    await store.save({ childId: CHILD, parentId: PARENT, assessmentId: NEW, profile: PROFILE }, null);
-    const { buildToken } = (await store.current(CHILD))!;
-    const row = { childId: CHILD, parentId: PARENT, buildToken };
-    expect(await store.recordSkillStates({ ...row, buildToken: "00000000-0000-4000-8000-000000000001", states: [mastered] })).toBe("changed");
-    expect(await store.recordSkillStates({ ...row, states: [mastered, quiet] })).toEqual({ changes: 1 });
-    expect(await store.recordSkillStates({ ...row, states: [mastered, quiet] })).toEqual({ changes: 0 });
-    expect(await store.recordSkillStates({ ...row, states: [{ ...mastered, state: "needs_review", reason: "failed_review", evidence: "pages" }] })).toEqual({ changes: 1 });
-    await expect(store.recordSkillStates({ childId: FENCED_CHILD, parentId: FENCED_PARENT, buildToken, states: [mastered] })).rejects.toThrow("family_unavailable");
+    const row = { childId: CHILD, parentId: PARENT, assessmentId: NEW, profile: PROFILE };
+    const mastered = { standard: "3.3", state: "mastered", reason: "secure_on_test", evidence: "test", evidenceAt: "2026-10-01T18:00:00.000Z" } as const;
+    const failed = { standard: "3.3", state: "needs_review", reason: "failed_review", evidence: "test", evidenceAt: "2026-10-20T18:00:00.000Z" } as const;
+    const quiet = { standard: "3.4", state: "working_on", reason: "in_workbook", evidence: "workbook", evidenceAt: null } as const;
+    const history = async () => (await store.skillInputs(CHILD)).history;
+    const asRow = ({ standard, state, evidenceAt }: typeof mastered | typeof failed | typeof quiet) => ({ standard, state, evidenceAt });
+
+    expect(await store.save({ ...row, skillChanges: [mastered] }, { revision: 1, buildToken: "00000000-0000-4000-8000-000000000001" })).toBe("changed");
+    expect(await history()).toEqual([]);
+
+    const first = await store.save({ ...row, skillChanges: [mastered, quiet] }, null);
+    expect(first).toEqual({ revision: 1, buildToken: expect.stringMatching(/^[0-9a-f-]{36}$/) });
+    const stored = (await store.current(CHILD))!;
+    expect(stored.buildToken).toBe(typeof first === "object" && "buildToken" in first && first.buildToken);
+    expect(stored.profile).toEqual(PROFILE);
+    expect(await history()).toEqual([asRow(mastered), asRow(quiet)]);
+
+    // A second first save, and a save over a build that is not the stored one, write no row.
+    expect(await store.save({ ...row, skillChanges: [failed] }, null)).toBe("changed");
+    expect(await store.save({ ...row, skillChanges: [failed] }, { revision: 1, buildToken: "00000000-0000-4000-8000-000000000001" })).toBe("changed");
+    expect(await history()).toEqual([asRow(mastered), asRow(quiet)]);
+
+    expect(await store.save({ ...row, skillChanges: [failed] }, stored)).toEqual({ revision: 2, buildToken: expect.any(String) });
+    expect(await history()).toEqual([asRow(mastered), asRow(quiet), asRow(failed)]);
+    expect((await store.current(CHILD))?.buildToken).not.toBe(stored.buildToken);
+
+    // The same refusals as a plain save, with no row.
+    expect(await store.save({ ...row, childId: FENCED_CHILD, parentId: FENCED_PARENT, assessmentId: null, skillChanges: [mastered] }, null)).toEqual({ refused: expect.stringContaining("family_unavailable") });
+    expect(await store.save({ ...row, parentId: "00000000-0000-4000-8000-0000000000a9", assessmentId: null, skillChanges: [mastered] }, null)).toEqual({ refused: expect.any(String) });
+    expect(await store.save({ ...row, assessmentId: GONE, skillChanges: [mastered] }, (await store.current(CHILD))!)).toBe("changed");
+    expect(await history()).toHaveLength(3);
+    expect((await store.skillInputs(FENCED_CHILD)).history).toEqual([]);
   });
 
   // R345-1: the live fence trigger answers 55000 family_scope for a test that no longer exists, before the foreign key.
@@ -202,6 +235,14 @@ describe.each([["Supabase", fakePostgrest], ["in-memory", memory]] as const)("th
     expect(await store.save({ childId: CHILD, parentId: PARENT, assessmentId: NEW, profile: PROFILE }, null)).toEqual({ revision: 1, buildToken: expect.any(String) });
     expect(await store.save({ childId: CHILD, parentId: PARENT, assessmentId: GONE, profile: PROFILE }, (await store.current(CHILD))!)).toBe("changed");
     expect((await store.current(CHILD))?.revision).toBe(1);
+  });
+});
+
+describe("the Supabase child profile store's history read", () => {
+  it("fails loudly when PostgREST may have cut the list, so a rebuild never reads an old state as the latest", async () => {
+    const full = Array.from({ length: 1000 }, () => ({ child_id: CHILD, standard: "3.3", state: "mastered", evidence_at: null }));
+    await expect(fakePostgrest(full).skillInputs(CHILD)).rejects.toThrow("1000 rows or more");
+    expect((await fakePostgrest(full.slice(1)).skillInputs(CHILD)).history).toHaveLength(999);
   });
 });
 

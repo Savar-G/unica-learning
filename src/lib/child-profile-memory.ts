@@ -3,7 +3,7 @@
 // per child, stored as JSON, its schema version beside it; a save only over the build token it expects (compare and
 // set), each save a new token; no write for a family whose deletion is requested, or on another family's test (the
 // family write fence); a child under its parent and a test of that child (the foreign keys); a test that is gone asks
-// for a new build. deleteTest deletes a test as the database's cascades do: the profile built on it and its events. The latest assessment profile is the stored profile of the child's test that finished last. The skill state history keeps the rules of record_skill_state_changes: the fence, then the build token, then one row per changed state; `history()` reads its rows.
+// for a new build. deleteTest deletes a test as the database's cascades do: the profile built on it and its events. The latest assessment profile is the stored profile of the child's test that finished last. A save with history rows keeps the rules of save_child_profile_and_skill_changes: the rows go with the build or not at all; `history()` reads its rows.
 import type { Grade, ProfileLearning, SkillEvidence, SkillState, SkillStateReason } from "@/lib/assessment";
 import type { ChildProfileStore, StoredChildProfile } from "@/lib/child-profile";
 import type { LearningEventStore } from "@/lib/learning-events";
@@ -30,6 +30,7 @@ export interface MemorySkillStateRow {
   state: SkillState;
   reason: SkillStateReason;
   evidenceSource: SkillEvidence;
+  evidenceAt: string | null;
   changedAt: string;
 }
 
@@ -49,16 +50,8 @@ export function memoryChildProfiles(families: MemoryChildFamilies) {
       return {
         tests: tests.filter((t) => t.childId === childId && t.profile !== null).map((t) => ({ assessmentId: t.id, completedAt: t.completedAt, profile: json(t.profile) })),
         workbookStandards: [...(shipped?.standards ?? [])],
+        history: history.filter((r) => r.childId === childId).map((r) => ({ standard: r.standard, state: r.state, evidenceAt: r.evidenceAt })),
       };
-    },
-    // As public.record_skill_state_changes does: the fence, then the build token, then one row per changed state.
-    async recordSkillStates({ childId, parentId, buildToken, states }) {
-      if (deleting.includes(parentId)) throw new Error("skill state history: family_unavailable");
-      if (rows.get(childId)?.buildToken !== buildToken) return "changed";
-      const changed = states.filter((s) => (history.findLast((r) => r.childId === childId && r.standard === s.standard)?.state ?? "not_started") !== s.state);
-      const changedAt = new Date().toISOString();
-      history.push(...changed.map((s) => ({ childId, parentId, standard: s.standard, state: s.state, reason: s.reason, evidenceSource: s.evidence, changedAt })));
-      return { changes: changed.length };
     },
     async current(childId) {
       const row = rows.get(childId);
@@ -76,7 +69,7 @@ export function memoryChildProfiles(families: MemoryChildFamilies) {
         assessment: latest ? { assessmentId: latest.id, completedAt: latest.completedAt, buildId: typeof buildId === "string" ? buildId : null, profile: json(latest.profile) } : null,
       };
     },
-    async save({ childId, parentId, assessmentId, profile }, expected) {
+    async save({ childId, parentId, assessmentId, profile, skillChanges = [] }, expected) {
       if (deleting.includes(parentId)) return { refused: "family_unavailable" };
       if (assessmentId !== null) {
         const test = tests.find((t) => t.id === assessmentId);
@@ -90,6 +83,8 @@ export function memoryChildProfiles(families: MemoryChildFamilies) {
       const revision = (expected?.revision ?? 0) + 1;
       const buildToken = crypto.randomUUID();
       rows.set(childId, { revision, buildToken, builtAt: new Date().toISOString(), schemaVersion: profile.schemaVersion, profile: json(profile), parentId, assessmentId });
+      const changedAt = new Date().toISOString();
+      history.push(...skillChanges.map((c) => ({ childId, parentId, standard: c.standard, state: c.state, reason: c.reason, evidenceSource: c.evidence, evidenceAt: c.evidenceAt, changedAt })));
       return { revision, buildToken };
     },
   };
