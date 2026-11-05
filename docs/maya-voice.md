@@ -101,7 +101,7 @@ A real provider set without its privacy confirmation, key or voice, or with an I
 
 **Word timings through Inference.** The board draws in time with Maya's words when the voice returns word timings. With `inference`, the worker asks for them with each model's option (Inworld `timestamp_type: "WORD"`, Cartesia `add_timestamps: true`), the options LiveKit Agents for Node 1.9.5 checks before it reads the gateway's word alignment into timed transcripts (`hasAlignedTranscript`, `inference/tts.js`). The Inference page does not mention word timings, so whether the gateway sends them to the Node worker is not verified. Where they do not come, the board follows sentence ends (below). The listening test reports it per voice, and each `board cue` log line says `word` or `sentence`.
 
-Deploying the worker: [Deploying Maya's voice worker](maya-voice-deploy.md). The privacy page text and the delay measurements are #327.
+Deploying the worker: [Deploying Maya's voice worker](maya-voice-deploy.md). The delay measurements are #327. The privacy page and terms hold only a marked paragraph for voice, with no company named (#529); replace it, and raise `MAYA_NOTICE_VERSION`, before the first family call. `mintVoiceToken` refuses a family call without the parent's agreement; an admin test call is exempt (D-251).
 
 ## Commands
 

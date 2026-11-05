@@ -10,6 +10,8 @@ import { mayaCalls, recordView, type CallRecord } from "@/lib/maya-call";
 import type { BoardHistory } from "@/lib/board-history";
 import { callSeams } from "@/lib/maya-call-seams";
 import { mayaCallStore } from "@/lib/maya-call-store";
+import { mayaNotice } from "@/lib/maya-notice";
+import { noticeStore } from "@/lib/maya-notice-store";
 import { workbookStore } from "@/lib/workbook-store";
 import { weekOf, type FamilyZone } from "@/lib/family-time";
 import { mayaSpendLedger } from "@/lib/maya-spend-server";
@@ -165,6 +167,8 @@ export async function runChat(ctx: ChatContext, action: ChatAction): Promise<Cha
   let record = await store.get(action.id);
   if (record && !owned(record)) return reply(null, "not_found", "refused");
   if (action.type === "start") {
+    // No new chat without a parent's agreement (#529). A chat already under way can still be read, answered and ended.
+    if (!record && !await mayaNotice(noticeStore(db)).accepted(parent)) return reply(null, "notice_required", "refused");
     const ref = action.question;
     const books = workbookStore(db);
     const book = await books.workbook(ref.workbookId);

@@ -55,6 +55,8 @@ type DeskProps = {
   notice?: string | null;
   chatUsage?: ChatUsage | null;
   /** Why this child has no chat (a younger child), in place of "start soon". */
+  /** Why chat is off until a parent agrees to the notice (#529), in place of "start soon". */
+  noticeLine?: string | null;
   chatNote?: string | null;
 } & (
   | { problem: string; books?: undefined }
@@ -169,7 +171,7 @@ export function Desk(props: DeskProps) {
             </button>
           )}
           {props.chatUsage ? <ChatControls key={picked} state={chat} picked={picked !== null} /> : <>
-          <p className="desk-soon">{props.chatNote ?? "Chat and calls with Maya start soon."}</p>
+          <p className="desk-soon">{props.noticeLine ?? props.chatNote ?? "Chat and calls with Maya start soon."}</p>
           <div className="desk-compose">
             <input type="text" disabled placeholder="Write to Maya" aria-label="Write to Maya" />
             <button type="button" disabled aria-label="Send"><Icon name="send" size={20} /></button>
