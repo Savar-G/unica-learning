@@ -5,7 +5,7 @@
 // Everything comes from the stored contract (workbook-print-contract.ts): the mark points, their order, the units and the
 // region boxes. Nothing comes from today's template. A rectangle of four marks is accepted only when all of this holds, and
 // a wrong crop is a wrong mark on a child's work, so anything unsure is refused:
-// - its ink follows the page image the contract fingerprints, cell by cell, in one way up (a shared template is not enough);
+// - it looks like the page image the contract fingerprints, cell by cell, in one way up (a shared template is not enough);
 // - it is the only rectangle in the photo that does (two sheets in one photo are refused, whichever holds the code);
 // - inside it, where that page image printed its QR code, the photo's QR code reads as this page's own link.
 //
@@ -45,7 +45,7 @@ export interface Calibration {
   transform: Transform;
   /** How many clockwise quarter turns the page is from upright in the photo. */
   quarterTurns: 0 | 1 | 2 | 3;
-  /** The share of the page's printed cells whose ink the photo holds. */
+  /** The share of the page's dark printed cells that the photo holds in the same place. */
   pageFit: number;
 }
 
@@ -311,39 +311,31 @@ function markQuads(shapes: readonly MarkShape[], size: { width: number; height: 
 const FIT_CELL = 16;
 /** How far the comparison looks for each cell's ink, in the grid's pixels: what a page's curl and the map's error can move it. */
 const FIT_SHIFT = 2;
-/** How much of a cell's ink must agree, both ways, for it to count as this page's cell. */
-const CELL_MATCH = 0.75;
+/** How closely a cell's grey must follow the printed cell, as a correlation, for it to count as this page's cell. */
+const CELL_MATCH = 0.6;
+/** A printed cell whose grey varies less than this (a standard deviation of 8 grey levels, squared) is one even shade. */
+const FLAT_SPREAD = 64;
 /**
- * The share of the page's dark printed cells that must match. Over 36 real pages at 2 angles
- * (.design/experiments/r455/page-matrix.json) this stopped 2510 of 2520 comparisons with another page by itself, and let
- * 71 of 72 right pages through. Pages that differ by a few digits can score as high as the right page: the QR code stopped
- * the other 10. No real camera photo has been measured. Refusing is the safe side.
+ * The share of the page's printed cells that must match. Over 24 real pages from U4, U16 and U26, with the page at 50% to
+ * 95% of the photo's height, upright, rotated 7 degrees and tilted (.design/experiments/r455/page-matrix.json): every right
+ * page the upload accepted (184 of 184) passed, and 8803 of 8832 comparisons with another page were stopped by this alone.
+ * The other 29 were one pair of pages that differ by a few digits: those can score as high as the right page, and only the
+ * QR code tells them apart, so it is required. No real camera photo has been measured.
  */
-const MIN_PAGE_FIT = 0.985;
-const MIN_FIT_MARGIN = 0.08;
+const MIN_PAGE_FIT = 0.975;
 const MIN_SIDE_RATIO = 0.45;
 /** How much ink a cell needs to count: fewer pixels say nothing about which page it is. */
 const CELL_MIN_INK = 10;
 const MAX_RECTANGLES = 12;
 const DARK_PRINT = 120;
 
-interface PreparedPrinted { ink: Uint8Array; near: Uint8Array; width: number; height: number; qr: FoundQr | null }
+interface PreparedPrinted { ink: Uint8Array; greySums: Uint32Array; width: number; height: number; source: { width: number; height: number }; qr: FoundQr | null }
 interface PrintedInk extends Omit<PreparedPrinted, "qr"> { cells: { x: number; y: number }[] }
-interface PreparedPhoto { sums: Uint32Array; quads: MarkShape[][] }
+interface PreparedPhoto { greySums: Uint32Array; quads: MarkShape[][] }
 
 // (What one image gives is the same each time. A book's pages compared against one photo read each image once.)
 const printedCache = new WeakMap<Raster, PreparedPrinted>();
 const photoCache = new WeakMap<Raster, PreparedPhoto>();
-
-/** Ink and each pixel beside it: agreement should not hang on how thick a blurred stroke came out. */
-function thickened(ink: Uint8Array, width: number, height: number): Uint8Array {
-  const out = new Uint8Array(ink.length);
-  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-    if (!ink[y * width + x]) continue;
-    for (let j = Math.max(0, y - 1); j <= Math.min(height - 1, y + 1); j++) for (let i = Math.max(0, x - 1); i <= Math.min(width - 1, x + 1); i++) out[j * width + i] = 1;
-  }
-  return out;
-}
 
 function preparedPrinted(printed: Raster): PreparedPrinted {
   const held = printedCache.get(printed);
@@ -355,9 +347,9 @@ function preparedPrinted(printed: Raster): PreparedPrinted {
   const width = Math.floor(printed.width / 2), height = Math.floor(printed.height / 2);
   const ink = new Uint8Array(width * height);
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-    if (boxInk(sums, printed.width, printed.height, x * 2, y * 2, x * 2 + 2, y * 2 + 2) >= 0.3) ink[y * width + x] = 1;
+    if (boxMean(sums, printed.width, printed.height, x * 2, y * 2, x * 2 + 2, y * 2 + 2) >= 0.3) ink[y * width + x] = 1;
   }
-  const prepared = { ink, near: thickened(ink, width, height), width, height, qr: readQr(printed) };
+  const prepared = { ink, greySums: summed(grey, printed.width, printed.height), width, height, source: { width: printed.width, height: printed.height }, qr: readQr(printed) };
   printedCache.set(printed, prepared);
   return prepared;
 }
@@ -366,7 +358,7 @@ function preparedPhoto(photo: Raster): PreparedPhoto {
   const held = photoCache.get(photo);
   if (held) return held;
   const mask = inkMask(photo);
-  const prepared = { sums: summed(mask, photo.width, photo.height), quads: markQuads(findShapes(mask, photo.width, photo.height), photo) };
+  const prepared = { greySums: summed(toGrey(photo), photo.width, photo.height), quads: markQuads(findShapes(mask, photo.width, photo.height), photo) };
   photoCache.set(photo, prepared);
   return prepared;
 }
@@ -375,7 +367,7 @@ const overlaps = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width 
 
 /** The printed page's ink, and the cells that say which page it is: not where a child writes, and not the QR code. */
 function printedInk(prepared: PreparedPrinted, skip: readonly Box[]): PrintedInk {
-  const { ink, near, width, height } = prepared;
+  const { ink, width, height } = prepared;
   const cells: PrintedInk["cells"] = [];
   for (let y = 0; y + FIT_CELL <= height; y += FIT_CELL) for (let x = 0; x + FIT_CELL <= width; x += FIT_CELL) {
     if (skip.some((b) => overlaps(b, { x: x * 2, y: y * 2, width: FIT_CELL * 2, height: FIT_CELL * 2 }))) continue;
@@ -383,68 +375,81 @@ function printedInk(prepared: PreparedPrinted, skip: readonly Box[]): PrintedInk
     for (let j = 0; j < FIT_CELL; j++) for (let i = 0; i < FIT_CELL; i++) n += ink[(y + j) * width + x + i];
     if (n >= CELL_MIN_INK) cells.push({ x, y });
   }
-  return { ink, near, width, height, cells };
+  return { ...prepared, cells };
 }
 
-function boxInk(sums: Uint32Array, w: number, h: number, x0f: number, y0f: number, x1f: number, y1f: number): number {
-  const x0 = Math.max(0, Math.min(w, Math.round(x0f))), x1 = Math.max(0, Math.min(w, Math.round(x1f)));
-  const y0 = Math.max(0, Math.min(h, Math.round(y0f))), y1 = Math.max(0, Math.min(h, Math.round(y1f)));
-  if (x1 <= x0 || y1 <= y0) return 0;
-  const total = sums[y1 * (w + 1) + x1] + sums[y0 * (w + 1) + x0] - sums[y0 * (w + 1) + x1] - sums[y1 * (w + 1) + x0];
-  return total / ((x1 - x0) * (y1 - y0));
+/** The mean inside a box of a summed table. At least one whole pixel, so a small box is never empty. */
+function boxMean(sums: Uint32Array, w: number, h: number, x0f: number, y0f: number, x1f: number, y1f: number): number {
+  const x0 = Math.max(0, Math.min(w - 1, Math.floor(x0f))), x1 = Math.max(x0 + 1, Math.min(w, Math.ceil(x1f)));
+  const y0 = Math.max(0, Math.min(h - 1, Math.floor(y0f))), y1 = Math.max(y0 + 1, Math.min(h, Math.ceil(y1f)));
+  return (sums[y1 * (w + 1) + x1] + sums[y0 * (w + 1) + x0] - sums[y0 * (w + 1) + x1] - sums[y1 * (w + 1) + x0]) / ((x1 - x0) * (y1 - y0));
 }
 
 /**
- * The share of the page's printed cells whose ink the photo holds in the same place, through a map. Cell by cell, because
- * pages of one template share a heading and a layout and differ in small places: one number can be the whole difference.
+ * The share of the page's printed cells that the photo holds in the same place, through a map; 0 as soon as too few can.
+ * Cell by cell, because pages of one template share a heading and a layout. In grey, with both images brought to the same
+ * sharpness first, because a threshold on ink changes with how large the page is in the photo: a stroke one pixel wide comes
+ * out thin or missing, and the same page would pass from close up and fail from further away. A correlation does not care
+ * about shade or contrast.
  */
-function pageFit(printed: PrintedInk, sums: Uint32Array, photo: { width: number; height: number }, t: Transform): number {
-  const { width, height, ink, near, cells } = printed;
+function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: number; height: number }, t: Transform): number {
+  const { width, height, cells, greySums, source } = printed;
   if (cells.length === 0) return 0;
   const pageWidth = width * 2, pageHeight = height * 2;
-  const half = (distance(applyTransform(t, { x: 0, y: 0 }), applyTransform(t, { x: pageWidth, y: 0 }))
-    + distance(applyTransform(t, { x: 0, y: pageHeight }), applyTransform(t, { x: pageWidth, y: pageHeight }))) / (2 * width) / 2;
-  const seen = new Uint8Array(width * height);
-  const reach = Math.max(0.75, half);
+  const scale = (distance(applyTransform(t, { x: 0, y: 0 }), applyTransform(t, { x: pageWidth, y: 0 }))
+    + distance(applyTransform(t, { x: 0, y: pageHeight }), applyTransform(t, { x: pageWidth, y: pageHeight }))) / (2 * pageWidth);
+  // Each grid pixel covers at least one photo pixel, on both images: the sharpness of the coarser of the two.
+  const halfPage = Math.max(1, 0.5 / Math.max(scale, 1e-6));
+  const halfPhoto = Math.max(0.5, halfPage * scale);
+  const a = new Float32Array(width * height), b = new Float32Array(width * height);
   for (let y = 0; y < height; y++) {
     const py = y * 2 + 1;
     for (let x = 0; x < width; x++) {
       const px = x * 2 + 1, w = t[6] * px + t[7] * py + t[8];
       const u = (t[0] * px + t[1] * py + t[2]) / w, v = (t[3] * px + t[4] * py + t[5]) / w;
-      if (boxInk(sums, photo.width, photo.height, u - reach, v - reach, u + reach, v + reach) >= 0.3) seen[y * width + x] = 1;
+      a[y * width + x] = boxMean(greySums, source.width, source.height, px - halfPage, py - halfPage, px + halfPage, py + halfPage);
+      b[y * width + x] = boxMean(photoSums, photo.width, photo.height, u - halfPhoto, v - halfPhoto, u + halfPhoto, v + halfPhoto);
     }
   }
-  const seenNear = thickened(seen, width, height);
-  let matched = 0;
+  const n = FIT_CELL * FIT_CELL;
+  // A cell of one even shade (inside a solid bar) has no shape to follow, and a correlation says nothing about it: only
+  // cells with a printed edge count.
+  const shaped: { x: number; y: number; sumA: number; spreadA: number }[] = [];
   for (const c of cells) {
-    let best = 0;
-    for (let dy = -FIT_SHIFT; dy <= FIT_SHIFT && best < CELL_MATCH; dy++) for (let dx = -FIT_SHIFT; dx <= FIT_SHIFT && best < CELL_MATCH; dx++) {
-      // The printed ink the photo holds, and the photo's ink the page printed: each with a pixel's grace, and both must agree.
-      let printedInk = 0, photoInk = 0, printedHeld = 0, photoHeld = 0;
-      for (let j = 0; j < FIT_CELL; j++) for (let i = 0; i < FIT_CELL; i++) {
-        const py = c.y + j, px = c.x + i, sy = py + dy, sx = px + dx;
-        const inside = sy >= 0 && sx >= 0 && sy < height && sx < width;
-        const at = py * width + px, shifted = sy * width + sx;
-        if (ink[at]) { printedInk++; if (inside && seenNear[shifted]) printedHeld++; }
-        if (inside && seen[shifted]) { photoInk++; if (near[at]) photoHeld++; }
-      }
-      const agreement = Math.min(printedHeld / Math.max(1, printedInk), photoHeld / Math.max(1, photoInk));
-      if (agreement > best) best = agreement;
-    }
-    if (best >= CELL_MATCH) matched++;
+    let sumA = 0, sumAA = 0;
+    for (let j = 0; j < FIT_CELL; j++) for (let i = 0; i < FIT_CELL; i++) { const v = a[(c.y + j) * width + c.x + i]; sumA += v; sumAA += v * v; }
+    const spreadA = n * sumAA - sumA * sumA;
+    if (spreadA >= n * n * FLAT_SPREAD) shaped.push({ ...c, sumA, spreadA });
   }
-  return matched / cells.length;
+  if (shaped.length === 0) return 0;
+  const allowedMisses = Math.floor(shaped.length * (1 - MIN_PAGE_FIT));
+  let misses = 0;
+  for (const { x, y, sumA, spreadA } of shaped) {
+    let held = false;
+    for (let dy = -FIT_SHIFT; dy <= FIT_SHIFT && !held; dy++) for (let dx = -FIT_SHIFT; dx <= FIT_SHIFT && !held; dx++) {
+      if (y + dy < 0 || x + dx < 0 || y + dy + FIT_CELL > height || x + dx + FIT_CELL > width) continue;
+      let sumB = 0, sumBB = 0, sumAB = 0;
+      for (let j = 0; j < FIT_CELL; j++) for (let i = 0; i < FIT_CELL; i++) {
+        const p = a[(y + j) * width + x + i], q = b[(y + dy + j) * width + x + dx + i];
+        sumB += q; sumBB += q * q; sumAB += p * q;
+      }
+      const spreadB = n * sumBB - sumB * sumB;
+      if (spreadB > 0 && (n * sumAB - sumA * sumB) >= CELL_MATCH * Math.sqrt(spreadA * spreadB)) held = true;
+    }
+    if (!held && ++misses > allowedMisses) return 0;
+  }
+  return 1 - misses / shaped.length;
 }
 
 // ---------- The page's QR code ----------
 
 interface FoundQr { link: string; corners: Point[] }
 
-function readQr(r: Raster): FoundQr | null {
+function readQr(r: Raster, inversionAttempts: "dontInvert" | "attemptBoth" = "dontInvert"): FoundQr | null {
   const grey = toGrey(r);
   const rgba = new Uint8ClampedArray(r.width * r.height * 4);
   for (let i = 0; i < grey.length; i++) { rgba[4 * i] = rgba[4 * i + 1] = rgba[4 * i + 2] = grey[i]; rgba[4 * i + 3] = 255; }
-  const found = jsQR(rgba, r.width, r.height, { inversionAttempts: "dontInvert" });
+  const found = jsQR(rgba, r.width, r.height, { inversionAttempts });
   return found && { link: found.data, corners: [found.location.topLeftCorner, found.location.topRightCorner, found.location.bottomRightCorner, found.location.bottomLeftCorner] };
 }
 
@@ -483,7 +488,18 @@ function qrBound(photo: Raster, t: Transform, printed: FoundQr, page: { width: n
     if (own) return own.link === printed.link && inPlace(own.corners.map((c) => applyTransform(inverse, { x: x0 + c.x, y: y0 + c.y })));
   }
   const seen = readQr(warpBox(photo, t, window, { width: Math.round(window.width * QR_SCALE), height: Math.round(window.height * QR_SCALE) }));
-  return !!seen && seen.link === printed.link && inPlace(seen.corners.map((c) => ({ x: window.x + c.x / QR_SCALE, y: window.y + c.y / QR_SCALE })));
+  if (seen) return seen.link === printed.link && inPlace(seen.corners.map((c) => ({ x: window.x + c.x / QR_SCALE, y: window.y + c.y / QR_SCALE })));
+  // Last, the whole photo, read as the upload reads it: a small code that the upload found can be too few pixels for a
+  // window. It still counts only where the page printed it, so another sheet's code is refused as before.
+  if (!inverse) return false;
+  const whole = wholePhotoQr(photo);
+  return !!whole && whole.link === printed.link && inPlace(whole.corners.map((c) => applyTransform(inverse, c)));
+}
+
+const wholeQrCache = new WeakMap<Raster, FoundQr | null>();
+function wholePhotoQr(photo: Raster): FoundQr | null {
+  if (!wholeQrCache.has(photo)) wholeQrCache.set(photo, readQr(photo, "attemptBoth"));
+  return wholeQrCache.get(photo)!;
 }
 
 /** Whether the arms of the marks fit the contract's rectangle: along its sides, and of one length. */
@@ -516,7 +532,7 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
   const prepared = preparedPrinted(printed);
   const printedQr = prepared.qr;
   if (!printedQr || printedQr.link !== o.pageLink) return { status: "refused", reason: "qr-mismatch" };
-  const { sums, quads } = preparedPhoto(photo);
+  const { greySums, quads } = preparedPhoto(photo);
   if (quads.length === 0) return { status: "refused", reason: "marks-missing" };
   const ink = printedInk(prepared, [...(o.writing ?? []), boundsOf(printedQr.corners)]);
   const stored = SCAN_MARKS.map((m) => contract.marks.points[m]);
@@ -536,7 +552,7 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
       const order = stored.map((_, i) => quad[(i + turns) % 4]);
       const t = perspectiveTransform(stored, order.map((m) => m.corner));
       if (!t || !armsFit(order, t)) return [];
-      return [{ turns, order, t, fit: pageFit(ink, sums, photo, t) }];
+      return [{ turns, order, t, fit: pageFit(ink, greySums, photo, t) }];
     }).sort((a, b) => b.fit - a.fit);
     if (ways.length === 0) continue;
     const best = ways[0];
@@ -547,7 +563,8 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
   // Two sheets in one photo: which one was meant cannot be known, whichever shows its code.
   if (followers.length > 1) return { status: "refused", reason: "ambiguous-page" };
   const [best] = followers;
-  if (best.next !== null && best.fit - best.next < MIN_FIT_MARGIN) return { status: "refused", reason: "orientation-unclear" };
+  // Two ways up that both follow the page: the marks alone cannot say which is right.
+  if (best.next !== null && best.next >= MIN_PAGE_FIT) return { status: "refused", reason: "orientation-unclear" };
   if (!qrBound(photo, best.t, printedQr, pageSize)) return { status: "refused", reason: "qr-mismatch" };
   return {
     status: "calibrated",

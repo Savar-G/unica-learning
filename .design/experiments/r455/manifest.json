@@ -6,12 +6,37 @@
   "data": "Synthetic only: QA test families, sample book pages printed by real Chromium, drawn digits as written answers.",
   "browser": "T3 preview in a private profile, because the Aside CLI hung at 'Waiting for Aside to restart'. Width changes only: the user agent stays desktop, so the screens open the camera flow with ?here=1 (#601).",
   "screens": [
-    { "file": "ready-laptop-1280.png", "state": "ready", "width": 1280 },
-    { "file": "ready-tablet-820.png", "state": "ready", "width": 820 },
-    { "file": "ready-phone-390.png", "state": "ready", "width": 390 },
-    { "file": "refused-phone-390.png", "state": "refused: a mark is covered", "width": 390 },
-    { "file": "legacy-phone-390.png", "state": "unavailable: a legacy book with no contract", "width": 390 }
+    {
+      "file": "ready-laptop-1280.png",
+      "state": "ready",
+      "width": 1280
+    },
+    {
+      "file": "ready-tablet-820.png",
+      "state": "ready",
+      "width": 820
+    },
+    {
+      "file": "ready-phone-390.png",
+      "state": "ready",
+      "width": 390
+    },
+    {
+      "file": "refused-phone-390.png",
+      "state": "refused: a mark is covered",
+      "width": 390
+    },
+    {
+      "file": "legacy-phone-390.png",
+      "state": "unavailable: a legacy book with no contract",
+      "width": 390
+    }
   ],
-  "evidence": ["hosted-security.json", "hosted-family-deletion.json"],
-  "limits": "No real handwriting, real camera or curled page. Savar has not reviewed these screens (D-236)."
+  "evidence": [
+    "hosted-security.json",
+    "hosted-family-deletion.json",
+    "page-matrix.json"
+  ],
+  "limits": "No real handwriting, real camera or curled page. Savar has not reviewed these screens (D-236).",
+  "matrix": "page-matrix.json: SCAN_MATRIX_OUT=<file> npx vitest run src/lib/scan-binding-chromium.test.ts -t \"every scale\". 24 real pages, page fill 50% to 95% of the photo height, upright, rotated 7 degrees and tilted; calibrated on the normalized upload bytes."
 }
