@@ -1844,6 +1844,39 @@ export const BEHAVIOURS: Behaviour[] = [
       counts: { refusals: 0 },
     },
   },
+  {
+    id: "P13",
+    title: "'I don't know about the ten.': a child who says they are stuck gets one level more help, though the model's reading left the request out",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("Seven plus nine is sixteen.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("I don't know about the ten.", undefined, [{ act: "guide", step: "tens", level: 1, lines: ["step.regroup"] }]),
+      child("Two plus three plus one is six. So 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, hints: 1 },
+    },
+  },
+  {
+    id: "P14",
+    title: "'I'm done!' after the answer: an ask to write with no understanding field is said as it is, read as uncertain",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("It's 66.", { start: "has_work", answers: [[66, "result", "right"]] }),
+      child("I'm done! Thanks, Maya.", undefined, [{ act: "ask_write", lines: ["write.answer"], understanding: null }]),
+      child("I wrote 66.", { paper: "written" }, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "solved", understanding: "uncertain", paperStatus: "child_confirmed" },
+      acts: [OPEN, "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+    },
+  },
 ];
 
 /** What the gate cannot run yet, with the reason. Each research id is in BEHAVIOURS or here. */

@@ -43,7 +43,7 @@ import { speechWords, saidAsApproved } from "./speech";
 import { findOffer, normalSlots, packageLines, workbookOpening, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
-import { committedText, readAnswer, readNumbers, saysYes, saysWritten, startsWithYes, takenBack, unreadableAnswer, valuesIn, type AnswerRead } from "./numbers";
+import { committedText, readAnswer, readNumbers, saysStuck, saysYes, saysWritten, startsWithYes, takenBack, unreadableAnswer, valuesIn, type AnswerRead } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
@@ -1132,6 +1132,10 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       ladder.unlocked = Math.max(ladder.unlocked, Math.min(4, ladder.hint + 1));
     }
     if (reading.help === "more") ladder.unlocked = Math.max(ladder.unlocked, Math.min(4, ladder.hint + 1));
+    // A child who says they are stuck asks for more help, read by code too: the model's reading often leaves it out
+    // ("I don't know about the ten.", #605 practice run 2: C24-r2, C04-r1). A right answer to this step is not stuck.
+    const rightHere = checked.some((c) => c.problem === "target" && c.answer.step === ladder.step && c.answer.verdict === "right");
+    if (s.turn && saysStuck(s.turn.text) && !rightHere) ladder.unlocked = Math.max(ladder.unlocked, Math.min(4, ladder.hint + 1));
     if (reading.help === "show") ladder.unlocked = Math.max(ladder.unlocked, 3);
     // A lost carry is a located error: its regroup line (H1) is allowed at once.
     if (pendingRegroup(regroup).some((c) => c.at === ladder.step)) ladder.unlocked = Math.max(ladder.unlocked, 1);
@@ -1305,12 +1309,14 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       const asks = spoken.chosen.some((o) => ["write.answer", "write.yours", "check.explain", "check.thinking"].includes(o.line));
       if ((s.solved !== null || rightResult) && writeOffered && !asks) return no("invalid_proposal", "Ask the child to write the answer on paper (write.answer), or ask about their work: saying it is right again asks nothing.", allowedNow);
       if (main === "CHECK") {
-        if (p.understanding === undefined) return no("invalid_proposal", "Say what the check showed: evidence_observed or uncertain.", allowedNow);
-        if (p.understanding === "evidence_observed" && (s.answerGivenFirst || s.solved !== "child")) {
+        // No field reads as "uncertain", the value code's fallback uses: refusing it cost a repair that often lost the
+        // write line (#605 practice run 2: 32 of 63 calls; C09-r2, F02-r2).
+        const understanding = p.understanding ?? "uncertain";
+        if (understanding === "evidence_observed" && (s.answerGivenFirst || s.solved !== "child")) {
           return no("invalid_proposal", s.answerGivenFirst ? "Maya gave the answer, so understanding stays uncertain."
             : "The child's answer is not the checked answer now, so understanding stays uncertain.", allowedNow);
         }
-        s.understanding = p.understanding;
+        s.understanding = understanding;
       }
       s.writeAsked = true;
       if (s.state !== "TIME_CLOSE") moveTo(s, "WRITE_CLOSE");

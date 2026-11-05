@@ -584,3 +584,41 @@ describe("#605 practice run 1: the setup is read from the last sentence with num
     expect(c.session.hints).toBe(0);
   });
 });
+
+describe("#605 practice run 2: a child who says they are stuck asks for more help (C24-r2, C04-r1)", () => {
+  const onTens = () => {
+    const c = call();
+    c.child("Seven plus nine is sixteen.");
+    c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right")] } });
+    return c;
+  };
+  it.each(["I don't know about the ten.", "I don't get it.", "It's too hard.", "I have no idea.", "Do I just write the 16? I don't know about the ten."])("allows one level more after %j", (stuck) => {
+    const c = onTens();
+    c.child(stuck);
+    const r = c.propose({ act: "guide", step: "tens", level: 1, parts: [ln("step.regroup", { step: "tens" })] });
+    expect(r.refusal, JSON.stringify(r.refusal)).toBeNull();
+  });
+  it("allows only one level more per stuck turn", () => {
+    const c = onTens();
+    c.child("I don't know.");
+    expect(c.propose({ act: "guide", step: "tens", level: 2, parts: [ln("step.operation", { step: "tens" })] }).refusal?.code).toBe("hint_too_high");
+  });
+  it("does not unlock help on a turn with no stuck words", () => {
+    const c = onTens();
+    c.child("Okay.");
+    expect(c.propose({ act: "guide", step: "tens", level: 1, parts: [ln("step.regroup", { step: "tens" })] }).refusal?.code).toBe("hint_too_high");
+  });
+});
+
+describe("#605 practice run 2: an ask to write with no understanding field is read as uncertain (C09-r2, F02-r2)", () => {
+  it("accepts the request to write after 'I'm done!' and keeps understanding uncertain", () => {
+    const c = call();
+    c.child("It's 66.");
+    c.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { start: "has_work", answers: [ans(66, "result", "right")] } });
+    c.child("I'm done! Thanks, Maya.");
+    const r = c.propose({ act: "ask_write", parts: [ln("write.answer")] });
+    expect(r.refusal, JSON.stringify(r.refusal)).toBeNull();
+    expect(said(r.effects)).toContain("66");
+    expect(c.session.understanding).toBe("uncertain");
+  });
+});

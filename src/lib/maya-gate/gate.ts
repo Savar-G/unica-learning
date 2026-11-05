@@ -89,7 +89,8 @@ export interface Plan {
   warm?: PhraseGroup;
   /** The model's own words (D-197), said after the warm phrase and before the lines. */
   talk?: string[];
-  understanding?: "evidence_observed" | "uncertain";
+  /** null leaves the field out, as the model often does (#605 practice run 2). */
+  understanding?: "evidence_observed" | "uncertain" | null;
   /** Board offers to draw, by id. */
   draw?: string[];
   /** Draw every board offer this act has for the lines said, as the real model does (#605: an offer must not be refused). */
@@ -357,7 +358,7 @@ function build(plan: Plan, reading: Reading | undefined, input: ModelInput): unk
     reading: reading ?? null,
     step: step ?? null,
     level: level ?? null,
-    understanding: act === "ask_write" ? (plan.understanding ?? "uncertain") : null,
+    understanding: act === "ask_write" && plan.understanding !== null ? (plan.understanding ?? "uncertain") : null,
     draw: drawn.length > 0 ? drawn.map((offer) => ({ offer, place: null })) : null,
     board: null,
   };

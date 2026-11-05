@@ -910,6 +910,13 @@ export function saysWritten(text: string): boolean {
   return /\b(?:wrote|written)\b|\bput (?:it|that|\w+) (?:down|on)\b|\b(?:is|it's|its|that's) (?:on|in) my (?:paper|page|sheet|notebook)\b/i.test(plain);
 }
 
+/**
+ * The child says they are stuck: "I don't know (about the ten)", "I don't get it", "it's too hard", "no idea", "I'm
+ * stuck", "I'm confused". Code reads it as a request for one more level of help (#605 practice run 2: C24-r2).
+ */
+const STUCK = /\b(?:don['’]?t|do not|dont|didn['’]?t|did not)\s+(?:know|get|understand)\b|\bno idea\b|\bstuck\b|\bconfused\b|\btoo hard\b|\bnot sure (?:how|what)\b/i;
+export const saysStuck = (text: string) => STUCK.test(text);
+
 /** The text offers numbers as a choice ("is it 66 or 56?"): none of them is the child's answer yet. */
 export const offersChoice = (text: string) => text.split(/\bor\b/i).filter((p) => valuesIn(p).length > 0).length > 1;
 
