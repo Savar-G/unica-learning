@@ -77,7 +77,7 @@ export function ParentDashboardHome({ dashboard, kids, addressChild, phone, sent
                 </Link>}
               </span>
               {phone && state.kind !== "wait"
-                ? <SendLink childId={kid.id} name={kid.first_name} sent={sentHere} />
+                ? <SendLink key={kid.id} childId={kid.id} name={kid.first_name} sent={sentHere} />
                 : <StartTest childId={kid.id} name={kid.first_name} state={state} when={startWhen(state, timeZone)} report={reportFor(kid.id, state)} />}
               {current.has(kid.id) && <div className="acct-desk"><DeskText name={kid.first_name} workbook={current.get(kid.id)!} pinSet={dashboard.pinSet} /></div>}
               {(minutes.has(kid.id) || chats.has(kid.id)) && <MinutesRow name={kid.first_name} minutes={minutes.get(kid.id)} chat={chats.get(kid.id)} />}

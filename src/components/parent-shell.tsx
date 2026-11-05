@@ -13,8 +13,8 @@ import "./parent-shell.css";
 
 // The dashboard's frame (#551, spec #544, the mock's sidebar): the child block, Open the desk and the tabs. On a phone
 // the sidebar's parts move: the child block to the top of the page, the tabs to a bottom bar (phoneNav in
-// src/lib/parent-shell.ts). The layout renders it once per page load; the address picks the child, so it follows every
-// click.
+// src/lib/parent-shell.ts). The layout renders it once per page load; the address picks the child when it names one, and
+// otherwise the child stays the one in view.
 
 const ICONS: Record<ChildTab | "more", ReactNode> = {
   overview: <><rect x="3.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="13.5" width="7" height="7" rx="1.5" /></>,
@@ -49,7 +49,10 @@ interface ShellProps {
 export function ParentShell({ kids, remembered, pinSet, timeZoneSaved, children }: ShellProps) {
   const pathname = usePathname();
   const queryChild = useSearchParams().get("child");
-  const child = pickChild(kids, addressChild(pathname, queryChild, kids), remembered);
+  // The layout stays mounted across pages, so `remembered` is only the value at page load: the child in view is state.
+  const [selected, setSelected] = useState(remembered);
+  const child = pickChild(kids, addressChild(pathname, queryChild, kids), selected);
+  if (child && child.id !== selected) setSelected(child.id);
   const links = tabLinks(child);
   const current = activeTab(pathname, links);
   const nav = phoneNav(links);
