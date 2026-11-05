@@ -15,6 +15,7 @@ import type { DraftRendering, RunError, RunFrame, RunRunner, RunSolve, RunStatus
 import type { AiCallRecord, AiProvider } from "@/lib/ai-fallback";
 import type { AiCallKind } from "@/lib/workbook-ai";
 import type { RenderProblem } from "@/lib/workbook-render";
+import type { PagePrintContract, PrintedRegion, ScanManifest, TeachingContext } from "@/lib/workbook-print-contract";
 import type { BoardHistory } from "@/lib/board-history";
 import type { Outcome, WordingHistory } from "@/lib/maya";
 import type { AlertStatus, CallKind, CallRecord, CallStatus, FlagLevel } from "@/lib/maya-call";
@@ -57,7 +58,9 @@ type ColumnTypes = KnownColumns<{
   parents: { source: Record<string, string> };
   reports: { model: ReportModel };
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };
-  workbooks: { status: WorkbookStatus };
+  workbooks: { status: WorkbookStatus; print_manifest: ScanManifest | null };
+  workbook_pages: { print_contract: PagePrintContract | null };
+  workbook_questions: { regions: PrintedRegion[] | null; teaching: TeachingContext | null };
   workbook_drafts: { draft: GeneratedWorkbook };
   workbook_emails: { kind: WorkbookEmailKind; status: WorkbookEmailStatus; delivery: WorkbookDelivery | Record<string, never> };
   workbook_runs: { status: RunStatus; step: RunStep | null; errors: RunError[]; runner: RunRunner };
