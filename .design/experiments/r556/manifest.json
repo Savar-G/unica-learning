@@ -1,0 +1,18 @@
+{
+  "round": "r556",
+  "ticket": "#556 (spec #544, parent dashboard): self-serve family delete",
+  "route": "A fully specified screen on the chosen dashboard frame, so no variants. Hidden behind PARENT_DASHBOARD_ENABLED (D-236, D-249): Savar approves on the one review page before any family sees it.",
+  "picked": null,
+  "picked_by": "waiting for Savar on the one review page (D-249). The privacy and terms changes are on public pages, so they need his approval before merge (D-236).",
+  "how_captured": "T3 preview tools (the Aside CLI is down), local dev server with no Stripe key, signed in as a test family (test_accounts). The final button was pressed only once, against a fetch stub inside the page, to show the error text: no request reached the route. No deletion ran.",
+  "viewports": { "desktop": [1440, 900], "desktop_long": [1440, 1500], "phone": [390, 844], "phone_closed": [390, 1000], "phone_long": [390, 2100] },
+  "screens": {
+    "desktop-closed.png": "Account tab, delete closed",
+    "desktop-open.png": "Delete open: what stops, what we delete, what stays, then the form, with the button off",
+    "desktop-error.png": "Plans stopped, deletion not finished (stubbed answer)",
+    "desktop-confirmation.png": "/family-deleted",
+    "phone-closed.png": "Account tab on a phone, delete closed",
+    "phone-error.png": "Delete open on a phone, with the same stubbed answer; the page width has no overflow",
+    "phone-confirmation.png": "/family-deleted on a phone"
+  }
+}

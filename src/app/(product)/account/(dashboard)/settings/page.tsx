@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { AddChild, SignOut } from "@/components/account";
 import { BillingSection } from "@/components/account-billing-section";
+import { FamilyDelete } from "@/components/family-delete";
 import { SupportPage } from "@/components/support-page";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { familyProvince, familyZone } from "@/lib/family-time";
@@ -53,6 +54,7 @@ export default async function AccountSettings({ searchParams }: PageProps<"/acco
       {await childDetails(db)}
       <AddChild province={kids?.at(-1)?.province ?? "BC"} />
       <p className="small acct-out">Signed in. <SignOut /></p>
+      <FamilyDelete />
     </SupportPage>
   );
 }

@@ -377,3 +377,22 @@ export async function cancelPlan(s: Stripe, customer: string): Promise<CancelPla
   }
   return { ok: true, changed, endsAt };
 }
+
+const FAMILY_DELETE_REQUEST = { timeout: 8000, maxNetworkRetries: 1 };
+
+/**
+ * Every plan of the customer that is not over, for the family delete (#556). Any state other than the two ends counts,
+ * a state Stripe adds later too. Throws when it cannot read the whole list.
+ */
+export async function runningPlans(s: Stripe, customer: string): Promise<string[]> {
+  const all = await customerSubscriptions(s, customer, FAMILY_DELETE_REQUEST);
+  return all.filter((x) => x.status !== "canceled" && x.status !== "incomplete_expired").map((x) => x.id);
+}
+
+/**
+ * The family delete ends a plan now, not at the end of the month, because the family's data is about to go. No refund
+ * and no last invoice: nothing is prorated. Stripe stops collecting the customer's open invoices when a plan is cancelled.
+ */
+export async function stopPlanNow(s: Stripe, plan: string): Promise<void> {
+  await s.subscriptions.cancel(plan, { invoice_now: false, prorate: false }, FAMILY_DELETE_REQUEST);
+}
