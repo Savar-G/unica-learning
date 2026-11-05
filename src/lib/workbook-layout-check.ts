@@ -331,19 +331,25 @@ function choiceKinds(questions: ChoiceQuestions): string[] {
 export function choiceInstruction(questions: ChoiceQuestions): string | null {
   const kinds = choiceKinds(questions);
   if (!kinds.length) return null;
-  if (kinds.length === 1) return `Circle ${kinds[0]}.`;
-  const last = kinds.at(-1) === "your answer" ? "another answer" : kinds.at(-1);
-  return `Circle ${kinds.slice(0, -1).join(", ")}, or ${last}.`;
+  // (More than one kind: one short line. "Circle true or false, or another answer." wrapped and stopped U4's Day 10
+  // review pages filling, 14 questions to 8, Codex on #633.)
+  return kinds.length === 1 ? `Circle ${kinds[0]}.` : "Circle your answers.";
 }
 
-/** Check 5: every circled page says "circle" and names each printed true/false or yes/no kind. */
+/** Check 5: every circled page says "circle" and names each printed choice kind (true or false, yes or no, any other). */
 export function circleProblem(content: DayContent | null | undefined, questions: readonly { package: QuestionPackage | null; place?: string | null }[]): string | null {
   if (!content) return null;
   const instruction = content.subtitle ?? "";
   if (circled(questions).length && !/\bcircle\b/i.test(instruction)) return "the page has a question to circle, but its instruction does not say to circle";
-  const missing = choiceKinds(questions).find(kind => kind === "true or false"
+  // (Every kind, other choices too: "Circle true or false" on a page that also prints never/sometimes/always passed,
+  // Codex on #633.)
+  const kinds = choiceKinds(questions);
+  // A page with more than one kind says "Circle your answers." (each kind is then a choice to circle).
+  if (kinds.length > 1) return /\bcircle\s+your\s+answers\b/i.test(instruction) ? null : `the page prints ${kinds.join(", ")}, but its instruction does not say "Circle your answers."`;
+  const missing = kinds.find(kind => kind === "true or false"
     ? !/\b(?:true\s+or\s+false|false\s+or\s+true)\b/i.test(instruction)
-    : kind === "yes or no" && !/\b(?:yes\s+or\s+no|no\s+or\s+yes)\b/i.test(instruction));
+    : kind === "yes or no" ? !/\b(?:yes\s+or\s+no|no\s+or\s+yes)\b/i.test(instruction)
+    : !/\b(?:your|another)\s+answer\b/i.test(instruction));
   return missing ? `the page prints ${missing}, but its instruction does not name ${missing}` : null;
 }
 

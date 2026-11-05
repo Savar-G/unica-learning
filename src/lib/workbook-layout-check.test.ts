@@ -167,10 +167,16 @@ describe("the layout checks", () => {
     expect(choiceInstruction([truth])).toBe("Circle true or false.");
     expect(choiceInstruction([yesNo])).toBe("Circle yes or no.");
     expect(choiceInstruction([other])).toBe("Circle your answer.");
-    expect(choiceInstruction([truth, yesNo])).toBe("Circle true or false, or yes or no.");
-    expect(choiceInstruction([yesNo, truth, truth])).toBe("Circle true or false, or yes or no.");
-    expect(choiceInstruction([truth, yesNo, other])).toBe("Circle true or false, yes or no, or another answer.");
+    expect(choiceInstruction([truth, yesNo])).toBe("Circle your answers.");
+    expect(choiceInstruction([yesNo, truth, truth])).toBe("Circle your answers.");
+    expect(choiceInstruction([truth, yesNo, other])).toBe("Circle your answers.");
     expect(choiceInstruction([question(["+", "−"], "tick"), question(["true", "false"], "circle", "warm-up")])).toBeNull();
+    // Codex on #633: any other choice must be named too (never / sometimes / always beside true or false, U4).
+    const c = page().content as DayContent;
+    const always = question(["never", "sometimes", "always"]);
+    expect(circleProblem({ ...c, subtitle: "Circle true or false." }, [truth, always])).toMatch(/does not say "Circle your answers."/);
+    expect(circleProblem({ ...c, subtitle: choiceInstruction([truth, always])! }, [truth, always])).toBeNull();
+    expect(circleProblem({ ...c, subtitle: "Circle your answer." }, [other])).toBeNull();
   });
 
   it("6: fail an instruction printed twice on a page, from its words or as printed", () => {

@@ -22,9 +22,9 @@ it.each(["Circle true or false.", "Circle yes or no.", "Circle your answer."])("
   p.questions = p.questions.map((q, i) => ({ ...q, place: i ? "spot-the-error" : "on-your-own", package: { ...q.package!, item: {
     ...q.package!.item!, regions: [{ id: "answer", kind: "choice", mark: i ? "tick" : "circle", label: null, choices: choices[i], answer: choices[i][0] }],
   } } }));
-  expect(workbookQuality([p]).issues).toContainEqual(expect.objectContaining({ page: 3, kind: "coverage", reason: expect.stringMatching(/instruction does not name/) }));
+  expect(workbookQuality([p]).issues).toContainEqual(expect.objectContaining({ page: 3, kind: "coverage", reason: expect.stringMatching(/instruction does not (name|say)/) }));
   expect(workbookQuality([p]).ready).toBe(false);
-  p.content.subtitle = "Write the answer in the box. Circle true or false, or yes or no.";
+  p.content.subtitle = "Write the answer in the box. Circle your answers.";
   expect(workbookQuality([p]).issues.filter(i => /instruction/.test(i.reason))).toEqual([]);
   for (const i of [0, 1]) {
     const single = { ...p, questions: [p.questions[i]], content: { ...p.content, subtitle: i ? "Circle yes or no." : "Circle true or false." } };

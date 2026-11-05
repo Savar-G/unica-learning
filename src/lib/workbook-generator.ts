@@ -2324,14 +2324,9 @@ function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuesti
       const circle = !!circleLine, boxes = formats.has("boxes"), write = [...formats].some(f => !["circle", "boxes"].includes(f));
       const writes = questions.some(q => q.package && q.place !== "warm-up" && (q.package.item?.regions ?? []).some(r => r.kind === "box"));
       const boxLine = writes && write ? (input.plan.level === 4 ? "Fill in the boxes." : "Fill in the missing numbers and write the answers in the boxes.") : "Fill in the missing numbers.";
-      const writeLine = input.plan.level <= 9 && circleLine?.includes(",") ? "Write in the box." : "Write the answer in the box.";
-      const parts = [boxes ? boxLine : writes ? writeLine : null, circle ? circleLine : null].filter(Boolean);
+      const parts = [boxes ? boxLine : writes ? "Write the answer in the box." : null, circle ? circleLine : null].filter(Boolean);
       if (parts.length) content.subtitle = parts.join(" ");
-    } else if (circleLine && !/\bcircle\b/i.test(content.subtitle ?? "")) {
-      // Leave room for every choice kind on Friday's instruction line.
-      const lead = w.page.type === "friday-5" && circleLine.includes(",") ? "Review, then try five with no hints." : content.subtitle;
-      content.subtitle = `${lead ? `${lead.replace(/\s*$/, "")} ` : ""}${circleLine}`;
-    }
+    } else if (circleLine && !/\bcircle\b/i.test(content.subtitle ?? "")) content.subtitle = `${content.subtitle ? `${content.subtitle.replace(/\s*$/, "")} ` : ""}${circleLine}`;
     if (w.page.extraPractice) Object.assign(content, { extraPractice: true, title: "Extra practice", subtitle: `Answer questions from this workbook.${circleLine ? ` ${circleLine}` : ""}` });
   }
   return content;

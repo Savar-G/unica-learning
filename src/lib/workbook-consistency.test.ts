@@ -24,7 +24,7 @@ it("names both true/false and Spot the error's yes/no in a first-customer page i
     && p.questions.some(q => q.package?.item?.regions.some(r => r.kind === "choice" && r.choices.includes("true"))));
   expect(pages.length).toBeGreaterThan(0);
   for (const p of pages) {
-    expect(p.content?.kind === "day" && p.content.subtitle).toBe("Write the answer in the box. Circle true or false, or yes or no.");
+    expect(p.content?.kind === "day" && p.content.subtitle).toBe("Write the answer in the box. Circle your answers.");
   }
 });
 
