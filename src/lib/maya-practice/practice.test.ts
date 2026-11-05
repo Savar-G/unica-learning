@@ -410,16 +410,57 @@ describe("the judge", () => {
       expect(reportMarkdown(report)).toContain("J02 not applicable");
     });
 
-    it("code reads a wrong number the child says first as an error, but not correct partial work or a repeat of Maya's example", () => {
+    it("code allows J02 not applicable only with proof of no error: known-correct numbers, true equations, a certain reading", () => {
       const turns = (...xs: [string, string][]) => ({ turns: xs.map(([who, text]) => (who === "child" ? { kind: "child", text } : { kind: "maya", output: { say: [text] } })) }) as unknown as MayaTrace;
-      expect(childMathErrors(C07, turns(["child", "Two plus three is five. Plus the ten I carried, that's six. So 66."]))).toEqual([]);
-      expect(childMathErrors(C07, turns(["child", "20 plus 30 is 50, and 7 plus 9 is 16. So I got 66."]))).toEqual([]);
-      expect(childMathErrors(C07, turns(["child", "7 plus 9 is 15."]))).toEqual([{ turn: 1, value: "15" }]);
-      expect(childMathErrors(C07, turns(["child", "I got 56."]))).toEqual([{ turn: 1, value: "56" }]);
-      expect(childMathErrors(C07, turns(["maya", "Add the ones: 8 + 5 = 13."], ["child", "8 plus 5 is 13."]))).toEqual([]);
-      expect(childMathErrors(C07, turns(["child", "8 plus 5 is 13."], ["maya", "Add the ones: 8 + 5 = 13."]))).toEqual([{ turn: 1, value: "8" }, { turn: 1, value: "13" }]);
-      expect(childMathErrors(byId("C09"), turns(["child", "27 plus 40 is 67, take away 1 is 66."]))).toEqual([]);
-      expect(childMathErrors(C07, turns(["child", "27 plus 40 is 67, take away 1 is 66."]))).toEqual([{ turn: 1, value: "40" }, { turn: 1, value: "67" }]);
+      const clean = (c: PracticeCase, ...xs: [string, string][]) => childMathErrors(c, turns(...xs));
+      // Proven clean: every number is correct work and every stated equation holds.
+      expect(clean(C07, ["child", "7 plus 9 is 16. 2 plus 3 plus 1 is 6. So I got 66."])).toEqual([]);
+      expect(clean(C07, ["child", "20 plus 30 is 50, and 7 plus 9 is 16. So I got 66."])).toEqual([]);
+      expect(clean(C07, ["child", "Seven plus nine is sixteen, so I carry the ten. I got sixty-six."])).toEqual([]);
+      expect(clean(byId("C09"), ["child", "I did 27 plus 40, then took away one, and got 66."])).toEqual([]);
+      expect(clean(byId("C09"), ["child", "27 plus 40 is 67, take away 1 is 66."])).toEqual([]);
+      // Codex review of #609 (P1): each number is correct work somewhere, but the equation is false.
+      expect(clean(C07, ["child", "7 plus 9 is 16. 2 plus 3 plus 1 is 5. So I got 66."])).toEqual([{ turn: 1, reason: "2 + 3 + 1 is not 5" }]);
+      // Codex review of #609 (P1): Maya said 15 in her example; a false equation is an error whoever said its numbers.
+      expect(clean(byId("C01"), ["maya", "Add the ones: 8 + 5 = 13. 18 + 15 = 33."], ["child", "7 plus 9 is 15. So I got 66."])).toEqual(
+        expect.arrayContaining([{ turn: 1, reason: "7 + 9 is not 15" }, { turn: 1, reason: "15 is not correct work on this question" }]));
+      // A number outside correct work is an error even when Maya said it first (the child echoing her example).
+      expect(clean(C07, ["maya", "Add the ones: 8 + 5 = 13."], ["child", "8 plus 5 is 13."])).toEqual([
+        { turn: 1, reason: "8 is not correct work on this question" }, { turn: 1, reason: "13 is not correct work on this question" }]);
+      expect(clean(C07, ["child", "I got 56."])).toEqual([{ turn: 1, reason: "56 is not correct work on this question" }]);
+      expect(clean(C07, ["child", "27 plus 40 is 67, take away 1 is 66."])).toEqual([
+        { turn: 1, reason: "40 is not correct work on this question" }, { turn: 1, reason: "67 is not correct work on this question" }]);
+      // Not certain, so J02 stays required: an operation with no number after it or before it, a stated sum with a
+      // number but no "is", or a reading code's own numbers disagree with.
+      expect(clean(C07, ["child", "2 plus 3 plus 1, 6. I got 66."])).toEqual([{ turn: 1, reason: "a sum with a number after it but no \"is\"" }]);
+      expect(clean(C07, ["child", "Plus the ones, I got 66."])).toEqual([{ turn: 1, reason: "an operation with no number before it" }]);
+      expect(clean(C07, ["child", "7 plus the ones is 16."])).toEqual([{ turn: 1, reason: "an operation with no number after it" }]);
+      expect(clean(C07, ["child", "Two plus three is five. Plus the ten I carried, that's six."])).toEqual([{ turn: 1, reason: "5 + 10 is not 6" }]);
+      // The verb "add": "add A and B" is a sum; "add" with no numbers says none unless a result follows in its sentence.
+      expect(clean(C07, ["child", "I got 66. I added 7 and 9 to get 16, wrote the 6, and carried the 1."])).toEqual([]);
+      expect(clean(C07, ["child", "Um, I add the ones. 7 plus 9 is 16."])).toEqual([]);
+      expect(clean(C07, ["child", "I added seven and nine. That's sixteen."])).toEqual([]);
+      expect(clean(C07, ["child", "Um, do I add 2 and 3 and 1?"])).toEqual([]);
+      expect(clean(C07, ["child", "I added 7 and 9 to get 15."])).toEqual(expect.arrayContaining([{ turn: 1, reason: "7 + 9 is not 15" }]));
+      expect(clean(C07, ["child", "I added 2 and 3 and 1 and got 5."])).toEqual([{ turn: 1, reason: "2 + 3 + 1 is not 5" }]);
+      expect(clean(C07, ["child", "I added the tens and got 5."])).toEqual([{ turn: 1, reason: "an addition with no numbers before a result" }]);
+      expect(clean(C07, ["child", "I added 1 to get 6."])).toEqual([{ turn: 1, reason: "an addition code cannot read" }]);
+      expect(clean(C07, ["child", "I think I add the tens: 2 + 3 + 1 is 6. So it's 66!"])).toEqual([]);
+      expect(clean(C07, ["child", "I think I add the tens: 2 + 3 + 1 is 5."])).toEqual([{ turn: 1, reason: "2 + 3 + 1 is not 5" }]);
+    });
+
+    it.each([
+      // Codex review of #609 (P1), through runSuite and buildReport with a judge that marks J02 not applicable.
+      ["C07", "7 plus 9 is 16. 2 plus 3 plus 1 is 5. So I got 66.", 0],
+      ["C01", "7 plus 9 is 15. So I got 66.", 4],
+    ])("%s: J02 not applicable is refused when the child says '%s'", async (id, line, at) => {
+      const c = byId(id);
+      const script = id === "C07" ? [line, "Because the ones made sixteen.", "I wrote it."] : c.fakeScript.map((text, i) => (i === at ? line : text));
+      const notApplicableJudge = fakeJudge({ answer: (input) => Object.fromEntries(input.rubric.map((d) => [d.id, d.id === "J02" ? notApplicable : { status: "scored", score: 3, turns: [1], reason: "ok" }])) });
+      const { report } = await suite([c], { runs: 1, judge: notApplicableJudge, simulator: () => sayEach(script) });
+      expect(report.runs[0].invalid).toEqual([]);
+      expect(report.runs[0]).toMatchObject({ status: "unjudgeable", unjudgeable: expect.stringContaining("J02: marked not applicable") });
+      expect(report.passed).toBe(false);
     });
 
     it("the judge's schema offers not_applicable for J02 only when code found no error", () => {

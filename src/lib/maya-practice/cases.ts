@@ -176,10 +176,9 @@ export interface PracticeCase {
   dimensions: Dimension[];
   /**
    * Dimensions of `dimensions` that apply only when the child made a math error (J02, error response), for a persona
-   * who may solve it with no error. Code reads the error from the child's numbers (`childMathErrors`): when the child
-   * said a number outside correct work on the question, the dimension must be scored as any other; when not, the judge
-   * may score it or mark it "not_applicable" (the 2026-11-05 run: 14 runs unjudgeable because the judge, rightly, found
-   * no error to respond to).
+   * who may solve it with no error. The judge may mark it "not_applicable" only when code proves the child's turns free
+   * of math errors (`childMathErrors` is empty); otherwise it must be scored as any other (the 2026-11-05 run: 14 runs
+   * unjudgeable because the judge, rightly, found no error to respond to).
    */
   errorOnly?: Dimension[];
   /** Numbers of this persona's own correct method that are not column work (C09: 27 + 40 = 67, then take away 1). */
@@ -486,24 +485,144 @@ export function correctNumbers(c: PracticeCase): Set<string> {
 }
 
 /**
- * The child's math errors in a call, read by code from the saved trace: each number a child turn says that is not
- * correct work on the question (`correctNumbers`) and that Maya has not said before it in the call (the child repeating
- * her easier example is not an error; a wrong number the child says first is). Over-counts on purpose (a correct
- * partial such as "2 plus 3 is 5" counts), so a dimension in `errorOnly` is required whenever there may have been an
- * error. A negative number is read as its size: the reader takes "8 minus 2" as -8.
+ * Why code cannot prove a call free of math errors: one reason per problem in a child turn. `errorOnly` dimensions
+ * (J02) may be marked not applicable only when this is empty, so it fails closed: no proof, J02 stays required.
+ * A child turn is proven clean only when all of these hold (Codex review of #609, P1):
+ * - every number is correct work on the question (`correctNumbers`). A number Maya said is not excused: a child who
+ *   repeats her easier example ("8 plus 5 is 13") or takes its result ("7 plus 9 is 15") keeps J02 required;
+ * - every stated equation holds, whoever said its numbers: "2 plus 3 plus 1 is 5" is an error although each number is
+ *   correct work somewhere;
+ * - the reading is certain: code's own tokens find the same numbers as the reader (`valuesIn`), and no operation lacks
+ *   a number on either side, or a stated result ("2 plus 3 plus 1, 6"). Anything else counts as a possible error.
+ * Over-counts on purpose: "plus the ten I carried" reads as + 10. A negative number is read as its size: the reader
+ * takes "8 minus 2" as -8.
  */
-export function childMathErrors(c: PracticeCase, trace: Pick<MayaTrace, "turns">): { turn: number; value: string }[] {
+export function childMathErrors(c: PracticeCase, trace: Pick<MayaTrace, "turns">): { turn: number; reason: string }[] {
   const correct = correctNumbers(c);
-  const mayaSaid = new Set<string>();
-  const out: { turn: number; value: string }[] = [];
+  const out: { turn: number; reason: string }[] = [];
   let n = 0;
   for (const t of trace.turns) {
-    if (t.kind === "maya") for (const s of t.output?.say ?? []) for (const v of valuesIn(s)) mayaSaid.add(numberKey(positive(v)));
     if (t.kind !== "child") continue;
     n++;
-    for (const v of valuesIn(t.text).map(positive)) {
-      if (!correct.has(numberKey(v)) && !mayaSaid.has(numberKey(v))) out.push({ turn: n, value: v.type === "number" ? String(v.value) : numberKey(v) });
+    const add = (reason: string) => out.push({ turn: n, reason });
+    const read = valuesIn(t.text).map(positive);
+    for (const v of read) if (!correct.has(numberKey(v))) add(`${v.type === "number" ? v.value : numberKey(v)} is not correct work on this question`);
+    const { tokens, problems } = mathTokens(t.text);
+    for (const reason of problems) add(reason);
+    const mine = tokens.flatMap((x) => (x.kind === "num" ? [x.value] : [])).sort((a, b) => a - b);
+    const theirs = read.map((v) => (v.type === "number" ? v.value : Number.NaN)).sort((a, b) => a - b);
+    if (mine.length !== theirs.length || mine.some((x, i) => x !== theirs[i])) add(`code read the numbers ${JSON.stringify(mine)} but the reader ${JSON.stringify(theirs)}`);
+    for (const reason of claimProblems(tokens)) add(reason);
+  }
+  return out;
+}
+
+type MathToken = { kind: "num"; value: number } | { kind: "op"; op: "+" | "-" | "×" } | { kind: "eq" } | { kind: "add" } | { kind: "and" } | { kind: "stop" };
+
+const UNITS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
+const TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+const TOKEN = new RegExp([
+  `(?<num>\\d+|\\b(?:${TENS.slice(2).join("|")})(?:[- ](?:${UNITS.slice(1, 10).join("|")}))?\\b|\\b(?:${[...UNITS].reverse().join("|")})\\b)`,
+  "(?<plus>\\+|\\bplus\\b)",
+  "(?<add>\\badd(?:s|ed|ing)?\\b)",
+  "(?<and>\\band\\b)",
+  "(?<minus>−|(?<=[\\d\\s])-(?=[\\s\\d])|\\bminus\\b|\\b(?:take|takes|took|taking) away\\b|\\bsubtract(?:s|ed|ing)?\\b)",
+  "(?<times>×|\\btimes\\b)",
+  "(?<eq>=|\\b(?:is|equals?|equal to|makes?|gives?|got|gets?|get|that'?s|it'?s|are)\\b)",
+  "(?<stop>[.!?;])",
+].join("|"), "giu");
+
+/**
+ * The numbers, operations and "is" words of a child turn, in order; every other word is left out. The verb "add" is
+ * read as a sum only in the form "add A and B (and C)": "I added 7 and 9 to get 16" is 7 + 9 = 16. A verb "add" with
+ * no numbers ("I add the ones") says no sum, unless a result follows in its sentence ("I added the tens and got 5"):
+ * then code cannot read the sum, and the turn is not proven clean.
+ */
+function mathTokens(text: string): { tokens: MathToken[]; problems: string[] } {
+  const raw: MathToken[] = [];
+  for (const m of text.toLowerCase().replace(/[’]/g, "'").matchAll(TOKEN)) {
+    const g = m.groups!;
+    if (g.num) raw.push({ kind: "num", value: wordNumber(g.num) });
+    else if (g.plus) raw.push({ kind: "op", op: "+" });
+    else if (g.add) raw.push({ kind: "add" });
+    else if (g.and) raw.push({ kind: "and" });
+    else if (g.minus) raw.push({ kind: "op", op: "-" });
+    else if (g.times) raw.push({ kind: "op", op: "×" });
+    else if (g.stop) raw.push({ kind: "stop" });
+    else if (raw.at(-1)?.kind !== "eq") raw.push({ kind: "eq" });
+  }
+  const tokens: MathToken[] = [];
+  const problems: string[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const t = raw[i];
+    if (t.kind !== "add") {
+      if (t.kind === "num" || t.kind === "op" || t.kind === "eq") tokens.push(t);
+      continue;
     }
+    // "add A and B (and C)": a sum.
+    const terms: MathToken[] = [];
+    let j = i + 1;
+    while (raw[j]?.kind === "num") {
+      terms.push(raw[j]);
+      if (raw[j + 1]?.kind === "and" && raw[j + 2]?.kind === "num") j += 2;
+      else { j++; break; }
+    }
+    if (terms.length >= 2) {
+      terms.forEach((x, k) => tokens.push(...(k === 0 ? [x] : [{ kind: "op", op: "+" } as MathToken, x])));
+      i = j - 1;
+      continue;
+    }
+    // "I add the tens: 2 + 3 + 1 is 6": the verb names the step, and the sum after it is read as written.
+    if (terms.length === 1 && raw[j]?.kind === "op") continue;
+    if (terms.length === 1) { problems.push("an addition code cannot read"); continue; }
+    // "add" with no numbers: a result later in its sentence is a sum code cannot read.
+    for (let k = i + 1; k < raw.length && raw[k].kind !== "stop"; k++) {
+      if (raw[k].kind === "eq" && raw[k + 1]?.kind === "num") { problems.push("an addition with no numbers before a result"); break; }
+    }
+  }
+  return { tokens, problems };
+}
+function wordNumber(word: string): number {
+  if (/^\d+$/.test(word)) return Number(word);
+  const [tens, unit] = word.split(/[- ]/);
+  const t = TENS.indexOf(tens);
+  return t >= 2 ? t * 10 + (unit ? UNITS.indexOf(unit) : 0) : UNITS.indexOf(word);
+}
+
+/** Each stated equation that does not hold, and each operation code cannot read with certainty. */
+function claimProblems(tokens: MathToken[]): string[] {
+  const out: string[] = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const t = tokens[i];
+    if (t.kind === "eq") { i++; continue; }
+    if (t.kind === "op") { out.push("an operation with no number before it"); i++; continue; }
+    if (t.kind !== "num") { i++; continue; }
+    // An expression: a number, then operations each followed by a number.
+    const terms = [t.value];
+    const ops: MathToken[] = [];
+    let j = i + 1;
+    let broken = false;
+    while (tokens[j]?.kind === "op") {
+      const next = tokens[j + 1];
+      if (next?.kind !== "num") { out.push("an operation with no number after it"); broken = true; j++; break; }
+      ops.push(tokens[j]);
+      terms.push(next.value);
+      j += 2;
+    }
+    if (broken || ops.length === 0) { i = broken ? j : i + 1; continue; }
+    const text = terms.map((x, k) => (k === 0 ? `${x}` : `${(ops[k - 1] as { op: string }).op} ${x}`)).join(" ");
+    const value = terms.slice(1).reduce((acc, x, k) => { const op = (ops[k] as { op: string }).op; return op === "+" ? acc + x : op === "-" ? acc - x : acc * x; }, terms[0]);
+    if (tokens[j]?.kind === "eq") {
+      const result = tokens[j + 1];
+      if (result?.kind !== "num") { out.push(`"${text}" is said to equal something code cannot read`); i = j + 1; continue; }
+      if (result.value !== value) out.push(`${text} is not ${result.value}`);
+      // The result may start the next sum ("2 plus 3 is 5, plus 1 is 6").
+      i = j + 1;
+      continue;
+    }
+    if (tokens[j]?.kind === "num") out.push('a sum with a number after it but no "is"');
+    i = j;
   }
   return out;
 }
