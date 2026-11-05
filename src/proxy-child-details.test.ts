@@ -3,6 +3,8 @@ import { expect, it, vi } from "vitest";
 import { proxy } from "./proxy";
 
 // While the child's desk is open on this device, the Account tab's name and learning card routes stay closed (#555).
+// The secret key is read only when the deletion state read fails, which these tests never do.
+vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => null }));
 vi.mock("@/lib/scan-pages-access", () => ({ scanPagesAccess: async () => false }));
 vi.mock("@supabase/ssr", () => ({ createServerClient: () => ({ auth: { getClaims: async () => ({ data: { claims: { sub: "00000000-0000-4000-8000-000000000001" } }, error: null }) },
   // The proxy reads the family's deletion state first (#556); no deletion is queued for this family.

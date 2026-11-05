@@ -8,29 +8,35 @@ import { parentId, sessionClient } from "@/lib/supabase-auth";
 export const metadata = pageMetadata({ path: FAMILY_DELETED_PATH, title: "Your family's account is being deleted", description: "What happens after a family's account is deleted.", index: false });
 
 /**
- * True only for the parent's own delete, which read that no plan can charge before it wrote the request. A signed-in parent
- * is told by the request row. After their own delete the session has ended, so this browser's cookie says it. An admin's
- * request stops no plan, so anyone else, and any failed read without the cookie, gets the neutral words.
+ * What this page may say about plans. Only the parent's own delete stops the plans, after it read that none can charge.
+ *
+ * - A signed-in parent: only their own request row counts ("own"). No request, an admin's request or a failed read gets the
+ *   neutral words, and this browser's cookie is never read for them: it may come from another family's delete.
+ * - Signed out: after their own delete the session has ended, so the cookie is all there is ("browser"). It proves only that
+ *   a delete made on this browser in the last day stopped that family's plans, not who is reading, so the words say that.
  */
-async function plansStopped(): Promise<boolean> {
-  const here = (await cookies()).get(PLANS_STOPPED_COOKIE)?.value === "1";
+async function plansStopped(): Promise<"own" | "browser" | null> {
   const db = await sessionClient();
-  if (!(await parentId(db))) return here;
-  const { data, error } = await db.rpc("my_family_deletion_state");
-  if (error) console.error("[family-delete] state read failed", error.code);
-  // The generated types never say that a function can answer null.
-  const state = error ? null : (data as string | null);
-  return state ? state === "plans_stopped" : here;
+  if (await parentId(db)) {
+    const { data, error } = await db.rpc("my_family_deletion_state");
+    if (error) console.error("[family-delete] state read failed", error.code);
+    // The generated types never say that a function can answer null.
+    return !error && (data as string | null) === "plans_stopped" ? "own" : null;
+  }
+  return (await cookies()).get(PLANS_STOPPED_COOKIE)?.value === "1" ? "browser" : null;
 }
 
 // Where a parent lands when their family's deletion is queued (#556). It holds no family data. The words are true whether
 // the deletion has finished or the daily job finishes it.
 export default async function FamilyDeleted() {
   const help = <p>Questions? Email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</p>;
-  if (!(await plansStopped())) return <SupportPage label="" title="Your family's account is being deleted.">{help}</SupportPage>;
+  const plans = await plansStopped();
+  if (!plans) return <SupportPage label="" title="Your family's account is being deleted.">{help}</SupportPage>;
   return (
     <SupportPage label="" title="Your family's account is being deleted.">
-      <p>We stopped every workbook plan. We will make no more charges.</p>
+      {plans === "own"
+        ? <p>We stopped every workbook plan. We will make no more charges.</p>
+        : <p>A family&apos;s account was deleted on this browser in the last day. We stopped every workbook plan for that family, and that family will get no more charges.</p>}
       <p>We are deleting your account, your children&apos;s details, tests, reports, workbooks, page photos and Maya notes. If a step fails, we keep your request and try again. Every device signs out by the time the deletion finishes.</p>
       <p>A copy of each test without names stays. It has no names, email, postal code, drawings, typed working or anything written in your own words, and it is not linked to your family. Invoices and payment records stay with our payment provider.</p>
       {help}
