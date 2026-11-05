@@ -33,8 +33,14 @@ import {
   takePen,
   undo,
   chatBoardView,
+  chatViewKey,
+  historyFromLog,
+  inkLog,
+  withInkLog,
   refusedBatches,
   withChildInk,
+  growInkLog,
+  startingChatBoard,
   type BoardHistory,
   type Change,
   type InkStroke,
@@ -522,5 +528,129 @@ describe("the call's board with the child's ink (#534)", () => {
     const maya = boardPaths(boardScene(h)).flatMap((p) => p.pts);
     expect(Math.min(...maya.map((p) => p[0])) * 1000).toBeGreaterThan(x);
     expect(Math.max(...maya.map((p) => p[1])) * 1000).toBeLessThan(y + hh);
+  });
+});
+
+describe("the child's ink as an event log (#635)", () => {
+  const ok = (c: Change) => { if (!c.ok) throw Error(c.reason); return c.history; };
+  const stroke = (h: BoardHistory, x: number, at: number) => ok(drawStroke(h, { erase: false, w: 5, boardWidth: 800, page: 1, pts: [[x, 0.5, at], [x + 0.05, 0.55, at + 10]] }));
+  const penned = () => ok(takePen(createHistory(), 10));
+
+  it("R639-2: a chat's board starts from the longer of the call's log and the draft, and keeps a draft's line the call never had", () => {
+    const two = stroke(penned(), 0.1, 100);
+    const three = stroke(two, 0.2, 200);
+    expect(startingChatBoard(three, two)).toBe(three);
+    expect(startingChatBoard(two, three)).toBe(three);
+    expect(startingChatBoard(null, two)).toBe(two);
+    expect(startingChatBoard(two, null)).toBe(two);
+    expect(startingChatBoard(null, null)).toBeNull();
+    // The draft went another way: all the call holds stays first, and the draft's own line is added back.
+    const other = stroke(two, 0.9, 150);
+    const started = startingChatBoard(three, other)!;
+    expect(inkLog(started).slice(0, 3)).toEqual(inkLog(three));
+    expect(childStrokes(started).map((s) => s.pts[0][0])).toEqual([0.1, 0.2, 0.9]);
+  });
+
+  it("R639-2: growing a log keeps every sequence it has: a shorter board changes nothing, and a board that went another way adds its new events once", () => {
+    const three = inkLog(stroke(stroke(penned(), 0.1, 100), 0.2, 200));
+    const four = inkLog(stroke(stroke(stroke(penned(), 0.1, 100), 0.2, 200), 0.3, 300));
+    expect(growInkLog(three, four)).toEqual(four);
+    expect(growInkLog(three, three.slice(0, 2))).toEqual(three);
+    const other = inkLog(stroke(stroke(penned(), 0.1, 100), 0.9, 150));
+    const grown = growInkLog(three, other);
+    expect(grown).toEqual([...three, other[2]]);
+    expect(growInkLog(grown, other)).toEqual(grown);
+    // Only the call has the first events on this device: they count as the same.
+    expect(growInkLog([null, three[1]], three)).toEqual(three);
+  });
+
+  it("R639b-1: four reloads of a log with an overlapping time add nothing: an event is the same whatever its time", () => {
+    const three = inkLog(stroke(stroke(penned(), 0.1, 100), 0.2, 200));
+    const late = inkLog(stroke(penned(), 0.9, 50))[1];
+    let log = [...three, late];
+    let draft: BoardHistory | null = null;
+    for (let reload = 0; reload < 4; reload++) {
+      const call = historyFromLog(log, [])!;
+      const board: BoardHistory = startingChatBoard(call, draft)!;
+      log = growInkLog(log, inkLog(board));
+      draft = board;
+      expect(log, `reload ${reload}`).toHaveLength(4);
+      expect(childStrokes(board).map((s) => s.pts[0][0])).toEqual([0.1, 0.2, 0.9]);
+    }
+  });
+
+  it("R639b-1: real events that look alike still count: a redraw of the same line, and a second clear", () => {
+    const one = stroke(penned(), 0.1, 100);
+    const again = stroke(one, 0.1, 200);
+    expect(growInkLog(inkLog(one), inkLog(again))).toHaveLength(inkLog(again).length);
+    // A board that went another way: its own events go on, once each, however many look like ones the log holds.
+    const log = inkLog(ok(clear(stroke(penned(), 0.5, 100), 200)));
+    const other = inkLog(ok(clear(stroke(stroke(ok(clear(stroke(penned(), 0.5, 100), 200)), 0.1, 300), 0.2, 400), 500)));
+    const theirs = inkLog(stroke(stroke(penned(), 0.7, 100), 0.7, 200));
+    const grown = growInkLog(log, theirs);
+    expect(grown).toHaveLength(log.length + 2);
+    expect(growInkLog(grown, theirs)).toEqual(grown);
+    expect(growInkLog(log, other)).toEqual(other);
+    expect(childStrokes(startingChatBoard(stroke(penned(), 0.7, 100), stroke(stroke(penned(), 0.7, 100), 0.7, 200))!)).toHaveLength(2);
+    const drawnTwice = startingChatBoard(stroke(stroke(penned(), 0.1, 100), 0.2, 200), stroke(stroke(penned(), 0.1, 100), 0.7, 150))!;
+    expect(childStrokes(drawnTwice).map((s) => s.pts[0][0])).toEqual([0.1, 0.2, 0.7]);
+  });
+
+  it("R639-2: a log with an event earlier than the one before it still builds the board, with that event moved up", () => {
+    const three = inkLog(stroke(stroke(penned(), 0.1, 100), 0.2, 200));
+    const late = inkLog(stroke(penned(), 0.9, 50))[1];
+    const h = historyFromLog([...three, late], [])!;
+    expect(h).not.toBeNull();
+    expect(childStrokes(h).map((s) => s.pts[0][0])).toEqual([0.1, 0.2, 0.9]);
+  });
+
+  const glow: Batch = { transactionId: "glow", commands: [{ op: "mark", id: "onesGlow", target: { objectId: "question", part: "column", column: "ones" }, style: "highlight", ink: "yellow" }] };
+  const eraser = (at: number): InkStroke => ({ erase: true, w: 28, boardWidth: 800, page: 1, pts: [[0.1, 0.8, at], [0.3, 0.85, at + 100]] });
+  const line = (at: number): InkStroke => ({ erase: false, w: 5, boardWidth: 800, page: 1, pts: [[0.1, 0.8, at], [0.3, 0.85, at + 100]] });
+
+  it("R635-3: the log rebuilds the board exactly: a clear stays a clear, a redraw after an eraser stays, Maya's batches stay", () => {
+    let h = ok(mayaWrites(createHistory(), QUESTION, 0));
+    h = ok(takePen(h, 1000));
+    h = ok(drawStroke(h, line(1100)));
+    h = ok(clear(h, 1300));
+    h = ok(drawStroke(h, line(1400)));
+    h = ok(drawStroke(h, eraser(1600)));
+    // The same geometry again after the eraser: a new line, not a copy to drop.
+    h = ok(drawStroke(h, line(1800)));
+    h = ok(givePen(h, 2000));
+    h = ok(mayaWrites(h, glow, 2100));
+    const log = inkLog(h);
+    expect(log.map((e) => e.kind)).toEqual(["delivered", "pen", "stroke", "clear", "stroke", "stroke", "stroke", "pen", "delivered"]);
+    const back = historyFromLog(log, [QUESTION, glow])!;
+    expect(back.events).toEqual(h.events);
+    expect(childStrokes(back)).toEqual(childStrokes(h));
+  });
+
+  it("R635-5: a delivery order the call never had is not taken: the call's drawing still shows", () => {
+    const call = ok(mayaWrites(ok(mayaWrites(createHistory(), QUESTION, 0)), glow, 5000));
+    // A forged copy: the highlight "reached the board" and was refused before the question even came.
+    let desk: BoardHistory = { v: 1, revision: 1, events: [{ kind: "skipped", t: 0, batchId: "glow" }] };
+    desk = ok(mayaWrites(desk, QUESTION, 100));
+    desk = ok(takePen(desk, 1000));
+    desk = ok(drawStroke(desk, { ...line(1200), pts: [[0.05, 0.95, 1200], [0.08, 0.97, 1300]] }));
+    const shows = (merged: BoardHistory) => {
+      expect(refusedBatches(merged)).toEqual([]);
+      expect(replayFrame(replayOf(merged), Infinity).maya.some((s) => s.path.objectId === "onesGlow")).toBe(true);
+      expect(childStrokes(merged)).toHaveLength(1);
+    };
+    shows(withChildInk(call, desk));
+    shows(withInkLog(call, inkLog(desk)));
+  });
+
+  it("R635-6: the chat board's view is taken again when ink comes onto it from elsewhere, never under the child's own pen", () => {
+    let h = ok(mayaWrites(createHistory(), QUESTION, 0));
+    h = ok(takePen(h, 1000));
+    const before = chatViewKey(h);
+    expect(chatViewKey(ok(drawStroke(h, line(1100))))).toBe(before);
+    const kept = restoreKept(h, [keptStroke({ ...line(1100), pts: [[0.9, 0.95, 1100], [0.95, 0.97, 1200]] })], 1300).history;
+    expect(chatViewKey(kept)).not.toBe(before);
+    const [x, y, w, hh] = chatBoardView(kept).split(" ").map(Number);
+    expect(0.95 * 1000).toBeLessThan(x + w);
+    expect(0.97 * 1000).toBeLessThan(y + hh);
   });
 });
