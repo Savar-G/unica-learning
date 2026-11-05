@@ -32,13 +32,17 @@ Limits: synthetic drawn digits on real printed pages. No real handwriting, real 
 
 ## Which page a photo shows
 
-The preview is ready only when the photo is shown to be one sheet, this page (#456, D-285). Calibration finds the four corner marks, compares the photo's ink with the printed page image, and reads the QR code where the page printed it. The job then compares the photo with the child's other printed pages of the same page type (`sheetChecker`), a few page images at a time, in at most 35 s from the start of the job. Near twins are the pages that hold at least 75% of this page's print, decided from the prints alone, so glare cannot take a page out of the comparison. At each spot where a near twin prints differently, the photo must hold this page's print by a margin, read at the contrast the photo has around that spot.
+The preview is ready only when the photo is shown to be one sheet, this page (#456, D-285). Calibration finds the four corner marks, compares the photo's ink with the printed page image, and reads the QR code where the page printed it. The job then compares the photo with the child's other printed pages of the same page type (`sheetChecker`), a few page images at a time, with a deadline of 35 s from the start of the job. Near twins are the pages that hold at least 75% of this page's print, decided from the prints alone, so glare cannot take a page out of the comparison. At each spot where a near twin prints differently, the photo must hold this page's print by a margin, read at the contrast the photo has around that spot.
 
 - `another-page`: a spot holds the twin's print: a QR code pasted on another page, or another page lying over this one. The parent is asked for another photo of this page alone.
 - `faint`: a spot is too bright, faint or covered to read, or more than one spot in five shows neither page clearly. The parent is asked for another photo without glare.
 - `check-timeout`: the job ran out of time. This refusal is not stored. The parent is asked to try again in a minute, with a Try again button that opens when the job's 90 s lease is over (`retryInMs`). A call inside the lease starts nothing, and the next call after it does the whole check.
 
 The job's list of other pages is read by id, 500 rows at a time, until a read comes back empty, so the database's row limit cannot hide a near twin. Only the paths are held; the images are still read a few at a time. A child with many hundreds of pages of one type can run out of the 35 s, which refuses safely.
+
+The deadline also applies to the frame and input reads. The job checks it after decoding and after each page comparison. A synchronous comparison can finish after the deadline, but the job discards that answer and stores no result or files.
+
+A ready result records `result.sheetCheck`, currently version 1. An older or missing version is not checked: the preview serves no crops, the stack shows Checking, and Send excludes the page. The next preview POST uses `reopen_scan_calibration` to take the old result under a new lease and check the photo again. A refusal removes the old lease's files. Migration `20261105_scan_sheet_check.sql` adds the service-only reopen function and updates Send. Probe: `supabase/tests/scan_sheet_check.sql`. It rolls back all synthetic rows and ends with `PROBE_OK` on success.
 
 The comparison also takes approved books that have not shipped, as approval gives a book its printed revision. Comparing against more pages is safe. The evidence is in `.design/experiments/r456/`.
 

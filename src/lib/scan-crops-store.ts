@@ -34,6 +34,14 @@ export function scanCropStore(db: SupabaseClient<Database>): ScanCropStore {
       }
       return data as unknown as BeginAnswer;
     },
+    async reopen({ parent, photo, token, sheetCheck }) {
+      const { data, error } = await db.rpc("reopen_scan_calibration", { p_parent: parent, p_id: photo, p_token: token, p_sheet_check: sheetCheck });
+      if (error) {
+        if (error.message.includes("family_unavailable")) return { status: "terminal" };
+        throw new Error("scan crops: reopen");
+      }
+      return data as unknown as BeginAnswer;
+    },
     async frame({ parent, photo }) {
       const row = await db.from("scan_photos").select("id,state,created_at,expires_at,printed_revision,page_id,workbook_id").eq("id", photo).eq("parent_id", parent).maybeSingle();
       if (row.error) throw new Error("scan crops: photo");

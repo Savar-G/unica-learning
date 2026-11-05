@@ -20,6 +20,10 @@
     {
       "file": "memory-200-pages.json",
       "what": "One crop job over 200 of the child's other page images, a few at a time (on 08981a79 this took about 2.21 GB, per the PR #637 review). rss is the whole test process, 452 MB before the job starts."
+    },
+    {
+      "file": "stored-sheet-check.txt",
+      "what": "Fixes after the review of 496b35f0: fail-first tests for old ready results and the deadline, fixed-state checks, the applied migration, hosted API and Storage proof, and a desktop browser check."
     }
   ],
   "limits": "No real camera photo, curled saddle-stitched page or real handwriting. Glare is drawn as lowered contrast. Candidates are the child's printed pages of the same page type. Near twins are pages that hold 75% of this page's print; a sheet of a less similar page over a small part of this one is checked only by the page comparison. One spot of five may stay unclear, so a sheet over a single digit that looks like its twin at that resolution can pass."

@@ -5452,6 +5452,16 @@ export type Database = {
         Args: { p_lease: string; p_run: string }
         Returns: boolean
       }
+      reopen_scan_calibration: {
+        Args: {
+          p_id: string
+          p_lease_seconds?: number
+          p_parent: string
+          p_sheet_check: number
+          p_token: string
+        }
+        Returns: Json
+      }
       request_family_deletion: {
         Args: { confirmation: string; p: string }
         Returns: string
