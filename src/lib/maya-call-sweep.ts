@@ -33,13 +33,16 @@
 // deletion fence, a store error) is counted as failed and tried again by a later run. A voice call whose connection
 // times cannot be read is not ended (the call module refuses), so a later run settles its minutes from them.
 //
-// Its place between runs (#586): each kind of call keeps a cursor in the source (migration maya_call_sweep_cursors).
-// Before it starts to end a call, the sweep stores that call as its place, and the next run starts after it. So calls
-// that always fail (more than one run reads) or an end that uses the whole run cannot keep a later call waiting: the
-// next run goes on from there. When a run reaches the end of the list with nothing left, the place goes back to the
-// oldest call, so the failing calls are still tried on the run after. A call older than the place that became due in
-// between waits until then (one run more). Reading or storing the place never stops the sweep: an unreadable place
-// starts at the oldest call. A dry run starts at the oldest call and stores nothing.
+// Its place between runs (#586): each kind of call keeps a place in the source (migrations maya_call_sweep_cursors and
+// maya_call_sweep_cursor_until). Before it starts to end a call, the sweep stores that call as its place, and the next
+// run starts after it. So calls that always fail (more than one run reads) or an end that uses the whole run cannot
+// keep a later call waiting: the next run goes on from there. One pass over a list runs from the oldest call to the
+// newest one there was when the pass began (`until`, stored with the place). When a run reaches the end of the list, or
+// a call newer than `until`, with nothing left, the place goes back to the oldest call: the failing calls are tried
+// again on the run after, though new calls keep coming (#586 review). A call older than the place that became due in
+// between waits until then. Reading or storing the place never stops the sweep: each has its own short time limit
+// (SWEEP_PLACE_MS), and a place that cannot be read starts at the oldest call. A dry run starts at the oldest call and
+// stores nothing.
 //
 // Time (review P2): the sweep starts no new end after `deadline`, and stops waiting at `timeLimitMs`. An end it stopped
 // waiting for goes on, or stops with the function; then a later run finishes it as above. SWEEP_TIME_LIMIT_MS leaves the
@@ -52,7 +55,7 @@
 // would otherwise be dropped, src/lib/child-profile.ts).
 //
 // Seams: the call module, the call source (Supabase: `sweepCallSource` in src/lib/maya-call-store.ts; memory:
-// memoryCallStore) and the clock. Pure otherwise; one timer for the time limit.
+// memoryCallStore) and the clock. Pure otherwise; one timer for the time limit, and one for each place read or write.
 import { limitsOf } from "@/lib/maya";
 import type { CallRecord, CallSeams, MayaCalls } from "@/lib/maya-call";
 import { VOICE_CALL_STALE_MS } from "@/lib/maya-voice";
@@ -69,6 +72,8 @@ export const RETRY_WINDOW_MS = 24 * 60 * 60_000;
 export const SWEEP_START_MS = 25_000;
 /** The sweep stops waiting after this long. With 10 seconds for the answer, it fits the cron's 60-second request limit. */
 export const SWEEP_TIME_LIMIT_MS = 45_000;
+/** The most one read or write of the sweep's place may take; after it the sweep goes on without it. */
+export const SWEEP_PLACE_MS = 3_000;
 
 /** A place in a list of calls: the time it is ordered by and the id. */
 export interface SweepCursor {
@@ -78,6 +83,15 @@ export interface SweepCursor {
 
 /** The two kinds of call the sweep reads, each with its own place. */
 export type SweepKind = "live" | "unfinished";
+
+/**
+ * Where the sweep is in one kind's list: the next run starts after `after`. `until` (ISO time): the newest time the
+ * current pass covers; a call after it came since the pass began, so reaching one ends the pass.
+ */
+export interface SweepPlace {
+  after: SweepCursor;
+  until: string;
+}
 
 /** Where the sweep finds calls, and where it keeps its place. All four throw when they cannot read or write. */
 export interface SweepCallSource {
@@ -90,9 +104,9 @@ export interface SweepCallSource {
    */
   unfinishedCalls(endedFrom: string, writtenBefore: string, after: SweepCursor | null, limit: number): Promise<CallRecord[]>;
   /** Where the last run stopped in one kind's list: the next run starts after it. Null: at the oldest call. */
-  readPlace(kind: SweepKind): Promise<SweepCursor | null>;
+  readPlace(kind: SweepKind): Promise<SweepPlace | null>;
   /** Stores where the next run starts in one kind's list. */
-  writePlace(kind: SweepKind, place: SweepCursor | null): Promise<void>;
+  writePlace(kind: SweepKind, place: SweepPlace | null): Promise<void>;
 }
 
 /**
@@ -159,6 +173,8 @@ export interface SweepOptions {
   timeLimitMs?: number;
   /** Counts what is due and ends nothing. */
   dry?: boolean;
+  /** The most one read or write of the place may take (real time); default SWEEP_PLACE_MS. */
+  placeTimeoutMs?: number;
 }
 
 const LATE = Symbol("late");
@@ -189,35 +205,54 @@ export async function sweepAbandonedCalls(o: SweepOptions): Promise<SweepResult>
     return true;
   }
 
-  /** Reads one kind of call page by page from its place and handles the due ones. False when the time limit stopped it. */
-  async function pages(kind: SweepKind, read: (after: SweepCursor | null) => Promise<CallRecord[]>, cursorOf: (r: CallRecord) => SweepCursor, isDue: (r: CallRecord) => boolean, counted: "ended" | "retried"): Promise<boolean> {
-    let stored: SweepCursor | null = null;
+  /** One read or write of the place, refused after its own time limit. */
+  async function placeStep<T>(step: Promise<T>): Promise<T> {
+    let wait: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<never>((_, reject) => (wait = setTimeout(() => reject(new Error("no answer in time")), o.placeTimeoutMs ?? SWEEP_PLACE_MS)));
+    try {
+      return await Promise.race([step, late]);
+    } finally {
+      clearTimeout(wait);
+    }
+  }
+
+  /**
+   * Reads one kind of call page by page from its place and handles the due ones. `newest`: the newest time a read of
+   * this kind gives now. False when the time limit stopped it.
+   */
+  async function pages(kind: SweepKind, newest: string, read: (after: SweepCursor | null) => Promise<CallRecord[]>, cursorOf: (r: CallRecord) => SweepCursor, isDue: (r: CallRecord) => boolean, counted: "ended" | "retried"): Promise<boolean> {
+    let stored: SweepPlace | null = null;
     if (!o.dry) {
       try {
-        const place = await bounded(o.source.readPlace(kind));
-        if (place === LATE) return false;
-        stored = place;
+        stored = await placeStep(o.source.readPlace(kind));
       } catch (e) {
         console.error("[maya sweep] place not read", kind, e instanceof Error ? e.message : String(e));
       }
     }
-    /** Stores where the next run starts. False when the time limit stopped the wait. */
-    const keep = async (place: SweepCursor | null): Promise<boolean> => {
-      if (o.dry || (place?.at === stored?.at && place?.id === stored?.id)) return true;
+    // A pass that starts at the oldest call covers the calls there are now.
+    const until = stored?.until ?? newest;
+    /** Stores where the next run starts (null: at the oldest call, a new pass). */
+    const keep = async (after: SweepCursor | null): Promise<void> => {
+      const place = after && { after, until };
+      if (o.dry || (place?.after.at === stored?.after.at && place?.after.id === stored?.after.id && place?.until === stored?.until)) return;
       try {
-        if ((await bounded(o.source.writePlace(kind, place))) === LATE) return false;
+        await placeStep(o.source.writePlace(kind, place));
         stored = place;
       } catch (e) {
         console.error("[maya sweep] place not stored", kind, e instanceof Error ? e.message : String(e));
       }
-      return true;
     };
-    let after = stored;
+    let after = stored?.after ?? null;
     let left = false;
     for (let page = 0; page < SWEEP_PAGES; page++) {
       const rows = await bounded(read(after));
       if (rows === LATE) return false;
       for (const record of rows) {
+        // A call newer than the pass came since it began: the pass is over, and the next run starts a new one.
+        if (!left && Date.parse(cursorOf(record).at) > Date.parse(until)) {
+          await keep(null);
+          return true;
+        }
         if (!isDue(record)) continue;
         result.due++;
         if (o.dry) continue;
@@ -227,29 +262,37 @@ export async function sweepAbandonedCalls(o: SweepOptions): Promise<SweepResult>
           continue;
         }
         // Stored before the end starts: an end that hangs or uses the whole run does not hold up the next run.
-        if (!(await keep(cursorOf(record)))) return false;
+        await keep(cursorOf(record));
         if (!(await end(record, counted))) return false;
       }
-      // Calls were left for the next run: it starts after the last call this run started to end.
-      if (rows.length < SWEEP_BATCH) return left || keep(null);
+      if (rows.length < SWEEP_BATCH) {
+        // Calls were left for the next run: it starts after the last call this run started to end.
+        if (!left) await keep(null);
+        return true;
+      }
       after = cursorOf(rows[rows.length - 1]);
     }
-    return left || keep(after);
+    if (!left) await keep(after);
+    return true;
   }
 
   try {
     // No call can be abandoned before SWEEP_GRACE_MS after it was made, so older rows are the only candidates.
+    const newest = new Date(now - SWEEP_GRACE_MS).toISOString();
     const live = await pages(
       "live",
-      (after) => o.source.liveCalls(new Date(now - SWEEP_GRACE_MS).toISOString(), after, SWEEP_BATCH),
+      newest,
+      (after) => o.source.liveCalls(newest, after, SWEEP_BATCH),
       (r) => ({ at: r.createdAt, id: r.id }),
       (r) => r.status === "live" && abandonedAt(r) <= now,
       "ended",
     );
     // Read after the live ends: a call this run ended was written just now, so it waits SWEEP_GRACE_MS like any other.
+    // An unfinished call ended at or before it was last written, so its end time is at or before `newest` too.
     const finished = live && await pages(
       "unfinished",
-      (after) => o.source.unfinishedCalls(new Date(now - RETRY_WINDOW_MS).toISOString(), new Date(now - SWEEP_GRACE_MS).toISOString(), after, SWEEP_BATCH),
+      newest,
+      (after) => o.source.unfinishedCalls(new Date(now - RETRY_WINDOW_MS).toISOString(), newest, after, SWEEP_BATCH),
       (r) => ({ at: r.endedAt ?? r.createdAt, id: r.id }),
       unfinished,
       "retried",

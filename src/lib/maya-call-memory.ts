@@ -1,5 +1,5 @@
 import type { CallChange, CallConnection, CallRecord, CallStore, ConnectionLog } from "@/lib/maya-call";
-import type { SweepCallSource, SweepCursor, SweepKind } from "@/lib/maya-call-sweep";
+import type { SweepCallSource, SweepCursor, SweepKind, SweepPlace } from "@/lib/maya-call-sweep";
 
 // The call store of Maya's calls (src/lib/maya-call.ts, #323) in memory, for tests. It keeps the database's rules: an
 // admin test call names a test family (the trigger of migration add_maya_calls), an update writes only at the revision
@@ -17,7 +17,7 @@ const afterCursor = (at: string, id: string, c: SweepCursor | null) => !c || Dat
 /** `clock`: the time of each write (the database's updated_at), which the sweep reads; default the system clock. */
 export function memoryCallStore(options: { testFamilies: readonly string[]; clock?: () => number }): MemoryCallStore {
   const rows = new Map<string, CallRecord>();
-  const places = new Map<SweepKind, SweepCursor | null>();
+  const places = new Map<SweepKind, SweepPlace | null>();
   const written = new Map<string, number>();
   const wrote = (id: string) => written.set(id, (options.clock ?? Date.now)());
   const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x));

@@ -1398,18 +1398,21 @@ export type Database = {
           at: string | null
           call_id: string | null
           kind: string
+          until_at: string | null
           updated_at: string
         }
         Insert: {
           at?: string | null
           call_id?: string | null
           kind: string
+          until_at?: string | null
           updated_at?: string
         }
         Update: {
           at?: string | null
           call_id?: string | null
           kind?: string
+          until_at?: string | null
           updated_at?: string
         }
         Relationships: []

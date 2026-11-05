@@ -1074,8 +1074,13 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const session = textSession(record, record.live.package, idleModel(record), childName, record.live.text);
         const detail = started === null ? "Maya did not join the voice call" : "the voice call stopped without an end";
         // Connection times that cannot be read refuse the end (the read throws), so a later end settles the minutes from
-        // them rather than at 0 seconds (#528 review).
-        const ended = await end(record, record.live.package, session, { detail }, async (endedAt) => ({ connectedSeconds: connectedSeconds(seams.connections ? await seams.connections.read(record.id) : [], endedAt) }), started === null);
+        // them rather than at 0 seconds (#528 review). As in the worker's own end, the room time counts through the last
+        // stored event: the final speech after the outcome (a "solved" close, say) is connected time too (#586 review).
+        const stored = async (endedAt: number): Promise<CallChange> => {
+          const events = seams.connections ? await seams.connections.read(record.id) : [];
+          return { connectedSeconds: connectedSeconds(events, Math.max(endedAt, ...events.map((e) => e.at))) };
+        };
+        const ended = await end(record, record.live.package, session, { detail }, stored, started === null);
         return ended ? result(ended, ended.trace!, null) : { ok: false, error: "conflict" };
       }
       const { package: pkg, text: saved } = record.live;

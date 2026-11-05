@@ -394,6 +394,91 @@ describe("the sweep of abandoned calls", () => {
     expect(s.row(first).status).toBe("live");
   });
 
+  it("tries an older failed call again though a new call becomes due on every run (#586 review)", async () => {
+    // Wrong if: with calls left on every run, the place only walks forward past new calls and never goes back to the
+    // oldest call, so a call that failed once is never tried again.
+    const s = setup();
+    const a = (await s.chat()).id;
+    s.advance(1);
+    await s.chat();
+    s.advance(1);
+    await s.chat();
+    const real = mayaCalls(sweepSeams(s.seams));
+    const tries = new Map<string, number>();
+    // A fails on its first try. Every other end succeeds but uses the whole start budget of its run.
+    const calls: typeof real = {
+      ...real,
+      input: async (id, revision, input, name) => {
+        tries.set(id, (tries.get(id) ?? 0) + 1);
+        if (id === a && tries.get(id) === 1) throw new Error("maya call update: connection lost");
+        s.advance(SWEEP_START_MS + 1);
+        return real.input(id, revision, input, name);
+      },
+    };
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    for (let run = 0; run < 10; run++) {
+      const at = T0 + DUE_MS + 10_000 + run * 15 * 60_000;
+      s.set(at);
+      // One new call each run, due on the next.
+      await s.chat();
+      await s.sweep({ calls, deadline: at + SWEEP_START_MS });
+    }
+    expect(tries.get(a)).toBeGreaterThanOrEqual(2);
+    expect(s.row(a).status).toBe("ended");
+  });
+
+  it("goes on from the oldest call when its place cannot be read or stored in time (#586 review)", async () => {
+    // Wrong if: a place read or write that never answers uses the sweep's whole time limit, so an abandoned call stays live.
+    const s = setup();
+    const view = await s.chat();
+    s.set(T0 + DUE_MS);
+    const never = () => new Promise<never>(() => {});
+    const source = { ...s.inner, readPlace: never, writePlace: never };
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const result = await sweepAbandonedCalls({ calls: mayaCalls(sweepSeams(s.seams)), source, clock: s.now, timeLimitMs: 2000, placeTimeoutMs: 20 });
+    expect(result).toMatchObject({ due: 1, ended: 1, cut: false });
+    expect(s.row(view.id).status).toBe("ended");
+  });
+
+  it("counts the final speech after a solved outcome when the sweep ends a voice call its worker could not (#586 review)", async () => {
+    // Wrong if: the sweep counts connected time only to the outcome's time, not through the stored connection events
+    // of the final speech, so a call the worker left to the sweep is settled short.
+    const s = setup();
+    const view = ok(await s.calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: "admin-1" })).view;
+    const opened = await s.calls.openVoice(view.id, PROVIDERS, "Leah");
+    if (!opened.ok) throw new Error(opened.error);
+    const call = opened.call;
+    await call.connection("agent_joined");
+    await call.connection("child_joined");
+    await call.start();
+    for (const text of ["I got 66.", "Because the ones made a ten, so I carried it.", "I wrote it."]) {
+      if (call.ended) break;
+      await call.connection("agent_joined");
+      s.advance(6000);
+      await call.child(text);
+    }
+    await call.settled();
+    expect(call.ended).toBe(true);
+    // Maya's final speech goes on for 10 seconds after the outcome, with the lease renewed, then the child leaves.
+    for (let i = 0; i < 2; i++) {
+      s.advance(5000);
+      await call.connection("agent_joined");
+    }
+    const leftAt = s.now();
+    await call.connection("child_left");
+    s.faults.read = 1;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await call.end({ reason: "child_stopped" });
+    const live = s.row(view.id);
+    expect(live.status).toBe("live");
+
+    s.set(abandonedAt(live));
+    expect(await s.sweep()).toMatchObject({ ended: 1 });
+    const ended = s.row(view.id);
+    expect(ended.outcome?.reason).toBe("solved");
+    expect(ended.connectedSeconds).toBe(Math.round((leftAt - T0) / 1000));
+  });
+
   it("a restarted voice worker does not end its call at 0 seconds when the connection times cannot be read; the sweep ends it from them later (#586)", async () => {
     // Wrong if: the restarted worker, with no connection events of its own, ends the call when the read fails, so the
     // call is stored with 0 connected seconds and the sweep has nothing left to settle.
