@@ -463,9 +463,11 @@ const CSS = `
 .pg.consistent .blk.grow{flex:1 0 auto}
 .pg.consistent .ft{top:939px;height:48px}
 .pg.consistent [data-measure^="review-"]{margin:0}
-.pg.consistent.stretch .ct>.blk:has(>:is(.two,.cols,.list,.facts,.pcards,.mxs)){flex:1 0 auto;display:flex;flex-direction:column}
-.pg.consistent.stretch .ct>.blk>:is(.two,.cols,.facts,.pcards,.mxs){flex:1 0 auto;grid-auto-rows:auto;align-content:stretch}
-.pg.consistent.stretch .ct>.blk>.list{flex:1 0 auto}.pg.consistent.stretch .ct>.blk>.list>*{flex:1 0 auto}
+/* (Each block and each of its grids grows by its rows, so every row of the page gets the same share: the full U4 books
+   of seeds ed6ecc9f and 19bacf2a, whose Practice 2 grew 3 rows and 2 rows by the same amount.) */
+.pg.consistent.stretch .ct>.blk:has(>:is(.two,.cols,.list,.facts,.pcards,.mxs)){flex:var(--rows,1) 0 auto;display:flex;flex-direction:column}
+.pg.consistent.stretch .ct>.blk>:is(.two,.cols,.facts,.pcards,.mxs){flex:var(--rows,1) 0 auto;grid-auto-rows:auto;align-content:stretch}
+.pg.consistent.stretch .ct>.blk>.list{flex:var(--rows,1) 0 auto}.pg.consistent.stretch .ct>.blk>.list>*{flex:1 0 auto}
 .pg.consistent .list{flex:none;justify-content:flex-start;gap:calc(12px + var(--extra-gap,0px))}
 .pg.consistent .two{flex:none;grid-auto-rows:auto;row-gap:calc(12px + var(--extra-gap,0px))}
 /* U4 to U9 (the large type): a tighter row gap, boxes the same size; a true or false pair one box high (Savar,
@@ -550,6 +552,8 @@ const CSS = `
 .pg.consistent .q .circ:not(.words){min-height:var(--box);padding:0 18px;align-items:baseline}
 .pg.consistent :is(.two,.list,.tc)>.q>.rgs>.circ:not(.words) .co{font-size:var(--body)}
 .pg.consistent .circ.words .co{align-items:flex-start}
+/* (The likelihood words in their own row under the question's text, from its left edge.) */
+.pg.consistent :is(.two,.list)>.q>.full:has(>.circ.likelihood){padding-left:34px}
 /* A fact's number in the page's one number style, on the fact's baseline. */
 .pg.consistent .facts .fl{display:flex;align-items:baseline;gap:10px;flex:1 1 auto;min-width:0}
 .pg.consistent .facts .fl>.n{min-width:22px}
@@ -812,7 +816,7 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
       const label = o.labels && r.label ? `<span class="rl box">${escape(r.label)}</span>` : "";
       const unit = o.noUnits ? "" : unitAfter(q.package);
       const money = q.package.answer?.value.type === "quantity" && q.package.answer.value.unit === "$" ? `<span class="unit">$</span>` : "";
-      return `<span class="rg">${label}${money}<span class="ab" ${at} style="width:${boxWidth(r.answer, o.band)}px"></span>${unit ? `<span class="unit">${escape(unit)}</span>` : ""}</span>`;
+      return `<span class="rg">${label}${money}<span class="ab" ${at} style="width:${boxWidth(r.answer, o.band)}px"></span>${unit ? `<span class="unit" data-measure="unit-${q.number}-${r.id}">${escape(unit)}</span>` : ""}</span>`;
     }
     case "choice": {
       if (r.mark === "circle") {
@@ -823,7 +827,7 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
         // Choices in words ("less than 5", "not equal", "cats") stack in the body type: a card has no room for them in
         // a row at the size of a fact.
         const words = !shapes && r.choices.some((c) => /[a-z]{2}/i.test(c));
-        return `<span class="circ${words ? " words" : ""}${r.choices.join(",") === "never,sometimes,always" ? " likelihood" : ""}" ${at}>${r.choices.map((c) => `<span class="co">${choice(c)}</span>`).join("")}</span>`;
+        return `<span class="circ${words ? " words" : ""}${likelihood(r) ? " likelihood" : ""}" ${at}>${r.choices.map((c) => `<span class="co">${choice(c)}</span>`).join("")}</span>`;
       }
       const choices = r.choices.map((c) => `<span class="ch"><i class="tb"></i><span>${escape(c)}</span></span>`).join("");
       return `<span class="rg">${r.label ? `<span class="rl">${escape(r.label)}</span>` : ""}<span class="strip" ${at}>${choices}</span>${o.noTick ? "" : `<span class="t1"><span>Tick one</span><i>✓</i></span>`}</span>`;
@@ -845,6 +849,39 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
       }
       return o.figure ? `<div class="picr" ${at}>${figureSvg(o.figure,1,o.band.consistentLayout || q.package.item?.format === "colour-or-shade" ? 40 : 30)}</div>` : `<div class="draw" ${at}></div>`;
   }
+}
+
+/** The three likelihood words ("never", "sometimes", "always"), circled in a row. */
+const likelihood = (region: AnswerRegion) => region.kind === "choice" && region.choices.join(",") === "never,sometimes,always";
+
+/** A box or choice in the question's row; a long word answer ("the square root") and the three likelihood words take
+ * their own row under the question, never a narrow column of text. */
+const inRow = (region: AnswerRegion) => (region.kind === "box" || region.kind === "choice")
+  && !(region.kind === "box" && region.answer?.type === "text" && region.answer.value.length > 8) && !likelihood(region);
+
+/** The regions of a question in a count or an order: printed among its terms, not beside its text. */
+function termRegions(q: DraftQuestion): Set<string> {
+  const checks = packageItem(q.package).checks;
+  const ids = new Set<string>();
+  for (const c of checks) {
+    if (c.kind === "sequence") for (const t of c.terms) if ("region" in t) ids.add(t.region);
+    if (c.kind === "order") c.regions.forEach((id) => ids.add(id));
+  }
+  return ids;
+}
+
+/** A line item's shape: a count under its sentence, a count or a places grid across both columns. */
+function lineShape(q: DraftQuestion, band: Band) {
+  const checks = packageItem(q.package).checks;
+  const sequence = checks.some((c) => c.kind === "sequence");
+  const places = checks.some((c) => c.kind === "places");
+  const placesWide = !!band.consistentLayout && places && packageItem(q.package).regions.length > 4;
+  // A sequence under a sentence ("Count on. What are the next two numbers?") prints on its own line under it, so the
+  // sentence keeps the width (never a narrow column of one word a line).
+  const below = sequence && !!band.consistentLayout && q.package.text.length > 16;
+  // Four boxes or more do not fit half a page's width: the count takes the whole row.
+  const wide = below && wideSequence(q);
+  return { sequence, places, placesWide, below, wide };
 }
 
 /**
@@ -878,9 +915,7 @@ function regionsSplit(q: DraftQuestion, o: RegionOpts): { inline: string; full: 
   for (const { region, name } of names) {
     if (inSequence.has(region.id)) continue;
     const html = regionHtml(q, region, name, o);
-    // A long word answer ("the square root") takes its own row under the question, never a narrow column of text.
-    const long = region.kind === "box" && region.answer?.type === "text" && region.answer.value.length > 8;
-    if ((region.kind === "box" || region.kind === "choice") && !long) inline += html;
+    if (inRow(region)) inline += html;
     else full += html;
   }
   return { inline, full };
@@ -899,19 +934,12 @@ const wideSequence = (q: DraftQuestion) => ((packageItem(q.package).checks.find(
 /** A question in a line: its number, its text, its boxes at the right, then any work box or writing lines under it. */
 function lineItem(q: DraftQuestion, band: Band, hint?: WorkedLine | null, work = 80, figure?: Figure | null): string {
   const pictured = packageItem(q.package).regions.some((r) => r.kind === "picture");
-  const sequence = packageItem(q.package).checks.some(c=>c.kind === "sequence");
-  const places = packageItem(q.package).checks.some(c=>c.kind === "places");
-  const placesWide = band.consistentLayout && places && packageItem(q.package).regions.length > 4;
+  const { sequence, places, placesWide, below, wide } = lineShape(q, band);
   const columns = Math.min(placesWide ? 9 : 4,packageItem(q.package).regions.length);
   const split = regionsSplit(q, { band, work, labels: true, bare: packageItem(q.package).format === "written-reason", figure: pictured ? figure : null });
   // A picture the child reads (dots to count, a pattern) sits under the question, before any work box.
   const inline = split.inline;
   const full = (figure && !pictured ? `<div class="picr">${figureSvg(figure,1,band.consistentLayout ? 40 : 30)}</div>` : "") + split.full;
-  // A sequence under a sentence ("Count on. What are the next two numbers?") prints on its own line under it, so the
-  // sentence keeps the width (never a narrow column of one word a line).
-  const below = sequence && band.consistentLayout && q.package.text.length > 16;
-  // Four boxes or more do not fit half a page's width: the count takes the whole row.
-  const wide = below && wideSequence(q);
   return `<div class="q${sequence ? " seq-item" : ""}${below ? " seq-below" : ""}${wide ? " seq-wide" : ""}${places ? " places-item" : ""}${placesWide ? " places-wide" : ""}" ${mark.question(q.number)}><span class="n">${questionNumber(q.number)}</span><span class="qb">${qtext(q)}${hint ? ` <span class="qm">${worked(hint)}</span>` : ""}</span>`
     + `<span class="rgs"${places ? ` style="--places:${columns}"` : ""}>${inline}</span>${full ? `<div class="full">${full}</div>` : ""}</div>`;
 }
@@ -976,11 +1004,16 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
   const parent = band.name === "parent";
   // A step page's review questions print under their own "Remember these" label (the U16 review: earlier steps mixed into
   // the page's practice read as off-topic).
+  // Each grid carries its row count (--rows): a page that grows its rows to fill it gives every row the same share.
+  const grid = (cls: string, part: DraftQuestion[]) => {
+    const wide = (n: number) => /^(?:two|cols)$/.test(cls) && ((s) => s.wide || s.placesWide)(lineShape(ctx.q(n), band));
+    return `<div class="${cls}" style="--rows:${gridRows(part.map((q) => q.number), cls === "list" ? 1 : 2, wide).length}">`;
+  };
   const list = (render: (q: DraftQuestion, k: number) => string, cls = "list") => {
     const at = b.reviewFrom !== undefined ? qs.findIndex((q) => q.number >= b.reviewFrom!) : -1;
-    if (at < 0) return `<div class="${cls}">${qs.map(render).join("")}</div>`;
-    if (at === 0) return `<div class="lab" data-measure="review-${i}">Remember these</div><div class="${cls}">${qs.map(render).join("")}</div>`;
-    return `<div class="${cls}">${qs.slice(0, at).map(render).join("")}</div><div class="lab" data-measure="review-${i}">Remember these</div><div class="${cls}">${qs.slice(at).map((q, k) => render(q, k + at)).join("")}</div>`;
+    if (at < 0) return `${grid(cls, qs)}${qs.map(render).join("")}</div>`;
+    if (at === 0) return `<div class="lab" data-measure="review-${i}">Remember these</div>${grid(cls, qs)}${qs.map(render).join("")}</div>`;
+    return `${grid(cls, qs.slice(0, at))}${qs.slice(0, at).map(render).join("")}</div><div class="lab" data-measure="review-${i}">Remember these</div>${grid(cls, qs.slice(at))}${qs.slice(at).map((q, k) => render(q, k + at)).join("")}</div>`;
   };
   const line = (q: DraftQuestion, k: number) => (parent ? parentItem(q, band, b.figures?.[k]) : lineItem(q, band, b.hints?.[k], 80, b.figures?.[k]));
   const items = (cls = "list") => (parent ? list(line, "pcards") : list(line, cls));
@@ -1099,7 +1132,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       return chip(undefined, b.note) + `<div class="panel p-ni" data-measure="panel-${i}"><div class="fig2"><div style="display:flex;flex-direction:column;gap:8px"><div class="lab">${escape(b.label ?? "Remember")}</div>${fig}<div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div></div><div class="why"><div class="lab">What's going on</div><span>${escape(b.explain ?? "")}</span></div></div></div>`;
     }
     case "mixed-set":
-      return chip() + `<div class="mxs">` + qs.map((q) => {
+      return chip() + `<div class="mxs" style="--rows:${Math.ceil(qs.length / 2)}">` + qs.map((q) => {
         const names = regionNames(q);
         const pick = (kind: AnswerRegion["kind"]) => names.find((x) => x.region.kind === kind);
         const tick = pick("choice");
@@ -1176,6 +1209,127 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
   }
 }
 
+// ---------- The page plan (what the layout checks know from the template) ----------
+
+/** A question's answer regions printed beside its first line: how they line up with it, and how far in from the
+ * question's right edge their column's edge is. */
+export interface BesideAnswers {
+  /** The measured names of the regions, by their role (never by where they printed). */
+  regions: string[];
+  /** "top": each box's top at the first line's top, each circle target on its baseline; "centre": a one-line fact's box
+   * centred on it. */
+  align: "top" | "centre";
+  /** CSS pixels from the question's measured right edge to its column's edge (a card's border and padding). */
+  inset: number;
+}
+
+/** A day page as its template lays it out (src/lib/workbook-layout-check.ts reads it). */
+export interface PagePlan {
+  /** The questions of each printed row with more than one question in it, in reading order. */
+  rows: number[][];
+  /** The questions whose answers print beside their first line. */
+  beside: Map<number, BesideAnswers>;
+}
+
+/** Items placed in a grid of `cols` columns, `wide` ones across the whole row (CSS grid's auto-placement). */
+function gridRows(items: number[], cols: number, wide: (n: number) => boolean = () => false): number[][] {
+  const rows: number[][] = [];
+  let row: number[] = [];
+  for (const n of items) {
+    if (wide(n)) { if (row.length) rows.push(row); rows.push([n]); row = []; continue; }
+    row.push(n);
+    if (row.length === cols) { rows.push(row); row = []; }
+  }
+  if (row.length) rows.push(row);
+  return rows;
+}
+
+/**
+ * The plan of a day page on the measured layout: which questions share a printed row (each slot's grid, as blockHtml
+ * lays it out) and which answers print beside each question's first line, by their role. Null for any other page.
+ */
+export function pagePlan(page: DraftPage): PagePlan | null {
+  const c = page.content;
+  if (!c || c.kind !== "day" || !c.consistentLayout) return null;
+  const band: Band = { ...bandOf(c.level), consistentLayout: true };
+  const parent = band.name === "parent";
+  const six = c.pages <= 6 && band.name === "mid";
+  const byNumber = new Map(page.questions.map((q) => [q.number, q]));
+  const rows: number[][] = [];
+  const beside = new Map<number, BesideAnswers>();
+  const answers = (n: number, align: BesideAnswers["align"], inset: number) => {
+    const q = byNumber.get(n);
+    if (!q) return;
+    const terms = termRegions(q);
+    const regions = regionNames(q).filter((x) => !terms.has(x.region.id) && inRow(x.region)).map((x) => x.name);
+    if (regions.length) beside.set(n, { regions, align, inset });
+  };
+  const line = (n: number) => {
+    const q = byNumber.get(n);
+    const shape = q ? lineShape(q, band) : null;
+    // (A count under its sentence or a places grid prints its answers under the text.)
+    if (shape && !shape.below && !shape.places) answers(n, "top", 0);
+  };
+  const wideLine = (n: number) => { const q = byNumber.get(n); return !!q && (lineShape(q, band).wide || lineShape(q, band).placesWide); };
+  for (const b of c.blocks) {
+    const items = b.items.filter((n) => byNumber.has(n));
+    // A block's review questions print in a grid of their own, under "Remember these" (blockHtml's `list`).
+    const at = b.reviewFrom !== undefined ? items.findIndex((n) => n >= b.reviewFrom!) : -1;
+    const parts = at <= 0 ? [items] : [items.slice(0, at), items.slice(at)];
+    const grid = (cols: number, wide?: (n: number) => boolean) => parts.forEach((p) => rows.push(...gridRows(p, cols, wide)));
+    const lines = () => { grid(2, wideLine); items.forEach(line); };
+    const cards = () => grid(2);
+    switch (b.slot) {
+      case "warm-up": grid(2); items.forEach((n) => answers(n, "centre", 0)); break;
+      case "fix-it":
+        if (parent) cards();
+        else { rows.push(...gridRows(items, 3)); items.forEach((n) => answers(n, "top", 14)); }
+        break;
+      case "in-your-head": case "try-first": items.forEach(line); break;
+      case "now-you":
+        if (parent) cards();
+        else { rows.push(...gridRows(items, 2, wideLine)); items.forEach(line); }
+        break;
+      case "on-your-own": case "practice-row": {
+        // (blockHtml: column sums, their boxes under the rule, when every question is one sum to work.)
+        const qs = items.map((n) => byNumber.get(n)!);
+        const sums = band.name === "mid" && !(six && b.slot === "on-your-own") && qs.length > 0 && !b.figures?.some(Boolean)
+          && qs.every((q) => ["add", "subtract", "multiply"].includes(q.package.operation?.kind ?? "") && packageItem(q.package).regions.length === 1);
+        if (parent) cards(); else if (sums) grid(2); else lines();
+        break;
+      }
+      case "remember-these": case "finish-these": case "friday-5": case "unit-check": case "mini-test": case "already-know-it":
+        if (parent) cards(); else lines();
+        break;
+      case "unit-b-practice":
+        if (parent) cards(); else if (items.length >= 2) lines(); else items.forEach(line);
+        break;
+      case "mixed-set": rows.push(...gridRows(items, 2)); break;
+      case "picture-stories": cards(); break;
+      case "show-what-you-know": case "level-test": {
+        if (parent) { cards(); break; }
+        const cols = items.length <= 3 ? 1 : 2;
+        // (blockHtml: a wide count takes its row, and a half card left alone in its row takes the row too.)
+        rows.push(...gridRows(items, cols, (n) => wideSequence(byNumber.get(n)!)));
+        items.forEach((n) => answers(n, "top", 15));
+        break;
+      }
+      case "challenge":
+        if (six && items.length === 2) rows.push(items);
+        else if (six && items.length === 3) rows.push(items);
+        break;
+      case "math-in-the-world":
+        for (const n of items) {
+          const q = byNumber.get(n)!;
+          if (regionNames(q).filter((x) => x.region.kind === "box").length <= 1) answers(n, "top", 0);
+        }
+        break;
+      default: break;
+    }
+  }
+  return { rows: rows.filter((r) => r.length > 1), beside };
+}
+
 /** Slots that take the free room of their page: their cards and work areas grow into it. */
 const GROW = new Set<SlotName>(["challenge", "show-what-you-know", "level-test"]);
 
@@ -1205,7 +1359,9 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
     + `<p class="st" ${mark.slot("subtitle")}>${escape(c.subtitle)}</p>`
     + (c.level <= 3 && c.grownUp ? `<p class="gu" ${mark.slot("grown-up")}><b>For the grown-up:</b> ${escape(c.grownUp)}</p>` : "") + `</header>`;
   // A Challenge block takes the free room of its page: its work boxes grow into it (DESIGN.md section 4).
-  const blocks = c.blocks.map((b, i) => `<section class="blk${GROW.has(b.slot) || c.consistentLayout && b.slot === "word-problems" ? " grow" : ""}"${b.slot === "in-your-head" ? ` style="flex:0 0 auto"` : ""} data-slot="${b.slot}" data-measure="block-${i}">${blockHtml(b, i, ctx).replace(/<div class="chiprow">([\s\S]*?)<\/div>/g, (_row, inner: string, at: number) => `<div class="chiprow" data-measure="chip-${i}-${at}">${inner.replace('<span class="chip ', `<span data-measure="chipbadge-${i}-${at}" class="chip `).replace('<span class="side">', `<span data-measure="chipnote-${i}-${at}" class="side">`)}</div>`).replace(/<div class="lab"([^>]*)>/g, (tag, attrs: string, at: number) => attrs.includes("data-measure") ? tag : `<div class="lab" data-measure="label-${i}-${at}"${attrs}>`).replace(NUMBER_SPAN, (_tag, cls: string, n: string) => `<span class="${cls}" data-measure="number-${n}">${n}.</span>`).replace(FRAME, (_tag, cls: string, at: number) => `<div class="${cls}" data-measure="frame-${i}-${at}"`)}${missingHtml(b)}</section>`).join("");
+  // (A block's rows: the sum of its grids' --rows, so blocks grow by their rows too.)
+  const blockRows = (html: string) => [...html.matchAll(/class="(?:two|cols|list|facts|pcards|pcards fill|mxs)" style="--rows:(\d+)"/g)].reduce((n, m) => n + Number(m[1]), 0) || 1;
+  const blocks = c.blocks.map((b, i) => [b, i, blockHtml(b, i, ctx)] as const).map(([b, i, html]) => `<section class="blk${GROW.has(b.slot) || c.consistentLayout && b.slot === "word-problems" ? " grow" : ""}" style="--rows:${blockRows(html)}${b.slot === "in-your-head" ? `;flex:0 0 auto` : ""}" data-slot="${b.slot}" data-measure="block-${i}">${html.replace(/<div class="chiprow">([\s\S]*?)<\/div>/g, (_row, inner: string, at: number) => `<div class="chiprow" data-measure="chip-${i}-${at}">${inner.replace('<span class="chip ', `<span data-measure="chipbadge-${i}-${at}" class="chip `).replace('<span class="side">', `<span data-measure="chipnote-${i}-${at}" class="side">`)}</div>`).replace(/<div class="lab"([^>]*)>/g, (tag, attrs: string, at: number) => attrs.includes("data-measure") ? tag : `<div class="lab" data-measure="label-${i}-${at}"${attrs}>`).replace(NUMBER_SPAN, (_tag, cls: string, n: string) => `<span class="${cls}" data-measure="number-${n}">${n}.</span>`).replace(FRAME, (_tag, cls: string, at: number) => `<div class="${cls}" data-measure="frame-${i}-${at}"`)}${missingHtml(b)}</section>`).join("");
   // A page at its day's time limit holds no more questions: its rows grow to fill it, each with more room to work
   // (Codex at 47c5fd78: the time limit must not excuse a half-empty page).
   const stretch = c.consistentLayout && c.fillingComplete && c.atMaximum ? " stretch" : "";
@@ -1409,7 +1565,7 @@ export function workbookTemplate(fonts?: TemplateFonts): WorkbookTemplate {
     },
     // (With the layout checks of Savar's page reviews: spacing, alignment, one number style, no repeated instruction,
     // no clipped text.)
-    fit: (page, measured) => [...fitProblems(page, measured), ...layoutProblems(page, measured)],
+    fit: (page, measured) => [...fitProblems(page, measured), ...layoutProblems(page, measured, pagePlan(page))],
     answerMin: ANSWER_MIN,
   };
 }

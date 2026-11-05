@@ -525,6 +525,18 @@ export interface FitProblem {
 
 export type FitResult = { ok: true } | { ok: false; problems: FitProblem[] };
 
+/**
+ * A fit check's answer for the decisions about room (more questions, fewer, shorter text): without its layout problems,
+ * which more or fewer questions do not mend. The page's report keeps them (the fit check's own answer).
+ */
+const roomFit = (fit: FitResult): FitResult => {
+  if (fit.ok) return fit;
+  const problems = fit.problems.filter((p) => p.kind !== "layout");
+  return problems.length ? { ok: false, problems } : { ok: true };
+};
+/** Whether a page fails for room only by its fullness: it has room for more. */
+const lacksOnlyFullness = (fit: FitResult) => { const room = roomFit(fit); return !room.ok && room.problems.every((p) => p.kind === "fullness"); };
+
 /** The book a page belongs to, as a template reads it. */
 export interface FitBook {
   id: string;
@@ -2802,9 +2814,10 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
           const pkg = c ? buildPlannedItem(c, c.item, { id: `budget:${w.number}:${p.id}`, workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [p.skill] }).package : null;
           return pkg ? withoutSam(pkg, null) : null;
         });
-        const fit = await fitCheck.fits(fitPage(w, "token-000000000001", questions, contentOf(input, w, questions, examples)), {
+        // (Room only: a layout problem is the template's, reported when the page is written.)
+        const fit = roomFit(await fitCheck.fits(fitPage(w, "token-000000000001", questions, contentOf(input, w, questions, examples)), {
           id: input.workbookId, childId: input.childId, number: input.number, levels: [input.plan.level], profileBuild: input.profileBuild,
-        });
+        }));
         // (A page that fits below its planned count fills on too: 5 large questions met the fullness check, the full U4
         // book's Day 9, where the floor is 8.)
         // (Refills stop well before the round limit, so the page's last state is always one that was checked.)
@@ -2825,8 +2838,7 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
           w.page.compactPanel = true; w.page.refills = 0; continue;
         }
         if (fit.ok && !short) break;
-        if (!fit.ok && !short && fit.problems.every(p => p.kind === "layout")) break;
-        if (short || !fit.ok && fit.problems.every(p => p.kind === "fullness" || p.kind === "layout")) {
+        if (short || !fit.ok && fit.problems.every(p => p.kind === "fullness")) {
           added = null;
           pendingRefill = null;
           let refillKey = "";
@@ -3207,7 +3219,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
       let fit = await deps.fit.fits(fitPage(w, qrToken, questions, contentOf(input, w, questions, examples)), book);
       if (input.itemPolicy === "approved-v1" && w.slots.some(s=>s.existing)) {
         w.page.fillingComplete=true;
-        for(let extra=w.page.extraGap ?? 0;!fit.ok && fit.problems.every(p=>p.kind==="fullness") && extra<=48;extra+=4) {
+        for(let extra=w.page.extraGap ?? 0;lacksOnlyFullness(fit) && extra<=48;extra+=4) {
           w.page.extraGap=extra;
           fit=await deps.fit.fits(fitPage(w,qrToken,questions,contentOf(input,w,questions,examples)),book);
         }
@@ -3224,7 +3236,10 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
       examples = pass.examples;
       let fit = await check(questions);
       let attempts: 1 | 2 = 1;
-      const shorter = fit.ok || fit.problems.every(p => p.kind === "fullness" || p.kind === "layout") ? null : await shorterRewrite(input, deps, w, questions, shorterNote(input, w, questions, fit.problems), memory);
+      // (The rewrite, the pairing and the leaving out answer a lack of room: never a layout problem, which the page's
+      // report keeps.)
+      const room = roomFit(fit);
+      const shorter = room.ok || room.problems.every(p => p.kind === "fullness") ? null : await shorterRewrite(input, deps, w, questions, shorterNote(input, w, questions, room.problems), memory);
       if (shorter) {
         questions = shorter;
         fit = await check(questions);
@@ -3232,10 +3247,10 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
       }
       // Still no room: first pair the tall cards in rows (parent-led pages), then leave out questions one at a time
       // until the page fits; if it never does, keep them all.
-      if (!fit.ok) {
+      if (!roomFit(fit).ok) {
         const paired = pairedTall(input, w, questions);
         const pairedFit = paired ? await check(paired) : null;
-        if (paired && pairedFit?.ok) {
+        if (paired && pairedFit && roomFit(pairedFit).ok) {
           questions = paired;
           fit = pairedFit;
         }
@@ -3244,16 +3259,17 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
       let kept = questions;
       let left = fit;
       // A page keeps at least one question: its panels take their sums from its questions.
-      while (!left.ok && !left.problems.every(p => p.kind === "fullness" || p.kind === "layout") && kept.length > 1) {
+      for (let room = roomFit(left); !room.ok && !room.problems.every(p => p.kind === "fullness") && kept.length > 1; room = roomFit(left)) {
         const candidates = input.itemPolicy === "approved-v1" ? kept.filter(q=>q.existing) : kept;
-        const selected = toLeaveOut(candidates, left.problems);
+        const selected = toLeaveOut(candidates, room.problems);
         const out = selected ? {...selected,index:kept.indexOf(candidates[selected.index])} : null;
         if (!out) break;
         leftOut.push({ question: kept[out.index], slot: w.slots.find((x) => x.id === kept[out.index].slot)!, reason: out.reason });
         kept = renumbered(kept.filter((_, k) => k !== out.index));
         left = await check(kept);
       }
-      if ((left.ok || left.problems.every(p => p.kind === "fullness" || p.kind === "layout")) && leftOut.length > 0) {
+      const leftRoom = roomFit(left);
+      if ((leftRoom.ok || leftRoom.problems.every(p => p.kind === "fullness")) && leftOut.length > 0) {
         questions = kept;
         fit = left;
       } else leftOut.length = 0;
