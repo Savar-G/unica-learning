@@ -25,7 +25,7 @@ export interface CardSetup {
   grade: number;
   price: number;
   curriculum: string;
-  /** Null when the parent signed up on a phone (D-134): the metadata then has no postal key. */
+  /** Only an older signup has one (D-224). When null, the metadata has no postal key. */
   postal: string | null;
   /** Site origin for the return URLs, e.g. https://unicalearning.com */
   origin: string;

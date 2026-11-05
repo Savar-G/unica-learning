@@ -13,7 +13,7 @@ interface Common {
   /** Opens the child's start screen, through sign-in when the parent is signed out. */
   url: string;
   unsubscribeUrl: string;
-  /** The parent's postal code: it picks the time zone for the deadline. Null (the short phone signup, D-134): Pacific. */
+  /** An older signup's postal code (D-224): familyZone uses it after the saved time zone, before the province. Otherwise null. */
   postal: string | null;
   timeZone?: string | null;
   province?: string | null;

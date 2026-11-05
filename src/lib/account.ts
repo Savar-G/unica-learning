@@ -1,6 +1,6 @@
 // Parent accounts for the online assessment (#62, D-082). Shared by the account forms (client) and /api/account (server).
 import { isGrade } from "@/lib/assessment/grades";
-import { CURRICULA, POSTAL, clip, cleanSource, type CurriculumId } from "@/lib/signup";
+import { CURRICULA, clip, cleanSource, type CurriculumId } from "@/lib/signup";
 
 export const PASSWORD_MIN = 8;
 /** Stops a script from adding children without end. No family needs more. */
@@ -34,8 +34,6 @@ export interface ChildInput {
  */
 export interface FinishPayload {
   name: string;
-  /** Left out by the short phone signup (D-134); when given, it must be a Canadian postal code. */
-  postal?: string;
   child: ChildInput;
   /** Referrer and UTM tags, so we know which channel brought each parent. */
   source: Record<string, string>;
@@ -88,14 +86,10 @@ export function cleanChild(raw: unknown): ChildInput | null {
   return { firstName, grade, province };
 }
 
-/**
- * Name, postal code and source, cleaned, or null when one is not valid. Google gives the email, so this is all a Google
- * parent sends. No postal code (the short phone signup, D-134) is null; a postal code that is given must be Canadian.
- */
+/** Name and source, cleaned, or null when the name is not valid. Google gives the email, so this is all a Google parent sends. */
 export function cleanDetails(raw: Partial<FinishPayload>) {
-  const postal = clip(raw.postal, 7).toUpperCase();
-  const details = { name: clip(raw.name, 120), postal: postal || null, source: cleanSource(raw.source) };
-  return details.name.length >= 2 && (!postal || POSTAL.test(postal)) ? details : null;
+  const details = { name: clip(raw.name, 120), source: cleanSource(raw.source) };
+  return details.name.length >= 2 ? details : null;
 }
 
 /** Supabase Auth hashes at most 72 bytes of a password. */

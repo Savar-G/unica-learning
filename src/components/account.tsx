@@ -82,9 +82,11 @@ function Field({ id, label, bad, error, hint, children }: { id: string; label: s
 const described = (id: string, bad: boolean | undefined, hint = false) =>
   [hint && `h-${id}`, bad && `e-${id}`].filter(Boolean).join(" ") || undefined;
 
+/** A new family's first child: no province until the parent chooses one (D-234). */
+const FIRST_CHILD: ChildInput = { firstName: "", grade: 4, province: "" as CurriculumId };
+
 /**
- * First name, grade and province of one child. An empty province (the short phone signup, D-134) shows "Choose a
- * province" until one is picked.
+ * First name, grade and province of one child. An empty province shows "Choose a province" until one is picked.
  */
 function ChildFields({ prefix, value, onChange, bad, badProvince }: { prefix: string; value: ChildInput; onChange: (c: ChildInput) => void; bad?: boolean; badProvince?: boolean }) {
   return (
@@ -179,8 +181,7 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  // On a phone the parent chooses the province (D-134). Elsewhere it starts on BC, the curriculum we serve today.
-  const [child, setChild] = useState<ChildInput>({ firstName: "", grade: 4, province: phone ? ("" as CurriculumId) : "BC" });
+  const [child, setChild] = useState<ChildInput>(FIRST_CHILD);
   const [website, setWebsite] = useState("");
   const [errors, setErrors] = useState<SignupErrors>({});
   const [failure, setFailure] = useState<AccountError | null>(null);
@@ -798,7 +799,7 @@ export function FinishAccount({ name: googleName, email, needsPassword }: { name
   const [name, setName] = useState(googleName);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [child, setChild] = useState<ChildInput>({ firstName: "", grade: 4, province: "BC" });
+  const [child, setChild] = useState<ChildInput>(FIRST_CHILD);
   const [errors, setErrors] = useState<SignupErrors>({});
   const [failure, setFailure] = useState<AccountError | null>(null);
   const [busy, setBusy] = useState(false);
@@ -811,12 +812,14 @@ export function FinishAccount({ name: googleName, email, needsPassword }: { name
       name: name.trim().length < 2,
       password: needsPassword && !validPassword(password),
       child: !child.firstName.trim(),
+      province: !child.province,
     };
     setErrors(next);
     setFailure(null);
-    const firstBad = (["name", "password", "child"] as const).find((k) => next[k]);
+    const firstBad = (["name", "password", "child", "province"] as const).find((k) => next[k]);
     if (firstBad) {
-      form.current?.querySelector<HTMLInputElement>(`#f-${firstBad === "child" ? "c-first" : firstBad}`)?.focus();
+      const at = firstBad === "child" ? "c-first" : firstBad === "province" ? "c-province" : firstBad;
+      form.current?.querySelector<HTMLElement>(`#f-${at}`)?.focus();
       return;
     }
     setBusy(true);
@@ -860,7 +863,7 @@ export function FinishAccount({ name: googleName, email, needsPassword }: { name
       </fieldset>
       <fieldset>
         <legend>Your child</legend>
-        <ChildFields prefix="f-c" value={child} onChange={setChild} bad={errors.child} />
+        <ChildFields prefix="f-c" value={child} onChange={setChild} bad={errors.child} badProvince={errors.province} />
       </fieldset>
       <Submit busy={busy}>Finish <span className="arr">→</span></Submit>
       <p className="small">We use your details to run your child&apos;s assessment and to contact you. Read our <Link href="/privacy">privacy policy</Link> and <Link href="/terms">terms</Link>.</p>
