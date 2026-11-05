@@ -425,9 +425,10 @@ const childSide = (e: HistoryEvent) => e.kind !== "maya" && e.kind !== "skipped"
  * A call's board with the child's ink (#534): Maya's batches as the call recorded them (`call`, their commands), and the
  * child's strokes, undos, clears and pen moves from the desk's copy of the board (`desk`).
  *
- * The desk's copy decides the order (R625b-1): its batches come where they reached the child's board, each drawn or
- * skipped as the desk did (a batch the desk refused stays out of the replay, `skipped`), and the call's batches the
- * desk had not received yet come after them by the call's times. Times: the desk's clock is moved onto the call's by the
+ * The desk's copy decides where each batch came among the child's events (R625b-1), for the batches it reports in the
+ * call's order (R635-5); the call's other batches come after them by the call's times. Whether a batch is drawn is the
+ * replay's to say: a batch that would cover the child's ink there is left out (`refusedBatches`), whatever the desk
+ * reported. Times: the desk's clock is moved onto the call's by the
  * first batch both hold; a batch shows when it reached the desk, never before the call recorded it; the child's times
  * stay inside the call (from 0 to `endMs`) and between the batches they came between (R625-3). Batches in the desk's
  * copy that the call never recorded are not taken. The child's ink is always kept (R625-1).
@@ -435,7 +436,12 @@ const childSide = (e: HistoryEvent) => e.kind !== "maya" && e.kind !== "skipped"
 export function withChildInk(call: BoardHistory, desk: BoardHistory | null, options: { endMs?: number } = {}): BoardHistory {
   if (!desk || !desk.events.some(childSide)) return call;
   const recorded = new Map(call.events.flatMap((e) => (e.kind === "maya" ? [[e.batchId, e] as const] : [])));
-  const delivered = (e: HistoryEvent): e is Extract<HistoryEvent, { kind: "maya" | "skipped" }> => (e.kind === "maya" || e.kind === "skipped") && recorded.has(e.batchId);
+  // The desk reports each batch once, in the call's order (R635-5): a report out of that order is not taken, and its
+  // batch comes in by the call's time with the ones the desk never received.
+  const order = call.events.flatMap((e) => (e.kind === "maya" ? [e.batchId] : []));
+  const taken = new Set<HistoryEvent>();
+  for (const e of desk.events) if ((e.kind === "maya" || e.kind === "skipped") && e.batchId === order[taken.size]) taken.add(e);
+  const delivered = (e: HistoryEvent): e is Extract<HistoryEvent, { kind: "maya" | "skipped" }> => taken.has(e);
   const anchor = desk.events.find(delivered);
   const by = anchor ? recorded.get(anchor.batchId)!.t - anchor.t : 0;
   const end = Math.max(options.endMs ?? Infinity, historyLength(call));
@@ -448,7 +454,8 @@ export function withChildInk(call: BoardHistory, desk: BoardHistory | null, opti
   const asDelivered = (e: Extract<HistoryEvent, { kind: "maya" | "skipped" }>): Item => {
     const r = recorded.get(e.batchId)!;
     const t = Math.min(end, Math.max(r.t, inCall(e.t)));
-    return { e: e.kind === "maya" ? { ...r, t } : { kind: "skipped", t, batchId: e.batchId }, maya: true };
+    // Drawn or not is the replay's to say, from the call's own batch on the board as it stands (R635-5).
+    return { e: { ...r, t }, maya: true };
   };
   const ordered: Item[] = [];
   desk.events.slice(0, lastDelivered + 1).forEach((e) => {
@@ -509,25 +516,147 @@ export function refusedBatches(h: BoardHistory): string[] {
   return refused;
 }
 
+
+// ---------- the child's ink as an event log (#635) ----------
+
 /**
- * A board rebuilt on another copy of itself (R625b-4): the call's saved board (`saved`), with this board's own lines
- * that are not on it added back at `t` (as strokes the child drew holding the pen). Its revision is above both, so the
- * next save is the newest. `saved` itself when this board has nothing it lacks; `local` when `saved` has nothing
- * `local` lacks.
+ * One event of a chat board's ink log: the child's events as the board keeps them, and each of Maya's batches as it
+ * reached the board (`delivered`, by its id only: her commands come from the call's own record). The log of a board is
+ * append-only, so an event's place in it (from 1) is its sequence number, the same on every copy.
  */
-export function rebaseOnto(saved: BoardHistory, local: BoardHistory, t: number): BoardHistory {
-  const key = (s: InkStroke) => JSON.stringify([s.erase, s.w, s.boardWidth, s.page, s.pts.map(([x, y]) => [x, y])]);
-  const batches = (h: BoardHistory) => new Set(h.events.flatMap((e) => (e.kind === "maya" || e.kind === "skipped" ? [e.batchId] : [])));
-  const savedInk = new Set(childStrokes(saved).map(key));
-  const localInk = new Set(childStrokes(local).map(key));
-  const localBatches = batches(local);
-  const savedHasMore = [...savedInk].some((k) => !localInk.has(k)) || [...batches(saved)].some((b) => !localBatches.has(b));
-  if (!savedHasMore) return local;
-  const missing = childStrokes(local).filter((s) => !savedInk.has(key(s)));
-  if (missing.length === 0 && saved.revision >= local.revision) return saved;
-  const back = restoreKept(saved, missing.map(keptStroke), t).history;
-  return { ...back, revision: Math.max(back.revision, local.revision + 1) };
+export type InkEvent = Exclude<HistoryEvent, { kind: "maya" | "skipped" }> | { kind: "delivered"; t: number; batchId: string };
+
+/** The ink log of a board: every event, Maya's batches as deliveries. */
+export function inkLog(h: BoardHistory): InkEvent[] {
+  return h.events.map((e): InkEvent => (e.kind === "maya" || e.kind === "skipped" ? { kind: "delivered", t: e.t, batchId: e.batchId } : e));
 }
+
+/** An ink event read from plain data (a desk's request, a stored row), or null when it is not one. */
+export function readInkEvent(raw: unknown): InkEvent | null {
+  if (isRecord(raw) && raw.kind === "delivered") return isTime(raw.t) && typeof raw.batchId === "string" && raw.batchId.length <= 200 ? { kind: "delivered", t: raw.t, batchId: raw.batchId } : null;
+  const e = readEvent(raw);
+  return e && e.kind !== "maya" && e.kind !== "skipped" ? e : null;
+}
+
+/** A log as a board's events: each delivery as Maya's batch from `batches` where the board core takes it, else skipped. */
+function logEvents(log: readonly InkEvent[], batches: ReadonlyMap<string, Batch>): HistoryEvent[] {
+  let scene = createScene();
+  const events: HistoryEvent[] = [];
+  // A line drawn on a board that fell behind has an earlier time than the event before it (R639-2): it moves up.
+  let last = 0;
+  for (const raw of log) {
+    const by = last - (raw.kind === "delivered" ? raw.t : startOf(raw));
+    const e: InkEvent = by <= 0 ? raw : raw.kind === "delivered" ? { ...raw, t: last } : (timed(raw, (t) => t + by) as InkEvent);
+    last = e.kind === "stroke" ? e.pts[e.pts.length - 1][2] : e.t;
+    if (e.kind !== "delivered") {
+      events.push(e);
+      if (e.kind === "stroke" || e.kind === "recovered") {
+        try {
+          scene = addChildInk(scene, { page: e.page, stroke: { erase: e.erase, w: e.w, pts: e.pts.map(([x, y]) => [x, y]) }, boardWidth: e.boardWidth }).scene;
+        } catch {
+          // A stroke the board could not keep: it was never added.
+        }
+      }
+      continue;
+    }
+    const batch = batches.get(e.batchId);
+    const r = batch ? applyBatch(scene, batch) : null;
+    if (r?.ok && batch) {
+      scene = r.scene;
+      events.push({ kind: "maya", t: e.t, batchId: e.batchId, commands: [...batch.commands] });
+    } else events.push({ kind: "skipped", t: e.t, batchId: e.batchId });
+  }
+  return events;
+}
+
+/**
+ * A chat's board rebuilt from its ink log (R635-3): the same events, with Maya's commands from `batches` (the chat's
+ * own), so a clear, an eraser and a redraw stay as they were. Null when the log is not a board's (out of time order).
+ */
+export function historyFromLog(log: readonly InkEvent[], batches: readonly Batch[]): BoardHistory | null {
+  const events = logEvents(log, new Map(batches.map((b) => [b.transactionId, b])));
+  return decodeHistory(encodeHistory({ v: 1, revision: events.length, events }));
+}
+
+/** A stroke apart from when it was drawn: a board built from a log can move a stroke's times, never what it drew. */
+const strokeIdentity = (s: InkStroke): string => JSON.stringify([s.page, s.erase, s.w, s.boardWidth, s.pts.map(([x, y]) => [x, y])]);
+/**
+ * What an ink event is, apart from its time (R639b-1): `historyFromLog` moves up an event that overlaps the one before it,
+ * so the same event can come back with another time. Events that look alike (a second clear) are told apart by place.
+ */
+const inkIdentity = (e: InkEvent): string => {
+  if (e.kind === "stroke" || e.kind === "recovered") return `ink:${strokeIdentity(e)}`;
+  if (e.kind === "delivered") return `delivered:${e.batchId}`;
+  return e.kind === "pen" ? `pen:${e.to}` : e.kind;
+};
+/** How far two logs are the same, from the first event. `null`: only the call has that event, so it counts as the same. */
+const sharedInk = (a: readonly (InkEvent | null)[], b: readonly InkEvent[]): number => {
+  let n = 0;
+  while (n < a.length && n < b.length && (a[n] === null || a[n] === b[n] || inkIdentity(a[n] as InkEvent) === inkIdentity(b[n]))) n++;
+  return n;
+};
+/** Of `items`, those past what `held` already has: each thing `held` has counts once, so a real repeat stays. */
+function notHeld<T>(items: readonly T[], held: readonly string[], identity: (item: T) => string): T[] {
+  const counts = new Map<string, number>();
+  for (const id of held) counts.set(id, (counts.get(id) ?? 0) + 1);
+  return items.filter((item) => {
+    const id = identity(item);
+    const left = counts.get(id) ?? 0;
+    if (left === 0) return true;
+    counts.set(id, left - 1);
+    return false;
+  });
+}
+
+/**
+ * A log with what a board holds now (R639-1, R639-2). A sequence once given is never given to another event, because the
+ * call keeps the first event at each sequence: a board that goes on from the log becomes the log; a shorter one changes
+ * nothing; the new events of a board that went another way go at the end, once each. Events are the same by what they are,
+ * not when (R639b-1), so a log read back with a moved time adds nothing.
+ */
+export function growInkLog<T extends InkEvent | null>(log: T[], board: InkEvent[]): (T | InkEvent)[] {
+  const shared = sharedInk(log, board);
+  if (shared === log.length) return board;
+  if (shared === board.length) return log;
+  const after = log.slice(shared).flatMap((e) => (e ? [inkIdentity(e)] : []));
+  return [...log, ...notHeld(board.slice(shared), after, inkIdentity)];
+}
+
+/**
+ * The board a chat picked up again starts from (R639-2): the board from the call's log and the ink waiting on the device
+ * (`call`), or this device's draft (`draft`), whichever holds the other. A draft a failed storage write left behind never
+ * beats the call. A draft that went another way adds back only its own lines, after all that the call holds.
+ */
+export function startingChatBoard(call: BoardHistory | null, draft: BoardHistory | null): BoardHistory | null {
+  if (!call || !draft) return call ?? draft;
+  const held = inkLog(call);
+  const device = inkLog(draft);
+  const shared = sharedInk(held, device);
+  if (shared === held.length) return draft;
+  if (shared === device.length) return call;
+  const own = notHeld(childStrokes(draft), childStrokes(call).map(strokeIdentity), strokeIdentity);
+  return restoreKept(call, own.map(keptStroke), historyLength(call) + 1).history;
+}
+
+/** Whether `h` holds all of `other`'s log, in order: on a chat's board, nothing is lost by showing `h` in its place. */
+export const holdsInk = (h: BoardHistory, other: BoardHistory): boolean => {
+  const theirs = inkLog(other);
+  return sharedInk(theirs, inkLog(h)) === theirs.length;
+};
+
+/** A call's board with the child's ink log (#635): `withChildInk` with the log as the desk's copy. */
+export function withInkLog(call: BoardHistory, log: readonly InkEvent[], options: { endMs?: number } = {}): BoardHistory {
+  // A delivery stands in the desk's copy as a batch that reached the board; the merge takes the commands from the call.
+  const events = log.map((e): HistoryEvent => (e.kind === "delivered" ? { kind: "skipped", t: e.t, batchId: e.batchId } : e));
+  return withChildInk(call, { v: 1, revision: events.length, events }, options);
+}
+
+/**
+ * When a chat board's view is taken again (R635-6): when Maya writes, and when ink comes onto the board from elsewhere
+ * (added back after "Use it here", or carried over), never while the child draws under their own pen.
+ */
+export const chatViewKey = (h: BoardHistory): string =>
+  h.events.flatMap((e) => (e.kind === "maya" || e.kind === "skipped" ? [e.batchId] : e.kind === "recovered" ? [`ink@${e.t}`] : [])).join("\n");
 
 // ---------- the saved copy ----------
 
