@@ -1,6 +1,7 @@
 // The assessment core: the one tested seam (spec #54). Import from "@/lib/assessment" only.
 export * from "./attempt";
 export * from "./certainty";
+export { areaLevels, type AreaAnswer, type AreaBasis, type AreaLabel, type AreaLevel, type AreaLevelInput } from "./area-level";
 export * from "./constants";
 export * from "./grades";
 export * from "./deletion";
@@ -57,6 +58,7 @@ export {
   scoredAgainst,
   storedTest,
   submitAnswer,
+  testAreaAnswers,
   testLength,
   testStep,
   toPublicQuestion,
