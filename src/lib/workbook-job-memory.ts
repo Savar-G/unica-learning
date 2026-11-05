@@ -126,7 +126,7 @@ export function memoryRunStore(o: {
       return { refused };
     },
     async pages(id) {
-      return [...(pages.get(id)?.values() ?? [])].map((p) => structuredClone(p));
+      return [...(pages.get(id)?.values() ?? [])].map((p) => json(p));
     },
     async calls(id, numbers) {
       return [...(calls.get(id)?.values() ?? [])].filter((c) => numbers.includes(c.page)).sort((a, b) => a.page - b.page || a.seq - b.seq).map(json);
@@ -178,7 +178,7 @@ export function memoryRunStore(o: {
       if (!r) return false;
       r.heartbeatAt = iso();
       if (!pages.has(id)) pages.set(id, new Map());
-      if (!pages.get(id)!.has(page.number)) pages.get(id)!.set(page.number, structuredClone(page));
+      if (!pages.get(id)!.has(page.number)) pages.get(id)!.set(page.number, json(page));
       return true;
     },
     async claim(id, lease, runner = "server") {
@@ -248,7 +248,7 @@ export function memoryRunStore(o: {
 }
 
 /** A parsed JSON value with its object keys in Postgres jsonb order: shorter keys first, then bytewise. */
-function jsonbOrder(v: unknown): unknown {
+export function jsonbOrder(v: unknown): unknown {
   if (Array.isArray(v)) return v.map(jsonbOrder);
   if (v && typeof v === "object") {
     const keys = Object.keys(v).sort((a, b) => a.length - b.length || (a < b ? -1 : a > b ? 1 : 0));
