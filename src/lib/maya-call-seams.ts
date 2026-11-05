@@ -7,6 +7,7 @@ import { rebuildChildProfile } from "@/lib/child-profile";
 import { childProfileAiClient, type QuestionReader } from "@/lib/child-profile-ai";
 import { childProfileStore } from "@/lib/child-profile-store";
 import type { Database } from "@/lib/database";
+import type { MailTransport } from "@/lib/email-delivery";
 import { learningEvents } from "@/lib/learning-events";
 import { learningEventStore } from "@/lib/learning-events-store";
 import { mayaCalls, FAKE_MODEL_ID, type CallSeams, type MayaCalls } from "@/lib/maya-call";
@@ -71,11 +72,11 @@ async function rebuild(db: SupabaseClient<Database>, childId: string, factsOnly 
   }
 }
 
-/** `origin`: the site the safety alert's admin link points to; default NEXT_PUBLIC_SITE_URL, else the production site. */
-export function callSeams(db: SupabaseClient<Database>, options: { env?: Env; origin?: string; rebuild?: CallSeams["rebuild"] } = {}): CallSeams {
+/** `origin`: the site the safety alert's admin link points to; default NEXT_PUBLIC_SITE_URL, else the production site. `transport`: the alert's; default Resend. */
+export function callSeams(db: SupabaseClient<Database>, options: { env?: Env; origin?: string; rebuild?: CallSeams["rebuild"]; transport?: MailTransport } = {}): CallSeams {
   const env = options.env ?? process.env;
   return {
-    alerts: callAlerts({ ledger: mayaAlertLedger(db), to: env.SIGNUP_NOTIFY_EMAIL || null, origin: options.origin ?? siteOrigin(env) }),
+    alerts: callAlerts({ ledger: mayaAlertLedger(db), to: env.SIGNUP_NOTIFY_EMAIL || null, origin: options.origin ?? siteOrigin(env), transport: options.transport }),
     store: mayaCallStore(db),
     connections: mayaConnectionLog(db),
     history: wordingHistoryStore(db),

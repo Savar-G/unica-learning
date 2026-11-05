@@ -70,6 +70,7 @@ describe("asking for a code", () => {
   it.each([
     [{ admin: true }, "protected"],
     [{ holds: 1 }, "busy"],
+    [{ openPlanStart: () => true }, "plan_start"],
     [{ gone: true }, "not_found"],
   ] as const)("%j answers %s and sends nothing", async (over, error) => {
     const h = harness(over);

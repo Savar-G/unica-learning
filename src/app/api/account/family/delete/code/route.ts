@@ -1,12 +1,13 @@
+import { after } from "next/server";
 import { emailConfigProblem, sendEmail } from "@/lib/email-delivery";
 import { requestDeleteCode } from "@/lib/family-delete-code";
-import { supabaseDeleteCodes, supabaseDeleteStore } from "@/lib/family-delete-server";
+import { familyDeleteAlert, supabaseDeleteCodes, supabaseDeleteStore } from "@/lib/family-delete-server";
 import { familyRetryTime } from "@/lib/family-time-server";
 import { parentDashboardAccess } from "@/lib/parent-dashboard-access";
 import { adminClient, sessionClient } from "@/lib/supabase-auth";
 
 const reply = (status: number, body: Record<string, unknown>) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
-const STATUS = { no_confirmed_email: 409, protected: 403, not_found: 404, busy: 409, email_failed: 502, unavailable: 503 } as const;
+const STATUS = { no_confirmed_email: 409, protected: 403, not_found: 404, busy: 409, plan_start: 409, email_failed: 502, unavailable: 503 } as const;
 
 // "Email me a code" for the family delete (D-255). JSON and the site's origin only; while the child's desk is open,
 // src/proxy.ts answers this path with 423. The body is not read: the address is the one the Auth server gives for this session.
@@ -31,6 +32,7 @@ export async function POST(request: Request) {
     return reply(503, { ok: false, error: "unavailable" });
   }
   if (result.ok) return reply(200, result);
+  if (result.error === "plan_start") after(() => familyDeleteAlert(user.id.toLowerCase(), { plansStopped: 0, state: "plan_start" }));
   if (result.error === "too_many" || result.error === "locked") return reply(429, { ...result, ...await familyRetryTime(db, result.retryAt) });
   return reply(STATUS[result.error], result);
 }

@@ -13,7 +13,7 @@ import { adminClient, sessionClient } from "@/lib/supabase-auth";
 export const maxDuration = 120;
 
 const reply = (status: number, body: Record<string, unknown>) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
-const STATUS = { invalid: 400, wrong_code: 403, code_ended: 403, protected: 403, not_found: 404, busy: 409, locked: 429, not_finished: 502, unavailable: 503 } as const;
+const STATUS = { invalid: 400, wrong_code: 403, code_ended: 403, protected: 403, not_found: 404, busy: 409, plan_start: 409, locked: 429, not_finished: 502, unavailable: 503 } as const;
 
 /**
  * Ends every device's session, with one retry. Supabase answers a failure as `{ error }`, and only a broken network call
@@ -63,6 +63,10 @@ export async function POST(request: Request) {
     if (result.error === "not_finished" && result.plansStopped > 0) {
       const plansStopped = result.plansStopped;
       after(() => familyDeleteAlert(parent, { plansStopped, state: "not_queued" }));
+    }
+    if (result.error === "plan_start") {
+      const plansStopped = result.plansStopped;
+      after(() => familyDeleteAlert(parent, { plansStopped, state: "plan_start" }));
     }
     return reply(STATUS[result.error], result);
   }

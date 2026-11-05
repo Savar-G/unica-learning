@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { emailConfigProblem, sendEmail, sendEmailOnce, type EmailMessage, type MailTransport, type SendLedger } from "@/lib/email-delivery";
+import { emailConfigProblem, pacedTransport, sendEmail, sendEmailOnce, sendEmailOnceInTime, type EmailMessage, type MailTransport, type ReleasableLedger, type SendLedger } from "@/lib/email-delivery";
 import { memoryLedger, memoryTransport } from "@/lib/email-delivery-memory";
 
 // The parent email delivery module (#149, spec #143), through its public interface only. The in-memory transport stands
@@ -307,5 +307,108 @@ describe("the copy of a sent email", () => {
     expect(book.entry("k")?.state).toBe("sent");
     expect(String(error.mock.calls[0]?.[0])).toBe("[email] copy not kept");
     error.mockRestore();
+  });
+});
+
+describe("the paced transport (review round 5 of PR #593)", () => {
+  /** A process pause: the event loop stops, so every timer due in this time fires together afterwards. */
+  const pause = (ms: number) => { const end = performance.now() + ms; while (performance.now() < end); };
+  const GAP = 100;
+  const recording = () => {
+    const starts: number[] = [];
+    const ends: number[] = [];
+    const transport: MailTransport = { async send() { starts.push(performance.now()); await new Promise((r) => setTimeout(r, 1)); ends.push(performance.now()); return { status: "sent", emailId: "e" }; } };
+    return { starts, ends, transport };
+  };
+
+  it("after a process pause, two requests still start a full gap apart: the time counts from the last request's real start", async () => {
+    const r = recording();
+    const paced = pacedTransport(r.transport, GAP);
+    const sends = [paced.send(report), paced.send(report), paced.send(report)];
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(r.starts).toHaveLength(1);
+    // Past the time the second and the third were due at (100 and 200 ms), so both timers would fire together.
+    pause(236);
+    await Promise.all(sends);
+    expect(r.starts).toHaveLength(3);
+    expect(r.starts[1] - r.starts[0]).toBeGreaterThanOrEqual(GAP - 2);
+    expect(r.starts[2] - r.starts[1]).toBeGreaterThanOrEqual(GAP - 2);
+  });
+
+  it("runs sends one after another: a request starts only after the one before it has its answer", async () => {
+    const r = recording();
+    const paced = pacedTransport(r.transport, 1);
+    await Promise.all([paced.send(report), paced.send(report), paced.send(report)]);
+    expect(r.starts[1]).toBeGreaterThanOrEqual(r.ends[0]);
+    expect(r.starts[2]).toBeGreaterThanOrEqual(r.ends[1]);
+  });
+
+  it("goes on after a send that throws, and hands that throw to its own caller", async () => {
+    const calls: string[] = [];
+    const paced = pacedTransport({ async send(m) { calls.push(m.subject); if (m.subject === "bad") throw new Error("broken"); return { status: "sent", emailId: "e" }; } }, 1);
+    const bad = paced.send({ ...report, subject: "bad" });
+    const good = paced.send({ ...report, subject: "good" });
+    await expect(bad).rejects.toThrow("broken");
+    await expect(good).resolves.toEqual({ status: "sent", emailId: "e" });
+    expect(calls).toEqual(["bad", "good"]);
+  });
+
+  it("a send stopped in the queue answers at once, sends nothing and holds up no later send", async () => {
+    const r = recording();
+    const paced = pacedTransport(r.transport, GAP);
+    const stop = new AbortController();
+    const first = paced.send(report);
+    const stopped = paced.send(report, { signal: stop.signal });
+    const later = paced.send(report);
+    stop.abort();
+    await expect(stopped).resolves.toEqual({ status: "refused", error: expect.stringContaining("did not start") });
+    await Promise.all([first, later]);
+    expect(r.starts).toHaveLength(2);
+    expect(r.starts[1] - r.starts[0]).toBeGreaterThanOrEqual(GAP - 2);
+  });
+
+  it("asks mayStart after its wait: a send past its time when its turn comes does not start", async () => {
+    const r = recording();
+    const paced = pacedTransport(r.transport, GAP);
+    let open = true;
+    const first = paced.send(report);
+    const second = paced.send(report, { mayStart: () => open });
+    open = false;
+    await first;
+    await expect(second).resolves.toEqual({ status: "refused", error: expect.stringContaining("did not start") });
+    expect(r.starts).toHaveLength(1);
+  });
+});
+
+describe("a send once with a time check (review round 5 of PR #593)", () => {
+  function releasable() {
+    const book = memoryLedger<string>();
+    const released: string[] = [];
+    const ledger: ReleasableLedger<string, Parameters<typeof book.ledger.sent>[0]> = { ...book.ledger, async release(_handle, key) { released.push(key); return true; } };
+    return { book, ledger, released };
+  }
+  it("checks the time again after the transport's wait, gives the claim back, and records no refusal", async () => {
+    const r = releasable();
+    const mail = memoryTransport();
+    const refused = vi.spyOn(r.ledger, "refused");
+    let open = true;
+    const paced = pacedTransport(mail.transport, 50);
+    const first = paced.send(report);
+    const outcome = sendEmailOnceInTime(r.ledger, "plan:2", report, { transport: paced, inTime: () => open });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    open = false;
+    expect(await outcome).toEqual({ status: "not_sent", released: true });
+    await first;
+    expect(mail.delivered).toHaveLength(1);
+    expect(r.released).toEqual(["plan:2"]);
+    expect(refused).not.toHaveBeenCalled();
+  });
+  it("a provider's refusal is still a refusal, and the time check does not read it as time", async () => {
+    const r = releasable();
+    const mail = memoryTransport();
+    mail.answerNext("refuse");
+    const outcome = await sendEmailOnceInTime(r.ledger, "plan:3", report, { transport: pacedTransport(mail.transport, 1), inTime: () => true });
+    expect(outcome.status).toBe("refused");
+    expect(r.released).toEqual([]);
   });
 });
