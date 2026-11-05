@@ -4,7 +4,8 @@ import type { MeasuredElement, PrintEngine, PrintJob } from "@/lib/workbook-rend
 // each sheet and each element marked with data-measure, in document order, with the element's own text, and gives
 // every marked element a rect: a sheet fills its page; a question's content fills the top 30% of the question and its
 // answer space and other regions (region-<n>-<id>) the rest; any other element is at (48, 48), 200 by 100 CSS pixels,
-// unless the test gives a rect. An element fits its space and
+// unless the test gives a rect; a scan mark (scan-tl and so on) is where the real template draws it, 22 px in from its
+// corner, 18 by 18 CSS pixels. An element fits its space and
 // shows unless the test names it as overflowing or hidden, and its text prints unless the test names it as blank.
 // Elements are named "<sheet from 1> <data-measure>", so "2 question-3" is question 3 on the second sheet. A page's QR
 // code reads as the link the renderer drew (the fake reads data-qr-link instead of the image), unless `qrText` gives
@@ -16,6 +17,13 @@ const drawnLink = (sheet: string) => /data-measure="qr" data-qr-link="([^"]+)"><
 
 type Rect = Pick<MeasuredElement, "x" | "y" | "width" | "height">;
 const DEFAULT: Rect = { x: 48, y: 48, width: 200, height: 100 };
+
+/** Where the real template draws a scan mark on a page. */
+function scanRect(name: string, page: { width: number; height: number }): Rect | undefined {
+  const corner = /^scan-(t|b)(l|r)$/.exec(name);
+  if (!corner) return undefined;
+  return { x: corner[2] === "l" ? 22 : page.width - 40, y: corner[1] === "t" ? 22 : page.height - 40, width: 18, height: 18 };
+}
 
 export function fakePrintEngine(o: {
   rects?: Record<string, Rect>; overflow?: string[]; hidden?: string[]; blank?: string[]; qrText?: Record<number, string | null>; pdfPages?: number;
@@ -39,7 +47,7 @@ export function fakePrintEngine(o: {
           const rect = o.rects?.[key]
             ?? (of && part![2] === "content" ? { ...of, height: of.height * 0.3 } : undefined)
             ?? (of ? { ...of, y: of.y + of.height * 0.3, height: of.height * 0.7 } : undefined)
-            ?? (name === "sheet" ? { x: 0, y: 0, ...job.page } : DEFAULT);
+            ?? (name === "sheet" ? { x: 0, y: 0, ...job.page } : scanRect(name, job.page) ?? DEFAULT);
           const over = o.overflow?.includes(key) ? 40 : 0;
           return {
             sheet, name, text: text.trim(), visible: !o.hidden?.includes(key), textPrinted: !o.blank?.includes(key), ...rect,

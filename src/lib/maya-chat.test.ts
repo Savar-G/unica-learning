@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { chatIsEnabled, chatUsage, chatWindow, chatCapLine, childChatView } from "@/lib/maya-chat";
+import { chatFamilyGate, chatLimitLabel, chatServesGrade, getsNoParentNotes, rehearsalRefusal, chatUsage, chatWindow, chatCapLine, childChatView } from "@/lib/maya-chat";
 import { mayaCalls, type CallResult, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore } from "@/lib/maya-call-memory";
 import { memoryWordingHistoryStore } from "@/lib/maya";
@@ -96,9 +96,30 @@ describe("family days and release switch", () => {
   it("uses the confirmed Vancouver offset, not stale runtime tz data or UTC", () => {
     expect(chatWindow(Date.parse("2026-11-02T01:00:00Z"), "America/Vancouver")).toEqual({ start: Date.parse("2026-11-01T07:00:00Z"), end: Date.parse("2026-11-02T07:00:00Z") });
   });
-  it("defaults off for real families in every environment", () => {
-    expect(chatIsEnabled(false, { NODE_ENV: "production" })).toBe(false);
-    expect(chatIsEnabled(false, { MAYA_CHAT_ENABLED: "on" })).toBe(true);
-    expect(chatIsEnabled(true, {})).toBe(true);
+  it("defaults off for real families in every environment, and opens only a listed family with the switch on (#530)", () => {
+    expect(chatFamilyGate({ test: false, listed: false }, { NODE_ENV: "production" })).toBe("closed");
+    expect(chatFamilyGate({ test: false, listed: false }, { MAYA_CHAT_ENABLED: "on" })).toBe("closed");
+    expect(chatFamilyGate({ test: false, listed: true }, {})).toBe("closed");
+    expect(chatFamilyGate({ test: false, listed: true }, { MAYA_CHAT_ENABLED: "true" })).toBe("closed");
+    expect(chatFamilyGate({ test: false, listed: true }, { MAYA_CHAT_ENABLED: "on" })).toBe("plan");
+    expect(chatFamilyGate({ test: true, listed: false }, {})).toBe("test");
+  });
+  it("labels the chat limit in the desk header: left today, Grade 3 and up for a younger child, else the daily limit", () => {
+    const zone = "America/Vancouver", now = Date.parse("2026-11-05T17:00:00Z");
+    expect(chatLimitLabel(chatUsage(12, now, zone), null)).toBe("48 left today");
+    expect(chatLimitLabel(null, "Chat with Maya is for Grade 3 and up, because it needs typing. Calls with Maya start soon.")).toBe("Grade 3 and up");
+    expect(chatLimitLabel(null, null)).toBe("60 messages a day");
+  });
+  it("serves Grade 3 and up only; kindergarten is grade 0", () => {
+    expect([0, 1, 2, 3, 7, 8, 9].map(chatServesGrade)).toEqual([false, false, false, true, true, true, true]);
+    expect(chatServesGrade(null)).toBe(false); expect(chatServesGrade(undefined)).toBe(false);
+  });
+  it("keeps test families from notes and recaps except the rehearsal family, which must be a listed test family", () => {
+    expect(getsNoParentNotes({ test: true, rehearsal: false })).toBe(true);
+    expect(getsNoParentNotes({ test: true, rehearsal: true })).toBe(false);
+    expect(getsNoParentNotes({ test: false, rehearsal: false })).toBe(false);
+    expect(rehearsalRefusal({ test: false, listed: true })).toBe("not_test_family");
+    expect(rehearsalRefusal({ test: true, listed: false })).toBe("not_listed");
+    expect(rehearsalRefusal({ test: true, listed: true })).toBeNull();
   });
 });

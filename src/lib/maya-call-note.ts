@@ -119,7 +119,7 @@ export interface NoteSeams {
   store: NoteStore;
   /** The AI client, or null when the AI is off: then every note is code only. */
   ai: AiClient | null;
-  /** True when the family is marked as a test family (public.test_accounts). */
+  /** True when the family is marked as a test family (public.test_accounts) and is not the rehearsal family (#530). */
   isTestFamily(parentId: string): Promise<boolean>;
   /** The child's first name, or null when it cannot be read (then no note is written yet). */
   childName(childId: string): Promise<string | null>;

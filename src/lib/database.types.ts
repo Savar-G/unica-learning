@@ -1581,6 +1581,35 @@ export type Database = {
           },
         ]
       }
+      maya_chat_families: {
+        Row: {
+          added_at: string
+          added_by: string
+          parent_id: string
+          rehearsal: boolean
+        }
+        Insert: {
+          added_at?: string
+          added_by?: string
+          parent_id: string
+          rehearsal?: boolean
+        }
+        Update: {
+          added_at?: string
+          added_by?: string
+          parent_id?: string
+          rehearsal?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maya_chat_families_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: true
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       maya_chat_messages: {
         Row: {
           body: string | null
@@ -3134,6 +3163,7 @@ export type Database = {
           page_number: number
           page_type: string
           parent_id: string
+          print_contract: Json | null
           qr_token: string
           workbook_id: string
         }
@@ -3147,6 +3177,7 @@ export type Database = {
           page_number: number
           page_type: string
           parent_id: string
+          print_contract?: Json | null
           qr_token: string
           workbook_id: string
         }
@@ -3160,6 +3191,7 @@ export type Database = {
           page_number?: number
           page_type?: string
           parent_id?: string
+          print_contract?: Json | null
           qr_token?: string
           workbook_id?: string
         }
@@ -3186,7 +3218,9 @@ export type Database = {
           parent_id: string
           question_key: string
           question_number: number
+          regions: Json | null
           schema_version: number
+          teaching: Json | null
           workbook_id: string
         }
         Insert: {
@@ -3201,7 +3235,9 @@ export type Database = {
           parent_id: string
           question_key: string
           question_number: number
+          regions?: Json | null
           schema_version: number
+          teaching?: Json | null
           workbook_id: string
         }
         Update: {
@@ -3216,7 +3252,9 @@ export type Database = {
           parent_id?: string
           question_key?: string
           question_number?: number
+          regions?: Json | null
           schema_version?: number
+          teaching?: Json | null
           workbook_id?: string
         }
         Relationships: [
@@ -3719,7 +3757,10 @@ export type Database = {
           number: number
           parent_id: string
           pdf_path: string | null
+          pdf_sha256: string | null
+          print_manifest: Json | null
           printed_at: string | null
+          printed_revision: string | null
           profile_build: string | null
           shipped_at: string | null
           status: string
@@ -3733,7 +3774,10 @@ export type Database = {
           number: number
           parent_id: string
           pdf_path?: string | null
+          pdf_sha256?: string | null
+          print_manifest?: Json | null
           printed_at?: string | null
+          printed_revision?: string | null
           profile_build?: string | null
           shipped_at?: string | null
           status?: string
@@ -3747,7 +3791,10 @@ export type Database = {
           number?: number
           parent_id?: string
           pdf_path?: string | null
+          pdf_sha256?: string | null
+          print_manifest?: Json | null
           printed_at?: string | null
+          printed_revision?: string | null
           profile_build?: string | null
           shipped_at?: string | null
           status?: string
@@ -4063,6 +4110,10 @@ export type Database = {
       append_maya_call_connection: {
         Args: { p_call: string; p_kind: string; p_revision: number }
         Returns: string
+      }
+      apply_workbook_print_contract: {
+        Args: { p_workbook: Json }
+        Returns: undefined
       }
       approve_workbook_draft: {
         Args: {
@@ -4457,6 +4508,7 @@ export type Database = {
         Returns: undefined
       }
       lock_booking_email: { Args: { mail: string }; Returns: undefined }
+      lock_maya_family: { Args: { p: string }; Returns: undefined }
       lock_stage1: {
         Args: { p_answers: Json; p_assessment: string; p_route: string }
         Returns: string
