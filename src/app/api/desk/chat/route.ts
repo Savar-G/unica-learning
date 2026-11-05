@@ -1,9 +1,5 @@
-import { cookies } from "next/headers";
-import { DESK_COOKIE, readLock } from "@/lib/desk";
-import { parentId, sessionClient, adminClient } from "@/lib/supabase-auth";
-import { familyZone } from "@/lib/family-time";
-import { loadFamilyProvince } from "@/lib/family-time-server";
-import { chatGate, runChat, type ChatAction } from "@/lib/maya-chat-server";
+import { runChat, type ChatAction } from "@/lib/maya-chat-server";
+import { deskChatContext } from "@/lib/desk-chat-request";
 import { isUuid } from "@/lib/workbook-content";
 import { MAX_CHILD_TEXT } from "@/lib/maya-call";
 
@@ -22,18 +18,9 @@ export async function POST(request: Request) {
   if ((action.type === "child" || action.type === "end") && (!Number.isSafeInteger(action.revision) || action.revision < 0)) return json({ error: "invalid" }, 400);
   if (action.type === "child" && (!isUuid(action.messageId) || typeof action.text !== "string" || !action.text.trim() || action.text.length > MAX_CHILD_TEXT)) return json({ error: "invalid" }, 400);
   try {
-    const session = await sessionClient(), parent = await parentId(session);
-    if (!parent) return json({ error: "signed_out" }, 401);
-    const lock = readLock((await cookies()).get(DESK_COOKIE)?.value);
-    if (!lock || lock.parentId !== parent) return json({ error: "forbidden" }, 403);
-    const [{ data: child }, { data: family }, province] = await Promise.all([
-      session.from("children").select("first_name, grade").eq("id", lock.childId).eq("parent_id", parent).maybeSingle(),
-      session.from("parents").select("time_zone, postal").eq("id", parent).maybeSingle(), loadFamilyProvince(session, parent),
-    ]);
-    const db = adminClient();
-    // Family (test, or listed with the switch and a plan), then Grade 3 and up (#530).
-    if (!child || !family || !db || await chatGate(db, parent, child.grade) !== "open") return json({ error: "unavailable" }, 403);
-    return json(await runChat({ db, parent, child: lock.childId, name: child.first_name, grade: child.grade, zone: familyZone({ timeZone: family.time_zone, postal: family.postal, province }) }, action));
+    const gate = await deskChatContext(request);
+    if (!gate.ok) return json({ error: gate.error }, gate.status);
+    return json(await runChat(gate.ctx, action));
   } catch (error) {
     console.error("[desk chat] request failed", error instanceof Error ? error.message : "unknown");
     return json({ error: "unavailable" }, 503);

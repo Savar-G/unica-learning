@@ -836,7 +836,9 @@ function regionHtml(q: DraftQuestion, r: AnswerRegion, name: string, o: RegionOp
         return `<span class="circ${words ? " words" : ""}${likelihood(r) ? " likelihood" : ""}" ${at}>${r.choices.map((c) => `<span class="co">${choice(c)}</span>`).join("")}</span>`;
       }
       const choices = r.choices.map((c) => `<span class="ch"><i class="tb"></i><span>${escape(c)}</span></span>`).join("");
-      return `<span class="rg">${r.label ? `<span class="rl">${escape(r.label)}</span>` : ""}<span class="strip" ${at}>${choices}</span>${o.noTick ? "" : `<span class="t1"><span>Tick one</span><i>✓</i></span>`}</span>`;
+      const words = (s: string) => ` ${s.toLowerCase().replace(/[?!.:;,]/g, " ").replace(/\s+/g, " ").trim()} `;
+      const label = r.label && !words(q.package.text).includes(words(r.label)) ? r.label : null;
+      return `<span class="rg">${label ? `<span class="rl">${escape(label)}</span>` : ""}<span class="strip" ${at}>${choices}</span>${o.noTick ? "" : `<span class="t1"><span>Tick one</span><i>✓</i></span>`}</span>`;
     }
     case "work": {
       const h = o.work === "fill" ? "" : `height:max(${o.work ?? 80}px,var(--work-min,64px))`;
