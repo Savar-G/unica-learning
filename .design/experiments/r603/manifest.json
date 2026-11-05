@@ -1,0 +1,23 @@
+{
+  "round": "r603",
+  "ticket": "#603 (D-255): confirm a family delete with a one-time code from the account's email",
+  "route": "A fully specified change to the #556 screen, on the chosen dashboard frame, so no variants. Hidden behind PARENT_DASHBOARD_ENABLED (D-236, D-249): Savar approves on the one review page before any family sees it. The privacy and terms changes are on public pages, so they need his approval before merge.",
+  "picked": null,
+  "picked_by": "waiting for Savar",
+  "how_captured": "Aside repl, local dev server with no Stripe key, signed in as a test family (test_accounts). In these screens every POST to the two delete routes was answered by a stub inside the page: no request reached the server (the dev log's POST count did not change). The one real code email went earlier, by a direct POST to the real code route. No deletion ran and no Stripe call was made.",
+  "viewports": { "desktop": [1440, 900], "desktop_long": [1440, 1500], "phone_closed": [390, 844], "phone_long": [390, 2100] },
+  "screens": {
+    "desktop-closed.png": "Account tab, delete closed",
+    "desktop-open.png": "Delete open: what stops, what we delete, what stays, then Email me a code. No delete button yet",
+    "desktop-too-many.png": "Send limit reached (stubbed answer)",
+    "desktop-code.png": "Code sent: code and DELETE fields, with the delete button off",
+    "desktop-wrong-code.png": "Wrong code (stubbed answer): the code field clears and the word stays",
+    "desktop-not-finished.png": "Plans stopped, deletion not finished (stubbed answer): back to the step that asks for a new code",
+    "phone-closed.png": "The same at phone width",
+    "phone-open.png": "The same at phone width",
+    "phone-too-many.png": "The same at phone width",
+    "phone-code.png": "The same at phone width",
+    "phone-wrong-code.png": "The same at phone width",
+    "phone-not-finished.png": "The same at phone width"
+  }
+}
