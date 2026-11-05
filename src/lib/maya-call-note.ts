@@ -23,7 +23,7 @@
 // child's name and the clock. Pure otherwise: no Next.js, React, network or database.
 import { aiClient, withTimeLimit, type AiClient } from "@/lib/ai-client";
 import type { NewLearningEvent } from "@/lib/learning-events";
-import type { Outcome } from "@/lib/maya";
+import { heldSentences, type Outcome } from "@/lib/maya";
 import { fakeNoteAi } from "@/lib/maya-call-note-fake";
 import type { MayaTrace } from "@/lib/maya-trace";
 import type { QuestionPackage, QuestionRef, WorkedStep } from "@/lib/question-package";
@@ -222,8 +222,11 @@ export function noteFacts(input: { outcome: Outcome; event: NewLearningEvent | n
   };
 }
 
-/** The code's sentences for the facts: short, plain, with {child} for the name. */
-export function codeSentences(f: NoteFacts): string[] {
+/**
+ * The code's sentences for the facts: short, plain, with {child} for the name. `heldSaid`: the delivered transcript holds
+ * Maya's held lines (#527), so the note may say what she asked the child to do.
+ */
+export function codeSentences(f: NoteFacts, heldSaid = false): string[] {
   const where = f.question.source === "workbook" && f.question.page !== null && f.question.number !== null
     ? `page ${f.question.page}, question ${f.question.number}`
     : "a question from the math test";
@@ -236,6 +239,16 @@ export function codeSentences(f: NoteFacts): string[] {
     ];
   }
   const lines = [`${CHILD} called Maya about ${where}.`];
+  // A question Maya cannot teach yet (#527): what Maya told the child, in plain words. The call says nothing about how
+  // the child did (no learning event, so no step they got stuck on).
+  if (f.reason === "content_issue") {
+    lines.push("Maya cannot help with this kind of question yet, so the call ended.");
+    if (heldSaid) lines.push(`She asked ${CHILD} to pick another question or ask a grown-up.`);
+    if (f.help === "worked_example") lines.push("Maya showed an easier example first.");
+    else if (f.help === "guided") lines.push("Maya helped one step at a time.");
+    else if (f.help === "hint") lines.push("Maya gave a small hint.");
+    return lines;
+  }
   if (f.stuckOn) lines.push(`${CHILD} got stuck on ${f.stuckOn}.`);
   if (f.finished === "on_own") lines.push(`${CHILD} finished it with no help.`);
   else if (f.finished === "with_help") {
@@ -246,7 +259,6 @@ export function codeSentences(f: NoteFacts): string[] {
       f.reason === "time_limit" ? "The call ran out of time before the question was done."
       : f.reason === "no_response" ? `${CHILD} stopped answering, so the call ended before the question was done.`
       : f.reason === "technical_issue" ? "The call stopped because of a problem on our side."
-      : f.reason === "content_issue" ? "Maya could not help with this question yet, so the call ended."
       : `${CHILD} ended the call before the question was done.`,
     );
     if (f.help === "worked_example") lines.push("Maya showed an easier example first.");
@@ -465,6 +477,12 @@ export function noteTranscript(trace: MayaTrace, childName: string): NoteTranscr
   return lines;
 }
 
+/** The call's delivered output holds Maya's held lines (#527): what she asked the child to do on a held question. */
+function heldDelivered(trace: MayaTrace): boolean {
+  const held = heldSentences(false).join(" ");
+  return trace.turns.some((t) => t.kind === "maya" && !!t.output && t.output.say.some((said) => said.includes(held)));
+}
+
 /** Puts the child's first name in place of {child}. */
 const fillName = (s: string, childName: string) => s.split(CHILD).join(childName.trim() || "Your child");
 
@@ -535,7 +553,7 @@ export function callNotes(seams: NoteSeams): CallNotes {
         callEndedAt: call.endedAt,
         createdAt: new Date(seams.clock()).toISOString(),
         facts,
-        sentences: codeSentences(facts),
+        sentences: codeSentences(facts, heldDelivered(call.trace)),
         warm,
         writer: warm ? "ai" : "code",
         model: asked ? seams.ai!.model : null,

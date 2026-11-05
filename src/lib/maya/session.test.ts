@@ -106,15 +106,24 @@ describe("READY, OPEN and CONTENT_HOLD", () => {
     expect(c.refused("open")).toMatchObject({ code: "invalid_proposal" });
   });
 
-  it("holds a package that does not check, teaches nothing and closes as a content issue", () => {
+  it("holds a package that does not check: code says hello, that Maya is an AI and cannot help yet, and ends (#527)", () => {
     const c = call({ ...PACKAGE, answer: { value: num(56), accepted: [], unit: null } });
-    c.start();
-    expect(c.session.state).toBe("CONTENT_HOLD");
-    expect(c.next).toEqual({ expect: "maya", acts: ["close"] });
-    expect(c.refused(OPEN)).toMatchObject({ code: "content_hold", allowed: ["close"] });
-    const { effects } = c.maya({ act: "close", parts: [t("I can't check this question right now. Please ask a grown-up to help.")] });
+    const { effects } = c.start();
+    expect(said(effects)).toEqual(["Hi, I'm Maya, an AI. I can't help with this kind of question yet. Pick another question, or ask a grown-up."]);
+    expect(said(effects)[0]).toMatch(/\bAI\b/);
+    expect(said(effects)[0]).not.toMatch(/fun|enjoy|great|happy|sorry/i);
     expect(c.session.state).toBe("CLOSE");
-    expect(ended(effects)).toMatchObject({ outcome: { reason: "content_issue", assistance: "independent", paperStatus: "unknown" } });
+    expect(c.next).toEqual({ expect: "nothing", acts: [] });
+    expect(ended(effects)).toMatchObject({ outcome: { reason: "content_issue", assistance: "independent", paperStatus: "unknown", seconds: 0 } });
+    expect(c.refused(OPEN)).toMatchObject({ code: "ended" });
+    expect(learningEvent(c.session, { parentId: "p", childId: "c" })).toBeNull();
+  });
+
+  it("gives the held turn to no other kind of question: a kind Maya teaches opens as usual", () => {
+    const c = call();
+    const { effects } = c.start();
+    expect(said(effects)).toEqual([]);
+    expect(c.session.state).toBe("OPEN");
   });
 });
 
@@ -678,8 +687,63 @@ describe("other events", () => {
     const c = afterExample();
     c.send({ type: "content_problem", at: T0, detail: "the answer and the steps disagree" });
     expect(c.next).toEqual({ expect: "maya", acts: ["close"] });
-    c.maya({ act: "close", parts: [t("I can't check this question right now. Let's stop here.")] });
+    // Only the held lines, all of them and in order (#527): no warm talk, no "I had fun", no hello after the opening.
+    expect(c.refused({ act: "close", parts: [t("I can't check this question right now. Let's stop here.")] })).toMatchObject({ code: "content_hold" });
+    expect(c.refused({ act: "close", parts: [{ warm: "closing" }] })).toMatchObject({ code: "content_hold" });
+    expect(c.refused({ act: "close", parts: [ln("held.cannot")] })).toMatchObject({ code: "content_hold" });
+    expect(c.refused({ act: "close", parts: [ln("held.hello"), ln("held.cannot"), ln("held.next")] })).toMatchObject({ code: "content_hold" });
+    expect(c.refused({ act: "close", parts: [ln("held.cannot"), ln("held.next"), { warm: "closing" }] })).toMatchObject({ code: "content_hold" });
+    const { effects } = c.maya({ act: "close", parts: [ln("held.cannot"), ln("held.next")] });
+    expect(said(effects)).toEqual(["I can't help with this kind of question yet. Pick another question, or ask a grown-up."]);
     expect(c.session.outcome).toMatchObject({ reason: "content_issue" });
+    // A hold during the call says nothing about the child's learning either.
+    expect(learningEvent(c.session, { parentId: "p", childId: "c" })).toBeNull();
+  });
+
+  it("puts safety first during a hold: the held-lines rule never blocks the safety guidance (#527)", () => {
+    const c = afterExample();
+    c.send({ type: "content_problem", at: T0, detail: "the answer and the steps disagree" });
+    c.child("Someone is hurting me right now.");
+    const { effects } = c.maya({ act: "safety", parts: [], reading: { safety: "immediate" } });
+    expect(said(effects)).toEqual([SAFETY_GUIDANCE.immediate]);
+  });
+
+  it("writes no learning event for a held call that ends on a safety concern, after a resume (#527 review)", () => {
+    const c = afterExample();
+    c.send({ type: "content_problem", at: T0, detail: "the answer and the steps disagree" });
+    // The saved session, resumed: plain data with the content problem stored.
+    const resumed = JSON.parse(JSON.stringify(c.session));
+    let s = step(resumed, { type: "child_turn", at: T0 + 1000, text: "Someone at home hurts me." }).session;
+    const guided = step(s, { type: "proposal", at: T0 + 1000, proposal: { version: 2, act: "safety", parts: [], reading: { safety: "concern" } } });
+    expect(guided.refusal).toBeNull();
+    s = guided.session;
+    const closed = step(s, { type: "proposal", at: T0 + 2000, proposal: { version: 2, act: "close", parts: [] } });
+    s = closed.refusal ? step(s, { type: "hang_up", at: T0 + 2000 }).session : closed.session;
+    expect(s.outcome?.reason).toBe("safety");
+    expect(learningEvent(s, { parentId: "p", childId: "c" })).toBeNull();
+  });
+
+  it("writes no learning event when the content problem comes after a safety concern, and safety keeps the turn (#527 review)", () => {
+    const c = afterExample();
+    c.child("Someone at home hurts me.");
+    const guided = c.maya({ act: "safety", parts: [], reading: { safety: "concern" } });
+    expect(said(guided.effects)).toEqual([SAFETY_GUIDANCE.concern]);
+    const before = c.session.state;
+    c.send({ type: "content_problem", at: T0, detail: "the answer and the steps disagree" });
+    expect(c.session.state).toBe(before);
+    expect(c.session.safety.flagged).toBe(true);
+    const s = step(c.session, { type: "hang_up", at: T0 + 1000 }).session;
+    expect(s.outcome).not.toBeNull();
+    expect(learningEvent(s, { parentId: "p", childId: "c" })).toBeNull();
+  });
+
+  it("gives the held lines as the only fallback on a hold during the call (#527)", () => {
+    const c = afterExample();
+    c.send({ type: "content_problem", at: T0, detail: "the answer and the steps disagree" });
+    const [first] = fallbacks(c.session);
+    expect(first).toMatchObject({ act: "close", parts: [{ line: "held.cannot" }, { line: "held.next" }] });
+    const { effects } = c.send({ type: "proposal", at: T0, proposal: first });
+    expect(said(effects)).toEqual(["I can't help with this kind of question yet. Pick another question, or ask a grown-up."]);
   });
 
   it("ends on a technical failure", () => {

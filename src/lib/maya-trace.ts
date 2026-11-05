@@ -7,7 +7,7 @@ import { SCOPE_REASONS } from "@/lib/maya/scope";
 //
 // Plain JSON. Pure TypeScript except `packageHash`, which uses node:crypto (server and scripts only).
 import { createHash } from "node:crypto";
-import { ACTS, SAFETY_GUIDANCE, ASSISTANCE, INTERRUPTS, MAIN_STATES, NEVER_SAY_IDS, PHRASES, type Act, type Outcome, type RefusalCode, type SessionState, type TalkCheck } from "@/lib/maya";
+import { ACTS, SAFETY_GUIDANCE, ASSISTANCE, heldSentences, INTERRUPTS, MAIN_STATES, NEVER_SAY_IDS, PHRASES, type Act, type Outcome, type RefusalCode, type SessionState, type TalkCheck } from "@/lib/maya";
 
 /** Why a proposal was refused: the session's refusal, or "board_refused" when the board core refused a batch the session built. */
 export interface TraceRefusal {
@@ -25,11 +25,12 @@ export interface TraceRefusal {
  * words than her approved text start a repair) and `content_problem` (the package turned out wrong during the call).
  * Each records `cancelled`: whether Maya's output was stopped. Version 5 records input obligations and the
  * delivered turn that served each one, or the reason it was dropped. Version 6 adds controller safety output on
- * terminal events. Version 7 adds scope refusal reasons and times. `checkTrace` reads all seven versions.
+ * terminal events. Version 7 adds scope refusal reasons and times. Version 8 (#527) adds controller held output: on a
+ * question Maya cannot teach, code's held lines at the start, with no model. `checkTrace` reads all eight versions.
  */
-export const TRACE_VERSION = 7;
+export const TRACE_VERSION = 8;
 /** The trace versions `checkTrace` reads. */
-export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7] as const;
+export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 export const TRACE_KIND = "maya-trace";
 
 export const OBLIGATION_KINDS = ["start_pending", "safety_due", "opening_due", "repair_due", "child_turn_pending", "content_problem"] as const;
@@ -398,7 +399,9 @@ function checkTurn(t: unknown, path: string): Record<string, unknown> {
       const attempts = x.attempts as Record<string, unknown>[];
       if (attempts[0]?.source === "controller") {
         const o = x.output as { act?: unknown; say?: unknown; board?: unknown } | null;
-        need(attempts.length === 1 && attempts[0].proposal === null && attempts[0].refusal === null && attempts[0].error === undefined && o?.act === "safety" && Array.isArray(o.say) && o.say.length === 1 && Object.values(SAFETY_GUIDANCE).some((text) => text === (o.say as unknown[])[0]) && Array.isArray(o.board) && o.board.length === 0, path, "controller output is exact safety guidance only");
+        // Code's own words with no model: safety guidance, or the held lines on a question Maya cannot teach (#527).
+        const exact = o?.act === "safety" ? Object.values(SAFETY_GUIDANCE) as string[] : o?.act === "close" ? [heldSentences(true).join(" ")] : [];
+        need(attempts.length === 1 && attempts[0].proposal === null && attempts[0].refusal === null && attempts[0].error === undefined && Array.isArray(o?.say) && o.say.length === 1 && exact.includes(o.say[0] as string) && Array.isArray(o?.board) && o.board.length === 0, path, "controller output is exact safety guidance or the exact held lines only");
       }
       attempts.forEach((a, i) => checkAttempt(a, `${path}.attempts[${i}]`));
       checkOrder(attempts, `${path}.attempts`);
@@ -499,6 +502,7 @@ function check(raw: unknown): MayaTrace {
   need(r.outcome === null || r.startedAt !== null, "startedAt", "set for a call that ended");
   turns.forEach((t, i) => {
     if (t.kind === "maya") need(!(t.attempts as Record<string, unknown>[]).some((a) => a.source === "controller") || (r.version as number) >= 6, `turns[${i}].attempts`, "controller safety output starts in version 6");
+    if (t.kind === "maya") need((t.output as { act?: unknown } | null)?.act !== "close" || !(t.attempts as Record<string, unknown>[]).some((a) => a.source === "controller") || (r.version as number) >= 8, `turns[${i}].attempts`, "controller held output starts in version 8");
   });
   // The voice agent's input turns come in version 4.
   turns.forEach((t, i) => need(!["partial", "maya_said", "content_problem"].includes(t.kind as string) || (r.version as number) >= 4, `turns[${i}].kind`, `not ${String(t.kind)} before version 4`));

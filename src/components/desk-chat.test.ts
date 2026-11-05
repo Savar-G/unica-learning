@@ -2,7 +2,7 @@
 import { act, createElement, useLayoutEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ChatControls, useDeskChat, type DeskChatState } from "@/components/desk-chat";
+import { ChatControls, showHeldNote, useDeskChat, type DeskChatState } from "@/components/desk-chat";
 import type { ChatReply, ChatView } from "@/lib/maya-chat";
 
 const book = "45100000-0000-4000-8000-000000000031";
@@ -13,12 +13,12 @@ type RequestAction = { type: string; id: string; revision?: number; messageId?: 
 let root: Root, host: HTMLDivElement, state: DeskChatState;
 let answer: (action: RequestAction) => Promise<ChatReply>;
 const requests: RequestAction[] = [];
-function Harness({ question = 1 }: { question?: number }) {
+function Harness({ question = 1, held = false }: { question?: number; held?: boolean }) {
   const chat = useDeskChat(reply(1).usage, { book, page: 1, question });
   useLayoutEffect(() => { state = chat; }, [chat]);
-  return createElement(ChatControls, { state: chat, picked: true });
+  return createElement(ChatControls, { state: chat, picked: true, held });
 }
-const render = async (question = 1) => act(async () => root.render(createElement(Harness, { question })));
+const render = async (question = 1, held = false) => act(async () => root.render(createElement(Harness, { question, held })));
 const send = async (type: "start" | "child" | "end", text?: string) => {
   let ok = false;
   await act(async () => { ok = await state.act(type, text); });
@@ -38,6 +38,29 @@ beforeEach(() => {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+describe("a question Maya cannot teach yet (#527)", () => {
+  it("offers no chat to start, so nothing is sent", async () => {
+    await render(1, true);
+    expect([...host.querySelectorAll("button")].map((b) => b.textContent)).not.toContain("Chat with Maya");
+    expect(host.querySelector("input")!.disabled).toBe(true);
+    expect(requests).toEqual([]);
+  });
+  it("shows Maya's held words when an old ended chat on the question never said them", () => {
+    const HELD = ["Hi, I'm Maya, an AI.", "I can't help with this kind of question yet.", "Pick another question, or ask a grown-up."];
+    const old = { ...view(4), ended: true, transcript: [{ speaker: "maya" as const, text: "I had fun working with you.", second: 0 }] };
+    const told = { ...view(4), ended: true, transcript: [{ speaker: "maya" as const, text: HELD.join(" "), second: 0 }] };
+    expect(showHeldNote(HELD, null)).toBe(true);
+    expect(showHeldNote(HELD, old)).toBe(true);
+    expect(showHeldNote(HELD, told)).toBe(false);
+    expect(showHeldNote(HELD, view(4))).toBe(false);
+    expect(showHeldNote(null, null)).toBe(false);
+  });
+  it("offers the chat on a question Maya teaches", async () => {
+    await render(1, false);
+    expect(button("Chat with Maya").disabled).toBe(false);
+  });
+});
 
 describe("chat message admission at the public hook", () => {
   it("R451-2: releases a definitely refused request before sending new text at the returned revision", async () => {

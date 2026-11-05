@@ -118,7 +118,7 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | C35 | A | passing | 540 s with the work unfinished: an honest close, time_limit | time_limit, independent |  |
 | C35b | A | passing | 540 s: Maya gives the answer to close; the outcome says answer_given | solved, answer_given |  |
 | C35c | A | passing | 600 s with the child quiet: the call ends at the limit | time_limit |  |
-| C36 | A (bad key) | passing | The package says 56 but the checked steps make 66: a content hold, no teaching | content_issue, independent |  |
+| C36 | A (bad key) | passing | The package says 56 but the checked steps make 66: a content hold, no teaching; code's held turn with no model (#527) | content_issue, independent |  |
 | C36b | G | passing | A question kind Maya cannot teach yet (equivalent fractions, fixture G): held, no unchecked teaching | content_issue |  |
 | C37 | B | passing | 52 - 28, says 36 (smaller from larger): not accepted; the exchange is guided | solved, hint |  |
 | C38 | D | passing | 3/4 + 1/8, says 4/12 (adds the denominators): the denominators are pointed out; 'six eighths', then 'seven eighths' is accepted | solved, hint |  |
