@@ -103,6 +103,7 @@ type NullArgs = KnownArgs<{
   // An idle worker has no run; a worker outside git has no build.
   beat_workbook_worker: "p_build" | "p_run" | "p_note";
   save_child_profile_and_skill_changes: "p_assessment" | "p_expected";
+  save_child_profile_and_skill_changes_from_tests: "p_assessment" | "p_expected";
   change_answer: AnswerNulls | "p_work_path" | "p_strokes_path";
   change_answer_keep_drawing: AnswerNulls;
   claim_maya_weekly: "p_retry";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BC_SKILL_MAP, skillStateChanges, skillStates, type RecordedSkillState, type SkillMark, type SkillStateInput, type SkillTestResult } from "@/lib/assessment";
+import { BC_SKILL_MAP, skillStateChanges, skillStates, type RecordedSkillState, type SkillMark, type SkillStateInput, type SkillTestResult, type StandardSkillState } from "@/lib/assessment";
 
 // The skill state rule (spec #544, "Skill states"): each BC standard's state and reason, through its one function.
 
@@ -29,7 +29,7 @@ describe("the skill state of a BC standard", () => {
 
   describe("from the test", () => {
     it("is Mastered when every answer on the standard is right, with 2 answers or more (#578)", () => {
-      expect(stateOf({ tests: [test(2, 2)] })).toEqual({ standard: CODE, state: "mastered", reason: "secure_on_test", evidence: "test" });
+      expect(stateOf({ tests: [test(2, 2)] })).toEqual({ standard: CODE, state: "mastered", reason: "secure_on_test", evidence: "test", evidenceAt: at(1) });
       expect(stateOf({ tests: [test(3, 3)] })).toMatchObject({ state: "mastered" });
       expect(stateOf({ tests: [test(5, 5)] })).toMatchObject({ state: "mastered" });
     });
@@ -45,11 +45,11 @@ describe("the skill state of a BC standard", () => {
       expect(stateOf({ tests: [test(2, 3)] })).toMatchObject({ state: "not_started", reason: "developing_on_test" });
       expect(stateOf({ tests: [test(4, 5)] })).toMatchObject({ state: "not_started", reason: "early_sign_on_test" });
       // Secure with Clear certainty is not enough on its own any more.
-      expect(stateOf({ tests: [test(9, 10)] })).toEqual({ standard: CODE, state: "not_started", reason: "secure_on_test", evidence: "test" });
+      expect(stateOf({ tests: [test(9, 10)] })).toEqual({ standard: CODE, state: "not_started", reason: "secure_on_test", evidence: "test", evidenceAt: at(1) });
     });
 
     it("is Needs review when the test says Needs attention with Clear certainty", () => {
-      expect(stateOf({ tests: [test(0, 2)] })).toEqual({ standard: CODE, state: "needs_review", reason: "needs_attention_on_test", evidence: "test" });
+      expect(stateOf({ tests: [test(0, 2)] })).toEqual({ standard: CODE, state: "needs_review", reason: "needs_attention_on_test", evidence: "test", evidenceAt: at(1) });
     });
 
     it("stays Not started on a Needs attention, Early sign result", () => {
@@ -77,7 +77,7 @@ describe("the skill state of a BC standard", () => {
     });
 
     it("goes to Needs review on a wrong answer on a newer test, also a single one", () => {
-      expect(stateOf({ tests: [test(3, 3, 1), test(0, 2, 20)] })).toEqual({ standard: CODE, state: "needs_review", reason: "failed_review", evidence: "test" });
+      expect(stateOf({ tests: [test(3, 3, 1), test(0, 2, 20)] })).toEqual({ standard: CODE, state: "needs_review", reason: "failed_review", evidence: "test", evidenceAt: at(20) });
       expect(stateOf({ tests: [test(3, 3, 1), test(0, 1, 20)] })).toMatchObject({ state: "needs_review", reason: "failed_review", evidence: "test" });
       expect(stateOf({ tests: [test(3, 3, 1), test(4, 5, 20)] })).toMatchObject({ state: "needs_review", reason: "failed_review" });
       // In the current workbook too: rule 1 comes first.
@@ -96,14 +96,27 @@ describe("the skill state of a BC standard", () => {
     });
   });
 
+  it("gives the time of the evidence the state rests on, not the newest evidence", () => {
+    // A newer test that keeps Mastered is not its evidence.
+    expect(stateOf({ tests: [test(2, 2, 1), test(1, 1, 20)] })).toMatchObject({ state: "mastered", evidenceAt: at(1) });
+    // Earned again: the newer time.
+    expect(stateOf({ tests: [test(2, 2, 1), test(0, 1, 5), test(3, 3, 9)] })).toMatchObject({ state: "mastered", evidenceAt: at(9) });
+    // Needs review stays at the first wrong answer after Mastered.
+    expect(stateOf({ tests: [test(2, 2, 1), test(0, 1, 5), test(1, 2, 9)] })).toMatchObject({ state: "needs_review", evidenceAt: at(5) });
+    // The newest Clear test, not a newer Early sign.
+    expect(stateOf({ tests: [test(0, 2, 1), test(1, 1, 20)] })).toMatchObject({ state: "needs_review", evidenceAt: at(1) });
+    expect(stateOf({ tests: [test(1, 1, 3)], workbookStandards: [CODE] })).toMatchObject({ state: "working_on", evidenceAt: null });
+    expect(stateOf({})).toMatchObject({ state: "not_started", evidenceAt: null });
+  });
+
   it("is Working on when the current workbook has the standard", () => {
-    expect(stateOf({ workbookStandards: [CODE] })).toEqual({ standard: CODE, state: "working_on", reason: "in_workbook", evidence: "workbook" });
+    expect(stateOf({ workbookStandards: [CODE] })).toEqual({ standard: CODE, state: "working_on", reason: "in_workbook", evidence: "workbook", evidenceAt: null });
     expect(stateOf({ workbookStandards: [OTHER] })).toMatchObject({ state: "not_started" });
   });
 
   describe("from marked pages", () => {
     it("is Mastered with 80% or more right on at least 5 results, held on a later review", () => {
-      expect(stateOf({ marks: [...FIVE_RIGHT, review(true, 6)] })).toEqual({ standard: CODE, state: "mastered", reason: "held_on_review", evidence: "pages" });
+      expect(stateOf({ marks: [...FIVE_RIGHT, review(true, 6)] })).toEqual({ standard: CODE, state: "mastered", reason: "held_on_review", evidence: "pages", evidenceAt: at(6) });
       expect(stateOf({ marks: [page(false, 1), ...FIVE_RIGHT.slice(1), review(true, 6)] })).toMatchObject({ state: "mastered" });
     });
 
@@ -124,7 +137,7 @@ describe("the skill state of a BC standard", () => {
     });
 
     it("takes Mastered away for any wrong marked item after it, also one that is not a review", () => {
-      expect(stateOf({ tests: [test(2, 2, 1)], marks: [page(false, 2)] })).toEqual({ standard: CODE, state: "needs_review", reason: "failed_review", evidence: "pages" });
+      expect(stateOf({ tests: [test(2, 2, 1)], marks: [page(false, 2)] })).toEqual({ standard: CODE, state: "needs_review", reason: "failed_review", evidence: "pages", evidenceAt: at(2) });
       expect(stateOf({ tests: [test(2, 2, 1)], marks: [page(true, 2), review(true, 3)] })).toMatchObject({ state: "mastered", reason: "secure_on_test" });
       // A wrong page before the test does not.
       expect(stateOf({ tests: [test(2, 2, 5)], marks: [page(false, 2)] })).toMatchObject({ state: "mastered" });
@@ -137,7 +150,7 @@ describe("the skill state of a BC standard", () => {
 
   describe("after a failed review", () => {
     it("is Needs review when a Mastered standard is wrong on a later review", () => {
-      expect(stateOf({ tests: [test(5, 5, 1)], marks: [review(false, 2)] })).toEqual({ standard: CODE, state: "needs_review", reason: "failed_review", evidence: "pages" });
+      expect(stateOf({ tests: [test(5, 5, 1)], marks: [review(false, 2)] })).toEqual({ standard: CODE, state: "needs_review", reason: "failed_review", evidence: "pages", evidenceAt: at(2) });
       expect(stateOf({ marks: [...FIVE_RIGHT, review(true, 6), review(false, 7)] })).toMatchObject({ state: "needs_review", reason: "failed_review" });
     });
 
@@ -158,7 +171,7 @@ describe("the skill state of a BC standard", () => {
       // Mastered on day 10, wrong on review on day 11, Developing with Clear certainty on day 12.
       const tests = [test(5, 5, 10), test(3, 5, 12)];
       const marks = [review(false, 11)];
-      expect(stateOf({ tests, marks, workbookStandards: [CODE] })).toEqual({ standard: CODE, state: "needs_review", reason: "failed_review", evidence: "pages" });
+      expect(stateOf({ tests, marks, workbookStandards: [CODE] })).toEqual({ standard: CODE, state: "needs_review", reason: "failed_review", evidence: "pages", evidenceAt: at(11) });
       expect(stateOf({ tests, marks })).toMatchObject({ state: "needs_review", reason: "failed_review" });
       expect(stateOf({ tests: [test(5, 5, 10), test(0, 2, 12)], marks })).toMatchObject({ state: "needs_review", reason: "failed_review" });
     });
@@ -177,13 +190,13 @@ describe("the skill state of a BC standard", () => {
     const above = (input: Partial<SkillStateInput>) => stateOf({ schoolGrade: 3, ...input }, ABOVE);
 
     it("can be Mastered, because every answer right is no weakness", () => {
-      expect(above({ tests: [test(2, 2, 1, ABOVE)] })).toEqual({ standard: ABOVE, state: "mastered", reason: "secure_on_test", evidence: "test" });
+      expect(above({ tests: [test(2, 2, 1, ABOVE)] })).toEqual({ standard: ABOVE, state: "mastered", reason: "secure_on_test", evidence: "test", evidenceAt: at(1) });
     });
 
     it("is never Needs review after a later wrong answer, on a test or on a marked item", () => {
-      expect(above({ tests: [test(2, 2, 1, ABOVE), test(0, 1, 20, ABOVE)] })).toEqual({ standard: ABOVE, state: "not_started", reason: "above_school_grade", evidence: "test" });
+      expect(above({ tests: [test(2, 2, 1, ABOVE), test(0, 1, 20, ABOVE)] })).toEqual({ standard: ABOVE, state: "not_started", reason: "above_school_grade", evidence: "test", evidenceAt: at(20) });
       expect(above({ tests: [test(2, 2, 1, ABOVE), test(0, 2, 20, ABOVE)] })).toMatchObject({ state: "not_started", reason: "above_school_grade" });
-      expect(above({ tests: [test(2, 2, 1, ABOVE)], marks: [page(false, 20, ABOVE)] })).toEqual({ standard: ABOVE, state: "not_started", reason: "above_school_grade", evidence: "pages" });
+      expect(above({ tests: [test(2, 2, 1, ABOVE)], marks: [page(false, 20, ABOVE)] })).toEqual({ standard: ABOVE, state: "not_started", reason: "above_school_grade", evidence: "pages", evidenceAt: at(20) });
       expect(above({ marks: [...[1, 2, 3, 4, 5].map((d) => page(true, d, ABOVE)), review(true, 6, ABOVE), review(false, 7, ABOVE)] })).toMatchObject({ state: "not_started", reason: "above_school_grade" });
     });
 
@@ -197,7 +210,9 @@ describe("the skill state of a BC standard", () => {
     });
 
     it("gives no history row that says Needs review", () => {
-      const rows = skillStateChanges({ schoolGrade: 3, tests: [test(2, 2, 1, ABOVE), test(0, 1, 20, ABOVE), test(3, 3, 25, ABOVE)], workbookStandards: [], marks: [] }, []);
+      const tests = [test(2, 2, 1, ABOVE), test(0, 1, 20, ABOVE), test(3, 3, 25, ABOVE)];
+      let rows: StandardSkillState[] = [];
+      for (const seen of [1, 2, 3]) rows = [...rows, ...skillStateChanges({ schoolGrade: 3, tests: tests.slice(0, seen), workbookStandards: [], marks: [] }, rows)];
       expect(rows.map((r) => r.state)).toEqual(["mastered", "not_started", "mastered"]);
     });
   });
@@ -267,17 +282,78 @@ describe("the skill state of a BC standard", () => {
 
 describe("the history rows of a rebuild", () => {
   const input = (tests: SkillTestResult[], over: Partial<SkillStateInput> = {}): SkillStateInput => ({ schoolGrade: 3, tests, workbookStandards: [], marks: [], ...over });
-  const asRecorded = (rows: ReturnType<typeof skillStateChanges>): RecordedSkillState[] => rows.map(({ standard, state, evidenceAt }) => ({ standard, state, evidenceAt }));
+  /** The rows after one rebuild for each input, in order. */
+  const rebuilds = (steps: SkillStateInput[], from: StandardSkillState[] = []) => steps.reduce((rows, step) => [...rows, ...skillStateChanges(step, rows)], from);
 
-  it("gives each state the standard passed through, with the time of its evidence", () => {
+  it("adds the state now when it differs from the last row (no row: Not started), not each state the evidence passed through", () => {
     expect(skillStateChanges(input([test(2, 2, 1), test(0, 1, 2), test(3, 3, 3)]), [])).toEqual([
-      { standard: CODE, state: "mastered", reason: "secure_on_test", evidence: "test", evidenceAt: at(1) },
-      { standard: CODE, state: "needs_review", reason: "failed_review", evidence: "test", evidenceAt: at(2) },
       { standard: CODE, state: "mastered", reason: "secure_on_test", evidence: "test", evidenceAt: at(3) },
     ]);
+    expect(skillStateChanges(input([test(1, 1, 1)]), [])).toEqual([]);
   });
 
-  it("gives the same rows whichever rebuilds ran between the tests, and none on a rebuild with nothing new", () => {
+  it("adds no row when the state now is the last row's, whatever the reason or the evidence", () => {
+    const recorded: RecordedSkillState[] = [{ standard: CODE, state: "needs_review" }];
+    expect(skillStateChanges(input([test(0, 2, 1)]), recorded)).toEqual([]);
+    expect(skillStateChanges(input([test(2, 2, 1), test(0, 1, 2)]), recorded)).toEqual([]);
+  });
+
+  it("reads only the last row of each standard", () => {
+    const recorded: RecordedSkillState[] = [{ standard: CODE, state: "mastered" }, { standard: OTHER, state: "working_on" }, { standard: CODE, state: "needs_review" }];
+    expect(skillStateChanges(input([test(2, 2, 1), test(0, 1, 2)], { workbookStandards: [OTHER] }), recorded)).toEqual([]);
+  });
+
+  describe("a delayed test (review finding: a test that arrives after a newer one)", () => {
+    // Mastered, Needs review, Mastered: one rebuild after each test.
+    const past = [test(2, 2, 1), test(0, 1, 10), test(3, 3, 20)];
+    const seen = rebuilds([input(past.slice(0, 1)), input(past.slice(0, 2)), input(past)]);
+
+    it("starts from the three rows of the three rebuilds", () => {
+      expect(seen.map((r) => [r.state, r.evidenceAt])).toEqual([["mastered", at(1)], ["needs_review", at(10)], ["mastered", at(20)]]);
+    });
+
+    it("adds no row, and no error, when it changes no current state", () => {
+      for (const late of [test(0, 2, 5), test(0, 2, 15), test(1, 2, 19), test(3, 3, 15)]) {
+        expect(skillStateChanges(input([...past, late]), seen)).toEqual([]);
+      }
+      // A late pair inside the past: Needs review and Mastered that no rebuild saw.
+      expect(skillStateChanges(input([...past, test(0, 1, 12), test(4, 4, 14)]), seen)).toEqual([]);
+    });
+
+    it("adds one row when it changes the current state, with the date of the evidence the state rests on", () => {
+      // Mastered on day 1; a newer test that asks once and is right adds no row.
+      const tests = [test(2, 2, 1), test(1, 1, 20)];
+      const rows = rebuilds([input(tests)]);
+      expect(rows.map((r) => r.evidenceAt)).toEqual([at(1)]);
+      expect(skillStateChanges(input([...tests, test(0, 2, 10)]), rows)).toEqual([
+        { standard: CODE, state: "needs_review", reason: "failed_review", evidence: "test", evidenceAt: at(10) },
+      ]);
+    });
+
+    it("adds that row when the delayed test is dated before the last row", () => {
+      // Needs review on day 10, then a Clear wrong-answer Secure on day 20: Not started, the last row dated day 20.
+      const tests = [test(0, 2, 10), test(9, 10, 20)];
+      const rows = rebuilds([input(tests.slice(0, 1)), input(tests)]);
+      expect(rows.map((r) => [r.state, r.evidenceAt])).toEqual([["needs_review", at(10)], ["not_started", at(20)]]);
+      // Mastered on day 15, so day 20's wrong answer is now wrong after Mastered.
+      expect(skillStateChanges(input([...tests, test(5, 5, 15)]), rows)).toEqual([
+        { standard: CODE, state: "needs_review", reason: "failed_review", evidence: "test", evidenceAt: at(20) },
+      ]);
+    });
+
+    it("lets a row carry an evidence date older than the row before it", () => {
+      // Needs review from the test on day 1, then Mastered from pages on day 6. Late wrong marks on day 3 undo the page rule.
+      const tests = [test(0, 2, 1)];
+      const marks = [...FIVE_RIGHT, review(true, 6)];
+      const rows = rebuilds([input(tests), input(tests, { marks })]);
+      expect(rows.map((r) => [r.state, r.evidenceAt])).toEqual([["needs_review", at(1)], ["mastered", at(6)]]);
+      expect(skillStateChanges(input(tests, { marks: [...marks, page(false, 3), page(false, 3), page(false, 3)] }), rows)).toEqual([
+        { standard: CODE, state: "needs_review", reason: "needs_attention_on_test", evidence: "test", evidenceAt: at(1) },
+      ]);
+    });
+  });
+
+  it("keeps these rules for any run of tests and any rebuilds between them", () => {
     // Every run of 4 tests from: all right, wrong, one right, and skipped by the test.
     const kinds: (SkillTestResult | null)[] = [test(2, 2), test(0, 2), test(1, 1), null];
     const runs: SkillTestResult[][] = [];
@@ -287,41 +363,32 @@ describe("the history rows of a rebuild", () => {
     // Which of the tests a rebuild ran after; the last always.
     const schedules = [[4], [1, 4], [2, 4], [3, 4], [1, 2, 4], [1, 3, 4], [2, 3, 4], [1, 2, 3, 4]];
     for (const tests of runs) {
-      const after = (schedule: number[]) => {
-        let recorded: RecordedSkillState[] = [];
-        for (const n of schedule) recorded = [...recorded, ...asRecorded(skillStateChanges(input(tests.filter((t) => Date.parse(t.at) <= Date.parse(at(n)))), recorded))];
-        return recorded;
-      };
-      const expected = after(schedules[0]);
-      for (const schedule of schedules) expect(after(schedule)).toEqual(expected);
-      expect(skillStateChanges(input(tests), expected)).toEqual([]);
-      // No state twice in a row, and the last row is the state now (no row: Not started).
-      expect(expected.every((r, i) => i === 0 || r.state !== expected[i - 1].state)).toBe(true);
       const now = skillStates(input(tests)).find((s) => s.standard === CODE)!.state;
-      expect(expected.at(-1)?.state ?? "not_started").toBe(now);
+      for (const schedule of schedules) {
+        const rows = rebuilds(schedule.map((n) => input(tests.filter((t) => Date.parse(t.at) <= Date.parse(at(n))))));
+        // No state twice in a row, the last row is the state now (no row: Not started), and a rebuild with nothing new adds nothing.
+        expect(rows.every((r, i) => i === 0 ? r.state !== "not_started" : r.state !== rows[i - 1].state)).toBe(true);
+        expect(rows.at(-1)?.state ?? "not_started").toBe(now);
+        expect(skillStateChanges(input(tests), rows)).toEqual([]);
+      }
     }
   });
 
-  it("does not read evidence twice, and still changes the state when evidence goes away", () => {
-    const recorded: RecordedSkillState[] = [{ standard: CODE, state: "mastered", evidenceAt: at(1) }, { standard: CODE, state: "needs_review", evidenceAt: at(2) }];
-    expect(skillStateChanges(input([test(2, 2, 1), test(0, 1, 2)]), recorded)).toEqual([]);
-    // The newer test deleted: Mastered again, and the older test is not replayed as a new change after that.
+  it("changes the state when evidence goes away", () => {
+    const recorded: RecordedSkillState[] = [{ standard: CODE, state: "mastered" }, { standard: CODE, state: "needs_review" }];
+    // The newer test deleted: Mastered again.
     const back = skillStateChanges(input([test(2, 2, 1)]), recorded);
     expect(back).toEqual([{ standard: CODE, state: "mastered", reason: "secure_on_test", evidence: "test", evidenceAt: at(1) }]);
-    expect(skillStateChanges(input([test(2, 2, 1)]), [...recorded, ...asRecorded(back)])).toEqual([]);
+    expect(skillStateChanges(input([test(2, 2, 1)]), [...recorded, ...back])).toEqual([]);
     // Every test deleted: Not started, with no evidence time.
     expect(skillStateChanges(input([]), recorded)).toEqual([{ standard: CODE, state: "not_started", reason: "no_evidence", evidence: "none", evidenceAt: null }]);
   });
 
-  it("dates no Working on row, and keeps a replayed flip true with the standard in the workbook", () => {
-    const rows = skillStateChanges(input([test(0, 2, 1), test(2, 2, 2), test(0, 1, 3), test(2, 2, 4), test(1, 2, 5)], { workbookStandards: [CODE] }), []);
-    expect(rows.map((r) => [r.state, r.evidenceAt])).toEqual([["working_on", null], ["mastered", at(2)], ["needs_review", at(3)], ["mastered", at(4)], ["needs_review", at(5)]]);
-    expect(skillStateChanges(input([test(0, 2, 1)], { workbookStandards: [CODE] }), [{ standard: CODE, state: "needs_review", evidenceAt: at(1) }])).toEqual([
+  it("dates no Working on row", () => {
+    expect(skillStateChanges(input([test(0, 2, 1)], { workbookStandards: [CODE] }), [{ standard: CODE, state: "needs_review" }])).toEqual([
       { standard: CODE, state: "working_on", reason: "in_workbook", evidence: "workbook", evidenceAt: null },
     ]);
-    // A row with no time does not read the same evidence as new again.
-    const working: RecordedSkillState[] = [{ standard: CODE, state: "working_on", evidenceAt: null }];
-    expect(skillStateChanges(input([test(0, 2, 1)], { workbookStandards: [CODE] }), working)).toEqual([]);
+    expect(skillStateChanges(input([test(0, 2, 1)], { workbookStandards: [CODE] }), [{ standard: CODE, state: "working_on" }])).toEqual([]);
   });
 
   it("gives rows in the same order and with the same content in any input order", () => {

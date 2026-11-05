@@ -3,7 +3,7 @@
 // per child, stored as JSON, its schema version beside it; a save only over the build token it expects (compare and
 // set), each save a new token; no write for a family whose deletion is requested, or on another family's test (the
 // family write fence); a child under its parent and a test of that child (the foreign keys); a test that is gone asks
-// for a new build. deleteTest deletes a test as the database's cascades do: the profile built on it and its events. The latest assessment profile is the stored profile of the child's test that finished last. A save with history rows keeps the rules of save_child_profile_and_skill_changes: the rows go with the build or not at all; `history()` reads its rows.
+// for a new build. deleteTest deletes a test as the database's cascades do: the profile built on it and its events. The latest assessment profile is the stored profile of the child's test that finished last. A save with history rows keeps the rules of save_child_profile_and_skill_changes_from_tests: the rows go with the build or not at all, and neither is stored when a test they came from is gone; `history()` reads its rows.
 import type { Grade, ProfileLearning, SkillEvidence, SkillState, SkillStateReason } from "@/lib/assessment";
 import type { ChildProfileStore, StoredChildProfile } from "@/lib/child-profile";
 import type { LearningEventStore } from "@/lib/learning-events";
@@ -50,7 +50,7 @@ export function memoryChildProfiles(families: MemoryChildFamilies) {
       return {
         tests: tests.filter((t) => t.childId === childId && t.profile !== null).map((t) => ({ assessmentId: t.id, completedAt: t.completedAt, profile: json(t.profile) })),
         workbookStandards: [...(shipped?.standards ?? [])],
-        history: history.filter((r) => r.childId === childId).map((r) => ({ standard: r.standard, state: r.state, evidenceAt: r.evidenceAt })),
+        history: history.filter((r) => r.childId === childId).map((r) => ({ standard: r.standard, state: r.state })),
       };
     },
     async current(childId) {
@@ -69,8 +69,10 @@ export function memoryChildProfiles(families: MemoryChildFamilies) {
         assessment: latest ? { assessmentId: latest.id, completedAt: latest.completedAt, buildId: typeof buildId === "string" ? buildId : null, profile: json(latest.profile) } : null,
       };
     },
-    async save({ childId, parentId, assessmentId, profile, skillChanges = [] }, expected) {
+    async save({ childId, parentId, assessmentId, profile, skillChanges }, expected) {
       if (deleting.includes(parentId)) return { refused: "family_unavailable" };
+      // Before anything else, as the function locks the tests first. Only when there are rows, as the store only then calls it.
+      if (skillChanges?.rows.length && !skillChanges.tests.every((id) => tests.some((t) => t.id === id && t.childId === childId))) return "changed";
       if (assessmentId !== null) {
         const test = tests.find((t) => t.id === assessmentId);
         // A test that is gone asks for a new build; a test of another family is out of the family's scope.
@@ -84,7 +86,7 @@ export function memoryChildProfiles(families: MemoryChildFamilies) {
       const buildToken = crypto.randomUUID();
       rows.set(childId, { revision, buildToken, builtAt: new Date().toISOString(), schemaVersion: profile.schemaVersion, profile: json(profile), parentId, assessmentId });
       const changedAt = new Date().toISOString();
-      history.push(...skillChanges.map((c) => ({ childId, parentId, standard: c.standard, state: c.state, reason: c.reason, evidenceSource: c.evidence, evidenceAt: c.evidenceAt, changedAt })));
+      history.push(...(skillChanges?.rows ?? []).map((c) => ({ childId, parentId, standard: c.standard, state: c.state, reason: c.reason, evidenceSource: c.evidence, evidenceAt: c.evidenceAt, changedAt })));
       return { revision, buildToken };
     },
   };

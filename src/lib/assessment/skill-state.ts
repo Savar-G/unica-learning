@@ -34,10 +34,16 @@
 // - Above the school grade (D-108, D-254): every answer right (at least 2) is Mastered, because that is no weakness. A
 //   later wrong answer takes Mastered away, but the standard goes back to Working on or Not started
 //   ("above_school_grade"), never to Needs review.
-// - History (skillStateChanges): the same replay gives every state the standard passed through, so a state between two
-//   rebuilds is still one row. Each row keeps the time of its evidence, and evidence that is not newer than the rows'
-//   newest time is not replayed, so a rebuild never adds a change twice. Only the end state is compared on its own, so
-//   evidence that was deleted, or a workbook, still changes the state.
+// - History (skillStateChanges): the history records the states the child's map showed as each rebuild saw them, not a
+//   replay of every past moment. Each rebuild works out the state of each standard now, from the full replay above,
+//   compares it with the standard's last row (no row: Not started), and adds one row only when they differ. So evidence
+//   that changes no current state adds no row (a delayed test inside a past Mastered, Needs review, Mastered adds
+//   nothing), and evidence that changes it adds a row, even when it is dated before the last row. A state that held only
+//   between two rebuilds has no row.
+// - A state's evidenceAt is the time of the test or mark it rests on (null for a workbook or no evidence), so a row can
+//   carry an older date than the row before it. changed_at, which the database sets, is when the rebuild recorded the
+//   row. Whatever counts or orders changes by time ("3 more this month", the progress line) reads changed_at, never
+//   evidenceAt: the month a delayed test is dated in is not the month the child's map changed.
 // - The stored reasons predate #578, so they keep their names: "secure_on_test" is a Secure test result (Mastered when
 //   every answer was right, else Not started), and "failed_review" is any wrong answer after Mastered, its evidence
 //   "test" or "pages" by where the wrong answer was.
@@ -99,24 +105,12 @@ export interface StandardSkillState {
   state: SkillState;
   reason: SkillStateReason;
   evidence: SkillEvidence;
+  /** The time of the test or mark the state rests on; null for a workbook or no evidence. Not when the state changed: see the header. */
+  evidenceAt: string | null;
 }
 
 /** A history row already stored, as the changes compare against it. */
-export interface RecordedSkillState {
-  standard: string;
-  state: SkillState;
-  /** The time of the evidence the row came from; null when it came from a workbook or from no evidence. */
-  evidenceAt: string | null;
-}
-
-/** A history row to add. */
-export interface SkillStateChange {
-  standard: string;
-  state: SkillState;
-  reason: SkillStateReason;
-  evidence: SkillEvidence;
-  evidenceAt: string | null;
-}
+export type RecordedSkillState = Pick<StandardSkillState, "standard" | "state">;
 
 /** "80% or more right on pages" needs at least this many original results for the standard. */
 export const PAGE_MASTERY_MIN_RESULTS = 5;
@@ -147,9 +141,10 @@ function testResultOf(results: readonly SkillTestResult[]): SkillTestResult | nu
 
 const allRight = (r: SkillTestResult): boolean => r.total >= TEST_MASTERY_MIN_ANSWERS && r.correct === r.total;
 
+/** `at`: the time of the evidence that set it, in milliseconds. */
 type Mastery =
-  | { kind: "mastered"; reason: "secure_on_test" | "held_on_review" }
-  | { kind: "failed"; evidence: "test" | "pages" }
+  | { kind: "mastered"; reason: "secure_on_test" | "held_on_review"; at: number }
+  | { kind: "failed"; evidence: "test" | "pages"; at: number }
   | null;
 
 /** Each time with evidence, oldest first, as milliseconds. */
@@ -176,36 +171,38 @@ function masteryOf(tests: readonly SkillTestResult[], marks: readonly SkillMark[
     const mastered = result?.kind === "mastered";
     // "Later": the results before this group must meet the page rule.
     const pagesReady = total >= PAGE_MASTERY_MIN_RESULTS && atLeast(right, total, STRAND_SECURE_PERCENT);
-    if (!wrongTest && groupTests.some(allRight)) result = { kind: "mastered", reason: "secure_on_test" };
-    else if (mastered && (wrongTest || wrongMark)) result = { kind: "failed", evidence: wrongTest ? "test" : "pages" };
-    else if (!mastered && !wrongTest && !wrongMark && pagesReady && groupMarks.some((m) => m.review && m.right)) result = { kind: "mastered", reason: "held_on_review" };
+    if (!wrongTest && groupTests.some(allRight)) result = { kind: "mastered", reason: "secure_on_test", at: time };
+    else if (mastered && (wrongTest || wrongMark)) result = { kind: "failed", evidence: wrongTest ? "test" : "pages", at: time };
+    else if (!mastered && !wrongTest && !wrongMark && pagesReady && groupMarks.some((m) => m.review && m.right)) result = { kind: "mastered", reason: "held_on_review", at: time };
     total += groupMarks.length;
     right += groupMarks.filter((m) => m.right).length;
   }
   return result;
 }
 
-type Verdict = { state: SkillState; reason: SkillStateReason; evidence: SkillEvidence };
+type Verdict = Omit<StandardSkillState, "standard">;
 
 function stateOf(grade: number, schoolGrade: Grade, tests: readonly SkillTestResult[], inWorkbook: boolean, marks: readonly SkillMark[]): Verdict {
-  const withEvidence = (state: SkillState, reason: SkillStateReason): Verdict => ({ state, reason, evidence: EVIDENCE[reason] });
+  const verdict = (state: SkillState, reason: SkillStateReason, at: string | number | null = null): Verdict => ({
+    state, reason, evidence: EVIDENCE[reason], evidenceAt: at === null ? null : new Date(at).toISOString(),
+  });
   const mastery = masteryOf(tests, marks);
   if (mastery?.kind === "failed") {
-    if (grade <= schoolGrade) return { state: "needs_review", reason: "failed_review", evidence: mastery.evidence };
+    if (grade <= schoolGrade) return { ...verdict("needs_review", "failed_review", mastery.at), evidence: mastery.evidence };
     // D-108: above the school grade a wrong answer is never a weakness.
-    return inWorkbook ? withEvidence("working_on", "in_workbook") : { state: "not_started", reason: "above_school_grade", evidence: mastery.evidence };
+    return inWorkbook ? verdict("working_on", "in_workbook") : { ...verdict("not_started", "above_school_grade", mastery.at), evidence: mastery.evidence };
   }
-  if (mastery) return withEvidence("mastered", mastery.reason);
-  if (inWorkbook) return withEvidence("working_on", "in_workbook");
+  if (mastery) return verdict("mastered", mastery.reason, mastery.at);
+  if (inWorkbook) return verdict("working_on", "in_workbook");
   const test = testResultOf(tests);
-  if (!test) return withEvidence("not_started", "no_evidence");
-  if (strandCertainty(test.correct, test.total) === "early-sign") return withEvidence("not_started", "early_sign_on_test");
+  if (!test) return verdict("not_started", "no_evidence");
+  if (strandCertainty(test.correct, test.total) === "early-sign") return verdict("not_started", "early_sign_on_test", test.at);
   const status = strandStatus(test.correct, test.total);
-  if (status === "developing") return withEvidence("not_started", "developing_on_test");
+  if (status === "developing") return verdict("not_started", "developing_on_test", test.at);
   // Secure with Clear certainty and a wrong answer: Mastered needs every answer right.
-  if (status === "secure") return withEvidence("not_started", "secure_on_test");
+  if (status === "secure") return verdict("not_started", "secure_on_test", test.at);
   // What is left is Needs attention with Clear certainty.
-  return grade > schoolGrade ? withEvidence("not_started", "above_school_grade") : withEvidence("needs_review", "needs_attention_on_test");
+  return grade > schoolGrade ? verdict("not_started", "above_school_grade", test.at) : verdict("needs_review", "needs_attention_on_test", test.at);
 }
 
 /** The state and reason of every BC standard, in the skill map's order. A code that is not a BC standard is left out. */
@@ -217,32 +214,10 @@ export function skillStates({ schoolGrade, tests, workbookStandards, marks }: Sk
 }
 
 /**
- * The history rows to add, oldest first for each standard: each state the standard passed through since the rows'
- * newest evidence, then the end state when it still differs from the last one (no row: Not started). `recorded`: the
- * child's stored rows, oldest first.
+ * The history rows to add: each standard whose state now differs from its last row (no row: Not started). `recorded`:
+ * the child's stored rows, oldest first. The header gives the rule.
  */
-export function skillStateChanges({ schoolGrade, tests, workbookStandards, marks }: SkillStateInput, recorded: readonly RecordedSkillState[]): SkillStateChange[] {
-  const inWorkbook = new Set(workbookStandards);
-  return BC_SKILL_MAP.standards.flatMap(({ code, grade }) => {
-    const myTests = tests.filter((t) => t.standard === code);
-    const myMarks = marks.filter((m) => m.standard === code);
-    const rows = recorded.filter((r) => r.standard === code);
-    const seen = Math.max(-Infinity, ...rows.flatMap((r) => (r.evidenceAt ? [Date.parse(r.evidenceAt)] : [])));
-    const times = evidenceTimes(myTests, myMarks);
-    const changes: SkillStateChange[] = [];
-    let current = rows.at(-1)?.state ?? "not_started";
-    const add = (verdict: Verdict, time: number | undefined) => {
-      if (verdict.state === current) return;
-      current = verdict.state;
-      // A workbook has no date here, and no evidence has no time.
-      const dated = time !== undefined && (verdict.evidence === "test" || verdict.evidence === "pages");
-      changes.push({ standard: code, ...verdict, evidenceAt: dated ? new Date(time).toISOString() : null });
-    };
-    for (const time of times.filter((t) => t > seen)) {
-      const upTo = <T extends { at: string }>(list: readonly T[]) => list.filter((e) => Date.parse(e.at) <= time);
-      add(stateOf(grade, schoolGrade, upTo(myTests), inWorkbook.has(code), upTo(myMarks)), time);
-    }
-    add(stateOf(grade, schoolGrade, myTests, inWorkbook.has(code), myMarks), times.at(-1));
-    return changes;
-  });
+export function skillStateChanges(input: SkillStateInput, recorded: readonly RecordedSkillState[]): StandardSkillState[] {
+  const last = new Map(recorded.map((r) => [r.standard, r.state]));
+  return skillStates(input).filter((s) => s.state !== (last.get(s.standard) ?? "not_started"));
 }

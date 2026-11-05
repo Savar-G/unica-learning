@@ -130,10 +130,10 @@ describe("the rebuild's skill state history", () => {
     const f = family();
     f.tests.push({ id: NEXT_TEST, childId: CHILD, completedAt: "2026-11-20T18:00:00.000Z", profile: testProfile({ "3.3": [0, 1] }) });
     await rebuildChildProfile(CHILD, f);
-    expect(changes(f).filter((r) => r.standard === "3.3").map((r) => r.state)).toEqual(["mastered", "needs_review"]);
+    expect(changes(f).filter((r) => r.standard === "3.3").map((r) => r.state)).toEqual(["needs_review"]);
     f.deleteTest(NEXT_TEST);
     await rebuildChildProfile(CHILD, f);
-    expect(changes(f).filter((r) => r.standard === "3.3").map((r) => r.state)).toEqual(["mastered", "needs_review", "mastered"]);
+    expect(changes(f).filter((r) => r.standard === "3.3").map((r) => r.state)).toEqual(["needs_review", "mastered"]);
   });
 
   it("reads each finished test, so a newer test that skips a standard does not take its state away", async () => {
@@ -219,7 +219,7 @@ describe("a skill state history failure", () => {
   it("saves the facts alone when the write fails, and the next rebuild writes what it missed", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const f = family();
-    const failing: ChildProfileStore = { ...f.profiles, save: (row, expected, signal) => (row.skillChanges?.length ? Promise.reject(new Error("history down")) : f.profiles.save(row, expected, signal)) };
+    const failing: ChildProfileStore = { ...f.profiles, save: (row, expected, signal) => (row.skillChanges ? Promise.reject(new Error("history down")) : f.profiles.save(row, expected, signal)) };
     expect(await rebuildChildProfile(CHILD, { ...f, profiles: failing })).toMatchObject({ built: true, revision: 1, skillStates: { outcome: "failed", problem: "history down" } });
     expect((await readChildProfile(f.profiles, CHILD))?.revision).toBe(1);
     expect(changes(f)).toEqual([]);
@@ -258,21 +258,21 @@ describe("two rebuilds at one time", () => {
     };
   }
 
-  it("keeps the Needs review between them when the newer rebuild stores first", async () => {
+  it("adds no row for a Needs review no rebuild's map showed, when the newer rebuild stores first", async () => {
     const f = family();
     await rebuildChildProfile(CHILD, f);
     f.tests.push(wrongTest);
     const slow = slowFirstSave(f, async () => {
       f.tests.push(retest);
-      expect(await rebuildChildProfile(CHILD, f)).toMatchObject({ built: true, skillStates: { outcome: "recorded", changes: 2 } });
+      // It reads both tests: Mastered now, the same as the last row.
+      expect(await rebuildChildProfile(CHILD, f)).toMatchObject({ built: true, skillStates: { outcome: "recorded", changes: 0 } });
     });
     // The slower rebuild loses its build token, writes nothing, and builds again from what is stored now.
     expect(await rebuildChildProfile(CHILD, { ...f, profiles: slow })).toMatchObject({ built: true, skillStates: { outcome: "recorded", changes: 0 } });
-    expect(statesOf33(f)).toEqual(["mastered", "needs_review", "mastered"]);
-    expect(f.history().filter((r) => r.standard === "3.3").map((r) => r.evidenceAt)).toEqual(["2026-10-20T18:00:00.000Z", wrongTest.completedAt, retest.completedAt]);
+    expect(statesOf33(f)).toEqual(["mastered"]);
   });
 
-  it("gives the same rows when the older rebuild stores first", async () => {
+  it("adds each state a rebuild saw when a rebuild runs after each test", async () => {
     const f = family();
     await rebuildChildProfile(CHILD, f);
     f.tests.push(wrongTest);
@@ -286,11 +286,12 @@ describe("two rebuilds at one time", () => {
     const f = family();
     await rebuildChildProfile(CHILD, f);
     f.tests.push(wrongTest, retest);
+    f.tests.pop();
     const results = await Promise.all([rebuildChildProfile(CHILD, f), rebuildChildProfile(CHILD, f), rebuildChildProfile(CHILD, f)]);
     expect(results.every((r) => r.built)).toBe(true);
-    expect(statesOf33(f)).toEqual(["mastered", "needs_review", "mastered"]);
+    expect(statesOf33(f)).toEqual(["mastered", "needs_review"]);
     await rebuildChildProfile(CHILD, f);
-    expect(statesOf33(f)).toEqual(["mastered", "needs_review", "mastered"]);
+    expect(statesOf33(f)).toEqual(["mastered", "needs_review"]);
   });
 
   it("writes neither the profile nor the rows of a build that is no longer stored", async () => {
@@ -300,7 +301,7 @@ describe("two rebuilds at one time", () => {
     await rebuildChildProfile(CHILD, f);
     const before = f.history();
     const row = { childId: CHILD, parentId: PARENT, assessmentId: null, profile: (await readChildProfile(f.profiles, CHILD))!.profile };
-    expect(await f.profiles.save({ ...row, skillChanges: [{ standard: "3.3", state: "needs_review", reason: "failed_review", evidence: "pages", evidenceAt: null }] }, stale)).toBe("changed");
+    expect(await f.profiles.save({ ...row, skillChanges: { rows: [{ standard: "3.3", state: "needs_review", reason: "failed_review", evidence: "pages", evidenceAt: null }], tests: [TEST] } }, stale)).toBe("changed");
     expect(f.history()).toEqual(before);
     expect((await f.profiles.current(CHILD))?.revision).toBe(2);
   });
@@ -310,6 +311,92 @@ describe("two rebuilds at one time", () => {
     f.deleting.push(PARENT);
     expect(await rebuildChildProfile(CHILD, f)).toMatchObject({ built: false, reason: "refused" });
     expect(f.history()).toEqual([]);
+  });
+});
+
+// A test that arrives after a newer one (review finding): the history records what each rebuild saw, not every past moment.
+describe("a delayed test", () => {
+  const MIDDLE = "00000000-0000-4000-8000-0000000000e5";
+  const LAST = "00000000-0000-4000-8000-0000000000e6";
+  const LATE = "00000000-0000-4000-8000-0000000000e7";
+  const ofStandard = (f: ReturnType<typeof family>) => f.history().filter((r) => r.standard === "3.3");
+
+  afterEach(() => vi.useRealTimers());
+
+  it("adds no row and no error when it changes no current state", async () => {
+    const f = family();
+    await rebuildChildProfile(CHILD, f);
+    f.tests.push({ id: MIDDLE, childId: CHILD, completedAt: "2026-11-01T18:00:00.000Z", profile: testProfile({ "3.3": [0, 1] }) });
+    await rebuildChildProfile(CHILD, f);
+    f.tests.push({ id: LAST, childId: CHILD, completedAt: "2026-11-10T18:00:00.000Z", profile: testProfile({ "3.3": [3, 3] }) });
+    await rebuildChildProfile(CHILD, f);
+    expect(ofStandard(f).map((r) => r.state)).toEqual(["mastered", "needs_review", "mastered"]);
+    // Dated before the last row: a wrong test inside the past.
+    f.tests.push({ id: LATE, childId: CHILD, completedAt: "2026-10-25T18:00:00.000Z", profile: testProfile({ "3.3": [0, 2] }) });
+    const rows = f.history().length;
+    expect(await rebuildChildProfile(CHILD, f)).toMatchObject({ built: true, skillStates: { outcome: "recorded", changes: 0 } });
+    expect(f.history()).toHaveLength(rows);
+  });
+
+  it("adds one row when it changes the current state, with its evidence date and the time the rebuild recorded it", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime("2026-11-02T12:00:00.000Z");
+    const f = family();
+    // A newer test that asks it once and is right keeps Mastered, with no row.
+    f.tests.push({ id: LAST, childId: CHILD, completedAt: "2026-11-01T18:00:00.000Z", profile: testProfile({ "3.3": [1, 1] }) });
+    await rebuildChildProfile(CHILD, f);
+    expect(ofStandard(f).map((r) => r.state)).toEqual(["mastered"]);
+    vi.setSystemTime("2026-12-03T12:00:00.000Z");
+    f.tests.push({ id: LATE, childId: CHILD, completedAt: "2026-10-25T18:00:00.000Z", profile: testProfile({ "3.3": [0, 2] }) });
+    expect(await rebuildChildProfile(CHILD, f)).toMatchObject({ built: true, skillStates: { outcome: "recorded", changes: 1 } });
+    // Its evidence is from October; the map changed in December, and that is the month it counts in.
+    expect(ofStandard(f).at(-1)).toMatchObject({ state: "needs_review", reason: "failed_review", evidenceSource: "test", evidenceAt: "2026-10-25T18:00:00.000Z", changedAt: "2026-12-03T12:00:00.000Z" });
+    expect(ofStandard(f)).toHaveLength(2);
+  });
+});
+
+// Review finding: the deleted test is not the one the profile names, so neither the test check nor the build token sees it.
+describe("a test deleted after the rebuild read its evidence", () => {
+  const OLDER = "00000000-0000-4000-8000-0000000000e8";
+  /** An older test that earns Mastered on 3.3; the newer test skips 3.3 and supplies the profile's test. */
+  const older = { id: OLDER, childId: CHILD, completedAt: "2026-10-01T18:00:00.000Z", profile: testProfile({ "3.3": [5, 5] }) };
+  const newer = { id: TEST, childId: CHILD, completedAt: "2026-10-20T18:00:00.000Z", profile: testProfile({ "4.1": [1, 1] }) };
+
+  /** Deletes the older test just before the first save that carries history rows. */
+  function deleteBeforeSave(f: ReturnType<typeof family>): ChildProfileStore {
+    let done = false;
+    return {
+      ...f.profiles,
+      async save(row, expected, signal) {
+        if (!done && row.skillChanges) {
+          done = true;
+          f.deleteTest(OLDER);
+        }
+        return f.profiles.save(row, expected, signal);
+      },
+    };
+  }
+
+  it("adds no row from the deleted test on a later save, and builds again", async () => {
+    const f = family({ tests: [newer] });
+    expect(await rebuildChildProfile(CHILD, f)).toMatchObject({ built: true, revision: 1, skillStates: { outcome: "recorded", changes: 0 } });
+    f.tests.push(older);
+    // The first try saves over a valid build token and a test that still exists; only the older test is gone.
+    expect(await rebuildChildProfile(CHILD, { ...f, profiles: deleteBeforeSave(f) })).toMatchObject({ built: true, revision: 2, skillStates: { outcome: "recorded", changes: 0 } });
+    expect(f.history()).toEqual([]);
+    expect((await readChildProfile(f.profiles, CHILD))?.profile.assessment?.assessmentId).toBe(TEST);
+  });
+
+  it("adds no row from the deleted test on a first save", async () => {
+    const f = family({ tests: [older, newer] });
+    expect(await rebuildChildProfile(CHILD, { ...f, profiles: deleteBeforeSave(f) })).toMatchObject({ built: true, revision: 1, skillStates: { outcome: "recorded", changes: 0 } });
+    expect(f.history()).toEqual([]);
+  });
+
+  it("adds the row when the test is still there", async () => {
+    const f = family({ tests: [older, newer] });
+    expect(await rebuildChildProfile(CHILD, f)).toMatchObject({ built: true, skillStates: { outcome: "recorded", changes: 1 } });
+    expect(changes(f)).toEqual([{ standard: "3.3", state: "mastered", reason: "secure_on_test", evidenceSource: "test" }]);
   });
 });
 

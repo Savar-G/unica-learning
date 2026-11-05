@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 import { learnerProfile, type LearnerProfile } from "@/lib/assessment";
 import { knowsUpTo, takeTest } from "@/lib/assessment/scripted-child";
-import { childProfileFacts, type ChildProfileStore } from "@/lib/child-profile";
+import { childProfileFacts, rebuildChildProfile, type ChildProfileStore } from "@/lib/child-profile";
 import { memoryChildProfiles } from "@/lib/child-profile-memory";
 import { childProfileStore } from "@/lib/child-profile-store";
 
@@ -12,7 +12,7 @@ import { childProfileStore } from "@/lib/child-profile-store";
 // save. The Supabase adapter talks to a fake PostgREST that keeps the rows, applies each request's eq filters, and
 // answers as Postgres does, in the live order: the family write fence trigger first (55000 family_unavailable; 55000
 // family_scope for a test of another family or a test that no longer exists), then the foreign keys (23503), then the
-// primary key (23505).
+// primary key (23505). It also keeps PostgREST's row limit (MAX_ROWS), so a reader that asks for one page gets a cut list.
 vi.mock("server-only", () => ({}));
 
 const PARENT = "00000000-0000-4000-8000-0000000000a1";
@@ -55,7 +55,10 @@ const WORKBOOKS = [
   { id: "00000000-0000-4000-8000-0000000000b3", number: 3, status: "draft" as const, standards: ["3.6"] },
 ];
 
-function fakePostgrest(seedHistory: Record<string, unknown>[] = []): ChildProfileStore {
+/** PostgREST's row limit: it answers at most this many rows, with no error. */
+const MAX_ROWS = 1000;
+
+function fakePostgrest(history: Record<string, unknown>[] = []): ChildProfileStore {
   const tables: Record<string, Record<string, unknown>[]> = {
     children: [
       { id: CHILD, parent_id: PARENT, grade: 3, learning_styles: ["pictures"], interests: [], learning_note: "private note", math_feeling: "avoids", learning_goal: null, weekly_time: null },
@@ -71,17 +74,20 @@ function fakePostgrest(seedHistory: Record<string, unknown>[] = []): ChildProfil
     workbooks: WORKBOOKS.map((w) => ({ id: w.id, child_id: CHILD, number: w.number, status: w.status })),
     workbook_questions: WORKBOOKS.flatMap((w) => w.standards.map((standard) => ({ workbook_id: w.id, package: { skill: { standard } } }))),
   };
-  tables.skill_state_history = [...seedHistory];
+  // The caller's own list: a test reads what a save sent.
+  tables.skill_state_history = history;
   const fenced = [FENCED_PARENT];
   const db = createClient("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input, init) => {
     // A request whose signal is aborted fails as fetch fails.
     if (init?.signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
     const url = new URL(String(input));
     const table = url.pathname.replace("/rest/v1/", "");
-    // public.save_child_profile_and_skill_changes: the profile as a save stores it, then its rows, or neither.
-    if (table === "rpc/save_child_profile_and_skill_changes") {
-      const { p_child, p_parent, p_assessment, p_expected, p_schema_version, p_profile, p_changes } = JSON.parse(String(init?.body));
+    // public.save_child_profile_and_skill_changes_from_tests: the profile as a save stores it, then its rows, or neither;
+    // nothing when a test the rows came from no longer exists.
+    if (table === "rpc/save_child_profile_and_skill_changes_from_tests") {
+      const { p_child, p_parent, p_assessment, p_expected, p_schema_version, p_profile, p_changes, p_tests } = JSON.parse(String(init?.body));
       if (fenced.includes(p_parent)) return Response.json({ code: "55000", message: "family_unavailable" }, { status: 400 });
+      if (!(p_tests as string[]).every((id) => tables.assessments.some((t) => t.id === id && t.child_id === p_child && t.parent_id === p_parent))) return Response.json(null);
       if (p_assessment && tables.assessments.find((t) => t.id === p_assessment)?.parent_id !== p_parent) return Response.json({ code: "55000", message: "family_scope" }, { status: 400 });
       const row = { parent_id: p_parent, assessment_id: p_assessment, build_token: crypto.randomUUID(), schema_version: p_schema_version, profile: p_profile, built_at: new Date().toISOString() };
       let revision = 1;
@@ -95,16 +101,19 @@ function fakePostgrest(seedHistory: Record<string, unknown>[] = []): ChildProfil
         revision = Number(stored.revision) + 1;
         Object.assign(stored, row, { revision });
       }
-      tables.skill_state_history.push(...(p_changes as Record<string, unknown>[]).map((c) => ({ child_id: p_child, ...c })));
+      const nextId = () => Math.max(0, ...tables.skill_state_history.map((r) => Number(r.id))) + 1;
+      for (const c of p_changes as Record<string, unknown>[]) tables.skill_state_history.push({ id: nextId(), child_id: p_child, ...c });
       return Response.json({ revision, build_token: row.build_token });
     }
     const rows = tables[table];
     if (!rows) throw new Error(`unexpected request ${url.pathname}`);
     const filters = [...url.searchParams].filter(([column]) => !["select", "order", "limit"].includes(column));
-    if (!filters.every(([, test]) => test.startsWith("eq."))) throw new Error(`unexpected filter ${url.search}`);
-    const hit = rows.filter((r) => filters.every(([column, test]) => String(r[column]) === test.slice(3)));
+    if (!filters.every(([, test]) => /^(eq|gt)\./.test(test))) throw new Error(`unexpected filter ${url.search}`);
+    const hit = rows.filter((r) => filters.every(([column, test]) => (test.startsWith("gt.") ? Number(r[column]) > Number(test.slice(3)) : String(r[column]) === test.slice(3))));
     if (url.searchParams.get("order") === "number.desc") hit.sort((a, b) => Number(b.number) - Number(a.number));
+    if (url.searchParams.get("order") === "id.asc") hit.sort((a, b) => Number(a.id) - Number(b.id));
     if (url.searchParams.has("limit")) hit.splice(Number(url.searchParams.get("limit")));
+    hit.splice(MAX_ROWS);
     const cell = (r: Record<string, unknown>, c: string) => (c === "standard:package->skill->>standard" ? ["standard", (r.package as { skill: { standard: string } }).skill.standard] : [c, r[c]]);
     const pick = (list: Record<string, unknown>[]) => list.map((r) => Object.fromEntries((url.searchParams.get("select") ?? "*").split(",").map((c) => c.trim()).map((c) => cell(r, c))));
     const one = init?.headers && new Headers(init.headers).get("accept") === "application/vnd.pgrst.object+json";
@@ -198,12 +207,13 @@ describe.each([["Supabase", fakePostgrest], ["in-memory", memory]] as const)("th
     const failed = { standard: "3.3", state: "needs_review", reason: "failed_review", evidence: "test", evidenceAt: "2026-10-20T18:00:00.000Z" } as const;
     const quiet = { standard: "3.4", state: "working_on", reason: "in_workbook", evidence: "workbook", evidenceAt: null } as const;
     const history = async () => (await store.skillInputs(CHILD)).history;
-    const asRow = ({ standard, state, evidenceAt }: typeof mastered | typeof failed | typeof quiet) => ({ standard, state, evidenceAt });
+    const asRow = ({ standard, state }: typeof mastered | typeof failed | typeof quiet) => ({ standard, state });
+    const rows = (...list: (typeof mastered | typeof failed | typeof quiet)[]) => ({ rows: list, tests: [OLD, NEW] });
 
-    expect(await store.save({ ...row, skillChanges: [mastered] }, { revision: 1, buildToken: "00000000-0000-4000-8000-000000000001" })).toBe("changed");
+    expect(await store.save({ ...row, skillChanges: rows(mastered) }, { revision: 1, buildToken: "00000000-0000-4000-8000-000000000001" })).toBe("changed");
     expect(await history()).toEqual([]);
 
-    const first = await store.save({ ...row, skillChanges: [mastered, quiet] }, null);
+    const first = await store.save({ ...row, skillChanges: rows(mastered, quiet) }, null);
     expect(first).toEqual({ revision: 1, buildToken: expect.stringMatching(/^[0-9a-f-]{36}$/) });
     const stored = (await store.current(CHILD))!;
     expect(stored.buildToken).toBe(typeof first === "object" && "buildToken" in first && first.buildToken);
@@ -211,20 +221,38 @@ describe.each([["Supabase", fakePostgrest], ["in-memory", memory]] as const)("th
     expect(await history()).toEqual([asRow(mastered), asRow(quiet)]);
 
     // A second first save, and a save over a build that is not the stored one, write no row.
-    expect(await store.save({ ...row, skillChanges: [failed] }, null)).toBe("changed");
-    expect(await store.save({ ...row, skillChanges: [failed] }, { revision: 1, buildToken: "00000000-0000-4000-8000-000000000001" })).toBe("changed");
+    expect(await store.save({ ...row, skillChanges: rows(failed) }, null)).toBe("changed");
+    expect(await store.save({ ...row, skillChanges: rows(failed) }, { revision: 1, buildToken: "00000000-0000-4000-8000-000000000001" })).toBe("changed");
     expect(await history()).toEqual([asRow(mastered), asRow(quiet)]);
 
-    expect(await store.save({ ...row, skillChanges: [failed] }, stored)).toEqual({ revision: 2, buildToken: expect.any(String) });
+    expect(await store.save({ ...row, skillChanges: rows(failed) }, stored)).toEqual({ revision: 2, buildToken: expect.any(String) });
     expect(await history()).toEqual([asRow(mastered), asRow(quiet), asRow(failed)]);
     expect((await store.current(CHILD))?.buildToken).not.toBe(stored.buildToken);
 
     // The same refusals as a plain save, with no row.
-    expect(await store.save({ ...row, childId: FENCED_CHILD, parentId: FENCED_PARENT, assessmentId: null, skillChanges: [mastered] }, null)).toEqual({ refused: expect.stringContaining("family_unavailable") });
-    expect(await store.save({ ...row, parentId: "00000000-0000-4000-8000-0000000000a9", assessmentId: null, skillChanges: [mastered] }, null)).toEqual({ refused: expect.any(String) });
-    expect(await store.save({ ...row, assessmentId: GONE, skillChanges: [mastered] }, (await store.current(CHILD))!)).toBe("changed");
+    expect(await store.save({ ...row, childId: FENCED_CHILD, parentId: FENCED_PARENT, assessmentId: null, skillChanges: { rows: [mastered], tests: [] } }, null)).toEqual({ refused: expect.stringContaining("family_unavailable") });
+    expect(await store.save({ ...row, parentId: "00000000-0000-4000-8000-0000000000a9", assessmentId: null, skillChanges: { rows: [mastered], tests: [] } }, null)).toEqual({ refused: expect.any(String) });
+    expect(await store.save({ ...row, assessmentId: GONE, skillChanges: { rows: [mastered], tests: [] } }, (await store.current(CHILD))!)).toBe("changed");
     expect(await history()).toHaveLength(3);
     expect((await store.skillInputs(FENCED_CHILD)).history).toEqual([]);
+  });
+
+  it("stores neither the build nor its rows when a test the rows came from is gone, though the build token and the profile's test are good", async () => {
+    const store = open();
+    const row = { childId: CHILD, parentId: PARENT, assessmentId: NEW, profile: PROFILE };
+    const mastered = { standard: "3.3", state: "mastered", reason: "secure_on_test", evidence: "test", evidenceAt: "2026-09-01T18:00:00.000Z" } as const;
+    expect(await store.save({ ...row, skillChanges: { rows: [mastered], tests: [GONE, NEW] } }, null)).toBe("changed");
+    expect(await store.current(CHILD)).toBeNull();
+    const built = await store.save(row, null);
+    expect(built).toMatchObject({ revision: 1 });
+    const stored = (await store.current(CHILD))!;
+    expect(await store.save({ ...row, skillChanges: { rows: [mastered], tests: [GONE] } }, stored)).toBe("changed");
+    expect((await store.current(CHILD))?.buildToken).toBe(stored.buildToken);
+    expect((await store.skillInputs(CHILD)).history).toEqual([]);
+    // Another child's test is not one of this child's.
+    expect(await store.save({ ...row, skillChanges: { rows: [mastered], tests: [OTHER_TEST] } }, stored)).toBe("changed");
+    expect(await store.save({ ...row, skillChanges: { rows: [mastered], tests: [OLD, NEW] } }, stored)).toEqual({ revision: 2, buildToken: expect.any(String) });
+    expect((await store.skillInputs(CHILD)).history).toEqual([{ standard: "3.3", state: "mastered" }]);
   });
 
   // R345-1: the live fence trigger answers 55000 family_scope for a test that no longer exists, before the foreign key.
@@ -238,11 +266,31 @@ describe.each([["Supabase", fakePostgrest], ["in-memory", memory]] as const)("th
   });
 });
 
-describe("the Supabase child profile store's history read", () => {
-  it("fails loudly when PostgREST may have cut the list, so a rebuild never reads an old state as the latest", async () => {
-    const full = Array.from({ length: 1000 }, () => ({ child_id: CHILD, standard: "3.3", state: "mastered", evidence_at: null }));
-    await expect(fakePostgrest(full).skillInputs(CHILD)).rejects.toThrow("1000 rows or more");
-    expect((await fakePostgrest(full.slice(1)).skillInputs(CHILD)).history).toHaveLength(999);
+describe("the Supabase child profile store's history", () => {
+  /** Synthetic rows of one standard, in id order, starting and ending on a known state. */
+  const rows = (count: number) => Array.from({ length: count }, (_, i) => ({ id: i + 1, child_id: CHILD, standard: "3.3", state: i % 2 ? "needs_review" : "mastered", evidence_at: null }));
+
+  it.each([999, 1000, 1001, 2000, 2501])("reads all %i rows, in order, past PostgREST's limit", async (count) => {
+    const { history } = await fakePostgrest(rows(count)).skillInputs(CHILD);
+    expect(history).toHaveLength(count);
+    expect(history.every((r, i) => r.state === (i % 2 ? "needs_review" : "mastered"))).toBe(true);
+  });
+
+  it("keeps the rebuild's history working past 1000 rows: it adds what changed, then nothing", async () => {
+    const history = rows(1501);
+    const seams = { profiles: fakePostgrest(history), events: memoryChildProfiles({ children: [{ id: CHILD, parentId: PARENT, grade: 3 }] }).events };
+    expect(await rebuildChildProfile(CHILD, seams)).toMatchObject({ built: true, skillStates: { outcome: "recorded" } });
+    const added = history.length;
+    expect(await rebuildChildProfile(CHILD, seams)).toMatchObject({ built: true, skillStates: { outcome: "recorded", changes: 0 } });
+    expect(history).toHaveLength(added);
+  });
+
+  it("sends each row's evidence time and the tests it came from", async () => {
+    const history: Record<string, unknown>[] = [];
+    const store = fakePostgrest(history);
+    const change = { standard: "3.3", state: "mastered", reason: "secure_on_test", evidence: "test", evidenceAt: "2026-09-01T18:00:00.000Z" } as const;
+    await store.save({ childId: CHILD, parentId: PARENT, assessmentId: NEW, profile: PROFILE, skillChanges: { rows: [change], tests: [OLD] } }, null);
+    expect(history).toEqual([expect.objectContaining({ standard: "3.3", state: "mastered", reason: "secure_on_test", evidence: "test", evidence_at: change.evidenceAt })]);
   });
 });
 
