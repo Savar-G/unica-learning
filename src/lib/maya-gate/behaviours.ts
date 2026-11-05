@@ -1797,12 +1797,12 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "P10b",
-    title: "'Yes, the 1 ten. So 1 plus 2 plus 3?': the setup in the last sentence with numbers is said back, and is no hint",
+    title: "'Yes, the carry. So 1 plus 2 plus 3?': the setup in the last sentence with numbers, carry first, is said back, and is no hint",
     fixture: "A",
     status: "passing",
     steps: [
       child("Seven plus nine is sixteen.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"] }]),
-      child("Yes, the 1 ten. So 1 plus 2 plus 3?", undefined, [{ act: "guide", step: "tens", level: 2, lines: ["step.operation"] }]),
+      child("Yes, the carry. So 1 plus 2 plus 3?", undefined, [{ act: "guide", step: "tens", level: 2, lines: ["step.operation"] }]),
       child("Six. So 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
       ...solvedEnd(),
     ],
@@ -1814,18 +1814,36 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "P11",
-    title: "'Yes, I think 66 is right.' after 'Did you say 66?': a yes that names only the confirmed number gives it, with no second confirmation",
+    title: "'Yes, I said 66.' after 'Did you say 66?': a bare yes with the confirmed number gives it, with no second confirmation",
     fixture: "A",
     status: "passing",
     steps: [
       child("Oh, so it's 66? I got 66.", { start: "has_work", answers: [[66, "result", "right"]] }, [{ act: "confirm", heard: "66" }]),
-      child("Yes, I think 66 is right.", { answers: [[66, "result", "right"]] }),
+      child("Yes, I said 66.", { answers: [[66, "result", "right"]] }),
       ...solvedEnd(),
     ],
     expect: {
       outcome: { reason: "solved", assistance: "independent" },
       acts: [OPEN, "confirm", "accept_answer", "ask_write", "close"],
       counts: { refusals: 0, confirmations: 1 },
+    },
+  },
+  {
+    id: "P11b",
+    title: "'Yes, I think 66 is right.' is not a bare yes: the accept is refused and Maya asks again (PR #624 review)",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("Oh, so it's 66? I got 66.", { start: "has_work", answers: [[66, "result", "right"]] }, [{ act: "confirm", heard: "66" }]),
+      child("Yes, I think 66 is right.", { answers: [[66, "result", "right"]] }, [{ act: "accept_answer", repair: { act: "confirm", heard: "66" } }]),
+      child("66.", { answers: [[66, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "confirm", "confirm", "accept_answer", "ask_write", "close"],
+      refused: ["answer_not_committed"],
+      counts: { confirmations: 2 },
     },
   },
   {

@@ -521,7 +521,8 @@ describe("#605 practice run 1: a child who says the step's own setup hears it sa
     expect(c.session.assistance).not.toContain("hint");
   });
 
-  it.each(["Um.", "So 2 plus 3?", "2 plus 3 plus 1 is 5.", "I write the 6 and carry the 1."])("still refuses the operation line after %j", (turn) => {
+  it.each(["Um.", "So 2 plus 3?", "2 plus 3 plus 1 is 5.", "I write the 6 and carry the 1.", "So 2 plus 3 minus 1?", "So 2 plus 3 plus 1 is 6?", "Not 2 plus 3 plus 1.",
+    "So 3 plus 2 plus 1?", "Is it 2 plus 3 plus 1 or 2 plus 3?", "Yes, the 1 ten. So 1 plus 2 plus 3?", "I don't add 2 plus 3 plus 1.", "So 2 times 3 times 1?"])("still refuses the operation line after %j", (turn) => {
     const c = onTens();
     c.child(turn);
     expect(c.propose(operation).refusal?.code).toBe("hint_too_high");
@@ -540,8 +541,8 @@ describe("#605 practice run 1: a said-back setup is no hint at any cap", () => {
   });
 });
 
-describe("#605 practice run 1: a yes that names the confirmed number gives it (C10-r1)", () => {
-  it.each(["Yes, I think 66 is right.", "Yes, I said 66. I think 66 is right.", "Yes, 66.", "Yeah, it's 66!"])("takes %j after 'Did you say 66?'", (yes) => {
+describe("#605 practice run 1: a bare yes with the confirmed number gives it (C10-r1; PR #624 review: bare forms only)", () => {
+  it.each(["Yes, 66.", "Yeah, it's 66!", "Yes, I said 66.", "Yep, sixty-six.", "Um, yes, it is 66."])("takes the bare form %j after 'Did you say 66?'", (yes) => {
     const c = call();
     c.child("Oh, so it's 66? I got 66.");
     c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "66" })] });
@@ -549,7 +550,8 @@ describe("#605 practice run 1: a yes that names the confirmed number gives it (C
     expect(c.propose({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [ans(66, "result", "right")] } }).refusal).toBeNull();
   });
 
-  it.each(["Yes, maybe 66.", "Yes, 66?", "Yes, 56.", "Yes, 66 or 56.", "Yes, but not 66."])("does not take %j as a yes to 66", (not) => {
+  it.each(["Yes, maybe 66.", "Yes, 66?", "Yes, 56.", "Yes, 66 or 56.", "Yes, but not 66.", "Yes, I think 66 is right.", "Yes, I said 66. I think 66 is right.",
+    "Yes, I have no clue if 66 is right.", "Yes, 66 and 56.", "Yes, 66, I guess.", "Yes, 66 is not right."])("keeps the old reading for %j: no yes to 66", (not) => {
     const c = call();
     c.child("Is it 66?");
     c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "66" })] });
@@ -575,11 +577,11 @@ describe("#605 practice run 1: a negative before ', so' does not take back the n
 });
 
 describe("#605 practice run 1: the setup is read from the last sentence with numbers (C05-r3)", () => {
-  it("says the operation back after 'Yes, the 1 ten. So 1 plus 2 plus 3?'", () => {
+  it("says the operation back after 'Yes, the carry. So 1 plus 2 plus 3?' (the carry first)", () => {
     const c = call();
     c.child("Seven plus nine is sixteen.");
     c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right")] } });
-    c.child("Yes, the 1 ten. So 1 plus 2 plus 3?");
+    c.child("Yes, the carry. So 1 plus 2 plus 3?");
     expect(c.maya({ act: "guide", step: "tens", level: 2, parts: [ln("step.operation", { step: "tens" })] })).toContain("2 + 3 + 1");
     expect(c.session.hints).toBe(0);
   });
@@ -592,7 +594,7 @@ describe("#605 practice run 2: a child who says they are stuck asks for more hel
     c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right")] } });
     return c;
   };
-  it.each(["I don't know about the ten.", "I don't get it.", "It's too hard.", "I have no idea.", "Do I just write the 16? I don't know about the ten."])("allows one level more after %j", (stuck) => {
+  it.each(["I don't know about the ten.", "I don't get it.", "I'm stuck.", "I have no idea.", "Um, I don't understand.", "Okay. I don't know."])("allows one level more after %j", (stuck) => {
     const c = onTens();
     c.child(stuck);
     const r = c.propose({ act: "guide", step: "tens", level: 1, parts: [ln("step.regroup", { step: "tens" })] });
@@ -602,6 +604,12 @@ describe("#605 practice run 2: a child who says they are stuck asks for more hel
     const c = onTens();
     c.child("I don't know.");
     expect(c.propose({ act: "guide", step: "tens", level: 2, parts: [ln("step.operation", { step: "tens" })] }).refusal?.code).toBe("hint_too_high");
+  });
+  it.each(["I'm not stuck.", "It's too hard.", "Do I just write the 16? I don't know about the ten.", "I don't know. Is it 56?", "I don't know, 56.",
+    "I don't know why not.", "I'm stuck?", "He doesn't know.", "I don't know. It's not 5."])("keeps the old reading for %j: no new help", (turn) => {
+    const c = onTens();
+    c.child(turn);
+    expect(c.propose({ act: "guide", step: "tens", level: 1, parts: [ln("step.regroup", { step: "tens" })] }).refusal?.code).toBe("hint_too_high");
   });
   it("does not unlock help on a turn with no stuck words", () => {
     const c = onTens();
@@ -620,5 +628,20 @@ describe("#605 practice run 2: an ask to write with no understanding field is re
     expect(r.refusal, JSON.stringify(r.refusal)).toBeNull();
     expect(said(r.effects)).toContain("66");
     expect(c.session.understanding).toBe("uncertain");
+  });
+});
+
+describe("PR #624 review: working after an answer is removed only when it states no answer", () => {
+  it.each([
+    ["I got 66. 7 plus 9 is 16.", 66],
+    ["I got 66. Seven plus nine is sixteen, so I carry the ten.", 66],
+    ["I got 66. I added 2 and 3 so my answer is 56.", 56],
+    ["I got 66. 2 plus 3 is 5, so 56.", 56],
+    ["I got 66. 2 plus 3 is 6.", 6],
+    ["I got 66. I got 2 plus 3 is 5.", 5],
+    ["I got 66. 12 minus 8 is 4.", 66],
+    ["I got 66. 2 minus 3 is 6.", 6],
+  ])("reads %j with the final answer %d", (text, final) => {
+    expect(readAnswer(text).final).toEqual(num(final));
   });
 });

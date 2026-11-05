@@ -43,7 +43,7 @@ import { speechWords, saidAsApproved } from "./speech";
 import { findOffer, normalSlots, packageLines, workbookOpening, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
-import { committedText, readAnswer, readNumbers, saysStuck, saysYes, saysWritten, startsWithYes, takenBack, unreadableAnswer, valuesIn, type AnswerRead } from "./numbers";
+import { committedText, readAnswer, readNumbers, additionSetup, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
@@ -547,18 +547,22 @@ export function learningEvent(session: Session, family: { parentId: string; chil
 /** The worked steps a child does, without the result (fractions.ts: the steps Maya teaches for this question). */
 const workSteps = (pkg: OperationPackage) => teachSteps(pkg);
 
-/** The child's turn names exactly the numbers of this addition column, carry included, and no other number ("Oh, so 2
- * plus 3 plus 1?"): the child set the step up themselves, with no result yet. Other step kinds are not read (#605). */
+/**
+ * The child set this addition column up themselves, with no result yet ("Oh, so 2 plus 3 plus 1?", "Yes, the 1 ten. So 1
+ * plus 2 plus 3?"): the turn's last sentence with numbers is exactly the column's addition (additionSetup), its digits
+ * top to bottom then the carry, or the carry first; the turn has no negative and no answer. Every other form, and every
+ * other step kind, is not read (#605, PR #624 review).
+ */
 function saidSetup(pkg: OperationPackage, stepId: string, text: string): boolean {
   const st = workSteps(pkg).find((x) => x.id === stepId);
-  if (!st || st.kind !== "add-column") return false;
-  const terms = [...st.digits, ...(st.carryIn > 0 ? [st.carryIn] : [])];
-  // The last sentence with numbers: "Yes, the 1 ten. So 1 plus 2 plus 3?" sets the step up in its last sentence (C05-r3).
-  const said = text.split(/[.!?\n]+/).map((x) => valuesIn(x)).filter((v) => v.length > 0).at(-1) ?? [];
-  if (terms.length < 2 || said.length !== terms.length || said.some((v) => v.type !== "number")) return false;
-  const sort = (xs: number[]) => [...xs].sort((a, b) => a - b).join(",");
-  return sort(said.map((v) => (v as { value: number }).value)) === sort(terms);
+  if (!st || st.kind !== "add-column" || st.carryIn === 0 || NEGATIVE_TURN.test(text) || readAnswer(text).final !== null) return false;
+  const last = text.split(/[.!?\n]+/).filter((x) => valuesIn(x).length > 0).at(-1);
+  const said = last === undefined ? null : additionSetup(last);
+  if (!said) return false;
+  const orders = [[...st.digits, st.carryIn], [st.carryIn, ...st.digits]].map((xs) => xs.join(","));
+  return orders.includes(said.join(","));
 }
+const NEGATIVE_TURN = /\b(?:not|no|never|minus|take away|less)\b|n['’]t\b|-/i;
 const rank = (a: Assistance) => ASSISTANCE.indexOf(a);
 const number = (value: number): AnswerValue => ({ type: "number", value });
 
@@ -1455,12 +1459,9 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
 
 /** The number a plain yes gives in this turn ("Did you say 66?", "Yes."), or null (#605). */
 function yesValue(s: Session): AnswerValue | null {
-  if (!s.heardAsked || !s.turn) return null;
-  if (saysYes(s.turn.text)) return s.heardAsked;
-  // A yes that says only the confirmed number again ("Yes, I think 66 is right.") gives it too (#605, C10-r1).
-  const asked = s.heardAsked;
-  const said = s.package ? valuesIn(s.turn.text, readOptionsFor(s.package)) : [];
-  return startsWithYes(s.turn.text) && said.length > 0 && said.every((v) => saidAs(v, asked)) ? asked : null;
+  // Only a whole turn of plain yes. "Yes, 66." is read by readAnswer as usual; any other yes ("Yes, I think 66 is
+  // right.") is not sure, so Maya asks again (PR #624 review: a wider yes accepted "Yes, I have no clue if 66 is right.").
+  return s.heardAsked && s.turn && saysYes(s.turn.text) ? s.heardAsked : null;
 }
 
 /** The right final answer a plain yes gives, as a reading's answer, or null. A yes to a wrong number is judged by the model. */

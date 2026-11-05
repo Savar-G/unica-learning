@@ -672,8 +672,32 @@ export function withoutExplanations(text: string): string {
   }).join("\n");
 }
 
-/** The clause is working: it holds an operation ("7 plus 9 is 16", "2 and 3"), so its numbers are how the child got there. */
-const isWorking = (clause: string) => readNumbers(clause).operand.some(Boolean);
+/**
+ * The clause is pure working, how the child got there, and states no answer (#605, PR #624 review): it holds an
+ * operation, every number in it is a plain number, the last is an operand of that operation ("I added 2 and 3") or its
+ * result ("7 plus 9 is 16", "2 plus 3 plus 1 is 6", "12 minus 8 is 4"), and it has no answer word. Any other clause
+ * with a number ("I added 2 and 3 so my answer is 56") is kept, so it can be the final answer.
+ */
+function isWorking(clause: string): boolean {
+  const r = readNumbers(clause);
+  if (r.unreadable || r.values.length < 2 || !r.operand.some(Boolean) || ANSWER_WORD.test(clause)) return false;
+  if (r.values.some((v) => v.type !== "number")) return false;
+  const xs = r.values.map((v) => (v as { value: number }).value);
+  if (r.operand[xs.length - 1]) return true;
+  // The clause's own operation, and only one kind: "2 plus 3 is 6" is not working (2 × 3 is not what it says).
+  const kinds = [WORK_ADD.test(clause), WORK_SUBTRACT.test(clause), WORK_MULTIPLY.test(clause)];
+  if (kinds.filter(Boolean).length !== 1) return false;
+  const before = xs.slice(0, -1);
+  const last = xs[xs.length - 1];
+  const result = kinds[0] ? before.reduce((a, b) => a + b, 0)
+    : kinds[1] ? before.slice(1).reduce((a, b) => a - b, before[0])
+    : before.reduce((a, b) => a * b, 1);
+  return last === result;
+}
+const WORK_ADD = /\b(?:plus|and|add|added|adding|adds)\b|\+/i;
+const WORK_SUBTRACT = /\b(?:minus|take away|takeaway|subtract|subtracted|subtracting)\b|[−-]\s*\d/i;
+const WORK_MULTIPLY = /\b(?:times|multiplied|multiply)\b|[×*]/i;
+const ANSWER_WORD = /\b(?:answer|got|get|gets|total|equals? to)\b/i;
 
 /**
  * The text with the child's working after an answer left out (#605): "I got 66. 7 plus 9 is 16, so I carry the ten." keeps
@@ -889,15 +913,6 @@ const YES_TURN = new RegExp(`^[\\s,.!]*(?:(?:um+|uh+|oh|okay|ok|well)[\\s,.!]+)*
 /** The whole turn is a plain yes (#605): it answers Maya's "Did you say 66?". */
 export const saysYes = (text: string) => YES_TURN.test(text);
 
-const YES_START = new RegExp(`^[\\s,.!]*(?:(?:um+|uh+|oh|okay|ok|well)[\\s,.!]+)*${YES_WORD}\\b`, "i");
-
-/**
- * The turn starts with a yes and has no doubt, no question mark and no negative ("Yes, I think 66 is right."): with only
- * the confirmed number in it, it answers "Did you say 66?" too (practice run 1 of #605, C10-r1). The caller checks the
- * numbers.
- */
-export const startsWithYes = (text: string) => YES_START.test(text) && !DOUBT.test(text) && !NEGATIVE.test(text) && !offersChoice(text);
-
 /**
  * The child says the writing is done (#605): "I wrote 66", "66 is on my paper", "I'm done writing". Not "I'm writing",
  * "I will write it", or any negative beside it ("I didn't write it yet"): that child keeps their time.
@@ -911,11 +926,58 @@ export function saysWritten(text: string): boolean {
 }
 
 /**
- * The child says they are stuck: "I don't know (about the ten)", "I don't get it", "it's too hard", "no idea", "I'm
- * stuck", "I'm confused". Code reads it as a request for one more level of help (#605 practice run 2: C24-r2).
+ * One sentence in which the child says, in the first person, that they are stuck: "I don't know", "I don't know about
+ * the ten", "I don't get it", "I don't understand", "I'm stuck", "I have no idea", "I'm confused" (#605 practice run 2:
+ * C24-r2; PR #624 review). The words after "about", "how", "what", "where" or "why" hold no negative.
  */
-const STUCK = /\b(?:don['’]?t|do not|dont|didn['’]?t|did not)\s+(?:know|get|understand)\b|\bno idea\b|\bstuck\b|\bconfused\b|\btoo hard\b|\bnot sure (?:how|what)\b/i;
-export const saysStuck = (text: string) => STUCK.test(text);
+const STUCK_SENTENCE = /^(?:(?:um+|uh+|oh|well|hmm+|okay|ok)[\s,]+)*(?:i (?:don'?t|do not) (?:know|get it|understand(?: it)?)(?: (about|how|what|where|why)((?: [a-z']+){1,6}))?|i(?:'m| am) stuck|i have no idea|i(?:'m| am) (?:really |so )?confused)$/;
+const NEGATIVE_WORD = /\b(?:not|no|never|nothing)\b|n't\b/;
+
+/**
+ * The child's turn says they are stuck, and nothing else that could move Maya on: at least one STUCK_SENTENCE, no
+ * question mark, no number in any other sentence, no negative outside the stuck sentence, and no answer in the turn.
+ * Any other turn keeps the old reading (no change in help). Code reads it as a request for one more level of help.
+ */
+export function saysStuck(text: string): boolean {
+  if (text.includes("?") || readAnswer(text).final !== null) return false;
+  const sentences = text.toLowerCase().replace(/[’]/g, "'").split(/[.!\n]+/).map((x) => x.trim().replace(/\s+/g, " ")).filter(Boolean);
+  let stuck = false;
+  for (const sentence of sentences) {
+    const m = STUCK_SENTENCE.exec(sentence);
+    if (m) {
+      if (m[2] && NEGATIVE_WORD.test(m[2])) return false;
+      stuck = true;
+      continue;
+    }
+    if (NEGATIVE.test(sentence) || readNumbers(sentence).values.length > 0 || readNumbers(sentence).unreadable) return false;
+  }
+  return stuck;
+}
+
+/**
+ * The sentence is exactly an addition of single numbers, as a child sets up a column: "2 plus 3 plus 1", "So 1 plus 2
+ * plus 3", "I add the 2 and the 3 and the 1" (#605, PR #624 review). Its operands in order, or null for every other
+ * form: another operation, a negative, a result ("is 6"), any other word.
+ */
+const SETUP_LEAD = new Set(["oh", "so", "um", "uh", "okay", "ok", "then", "now", "i", "add", "yes", "yeah", "is", "it"]);
+export function additionSetup(sentence: string): number[] | null {
+  const tokens = sentence.toLowerCase().replace(/[’]/g, "'").replace(/[?,]/g, " ").replace(/\+/g, " plus ").split(/\s+/).filter(Boolean);
+  let i = 0;
+  while (i < tokens.length && SETUP_LEAD.has(tokens[i])) i++;
+  const operands: number[] = [];
+  for (;;) {
+    if (tokens[i] === "the") i++;
+    const t = tokens[i];
+    const value = t === undefined ? null : /^\d$/.test(t) ? Number(t) : wordValue(t);
+    if (value === null || value > 9) return null;
+    operands.push(value);
+    i++;
+    if (i === tokens.length) break;
+    if (tokens[i] !== "plus" && tokens[i] !== "and") return null;
+    i++;
+  }
+  return operands.length >= 2 ? operands : null;
+}
 
 /** The text offers numbers as a choice ("is it 66 or 56?"): none of them is the child's answer yet. */
 export const offersChoice = (text: string) => text.split(/\bor\b/i).filter((p) => valuesIn(p).length > 0).length > 1;
