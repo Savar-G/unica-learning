@@ -32,7 +32,8 @@
 // planner and Maya, each linked to the events that show it. The checks keep only findings whose events this build
 // read for this child. The findings are stored with the same compare and set, over the facts' own build token, so a
 // late AI result never replaces a build from newer inputs; the facts stay as stored. A build stores its facts with no
-// findings (`ai: null`): an earlier build's findings were written from other facts. AI off, failing (an error, a time
+// findings (`ai: null`), unless Maya's spending ledger stops the AI (`keepFindings`, or a refused request: nothing newer
+// replaces them, so they stay): an earlier build's findings were written from other facts. AI off, failing (an error, a time
 // out, output that does not match the schema) or late leaves the facts-only profile, and never fails the rebuild.
 // Schema version 2 adds `ai`; a stored version 1 profile reads as version 2 with no findings.
 //
@@ -423,10 +424,11 @@ export async function rebuildChildProfile(childId: string, seams: ChildProfileSe
     // its change: the inputs are gone (a test or events deleted).
     if (!profile.assessment && profile.events.counted === 0 && !expected && !("changes" in planned && planned.changes.length > 0)) return { built: false, reason: "nothing_to_build" };
     const row = { childId: id, parentId: source.parentId, assessmentId: profile.assessment?.assessmentId ?? null };
-    const { saved, states } = await saveFacts(profiles, { ...row, profile: seams.keepFindings ? { ...profile, ai: earlier } : profile }, expected, planned);
+    const storing = seams.keepFindings ? { ...profile, ai: earlier } : profile;
+    const { saved, states } = await saveFacts(profiles, { ...row, profile: storing }, expected, planned);
     if (saved === "changed") continue;
     if ("refused" in saved) return { built: false, reason: "refused", detail: saved.refused };
-    const facts = { built: true as const, revision: saved.revision, profile, skillStates: states };
+    const facts = { built: true as const, revision: saved.revision, profile: storing, skillStates: states };
     if (!ai) return { ...facts, findings: { outcome: "off" } };
     if (read.length === 0) return { ...facts, findings: { outcome: "no_events" } };
     return { ...(await addFindings({ ...seams, ai }, { ...row, profile }, saved, read, earlier)), skillStates: states };
