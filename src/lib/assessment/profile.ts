@@ -476,9 +476,10 @@ export function storedProfile(value: unknown): LearnerProfile | null {
 /**
  * What the skill states read from one stored profile (src/lib/assessment/skill-state.ts): its tally of each standard, at
  * the time its test finished. Nothing else leaves the profile. A profile of another schema version gives nothing.
+ * `unreliable`: the test's stored report calls it unreliable (reportCallsUnreliable), which the caller reads.
  */
-export function profileSkillResults(profile: unknown, finishedAt: string): SkillTestResult[] {
-  return (storedProfile(profile)?.standards ?? []).map((s) => ({ standard: s.code, correct: s.correct, total: s.total, at: finishedAt }));
+export function profileSkillResults(profile: unknown, finishedAt: string, unreliable: boolean): SkillTestResult[] {
+  return (storedProfile(profile)?.standards ?? []).map((s) => ({ standard: s.code, correct: s.correct, total: s.total, at: finishedAt, unreliable }));
 }
 
 /** D-145: a stored struggle without its wrong answers to the removed extra round's questions (#190). */

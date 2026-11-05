@@ -101,6 +101,8 @@ export interface MemorySkillTest extends Owned {
   correct: number;
   total: number;
   at: string;
+  /** The test the tally is from: its result says whether the stored report calls it unreliable. */
+  assessmentId?: string;
 }
 /** One question of a workbook: its standard, as the question package names it. */
 export interface MemoryWorkbookQuestion {
@@ -228,7 +230,9 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
       },
       async skillTests(childId) {
         read("skillTests");
-        return own(tables.skillTests).filter((t) => t.childId === childId);
+        // As the server: whether the test's stored report calls it unreliable comes from that report, not from the tally.
+        const unreliable = new Set(own(tables.results).filter((r) => r.unreliable).map((r) => r.assessmentId));
+        return own(tables.skillTests).filter((t) => t.childId === childId).map((t) => ({ ...t, unreliable: t.assessmentId !== undefined && unreliable.has(t.assessmentId) }));
       },
       async workbookStandards(workbookId) {
         read("questions");

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { createElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SkillPanel } from "@/components/parent-skill-map";
 import { adsBlockedPath } from "@/lib/ad-tags";
 import { deskGate } from "@/lib/desk";
 import { memoryParentViewReaders, type MemoryParentViewTables } from "@/lib/parent-view-memory";
@@ -96,6 +97,30 @@ describe("what a parent reads", () => {
     const html = await render({ results: [{ parentId: "p1", childId: "c1", assessmentId: "t1", level: { working: 3, top: 3, certainty: "early-sign", confidence: "low" } as never, answers: [], unreliable: true }] });
     expect(html).toContain("The last test may not show Leah&#x27;s level reliably");
     expect(html).toContain("This level is an Early sign");
+  });
+  it("shows no Needs review tile from an unreliable test, under the report's note", async () => {
+    const html = await render({
+      results: [{ parentId: "p1", childId: "c1", assessmentId: "t1", level: { working: 3, top: 3, certainty: "early-sign", confidence: "low" } as never, answers: [], unreliable: true }],
+      skillTests: [{ parentId: "p1", childId: "c1", assessmentId: "t1", standard: "3.1", correct: 0, total: 4, at: "2026-10-30T18:00:00Z" }],
+    });
+    expect(html).toContain("The last test may not show Leah&#x27;s level reliably");
+    expect(html).not.toContain("pp-tile is-needs_review");
+    expect(html).not.toContain("pp-tile is-mastered");
+  });
+});
+
+describe("the panel on a selected skill", () => {
+  const tile = { code: "3.1", name: "Number concepts to 1000", grade: 3 as const, state: "mastered" as const, why: "Leah got every counted answer on this right on the test on October 30.", skills: ["Read numbers to 1000"] };
+  const panel = (workbookLine: string | null) => renderToStaticMarkup(createElement(SkillPanel, { tile: { ...tile, workbookLine }, onClose: () => {} }));
+  it("says the current workbook has the skill as a plain fact, and nothing about what comes next", () => {
+    const html = panel("This is in Workbook 3.");
+    expect(html).toContain("This is in Workbook 3.");
+    expect(html).toContain(tile.why);
+    expect(html).toContain("Read numbers to 1000");
+    expect(html).not.toMatch(/comes next/i);
+  });
+  it("has no workbook line for a skill the workbook does not have", () => {
+    expect(panel(null)).not.toContain("Workbook");
   });
 });
 

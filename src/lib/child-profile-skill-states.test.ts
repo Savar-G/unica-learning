@@ -58,6 +58,28 @@ const changes = (f: ReturnType<typeof family>) => f.history().map(({ standard, s
 afterEach(() => vi.restoreAllMocks());
 
 describe("the rebuild's skill state history", () => {
+  it("reads no state from a test the report calls unreliable, also after an earlier good test", async () => {
+    const f = family({ tests: [
+      { id: TEST, childId: CHILD, completedAt: "2026-10-20T18:00:00.000Z", profile: testProfile({ "3.3": [5, 5] }) },
+      { id: NEXT_TEST, childId: CHILD, completedAt: "2026-11-20T18:00:00.000Z", profile: testProfile({ "3.3": [0, 4], "3.4": [0, 4], "3.5": [4, 4] }), unreliable: true },
+    ] });
+    await rebuildChildProfile(CHILD, f);
+    expect(changes(f)).toEqual([{ standard: "3.3", state: "mastered", reason: "secure_on_test", evidenceSource: "test" }]);
+  });
+
+  it("corrects a row already written when its test is unreliable, once, and leaves the old row", async () => {
+    const f = family({ tests: [{ id: TEST, childId: CHILD, completedAt: "2026-10-20T18:00:00.000Z", profile: testProfile({ "3.4": [0, 4] }) }] });
+    await rebuildChildProfile(CHILD, f);
+    expect(changes(f)).toEqual([{ standard: "3.4", state: "needs_review", reason: "needs_attention_on_test", evidenceSource: "test" }]);
+    f.tests[0].unreliable = true;
+    expect(await rebuildChildProfile(CHILD, f)).toMatchObject({ skillStates: { outcome: "recorded", changes: 1 } });
+    expect(changes(f)).toEqual([
+      { standard: "3.4", state: "needs_review", reason: "needs_attention_on_test", evidenceSource: "test" },
+      { standard: "3.4", state: "not_started", reason: "no_evidence", evidenceSource: "none" },
+    ]);
+    expect(await rebuildChildProfile(CHILD, f)).toMatchObject({ skillStates: { outcome: "recorded", changes: 0 } });
+  });
+
   it("writes a row for each standard that is not Not started, and none for the rest", async () => {
     const f = family();
     expect(await rebuildChildProfile(CHILD, f)).toMatchObject({ built: true, skillStates: { outcome: "recorded", changes: 2 } });

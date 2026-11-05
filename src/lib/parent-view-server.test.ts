@@ -326,13 +326,14 @@ describe("the Supabase reader of the Progress tab (#561)", () => {
   const ADMIN_ROWS = {
     assessments: [{ id: TEST, completed_at: FINISHED }, { id: "open", completed_at: null }],
     learner_profiles: [{ assessment_id: TEST, profile }, { assessment_id: "open", profile }, { assessment_id: "gone", profile }],
+    reports: [{ assessment_id: TEST, reliability: null }],
   };
 
   it("reads the tallies with the secret key, filtered on the parent and the child, and gives only the tally", async () => {
     const admin: URL[] = [];
     const session: URL[] = [];
     const r = parentViewReader(progressClient(session, {}), PARENT, progressClient(admin, ADMIN_ROWS), {});
-    expect(await r.skillTests(CHILD)).toEqual([{ standard: "3.1", correct: 2, total: 2, at: new Date(FINISHED).toISOString() }]);
+    expect(await r.skillTests(CHILD)).toEqual([{ standard: "3.1", correct: 2, total: 2, at: new Date(FINISHED).toISOString(), unreliable: false }]);
     expect(session).toEqual([]);
     for (const url of admin) {
       expect(url.searchParams.get("parent_id"), url.pathname).toBe(`eq.${PARENT}`);
@@ -340,16 +341,24 @@ describe("the Supabase reader of the Progress tab (#561)", () => {
     }
     expect(admin.find((u) => u.pathname.endsWith("/assessments"))?.searchParams.get("status")).toBe("eq.completed");
   });
+  it("marks a tally of a test whose stored report has the reliability note, and reads only that part of the report", async () => {
+    const admin: URL[] = [];
+    const rows = { ...ADMIN_ROWS, reports: [{ assessment_id: TEST, reliability: { veryFast: 28, answers: 42 } }] };
+    const r = parentViewReader(progressClient([], {}), PARENT, progressClient(admin, rows), {});
+    expect(await r.skillTests(CHILD)).toEqual([{ standard: "3.1", correct: 2, total: 2, at: new Date(FINISHED).toISOString(), unreliable: true }]);
+    expect(admin.find((u) => u.pathname.endsWith("/reports"))?.searchParams.get("select")).toBe("assessment_id,reliability:model->reliability");
+  });
   it("reads no child profile, event, history or call table", async () => {
     const admin: URL[] = [];
     const r = parentViewReader(progressClient([], {}), PARENT, progressClient(admin, ADMIN_ROWS), {});
     await r.skillTests(CHILD);
-    expect(tables(admin)).toEqual(["assessments", "learner_profiles"]);
+    expect(tables(admin)).toEqual(["assessments", "learner_profiles", "reports"]);
   });
   it("throws with no secret key, and on a failed read", async () => {
     await expect(parentViewReader(progressClient([], {}), PARENT, null, {}).skillTests(CHILD)).rejects.toThrow("no secret key");
     await expect(parentViewReader(progressClient([], {}), PARENT, progressClient([], ADMIN_ROWS, "learner_profiles"), {}).skillTests(CHILD)).rejects.toThrow("learner profiles read");
     await expect(parentViewReader(progressClient([], {}), PARENT, progressClient([], ADMIN_ROWS, "assessments"), {}).skillTests(CHILD)).rejects.toThrow("skill tests read");
+    await expect(parentViewReader(progressClient([], {}), PARENT, progressClient([], ADMIN_ROWS, "reports"), {}).skillTests(CHILD)).rejects.toThrow("skill reports read");
   });
   it("reads a workbook's standards through the parent's session, each once, and only the code", async () => {
     const session: URL[] = [];

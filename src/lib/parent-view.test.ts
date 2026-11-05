@@ -688,15 +688,20 @@ describe("the Progress tab (#561)", () => {
     it("shows the working level's grade with each state, from the tallies of only this child", async () => {
       const view = await read({ ...withTest, skillTests: [tally("3.1", 2, 2), tally("3.2", 0, 4), { ...tally("3.3", 2, 2), childId: "child-2" }] });
       expect(view!.level).toMatchObject({ working: 3, testedOn: "2026-10-30" });
-      expect(tile(view, "3.1")).toMatchObject({ state: "mastered", why: "Leah got every question on this right on the test on October 30." });
+      expect(tile(view, "3.1")).toMatchObject({ state: "mastered", why: "Leah got every counted answer on this right on the test on October 30." });
       expect(tile(view, "3.2")?.state).toBe("needs_review");
       expect(tile(view, "3.3")?.state).toBe("not_started");
       expect(view!.areas.map((a) => a.area)).toEqual(["number", "fractions", "algebra", "shapes"]);
     });
-    it("gives a Grade 2 child three areas", async () => {
+    it("groups a Grade 2 child's map by the standards of the level", async () => {
       const grade2 = { ...leah, grade: 2 };
       const view = await readProgress(memoryParentViewReaders({ children: [grade2], ...withTest, results: [{ ...result, level: { ...level, working: 2 } }] }).parent("parent-1"), "child-1", NOW);
       expect(view!.areas.map((a) => a.area)).toEqual(["number", "algebra", "shapes"]);
+    });
+    it("shows a Grade 2 child working at Grade 3 the fractions standard", async () => {
+      const view = await readProgress(memoryParentViewReaders({ children: [{ ...leah, grade: 2 }], ...withTest }).parent("parent-1"), "child-1", NOW);
+      expect(view!.areas.map((a) => a.area)).toEqual(["number", "fractions", "algebra", "shapes"]);
+      expect(view!.areas[1].tiles.map((t) => t.code)).toContain("3.2");
     });
     it("reads the newest workbook's standards for Working on, and adds one from another grade", async () => {
       const view = await read({
@@ -710,7 +715,7 @@ describe("the Progress tab (#561)", () => {
         ],
       });
       expect(view!.workbookNumber).toBe(2);
-      expect(tile(view, "3.1")).toMatchObject({ state: "working_on", why: "This skill is in Workbook 2, Leah's current workbook." });
+      expect(tile(view, "3.1")).toMatchObject({ state: "working_on", why: "This is in Workbook 2." });
       expect(tile(view, "2.1")).toMatchObject({ state: "working_on", grade: 2 });
       expect(tile(view, "3.5")?.state).toBe("not_started");
     });
@@ -731,6 +736,24 @@ describe("the Progress tab (#561)", () => {
       const view = await read({ ...withTest, results: [{ ...result, unreliable: true }] });
       expect(view!.level?.unreliable).toBe(true);
     });
+    it("gives a test the report calls unreliable no state: Not started, also for a low result", async () => {
+      const view = await read({ ...withTest, results: [{ ...result, unreliable: true }], skillTests: [{ ...tally("3.1", 0, 4), assessmentId: "t1" }, { ...tally("3.3", 2, 2), assessmentId: "t1" }] });
+      expect(tile(view, "3.1")).toMatchObject({ state: "not_started", why: "There is not enough from Leah's test to say yet." });
+      expect(tile(view, "3.3")?.state).toBe("not_started");
+      expect(view!.level?.unreliable).toBe(true);
+    });
+    it("keeps the state of an earlier good test beside a newer test the report calls unreliable", async () => {
+      const older = test("t0", { completedAt: Date.parse("2026-09-01T18:00:00Z") });
+      const view = await read({
+        ...withTest,
+        tests: [older, finished],
+        reports: [report("t0"), report("t1")],
+        results: [{ ...result, assessmentId: "t0" }, { ...result, unreliable: true }],
+        skillTests: [{ ...tally("3.1", 2, 2), at: "2026-09-01T18:00:00Z", assessmentId: "t0" }, { ...tally("3.1", 0, 4), assessmentId: "t1" }],
+      });
+      expect(tile(view, "3.1")).toMatchObject({ state: "mastered", why: "Leah got every counted answer on this right on the test on September 1." });
+      expect(view!.level?.unreliable).toBe(true);
+    });
   });
 
   describe("what leaves the module", () => {
@@ -739,7 +762,7 @@ describe("the Progress tab (#561)", () => {
       const view = await read({ ...withTest, skillTests: [raw] });
       expect(Object.keys(view!).sort()).toEqual(["areas", "child", "level", "workbookNumber"]);
       expect(Object.keys(view!.areas[0]).sort()).toEqual(["area", "name", "tiles"]);
-      expect(Object.keys(view!.areas[0].tiles[0]).sort()).toEqual(["code", "grade", "name", "next", "skills", "state", "why"]);
+      expect(Object.keys(view!.areas[0].tiles[0]).sort()).toEqual(["code", "grade", "name", "skills", "state", "why", "workbookLine"]);
       const text = JSON.stringify(view!.areas);
       for (const bad of ["RAW-PROFILE", "AI-GUESS", '"correct"', '"total"', '"evidenceAt"', '"reason"']) expect(text).not.toContain(bad);
     });

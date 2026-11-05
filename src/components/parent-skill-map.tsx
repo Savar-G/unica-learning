@@ -50,7 +50,7 @@ export function SkillMap({ areas, workingLevel }: { areas: SkillAreaView[]; work
   );
 }
 
-function SkillPanel({ tile, onClose }: { tile: SkillTileView; onClose: () => void }) {
+export function SkillPanel({ tile, onClose }: { tile: SkillTileView; onClose: () => void }) {
   return (
     <div className="pp-panel-in">
       <div className="pp-panel-top">
@@ -61,16 +61,11 @@ function SkillPanel({ tile, onClose }: { tile: SkillTileView; onClose: () => voi
       </div>
       <h3 id="pp-panel-title">{tile.name}</h3>
       <p className="pp-why">{tile.why}</p>
+      {tile.workbookLine && <p className="pp-why">{tile.workbookLine}</p>}
       {tile.skills.length > 0 && (
         <section aria-labelledby="pp-panel-skills">
           <h4 id="pp-panel-skills">Skills inside this one</h4>
           <ul className="pp-list">{tile.skills.map((s) => <li key={s}>{s}</li>)}</ul>
-        </section>
-      )}
-      {tile.next.length > 0 && (
-        <section aria-labelledby="pp-panel-next">
-          <h4 id="pp-panel-next">What comes next</h4>
-          <ul className="pp-list">{tile.next.map((s) => <li key={s}>{s}</li>)}</ul>
         </section>
       )}
     </div>

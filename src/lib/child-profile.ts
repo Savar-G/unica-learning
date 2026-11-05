@@ -294,8 +294,8 @@ export type ExpectedBuild = Pick<StoredChildProfile, "revision" | "buildToken"> 
 
 /** What the skill states read besides the profile. */
 export interface SkillInputs {
-  /** Each finished test of the child with a stored assessment profile, at any schema version. */
-  tests: { assessmentId: string; completedAt: string; profile: unknown }[];
+  /** Each finished test of the child with a stored assessment profile, at any schema version. `unreliable`: its stored report calls it so. */
+  tests: { assessmentId: string; completedAt: string; profile: unknown; unreliable: boolean }[];
   /** The BC standards of the child's latest shipped workbook; empty with none. */
   workbookStandards: string[];
   /** The child's skill state history, oldest first. */
@@ -439,7 +439,7 @@ type PlannedChanges = { changes: StandardSkillState[]; tests: string[] } | { pro
 async function plannedChanges(profiles: ChildProfileStore, childId: string, schoolGrade: Grade): Promise<PlannedChanges> {
   try {
     const { tests, workbookStandards, history } = await profiles.skillInputs(childId);
-    const results = tests.flatMap((t) => profileSkillResults(t.profile, t.completedAt));
+    const results = tests.flatMap((t) => profileSkillResults(t.profile, t.completedAt, t.unreliable));
     return { changes: skillStateChanges({ schoolGrade, tests: results, workbookStandards, marks: MARKS_NOT_LIVE }, history), tests: tests.map((t) => t.assessmentId) };
   } catch (e) {
     const problem = problemOf(e);

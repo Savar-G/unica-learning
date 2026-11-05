@@ -43,9 +43,9 @@ const LEARNING = { styles: ["pictures" as const], interests: [], feeling: "avoid
 // Three finished tests of the child: an older one with a profile, a newer one with a profile, and the newest, which has
 // no profile (not scored against BC). The latest assessment profile is the newer one's.
 const TESTS = [
-  { id: OLD, completedAt: "2026-09-01T18:00:00.000Z", profile: { ...BASE, buildId: "build-old" } },
-  { id: NEW, completedAt: "2026-10-20T18:00:00.000Z", profile: { ...BASE, buildId: "build-new" } },
-  { id: UNSCORED, completedAt: "2026-10-25T18:00:00.000Z", profile: null },
+  { id: OLD, completedAt: "2026-09-01T18:00:00.000Z", profile: { ...BASE, buildId: "build-old" }, unreliable: true },
+  { id: NEW, completedAt: "2026-10-20T18:00:00.000Z", profile: { ...BASE, buildId: "build-new" }, unreliable: false },
+  { id: UNSCORED, completedAt: "2026-10-25T18:00:00.000Z", profile: null, unreliable: false },
 ];
 
 // The child's workbooks: an older shipped one, the latest shipped one (a standard twice), and a newer draft.
@@ -70,6 +70,8 @@ function fakePostgrest(history: Record<string, unknown>[] = []): ChildProfileSto
       { id: OTHER_TEST, child_id: OTHER_CHILD, parent_id: OTHER_PARENT, status: "completed", completed_at: "2026-10-01T18:00:00.000Z" },
     ],
     learner_profiles: TESTS.filter((t) => t.profile).map((t) => ({ assessment_id: t.id, child_id: CHILD, profile: t.profile })),
+    // The older test's report has the reliability note; the newer test's does not.
+    reports: TESTS.map((t) => ({ assessment_id: t.id, child_id: CHILD, model: t.unreliable ? { reliability: { veryFast: 28, answers: 42 } } : {} })),
     child_profiles: [],
     workbooks: WORKBOOKS.map((w) => ({ id: w.id, child_id: CHILD, number: w.number, status: w.status })),
     workbook_questions: WORKBOOKS.flatMap((w) => w.standards.map((standard) => ({ workbook_id: w.id, package: { skill: { standard } } }))),
@@ -114,7 +116,7 @@ function fakePostgrest(history: Record<string, unknown>[] = []): ChildProfileSto
     if (url.searchParams.get("order") === "id.asc") hit.sort((a, b) => Number(a.id) - Number(b.id));
     if (url.searchParams.has("limit")) hit.splice(Number(url.searchParams.get("limit")));
     hit.splice(MAX_ROWS);
-    const cell = (r: Record<string, unknown>, c: string) => (c === "standard:package->skill->>standard" ? ["standard", (r.package as { skill: { standard: string } }).skill.standard] : [c, r[c]]);
+    const cell = (r: Record<string, unknown>, c: string) => (c === "standard:package->skill->>standard" ? ["standard", (r.package as { skill: { standard: string } }).skill.standard] : c === "reliability:model->reliability" ? ["reliability", (r.model as { reliability?: unknown }).reliability ?? null] : [c, r[c]]);
     const pick = (list: Record<string, unknown>[]) => list.map((r) => Object.fromEntries((url.searchParams.get("select") ?? "*").split(",").map((c) => c.trim()).map((c) => cell(r, c))));
     const one = init?.headers && new Headers(init.headers).get("accept") === "application/vnd.pgrst.object+json";
     const answer = (list: Record<string, unknown>[]) => (one ? (list.length ? Response.json(pick(list)[0]) : Response.json({ code: "PGRST116", message: "0 rows" }, { status: 406 })) : Response.json(pick(list)));
@@ -195,7 +197,8 @@ describe.each([["Supabase", fakePostgrest], ["in-memory", memory]] as const)("th
     const store = open();
     const inputs = await store.skillInputs(CHILD);
     expect(inputs.tests.map((t) => t.assessmentId).sort()).toEqual([OLD, NEW]);
-    expect(inputs.tests.find((t) => t.assessmentId === NEW)).toEqual({ assessmentId: NEW, completedAt: expect.stringMatching(/^2026-10-20T18:00:00/), profile: expect.objectContaining({ buildId: "build-new" }) });
+    expect(inputs.tests.find((t) => t.assessmentId === OLD)?.unreliable).toBe(true);
+    expect(inputs.tests.find((t) => t.assessmentId === NEW)).toEqual({ assessmentId: NEW, completedAt: expect.stringMatching(/^2026-10-20T18:00:00/), unreliable: false, profile: expect.objectContaining({ buildId: "build-new" }) });
     expect([...new Set(inputs.workbookStandards)].sort()).toEqual(["3.2", "3.3"]);
     expect(await store.skillInputs(OTHER_CHILD)).toEqual({ tests: [], workbookStandards: [], history: [] });
   });

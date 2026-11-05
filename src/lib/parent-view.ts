@@ -452,7 +452,7 @@ export async function readProgress(reader: ParentViewReader, childId: string, no
     schoolGrade: child.schoolGrade,
     workingLevel: level?.working ?? null,
     // Field by field: a tally reaches the rule, and nothing else of the record does.
-    tests: results.map((r) => ({ standard: r.standard, correct: r.correct, total: r.total, at: r.at })),
+    tests: results.map((r) => ({ standard: r.standard, correct: r.correct, total: r.total, at: r.at, unreliable: r.unreliable })),
     workbookStandards,
     workbookNumber: book?.number ?? null,
     day: (at) => formatCalendarDate(localDay(at, zone), { month: "long", day: "numeric" }),
