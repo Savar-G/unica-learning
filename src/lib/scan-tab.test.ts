@@ -26,7 +26,9 @@ it("sends a signed-out visitor to sign in, then back to the page", () => {
 });
 
 it("sends a page's QR code to Scan pages only for a parent who was just scanning and may scan", async () => {
-  const { pageCodeTarget, scanPagePath } = await import("@/lib/scan-tab");
+  const { continueHerePath, pageCodeTarget, scanPagePath } = await import("@/lib/scan-tab");
+  expect(continueHerePath(null)).toBe("/account/scan?here=1");
+  expect(continueHerePath({ workbookId: "6f1c2a3b-0000-4000-8000-000000000001", page: 12 })).toBe("/account/scan?w=6f1c2a3b-0000-4000-8000-000000000001&p=12&here=1");
   expect(pageCodeTarget({ scanning: true, scanAccess: true })).toBe("scan");
   expect(pageCodeTarget({ scanning: true, scanAccess: false })).toBe("desk");
   expect(pageCodeTarget({ scanning: false, scanAccess: true })).toBe("desk");

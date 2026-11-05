@@ -125,3 +125,19 @@ it("opens Scan pages on the page a QR code named, for that page's child", async 
   // Anything that is not a workbook id and a page number names no page.
   expect(await render({ w: "not-an-id", p: "12" })).toContain("camera flow: Iris, Leo<");
 });
+
+it("keeps the page a QR code named when an iPad that reports a Mac continues on this device, whoever was remembered", async () => {
+  state.ua = IPAD_AS_MAC;
+  state.remembered = "c1";
+  const out = await render({ w: BOOK, p: "12" });
+  const href = /href="([^"]*here=1[^"]*)"/.exec(out)![1].replaceAll("&amp;", "&");
+  const query = Object.fromEntries(new URL(href, "http://localhost:3000").searchParams);
+  expect(query).toEqual({ w: BOOK, p: "12", here: "1" });
+  expect(await render(query)).toContain("camera flow: Leo, Iris · Day 4 · Page 3");
+});
+
+it("carries no page on Take the pictures on this device when the address names none", async () => {
+  state.ua = IPAD_AS_MAC;
+  expect(await render({ w: "not-an-id", p: "12" })).toContain('href="/account/scan?here=1"');
+});
+

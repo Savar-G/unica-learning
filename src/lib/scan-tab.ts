@@ -34,6 +34,10 @@ export const SCANNING_SECONDS = 30 * 60;
 /** Scan pages for one printed page: the workbook and the page number, never the page's QR token. */
 export const scanPagePath = (workbookId: string, page: number) => `${SCAN_PATH}?w=${encodeURIComponent(workbookId)}&p=${page}`;
 
+/** "Take the pictures on this device": it keeps the page a QR code named, so that page's child stays in view. */
+export const continueHerePath = (named: { workbookId: string; page: number } | null) =>
+  named ? `${scanPagePath(named.workbookId, named.page)}&${CONTINUE_HERE}=1` : `${SCAN_PATH}?${CONTINUE_HERE}=1`;
+
 /**
  * Where a page's QR code goes for its signed-in owner when no desk is open on this device: Scan pages for that page when
  * the parent was just scanning and scanning is open to the family; otherwise the desk question, which offers "Scan this

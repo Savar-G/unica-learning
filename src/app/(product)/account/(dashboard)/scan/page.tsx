@@ -10,7 +10,7 @@ import { ScanEmailLink } from "@/components/scan-email-link";
 import { pageMetadata, SITE_URL } from "@/lib/metadata";
 import { parentDashboard } from "@/lib/parent-dashboard-server";
 import { pickChild } from "@/lib/parent-shell";
-import { CONTINUE_HERE, SCAN_PATH, scanPageUrl, scanScreen, scanSignInPath } from "@/lib/scan-tab";
+import { CONTINUE_HERE, continueHerePath, scanPageUrl, scanScreen, scanSignInPath } from "@/lib/scan-tab";
 import { dayPages } from "@/lib/scan-stack";
 import { isUuid } from "@/lib/workbook-content";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
@@ -35,7 +35,7 @@ function origin(h: Headers): string {
 type Db = Awaited<ReturnType<typeof scanSession>>["db"];
 
 /** The page a QR code opened, read with the parent's own session (row-level security finds only the family's books). */
-async function focusedPage(db: Db, workbook: unknown, page: unknown): Promise<{ childId: string; label: string } | null> {
+async function focusedPage(db: Db, workbook: unknown, page: unknown): Promise<{ childId: string; label: string; workbookId: string; page: number } | null> {
   const number = typeof page === "string" && /^[0-9]{1,4}$/.test(page) ? Number(page) : null;
   if (!isUuid(workbook) || number === null) return null;
   const [book, pages] = await Promise.all([
@@ -45,7 +45,7 @@ async function focusedPage(db: Db, workbook: unknown, page: unknown): Promise<{ 
   if (book.error || pages.error || !book.data || book.data.status !== "shipped") return null;
   const numbered = dayPages((pages.data ?? []).map((p) => ({ id: p.id, workbookId: workbook, book: book.data!.number, pageNumber: p.page_number, day: p.day_label })));
   const found = numbered.find((p) => p.pageNumber === number);
-  return { childId: book.data.child_id, label: found ? `${found.day} · Page ${found.pageOfDay}` : `page ${number} of Workbook ${book.data.number}` };
+  return { childId: book.data.child_id, workbookId: workbook, page: number, label: found ? `${found.day} · Page ${found.pageOfDay}` : `page ${number} of Workbook ${book.data.number}` };
 }
 
 export default async function ScanPage({ searchParams }: PageProps<"/account/scan">) {
@@ -84,7 +84,7 @@ export default async function ScanPage({ searchParams }: PageProps<"/account/sca
         <h2>Please take a picture with your phone</h2>
         <p className="lead">Point your phone&apos;s camera at this code. It opens Scan pages on your phone, where you take a picture of {pages}. Your pages show here as you take them.</p>
         {inView && <ScanEmailLink childId={inView.id} />}
-        <p className="small scan-away-here"><Link href={`${SCAN_PATH}?${CONTINUE_HERE}=1`}>Take the pictures on this device</Link></p>
+        <p className="small scan-away-here"><Link href={continueHerePath(focus)}>Take the pictures on this device</Link></p>
       </div>
       {inView && <section className="scan-away-stack" aria-label="From your phone">
         <h2>From your phone</h2>

@@ -17,11 +17,14 @@ import "./scan-pages.css";
 // Images arrive only through the checked image route, live as object URLs and are revoked when they go away.
 
 type Mode = "phone" | "desktop";
-type Local = StackUpload & { file: File; replaces?: string };
+/** `reservation`: the photo id asked for at admission. It stays with the queued photo, so a lost answer takes no second upload slot. */
+type Local = StackUpload & { file: File; replaces?: string; reservation?: string };
 type Listing = { checks: boolean; photos: StackPhoto[]; pages: DayPage[] };
 
 const UPLOAD_REFUSALS: readonly string[] = ["qr", "page", "duplicate", "image", "size", "frequency", "quota"];
 const uploadRefusal = (code: string): UploadRefusal => (UPLOAD_REFUSALS.includes(code) ? code as UploadRefusal : "unavailable");
+/** What the server says of a photo id that can no longer take an upload: the lease ended or the photo went. A new id is needed. */
+const ENDED: readonly string[] = ["expired", "rejected", "deleted", "refused"];
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 /** How long a photo waits for the server's one upload slot, in tries 1.5 seconds apart. */
 const BUSY_TRIES = 40;
@@ -163,8 +166,12 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     if (!pending.length) return;
     for (const p of pending) savedAsked.current.add(p.id);
     void (async () => {
-      for (const p of pending) await api(`/api/account/scans/${p.id}`, { method: "POST" }).catch(() => {});
-      if (version === epoch.current) await load().catch(() => {});
+      let saved = false;
+      for (const p of pending) {
+        // A failed save is asked again on the next refresh (live while a photo is pending), not at once.
+        try { await api(`/api/account/scans/${p.id}`, { method: "POST" }); saved = true; } catch { savedAsked.current.delete(p.id); }
+      }
+      if (saved && version === epoch.current) await load().catch(() => {});
     })();
   }, [listing, load, mode]);
 
@@ -221,30 +228,53 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     if (u.replaces) await api(`/api/account/scans/${u.replaces}`, { method: "DELETE" }).catch(() => {});
     let body: Blob;
     try { body = await prepareScanPhoto(u.file); } catch (error) { return codeOf(error) === "size" ? "size" : "image"; }
-    const id = crypto.randomUUID();
+    // The same id again after a lost answer: the server answers with that photo's state and takes no second slot.
+    let id = u.reservation ?? crypto.randomUUID();
+    for (let fresh = false; ; fresh = true) {
+      patchUpload(u.key, { reservation: id });
+      const result = await sendPhoto(id, body, version);
+      if (result === "sent") break;
+      if (result !== "ended") return result;
+      if (fresh) return "unavailable";
+      id = crypto.randomUUID();
+    }
+    savedAsked.current.add(id);
+    // A failed save is asked again when the list next shows this photo as pending.
+    await api(`/api/account/scans/${id}`, { method: "POST" }).catch(() => { savedAsked.current.delete(id); });
+    return { id, thumb: body };
+  }
+
+  async function sendPhoto(id: string, body: Blob, version: number): Promise<"sent" | "ended" | UploadRefusal> {
     let admission: { state: string } | null = null;
     for (let attempt = 0; !admission; attempt++) {
       if (version !== epoch.current) return "unavailable";
       try { admission = await api("/api/account/scans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, child, bytes: body.size }) }); }
-      catch (error) { if (codeOf(error) === "busy" && attempt < BUSY_TRIES) { await wait(1500); continue; } return uploadRefusal(codeOf(error)); }
+      catch (error) {
+        const code = codeOf(error);
+        if (code === "busy" && attempt < BUSY_TRIES) { await wait(1500); continue; }
+        return ENDED.includes(code) ? "ended" : uploadRefusal(code);
+      }
     }
     for (let attempt = 0; ; attempt++) {
       if (version !== epoch.current) return "unavailable";
       try {
         const data = admission.state === "reserved" ? await api(`/api/account/scans/${id}`, { method: "PUT", body }) : await api(`/api/account/scans/${id}`);
-        if (!["pending", "saved"].includes(data.photo?.state)) throw new Error(data.photo?.state === "processing" ? "uncertain" : "image");
-        break;
+        const state = data.photo?.state;
+        if (state === "pending" || state === "saved") return "sent";
+        throw new Error(state === "processing" ? "uncertain" : ENDED.includes(state) ? state : "image");
       } catch (error) {
         const code = codeOf(error);
         if (code === "busy" && attempt < BUSY_TRIES) { await wait(1500); continue; }
         // A lost answer: the photo may still be saving. Ask about the same photo, never send it twice.
         if ((code === "uncertain" || code === "unavailable") && attempt < 5) { admission = { state: "check" }; await wait(2000); continue; }
-        return uploadRefusal(code);
+        return ENDED.includes(code) ? "ended" : uploadRefusal(code);
       }
     }
-    savedAsked.current.add(id);
-    await api(`/api/account/scans/${id}`, { method: "POST" }).catch(() => {});
-    return { id, thumb: body };
+  }
+
+  /** A photo the parent gives up on may hold an upload slot from a lost answer: let it go. */
+  function release(u: Local | undefined) {
+    if (u?.reservation) void api(`/api/account/scans/${u.reservation}`, { method: "DELETE" }).catch(() => {});
   }
 
   const pump = useCallback(async () => {
@@ -279,7 +309,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     replacing.current = null;
     let list = uploadsRef.current;
     // A retake of a photo that never reached us replaces it here; a retake of a saved photo deletes that photo first.
-    if (replaces?.startsWith("local:")) list = list.filter((u) => u.key !== replaces);
+    if (replaces?.startsWith("local:")) { release(list.find((u) => u.key === replaces)); list = list.filter((u) => u.key !== replaces); }
     const added: Local[] = [...files].map((file, i) => ({
       key: `local:${crypto.randomUUID()}`, file, status: "waiting" as const,
       replaces: i === 0 && replaces && !replaces.startsWith("local:") ? replaces : undefined,
@@ -336,6 +366,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     if (t.uploadKey) {
       const url = urls.current.get(t.uploadKey);
       if (url) { URL.revokeObjectURL(url); urls.current.delete(t.uploadKey); }
+      release(uploadsRef.current.find((u) => u.key === t.uploadKey));
       putUploads(uploadsRef.current.filter((u) => u.key !== t.uploadKey));
       return;
     }
@@ -394,7 +425,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   </Sheet>;
 
   const childPicker = childrenList.length > 1 && <label className="scan-child">Child
-    <select value={child} disabled={uploads.some((u) => u.status !== "refused") || sending} onChange={(e) => { clearAll(); setMessage(null); setChild(e.target.value); }}>
+    <select value={child} disabled={uploads.some((u) => u.status !== "refused") || sending} onChange={(e) => { uploadsRef.current.forEach(release); clearAll(); setMessage(null); setChild(e.target.value); }}>
       {childrenList.map((c) => <option key={c.id} value={c.id}>{c.first_name}</option>)}
     </select>
   </label>;
@@ -471,8 +502,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       </section>}
       {stack.addingTiles.length > 0 && group("new", "New photos", stack.addingTiles, undefined, stack.adding === 1 ? "Sending 1 photo" : `Sending ${stack.adding} photos`)}
       {stack.days.map((d) => group(d.key, d.label, d.tiles, d.missingText ? <p className="scan-gap">{d.missingText}</p> : undefined, d.tiles.length === 1 ? "1 photo" : `${d.tiles.length} photos`))}
-      {stack.sent.length > 0 && group("sent", "Sent for marking", stack.sent, <p className="scan-gap">Marking is not ready yet. These pages wait here.</p>)}
     </>}
+    {stack.sent.length > 0 && group("sent", "Sent for marking", stack.sent, <p className="scan-gap">Marking is not ready yet. These pages wait here.</p>)}
 
     {listing && (phone || (checks && tiles.length > 0)) && <div className="scan-dock">
       {checks && note && <p className="small">{note}</p>}

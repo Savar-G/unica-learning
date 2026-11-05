@@ -16,6 +16,8 @@ let root: Root, host: HTMLDivElement;
 let checks: boolean, acknowledged: boolean;
 let photos: Map<string, Photo & { two: boolean }>;
 let uploading: number, overlap: boolean;
+// Admission ids in order; how many admissions commit and then lose their answer; how many saves fail; which ids' leases ended.
+let admitted: string[], loseAdmissions: number, saveFailures: number, expired: Set<string>;
 const calls: string[] = [];
 
 const buttons = () => [...document.querySelectorAll("button")];
@@ -33,6 +35,7 @@ const text = () => document.body.textContent ?? "";
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   checks = true; acknowledged = true; photos = new Map(); uploading = 0; overlap = false; calls.length = 0;
+  admitted = []; loseAdmissions = 0; saveFailures = 0; expired = new Set();
   vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
     const method = init?.method ?? "GET"; calls.push(`${method} ${path}`);
     const id = /\/api\/account\/scans\/([^/?]+)/.exec(path)?.[1];
@@ -40,7 +43,12 @@ beforeEach(() => {
     if (path.startsWith("/api/account/scans?child=")) {
       return Response.json({ checks, pages: PAGES, photos: [...photos.values()].map(({ two, ...p }) => { void two; return p; }) });
     }
-    if (path === "/api/account/scans" && method === "POST") return Response.json({ state: "reserved", id: JSON.parse(String(init!.body)).id });
+    if (path === "/api/account/scans" && method === "POST") {
+      const asked: string = JSON.parse(String(init!.body)).id;
+      admitted.push(asked);
+      if (loseAdmissions > 0) { loseAdmissions--; throw new TypeError("the answer was lost"); }
+      return Response.json({ state: photos.get(asked)?.state ?? "reserved", id: asked });
+    }
     if (path === "/api/account/scans/send") {
       const ids: string[] = JSON.parse(String(init!.body)).ids;
       for (const pid of ids) { const p = photos.get(pid); if (p && p.check === "ready" && p.state === "saved") p.sentAt = "2026-11-05T12:00:00Z"; }
@@ -53,6 +61,7 @@ beforeEach(() => {
       return Response.json({ preview: p.two ? { status: "refused", reason: "ambiguous-page" } : { status: "ready", straight: { part: "straight", width: 1, height: 1 }, crops: [], notSupported: [] } });
     }
     if (method === "PUT" && id) {
+      if (expired.has(id)) return Response.json({ error: "expired" }, { status: 409 });
       uploading++; if (uploading > 1) overlap = true;
       await new Promise((r) => setTimeout(r, 1));
       uploading--;
@@ -63,6 +72,7 @@ beforeEach(() => {
       photos.set(id, { id, pageId: page.id, workbookId: "book", book: 1, pageNumber: page.pageNumber, state: "pending", check: checks ? "checking" : "none", reason: null, sentAt: null, createdAt: `2026-11-05T10:00:0${photos.size}Z`, two: name.startsWith("two") });
       return Response.json({ photo: { id, state: "pending" } });
     }
+    if (method === "POST" && id && saveFailures > 0) { saveFailures--; return Response.json({ error: "refused" }, { status: 409 }); }
     if (method === "POST" && id) { photos.get(id)!.state = "saved"; return Response.json({ photo: { id, state: "saved" } }); }
     if (method === "DELETE" && id) { photos.delete(id); return Response.json({ state: "deleted" }); }
     return Response.json({ photo: id ? { id, state: photos.get(id)?.state } : null });
@@ -153,4 +163,99 @@ it("asks for no check and offers no Send unless the server says this family has 
   expect(calls.filter((c) => c.includes("/preview"))).toEqual([]);
   expect(text()).toContain("2 photos saved.");
   expect(buttons().some((b) => /for marking/.test(b.textContent ?? ""))).toBe(false);
+});
+
+const seed = (id: string, pageId: string, fields: Partial<Photo> = {}) => {
+  const page = PAGES.find((p) => p.id === pageId)!;
+  photos.set(id, { id, pageId, workbookId: "book", book: 1, pageNumber: page.pageNumber, state: "saved", check: "ready", reason: null, sentAt: null, createdAt: `2026-11-05T09:00:0${photos.size}Z`, two: false, ...fields });
+};
+const saves = (id: string) => calls.filter((c) => c === `POST /api/account/scans/${id}`).length;
+
+it("reuses the reservation when Try again follows a lost admission answer, so no second upload slot is taken", async () => {
+  loseAdmissions = 2;
+  await render();
+  await choose("library", "p10.jpg", "p11.jpg");
+  expect(admitted).toHaveLength(2);
+  for (let tile = 0; tile < 2; tile++) {
+    await act(async () => button("Unknown page: Not sent")!.click());
+    await act(async () => button("Try again")!.click());
+    await settle();
+  }
+  // One id for each photo, however many times it was asked.
+  expect(admitted).toHaveLength(4);
+  expect(new Set(admitted).size).toBe(2);
+  expect([...photos.keys()].sort()).toEqual([...new Set(admitted)].sort());
+  expect(text()).toContain("2 photos. 2 pages are ready to send.");
+});
+
+it("takes a new reservation when the kept one has ended, so the photo is not stuck on Try again", async () => {
+  loseAdmissions = 1;
+  await render();
+  await choose("library", "p10.jpg");
+  const lost = admitted[0];
+  expired.add(lost);
+  await act(async () => button("Unknown page: Not sent")!.click());
+  await act(async () => button("Try again")!.click());
+  await settle();
+  expect(admitted.slice(0, 2)).toEqual([lost, lost]);
+  expect(new Set(admitted).size).toBe(2);
+  expect(photos.has(lost)).toBe(false);
+  expect([...photos.values()].map((p) => p.pageId)).toEqual(["p10"]);
+  expect(text()).not.toContain("Not sent");
+});
+
+it("gives the slot back when a photo with a lost admission answer is deleted", async () => {
+  loseAdmissions = 1;
+  await render();
+  await choose("library", "p10.jpg");
+  await act(async () => button("Unknown page: Not sent")!.click());
+  await act(async () => button("Delete this photo")!.click());
+  await settle();
+  expect(calls).toContain(`DELETE /api/account/scans/${admitted[0]}`);
+});
+
+it("asks to save again when a save fails after the upload, so the page reaches its check and Send", async () => {
+  saveFailures = 1;
+  await render();
+  await choose("library", "p10.jpg");
+  const id = [...photos.keys()][0];
+  expect(saves(id)).toBe(2);
+  expect(photos.get(id)?.state).toBe("saved");
+  expect(photos.get(id)?.check).toBe("ready");
+  expect(button("Send this page for marking")).toBeDefined();
+});
+
+it("retries a failed save of a photo left pending on the next refresh, and not in a tight loop", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    seed("left", "p10", { state: "pending", check: "checking" });
+    saveFailures = 2;
+    await render();
+    expect(saves("left")).toBe(1);
+    await act(async () => { vi.advanceTimersByTime(4000); }); await settle();
+    expect(saves("left")).toBe(2);
+    expect(photos.get("left")?.state).toBe("pending");
+    await act(async () => { vi.advanceTimersByTime(4000); }); await settle();
+    expect(saves("left")).toBe(3);
+    expect(photos.get("left")?.state).toBe("saved");
+    expect(photos.get("left")?.check).toBe("ready");
+  } finally { vi.useRealTimers(); }
+});
+
+it("shows and deletes a sent photo when the only open page is one ready photo", async () => {
+  seed("sent", "p10", { sentAt: "2026-11-05T08:00:00Z" });
+  seed("ready", "p11");
+  await render();
+  // The one ready page still shows large.
+  expect(text()).toContain("We can read this page.");
+  expect(button("Send this page for marking")).toBeDefined();
+  const tile = button("Day 4 · Page 1: Sent for marking");
+  expect(tile).toBeDefined();
+  await act(async () => tile!.click());
+  // The sheet's own Delete: the one page's Delete sits behind the sheet.
+  const inSheet = [...document.querySelectorAll("dialog button")].find((b) => b.textContent === "Delete this photo") as HTMLButtonElement;
+  await act(async () => inSheet.click());
+  await settle();
+  expect(photos.has("sent")).toBe(false);
+  expect(photos.has("ready")).toBe(true);
 });
