@@ -32,6 +32,26 @@ export function childChatView(view: CallView): ChatView {
     safetyMessage: view.outcome?.safetyFlag ? SAFETY_GUIDANCE[view.outcome.safetySeverity ?? "concern"] : null,
   };
 }
-export function chatIsEnabled(testFamily: boolean, env: Record<string, string | undefined>): boolean {
-  return testFamily || env.MAYA_CHAT_ENABLED === "on";
+/** Chat needs typing, so it starts at Grade 3 (D-241, #530). Kindergarten is grade 0. */
+export const CHAT_MIN_GRADE = 3;
+export const chatServesGrade = (grade: number | null | undefined): boolean => typeof grade === "number" && grade >= CHAT_MIN_GRADE;
+/** What the desk says when a younger child's family has chat. */
+export const chatGradeLine = () => "Chat with Maya is for Grade 3 and up, because it needs typing. Calls with Maya start soon.";
+
+/**
+ * Who may chat before the plan check (#530). A test family always may, on the fake path. Any other family needs the
+ * switch on and a place on the admin list (public.maya_chat_families), then a running plan ("plan").
+ */
+export function chatFamilyGate(family: { test: boolean; listed: boolean }, env: Record<string, string | undefined>): "test" | "plan" | "closed" {
+  if (family.test) return "test";
+  return family.listed && env.MAYA_CHAT_ENABLED === "on" ? "plan" : "closed";
+}
+
+/** Test families get no parent note and no weekly recap, except the one rehearsal family (#530). */
+export const getsNoParentNotes = (family: { test: boolean; rehearsal: boolean }): boolean => family.test && !family.rehearsal;
+
+/** Why an admin cannot make a family the rehearsal family, or null when it can. */
+export function rehearsalRefusal(family: { test: boolean; listed: boolean }): "not_test_family" | "not_listed" | null {
+  if (!family.test) return "not_test_family";
+  return family.listed ? null : "not_listed";
 }

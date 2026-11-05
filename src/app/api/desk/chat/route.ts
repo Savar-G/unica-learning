@@ -3,7 +3,7 @@ import { DESK_COOKIE, readLock } from "@/lib/desk";
 import { parentId, sessionClient, adminClient } from "@/lib/supabase-auth";
 import { familyZone } from "@/lib/family-time";
 import { loadFamilyProvince } from "@/lib/family-time-server";
-import { chatAccess, runChat, type ChatAction } from "@/lib/maya-chat-server";
+import { chatGate, runChat, type ChatAction } from "@/lib/maya-chat-server";
 import { isUuid } from "@/lib/workbook-content";
 import { MAX_CHILD_TEXT } from "@/lib/maya-call";
 
@@ -31,7 +31,8 @@ export async function POST(request: Request) {
       session.from("parents").select("time_zone, postal").eq("id", parent).maybeSingle(), loadFamilyProvince(session, parent),
     ]);
     const db = adminClient();
-    if (!child || !family || !db || !await chatAccess(db, parent)) return json({ error: "unavailable" }, 403);
+    // Family (test, or listed with the switch and a plan), then Grade 3 and up (#530).
+    if (!child || !family || !db || await chatGate(db, parent, child.grade) !== "open") return json({ error: "unavailable" }, 403);
     return json(await runChat({ db, parent, child: lock.childId, name: child.first_name, grade: child.grade, zone: familyZone({ timeZone: family.time_zone, postal: family.postal, province }) }, action));
   } catch (error) {
     console.error("[desk chat] request failed", error instanceof Error ? error.message : "unknown");
