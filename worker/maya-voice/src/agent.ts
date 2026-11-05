@@ -283,29 +283,42 @@ export class VoiceCallRun {
     if (pace.ack) await pace.ack;
     pace.clock.held();
     const said: string[] = [];
-    for (const turn of turns) if (await this.after(turn)) said.push(...turn.say);
+    // A dropped turn must not stage: its speech cannot play, and its plan would take the board from the turn that
+    // replaced it. It keeps the rest of `after` (the revision, the check-ins, the call's end).
+    for (const turn of turns) if (await this.after(turn, undefined, () => this.ownsReply(pace))) said.push(...turn.say);
     pace.clock.staged();
     const text = said.join(" ");
-    if (!text || !pace.writable) return this.closeTurn(pace, pace.writable ? "no_words" : "interrupted");
+    if (!text || !this.ownsReply(pace)) return this.closeTurn(pace, this.ownsReply(pace) ? "no_words" : "interrupted");
     pace.write(text);
   }
+
+  /** No newer turn replaced this one, and its speech can still play. */
+  private ownsReply(pace: TurnPace) { return this.pace === pace && pace.writable && !pace.handle?.interrupted; }
 
   /** Says the next phrase and waits for it to play. Never fails: the answer is what matters. */
   private async acknowledge(pace: TurnPace) {
     const skip = (reason: AckSkip) => pace.clock.ackSkipped(reason);
-    const late = () => pace.ready || !pace.writable;
-    if (late()) return;
-    if (!this.childHere || this.finishing || pace.generation !== this.generation) return skip("child_away");
-    if (this.childTalking(pace)) return skip("child_talking");
-    const state = this.call.session;
-    if (state.safety.flagged || state.contentProblem !== null || state.outcome !== null) return skip("closing");
+    // The answer, the child, the call and the safety state can each change during an await below, so all of it is read
+    // again after each one, and nothing awaits between the last reading and queuing the phrase.
+    const stopped = () => {
+      if (pace.ready || this.pace !== pace || !pace.writable) return true;
+      const state = this.call.session;
+      const why: AckSkip | null = !this.childHere || this.finishing || pace.generation !== this.generation ? "child_away"
+        : this.childTalking(pace) ? "child_talking"
+        : state.safety.flagged || state.contentProblem !== null || state.outcome !== null ? "closing"
+        : null;
+      if (why) skip(why);
+      return why !== null;
+    };
+    if (stopped()) return;
     const phrase = nextAcknowledgement(this.call.id, this.call.acknowledged);
     if (!phrase) return skip("bank_used");
     // The empty plan gives the phrase's audio an owner, and no batch. A child's speech stops it like any other plan.
     try { await this.stageBoard({}); } catch { return skip("board"); }
-    if (late()) return;
-    if (this.childTalking(pace)) return skip("child_talking");
-    this.call.acknowledge(phrase.id);
+    if (stopped()) return;
+    // Saved before it is heard, so a replacement worker cannot say it again. A refused save means this worker was replaced.
+    if (!(await this.call.acknowledge(phrase.id))) return skip("save");
+    if (stopped()) return;
     pace.clock.ackQueued(phrase.id);
     await new Promise<void>(resolve => {
       pace.ackOver = resolve;
@@ -415,7 +428,7 @@ export class VoiceCallRun {
       try {
         await this.stageBoard(final);
         const speech = final.say.length ? this.session.say(final.say.join(" "), { addToChatCtx: true }) : null;
-        await this.after(final, speech, false);
+        await this.after(final, speech, () => false);
       } catch { await this.finish({ detail: "the saved final speech failed" }); }
     } else if (this.call.session.startedAt === null) this.session.generateReply();
     else this.schedule();
@@ -461,16 +474,16 @@ export class VoiceCallRun {
       // A check-in's sound is not an earlier answer's.
       this.closeTurn();
       const speech = turn.say.length ? this.session.say(turn.say.join(" "), { addToChatCtx: true }) : null;
-      await this.after(turn, speech, false);
+      await this.after(turn, speech, () => false);
     } catch { if (generation === this.generation && this.childHere) await this.finish({ detail: "the voice turn failed" }); }
   }
 
-  private async after(turn: VoiceTurn, handle = this.speech, stage = true): Promise<boolean> {
+  private async after(turn: VoiceTurn, handle = this.speech, stage: () => boolean = () => true): Promise<boolean> {
     await this.call.settled();
     if (this.call.lost) { void this.finish({ detail: "the call could not be saved" }); return false; }
     if (this.finishing || !this.childHere) return false;
     const generation = this.generation;
-    if (stage) {
+    if (stage()) {
       try { await this.stageBoard(turn); }
       catch { if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return false; }
     }

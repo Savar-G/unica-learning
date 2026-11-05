@@ -21,23 +21,21 @@ export interface Acknowledgement {
 /**
  * Every word here is said to a child aged 6 to 12 with no check by a model. "Mm-hm" and "Okay" are left out on purpose:
  * after "Is it 56?" they sound like "yes" before the line that checks the answer. "Let me look" is left out because
- * "look" is one of the work words of `workProblem`.
+ * "look" is one of the work words of `workProblem`. "I'm thinking" is left out because it claims a state of mind for an AI.
  */
 export const ACK_PHRASES: readonly Acknowledgement[] = [
   { id: "ack.think.hmm", text: "Hmm, let me think." },
   { id: "ack.see.plain", text: "Let me see." },
   { id: "ack.moment.plain", text: "Just a moment." },
-  { id: "ack.thinking.plain", text: "I'm thinking." },
   { id: "ack.think.this", text: "Let me think about this." },
   { id: "ack.see.hmm", text: "Hmm, let me see." },
   { id: "ack.think.plain", text: "Let me think." },
   { id: "ack.moment.hmm", text: "Hmm, just a moment." },
-  { id: "ack.thinking.hmm", text: "Hmm, I'm thinking." },
   { id: "ack.see.here", text: "Let me see here." },
 ];
 
-/** One sentence about Maya herself, in one of these shapes. Anything else could be an instruction, so it is refused. */
-const SHAPE = /^(?:hmm, )?(?:let me (?:think|see)|i'm thinking|just a moment)(?: about this| here)?\.$/i;
+/** One sentence in one of these shapes. Anything else could be an instruction, so it is refused. */
+const SHAPE = /^(?:hmm, )?(?:let me (?:think|see)|just a moment)(?: about this| here)?\.$/i;
 /** Words that sound like a verdict on what the child just said, or speak to the child. */
 const VERDICT = /\b(?:yes|yeah|yep|ok|okay|good|great|nice|sure|perfect|mm|hm|mhm|you|your)\b/i;
 
@@ -47,7 +45,7 @@ export function acknowledgementProblem(text: string): string | null {
   if (work !== null) return work;
   const verdict = VERDICT.exec(text);
   if (verdict) return `a verdict or a word to the child: ${verdict[0]}`;
-  return SHAPE.test(text) ? null : "not a line about Maya herself";
+  return SHAPE.test(text) ? null : "not one of the allowed shapes";
 }
 
 /** The next phrase this call has not said, or null when the bank is used: then Maya stays silent, and never repeats. */

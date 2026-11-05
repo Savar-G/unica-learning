@@ -443,7 +443,7 @@ describe("the acknowledgement in one call (#532)", () => {
   it("says nothing more once the bank is used, keeps the list across a worker replacement, and reports why", async () => {
     const m = heldModel();
     const c = await voiceCall({ model: m.model, board: false });
-    for (const p of ACK_PHRASES) c.call.acknowledge(p.id);
+    for (const p of ACK_PHRASES) await c.call.acknowledge(p.id);
     const before = c.said().length;
     const asked = m.asked;
     m.hold();
@@ -456,7 +456,7 @@ describe("the acknowledgement in one call (#532)", () => {
     await waitFor(() => c.samples.length === 1, "the sample");
     expect(c.samples[0]).toMatchObject({ outcome: "answered", ack: null, ackSkipped: "bank_used" });
     await c.call.settled();
-    // The list is saved with the turn, so a new worker on this call cannot start the bank again.
+    // The list is saved, so a new worker on this call cannot start the bank again.
     const again = await c.calls.openVoice(c.id, { speechToText: "fake", voice: "fake" }, null);
     if (!again.ok) throw new Error(again.error);
     expect(new Set(again.call.acknowledged)).toEqual(new Set(ACK_PHRASES.map((p) => p.id)));
@@ -525,5 +525,170 @@ describe("the parts of one turn (#532)", () => {
     expect(s.parts).toEqual({ heardMs: 300, modelMs: 2000, repairMs: 700, reviewMs: 300, codeMs: 50, ackHoldMs: 0, boardMs: expect.any(Number), voiceMs: 120 });
     expect(sum(s)).toBe(s.answerMs);
     expect(s.answerMs).toBe(3470 + s.parts!.boardMs);
+  });
+});
+
+// The reproductions from the review of PR #577, on the delays that review found.
+describe("R577: what a delay can change while the phrase waits", () => {
+  /** A model that answers a first child turn with immediate danger, then holds the closing turn. */
+  function dangerModel() {
+    const inner = ruleMayaModel();
+    let armed = false;
+    let childCalls = 0;
+    let releaseDanger = () => {};
+    let releaseClosing = () => {};
+    const danger = new Promise<void>((r) => { releaseDanger = r; });
+    const closing = new Promise<void>((r) => { releaseClosing = r; });
+    const model: MayaModel = { id: "fake", promptVersion: inner.promptVersion, propose: async (input, signal) => {
+      if (!armed || !input.transcript.some((l) => l.speaker === "child")) return inner.propose(input, signal);
+      childCalls++;
+      if (childCalls === 1) {
+        await danger;
+        return { version: PROPOSAL_VERSION, act: "safety", reading: { safety: "immediate" }, parts: [] };
+      }
+      await closing;
+      return inner.propose(input, signal);
+    } };
+    return { model, arm: () => { armed = true; }, calls: () => childCalls, releaseDanger, releaseClosing };
+  }
+
+  it("R577-1 a late board answer of an interrupted phrase does not replace the next answer's board", async () => {
+    const m = heldModel();
+    const c = await voiceCall({ model: m.model });
+    c.say("I don't know.");
+    await waitFor(() => c.samples.length === 1 && c.session.agentState === "listening", "an answer that leaves a plan to cancel");
+    await c.board.settled();
+    const cancel = c.sender.cancel.bind(c.sender);
+    let releaseCancel = () => {};
+    const delayed = new Promise<void>((r) => { releaseCancel = r; });
+    let waiting = false;
+    vi.spyOn(c.sender, "cancel").mockImplementation(async (...args) => {
+      const result = await cancel(...args);
+      if (!waiting) { waiting = true; await delayed; }
+      return result;
+    });
+    const stages = vi.spyOn(c.board, "stage");
+    let asked = m.asked;
+    m.hold();
+    c.say("I don't know.");
+    await waitFor(() => m.asked > asked, "the old turn's model call");
+    await c.clock.advance(ACK_LIMIT_MS);
+    await waitFor(() => waiting, "the phrase's board answer to be pending");
+    asked = m.asked;
+    c.say("Show me.");
+    await waitFor(() => m.asked > asked, "the new turn's model call");
+    m.release();
+    await waitFor(() => stages.mock.calls.some((a) => a[1].length > 0), "the new answer's plan");
+    const stagesAtNewPlan = stages.mock.calls.length;
+    const intended = stages.mock.calls.find((a) => a[1].length > 0)![1].map((cue) => cue.batch.transactionId);
+    releaseCancel();
+    await waitFor(() => c.samples.filter((s) => s.outcome === "answered").length === 2, "the new answer's sound");
+    await waitFor(() => c.session.agentState === "listening", "the new answer's playout");
+    await c.board.settled();
+    // Nothing staged after the new plan: the dropped turn did not take it over.
+    expect(stages.mock.calls.length).toBe(stagesAtNewPlan);
+    expect(intended.length).toBeGreaterThan(0);
+    const shown = c.receiver.snapshot().events.flatMap((e) => (e.kind === "batch" ? [e.batchId] : []));
+    expect(shown).toEqual(expect.arrayContaining(intended));
+  });
+
+  it("R577-2 danger reported while the phrase's board stage waits: no phrase before the safety guidance", async () => {
+    const d = dangerModel();
+    const c = await voiceCall({ model: d.model });
+    c.say("I don't know.");
+    await waitFor(() => c.samples.length === 1 && c.session.agentState === "listening", "an answer that leaves a plan to cancel");
+    await c.board.settled();
+    d.arm();
+    const cancel = c.sender.cancel.bind(c.sender);
+    let releaseStage = () => {};
+    const delayed = new Promise<void>((r) => { releaseStage = r; });
+    let staging = false;
+    vi.spyOn(c.sender, "cancel").mockImplementation(async (...args) => {
+      const result = await cancel(...args);
+      staging = true;
+      await delayed;
+      return result;
+    });
+    c.say("Someone is hurting me.");
+    await waitFor(() => d.calls() === 1, "the child turn's model call");
+    await c.clock.advance(ACK_LIMIT_MS);
+    await waitFor(() => staging, "the phrase's board stage");
+    d.releaseDanger();
+    await waitFor(() => c.call.session.safety.flagged && d.calls() === 2, "the danger to be known");
+    releaseStage();
+    await pause();
+    expect(acksIn(c.said())).toEqual([]);
+    // Stopped before its save, so the phrase stays in the bank.
+    expect(c.call.acknowledged).toEqual([]);
+    d.releaseClosing();
+    await waitFor(() => c.samples.length === 2, "the turn's sample");
+    expect(acksIn(c.said())).toEqual([]);
+    expect(c.samples[1]).toMatchObject({ ack: null, ackSkipped: "closing" });
+  });
+
+  it("R577-2 danger reported while the phrase's save waits: no phrase before the safety guidance", async () => {
+    const d = dangerModel();
+    const c = await voiceCall({ model: d.model });
+    d.arm();
+    const update = c.store.update.bind(c.store);
+    let releaseSave = () => {};
+    const delayed = new Promise<void>((r) => { releaseSave = r; });
+    let saving = false;
+    c.store.update = async (id, revision, change) => {
+      const result = await update(id, revision, change);
+      if (!saving && change.live?.acknowledged?.length) { saving = true; await delayed; }
+      return result;
+    };
+    c.say("Someone is hurting me.");
+    await waitFor(() => d.calls() === 1, "the child turn's model call");
+    await c.clock.advance(ACK_LIMIT_MS);
+    await waitFor(() => saving, "the phrase's save");
+    d.releaseDanger();
+    await waitFor(() => c.call.session.safety.flagged, "the danger to be known");
+    releaseSave();
+    await pause();
+    expect(acksIn(c.said())).toEqual([]);
+    d.releaseClosing();
+    await waitFor(() => c.samples.length === 1, "the turn's sample");
+    expect(acksIn(c.said())).toEqual([]);
+    expect(c.samples[0]).toMatchObject({ ack: null, ackSkipped: "closing" });
+  });
+
+  it("R577-3 a phrase heard before a worker replacement is already saved, so the new worker cannot pick it", async () => {
+    const m = heldModel();
+    const c = await voiceCall({ model: m.model });
+    const asked = m.asked;
+    m.hold();
+    c.say("I don't know.");
+    await waitFor(() => m.asked > asked, "the model call");
+    await c.clock.advance(ACK_LIMIT_MS);
+    await waitFor(() => acksIn(c.said()).length === 1, "the phrase");
+    const [id] = c.call.acknowledged;
+    const heard = ACK_PHRASES.find((p) => p.id === id)!;
+    expect(c.said()).toContain(heard.text);
+    const replacement = await c.calls.openVoice(c.id, { speechToText: "fake", voice: "fake" }, null);
+    m.release();
+    if (!replacement.ok) throw new Error(replacement.error);
+    expect(replacement.call.acknowledged).toContain(id);
+  });
+
+  it("R577-3 a worker that was replaced cannot save a phrase, so it says none", async () => {
+    const m = heldModel();
+    // No board: its own save would stop this worker first, and this test is about the phrase's save.
+    const c = await voiceCall({ model: m.model, board: false });
+    const asked = m.asked;
+    m.hold();
+    c.say("I don't know.");
+    await waitFor(() => m.asked > asked, "the model call");
+    const replacement = await c.calls.openVoice(c.id, { speechToText: "fake", voice: "fake" }, null);
+    if (!replacement.ok) throw new Error(replacement.error);
+    await c.clock.advance(ACK_LIMIT_MS);
+    await pause();
+    expect(acksIn(c.said())).toEqual([]);
+    expect(replacement.call.acknowledged).toEqual([]);
+    expect(c.call.replaced).toBe(true);
+    m.release();
+    await waitFor(() => c.samples.length === 1, "the sample");
+    expect(c.samples[0]).toMatchObject({ ack: null, ackSkipped: "save" });
   });
 });

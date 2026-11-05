@@ -6,7 +6,7 @@ const FORBIDDEN = /\d|\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten
 
 describe("the acknowledgement bank (gate check, #532, D-195)", () => {
   it("holds no number, place word, operation word or instruction, and no line twice", () => {
-    expect(ACK_PHRASES.length).toBeGreaterThanOrEqual(8);
+    expect(ACK_PHRASES).toHaveLength(8);
     for (const { id, text } of ACK_PHRASES) {
       expect(acknowledgementProblem(text), id).toBeNull();
       expect(text, id).not.toMatch(FORBIDDEN);
@@ -19,6 +19,8 @@ describe("the acknowledgement bank (gate check, #532, D-195)", () => {
   it.each([
     "Mm-hm, let me look.", // the issue's example: "look" is a work word, and "Mm-hm" can sound like yes
     "Mm-hm, let me think.",
+    "I'm thinking.", // it claims a state of mind for an AI
+    "Hmm, I'm thinking.",
     "Okay, let me think.",
     "Let me think, you got it.",
     "Let me add them.",

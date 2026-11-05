@@ -22,7 +22,7 @@ export interface TurnParts {
 export const TURN_PARTS = ["heardMs", "modelMs", "repairMs", "reviewMs", "codeMs", "ackHoldMs", "boardMs", "voiceMs"] as const satisfies readonly (keyof TurnParts)[];
 
 export type TurnOutcome = "answered" | "no_words" | "interrupted";
-export type AckSkip = "child_talking" | "child_away" | "closing" | "bank_used" | "board";
+export type AckSkip = "child_talking" | "child_away" | "closing" | "bank_used" | "board" | "save";
 
 export interface VoiceTurnSample {
   outcome: TurnOutcome;

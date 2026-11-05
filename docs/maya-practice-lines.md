@@ -65,12 +65,10 @@ Status: pending Savar. Added after the set above, and outside it: the voice work
 | `ack.think.hmm` | Hmm, let me think. |
 | `ack.see.plain` | Let me see. |
 | `ack.moment.plain` | Just a moment. |
-| `ack.thinking.plain` | I'm thinking. |
 | `ack.think.this` | Let me think about this. |
 | `ack.see.hmm` | Hmm, let me see. |
 | `ack.think.plain` | Let me think. |
 | `ack.moment.hmm` | Hmm, just a moment. |
-| `ack.thinking.hmm` | Hmm, I'm thinking. |
 | `ack.see.here` | Let me see here. |
 
-For your reading: "I'm thinking." is a claim about an AI (D-197 forbids untrue claims about Maya); it is kept as an everyday way to say "wait". A child who says something hard can hear one of these before Maya's safety line, because the model has not read the child's words yet.
+"I'm thinking." and "Hmm, I'm thinking." were dropped in the review of PR #577: they claim a state of mind for an AI. For your reading: a child who says something hard can hear one of these before Maya's safety line, because the model has not read the child's words yet.

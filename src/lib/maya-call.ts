@@ -373,8 +373,11 @@ export interface VoiceCall {
   readonly boardSnapshot: BoardSnapshot;
   /** The acknowledgement phrases this call has said (#532), kept across a worker replacement. */
   readonly acknowledged: readonly string[];
-  /** Records a phrase; it is saved with the turn it came before. */
-  acknowledge(id: string): void;
+  /**
+   * Saves a phrase before it is said, on the last saved session and never on a turn in progress, at the next revision
+   * like any other save. False: this handle no longer owns the call, so the phrase must not be said.
+   */
+  acknowledge(id: string): Promise<boolean>;
   /** Persist receiver outcomes with their presentation times, under this worker's revision. */
   observeBoard(snapshot: BoardSnapshot): Promise<void>;
   start(): Promise<VoiceTurn>;
@@ -929,7 +932,20 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         },
         get boardSnapshot() { return structuredClone(record.boardHistory?.delivery ?? { events: [] }); },
         get acknowledged() { return [...acknowledged]; },
-        acknowledge(id) { if (!acknowledged.includes(id)) acknowledged.push(id); },
+        async acknowledge(id) {
+          if (acknowledged.includes(id)) return !lost;
+          acknowledged.push(id);
+          let saved = false;
+          later(async () => {
+            if (lost || record.status !== "live" || !record.live) return;
+            const change: CallChange = { live: { ...record.live, acknowledged: [...acknowledged] } };
+            if (!(await store.update(record.id, record.revision, change))) { lost = true; replaced = true; return; }
+            record = { ...record, ...change, revision: record.revision + 1 };
+            saved = true;
+          });
+          await queue;
+          return saved;
+        },
         async observeBoard(snapshot) {
           const copy = structuredClone(snapshot);
           later(async () => {
