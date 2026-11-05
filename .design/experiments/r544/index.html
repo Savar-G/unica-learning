@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard variants r544</title>
+<style>
+@font-face{font-family:Geist;font-weight:100 900;src:url("fonts/geist-latin.woff2") format("woff2")}
+@font-face{font-family:"Geist Mono";font-weight:100 900;src:url("fonts/geist-mono-latin.woff2") format("woff2")}
+:root{--ink:#0c0c0e;--ink-2:#44444c;--line:#e4e4e7;--soft:#faf9f7;--card:#f5f4f2;--accent:#ff6a3d;--accent-soft:#fff1ea;--sun:#fff3c4;
+  --sans:Geist,Arial,sans-serif;--mono:"Geist Mono",ui-monospace,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:var(--ink);font:400 15px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
+a{color:inherit}
+.top{padding:32px 32px 8px;max-width:1720px;margin:0 auto}
+.eyebrow{display:inline-flex;align-items:center;gap:9px;margin:0;font:400 12.5px/1.2 var(--mono);letter-spacing:.02em}
+.eyebrow::before{content:"";width:9px;height:9px;background:var(--accent)}
+h1{margin:10px 0 8px;font-weight:300;font-size:40px;letter-spacing:-.035em;line-height:1.08}
+h2{margin:10px 0 10px;font-weight:300;font-size:28px;letter-spacing:-.03em;line-height:1.15;max-width:60ch}
+h3{margin:2px 0 0;font-weight:500;font-size:18px;letter-spacing:-.015em}
+.lead{max-width:90ch;color:var(--ink-2);margin:0 0 12px}
+.meta{max-width:110ch;color:var(--ink-2);margin:0 0 8px}
+nav.jump{display:flex;flex-wrap:wrap;gap:8px 18px;margin:12px 0}
+details.ctx{max-width:110ch;margin:8px 0 0} details.ctx li{margin:4px 0;color:var(--ink-2)}
+.set{max-width:1720px;margin:0 auto;padding:36px 32px;border-top:1px solid var(--line)}
+.opts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;margin-top:20px}
+.opt{border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:12px;align-content:start;background:#fff}
+.opt.is-rec{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.opt header{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
+.opt header h3{flex-basis:100%}
+.id{margin:0;font:400 12px/1.2 var(--mono);color:var(--ink-2);text-transform:uppercase;letter-spacing:.05em}
+.rec{font:500 11.5px/1 var(--mono);text-transform:uppercase;letter-spacing:.04em;background:var(--accent-soft);color:#b43d12;padding:5px 8px;border-radius:6px}
+.frames{display:flex;gap:10px;align-items:flex-start}
+.fr{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:10px;background:#fff;flex:none}
+.fr iframe{position:absolute;top:0;left:0;border:0;transform-origin:0 0}
+.fr.desk{width:calc(1440px * var(--ds));height:calc(900px * var(--ds))}
+.fr.desk iframe{width:1440px;height:900px;transform:scale(var(--ds))}
+.fr.phone{width:calc(390px * var(--ps));height:calc(844px * var(--ps))}
+.fr.phone iframe{width:390px;height:844px;transform:scale(var(--ps))}
+.opts{--ds:.23;--ps:.385}
+.states{margin:0;display:flex;flex-wrap:wrap;gap:6px 12px;font-size:13.5px;color:var(--ink-2)}
+.states a{cursor:pointer} .states a.on{color:var(--ink);font-weight:500;text-decoration-color:var(--accent);text-decoration-thickness:2px}
+.states .open{margin-left:auto}
+dl{margin:0;display:grid;gap:8px} dt{font:400 12px/1.3 var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--ink-2)} dd{margin:2px 0 0}
+.shots{display:grid;gap:2px;font:400 12.5px/1.5 var(--mono);margin:6px 0 0}
+.recbox{margin-top:20px;padding:18px 20px;border-radius:12px;background:var(--card);max-width:110ch} .recbox p{margin:6px 0 0}
+@media (max-width:1500px){.opts{--ds:.18;--ps:.31}}
+@media (max-width:1180px){.opts{grid-template-columns:1fr;--ds:.42;--ps:.6}}
+@media (max-width:640px){.top,.set{padding-left:16px;padding-right:16px}.frames{flex-direction:column}.opts{--ds:.22;--ps:.62}h1{font-size:32px}}
+</style>
+</head>
+<body>
+<header class="top">
+  <p class="eyebrow">Design round r544 · #566 · spec #544</p>
+  <h1>Parent dashboard: pre-trial views and phone layout</h1>
+  <p class="lead">The desktop shell of the mock is decided. Two things vary here, one axis per set: where the next step sits on the pre-trial pages, and how the seven tabs fit on a phone. Each frame is the live page; use the links under it to switch the state. Numbers on these pages are sample data (Leah is the sample child of the sample report).</p>
+  <nav class="jump"><a href="#set-pre">Set 1: pre-trial views</a><a href="#set-phone">Set 2: phone layout</a><a href="manifest.json">manifest.json</a></nav>
+  <details class="ctx"><summary>What stays the same in every option</summary><ul><li>The desktop shell is the mock&#x27;s: sidebar, child block, icon tabs, white bordered cards, warm look tokens</li><li>Pre-trial stages show only the Assessment and Account tabs (spec #544); one child, so no switcher chevron</li><li>Start free month is one button to the current Stripe page with no new form (D-242); the words are the report&#x27;s: free month, CAD 79.99 a month, delivery included, nothing charged until the first workbook arrives at your home, cancel anytime</li><li>The report is the real ReportCard markup, unchanged</li><li>On a phone in a pre-trial stage: a top bar with the wordmark and an Account link and no bottom bar, because two tabs do not need one (an assumption of this round)</li><li>Set 2 uses the decided bottom bar: Overview, Progress, Scan pages, Workbooks, More. The desktop sidebar is the same in all three options</li><li>Copy names the child (Leah), never she or her; says free month; every sample number carries a Sample data label</li><li>No streaks, time spent, percent right, wrong-answer counts or comparison with other children on the Overview (D-236)</li></ul></details>
+  <details class="ctx"><summary>Open questions</summary><ul><li>Pre-trial on a phone: this round assumes a top bar with an Account link and no bottom bar. Savar may prefer the bottom bar from the start.</li><li>Option B needs a container rule so the report stacks inside the narrower column; the report is otherwise unchanged.</li><li>The learning questions (#126) stay in the report&#x27;s Next step row in every option; B also links to them from the rail.</li><li>Tablet widths (768 and 1024) are checked after a pick.</li></ul></details>
+</header>
+<section class="set" id="set-pre">
+  <p class="eyebrow">Set 1: pre-trial views</p>
+  <h2>On the pre-trial pages, where does the one action sit relative to the report, so a BC parent gets from a finished report to Start free month in the fewest clicks with the report in view?</h2>
+  <p class="meta"><b>Varies:</b> placement of the next-step action relative to the report (information hierarchy). <b>Decides it:</b> Clicks and scrolling from opening the dashboard to the Stripe page; whether the verdict is still the first thing read (D-084: say it plainly, never to sell); whether the email&#x27;s ?step=plan link lands on the button.</p>
+  <p class="meta">test_running and test_waiting are the two halves of the spec&#x27;s test_running stage (test open; finished with the report not ready). Open a state with the address hash, for example pre-b.html#report_ready_waitlist. Option C also takes #report_ready_bc&amp;open to show the full report unfolded. The -scrolled screenshots show the report 2200 px down: the action is in view there only in B (A shows the struggles; C&#x27;s full report is folded, so it has none).</p>
+  <div class="opts"><article class="opt" id="pre-A">
+  <header><p class="id">Option A</p><h3>Action card above the report</h3></header>
+  <div class="frames">
+    <div class="fr desk"><iframe title="Option A, desktop" src="pre-a.html#report_ready_bc" name="pre-A-d" loading="lazy"></iframe></div>
+    <div class="fr phone"><iframe title="Option A, phone" src="pre-a.html#report_ready_bc" name="pre-A-p" loading="lazy"></iframe></div>
+  </div>
+  <p class="states">Show: <a href="pre-a.html#no_test" data-frame="pre-A" data-hash="no_test">No test</a><a href="pre-a.html#test_running" data-frame="pre-A" data-hash="test_running">Test open</a><a href="pre-a.html#test_waiting" data-frame="pre-A" data-hash="test_waiting">Report being made</a><a href="pre-a.html#report_ready_bc" data-frame="pre-A" data-hash="report_ready_bc">Report, BC</a><a href="pre-a.html#report_ready_waitlist" data-frame="pre-A" data-hash="report_ready_waitlist">Report, outside BC</a> <a class="open" href="pre-a.html#report_ready_bc" target="_blank">Open full size</a></p>
+  <dl><div><dt>Bet</dt><dd>Parents read top to bottom: put the next step once at the top, then the whole report, and repeat it in the report&#x27;s own Next step row at the end.</dd></div><div><dt>Benefit</dt><dd>Simplest to build: the current ReportCard plus one card. One click from the first screen and from the end. Same on desktop and phone.</dd></div><div><dt>Cost</dt><dd>In the middle of the report the button is out of view, so a parent who decides while reading scrolls up or down for it.</dd></div><div><dt>Failure risk</dt><dd>The price card sits above the verdict, so the page opens on a sales line before the result. That works against D-084 and may read as pushy.</dd></div></dl>
+  <details><summary>Screenshots (12)</summary><p class="shots"><a href="pre-a-report_ready_bc-desktop.png">pre-a-report_ready_bc-desktop.png</a><a href="pre-a-report_ready_bc-phone.png">pre-a-report_ready_bc-phone.png</a><a href="pre-a-report_ready_bc-desktop-scrolled.png">pre-a-report_ready_bc-desktop-scrolled.png</a><a href="pre-a-report_ready_bc-phone-scrolled.png">pre-a-report_ready_bc-phone-scrolled.png</a><a href="pre-a-report_ready_waitlist-desktop.png">pre-a-report_ready_waitlist-desktop.png</a><a href="pre-a-report_ready_waitlist-phone.png">pre-a-report_ready_waitlist-phone.png</a><a href="pre-a-no_test-desktop.png">pre-a-no_test-desktop.png</a><a href="pre-a-no_test-phone.png">pre-a-no_test-phone.png</a><a href="pre-a-test_running-desktop.png">pre-a-test_running-desktop.png</a><a href="pre-a-test_running-phone.png">pre-a-test_running-phone.png</a><a href="pre-a-test_waiting-desktop.png">pre-a-test_waiting-desktop.png</a><a href="pre-a-test_waiting-phone.png">pre-a-test_waiting-phone.png</a></p></details>
+</article><article class="opt is-rec" id="pre-B">
+  <header><p class="id">Option B</p><h3>Report with a next-step rail</h3><span class="rec">Recommended</span></header>
+  <div class="frames">
+    <div class="fr desk"><iframe title="Option B, desktop" src="pre-b.html#report_ready_bc" name="pre-B-d" loading="lazy"></iframe></div>
+    <div class="fr phone"><iframe title="Option B, phone" src="pre-b.html#report_ready_bc" name="pre-B-p" loading="lazy"></iframe></div>
+  </div>
+  <p class="states">Show: <a href="pre-b.html#no_test" data-frame="pre-B" data-hash="no_test">No test</a><a href="pre-b.html#test_running" data-frame="pre-B" data-hash="test_running">Test open</a><a href="pre-b.html#test_waiting" data-frame="pre-B" data-hash="test_waiting">Report being made</a><a href="pre-b.html#report_ready_bc" data-frame="pre-B" data-hash="report_ready_bc">Report, BC</a><a href="pre-b.html#report_ready_waitlist" data-frame="pre-B" data-hash="report_ready_waitlist">Report, outside BC</a> <a class="open" href="pre-b.html#report_ready_bc" target="_blank">Open full size</a></p>
+  <dl><div><dt>Bet</dt><dd>The decision happens while reading, at no fixed point: keep the action beside the report at every scroll depth, and let the report itself open the page.</dd></div><div><dt>Benefit</dt><dd>One click from anywhere in the report, with the verdict still first. The rail has room for what happens after the click (Workbook 1, mailing, when the free month starts) and the optional learning questions. On a phone it becomes one button fixed at the bottom.</dd></div><div><dt>Cost</dt><dd>The report column is about 830 px wide at 1440, so its rows stack (title above content), as the report already does on tablets. That needs a container rule in the report CSS. The fixed phone button covers about 90 px of the report.</dd></div><div><dt>Failure risk</dt><dd>A rail that never leaves can feel like a sales sidebar. The words stay the report&#x27;s own and plain, with no urgency, to keep it informational.</dd></div></dl>
+  <details><summary>Screenshots (13)</summary><p class="shots"><a href="pre-b-report_ready_bc-desktop.png">pre-b-report_ready_bc-desktop.png</a><a href="pre-b-report_ready_bc-phone.png">pre-b-report_ready_bc-phone.png</a><a href="pre-b-report_ready_bc-desktop-scrolled.png">pre-b-report_ready_bc-desktop-scrolled.png</a><a href="pre-b-report_ready_bc-phone-scrolled.png">pre-b-report_ready_bc-phone-scrolled.png</a><a href="pre-b-report_ready_waitlist-desktop.png">pre-b-report_ready_waitlist-desktop.png</a><a href="pre-b-report_ready_waitlist-phone.png">pre-b-report_ready_waitlist-phone.png</a><a href="pre-b-no_test-desktop.png">pre-b-no_test-desktop.png</a><a href="pre-b-no_test-phone.png">pre-b-no_test-phone.png</a><a href="pre-b-test_running-desktop.png">pre-b-test_running-desktop.png</a><a href="pre-b-test_running-phone.png">pre-b-test_running-phone.png</a><a href="pre-b-test_waiting-desktop.png">pre-b-test_waiting-desktop.png</a><a href="pre-b-test_waiting-phone.png">pre-b-test_waiting-phone.png</a><a href="pre-b-report_ready_waitlist-phone-scrolled.png">pre-b-report_ready_waitlist-phone-scrolled.png</a></p></details>
+</article><article class="opt" id="pre-C">
+  <header><p class="id">Option C</p><h3>Result and action first, full report below</h3></header>
+  <div class="frames">
+    <div class="fr desk"><iframe title="Option C, desktop" src="pre-c.html#report_ready_bc" name="pre-C-d" loading="lazy"></iframe></div>
+    <div class="fr phone"><iframe title="Option C, phone" src="pre-c.html#report_ready_bc" name="pre-C-p" loading="lazy"></iframe></div>
+  </div>
+  <p class="states">Show: <a href="pre-c.html#no_test" data-frame="pre-C" data-hash="no_test">No test</a><a href="pre-c.html#test_running" data-frame="pre-C" data-hash="test_running">Test open</a><a href="pre-c.html#test_waiting" data-frame="pre-C" data-hash="test_waiting">Report being made</a><a href="pre-c.html#report_ready_bc" data-frame="pre-C" data-hash="report_ready_bc">Report, BC</a><a href="pre-c.html#report_ready_waitlist" data-frame="pre-C" data-hash="report_ready_waitlist">Report, outside BC</a> <a class="open" href="pre-c.html#report_ready_bc" target="_blank">Open full size</a></p>
+  <dl><div><dt>Bet</dt><dd>Most parents decide on the headline: show the report&#x27;s level band and the action side by side in the first screen, and fold the rest of the report under Read the full report.</dd></div><div><dt>Benefit</dt><dd>The shortest path: on desktop the level, the verdict and the button share the first screen, with no fixed bar. On a 390 x 844 phone the button sits just below the first screen (about 880 px down), one short scroll.</dd></div><div><dt>Cost</dt><dd>The areas, strengths, struggles and the child&#x27;s work are one click away. The page needs a second state (the unfolded report) and the email link must unfold it.</dd></div><div><dt>Failure risk</dt><dd>Story 13 (see the report at once) and the report&#x27;s job of showing the gaps: a parent may feel the detail is hidden behind the sale, and the button may look like the point of the page.</dd></div></dl>
+  <details><summary>Screenshots (10)</summary><p class="shots"><a href="pre-c-report_ready_bc-desktop.png">pre-c-report_ready_bc-desktop.png</a><a href="pre-c-report_ready_bc-phone.png">pre-c-report_ready_bc-phone.png</a><a href="pre-c-report_ready_waitlist-desktop.png">pre-c-report_ready_waitlist-desktop.png</a><a href="pre-c-report_ready_waitlist-phone.png">pre-c-report_ready_waitlist-phone.png</a><a href="pre-c-no_test-desktop.png">pre-c-no_test-desktop.png</a><a href="pre-c-no_test-phone.png">pre-c-no_test-phone.png</a><a href="pre-c-test_running-desktop.png">pre-c-test_running-desktop.png</a><a href="pre-c-test_running-phone.png">pre-c-test_running-phone.png</a><a href="pre-c-test_waiting-desktop.png">pre-c-test_waiting-desktop.png</a><a href="pre-c-test_waiting-phone.png">pre-c-test_waiting-phone.png</a></p></details>
+</article></div>
+  <aside class="recbox"><p class="eyebrow">Recommendation</p><p>B. The job is the fewest clicks with the report in view: B is the only option where the button is one click away at every point of the report while the verdict, not the price, opens the page. A is the fallback if the container rule for the narrower report is not wanted. C is the fastest path, but it hides the detail that makes the report worth trusting.</p></aside>
+</section><section class="set" id="set-phone">
+  <p class="eyebrow">Set 2: phone layout of the shell</p>
+  <h2>On a phone, how do the seven tabs fit around the decided bottom bar (Overview, Progress, Scan pages, Workbooks, More), and where do the child switcher, Open the desk and the family Account go?</h2>
+  <p class="meta"><b>Varies:</b> where the overflow tabs and family controls live (navigation model). <b>Decides it:</b> Taps to reach Maya, Assessment and Account (cancel, invoices); whether the child switcher and Open the desk are where a parent looks; how the bar behaves today, when Progress, Scan pages and Maya are still hidden.</p>
+  <p class="meta">#overview is the active stage with all seven tabs (future, Sample data). #more opens More. #today is first_book_coming as it can ship now: Overview, Workbooks, Assessment, Account (Progress waits for #194, Scan pages for #457, Maya for #337). The desktop screenshot is the same mock sidebar in all three.</p>
+  <div class="opts"><article class="opt is-rec" id="phone-A">
+  <header><p class="id">Option A</p><h3>More opens a sheet</h3><span class="rec">Recommended</span></header>
+  <div class="frames">
+    <div class="fr desk"><iframe title="Option A, desktop" src="phone-a.html#overview" name="phone-A-d" loading="lazy"></iframe></div>
+    <div class="fr phone"><iframe title="Option A, phone" src="phone-a.html#overview" name="phone-A-p" loading="lazy"></iframe></div>
+  </div>
+  <p class="states">Show: <a href="phone-a.html#overview" data-frame="phone-A" data-hash="overview">All seven tabs</a><a href="phone-a.html#more" data-frame="phone-A" data-hash="more">More open</a><a href="phone-a.html#today" data-frame="phone-A" data-hash="today">Today&#x27;s tabs</a> <a class="open" href="phone-a.html#overview" target="_blank">Open full size</a></p>
+  <dl><div><dt>Bet</dt><dd>The familiar phone pattern: four daily tabs in the bar, and More opens a sheet with Maya, Assessment and Account. The child block with Open the desk sits at the top of each page.</dd></div><div><dt>Benefit</dt><dd>Every tab is at most two taps. Nothing new to learn. With five tabs or fewer there is no More: today&#x27;s bar is simply Overview, Workbooks, Assessment, Account.</dd></div><div><dt>Cost</dt><dd>A bottom sheet is a new component (focus, Escape, swipe to close, back button). The child switcher scrolls away with the page.</dd></div><div><dt>Failure risk</dt><dd>Account (cancel, invoices, delete) is two taps down on a phone, behind a word that says nothing.</dd></div></dl>
+  <details><summary>Screenshots (4)</summary><p class="shots"><a href="phone-a-overview-phone.png">phone-a-overview-phone.png</a><a href="phone-a-more-phone.png">phone-a-more-phone.png</a><a href="phone-a-today-phone.png">phone-a-today-phone.png</a><a href="phone-a-overview-desktop.png">phone-a-overview-desktop.png</a></p></details>
+</article><article class="opt" id="phone-B">
+  <header><p class="id">Option B</p><h3>More is a page for the child and the family</h3></header>
+  <div class="frames">
+    <div class="fr desk"><iframe title="Option B, desktop" src="phone-b.html#overview" name="phone-B-d" loading="lazy"></iframe></div>
+    <div class="fr phone"><iframe title="Option B, phone" src="phone-b.html#overview" name="phone-B-p" loading="lazy"></iframe></div>
+  </div>
+  <p class="states">Show: <a href="phone-b.html#overview" data-frame="phone-B" data-hash="overview">All seven tabs</a><a href="phone-b.html#more" data-frame="phone-B" data-hash="more">More open</a><a href="phone-b.html#today" data-frame="phone-B" data-hash="today">Today&#x27;s tabs</a> <a class="open" href="phone-b.html#overview" target="_blank">Open full size</a></p>
+  <dl><div><dt>Bet</dt><dd>More is not an overflow menu but a home for everything that is not daily: the children (switch, Open the desk), the child&#x27;s Maya and Assessment, and the Account sections listed directly.</dd></div><div><dt>Benefit</dt><dd>Account&#x27;s sections (plans and invoices, card, pause or cancel, children, delete) are one tap from More, with no extra Account page. No overlay to build.</dd></div><div><dt>Cost</dt><dd>The More page repeats the Account tab of the desktop in another shape, so two layouts of the same content must stay in step. Today More appears even with four tabs.</dd></div><div><dt>Failure risk</dt><dd>The child switcher is mostly in More; a parent of two may not find it from Overview, and the page mixes child and family items.</dd></div></dl>
+  <details><summary>Screenshots (4)</summary><p class="shots"><a href="phone-b-overview-phone.png">phone-b-overview-phone.png</a><a href="phone-b-more-phone.png">phone-b-more-phone.png</a><a href="phone-b-today-phone.png">phone-b-today-phone.png</a><a href="phone-b-overview-desktop.png">phone-b-overview-desktop.png</a></p></details>
+</article><article class="opt" id="phone-C">
+  <header><p class="id">Option C</p><h3>Family controls in the top bar</h3></header>
+  <div class="frames">
+    <div class="fr desk"><iframe title="Option C, desktop" src="phone-c.html#overview" name="phone-C-d" loading="lazy"></iframe></div>
+    <div class="fr phone"><iframe title="Option C, phone" src="phone-c.html#overview" name="phone-C-p" loading="lazy"></iframe></div>
+  </div>
+  <p class="states">Show: <a href="phone-c.html#overview" data-frame="phone-C" data-hash="overview">All seven tabs</a><a href="phone-c.html#more" data-frame="phone-C" data-hash="more">More open</a><a href="phone-c.html#today" data-frame="phone-C" data-hash="today">Today&#x27;s tabs</a> <a class="open" href="phone-c.html#overview" target="_blank">Open full size</a></p>
+  <dl><div><dt>Bet</dt><dd>Split by scope: everything in the bottom bar is about the selected child; the family (the child switcher and Account) sits in a top bar that stays. More holds only Maya and Assessment.</dd></div><div><dt>Benefit</dt><dd>Matches the spec&#x27;s rule that Account covers the family, not one child. Account and the switcher are one tap from every page. More is a small menu of two.</dd></div><div><dt>Cost</dt><dd>Two navigation places to learn. The top bar keeps 56 px of a small screen on every page. Today the bar has only three tabs.</dd></div><div><dt>Failure risk</dt><dd>Parents look for cancel in More, not behind an Account icon at the top; and an always-visible switcher adds weight for one-child families (most families).</dd></div></dl>
+  <details><summary>Screenshots (4)</summary><p class="shots"><a href="phone-c-overview-phone.png">phone-c-overview-phone.png</a><a href="phone-c-more-phone.png">phone-c-more-phone.png</a><a href="phone-c-today-phone.png">phone-c-today-phone.png</a><a href="phone-c-overview-desktop.png">phone-c-overview-desktop.png</a></p></details>
+</article></div>
+  <aside class="recbox"><p class="eyebrow">Recommendation</p><p>A. It keeps the decided bar, needs no second copy of Account, and falls back cleanly today, when only four tabs exist and no More is needed. If Savar wants, take one part of C into it: keep the child switcher fixed in the top bar for families with two or more children.</p></aside>
+</section>
+<script>
+// The state links switch both frames of an option in place.
+document.querySelectorAll('.states a[data-frame]').forEach(function (a) {
+  a.addEventListener('click', function (ev) {
+    ev.preventDefault();
+    var id = a.dataset.frame, src = a.getAttribute('href');
+    ['d', 'p'].forEach(function (k) { var f = document.querySelector('iframe[name="' + id + '-' + k + '"]'); if (f) f.src = src; });
+    a.parentNode.querySelectorAll('a').forEach(function (x) { x.classList.toggle('on', x === a); });
+  });
+});
+</script>
+</body>
+</html>
