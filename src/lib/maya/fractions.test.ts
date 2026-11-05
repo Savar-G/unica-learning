@@ -113,7 +113,7 @@ describe("reading spoken and typed fractions in a fraction call (#407)", () => {
 
   it("keeps the old reading outside a fraction call: a spoken fraction is confirmed there", () => {
     expect(readAnswer("three quarters").final).toBeNull();
-    expect(readOptionsFor(C38)).toEqual({ fractions: true });
+    expect(readOptionsFor(C38)).toMatchObject({ fractions: true });
   });
 
   it.each([

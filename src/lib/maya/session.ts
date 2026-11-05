@@ -43,7 +43,7 @@ import { speechWords, saidAsApproved } from "./speech";
 import { findOffer, normalSlots, packageLines, workbookOpening, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
-import { committedText, readAnswer, readNumbers, additionSetup, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead } from "./numbers";
+import { committedText, falseEquationResults, readAnswer, readNumbers, additionSetup, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
@@ -1487,6 +1487,7 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
   const read = turnRead(s);
   if (read.choice) return { code: "answer_not_committed", reason: "The child offered more than one answer: ask which one they mean." };
   const heard = read.kept;
+  const falseResults = falseEquationResults(s.turn.text, readOptionsFor(pkg));
   for (const a of answers) {
     const problem = a.problem ?? "target";
     const { operation, steps, answer } = problemOf(pkg, problem);
@@ -1506,7 +1507,9 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
       return { code: "answer_not_committed", reason: `${valueText(a.value)} is not the last answer the child kept (a number in their explanation is not their answer): ask which one they mean.` };
     }
     // The final answer by the question's wording (#407: an equal fraction may be right); a step by its own values.
-    const right = a.step === "result" ? (problem === "target" ? rightForQuestion(pkg, a.value) : isRightAnswer(operation, answer, a.value)) : answersStep(at, a.value);
+    // A result the child states in a false equation ("7 plus 9 is 6") is never right, whatever digit it is (PR #624 review).
+    const falseResult = falseResults.some((v) => saidAs(v, a.value));
+    const right = !falseResult && (a.step === "result" ? (problem === "target" ? rightForQuestion(pkg, a.value) : isRightAnswer(operation, answer, a.value)) : answersStep(at, a.value));
     // A doubtful final answer cannot establish correct work, including an equal
     // fraction that still needs simplest form and therefore carries a "wrong" verdict.
     const checkedProgress = a.verdict === "right" || (problem === "target" && isEqualForm(pkg, a.value));

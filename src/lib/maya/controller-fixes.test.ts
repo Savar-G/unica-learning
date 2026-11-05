@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  createSession, drawOffers, fallbacks, lineOffers, nextActs, readAnswer, scopeReason, step,
+  createSession, drawOffers, fallbacks, lineOffers, nextActs, readAnswer, readOptionsFor, scopeReason, step,
   type Effect, type LineId, type Proposal, type Reading, type SessionEvent, type Slots,
 } from "@/lib/maya";
 import { workedSteps, type OperationPackage, type QuestionPackage } from "@/lib/question-package";
@@ -297,7 +297,11 @@ describe("#605 item 5: an explanation after the answer does not replace it, and 
     "It's 66. I already wrote it on my paper.",
     "It's 66! 27 plus 39 is 66.",
   ])("%j gives a sure 66", (text) => {
-    expect(readAnswer(text)).toMatchObject({ final: num(66), sure: true });
+    // Read as the controller reads it, with the question's own numbers (PR #624 review: 16 is 7 + 9 of this question).
+    expect(readAnswer(text, readOptionsFor(ADD as OperationPackage))).toMatchObject({ final: num(66), sure: true });
+  });
+  it("is not sure of that 66 without the question's numbers: 16 could be another answer", () => {
+    expect(readAnswer("Okay. I got 66. Seven plus nine is sixteen, so I carry the ten.").sure).toBe(false);
   });
 
   it.each([
@@ -643,5 +647,57 @@ describe("PR #624 review: working after an answer is removed only when it states
     ["I got 66. 2 minus 3 is 6.", 6],
   ])("reads %j with the final answer %d", (text, final) => {
     expect(readAnswer(text).final).toEqual(num(final));
+  });
+});
+
+describe("PR #624 review 2: dropped working never hides another answer (fails closed on the outcome)", () => {
+  const accept66 = (text: string) => {
+    const c = call();
+    c.child(text);
+    return { c, r: c.propose({ act: "accept_answer", parts: [ln("answer.right")], reading: { start: "has_work", answers: [ans(66, "result", "right")] } }) };
+  };
+  it.each([
+    "I got 66. I added 20 and 30 and 6 so my final is 56.",
+    "I got 66. I added 20 and 30 and 6 so I wrote 56.",
+    "I got 66. I added 2 and 3 so my answer is 56.",
+    "I got 66. 20 plus 30 plus 6 is 56.",
+  ])("does not accept 66 from %j", (text) => {
+    const { c, r } = accept66(text);
+    expect(r.refusal).not.toBeNull();
+    expect(c.session.solved).toBeNull();
+  });
+  it.each([
+    "I got 66. I added 20 and 40 and 6.",
+    "I got 66. 7 plus 9 is 16.",
+    "I got 66. Seven plus nine is sixteen, so I carry the ten.",
+    "I got 66. 2 plus 3 plus 1 is 6.",
+  ])("still accepts 66 from %j (the working is the question's own, or sums to 66)", (text) => {
+    const { r } = accept66(text);
+    expect(r.refusal, JSON.stringify(r.refusal)).toBeNull();
+  });
+  it("is not sure of a final when dropped working holds another candidate", () => {
+    expect(readAnswer("I got 66. I added 20 and 30 and 6 so my final is 56.").sure).toBe(false);
+    expect(readAnswer("I got 66. I added 20 and 40 and 6.").sure).toBe(true);
+  });
+});
+
+describe("PR #624 review 2: a wrong equation in the child's words is not a right step (C10-r1)", () => {
+  const ones = (text: string, verdict: "right" | "wrong") => {
+    const c = call();
+    c.child(text);
+    const parts = verdict === "wrong" ? [ln("check.not_yet", { step: "ones" }), ln("step.invite", { step: "ones" })] : [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })];
+    return c.propose({ act: "guide", step: verdict === "wrong" ? "ones" : "tens", level: 0, parts, reading: { start: "has_work", answers: [ans(verdict === "wrong" ? 6 : Number(text.match(/16|6/)![0]), "ones", verdict)] } });
+  };
+  it.each(["I add the ones. 7 plus 9 is 6.", "7 and 9 make 6.", "7 + 9 = 6.", "Um, I think 7 plus 9 equals 6."])("lets the model's 'wrong' stand for %j", (text) => {
+    const r = ones(text, "wrong");
+    expect(r.refusal, JSON.stringify(r.refusal)).toBeNull();
+    expect(said(r.effects)).not.toContain("7 + 9 = 16");
+  });
+  it.each(["7 plus 9 is 6.", "7 and 9 make 6.", "7 + 9 = 6."])("refuses 'right' for %j", (text) => {
+    expect(ones(text, "right").refusal?.code).toBe("accepts_wrong_answer");
+  });
+  it.each(["7 plus 9 is 16.", "6, carry the 1.", "I wrote 6 and carried 1.", "I put 6 in the ones.", "6"])("still takes %j as the right ones step", (text) => {
+    const r = ones(text, "right");
+    expect(r.refusal, JSON.stringify(r.refusal)).toBeNull();
   });
 });

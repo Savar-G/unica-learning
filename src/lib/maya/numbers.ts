@@ -311,6 +311,11 @@ export const valuesIn = (text: string, options?: ReadOptions): AnswerValue[] => 
 /** How a turn is read: `fractions` reads the exact spoken fraction forms, in a call about a fraction question. */
 export interface ReadOptions {
   fractions?: boolean;
+  /**
+   * The question's own numbers: its printed operands and every number of its worked steps (digits, carries, column
+   * totals). Working the child drops after an answer may hold these and single digits only (PR #624 review).
+   */
+  known?: number[];
   /** Scope reads complete operands too. Answer reading still rejects unfinished fraction calculations. */
   operands?: boolean;
 }
@@ -704,9 +709,72 @@ const ANSWER_WORD = /\b(?:answer|got|get|gets|total|equals? to)\b/i;
  * "I got 66.". A clause with an operation before any answer stays ("7 plus 9 is 16."), and so does a new answer after the
  * working ("I got 66. 2 plus 3 is 5, so 56." has the final answer 56).
  */
-function withoutWorking(text: string): string {
+/** The text with its working after an answer left out (`kept`), and the clauses left out (`dropped`). */
+function workingSplit(text: string): { kept: string; dropped: string[] } {
   const keep = answerClauses();
-  return text.split("\n").map((line) => line.split(/(?<=[.!?…,;:])\s+/).filter((clause) => !holdsAnswer(clause) || keep(clause)).join(" ")).join("\n");
+  const dropped: string[] = [];
+  const kept = text.split("\n").map((line) => line.split(/(?<=[.!?…,;:])\s+/).filter((clause) => {
+    if (!holdsAnswer(clause) || keep(clause)) return true;
+    dropped.push(clause);
+    return false;
+  }).join(" ")).join("\n");
+  return { kept, dropped };
+}
+
+/** The result a clause of working makes: its stated result, or its operation over every number when it states none. */
+function workingResult(clause: string): number | null {
+  const r = readNumbers(clause);
+  if (r.values.some((v) => v.type !== "number")) return null;
+  const xs = r.values.map((v) => (v as { value: number }).value);
+  const kinds = [WORK_ADD.test(clause), WORK_SUBTRACT.test(clause), WORK_MULTIPLY.test(clause)];
+  if (kinds.filter(Boolean).length !== 1 || xs.length < 2) return null;
+  if (!r.operand[xs.length - 1]) return xs[xs.length - 1];
+  return kinds[0] ? xs.reduce((a, b) => a + b, 0) : kinds[1] ? xs.slice(1).reduce((a, b) => a - b, xs[0]) : xs.reduce((a, b) => a * b, 1);
+}
+
+/**
+ * Dropped working cannot hide another answer (PR #624 review, fails closed on the outcome): each dropped clause holds
+ * only single digits and the question's own numbers (`known`), or its working makes the kept final itself ("I got 66. I
+ * added 20 and 40 and 6."). Any other dropped clause ("I added 20 and 30 and 6 so my final is 56") leaves the final
+ * not sure, so Maya asks.
+ */
+function workingHidesAnswer(dropped: string[], final: AnswerValue | null, known: number[]): boolean {
+  return dropped.some((clause) => {
+    const r = readNumbers(clause);
+    const plain = !r.unreadable && r.values.every((v) => v.type === "number" && ((Number.isInteger(v.value) && v.value >= 0 && v.value <= 9) || known.includes(v.value)));
+    if (plain) return false;
+    const made = workingResult(clause);
+    return !(final?.type === "number" && made !== null && made === final.value);
+  });
+}
+
+/**
+ * The results of false equations the child states: a clause with an operation, a result word and a result that is not
+ * that operation's true result ("7 plus 9 is 6", "7 and 9 make 6", "7 + 9 = 6"). Such a result is never right for a step
+ * (PR #624 review). A clause with a place word ("16 is 1 ten and 6 ones") is not an equation.
+ */
+const RESULT_WORD = /\b(?:is|are|equals?|makes?|gives?)\b|=/i;
+export function falseEquationResults(text: string, options?: ReadOptions): AnswerValue[] {
+  const out: AnswerValue[] = [];
+  for (const clause of prepared(text, options).split(/[.!?;,\n]+|\bso\b|\bthen\b/i)) {
+    if (!RESULT_WORD.test(clause)) continue;
+    const r = readNumbers(clause);
+    const n = r.values.length;
+    if (n < 3 || r.unreadable || r.notAnswer.some(Boolean) || r.operand[n - 1] || !r.operand.some(Boolean)) continue;
+    if (r.values.some((v) => v.type !== "number")) continue;
+    // The equation is the chain of numbers joined by operation words just before the result: "I got 66 because seven
+    // and nine make sixteen" is 7 + 9 = 16, not 66 + 7 + 9.
+    let start = n - 2;
+    while (start > 0 && r.operand[start]) start--;
+    if (start === n - 2) continue;
+    const before = r.values.slice(start, -1).map((v) => (v as { value: number }).value);
+    const kinds = [WORK_ADD.test(clause), WORK_SUBTRACT.test(clause), WORK_MULTIPLY.test(clause)];
+    if (kinds.filter(Boolean).length !== 1) continue;
+    const truth = kinds[0] ? before.reduce((a, b) => a + b, 0) : kinds[1] ? before.slice(1).reduce((a, b) => a - b, before[0]) : before.reduce((a, b) => a * b, 1);
+    const last = r.values[n - 1] as { type: "number"; value: number };
+    if (last.value !== truth) out.push(last);
+  }
+  return out;
 }
 
 /** Reads clauses in order: whether each clause that holds an answer stands as one, or is working after an answer. */
@@ -795,7 +863,7 @@ function committedFinal(text: string): boolean {
   const lines = turnLines(text);
   // The final answer's line and sentence: a digit the child points at ("I added the one I carried.") or a column's
   // digits after it are not the answer, so they do not move the check off the answer's own sentence.
-  // Where the final answer stands: working after it is not a new answer (withoutWorking).
+  // Where the final answer stands: working after it is not a new answer (workingSplit).
   const keep = answerClauses();
   let at = -1;
   let inLine = -1;
@@ -845,12 +913,13 @@ export function readAnswer(said: string, options?: ReadOptions): AnswerRead {
   // A correction word in an unclear shape after a number leaves no final answer: Maya asks (R391-2).
   const unclear = unclearCorrection(text);
   // Working after the answer does not replace it (#605).
-  const final = unclear || answer.unreadable ? null : finalOf(readNumbers(withoutWorking(reasonless)));
+  const working = workingSplit(reasonless);
+  const final = unclear || answer.unreadable ? null : finalOf(readNumbers(working.kept));
   // An unclear correction keeps no number at all, so no step answer is taken from the turn either (R391-2).
   const kept = unclear ? [] : all.unreadable ? answer.values : all.values;
   // Sure: no negative beside a number (R391-3), no doubt anywhere from the first number on, and the final answer stands
   // only among plain answer words. The explanation is read too, so nothing can hide behind "because" (R391-8-2).
-  const sure = !unclear && !negativeNearAnswer(text) && (!options?.fractions || !answer.unreadable) && !doubtNearAnswer(text) && committedFinal(withoutExplanations(committed)) && plainExplanations(committed);
+  const sure = !unclear && !workingHidesAnswer(working.dropped, final, options?.known ?? []) && !negativeNearAnswer(text) && (!options?.fractions || !answer.unreadable) && !doubtNearAnswer(text) && committedFinal(withoutExplanations(committed)) && plainExplanations(committed);
   return { kept, final, choice: false, sure, outside: unclear ? [] : answer.values };
 }
 

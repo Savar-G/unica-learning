@@ -1863,6 +1863,40 @@ export const BEHAVIOURS: Behaviour[] = [
     },
   },
   {
+    id: "P15",
+    title: "'I got 66. I added 20 and 30 and 6 so my final is 56.': dropped working that holds another answer leaves 66 not sure, so Maya asks",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("I got 66. I added 20 and 30 and 6 so my final is 56.", { start: "has_work", answers: [[66, "result", "right"]] }, [{ act: "accept_answer", repair: { act: "confirm", heard: "66" } }]),
+      child("66.", { answers: [[66, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "confirm", "accept_answer", "ask_write", "close"],
+      refused: ["answer_not_committed"],
+      counts: { confirmations: 1 },
+    },
+  },
+  {
+    id: "P16",
+    title: "'7 plus 9 is 6.': a false equation is not a right ones step; the model's 'not yet' stands and no '7 + 9 = 16' praise is said",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("I add the ones. 7 plus 9 is 6.", { start: "has_work", answers: [[6, "ones", "wrong"]] }, [{ act: "guide", step: "ones", level: 0, lines: ["check.not_yet", "step.invite"] }]),
+      child("Oh, 7 plus 9 is 16.", { answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("Two plus three plus one is six. So 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+    },
+  },
+  {
     id: "P13",
     title: "'I don't know about the ten.': a child who says they are stuck gets one level more help, though the model's reading left the request out",
     fixture: "A",
