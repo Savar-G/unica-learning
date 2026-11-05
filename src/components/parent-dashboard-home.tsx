@@ -3,6 +3,7 @@ import { SendLink, StartTest, TrackOnce } from "@/components/account";
 import { NoteCard } from "@/components/parent-maya-notes";
 import { DemoMinutesLine, DeskText, MinutesRow } from "@/components/parent-home-rows";
 import { ParentAlerts, ParentTestStart } from "@/components/parent-assessment";
+import { ParentOverview } from "@/components/parent-overview";
 import { SupportPage } from "@/components/support-page";
 import type { StartState } from "@/lib/assessment";
 import { gradeLabel } from "@/lib/assessment/grades";
@@ -12,6 +13,7 @@ import type { ChatUsage } from "@/lib/maya-chat";
 import type { ChildMinutes } from "@/lib/maya-minutes-server";
 import type { ParentNote } from "@/lib/parent-maya-notes";
 import type { ParentDashboard } from "@/lib/parent-dashboard-server";
+import type { OverviewView } from "@/lib/parent-view";
 import { activeTab, pickChild, tabLinks } from "@/lib/parent-shell";
 import { CURRICULA, type CurriculumId } from "@/lib/signup";
 import { stateFor } from "@/lib/test-attempt";
@@ -22,6 +24,8 @@ type Kid = { id: string; first_name: string; grade: number; province: Curriculum
 
 export interface DashboardHomeProps {
   dashboard: ParentDashboard;
+  /** The shown child's Overview (#560); null for a stage with no Overview, or when it cannot be read. */
+  overview: OverviewView | null;
   kids: readonly Kid[];
   addressChild: string | null;
   phone: boolean;
@@ -43,7 +47,7 @@ export interface DashboardHomeProps {
  * Overview, one child's part of Parent home until #560 fills it. A panel with no data does not appear. A stage that opens
  * on the report never reaches this page: /account sends it there. The family's links are on the Account tab.
  */
-export function ParentDashboardHome({ dashboard, kids, addressChild, phone, sent, parentEmail, timeZone, states, reportFor, current, minutes, chats, notes, scansEnabled, alerts }: DashboardHomeProps) {
+export function ParentDashboardHome({ dashboard, overview, kids, addressChild, phone, sent, parentEmail, timeZone, states, reportFor, current, minutes, chats, notes, scansEnabled, alerts }: DashboardHomeProps) {
   const view = pickChild(dashboard.children, addressChild, dashboard.remembered);
   const kid = kids.find((k) => k.id === view?.id);
   const links = tabLinks(view);
@@ -69,6 +73,7 @@ export function ParentDashboardHome({ dashboard, kids, addressChild, phone, sent
     <SupportPage label={label} title={kid?.first_name ?? "Your account"}>
       <ParentAlerts {...alerts} />
       {!kid && <p className="lead">Add a child on the <Link href="/account/settings">Account</Link> page to start.</p>}
+      {kid && overview?.child.id === kid.id && <ParentOverview overview={overview} maya={view?.tabs.includes("maya") ? minutes.get(kid.id) ?? null : null} />}
       {kid && state && (
         <>
           {phone && state.kind !== "wait" && (
@@ -79,7 +84,7 @@ export function ParentDashboardHome({ dashboard, kids, addressChild, phone, sent
               {sentHere && <p role="status" className="acct-sent">We sent the link for {kid.first_name} to <b>{parentEmail}</b>.</p>}
             </div>
           )}
-          <ul className="acct-kids">
+          <ul className="acct-kids" id="pd-test">
             <li className="acct-kid">
               <span>
                 <b>The test</b><span className="small">{gradeLabel(kid.grade)} · {CURRICULA[kid.province]}</span>

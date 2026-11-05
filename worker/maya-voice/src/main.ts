@@ -24,7 +24,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { callsOn } from "@/lib/maya-call-seams";
 import { mayaCallStore } from "@/lib/maya-call-store";
-import { callOfRoom, checkJoiner, JOIN_WAIT_MS, VOICE_AGENT_NAME, voiceProviders, type VoiceCallFacts } from "@/lib/maya-voice";
+import { asksWordTimings, callOfRoom, checkJoiner, JOIN_WAIT_MS, VOICE_AGENT_NAME, voiceProviders, type VoiceCallFacts } from "@/lib/maya-voice";
 import { VoiceCallRun, voiceSession, type CallUpdate } from "./agent";
 import { voiceTurnReport, type VoiceTurnSample } from "./turn-timing";
 import { makeProviders } from "./providers";
@@ -170,7 +170,8 @@ export default defineAgent({
     run.attachBoardAudio();
     run.attachTurnTiming();
     await run.childJoined();
-    log("call running", callId, providers.ids.speechToText, providers.ids.voice);
+    // Word timings are asked for, not known to arrive: the "board cue" lines show `word` or `sentence` for each batch.
+    log("call running", callId, providers.ids.speechToText, providers.ids.voice, { wordTimings: asksWordTimings(providers.voice) ? "requested" : "sentence ends only" });
   },
 });
 
