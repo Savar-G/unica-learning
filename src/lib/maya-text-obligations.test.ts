@@ -347,7 +347,7 @@ describe("safety guidance does not wait for a model (#589)", () => {
     const trace = session.trace();
     expect(checkTrace(trace).ok).toBe(true);
     expect(trace.turns.flatMap((t) => t.kind === "maya" ? [t.output?.act] : [])).toEqual(["open", "safety", "close"]);
-    expect(trace.obligations.filter((o) => o.kind === "safety_due").map((o) => o.status)).toEqual(["served"]);
+    expect((trace.obligations ?? []).filter((o) => o.kind === "safety_due").map((o) => o.status)).toEqual(["served"]);
   });
 
   it("a saved session goes on after the guidance with no second guidance, whether or not the call was resumed", async () => {
