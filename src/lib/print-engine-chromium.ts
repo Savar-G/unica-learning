@@ -253,17 +253,47 @@ function pngSize(png: Uint8Array): { width: number; height: number } {
 /** The page count of a PDF Chromium printed: its page objects, which Chromium writes uncompressed. */
 const pdfPageCount = (pdf: Uint8Array) => new TextDecoder("latin1").decode(pdf).match(/\/Type\s*\/Page\b/g)?.length ?? 0;
 
+/**
+ * How long Chromium gets to start and to load a page, and the wait before each try to start it. On the Mac worker a busy
+ * machine needs more than puppeteer's default 30 s, and a job has hours. A Vercel function stops at 300 s and can begin
+ * printing with 150 s left, so it keeps one try at the default: its error must reach the run before the function ends.
+ */
+export function browserStartPlan(env: Record<string, string | undefined> = process.env): { timeoutMs: number; waitsMs: number[] } {
+  return env.VERCEL ? { timeoutMs: 30_000, waitsMs: [0] } : { timeoutMs: 120_000, waitsMs: [0, 5_000, 15_000] };
+}
+
+/**
+ * Starts Chromium, and tries again by the plan when it does not start: a start that times out on a busy machine, or a
+ * process that dies while Chrome updates itself, says nothing about the book, so it must not use up one of the run's
+ * attempts. After the last try the error goes to the caller. Only the start is tried again: a job that fails in the page
+ * fails.
+ */
+export async function startBrowser<T>(start: () => Promise<T>, waitsMs: number[], wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))): Promise<T> {
+  let failure: unknown = new Error("print engine: Chromium did not start");
+  for (const [i, ms] of waitsMs.entries()) {
+    if (ms > 0) await wait(ms);
+    try {
+      return await start();
+    } catch (e) {
+      failure = e;
+      console.warn(`print engine: Chromium did not start (try ${i + 1} of ${waitsMs.length}): ${e instanceof Error ? e.message.split("\n")[0] : String(e)}`);
+    }
+  }
+  throw failure;
+}
+
 export function chromiumPrintEngine(): PrintEngine {
   return {
     async print(job) {
       const chromium = await findChromium();
       if (!chromium) throw new Error("print engine: no Chromium here; set CHROMIUM_PATH");
-      const browser = await puppeteer.launch({ ...chromium, headless: true });
+      const { timeoutMs, waitsMs } = browserStartPlan();
+      const browser = await startBrowser(() => puppeteer.launch({ ...chromium, headless: true, timeout: timeoutMs }), waitsMs);
       try {
         const page = await browser.newPage();
         await page.setViewport({ width: job.page.width, height: job.page.height, deviceScaleFactor: job.scale });
         await page.emulateMediaType("print");
-        await page.setContent(job.html, { waitUntil: "load" });
+        await page.setContent(job.html, { waitUntil: "load", timeout: timeoutMs });
         await page.evaluate("document.fonts.ready.then(() => true)");
         const found = await page.evaluate(MEASURE) as (Omit<MeasuredElement, "textPrinted"> & { runs: Run[] })[];
         const tops = await page.evaluate(SHEET_TOPS) as number[];
