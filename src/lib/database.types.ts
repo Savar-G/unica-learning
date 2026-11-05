@@ -1429,6 +1429,8 @@ export type Database = {
           call_seconds: number | null
           channel: string | null
           child_id: string
+          child_ink: Json | null
+          child_ink_at: string | null
           child_turns: number | null
           connected_seconds: number | null
           counts_minutes: boolean
@@ -1482,6 +1484,8 @@ export type Database = {
           call_seconds?: number | null
           channel?: string | null
           child_id: string
+          child_ink?: Json | null
+          child_ink_at?: string | null
           child_turns?: number | null
           connected_seconds?: number | null
           counts_minutes?: boolean
@@ -1535,6 +1539,8 @@ export type Database = {
           call_seconds?: number | null
           channel?: string | null
           child_id?: string
+          child_ink?: Json | null
+          child_ink_at?: string | null
           child_turns?: number | null
           connected_seconds?: number | null
           counts_minutes?: boolean
@@ -4845,6 +4851,17 @@ export type Database = {
       save_family_test_copy: {
         Args: { p: string; test_copy: Json; test_id: string; token: string }
         Returns: boolean
+      }
+      save_maya_call_ink: {
+        Args: {
+          p_after_end_ms: number
+          p_child: string
+          p_gap_ms: number
+          p_id: string
+          p_ink: Json
+          p_parent: string
+        }
+        Returns: string
       }
       save_workbook_comment: {
         Args: {

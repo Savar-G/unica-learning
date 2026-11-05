@@ -219,6 +219,4 @@
 /* The chat uses the desk's conversation, controls and board. */
 .desk-child-bubble { margin-left: 24px; background: var(--accent-soft); }
 .desk-chat-end { min-height: 44px; border: 0; background: transparent; color: var(--ink-2); text-decoration: underline; font: inherit; }
-.desk-chat-board > .desk-canvas { flex: 1; margin: 0 12px 8px; min-height: 280px; padding: clamp(12px, 1.6vw, 24px); }
-.desk-chat-board > .desk-caption { position: static; flex: none; margin: 0 12px 12px; max-width: none; box-shadow: none; }
 .desk-say > .desk-bubble { font-size: 14px; margin-bottom: 12px; }
