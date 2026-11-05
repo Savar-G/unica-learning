@@ -188,6 +188,10 @@ describe("skills and steps", () => {
       why: "Leaves out the zero that holds the tens place",
       kind: "conceptual",
       misconception: "zero-placeholder",
+      watchOut: {
+        wrong: "Leave out a zero that holds an empty place.",
+        fix: "Keep 0 in an empty place so the other digits keep their values.",
+      },
     });
   });
 

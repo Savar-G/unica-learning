@@ -23,3 +23,11 @@ npm run import:curriculum -- --check
 The generator and curriculum fingerprint use the active data. A local sample can use `--steps data/curriculum/step-progressions-k9.v1.json --no-store` for a matched v1 control. This option validates the data and refuses stored output. Set the same `WORKBOOK_SAMPLE_ID` for both runs. Real samples must also use `--subscription-only` with API keys removed.
 
 The comparison report records the source commits, commands, sample paths, failures and limits of the evidence. A passing template audit does not establish book quality.
+
+## Mistake lines (C2)
+
+Each active `mistakes[]` entry with a misconception id has `watchOut: { wrong, fix }`. The pair describes the wrong move and its correction. Both fields pass the teaching panel's printable rules. Their combined length, including one joining space, is at most 150 characters. Numbers of 1,000 and up use commas. Entries with no misconception have no guessed pair. The original mistake fields and default `spotTheError` stay unchanged.
+
+The active data has 1,503 pairs on 1,417 steps, covering 327 misconception ids. The C2 section in `author-changes.md` lists each line. The JSON log records each complete before and after mistake array. Run `npm run import:curriculum` after a data change to regenerate `bc.ts`. Legacy imports can omit `watchOut`.
+
+`samMistakeFor(id)` in `src/lib/workbook-mistake-map.ts` maps 10 misconception ids to supported Sam mistakes. Unknown ids and known ids without an exact match return `null`. A caller must also check that the planned operation allows the returned mistake. The table and lines become part of book selection in G1.
