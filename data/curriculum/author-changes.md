@@ -4563,3 +4563,247 @@ Savar confirmed 8 to 10 practice questions a page, so the wordiest templates a U
 | 1.1-count-to-20 | 1 | 4 | `Which number comes right after {s}: {x} or {y}?` | `What comes after {s}: {x} or {y}?` |
 | 1.1-count-to-20 | 2 | 4 | `Which number comes right after {s}: {x} or {y}?` | `What comes after {s}: {x} or {y}?` |
 | 1.1-count-to-20 | 3 | 4 | `Which number comes right before {s}: {x} or {y}?` | `What comes before {s}: {x} or {y}?` |
+
+## Workbook floor and seeded selection wording (2026-11-04)
+
+These level-specific rewrites keep the source templates, answers, ranges and difficulty. The original source text stays unchanged for other levels. U4 uses the short part-part-whole form before checking whether a template can print. It keeps the same two parts, whole and missing position. The runtime source is `LEVEL_REWRITES` in `src/lib/workbook-curriculum/house-templates.ts`. The floor stays at 8. Answer boxes keep their size. Story text stays code-only.
+
+### 5.1-place-value-million step 3 template 2
+
+Before: "What is the value of the digit in the hundreds place of {n}?"
+
+After: "{n}: value of the hundreds digit?"
+
+Reason: Keep the hundreds-place value task, range and difficulty. Remove repeated words so a third question on the page own step fits before the planner takes earlier review work.
+
+### K3-part-part-whole step 3 template 1
+
+Before: "(picture: part {sa}, part {sb}, whole {sc}) Find the missing number."
+
+After: "Parts {sa}, {sb}. Whole {sc}."
+
+Reason: Print the same parts, whole and missing position as a short number question instead of an unsupported picture note. Keep every value, answer and difficulty. This gives U4 capacity selection a shorter form of the same task.
+
+### 1.1-count-to-20 step 1 template 1
+
+Before: "Count on: {s}, __, __. What are the next two numbers?"
+
+After: "Count on: {s}, __, __."
+
+Reason: The printed sequence already shows every answer blank. Keep the direction, start, number of terms and answers. Remove the repeated instruction so eight questions fit.
+
+### 1.1-count-to-20 step 2 template 1
+
+Before: "Count on: {s}, __, __. What are the next two numbers?"
+
+After: "Count on: {s}, __, __."
+
+Reason: The printed sequence already shows every answer blank. Keep the direction, start, number of terms and answers. Remove the repeated instruction so eight questions fit.
+
+### 1.1-count-to-20 step 1 template 5
+
+Before: "Count on: {s}, __, __, __, __. Write the next four numbers."
+
+After: "Count on: {s}, __, __, __, __."
+
+Reason: The printed sequence already shows every answer blank. Keep the direction, start, number of terms and answers. Remove the repeated instruction so eight questions fit.
+
+### 1.1-count-to-20 step 2 template 5
+
+Before: "Count on: {s}, __, __, __, __. Write the next four numbers."
+
+After: "Count on: {s}, __, __, __, __."
+
+Reason: The printed sequence already shows every answer blank. Keep the direction, start, number of terms and answers. Remove the repeated instruction so eight questions fit.
+
+### 1.1-count-to-20 step 3 template 1
+
+Before: "Count back: {s}, __, __. What are the next two numbers?"
+
+After: "Count back: {s}, __, __."
+
+Reason: The printed sequence already shows every answer blank. Keep the direction, start, number of terms and answers. Remove the repeated instruction so eight questions fit.
+
+### 1.1-count-to-20 step 3 template 5
+
+Before: "Count back: {s}, __, __, __, __. Write the next four numbers."
+
+After: "Count back: {s}, __, __, __, __."
+
+Reason: The printed sequence already shows every answer blank. Keep the direction, start, number of terms and answers. Remove the repeated instruction so eight questions fit.
+
+### 1.1-count-to-20 step 1 template 2
+
+Before: "{name} counts {things} and says {s}. What comes next?"
+
+After: "{name} counts {things}: {s}. What comes next?"
+
+Reason: Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text.
+
+### 1.1-count-to-20 step 2 template 2
+
+Before: "{name} counts {things} and says {s}. What comes next?"
+
+After: "{name} counts {things}: {s}. What comes next?"
+
+Reason: Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text.
+
+### 1.1-count-to-20 step 3 template 2
+
+Before: "{name} counts down from {s}. What comes next?"
+
+After: "{name} counts back: {s}. What comes next?"
+
+Reason: Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text.
+
+### 1.1-count-to-20 step 1 template 4
+
+Before: "What comes after {s}: {x} or {y}?"
+
+After: "After {s}: {x} or {y}?"
+
+Reason: Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text.
+
+### 1.1-count-to-20 step 2 template 4
+
+Before: "What comes after {s}: {x} or {y}?"
+
+After: "After {s}: {x} or {y}?"
+
+Reason: Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text.
+
+### 1.1-count-to-20 step 3 template 4
+
+Before: "What comes before {s}: {x} or {y}?"
+
+After: "Before {s}: {x} or {y}?"
+
+Reason: Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text.
+
+### 1.1-subitize-to-10 step 3 template 3
+
+Before: "{name} has {w} {things}. {p} are red, the rest blue. How many blue?"
+
+After: "{w} {things}: {p} red, the rest blue. How many blue?"
+
+Reason: Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text.
+
+### 1.10-likelihood-words step 1 template 1
+
+Before: "Can {animals} drive a car? Circle never, sometimes or always."
+
+After: "Can {animals} drive a car?"
+
+Reason: Keep the event and its likelihood. The answer region already prints all three choices. Remove the repeated direction so eight questions fit at the U4 type size.
+
+### 1.10-likelihood-words step 1 template 3
+
+Before: "The sun will rise tomorrow. Circle never, sometimes or always."
+
+After: "The sun will rise tomorrow. How often?"
+
+Reason: Keep the event and its likelihood. The answer region already prints all three choices. Remove the repeated direction so eight questions fit at the U4 type size.
+
+### 1.10-likelihood-words step 1 template 4
+
+Before: "Think: {ev}. Circle never, sometimes or always."
+
+After: "{ev}. How often?"
+
+Reason: Keep the event and its likelihood. The answer region already prints all three choices. Remove the repeated direction so eight questions fit at the U4 type size.
+
+### 1.10-likelihood-words step 1 template 5
+
+Before: "{st}. Is that never, sometimes or always?"
+
+After: "{st}. How often?"
+
+Reason: Keep the event and its likelihood. The answer region already prints all three choices. Remove the repeated direction so eight questions fit at the U4 type size.
+
+### K3-part-part-whole step 3 template 5
+
+Before: "{w} {things}, {p} in a {container}. {name}: the rest is {claim}. Right? If not, fix it."
+
+After: "{w} {things}. {p} put away. {claim} left out? Fix if wrong."
+
+Reason: Keep the whole, the part put away and the claim to check. Ask about the things left out, so putting things away does not imply loss of ownership. Remove the repeated name and container detail.
+
+### K3-make-10 step 3 template 5
+
+Before: "{name} has {p} {things} and wants {w}. How many more?"
+
+After: "{p} {things}. How many more make {w}?"
+
+Reason: Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text.
+
+### K5-two-more-less step 3 template 5
+
+Before: "{name} says 2 more than {s} is {claim}. Right? If not, fix it."
+
+After: "2 more than {s} is {claim}. Right? Fix if wrong."
+
+Reason: Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text.
+
+### K1-write-numerals step 3 template 4
+
+Before: "{name} writes {a} for {n}. Right? If not, fix it."
+
+After: "{name} writes {a} for {n}. Right? Fix if wrong."
+
+Reason: Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text.
+
+### 1.2-decompose-within-10 step 1 template 5
+
+Before: "{name} says {w} is {a} and {claim}. Right? If not, fix it."
+
+After: "{w} is {a} and {claim}. Right? Fix if wrong."
+
+Reason: Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text.
+
+### 1.2-decompose-within-10 step 2 template 5
+
+Before: "{name} says {w} is {a} and {claim}. Right? If not, fix it."
+
+After: "{w} is {a} and {claim}. Right? Fix if wrong."
+
+Reason: Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text.
+
+### K5-two-more-less step 3 template 1
+
+Before: "What is 2 more than {s}?"
+
+After: "2 more than {s}?"
+
+Reason: Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text.
+
+### K1-number-sequence step 3 template 1
+
+Before: "What comes just after {n}?"
+
+After: "What comes after {n}?"
+
+Reason: Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text.
+
+### K1-number-sequence step 3 template 4
+
+Before: "What comes just before {n}? A) {x}  B) {y}"
+
+After: "Before {n}? A) {x} B) {y}"
+
+Reason: Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text.
+
+### K1-number-sequence step 3 template 5
+
+Before: "{name} counts up and says {n}, then {m}. Which number did {name} skip?"
+
+After: "{name} counts up: {n}, then {m}. What was skipped?"
+
+Reason: Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text.
+
+### U4 mixed-box page instruction
+
+Before: "Fill in the missing numbers and write the answers in the boxes."
+
+After: "Fill in the boxes."
+
+Reason: Keep the instruction for both missing-number boxes and answer boxes. The shorter U4 instruction leaves room for the separate circle instruction and eight practice questions. Other levels keep their instruction. This changes code-owned page text in `workbook-generator.ts`, outside Cedric's template data.

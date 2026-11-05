@@ -342,11 +342,12 @@ export function stepTemplateItem(r: StepItemRequest): { ref: StepTemplateRef; te
 }
 
 function stepTemplateItemUncached(r: StepItemRequest): { ref: StepTemplateRef; text: string; numbers: number[] } | null {
-  // Show what you know takes its step's hardest version that fits its card; when none of the harder ones fits (a
-  // long story on a 3-line card), the easy one with the largest numbers, the hardest that fits.
+  // Show what you know takes its step's hardest version that fits its card. Young levels can use an easier form
+  // with larger numbers when no hard form fits. From U10 another hard form must fit before the step can be used.
   if ((r.place === "show-what-you-know" || r.place === "level-test") && !r.allEasy) {
     // (Its own and the next attempts' numbers: the planner may take another step after a refused attempt.)
     for (let k = 0; k < 48; k += 3) { const hard = stepTemplateFill({ ...r, attempt: r.attempt + k, hardOnly: true }); if (hard) return hard; }
+    if (r.level >= 10) return null;
     const any = stepTemplateFill(r);
     return any ? { ...any, ref: { ...any.ref, hardest: true } } : null;
   }
@@ -360,7 +361,7 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
   const wanted = wantedDifficulty(r.place, r.day, r.ordinal);
   // A number to work out: a number answer, or a list of numbers (a count with boxes).
   const numberAnswer = numberAnswerOf;
-  const printable = step.templates.map((t, index) => ({ t, index })).filter(({ t }) => !templateProblem(t, r.level)
+  const printable = step.templates.map((t, index) => ({ t: templateAtLevel(r.level, step, index, t), index })).filter(({ t }) => !templateProblem(t, r.level)
     && (r.place !== "solve-it-two-ways" || sumTemplate(t)) && (r.place !== "spot-the-error" || numberAnswer(t))
     // (Code's two-step cards are the Challenge's last fill only; Unica's Challenge templates the Challenge's and Show what
     // you know's, house-templates.ts.)
@@ -407,7 +408,8 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
   // 2. What does Kai say next?" on Day 10); it is a review, not the day's practice of the step.
   const topPlace = r.place === "show-what-you-know" || r.place === "level-test";
   // (Never an easy one when the step has harder ones, before late attempts.)
-  if (topPlace) usable = r.hardOnly && printable.some(({ t }) => t.difficulty !== "easy") ? printable.filter(({ t }) => t.difficulty !== "easy") : printable;
+  if (topPlace) usable = r.hardOnly && r.level >= 10 ? printable.filter(({ t }) => rank(t.difficulty) === top)
+    : r.hardOnly && printable.some(({ t }) => t.difficulty !== "easy") ? printable.filter(({ t }) => t.difficulty !== "easy") : printable;
   // Show what you know asks work to do, not mostly true or false (#482 review at db3b1a0).
   // (Every other card, so the page keeps three forms.)
   // (Among the harder ones only for a few attempts: a harder choice beats an easy number question.)
@@ -435,7 +437,7 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
       const purchase = t.text.includes("{things}") && /\$|\bdollars?\b|\b(?:buys?|bought)\b|Each \{container\} holds|puts .* in each \{container\}/.test(t.text);
       // (Sam is Spot the error's child: no other story names Sam, so code's text prints unchanged, B1.)
       const people = r.place === "spot-the-error" ? contexts.people : contexts.people.filter((x) => x.name !== "Sam");
-      prepared = prepareTemplate(step, templateAtLevel(r.level, step, index, t), { ...contexts, people, ...(purchase ? { things: ["books", "notebooks", "tickets", "toy cars"] } : {}) });
+      prepared = prepareTemplate(step, t, { ...contexts, people, ...(purchase ? { things: ["books", "notebooks", "tickets", "toy cars"] } : {}) });
     } catch { continue; }
     const random = seededRandom(((r.seed * 31 + r.attempt * 7919 + k * 104729) % 2147483647) + 1);
     // A Challenge takes the fill with the largest numbers of several, the top of the step's range (the U4 review); a
@@ -491,6 +493,11 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
       if (templateProblem({ ...t, text }, r.level)) continue;
       if (r.room !== undefined && text.length > r.room) continue;
       if (stepRangeProblem(step, text) || stepRangeProblem(step, filled.answer)) continue;
+      if (topPlace && r.level >= 10 && !r.allEasy) {
+        const bounds = stepBounds(step);
+        const largest = Math.max(0, ...printedNumbersOf(text), ...printedNumbersOf(filled.answer));
+        if (bounds && bounds.max >= 10 && largest < bounds.min + (bounds.max - bounds.min) / 2) continue;
+      }
       // A take-away takes the things away (Codex at 24751f16, P0): "puts 17 in a jar" keeps them.
       if (takeAwayProblem(text, Number(filled.answer))) continue;
       // An answer that names a person ("'name' if a > b else 'friend'"): circle the name or "the friend".
