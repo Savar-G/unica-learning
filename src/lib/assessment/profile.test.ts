@@ -218,6 +218,18 @@ describe("test behaviour and number facts", () => {
     expect([profile.behaviour.readAloud, profile.behaviour.away]).toEqual([null, null]);
     expect(profile.behaviour.help).toEqual({ answer: "no", flags: [], likely: false });
     expect(profile.facts).toMatchObject({ answered: 10, correct: 8, skipped: 0, medianMs: 3000, accuracy: "needs-practice", speed: "quick" });
+    expect(profile.facts?.byFamily).toMatchObject({
+      add20: { answered: 4, correct: 3, medianMs: 3000 },
+      sub20: { answered: 3, correct: 3, medianMs: 3000 },
+      mul2510: { answered: 3, correct: 2, medianMs: 3000 },
+    });
+    expect(storedProfile(JSON.parse(JSON.stringify(profile)))?.facts).toEqual(profile.facts);
+    const old = JSON.parse(JSON.stringify(profile));
+    delete old.facts.byFamily;
+    const read = storedProfile(old)!;
+    expect(read.schemaVersion).toBe(1);
+    expect(read.facts).toEqual(old.facts);
+    expect(read.facts).not.toHaveProperty("byFamily");
   });
 });
 
