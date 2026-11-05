@@ -23,6 +23,7 @@
     "voice:dev": "node worker/maya-voice/build.mjs && node --conditions=react-server worker/maya-voice/dist/main.mjs dev",
     "voice:start": "node --conditions=react-server worker/maya-voice/dist/main.mjs start",
     "workbooks:samples": "node scripts/workbook-samples.mjs",
+    "scan:photo-set": "node scripts/scan-photo-set.mjs",
     "workbook:fast": "node scripts/workbook-samples.mjs --fake --no-store --check-only --levels U4,U16 --days 1,5,10 --concurrency 3",
     "workbooks:worker": "node scripts/workbook-worker.mjs",
     "generate:family-zones": "node scripts/generate-family-zones.mjs",
