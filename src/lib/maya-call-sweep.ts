@@ -32,6 +32,7 @@
 // memoryCallStore's `liveCalls`) and the clock. Pure otherwise.
 import { limitsOf } from "@/lib/maya";
 import type { CallRecord, CallSeams, MayaCalls } from "@/lib/maya-call";
+import { VOICE_CALL_STALE_MS } from "@/lib/maya-voice";
 
 /** How long after its own end time a live call counts as abandoned. */
 export const SWEEP_GRACE_MS = 5 * 60_000;
@@ -44,11 +45,15 @@ export interface LiveCallSource {
   liveCalls(createdBefore: string, limit: number): Promise<CallRecord[]>;
 }
 
-/** When a live call counts as abandoned (ms since 1970): its own end time plus SWEEP_GRACE_MS. */
-export function abandonedAt(record: Pick<CallRecord, "createdAt" | "startedAt" | "live">): number {
+/**
+ * When a live call counts as abandoned (ms since 1970): its own end time plus SWEEP_GRACE_MS. A started voice call also
+ * waits until no worker can still run it (VOICE_CALL_STALE_MS after its start, the call module's rule for ending one).
+ */
+export function abandonedAt(record: Pick<CallRecord, "createdAt" | "startedAt" | "live" | "mode">): number {
   const base = Date.parse(record.startedAt ?? record.createdAt);
   const limit = record.live ? limitsOf(record.live.text.session).endAtMs : 0;
-  return base + limit + SWEEP_GRACE_MS;
+  const due = base + limit + SWEEP_GRACE_MS;
+  return record.mode === "voice" && record.startedAt !== null ? Math.max(due, base + VOICE_CALL_STALE_MS) : due;
 }
 
 /**

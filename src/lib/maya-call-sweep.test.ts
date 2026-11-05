@@ -199,6 +199,24 @@ describe("the sweep of abandoned calls", () => {
     expect(s.row(id).revision).toBe(ended.revision);
   });
 
+  it("ends a crashed short voice call only once no worker can still run it, never counting it as failed", async () => {
+    // Wrong if: the sweep tries a 2-minute call before the call module allows it (a "failed" result), or never ends it.
+    const s = setup();
+    const view = ok(await s.calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: "admin-1", limitMs: 2 * 60_000 })).view;
+    const opened = await s.calls.openVoice(view.id, PROVIDERS, "Leah");
+    if (!opened.ok) throw new Error(opened.error);
+    await opened.call.start();
+    await opened.call.settled();
+    const started = Date.parse(s.row(view.id).startedAt!);
+    for (const at of [2 * 60_000 + SWEEP_GRACE_MS, TIME_LIMITS.endAtMs + 60_000 - 1]) {
+      s.set(started + at);
+      expect(await s.sweep()).toEqual({ due: 0, ended: 0, conflicts: 0, failed: 0, left: 0 });
+    }
+    s.set(started + TIME_LIMITS.endAtMs + 60_000);
+    expect(await s.sweep()).toEqual({ due: 1, ended: 1, conflicts: 0, failed: 0, left: 0 });
+    expect(s.row(view.id).status).toBe("ended");
+  });
+
   it("ends a voice call Maya never joined, with no learning event, after the same limit from when it was made", async () => {
     // Wrong if: the call is ended before it was made 15 minutes ago, or it gets a learning event (the child never spoke).
     const s = setup();
