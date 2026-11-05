@@ -900,6 +900,58 @@ export type Database = {
           },
         ]
       }
+      family_delete_attempts: {
+        Row: {
+          failed_attempts: number
+          locked_until: string | null
+          parent_id: string
+        }
+        Insert: {
+          failed_attempts?: number
+          locked_until?: string | null
+          parent_id: string
+        }
+        Update: {
+          failed_attempts?: number
+          locked_until?: string | null
+          parent_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "family_delete_attempts_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: true
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      family_delete_holds: {
+        Row: {
+          lease_token: string
+          lease_until: string
+          parent_id: string
+        }
+        Insert: {
+          lease_token: string
+          lease_until: string
+          parent_id: string
+        }
+        Update: {
+          lease_token?: string
+          lease_until?: string
+          parent_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "family_delete_holds_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: true
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       family_deletion_schedule: {
         Row: {
           last_parent: string | null
@@ -921,6 +973,7 @@ export type Database = {
           lease_until: string | null
           parent_id: string
           phase: string
+          plans_stopped_at: string | null
           reason: string
           requested_at: string
         }
@@ -929,6 +982,7 @@ export type Database = {
           lease_until?: string | null
           parent_id: string
           phase?: string
+          plans_stopped_at?: string | null
           reason: string
           requested_at?: string
         }
@@ -937,6 +991,7 @@ export type Database = {
           lease_until?: string | null
           parent_id?: string
           phase?: string
+          plans_stopped_at?: string | null
           reason?: string
           requested_at?: string
         }
@@ -1790,6 +1845,35 @@ export type Database = {
           },
           {
             foreignKeyName: "maya_minute_grants_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      maya_notice_acceptances: {
+        Row: {
+          accepted_at: string
+          accepted_by: string
+          notice_version: string
+          parent_id: string
+        }
+        Insert: {
+          accepted_at?: string
+          accepted_by: string
+          notice_version: string
+          parent_id: string
+        }
+        Update: {
+          accepted_at?: string
+          accepted_by?: string
+          notice_version?: string
+          parent_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maya_notice_acceptances_parent_id_fkey"
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "parents"
@@ -4252,6 +4336,10 @@ export type Database = {
         Args: { p: string; token: string }
         Returns: undefined
       }
+      begin_family_delete_hold: {
+        Args: { hold: string; p: string }
+        Returns: string
+      }
       begin_family_payment_operation: {
         Args: {
           customer: string
@@ -4322,9 +4410,23 @@ export type Database = {
         Args: { p: string; token: string }
         Returns: undefined
       }
+      check_parent_family_deletion: { Args: { p: string }; Returns: string }
       checkpoint_workbook_edit: {
         Args: { p_id: string; p_lease: string; p_page: number; p_result: Json }
         Returns: boolean
+      }
+      claim_family_delete_attempt: {
+        Args: {
+          p_lock_seconds: number
+          p_max: number
+          p_now: string
+          p_parent: string
+        }
+        Returns: {
+          out_attempts_left: number
+          out_locked_until: string
+          out_status: string
+        }[]
       }
       claim_family_deletion: {
         Args: { p: string; token: string }
@@ -4422,6 +4524,10 @@ export type Database = {
             Args: { p_lease: string; p_run: string; p_runner: string }
             Returns: boolean
           }
+      clear_family_delete_attempts: {
+        Args: { p_parent: string }
+        Returns: undefined
+      }
       complete_family_deletion: {
         Args: { p: string; token: string }
         Returns: boolean
@@ -4508,6 +4614,10 @@ export type Database = {
         Returns: boolean
       }
       end_family_card_operation: { Args: { token: string }; Returns: undefined }
+      end_family_delete_hold: {
+        Args: { hold: string; p: string }
+        Returns: undefined
+      }
       exclude_workbook_run_ai: {
         Args: { p_note: string; p_provider: string; p_run: string }
         Returns: boolean
@@ -4675,6 +4785,7 @@ export type Database = {
             }
             Returns: number
           }
+      my_family_deletion_state: { Args: never; Returns: string }
       parent_maya_note_sessions: {
         Args: { p_calls: string[] }
         Returns: {
@@ -4773,6 +4884,14 @@ export type Database = {
       }
       request_family_deletion: {
         Args: { confirmation: string; p: string }
+        Returns: string
+      }
+      request_parent_family_deletion: {
+        Args: { check_only?: boolean; p: string }
+        Returns: string
+      }
+      request_parent_family_deletion_held: {
+        Args: { hold: string; p: string }
         Returns: string
       }
       reserve_workbook_edit_call: {

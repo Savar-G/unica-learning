@@ -109,7 +109,7 @@ describe("emails", () => {
     expect(f.emails.map((e) => [e.kind, e.status])).toEqual([
       ["report", "failed"], ["alert", "sent"], ["unsubscribe", "sent"], ["continue", "failed"], ["start", "sent"],
     ]);
-    expect(f.emails.find((e) => e.kind === "start")?.subject).toBe("Kid k1 has not started the free math test");
+    expect(f.emails.find((e) => e.kind === "start")?.subject).toBe("Kid k1's free math check is ready");
     expect(f.emails.find((e) => e.kind === "alert")?.subject).toBe("Test finished: Kid k1, grade 3, working at ...");
     expect(f.lastEmail?.kind).toBe("report");
     expect(f.unsubscribed).toBe(true);

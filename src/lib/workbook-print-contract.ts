@@ -10,7 +10,7 @@
 // A book with no revision is a legacy book: its photos stay attached and automatic marking stays unavailable
 // (printContractForPhoto). Never render a stored book again to invent its contract.
 // Pure TypeScript: no Next.js, React, network, database or clock.
-import { digestOf } from "@/lib/workbook-digest";
+import { canonical, digestOf } from "@/lib/workbook-digest";
 import { packageItem, type QuestionPackage } from "@/lib/question-package";
 import type { PageContent } from "@/lib/workbook-page";
 import type { PlannedPage, PlannedPart, WorkbookPlan } from "@/lib/workbook-plan";
@@ -140,17 +140,6 @@ export interface ScanManifest {
 
 // ---------- Fingerprints ----------
 
-/** A JSON value in one form whatever its key order: a stored jsonb value gives the same text as the value stored. */
-function canonical(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value as Record<string, unknown>)
-      .filter(([, v]) => v !== undefined)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-      .map(([k, v]) => [k, canonical(v)]));
-  }
-  return value;
-}
 
 const fingerprint = (value: unknown) => digestOf(canonical(value));
 

@@ -1,6 +1,7 @@
 import type { QuestionPackage } from "./question-package";
 import { PEOPLE, THINGS } from "./workbook-wording";
 import { printedWorkbookQuestion } from "./workbook-maya-operation";
+import { canonical } from "./workbook-digest";
 
 /** A step template item's format ("missing", "true-false", ...), from its template id (#489); null for any other item. */
 const templateFormat = (p: QuestionPackage): string | null =>
@@ -77,7 +78,9 @@ export function taskIdentity(p: QuestionPackage): string {
   // (Its words with the names taken out: "when Jon fills it" and "when Raj fills it" ask one thing.)
   // (And its places: "always sunny at the beach" and "at the rink" ask one thing, the real U4 sample.)
   const words = numbers.length ? null : contextFrame(p.text) ?? p.text.toLowerCase().replace(PLACE, " _ ").replace(/[^a-z0-9_]+/g, " ").trim();
-  return JSON.stringify(["task", family, numbers, answersOf(p), p.item?.figure ?? null, words]);
+  // (Canonical: a page read back from jsonb has its figure's keys in another order, and a resumed run compares its new
+  // questions with the stored pages', Codex on #631.)
+  return JSON.stringify(canonical(["task", family, numbers, answersOf(p), p.item?.figure ?? null, words]));
 }
 
 /**

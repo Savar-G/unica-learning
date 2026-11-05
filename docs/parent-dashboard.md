@@ -33,6 +33,10 @@ What a name change updates, because these read `children.first_name` when they s
 
 What it does not update: a workbook draft or shipped workbook already made (its pages, page ids, images and PDF print the old name, so an unshipped draft ships with the old name unless an admin makes a new one), and an email already sent, with its copy in `email_copies`. A call's stored trace (admins only) hides only the exact name the child had during the call, as before; the note hides every name.
 
+## The family delete (#556)
+
+The Account tab's delete and its route follow the same switch: the route answers 404 for a family the switch does not open to. The confirmation is `/family-deleted`, outside the account pages, because the session has ended. The privacy and terms pages are worded to stay true while the switch is off: they say "if your account page offers it". See `docs/assessment-deletion.md`.
+
 ## Adding a tab's page
 
 A tab with no page does not appear. When a ticket builds a tab's page, change that tab's line in `TAB_PAGE` in `src/lib/parent-shell.ts`. The stage rule (`src/lib/child-stage.ts`) still decides which tabs a child may have.
@@ -44,7 +48,7 @@ The phone layout is set 2, option A of round r544. Savar has not chosen yet. To 
 The Overview is the home page (`/account`) for a child whose stage has the Overview tab. `readOverview` in `src/lib/parent-view.ts` returns only code-written fields; `dashboardOverview` in `src/lib/parent-dashboard-server.ts` reads it for the child in view, and a failed read leaves the rest of the page as it was. A tile or a section with no data does not appear.
 
 - Level: the working level stored in the newest finished test's report (`reports.model`), as the report reads it: an estimated level is an Early sign. While that report is not ready, the Level tile and the bars come from no test, and the page says "{name}'s new result is being prepared."
-- Level by area: the area rule (`areaLevels`, D-243) on that test's answers, replayed with the secret key from the stored test (`restoreSession`, `testAreaAnswers`), as `npm run area-levels:check` does. When the replay does not add up to the stored score (`answersAddUp`), for example a test stored before the rushing rule (#189), the test shows the Level tile and no bars. A bar with too few answers is lighter and says "Early sign". Marked pages do not count yet: no marking is live. A test the report calls unreliable shows its bars as the rule gives them (open: #579).
+- Level by area: the area rule (`areaLevels`, D-243) on that test's answers, replayed with the secret key from the stored test (`restoreSession`, `testAreaAnswers`), as `npm run area-levels:check` does. When the replay does not add up to the stored score (`answersAddUp`), for example a test stored before the rushing rule (#189), the test shows the Level tile and no bars. A bar with too few answers is lighter and says "Early sign". Marked pages do not count yet: no marking is live. A test the report calls unreliable (its reliability note, `pace.unreliable`) shows no bars: one sentence says the last test may not show the child's level reliably and points to the new test the report offers, with a link to the report (D-258). The monthly summary PDF does the same.
 - This workbook: the newest shipped workbook, only when a day of it is scanned: every page with that day label has a saved photo that has not expired. #475 will count days from the print manifest.
 - Maya this week: the minutes used of 30, only for a child with the Maya tab.
 - The action card: one item, the first that applies, only in `first_book_coming`, `active` and `ended`: the test (no finished test, not after the plan ended: Continue test when a test is open, else Start the test), payment failed, no PIN (a shipped workbook and no PIN), learning card empty (all six answers empty). Pages to scan waits for marking (#457, #475).
