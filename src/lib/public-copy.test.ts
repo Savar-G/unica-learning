@@ -115,6 +115,20 @@ describe("a space follows every full stop and colon in public copy", () => {
   });
 });
 
+describe("the privacy page on the weekly Maya email (D-283)", () => {
+  const text = () => renderToStaticMarkup(Privacy()).replace(/<[^>]+>/g, " ").replace(/&#x27;|&apos;/g, "'").replace(/\s+/g, " ");
+
+  it("says it holds counts and sign-in links, never what was said", () => {
+    expect(text()).toMatch(/The email says how many chats or calls each child had, and links to sign in and read the notes\. It does not include what was said or what a note says\./);
+    expect(text()).toMatch(/A Maya weekly email holds your child's first name, the number of chats or calls, and a link to sign in\./);
+    expect(text()).toMatch(/If Maya stopped the math for a safety reason, the email says so/);
+  });
+
+  it("no longer says it holds notes or transcripts for up to 10 calls", () => {
+    expect(text()).not.toMatch(/recap|up to 10|what was said for/i);
+  });
+});
+
 describe("page metadata", () => {
   it("the site description names the free online math assessment and keeps the price", () => {
     expect(SITE_DESCRIPTION).toMatch(/Free online math assessment\./);
