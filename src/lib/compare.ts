@@ -95,8 +95,8 @@ export const ONE_BY_ONE: { id: Exclude<OptionId, "us">; tag: string; title: stri
   {
     id: "tutor",
     tag: "vs Private tutors",
-    title: `A tutor teaches live. ${BRAND} explains when they're stuck, and keeps them practising every day.`,
-    summary: `Tutoring is time with a person. ${BRAND} is a plan your child works through at home, 15-30 minutes a day.`,
+    title: `A tutor is there for the session. ${BRAND} is there for the days in between.`,
+    summary: `Practice 15–30 minutes a day at home, built from your child's own work, with the Teaching Assistant to explain a step when they're stuck.`,
     goodTitle: "A tutor is good at",
     good: ["Explaining live and answering questions", "Adjusting to your child each session", "Help with homework and tests"],
     hardTitle: "Harder with a tutor",
