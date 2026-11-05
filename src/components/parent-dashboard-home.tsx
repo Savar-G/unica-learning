@@ -1,14 +1,13 @@
 import Link from "next/link";
 import { SendLink, StartTest, TrackOnce } from "@/components/account";
 import { NoteCard } from "@/components/parent-maya-notes";
-import { DeskText, MinutesRow } from "@/components/parent-home-rows";
+import { DemoMinutesLine, DeskText, MinutesRow } from "@/components/parent-home-rows";
 import { SupportPage } from "@/components/support-page";
 import type { StartState } from "@/lib/assessment";
 import { gradeLabel } from "@/lib/assessment/grades";
 import { startWhen, type FamilyZone } from "@/lib/family-time";
 import { fromRow, learningPath, type LearningRow } from "@/lib/learning-style";
 import type { ChatUsage } from "@/lib/maya-chat";
-import { DEMO_DAILY_MINUTES } from "@/lib/maya-minutes";
 import type { ChildMinutes } from "@/lib/maya-minutes-server";
 import type { ParentNote } from "@/lib/parent-maya-notes";
 import type { ParentDashboard } from "@/lib/parent-dashboard-server";
@@ -50,6 +49,8 @@ export function ParentDashboardHome({ dashboard, kids, addressChild, phone, sent
   const state = kid && stateFor(states, kid.id);
   // A sign-in link goes to the family's first child (Parent home says so too).
   const sentHere = sent && kid?.id === kids[0]?.id;
+  // The Maya tab holds the minutes and the notes (#553). A child without it keeps them here.
+  const mayaHere = !view?.tabs.includes("maya");
   return (
     <SupportPage label={label} title={kid?.first_name ?? "Your account"}>
       {alerts.password && <p role="status" className="acct-alert acct-saved">Your password is saved.</p>}
@@ -80,14 +81,14 @@ export function ParentDashboardHome({ dashboard, kids, addressChild, phone, sent
                 ? <SendLink key={kid.id} childId={kid.id} name={kid.first_name} sent={sentHere} />
                 : <StartTest childId={kid.id} name={kid.first_name} state={state} when={startWhen(state, timeZone)} report={reportFor(kid.id, state)} />}
               {current.has(kid.id) && <div className="acct-desk"><DeskText name={kid.first_name} workbook={current.get(kid.id)!} pinSet={dashboard.pinSet} /></div>}
-              {(minutes.has(kid.id) || chats.has(kid.id)) && <MinutesRow name={kid.first_name} minutes={minutes.get(kid.id)} chat={chats.get(kid.id)} />}
-              {notes.has(kid.id) && <NoteCard note={notes.get(kid.id)!} name={kid.first_name} zone={timeZone} latest />}
+              {mayaHere && (minutes.has(kid.id) || chats.has(kid.id)) && <MinutesRow name={kid.first_name} minutes={minutes.get(kid.id)} chat={chats.get(kid.id)} />}
+              {mayaHere && notes.has(kid.id) && <NoteCard note={notes.get(kid.id)!} name={kid.first_name} zone={timeZone} latest />}
             </li>
           </ul>
         </>
       )}
       {scansEnabled && !links.some((l) => l.tab === "scan_pages") && <p><Link className="btn" href="/account/scan">Scan pages <span aria-hidden="true">→</span></Link></p>}
-      {minutes.size > 0 && <p className="small">Your &quot;Try Maya&quot; calls have a separate limit of {DEMO_DAILY_MINUTES} minutes a day for your account. They do not use your child&apos;s weekly minutes.</p>}
+      {mayaHere && minutes.size > 0 && <DemoMinutesLine />}
     </SupportPage>
   );
 }
