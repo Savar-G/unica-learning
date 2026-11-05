@@ -60,9 +60,11 @@ export async function setChatFamily(a: AdminSession, parentId: string, change: C
     const refusal = rehearsalRefusal(await chatFamilyState(a, parentId));
     if (refusal) return refusal;
   }
-  const { error } = await a.db.from("maya_chat_families").update({ rehearsal: change.rehearsal }).eq("parent_id", parentId);
-  // The unique index allows one rehearsal family.
+  // The database decides: the unique index allows one rehearsal family, and the trigger maya_chat_family_guard refuses a
+  // family without its test mark (another admin may have removed it since the read above).
+  const { data, error } = await a.db.from("maya_chat_families").update({ rehearsal: change.rehearsal }).eq("parent_id", parentId).select("parent_id");
   if (error?.code === "23505") return "taken";
+  if (error?.message.includes("maya_chat_rehearsal_not_test_family")) return "not_test_family";
   fail("chat rehearsal", error);
-  return "ok";
+  return data?.length ? "ok" : "not_listed";
 }

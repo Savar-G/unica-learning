@@ -35,6 +35,11 @@ export function childChatView(view: CallView): ChatView {
 /** Chat needs typing, so it starts at Grade 3 (D-241, #530). Kindergarten is grade 0. */
 export const CHAT_MIN_GRADE = 3;
 export const chatServesGrade = (grade: number | null | undefined): boolean => typeof grade === "number" && grade >= CHAT_MIN_GRADE;
+/** The chat limit in the desk header: messages left today, the grade for a younger child (`note`), else the limit. */
+export function chatLimitLabel(usage: ChatUsage | null, note: string | null): string {
+  if (usage) return `${usage.left} left today`;
+  return note ? "Grade 3 and up" : `${CHAT_MESSAGES} messages a day`;
+}
 /** What the desk says when a younger child's family has chat. */
 export const chatGradeLine = () => "Chat with Maya is for Grade 3 and up, because it needs typing. Calls with Maya start soon.";
 

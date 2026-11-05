@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { chatFamilyGate, chatServesGrade, getsNoParentNotes, rehearsalRefusal, chatUsage, chatWindow, chatCapLine, childChatView } from "@/lib/maya-chat";
+import { chatFamilyGate, chatLimitLabel, chatServesGrade, getsNoParentNotes, rehearsalRefusal, chatUsage, chatWindow, chatCapLine, childChatView } from "@/lib/maya-chat";
 import { mayaCalls, type CallResult, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore } from "@/lib/maya-call-memory";
 import { memoryWordingHistoryStore } from "@/lib/maya";
@@ -103,6 +103,12 @@ describe("family days and release switch", () => {
     expect(chatFamilyGate({ test: false, listed: true }, { MAYA_CHAT_ENABLED: "true" })).toBe("closed");
     expect(chatFamilyGate({ test: false, listed: true }, { MAYA_CHAT_ENABLED: "on" })).toBe("plan");
     expect(chatFamilyGate({ test: true, listed: false }, {})).toBe("test");
+  });
+  it("labels the chat limit in the desk header: left today, Grade 3 and up for a younger child, else the daily limit", () => {
+    const zone = "America/Vancouver", now = Date.parse("2026-11-05T17:00:00Z");
+    expect(chatLimitLabel(chatUsage(12, now, zone), null)).toBe("48 left today");
+    expect(chatLimitLabel(null, "Chat with Maya is for Grade 3 and up, because it needs typing. Calls with Maya start soon.")).toBe("Grade 3 and up");
+    expect(chatLimitLabel(null, null)).toBe("60 messages a day");
   });
   it("serves Grade 3 and up only; kindergarten is grade 0", () => {
     expect([0, 1, 2, 3, 7, 8, 9].map(chatServesGrade)).toEqual([false, false, false, true, true, true, true]);
