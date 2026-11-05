@@ -28,10 +28,12 @@ import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
 import {
   PHOTO_SIZE,
   SYNTHETIC_NOTE,
+  answerCrop,
   makeScanPhoto,
   pageQuestions,
   planPhotoSet,
   seededRandom,
+  truthProblems,
   writablePage,
   type PhotoPage,
   type PhotoTruth,
@@ -198,6 +200,9 @@ for (const entry of plan) {
   await writeFile(`${out}/truth/${entry.id}.json`, json);
   await writeFile(`${out}/pages/${entry.id}.png`, page.png);
   files.push({ path: `photos/${entry.id}.jpg`, sha256: sha(jpg) }, { path: `truth/${entry.id}.json`, sha256: sha(json) }, { path: `pages/${entry.id}.png`, sha256: sha(page.png) });
+  // Fail closed: a truth that names an answer a reader could fairly be unsure of never enters the set.
+  const problems = truthProblems(truth);
+  if (problems.length) throw new Error(`the truth of ${entry.id} cannot be trusted:\n${problems.join("\n")}`);
   truths.push(truth);
   photos.set(entry.id, jpg);
   const c = truth.counts;
@@ -248,25 +253,25 @@ async function contactSheet(level: string, mine: PhotoTruth[]) {
 }
 for (const level of levels) await contactSheet(level, truths.filter((t) => t.level === level));
 
-// Answers up close: every written box of the first photos with readable light, cropped from the photo.
+// Answers up close: written answers of the photos with the whole page in frame, cropped from the photo with all their ink.
 async function crops() {
-  const cw = 220, ch = 110, cap = 22, cols = 6, gap = 6;
+  const cw = 260, ch = 130, cap = 22, cols = 6, gap = 6;
   const tiles: { input: Buffer; left: number; top: number }[] = [];
   let n = 0;
-  for (const t of truths.filter((x) => x.effect !== "cut-off")) {
-    for (const q of t.questions.filter((x) => x.scope === "write")) {
-      const quad = q.regions.find((r) => r.id === q.answerRegion)?.photoQuad;
-      if (!quad || n >= 72) continue;
-      const xs = quad.map((p) => p.x), ys = quad.map((p) => p.y);
-      const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
-      const left = Math.max(0, Math.round(Math.min(...xs) - w * 0.35)), top = Math.max(0, Math.round(Math.min(...ys) - h * 0.9));
-      const width = Math.min(PHOTO_SIZE.width - left, Math.round(w * 2.4)), height = Math.min(PHOTO_SIZE.height - top, Math.round(h * 2.2));
-      if (width < 8 || height < 8) continue;
-      const img = await sharp(photos.get(t.id)!).extract({ left, top, width, height }).resize(cw, ch, { fit: "contain", background: "#fff" }).toBuffer();
-      const x = gap + (n % cols) * (cw + gap), y = gap + Math.floor(n / cols) * (ch + cap + gap);
-      tiles.push({ input: img, left: x, top: y }, { input: label(`${t.id} q${q.number} ${q.case}: ${q.finalText ?? "-"} (key ${q.answer})`, cw, cap, 11), left: x, top: y + ch });
-      n++;
-    }
+  // Every crossed-out answer first, then the messy ones, then the rest, as far as the sheet goes.
+  const rank = (c: string | null) => (c?.startsWith("crossed-out") ? 0 : c?.startsWith("messy") ? 1 : 2);
+  const answers = truths.filter((x) => x.effect !== "cut-off")
+    .flatMap((t) => t.questions.filter((q) => q.scope === "write" && q.written.length).map((q) => ({ t, q })))
+    .sort((a, b) => rank(a.q.case) - rank(b.q.case));
+  for (const { t, q } of answers) {
+    // (The crop holds the box and all of the answer's ink: a correction beside the box too.)
+    const crop = n < 96 ? answerCrop(q) : null;
+    if (!crop) continue;
+    const { x: left, y: top, width, height } = crop;
+    const img = await sharp(photos.get(t.id)!).extract({ left, top, width, height }).resize(cw, ch, { fit: "contain", background: "#fff" }).toBuffer();
+    const x = gap + (n % cols) * (cw + gap), y = gap + Math.floor(n / cols) * (ch + cap + gap);
+    tiles.push({ input: img, left: x, top: y }, { input: label(`${t.id} q${q.number} ${q.case}: ${q.finalText ?? "-"} (key ${q.answer})`, cw, cap, 11), left: x, top: y + ch });
+    n++;
   }
   const rows = Math.ceil(n / cols);
   await sharp({ create: { width: gap + cols * (cw + gap), height: gap + rows * (ch + cap + gap), channels: 3, background: "#d9d9d9" } })

@@ -198,6 +198,8 @@ export interface WrittenText {
   glyphs: { char: string; box: Box }[];
   /** All of its ink (the cross-out lines too), in page image pixels. */
   inkBox: Box;
+  /** The ink box's four corners in the photo, clockwise from the top left; null before the photo is taken. */
+  photoQuad: Point[] | null;
 }
 
 export interface TruthRegion {
@@ -389,7 +391,12 @@ const pathBox = (paths: readonly InkPath[]): Box => unionBox(paths.map((p) => {
 
 /** Draws a thick, soft-edged pencil or pen line into an RGB image, darkening it toward the ink. */
 function drawPaths(img: RawImage, paths: readonly InkPath[], w: Writer, grainSeed: number) {
-  const alpha = new Float32Array(img.width * img.height);
+  if (paths.length === 0) return;
+  // (The coverage buffer spans only the strokes' own area, never the whole page.)
+  const area = pathBox(paths);
+  const ox = Math.max(0, Math.floor(area.x) - 2), oy = Math.max(0, Math.floor(area.y) - 2);
+  const aw = Math.max(1, Math.min(img.width, Math.ceil(area.x + area.width) + 2) - ox), ah = Math.max(1, Math.min(img.height, Math.ceil(area.y + area.height) + 2) - oy);
+  const alpha = new Float32Array(aw * ah);
   const touched: number[] = [];
   for (const p of paths) {
     for (let i = 0; i < p.points.length - 1; i++) {
@@ -406,7 +413,8 @@ function drawPaths(img: RawImage, paths: readonly InkPath[], w: Writer, grainSee
           const ex = x + 0.5 - (ax + u * dx), ey = y + 0.5 - (ay + u * dy);
           const cover = Math.max(0, Math.min(1, half + 0.5 - Math.sqrt(ex * ex + ey * ey)));
           if (cover <= 0) continue;
-          const k = y * img.width + x;
+          if (x < ox || y < oy || x >= ox + aw || y >= oy + ah) continue;
+          const k = (y - oy) * aw + (x - ox);
           if (alpha[k] === 0) touched.push(k);
           if (cover > alpha[k]) alpha[k] = cover;
         }
@@ -414,10 +422,10 @@ function drawPaths(img: RawImage, paths: readonly InkPath[], w: Writer, grainSee
     }
   }
   for (const k of touched) {
-    const x = k % img.width, y = (k - x) / img.width;
+    const x = ox + (k % aw), y = oy + Math.floor(k / aw);
     const grain = w.pencil ? 0.7 + 0.3 * pixelNoise(x, y, grainSeed) : 1;
     const a = alpha[k] * w.opacity * grain;
-    const j = k * img.channels;
+    const j = (y * img.width + x) * img.channels;
     for (let c = 0; c < 3; c++) img.data[j + c] = Math.round(img.data[j + c] * (1 - a) + Math.min(img.data[j + c], w.ink[c]) * a);
   }
 }
@@ -454,16 +462,24 @@ function clearArea(img: RawImage, area: Box, blocked: readonly Box[]): boolean {
   return dark <= total * 0.004;
 }
 
+/** The least height of a digit in a crossed-out pair, in page pixels (about 3 mm): smaller, and it is not exact. */
+const MIN_PAIR_HEIGHT = 16;
+
+type Planned = WrittenText & { paths: InkPath[] };
+
 /**
- * Writes one answer into its box. A correction goes beside the box, on clear paper only (never on printed text, another
- * question's region or earlier ink); with no clear place, both go small inside the box.
+ * Writes one answer into its box. For a crossed-out case, both texts are laid out first and drawn only when their real
+ * ink is ANSWER_GAP apart and each digit is at least MIN_PAIR_HEIGHT tall: side by side in a wide box, the correction
+ * beside the box on clear paper (never on printed text, another question's region or earlier ink), side by side
+ * smaller, or one above the other in the box. When none fits, only the final answer is written and the case drawn says
+ * so: the truth never names an exact answer a reader could fairly be unsure of.
  */
-function writeAnswer(img: RawImage, box: Box, c: AnswerCase, answer: number, mistakes: readonly number[], blocked: readonly Box[], w: Writer, r: Random, grain: number): WrittenText[] {
-  if (c === "blank") return [];
+function writeAnswer(img: RawImage, box: Box, c: AnswerCase, answer: number, mistakes: readonly number[], blocked: readonly Box[], w: Writer, r: Random, grain: number): { written: WrittenText[]; drawn: AnswerCase } {
+  if (c === "blank") return { written: [], drawn: c };
   const messy = c.startsWith("messy");
   const right = textOf(answer);
   const wrong = textOf(wrongValue(answer, mistakes, r));
-  const write = (text: string, area: Box, placement: WrittenText["placement"], crossedOut: boolean, small = 1): WrittenText => {
+  const plan = (text: string, area: Box, placement: WrittenText["placement"], crossedOut: boolean, small = 1): Planned => {
     const fit = Math.min(area.height * w.height * small, area.width * 0.86 / (textWidth(text, 1, w) || 1));
     const height = Math.max(10, fit);
     const width = textWidth(text, height, w);
@@ -483,19 +499,31 @@ function writeAnswer(img: RawImage, box: Box, c: AnswerCase, answer: number, mis
           : [[b.x - 3, y0], [b.x + b.width + 3, y1]] });
       }
     }
+    return { text, crossedOut, placement, glyphs: laid.glyphs, inkBox: pathBox(paths), photoQuad: null, paths };
+  };
+  const draw = (...pieces: Planned[]): WrittenText[] => pieces.map(({ paths, ...piece }) => {
     drawPaths(img, paths, w, grain);
-    return { text, crossedOut, placement, glyphs: laid.glyphs, inkBox: pathBox(paths) };
-  };
-  if (!c.startsWith("crossed-out")) return [write(c === "right" || c === "messy-right" ? right : wrong, box, "in-box", false)];
+    return piece;
+  });
+  if (!c.startsWith("crossed-out")) return { written: draw(plan(c === "right" || c === "messy-right" ? right : wrong, box, "in-box", false)), drawn: c };
+
   const [first, last] = c === "crossed-out-right" ? [wrong, right] : [right, wrong];
-  const sideBySide = () => {
+  // (A glyph box carries a pen width of padding on each side.)
+  const tallEnough = (p: Planned) => p.glyphs.every((g) => g.box.height - 2 * w.width >= MIN_PAIR_HEIGHT);
+  const fits = (a: Planned, b: Planned) => apart(a.inkBox, b.inkBox, ANSWER_GAP) && tallEnough(a) && tallEnough(b);
+  const halves = (small: number): [Planned, Planned] => {
     const half = box.width / 2;
-    return [
-      write(first, { ...box, width: half }, "in-box", true, 0.85),
-      write(last, { ...box, x: box.x + half, width: half }, "in-box", false, 0.85),
-    ];
+    const a = plan(first, { ...box, width: half }, "in-box", true, small);
+    // The correction starts where the crossed-out ink really ends, not at the middle of the box.
+    const from = Math.max(box.x + half, a.inkBox.x + a.inkBox.width + ANSWER_GAP + 2);
+    return [a, plan(last, { ...box, x: from, width: Math.max(1, box.x + box.width - from) }, "in-box", false, small)];
   };
-  if (box.width >= box.height * 2.4) return sideBySide();
+  const stacked = (): [Planned, Planned] => {
+    const half = box.height / 2;
+    return [plan(first, { ...box, height: half }, "in-box", true, 1.3), plan(last, { ...box, y: box.y + half, height: half }, "in-box", false, 1.3)];
+  };
+  const tries: (() => [Planned, Planned] | null)[] = [];
+  if (box.width >= box.height * 2.4) tries.push(() => halves(0.85));
   // Beside the box: the place for the correction, with a margin so its ink stays off the box and its neighbours.
   const wide = Math.max(box.height * 1.6, box.width * 0.9), gap = 14;
   const places = r.shuffle([
@@ -505,11 +533,21 @@ function writeAnswer(img: RawImage, box: Box, c: AnswerCase, answer: number, mis
     { placement: "left-of-box" as const, area: { x: box.x - wide - gap, y: box.y, width: wide, height: box.height } },
   ]);
   // (The margin is less than the gap, so the box's own border never counts against it.)
-  const margin = (b: Box): Box => ({ x: b.x - 8, y: b.y - 8, width: b.width + 16, height: b.height + 16 });
-  const place = places.find((p) => clearArea(img, margin(p.area), blocked));
-  if (!place) return sideBySide();
-  const crossed = write(first, box, "in-box", true);
-  return [crossed, write(last, place.area, place.placement, false, 0.9)];
+  const margin = (b: Box, m = 8): Box => ({ x: b.x - m, y: b.y - m, width: b.width + 2 * m, height: b.height + 2 * m });
+  for (const p of places) {
+    tries.push(() => {
+      if (!clearArea(img, margin(p.area), blocked)) return null;
+      const pair: [Planned, Planned] = [plan(first, box, "in-box", true), plan(last, p.area, p.placement, false, 0.9)];
+      return clearArea(img, margin(pair[1].inkBox, 2), blocked) ? pair : null;
+    });
+  }
+  tries.push(() => halves(0.85), () => halves(0.7), stacked);
+  for (const attempt of tries) {
+    const pair = attempt();
+    if (pair && fits(pair[0], pair[1])) return { written: draw(...pair), drawn: c };
+  }
+  // No room for both: only the answer that counts, and the case says so.
+  return { written: draw(plan(last, box, "in-box", false)), drawn: c === "crossed-out-right" ? "right" : "wrong" };
 }
 
 // ---------- The camera ----------
@@ -702,10 +740,15 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 const roundBox = (b: Box): Box => ({ x: round2(b.x), y: round2(b.y), width: round2(b.width), height: round2(b.height) });
 const roundPoint = (p: Point): Point => ({ x: round2(p.x), y: round2(p.y) });
 
-/** Makes one photo of a page and its truth file. The same page, options and seed give the same bytes. */
-export function makeScanPhoto(page: PhotoPage, o: ScanPhotoOptions): ScanPhoto {
-  if (o.effect === "wrong-page" && !o.submittedAs) throw new Error("a wrong-page photo needs the page it is sent as");
-  const r = seededRandom(`${o.seed}:${o.id}`);
+/** What the ink step gives: the inked page and what was written, before any camera. */
+export interface InkedPage {
+  inked: RawImage;
+  questions: TruthQuestion[];
+  decoys: PhotoTruth["decoys"];
+}
+
+/** Writes a page's answers and decoys, drawing from `r`: the first step of every photo. */
+function inkAnswers(page: PhotoPage, mistakes: ScanPhotoOptions["mistakes"], r: Random): InkedPage {
   const inked = rgbCopy(page.image);
   const writer = writerFor(r);
   const grain = r.int(1, 1 << 30);
@@ -731,14 +774,31 @@ export function makeScanPhoto(page: PhotoPage, o: ScanPhotoOptions): ScanPhoto {
     }
     const c = deck[dealt++ % deck.length];
     const blocked = page.questions.flatMap((other) => other.regions.flatMap((reg) => (reg.box && reg !== box ? [reg.box] : [])));
-    const written = writeAnswer(inked, box.box!, c, box.answer!, o.mistakes?.get(q.number) ?? [], blocked, writer, r, grain);
+    const { written, drawn } = writeAnswer(inked, box.box!, c, box.answer!, mistakes?.get(q.number) ?? [], blocked, writer, r, grain);
     const finalText = [...written].reverse().find((w) => !w.crossedOut)?.text ?? null;
     questions.push({
-      ...base, scope: "write", answer: textOf(box.answer!), answerRegion: box.id, case: c,
+      ...base, scope: "write", answer: textOf(box.answer!), answerRegion: box.id, case: drawn,
       written: written.map((w) => ({ ...w, glyphs: w.glyphs.map((g) => ({ char: g.char, box: roundBox(g.box) })), inkBox: roundBox(w.inkBox) })),
-      finalText, expectedMark: expectedFor(c), regions: [],
+      finalText, expectedMark: expectedFor(drawn), regions: [],
     });
   }
+
+  return { inked, questions, decoys };
+}
+
+/**
+ * The ink step alone: the same page, seed and id give the same inked page and the same written answers as makeScanPhoto
+ * draws before its camera, at a fraction of the cost. For checking a whole set's answers.
+ */
+export function inkScanPage(page: PhotoPage, o: Pick<ScanPhotoOptions, "seed" | "id" | "mistakes">): InkedPage {
+  return inkAnswers(page, o.mistakes, seededRandom(`${o.seed}:${o.id}`));
+}
+
+/** Makes one photo of a page and its truth file. The same page, options and seed give the same bytes. */
+export function makeScanPhoto(page: PhotoPage, o: ScanPhotoOptions): ScanPhoto {
+  if (o.effect === "wrong-page" && !o.submittedAs) throw new Error("a wrong-page photo needs the page it is sent as");
+  const r = seededRandom(`${o.seed}:${o.id}`);
+  const { inked, questions, decoys } = inkAnswers(page, o.mistakes, r);
 
   const cam = cameraFor(o.effect, page.image, r);
   const photo = photograph(inked, cam, r);
@@ -753,6 +813,7 @@ export function makeScanPhoto(page: PhotoPage, o: ScanPhotoOptions): ScanPhoto {
       const n = corners.filter(inside).length;
       return { id: reg.id, kind: reg.kind, box: reg.box, photoQuad: corners.map(roundPoint), visible: n === 4 ? "full" : n === 0 ? "none" : "partial" };
     });
+    tq.written = tq.written.map((w) => ({ ...w, photoQuad: quad(w.inkBox).map(roundPoint) }));
     // A box (or a correction beside it) cut off by the frame cannot be marked from this photo.
     const ink = tq.written.map((w) => w.inkBox);
     const answerBox = tq.regions.find((x) => x.id === tq.answerRegion)?.box;
@@ -780,6 +841,62 @@ export function makeScanPhoto(page: PhotoPage, o: ScanPhotoOptions): ScanPhoto {
     questions, decoys, counts,
   };
   return { inked, photo, truth };
+}
+
+// ---------- Checking a truth file ----------
+
+/** The least clear paper between two pieces of text written for one answer, in page pixels: less, and a reader could
+ * fairly be unsure which digits belong to which, so the truth could not name one answer exactly. */
+export const ANSWER_GAP = 6;
+
+const apart = (a: Box, b: Box, gap: number) =>
+  a.x + a.width + gap <= b.x || b.x + b.width + gap <= a.x || a.y + a.height + gap <= b.y || b.y + b.height + gap <= a.y;
+
+/**
+ * Why a truth file's answers cannot be trusted as exact, or nothing: every written text spelled by its glyphs, separate
+ * pieces of text kept ANSWER_GAP apart, a crossed-out answer written before its correction, and each expected mark
+ * following from the final text and the key. The tool refuses a set with any problem.
+ */
+export function truthProblems(t: Pick<PhotoTruth, "id" | "questions">): string[] {
+  const problems: string[] = [];
+  for (const q of t.questions) {
+    const at = `${t.id} q${q.number}`;
+    if (q.scope === "not-drawn") {
+      if (q.written.length || q.expectedMark !== "not-marked") problems.push(`${at}: a question not drawn has ink or a mark`);
+      continue;
+    }
+    for (const w of q.written) if (w.glyphs.map((g) => g.char).join("") !== w.text) problems.push(`${at}: the glyphs of ${w.text} spell something else`);
+    for (let i = 0; i < q.written.length; i++) {
+      for (let j = i + 1; j < q.written.length; j++) {
+        const a = q.written[i], b = q.written[j];
+        if (!apart(a.inkBox, b.inkBox, ANSWER_GAP)) problems.push(`${at}: ${a.text} and ${b.text} are written less than ${ANSWER_GAP} px apart`);
+      }
+    }
+    const final = [...q.written].reverse().find((w) => !w.crossedOut)?.text ?? null;
+    if (q.finalText !== final) problems.push(`${at}: the final text is not the last text not crossed out`);
+    if (q.written.some((w, i) => w.crossedOut && i === q.written.length - 1)) problems.push(`${at}: the last text is crossed out`);
+    if (q.case?.startsWith("crossed-out") && (q.written.length !== 2 || !q.written[0].crossedOut)) problems.push(`${at}: a crossed-out case is not one crossed answer and one correction`);
+    const earned: ExpectedMark = final === null ? "blank" : final === q.answer ? "right" : "wrong";
+    if (q.expectedMark !== "not-visible" && q.expectedMark !== earned) problems.push(`${at}: expected ${q.expectedMark}, but ${final ?? "a blank"} earns ${earned}`);
+    if (q.case && q.expectedMark !== "not-visible" && expectedFor(q.case) !== earned) problems.push(`${at}: the case ${q.case} does not fit what was written`);
+  }
+  return problems;
+}
+
+/**
+ * A crop of the photo around one written answer, for a person to check it: its box and every piece of its ink (a
+ * correction beside the box too), with room around them, inside the photo.
+ */
+export function answerCrop(q: TruthQuestion): Box | null {
+  const quad = q.regions.find((r) => r.id === q.answerRegion)?.photoQuad;
+  if (!quad) return null;
+  const points = [...quad, ...q.written.flatMap((w) => w.photoQuad ?? [])];
+  const xs = points.map((p) => p.x), ys = points.map((p) => p.y);
+  const boxXs = quad.map((p) => p.x), boxYs = quad.map((p) => p.y);
+  const pad = Math.max(16, 0.3 * Math.max(Math.max(...boxXs) - Math.min(...boxXs), Math.max(...boxYs) - Math.min(...boxYs)));
+  const left = Math.max(0, Math.floor(Math.min(...xs) - pad)), top = Math.max(0, Math.floor(Math.min(...ys) - pad));
+  const right = Math.min(PHOTO_SIZE.width, Math.ceil(Math.max(...xs) + pad)), bottom = Math.min(PHOTO_SIZE.height, Math.ceil(Math.max(...ys) + pad));
+  return right - left >= 8 && bottom - top >= 8 ? { x: left, y: top, width: right - left, height: bottom - top } : null;
 }
 
 // ---------- The set ----------

@@ -1,9 +1,14 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { QuestionPackage } from "@/lib/question-package";
 import type { Box } from "@/lib/workbook-print-contract";
 import {
   ANSWER_CASES,
+  ANSWER_GAP,
+  answerCrop,
+  inkScanPage,
+  truthProblems,
   FONT_CHARS,
   PHOTO_EFFECTS,
   PHOTO_SIZE,
@@ -13,6 +18,7 @@ import {
   planPhotoSet,
   writableBox,
   writablePage,
+  type PageQuestion,
   type PhotoPage,
   type PhotoTruth,
   type RawImage,
@@ -265,4 +271,97 @@ describe("scan photo set", () => {
     expect(writablePage(qs, 1)).toBe(true);
     expect(writablePage(qs, 2)).toBe(false);
   });
+
+  it("finds overlapping answers, a wrong final text and a mark the text does not earn", () => {
+    const { truth } = makeScanPhoto(page(), { seed: "v", id: "U4-p05", effect: "plain" });
+    expect(truthProblems(truth)).toEqual([]);
+    const q = truth.questions.find((x) => x.case === "crossed-out-right" || x.case === "crossed-out-wrong") ?? truth.questions.find((x) => x.written.length)!;
+    const broken = structuredClone(truth);
+    const bq = broken.questions.find((x) => x.number === q.number)!;
+    bq.written = [{ ...bq.written[0], crossedOut: true }, { ...bq.written[0], text: bq.answer!, crossedOut: false, glyphs: [...bq.answer!].map((char) => ({ char, box: bq.written[0].inkBox })) }];
+    bq.finalText = bq.answer;
+    bq.expectedMark = "right";
+    expect(truthProblems(broken).join("\n")).toMatch(/less than 6 px apart/);
+    bq.expectedMark = "wrong";
+    expect(truthProblems(broken).join("\n")).toMatch(/earns right/);
+  });
+});
+
+// ---------- The whole seed-537 set ----------
+
+// Where each answer region printed on the 40 pages of the seed-537 set, with each write-number key and its package's
+// known mistakes (scan-photo-set.fixture.json; made from the fake books, no images and no child data). The printed text
+// is not in it, so each page is checked twice: on clear paper, and with every place outside the answer boxes printed,
+// which leaves no clear paper beside a box and forces every correction into its box (the worst case).
+interface FixturePage {
+  id: string; level: string; page: number; label: string | null; effect: string;
+  marks: PhotoPage["marks"];
+  questions: { number: number; format: string; regions: { id: string; kind: string; box: Box | null; answer: number | null }[] }[];
+  mistakes: Record<string, number[]>;
+}
+const fixture = JSON.parse(readFileSync(new URL("./scan-photo-set.fixture.json", import.meta.url), "utf8")) as { seed: string; pages: FixturePage[] };
+
+function fixturePage(f: FixturePage, crowded: boolean): PhotoPage {
+  const questions: PageQuestion[] = f.questions.map((q) => ({ number: q.number, packageId: `${f.id}-q${q.number}`, format: q.format, regions: q.regions }));
+  const boxes = questions.flatMap((q) => q.regions.flatMap((r) => (r.box ? [r.box] : [])));
+  const data = new Uint8Array(W * H * 3).fill(255);
+  if (crowded) {
+    // Printed grey everywhere but inside the answer regions.
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) if (!boxes.some((b) => x > b.x + 2 && x < b.x + b.width - 2 && y > b.y + 2 && y < b.y + b.height - 2)) data.fill(120, (y * W + x) * 3, (y * W + x) * 3 + 3);
+    }
+  }
+  return {
+    level: f.level, workbookId: "fixture", page: f.page, label: f.label, day: null, pageOfDay: null, imageSha256: "0".repeat(64),
+    image: { width: W, height: H, channels: 3, data }, marks: f.marks, questions,
+  };
+}
+
+const mistakesOf = (f: FixturePage) => new Map(Object.entries(f.mistakes).map(([n, m]) => [Number(n), m]));
+
+describe("scan photo set: every page of the seed-537 set", () => {
+  it("has the 40 pages of the set", () => {
+    expect(fixture.pages).toHaveLength(40);
+    expect(new Set(fixture.pages.map((p) => p.level))).toEqual(new Set(["U4", "U16"]));
+  });
+
+  for (const crowded of [false, true]) {
+    it(`writes every answer of every page so it can be read exactly (${crowded ? "no clear paper beside the boxes" : "clear paper"})`, () => {
+      const problems: string[] = [];
+      let crossed = 0;
+      for (const f of fixture.pages) {
+        const p = fixturePage(f, crowded);
+        for (const seed of [fixture.seed, "1", "2", "3"]) {
+          const { questions } = inkScanPage(p, { seed, id: f.id, mistakes: mistakesOf(f) });
+          problems.push(...truthProblems({ id: `${seed}:${f.id}`, questions }));
+          crossed += questions.filter((q) => q.written.some((w) => w.crossedOut)).length;
+        }
+      }
+      expect(problems).toEqual([]);
+      // (Crossed-out answers are still in the set: separation is met, not avoided.)
+      expect(crossed).toBeGreaterThan(40);
+    });
+  }
+
+  // Only the pages where a correction sits outside its box need a photo here: the crop's other inputs are covered above.
+  const beside = fixture.pages.filter((f) => inkScanPage(fixturePage(f, false), { seed: fixture.seed, id: f.id, mistakes: mistakesOf(f) })
+    .questions.some((q) => q.written.some((w) => w.placement !== "in-box")));
+
+  it("has pages with a correction beside its box", () => expect(beside.length).toBeGreaterThan(3));
+
+  it.each(beside.map((f) => [f.id, f] as const))("crops %s around all of each answer's ink", (_, f) => {
+    const { truth } = makeScanPhoto(fixturePage(f, false), { seed: fixture.seed, id: f.id, effect: "plain", mistakes: mistakesOf(f) });
+    for (const q of truth.questions.filter((x) => x.written.length)) {
+      const crop = answerCrop(q)!;
+      const quads = [...q.regions.filter((r) => r.id === q.answerRegion).map((r) => r.photoQuad!), ...q.written.map((w) => w.photoQuad!)];
+      for (const point of quads.flat()) {
+        expect(point.x).toBeGreaterThanOrEqual(crop.x);
+        expect(point.y).toBeGreaterThanOrEqual(crop.y);
+        expect(point.x).toBeLessThanOrEqual(crop.x + crop.width);
+        expect(point.y).toBeLessThanOrEqual(crop.y + crop.height);
+      }
+    }
+  });
+
+  it("keeps two pieces of text at least the answer gap apart", () => expect(ANSWER_GAP).toBeGreaterThanOrEqual(6));
 });

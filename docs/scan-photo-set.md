@@ -29,7 +29,7 @@ Options: `--seed 537` (default), `--levels U4,U16` (default), `--pages 20` (page
 
 ## What a photo holds
 
-- **Answers.** Only write-number questions with a whole-number answer get ink. Each one gets a case: right, wrong (often one of the package's known mistakes), blank, crossed out then right, crossed out then wrong, messy right or messy wrong. A correction goes in the box when the box is wide, else beside it on clear paper, away from every other question's regions. Every other question stays as printed (`scope: "not-drawn"`, expected mark `not-marked`). A question with a work space gets a number written there as a decoy, never the answer. Printed worked examples with their answers are natural decoys too.
+- **Answers.** Only write-number questions with a whole-number answer get ink. Each one gets a case: right, wrong (often one of the package's known mistakes), blank, crossed out then right, crossed out then wrong, messy right or messy wrong. For a crossed-out case, both answers are laid out before any ink is drawn, and a layout is used only when the two inks are at least 6 page pixels apart (`ANSWER_GAP`) and every digit is at least 16 pixels tall: side by side in a wide box, the correction beside the box on clear paper (away from printed text and every other question's regions), side by side smaller, or one above the other in the box. When none fits, only the final answer is written and the case says plain right or wrong, so a truth file never names an exact answer a reader could fairly be unsure of. In the seed-537 set this happened to one answer (U16-p24 question 1, two five-digit numbers in a 150 by 100 pixel box). Every other question stays as printed (`scope: "not-drawn"`, expected mark `not-marked`). A question with a work space gets a number written there as a decoy, never the answer. Printed worked examples with their answers are natural decoys too.
 - **Camera.** Every photo has a small rotation, a little perspective, uneven light, slight blur, sensor noise and JPEG compression. On top of that, one effect per photo, spread evenly over each level: plain, rotation (8 to 14 degrees), perspective (strong keystone), shadow, blur, low light, cut off (a quarter to a third of the page out of frame) or wrong page (the photo is sent as another page of the same book).
 
 ## Truth files
@@ -51,9 +51,13 @@ The expected marks describe the page shown. For a photo the marking should refus
 - `manifest.json`: seed, book id, levels, counts by effect, case and expected mark, and every file's SHA-256. `SHA256SUMS` lists the same hashes for `shasum -a 256 -c SHA256SUMS`.
 - `index.html`: every photo with its truth table, for a person to check.
 - `contact-U4.png`, `contact-U16.png`: all photos of a level with their effect and counts.
-- `crops.png`: written answers up close, cropped from the photos, each with its case, text and key.
+- `crops.png`: written answers up close (every crossed-out answer first, then the messy ones), cropped from the photos with all of each answer's ink, a correction beside the box too, each with its case, text and key.
 
 The set is about 21 MB, and the kept books and render about 17 MB more. Keep them out of git; `/tmp/ui-review/scan-photo-set` is the usual folder.
+
+## Checks on every truth file
+
+`truthProblems` checks each truth file: every text spelled by its glyphs, separate texts at least `ANSWER_GAP` apart, a crossed-out answer before its correction, and each expected mark following from the final text and the key. The tool runs it on every photo and stops with the reasons if any check fails, so a set with a doubtful answer is never written. The tests run the same check on all 40 pages of the seed-537 set (their geometry is in `src/lib/scan-photo-set.fixture.json`, with no images), on clear paper and with no clear paper beside any box, for four seeds.
 
 ## Same seed, same files
 
