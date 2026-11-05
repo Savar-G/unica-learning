@@ -1,4 +1,6 @@
 import { writeFileSync } from "node:fs";
+import jsQR from "jsqr";
+import QRCode from "qrcode";
 import sharp from "sharp";
 import { beforeAll, describe, expect, it } from "vitest";
 import { chromiumPrintEngine, findChromium } from "@/lib/print-engine-chromium";
@@ -60,6 +62,27 @@ function coverQr(r: Raster, p: Real): Raster {
   // template as printed, so a generous box over the bottom left is enough.
   fillBox(r, p.contract.marks.points.bl.x + 20, p.contract.marks.points.bl.y - 150, 150, 120, 248);
   return r;
+}
+
+/**
+ * The page with its QR code drawn again from the code's exact modules, each module edge rounded to whole pixels at
+ * another phase: what another printer or another Chromium does with the template's crisp edges (Linux and macOS differ).
+ */
+function rounded(p: Real, phase: number): Raster {
+  const r = p.grey;
+  const rgba = new Uint8ClampedArray(r.width * r.height * 4);
+  for (let i = 0; i < r.data.length; i++) { rgba[4 * i] = rgba[4 * i + 1] = rgba[4 * i + 2] = r.data[i]; rgba[4 * i + 3] = 255; }
+  const found = jsQR(rgba, r.width, r.height)!;
+  const { size, data } = QRCode.create(pageUrl(p.token), { errorCorrectionLevel: "M" }).modules;
+  const tl = found.location.topLeftCorner, m = (found.location.topRightCorner.x - tl.x) / size;
+  const out: Raster = { ...r, data: r.data.slice() };
+  for (let y = Math.floor(tl.y - 2 * m); y < Math.ceil(tl.y + (size + 2) * m); y++) for (let x = Math.floor(tl.x - 2 * m); x < Math.ceil(tl.x + (size + 2) * m); x++) out.data[y * r.width + x] = 255;
+  const edge = (k: number, from: number) => Math.round(from + k * m + phase);
+  for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) {
+    if (!data[j * size + i]) continue;
+    for (let y = edge(j, tl.y); y < edge(j + 1, tl.y); y++) out.data.fill(0, y * r.width + edge(i, tl.x), y * r.width + edge(i + 1, tl.x));
+  }
+  return out;
 }
 
 const photoOf = async (r: Raster, size = SIZE, corners = uprightCorners(size, PAGE_SIZE, 70)) => greyRaster(await photoJpeg(photographed(r, size, corners, { shade: 0.2 })));
@@ -231,16 +254,45 @@ describe.skipIf(!chromium)("comparison across scale", () => {
     expect(calibrate(photo, page4).status).toBe("calibrated");
   }, 120_000);
 
-  it("a small QR code that the upload read is read in place too", async () => {
-    // Disproved if a photo the upload accepted is refused for its code. At 70% of the photo's height the code is about 2.4
-    // pixels a module: too few for a window around it, but the whole photo reads, as the upload reads it.
+  it("a small QR code that the upload read is read in place too, however its modules were rounded", async () => {
+    // Disproved if a photo the upload accepted is refused for its code. At 70% of the photo's height the code is about 2
+    // pixels a module. Whether the upload's own reader finds it depends on how the printer rounded the modules (the Linux
+    // runner's did not, here), so each photo the upload takes is checked, under several roundings.
     const pages = (await realPages("U16", ["Day 1"], 2)).filter((p) => p.number === 3 || p.number === 4);
     expect(pages).toHaveLength(2);
-    for (const p of pages) {
-      const bytes = await photoJpeg(photographed(written(p, (i) => (i * 3 + 1) % 10), SIZE, uprightCorners(SIZE, PAGE_SIZE, 0.15 * SIZE.height), { shade: 0.2 }));
-      const stored = await normalizeScanPhoto(bytes);
+    let taken = 0;
+    for (const p of pages) for (const phase of [null, 0.25, 0.5, 0.75]) {
+      const printed = phase === null ? p.grey : rounded(p, phase);
+      const page = { ...p, grey: printed, plan: p.plan };
+      const bytes = await photoJpeg(photographed(written(page, (i) => (i * 3 + 1) % 10), SIZE, uprightCorners(SIZE, PAGE_SIZE, 0.15 * SIZE.height), { shade: 0.2 }));
+      const stored = await normalizeScanPhoto(bytes).catch(() => null);
+      if (!stored) continue;
+      taken++;
       expect(stored.token).toBe(p.token);
-      expect(calibrate(await greyRaster(stored.bytes), p).status, p.key).toBe("calibrated");
+      expect(calibrate(await greyRaster(stored.bytes), page).status, `${p.key} rounded at ${phase}`).toBe("calibrated");
     }
-  }, 120_000);
+    expect(taken, "the upload took none of these photos").toBeGreaterThan(0);
+  }, 240_000);
+
+  it("the right page's code reads in place however the printer rounded its modules, from each angle", async () => {
+    // Disproved if the QR check needs this machine's own rounding of the code's modules: the Linux runner's Chromium
+    // rounds them otherwise, and refused page 5 at 7 degrees. Each page, with its code drawn at three other phases, from
+    // the angles the crop test uses.
+    const pages = [...await realPages("U4", ["Day 1"], 4), ...await realPages("U16", ["Day 1"], 4)].filter((p) => p.plan.crops.length > 0);
+    const angles = {
+      "straight on": uprightCorners(SIZE, PAGE_SIZE, 60),
+      "rotated 7 degrees": rotatedCorners(uprightCorners(SIZE, PAGE_SIZE, 170), 7, { x: 750, y: 950 }),
+      tilted: [{ x: 280, y: 110 }, { x: 1240, y: 150 }, { x: 1390, y: 1790 }, { x: 110, y: 1760 }],
+      "upside down": rotatedCorners(uprightCorners(SIZE, PAGE_SIZE, 60), 180, { x: 750, y: 950 }),
+    };
+    const refused: string[] = [];
+    for (const p of pages) for (const phase of [0.25, 0.5, 0.75]) {
+      const page = { ...p, grey: rounded(p, phase) };
+      for (const [angle, corners] of Object.entries(angles)) {
+        const r = calibrate(await photoOf(written(page, (i) => (i * 3 + 1) % 10), SIZE, corners), page);
+        if (r.status !== "calibrated") refused.push(`${p.key} rounded at ${phase}, ${angle}: ${r.reason}`);
+      }
+    }
+    expect(refused).toEqual([]);
+  }, 400_000);
 });

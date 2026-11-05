@@ -329,7 +329,7 @@ const CELL_MIN_INK = 10;
 const MAX_RECTANGLES = 12;
 const DARK_PRINT = 120;
 
-interface PreparedPrinted { ink: Uint8Array; greySums: Uint32Array; width: number; height: number; source: { width: number; height: number }; qr: FoundQr | null }
+interface PreparedPrinted { ink: Uint8Array; greySums: Uint32Array; width: number; height: number; source: { width: number; height: number }; qr: FoundQr | null; qrGrid: QrGrid | null }
 interface PrintedInk extends Omit<PreparedPrinted, "qr"> { cells: { x: number; y: number }[] }
 interface PreparedPhoto { greySums: Uint32Array; quads: MarkShape[][] }
 
@@ -349,7 +349,8 @@ function preparedPrinted(printed: Raster): PreparedPrinted {
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     if (boxMean(sums, printed.width, printed.height, x * 2, y * 2, x * 2 + 2, y * 2 + 2) >= 0.3) ink[y * width + x] = 1;
   }
-  const prepared = { ink, greySums: summed(grey, printed.width, printed.height), width, height, source: { width: printed.width, height: printed.height }, qr: readQr(printed) };
+  const prepared = { ink, greySums: summed(grey, printed.width, printed.height), width, height, source: { width: printed.width, height: printed.height }, qr: readQr(printed), qrGrid: null as QrGrid | null };
+  if (prepared.qr) prepared.qrGrid = printedGrid(printed, prepared.qr);
   printedCache.set(printed, prepared);
   return prepared;
 }
@@ -443,14 +444,15 @@ function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: nu
 
 // ---------- The page's QR code ----------
 
-interface FoundQr { link: string; corners: Point[] }
+/** A read code: its link, its corners (top left, top right, bottom right, bottom left) and how many modules it is across. */
+interface FoundQr { link: string; corners: Point[]; modules: number }
 
 function readQr(r: Raster, inversionAttempts: "dontInvert" | "attemptBoth" = "dontInvert"): FoundQr | null {
   const grey = toGrey(r);
   const rgba = new Uint8ClampedArray(r.width * r.height * 4);
   for (let i = 0; i < grey.length; i++) { rgba[4 * i] = rgba[4 * i + 1] = rgba[4 * i + 2] = grey[i]; rgba[4 * i + 3] = 255; }
   const found = jsQR(rgba, r.width, r.height, { inversionAttempts });
-  return found && { link: found.data, corners: [found.location.topLeftCorner, found.location.topRightCorner, found.location.bottomRightCorner, found.location.bottomLeftCorner] };
+  return found && { link: found.data, corners: [found.location.topLeftCorner, found.location.topRightCorner, found.location.bottomRightCorner, found.location.bottomLeftCorner], modules: 17 + 4 * found.version };
 }
 
 const boundsOf = (points: readonly Point[]): Box => {
@@ -472,28 +474,131 @@ function photoBox(photo: Raster, b: Box): Raster {
   return { width: b.width, height: b.height, channels: 1, data };
 }
 
-/** Whether the photo holds this page's QR code, through a map, where the page printed it. */
-function qrBound(photo: Raster, t: Transform, printed: FoundQr, page: { width: number; height: number }): boolean {
+/** Where the printed code's modules are: the centre of each column and each row, in page pixels, and a module's size. */
+interface QrGrid { columns: number[]; rows: number[]; module: number }
+
+/**
+ * The printed code's module grid, from the printed page image. The code's box is its dark pixels' bounding box around
+ * where the reader found it: the three finder patterns are its corners, so on a crisp printed page that box is the code
+ * exactly. Inside it, each edge between two modules is where the printer put it: the pixel edge, near the even spacing,
+ * where the most lines change between dark and light. A printer rounds each module to whole pixels its own way, and a
+ * module two pixels wide is read in its middle only where the edges are measured, not assumed.
+ */
+function printedGrid(printed: Raster, qr: FoundQr): QrGrid | null {
+  const grey = toGrey(printed), W = printed.width, n = qr.modules, b = boundsOf(qr.corners);
+  const pad = 1.5 * Math.max(b.width, b.height) / n;
+  const x0 = Math.max(0, Math.floor(b.x - pad)), y0 = Math.max(0, Math.floor(b.y - pad));
+  const x1 = Math.min(W, Math.ceil(b.x + b.width + pad)), y1 = Math.min(printed.height, Math.ceil(b.y + b.height + pad));
+  const dark = (x: number, y: number) => grey[y * W + x] < 128;
+  let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+    if (!dark(x, y)) continue;
+    left = Math.min(left, x); right = Math.max(right, x + 1); top = Math.min(top, y); bottom = Math.max(bottom, y + 1);
+  }
+  if (!(right > left && bottom > top)) return null;
+  const module = (right - left) / n;
+  // (A box that is not the code's size or shape, as when other ink touches it, gives no grid.)
+  if (Math.abs(module - b.width / n) > 0.5 * module || Math.abs((bottom - top) / n - module) > 0.25 * module) return null;
+  const edges = (from: number, to: number, changes: (k: number) => number) => {
+    const at = [from];
+    for (let i = 1; i < n; i++) {
+      const even = from + ((to - from) * i) / n;
+      let best = Math.round(even), most = -1;
+      for (let k = Math.ceil(even - module / 2); k <= Math.floor(even + module / 2); k++) {
+        const c = changes(k);
+        if (c > most || (c === most && Math.abs(k - even) < Math.abs(best - even))) { most = c; best = k; }
+      }
+      at.push(Math.max(best, at[at.length - 1] + 1));
+    }
+    at.push(to);
+    return at.slice(0, -1).map((e, i) => (e + at[i + 1]) / 2);
+  };
+  const columnChanges = (k: number) => { let c = 0; for (let y = top; y < bottom; y++) if (dark(k - 1, y) !== dark(k, y)) c++; return c; };
+  const rowChanges = (k: number) => { let c = 0; for (let x = left; x < right; x++) if (dark(x, k - 1) !== dark(x, k)) c++; return c; };
+  return { columns: edges(left, right, columnChanges), rows: edges(top, bottom, rowChanges), module };
+}
+
+/** How far from where the page printed it the module read looks for the code, in modules, and in what steps. */
+const QR_GRID_REACH = 1;
+const QR_GRID_STEP = 1 / 3;
+/** Pixels a module in the clean copy the module read makes, and modules of quiet zone around it. */
+const QR_GRID_PIXELS = 4;
+const QR_GRID_QUIET = 4;
+
+/**
+ * The photo's code read module by module, where the page printed it: each module's centre on the printed page, through
+ * the map, gives one sample of the photo, and the samples make a clean code that the reader decodes. A small or blurred
+ * code reads this way when a reader looking for it cannot find it, since the marks already say where every module is.
+ * It reads only where the page printed the code (a module or less away), so a moved code reads as nothing, and another
+ * page's code reads as that page's link.
+ */
+function gridQr(photo: Raster, t: Transform, printed: FoundQr, grid: QrGrid | null): FoundQr | null {
+  const grey = toGrey(photo), W = photo.width, H = photo.height;
+  // The photo's grey at a point, between its four nearest pixel centres.
+  const sample = (p: Point) => {
+    const fx = Math.max(0, Math.min(W - 1.001, p.x - 0.5)), fy = Math.max(0, Math.min(H - 1.001, p.y - 0.5));
+    const x = Math.floor(fx), y = Math.floor(fy), ax = fx - x, ay = fy - y, at = y * W + x;
+    return (grey[at] * (1 - ax) + grey[at + 1] * ax) * (1 - ay) + (grey[at + W] * (1 - ax) + grey[at + W + 1] * ax) * ay;
+  };
+  const [tl, tr, , bl] = printed.corners, n = printed.modules;
+  const across = { x: (tr.x - tl.x) / n, y: (tr.y - tl.y) / n }, down = { x: (bl.x - tl.x) / n, y: (bl.y - tl.y) / n };
+  // Each module's middle, moved by (dx, dy) modules: from the measured grid, or else evenly between the reader's corners.
+  const centre = (i: number, j: number, dx: number, dy: number) => grid
+    ? { x: grid.columns[i] + dx * grid.module, y: grid.rows[j] + dy * grid.module }
+    : { x: tl.x + across.x * (i + 0.5 + dx) + down.x * (j + 0.5 + dy), y: tl.y + across.y * (i + 0.5 + dx) + down.y * (j + 0.5 + dy) };
+  const side = (n + 2 * QR_GRID_QUIET) * QR_GRID_PIXELS;
+  const offsets: { dx: number; dy: number }[] = [];
+  const steps = Math.round(QR_GRID_REACH / QR_GRID_STEP);
+  for (let j = -steps; j <= steps; j++) for (let i = -steps; i <= steps; i++) offsets.push({ dx: i * QR_GRID_STEP, dy: j * QR_GRID_STEP });
+  offsets.sort((a, b) => Math.hypot(a.dx, a.dy) - Math.hypot(b.dx, b.dy));
+  for (const { dx, dy } of offsets) {
+    const samples = new Float32Array(n * n);
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+      samples[j * n + i] = sample(applyTransform(t, centre(i, j, dx, dy)));
+    }
+    // Dark and light from the code itself: halfway between its darker and lighter tenths.
+    const sorted = Array.from(samples).sort((a, b) => a - b);
+    const low = sorted[Math.floor(sorted.length * 0.1)], high = sorted[Math.floor(sorted.length * 0.9)];
+    if (high - low < 16) continue;
+    const cut = (low + high) / 2;
+    const data = new Uint8Array(side * side).fill(255);
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+      if (samples[j * n + i] >= cut) continue;
+      for (let y = 0; y < QR_GRID_PIXELS; y++) data.fill(0, ((QR_GRID_QUIET + j) * QR_GRID_PIXELS + y) * side + (QR_GRID_QUIET + i) * QR_GRID_PIXELS, ((QR_GRID_QUIET + j) * QR_GRID_PIXELS + y) * side + (QR_GRID_QUIET + i + 1) * QR_GRID_PIXELS);
+    }
+    const read = readQr({ width: side, height: side, channels: 1, data });
+    if (read) return { link: read.link, modules: n, corners: printed.corners.map((c) => ({ x: c.x + across.x * dx + down.x * dy, y: c.y + across.y * dx + down.y * dy })) };
+  }
+  return null;
+}
+
+/**
+ * Whether the photo holds this page's QR code, through a map, where the page printed it. The first read that finds a
+ * code decides: its link must be this page's, and its corners where the page printed them.
+ */
+function qrBound(photo: Raster, t: Transform, printed: FoundQr, grid: QrGrid | null, page: { width: number; height: number }): boolean {
   const b = boundsOf(printed.corners), size = Math.max(b.width, b.height);
   const x = Math.max(0, b.x - QR_WINDOW * size), y = Math.max(0, b.y - QR_WINDOW * size);
   const window = { x, y, width: Math.min(page.width, b.x + b.width + QR_WINDOW * size) - x, height: Math.min(page.height, b.y + b.height + QR_WINDOW * size) - y };
-  const inPlace = (corners: readonly Point[]) => corners.every((c, i) => distance(c, printed.corners[i]) <= QR_TOLERANCE * size);
-  // First the photo's own pixels around the place, with the code's corners taken back through the map; then a straightened copy.
   const inverse = invert(t);
+  if (!inverse) return false;
+  const decides = (found: FoundQr | null, toPage: (c: Point) => Point) => found
+    && found.link === printed.link && found.corners.every((c, i) => distance(toPage(c), printed.corners[i]) <= QR_TOLERANCE * size);
+  // First the photo's own pixels around the place, with the code's corners taken back through the map.
   const seenAt = boundsOf([{ x: window.x, y: window.y }, { x: window.x + window.width, y: window.y }, { x: window.x + window.width, y: window.y + window.height }, { x: window.x, y: window.y + window.height }].map((p) => applyTransform(t, p)));
   const x0 = Math.max(0, Math.floor(seenAt.x)), y0 = Math.max(0, Math.floor(seenAt.y));
   const x1 = Math.min(photo.width, Math.ceil(seenAt.x + seenAt.width)), y1 = Math.min(photo.height, Math.ceil(seenAt.y + seenAt.height));
-  if (inverse && x1 > x0 && y1 > y0) {
+  if (x1 > x0 && y1 > y0) {
     const own = readQr(photoBox(photo, { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }));
-    if (own) return own.link === printed.link && inPlace(own.corners.map((c) => applyTransform(inverse, { x: x0 + c.x, y: y0 + c.y })));
+    if (own) return !!decides(own, (c) => applyTransform(inverse, { x: x0 + c.x, y: y0 + c.y }));
   }
+  // Then module by module where the page printed it: what a phone's small or soft code needs.
+  const byModule = gridQr(photo, t, printed, grid);
+  if (byModule) return !!decides(byModule, (c) => c);
+  // Then a straightened copy, and last the whole photo, read as the upload reads it.
   const seen = readQr(warpBox(photo, t, window, { width: Math.round(window.width * QR_SCALE), height: Math.round(window.height * QR_SCALE) }));
-  if (seen) return seen.link === printed.link && inPlace(seen.corners.map((c) => ({ x: window.x + c.x / QR_SCALE, y: window.y + c.y / QR_SCALE })));
-  // Last, the whole photo, read as the upload reads it: a small code that the upload found can be too few pixels for a
-  // window. It still counts only where the page printed it, so another sheet's code is refused as before.
-  if (!inverse) return false;
-  const whole = wholePhotoQr(photo);
-  return !!whole && whole.link === printed.link && inPlace(whole.corners.map((c) => applyTransform(inverse, c)));
+  if (seen) return !!decides(seen, (c) => ({ x: window.x + c.x / QR_SCALE, y: window.y + c.y / QR_SCALE }));
+  return !!decides(wholePhotoQr(photo), (c) => applyTransform(inverse, c));
 }
 
 const wholeQrCache = new WeakMap<Raster, FoundQr | null>();
@@ -565,7 +670,7 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
   const [best] = followers;
   // Two ways up that both follow the page: the marks alone cannot say which is right.
   if (best.next !== null && best.next >= MIN_PAGE_FIT) return { status: "refused", reason: "orientation-unclear" };
-  if (!qrBound(photo, best.t, printedQr, pageSize)) return { status: "refused", reason: "qr-mismatch" };
+  if (!qrBound(photo, best.t, printedQr, prepared.qrGrid, pageSize)) return { status: "refused", reason: "qr-mismatch" };
   return {
     status: "calibrated",
     calibration: {
