@@ -7,6 +7,7 @@ import { saveEmailCopy } from "@/lib/email-copies";
 import type { SendLedger } from "@/lib/email-delivery";
 import { fromNoteRow } from "@/lib/maya-call-note-store";
 import { NOTE_CALL_KINDS } from "@/lib/maya-call-note";
+import { getsNoParentNotes } from "@/lib/maya-chat";
 import { LOOKBACK_DAYS, type WeeklyLogEntry, type WeeklyStore, type DueWeekly } from "@/lib/maya-weekly-email";
 
 // The weekly Maya email's store (#332): reads and writes with the secret key. The rules are in
@@ -65,7 +66,7 @@ export function mayaWeeklyStore(admin: SupabaseClient<Database>): WeeklyStore {
       const notes = noteRows.map(fromNoteRow);
       const calls = callRows.map((c) => ({ callId: c.id, parentId: c.parent_id, childId: c.child_id, endedAt: c.ended_at!, notePending: c.note_pending !== null, kind: c.kind }));
       const parentIds = [...new Set(calls.map((c) => c.parentId))];
-      const [parents, children, unsubscribes, tests] = await Promise.all([
+      const [parents, children, unsubscribes, tests, rehearsals] = await Promise.all([
         // Each id chunk has at most CHUNK rows, below the server page limit.
         inChunks(parentIds, async (ids) => {
           const { data, error } = await admin.from("parents").select("id, name, email, postal, time_zone").in("id", ids);
@@ -77,9 +78,14 @@ export function mayaWeeklyStore(admin: SupabaseClient<Database>): WeeklyStore {
           const query = admin.from("email_log").select("id, kind, parent_id, week_start, status, attempts, call_ids").eq("kind", "maya_unsubscribe").in("parent_id", ids).order("id").limit(PAGE);
           return after ? query.gt("id", after.id) : query;
         })),
-        // Test families are never emailed (R421W-5).
+        // Test families are never emailed (R421W-5), except the rehearsal family on the chat list (#530).
         inChunks(parentIds, async (ids) => {
           const { data, error } = await admin.from("test_accounts").select("parent_id").in("parent_id", ids);
+          if (error) throw new Error(`maya weekly load: ${error.message}`);
+          return data ?? [];
+        }),
+        inChunks(parentIds, async (ids) => {
+          const { data, error } = await admin.from("maya_chat_families").select("parent_id").eq("rehearsal", true).in("parent_id", ids);
           if (error) throw new Error(`maya weekly load: ${error.message}`);
           return data ?? [];
         }),
@@ -107,9 +113,10 @@ export function mayaWeeklyStore(admin: SupabaseClient<Database>): WeeklyStore {
         })));
       }
       const weekly = [...new Map([...coverage, ...current].map((e) => [e.id, e])).values()];
-      const testIds = new Set(tests.map((t) => t.parent_id));
+      const testIds = new Set(tests.map((t) => t.parent_id)), rehearsalIds = new Set(rehearsals.map((r) => r.parent_id));
       return {
-        parents: parents.map((p) => ({ id: p.id, name: p.name, email: p.email, postal: p.postal, timeZone: p.time_zone, test: testIds.has(p.id) })),
+        parents: parents.map((p) => ({ id: p.id, name: p.name, email: p.email, postal: p.postal, timeZone: p.time_zone,
+          test: getsNoParentNotes({ test: testIds.has(p.id), rehearsal: rehearsalIds.has(p.id) }) })),
         children: children.map((c) => ({ id: c.id, parentId: c.parent_id, firstName: c.first_name, province: c.province, created_at: c.created_at })),
         calls,
         notes,

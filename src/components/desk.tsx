@@ -13,7 +13,7 @@ import { FamilyTime } from "@/components/family-time";
 import { Avatar, Icon } from "@/components/desk-icons";
 import { OurBoard } from "@/components/our-board";
 import { useDeskChat, ChatControls, ChatBoard } from "@/components/desk-chat";
-import type { ChatUsage } from "@/lib/maya-chat";
+import { chatLimitLabel, type ChatUsage } from "@/lib/maya-chat";
 import "./desk.css";
 
 // The child's desk (#301, D-184), as in the guidance demo video: a slim rail (the desk, the workbooks, progress, and the
@@ -54,6 +54,8 @@ type DeskProps = {
   name: string | null;
   notice?: string | null;
   chatUsage?: ChatUsage | null;
+  /** Why this child has no chat (a younger child), in place of "start soon". */
+  chatNote?: string | null;
 } & (
   | { problem: string; books?: undefined }
   | {
@@ -142,7 +144,7 @@ export function Desk(props: DeskProps) {
           <div className="desk-who"><h1>Maya</h1>{where && <p>{where}</p>}</div>
           <dl className="desk-limits" aria-label="Help from Maya">
             <div><dt><Icon name="phone" size={14} />Calls</dt><dd>30 min a week</dd></div>
-            <div><dt><Icon name="chat" size={14} />Chat</dt><dd>{chat.usage ? `${chat.usage.left} left today` : "60 messages a day"}</dd></div>
+            <div><dt><Icon name="chat" size={14} />Chat</dt><dd>{chatLimitLabel(chat.usage, props.chatNote ?? null)}</dd></div>
           </dl>
         </header>
 
@@ -167,7 +169,7 @@ export function Desk(props: DeskProps) {
             </button>
           )}
           {props.chatUsage ? <ChatControls key={picked} state={chat} picked={picked !== null} /> : <>
-          <p className="desk-soon">Chat and calls with Maya start soon.</p>
+          <p className="desk-soon">{props.chatNote ?? "Chat and calls with Maya start soon."}</p>
           <div className="desk-compose">
             <input type="text" disabled placeholder="Write to Maya" aria-label="Write to Maya" />
             <button type="button" disabled aria-label="Send"><Icon name="send" size={20} /></button>

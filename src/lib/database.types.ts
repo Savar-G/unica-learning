@@ -1581,6 +1581,35 @@ export type Database = {
           },
         ]
       }
+      maya_chat_families: {
+        Row: {
+          added_at: string
+          added_by: string
+          parent_id: string
+          rehearsal: boolean
+        }
+        Insert: {
+          added_at?: string
+          added_by?: string
+          parent_id: string
+          rehearsal?: boolean
+        }
+        Update: {
+          added_at?: string
+          added_by?: string
+          parent_id?: string
+          rehearsal?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maya_chat_families_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: true
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       maya_chat_messages: {
         Row: {
           body: string | null
@@ -4403,6 +4432,7 @@ export type Database = {
         Returns: undefined
       }
       lock_booking_email: { Args: { mail: string }; Returns: undefined }
+      lock_maya_family: { Args: { p: string }; Returns: undefined }
       lock_stage1: {
         Args: { p_answers: Json; p_assessment: string; p_route: string }
         Returns: string
