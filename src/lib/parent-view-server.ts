@@ -13,9 +13,9 @@ import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 //     security returns only the family's rows, and only shipped workbooks.
 //   - The secret key, filtered on the signed-in parent's id, reads the tests: whether every answer of an open test is in
 //     needs the stored test and the answers, which a parent may not read. This is the read the start screen uses.
-//     It also reads test_accounts for the Maya switch. Nothing it reads reaches the output except through parent-view.ts.
-// Plan state: the plan state table does not exist yet (#548), so `plans` returns no rows and every plan reads as
-// `unknown`. No family can be `ended` until #548 fills this read in.
+//     It also reads test_accounts for the Maya switch and child_plan_states, which a parent may not read (#548). A child
+//     with no row reads as `unknown`, and a load of the Account tab fills the row (src/lib/billing.ts). Nothing it reads
+//     reaches the output except through parent-view.ts.
 // A database error throws, and so does a missing secret key: an empty read would show a paying family "Start the test".
 
 /** The reader of this parent, from their session and the secret key. */
@@ -52,7 +52,10 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       return data.map((w) => ({ childId: w.child_id, number: w.number }));
     },
     async plans() {
-      return [];
+      if (!admin) throw new Error("plans read: no secret key");
+      const { data, error } = await admin.from("child_plan_states").select("child_id, kind").eq("parent_id", parent);
+      if (error) throw new Error(`plans read: ${error.message}`);
+      return data.map((p) => ({ childId: p.child_id, kind: p.kind }));
     },
     async switches() {
       const [scanPages, testFamily] = await Promise.all([
