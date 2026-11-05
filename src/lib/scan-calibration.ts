@@ -7,7 +7,10 @@
 // a wrong crop is a wrong mark on a child's work, so anything unsure is refused:
 // - it looks like the page image the contract fingerprints, cell by cell, in one way up (a shared template is not enough);
 // - it is the only rectangle in the photo that does (two sheets in one photo are refused, whichever holds the code);
-// - inside it, where that page image printed its QR code, the photo's QR code reads as this page's own link.
+// - inside it, where that page image printed its QR code, the photo's QR code reads as this page's own link;
+// - nowhere on it does another printed page of the child's books explain the photo clearly better (#456): wherever this
+//   page and a near-twin page print differently, the photo must hold this page's print. Pages that differ by a few digits
+//   pass the comparison above, so a code pasted on such a page, or such a page lying over this one, is found here.
 //
 // Pure TypeScript: no Next.js, React, network, database or clock. The caller decodes and encodes images.
 import jsQR from "jsqr";
@@ -56,9 +59,11 @@ export interface Calibration {
  * - page-mismatch: the photo's ink does not follow the printed page's ink in any way up;
  * - ambiguous-page: more than one rectangle in the photo follows it, as with two copies of a page;
  * - orientation-unclear: two ways up fit about equally well;
- * - qr-mismatch: where the page printed its QR code, the photo's code is missing, moved, or another page's.
+ * - qr-mismatch: where the page printed its QR code, the photo's code is missing, moved, or another page's;
+ * - another-page: somewhere on the sheet, another printed page explains the photo clearly better than this one: a code
+ *   pasted on another page, or another sheet lying over this one.
  */
-export type CalibrationRefusal = "marks-missing" | "marks-inconsistent" | "page-mismatch" | "ambiguous-page" | "orientation-unclear" | "qr-mismatch";
+export type CalibrationRefusal = "marks-missing" | "marks-inconsistent" | "page-mismatch" | "ambiguous-page" | "orientation-unclear" | "qr-mismatch" | "another-page";
 
 export type CalibrationResult =
   | { status: "calibrated"; calibration: Calibration }
@@ -387,15 +392,11 @@ function boxMean(sums: Uint32Array, w: number, h: number, x0f: number, y0f: numb
 }
 
 /**
- * The share of the page's printed cells that the photo holds in the same place, through a map; 0 as soon as too few can.
- * Cell by cell, because pages of one template share a heading and a layout. In grey, with both images brought to the same
- * sharpness first, because a threshold on ink changes with how large the page is in the photo: a stroke one pixel wide comes
- * out thin or missing, and the same page would pass from close up and fail from further away. A correlation does not care
- * about shade or contrast.
+ * The grids the comparison reads, at half the page image's pixels: the printed grey (`a`) and the photo's grey through the
+ * map (`b`), both brought to the sharpness of the coarser image.
  */
-function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: number; height: number }, t: Transform): number {
-  const { width, height, cells, greySums, source } = printed;
-  if (cells.length === 0) return 0;
+function fitGrids(printed: Pick<PreparedPrinted, "width" | "height" | "greySums" | "source">, photoSums: Uint32Array, photo: { width: number; height: number }, t: Transform): { a: Float32Array; b: Float32Array } {
+  const { width, height, greySums, source } = printed;
   const pageWidth = width * 2, pageHeight = height * 2;
   const scale = (distance(applyTransform(t, { x: 0, y: 0 }), applyTransform(t, { x: pageWidth, y: 0 }))
     + distance(applyTransform(t, { x: 0, y: pageHeight }), applyTransform(t, { x: pageWidth, y: pageHeight }))) / (2 * pageWidth);
@@ -412,6 +413,21 @@ function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: nu
       b[y * width + x] = boxMean(photoSums, photo.width, photo.height, u - halfPhoto, v - halfPhoto, u + halfPhoto, v + halfPhoto);
     }
   }
+  return { a, b };
+}
+
+/**
+ * The share of the page's printed cells that the photo holds in the same place, through a map; 0 as soon as too few can.
+ * Cell by cell, because pages of one template share a heading and a layout. In grey, with both images brought to the same
+ * sharpness first, because a threshold on ink changes with how large the page is in the photo: a stroke one pixel wide comes
+ * out thin or missing, and the same page would pass from close up and fail from further away. A correlation does not care
+ * about shade or contrast.
+ */
+function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: number; height: number }, t: Transform): number {
+  const { width, cells } = printed;
+  if (cells.length === 0) return 0;
+  const { a, b } = fitGrids(printed, photoSums, photo, t);
+  const height = printed.height;
   const n = FIT_CELL * FIT_CELL;
   // A cell of one even shade (inside a solid bar) has no shape to follow, and a correlation says nothing about it: only
   // cells with a printed edge count.
@@ -440,6 +456,70 @@ function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: nu
     if (!held && ++misses > allowedMisses) return 0;
   }
   return 1 - misses / shaped.length;
+}
+
+// ---------- One sheet, this page ----------
+
+/**
+ * How little of a photo cell's grey a printed cell leaves unexplained: the least error of photo = gain × print + light
+ * (gain at least 0, so ink must stay ink), over the comparison's small shifts, per pixel, in grey levels squared.
+ */
+function cellError(a: Float32Array, b: Float32Array, width: number, height: number, x: number, y: number): number {
+  const n = FIT_CELL * FIT_CELL;
+  let sumA = 0, sumAA = 0;
+  for (let j = 0; j < FIT_CELL; j++) for (let i = 0; i < FIT_CELL; i++) { const v = a[(y + j) * width + x + i]; sumA += v; sumAA += v * v; }
+  const spreadA = sumAA - (sumA * sumA) / n;
+  let best = Infinity;
+  for (let dy = -FIT_SHIFT; dy <= FIT_SHIFT; dy++) for (let dx = -FIT_SHIFT; dx <= FIT_SHIFT; dx++) {
+    if (y + dy < 0 || x + dx < 0 || y + dy + FIT_CELL > height || x + dx + FIT_CELL > width) continue;
+    let sumB = 0, sumBB = 0, sumAB = 0;
+    for (let j = 0; j < FIT_CELL; j++) for (let i = 0; i < FIT_CELL; i++) {
+      const p = a[(y + j) * width + x + i], q = b[(y + dy + j) * width + x + dx + i];
+      sumB += q; sumBB += q * q; sumAB += p * q;
+    }
+    const spreadB = sumBB - (sumB * sumB) / n, shared = sumAB - (sumA * sumB) / n;
+    best = Math.min(best, spreadA > 0 && shared > 0 ? spreadB - (shared * shared) / spreadA : spreadB);
+  }
+  return Math.max(0, best) / n;
+}
+
+/** How much error, in grey levels squared, any photo has in a cell that its print explains: noise, blur and JPEG. */
+const CELL_NOISE = 64;
+/**
+ * How much better another page must explain one cell of the photo than this page, as (this page's error − the other's) /
+ * (both + noise), for the photo to be refused. Measured on 24 real pages from U4, U16 and U26 at 50% to 95% of the photo's
+ * height, upright, rotated 7 degrees and tilted (.design/experiments/r456): a right page's strongest such cell came to 0.25
+ * at most, and every near twin's to 0.51 or more, its own digits printed where this page prints others. Between the two.
+ */
+export const ANOTHER_PAGE_MARGIN = 0.38;
+
+/**
+ * The strongest evidence that the photo is not all this page: over the near twins among `others` (printed pages of the
+ * same size that the photo's ink also follows, as pages that differ by a few digits do), and over each cell where the two
+ * prints differ, how much better the twin explains the photo than this page does, from -1 to 1. Cells where a child writes
+ * are left out. -Infinity when no other page is a near twin.
+ */
+export function anotherPageEvidence(o: { photo: Raster; printed: Raster; others: readonly Raster[]; transform: Transform; writing?: readonly Box[] }): number {
+  const self = preparedPrinted(o.printed), { greySums } = preparedPhoto(o.photo);
+  const { width, height } = self;
+  const skip = [...(o.writing ?? []), ...(self.qr ? [boundsOf(self.qr.corners)] : [])];
+  const mine = fitGrids(self, greySums, o.photo, o.transform);
+  let strongest = -Infinity;
+  for (const raster of o.others) {
+    if (raster === o.printed || raster.width !== o.printed.width || raster.height !== o.printed.height) continue;
+    const other = preparedPrinted(raster);
+    if (pageFit(printedInk(other, skip), greySums, o.photo, o.transform) < MIN_PAGE_FIT) continue;
+    const theirs = fitGrids(other, greySums, o.photo, o.transform);
+    for (let y = 0; y + FIT_CELL <= height; y += FIT_CELL) for (let x = 0; x + FIT_CELL <= width; x += FIT_CELL) {
+      if ((o.writing ?? []).some((b) => overlaps(b, { x: x * 2, y: y * 2, width: FIT_CELL * 2, height: FIT_CELL * 2 }))) continue;
+      let differ = 0;
+      for (let j = 0; j < FIT_CELL; j++) for (let i = 0; i < FIT_CELL; i++) differ += self.ink[(y + j) * width + x + i] ^ other.ink[(y + j) * width + x + i];
+      if (differ < CELL_MIN_INK) continue;
+      const e = cellError(mine.a, mine.b, width, height, x, y), f = cellError(theirs.a, theirs.b, width, height, x, y);
+      strongest = Math.max(strongest, (e - f) / (e + f + CELL_NOISE));
+    }
+  }
+  return strongest;
 }
 
 // ---------- The page's QR code ----------
@@ -627,9 +707,10 @@ function armsFit(marks: readonly MarkShape[], t: Transform): boolean {
 /**
  * Finds the scan marks in a photo and maps it to the contract: the photo's own marks and the stored mark points only. A
  * photo with no contract, or of another revision (printContractForPhoto), gets none. `pageLink`: the page's own QR link.
- * `writing`: where a child writes on this page, which says nothing about which page it is.
+ * `writing`: where a child writes on this page, which says nothing about which page it is. `others`: the other printed
+ * page images of the child's books that this photo could be instead (anotherPageEvidence).
  */
-export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: PhotoContract; pageLink: string; writing?: readonly Box[] }): CalibrationResult {
+export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: PhotoContract; pageLink: string; writing?: readonly Box[]; others?: readonly Raster[] }): CalibrationResult {
   if (o.contract.status !== "available") return { status: "unavailable", reason: o.contract.reason };
   const { contract, revision } = o.contract;
   const { photo, printed } = o;
@@ -671,6 +752,10 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
   // Two ways up that both follow the page: the marks alone cannot say which is right.
   if (best.next !== null && best.next >= MIN_PAGE_FIT) return { status: "refused", reason: "orientation-unclear" };
   if (!qrBound(photo, best.t, printedQr, prepared.qrGrid, pageSize)) return { status: "refused", reason: "qr-mismatch" };
+  // The code and the marks are this page's: the print between them must be too, wherever a near twin prints otherwise.
+  if (anotherPageEvidence({ photo, printed, others: o.others ?? [], transform: best.t, writing: o.writing }) >= ANOTHER_PAGE_MARGIN) {
+    return { status: "refused", reason: "another-page" };
+  }
   return {
     status: "calibrated",
     calibration: {

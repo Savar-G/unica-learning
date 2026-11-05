@@ -14,6 +14,7 @@ const REFUSED: Record<ScanRefusal, string> = {
   "orientation-unclear": "We could not tell which way up this page is. To check it, take another photo with the page upright.",
   "ambiguous-page": "This photo seems to show more than one page. To check it, take another photo with only this page in view.",
   "qr-mismatch": "We could not read this page's QR code in the photo. To check it, take another photo with the code clear and in view.",
+  "another-page": "Part of this photo looks like a different page. To check it, take another photo of this page on its own, flat, with nothing on top of it.",
   "printed-page-changed": "We cannot line up this photo with the printed page.",
   failed: "We cannot line up this photo with the printed page.",
 };

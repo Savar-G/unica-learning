@@ -1,0 +1,22 @@
+{
+  "round": "r456",
+  "issue": 456,
+  "slice": "S3a",
+  "route": "no screen change: one refusal sentence added to the existing hidden preview",
+  "data": "Synthetic only: sample book pages printed by real Chromium, drawn digits as written answers, photos made by a perspective map, blur and JPEG.",
+  "evidence": [
+    {
+      "file": "page-matrix.json",
+      "what": "SCAN_MATRIX_OUT=<file> npx vitest run src/lib/scan-binding-chromium.test.ts -t \"every scale\". 24 real pages (U4, U16, U26), page fill 50% to 95%, upright, rotated 7 degrees and tilted, calibrated on the normalized upload bytes among all 24 pages. nearTwinsAlsoStoppedBySheet: pairs that only the QR code stopped, asked again with the sheet check alone, as if that page's code were pasted on the sheet."
+    },
+    {
+      "file": "near-twin-margins.txt",
+      "what": "anotherPageEvidence over the same 24 pages and 16 conditions: the highest score of a right page among the others (RIGHT, 0.253) and the lowest scores of a photo read as its near twin (WRONG, from 0.511). The cutoff ANOTHER_PAGE_MARGIN is 0.38. The pageNumber field is unused."
+    },
+    {
+      "file": "failing-first.txt",
+      "what": "The two #456 cases (QR code pasted on a near twin; page 8 over page 5 with its footer folded behind) with the sheet check switched off, as on main: both calibrate (pageFit 0.985 for the pasted code, 0.975 for the overlap)."
+    }
+  ],
+  "limits": "No real camera photo, curled saddle-stitched page or real handwriting. Candidates are the child's printed pages of the same page type."
+}

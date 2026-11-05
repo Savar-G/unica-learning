@@ -38,14 +38,27 @@ export function scanCropStore(db: SupabaseClient<Database>): ScanCropStore {
       if (!row.data) return null;
       const p = row.data;
       const active = isActive(p, Date.now());
-      if (!p.page_id || !p.workbook_id) return { photo: { id: p.id, printedRevision: p.printed_revision, active }, book: { printedRevision: null }, page: { printContract: null, imagePath: null, qrToken: null, questions: [] } };
+      if (!p.page_id || !p.workbook_id) return { photo: { id: p.id, printedRevision: p.printed_revision, active }, book: { printedRevision: null }, page: { printContract: null, imagePath: null, qrToken: null, questions: [], others: [] } };
       const [book, page, questions] = await Promise.all([
-        db.from("workbooks").select("printed_revision").eq("id", p.workbook_id).eq("parent_id", parent).maybeSingle(),
-        db.from("workbook_pages").select("page_number,image_path,image_width,image_height,print_contract,qr_token").eq("id", p.page_id).eq("parent_id", parent).maybeSingle(),
+        db.from("workbooks").select("printed_revision,child_id").eq("id", p.workbook_id).eq("parent_id", parent).maybeSingle(),
+        db.from("workbook_pages").select("page_number,page_type,image_path,image_width,image_height,print_contract,qr_token").eq("id", p.page_id).eq("parent_id", parent).maybeSingle(),
         db.from("workbook_questions").select("question_number,schema_version,package,box_x,box_y,box_width,box_height,regions,teaching").eq("page_id", p.page_id).eq("parent_id", parent).order("question_number"),
       ]);
       if (book.error || page.error || questions.error) throw new Error("scan crops: page");
       const pg = page.data;
+      // The child's other printed pages of the same kind and size: the pages the photo could show instead.
+      let others: string[] = [];
+      if (pg && book.data) {
+        const books = await db.from("workbooks").select("id").eq("parent_id", parent).eq("child_id", book.data.child_id).not("printed_revision", "is", null);
+        if (books.error) throw new Error("scan crops: books");
+        const ids = (books.data ?? []).map((b) => b.id);
+        if (ids.length) {
+          const kin = await db.from("workbook_pages").select("id,image_path,image_width,image_height").eq("parent_id", parent).in("workbook_id", ids)
+            .eq("page_type", pg.page_type).neq("id", p.page_id).not("image_path", "is", null);
+          if (kin.error) throw new Error("scan crops: other pages");
+          others = (kin.data ?? []).flatMap((k) => (k.image_path && k.image_width === pg.image_width && k.image_height === pg.image_height ? [k.image_path] : []));
+        }
+      }
       const image = pg?.image_width && pg.image_height ? { width: pg.image_width, height: pg.image_height } : null;
       return {
         photo: { id: p.id, printedRevision: p.printed_revision, active },
@@ -54,6 +67,7 @@ export function scanCropStore(db: SupabaseClient<Database>): ScanCropStore {
           printContract: pg?.print_contract ? storedPrintContract(pg.print_contract, { workbookId: p.workbook_id, page: pg.page_number, image }) : null,
           imagePath: pg?.image_path ?? null,
           qrToken: pg?.qr_token ?? null,
+          others,
           questions: (questions.data ?? []).flatMap((q) => {
             if (!pg) return [];
             const read = storedQuestion({

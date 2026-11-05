@@ -61,6 +61,7 @@ it.each([
   [{ status: "refused", reason: "page-mismatch" }, "does not match the printed page"],
   [{ status: "refused", reason: "ambiguous-page" }, "more than one page"],
   [{ status: "refused", reason: "qr-mismatch" }, "QR code"],
+  [{ status: "refused", reason: "another-page" }, "looks like a different page"],
   [{ status: "unavailable", reason: "no-contract" }, "checking is not available for this workbook"],
   [{ status: "unavailable", reason: "other-revision" }, "earlier printing"],
 ])("says so plainly: %j", async (answer, text) => {

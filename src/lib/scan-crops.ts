@@ -64,7 +64,15 @@ export type ScanPreview =
 export interface ScanFrame {
   photo: { id: string; printedRevision: string | null; active: boolean };
   book: { printedRevision: string | null };
-  page: { printContract: PagePrintContract | null; imagePath: string | null; qrToken: string | null; questions: CropQuestion[] };
+  page: {
+    printContract: PagePrintContract | null; imagePath: string | null; qrToken: string | null; questions: CropQuestion[];
+    /**
+     * The page images of the child's other printed pages of the same kind, in any of the child's printed books: the pages
+     * this photo could show instead, such as a page that differs by a few digits (#456). Calibration refuses a photo that
+     * one of them explains better anywhere.
+     */
+    others: string[];
+  };
 }
 
 export interface StoredScanCalibration {
@@ -107,6 +115,19 @@ async function decode(bytes: Uint8Array, channels: 1 | 3): Promise<Raster> {
   const { data, info } = await (channels === 1 ? image.greyscale() : image.removeAlpha().toColourspace("srgb")).raw().toBuffer({ resolveWithObject: true });
   // (A grey JPEG stays one channel when asked for three; say what the bytes really are.)
   return { width: info.width, height: info.height, channels: info.channels === 1 ? 1 : 3, data: new Uint8Array(data) };
+}
+
+/** The other pages' images, a few at a time. One that cannot be read fails the job, which a later call tries again. */
+async function otherPages(store: ScanCropStore, paths: readonly string[]): Promise<Raster[]> {
+  const out: Raster[] = [];
+  for (let i = 0; i < paths.length; i += UPLOADS_AT_ONCE) {
+    out.push(...await Promise.all(paths.slice(i, i + UPLOADS_AT_ONCE).map(async (path) => {
+      const bytes = await store.printedBytes(path);
+      if (!bytes) throw new Error("scan crops: another page's image");
+      return decode(bytes, 1);
+    })));
+  }
+  return out;
 }
 
 const encode = (r: Raster, quality: number) => sharp(Buffer.from(r.data), { raw: { width: r.width, height: r.height, channels: r.channels } }).jpeg({ quality }).toBuffer();
@@ -157,10 +178,10 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
 
   const printedBytes = frame.page.imagePath ? await store.printedBytes(frame.page.imagePath) : null;
   if (!printedBytes || await sha256Hex(printedBytes) !== contract.contract.fingerprints.image) return finished("refused", { reason: "printed-page-changed" }, 0);
-  const [photo, printed] = await Promise.all([decode(await store.photoBytes(ref), 3), decode(printedBytes, 1)]);
+  const [photo, printed, others] = await Promise.all([decode(await store.photoBytes(ref), 3), decode(printedBytes, 1), otherPages(store, frame.page.others)]);
   if (!frame.page.qrToken) return finished("refused", { reason: "qr-mismatch" }, 0);
   const writing = frame.page.questions.flatMap((q) => (q.regions ?? []).flatMap((r) => (r.box ? [r.box] : [])));
-  const result = calibratePhoto({ photo, printed, contract, pageLink: pageUrl(frame.page.qrToken), writing });
+  const result = calibratePhoto({ photo, printed, contract, pageLink: pageUrl(frame.page.qrToken), writing, others });
   if (result.status === "unavailable") return { status: "unavailable", reason: result.reason };
   if (result.status === "refused") return finished("refused", { reason: result.reason }, 0);
   const { calibration } = result;

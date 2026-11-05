@@ -1,0 +1,13 @@
+     × refuses page 5 with page 8's QR code pasted on it, which the upload reads as page 8 3961ms
+     × the job refuses page 8 lying over page 5 with its footer folded behind: page 5's code, page 8's answers 2835ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+AssertionError: expected { status: 'calibrated', …(1) } to deeply equal { status: 'refused', …(1) }
+-   "reason": "another-page",
+-   "status": "refused",
++     "pageFit": 0.985,
+AssertionError: expected { status: 'calibrated', …(1) } to deeply equal { status: 'refused', …(1) }
+-   "reason": "another-page",
+-   "status": "refused",
++     "pageFit": 0.975,
+ Test Files  1 failed (1)
+      Tests  2 failed | 1 passed | 13 skipped (16)

@@ -56,7 +56,7 @@ function setup(o: { book?: string | null; photoRevision?: string | null; contrac
       printedRevision: o.photoRevision === undefined ? REVISION : o.photoRevision,
       book: { printedRevision: book },
       page: {
-        printContract: o.contract === undefined ? contract : o.contract, imagePath: "page.png", qrToken: TOKEN,
+        printContract: o.contract === undefined ? contract : o.contract, imagePath: "page.png", qrToken: TOKEN, others: [],
         questions: o.questions ?? ANSWERS.map((a, i) => ({ number: i + 1, package: pkg(`q${i + 1}`), regions: [{ id: "a", kind: "box", box: a.box }] })),
       },
     },
