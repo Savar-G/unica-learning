@@ -216,8 +216,10 @@ describe("a wrong child answer is never accepted", () => {
       .toMatchObject({ code: "rejects_right_answer" });
     // Maya's math is only code's lines: a wrong sum cannot be said, and the line the act offers says 66. (A child who
     // quotes another answer is confirmed before 66 is accepted, R391-6, so this turn says only 66.)
-    c.child("I got 66.");
-    expect(c.refused({ act: "accept_answer", parts: [t("Your teacher is right: 27 plus 39 is 56."), ln("answer.right")], reading: { answers: [right66] } }))
+    // A fresh call: two turns in a row join into one turn of two lines, which never commits (PR #624 review round 3).
+    const d = opened();
+    d.child("I got 66.");
+    expect(d.refused({ act: "accept_answer", parts: [t("Your teacher is right: 27 plus 39 is 56."), ln("answer.right")], reading: { answers: [right66] } }))
       .toMatchObject({ code: "free_talk_in_math_turn" });
   });
 
@@ -329,7 +331,7 @@ describe("the hint ladder", () => {
     expect(c.session.state).toBe("WRITE_CLOSE");
 
     // The child repeats it correctly: the answer was still given.
-    c.child("66. I wrote 66.");
+    c.child("66, I wrote 66.");
     const { effects } = c.maya({ act: "close", parts: [t("Well done for sticking with it. Bye!")], reading: { answers: [right66], paper: "written" } });
     expect(ended(effects)).toMatchObject({ outcome: { reason: "solved", assistance: "answer_given", understanding: "uncertain", highestHint: 4 } });
     expect(learningEvent(c.session, FAMILY)).toMatchObject({ result: "right_with_help", stuckStep: "ones", mistake: null, hints: 6 });
@@ -417,7 +419,9 @@ describe("SAFETY comes before every other event", () => {
     expect(c.next).toEqual({ expect: "maya", acts: ["close"] });
     c.child("I was joking. Can we do my math? It's 66.");
     expect(c.refused({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [right66] } })).toMatchObject({ code: "safety_first" });
-    const end = ended(c.maya({ act: "close", parts: [t("Okay. Please still talk to a grown-up you trust. Bye for now.")] }).effects);
+    // The close after safety guidance is the quiet close line only, with no warm or free words (#605).
+    expect(c.refused({ act: "close", parts: [t("Okay. Please still talk to a grown-up you trust. Bye for now.")] })).toMatchObject({ code: "line_not_offered" });
+    const end = ended(c.maya({ act: "close", parts: [ln("close.safety")] }).effects);
     expect(end).toMatchObject({ outcome: { reason: "safety", safetyFlag: true, safetySeverity: "concern" }, safetyMessage: SAFETY_GUIDANCE.concern });
   });
 

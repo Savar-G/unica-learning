@@ -749,32 +749,82 @@ function workingHidesAnswer(dropped: string[], final: AnswerValue | null, known:
 }
 
 /**
- * The results of false equations the child states: a clause with an operation, a result word and a result that is not
- * that operation's true result ("7 plus 9 is 6", "7 and 9 make 6", "7 + 9 = 6"). Such a result is never right for a step
- * (PR #624 review). A clause with a place word ("16 is 1 ten and 6 ones") is not an equation.
+ * The results of false equations the child keeps (PR #624 review rounds 2 and 3): a result word ("is", "are",
+ * "equals", "makes", "gives", "=") with the number right after it, after a chain of numbers joined by operation words
+ * right before it ("7 plus 9 is 6 and I carry the 1", "seven and nine make sixteen"), where the result is not that
+ * operation's true result. Read on the words a take-back or a negative left (retainedText), word by word: a number on
+ * its own before a result word ("16 is 1 ten") is no equation.
  */
-const RESULT_WORD = /\b(?:is|are|equals?|makes?|gives?)\b|=/i;
 export function falseEquationResults(text: string, options?: ReadOptions): AnswerValue[] {
   const out: AnswerValue[] = [];
-  for (const clause of prepared(text, options).split(/[.!?;,\n]+|\bso\b|\bthen\b/i)) {
-    if (!RESULT_WORD.test(clause)) continue;
-    const r = readNumbers(clause);
-    const n = r.values.length;
-    if (n < 3 || r.unreadable || r.notAnswer.some(Boolean) || r.operand[n - 1] || !r.operand.some(Boolean)) continue;
-    if (r.values.some((v) => v.type !== "number")) continue;
-    // The equation is the chain of numbers joined by operation words just before the result: "I got 66 because seven
-    // and nine make sixteen" is 7 + 9 = 16, not 66 + 7 + 9.
-    let start = n - 2;
-    while (start > 0 && r.operand[start]) start--;
-    if (start === n - 2) continue;
-    const before = r.values.slice(start, -1).map((v) => (v as { value: number }).value);
-    const kinds = [WORK_ADD.test(clause), WORK_SUBTRACT.test(clause), WORK_MULTIPLY.test(clause)];
-    if (kinds.filter(Boolean).length !== 1) continue;
-    const truth = kinds[0] ? before.reduce((a, b) => a + b, 0) : kinds[1] ? before.slice(1).reduce((a, b) => a - b, before[0]) : before.reduce((a, b) => a * b, 1);
-    const last = r.values[n - 1] as { type: "number"; value: number };
-    if (last.value !== truth) out.push(last);
+  const tokens = numberTokens(retainedText(text, options));
+  tokens.forEach((t, i) => {
+    if (t.kind !== "result") return;
+    const after = tokens[i + 1];
+    if (!after || after.kind !== "number") return;
+    // The chain right before the result word: number (op number)+.
+    const chain: number[] = [];
+    let op: "add" | "subtract" | "multiply" | null = null;
+    let j = i - 1;
+    while (j >= 0 && tokens[j].kind === "number") {
+      chain.unshift((tokens[j] as { value: number }).value);
+      const before = tokens[j - 1];
+      if (!before || before.kind !== "op") break;
+      if (op !== null && op !== before.op) return;
+      op = before.op;
+      j -= 2;
+    }
+    if (op === null || chain.length < 2) return;
+    const truth = op === "add" ? chain.reduce((x, y) => x + y, 0) : op === "subtract" ? chain.slice(1).reduce((x, y) => x - y, chain[0]) : chain.reduce((x, y) => x * y, 1);
+    if (after.value !== truth) out.push({ type: "number", value: after.value });
+  });
+  return out;
+}
+
+type NumberToken = { kind: "number"; value: number } | { kind: "op"; op: "add" | "subtract" | "multiply" } | { kind: "result" } | { kind: "word" };
+const OP_WORDS: Record<string, "add" | "subtract" | "multiply"> = { plus: "add", "+": "add", and: "add", minus: "subtract", "−": "subtract", "-": "subtract", times: "multiply", "×": "multiply", x: "multiply" };
+const RESULT_WORDS = new Set(["is", "are", "equals", "equal", "make", "makes", "gives", "give", "="]);
+
+/** The words of a text as numbers ("twenty six" is 26), operation words, result words and other words. */
+function numberTokens(text: string): NumberToken[] {
+  const words = text.toLowerCase().replace(/[’]/g, "'").replace(/(\d)\s*([+=×−])\s*/g, "$1 $2 ").replace(/([+=×−])\s*(\d)/g, "$1 $2")
+    .replace(/(?<=[a-z])-(?=[a-z])/g, " ").split(/[^a-z0-9+=×−'.-]+/).filter(Boolean).map((w) => w.replace(/[.']+$/, ""));
+  const out: NumberToken[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (/^\d+$/.test(w)) { out.push({ kind: "number", value: Number(w) }); continue; }
+    const v = wordValue(w);
+    // "1 ten", "6 ones": a place word after a number names its place, so it joins no chain.
+    if (/^(?:ten|tens|one|ones|hundred|hundreds)$/.test(w) && out.at(-1)?.kind === "number") { out.push({ kind: "word" }); continue; }
+    if (v !== null) {
+      // "twenty six": a ten word and a unit word make one number.
+      const next = words[i + 1] !== undefined ? wordValue(words[i + 1]) : null;
+      if (kindOf(w) === "ten" && next !== null && next < 10) { out.push({ kind: "number", value: v + next }); i++; continue; }
+      out.push({ kind: "number", value: v });
+      continue;
+    }
+    if (w === "take" && words[i + 1] === "away") { out.push({ kind: "op", op: "subtract" }); i++; continue; }
+    if (OP_WORDS[w]) { out.push({ kind: "op", op: OP_WORDS[w] }); continue; }
+    if (RESULT_WORDS.has(w)) { out.push({ kind: "result" }); continue; }
+    out.push({ kind: "word" });
   }
   return out;
+}
+
+/** Where a sentence ends: an end mark before a space or the end ("0.85" is one number), a semicolon or a new line. */
+const SENTENCE_END = /[.!?]+(?=\s|$)|[;\n]+/;
+
+/** The words the child kept: after the last take-back, without what their negatives take back (#605). */
+export function retainedText(said: string, options?: ReadOptions): string {
+  return withoutNegated(committedText(prepared(said, options))).text;
+}
+
+/**
+ * The child's sentences that hold a number, in the words they kept (retainedText): a turn commits a final answer only
+ * when it has exactly one (PR #624 review round 3), so no clause can hide another answer.
+ */
+export function numberSentences(said: string, options?: ReadOptions): string[] {
+  return retainedText(said, options).split(SENTENCE_END).filter((x) => { const r = readNumbers(x); return r.values.length > 0 || r.unreadable; });
 }
 
 /** Reads clauses in order: whether each clause that holds an answer stands as one, or is working after an answer. */
@@ -902,9 +952,18 @@ const EXPLANATION_ALL = /\b(?:because|since|cause|cuz|coz)\b/gi;
  * explanation runs to the end of the turn), so Maya asks again rather than guess.
  */
 export function readAnswer(said: string, options?: ReadOptions): AnswerRead {
+  return readAnswerParts(said, options).read;
+}
+
+/**
+ * readAnswer, and whether the final answer would be sure apart from the one-sentence rule (`sureApart`): a correction
+ * that restates the accepted answer with its working ("Actually 66. 7 plus 9 is 16.") keeps that answer standing, and
+ * never commits a new one (takenBack).
+ */
+function readAnswerParts(said: string, options?: ReadOptions): { read: AnswerRead; sureApart: boolean } {
   const text = prepared(said, options);
   const committed = committedText(text);
-  if (offersChoice(committed)) return { kept: [], final: null, choice: true, sure: false, outside: [] };
+  if (offersChoice(committed)) return { read: { kept: [], final: null, choice: true, sure: false, outside: [] }, sureApart: false };
   // What a negative takes back is gone (#605): the rest of the turn is read as usual.
   const stated = withoutNegated(committed).text;
   const all = readNumbers(stated);
@@ -919,9 +978,16 @@ export function readAnswer(said: string, options?: ReadOptions): AnswerRead {
   const kept = unclear ? [] : all.unreadable ? answer.values : all.values;
   // Sure: no negative beside a number (R391-3), no doubt anywhere from the first number on, and the final answer stands
   // only among plain answer words. The explanation is read too, so nothing can hide behind "because" (R391-8-2).
-  const sure = !unclear && !workingHidesAnswer(working.dropped, final, options?.known ?? []) && !negativeNearAnswer(text) && (!options?.fractions || !answer.unreadable) && !doubtNearAnswer(text) && committedFinal(withoutExplanations(committed)) && plainExplanations(committed);
-  return { kept, final, choice: false, sure, outside: unclear ? [] : answer.values };
+  const sureApart = !unclear && !workingHidesAnswer(working.dropped, final, options?.known ?? []) && !negativeNearAnswer(text) && (!options?.fractions || !answer.unreadable) && !doubtNearAnswer(text) && committedFinal(withoutExplanations(committed)) && plainExplanations(committed);
+  // PR #624 review round 3: a turn commits a final answer only with exactly one sentence that holds a number, in the
+  // words the child kept. Any other turn with numbers is confirmed in code's words, or Maya asks which one they mean.
+  const sure = sureApart && stated.split(SENTENCE_END).filter((x) => { const r = readNumbers(x); return r.values.length > 0 || r.unreadable; }).length === 1;
+  return { read: { kept, final, choice: false, sure, outside: unclear ? [] : answer.values }, sureApart };
 }
+
+/** The child's turn shows doubt about its answer: a doubt word or a question mark from its first number on (R391-5). */
+export const showsDoubt = (said: string, options?: ReadOptions) =>
+  doubtNearAnswer(prepared(said, options)) || /\b(?:not (?:so |really |very )?sure|no (?:idea|clue)|don'?t know if)\b/i.test(said.replace(/’/g, "'"));
 
 /**
  * The final answer among the numbers read: the last one that can be an answer (not a column's digits, "6 tens", and
@@ -971,8 +1037,10 @@ export function takenBack(said: string, options?: ReadOptions): { kept: AnswerVa
   });
   if (!before && after.values.length === 0 && !after.unreadable) return null;
   // An unclear correction anywhere puts nothing in place: what was said is taken back, and Maya asks (R391-2).
-  const read = readAnswer(last);
-  return { kept: unclearCorrection(text) || negativeNearAnswer(text) || !read.sure ? null : read.final };
+  // Read with the question's own numbers (PR #624 review round 3), and sure apart from the one-sentence rule: a
+  // restatement keeps the answer only when it is right for the question (the caller), so it never commits a new one.
+  const { read, sureApart } = readAnswerParts(last, options);
+  return { kept: unclearCorrection(text) || negativeNearAnswer(text) || !sureApart ? null : read.final };
 }
 
 /** Plain yes words, as a whole turn: "Yes.", "Yep, that's it.", "Uh huh." A number, a question mark or any doubt is not one. */
@@ -1046,6 +1114,36 @@ export function additionSetup(sentence: string): number[] | null {
     i++;
   }
   return operands.length >= 2 ? operands : null;
+}
+
+/**
+ * The child says they are done (#605, Savar 2026-11-06), in a sentence of its own: "I'm done", "I'm finished", "All
+ * done!", "Okay, I'm done with it". Every other sentence holds no number but the answer that stands; the turn has no
+ * question and no negative. Any other turn is not read as done.
+ */
+const DONE_SENTENCE = /^(?:(?:okay|ok|yay|yes|yeah|um+|so|and|well|alright|all right|hooray|woohoo)[\s,!]+)*(?:(?:i'?m|i am|we'?re|we are) )?(?:all )?(?:done|finished)(?: (?:now|with (?:it|this|that|this one|that one|the question|my question|the problem)))?$/;
+export function saysDone(text: string, options?: ReadOptions, answer?: AnswerValue): boolean {
+  if (text.includes("?") || NEGATIVE.test(text)) return false;
+  const sentences = text.toLowerCase().replace(/[’]/g, "'").split(/[.!,\n]+/).map((x) => x.trim().replace(/\s+/g, " ")).filter(Boolean);
+  let done = false;
+  for (const sentence of sentences) {
+    if (DONE_SENTENCE.test(sentence)) {
+      done = true;
+      continue;
+    }
+    const r = readNumbers(prepared(sentence, options));
+    if (r.unreadable || r.values.some((v) => !answer || JSON.stringify(v) !== JSON.stringify(answer))) return false;
+  }
+  return done;
+}
+
+/**
+ * The child says, in the first person, that they guessed: "I guessed", "I just guessed it", "It was a guess", "I'm just
+ * guessing" (#605). "I guess it's 66" is a hedge, not a guess. A sentence with a negative ("I didn't guess") is not one.
+ */
+const GUESS_SENTENCE = /\b(?:i|i've|i have|i'm|i am)\s+(?:just\s+|only\s+|kind of\s+|kinda\s+)?(?:guessed|guessing)\b|\b(?:it was|that was|just)\s+a\s+(?:lucky\s+)?guess\b/;
+export function saysGuess(text: string): boolean {
+  return text.toLowerCase().replace(/[’]/g, "'").split(/[.!?\n]+/).some((x) => GUESS_SENTENCE.test(x) && !NEGATIVE.test(x));
 }
 
 /** The text offers numbers as a choice ("is it 66 or 56?"): none of them is the child's answer yet. */

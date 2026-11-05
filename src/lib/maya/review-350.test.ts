@@ -188,7 +188,7 @@ describe("F6: board objects keep their role (modelBoard)", () => {
 describe("F7: the expanded question contract", () => {
   it("teaches a long multiplication", () => {
     const c = call(packageOf({ kind: "multiply", operands: [47, 23] }, num(1081), { kind: "multiply", operands: [47, 3] }, num(141), "5.6"));
-    c.child("7 times 3 is 21. I got 1081.");
+    c.child("7 times 3 is 21, so I got 1081.");
     expect(c.propose({ act: "accept_answer", parts: [t("Yes, how did you get it?")], reading: { answers: [{ value: num(21), step: "r1-ones", verdict: "right" }, { value: num(1081), step: "result", verdict: "right" }] } }).refusal).toBeNull();
   });
 

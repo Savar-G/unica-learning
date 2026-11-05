@@ -283,6 +283,8 @@ describe("#605 item 4: Maya is offered only the board she may draw", () => {
 });
 
 describe("#605 item 5: an explanation after the answer does not replace it, and 'sure' is not doubt", () => {
+  // PR #624 review round 3: two sentences that hold numbers never commit on their own. The final answer is still 66
+  // (the working after it does not replace it), and Maya confirms it before she accepts it.
   it.each([
     "Oh, I got 66! 6 in the ones and 6 in the tens.",
     "I got 66. Six in the ones, six in the tens.",
@@ -290,12 +292,17 @@ describe("#605 item 5: an explanation after the answer does not replace it, and 
     "I got 66. I carried the ten, and I already wrote it on my paper.",
     "Okay. I got 66. Seven plus nine is sixteen, so I carry the ten.",
     "I think it's 66. I wrote 6 and then 6.",
+    "It's 66! 27 plus 39 is 66.",
+  ])("%j keeps 66 as the final answer, not sure: Maya confirms it", (text) => {
+    expect(readAnswer(text, readOptionsFor(ADD as OperationPackage))).toMatchObject({ final: num(66), sure: false });
+  });
+
+  it.each([
     "I'm sure it's 66.",
     "I'm sure it's 66. I checked the tens and ones.",
     "I got 66, with carrying.",
     "I wrote 66 on my paper already.",
     "It's 66. I already wrote it on my paper.",
-    "It's 66! 27 plus 39 is 66.",
   ])("%j gives a sure 66", (text) => {
     // Read as the controller reads it, with the question's own numbers (PR #624 review: 16 is 7 + 9 of this question).
     expect(readAnswer(text, readOptionsFor(ADD as OperationPackage))).toMatchObject({ final: num(66), sure: true });
@@ -520,7 +527,7 @@ describe("#605 practice run 1: a child who says the step's own setup hears it sa
     expect(c.maya(operation)).toContain("2 + 3 + 1");
     expect(c.session.hints).toBe(0);
     expect(c.session.ladder.hint).toBe(0);
-    c.child("Six. So 66.");
+    c.child("Six, so 66.");
     c.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [ans(6, "tens", "right"), ans(66, "result", "right")] } });
     expect(c.session.assistance).not.toContain("hint");
   });
@@ -627,7 +634,7 @@ describe("#605 practice run 2: an ask to write with no understanding field is re
     const c = call();
     c.child("It's 66.");
     c.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { start: "has_work", answers: [ans(66, "result", "right")] } });
-    c.child("I'm done! Thanks, Maya.");
+    c.child("Okay.");
     const r = c.propose({ act: "ask_write", parts: [ln("write.answer")] });
     expect(r.refusal, JSON.stringify(r.refusal)).toBeNull();
     expect(said(r.effects)).toContain("66");
@@ -671,13 +678,15 @@ describe("PR #624 review 2: dropped working never hides another answer (fails cl
     "I got 66. 7 plus 9 is 16.",
     "I got 66. Seven plus nine is sixteen, so I carry the ten.",
     "I got 66. 2 plus 3 plus 1 is 6.",
-  ])("still accepts 66 from %j (the working is the question's own, or sums to 66)", (text) => {
-    const { r } = accept66(text);
-    expect(r.refusal, JSON.stringify(r.refusal)).toBeNull();
+  ])("keeps 66 as the final of %j, and confirms it before accepting it (two sentences with numbers, review round 3)", (text) => {
+    const { c, r } = accept66(text);
+    expect(r.refusal?.code).toBe("answer_not_committed");
+    expect(readAnswer(text, readOptionsFor(ADD as OperationPackage)).final).toEqual(num(66));
+    expect(c.acts).toContain("confirm");
   });
   it("is not sure of a final when dropped working holds another candidate", () => {
     expect(readAnswer("I got 66. I added 20 and 30 and 6 so my final is 56.").sure).toBe(false);
-    expect(readAnswer("I got 66. I added 20 and 40 and 6.").sure).toBe(true);
+    expect(readAnswer("I got 66, I added 20 and 40 and 6.", readOptionsFor(ADD as OperationPackage)).sure).toBe(true);
   });
 });
 
@@ -699,5 +708,150 @@ describe("PR #624 review 2: a wrong equation in the child's words is not a right
   it.each(["7 plus 9 is 16.", "6, carry the 1.", "I wrote 6 and carried 1.", "I put 6 in the ones.", "6"])("still takes %j as the right ones step", (text) => {
     const r = ones(text, "right");
     expect(r.refusal, JSON.stringify(r.refusal)).toBeNull();
+  });
+});
+
+describe("PR #624 review round 3: only one sentence with numbers commits a final answer", () => {
+  const accept66 = (text: string) => {
+    const c = call();
+    c.child(text);
+    return { c, r: c.propose({ act: "accept_answer", parts: [ln("answer.right")], reading: { start: "has_work", answers: [ans(66, "result", "right")] } }) };
+  };
+  it.each(["66", "I got 66.", "It's 66, I'm sure.", "So 66!", "I got 66, with carrying."])("commits %j: one sentence with numbers", (text) => {
+    expect(accept66(text).r.refusal).toBeNull();
+  });
+  it.each(["I got 66. My answer is 66.", "66. 66.", "I got 66.\n66", "It's 66. I'm sure it's 66."])("confirms %j: two sentences that agree still do not commit", (text) => {
+    const { c, r } = accept66(text);
+    expect(r.refusal?.code).toBe("answer_not_committed");
+    expect(c.session.solved).toBeNull();
+    expect(c.acts).toContain("confirm");
+  });
+  it("asks which one when two sentences differ", () => {
+    const { c, r } = accept66("I got 56. I got 66.");
+    expect(r.refusal).not.toBeNull();
+    expect(c.session.solved).toBeNull();
+  });
+  it("commits after a plain yes to Maya's confirmation", () => {
+    const { c } = accept66("I got 66. My answer is 66.");
+    c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "66" })] });
+    c.child("Yes.");
+    expect(c.propose({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [ans(66, "result", "right")] } }).refusal).toBeNull();
+    expect(c.session.solved).toBe("child");
+  });
+  it("never lets two sentences of steps mark a step right with another number beside it", () => {
+    const c = call();
+    c.child("7 plus 9 is 16, I wrote 5.");
+    expect(c.propose({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { answers: [ans(16, "ones", "right")] } }).refusal).not.toBeNull();
+  });
+});
+
+describe("#605 Maya's new lines (Savar 2026-11-06: conversational and human-like)", () => {
+  const accept = { act: "accept_answer" as const, parts: [ln("answer.right")], reading: { answers: [ans(66, "result", "right")] } };
+  const confirmed = (yes: string) => {
+    const c = call();
+    c.child("Is it 66?");
+    c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "66" })] });
+    c.child(yes);
+    return c;
+  };
+
+  it("a guessed right answer gets one light check, never a third confirmation, and no hint is counted", () => {
+    const c = confirmed("Yes, I guessed 66.");
+    expect(c.propose(accept).refusal?.code).toBe("answer_not_committed");
+    expect(c.acts).not.toContain("confirm");
+    const words = c.maya({ act: "guide", step: "ones", level: 2, parts: [ln("check.guess"), ln("step.operation", { step: "ones" })] });
+    expect(words).toMatch(/guess/i);
+    expect(words).toContain("7 + 9");
+    expect(c.session.hints).toBe(0);
+  });
+
+  it("a yes said with doubt gets 'Let's check it together', not a second 'Did you say'", () => {
+    const c = confirmed("Yes, I said 66. I'm not sure it's right.");
+    expect(c.propose(accept).refusal).not.toBeNull();
+    expect(c.acts).not.toContain("confirm");
+    const words = c.maya({ act: "guide", step: "ones", level: 0, parts: [ln("check.together"), ln("step.invite", { step: "ones" })] });
+    expect(words).toMatch(/check it/i);
+    // Code's own fallback does the same.
+    const d = confirmed("Yes, I said 66. I'm not sure it's right.");
+    expect(d.firstFallback([accept, accept]).proposal.parts.map((p) => ("line" in p ? p.line : null))).toContain("check.together");
+  });
+
+  it("never offers a check lead-in for a sure answer, or for a wrong one", () => {
+    const c = call();
+    c.child("I got 66.");
+    expect(c.propose({ act: "guide", step: "ones", level: 0, parts: [ln("check.together"), ln("step.invite", { step: "ones" })] }).refusal?.code).toBe("line_not_offered");
+    const d = call();
+    d.child("Maybe 56?");
+    expect(d.propose({ act: "guide", step: "ones", level: 0, parts: [ln("check.together"), ln("step.invite", { step: "ones" })] }).refusal?.code).toBe("line_not_offered");
+  });
+
+  it("after the answer stands, 'I just guessed' gets the light check, and the guess is never evidence of understanding", () => {
+    const c = call();
+    c.child("I got 66.");
+    c.maya(accept);
+    c.child("I just guessed!");
+    expect(c.propose({ act: "ask_write", parts: [ln("check.guess"), ln("check.thinking")], understanding: "evidence_observed" }).refusal?.code).toBe("invalid_proposal");
+    expect(c.maya({ act: "ask_write", parts: [ln("check.guess"), ln("check.thinking")], understanding: "uncertain" })).toMatch(/guess/i);
+    expect(c.session.understanding).toBe("uncertain");
+  });
+
+  it("a right answer with a wrong reason keeps the answer and fixes the step with code's equation", () => {
+    const c = call();
+    c.child("I got 66.");
+    c.maya(accept);
+    c.child("7 plus 9 is 15.");
+    const words = c.maya({ act: "ask_write", parts: [ln("check.fix", { step: "ones" }), ln("write.answer")], understanding: "uncertain", reading: { answers: [ans(15, "ones", "wrong")] } });
+    expect(words).toContain("7 + 9 = 16");
+    expect(words).toMatch(/right|stays/);
+    expect(c.session.solved).toBe("child");
+    // Only after code checked that step wrong.
+    const d = call();
+    d.child("I got 66.");
+    d.maya(accept);
+    d.child("Okay.");
+    expect(d.propose({ act: "ask_write", parts: [ln("check.fix", { step: "ones" }), ln("write.answer")], understanding: "uncertain" }).refusal).not.toBeNull();
+  });
+
+  it("explains a carry a second way (ten ones make one ten) only after the regroup line was said", () => {
+    const c = call();
+    c.child("16 for the ones. 2 plus 3 is 5.");
+    expect(c.propose({ act: "guide", step: "tens", level: 1, parts: [ln("step.why", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right"), ans(5, "tens", "wrong")] } }).refusal?.code).toBe("line_not_offered");
+    c.maya({ act: "guide", step: "tens", level: 1, parts: [ln("step.regroup", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right"), ans(5, "tens", "wrong")] } });
+    c.child("Why does the 1 go to the tens?");
+    const words = c.maya({ act: "guide", step: "tens", level: 1, parts: [ln("step.why", { step: "tens" })] });
+    expect(words).toMatch(/10 ones|Ten ones|16 ones/);
+    expect(words).toMatch(/ten/);
+  });
+
+  it("answers 'I take the smaller from the bigger' with the order of a subtraction, from code's numbers", () => {
+    const c = call(SUBTRACT);
+    c.child("I take the smaller from the bigger. 8 minus 2 is 6.");
+    const words = c.maya({ act: "guide", step: "ones", level: 1, parts: [ln("step.order", { step: "ones" })], reading: { start: "has_work", answers: [ans(6, "ones", "wrong")] } });
+    expect(words).toMatch(/2|8/);
+    expect(words).not.toContain("24");
+  });
+
+  it.each(["I'm done!", "Yay! I'm done. Thanks, Maya!", "All done.", "Okay, I'm finished with it.", "I'm done, I got 66."])("closes warmly after %j once the answer stands", (done) => {
+    const c = call();
+    c.child("I got 66.");
+    c.maya(accept);
+    c.child(done);
+    expect(c.acts).toEqual(["close"]);
+    expect(c.maya({ act: "close", parts: [ln("close.solved")] })).toContain("27 + 39");
+  });
+
+  it.each(["I'm done writing.", "I'm not done.", "Am I done?", "I'm done with 27 + 39.", "Okay."])("keeps the check after %j", (turn) => {
+    const c = call();
+    c.child("I got 66.");
+    c.maya(accept);
+    c.child(turn);
+    expect(c.acts).not.toEqual(["close"]);
+  });
+
+  it("never praises wrong work in 'not yet'", () => {
+    const c = call();
+    c.child("I got 56.");
+    const offers = lineOffers(c.session).guide ?? [];
+    for (const o of offers.filter((x) => x.line === "check.not_yet")) for (const t of o.texts) expect(t).not.toMatch(/Almost|Close!|Good try/);
   });
 });
