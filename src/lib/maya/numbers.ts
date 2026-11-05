@@ -98,6 +98,9 @@ export interface NumbersRead {
  * "negative" before a number makes it negative; "minus" or "-" after a number in the same sentence is a subtraction.
  * A sentence end or a new line (between two turns) ends a number, so "27. -66." is 27 and -66.
  */
+/** The words after "to the" that name a place on the page, never a value: "to the tens", "to the top", "to the next column". */
+const TO_THE_PLACE = /^(?:ones?|tens?|hundreds?|thousands?|tenths?|hundredths?|thousandths?|top|bottom|left|right|next|column|columns|side|front|end|row|board|paper|page)$/;
+
 export function readNumbers(text: string, options?: ReadOptions): NumbersRead {
   text = prepared(text, options);
   if (text.includes(UNREAD_MARK)) return { values: [], unreadable: true, lastInOperation: false, notAnswer: [], operand: [] };
@@ -183,8 +186,10 @@ export function readNumbers(text: string, options?: ReadOptions): NumbersRead {
       i += 2;
       continue;
     }
+    // "66 to the power of 2" is a form code does not read. "Carry the 1 to the tens" names a place (#605: a clear
+    // carry was confirmed as if unclear): "to the" before a place or position word is a location, read as nothing.
     if (token === "to" && next === "the" && (afterNumber || last !== null)) {
-      unreadable = true;
+      if (!TO_THE_PLACE.test(tokens[i + 2] ?? "")) unreadable = true;
       continue;
     }
     if (FILLER.test(token)) continue;

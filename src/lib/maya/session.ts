@@ -782,7 +782,9 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   // checking, was that 66?" after "You got it!"). An unclear turn still gets its two confirmations (gate).
   // A doubtful yes to "Did you say 66?" that says 66 again gets a check of the work, never another "Did you say" (#605).
   const again = s.heardAsked != null && s.turn !== null && s.package !== null && sameFinal(s, s.heardAsked) && doubtfulRight(s);
-  const confirm: Act[] = s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !again ? ["confirm"] : [];
+  // ...and only for what was not clear (#605: "I carry the 1 to the tens" got "Was that 1?"): a turn code or the model
+  // read as unclear, numbers speech heard two ways, a choice, or a final answer the child is not sure of.
+  const confirm: Act[] = s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !again && notClear(s, reading) ? ["confirm"] : [];
   if (s.state === "TIME_CLOSE") {
     const acts: Act[] = s.solved !== null ? (s.writeAsked ? ["close"] : ["ask_write", "close"])
       : rightResult ? ["accept_answer", "close"] : ["give_answer", "ask_write", "close"];
@@ -852,6 +854,11 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
     };
   }
   acts = [...acts, ...confirm.filter((a) => !acts.includes(a))];
+  // Offered before the reading: a turn with no number may be off topic (flattery, a promise, a question about Maya), so
+  // the model sees the redirect and its reply phrases. Before #605 it saw them through the confirmation offered on every
+  // turn; a clear turn has none now. The redirect still needs the reading to say off topic.
+  const teaching = acts.some((x) => ["accept_answer", "guide", "try_target", "example_step", "clarify", "ask_write"].includes(x));
+  if (offering && teaching && s.turn && s.package && valuesIn(s.turn.text, readOptionsFor(s.package)).length === 0 && !acts.includes("redirect")) acts = [...acts, "redirect"];
   const why = noStart && !s.retried ? " The child could not start: show the whole easier example, then hand the question back."
     : main === "ASSESS" && !progress && !acts.includes("example_step") ? " The easier example is only for a child who cannot start (reading.start no_start) or asks for help." : "";
   return { acts, code: "act_not_allowed", reason: `In ${s.state} Maya may: ${acts.join(", ") || "nothing yet"}.${why}` };
@@ -1515,6 +1522,23 @@ function ownSentences(pkg: OperationPackage, step: WorkedStep, value: AnswerValu
     if (!r.values.some((v) => saidAs(v, value))) return true;
     return !r.unreadable && r.values.every((v, i) => r.notAnswer[i] || (v.type === "number" && own.has(v.value)) || saidAs(v, value) || saidAs(v, pkg.answer.value));
   });
+}
+
+/**
+ * What the child said is not clear enough to go on without asking (#605): the turn is uncertain (a form code cannot
+ * read, or the adapter said so), the model read it as unclear, speech heard it two ways since Maya last spoke, it offers
+ * a choice, or it holds a final answer the child is not sure of (doubt, or more than one sentence with numbers). A clear
+ * step or a digit the child points at ("I carry the 1 to the tens") is none of these: Maya goes on.
+ */
+function notClear(s: Session, reading: Reading): boolean {
+  if (!s.turn) return false;
+  if (s.turn.uncertain || reading.unclear) return true;
+  const last = s.turns.map((t) => t.speaker).lastIndexOf("maya");
+  if (s.turns.slice(last + 1).some((t) => t.speaker === "child" && (t.alternatives?.length ?? 0) > 0)) return true;
+  const read = readAnswer(s.turn.text, readOptionsFor(s.package));
+  // A hedge ("I think it's 66", "maybe", a question) is not clear either, though the reader may find it sure.
+  const hedged = showsDoubt(s.turn.text, readOptionsFor(s.package)) || /\b(?:i think|i guess|i believe|probably|maybe|might be)\b/i.test(s.turn.text);
+  return read.choice || (read.final !== null && (!read.sure || hedged));
 }
 
 /** The child's final answer in this turn is this number ("Yes, I said 66. I'm not sure."). */

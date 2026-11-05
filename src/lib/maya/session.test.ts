@@ -485,16 +485,21 @@ describe("CONFIRM_HEARD", () => {
   });
 
   it("does not offer a third confirmation in a row of a clear turn, nor one after the answer is accepted (practice runs 5 and 6)", () => {
+    // A clear turn gets no confirmation at all (#605: "I carry the 1" got "Was that 1?").
     const c = opened();
     c.child("7 plus 9 is 16.");
-    expect(c.next.acts).toContain("confirm");
-    c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "16" })] });
-    c.child("Yeah, 16.");
-    expect(c.next.acts).toContain("confirm");
-    c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "16" })] });
-    c.child("Yes, sixteen!");
     expect(c.next.acts).not.toContain("confirm");
     expect(c.refused({ act: "confirm", parts: [ln("confirm.heard", { heard: "16" })] })).toMatchObject({ code: "act_not_allowed" });
+    // A turn that is not clear gets two at most.
+    const b = opened();
+    b.child("Is it 56?");
+    expect(b.next.acts).toContain("confirm");
+    b.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "56" })] });
+    b.child("Maybe 56?");
+    expect(b.next.acts).toContain("confirm");
+    b.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "56" })] });
+    b.child("Maybe 56?");
+    expect(b.next.acts).not.toContain("confirm");
     const d = opened();
     d.child("66");
     d.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [right66] } });

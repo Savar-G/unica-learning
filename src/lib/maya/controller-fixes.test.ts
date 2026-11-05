@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  createSession, drawOffers, fallbacks, lineOffers, nextActs, readAnswer, readOptionsFor, scopeReason, step,
+  createSession, drawOffers, fallbacks, feelingClaim, freeTalkProblem, lineOffers, NEVER_SAY, nextActs, NOT_OK_TALK, OK_TALK, PHRASES, readAnswer, readNumbers, readOptionsFor, scopeReason, step,
   type Effect, type LineId, type Proposal, type Reading, type SessionEvent, type Slots,
 } from "@/lib/maya";
 import { workedSteps, type OperationPackage, type QuestionPackage } from "@/lib/question-package";
@@ -63,6 +63,7 @@ function call(pkg: QuestionPackage = ADD, input: { grade?: number } = {}) {
     get session() { return session; },
     get acts() { return nextActs(session).acts; },
     child(text: string) { clock += 4000; return send({ type: "child_turn", at: clock, text }); },
+    send(event: SessionEvent) { clock = Math.max(clock, event.at); return send(event); },
     tick(seconds: number) { clock += seconds * 1000; return send({ type: "tick", at: clock }); },
     propose(p: Draft) { return send({ type: "proposal", at: clock, proposal: { version: 2, ...p } }); },
     fallback(p: Proposal) { return send({ type: "proposal", at: clock, proposal: p, fallback: true }); },
@@ -853,5 +854,58 @@ describe("#605 Maya's new lines (Savar 2026-11-06: conversational and human-like
     c.child("I got 56.");
     const offers = lineOffers(c.session).guide ?? [];
     for (const o of offers.filter((x) => x.line === "check.not_yet")) for (const t of o.texts) expect(t).not.toMatch(/Almost|Close!|Good try/);
+  });
+});
+
+describe("#605 a clear carry goes straight on: no 'Did you say 1?' (F01-r3, F02-r3, F03-r2, C10-r1)", () => {
+  const onTens = () => {
+    const c = call();
+    c.child("Seven plus nine is sixteen.");
+    c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right")] } });
+    return c;
+  };
+  it.each(["I carry the 1 to the tens.", "I carry the ten to the tens place.", "I write the 6 down and carry the 1 to the tens.", "Yes, I carry the 1 ten to the tens."])("offers no confirmation after %j", (turn) => {
+    const c = onTens();
+    c.child(turn);
+    expect(c.acts).not.toContain("confirm");
+    expect(c.propose({ act: "confirm", parts: [ln("confirm.heard", { heard: "1" })] }).refusal).not.toBeNull();
+  });
+  it.each(["Is it 66?", "Maybe 56.", "I got 66. My answer is 66.", "66 or 56?"])("still offers a confirmation after %j (not sure)", (turn) => {
+    const c = call();
+    c.child(turn);
+    expect(c.acts).toContain("confirm");
+  });
+  it("still confirms what speech heard two ways", () => {
+    const c = call();
+    c.send({ type: "child_turn", at: T0 + 4000, text: "15", alternatives: ["50"] });
+    expect(c.acts).toContain("confirm");
+  });
+});
+
+describe("#605 '66 to the power of 2' is still a form code does not read", () => {
+  it("keeps 'to the power' unreadable while 'to the tens' is a place", () => {
+    expect(readNumbers("66 to the power of 2").unreadable).toBe(true);
+    expect(readNumbers("I carry the 1 to the tens.").unreadable).toBe(false);
+  });
+});
+
+describe("#605 Maya claims no feelings (C24-r2: 'I had fun working with you' passed the guards and the review)", () => {
+  it.each(["I had fun working with you.", "I'm so happy you're here!", "I love hearing about dogs!", "I feel excited today.", "I enjoyed this.", "I'm really proud of you!"])("the free-talk guard refuses %j", (line) => {
+    expect(freeTalkProblem(line)).toMatch(/feeling/);
+  });
+  it.each(["I'm glad you told me.", "Thanks for working on this with me.", "Oh, that sounds fun!", "I'm sorry you feel sad."])("the free-talk guard still allows %j", (line) => {
+    expect(freeTalkProblem(line, null, ["I'm sad today."])).toBeNull();
+  });
+  it("no bank phrase claims a feeling, and the close bank has warm lines with none", () => {
+    for (const [group, phrases] of Object.entries(PHRASES)) for (const p of phrases) expect(feelingClaim(p), `${group}: ${p}`).toBeNull();
+    expect(PHRASES.closing).toContain("Thanks for working on this with me.");
+    expect(PHRASES.closing).toContain("You stuck with it. Nice work today.");
+  });
+  it("the free-talk review is told that feelings are never said", () => {
+    expect(NEVER_SAY.map((e) => e.id)).toContain("feelings");
+    // The review is told with its own example; the code guard refuses the line before the review (so it is no review-only case).
+    expect(NEVER_SAY.find((e) => e.id === "feelings")?.examples).toContain("I had fun working with you.");
+    expect(NOT_OK_TALK.every((x) => feelingClaim(x.line) === null)).toBe(true);
+    for (const x of OK_TALK) expect(feelingClaim(x.line), x.line).toBeNull();
   });
 });

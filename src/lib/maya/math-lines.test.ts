@@ -364,7 +364,8 @@ describe("the line set", () => {
   it("offers the model every act's lines, and only the steps not done yet, then the final step", () => {
     const c = call();
     const offers = lineOffers(c.s);
-    expect(Object.keys(offers).sort()).toEqual(["accept_answer", "clarify", "confirm", "example_step", "guide", "try_target"].sort());
+    // A clear turn is offered no confirmation; a turn with no number may be off topic, so the redirect shows (#605).
+    expect(Object.keys(offers).sort()).toEqual(["accept_answer", "clarify", "example_step", "guide", "redirect", "try_target"].sort());
     const guideSteps = new Set(offers.guide!.flatMap((o) => (o.line.startsWith("step.") ? [o.slots.step] : [])));
     expect([...guideSteps]).toEqual(["ones", "tens", "result"]);
     expect(offers.guide!.every((o) => o.texts.length >= 2)).toBe(true);
