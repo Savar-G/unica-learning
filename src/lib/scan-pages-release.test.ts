@@ -6,7 +6,7 @@ import * as scans from "@/app/api/account/scans/route";
 import * as photo from "@/app/api/account/scans/[id]/route";
 import * as image from "@/app/api/account/scans/[id]/image/route";
 import * as notice from "@/app/api/account/scans/notice/route";
-import ScanPage from "@/app/(product)/account/scan/page";
+import ScanPage from "@/app/(product)/account/(dashboard)/scan/page";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/components/scan-pages", () => ({ ScanPages: () => null }));

@@ -1,0 +1,23 @@
+{
+  "round": "r551",
+  "ticket": "#551 (spec #544): dashboard shell. Not a choice round: these are checks of what was built, for Savar's one review page (D-249).",
+  "picked": "Phone layout: set 2, option A of r544, as the ticket asks. Savar has not chosen yet; phoneNav in src/lib/parent-shell.ts holds it.",
+  "how_taken": "npm run dev on production data as test families, with the T3 preview browser at 1440 x 900 and 390 x 844. Preview resize keeps a desktop user agent, so the phone-only test card was checked with curl and an iPhone user agent, not in these pictures. The round Next.js button in the corner is the dev overlay. Screenshots at 1440 wide are saved at 1280.",
+  "screens": [
+    { "file": "first_book_coming-desktop.png", "stage": "first_book_coming", "shows": "Overview, Assessment, Account; Open the desk below the child; no dropdown for one child" },
+    { "file": "first_book_coming-phone.png", "stage": "first_book_coming", "shows": "Bottom bar with three tabs and no More; child block and desk at the top" },
+    { "file": "report_ready_bc-home-phone.png", "stage": "report_ready_bc", "shows": "Top bar with Assessment and Account; no bottom bar" },
+    { "file": "report_ready_bc-report-phone.png", "stage": "report_ready_bc", "shows": "The report at its own address, inside the frame" },
+    { "file": "report_ready_bc-report-desktop.png", "stage": "report_ready_bc", "shows": "The report at its own address, inside the frame" },
+    { "file": "no_test-switcher-desktop.png", "stage": "no_test", "shows": "Dropdown open for a family with two or more children" },
+    { "file": "no_test-phone.png", "stage": "no_test", "shows": "Top bar, dropdown closed, Start test" },
+    { "file": "account-tab-desktop.png", "stage": "no_test", "shows": "The Account tab at /account/settings" },
+    { "file": "forced-all-tabs-more-sheet-phone.png", "stage": "forced", "shows": "The More sheet. No child has more than five tabs with a page today, so a local edit, since reverted, forced all seven tabs for this picture." }
+  ],
+  "stages_not_reached": {
+    "test_running": "No test family has an open test or a finished test with no report. Unit tests only.",
+    "report_ready_waitlist": "Every test family's test is BC. Unit tests only.",
+    "active": "No test family has a delivery receipt. Unit tests only.",
+    "ended": "The plan state table does not exist yet (#548), so no family can be in it. Unit tests only."
+  }
+}

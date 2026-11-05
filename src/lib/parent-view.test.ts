@@ -104,9 +104,13 @@ describe("what a parent reads", () => {
     expect(list.map((c) => c.firstName)).toEqual(["Leah", "Ana"]);
     expect(readers.reads).toEqual({ children: 1, tests: 1, reports: 1, cards: 1, deliveries: 1, workbooks: 1, plans: 1, switches: 1 });
   });
+  it("lists a child's reports, the newest test first", async () => {
+    const reader = parent({ tests: [test("old", { completedAt: NOW - 90 * HOUR }), test("new", { completedAt: NOW - 10 * HOUR })], reports: [report("old"), report("new")] });
+    expect((await readChild(reader, "child-1", NOW))?.reportIds).toEqual(["report-new", "report-old"]);
+  });
   it("gives the exact fields of a child, and nothing for a panel with no data", async () => {
     expect(await readChild(parent(), "child-1", NOW)).toEqual({
-      id: "child-1", firstName: "Leah", schoolGrade: 3, stage: "no_test", opensOn: "start_test", tabs: ["assessment", "account"], readOnly: false, currentWorkbook: null,
+      id: "child-1", firstName: "Leah", schoolGrade: 3, reportIds: [], stage: "no_test", opensOn: "start_test", tabs: ["assessment", "account"], readOnly: false, currentWorkbook: null,
     });
   });
   it("gives no children to a parent with none", async () => {
@@ -145,7 +149,7 @@ describe("what a parent reads", () => {
     });
     const [listed] = await listChildren(reader, NOW);
     expect(listed.stage).toBe("active");
-    expect(Object.keys(listed).sort()).toEqual(["currentWorkbook", "firstName", "id", "opensOn", "readOnly", "schoolGrade", "stage", "tabs"]);
+    expect(Object.keys(listed).sort()).toEqual(["currentWorkbook", "firstName", "id", "opensOn", "readOnly", "reportIds", "schoolGrade", "stage", "tabs"]);
     expect(JSON.stringify(listed)).not.toContain(SECRET);
     expect(JSON.stringify(await readChild(reader, "child-1", NOW))).not.toContain(SECRET);
   });
