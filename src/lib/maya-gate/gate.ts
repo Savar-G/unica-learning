@@ -92,6 +92,8 @@ export interface Plan {
   understanding?: "evidence_observed" | "uncertain";
   /** Board offers to draw, by id. */
   draw?: string[];
+  /** Draw every board offer this act has for the lines said, as the real model does (#605: an offer must not be refused). */
+  drawOffered?: boolean;
   /** For confirm: the number heard, and the other number for "15 or 50?". */
   heard?: string;
   other?: string;
@@ -346,6 +348,8 @@ function build(plan: Plan, reading: Reading | undefined, input: ModelInput): unk
       return l ? [{ line: l.line, slots: fullSlots(l.slots) }] : plan.lines || !offer ? [{ line: id, slots: fullSlots({ step: step ?? null }) }] : [];
     }),
   ];
+  const lineIds = parts.flatMap((part) => ("line" in part ? [`line.${part.line}`] : []));
+  const drawn = plan.draw ?? (plan.drawOffered ? (offer?.draw ?? []).map((d) => d.id).filter((d) => lineIds.includes(d)) : []);
   return {
     version: PROPOSAL_VERSION,
     act,
@@ -354,7 +358,7 @@ function build(plan: Plan, reading: Reading | undefined, input: ModelInput): unk
     step: step ?? null,
     level: level ?? null,
     understanding: act === "ask_write" ? (plan.understanding ?? "uncertain") : null,
-    draw: plan.draw ? plan.draw.map((offer) => ({ offer, place: null })) : null,
+    draw: drawn.length > 0 ? drawn.map((offer) => ({ offer, place: null })) : null,
     board: null,
   };
 }
@@ -377,6 +381,9 @@ export const CHILD_MS = 4_000;
 
 /** The package a behaviour runs on. */
 export const packageOf = (b: Behaviour): QuestionPackage => FIXTURES[b.fixture];
+
+/** A plain yes, as a whole child turn. The judge's own reading, apart from the controller's (#605). */
+const GATE_YES = /^[\s,.!]*(?:(?:um+|uh+|oh|okay|ok|well)[\s,.!]+)*(?:yes|yeah|yea|yep|yup|uh[- ]huh|mm[- ]?hmm|mhm|right|correct|exactly|that['’]?s (?:right|it|what i said)|it is|i did|i said (?:that|it))(?:[\s,.!]+(?:yes|yeah|yep|right|correct|exactly|that['’]?s (?:right|it|what i said)|it is|i did|i said (?:that|it)))*[\s,.!]*$/i;
 
 /** The time limit of one scripted review: a "hang" ends after it. */
 export const GATE_REVIEW_MS = 20;
@@ -682,6 +689,8 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
   // 3. Accepting an answer: the child said it in the turn Maya answers, and code checks it right.
   let lastChild = "";
   let released = false;
+  /** The one number Maya's last accepted turn asked about ("Did you say 66?"): a plain yes gives it (#605). */
+  let askedHeard: AnswerValue | null = null;
   const answer = op?.answer.value ?? null;
   // The question's own numbers, fractions too (#407): saying one gives nothing away.
   const ownAnswer = op && answer ? (op.operation.operands as unknown[]).some((n) => equivalent(typeof n === "number" ? { type: "number", value: n } : n as AnswerValue, answer)) : true;
@@ -717,8 +726,9 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
       // The child's final answer: the last number kept outside their explanation (D-199), right for the question as it is
       // worded (#407: an equal fraction when the question does not ask for the simplest form).
       const read = readAnswer(lastChild, opts);
-      const final = read.final;
-      if (!final || !read.sure || !rightForQuestion(op, final)) fail("accepted_wrong_answer", `Maya turn ${i} accepted an answer after "${lastChild}"`);
+      const yes = askedHeard !== null && GATE_YES.test(lastChild) ? askedHeard : null;
+      const final = yes ?? read.final;
+      if (!final || (yes === null && !read.sure) || !rightForQuestion(op, final)) fail("accepted_wrong_answer", `Maya turn ${i} accepted an answer after "${lastChild}"`);
     }
     // Wrong final answers once every work step is done (D-199), read from the accepted readings: a step counts done when
     // the judge finds the reading's value right for it, and a final answer counts wrong by isRightAnswer.
@@ -754,7 +764,9 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
       const words = turn.output.say.join(" ");
       const drawn = t.board.filter((x) => turn.output!.board.includes(x.transactionId)).flatMap((x) => boardTexts(x.commands));
       // The answer in any form, except an equal form the child said themselves (#407: "14/16 is the right amount").
-      const reveals = (v: AnswerValue) => equivalent(v, answer) && (sameValue(v, answer) || !childSaid.some((c) => sameValue(c, v)));
+      // A confirmation may say back a number the child said in the turn it answers, and only that (#605).
+      const justSaid = act === "confirm" ? valuesIn(lastChild, opts) : [];
+      const reveals = (v: AnswerValue) => equivalent(v, answer) && !justSaid.some((c) => sameValue(c, v)) && (sameValue(v, answer) || !childSaid.some((c) => sameValue(c, v)));
       if ([words, ...drawn].some((x) => valuesIn(x).some(reveals))) fail("answer_too_early", `Maya turn ${i} showed the answer before it was released`);
     }
     // The ladder: one level up at a time (direct entry up to H2, H3 on a request to be shown), never on silence alone.
@@ -769,6 +781,25 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
     // The answer comes after H3, in the closing minute, or on the final step after two wrong final answers (D-199).
     if (act === "give_answer" && turn.state !== "TIME_CLOSE" && (lastGuide ?? -1) < 3 && wrongFinals < 2) fail("hint_skipped", `Maya turn ${i} gave the answer after H${lastGuide ?? "-"}`);
     childSince = false;
+    // The confirmation's number comes from the attempt that reached the child: one "confirm.heard" line, or none.
+    const parts = (accepted(turn)?.proposal as { parts?: { line?: string; slots?: { heard?: string | null } | null }[] } | null)?.parts ?? [];
+    const asked = act === "confirm" ? parts.filter((x) => x.line === "confirm.heard" || x.line === "confirm.which") : [];
+    askedHeard = asked.length === 1 && asked[0].line === "confirm.heard" && asked[0].slots?.heard ? valuesIn(asked[0].slots.heard, opts)[0] ?? null : null;
+  }
+
+  // 3a. Maya's own repeats (#605): an equation said twice in one turn, or one carry's regroup line more than twice.
+  const regroupSaid = new Map<string, number>();
+  for (const [i, m] of maya.entries()) {
+    if (!m.output) continue;
+    const eqs = m.output.say.join(" ").match(/[\d./]+(?:\s*[-+−×÷]\s*[\d./]+)+\s*=\s*[\d./]*\d/g) ?? [];
+    if (new Set(eqs).size < eqs.length) fail("flow_mismatch", `Maya turn ${i} said one equation twice: ${JSON.stringify(m.output.say)}`);
+    const parts = (accepted(m)?.proposal as { parts?: { line?: string; slots?: { step?: string | null } | null }[] } | null)?.parts ?? [];
+    for (const x of parts) {
+      if (x.line !== "step.regroup") continue;
+      const step = x.slots?.step ?? "?";
+      regroupSaid.set(step, (regroupSaid.get(step) ?? 0) + 1);
+      if (regroupSaid.get(step)! > 2) fail("flow_mismatch", `Maya turn ${i} said the regroup line for ${step} a third time`);
+    }
   }
 
   // 3b. A partial child turn (#396, C15): Maya's output stopped, and no Maya turn answers it.

@@ -34,7 +34,7 @@ function setup() {
   const propose = vi.fn((input: Parameters<MayaModel["propose"]>[0], signal: AbortSignal) => model.propose(input, signal));
   const ended: MemoryCall[] = [];
   const notesStore = memoryNoteStore({ calls: () => ended, testFamilies: [TEST_PARENT] });
-  const notes = callNotes({ store: notesStore, ai: null, isTestFamily: async (p) => p === TEST_PARENT, clock: () => now + 60_000, childName: async () => "Leah" });
+  const notes = callNotes({ store: notesStore, ai: null, isTestFamily: async (p) => p === TEST_PARENT, clock: () => now + 60_000, childNames: async () => ({ firstName: "Leah", formerNames: [] }) });
   const seams: CallSeams = {
     store,
     connections: memoryConnectionLog(store, () => now),

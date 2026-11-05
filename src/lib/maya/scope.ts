@@ -44,6 +44,8 @@ function sumOfTerms(requested: AnswerValue[], terms: number[]): boolean {
 /** Values and operations come only from the checked package, including its checked prerequisite work. */
 function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
   const expressions: Allowed[] = [], sums: number[][] = [], values: AnswerValue[] = [];
+  /** A flipped column of this question ("8 - 2" for 2 - 8): the child's own error on it, so never another problem (#605). */
+  const flip = (top: number, bottom: number) => expressions.push({ operation: "subtract", operands: [num(bottom), num(top)] });
   const add = (operation: ScopeOperation, operands: AnswerValue[]) => { expressions.push({ operation, operands }); values.push(...operands); };
   const collect = (v: unknown): void => {
     if (typeof v === "number" && Number.isFinite(v)) values.push(num(v));
@@ -82,6 +84,8 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
         add("subtract", [num(st.top - Number(st.lent) + (st.regrouped ? 10 : 0)), num(st.bottom)]);
         if (st.regrouped) add("add", [num(st.top - Number(st.lent)), num(10)]);
         if (st.lent) add("subtract", [num(st.top), num(1)]);
+        flip(st.top, st.bottom);
+        if (st.lent) flip(st.top - 1, st.bottom);
       }
       if (st.kind === "multiply-digit" && st.top !== null) {
         add("multiply", [num(st.top), num(st.multiplier)]);

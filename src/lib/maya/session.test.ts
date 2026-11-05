@@ -924,14 +924,14 @@ describe("review follow-up", () => {
 describe("code's fallback keeps what code can check of a refused reading (#389)", () => {
   const right16 = { value: num(16), step: "ones", verdict: "right" as const };
 
-  it("keeps only the answers code checks alone, and no field of the reading code cannot check", () => {
+  it("keeps only the answers code checks alone, and with one, no off-topic or writing reading, and no paper the child's words do not say", () => {
     const c = opened();
     c.child("Seven plus nine is sixteen. Two plus three is five.");
     const refused = {
       version: 2, act: "accept_answer", parts: [ln("answer.right")],
       reading: {
         answers: [right16, { value: num(5), step: "tens", verdict: "right" }, { value: num(66), step: "result", verdict: "right" }, { value: "16", step: "ones", verdict: "right" }],
-        paper: "written", help: "show", writing: true, offTopic: true, correctsHearing: true, unsafeRequest: true,
+        paper: "written", writing: true, offTopic: true, correctsHearing: true,
       },
     };
     const options = fallbacks(c.session, [refused, refused]);
