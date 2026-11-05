@@ -34,8 +34,8 @@ export default async function Workbooks({ params }: PageProps<"/account/workbook
         {current ? <CurrentTile book={current} /> : (
           <section className="pw-card" aria-labelledby="pw-current">
             <p className="pw-label" id="pw-current">First workbook</p>
-            <p className="pw-value">Being prepared</p>
-            <p className="pw-sub">We are making {name}&apos;s first workbook. We will email you when it is on its way.</p>
+            <p className="pw-value">Not sent yet</p>
+            <p className="pw-sub">We will email you when {name}&apos;s first workbook is on its way.</p>
           </section>
         )}
         {next.kind === "range" && (
