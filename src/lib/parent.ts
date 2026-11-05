@@ -14,7 +14,7 @@ export const PARENT_NOT_YOURS: [string, string][] = [
 // What the parent still does.
 export const PARENT_YOURS: string[] = [
   "Hand them the book at the same time each day.",
-  "Scan the finished pages in the Unica app.",
+  "Scan the finished pages with your phone, on our website.",
 ];
 
 export const PARENT_NOTE = "If they get stuck, hand them your phone. The Unica Teaching Assistant talks them through the question. You do not need to know the answer.";
