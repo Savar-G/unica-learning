@@ -143,8 +143,8 @@ describe("the report email to the parent", () => {
   it("is signed by the founders in both report variants (D-225)", () => {
     for (const offer of [true, false]) {
       const e = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3)), parentName: "Priya", url: URL, offer });
-      expect(e.text).toContain("Thank you,\nCedric & Savar\nCo-founders, Unica Learning");
-      expect(e.html).toContain("Cedric &amp; Savar");
+      expect(e.text).toContain("Thank you,\nSavar & Cedric\nCo-founders, Unica Learning");
+      expect(e.html).toContain("Savar &amp; Cedric");
       for (const body of [e.text, e.html]) expect(body).not.toContain("The Unica Learning team");
       expect(e.html.indexOf("Co-founders, Unica Learning")).toBeLessThan(e.html.indexOf("16557 87A Ave"));
     }

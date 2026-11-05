@@ -717,4 +717,45 @@ describe("#639: ink stays on the device until the call holds it", () => {
       expect(box()).toBeNull();
     });
   });
+
+  describe("#652: a send of one child's desk never goes on under another's", () => {
+    const box = () => JSON.parse(localStorage.getItem(OUTBOX) ?? "null") as { acked: number; events: unknown[]; child?: string } | null;
+    /** This child's desk with ink the call has not taken: its send was told "busy" and waits to try again. */
+    async function waitingSend(posts: unknown[], answerNow: { fn: () => Response }) {
+      localStorage.clear();
+      theCall(() => [], (body) => { posts.push(body); return answerNow.fn(); });
+      await render(1, CHILD); await send("start");
+      await act(async () => state.saveBoard(id, threeEvents()));
+      await advance(1600);
+      expect(posts).toHaveLength(1);
+      expect(box()?.child).toBe(CHILD);
+    }
+    const busy = () => Response.json({ error: "busy", held: 0 }, { status: 429 });
+    // Under a sibling's desk the call is not this desk's: before #652 the route answered not_found for that too.
+    const sibling = () => Response.json({ error: "not_found", held: 0 }, { status: 404 });
+
+    it("stops when the desk closes, so a later answer under a sibling's desk never removes this child's ink", async () => {
+      const posts: unknown[] = [];
+      const answerNow = { fn: busy };
+      await waitingSend(posts, answerNow);
+      await act(async () => root.unmount());
+      answerNow.fn = sibling;
+      await advance(60_000);
+      expect(posts).toHaveLength(1);
+      expect(box()?.child).toBe(CHILD);
+      root = createRoot(host);
+    });
+
+    it("stops when the desk turns to another child, and that child's desk leaves this child's ink alone", async () => {
+      const posts: unknown[] = [];
+      const answerNow = { fn: busy };
+      await waitingSend(posts, answerNow);
+      answerNow.fn = sibling;
+      await render(1, SIBLING);
+      await advance(60_000);
+      expect(posts).toHaveLength(1);
+      expect(box()?.child).toBe(CHILD);
+    });
+  });
 });
+
