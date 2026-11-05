@@ -19,6 +19,8 @@ import {
 import { printContractForPhoto, sha256Hex, type Box, type PagePrintContract } from "@/lib/workbook-print-contract";
 import { pageUrl } from "@/lib/workbook-render";
 
+/** How long one job holds a photo's lease. A call inside it starts nothing. */
+export const SCAN_LEASE_MS = 90_000;
 export const STRAIGHT_PART = "straight";
 export const cropPart = (n: number) => `crop-${n}`;
 /** A part's name as a route gets it: only these two shapes reach Storage. */
@@ -61,7 +63,8 @@ export interface ScanCalibrationResult {
 
 export type ScanPreview =
   | { status: "ready"; straight: { part: string; width: number; height: number }; crops: { part: string; number: number; width: number; height: number }[]; notSupported: number[] }
-  | { status: "refused"; reason: ScanRefusal }
+  /** `retryInMs`, only for check-timeout: how long until the job's lease is over and another call can check again. */
+  | { status: "refused"; reason: ScanRefusal; retryInMs?: number }
   /** Checking is not available: a legacy book, an older revision, or a photo that is no longer active. The photo keeps its place unless it ended. */
   | { status: "unavailable"; reason: "no-contract" | "other-revision" | "photo-ended" }
   | { status: "not-started" }
@@ -123,6 +126,7 @@ async function decode(bytes: Uint8Array, channels: 1 | 3): Promise<Raster> {
   return { width: info.width, height: info.height, channels: info.channels === 1 ? 1 : 3, data: new Uint8Array(data) };
 }
 
+const LEASE_MARGIN_MS = 2_000;
 /** How many of the child's other pages one step holds at a time: a child's whole history does not fit in a function's memory. */
 const OTHERS_AT_ONCE = 4;
 /**
@@ -186,7 +190,7 @@ export async function readScanPreview(store: ScanCropStore, ref: PhotoRef): Prom
  * Throws on a failure outside the rules (a Storage or database error): the lease runs out, and a later call tries again.
  */
 export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: string, o: { sheetCheckMs?: number } = {}): Promise<ScanPreview> {
-  const deadline = Date.now() + (o.sheetCheckMs ?? SHEET_CHECK_MS);
+  const started = Date.now(), deadline = started + (o.sheetCheckMs ?? SHEET_CHECK_MS);
   const begin = await store.begin({ ...ref, token });
   if (begin.status === "unavailable") return { status: "unavailable", reason: begin.reason };
   if (begin.status === "terminal" || begin.status === "unknown") return { status: "unavailable", reason: "photo-ended" };
@@ -220,8 +224,8 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   // The code and the marks are this page's: the print between them must be too, wherever a near twin prints otherwise.
   const ask = sheetChecker({ photo, printed, transform: calibration.transform, writing });
   const sheet = await sheetVerdict(store, ask, frame.page.others, deadline);
-  // Nothing is stored: the lease runs out, and a later call checks again.
-  if (sheet === "timeout") return { status: "refused", reason: "check-timeout" };
+  // Nothing is stored: the lease runs out, and a later call checks again. The lease began just after `started`.
+  if (sheet === "timeout") return { status: "refused", reason: "check-timeout", retryInMs: started + SCAN_LEASE_MS + LEASE_MARGIN_MS - Date.now() };
   if (sheet !== "this-page") return finished("refused", { reason: sheet }, 0);
 
   // The files of the attempt this one replaced go first. A file of an older attempt stays until the photo's cleanup.

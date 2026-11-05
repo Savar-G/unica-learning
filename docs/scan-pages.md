@@ -36,7 +36,9 @@ The preview is ready only when the photo is shown to be one sheet, this page (#4
 
 - `another-page`: a spot holds the twin's print: a QR code pasted on another page, or another page lying over this one. The parent is asked for another photo of this page alone.
 - `faint`: a spot is too bright, faint or covered to read, or more than one spot in five shows neither page clearly. The parent is asked for another photo without glare.
-- `check-timeout`: the job ran out of time. This refusal is not stored: the parent is asked to try again in a minute, and the next call after the 90 s lease does the whole check.
+- `check-timeout`: the job ran out of time. This refusal is not stored. The parent is asked to try again in a minute, with a Try again button that opens when the job's 90 s lease is over (`retryInMs`). A call inside the lease starts nothing, and the next call after it does the whole check.
+
+The job's list of other pages is read by id, 500 rows at a time, until a read comes back empty, so the database's row limit cannot hide a near twin. Only the paths are held; the images are still read a few at a time. A child with many hundreds of pages of one type can run out of the 35 s, which refuses safely.
 
 The comparison also takes approved books that have not shipped, as approval gives a book its printed revision. Comparing against more pages is safe. The evidence is in `.design/experiments/r456/`.
 

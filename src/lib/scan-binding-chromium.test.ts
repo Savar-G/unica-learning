@@ -331,7 +331,7 @@ describe.skipIf(!chromium)("one sheet, this page: a near twin's print anywhere o
     const { bytes } = await uploaded(written(p5, () => 3));
     const id = "00000000-0000-4000-8000-0000000000c3";
     const { m, preview } = await job(bytes, p5, id, 0);
-    expect(preview).toEqual({ status: "refused", reason: "check-timeout" });
+    expect(preview).toMatchObject({ status: "refused", reason: "check-timeout" });
     expect(m.filesOf(id)).toEqual([]);
     expect(await readScanPreview(m.store, { parent: PARENT, photo: id })).toEqual({ status: "busy" });
   }, 60_000);

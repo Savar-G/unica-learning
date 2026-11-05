@@ -313,9 +313,18 @@ describe("comparing with the child's other pages", () => {
   it("runs out of time safely: it refuses, stores nothing, and a later call checks again", async () => {
     // Disproved if a photo gets crops with its pages unchecked, or a slow day leaves a lasting refusal on it.
     const c = among(8, 400);
-    expect(await runScanCrops(c.store, ref, token(1), { sheetCheckMs: 50 })).toEqual({ status: "refused", reason: "check-timeout" });
+    const answer = await runScanCrops(c.store, ref, token(1), { sheetCheckMs: 50 });
+    if (answer.status !== "refused") throw new Error(JSON.stringify(answer));
+    expect(answer.reason).toBe("check-timeout");
+    // It says when the lease is over: not before the rest of its 90 s, and no later than a little after it.
+    expect(answer.retryInMs).toBeGreaterThan(80_000);
+    expect(answer.retryInMs).toBeLessThanOrEqual(92_000);
     expect(c.m.filesOf(PHOTO)).toEqual([]);
     expect(await readScanPreview(c.store, ref)).toEqual({ status: "busy" });
+    // A call inside the lease starts nothing.
+    const reads = c.reads();
+    expect(await runScanCrops(c.store, ref, token(3))).toEqual({ status: "busy" });
+    expect(c.reads()).toBe(reads);
     // Once the lease has run out, the next call does the whole check.
     c.m.advance(91_000);
     expect((await runScanCrops(c.store, ref, token(2))).status).toBe("ready");
