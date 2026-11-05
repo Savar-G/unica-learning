@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FOUNDERS_WHY, phoneWelcomeEmail, waitlistEmail, welcomeEmail } from "@/lib/founder-emails";
 
-const SIGNED = "Thank you,\nCedric & Savar\nCo-founders, Unica Learning";
+const SIGNED = "Thank you,\nSavar & Cedric\nCo-founders, Unica Learning";
 
 describe("the founders' emails (D-225)", () => {
   const welcome = welcomeEmail({ parentName: "Priya Shah", childName: "Asha", url: "https://unicalearning.com/account/start/c1" });
@@ -11,14 +11,14 @@ describe("the founders' emails (D-225)", () => {
     for (const e of [welcome, wait]) {
       expect(e.text).toMatch(/^Hi Priya,/);
       expect(e.text).toContain(SIGNED);
-      expect(e.html).toContain("Cedric &amp; Savar");
+      expect(e.html).toContain("Savar &amp; Cedric");
       expect(e.text).toContain("16557 87A Ave, Surrey, BC V4N 5B2");
       expect(e.text).not.toContain("The Unica Learning team");
     }
   });
   it("welcome: who we are, the two steps and the start button", () => {
     expect(welcome.subject).toBe("Welcome to Unica Learning");
-    expect(welcome.text).toContain(`We're Cedric and Savar, the founders of Unica Learning. ${FOUNDERS_WHY}`);
+    expect(welcome.text).toContain(`We're Savar and Cedric, the founders of Unica Learning. ${FOUNDERS_WHY}`);
     expect(welcome.text).toContain("1. Asha takes the free math test on a laptop or tablet, alone, in one sitting.");
     expect(welcome.text).toContain("Start Asha's test: https://unicalearning.com/account/start/c1");
   });

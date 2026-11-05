@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Grade, SkillState } from "@/lib/assessment";
+import { reportCallsUnreliable, type Grade, type SkillState } from "@/lib/assessment";
 import type { ChildProfileStore } from "@/lib/child-profile";
 import { toJson, type Database } from "@/lib/database";
 import { LEARNING_COLUMNS, fromRow } from "@/lib/learning-style";
@@ -15,8 +15,8 @@ import { LEARNING_COLUMNS, fromRow } from "@/lib/learning-style";
 // was deleted after the inputs were read, so the rebuild builds again (review R345-1). The foreign key to the child
 // under its parent (23503) refuses a save; the one to the test (23503 too) means the test is gone: build again. The
 // inputs read the child, its finished tests and which have a stored learner profile, then that one profile. The skill
-// states read every finished test's stored profile, the latest shipped workbook's standards and the whole history, page by
-// page. A save with history rows goes through the service function save_child_profile_and_skill_changes_from_tests
+// states read every finished test's stored profile whose report exists (with its reliability note), the latest shipped
+// workbook's standards and the whole history, page by page. A save with history rows goes through the service function save_child_profile_and_skill_changes_from_tests
 // (migration child_profile_skill_changes_from_tests): the profile and its rows in one transaction, with the same answers as
 // a plain save, and null ("changed") when a test the rows came from no longer exists.
 // Tests use src/lib/child-profile-memory.ts.
@@ -116,16 +116,21 @@ export function childProfileStore(admin: SupabaseClient<Database>): ChildProfile
       return data.length > 0 ? { revision: data[0].revision, buildToken: data[0].build_token } : "changed";
     },
     async skillInputs(childId) {
-      const [tests, profiles, book, history] = await Promise.all([
+      const [tests, profiles, reports, book, history] = await Promise.all([
         admin.from("assessments").select("id, completed_at").eq("child_id", childId).eq("status", "completed"),
         admin.from("learner_profiles").select("assessment_id, profile").eq("child_id", childId),
+        admin.from("reports").select("assessment_id, reliability:model->reliability").eq("child_id", childId),
         admin.from("workbooks").select("id").eq("child_id", childId).eq("status", "shipped").order("number", { ascending: false }).limit(1).maybeSingle(),
         historyOf(childId),
       ]);
-      for (const [read, r] of [["tests", tests], ["learner profiles", profiles], ["workbook", book]] as const) {
+      for (const [read, r] of [["tests", tests], ["learner profiles", profiles], ["reports", reports], ["workbook", book]] as const) {
         if (r.error) throw new Error(`skill state ${read} load: ${message(r.error)}`);
       }
       const finished = new Map((tests.data ?? []).flatMap((t) => (t.completed_at ? [[t.id, new Date(t.completed_at).toISOString()] as const] : [])));
+      // A test with no report yet has unknown reliability: it is no evidence until its report exists (the report job
+      // rebuilds the profile when it finishes).
+      const reported = new Set((reports.data ?? []).map((r) => r.assessment_id));
+      const unreliable = new Set((reports.data ?? []).filter(reportCallsUnreliable).map((r) => r.assessment_id));
       let workbookStandards: string[] = [];
       if (book.data) {
         const questions = await admin.from("workbook_questions").select("standard:package->skill->>standard").eq("workbook_id", book.data.id);
@@ -135,7 +140,7 @@ export function childProfileStore(admin: SupabaseClient<Database>): ChildProfile
       return {
         tests: (profiles.data ?? []).flatMap((p) => {
           const completedAt = finished.get(p.assessment_id);
-          return completedAt ? [{ assessmentId: p.assessment_id, completedAt, profile: p.profile }] : [];
+          return completedAt && reported.has(p.assessment_id) ? [{ assessmentId: p.assessment_id, completedAt, profile: p.profile, unreliable: unreliable.has(p.assessment_id) }] : [];
         }),
         workbookStandards,
         history,

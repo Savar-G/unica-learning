@@ -7,7 +7,6 @@ import { stripe } from "@/lib/stripe";
 import { readBookingCustomers } from "@/lib/retention-stripe";
 import { chatFamilyGate, chatGradeLine, chatServesGrade, chatUsage, chatWindow, childChatView, type ChatUsage, type ChatReply } from "@/lib/maya-chat";
 import { mayaCalls, recordView, type CallRecord } from "@/lib/maya-call";
-import type { InkEvent } from "@/lib/board-history";
 import { callSeams } from "@/lib/maya-call-seams";
 import { mayaCallStore } from "@/lib/maya-call-store";
 import { mayaNotice } from "@/lib/maya-notice";
@@ -123,7 +122,7 @@ export async function appendChatInk(ctx: ChatContext, id: string, from: unknown,
 }
 
 /** The ink log the call holds for a chat of this child (#635, R639-4), for the board the desk starts from; null when none. */
-export async function readChatInk(ctx: ChatContext, id: string): Promise<InkEvent[] | null> {
+export async function readChatInk(ctx: ChatContext, id: string): ReturnType<ReturnType<typeof mayaCalls>["readInk"]> {
   const { db, parent, child } = ctx;
   return mayaCalls({ ...callSeams(db), canChat: async (p, c) => p === parent && c === child }).readInk(id, { parentId: parent, childId: child });
 }

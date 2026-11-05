@@ -6,7 +6,7 @@ import { Story } from "@/components/story";
 export const metadata = pageMetadata({
   path: "/our-story",
   title: `Why we built ${BRAND}`,
-  description: `${BRAND} is made in Vancouver by two students who grew up on workbooks. Personal, on paper, and affordable.`,
+  description: `Meet Savar and Cedric, two friends from Vancouver who tutored kids in math and built ${BRAND}: personal, on paper, and affordable.`,
 });
 
 export default function OurStory() {
