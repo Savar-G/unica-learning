@@ -1,7 +1,7 @@
 import "server-only";
 import { scopeSummary } from "@/lib/maya-scope-review";
 import type { AdminSession } from "@/lib/admin-store";
-import type { Question, Route, StoredTest } from "@/lib/assessment";
+import { givenQuestions, type Question, type Route, type Stage3Route, type StoredTest } from "@/lib/assessment";
 import { assessmentQuestionReader } from "@/lib/assessment-questions";
 import { mayaCalls, recordView, FAKE_MODEL_ID, type CallStatus, type CallView, type FlagLevel, type MayaCalls } from "@/lib/maya-call";
 import { alertState } from "@/lib/maya-call-alert-store";
@@ -103,8 +103,8 @@ export async function demoChildren(a: AdminSession): Promise<DemoChild[]> {
   if (marked.length === 0) return [];
   const [children, tests] = await Promise.all([
     a.db.rpc("admin_children").select("id, parent_id, first_name").in("parent_id", marked).then((r) => must<{ id: string; parent_id: string; first_name: string }[]>(r, "children")),
-    a.db.rpc("admin_assessments").select("id, child_id, parent_id, started_at, status, route, test").in("parent_id", marked).order("started_at", { ascending: false })
-      .then((r) => must<{ id: string; child_id: string; started_at: string; status: string; route: Route | null; test: StoredTest }[]>(r, "tests")),
+    a.db.rpc("admin_assessments").select("id, child_id, parent_id, started_at, status, route, stage3_route, test").in("parent_id", marked).order("started_at", { ascending: false })
+      .then((r) => must<{ id: string; child_id: string; started_at: string; status: string; route: Route | null; stage3_route: Stage3Route | null; test: StoredTest }[]>(r, "tests")),
   ]);
   const supported = new Set(SUPPORTED_ASSESSMENT_TEMPLATES);
   return children
@@ -115,10 +115,10 @@ export async function demoChildren(a: AdminSession): Promise<DemoChild[]> {
       tests: tests
         .filter((t) => t.child_id === c.id)
         .map((t) => {
-          const given: Question[] = [...t.test.stage1, ...(t.route ? t.test.stage2[t.route] : [])];
+          const given: Question[] = givenQuestions(t.test, t.route, t.stage3_route);
           const questions = given.flatMap((q, i): DemoQuestion[] => {
             if (!supported.has(q.templateId)) return [];
-            const found = lookupStoredQuestion({ source: "assessment", assessmentId: t.id, questionId: q.id }, { test: t.test, route: t.route });
+            const found = lookupStoredQuestion({ source: "assessment", assessmentId: t.id, questionId: q.id }, { test: t.test, route: t.route, stage3Route: t.stage3_route });
             return found.status === "found"
               ? [{ assessmentId: t.id, questionId: q.id, number: i + 1, text: found.package.text, answer: found.package.answer ? valueText(found.package.answer.value) : "", templateId: q.templateId, skill: templateSkillName(q.templateId) }]
               : [];

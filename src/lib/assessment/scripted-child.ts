@@ -1,5 +1,5 @@
 // Scripted children for the tests: they take a whole test through the public session API.
-import { createSession, finish, lockStage1, nextQuestion, submitAnswer, type ChildProfile, type Question, type Session, type Template } from "@/lib/assessment";
+import { createSession, finish, lockStage1, nextQuestion, submitAnswer, type ChildProfile, type Question, type Session, type StoredTest, type Template } from "@/lib/assessment";
 
 export type Script = (q: Question, index: number) => boolean;
 
@@ -24,6 +24,9 @@ export function takeTest(profile: ChildProfile, seed: number, isRight: Script, b
  */
 export const checked = (session: Session): Session =>
   !session.route && session.answers.length === session.stage1.length ? lockStage1(session) : session;
+
+/** D-282: a stored test from before the third stage: it ends after stage 2, as every test did. Still a real case while such tests are open. */
+export const beforeThirdStage = (test: StoredTest): StoredTest => ({ ...test, stage3: undefined });
 
 export const allRight: Script = () => true;
 export const allWrong: Script = () => false;

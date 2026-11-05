@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { BANKS, fillTemplate, wordingOf } from "@/lib/assessment";
+import { DIFFICULTY } from "@/lib/assessment/bank/difficulty";
 
 // Structural checks across every band's bank (#187): the BC standards it covers, and how much a template varies.
 const SEEDS = Array.from({ length: 50 }, (_, i) => i * 7919 + 3);
@@ -33,6 +34,14 @@ describe("every bank", () => {
     expect([wording("g67-6-lcm-story"), wording("g67-6-lcm")]).toEqual(["word-problem", "bare-number"]);
     expect(wordingOf("g35-3-fraction-eaten")).toBe("word-problem");
     expect(wordingOf("not-a-template")).toBeUndefined();
+  });
+
+  it("rates every template easy, medium or hard (D-282), and no id that a bank does not hold", () => {
+    const unrated = TEMPLATES.filter((t) => !DIFFICULTY[t.id]).map((t) => t.id);
+    expect(unrated).toEqual([]);
+    const ids = new Set(TEMPLATES.map((t) => t.id));
+    expect(Object.keys(DIFFICULTY).filter((id) => !ids.has(id))).toEqual([]);
+    expect(new Set(Object.values(DIFFICULTY))).toEqual(new Set(["easy", "medium", "hard"]));
   });
 
   it("has no template that asks the same prompt for every seed", () => {
