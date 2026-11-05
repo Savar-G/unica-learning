@@ -36,7 +36,7 @@ function fakeDb(tables: Record<string, Row[]>) {
 }
 
 async function chatToTheEnd(tables: Record<string, Row[]>) {
-  const { db, inserted } = fakeDb({ children: [{ id: child, first_name: "Leah" }], ...tables });
+  const { db, inserted } = fakeDb({ children: [{ id: child, first_name: "Leah", former_names: [] }], ...tables });
   const calls = mayaCalls({ store: memoryCallStore({ testFamilies: [] }), history: memoryWordingHistoryStore(),
     events: learningEvents(memoryLearningEventStore({ children: [{ id: child, parentId: parent }] })), rebuild: async () => true,
     model: () => ruleMayaModel(), isTestFamily: async () => true, canChat: async () => true, note: writeNoteAfterCall(db),

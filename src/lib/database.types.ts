@@ -578,6 +578,7 @@ export type Database = {
         Row: {
           created_at: string
           first_name: string
+          former_names: string[]
           grade: number
           id: string
           interests: string[] | null
@@ -593,6 +594,7 @@ export type Database = {
         Insert: {
           created_at?: string
           first_name: string
+          former_names?: string[]
           grade: number
           id?: string
           interests?: string[] | null
@@ -608,6 +610,7 @@ export type Database = {
         Update: {
           created_at?: string
           first_name?: string
+          former_names?: string[]
           grade?: number
           id?: string
           interests?: string[] | null
@@ -4615,6 +4618,15 @@ export type Database = {
       release_workbook_edit: {
         Args: { p_id: string; p_lease: string }
         Returns: boolean
+      }
+      rename_child: {
+        Args: {
+          p_child: string
+          p_first_name: string
+          p_parent: string
+          p_stale_seconds: number
+        }
+        Returns: string
       }
       renew_family_deletion: {
         Args: { p: string; token: string }
