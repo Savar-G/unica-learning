@@ -222,10 +222,10 @@ describe("the Workbooks tab (#558)", () => {
     expect((await read({ workbooks: [book(1)] }))?.current?.delivery).toBeNull();
   });
   it("after the range passed: a status, with no date", async () => {
-    expect((await read({ workbooks: [book(1)] }, Date.parse("2026-12-08T20:00:00Z")))?.next).toEqual({ kind: "preparing" });
+    expect((await read({ workbooks: [book(1)] }, Date.parse("2026-12-08T20:00:00Z")))?.next).toEqual({ kind: "past_estimate" });
   });
   it("a shipped book with no shipping time gives no date", async () => {
-    expect((await read({ workbooks: [book(1, { shippedAt: null })] }))?.next).toEqual({ kind: "preparing" });
+    expect((await read({ workbooks: [book(1, { shippedAt: null })] }))?.next).toEqual({ kind: "none" });
   });
   it("after the plan ended: the books stay, with no next book", async () => {
     const view = await read({ workbooks: [book(1)], deliveries: [{ ...own, workbookId: "wb-1", deliveredAt: "2026-11-05T20:00:00Z" }], plans: [{ ...own, kind: "ended" }] });

@@ -208,7 +208,7 @@ export async function readWorkbooks(reader: ParentViewReader, childId: string, n
     };
   }
   const next: NextBook = current && current.shippedOn === null && !child.readOnly
-    ? { kind: "preparing" }
+    ? { kind: "none" }
     : nextBook({ shippedOn: current?.shippedOn ?? null, deliveredOn: current?.deliveredOn ?? null, today: localDay(now, zone), ended: child.readOnly });
   return { child, current, next, books: books.map((w) => ({ id: w.id, number: w.number, shippedOn: day(w.shippedAt), hasPdf: w.hasPdf })) };
 }
