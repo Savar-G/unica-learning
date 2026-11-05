@@ -2544,7 +2544,10 @@ function layOut(input: GenerateInput) {
         // A slot its step's templates fill (#489) never goes to the existing writer.
         // (A few attempts: a long hard template fits a Challenge card's room only with some of its numbers.)
         const templated = !w.page.existingSlots && [0, 1, 2, 3, 6, 12, 128].some((k) => !!templateContractFor(input, w, { ...slot, contract: undefined }, k));
-        slot.existing = w.page.existingSlots ? w.page.existingSlots.includes(slot.id) : templated ? false : slot.place === "challenge" ? !challengeSkill : !approvedQuestionTypes(skill).length;
+        // (A Mixed set item is a story, and story text is code's, D-231: while any skill of its part has a code builder
+        // the slot takes it, never the writer. The real U16 first-customer sample's writer stories failed their checks.)
+        const mixedBuilder = slot.place === "mixed-set" && slot.part.skills.some((s) => approvedQuestionTypes(s).some((t) => !["places", "order", "count", "relation", "likelihood"].includes(t)));
+        slot.existing = w.page.existingSlots ? w.page.existingSlots.includes(slot.id) : templated || mixedBuilder ? false : slot.place === "challenge" ? !challengeSkill : !approvedQuestionTypes(skill).length;
         if (slot.existing) {
           slot.contract = null;
           const range = skillRange(input.curriculum, input.plan.level, skill);
