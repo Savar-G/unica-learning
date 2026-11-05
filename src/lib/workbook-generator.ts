@@ -65,7 +65,7 @@ import { solveCheck, solveReason, type SolveLog, type Solver, type SolveVerdict 
 import { digestOf } from "@/lib/workbook-digest";
 import { BOYS, fillFrame, frameDoes, framePair, framesFor, GIRLS, PEOPLE, THINGS, quantityStoryProblem, storyProblem, type Action, type WordingKind } from "@/lib/workbook-wording";
 import {
-  bookPageContent, dayPageContent, layoutDayPage, mistakesFor, rangeProblem, skillSigns, samFix, samProblem, skillRange, slotRanges, templateMethod, PANEL_SLOTS, SLOT_FORMATS, STRICT_SLOTS,
+  bookPageContent, dayPageContent, layoutDayPage, mistakesFor, rangeProblem, samAnswer, skillSigns, samFix, samProblem, skillRange, slotRanges, templateMethod, PANEL_SLOTS, SLOT_FORMATS, STRICT_SLOTS,
   type DayLayout, type NumberRange,
 } from "@/lib/workbook-book";
 import { pageId, type Omission, type PageContent, type SlotName } from "@/lib/workbook-page";
@@ -216,7 +216,7 @@ function templateContractFor(input: GenerateInput, w: PageWork, slot: Slot, atte
   const filled = { ...fill };
   // G1 (item 3): the day's first Spot the error shows the child's own mistake when the step's pair is verified and the
   // sum allows it; else the template's plausible wrong answer, as today.
-  if (slot.place === "spot-the-error" && filled.ref.kind === "spot" && samPrefer(input, w).length) {
+  if (slot.place === "spot-the-error" && filled.ref.kind === "spot" && slot.personalSpot) {
     const shown = templateSpotShown(input.curriculum, input.plan, at.skill, at.step, filled.text);
     if (shown !== null && String(shown) !== filled.ref.answer) filled.ref = { ...filled.ref, shown: String(shown) };
   }
@@ -562,11 +562,8 @@ function dayProblem(input: GenerateInput, p: QuestionPackage, day: number, place
 }
 
 /** The child's Sam mistakes on the day's first page with Spot the error (at most once a day), else none. */
-function samPrefer(input: GenerateInput, w: PageWork): import("@/lib/workbook-book").SamMistake[] {
-  const own = childSamMistakes(input.plan);
-  if (!own.length) return [];
-  const first = input.plan.days.find((d) => d.day === w.day)?.pages.find((p) => p.parts.some((x) => x.kind === "spot-the-error"));
-  return first?.number === w.page.number && !w.page.extraPractice ? own : [];
+function samPrefer(input: GenerateInput, slot: Slot): import("@/lib/workbook-book").SamMistake[] {
+  return slot.personalSpot ? childSamMistakes(input.plan) : [];
 }
 
 /** Spot the error's offered mistakes with the child's own first (G1, through the closed Sam table); else today's. */
@@ -575,6 +572,21 @@ function personalMistakes<T extends { name: string }>(input: GenerateInput, mist
   const rank = (m: T) => { const i = own.indexOf(m.name as never); return i < 0 ? own.length : i; };
   // (The child's own first, in their order; the others keep today's order: sort is stable.)
   return own.length ? [...mistakes].sort((a, b) => rank(a) - rank(b)) : mistakes;
+}
+
+/**
+ * G1: the personal book checks of a printed book (the warm-up's fact families, item 4, and the interest share, item 5),
+ * as whole-book issues; none without signals. Generation and every edit read them, so an edited book is checked too.
+ */
+export function personalBookIssues(input: Pick<GenerateInput, "curriculum" | "plan">, pages: readonly GeneratedPage[]): BookQuality["issues"] {
+  return [...warmUpShareProblems(input.curriculum, input.plan, pages), ...interestShareProblems(input.curriculum, input.plan, pages)]
+    .map((x) => ({ page: x.page, kind: "variety" as const, reason: x.reason }));
+}
+
+/** A book check with the personal issues added: not ready when one is found. */
+export function withPersonalIssues(input: Pick<GenerateInput, "curriculum" | "plan">, pages: readonly GeneratedPage[], quality: BookQuality): BookQuality {
+  const personal = personalBookIssues(input, pages);
+  return personal.length ? { ...quality, ready: false, issues: [...quality.issues, ...personal] } : quality;
 }
 
 /** A code fact as the writer's item shape (G1, item 4): code's operation, operands, text and one careless wrong answer. */
@@ -940,6 +952,11 @@ interface Slot {
   interest?: boolean;
   /** G1 (item 4): the warm-up fact code chose from the child's fact family; the writer is not asked for it. */
   fact?: WarmUpFact;
+  /**
+   * G1 (item 3): this Spot the error slot may show the child's own mistake. The day's allowance (once a day) goes to the
+   * first slot, in book order, whose sum admits a verified mistake; a slot whose sum does not admit it passes it on.
+   */
+  personalSpot?: boolean;
   /** The skill and the kind of question code chose for the slot (#380): the skill's kinds in turn through the book. */
   aim?: { skill: string; kind: QuestionKind; orElse: QuestionKind[] };
   /**
@@ -1783,7 +1800,7 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
     if (slot.place === "spot-the-error" && b.package?.item?.format === "spot-the-error" && b.check.status !== "failed" && b.package && !isStepItem(b.package)) {
       let problem = samProblem(b.package, input.plan.level);
       // G1: on the day's first Spot the error page, Sam shows the child's own mistake when the sum allows it (item 3).
-      const own = samPrefer(input, w);
+      const own = samPrefer(input, slot);
       const mine = own.length ? samFix(b.package, input.plan.level, 0, (p) => own.includes(p.wrongAnswers[0]?.cause as never)
         && checkQuestionPackage(p).status === "checked" && !samProblem(p, input.plan.level) && !levelRange(p, input), own) : null;
       if (mine) {
@@ -2507,6 +2524,9 @@ function layOut(input: GenerateInput) {
     const cardPlace = (slot: Slot) => slot.place === "challenge" || slot.place === "show-what-you-know";
     // G1 (item 5): the book's eligible code stories so far and how many name an interest, in book order.
     const interesting = interestWords(input.plan).things.length > 0;
+    // G1 (item 3): the days whose Spot the error already shows the child's own mistake.
+    const personalSpots = childSamMistakes(input.plan).length > 0;
+    const spotTaken = new Set<number>();
     const interest = { eligible: 0, named: 0 };
     // G1 (item 8): the reading-load story share caps stories in a page's practice and review slots.
     const storyShare = input.plan.personal?.hasAssessment ? input.plan.personal.adjustments.storyShare : null;
@@ -2540,6 +2560,8 @@ function layOut(input: GenerateInput) {
         const challengeSkill = input.plan.days.find(d=>d.day===w.day)?.pages.flatMap(p=>p.parts.filter(p=>p.unit==="A").flatMap(p=>p.skills)).find(s=>/^1\.1-(?:count|read-write|number-line)/.test(s));
         // G1: a code fact of the child's family is built from its own operation, with no writer and no contract.
         if (slot.fact && !w.page.existingSlots) { slot.existing = true; slot.contract = null; continue; }
+        // G1 (item 3): a Spot the error slot holds the day's allowance for the child's mistake while no slot took it.
+        if (slot.place === "spot-the-error" && !w.page.extraPractice && personalSpots && !spotTaken.has(w.day)) slot.personalSpot = true;
         // G1 (item 5): a slot offers the interest nouns while the book's printed share of them is below its target.
         if (interesting && slot.place !== "warm-up") slot.interest = interest.named < INTEREST_SHARE.target * (interest.eligible + 1);
         // A slot its step's templates fill (#489) never goes to the existing writer.
@@ -2552,6 +2574,8 @@ function layOut(input: GenerateInput) {
         slot.existing = w.page.existingSlots ? w.page.existingSlots.includes(slot.id) : templated || mixedBuilder ? false : slot.place === "challenge" ? !challengeSkill : !approvedQuestionTypes(skill).length;
         if (slot.existing) {
           slot.contract = null;
+          // (A writer's Spot the error sum is known only when it is written: it takes the day's allowance, once.)
+          if (slot.personalSpot) spotTaken.add(w.day);
           const range = skillRange(input.curriculum, input.plan.level, skill);
           const d = { ...dayDifficulty(input.plan.level, difficultyDay(input.plan, w.day)), helpLevel: daySchedule(input.plan, w.day).helpLevel };
           const cap = Math.min(d.numberRange.max, Math.max(5,Math.ceil(range.max*d.rangeFraction)));
@@ -2702,6 +2726,15 @@ function layOut(input: GenerateInput) {
         }
         // (A Mixed set slot no code candidate fills keeps today's writer, rather than failing.)
         if (!best && mixedBuilder) { slot.existing = true; slot.contract = null; continue; }
+        // (The allowance is used only where the chosen sum shows the child's mistake; otherwise a later slot keeps it.)
+        if (slot.personalSpot) {
+          const t = best?.c.template;
+          const pkg = best && !t ? contractPackage(input, w, best.c) : null;
+          const shows = t ? t.kind === "spot" && t.shown !== undefined && templateSpotShown(input.curriculum, input.plan, t.skill, t.step, best!.c.item.text) === Number(t.shown)
+            : !!pkg?.operation && childSamMistakes(input.plan).some((m) => samAnswer(pkg.operation!, m) !== null);
+          if (shows) spotTaken.add(w.day);
+          else slot.personalSpot = false;
+        }
         slot.contract = best?.c ?? null;
         // Nothing approved fits: the step has no new question left for this slot. It stays planned, and fails as such
         // (#482 review at 3134252: a slot that cannot be filled is a failure, never a silent removal).
@@ -3554,8 +3587,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
     quality = reviewed.quality;
     // G1: the personal book checks read the printed book: the warm-up's fact families (item 4) and the interest share
     // (item 5). A failure is a whole-book issue on its page; with no signals there are none.
-    const personal = [...warmUpShareProblems(input.curriculum, input.plan, reviewed.pages), ...interestShareProblems(input.curriculum, input.plan, reviewed.pages)];
-    if (personal.length) quality = { ...quality, ready: false, issues: [...quality.issues, ...personal.map((x) => ({ page: x.page, kind: "variety" as const, reason: x.reason }))] };
+    quality = withPersonalIssues(input, reviewed.pages, quality);
     pages = reviewed.pages.map(p => {
       const issues = quality!.issues.filter(i => i.page === p.number);
       return issues.length ? { ...p, fit: { status: "failed" as const, problems: [...(p.fit.status === "failed" ? p.fit.problems : []), ...issues.map(i => ({ question: null, reason: `whole-book check: ${i.reason}` }))] } } : p;
@@ -3732,6 +3764,10 @@ export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDep
     }
   }
   const next = { ...page, questions, content, ...(change.question === null ? {panelExamples:examples} : {}), fit: { status: "fits" } as PageFit };
+  // G1 (item 4): an edit keeps the day's warm-up on the fact families the plan chose; one that would break the share is
+  // refused, so an edited book never prints fewer of them than its book check allows.
+  const broken = warmUpShareProblems(input.curriculum, input.plan, [next]);
+  if (broken.length && !warmUpShareProblems(input.curriculum, input.plan, [page]).length) throw new Error(`This edit was not saved: ${broken[0].reason}.`);
   const fit = await deps.fit.fits(fitPage(w, page.qrToken, questions, content), {
     id: input.workbookId, childId: input.childId, number: input.number, levels: [input.plan.level], profileBuild: input.profileBuild,
   });

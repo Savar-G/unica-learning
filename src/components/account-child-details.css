@@ -1,0 +1,15 @@
+/* One section per child on the Account tab (#555). */
+.acd { margin: 32px 0 24px; }
+.support-page .acd h2 { margin: 0 0 14px; font-size: 22px; }
+.acd-child { display: grid; gap: 14px; padding: clamp(18px, 2.6vw, 24px); border: 1px solid var(--line); border-radius: 12px; background: #fff; min-width: 0; overflow-wrap: anywhere; }
+.acd-child + .acd-child { margin-top: 14px; }
+.support-page .acd-child h3 { margin: 0; font-size: 19px; }
+.support-page .acd-child h4 { margin: 6px 0 0; padding-top: 16px; border-top: 1px solid var(--line-soft); font: 600 15px/1.4 var(--sans); }
+.support-page .acd-child p { margin: 0; }
+.acd-name { display: grid; gap: 8px; }
+.acd-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.acd-row input { flex: 1 1 200px; min-width: 0; }
+.acd-row .btn { flex: none; }
+.support-page .acd-child .acd-saved:empty { display: none; }
+.support-page .acd-child .lrn-summary { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+.support-page .acd-child .lrn-summary li { margin: 0; padding: 0; }
