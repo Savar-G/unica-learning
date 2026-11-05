@@ -126,6 +126,66 @@ describe("book signals through the public profile interface", () => {
     i.profile!.ai={model:"fake",findings:[{standard:"4.5",hypothesis:"private hypothesis",events:["private-event"]}]};
     expect(signal(i,"S20").status).toBe("not-used");
   });
+  it("review F1: marks learner AI unused when every suggested standard is dropped", () => {
+    const p=firstCustomerProfile();
+    base(p).ai={nextChallenge:{model:"probe",value:["5.13","6.12","6.8"]}};
+    const s=bookSignals({grade:4,profile:p,allowedStandards:["5.1","5.9","5.10"]});
+    expect([s.soft.weakOrder,s.soft.reviewOrder,s.soft.challengeOrder]).toEqual([[],[],[]]);
+    expect(s.soft.dropped.map(d=>d.standard)).toEqual(["5.13","6.12","6.8"]);
+    expect(s.trace.find(t=>t.id==="S19")).toMatchObject({status:"not-used",reason:expect.stringContaining("above school grade")});
+  });
+  it.each([true,false])("review F1: a secure child finding leaves both sources unused, learner AI present %s", present => {
+    const p=firstCustomerProfile();
+    base(p).ai=present?{}:undefined;
+    p.events.counted=1;
+    p.ai={model:"probe",findings:[{standard:"4.5",hypothesis:"ignored",events:[""]}]};
+    const s=bookSignals({grade:4,profile:p});
+    expect([s.soft.weakOrder,s.soft.reviewOrder,s.soft.challengeOrder]).toEqual([[],[],[]]);
+    expect(s.trace.find(t=>t.id==="S19")).toMatchObject({status:present?"not-used":"missing"});
+    if(present) expect(s.trace.find(t=>t.id==="S19")?.reason).toContain("no standard suggestions");
+    expect(s.trace.find(t=>t.id==="S20")).toMatchObject({status:"not-used",reason:expect.stringContaining("no eligible weak standard")});
+  });
+  it("review F1: an eligible child finding does not mark empty learner AI used", () => {
+    const p=bookPersona("catch-up").profile;
+    base(p).ai={};p.events.counted=1;
+    p.ai={model:"probe",findings:[{standard:"4.4",hypothesis:"ignored",events:[""]}]};
+    const s=bookSignals({grade:4,profile:p});
+    expect(s.soft.weakOrder).toEqual(["4.4"]);
+    expect(s.trace.find(t=>t.id==="S19")?.status).toBe("not-used");
+    expect(s.trace.find(t=>t.id==="S20")?.status).toBe("used");
+  });
+  it("review F1: eligible learner suggestions do not mark an ineligible child finding used", () => {
+    const p=firstCustomerProfile();
+    base(p).ai={workbookPlan:{model:"probe",value:{review:{percent:100,standards:["4.5","4.14"]},practise:{percent:0,standards:[]},stretch:{percent:0,standards:[]}}}};
+    p.events.counted=1;
+    p.ai={model:"probe",findings:[{standard:"4.5",hypothesis:"ignored",events:[""]}]};
+    const s=bookSignals({grade:4,profile:p});
+    expect(s.soft.reviewOrder).toEqual(["4.5","4.14"]);
+    expect(s.soft.weakOrder).toEqual([]);
+    expect(s.trace.find(t=>t.id==="S19")?.status).toBe("used");
+    expect(s.trace.find(t=>t.id==="S20")?.status).toBe("not-used");
+  });
+  it("review F1: child findings without counted events cannot supply a tie", () => {
+    const p=bookPersona("catch-up").profile;
+    base(p).ai=undefined;
+    p.ai={model:"probe",findings:[{standard:"4.4",hypothesis:"ignored",events:[""]}]};
+    const s=bookSignals({grade:4,profile:p});
+    expect(s.soft.weakOrder).toEqual([]);
+    expect(s.trace.find(t=>t.id==="S20")).toMatchObject({status:"not-used",reason:expect.stringContaining("no counted learning events")});
+  });
+  it("review F2: the first customer's clear area status does not hide an early area level", () => {
+    const s=bookSignals({grade:4,profile:firstCustomerProfile()});
+    expect(s.strands.every(s=>s.certainty==="clear")).toBe(true);
+    expect(s.strands.find(s=>s.strand==="shapes")?.levelCertainty).toBe("early-sign");
+    expect(s.trace.find(t=>t.id==="S4")?.reliability).toBe("early-sign");
+  });
+  it.each(["status","level","neither"])("review F2: uses the lower area reliability when %s is early", early => {
+    const p=firstCustomerProfile();
+    for(const s of base(p).strands) {s.certainty="clear";s.levelCertainty="clear";}
+    if(early==="status") base(p).strands[0].certainty="early-sign";
+    if(early==="level") base(p).strands[0].levelCertainty="early-sign";
+    expect(bookSignals({grade:4,profile:p}).trace.find(t=>t.id==="S4")?.reliability).toBe(early==="neither"?"clear":"early-sign");
+  });
   it("never reads answer changes, parent notes, answer text or AI and report prose",()=>{
     const i=input(),p=i.profile!,a=base(p);
     const forbidden={get(){throw new Error("private field read");},enumerable:true};

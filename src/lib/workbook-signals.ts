@@ -120,16 +120,30 @@ export function bookSignals(input: BookSignalsInput): BookSignals {
     return { family, state, source, result };
   });
   const aiPlan = a?.ai?.workbookPlan?.value;
-  const findings = codes((p?.events?.counted ?? 0) > 0 ? p?.ai?.findings?.map(f => f.standard) ?? [] : []);
+  const childSuggestions = codes(p?.ai?.findings?.map(f => f.standard) ?? []);
+  const hasEvents = (p?.events?.counted ?? 0) > 0;
+  const findings = hasEvents ? childSuggestions : [];
   const review = codes(aiPlan?.review.standards ?? []);
   const practise = codes(aiPlan?.practise.standards ?? []);
   const challenge = codes([...(a?.ai?.nextChallenge?.value ?? []), ...(aiPlan?.stretch.standards ?? [])]);
-  const suggested = codes([...review, ...practise, ...challenge, ...findings]);
+  const learnerSuggestions = codes([...review, ...practise, ...challenge]);
+  const suggested = codes([...learnerSuggestions, ...findings]);
   const permitted = (c: string) => MAP.get(c)!.grade <= grade && (!allowed || allowed.has(c));
+  const learnerWeak = practise.filter(c => permitted(c) && weakCodes.has(c));
+  const learnerReview = review.filter(c => permitted(c) && secureCodes.has(c));
+  const learnerChallenge = challenge.filter(c => permitted(c) && secureCodes.has(c));
+  const childWeak = findings.filter(c => permitted(c) && weakCodes.has(c));
+  const learnerUsed = learnerWeak.length + learnerReview.length + learnerChallenge.length > 0;
+  const childUsed = childWeak.length > 0;
+  const noTieReason = (source: string, suggestions: readonly string[], kind: string) =>
+    suggestions.length === 0 ? `${source} has no standard suggestions for a tie`
+    : suggestions.every(c => MAP.get(c)!.grade > grade) ? `${source} suggestions are above school grade`
+    : suggestions.every(c => !permitted(c)) ? `${source} suggestions are outside the allowed standards or above school grade`
+    : `${source} suggestions match no eligible ${kind} standard`;
   const soft = {
-    weakOrder: codes([...practise, ...findings]).filter(c => permitted(c) && weakCodes.has(c)),
-    reviewOrder: review.filter(c => permitted(c) && secureCodes.has(c)),
-    challengeOrder: challenge.filter(c => permitted(c) && secureCodes.has(c)),
+    weakOrder: codes([...learnerWeak, ...childWeak]),
+    reviewOrder: learnerReview,
+    challengeOrder: learnerChallenge,
     suggested,
     dropped: suggested.filter(c => !permitted(c)).map(c => ({ standard: c, reason: MAP.get(c)!.grade > grade ? "above school grade, not a weakness" : "not in this level" })),
   };
@@ -142,7 +156,7 @@ export function bookSignals(input: BookSignalsInput): BookSignals {
   add("S1", "fact", true, true, "school grade bounds weaknesses");
   add("S2", working?.certainty ?? "early-sign", !!working, true, trustedAboveGrade ? "clear, trusted level permits an above-grade start" : "working level with its trust checks");
   add("S3", "fact", working?.atCeiling !== undefined, !!working?.atCeiling, "the start never exceeds the measured level");
-  add("S4", strands.every(s => s.certainty === "clear") ? "clear" : "early-sign", strands.length > 0, true, "area status and certainty; secure areas can permit the parent's get-ahead request");
+  add("S4", strands.length > 0 && strands.every(s => s.certainty === "clear" && s.levelCertainty === "clear") ? "clear" : "early-sign", strands.length > 0, true, "area status and level use their lower certainty; secure areas can permit the parent's get-ahead request");
   add("S5", standards.every(s => s.certainty === "clear") ? "clear" : "early-sign", standards.length > 0, true, "only clear secure units can skip first-book teaching");
   add("S6", weak.every(s => s.certainty === "clear") ? "clear" : "early-sign", !!p, weak.length > 0, weak.length ? "weaknesses at or below school grade only" : "no weakness at or below school grade");
   add("S7", "fact", !!a, mistakes.some(m => m.misconceptions.length > 0), "use coded mistakes at or below school grade; never copy answers");
@@ -157,8 +171,8 @@ export function bookSignals(input: BookSignalsInput): BookSignals {
   add("S16", "fact", true, false, "answer changes are keystrokes; never read them");
   add("S17", "parent", preferences.styles.length + preferences.interests.length > 0, true, "parent interests choose code nouns; styles change at most one item per page");
   add("S18", "parent", Object.values(parent).some(v => v !== null), true, "parent answers apply within facts and curriculum bounds");
-  add("S19", "soft", !!a?.ai, suggested.length > 0, "standard codes may break ties only; ignore prose and percentages");
-  add("S20", "soft", !!p?.ai, findings.length > 0, "finding standard codes may break ties only; ignore hypothesis text");
+  add("S19", "soft", !!a?.ai, learnerUsed, learnerUsed ? "eligible learner AI standards may break ties only; ignore prose and percentages" : noTieReason("learner AI", learnerSuggestions, "weak or secure"));
+  add("S20", "soft", !!p?.ai, childUsed, childUsed ? "eligible child AI findings may break weak-unit ties only; ignore hypothesis text" : childSuggestions.length > 0 && !hasEvents ? "child AI findings have no counted learning events" : noTieReason("child AI", childSuggestions, "weak"));
   add("S21", "fact", report.howWeHelp !== null, true, "code howWeHelp is a consistency check; never read summary or comments");
   add("S22", "fact", report.minutes !== null || report.device !== null, false, "test length and device are for the admin view only");
   return { grade, hasAssessment: !!working, working, strands, standards, weak, clearlyWeak: weak.filter(s => s.certainty === "clear"), earlyWeak: weak.filter(s => s.certainty !== "clear"), secure, mistakes, events: p?.events ? { counted: p.events.counted, inAssessmentProfile: p.events.inAssessmentProfile } : null, facts, unknowns, behaviour, preferences, parent, adjustments: { trustedAboveGrade, stretchShift: shift, hardChallenge: shift > 0, picturesThrough: parent.goal === "catch_up" ? 5 : 3, shortStories: (behaviour?.readAloud ?? 0) >= 3, storyShare: (behaviour?.readAloud ?? 0) >= 3 ? 0.2 : null, requiredMinutes, extraChallenge: parent.feeling === "avoids" }, soft, report, trace };
