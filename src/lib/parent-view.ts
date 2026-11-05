@@ -91,6 +91,8 @@ export interface ChildView extends StageView {
   currentWorkbook: { number: number } | null;
   /** The child's reports, newest test first. */
   reportIds: string[];
+  /** The tests with a report, newest first: the Assessment tab's list. */
+  finishedTests: { reportId: string; finishedAt: number }[];
 }
 
 /** Where a child's test stands at `now`. Only the latest finished test counts, unless a test is open. */
@@ -102,10 +104,9 @@ function testFact(tests: readonly TestRecord[], reports: readonly ReportRecord[]
   return report ? { state: "report_ready", curriculum: report.curriculum } : { state: "running" };
 }
 
-/** The reports' ids, newest test first. */
-function reportIds(tests: readonly TestRecord[], reports: readonly ReportRecord[]): string[] {
-  const finished = (r: ReportRecord) => tests.find((t) => t.id === r.assessmentId)?.completedAt ?? 0;
-  return [...reports].sort((a, b) => finished(b) - finished(a)).map((r) => r.id);
+/** The reports, newest test first, with the time each test finished (0 when its test cannot be read). */
+function reportsByTime(tests: readonly TestRecord[], reports: readonly ReportRecord[]): { reportId: string; finishedAt: number }[] {
+  return reports.map((r) => ({ reportId: r.id, finishedAt: tests.find((t) => t.id === r.assessmentId)?.completedAt ?? 0 })).sort((a, b) => b.finishedAt - a.finishedAt);
 }
 
 /**
@@ -136,7 +137,8 @@ export async function listChildren(reader: ParentViewReader, now: number): Promi
       delivered: deliveries.some((d) => d.childId === child.id),
       plan: plans.find((p) => p.childId === child.id)?.kind ?? "unknown",
     }, switches);
-    return { id: child.id, firstName: child.firstName, schoolGrade: child.grade, ...view, currentWorkbook: newest > 0 ? { number: newest } : null, reportIds: reportIds(own.tests, own.reports) };
+    const finished = reportsByTime(own.tests, own.reports);
+    return { id: child.id, firstName: child.firstName, schoolGrade: child.grade, ...view, currentWorkbook: newest > 0 ? { number: newest } : null, reportIds: finished.map((f) => f.reportId), finishedTests: finished.filter((f) => f.finishedAt > 0) };
   });
 }
 

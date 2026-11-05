@@ -11,7 +11,8 @@
 //   id, and a query that holds only utm_* or fbclid) with a clean referrer (metaCleanReferrer: none, another site's
 //   bare origin, or a clean address here). Anywhere else it is paused and silent. So Meta gets PageView and Lead
 //   (account_created fires on /start or /account/finish), never ReportOpen or AddPaymentInfo (their pages hold a
-//   report id or a Stripe session reference). Meta's own history tracking and automatic events are off.
+//   report id or a Stripe session reference). ReportOpen is also left out in code, because the dashboard can show a
+//   report on /account (#552). Meta's own history tracking and automatic events are off.
 // - A conversion goes out with the existing track() call (track.ts is the one place call sites use) and carries no
 //   personal data: no email, name, child data, grade or ids. Google gets the page address and the referrer with ids
 //   replaced and only the ad tags (utm_*, gclid) kept in the query (another site's referrer: its origin only), so
@@ -226,7 +227,7 @@ export function createAdTags(deps: AdDeps) {
       live.meta?.("track", "Lead");
       google(config.googleLabels.lead);
     } else if (event === "report_open") {
-      live.meta?.("trackCustom", "ReportOpen");
+      // Google only, whatever the address: the dashboard can show a report on /account, which is a clean address (#552).
       google(config.googleLabels.report);
     } else {
       live.meta?.("track", "AddPaymentInfo", { value: CARD_VALUE, currency: "CAD" });

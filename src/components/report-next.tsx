@@ -3,10 +3,11 @@
 // The report's next step (#66): a BC parent chooses a plan and goes to the payment page to save a card; a parent in
 // any other province joins the waitlist with one click. The report email links here (links only), with the step.
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Province } from "@/lib/assessment";
 import { BOOKING_URL, SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { CARD_CHECK_ROUTE, CARD_ROUTE, WAITLIST_ROUTE, type CardCheckResult, type CardRequest, type CardResult, type ReportSrc, type WaitlistRequest, type WaitlistResult } from "@/lib/next-step";
+import type { FreeMonthWords } from "@/lib/parent-assessment";
 import type { NextStep, PlanOption } from "@/lib/report-view";
 import { CURRICULA } from "@/lib/signup";
 import type { PlanId } from "@/lib/site";
@@ -33,7 +34,7 @@ const post = async <T,>(url: string, body: CardRequest | WaitlistRequest): Promi
   }
 };
 
-export function ReportNextActions({ reportId, step, childName, province, src, asked, start }: {
+export function ReportNextActions({ reportId, step, childName, province, src, asked, start, words, pinned = false }: {
   reportId: string;
   step: NextStep;
   childName: string;
@@ -42,6 +43,10 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
   /** The parent came from the email's next step link. */
   asked: boolean;
   start: NextStepStart;
+  /** The dashboard's words for the same card route (#552). Without them, the report's own. */
+  words?: FreeMonthWords;
+  /** The dashboard (#552): the button and what it needs sit in one part, which its CSS fixes at the bottom of a phone. */
+  pinned?: boolean;
 }) {
   const [card, setCard] = useState<CardState>(start.saved ? "saved" : "checking");
   const [checkAttempt, setCheckAttempt] = useState(0);
@@ -147,6 +152,7 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
 
   const help = <>If this keeps happening, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;
   const spinner = (label: string) => <span className="spin" role="img" aria-label={label} />;
+  const go = (action: ReactNode) => (pinned ? <div className="pd-go">{action}</div> : action);
 
   if (step.kind === "waitlist") {
     const books = province === "other" ? "books for more provinces" : `books for the ${CURRICULA[province]} curriculum`;
@@ -155,13 +161,16 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
         {wait === "joined" ? <>
           <h3>You are on the waitlist.</h3>
           <p>We will email you when {books} are ready. {childName}&apos;s report stays in your account.</p>
+          {pinned && <div className="pd-go pd-go-status"><p>You are on the waitlist.</p></div>}
         </> : <>
           <h3>{step.title}</h3>
           <p>{step.text}</p>
-          {wait === "error" && <p className="rpt-next-note" role="alert">We could not add you to the waitlist. Try again in a moment. {help}</p>}
-          <button className="btn" type="button" onClick={() => void join()} disabled={busy !== null} aria-busy={busy === "waitlist"}>
-            {busy === "waitlist" ? spinner("Joining the waitlist") : <>Join the waitlist <span className="arr">→</span></>}
-          </button>
+          {go(<>
+            {wait === "error" && <p className="rpt-next-note" role="alert">We could not add you to the waitlist. Try again in a moment. {help}</p>}
+            <button className="btn" type="button" onClick={() => void join()} disabled={busy !== null} aria-busy={busy === "waitlist"}>
+              {busy === "waitlist" ? spinner("Joining the waitlist") : <>Join the waitlist <span className="arr">→</span></>}
+            </button>
+          </>)}
         </>}
         <p className="sr-only" role="status">{announce}</p>
       </div>
@@ -178,9 +187,10 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
         <h3>We received your plan choice.</h3>
         <p>We will email you a link to add your card. You have not been charged.</p>
       </> : <>
-        <h3>{step.title}</h3>
+        <h3>{words?.title ?? step.title}</h3>
         <p>{step.text}</p>
-        {start.cancelled && card === "choose" && <p className="rpt-next-note">Your card is not saved yet, and nothing was charged. Choose a plan when you are ready.</p>}
+        {go(<>
+        {start.cancelled && card === "choose" && <p className="rpt-next-note">{words?.notSaved ?? "Your card is not saved yet, and nothing was charged. Choose a plan when you are ready."}</p>}
         {card === "checking" && <p className="rpt-next-note" role="status">Checking your card…</p>}
         {card === "unknown" && <div className="rpt-next-note" role="alert">
           <p>We could not check your card. Try again in a moment. {help}</p>
@@ -190,11 +200,14 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
         <div className="rpt-plans">
           {step.plans.map((option, i) => (
             <button key={option.plan} className={`btn${i < step.plans.length - 1 ? " ghost" : ""}`} type="button" onClick={() => void choose(option)} disabled={busy !== null || card === "checking" || card === "unknown"} aria-busy={busy === option.plan}>
-              {busy === option.plan ? spinner("Opening the payment page") : option.label}
+              {busy === option.plan ? spinner("Opening the payment page") : words ? <>{words.button} <span className="arr">→</span></> : option.label}
             </button>
           ))}
         </div>
-        <p className="rpt-small">You add your card and shipping address on a secure payment page. We use the address to ship your workbook.</p>
+        {words
+          ? <p className="rpt-small"><span className="pd-go-long">{words.note}</span><span className="pd-go-short">{words.bar}</span></p>
+          : <p className="rpt-small">You add your card and shipping address on a secure payment page. We use the address to ship your workbook.</p>}
+        </>)}
       </>}
       <p className="sr-only" role="status">{announce}</p>
     </div>
