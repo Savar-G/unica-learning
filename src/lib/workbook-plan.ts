@@ -310,8 +310,18 @@ export interface PlannedDay {
   pages: PlannedPage[];
 }
 
+export interface RequiredTimeShortfall {
+  day: number;
+  target: number;
+  required: number;
+  shortfall: number;
+}
+
 export interface WorkbookPlan {
-  personal?: BookSignals;
+  personal?: BookSignals & {
+    /** Whole Extra blocks were exhausted. Keep the book and report the remaining required minutes to the admin. */
+    timeShortfalls?: RequiredTimeShortfall[];
+  };
   level: number;
   lead: PlanLevel["lead"];
   /** Pages a day (D-186) on a teaching day. */
@@ -896,6 +906,12 @@ export function planWorkbook(input: PlanInput): PlanResult {
   const earlier = filler.length > 0 ? filler : level.units.map((u) => u.skills[0]?.id).filter((x): x is string => !!x);
   const stepsBefore = (day: number) => sim.starts.filter((s) => s.day < day).map((s) => s.skill);
   const supportSkills = support ? STANDARDS.get(support)!.skills.map((k) => k.id) : [];
+  const rememberAllowed = (skill: string, day: number) => !secureBelow.has(skill) || placed.some(r => r.skill === skill && r.due <= day);
+  // Stories keep their known earlier-level candidates independently of the Remember these schedule.
+  const storyPrerequisites = personal ? earlier.filter(skill => {
+    const at = level.skillLevels?.[skill];
+    return at !== undefined ? at < n : standardOf(skill).grade < levelGrade;
+  }).map(skill => ({ skill, step: null })) : [];
 
   const days = shapes.map((dayShapes, i): PlannedDay => {
     const day = i + 1;
@@ -916,6 +932,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
     const dueHere = placed.filter((r) => r.due === day);
     const turn = (day * 3) % Math.max(1, earlier.length);
     const turned = [...new Set([...everyUnit, ...earlier.slice(turn), ...earlier.slice(0, turn)])];
+    const rememberTurned = personal ? turned.filter(skill => rememberAllowed(skill, day)) : turned;
     let used = 0;
     let fillAt = 0;
     let checkAt = 0;
@@ -940,7 +957,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
             checkAt += checks.length;
             const reviews = dueHere.slice(used, used + slots - checks.length);
             used += reviews.length;
-            const fill = turned.length === 0 ? [] : Array.from({ length: slots - reviews.length - checks.length }, () => turned[fillAt++ % turned.length]);
+            const fill = rememberTurned.length === 0 ? [] : Array.from({ length: slots - reviews.length - checks.length }, () => rememberTurned[fillAt++ % rememberTurned.length]);
             return part(k, items, {
               skills: [...new Set([...checks.flatMap(c => c.skills), ...reviews.map((r) => r.skill), ...fill])],
               reviews: reviews.map((r) => ({ skill: r.skill, step: r.step, interval: r.interval })),
@@ -1062,6 +1079,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
     }
   }
 
+  const timeShortfalls: RequiredTimeShortfall[] = [];
   if (personal) {
     for (const d of days) {
       // Support keeps the real day's pictures. Stretch changes only the number range and difficulty.
@@ -1071,6 +1089,14 @@ export function planWorkbook(input: PlanInput): PlanResult {
         storyShare: personal.adjustments.storyShare ?? base.storyShare, maxMinutes: 35 };
       d.shortStories = personal.adjustments.shortStories;
       for (const p of d.pages.flatMap(page => page.parts)) {
+        if (p.kind === "remember-these") {
+          p.skills = p.skills.filter(skill => rememberAllowed(skill, d.day));
+          if (p.reviewSteps) p.reviewSteps = p.reviewSteps.filter(r => rememberAllowed(r.skill, d.day));
+        }
+        if (p.kind === "word-problems" || p.kind === "picture-stories") {
+          p.reviewSteps = [...(p.reviewSteps ?? []), ...storyPrerequisites]
+            .filter((r, i, all) => all.findIndex(other => other.skill === r.skill && other.step === r.step) === i);
+        }
         if (p.kind === "challenge") {
           // The first card stays on today's step. Other cards may prefer secure steps already taught or reviewed.
           const earlier = [...sim.starts.filter(s => s.day < d.day).map(s => ({ skill: s.skill, step: s.step })),
@@ -1103,9 +1129,10 @@ export function planWorkbook(input: PlanInput): PlanResult {
         if (estimate() <= target) break;
         for (const p of block) p.extra = true;
       }
-      if (estimate() > target) return { ok: false, reason: `day ${d.day}: whole Extra blocks cannot meet the required time` };
       const round = (v: number) => Math.round(v * 10) / 10;
       d.time = { estimated: round(estimated), required: round(estimate()), target: round(target) };
+      const shortfall = round(d.time.required - d.time.target);
+      if (shortfall > 0) timeShortfalls.push({ day: d.day, target: d.time.target, required: d.time.required, shortfall });
     }
   }
 
@@ -1120,7 +1147,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
   return {
     ok: true,
     plan: {
-      ...(personal ? { personal } : {}),
+      ...(personal ? { personal: { ...personal, ...(timeShortfalls.length ? { timeShortfalls } : {}) } } : {}),
       level: n,
       lead: level.lead,
       pagesADay: { ...level.pagesPerDay },

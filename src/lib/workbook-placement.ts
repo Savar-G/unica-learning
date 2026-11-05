@@ -109,7 +109,7 @@ export function planNextWorkbook(o: PlacementInput & { number: number }): NextWo
     if (unassessedUnits.length) trace.rules.push("P5b");
     if (weakLevels(o.curriculum.levels, signals.earlyWeak).some(s => s.level.number < place.level.number)) trace.rules.push("P6");
   }
-  const plan: PersonalWorkbookPlan = { ...result.plan, personal: signals.hasAssessment ? { ...signals, start: trace } : undefined };
+  const plan: PersonalWorkbookPlan = { ...result.plan, personal: result.plan.personal ? { ...result.plan.personal, start: trace } : undefined };
   if (!signals.hasAssessment) delete plan.personal;
   if (place.support && plan.units.support) {
     const unit = o.curriculum.unit(place.support)!;

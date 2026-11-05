@@ -106,6 +106,81 @@ const withWeak = (i: ReturnType<typeof personalInput>, codes: string[], certaint
 const dayParts = (p: WorkbookPlan, day: number) => p.days[day - 1].pages.flatMap(pg => pg.parts);
 
 describe("C3 personal plan", () => {
+  it("R523-P1: keeps lower secure skills out of the first customer's Remember these candidates before their review is due", () => {
+    const profile = firstCustomerProfile();
+    const r = planNextWorkbook({ curriculum: BC, grade: 4, profile, workbooks: [], number: 1 });
+    if (!r.ok) throw new Error(r.reason);
+    const lowerSecure = new Set(profile.standards.filter(s => s.status === "secure")
+      .flatMap(s => BC_SKILL_MAP.standards.find(t => t.code === s.code)!.skills.map(s => s.id))
+      .filter(id => BC.levelOfSkill(id)!.number < 16));
+    const firstReview = r.plan.days[0].pages[6].parts.find(p => p.kind === "remember-these")!;
+    expect(firstReview.items).toBe(8);
+    expect(firstReview.skills.length).toBeGreaterThan(0);
+    for (const d of r.plan.days) for (const p of dayParts(r.plan, d.day).filter(p => p.kind === "remember-these")) {
+      expect(p.skills.filter(id => lowerSecure.has(id)), `day ${d.day}: skills`).toEqual([]);
+      expect((p.reviewSteps ?? []).filter(s => lowerSecure.has(s.skill)), `day ${d.day}: steps`).toEqual([]);
+    }
+    // The rule limits Remember these, not the prerequisites available to story and mixed-work parts.
+    expect(r.plan.days.flatMap(d => d.pages.flatMap(pg => pg.parts.filter(p => ["word-problems", "mixed-set"].includes(p.kind))
+      .flatMap(p => p.reviewSteps ?? []))).some(s => lowerSecure.has(s.skill))).toBe(true);
+  });
+
+  it("R523-P1: allows a lower secure skill in Remember these when its carried review becomes due", () => {
+    const i = personalInput();
+    const skill = BC_SKILL_MAP.standards.find(s => s.code === "4.4")!.skills[0].id;
+    i.reviews = [{ skill, step: 1, interval: 2, due: 3 }];
+    const p = plan(i);
+    for (const day of [1, 2]) {
+      const remember = dayParts(p, day).filter(p => p.kind === "remember-these");
+      expect(remember.flatMap(p => p.skills)).not.toContain(skill);
+      expect(remember.flatMap(p => p.reviewSteps ?? []).some(r => r.skill === skill)).toBe(false);
+    }
+    const due = dayParts(p, 3).filter(p => p.kind === "remember-these");
+    expect(due.flatMap(p => p.skills)).toContain(skill);
+    expect(due.flatMap(p => p.reviewSteps ?? [])).toContainEqual({ skill, step: 1 });
+  });
+
+  it.each(["U7", "U27"])("R523-P2: %s test workbooks keep all blocks and record a weekly-time shortfall instead of refusing", level => {
+    const i = samplePlanInput(BC, sampleChild(BC, level)!, "test");
+    const profile = firstCustomerProfile();
+    profile.grade = i.grade;
+    profile.standards = [];
+    profile.assessment!.profile.test.grade = i.grade;
+    profile.assessment!.profile.level = { working: i.grade, certainty: "clear", confidence: "normal", atCeiling: false };
+    profile.assessment!.profile.standards = [];
+    const personal = bookSignals({ grade: i.grade, profile });
+    const baseline = plan({ ...i, personal });
+    personal.parent.weeklyTime = "under_1h";
+    const p = plan({ ...i, personal });
+    const contents = (p: WorkbookPlan) => p.days.map(d => d.pages.map(pg => pg.parts.map(p => ({ kind: p.kind, items: p.items }))));
+    expect(contents(p)).toEqual(contents(baseline));
+    const last = p.days[9];
+    expect(last.time!.estimated).toBeLessThan(35);
+    expect(last.time!.required).toBeGreaterThan(last.time!.target);
+    expect(last.time!.target).toBe(20);
+    expect(last.pages.flatMap(pg => pg.parts.filter(p => p.kind === "challenge" || p.kind === "practice")).every(p => p.extra)).toBe(true);
+    expect(p.personal).toMatchObject({ timeShortfalls: expect.arrayContaining([
+      expect.objectContaining({ day: 10, target: 20, required: last.time!.required, shortfall: Number((last.time!.required - 20).toFixed(1)) }),
+    ]) });
+    expect(personal).not.toHaveProperty("timeShortfalls");
+  });
+
+  it("R523-P2: placement preserves the shortfall trace for Why this book", () => {
+    const profile = firstCustomerProfile();
+    profile.grade = 2;
+    profile.parent.weeklyTime = "under_1h";
+    profile.assessment!.profile.test.grade = 2;
+    profile.assessment!.profile.level = { working: 2, certainty: "clear", confidence: "normal", atCeiling: false };
+    profile.standards = BC.level("U7")!.units.map(code => ({ ...profile.standards[0], code, status: "secure", certainty: "clear", aboveGrade: false }));
+    const r = planNextWorkbook({ curriculum: BC, grade: 2, profile, workbooks: [], number: 1 });
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.plan.level).toBe(7);
+    expect(r.plan.personal).toMatchObject({
+      start: { level: "U7" },
+      timeShortfalls: [{ day: 10, target: 20, required: 20.7, shortfall: .7 }],
+    });
+  });
+
   it("keeps 18 absent-personal plans byte-identical to the pre-change golden results", () => {
     for (const [key, hash] of Object.entries(GOLDEN)) {
       const [level, kind] = key.split("-");
