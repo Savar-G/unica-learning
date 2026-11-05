@@ -1396,6 +1396,30 @@ export type Database = {
           },
         ]
       }
+      maya_call_sweep_cursors: {
+        Row: {
+          at: string | null
+          call_id: string | null
+          kind: string
+          until_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          at?: string | null
+          call_id?: string | null
+          kind: string
+          until_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          at?: string | null
+          call_id?: string | null
+          kind?: string
+          until_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       maya_calls: {
         Row: {
           assessment_id: string | null
