@@ -1,0 +1,17 @@
+{
+  "round": "r455",
+  "issue": 455,
+  "slice": "S2b",
+  "route": "design direct: fully specified change on an existing hidden surface",
+  "data": "Synthetic only: QA test families, sample book pages printed by real Chromium, drawn digits as written answers.",
+  "browser": "T3 preview in a private profile, because the Aside CLI hung at 'Waiting for Aside to restart'. Width changes only: the user agent is the desktop one.",
+  "screens": [
+    { "file": "ready-laptop-1280.png", "state": "ready", "width": 1280 },
+    { "file": "ready-tablet-820.png", "state": "ready", "width": 820 },
+    { "file": "ready-phone-390.png", "state": "ready", "width": 390 },
+    { "file": "refused-phone-390.png", "state": "refused: a mark is covered", "width": 390 },
+    { "file": "legacy-phone-390.png", "state": "unavailable: a legacy book with no contract", "width": 390 }
+  ],
+  "evidence": ["hosted-security.json", "hosted-family-deletion.json"],
+  "limits": "No real handwriting, real camera or curled page. Savar has not reviewed these screens (D-236)."
+}

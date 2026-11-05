@@ -27,7 +27,11 @@ import {
   teachingContext,
   type TeachingFrame,
 } from "@/lib/workbook-print-contract";
-import { mark, proofPages, renderedPages, renderWorkbook, type MeasuredElement, type WorkbookDraft, type WorkbookTemplate } from "@/lib/workbook-render";
+import { mark, proofPages, renderedPages, renderWorkbook, type MeasuredElement, type PrintEngine, type WorkbookDraft, type WorkbookTemplate } from "@/lib/workbook-render";
+import { cropPlan } from "@/lib/scan-calibration";
+import { readScanPreview, runScanCrops, scanPartPath } from "@/lib/scan-crops";
+import { memoryScanCropStore } from "@/lib/scan-crops-memory";
+import { blankPage, cropCut, drawDigit, drawMark, drawPrintedContent, greyRaster, pagePng, photoJpeg, photographed, readDigit, uprightCorners } from "@/lib/scan-synthetic";
 import { teachingFrame } from "@/lib/workbook-teaching-frame";
 import { sampleDraft } from "@/lib/workbook-sample";
 import { sampleBook } from "@/lib/workbook-sample-book";
@@ -86,6 +90,38 @@ async function rendered(draft: GeneratedWorkbook, key: string): Promise<DraftRen
   const result = await renderWorkbook({ draft: renderableDraft(draft), parentId: PARENT, template, engine: engine(), fileKey: key });
   if (result.status !== "rendered") throw new Error(JSON.stringify(result.problems.slice(0, 3)));
   return { pdfPath: result.workbook.pdfPath, pdfSha256: result.workbook.pdfSha256, pages: renderedPages(result) };
+}
+
+/**
+ * The fake engine with real page images, drawn only from what it measured: each mark at its rect, printed content, and each
+ * question at its own place on a grid. The image is real, so its fingerprint and a photo of it are real too.
+ */
+function drawingEngine(): PrintEngine {
+  const rects = new Proxy({}, {
+    get: (_t, key) => {
+      const q = /^\d+ question-(\d+)$/.exec(String(key));
+      if (!q) return undefined;
+      const n = (Number(q[1]) - 1) % 24;
+      return { x: 60 + (n % 4) * 175, y: 330 + Math.floor(n / 4) * 112, width: 165, height: 104 };
+    },
+  }) as Record<string, { x: number; y: number; width: number; height: number }>;
+  const inner = fakePrintEngine({ rects });
+  return {
+    async print(job) {
+      const out = await inner.print(job);
+      const s = job.scale;
+      const images = await Promise.all(out.images.map(async (image, sheet) => {
+        const r = blankPage(image.width, image.height);
+        drawPrintedContent(r);
+        for (const m of out.measured.filter((x) => x.sheet === sheet)) {
+          const mark = /^scan-(t|b)(l|r)$/.exec(m.name);
+          if (mark) drawMark(r, `${mark[1]}${mark[2]}` as "tl", { x: (mark[2] === "l" ? m.x : m.x + m.width) * s, y: (mark[1] === "t" ? m.y : m.y + m.height) * s });
+        }
+        return { ...image, png: new Uint8Array(await pagePng(r)) };
+      }));
+      return { ...out, images };
+    },
+  };
 }
 
 const frameOf = (f: RunFrame): TeachingFrame => teachingFrame(f);
@@ -282,9 +318,9 @@ describe("the Supabase ship store", () => {
 
 describe("a changed revision changes its contract as one unit", () => {
   /** An edit of one page through the real edit job, then approval of the new revision. */
-  async function edited() {
+  async function edited(o: { engine?: () => PrintEngine; base?: DraftRendering; files?: Map<string, Uint8Array> } = {}) {
     const snapshot: EditSnapshot = {
-      draft: structuredClone(sound), rendering: structuredClone(rendering), problems: [], revision: 1, parentId: PARENT,
+      draft: structuredClone(sound), rendering: structuredClone(o.base ?? rendering), problems: [], revision: 1, parentId: PARENT,
       input: { workbookId: sound.id, childId: CHILD, number: sound.number, profileBuild: sound.profileBuild, plan: made.frame.plan, curriculum: curriculumFor("bc")!, book: { child: "Leah" } },
     };
     const review = memoryWorkbookReview(snapshot);
@@ -296,8 +332,9 @@ describe("a changed revision changes its contract as one unit", () => {
       async renderPage(_s, draft, number) {
         const one = renderableDraft(draft);
         one.pages = one.pages.filter((p) => p.number === number);
-        const result = await renderWorkbook({ draft: one, parentId: PARENT, template, engine: engine(), fileKey: `edit${number}` });
+        const result = await renderWorkbook({ draft: one, parentId: PARENT, template, engine: (o.engine ?? engine)(), fileKey: `edit${number}` });
         if (result.status !== "rendered") throw new Error(result.problems[0].reason);
+        for (const f of result.files) o.files?.set(f.path, f.bytes);
         return { page: renderedPages(result)[0], paths: [] };
       },
       assemble: async () => ({ pdfPath: `${PARENT}/${sound.id}/workbook-edit.pdf`, pdfSha256: await sha256Hex(new TextEncoder().encode("edited pdf")), paths: [] }),
@@ -350,6 +387,74 @@ describe("a changed revision changes its contract as one unit", () => {
     expect(printContractForPhoto(second, pageAfter, { printedRevision: first.printedRevision })).toEqual({ status: "unavailable", reason: "other-revision" });
     expect(printContractForPhoto(second, pageAfter, { printedRevision: second.printedRevision })).toMatchObject({ status: "available", revision: second.printedRevision, contract: { page } });
   }, 60_000);
+
+  it("render, edit, approval, store, crop: a photo of each revision is read from what the store kept, and an old photo cannot use the new revision", async () => {
+    // Disproved if a crop needs a field the store lost (a mark, its order, a unit, an image size, a region box or a
+    // fingerprint), if a crop holds another question's written answer, or if a photo of revision 1 reads through revision 2.
+    // (The fake engine's geometry, on page images drawn from it: real pages are in scan-crops-chromium.test.ts.)
+    const files = new Map<string, Uint8Array>();
+    const first = await renderWorkbook({ draft: renderableDraft(sound), parentId: PARENT, template, engine: drawingEngine(), fileKey: "crop1" });
+    if (first.status !== "rendered") throw new Error(JSON.stringify(first.problems.slice(0, 3)));
+    for (const f of first.files) files.set(f.path, f.bytes);
+    const base: DraftRendering = { pdfPath: first.workbook.pdfPath, pdfSha256: first.workbook.pdfSha256, pages: renderedPages(first) };
+    const { workbooks, drafts, ship } = setupShip({ ...approval, rendering: base });
+    await approveDraft(ship, { runId: made.runId, revision: 1, actor: ADMIN });
+    const one = (await workbooks.workbook(sound.id))!;
+
+    const questionsOf = (p: (typeof one.pages)[number]) => p.questions.map((q) => ({ number: q.number, package: q.content.status === "found" ? q.content.package : null, regions: q.regions }));
+    const supported = one.pages.find((p) => cropPlan(questionsOf(p)).crops.length >= 2)!;
+    const number = supported.number;
+    const plan = cropPlan(questionsOf(supported)).crops;
+    const digit = (i: number) => (i * 3 + 1) % 10;
+
+    const photoOf = async (printedPng: Uint8Array) => {
+      const page = await greyRaster(printedPng);
+      plan.forEach((c, i) => drawDigit(page, c.box, digit(i), 20));
+      const size = { width: 1500, height: 1900 };
+      return photoJpeg(photographed(page, size, uprightCorners(size, { width: page.width, height: page.height }, 70)));
+    };
+    const PHOTO = "00000000-0000-4000-8000-00000000f070";
+    const run = async (w: NonNullable<typeof one>, photoRevision: string | null, bytes: Uint8Array) => {
+      const m = memoryScanCropStore({ now: () => Date.parse(NOW) });
+      const page = w.pages.find((p) => p.number === number)!;
+      m.printed.set(page.image!.path, files.get(page.image!.path)!);
+      m.photos.set(PHOTO, {
+        parent: PARENT, state: "saved", createdAt: Date.parse(NOW), expiresAt: Date.parse(NOW) + 90 * 86_400_000, bytes, storedBytes: 1,
+        frame: { printedRevision: photoRevision, book: { printedRevision: w.printedRevision }, page: { printContract: page.printContract, imagePath: page.image!.path, questions: questionsOf(page) } },
+      });
+      return { m, preview: await runScanCrops(m.store, { parent: PARENT, photo: PHOTO }, "00000000-0000-4000-8000-0000000000e1") };
+    };
+
+    const photo1 = await photoOf(files.get(supported.image!.path)!);
+    const read1 = await run(one, one.printedRevision, photo1);
+    if (read1.preview.status !== "ready") throw new Error(JSON.stringify(read1.preview));
+    expect(read1.preview.crops.map((c) => c.number)).toEqual(plan.map((c) => c.number));
+    for (const [i, c] of plan.entries()) {
+      const crop = await greyRaster(read1.m.objects.get(scanPartPath(PARENT, PHOTO, "00000000-0000-4000-8000-0000000000e1", `crop-${c.number}`))!);
+      expect(readDigit(crop, cropCut(c.box), c.box), `question ${c.number}`).toBe(digit(i));
+    }
+    // The contract kept every declared field through the store.
+    expect(supported.printContract).toMatchObject({ marks: { anchor: "outer-corner", order: ["tl", "tr", "br", "bl"] }, coordinates: { units: "image-px", origin: "top-left", x: "right", y: "down", orientation: "portrait", image: { width: 1275, height: 1650 } } });
+    expect(supported.printContract!.fingerprints.image).toBe(await sha256Hex(files.get(supported.image!.path)!));
+
+    // The edit makes revision 2, and approval replaces the whole contract.
+    const { after } = await edited({ engine: drawingEngine, base, files });
+    workbooks.setStatus(sound.id, "draft");
+    drafts.set(made.runId, { ...approval, revision: 2, draft: { ...after.draft }, rendering: after.rendering });
+    await approveDraft(ship, { runId: made.runId, revision: 2, actor: ADMIN });
+    const two = (await workbooks.workbook(sound.id))!;
+    expect(two.printedRevision).not.toBe(one.printedRevision);
+
+    const old = await run(two, one.printedRevision, photo1);
+    expect(old.preview).toEqual({ status: "unavailable", reason: "other-revision" });
+    expect(old.m.filesOf(PHOTO)).toEqual([]);
+    expect(await readScanPreview(old.m.store, { parent: PARENT, photo: PHOTO })).toEqual({ status: "unavailable", reason: "other-revision" });
+
+    // Positive control: a photo of revision 2's own printed page reads through revision 2.
+    const page2 = two.pages.find((p) => p.number === number)!;
+    const read2 = await run(two, two.printedRevision, await photoOf(files.get(page2.image!.path)!));
+    expect(read2.preview.status).toBe("ready");
+  }, 300_000);
 
   it("a page rendered with changed content has a new content fingerprint, and the book a new revision", async () => {
     // Disproved if a content change leaves the contract or the revision as it was.

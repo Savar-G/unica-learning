@@ -1,0 +1,259 @@
+// Page observations and completion (#455, S2b): the public contract that marking (S4) and every format extension use.
+// An observation says what is known about one printed item from a scanned page. It is not a learning event: this module
+// decides which observations may publish one (markingEvent), and publishes nothing.
+//
+// One item has one identity, whatever the scan: (workbook, printed revision, page, item). A photo is evidence, not another
+// attempt. A region names a part of an item.
+//
+// Reading uncertainty is pending, never blank. Unscored and parent-checked are explicit states, not guessed scores.
+// Pure TypeScript: no Next.js, React, network, database, clock or Math.random.
+import { packageItem, type ItemFormat, type QuestionPackage } from "@/lib/question-package";
+import type { StepReference, TeachingContext } from "@/lib/workbook-print-contract";
+
+export const OBSERVATION_VERSION = 1;
+/** The most characters kept of one reading. Only the expected answer region's words, never a page's. */
+export const MAX_READ_TEXT = 200;
+
+export interface ItemIdentity {
+  workbookId: string;
+  printedRevision: string;
+  pageId: string;
+  itemId: string;
+}
+
+export const itemKey = (i: ItemIdentity) => `${i.workbookId}:${i.printedRevision}:${i.pageId}:${i.itemId}`;
+
+/**
+ * How an item gets its result: code checks what the AI read; a parent checks it; or nobody scores it. "unavailable": the
+ * stored question has no trusted package, so nothing can finish it.
+ */
+export type CheckMethod = "code" | "parent" | "unscored" | "unavailable";
+
+export type MarkResult = "right" | "wrong" | "blank";
+
+/**
+ * - pending: no result yet, including when the reading is uncertain;
+ * - scored: code checked it, with a result;
+ * - parent-pending: it waits for a parent's check;
+ * - parent-checked: a parent gave a result;
+ * - unscored: nobody scores it, so it has no result.
+ */
+export type ObservationState = "pending" | "scored" | "parent-pending" | "parent-checked" | "unscored";
+
+export type ReadingCertainty = "certain" | "uncertain" | "not-read";
+
+/** Why a result does not count toward mastery, or null when it does. */
+export type MasteryExclusion =
+  | "no-teaching-context" | "context-mismatch" | "try-first" | "written-reason" | "not-scorable" | "parent-checked" | "no-item-step" | "unavailable";
+
+export interface MasteryDecision {
+  eligible: boolean;
+  reason: MasteryExclusion | null;
+}
+
+/** Whether anyone helped with the math. Reading handwriting is not help with the math. */
+export type HelpState = "none" | "math-help" | "unknown";
+export type Actor = "system" | "parent" | "admin";
+
+export interface RegionReading {
+  regionId: string;
+  /** What the AI read, bounded; null when unreadable or missing. Empty only for a genuinely empty answer. */
+  text: string | null;
+  /** The typed value code used, as text; null when code could not type it. */
+  value: string | null;
+  certainty: ReadingCertainty;
+}
+
+/** A reference to the frozen teaching context, whole. Never a current profile, template or page heading. */
+export interface TeachingReference {
+  curriculum: { key: string; version: string };
+  part: string;
+  slot: string;
+  practiceType: string | null;
+  itemStep: StepReference | null;
+}
+
+export interface Observation {
+  version: number;
+  identity: ItemIdentity;
+  /** The photo revision that is evidence of it; null when a parent's change or an unscored item needs no image. */
+  evidence: { photoRevision: string } | null;
+  readAnswerText: string | null;
+  regions: RegionReading[];
+  certainty: ReadingCertainty;
+  state: ObservationState;
+  method: CheckMethod;
+  result: MarkResult | null;
+  teaching: TeachingReference | null;
+  mastery: MasteryDecision;
+  help: HelpState;
+  actor: Actor;
+  /** The canonical result's version: a higher one replaces a lower one. */
+  resultVersion: number;
+}
+
+/** What is wrong with an observation's shape, or null. */
+export function observationProblem(o: Observation): string | null {
+  if (o.version !== OBSERVATION_VERSION) return "the observation is of a version this code does not read";
+  const { workbookId, printedRevision, pageId, itemId } = o.identity;
+  if (!workbookId || !printedRevision || !pageId || !itemId) return "the observation's item identity is not whole";
+  if (!Number.isInteger(o.resultVersion) || o.resultVersion < 1) return "the observation has no result version";
+  const texts = [o.readAnswerText, ...o.regions.map((r) => r.text)];
+  if (texts.some((t) => t !== null && t.length > MAX_READ_TEXT)) return "a reading is longer than the limit";
+  const hasResult = o.state === "scored" || o.state === "parent-checked";
+  if (hasResult !== (o.result !== null)) return "an observation has a result only when it is scored or parent-checked";
+  if (o.state === "scored" && o.method !== "code") return "only code scores an item";
+  if ((o.state === "parent-pending" || o.state === "parent-checked") && o.method !== "parent") return "only a parent-checked item waits for a parent";
+  if (o.state === "unscored" && o.method !== "unscored") return "only an unscored item can be unscored";
+  // Reading uncertainty is pending, not blank.
+  if (o.state === "scored" && o.certainty === "uncertain") return "an uncertain reading stays pending";
+  if (o.state === "scored" && o.result !== "blank" && o.readAnswerText === null) return "a right or wrong result needs what was read";
+  if (o.mastery.eligible && o.state === "unscored") return "an unscored item cannot count toward mastery";
+  return null;
+}
+
+// ---------- Eligibility ----------
+
+const WRITTEN_FORMATS: ReadonlySet<ItemFormat> = new Set(["written-reason"]);
+
+/**
+ * Whether a result on an item may count toward mastery, from both the trusted package and its frozen teaching context:
+ * neither alone. Try first never counts, even when scorable. A written reason or a deliberately unscored activity never
+ * counts. A parent-checked item counts only when its printed context explicitly permits it. An item with no step
+ * (a review item not yet carrying one) stays out.
+ */
+export function masteryDecision(pkg: QuestionPackage | null, teaching: TeachingContext | null): MasteryDecision {
+  const no = (reason: MasteryExclusion): MasteryDecision => ({ eligible: false, reason });
+  if (!pkg || (!pkg.item && !pkg.answer)) return no("unavailable");
+  const item = packageItem(pkg);
+  if (WRITTEN_FORMATS.has(item.format)) return no("written-reason");
+  if (!teaching) return no("no-teaching-context");
+  const e = teaching.eligibility;
+  if (e.format !== item.format || e.scorable !== item.scorable || e.parentChecked !== item.parentChecked) return no("context-mismatch");
+  if (teaching.practiceType === "try-first") return no("try-first");
+  if (item.parentChecked) return e.mastery && teaching.itemStep ? { eligible: true, reason: null } : no("parent-checked");
+  if (!item.scorable) return no("not-scorable");
+  if (!teaching.itemStep) return no("no-item-step");
+  if (!e.mastery) return no(e.reason === "try-first" ? "try-first" : e.reason === "parent-checked" ? "parent-checked" : e.reason === "no-item-step" ? "no-item-step" : "not-scorable");
+  return { eligible: true, reason: null };
+}
+
+export function checkMethod(pkg: QuestionPackage | null): CheckMethod {
+  if (!pkg || (!pkg.item && !pkg.answer)) return "unavailable";
+  const item = packageItem(pkg);
+  return item.scorable ? "code" : item.parentChecked ? "parent" : "unscored";
+}
+
+// ---------- Expected items ----------
+
+export interface ExpectedItem {
+  identity: ItemIdentity;
+  /** The printed question number. */
+  number: number;
+  method: CheckMethod;
+  mastery: MasteryDecision;
+  teaching: TeachingReference | null;
+}
+
+export interface PageForObservation {
+  workbookId: string;
+  printedRevision: string;
+  pageId: string;
+  questions: readonly { number: number; package: QuestionPackage | null; teaching: TeachingContext | null }[];
+}
+
+const reference = (t: TeachingContext | null): TeachingReference | null => t && {
+  curriculum: t.curriculum, part: t.part, slot: t.slot, practiceType: t.practiceType, itemStep: t.itemStep,
+};
+
+/** The numbered items a page expects, from its stored questions and their frozen teaching context. */
+export function expectedItems(page: PageForObservation): ExpectedItem[] {
+  return [...page.questions].sort((a, b) => a.number - b.number).map((q) => ({
+    identity: { workbookId: page.workbookId, printedRevision: page.printedRevision, pageId: page.pageId, itemId: q.package?.id ?? `question-${q.number}` },
+    number: q.number,
+    method: checkMethod(q.package),
+    mastery: masteryDecision(q.package, q.teaching),
+    teaching: reference(q.teaching),
+  }));
+}
+
+/** An item's observation before any reading: pending, or waiting for a parent, or explicitly unscored. */
+export function firstObservation(e: ExpectedItem, photoRevision: string | null): Observation {
+  return {
+    version: OBSERVATION_VERSION, identity: e.identity, evidence: photoRevision ? { photoRevision } : null,
+    readAnswerText: null, regions: [], certainty: "not-read",
+    state: e.method === "unscored" ? "unscored" : e.method === "parent" ? "parent-pending" : "pending",
+    method: e.method, result: null, teaching: e.teaching, mastery: e.mastery, help: "unknown", actor: "system", resultVersion: 1,
+  };
+}
+
+// ---------- Page completion ----------
+
+export type ItemProgress = "finished" | "pending" | "parent-check" | "missing" | "unavailable";
+
+export interface PageCompletion {
+  /** Complete: each expected numbered item has a terminal observation. "no-items": the page expects none. */
+  status: "complete" | "incomplete" | "no-items";
+  items: { itemId: string; number: number; progress: ItemProgress }[];
+  finished: number;
+  total: number;
+}
+
+const isTerminal = (e: ExpectedItem, o: Observation) =>
+  (e.method === "code" && o.state === "scored" && o.result !== null)
+  || (e.method === "parent" && o.state === "parent-checked" && o.result !== null)
+  || (e.method === "unscored" && o.state === "unscored");
+
+/** The current observation of each item: the highest result version, of this exact revision. */
+function currentObservations(expected: readonly ExpectedItem[], observations: readonly Observation[]) {
+  const wanted = new Set(expected.map((e) => itemKey(e.identity)));
+  const current = new Map<string, Observation>();
+  for (const o of observations) {
+    const key = itemKey(o.identity);
+    // (An observation of another revision has another key: an old photo's result never finishes a new revision's item.)
+    if (!wanted.has(key) || observationProblem(o)) continue;
+    const held = current.get(key);
+    if (!held || o.resultVersion > held.resultVersion) current.set(key, o);
+  }
+  return current;
+}
+
+/**
+ * Whether a page's marks are ready: every expected item has a terminal observation. A pending parent check is not
+ * finished, and an unscored item can finish with no score. This is apart from an accepted scan receipt, which counts
+ * toward printed-day progress.
+ */
+export function pageCompletion(expected: readonly ExpectedItem[], observations: readonly Observation[]): PageCompletion {
+  const current = currentObservations(expected, observations);
+  const items = expected.map((e) => {
+    const o = current.get(itemKey(e.identity));
+    const progress: ItemProgress = e.method === "unavailable" ? "unavailable" : !o ? "missing" : isTerminal(e, o) ? "finished"
+      : o.state === "parent-pending" ? "parent-check" : "pending";
+    return { itemId: e.identity.itemId, number: e.number, progress };
+  });
+  const finished = items.filter((i) => i.progress === "finished").length;
+  return { status: items.length === 0 ? "no-items" : finished === items.length ? "complete" : "incomplete", items, finished, total: items.length };
+}
+
+// ---------- Which observations may publish an event ----------
+
+export type MarkingEventDecision =
+  | { publish: true; key: string; result: MarkResult; step: StepReference }
+  | { publish: false; reason: MasteryExclusion | "not-terminal" | "unscored" | "other-identity" | "invalid" };
+
+/**
+ * One decision for page results, event publication, profile facts and progress: whether this observation may publish its
+ * item's one effective `marking` event. The decision reads the expected item, never the observation's own claim, so a
+ * stored observation cannot make itself eligible. The event key stays the same across scans. An excluded item keeps its
+ * observation and adds nothing to a scored tally. Publication belongs to S4.
+ */
+export function markingEvent(e: ExpectedItem, o: Observation): MarkingEventDecision {
+  if (itemKey(e.identity) !== itemKey(o.identity)) return { publish: false, reason: "other-identity" };
+  if (observationProblem(o)) return { publish: false, reason: "invalid" };
+  if (!e.mastery.eligible) return { publish: false, reason: e.mastery.reason ?? "invalid" };
+  if (!isTerminal(e, o)) return { publish: false, reason: "not-terminal" };
+  if (o.result === null) return { publish: false, reason: "unscored" };
+  const step = e.teaching?.itemStep;
+  if (!step) return { publish: false, reason: "no-item-step" };
+  return { publish: true, key: `marking:${itemKey(e.identity)}`, result: o.result, step };
+}
