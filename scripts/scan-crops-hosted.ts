@@ -61,10 +61,17 @@ async function prepare() {
   }
   const owner = families[0];
   const book = randomUUID();
+  // Saved now, so `cleanup` can remove the families even if a later step fails.
+  save({ families, book, pages: [], legacyToken: "", revision: "", photos: {} });
   const { draft } = sampleBook({ level: "U16", workbookId: book, childId: owner.child, child: "Alex", number: 1 });
-  const pages = draft.pages.filter((p: DraftPage) => p.dayLabel === "Day 1" && p.questions.length > 0)
-    .map((p: DraftPage) => ({ ...p, qrToken: `scan455${randomUUID().replaceAll("-", "")}` }));
-  const result = await renderWorkbook({ draft: { ...draft, pages }, parentId: owner.id, template: workbookTemplate(await fixedTemplateFonts()), engine: chromiumPrintEngine(), fileKey: "qa455" });
+  const render = async () => {
+    const pages = draft.pages.filter((p: DraftPage) => p.dayLabel === "Day 1" && p.questions.length > 0)
+      .map((p: DraftPage) => ({ ...p, qrToken: `scan455${randomUUID().replaceAll("-", "")}` }));
+    return renderWorkbook({ draft: { ...draft, pages }, parentId: owner.id, template: workbookTemplate(await fixedTemplateFonts()), engine: chromiumPrintEngine(), fileKey: "qa455" });
+  };
+  // (The renderer refuses a printed QR code that it cannot read back. New random tokens print a different code.)
+  let result = await render();
+  for (let tries = 0; result.status !== "rendered" && tries < 3; tries++) result = await render();
   if (result.status !== "rendered") throw new Error(JSON.stringify(result.problems.slice(0, 3)));
   for (const f of result.files) ok(await admin.storage.from("workbook-pages").upload(f.path, f.bytes, { contentType: f.contentType }));
   const w = result.workbook as unknown as WorkbookInput;
