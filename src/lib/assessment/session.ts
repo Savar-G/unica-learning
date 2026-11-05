@@ -5,6 +5,8 @@ import {
   REPORTED_STRAND,
   ROUTE_DOWN_BELOW_PERCENT,
   ROUTE_UP_PERCENT,
+  STAGE3_DOWN_BELOW_PERCENT,
+  STAGE3_UP_PERCENT,
   STRAND_MINIMUM_QUESTIONS,
   WORKING_LEVEL_PERCENT,
   atLeast,
@@ -12,8 +14,8 @@ import {
 } from "./constants";
 import { levelCertainty, strandCertainty, strandStatus, workingLevelOf } from "./certainty";
 import type { AreaAnswer } from "./area-level";
-import { bankFor } from "./bank";
-import { downLevel, startLevel, upLevel } from "./grades";
+import { ALL_TEMPLATES, bankFor, difficultyOf } from "./bank";
+import { downLevel, stage3Level, startLevel, upLevel } from "./grades";
 import { factsResult, type FactsSession } from "./facts";
 import { flagsFor, type HelpAnswer } from "./flags";
 import { leftOutOfScore, paceOf, takeYourTime } from "./rushing";
@@ -30,6 +32,8 @@ import type {
   ReportedStrand,
   Route,
   Session,
+  Stage3Direction,
+  Stage3Route,
   StrandResult,
   StoredTest,
   TaggedProvince,
@@ -264,8 +268,40 @@ function shownWorkInStage1(total: number, stage1: readonly Question[], forms: re
   return Math.min(Math.max(count, 0), total, stage1.length);
 }
 
+const DIFFICULTY_RANK = { easy: 0, medium: 1, hard: 2 } as const;
+
 /**
- * Starts a test. Every stage 2 form is drawn now, so the session needs no bank after this.
+ * D-282: a stage in the order the child gets it: easy to hard, so a child settles in on the easiest questions. Lower
+ * levels come first, as the school-grade questions of an up form, then easy, medium and hard. Inside each rating the
+ * questions keep their turns through the areas. A question keeps its numbers, and takes the id of its new place, so
+ * "s1-0" is still the first question of stage 1.
+ */
+const easyToHard = (questions: readonly Question[], label: string): Question[] =>
+  questions
+    .map((q, i) => ({ q, i, rank: DIFFICULTY_RANK[difficultyOf(q.templateId)] }))
+    .sort((a, b) => a.q.level - b.q.level || a.rank - b.rank || a.i - b.i)
+    .map(({ q }, i) => ({ ...q, id: `${label}-${i}` }));
+
+/**
+ * D-282: a third stage form: another grade past the stage 2 form of this route, or none where the bank has no such grade
+ * or too few of its questions (no strand minimum: its questions are for the working level). It draws from every band.
+ */
+function stage3Form(
+  bank: readonly Template[], profile: ChildProfile, direction: Stage3Direction, seed: number, seen: Set<string>, previous: readonly Question[],
+): Question[] {
+  const level = stage3Level(profile.grade, direction);
+  if (level === null) return [];
+  const band = bandFor(profile.grade);
+  try {
+    return buildStage(bank, profile, band.strands, level, band.stage3, seed, `s3${direction}`, new Set(seen), previous);
+  } catch {
+    // A bank gap costs the child this stage, never the test. A test in session.test.ts holds every BC form to full size.
+    return [];
+  }
+}
+
+/**
+ * Starts a test. Every stage 2 and stage 3 form is drawn now, so the session needs no bank after this.
  * Stage 1 is at the school grade (D-158). The routed forms stay inside the bank: a Kindergarten child's down form is at
  * level K, like stay; a Grade 8 child's up form is at level 8, like stay (D-153 rule 2: never grade 9); and a Grade 9
  * child's up form is at level 9, like stay, with level 8 for down.
@@ -290,20 +326,46 @@ export function createSession(profile: ChildProfile, seed: number, options: Sess
 
   // #67: exactly band.whiteboardRequired show-your-work questions on every route.
   const inStage1 = shownWorkInStage1(band.whiteboardRequired, stage1, Object.values(stage2));
-  const mark = (route: Route) => markShownWork(stage2[route], band.whiteboardRequired - inStage1, seed, route);
+  const mark = (route: Route) => easyToHard(markShownWork(stage2[route], band.whiteboardRequired - inStage1, seed, route), route);
+  // D-282: a third stage asks no question its route already asked. Shown work stays the band's count on every route.
+  const third = (direction: Stage3Direction) =>
+    easyToHard(stage3Form(options.bank ?? ALL_TEMPLATES, profile, direction, seed, new Set([...stage1, ...stage2[direction]].map(sameQuestion)), [...stage1, ...stage2[direction]]), `s3${direction}`);
   return {
     profile,
     seed,
-    stage1: markShownWork(stage1, inStage1, seed, "s1"),
+    stage1: easyToHard(markShownWork(stage1, inStage1, seed, "s1"), "s1"),
     stage2: { up: mark("up"), stay: mark("stay"), down: mark("down") },
+    stage3: { up: third("up"), down: third("down") },
     route: null,
+    stage3Route: null,
     answers: [],
   };
 }
 
-/** Stage 1, then the stage 2 form the child was routed to. */
-const questionsOnRoute = (session: Session): Question[] =>
-  session.route ? [...session.stage1, ...session.stage2[session.route]] : session.stage1;
+/** D-282: the third stage this lock record means, or none: "none", no record yet, and a test from before D-282. */
+const thirdStage = (test: StoredTest, stage3Route: Stage3Route | null | undefined): Question[] =>
+  stage3Route === "up" || stage3Route === "down" ? test.stage3?.[stage3Route] ?? [] : [];
+
+/** The questions a child gets, in order: stage 1, the stage 2 form of the route, then the third stage (D-282). */
+export const givenQuestions = (test: StoredTest, route: Route | null, stage3Route?: Stage3Route | null): Question[] =>
+  route ? [...test.stage1, ...test.stage2[route], ...thirdStage(test, stage3Route)] : test.stage1;
+
+/** Every question a stored test holds, also the forms the child never got. */
+export const everyQuestion = (test: StoredTest): Question[] => [
+  ...test.stage1, ...test.stage2.up, ...test.stage2.stay, ...test.stage2.down, ...(test.stage3?.up ?? []), ...(test.stage3?.down ?? []),
+];
+
+const questionsOnRoute = (session: Session): Question[] => givenQuestions(session, session.route, session.stage3Route);
+
+/**
+ * D-282: true when every stage 2 answer is in and stage 2 must lock before the test goes on: the route has a third stage
+ * form, and no lock record is stored. A stay route and a test from before D-282 never wait: they end after stage 2.
+ */
+export function stage3Due(session: Session): boolean {
+  const { route } = session;
+  if (!route || route === "stay" || session.stage3Route != null || !session.stage3?.[route]?.length) return false;
+  return session.answers.length >= session.stage1.length + session.stage2[route].length;
+}
 
 /** The next question to show, or null when the test is complete. */
 export function nextQuestion(session: Session): Question | null {
@@ -386,8 +448,34 @@ export function lockStage1(session: Session): Session {
   return { ...session, route: routeFor(stage1.filter((a) => a.correct).length, stage1.length) };
 }
 
-/** #249: the parts of a test the child can go back in: stage 1 and stage 2 (the routed form). */
-export type SectionName = "stage1" | "stage2";
+/**
+ * D-282: the third stage from the final stage 2 answers. Only the questions at the form's own level count: an up form
+ * also holds school-grade questions (#188), and those do not show that a child can work two grades up.
+ */
+function stage3RouteFor(session: Session): Stage3Route {
+  const { route, profile, stage1, stage2, answers } = session;
+  if (route !== "up" && route !== "down") return "none";
+  const level = route === "up" ? upLevel(profile.grade) : downLevel(profile.grade);
+  const scored = stage2[route].flatMap((q, i) => (q.level === level ? [answers[stage1.length + i]] : []));
+  if (!scored.length) return "none";
+  const correct = scored.filter((a) => a.correct).length;
+  const goesOn = route === "up"
+    ? atLeast(correct, scored.length, STAGE3_UP_PERCENT)
+    : !atLeast(correct, scored.length, STAGE3_DOWN_BELOW_PERCENT);
+  return goesOn ? route : "none";
+}
+
+/**
+ * D-282: "Done checking" on the stage 2 grid of a test with a third stage form locks stage 2: the third stage is set from
+ * the final stage 2 answers, and stage 2 never opens again. Throws unless stage 2 waits on this lock (stage3Due).
+ */
+export function lockStage2(session: Session): Session {
+  if (!stage3Due(session)) throw new Error("Stage 2 locks only when every stage 2 question is answered and it has no lock record");
+  return { ...session, stage3Route: stage3RouteFor(session) };
+}
+
+/** #249: the parts of a test the child can go back in: stage 1, stage 2 (the routed form) and stage 3 (D-282). */
+export type SectionName = "stage1" | "stage2" | "stage3";
 
 /** #249: an answered question of a section: its place in the test (from 0), the question and the child's answer. */
 export interface SectionAnswer {
@@ -398,8 +486,8 @@ export interface SectionAnswer {
 
 /**
  * #249: the section the child works in now, from `first` to `end` (places in the test, `end` not included), with its
- * answered questions in order. Stage 1 until it is locked (lockStage1 routes the test, #253), then stage 2. The test
- * attempt module closes stage 2 when the test is finished.
+ * answered questions in order. Stage 1 until it is locked (lockStage1 routes the test, #253), then stage 2, then the
+ * third stage when stage 2 locked into one (D-282). The test attempt module closes the last section at the finish.
  */
 export interface OpenSection {
   name: SectionName;
@@ -410,9 +498,12 @@ export interface OpenSection {
 
 export function openSection(session: Session): OpenSection {
   const questions = questionsOnRoute(session);
+  const third = thirdStage(session, session.stage3Route).length;
   const [name, first, end]: [SectionName, number, number] = !session.route
     ? ["stage1", 0, session.stage1.length]
-    : ["stage2", session.stage1.length, questions.length];
+    : third
+      ? ["stage3", questions.length - third, questions.length]
+      : ["stage2", session.stage1.length, questions.length];
   const answered = session.answers.slice(first, end).map((answer, i) => ({ position: first + i, question: questions[first + i], answer }));
   return { name, first, end, answered };
 }
@@ -432,8 +523,8 @@ export function changeAnswer(session: Session, change: Submission): Session {
 
 /** The part of a session the server stores when the test starts. The answers are stored one row at a time. */
 export function storedTest(session: Session): StoredTest {
-  const { profile, seed, stage1, stage2 } = session;
-  return { profile, seed, stage1, stage2 };
+  const { profile, seed, stage1, stage2, stage3 } = session;
+  return { profile, seed, stage1, stage2, ...(stage3 && { stage3 }) };
 }
 
 /**
@@ -441,11 +532,12 @@ export function storedTest(session: Session): StoredTest {
  * the stored route, the stage 1 lock record: stage 1 is locked when it is stored. A test with answers past stage 1 and
  * no stored route (one from before the lock, whose route save failed) is past stage 1, routed by its stage 1 answers.
  * With every stage 1 answer and no stored route, stage 1 is open on its grid. Throws for a route without every stage 1
- * answer. D-145: only the main test's fields are read; a stored `extra` (the removed round, #190) is left behind.
+ * answer. `stage3Route` is the stored stage 2 lock record (D-282). D-145: only the main test's fields are read; a stored
+ * `extra` (the removed round, #190) is left behind.
  */
-export function restoreSession(stored: StoredTest, submissions: readonly Submission[], route: Route | null = null): Session {
-  const { profile, seed, stage1, stage2 } = stored;
-  let session: Session = { profile, seed, stage1, stage2, route: null, answers: [] };
+export function restoreSession(stored: StoredTest, submissions: readonly Submission[], route: Route | null = null, stage3Route: Stage3Route | null = null): Session {
+  const { profile, seed, stage1, stage2, stage3 } = stored;
+  let session: Session = { profile, seed, stage1, stage2, ...(stage3 && { stage3 }), route: null, stage3Route, answers: [] };
   for (const [i, { questionId, response, timeMs }] of submissions.entries()) {
     if (i === session.stage1.length) session = route ? { ...session, route } : lockStage1(session);
     session = submitAnswer(session, { questionId, response, timeMs });
@@ -458,11 +550,12 @@ export function restoreSession(stored: StoredTest, submissions: readonly Submiss
 }
 
 /**
- * How many questions a stored test has once it is routed: stage 1 plus the stored form of its route. The up route is
- * longer than the grade band's length (#188), so the band is only the answer while the route is not chosen yet.
+ * How many questions a stored test has once it is routed: stage 1 plus the stored form of its route, plus the third stage
+ * once stage 2 locked into one (D-282). The up route is longer than the grade band's length (#188), so the band is only
+ * the answer while the route is not chosen yet.
  */
-export function testLength(test: StoredTest, route: Route | null): number {
-  return route ? test.stage1.length + test.stage2[route].length : bandFor(test.profile.grade).length;
+export function testLength(test: StoredTest, route: Route | null, stage3Route?: Stage3Route | null): number {
+  return route ? givenQuestions(test, route, stage3Route).length : bandFor(test.profile.grade).length;
 }
 
 /** What the browser gets next: the current question without its answer, the stage 1 grid (#253), or "complete". */
@@ -470,16 +563,22 @@ export function testStep(session: Session): TestStep {
   const breakAfter = session.stage1.length;
   // Before routing, use the longest stored form. Once routed, the exact stored form is authoritative.
   const main = session.route
-    ? testLength(session, session.route)
+    ? testLength(session, session.route, session.stage3Route)
     : breakAfter + Math.max(...Object.values(session.stage2).map((form) => form.length));
   const total = main;
   // #253: every stage 1 question is answered and stage 1 is not locked: the child checks it on the grid.
   if (!session.route && session.answers.length === breakAfter) {
     return { status: "check", section: "stage1", numbers: Array.from({ length: breakAfter }, (_, i) => i + 1), total, breakAfter };
   }
+  // D-282: every stage 2 answer is in and a third stage may come: the grid first, and its lock decides.
+  if (stage3Due(session)) {
+    const first = breakAfter + 1;
+    return { status: "check", section: "stage2", numbers: Array.from({ length: session.answers.length - breakAfter }, (_, i) => first + i), total, breakAfter };
+  }
   const q = nextQuestion(session);
   if (!q) return { status: "complete", total };
   const number = session.answers.length + 1;
+  const third = thirdStage(session, session.stage3Route).length;
   return {
     status: "question",
     question: toPublicQuestion(q),
@@ -487,6 +586,7 @@ export function testStep(session: Session): TestStep {
     total,
     breakAfter,
     takeYourTime: takeYourTime(session.answers),
+    ...(third > 0 ? { stage3After: total - third } : {}),
   };
 }
 
@@ -544,10 +644,12 @@ export function finish(session: Session, facts: FactsSession | null = null, help
     workingLevel,
     confidence: levels.some((l) => atLeast(l.correct, l.total, WORKING_LEVEL_PERCENT)) ? "normal" : "low",
     levelCertainty: levelCertainty(levels),
-    // Only a child routed up who clears the higher level may work above what the test could show. For Grade 8 the up
-    // form is at level 8 (D-153 rule 2) and for Grade 9 at level 9, the top of the bank, so clearing it is the ceiling.
-    atCeiling: session.route === "up" && workingLevel === upLevel(session.profile.grade),
+    // Only a child routed up who clears the highest level asked may work above what the test could show. For Grade 8 the
+    // up form is at level 8 (D-153 rule 2) and for Grade 9 at level 9, the top of the bank, so clearing it is the ceiling.
+    // D-282: with a third stage up, the highest level asked is the third stage's.
+    atCeiling: session.route === "up" && workingLevel === (session.stage3Route === "up" ? stage3Level(session.profile.grade, "up") : upLevel(session.profile.grade)),
     route: session.route,
+    ...(session.stage3Route && { stage3Route: session.stage3Route }),
     stage1: tally(marked.slice(0, session.stage1.length)),
     levels,
     strands,
