@@ -15,14 +15,12 @@ import { adminClient } from "@/lib/supabase-auth";
 // supabase/migrations/20261011_add_reminder_cron.sql). Vercel cron here runs only once a day, so it cannot.
 // After the reminders, the same run sends the weekly Maya emails (#332, src/lib/maya-weekly-email.ts) through the same
 // spaced transport. Beside the emails, the same run ends abandoned Maya chats and calls (#528,
-// src/lib/maya-call-sweep.ts): it starts no new end after SWEEP_BUDGET_MS.
+// src/lib/maya-call-sweep.ts): it starts no new end after SWEEP_START_MS and stops waiting at SWEEP_TIME_LIMIT_MS, inside
+// the cron's 60-second request limit (timeout_milliseconds in migration add_reminder_cron).
 // ?dry=1 counts what is due and sends and ends nothing.
 // The answer holds counts only, never a parent's details.
 
-export const maxDuration = 120;
-
-/** The sweep starts no new call end after this long; one end (event, rebuild, note) can take about 40 seconds more. */
-const SWEEP_BUDGET_MS = 30_000;
+export const maxDuration = 60;
 
 /** Resend's free plan takes 2 requests a second; one email every 600 ms stays under it. */
 const SEND_GAP_MS = 600;
@@ -74,7 +72,7 @@ export async function POST(request: Request) {
       return Response.json({ ok: true, dry: true, due: byKind(dueReminders(await store.load(now), now)), maya, sweep: abandoned });
     }
     // The sweep runs beside the emails and never fails the run.
-    sweep = sweepAbandonedCallsNow(admin, { origin, deadline: now + SWEEP_BUDGET_MS }).then(
+    sweep = sweepAbandonedCallsNow(admin, { origin, startedAt: now }).then(
       (r) => {
         if (r.due > 0) console.info("[maya sweep] run", JSON.stringify(r));
         return r;
