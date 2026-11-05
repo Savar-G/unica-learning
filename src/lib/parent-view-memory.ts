@@ -29,6 +29,8 @@ export interface MemoryTest extends Owned {
   answeredAll?: boolean;
 }
 export interface MemoryReport extends Owned {
+  /** Defaults to `report-<assessmentId>`. */
+  id?: string;
   assessmentId: string;
 }
 export interface MemoryCard extends Owned {
@@ -81,7 +83,7 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
         const tests = own(tables.tests);
         return own(tables.reports).flatMap((r) => {
           const test = tests.find((t) => t.id === r.assessmentId);
-          return test ? [{ ...r, curriculum: test.province }] : [];
+          return test ? [{ ...r, id: r.id ?? `report-${r.assessmentId}`, curriculum: test.province }] : [];
         });
       },
       async cardsSaved() {
