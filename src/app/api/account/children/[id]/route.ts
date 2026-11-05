@@ -2,6 +2,7 @@ import { cleanFirstName, type ChildNameError, type ChildNameResult } from "@/lib
 import { isUuid } from "@/lib/assessment-store";
 import { parentDashboardAccess } from "@/lib/parent-dashboard-access";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
+import { STALE_SECONDS } from "@/lib/workbook-job";
 
 /** A first name is at most 60 characters: this leaves room for the JSON around it, and no more. */
 const BODY_MAX = 1024;
@@ -11,13 +12,16 @@ const fail = (error: ChildNameError, status: number) => reply(status, { ok: fals
 
 // A parent changes a child's first name, from the Account tab (#555). JSON and the site's origin only: a form on another
 // site cannot send it with the parent's cookies. The desk lock (423) is in src/proxy.ts. The parent comes from the
-// session; the body gives only the name. Parents have no update right on first_name, so the server's key writes it, and
-// the parent_id filter keeps it to the parent's own children; the family write fence on public.children refuses a family
-// being deleted. Only the name changes here: the grade goes through support, because it changes placement.
+// session; the body gives only the name. Parents have no update right on first_name, so the server's key writes it,
+// through the service-only function rename_child (migration child_rename), which keeps it to the parent's own child; the
+// family write fence on public.children refuses a family being deleted. Only the name changes here: the grade goes
+// through support, because it changes placement.
 //
 // A workbook being made prints the name in the id of each kept page, and a resume with another name fails the run
-// (workbook-generator.ts), so the name waits until that run ends. A run that first reads the name in the moment between
-// this check and the write fails on resume with that message, and a new run then uses the new name.
+// (workbook-generator.ts), so the name waits until that run ends. rename_child checks the runs and writes the name in
+// one transaction under the child's row lock, which start_workbook_run takes too, so no run starts in between. A run
+// that has stopped by the app's rule (runState, STALE_SECONDS) does not block. The function keeps the former name, which
+// the call note writer hides as it hides the name now (src/lib/maya-call-note.ts).
 export async function PATCH(request: Request, { params }: RouteContext<"/api/account/children/[id]">) {
   if (request.headers.get("origin") !== new URL(request.url).origin) return fail("forbidden", 403);
   if (!request.headers.get("content-type")?.startsWith("application/json")) return fail("bad_json", 415);
@@ -42,20 +46,16 @@ export async function PATCH(request: Request, { params }: RouteContext<"/api/acc
   const firstName = cleanFirstName((body as { firstName?: unknown } | null)?.firstName);
   if (!firstName) return fail("invalid", 400);
 
-  const child = id.toLowerCase();
-  const runs = await admin.from("workbook_runs").select("id").eq("child_id", child).eq("parent_id", parent).in("status", ["queued", "running"]).limit(1);
-  if (runs.error) {
-    console.error("[account] run read failed", runs.error.code);
-    return fail("store_failed", 502);
-  }
-  if (runs.data.length) return fail("book_in_progress", 409);
-
-  const { data, error } = await admin.from("children").update({ first_name: firstName }).eq("id", child).eq("parent_id", parent).select("id");
+  const { data, error } = await admin.rpc("rename_child", { p_parent: parent, p_child: id.toLowerCase(), p_first_name: firstName, p_stale_seconds: STALE_SECONDS });
   if (error) {
     if (error.code === "55000") return fail("unavailable", 409);
     console.error("[account] name change failed", error.code);
     return fail("store_failed", 502);
   }
-  if (!data.length) return fail("not_found", 404);
-  return reply(200, { ok: true });
+  if (data === "saved") return reply(200, { ok: true });
+  if (data === "not_found") return fail("not_found", 404);
+  if (data === "book_in_progress") return fail("book_in_progress", 409);
+  if (data === "too_many") return fail("too_many_names", 409);
+  console.error("[account] name change: unknown answer");
+  return fail("store_failed", 502);
 }

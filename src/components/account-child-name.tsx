@@ -15,6 +15,8 @@ function failure(error: ChildNameError, name: string): ReactNode {
       return "Enter a first name.";
     case "book_in_progress":
       return <>We are making {name}&apos;s next workbook, so the name cannot change now. Try again when the workbook is ready, or email {email}.</>;
+    case "too_many_names":
+      return <>This name has been changed many times. To change it again, email {email}.</>;
     case "not_found":
       return <>We could not find this child on your account. Reload the page, or email {email}.</>;
     default:

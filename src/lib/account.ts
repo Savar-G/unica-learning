@@ -79,7 +79,7 @@ export interface Child {
 export const cleanFirstName = (raw: unknown): string | null => clip(raw, 60) || null;
 
 /** What /api/account/children/<id> answers when a parent changes a child's first name (#555). */
-export type ChildNameError = "bad_json" | "too_large" | "forbidden" | "signed_out" | "invalid" | "not_found" | "book_in_progress" | "unavailable" | "store_failed";
+export type ChildNameError = "bad_json" | "too_large" | "forbidden" | "signed_out" | "invalid" | "not_found" | "book_in_progress" | "too_many_names" | "unavailable" | "store_failed";
 export type ChildNameResult = { ok: true } | { ok: false; error: ChildNameError };
 
 /** A valid child from untrusted input, or null. */

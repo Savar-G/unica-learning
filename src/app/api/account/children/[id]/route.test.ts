@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanChild } from "@/lib/account";
+import { runState, STALE_SECONDS } from "@/lib/workbook-job";
 
 // A parent changes a child's first name (#555). The real release check runs against a fake server client that keeps the
-// rows and answers as the database does: the family write fence refuses a family being deleted.
+// rows and answers as the database does: the family write fence refuses a family being deleted, and rename_child
+// (migration child_rename) renames under the child's row lock, refuses while a run is active by the app's own rule
+// (runState), and keeps the former name. supabase/tests/child_rename.sql checks the function itself.
 vi.mock("server-only", () => ({}));
 
 type Row = Record<string, unknown>;
@@ -13,7 +16,13 @@ const store = vi.hoisted(() => ({
   fenced: new Set<string>(),
   failing: new Set<string>(),
   writes: [] as Record<string, unknown>[],
+  /** Every read and write the route made: "from:<table>:<select|update>" or "rpc:<name>". */
+  calls: [] as string[],
+  rpcs: [] as { name: string; args: Record<string, unknown> }[],
+  now: Date.parse("2026-11-05T18:00:00Z"),
 }));
+
+const FORMER_MAX = 20;
 
 function table(name: string) {
   const filters: [string, unknown][] = [];
@@ -27,9 +36,11 @@ function table(name: string) {
     for (const row of found) { store.writes.push(change); Object.assign(row, change); }
     return { data: found, error: null };
   };
+  let logged = false;
+  const log = (what: string) => { if (!logged) { logged = true; store.calls.push(`from:${name}:${what}`); } };
   const query = {
-    select: () => query,
-    update: (row: Row) => { change = row; return query; },
+    select: () => { log("select"); return query; },
+    update: (row: Row) => { logged = true; store.calls.push(`from:${name}:update`); change = row; return query; },
     eq: (k: string, v: unknown) => { filters.push([k, v]); return query; },
     in: (k: string, v: unknown[]) => { filters.push([k, v]); return query; },
     limit: () => query,
@@ -39,10 +50,33 @@ function table(name: string) {
   return query;
 }
 
+/** rename_child as the migration writes it: one transaction under the child's row lock. */
+async function rpc(name: string, args: Record<string, unknown>) {
+  store.calls.push(`rpc:${name}`);
+  store.rpcs.push({ name, args });
+  if (name !== "rename_child") return { data: null, error: { code: "PGRST202", message: "no such function" } };
+  if (store.failing.has(name)) return { data: null, error: { code: "XX000", message: "read or write failed" } };
+  const child = (store.tables.children ?? []).find((c) => c.id === args.p_child && c.parent_id === args.p_parent);
+  if (!child) return { data: "not_found", error: null };
+  const now = new Date(store.now);
+  const active = (store.tables.workbook_runs ?? []).some((r) => r.child_id === args.p_child && ["queued", "running"].includes(r.status as string)
+    && ["waiting", "preparing"].includes(runState({ status: r.status, heartbeatAt: r.heartbeat_at ?? null, createdAt: r.created_at, runner: r.runner } as Parameters<typeof runState>[0], now)));
+  if (active) return { data: "book_in_progress", error: null };
+  if (child.first_name === args.p_first_name) return { data: "saved", error: null };
+  const former = (child.former_names as string[] | undefined) ?? [];
+  const next = former.includes(child.first_name as string) ? former : [...former, child.first_name as string];
+  if (next.length > FORMER_MAX) return { data: "too_many", error: null };
+  if (store.fenced.has(child.parent_id as string)) return { data: null, error: { code: "55000", message: "family_unavailable" } };
+  const change = { first_name: args.p_first_name, former_names: next };
+  store.writes.push({ first_name: args.p_first_name });
+  Object.assign(child, change);
+  return { data: "saved", error: null };
+}
+
 vi.mock("@/lib/supabase-auth", () => ({
   sessionClient: async () => ({}),
   parentId: async () => store.parent,
-  adminClient: () => (store.noKey ? null : { from: table }),
+  adminClient: () => (store.noKey ? null : { from: table, rpc }),
 }));
 
 import { PATCH } from "./route";
@@ -63,6 +97,8 @@ beforeEach(() => {
   store.fenced = new Set();
   store.failing = new Set();
   store.writes = [];
+  store.calls = [];
+  store.rpcs = [];
   store.tables = {
     test_accounts: [{ parent_id: "parent-1" }],
     admin_users: [{ user_id: "admin-1" }],
@@ -179,17 +215,25 @@ describe("changing the name", () => {
 
   it("answers 502 and keeps the name out of the log when the save fails", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    store.failing.add("children");
+    store.failing.add("rename_child");
     expect((await send(MINE, { firstName: "Zoe" })).status).toBe(502);
     expect(JSON.stringify(log.mock.calls)).not.toContain("Zoe");
+    expect(nameOf(MINE)).toBe("Asha");
     log.mockRestore();
   });
 });
 
 // A kept page prints the name in its id, and the generator refuses a resume when the name changed (workbook-generator.ts).
 describe("a workbook being made", () => {
-  it.each(["queued", "running"])("refuses while the child's run is %s, as the run could not resume", async (status) => {
-    store.tables.workbook_runs.push({ id: "r1", parent_id: "parent-1", child_id: MINE, status });
+  const ago = (minutes: number) => new Date(store.now - minutes * 60_000).toISOString();
+
+  it.each([
+    ["queued", "server", ago(1), null],
+    ["running", "server", ago(30), ago(1)],
+    ["running", "mac", ago(30), ago(5)],
+    ["queued", "mac", ago(600), null],
+  ])("refuses while the child's run is %s on the %s and has not stopped, as the run could not resume", async (status, runner, created, heartbeat) => {
+    store.tables.workbook_runs.push({ id: "r1", parent_id: "parent-1", child_id: MINE, status, runner, created_at: created, heartbeat_at: heartbeat });
     const response = await send(MINE, { firstName: "Zoe" });
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({ ok: false, error: "book_in_progress" });
@@ -197,15 +241,54 @@ describe("a workbook being made", () => {
   });
 
   it.each(["done", "failed", "stale"])("saves when the child's last run is %s", async (status) => {
-    store.tables.workbook_runs.push({ id: "r1", parent_id: "parent-1", child_id: MINE, status });
+    store.tables.workbook_runs.push({ id: "r1", parent_id: "parent-1", child_id: MINE, status, runner: "server", created_at: ago(1), heartbeat_at: ago(1) });
     expect((await send(MINE, { firstName: "Zoe" })).status).toBe(200);
   });
 
-  it("does not save when it cannot read the runs", async () => {
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    store.failing.add("workbook_runs");
-    expect((await send(MINE, { firstName: "Zoe" })).status).toBe(502);
+  // Review finding 3: a run that stopped with no progress (its status still says running) never blocks a rename.
+  it.each([
+    ["running", "server", ago(30), ago(7)],
+    ["running", "mac", ago(30), ago(7)],
+    ["queued", "server", ago(7), null],
+  ])("saves when the child's %s run on the %s has stopped, as the app shows it", async (status, runner, created, heartbeat) => {
+    store.tables.workbook_runs.push({ id: "r1", parent_id: "parent-1", child_id: MINE, status, runner, created_at: created, heartbeat_at: heartbeat });
+    expect(runState({ status, runner, createdAt: created, heartbeatAt: heartbeat } as Parameters<typeof runState>[0], new Date(store.now))).toBe("stopped");
+    expect((await send(MINE, { firstName: "Zoe" })).status).toBe(200);
+    expect(nameOf(MINE)).toBe("Zoe");
+  });
+
+  // Review finding 2: the check of the runs and the write are one database call, under the child's lock, so a run
+  // cannot start between them (start_workbook_run takes the same lock).
+  it("checks the runs and writes the name in one database call, with the app's stop rule", async () => {
+    store.tables.workbook_runs.push({ id: "r0", parent_id: "parent-1", child_id: MINE, status: "done", runner: "server", created_at: ago(90), heartbeat_at: ago(80) });
+    expect((await send(MINE, { firstName: "Zoe" })).status).toBe(200);
+    expect(store.rpcs).toEqual([{ name: "rename_child", args: { p_parent: "parent-1", p_child: MINE, p_first_name: "Zoe", p_stale_seconds: STALE_SECONDS } }]);
+    expect(store.calls.filter((c) => c.startsWith("from:workbook_runs") || c.startsWith("from:children"))).toEqual([]);
+  });
+});
+
+// Review finding 1: the note writer hides every name the child had (src/lib/maya-call-note.ts), so a rename keeps the
+// former name, and a rename that would drop one is refused.
+describe("the former names", () => {
+  it("keeps each former name once, in order", async () => {
+    expect((await send(MINE, { firstName: "Leah" })).status).toBe(200);
+    expect((await send(MINE, { firstName: "Ava" })).status).toBe(200);
+    expect((await send(MINE, { firstName: "Asha" })).status).toBe(200);
+    expect((await send(MINE, { firstName: "Ava" })).status).toBe(200);
+    expect(store.tables.children.find((c) => c.id === MINE)).toMatchObject({ first_name: "Ava", former_names: ["Asha", "Leah", "Ava"] });
+  });
+
+  it("saves the same name again with no change", async () => {
+    expect((await send(MINE, { firstName: "Asha" })).status).toBe(200);
+    expect(store.writes).toEqual([]);
+  });
+
+  it("refuses a rename once the child has had too many names, and keeps the name", async () => {
+    const mine = store.tables.children.find((c) => c.id === MINE)!;
+    mine.former_names = Array.from({ length: FORMER_MAX }, (_, i) => `Name${i}`);
+    const response = await send(MINE, { firstName: "Zoe" });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ ok: false, error: "too_many_names" });
     expect(nameOf(MINE)).toBe("Asha");
-    log.mockRestore();
   });
 });
