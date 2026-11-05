@@ -4416,22 +4416,38 @@ export type Database = {
         Args: { p: string; token: string }
         Returns: undefined
       }
-      begin_family_delete_code: {
-        Args: {
-          p_day_seconds: number
-          p_hash: string
-          p_now: string
-          p_parent: string
-          p_per_day: number
-          p_per_window: number
-          p_ttl_seconds: number
-          p_window_seconds: number
-        }
-        Returns: {
-          out_retry_at: string
-          out_status: string
-        }[]
-      }
+      begin_family_delete_code:
+        | {
+            Args: {
+              p_day_seconds: number
+              p_hash: string
+              p_now: string
+              p_parent: string
+              p_per_day: number
+              p_per_window: number
+              p_ttl_seconds: number
+              p_window_seconds: number
+            }
+            Returns: {
+              out_retry_at: string
+              out_status: string
+            }[]
+          }
+        | {
+            Args: {
+              p_day_seconds: number
+              p_hash: string
+              p_parent: string
+              p_per_day: number
+              p_per_window: number
+              p_ttl_seconds: number
+              p_window_seconds: number
+            }
+            Returns: {
+              out_retry_at: string
+              out_status: string
+            }[]
+          }
       begin_family_delete_hold: {
         Args: { hold: string; p: string }
         Returns: string

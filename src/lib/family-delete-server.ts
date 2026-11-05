@@ -10,7 +10,7 @@ import { runningPlans, stopPlanNow } from "@/lib/stripe";
 import { adminClient } from "@/lib/supabase-auth";
 
 // The self-serve delete's seams for the live site (#556): the database functions of migrations family_delete_self_serve, family_delete_hold,
-// family_delete_code and family_delete_code_db_clock, and Stripe with the site's key. The deletion worker's restricted key has no subscription write, so plans stop here.
+// family_delete_code, family_delete_code_db_clock and family_delete_code_begin_db_clock, and Stripe with the site's key. The deletion worker's restricted key has no subscription write, so plans stop here.
 
 const CHECKS = ["ready", "busy", "protected", "missing"] as const;
 const HOLDS = ["held", "busy", "protected", "missing"] as const;
@@ -62,9 +62,9 @@ export function supabaseDeleteStore(db: SupabaseClient<Database>): FamilyDeleteS
 
 export function supabaseDeleteCodes(db: SupabaseClient<Database>): DeleteCodeStore {
   return {
-    async begin(parent, hash, now, policy) {
+    async begin(parent, hash, policy) {
       const { data, error } = await db.rpc("begin_family_delete_code", {
-        p_parent: parent, p_hash: hash, p_now: new Date(now).toISOString(), p_ttl_seconds: policy.ttlMs / 1000,
+        p_parent: parent, p_hash: hash, p_ttl_seconds: policy.ttlMs / 1000,
         p_per_window: policy.perWindow, p_window_seconds: policy.windowMs / 1000, p_per_day: policy.perDay, p_day_seconds: policy.dayMs / 1000,
       });
       if (error) throw new Error(`Family delete code: ${error.code}`);

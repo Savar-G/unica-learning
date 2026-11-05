@@ -89,7 +89,8 @@ export function memoryDeleteStore(f: MemoryFamily): FamilyDeleteStore {
 
 export function memoryDeleteCodes(f: MemoryFamily): DeleteCodeStore {
   return {
-    async begin(_parent, hash, now, policy) {
+    async begin(_parent, hash, policy) {
+      const now = f.time;
       if (f.attempts.lockedUntil !== null && f.attempts.lockedUntil > now) return { kind: "locked", until: f.attempts.lockedUntil };
       const day = f.codeSends.filter((at) => at > now - policy.dayMs);
       const hour = day.filter((at) => at > now - policy.windowMs);

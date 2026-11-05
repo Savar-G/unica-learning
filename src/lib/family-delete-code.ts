@@ -30,10 +30,11 @@ export type DeleteCodeBegin = { kind: "ok" } | { kind: "too_many" | "locked"; un
 
 export interface DeleteCodeStore {
   /**
-   * In one step under the parent's row lock: refused during a lock and past the limits, else counts the send and puts this
-   * hash in place of any code before it.
+   * In one step under the parent's row lock, by the database's clock read after that lock: refused during a lock and past the
+   * limits, else counts the send and puts this hash in place of any code before it. It takes no time, so a wrong app clock cannot
+   * change when a code ends or when a limit has room.
    */
-  begin(parent: string, hash: string, now: number, policy: DeleteCodePolicy): Promise<DeleteCodeBegin>;
+  begin(parent: string, hash: string, policy: DeleteCodePolicy): Promise<DeleteCodeBegin>;
   /** The hash of the live code, by the database's clock; null when none is live. */
   read(parent: string): Promise<string | null>;
   /** Ends the code when it is still this hash and still live by the database's clock, read after the row lock. True for one caller only. */
@@ -51,7 +52,6 @@ export interface DeleteCodeSeams {
   store: Pick<FamilyDeleteStore, "check">;
   send(message: EmailMessage): Promise<SendResult>;
   configProblem(): string | null;
-  now?: () => number;
   newCode?: () => string;
   policy?: DeleteCodePolicy;
 }
@@ -65,7 +65,7 @@ const bound = (parent: string, email: string, code: string) => ["family_delete",
  * Makes a new code and emails it. `account` is what the Auth server says about this session, never the request. Stops before
  * any write when no email can go, or when the delete would refuse anyway, so that the parent gets no useless code.
  */
-export async function requestDeleteCode(parent: string, account: { email: string | null | undefined; confirmed: boolean }, { codes, store, send, configProblem, now = Date.now, newCode = randomCode, policy = DELETE_CODE_POLICY }: DeleteCodeSeams): Promise<DeleteCodeResult> {
+export async function requestDeleteCode(parent: string, account: { email: string | null | undefined; confirmed: boolean }, { codes, store, send, configProblem, newCode = randomCode, policy = DELETE_CODE_POLICY }: DeleteCodeSeams): Promise<DeleteCodeResult> {
   if (!account.email || !account.confirmed) return { ok: false, error: "no_confirmed_email" };
   const ready = await store.check(parent);
   if (ready === "missing") return { ok: false, error: "not_found" };
@@ -78,7 +78,7 @@ export async function requestDeleteCode(parent: string, account: { email: string
 
   const code = newCode();
   const hash = await hashPin(bound(parent, account.email, code));
-  const begun = await codes.begin(parent, hash, now(), policy);
+  const begun = await codes.begin(parent, hash, policy);
   if (begun.kind !== "ok") return { ok: false, error: begun.kind, retryAt: begun.until };
 
   const sent = await send({ sender: { to: "parent" }, to: account.email, replyTo: SUPPORT_EMAIL, ...deleteCodeEmail(code) });

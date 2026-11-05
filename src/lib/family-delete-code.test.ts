@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { codeProof, DELETE_CODE_POLICY, deleteCodeEmail, requestDeleteCode, type DeleteCodeSeams } from "@/lib/family-delete-code";
 import { DELETE_POLICY, DELETE_WORD, requestFamilyDelete } from "@/lib/family-delete";
 import { memoryDeleteCodes, memoryDeleteStore, memoryFamily, memoryPlans, type MemoryFamily } from "@/lib/family-delete-memory";
@@ -11,7 +11,7 @@ const ACCOUNT = { email: EMAIL, confirmed: true };
 const MINUTE = 60_000;
 
 function harness(over: Partial<MemoryFamily> = {}, seams: Partial<DeleteCodeSeams> = {}) {
-  // family.time is the database's clock. The app's clock reads the same value here, so a test sets one time.
+  // family.time is the database's clock. Asking for a code and checking it use no other clock.
   const family = memoryFamily({ time: 1_000_000, ...over });
   const store = memoryDeleteStore(family);
   const mail: EmailMessage[] = [];
@@ -22,7 +22,7 @@ function harness(over: Partial<MemoryFamily> = {}, seams: Partial<DeleteCodeSeam
   const shared: DeleteCodeSeams = {
     // The read answers, then the answer takes readDelay to arrive.
     codes: { ...stored, read: async (parent) => { const answer = await stored.read(parent); family.time += readDelay; return answer; } },
-    store, now: () => family.time, configProblem: () => null,
+    store, configProblem: () => null,
     newCode: () => String(100_000 + ++codes),
     send: async (message) => { mail.push(message); return nextResult; },
     ...seams,
@@ -237,6 +237,48 @@ describe("checking a code", () => {
   });
   it("ends every code before the lock ends, so a lock always needs a new code", () => {
     expect(DELETE_CODE_POLICY.ttlMs).toBeLessThan(DELETE_POLICY.lockMs);
+  });
+});
+
+describe("an app clock that is wrong", () => {
+  // The harness's database clock stays at family.time. Only the app's Date moves.
+  const appClockAt = (time: number) => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(time); };
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("cannot extend a code: 5 minutes ahead, the code still ends 10 minutes after the database's time", async () => {
+    const h = harness();
+    const sentAt = h.now;
+    appClockAt(sentAt + 5 * MINUTE);
+    await h.ask();
+    expect(h.family.code?.expiresAt).toBe(sentAt + DELETE_CODE_POLICY.ttlMs);
+    expect(h.family.codeSends).toEqual([sentAt]);
+    const code = h.codeIn(h.mail[0]);
+    h.at(sentAt + DELETE_CODE_POLICY.ttlMs);
+    expect(await h.prove(code)).toBe("ended");
+  });
+  it("cannot shorten a code: 5 minutes behind, the code still ends 10 minutes after the database's time", async () => {
+    const h = harness();
+    const sentAt = h.now;
+    appClockAt(sentAt - 5 * MINUTE);
+    await h.ask();
+    expect(h.family.code?.expiresAt).toBe(sentAt + DELETE_CODE_POLICY.ttlMs);
+    h.at(sentAt + DELETE_CODE_POLICY.ttlMs - 1);
+    expect(await h.prove(h.codeIn(h.mail[0]))).toBe("ok");
+  });
+  it("cannot free a send limit: a day ahead, the fourth send in the hour is still refused", async () => {
+    const h = harness();
+    const first = h.now;
+    for (let i = 0; i < 3; i++) { expect((await h.ask()).ok).toBe(true); h.advance(MINUTE); }
+    appClockAt(first + DELETE_CODE_POLICY.dayMs);
+    expect(await h.ask()).toEqual({ ok: false, error: "too_many", retryAt: first + DELETE_CODE_POLICY.windowMs });
+    expect(h.mail).toHaveLength(3);
+  });
+  it("cannot end a lock early: a day ahead, no code goes during the lock", async () => {
+    const lockedUntil = 1_000_000 + 10 * MINUTE;
+    const h = harness({ attempts: { failed: 5, lockedUntil } });
+    appClockAt(lockedUntil + DELETE_CODE_POLICY.dayMs);
+    expect(await h.ask()).toEqual({ ok: false, error: "locked", retryAt: lockedUntil });
+    expect(h.mail).toHaveLength(0);
   });
 });
 
