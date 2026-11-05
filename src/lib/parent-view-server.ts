@@ -24,6 +24,8 @@ import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 // comes from the parent's session. The scans, the pages of a shipped workbook and the learning card come from the session.
 // The test is replayed by the assessment core (restoreSession, testAreaAnswers), as `npm run area-levels:check` does, and
 // compared with the stored score with the same check: a replay that differs gives no answers, so no bars.
+// The monthly summary (#562) counts Maya calls from the minutes ledger (maya_minute_grants, which a parent reads): only
+// the child and the start time of each call that used time.
 // Plan state: the plan state table does not exist yet (#548), so `plans` returns no rows and every plan reads as
 // `unknown`. No family can be `ended` until #548 fills this read in.
 // A database error throws, and so does a missing secret key: an empty read would show a paying family "Start the test".
@@ -102,10 +104,10 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       return { level: report.data.model.level, answers };
     },
     async savedScans() {
-      const { data, error } = await session.from("scan_photos").select("workbook_id, page_id, expires_at").eq("state", "saved");
+      const { data, error } = await session.from("scan_photos").select("workbook_id, page_id, expires_at, created_at").eq("state", "saved");
       if (error) throw new Error(`scans read: ${error.message}`);
       // A saved photo always has a page (a check constraint); the workbook is the page's.
-      return data.flatMap((s) => (s.workbook_id && s.page_id ? [{ workbookId: s.workbook_id, pageId: s.page_id, expiresAt: s.expires_at }] : []));
+      return data.flatMap((s) => (s.workbook_id && s.page_id ? [{ workbookId: s.workbook_id, pageId: s.page_id, expiresAt: s.expires_at, takenAt: s.created_at }] : []));
     },
     async workbookPages(workbookId) {
       const { data, error } = await session.from("workbook_pages").select("id, day_label").eq("workbook_id", workbookId);
@@ -119,6 +121,13 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
     },
     async pinSet() {
       return pinIsSet(parent);
+    },
+    async mayaCalls() {
+      // The minutes ledger, which a parent reads: one grant per child call, settled with the seconds it used. Only the
+      // child and the start time leave this read; maya_calls itself stays closed to parents (#295).
+      const { data, error } = await session.from("maya_minute_grants").select("child_id, created_at").eq("kind", "child").gt("used_seconds", 0);
+      if (error) throw new Error(`maya calls read: ${error.message}`);
+      return data.flatMap((g) => (g.child_id ? [{ childId: g.child_id, startedAt: g.created_at }] : []));
     },
     async switches() {
       const [scanPages, testFamily] = await Promise.all([

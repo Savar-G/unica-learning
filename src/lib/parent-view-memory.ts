@@ -75,6 +75,15 @@ export interface MemoryScan extends Owned {
   pageId: string;
   state: string;
   expiresAt: string;
+  /** Defaults to 2026-01-01. */
+  takenAt?: string;
+}
+/** A Maya minutes grant (public.maya_minute_grants): a call counts only as a child's, settled with time used. */
+export interface MemoryMayaGrant extends Owned {
+  kind: "child" | "parent_demo";
+  createdAt: string;
+  /** Null while the call is open. */
+  usedSeconds: number | null;
 }
 export interface MemoryPage {
   parentId: string;
@@ -83,7 +92,7 @@ export interface MemoryPage {
   dayLabel: string | null;
 }
 
-const TABLES = ["children", "tests", "reports", "cards", "deliveries", "workbooks", "plans", "switches", "corrections", "dispatches", "family", "results", "scans", "pages", "learning", "pin"] as const;
+const TABLES = ["children", "tests", "reports", "cards", "deliveries", "workbooks", "plans", "switches", "corrections", "dispatches", "family", "results", "scans", "pages", "learning", "pin", "maya"] as const;
 type Table = (typeof TABLES)[number];
 
 export interface MemoryParentViewTables {
@@ -106,6 +115,7 @@ export interface MemoryParentViewTables {
   pages?: MemoryPage[];
   /** One value for every parent; true when left out. */
   pinSet?: boolean | null;
+  maya?: MemoryMayaGrant[];
   fail?: Table[];
 }
 
@@ -179,7 +189,7 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
       },
       async savedScans() {
         read("scans");
-        return own(tables.scans).filter((s) => s.state === "saved");
+        return own(tables.scans).filter((s) => s.state === "saved").map((s) => ({ ...s, takenAt: s.takenAt ?? "2026-01-01T00:00:00Z" }));
       },
       async workbookPages(workbookId) {
         read("pages");
@@ -191,6 +201,10 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
         return own(tables.children).map((c) => ({
           ...c, childId: c.id, learning_styles: null, interests: null, learning_note: null, math_feeling: null, learning_goal: null, weekly_time: null, ...c.learning,
         }));
+      },
+      async mayaCalls() {
+        read("maya");
+        return own(tables.maya).filter((g) => g.kind === "child" && g.usedSeconds !== null && g.usedSeconds > 0).map((g) => ({ ...g, startedAt: g.createdAt }));
       },
       async pinSet() {
         // As the server: a PIN that cannot be read is null, not an error.

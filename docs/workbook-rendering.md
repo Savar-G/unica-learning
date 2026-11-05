@@ -229,6 +229,19 @@ Check with `/api/workbook-render-check?pages=<3 to 60>` and `Authorization: Bear
 sizes. It is off in production unless the variable `RENDER_CHECK` is `on`, and each function instance runs one check
 at a time (a second call while one runs gets 429).
 
+## The monthly summary PDF (#562)
+
+The same print engine prints the parent's monthly summary (`src/lib/monthly-summary.ts`): one Letter page per child per
+calendar month in family time, made on request by `GET /api/account/children/<id>/monthly-summary?month=YYYY-MM` and
+never stored. The page has one measured mark, an empty `summary-end` after the footer; the render fails when that mark
+lies past 24 px above the page's bottom edge or the PDF has more than one page, so a long summary is never cut off. The
+mark has no text, so the ink check has nothing to do. The route allows 60 s (`maxDuration`); each function instance
+renders at most 2 summaries at once, and a parent may try 5 times in 10 minutes (per instance).
+
+`outputFileTracingIncludes` in `next.config.ts` gives every route that runs Chromium the serverless build's files. Its
+keys are route globs, so a dynamic segment's brackets are escaped (`/api/account/children/\[id\]/monthly-summary`);
+unescaped, `[id]` is a character class and the route gets no Chromium.
+
 ## The sample workbook
 
 `node scripts/load-workbook-sample.mjs --child <id>` renders and stores a new sample for a test family.

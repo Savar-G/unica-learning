@@ -27,7 +27,7 @@ const scaleTop = (o: OverviewView) => Math.max(8, o.child.schoolGrade, o.level?.
 const tick = (l: number) => (l === 0 ? "K" : String(l));
 
 export function ParentOverview({ overview, maya }: { overview: OverviewView; maya: ChildMinutes | null }) {
-  const { child, level, areas, resultPreparing, resultLate, workbook, action } = overview;
+  const { child, level, areas, resultPreparing, resultLate, workbook, action, summaryMonth } = overview;
   const n = scaleTop(overview) + 1;
   const tiles = level || workbook || maya;
   return (
@@ -89,6 +89,7 @@ export function ParentOverview({ overview, maya }: { overview: OverviewView; may
         </section>
       )}
       {action && <ActionCard item={action} name={child.firstName} childId={child.id} />}
+      {summaryMonth && <SummaryCard month={summaryMonth} name={child.firstName} childId={child.id} />}
     </div>
   );
 }
@@ -130,6 +131,20 @@ function ActionCard({ item, name, childId }: { item: ActionItem; name: string; c
       <h2 id="po-action">{a.title}</h2>
       <p className="po-sub">{a.body}</p>
       <Link className="btn" href={a.href}>{a.button} <span aria-hidden="true">→</span></Link>
+    </section>
+  );
+}
+
+/** The monthly summary PDF (#562, D-248): the last finished month, from the month after the first delivery. */
+function SummaryCard({ month, name, childId }: { month: string; name: string; childId: string }) {
+  const label = formatCalendarDate(`${month}-01`, { month: "long", year: "numeric" });
+  const href = `/api/account/children/${encodeURIComponent(childId)}/monthly-summary?month=${encodeURIComponent(month)}`;
+  return (
+    <section className="po-card po-summary" aria-labelledby="po-summary">
+      <p className="po-label" id="po-summary">Monthly summary</p>
+      <p className="po-value">{label}</p>
+      <p className="po-sub">One page on {name}&apos;s month: the level, the workbooks and what comes next. You can print it or take it to a teacher meeting.</p>
+      <a className="po-more" href={href} target="_blank" rel="noopener">Open the PDF <span aria-hidden="true">→</span></a>
     </section>
   );
 }

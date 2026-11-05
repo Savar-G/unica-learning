@@ -226,17 +226,37 @@ describe("the Supabase reader of the Overview (#560)", () => {
   it("reads saved scans, a workbook's pages and the learning card with the parent's session, and no raw profile, event or call table", async () => {
     const r = overviewReader({
       ...scored(take()),
-      scan_photos: [{ workbook_id: WORKBOOK, page_id: "p1", expires_at: "2027-01-01T00:00:00Z" }],
+      scan_photos: [{ workbook_id: WORKBOOK, page_id: "p1", expires_at: "2027-01-01T00:00:00Z", created_at: "2026-10-20T18:00:00Z" }],
       workbook_pages: [{ id: "p1", day_label: "Day 1" }],
       children: [{ id: CHILD, first_name: "Leah", grade: 3, learning_styles: null, interests: ["space"], learning_note: null, math_feeling: null, learning_goal: null, weekly_time: null }],
     });
-    expect(await r.reader.savedScans()).toEqual([{ workbookId: WORKBOOK, pageId: "p1", expiresAt: "2027-01-01T00:00:00Z" }]);
+    expect(await r.reader.savedScans()).toEqual([{ workbookId: WORKBOOK, pageId: "p1", expiresAt: "2027-01-01T00:00:00Z", takenAt: "2026-10-20T18:00:00Z" }]);
     expect(select(r.session, "scan_photos").get("state")).toBe("eq.saved");
     expect(await r.reader.workbookPages(WORKBOOK)).toEqual([{ id: "p1", dayLabel: "Day 1" }]);
     expect(select(r.session, "workbook_pages").get("workbook_id")).toBe(`eq.${WORKBOOK}`);
     expect((await r.reader.learningCards())[0]).toMatchObject({ childId: CHILD, interests: ["space"] });
     await readOverview(r.reader, CHILD, NOW);
-    expect(tables(r.session)).toEqual(["card_setups", "children", "parents", "reports", "scan_photos", "workbook_delivery_receipts", "workbook_pages", "workbooks"]);
+    expect(tables(r.session)).toEqual(["card_setups", "children", "parents", "reports", "scan_photos", "workbook_delivery_corrections", "workbook_delivery_receipts", "workbook_pages", "workbooks"]);
     expect(tables(r.admin)).toEqual(["admin_users", "answers", "assessments", "test_accounts"]);
+  });
+});
+
+describe("the Supabase reader of the monthly summary (#562)", () => {
+  it("counts Maya calls from the minutes ledger with the parent's session alone (no secret key): a child's calls that used time, only the child and the start", async () => {
+    const session: URL[] = [];
+    const rows = [{ child_id: CHILD, created_at: "2026-10-02T18:00:00Z" }, { child_id: null, created_at: "2026-10-03T18:00:00Z" }];
+    const own = parentViewReader(createClient<never>("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input) => {
+      session.push(new URL(String(input)));
+      return Response.json(rows);
+    } } }) as never, PARENT, null);
+    expect(await own.mayaCalls()).toEqual([{ childId: CHILD, startedAt: "2026-10-02T18:00:00Z" }]);
+    const ask = session[0].searchParams;
+    expect(session[0].pathname).toBe("/rest/v1/maya_minute_grants");
+    expect(ask.get("select")).toBe("child_id,created_at");
+    expect(ask.get("kind")).toBe("eq.child");
+    expect(ask.get("used_seconds")).toBe("gt.0");
+  });
+  it("throws when the ledger cannot be read", async () => {
+    await expect(reader("maya_minute_grants").reader.mayaCalls()).rejects.toThrow("maya calls read");
   });
 });

@@ -2,6 +2,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import jsQR from "jsqr";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
+import { renderMonthlySummary } from "@/lib/monthly-summary";
+import type { MonthlySummaryView } from "@/lib/parent-view";
 import { chromiumPrintEngine, findChromium } from "@/lib/print-engine-chromium";
 import { renderWorkbook, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleDraft } from "@/lib/workbook-sample";
@@ -163,5 +165,40 @@ describe.skipIf(!chromium)("renderWorkbook with Chromium", () => {
       status: "failed",
       problems: [1, 2, 3, 4].map((q) => ({ page: 2, question: q, reason: `question ${q} has no answer space` })),
     });
+  }, 60_000);
+});
+
+// The monthly summary (#562) with real Chromium: one page, at the page image's size, and a summary too long for one page
+// fails instead of being cut off.
+describe.skipIf(!chromium)("the monthly summary with Chromium", () => {
+  const view: MonthlySummaryView = {
+    firstName: "Leah", schoolGrade: 3, month: "2026-10", madeOn: "2026-11-05",
+    level: { working: 4, earlySign: false, testedOn: "2026-09-10" },
+    areas: [
+      { area: "number", name: "Number and operations", level: 4, label: "ahead", earlySign: false },
+      { area: "fractions", name: "Fractions and decimals", level: 2, label: "building-up", earlySign: true },
+      { area: "algebra", name: "Patterns and algebra", level: 3, label: "at-grade", earlySign: false },
+      { area: "shapes", name: "Shapes, measurement and data", level: 3, label: "at-grade", earlySign: true },
+    ],
+    mailed: [{ number: 2, shippedOn: "2026-10-14" }, { number: 3, shippedOn: "2026-10-28" }],
+    daysScanned: 9, mayaCalls: 4,
+    next: { earliest: "2026-11-11", latest: "2026-11-25" },
+  };
+
+  it("prints the summary on one Letter page", async () => {
+    const out = await renderMonthlySummary({ view, engine: chromiumPrintEngine(), fonts: await fixedTemplateFonts() });
+    if (out.status !== "rendered") throw new Error(JSON.stringify(out));
+    expect(new TextDecoder("latin1").decode(out.pdf).match(/\/Type\s*\/Page\b/g)?.length).toBe(1);
+    expect(await sharp(out.png).metadata()).toMatchObject({ width: 1275, height: 1650 });
+    if (process.env.RENDER_OUT) {
+      await mkdir(process.env.RENDER_OUT, { recursive: true });
+      await writeFile(`${process.env.RENDER_OUT}/monthly-summary.pdf`, out.pdf);
+      await writeFile(`${process.env.RENDER_OUT}/monthly-summary.png`, out.png);
+    }
+  }, 60_000);
+
+  it("fails a summary too long for one page", async () => {
+    const long = { ...view, mailed: Array.from({ length: 40 }, (_, i) => ({ number: i + 1, shippedOn: "2026-10-14" })) };
+    expect(await renderMonthlySummary({ view: long, engine: chromiumPrintEngine(), fonts: await fixedTemplateFonts() })).toEqual({ status: "failed", reason: "the summary does not fit on one page" });
   }, 60_000);
 });
