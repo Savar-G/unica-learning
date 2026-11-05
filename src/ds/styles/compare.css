@@ -1,6 +1,6 @@
 /* The check table (src/components/compare.tsx, D-097): the at-a-glance table on /compare (.cmp-all, D-114).
    The home "How we compare" section (.hc, D-219) is at the end of this file.
-   Each trait cell leads with a mark (full = yes, half = partly) so the table scans before it reads.
+   Each trait cell leads with a word (Yes, Partly, No) so the table scans before it reads, with no legend.
    Our column has the accent-soft tint, a gradient bar along its top (the D-037 colours) and accent marks;
    the other columns stay plain ink-2, so nothing reads as a plan tier.
    Under 900px the row label moves above its three cells and the corner header cell is hidden.
@@ -22,14 +22,14 @@
 .cmp-cost > [role="rowheader"] { font: 500 15px/1.45 var(--sans); }
 .cmp-cost b { font: 300 clamp(26px, 2.4vw, 32px)/1 var(--sans); letter-spacing: -0.03em; color: var(--ink-2); }
 .cmp-cost .us b { font-weight: 400; color: var(--ink); }
-.cmp-cost > .us { border-radius: 0 0 6px 6px; }
+/* Cost is the first row, so our column's rounded bottom sits on the last row. */
+.cmp-tbl > .cmp-row:last-child > .us { border-radius: 0 0 6px 6px; }
 
-.cmp-mk { flex: none; position: relative; width: 20px; height: 20px; margin-top: 1px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--ink-2); }
-.cmp-mk.yes { background: var(--ink); box-shadow: none; }
-.cmp-mk.yes::after { content: ""; position: absolute; left: 7px; top: 4px; width: 5px; height: 9px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
-.cmp-mk.part { background: linear-gradient(90deg, var(--ink-2) 50%, transparent 50%); }
-.us .cmp-mk.yes { background: var(--accent); }
-.cmp-mk.no { background: transparent; }
+.cmp-v { flex: none; align-self: flex-start; padding: 4px 9px; border-radius: 999px; font: 600 12px/1 var(--sans); }
+.cmp-v.yes { background: var(--ink); color: #fff; }
+.cmp-v.part { background: var(--line-soft); color: var(--ink); }
+.cmp-v.no { box-shadow: inset 0 0 0 1px var(--line-soft); color: var(--ink-3); }
+.us .cmp-v.yes { background: var(--accent); }
 
 
 /* /compare: five columns (D-114) */
@@ -40,11 +40,6 @@
 .cmp-all .cmp-cost > span { gap: 6px; font-size: 12px; }
 .cmp-all .cmp-cost b { font-size: clamp(22px, 2vw, 26px); }
 .cmp-switch { display: none; }
-
-.cmp-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin: 16px 0 0; font: 400 12.5px/1 var(--mono); color: var(--ink-2); }
-.cmp-legend > span { display: inline-flex; align-items: center; gap: 8px; }
-.cmp-legend .cmp-mk { width: 14px; height: 14px; margin: 0; }
-.cmp-legend .cmp-mk.yes::after { left: 5px; top: 2px; width: 3px; height: 7px; }
 
 @media (max-width: 899px) {
   .cmp-tbl { grid-template-columns: repeat(3, minmax(0, 1fr)); }

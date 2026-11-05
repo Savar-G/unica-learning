@@ -1,15 +1,16 @@
 // The check table (D-097, variant C of round r19) is the at-a-glance table on /compare, with all four options (D-114).
 // HomeCompare is the home "How we compare" section (D-219). The facts live in
-// src/lib/compare.ts. Marks scan before words: a full mark is yes, a half mark is partly, an empty mark is no.
+// src/lib/compare.ts. Each cell leads with a word (Yes, Partly, No), so the table needs no legend.
 import { COST, MARK_LABEL, OPTIONS, ROWS, type Mark, type OptionId, type RowId } from "@/lib/compare";
 import type { Vars } from "./drawn";
 import "@/ds/styles/compare.css";
 
-export function MarkIcon({ m }: { m: Mark }) {
-  return <span className={`cmp-mk ${m}`} role="img" aria-label={MARK_LABEL[m]} />;
+export function MarkWord({ m }: { m: Mark }) {
+  return <span className={`cmp-v ${m}`}>{MARK_LABEL[m]}</span>;
 }
 
-/** The check table: `columns` in order (ours last), `rows` by id, then Cost. Each cell carries data-col for the phone switch. */
+/** The check table: `columns` in order (ours last), Cost a month first, then `rows` by id, each asked as a question.
+ *  Each cell carries data-col for the phone switch. */
 export function CompareGrid({ columns, rows, labelledBy, className = "" }: { columns: OptionId[]; rows: RowId[]; labelledBy: string; className?: string }) {
   const cls = (id: OptionId) => (id === "us" ? "us" : undefined);
   const name = (id: OptionId) => OPTIONS.find((o) => o.id === id)?.name;
@@ -19,27 +20,23 @@ export function CompareGrid({ columns, rows, labelledBy, className = "" }: { col
         <span role="columnheader" />
         {columns.map((id) => <span role="columnheader" key={id} className={cls(id)} data-col={id}>{name(id)}</span>)}
       </div>
+      <div className="cmp-row cmp-cost" role="row">
+        <span role="rowheader">Cost a month</span>
+        {columns.map((id) => (
+          <span role="cell" key={id} className={cls(id)} data-col={id}><b>{COST[id][0]}</b> {COST[id][1].replace(/^a month,? ?/, "")}</span>
+        ))}
+      </div>
       {ROWS.filter((r) => rows.includes(r.id)).map((r) => (
         <div className="cmp-row" role="row" key={r.id}>
-          <span role="rowheader">{r.label}</span>
+          <span role="rowheader">{r.ask}</span>
           {columns.map((id) => {
             const [m, text] = r.cells[id];
-            return <span role="cell" key={id} className={cls(id)} data-col={id}><MarkIcon m={m} />{text}</span>;
+            return <span role="cell" key={id} className={cls(id)} data-col={id}><MarkWord m={m} />{text}</span>;
           })}
         </div>
       ))}
-      <div className="cmp-row cmp-cost" role="row">
-        <span role="rowheader">Cost</span>
-        {columns.map((id) => (
-          <span role="cell" key={id} className={cls(id)} data-col={id}><b>{COST[id][0]}</b> {COST[id][1]}</span>
-        ))}
-      </div>
     </div>
   );
-}
-
-export function CompareLegend({ marks }: { marks: Mark[] }) {
-  return <p className="cmp-legend">{marks.map((m) => <span key={m}><MarkIcon m={m} /> {MARK_LABEL[m]}</span>)}</p>;
 }
 
 /** Home "How we compare" (D-219, round r33 variant A3): price first, then four traits. Only our column carries checks,

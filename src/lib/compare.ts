@@ -18,10 +18,12 @@ export const OPTIONS: { id: OptionId; name: string; short: string }[] = [
   { id: "us", name: BRAND, short: BRAND },
 ];
 
-export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, string]> }[] = [
+/** `label` is the home table's row name; `ask` is the /compare row, worded as a parent's question. */
+export const ROWS: { id: RowId; label: string; ask: string; cells: Record<OptionId, [Mark, string]> }[] = [
   {
     id: "personal",
     label: "Personal to your child",
+    ask: "Made for my child?",
     cells: {
       tutor: ["yes", "The tutor adjusts each session"],
       centre: ["part", "Own pace, on a set path"],
@@ -32,6 +34,7 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
   {
     id: "plan",
     label: "A structured plan",
+    ask: "Is there a plan?",
     cells: {
       tutor: ["part", "Depends on the tutor"],
       centre: ["yes", "A set program at the centre"],
@@ -42,6 +45,7 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
   {
     id: "help",
     label: "Help when they're stuck",
+    ask: "Help when they're stuck?",
     cells: {
       tutor: ["yes", "Explains live"],
       centre: ["part", "Ask the instructor at the centre"],
@@ -52,6 +56,7 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
   {
     id: "gaps",
     label: "Gaps shown to you",
+    ask: "Do I see the gaps?",
     cells: {
       tutor: ["part", "When the tutor reports them"],
       centre: ["part", "Depends on the centre"],
@@ -62,6 +67,7 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
   {
     id: "paper",
     label: "Pencil and paper",
+    ask: "On paper, not a screen?",
     cells: {
       tutor: ["part", "Depends on the tutor"],
       centre: ["part", "Depends on the centre"],
@@ -72,6 +78,7 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
   {
     id: "home",
     label: "No driving",
+    ask: "At home?",
     cells: {
       tutor: ["part", "Online, at home, or at the tutor's"],
       centre: ["no", "At the centre, often twice a week"],

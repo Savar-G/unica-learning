@@ -8,7 +8,6 @@ import { Eyebrow, Faq as FaqList, Nav as NavBar } from "@/ds";
 import { Motion } from "@/components/motion";
 import { StartLink, StartNote } from "@/components/start-link";
 import { Footer, START_LABEL } from "@/components/sections";
-import { CompareLegend } from "./compare";
 import { CompareSwitch } from "./compare-switch";
 import { Rise } from "./drawn";
 import "./compare-page.css";
@@ -39,7 +38,6 @@ export function ComparePage() {
             <h2 className="cmp-kicker" id="glanceT">At a glance</h2>
             <Rise>
               <CompareSwitch labelledBy="glanceT" />
-              <CompareLegend marks={["yes", "part", "no"]} />
               <p className="cmpp-src">Prices from public sources, checked October 2026, in Canadian dollars except some online platforms. They vary by tutor, centre and plan.</p>
             </Rise>
             <div className="cmpp-next">
