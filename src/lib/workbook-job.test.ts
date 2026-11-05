@@ -13,6 +13,7 @@ import { placeChild, planNextWorkbook } from "@/lib/workbook-placement";
 import { memoryWorkbookFiles } from "@/lib/workbook-store-memory";
 import { workbookTemplate } from "@/lib/workbook-template";
 import { keySolver, type Solver } from "@/lib/workbook-solve-check";
+import { firstCustomerProfile } from "@/lib/workbook-sample-profiles";
 
 // "Prepare next workbook" (#312) through its public interface: the in-memory runs, drafts and files, the fake AI client
 // with fixed JSON, the fake print engine and the real page templates (#310). The clock is fake: each AI call takes
@@ -874,4 +875,15 @@ it("pins the approved item policy in a fresh frame and writes only stories or ex
     const asked = JSON.parse((r.content[0] as {text:string}).text);
     for (const slot of asked.slots) expect(slot.contract.source).toBe("explain");
   }
-});
+}, 180_000); // A whole book with real fit planning: 33 to 65 s on a busy Mac, over the 30 s default.
+
+it("finishes a personalized run whose stored plan comes back in jsonb key order (2026-11-05)", async () => {
+  // The first customer's run failed its own plan check on the first call: the outline was fingerprinted from the plan
+  // as made, then again from the plan read back from jsonb, with its keys in another order.
+  const profile = { revision: 1, profile: firstCustomerProfile() };
+  const s = setup({ itemPolicy: "approved-v1", inputs: child({ grade: 4, profile }) });
+  const id = await started(s);
+  expect(await runWorkbookJob(id, s.deps)).toBe("done");
+  expect((await s.runs.run(id))!.error).toBeNull();
+  expect((await s.runs.frame(id))?.plan.level).toBe(16);
+}, 180_000);
