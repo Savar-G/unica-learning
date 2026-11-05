@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { linkOrigin } from "@/lib/account-server";
 import { emailConfigProblem, type MailTransport } from "@/lib/email-delivery";
 import { resendTransport } from "@/lib/email-resend";
+import { sweepAbandonedCallsNow } from "@/lib/maya-call-sweep-server";
 import { dueWeeklyEmails, runWeeklyEmails } from "@/lib/maya-weekly-email";
 import { mayaWeeklyStore } from "@/lib/maya-weekly-email-store";
 import { reminderMessage, reminderStore } from "@/lib/reminder-store";
@@ -13,8 +14,10 @@ import { adminClient } from "@/lib/supabase-auth";
 // "Authorization: Bearer <CRON_SECRET>" (the URL and the secret live in Supabase Vault; see
 // supabase/migrations/20261011_add_reminder_cron.sql). Vercel cron here runs only once a day, so it cannot.
 // After the reminders, the same run sends the weekly Maya emails (#332, src/lib/maya-weekly-email.ts) through the same
-// spaced transport.
-// ?dry=1 counts what is due and sends nothing.
+// spaced transport. Beside the emails, the same run ends abandoned Maya chats and calls (#528,
+// src/lib/maya-call-sweep.ts): it starts no new end after SWEEP_START_MS and stops waiting at SWEEP_TIME_LIMIT_MS, inside
+// the cron's 60-second request limit (timeout_milliseconds in migration add_reminder_cron).
+// ?dry=1 counts what is due and sends and ends nothing.
 // The answer holds counts only, never a parent's details.
 
 export const maxDuration = 60;
@@ -61,11 +64,24 @@ export async function POST(request: Request) {
   const now = Date.now();
   const store = reminderStore(admin);
   const origin = linkOrigin(request);
+  let sweep: Promise<unknown> | null = null;
   try {
     if (new URL(request.url).searchParams.get("dry") === "1") {
       const maya = dueWeeklyEmails(await mayaWeeklyStore(admin).load(now), now).length;
-      return Response.json({ ok: true, dry: true, due: byKind(dueReminders(await store.load(now), now)), maya });
+      const abandoned = (await sweepAbandonedCallsNow(admin, { dry: true })).due;
+      return Response.json({ ok: true, dry: true, due: byKind(dueReminders(await store.load(now), now)), maya, sweep: abandoned });
     }
+    // The sweep runs beside the emails and never fails the run.
+    sweep = sweepAbandonedCallsNow(admin, { origin, startedAt: now }).then(
+      (r) => {
+        if (r.due > 0) console.info("[maya sweep] run", JSON.stringify(r));
+        return r;
+      },
+      (e) => {
+        console.error("[maya sweep] run failed", e instanceof Error ? e.message : e);
+        return { error: "run_failed" as const };
+      },
+    );
     const transport = spaced(resendTransport(), SEND_GAP_MS);
     const result = await runReminders(store, now, {
       newToken,
@@ -82,9 +98,11 @@ export async function POST(request: Request) {
       console.error("[maya weekly] run failed", e instanceof Error ? e.message : e);
       maya = { error: "run_failed" };
     }
-    return Response.json({ ok: true, ...result, maya });
+    return Response.json({ ok: true, ...result, maya, sweep: await sweep });
   } catch (e) {
     console.error("[reminders] run failed", e instanceof Error ? e.message : e);
+    // The sweep finishes before the answer, so the function is not stopped in the middle of a call's end.
+    await sweep;
     return Response.json({ ok: false, error: "run_failed" }, { status: 500 });
   }
 }
