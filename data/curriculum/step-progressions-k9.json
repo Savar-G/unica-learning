@@ -24491,15 +24491,15 @@
    "mistakes": [
     {
      "answer": "41",
-     "why": "writes the 4 first because it is said first",
+     "why": "puts the ones digit before the tens digit",
      "kind": "conceptual",
      "misconception": "digit-reversal",
      "watchOut": {
-      "wrong": "Writes ten and four as 41, putting the 4 first because it is said first.",
-      "fix": "Ten and four is 1 ten and 4 ones: the 1 goes first, so 14.",
+      "wrong": "Writes ten and four as 41, with the ones digit before the tens digit.",
+      "fix": "Ten and four is 1 ten and 4 ones. Write the ten first: 14.",
       "verified": true,
       "verifierModel": "claude-opus-5-5",
-      "verificationHash": "1b6f0b31cf38c411726687c5a433"
+      "verificationHash": "1f6391765874501a1aeb6517e735"
      }
     }
    ],
@@ -25403,11 +25403,11 @@
      "kind": "conceptual",
      "misconception": "one-to-one",
      "watchOut": {
-      "wrong": "Saying 6 or 8 for a full row of 5 with 2 below, by counting empty squares or missing one.",
-      "fix": "Count only filled spaces: 5 and 2 more is 7.",
+      "wrong": "Saying 6 or 8 for a full row of 5 and 2 more by counting one too few or one too many.",
+      "fix": "Know the full row is 5, then count on 2: 6, 7. The total is 7.",
       "verified": true,
       "verifierModel": "claude-opus-5-5",
-      "verificationHash": "05786caf5fc8371f683233d726a8"
+      "verificationHash": "07d0a83418780f105f1bee641c8b"
      }
     }
    ],
@@ -103900,10 +103900,10 @@
      "misconception": "one-attribute",
      "watchOut": {
       "wrong": "A straight row of 6 squares folds into a cube.",
-      "fix": "Six squares isn't enough; a row overlaps when folded. A cross of 6 folds with no overlap.",
+      "fix": "A cube net needs 6 squares arranged to fold into a cube. A straight row will not work.",
       "verified": true,
       "verifierModel": "claude-opus-5-5",
-      "verificationHash": "00e76afbdd1e4303e3c8341d5703"
+      "verificationHash": "14daa7af6c6e930ac9f5c485e069"
      }
     },
     {
@@ -103913,10 +103913,10 @@
      "misconception": "one-attribute",
      "watchOut": {
       "wrong": "A 2 by 3 block of 6 squares folds into a cube.",
-      "fix": "Six squares isn't enough; the block overlaps when folded. A cross of 6 has no overlap.",
+      "fix": "A cube net needs 6 squares arranged to fold into a cube. A 2 by 3 block will not work.",
       "verified": true,
       "verifierModel": "claude-opus-5-5",
-      "verificationHash": "00eb52ffe64f100cd8255eceb2b7"
+      "verificationHash": "17bb8c37d1480c1996d604d54016"
      }
     }
    ],

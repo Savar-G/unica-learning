@@ -104639,5 +104639,240 @@
       }
     ],
     "why": "C2-R2: replace shared lines with independently verified step-specific pairs; remove every unverified pair."
+  },
+  {
+    "skill": "1.1-read-write-20",
+    "step": 2,
+    "template": null,
+    "path": [
+      "mistakes"
+    ],
+    "before": [
+      {
+        "answer": "41",
+        "why": "writes the 4 first because it is said first",
+        "kind": "conceptual",
+        "misconception": "digit-reversal",
+        "watchOut": {
+          "wrong": "Writes ten and four as 41, putting the 4 first because it is said first.",
+          "fix": "Ten and four is 1 ten and 4 ones: the 1 goes first, so 14.",
+          "verified": true,
+          "verifierModel": "claude-opus-5-5",
+          "verificationHash": "1b6f0b31cf38c411726687c5a433"
+        }
+      }
+    ],
+    "after": [
+      {
+        "answer": "41",
+        "why": "puts the ones digit before the tens digit",
+        "kind": "conceptual",
+        "misconception": "digit-reversal",
+        "watchOut": {
+          "wrong": "Writes ten and four as 41, with the ones digit before the tens digit.",
+          "fix": "Ten and four is 1 ten and 4 ones. Write the ten first: 14.",
+          "verified": false
+        }
+      }
+    ],
+    "why": "C2-R3: correct F11 spoken-order wording and its source reason, or F12 face-count wording in both cube-net mistakes. Clear approval until fresh verification."
+  },
+  {
+    "skill": "3.11-nets",
+    "step": 1,
+    "template": null,
+    "path": [
+      "mistakes"
+    ],
+    "before": [
+      {
+        "answer": "the net with 6 squares in a straight row",
+        "why": "Checks only that there are 6 squares",
+        "kind": "conceptual",
+        "misconception": "one-attribute",
+        "watchOut": {
+          "wrong": "A straight row of 6 squares folds into a cube.",
+          "fix": "Six squares isn't enough; a row overlaps when folded. A cross of 6 folds with no overlap.",
+          "verified": true,
+          "verifierModel": "claude-opus-5-5",
+          "verificationHash": "00e76afbdd1e4303e3c8341d5703"
+        }
+      },
+      {
+        "answer": "the net with 6 squares in a 2 by 3 block",
+        "why": "Checks only that there are 6 squares",
+        "kind": "conceptual",
+        "misconception": "one-attribute",
+        "watchOut": {
+          "wrong": "A 2 by 3 block of 6 squares folds into a cube.",
+          "fix": "Six squares isn't enough; the block overlaps when folded. A cross of 6 has no overlap.",
+          "verified": true,
+          "verifierModel": "claude-opus-5-5",
+          "verificationHash": "00eb52ffe64f100cd8255eceb2b7"
+        }
+      }
+    ],
+    "after": [
+      {
+        "answer": "the net with 6 squares in a straight row",
+        "why": "Checks only that there are 6 squares",
+        "kind": "conceptual",
+        "misconception": "one-attribute",
+        "watchOut": {
+          "wrong": "A straight row of 6 squares folds into a cube.",
+          "fix": "A cube net needs 6 squares arranged to fold into a cube. A straight row will not work.",
+          "verified": false
+        }
+      },
+      {
+        "answer": "the net with 6 squares in a 2 by 3 block",
+        "why": "Checks only that there are 6 squares",
+        "kind": "conceptual",
+        "misconception": "one-attribute",
+        "watchOut": {
+          "wrong": "A 2 by 3 block of 6 squares folds into a cube.",
+          "fix": "A cube net needs 6 squares arranged to fold into a cube. A 2 by 3 block will not work.",
+          "verified": false
+        }
+      }
+    ],
+    "why": "C2-R3: correct F11 spoken-order wording and its source reason, or F12 face-count wording in both cube-net mistakes. Clear approval until fresh verification."
+  },
+  {
+    "skill": "1.1-read-write-20",
+    "step": 2,
+    "template": null,
+    "path": [
+      "mistakes"
+    ],
+    "before": [
+      {
+        "answer": "41",
+        "why": "puts the ones digit before the tens digit",
+        "kind": "conceptual",
+        "misconception": "digit-reversal",
+        "watchOut": {
+          "wrong": "Writes ten and four as 41, with the ones digit before the tens digit.",
+          "fix": "Ten and four is 1 ten and 4 ones. Write the ten first: 14.",
+          "verified": false
+        }
+      }
+    ],
+    "after": [
+      {
+        "answer": "41",
+        "why": "puts the ones digit before the tens digit",
+        "kind": "conceptual",
+        "misconception": "digit-reversal",
+        "watchOut": {
+          "wrong": "Writes ten and four as 41, with the ones digit before the tens digit.",
+          "fix": "Ten and four is 1 ten and 4 ones. Write the ten first: 14.",
+          "verified": true,
+          "verifierModel": "claude-opus-5-5",
+          "verificationHash": "1f6391765874501a1aeb6517e735"
+        }
+      }
+    ],
+    "why": "C2-R3: publish only pairs accepted by the stricter factual-claim verifier; remove final rejections."
+  },
+  {
+    "skill": "3.11-nets",
+    "step": 1,
+    "template": null,
+    "path": [
+      "mistakes"
+    ],
+    "before": [
+      {
+        "answer": "the net with 6 squares in a straight row",
+        "why": "Checks only that there are 6 squares",
+        "kind": "conceptual",
+        "misconception": "one-attribute",
+        "watchOut": {
+          "wrong": "A straight row of 6 squares folds into a cube.",
+          "fix": "A cube net needs 6 squares arranged to fold into a cube. A straight row will not work.",
+          "verified": false
+        }
+      },
+      {
+        "answer": "the net with 6 squares in a 2 by 3 block",
+        "why": "Checks only that there are 6 squares",
+        "kind": "conceptual",
+        "misconception": "one-attribute",
+        "watchOut": {
+          "wrong": "A 2 by 3 block of 6 squares folds into a cube.",
+          "fix": "A cube net needs 6 squares arranged to fold into a cube. A 2 by 3 block will not work.",
+          "verified": false
+        }
+      }
+    ],
+    "after": [
+      {
+        "answer": "the net with 6 squares in a straight row",
+        "why": "Checks only that there are 6 squares",
+        "kind": "conceptual",
+        "misconception": "one-attribute",
+        "watchOut": {
+          "wrong": "A straight row of 6 squares folds into a cube.",
+          "fix": "A cube net needs 6 squares arranged to fold into a cube. A straight row will not work.",
+          "verified": true,
+          "verifierModel": "claude-opus-5-5",
+          "verificationHash": "14daa7af6c6e930ac9f5c485e069"
+        }
+      },
+      {
+        "answer": "the net with 6 squares in a 2 by 3 block",
+        "why": "Checks only that there are 6 squares",
+        "kind": "conceptual",
+        "misconception": "one-attribute",
+        "watchOut": {
+          "wrong": "A 2 by 3 block of 6 squares folds into a cube.",
+          "fix": "A cube net needs 6 squares arranged to fold into a cube. A 2 by 3 block will not work.",
+          "verified": true,
+          "verifierModel": "claude-opus-5-5",
+          "verificationHash": "17bb8c37d1480c1996d604d54016"
+        }
+      }
+    ],
+    "why": "C2-R3: publish only pairs accepted by the stricter factual-claim verifier; remove final rejections."
+  },
+  {
+    "skill": "1.1-subitize-to-10",
+    "step": 2,
+    "template": null,
+    "path": [
+      "mistakes"
+    ],
+    "before": [
+      {
+        "answer": "6 or 8",
+        "why": "counts the empty squares or misses one",
+        "kind": "conceptual",
+        "misconception": "one-to-one",
+        "watchOut": {
+          "wrong": "Saying 6 or 8 for a full row of 5 with 2 below, by counting empty squares or missing one.",
+          "fix": "Count only filled spaces: 5 and 2 more is 7.",
+          "verified": true,
+          "verifierModel": "claude-opus-5-5",
+          "verificationHash": "05786caf5fc8371f683233d726a8"
+        }
+      }
+    ],
+    "after": [
+      {
+        "answer": "6 or 8",
+        "why": "counts the empty squares or misses one",
+        "kind": "conceptual",
+        "misconception": "one-to-one",
+        "watchOut": {
+          "wrong": "Saying 6 or 8 for a full row of 5 and 2 more by counting one too few or one too many.",
+          "fix": "Know the full row is 5, then count on 2: 6, 7. The total is 7.",
+          "verified": true,
+          "verifierModel": "claude-opus-5-5",
+          "verificationHash": "07d0a83418780f105f1bee641c8b"
+        }
+      }
+    ],
+    "why": "C2-R3: publish only pairs accepted by the stricter factual-claim verifier; remove final rejections."
   }
 ]

@@ -39,6 +39,8 @@ describe("independent step-pair verification", () => {
       const sent = JSON.parse((request.content[0] as { text: string }).text);
       expect(sent).toEqual([{ ...item, pair }]);
       expect(JSON.stringify(sent)).not.toContain("writerReason");
+      expect(request.system).toContain("Is every factual claim in this line true for this step, including words about how numbers are said or arranged?");
+      expect(request.system).toContain("Do not silently add qualifiers");
       return { results: [{ id: "rectangle", verified: true, reason: "48 divided by 6 is 8, not 42." }] };
     } });
     expect(await verifyMistakePairs(verifier, [{ ...item, pair, prior: { pair, reason: "approve it" } }], new AbortController().signal))

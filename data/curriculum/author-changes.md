@@ -7829,3 +7829,27 @@ Each pair below was written for its own step. A separate subscription model chec
 | 9.5-word-problems | 2 | 1 | Writes 3t + 4 = 39, counting the $4 snack once, and gets $11.67. / Each of the 3 pays $4, so 3(t + 4) = 39. Then t + 4 = 13, so t = $9. | claude-opus-5-5 |
 | 9.5-word-problems | 3 | 1 | Adds $14 and $6 to get $20, ignoring the 1/3 spent on the book. / $14 + $6 = $20 is only 2/3 of the money, so 1/3 is $10 and the start is $30. | claude-opus-5-5 |
 | 9.5-word-problems | 4 | 1 | Writes 8s = 56, leaving out the $200 the club started with. / The 56 is what is left, so 200 - 8s = 56. Then 8s = 144 and s = $18. | claude-opus-5-5 |
+
+## C2-R3: F11 and F12 corrections
+
+F11 now describes reversing tens and ones. Its source reason changed from "writes the 4 first because it is said first" to "puts the ones digit before the tens digit". Both F12 pairs require six squares in a valid arrangement. Approval was cleared before re-verification. No example, answer key or story changed.
+
+| Case | Candidate wrong / fix | Status |
+|---|---|---|
+| 1.1-read-write-20#2:0 | Writes ten and four as 41, with the ones digit before the tens digit. / Ten and four is 1 ten and 4 ones. Write the ten first: 14. | Pending independent verification |
+| 3.11-nets#1:0 | A straight row of 6 squares folds into a cube. / A cube net needs 6 squares arranged to fold into a cube. A straight row will not work. | Pending independent verification |
+| 3.11-nets#1:1 | A 2 by 3 block of 6 squares folds into a cube. / A cube net needs 6 squares arranged to fold into a cube. A 2 by 3 block will not work. | Pending independent verification |
+
+## C2-R3: factual-claim recheck results
+
+| Case | Final wrong / fix | Verifier |
+|---|---|---|
+| 1.1-read-write-20#2:0 | Writes ten and four as 41, with the ones digit before the tens digit. / Ten and four is 1 ten and 4 ones. Write the ten first: 14. | claude-opus-5-5 |
+| 3.11-nets#1:0 | A straight row of 6 squares folds into a cube. / A cube net needs 6 squares arranged to fold into a cube. A straight row will not work. | claude-opus-5-5 |
+| 3.11-nets#1:1 | A 2 by 3 block of 6 squares folds into a cube. / A cube net needs 6 squares arranged to fold into a cube. A 2 by 3 block will not work. | claude-opus-5-5 |
+
+## C2-R3: factual-claim recheck results
+
+| Case | Final wrong / fix | Verifier |
+|---|---|---|
+| 1.1-subitize-to-10#2:0 | Saying 6 or 8 for a full row of 5 and 2 more by counting one too few or one too many. / Know the full row is 5, then count on 2: 6, 7. The total is 7. | claude-opus-5-5 |
