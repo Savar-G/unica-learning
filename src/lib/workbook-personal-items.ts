@@ -222,7 +222,7 @@ export function warmUpShareProblems(curriculum: Curriculum, plan: Plan, pages: r
     const opened = printed.filter((x) => x.op && practisesOpen(curriculum, plan, open, { kind: x.op.kind, operands: x.op.operands.map((v) => Number(typeof v === "object" && v !== null && "value" in v ? (v as { value: unknown }).value : v)) })).length;
     const known = printed.length - opened;
     if (opened * 2 < printed.length || known * 3 > printed.length + 2)
-      problems.push({ page: printed[0].page, reason: `Day ${d.day}'s warm-up prints ${opened} of ${printed.length} facts on the families the child still needs (${open.join(", ")}); at least half must be, and at most a third known ones` });
+      problems.push({ page: printed[0].page, reason: `Day ${d.day}'s warm-up has ${opened} of ${printed.length} facts the child still needs to practise; at least half must be, and at most a third may be facts the child already knows` });
   }
   return problems;
 }
