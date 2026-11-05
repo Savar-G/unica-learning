@@ -2,7 +2,7 @@
 
 An admin speaks to Maya as a test child on an assessment question. The call runs in Maya's voice worker (`worker/maya-voice`), a LiveKit Agents for Node worker outside the Vercel build. The worker wraps Maya's controller through the text adapter: the speech-to-text turns the child's speech into child turns, Maya's session (`src/lib/maya`) answers, and the voice says only the words the session accepted, plus a code-written acknowledgement when a turn is slow (below). LiveKit never asks a model itself.
 
-Speech goes through **LiveKit Inference** (D-238, D-285): speech-to-text and the voice through the LiveKit project's own key, with zero data retention. It is the worker's default: with `MAYA_STT` and `MAYA_TTS` unset, the worker uses Inference, and it refuses a job until the LiveKit key, the voice and the `livekit-inference-zdr` marker are set. It never falls back to a fake. The **fake providers** run only when `MAYA_STT=fake` and `MAYA_TTS=fake` name them: the fake speech-to-text hears typed words from the call page, and the fake voice is silent. Nothing is paid and no account is needed, so tests and local runs use them. The direct AssemblyAI and Inworld plugins stay only as an explicit opt-in (`MAYA_STT=assemblyai`, `MAYA_TTS=inworld`, D-163). Packaging and deploying the worker, and the listening test that picks the voice: [Deploying Maya's voice worker](maya-voice-deploy.md).
+Speech goes through **LiveKit Inference** (D-238, D-286): speech-to-text and the voice through the LiveKit project's own key, with zero data retention. It is the worker's default: with `MAYA_STT` and `MAYA_TTS` unset, the worker uses Inference, and it refuses a job until the LiveKit key, the voice and the `livekit-inference-zdr` marker are set. It never falls back to a fake. The **fake providers** run only when `MAYA_STT=fake` and `MAYA_TTS=fake` name them: the fake speech-to-text hears typed words from the call page, and the fake voice is silent. Nothing is paid and no account is needed, so tests and local runs use them. The direct AssemblyAI and Inworld plugins stay only as an explicit opt-in (`MAYA_STT=assemblyai`, `MAYA_TTS=inworld`, D-163). Packaging and deploying the worker, and the listening test that picks the voice: [Deploying Maya's voice worker](maya-voice-deploy.md).
 
 ## How a call runs
 
@@ -32,7 +32,7 @@ Each real route needs its own marker in `MAYA_VOICE_PRIVACY_CONFIRMED` (`require
 
 | Route | Setting | Marker |
 |---|---|---|
-| LiveKit Inference (the default, D-238, D-285) | `MAYA_STT` and `MAYA_TTS` unset, or `inference` | `livekit-inference-zdr` |
+| LiveKit Inference (the default, D-238, D-286) | `MAYA_STT` and `MAYA_TTS` unset, or `inference` | `livekit-inference-zdr` |
 | AssemblyAI direct (opt-in) | `MAYA_STT=assemblyai` | `assemblyai-optout` |
 | Inworld direct (opt-in) | `MAYA_TTS=inworld` | `inworld-retention` |
 
@@ -56,7 +56,7 @@ These plugins connect directly to AssemblyAI and Inworld. LiveKit Inference rete
 2. Obtain and verify Inworld's retention arrangements for the direct TTS API. Confirm the plan or written agreement, retention exceptions, and training use. Do not infer these from LiveKit settings. See [Inworld zero data retention](https://docs.inworld.ai/portal/zero-data-retention). Then `inworld-retention`.
 3. Verify that LiveKit recording and audio observability are disabled.
 
-The direct route is an opt-in only; Inference is the route in use (D-285).
+The direct route is an opt-in only; Inference is the route in use (D-286).
 
 ElevenLabs (a listening-test candidate) is not on LiveKit Inference, and the worker has no ElevenLabs route. If it wins the listening test, its direct route needs its own settings, marker and checks first.
 

@@ -3,7 +3,7 @@
 // Pure: no network, no clock, no LiveKit packages.
 //
 // - Providers by configuration only (D-163, D-238): speech-to-text, the voice and the model each come from environment
-//   variables. `inference`, the default (D-285), routes them through LiveKit Inference with the LiveKit project's own
+//   variables. `inference`, the default (D-286), routes them through LiveKit Inference with the LiveKit project's own
 //   key; `fake` (no account, for local runs and tests) and `assemblyai` and `inworld` (the direct LiveKit plugins) run
 //   only when a variable names them. The model is Maya's model through OpenRouter (`AI_MODEL`), or the fake rule
 //   player when the worker has no OPENROUTER_API_KEY (src/lib/maya-call-seams.ts).
@@ -172,11 +172,11 @@ const has = <T extends string>(list: readonly T[], v: string): v is T => (list a
 /**
  * The speech-to-text and the voice from the worker's environment.
  *
- * `MAYA_STT`: `inference` (default, D-285: LiveKit Inference with `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`, model
+ * `MAYA_STT`: `inference` (default, D-286: LiveKit Inference with `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`, model
  * `MAYA_STT_MODEL` from INFERENCE_STT_MODELS, default assemblyai/universal-3-6-pro); `fake` (tests and local runs); or
  * `assemblyai` (the direct plugin, `ASSEMBLYAI_API_KEY`, model `MAYA_STT_MODEL`, default universal-3-6-pro).
  *
- * `MAYA_TTS`: `inference` (default, D-285: the LiveKit key, voice `MAYA_VOICE`, model `MAYA_TTS_MODEL` from
+ * `MAYA_TTS`: `inference` (default, D-286: the LiveKit key, voice `MAYA_VOICE`, model `MAYA_TTS_MODEL` from
  * INFERENCE_TTS_MODELS, default inworld/inworld-tts-2); `fake` (tests and local runs); or `inworld` (the direct plugin,
  * `INWORLD_API_KEY`, voice `MAYA_VOICE`, model `MAYA_TTS_MODEL`, default inworld-tts-2).
  *

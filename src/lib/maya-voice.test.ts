@@ -28,7 +28,7 @@ const OTHER_PARENT = "44444444-4444-4444-8444-444444444444";
 const OTHER_CHILD = "55555555-5555-4555-8555-555555555555";
 
 describe("providers by configuration", () => {
-  it("D-285: sends speech-to-text and the voice through LiveKit Inference when neither is set", () => {
+  it("D-286: sends speech-to-text and the voice through LiveKit Inference when neither is set", () => {
     const p = voiceProviders({ LIVEKIT_API_KEY: "lk-key", LIVEKIT_API_SECRET: "lk-secret", MAYA_VOICE: "Ashley", MAYA_VOICE_PRIVACY_CONFIRMED: "livekit-inference-zdr" });
     expect(p).toMatchObject({ ok: true, speechToText: { provider: "inference" }, voice: { provider: "inference" }, ids: { speechToText: "inference/assemblyai/universal-3-6-pro", voice: "inference/inworld/inworld-tts-2/Ashley" } });
     // With nothing set, it asks for the LiveKit key and the voice: never a quiet fake, never a direct plugin.

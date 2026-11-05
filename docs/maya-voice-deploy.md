@@ -68,7 +68,7 @@ Change one setting with `lk agent update-secrets --secrets "MAYA_TTS=inference"`
 
 ## Turn on LiveKit Inference
 
-The worker sends speech-to-text and the voice through LiveKit Inference with `MAYA_STT=inference` and `MAYA_TTS=inference`, or with both unset: Inference is the default (D-238, D-285). It uses the project's own key, which LiveKit Cloud injects, so no other account is needed. Only after every check of the [privacy gate](maya-voice.md#privacy-gate):
+The worker sends speech-to-text and the voice through LiveKit Inference with `MAYA_STT=inference` and `MAYA_TTS=inference`, or with both unset: Inference is the default (D-238, D-286). It uses the project's own key, which LiveKit Cloud injects, so no other account is needed. Only after every check of the [privacy gate](maya-voice.md#privacy-gate):
 
 ```sh
 lk agent update-secrets \
