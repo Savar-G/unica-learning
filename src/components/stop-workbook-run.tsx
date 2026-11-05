@@ -19,6 +19,7 @@ export function StopWorkbookRun({ runId, started, pages }: { runId: string; star
     try {
       const res = await fetch(`/api/admin/workbook-runs/${runId}/stop`, { method: "POST" });
       if (res.status === 404) { setError("This run is unavailable or your admin access has ended."); return; }
+      if (res.status === 403) { setError("The stop was refused, so the run is still going. Reload the page and try again."); return; }
       const result = await res.json() as { ok: boolean; error?: string };
       if (result.ok) { setAsking(false); router.refresh(); return; }
       if (result.error === "done") { setError("This run finished before the stop. Its draft is ready."); router.refresh(); return; }
