@@ -201,6 +201,21 @@ export function createSpendLedger(seams: SpendSeams): SpendLedger {
     return charge.kind === "child" && used.week + room > WEEK_MICROS ? "week_used" : "open";
   }
 
+  /**
+   * Settles, then checks the month: a cost higher than its reservation can carry the total past the alert amount, which
+   * the reservation's own check did not see. Read only while this month's alert has not gone from this process.
+   */
+  async function settled(id: string, micros: number | null) {
+    await store.settle(id, micros);
+    const m = month();
+    if (!seams.alert || told.has(m)) return;
+    try {
+      if ((await store.used({ childId: null, week: null, month: m })).month >= config.monthlyAlertMicros) await alertOnce(m);
+    } catch (e) {
+      console.error("[maya spend] the month's total could not be read after a settle", e instanceof Error ? e.message : String(e));
+    }
+  }
+
   const ledger: SpendLedger = {
     config,
     async reserve({ id, charge, callId = null, what, micros, force = false }) {
@@ -214,8 +229,8 @@ export function createSpendLedger(seams: SpendSeams): SpendLedger {
       if (r.monthMicros >= config.monthlyAlertMicros) await alertOnce(p.month);
       return { ok: true };
     },
-    settle: (id, micros) => store.settle(id, micros === null ? null : Math.max(0, Math.ceil(micros))),
-    settleUsd: (id, usd) => store.settle(id, usd === null ? null : usdToMicros(usd, config)),
+    settle: (id, micros) => settled(id, micros === null ? null : Math.max(0, Math.ceil(micros))),
+    settleUsd: (id, usd) => settled(id, usd === null ? null : usdToMicros(usd, config)),
     async state(charge) {
       try {
         return await stateOf(charge);
@@ -288,15 +303,33 @@ export function callSpend(ledger: SpendLedger, seams: { clock: () => number; new
           if (stopped) return "open";
           const now = seams.clock();
           if (block && now < block.from + VOICE_BLOCK_MS - VOICE_RENEW_EARLY_MS) return "open";
+          const micros = usdToMicros(VOICE_BLOCK_MS * perMs, ledger.config);
+          /**
+           * No more fits: the call closes now, and speech-to-text runs only until it has ended. That last stretch is
+           * still counted, as a block past the cap that `stop` settles at the time used.
+           */
+          const tail = async () => {
+            try {
+              const id = seams.newId();
+              if ((await ledger.reserve({ id, charge, callId: call.id, what: "speech_to_text", micros, force: true })).ok) block = { id, from: now };
+            } catch (e) {
+              console.error("[maya spend] speech-to-text not counted", call.id, e instanceof Error ? e.message : String(e));
+            }
+          };
           try {
             await close(now);
             const id = seams.newId();
-            const r = await ledger.reserve({ id, charge, callId: call.id, what: "speech_to_text", micros: usdToMicros(VOICE_BLOCK_MS * perMs, ledger.config) });
-            if (!r.ok) return (refused = r.state);
+            const r = await ledger.reserve({ id, charge, callId: call.id, what: "speech_to_text", micros });
+            if (!r.ok) {
+              refused = r.state;
+              await tail();
+              return refused;
+            }
             block = { id, from: now };
             return "open";
           } catch (e) {
             console.error("[maya spend] speech-to-text not reserved", call.id, e instanceof Error ? e.message : String(e));
+            if (!block) await tail();
             return "paused";
           }
         }),

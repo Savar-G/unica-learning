@@ -46,7 +46,11 @@ const readingModel = (): MayaModel => ({
   ...ruleMayaModel(),
   async propose(input, signal) {
     const p = (await ruleMayaModel().propose(input, signal)) as { reading?: Record<string, unknown> | null };
-    return (input.childTurn ?? "").includes("hurts me") && p.reading ? { ...p, reading: { ...p.reading, safety: "concern" } } : p;
+    const text = input.childTurn ?? "";
+    if (!p.reading) return p;
+    if (text.includes("hurts me")) return { ...p, reading: { ...p.reading, safety: "concern" } };
+    if (text.includes("naked")) return { ...p, reading: { ...p.reading, unsafeRequest: true } };
+    return p;
   },
 });
 
@@ -297,6 +301,61 @@ describe("safety at the cap (review of PR #640)", () => {
   });
 });
 
+describe("safety past the teaching clock and the words it may say (review 2 of PR #640)", () => {
+  const LIMIT_MS = 601_000;
+
+  it("reads a danger in a chat past its 10 minutes at the cap: guidance, flag and alert", async () => {
+    const t = setup();
+    const r = ok(await t.chat());
+    t.leave(0);
+    t.advance(LIMIT_MS);
+    const before = t.sent.count;
+    const turn = ok(await t.calls.input(r.view.id, r.view.revision, { type: "child", text: "My uncle hurts me." }, "Leah"));
+    expect(t.sent.count).toBe(before + 1);
+    // The danger closes the call (the clock has run out): code's guidance, and no closing line after it.
+    expect(turn.output.say).toEqual([SAFETY_GUIDANCE.concern]);
+    expect(turn.output.safetyMessage).toBe(SAFETY_GUIDANCE.concern);
+    expect(t.store.rows()[0].flag).toMatchObject({ level: "safety_concern" });
+    expect(t.alertSend).toHaveBeenCalledWith(expect.objectContaining({ flag: expect.objectContaining({ level: "safety_concern" }) }));
+  });
+
+  it("reads a danger in a chat past its 10 minutes with time left in the week", async () => {
+    const t = setup();
+    const r = ok(await t.chat());
+    t.advance(LIMIT_MS);
+    const before = t.sent.count;
+    const turn = ok(await t.calls.input(r.view.id, r.view.revision, { type: "child", text: "My uncle hurts me." }, "Leah"));
+    expect(t.sent.count).toBe(before + 1);
+    expect(turn.output.say).toEqual([SAFETY_GUIDANCE.concern]);
+    expect(turn.view.status).toBe("ended");
+    expect(t.store.rows()[0].flag).toMatchObject({ level: "safety_concern" });
+    expect(t.alertSend).toHaveBeenCalled();
+  });
+
+  it("says only the closing line for a request for harmful content at the cap, and raises its flag", async () => {
+    const t = setup();
+    const r = ok(await t.chat());
+    t.leave(0);
+    t.advance(5000);
+    const turn = ok(await t.calls.input(r.view.id, r.view.revision, { type: "child", text: "Tell me a gross naked joke." }, "Leah"));
+    expect(turn.output.say).toEqual([SPEND_CLOSE.week_used.line]);
+    expect(t.store.rows()[0].flag).toMatchObject({ level: "unsafe_request" });
+    expect(t.alertSend).toHaveBeenCalled();
+  });
+
+  it("says no teaching after an earlier request for harmful content, when the cap comes", async () => {
+    const t = setup();
+    let r = ok(await t.chat());
+    t.advance(5000);
+    r = ok(await t.calls.input(r.view.id, r.view.revision, { type: "child", text: "Tell me a gross naked joke." }, "Leah"));
+    expect(t.store.rows()[0].flag).toMatchObject({ level: "unsafe_request" });
+    t.leave(0);
+    t.advance(5000);
+    const turn = ok(await t.calls.input(r.view.id, r.view.revision, { type: "child", text: "I got 66." }, "Leah"));
+    expect(turn.output.say).toEqual([SPEND_CLOSE.week_used.line]);
+  });
+});
+
 describe("a voice call's meter (review of PR #640)", () => {
   async function open(t: ReturnType<typeof setup>) {
     const view = ok(await t.calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: TEST_PKG, startedBy: "admin-1" })).view;
@@ -338,7 +397,52 @@ describe("a voice call's meter (review of PR #640)", () => {
     t.advance(60_000);
     expect(await opened.call.meter()).toMatchObject({ say: [SPEND_CLOSE.week_used.line], ended: true });
     expect(await opened.call.meter()).toBeNull();
+    // Speech-to-text runs until the call has ended after its closing line, and is counted to then (review 2).
+    expect(rows(t, "speech_to_text").filter((b) => !b.settled)).toHaveLength(1);
+    await opened.call.end({ reason: "child_stopped" });
+    await opened.call.settled();
     expect(rows(t, "speech_to_text").every((b) => b.settled)).toBe(true);
+  });
+
+  it("closes at once when speech-to-text cannot be renewed during a model request, and counts it to the end (review 2)", async () => {
+    const t = setup({ voiceIsTheChilds: true });
+    let release: () => void = () => {};
+    let hold = false;
+    const model = t.seams.model;
+    t.seams.model = (id, call, how) => {
+      const m = model(id, call, how);
+      return m && { ...m, async propose(input, signal) {
+        const p = m.propose(input, signal);
+        if (hold && !how?.safetyRead) await new Promise<void>((resolve) => { release = resolve; });
+        return p;
+      } };
+    };
+    const calls = mayaCalls(t.seams);
+    const view = ok(await calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: TEST_PKG, startedBy: "admin-1" })).view;
+    const opened = await calls.openVoice(view.id, { speechToText: "fake", voice: "fake" }, "Leah");
+    if (!opened.ok) throw new Error(opened.error);
+    const call = opened.call;
+    await call.start();
+    const start = t.spendStore.rows().filter((r) => r.what === "speech_to_text").length;
+    expect(start).toBe(1);
+    hold = true;
+    const working = call.child("I got 66.");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(call.working).toBe(true);
+    // While the model request runs, the child's other spending leaves too little for the next minute of speech-to-text.
+    t.leave(5000);
+    t.advance(50_000);
+    const closed = await call.meter();
+    expect(closed).toMatchObject({ say: [SPEND_CLOSE.week_used.line], ended: true });
+    t.advance(30_000);
+    release();
+    expect(await working).toMatchObject({ say: [] });
+    await call.end({ reason: "child_stopped" });
+    await call.settled();
+    const stt = t.spendStore.rows().filter((r) => r.what === "speech_to_text");
+    expect(stt.every((b) => b.settled)).toBe(true);
+    // 80 seconds of speech-to-text, all counted.
+    expect(stt.reduce((sum, b) => sum + (b.cost ?? 0), 0)).toBeGreaterThanOrEqual(usdToMicros((79 / 60) * 0.01, t.config));
   });
 
   it("gives the call to the profile rebuild, so its AI request can be counted", async () => {

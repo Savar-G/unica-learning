@@ -80,6 +80,19 @@ describe("reservations", () => {
     expect(t.alert).toHaveBeenLastCalledWith("2026-12-01");
   });
 
+  it("emails the team when a settle carries the month past the alert amount (review 2 of PR #640)", async () => {
+    const t = setup();
+    t.store.spent({ charge: "global", parentId: null, childId: null, week: null, month: "2026-11-01" }, 399.75 * CAD);
+    const id = t.newId();
+    // CAD 399.75 and a CAD 0.21 reservation stay under CAD 400.
+    await t.ledger.reserve({ id, charge: child, what: "model", micros: model(t) });
+    expect(t.alert).not.toHaveBeenCalled();
+    // Settled at CAD 0.30: CAD 400.05.
+    await t.ledger.settle(id, 0.3 * CAD);
+    expect(t.alert).toHaveBeenCalledTimes(1);
+    expect(t.alert).toHaveBeenCalledWith("2026-11-01");
+  });
+
   it("settles a request at a lower actual cost, a higher one, or keeps it reserved when the cost is not known", async () => {
     const t = setup();
     const [low, high, unknown] = [t.newId(), t.newId(), t.newId()];
@@ -227,6 +240,10 @@ describe("a voice call's meter", () => {
     const meter = callSpend(t.ledger, { clock: () => Date.now(), newId: t.newId }).voice({ id: "call-1", kind: "chat", parentId: P, childId: C });
     expect(await meter.ensure()).toBe("week_used");
     await meter.spoken("That's all our time for this week.");
-    expect(t.store.rows().filter((r) => !r.id.startsWith("spent-")).map((r) => r.what)).toEqual(["voice"]);
+    // The speech-to-text that runs until the call ends is counted past the cap, settled at the time used (review 2).
+    expect(t.store.rows().filter((r) => !r.id.startsWith("spent-")).map((r) => r.what)).toEqual(["speech_to_text", "voice"]);
+    expect(await meter.ensure()).toBe("week_used");
+    await meter.stop();
+    expect(t.store.rows().filter((r) => r.what === "speech_to_text")).toMatchObject([{ settled: true }]);
   });
 });

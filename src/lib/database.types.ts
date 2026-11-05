@@ -5273,13 +5273,6 @@ export type Database = {
         }
         Returns: Json
       }
-      maya_spend_used: {
-        Args: { p_child: string; p_month: string; p_week: string }
-        Returns: {
-          month_micros: number
-          week_micros: number
-        }[]
-      }
       maya_minutes_used:
         | {
             Args: {
@@ -5429,6 +5422,10 @@ export type Database = {
       release_family_deletion: {
         Args: { p: string; token: string }
         Returns: undefined
+      }
+      release_scan_photo: {
+        Args: { p_id: string; p_parent: string }
+        Returns: string
       }
       release_workbook_edit: {
         Args: { p_id: string; p_lease: string }

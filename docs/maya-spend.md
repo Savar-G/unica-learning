@@ -38,25 +38,27 @@ The reservation and the check are one database function under the child's lock (
 The ledger is "open" while one more model attempt (its reservation) fits. When it does not:
 
 - In a call or chat, Maya finishes what she is saying, then says code's closing line ("That's all our time for this week. You worked hard today. See you next week!") and the call ends. Maya teaches no more. The parent's note reads it as a call that ran out of time.
-- A voice call also closes this way when speech-to-text no longer fits, even in silence.
+- A voice call also closes this way when speech-to-text no longer fits, even in silence, and at once, also while a model request is running (its answer is not said). Speech-to-text then runs only until the call has ended after its closing line; that last stretch is counted past the cap.
 - New chats and calls are refused. The child sees "You've used Maya's time for this week. She'll be back on Monday." (the real reset day in the family's time zone). Parent home says "Maya's weekly time is used up. It resets on Monday, November 9. There's no extra charge."
 - From 80% of the week, Parent home says "Leah has used most of Maya's time for this week. It resets on Monday, November 9. There's no extra charge."
 - A rebuild of the child's profile after the call makes no AI request. The new facts are stored, and the earlier findings stay.
 
 ## Safety
 
-The cap never holds safety back. Code writes the guidance, and it needs no paid request. But only the model reads a child's words for danger: code has no detector. So when the cap would leave a child's words unread (a message at the cap, or a model attempt refused in the middle of a turn), they get one safety read:
+The cap never holds safety back. Code writes the guidance, and it needs no paid request. But only the model reads a child's words for danger: code has no detector. So when the cap or the call's own clock would leave a child's words unread (a message at the cap, a model attempt refused in the middle of a turn, a voice call closed while a request runs, or a message after the call's 10 minutes), they get one safety read. The read stands apart from the teaching session, so the session's clock does not stop it:
 
 - It cannot be refused. It is sent even when the ledger cannot be read.
 - It counts toward the month's total only, never the child's week. At most one read goes for each live call, because the call then ends.
 - With no flag, none of the model's words are said, and code's closing line ends the call.
-- With a flag, code's guidance is said, the flag is stored, the team's alert goes, and the call ends with code's safety close, as in any call.
+- With a danger, code's guidance is said, the flag is stored, the team's alert goes, and the call ends, as in any call. Past the call's clock the danger goes into the session as a safety signal, which the session takes before its clock.
+- With a request for harmful content, its flag is stored and the team's alert goes; only code's closing line is said.
+- Whatever the session holds, this path says only code's guidance and code's closing line.
 
 A child with no live chat at the cap cannot type to Maya, because new chats are refused. That is a limit of this design: the desk then shows only the waiting message.
 
 ## The monthly alert
 
-When the month's total reaches `MAYA_MONTHLY_ALERT_CAD`, the team gets one email at `SIGNUP_NOTIFY_EMAIL` (claimed in `public.maya_spend_alerts`). Nothing changes for families. The month is claimed before the email is sent: if that email fails, the server logs it and does not send it again that month.
+When the month's total reaches `MAYA_MONTHLY_ALERT_CAD`, at a reservation or when a cost settles higher than its reservation, the team gets one email at `SIGNUP_NOTIFY_EMAIL` (claimed in `public.maya_spend_alerts`). Nothing changes for families. The month is claimed before the email is sent: if that email fails, the server logs it and does not send it again that month.
 
 ## Reading it
 
