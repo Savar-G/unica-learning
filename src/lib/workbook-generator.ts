@@ -62,7 +62,7 @@ import { buildQuestion, isCodeWorded, ITEMS_SCHEMA, kindProblem, relationWording
 import { attachWorkbookMayaOperations, withWorkbookMayaOperation, printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 import { isOneMoreLessSkill } from "@/lib/number-words";
 import { solveCheck, solveReason, type SolveLog, type Solver, type SolveVerdict } from "@/lib/workbook-solve-check";
-import { digestOf } from "@/lib/workbook-digest";
+import { canonical, digestOf } from "@/lib/workbook-digest";
 import { BOYS, fillFrame, frameDoes, framePair, framesFor, GIRLS, PEOPLE, THINGS, quantityStoryProblem, storyProblem, type Action, type WordingKind } from "@/lib/workbook-wording";
 import {
   bookPageContent, dayPageContent, layoutDayPage, mistakesFor, rangeProblem, samAnswer, skillSigns, samFix, samProblem, skillRange, slotRanges, templateMethod, PANEL_SLOTS, SLOT_FORMATS, STRICT_SLOTS,
@@ -2767,7 +2767,9 @@ function layOut(input: GenerateInput) {
  */
 export function bookOutline(input: GenerateInput): string {
   const { work, total } = layOut(input.book ? { ...input, book: { child: "" } } : input);
-  return digestOf({
+  // Canonical: the run's stored plan comes back from jsonb with its keys in another order (2026-11-05, the first
+  // customer's run failed its own check on the first call).
+  return digestOf(canonical({
     number: input.number, level: input.plan.level, total, laidOut: !!input.book, ...(input.itemPolicy === "approved-v1" ? { itemPipeline: { version: 6, examples: ITEM_EXAMPLES, compactExamples: COMPACT_STORY_FRAMES } } : {}),
     pages: work.map((w) => ({
       number: w.number, day: w.day, page: w.page.number, type: w.page.type, layout: w.layout, panels: w.panels,
@@ -2776,7 +2778,7 @@ export function bookOutline(input: GenerateInput): string {
         room: x.place ? roomOf(input, x.place, w.day) ?? null : null, planned: x.planned ?? null, ...(input.itemPolicy === "approved-v1" ? { contract: contractFor(input, w, x), existing: !!x.existing } : {}),
       })),
     })),
-  });
+  }));
 }
 
 /** Why a kept day page does not fit the page the plan has at its number (R379-8-2), or null. */
