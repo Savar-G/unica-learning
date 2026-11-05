@@ -49,3 +49,16 @@ The Overview is the home page (`/account`) for a child whose stage has the Overv
 - Maya this week: the minutes used of 30, only for a child with the Maya tab.
 - The action card: one item, the first that applies, only in `first_book_coming`, `active` and `ended`: the test (no finished test, not after the plan ended: Continue test when a test is open, else Start the test), payment failed, no PIN (a shipped workbook and no PIN), learning card empty (all six answers empty). Pages to scan waits for marking (#457, #475).
 - Not built yet: Skills mastered (waits for #194 and #578) and Since the first test (waits for the skill states, #550).
+
+## The monthly summary email (#563)
+
+One email per family per month, with a link to each child's Overview and no attachment. `src/lib/monthly-summary-email.ts` holds the rules, `src/lib/monthly-summary-email-store.ts` the reads and the claims, and the `/api/reminders` run sends it after the other emails, on the same spaced transport (one send every 600 ms). `?dry=1` counts it as `monthly` and sends nothing.
+
+- Who: only a family the switch opens to, through `parentDashboardAccess`, as the rest of the dashboard reads it. While the switch is off, that is test families and admins, with their real addresses. A failed read of a mark counts as not marked. An address on a domain that cannot get email (`canGetEmail`) is left out. A family with no confirmed delivery has no summary, so it gets no email.
+- Which children: each child whose summary the Overview offers. `src/lib/monthly-summary-offer.ts` is the one rule; `readOverview` and the email both call it, in family time (`src/lib/family-time.ts`). A child with an ended plan still counts, because the Overview still offers the summary.
+- When: from the 1st of the month at 7 a.m. family time to the end of the 7th. It names the month that just ended. After the 7th, a family with no email that month waits for the next month. The store reads nothing on UTC days that no window touches (the 9th to the 27th).
+- Once: the send key is (parent, month), in `email_log.summary_month` (the first day of that month), with a unique index. A refused send retries up to `MAX_SEND_ATTEMPTS` times. An unknown outcome stays claimed, and nothing sends it again. A claim that fails stops that family only. A run sends at most 20, and starts no send 40 seconds after it began.
+- Its own unsubscribe: kind `monthly_summary_unsubscribe`, one row per parent. It stops only this email, and no other unsubscribe stops it. The page is `/unsubscribe`, with its own words for this email.
+- `public.email_copies` keeps what was sent, with the link tokens hidden. The admin dashboard lists both kinds. Clicks are not counted, so the admin shows no click rate for this email.
+
+A signed-out parent who opens the link goes to sign-in and then back to the same child (`signInPath`). The email says nothing about results: no level, no percent right and no comparison. It names the child, never she or her.

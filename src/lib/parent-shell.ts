@@ -15,6 +15,9 @@ export const ACCOUNT_PATH = "/account/settings";
 
 const homePath = (childId: string) => `/account?child=${encodeURIComponent(childId)}`;
 
+/** Sign-in, and back to the child the address named. With none, sign-in goes to the home page as it always did. */
+export const signInPath = (childId: string | null) => (childId ? `/sign-in?next=${encodeURIComponent(homePath(childId))}` : "/sign-in");
+
 /** The child's Workbooks tab (#558). */
 export const workbooksPath = (childId: string) => `/account/workbooks/${encodeURIComponent(childId)}`;
 

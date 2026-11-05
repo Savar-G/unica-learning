@@ -6,6 +6,7 @@ import {
 import { childStage, type StageView, type TabSwitches, type TestFact } from "@/lib/child-stage";
 import { addMonths, familyZone, localDateTime, localDay, localMonth, type FamilyZone } from "@/lib/family-time";
 import type { LearningRow } from "@/lib/learning-style";
+import { firstDeliveryMonth, offeredSummaryMonth } from "@/lib/monthly-summary-offer";
 import { nextBook, type NextBook } from "@/lib/next-book";
 import type { ParentPlan } from "@/lib/parent-plan";
 import type { CurriculumId } from "@/lib/signup";
@@ -372,9 +373,7 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
 
   const resultPreparing = latest !== null && !reportReady;
   const resultLate = resultPreparing && now - latest!.completedAt! > RESULT_LATE_MS;
-  const first = await firstDeliveryMonth(reader, child.id, zone);
-  const lastFinished = addMonths(localMonth(now, zone), -1);
-  const summaryMonth = first !== null && first <= lastFinished ? lastFinished : null;
+  const summaryMonth = offeredSummaryMonth(await readFirstDeliveryMonth(reader, child.id, zone), now, zone);
   return { child, level, areas, resultPreparing, resultLate, workbook, action, summaryMonth };
 }
 
@@ -394,14 +393,10 @@ async function testLevel(reader: ParentViewReader, test: TestRecord, schoolGrade
   return { level, areas };
 }
 
-/** The family-time month of the child's first confirmed delivery (a correction wins over its first record); null with none. */
-async function firstDeliveryMonth(reader: ParentViewReader, childId: string, zone: FamilyZone): Promise<string | null> {
+/** The family-time month of the child's first confirmed delivery, through the reader. */
+async function readFirstDeliveryMonth(reader: ParentViewReader, childId: string, zone: FamilyZone): Promise<string | null> {
   const [deliveries, corrections] = await Promise.all([reader.deliveries(), reader.deliveryCorrections()]);
-  const times = deliveries.filter((d) => d.childId === childId).map((d) => {
-    const corrected = corrections.filter((c) => c.workbookId === d.workbookId).reduce<DeliveryCorrectionRecord | null>((best, c) => (!best || c.auditId > best.auditId ? c : best), null);
-    return Date.parse(corrected?.deliveredAt ?? d.deliveredAt);
-  }).filter((t) => Number.isFinite(t));
-  return times.length > 0 ? localMonth(Math.min(...times), zone) : null;
+  return firstDeliveryMonth(deliveries, corrections, childId, zone);
 }
 
 /** The monthly summary (#562, D-248): one child's calendar month in family time, for the one-page PDF. */
@@ -437,7 +432,7 @@ export async function readMonthlySummary(reader: ParentViewReader, childId: stri
   const [child, children, family] = await Promise.all([readChild(reader, childId, now), reader.children(), reader.family()]);
   if (!child || !child.tabs.includes("overview")) return null;
   const zone = familyZone({ timeZone: family.timeZone, postal: family.postal, province: children[0]?.province ?? null });
-  const first = await firstDeliveryMonth(reader, child.id, zone);
+  const first = await readFirstDeliveryMonth(reader, child.id, zone);
   if (first === null || month < first || month >= localMonth(now, zone)) return null;
   const inMonth = (at: string | number) => localMonth(at, zone) === month;
 
