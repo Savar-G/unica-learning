@@ -10,6 +10,7 @@
 // recommended fallback model inside the same call.
 import Anthropic from "@anthropic-ai/sdk";
 import type { AiClient, AiJsonRequest, AiPart } from "@/lib/ai-client";
+import { firstObject, schemaInText } from "@/lib/ai-schema-text";
 
 /** The model when none is given: Claude Sonnet 5.5, the model the live site uses through OpenRouter. */
 export const ANTHROPIC_DEFAULT_MODEL = "claude-sonnet-5-5";
@@ -34,28 +35,6 @@ const short = (s: unknown) => String(s ?? "").slice(0, 160);
 /** The API refused the schema itself (too complex, or a feature it does not support), not the request. */
 const schemaRefused = (e: unknown) =>
   e instanceof Anthropic.BadRequestError && /schema|union types|optional parameters|output_config/i.test(e.message);
-
-/** The instructions for a request whose schema goes in the text. */
-const schemaInText = (system: string, schema: Record<string, unknown>) =>
-  `${system}\n\nAnswer with one JSON object and nothing else: no code fence, no words before or after it. It must match this JSON Schema exactly: give every property, and use null only where the schema allows null.\n${JSON.stringify(schema)}`;
-
-/** The first complete JSON object in the text, from its first "{" to the "}" that closes it (strings read whole). */
-function firstObject(text: string): string | null {
-  const start = text.indexOf("{");
-  if (start < 0) return null;
-  let depth = 0;
-  let inString = false;
-  for (let i = start; i < text.length; i++) {
-    const c = text[i];
-    if (inString) {
-      if (c === "\\") i++;
-      else if (c === '"') inString = false;
-    } else if (c === '"') inString = true;
-    else if (c === "{") depth++;
-    else if (c === "}" && --depth === 0) return text.slice(start, i + 1);
-  }
-  return null;
-}
 
 /** The start of the text, on one line, for an error: what the model wrote instead of JSON. */
 const head = (text: string) => JSON.stringify(text.slice(0, 300).replace(/\s+/g, " "));

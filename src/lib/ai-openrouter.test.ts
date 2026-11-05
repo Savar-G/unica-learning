@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AI_DEFAULT_MODEL, AI_SOLVE_DEFAULT_MODEL, aiClient, type AiJsonRequest } from "@/lib/ai-client";
 import { inspect } from "node:util";
 import { costingFetch, openRouterClient, providerWords } from "@/lib/ai-openrouter";
+import { aiMayaModel } from "@/lib/maya-model";
+import { PROPOSAL_SCHEMA } from "@/lib/maya/proposal";
 import { REVIEW_DEFAULT_MODEL } from "@/lib/maya-talk-review";
+import { ITEMS_SCHEMA } from "@/lib/workbook-generator-items";
 import { workbookAi } from "@/lib/workbook-ai";
 
 // The OpenRouter adapter with fetch faked: no network. Checks what goes to OpenRouter and what comes back.
@@ -280,5 +283,123 @@ describe("the provider's words on a refusal", () => {
     expect(providerWords(new Error("other"))).toBeNull();
     const long = await failed({ status: 400, body: { error: { message: "Bad", metadata: { raw: "x".repeat(50_000) } } } });
     expect(providerWords(long)!.length).toBeLessThanOrEqual(2_000);
+  });
+});
+
+// D-282: Claude's constrained output refuses a schema with more than 16 union-type fields ("exponential compilation cost",
+// the provider's words on 2026-11-05). Such a schema goes in the instructions, on the same route, and the caller's own
+// checks judge the output.
+describe("a schema over the limit of constrained output", () => {
+  const nullable = { anyOf: [{ type: "string" }, { type: "null" }] };
+  const withUnions = (count: number) => ({
+    type: "object",
+    properties: Object.fromEntries(Array.from({ length: count }, (_, i) => [`f${i}`, nullable])),
+    required: Array.from({ length: count }, (_, i) => `f${i}`),
+    additionalProperties: false,
+  });
+  const client = (fetch: typeof globalThis.fetch, model = AI_DEFAULT_MODEL) => openRouterClient({ apiKey: "sk-or-test", model, fetch, maxRetries: 0 });
+  const system = (s: Sent) => s.body.messages[0].content as string;
+  const ok = completion(JSON.stringify({ answer: "85" }));
+
+  it("is sent with no constrained decoding, the schema in the instructions, on the same route", async () => {
+    const { fetch, sent } = fakeFetch(ok);
+    await client(fetch).json(request({ schema: ITEMS_SCHEMA, effort: "medium" }), signal());
+    expect(sent).toHaveLength(1);
+    expect(sent[0].body.response_format).toBeUndefined();
+    expect(system(sent[0])).toContain("You review one piece of work.");
+    expect(system(sent[0])).toContain(JSON.stringify(ITEMS_SCHEMA));
+    expect(sent[0].body.provider).toEqual({ order: ["google-vertex"], only: ["google-vertex"], allow_fallbacks: false, require_parameters: true, zdr: true, data_collection: "deny" });
+    expect(sent[0].body.reasoning).toEqual({ effort: "medium", exclude: true });
+  });
+
+  it("keeps a small schema on constrained decoding, with its instructions as they are", async () => {
+    const { fetch, sent } = fakeFetch(ok);
+    await client(fetch).json(request({ schema: SCHEMA }), signal());
+    expect(sent[0].body.response_format).toEqual({ type: "json_schema", json_schema: { name: "work_review", strict: true, schema: SCHEMA } });
+    expect(system(sent[0])).toBe("You review one piece of work.");
+  });
+
+  it("decides at the limit: 16 union fields stay constrained, 17 do not", async () => {
+    const at = fakeFetch(ok);
+    await client(at.fetch).json(request({ schema: withUnions(16) }), signal());
+    expect(at.sent[0].body.response_format).toBeDefined();
+    const over = fakeFetch(ok);
+    await client(over.fetch).json(request({ schema: withUnions(17) }), signal());
+    expect(over.sent[0].body.response_format).toBeUndefined();
+  });
+
+  it("counts a list of types as a union, and more than 24 optional fields as over the limit", async () => {
+    const types = fakeFetch(ok);
+    const typed = { type: "object", properties: Object.fromEntries(Array.from({ length: 17 }, (_, i) => [`f${i}`, { type: ["string", "null"] }])), additionalProperties: false, required: Array.from({ length: 17 }, (_, i) => `f${i}`) };
+    await client(types.fetch).json(request({ schema: typed }), signal());
+    expect(types.sent[0].body.response_format).toBeUndefined();
+    const optional = fakeFetch(ok);
+    const open = { type: "object", properties: Object.fromEntries(Array.from({ length: 25 }, (_, i) => [`f${i}`, { type: "string" }])), additionalProperties: false, required: [] };
+    await client(optional.fetch).json(request({ schema: open }), signal());
+    expect(optional.sent[0].body.response_format).toBeUndefined();
+  });
+
+  it("sends Maya's real proposal schema with no constrained decoding, her reasoning and her token limit", async () => {
+    const { fetch, sent } = fakeFetch(ok);
+    await aiMayaModel(client(fetch)).propose({} as never, signal());
+    expect(sent[0].body.response_format).toBeUndefined();
+    expect(system(sent[0])).toContain(JSON.stringify((PROPOSAL_SCHEMA as unknown as { properties: unknown }).properties));
+    expect(sent[0].body.reasoning).toEqual({ effort: "low", exclude: true });
+    expect(sent[0].body.max_tokens).toBe(4000);
+  });
+
+  it("leaves a model of another maker on constrained decoding: the limit is Claude's", async () => {
+    const { fetch, sent } = fakeFetch(ok);
+    await client(fetch, "openai/gpt-6").json(request({ schema: ITEMS_SCHEMA }), signal());
+    expect(sent[0].body.response_format).toBeDefined();
+  });
+
+  it("reads the JSON object from the text, also inside a code fence or with words around it", async () => {
+    for (const text of ['{"answer":"85"}', '```json\n{"answer":"85"}\n```', 'Here it is: {"answer":"85"} Done {x}.']) {
+      const { fetch } = fakeFetch(completion(text));
+      await expect(client(fetch).json(request({ schema: ITEMS_SCHEMA }), signal())).resolves.toEqual({ answer: "85" });
+    }
+  });
+
+  it("gives a bad output to the caller as a failure, without the output's words", async () => {
+    for (const text of ["I think the child wrote 12", '{"answer": the child wrote 12}']) {
+      const { fetch, sent } = fakeFetch(completion(text));
+      const failed = await client(fetch).json(request({ schema: ITEMS_SCHEMA }), signal()).catch((e: Error) => e) as Error;
+      expect(failed.message).toBe("the output is not valid JSON");
+      expect(sent).toHaveLength(1);
+    }
+  });
+
+  it("gives a bad output to Maya's model as a failure, so her session's repair path takes it", async () => {
+    const { fetch } = fakeFetch(completion("I think the child wrote 12"));
+    await expect(aiMayaModel(client(fetch)).propose({} as never, signal())).rejects.toThrow("the output is not valid JSON");
+  });
+
+  it("gives JSON of the wrong shape to the caller as it came: the caller's check judges it", async () => {
+    const { fetch } = fakeFetch(completion('{"wrong":true}'));
+    await expect(client(fetch).json(request({ schema: ITEMS_SCHEMA }), signal())).resolves.toEqual({ wrong: true });
+  });
+
+  const tooComplex = { status: 400, body: { error: { code: 400, message: "Provider returned error", metadata: { provider_name: "Google", raw: "Schemas contains too many parameters with union types (17 parameters with type arrays or anyOf)." } } } };
+
+  it("sends a schema the provider refused as too complex once more in the instructions, and that name so from then on", async () => {
+    const { fetch, sent } = fakeFetch(tooComplex, ok);
+    const c = client(fetch);
+    await expect(c.json(request({ schema: withUnions(3) }), signal())).resolves.toEqual({ answer: "85" });
+    expect(sent.map((s) => s.body.response_format !== undefined)).toEqual([true, false]);
+    await c.json(request({ schema: withUnions(3) }), signal());
+    expect(sent).toHaveLength(3);
+    expect(sent[2].body.response_format).toBeUndefined();
+    await c.json(request({ name: "other", schema: withUnions(3) }), signal());
+    expect(sent[3].body.response_format).toBeDefined();
+  });
+
+  it("does not send again on any other 400, or when the instructions were refused too", async () => {
+    const other = fakeFetch({ status: 400, body: { error: { message: "Provider returned error", metadata: { raw: "messages: too long" } } } });
+    await expect(client(other.fetch).json(request({ schema: SCHEMA }), signal())).rejects.toThrow("400");
+    expect(other.sent).toHaveLength(1);
+    const twice = fakeFetch(tooComplex);
+    await expect(client(twice.fetch).json(request({ schema: SCHEMA }), signal())).rejects.toThrow("400");
+    expect(twice.sent).toHaveLength(2);
   });
 });

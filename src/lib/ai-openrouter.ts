@@ -15,7 +15,15 @@
 // route. Whether Safety Retention endpoints may serve a ZDR request is an account setting on OpenRouter, not a request
 // field: it stays off (docs, AGENTS.md). Fields from https://openrouter.ai/docs/guides/routing/provider-selection and
 // https://openrouter.ai/docs/guides/features/zdr (read 2026-11-05). Live check: POST /api/admin/ai-route.
+//
+// Constrained decoding (D-282). Claude's constrained output refuses a schema with more than 16 union-type fields; Maya's
+// proposal has 33 and the workbook writer's items have 73 (the provider's words, 2026-11-05). Such a schema goes in the
+// instructions, on the same route, decided from the schema before the first request, so it never costs a refused call.
+// If the provider still says a schema is too complex, that request goes once more in the instructions and that request
+// name stays there. Nothing then holds the model to the schema: the callers' own checks judge the output, as they always
+// do, and output that is not JSON is the same failure as before.
 import type { AiClient, AiJsonRequest, AiPart } from "@/lib/ai-client";
+import { firstObject, overConstrainedLimit, schemaInText } from "@/lib/ai-schema-text";
 
 /** OpenRouter's slug of the host of every Claude model here (D-282). */
 export const CLAUDE_PROVIDER = "google-vertex";
@@ -43,17 +51,17 @@ function part(p: AiPart) {
   return { type: "image_url", image_url: { url: `data:${p.mediaType};base64,${Buffer.from(p.data).toString("base64")}` } };
 }
 
-function body(model: string, request: AiJsonRequest) {
+function body(model: string, request: AiJsonRequest, constrained: boolean) {
   return {
     model,
     stream: false,
     max_tokens: request.maxTokens ?? MAX_TOKENS,
     messages: [
-      { role: "system", content: request.system },
+      { role: "system", content: constrained ? request.system : schemaInText(request.system, request.schema) },
       // OpenRouter parses the text first, then the images (its image guide).
       { role: "user", content: request.content.map(part) },
     ],
-    response_format: { type: "json_schema", json_schema: { name: request.name, strict: true, schema: request.schema } },
+    ...(constrained ? { response_format: { type: "json_schema", json_schema: { name: request.name, strict: true, schema: request.schema } } } : {}),
     provider: providerRoute(model),
     ...(request.effort ? { reasoning: { effort: request.effort, exclude: true } } : {}),
   };
@@ -97,7 +105,7 @@ const short = (s: unknown) => String(s ?? "").slice(0, 160);
 const retryableStatus = (status: number) => status === 408 || status === 429 || status >= 500;
 
 /** One try: the parsed JSON output, or an error. Error messages hold codes and OpenRouter's words, never the output. */
-async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: AbortSignal, timeout: number, route: string, onDispatch?: () => void): Promise<unknown> {
+async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: AbortSignal, timeout: number, route: string, constrained: boolean, onDispatch?: () => void): Promise<unknown> {
   let res: Response;
   try {
     const options = { ...init, signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]) };
@@ -134,12 +142,18 @@ async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: A
   if (choice.finish_reason !== "stop") throw new Error(`the model stopped: ${short(choice.finish_reason)} (${short(choice.native_finish_reason)})`);
   const content = choice.message?.content;
   if (typeof content !== "string" || !content.trim()) throw new Error("no output");
+  // With no constrained decoding the model can put words or a code fence around the object.
+  const json = constrained ? content : firstObject(content);
   try {
-    return JSON.parse(content);
+    if (json === null) throw new Error("no object");
+    return JSON.parse(json);
   } catch {
     throw new Error("the output is not valid JSON");
   }
 }
+
+/** The provider refused the schema itself, not the request (its words: too many union-type or optional fields). */
+const schemaRefused = (e: unknown) => /union types|optional parameters|schema is too complex|compilation/i.test(providerWords(e) ?? "");
 
 export function openRouterClient({
   apiKey,
@@ -160,21 +174,30 @@ export function openRouterClient({
   /** Synchronous observation immediately before fetch, after the durable permission and abort check. */
   onDispatch?: () => void;
 }): AiClient {
+  /** Request names whose schema the provider refused: they go with the schema in the instructions. */
+  const inText = new Set<string>();
   return {
     model,
     async json(request, signal) {
-      const init: RequestInit = {
+      let constrained = !inText.has(request.name) && !(isClaudeModel(model) && overConstrainedLimit(request.schema));
+      const init = (): RequestInit => ({
         method: "POST",
         headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json", "x-openrouter-title": "Unica Learning" },
-        body: JSON.stringify(body(model, request)),
-      };
+        body: JSON.stringify(body(model, request, constrained)),
+      });
       for (let attempt = 0; ; attempt++) {
         if (signal.aborted) throw new Error("time is up");
         await onRequest?.();
         if (signal.aborted) throw new Error("time is up");
         try {
-          return await once(fetch, init, signal, timeout, routeWords(model), onDispatch);
+          return await once(fetch, init(), signal, timeout, routeWords(model), constrained, onDispatch);
         } catch (e) {
+          if (constrained && !signal.aborted && schemaRefused(e)) {
+            inText.add(request.name);
+            constrained = false;
+            attempt--;
+            continue;
+          }
           if (!(e instanceof Retryable) || attempt >= maxRetries || signal.aborted) {
             if (!(e instanceof Retryable)) throw e;
             const plain = new Error(e.message);
