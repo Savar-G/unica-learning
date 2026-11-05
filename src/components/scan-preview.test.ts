@@ -59,6 +59,8 @@ it.each([
   [{ ...READY, notSupported: [13] }, "We cannot show the answer to question 13 yet."],
   [{ status: "refused", reason: "marks-missing" }, "four corner marks"],
   [{ status: "refused", reason: "page-mismatch" }, "does not match the printed page"],
+  [{ status: "refused", reason: "ambiguous-page" }, "more than one page"],
+  [{ status: "refused", reason: "qr-mismatch" }, "QR code"],
   [{ status: "unavailable", reason: "no-contract" }, "checking is not available for this workbook"],
   [{ status: "unavailable", reason: "other-revision" }, "earlier printing"],
 ])("says so plainly: %j", async (answer, text) => {
