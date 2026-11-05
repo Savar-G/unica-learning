@@ -1,7 +1,7 @@
 import "server-only";
 import type Stripe from "stripe";
 import { sendEmail } from "@/lib/email-delivery";
-import { parentPlan, type ParentPlan, type PlanSubscription } from "@/lib/parent-plan";
+import { parentPlan, type KnownPlan, type ParentPlan, type PlanSubscription } from "@/lib/parent-plan";
 import { cancelPlan, stripe, type CancelPlanOutcome } from "@/lib/stripe";
 import { adminClient } from "@/lib/supabase-auth";
 
@@ -20,8 +20,14 @@ function planSubscription(s: Stripe.Subscription): PlanSubscription {
   const item = s.items.data[0];
   return {
     status: s.status, cancelAtPeriodEnd: s.cancel_at_period_end, trialEnd: s.trial_end, created: s.created,
-    periodEnd: item?.current_period_end ?? null, cents: item?.price.unit_amount ?? null,
+    periodEnd: item?.current_period_end ?? null, cents: item?.price.unit_amount ?? null, endedAt: s.ended_at,
   };
+}
+
+/** What Stripe says about one customer's plan now. Throws when Stripe does not answer. */
+export async function customerPlan(s: Stripe, customer: string): Promise<KnownPlan> {
+  const list = await s.subscriptions.list({ customer, status: "all", limit: 20 }, READ);
+  return parentPlan(list.data.map(planSubscription));
 }
 
 /** One entry per child with a saved card. Null when the store cannot answer. */
@@ -37,8 +43,7 @@ export async function familyPlans(parent: string): Promise<ChildPlan[] | null> {
     const entry = { cardId: row.id, childName: row.child.first_name };
     if (!s || !row.stripe_customer_id) return { ...entry, plan: { kind: "unknown" } as const };
     try {
-      const list = await s.subscriptions.list({ customer: row.stripe_customer_id, status: "all", limit: 20 }, READ);
-      return { ...entry, plan: parentPlan(list.data.map(planSubscription)) };
+      return { ...entry, plan: await customerPlan(s, row.stripe_customer_id) };
     } catch (e) {
       console.error("[plan] Stripe read failed", e instanceof Error ? e.message : "failed");
       return { ...entry, plan: { kind: "unknown" } as const };
