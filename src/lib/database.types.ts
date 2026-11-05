@@ -1326,6 +1326,55 @@ export type Database = {
           },
         ]
       }
+      maya_call_ink_events: {
+        Row: {
+          call_id: string
+          child_id: string
+          event: Json
+          parent_id: string
+          received_at: string
+          seq: number
+        }
+        Insert: {
+          call_id: string
+          child_id: string
+          event: Json
+          parent_id: string
+          received_at?: string
+          seq: number
+        }
+        Update: {
+          call_id?: string
+          child_id?: string
+          event?: Json
+          parent_id?: string
+          received_at?: string
+          seq?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maya_call_ink_events_call_fkey"
+            columns: ["call_id", "parent_id", "child_id"]
+            isOneToOne: false
+            referencedRelation: "maya_calls"
+            referencedColumns: ["id", "parent_id", "child_id"]
+          },
+          {
+            foreignKeyName: "maya_call_ink_events_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "maya_call_ink_events_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       maya_call_notes: {
         Row: {
           call_ended_at: string
@@ -4219,6 +4268,18 @@ export type Database = {
       append_maya_call_connection: {
         Args: { p_call: string; p_kind: string; p_revision: number }
         Returns: string
+      }
+      append_maya_call_ink: {
+        Args: {
+          p_after_end_ms: number
+          p_child: string
+          p_events: Json
+          p_from: number
+          p_gap_ms: number
+          p_id: string
+          p_parent: string
+        }
+        Returns: Json
       }
       apply_workbook_print_contract: {
         Args: { p_workbook: Json }

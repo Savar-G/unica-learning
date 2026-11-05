@@ -11,7 +11,7 @@
 // to her while she writes, then back to the child), the child keeps the pen tools all through the chat, and every
 // change goes to `onChange`, which sends the board to the call.
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { boardDraftKey, chatBoardKey, chatBoardView, childStrokes, createHistory, keptStroke, loadDraft, markClosed, markOpen, mayaSteps, mayaWrites, mayaWritingEnds, penHasMoved, penHolder, restoreKept, type BoardHistory, type DraftStore } from "@/lib/board-history";
+import { boardDraftKey, chatBoardKey, chatBoardView, chatViewKey, childStrokes, createHistory, keptStroke, loadDraft, markClosed, markOpen, mayaSteps, mayaWrites, mayaWritingEnds, penHasMoved, penHolder, restoreKept, type BoardHistory, type DraftStore } from "@/lib/board-history";
 import type { Batch } from "@/lib/board";
 import { BATCH_GAP_MS, timeline } from "@/lib/board-svg";
 import { createBoardSession, type SessionNote } from "@/lib/board-session";
@@ -147,8 +147,11 @@ export interface OurBoardProps {
   chat?: { id: string; batches: readonly Batch[]; carry?: { book: string; page: number; question: number | null } };
   /** Hears every change of the board this tab holds (a chat sends it to the call). */
   onChange?: (history: BoardHistory) => void;
-  /** A copy of this board the call keeps (a chat, R625b-4): the board is rebuilt on it, keeping its own newer lines. */
-  saved?: BoardHistory | null;
+  /**
+   * A chat's board as the call holds it (#635), for a page with no draft of it: the board starts from it, its clock going
+   * on from where it was left (R635-4).
+   */
+  restore?: BoardHistory | null;
   label: string;
   caption: ReactNode;
   /** Less motion: Maya's strokes show at once. */
@@ -193,8 +196,9 @@ const NOTES: Record<SessionNote, string> = {
   not_added: NOT_ADDED_NOTE,
 };
 
-function LiveBoard({ question, chat, onChange, saved, label, caption, still, draftKey, store }: OurBoardProps & { draftKey: string; store: DraftStore | null }) {
-  const [restored] = useState(() => (store ? loadDraft(store, draftKey) : null));
+function LiveBoard({ question, chat, onChange, restore, label, caption, still, draftKey, store }: OurBoardProps & { draftKey: string; store: DraftStore | null }) {
+  // The board as it was left: this tab's draft, else (a chat) the board the call holds.
+  const [restored] = useState(() => (store ? loadDraft(store, draftKey) : null) ?? (chat && restore ? restore : null));
   const [session] = useState(() =>
     createBoardSession({
       initial: restored ?? (chat ? carried(store, chat.carry) : firstBoard(question)),
@@ -232,12 +236,15 @@ function LiveBoard({ question, chat, onChange, saved, label, caption, still, dra
   const mayaIds = history.events.flatMap((e) => (e.kind === "maya" ? [e.batchId] : [])).join("\n");
   // Only a new batch changes Maya's steps: the child's later ink never moves what she wrote before it.
   const isChat = chat !== undefined;
-  // Her view takes in the child's ink too, so a line drawn before her reply stays in sight (R625b-6). It changes only
-  // when she writes, never under the child's pen.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const steps = useMemo(() => (isChat ? mayaSteps(history) : null), [isChat, mayaIds]);
+  // Her view takes in the child's ink too, so a line drawn before her reply stays in sight (R625b-6). It is taken again
+  // when she writes and when ink comes onto the board from elsewhere (R635-6), never under the child's own pen.
+  const viewKey = isChat ? chatViewKey(history) : null;
+  // And when the board's size changes: a line drawn near the edge of a wide board stays in sight on a narrow one.
+  const [canvasSize, setCanvasSize] = useState("");
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const chatView = useMemo(() => (isChat ? chatBoardView(history) : null), [isChat, mayaIds]);
+  const chatView = useMemo(() => (isChat ? chatBoardView(history) : null), [isChat, viewKey, canvasSize]);
   const [played, setPlayed] = useState(restored ? Infinity : 0);
   const handTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const handAt = useRef<number | null>(null);
@@ -326,6 +333,7 @@ function LiveBoard({ question, chat, onChange, saved, label, caption, still, dra
       const at = box(el.getBoundingClientRect());
       const v = canvasViewBox(at, maya && viewBox ? { viewBox, shown: box(maya.getBoundingClientRect()) } : null);
       setCamera({ view: v, boardWidth: boardWidthOf(v, at) });
+      setCanvasSize(`${Math.round(at.width)}x${Math.round(at.height)}`);
     };
     const observer = new ResizeObserver(measure);
     observer.observe(el);
@@ -363,11 +371,6 @@ function LiveBoard({ question, chat, onChange, saved, label, caption, still, dra
     clearTimeout(handTimer.current);
     handTimer.current = undefined;
   }, []);
-
-  // The call's copy of a chat's board: a board with no draft takes it back, and a newer one is put together with this one.
-  useEffect(() => {
-    if (saved && role === "holder") session.rebase(saved);
-  }, [saved, role, session]);
 
   // Every change of the board this tab holds goes to the caller (a chat sends it to the call).
   const onChangeRef = useRef(onChange);

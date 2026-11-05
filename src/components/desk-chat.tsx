@@ -1,159 +1,178 @@
 "use client";
-import { useRef, useState, useEffect, useCallback, type FormEvent } from "react";
-import { decodeHistory, encodeHistory, historyLength, rebaseOnto, type BoardHistory } from "@/lib/board-history";
+import { useRef, useState, useEffect, useCallback, useMemo, type FormEvent } from "react";
+import { historyFromLog, inkLog, readInkEvent, type BoardHistory, type InkEvent } from "@/lib/board-history";
 import { chatCapLine, type ChatUsage, type ChatView, type ChatReply } from "@/lib/maya-chat";
 import { OurBoard } from "@/components/our-board";
 import { Icon } from "@/components/desk-icons";
 
 const ERROR = "Your message could not be sent. Try again in a moment.";
-/** How long the chat's board waits after a change before it goes to the call (#534). */
+/** How long the chat's ink waits after a change before it goes to the call (#534). */
 const BOARD_SAVE_MS = 1500;
 /** A browser sends a request after the page has gone (keepalive) only below about 64 KB. */
 const KEEPALIVE_MAX = 60_000;
-/** The last board before a chat ends is tried this many times, waiting 1 s, then 2 s, between tries (R625-5). */
+/** The last ink before a chat ends is tried this many times, waiting 1 s, then 2 s, between tries (R625-5). */
 const FINAL_TRIES = 3;
-/** One try of sending a board gives up after this long (R625b-2): a request that never answers never holds the chat. */
+/** One request gives up after this long (R625b-2): a request that never answers never holds the chat. */
 const BOARD_TRY_MS = 5000;
-/** A chat's board that could not reach the call before the chat ended, kept on this device by the chat's id. */
-const UNSENT_ROOT = "unica-chat-board-unsent:";
+/** The most events one request carries (MAX_INK_EVENTS in src/lib/maya-call.ts). */
+const EVENTS_PER_REQUEST = 200;
+/** Ink events the call does not hold yet, kept on this device by the chat's id (#635). */
+const OUTBOX_ROOT = "unica-chat-ink:";
 /**
- * How long a board waits on the device: the call takes it until 5 minutes after the chat's end (INK_AFTER_END_MS in
+ * How long ink waits on the device: the call takes it until 5 minutes after the chat's end (INK_AFTER_END_MS in
  * src/lib/maya-call.ts), and a minute more for the clocks. Past that the device forgets it without asking.
  */
-const UNSENT_KEEP_MS = 6 * 60_000;
+const OUTBOX_KEEP_MS = 6 * 60_000;
 
-type BoardSave = { id: string; board: string };
 /**
- * What one try did: "sent"; "stale" (the call keeps a newer board, given back); "closed" (the call takes no more boards:
- * it ended long ago); "retry" (anything else: busy, a server error, no answer, or a refusal of this session or desk,
- * which says nothing about the board, R625b-3).
+ * One chat's ink on this device (#635): its log (`log[i]` has sequence i + 1; null where only the call still has it, for
+ * an outbox read back after a reload), the last sequence the call said it holds, and when the ink last changed (the
+ * device keeps it for a while after that, not after each try).
  */
-type Sent = { kind: "sent" | "closed" | "retry" } | { kind: "stale"; board: BoardHistory };
-async function sendBoard(save: BoardSave): Promise<Sent> {
-  const body = JSON.stringify(save);
+type Ink = { log: (InkEvent | null)[]; acked: number; at: number };
+/**
+ * What one request did: "sent" (the call holds more now), "again" (the call asked for an earlier start: send at once),
+ * "closed" (the call takes no more ink: it ended long ago), "retry" (anything else: busy, a server error, no answer, or
+ * a refusal of this session or desk, which says nothing about the ink, R625b-3).
+ */
+type Sent = "sent" | "again" | "closed" | "retry";
+
+async function sendInk(id: string, ink: Ink): Promise<Sent> {
+  const from = ink.acked + 1;
+  const events = ink.log.slice(ink.acked, ink.acked + EVENTS_PER_REQUEST);
+  if (events.length === 0 || events.some((e) => e === null)) return "retry";
+  const body = JSON.stringify({ id, from, events });
   const stop = new AbortController();
   const timer = setTimeout(() => stop.abort(), BOARD_TRY_MS);
   try {
     const res = await fetch("/api/desk/chat/board", { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: body.length < KEEPALIVE_MAX, signal: stop.signal });
-    if (res.ok) return { kind: "sent" };
-    if (res.status === 410) return { kind: "closed" };
-    if (res.status === 409) {
-      const answer = (await res.json()) as { board?: unknown };
-      const board = typeof answer.board === "string" ? decodeHistory(answer.board) : null;
-      if (board) return { kind: "stale", board };
+    if (res.status === 410) return "closed";
+    const answer = (await res.json().catch(() => null)) as { held?: unknown } | null;
+    const held = Number.isInteger(answer?.held) ? (answer!.held as number) : null;
+    if (res.ok && held !== null && held >= ink.acked) {
+      ink.acked = Math.min(held, ink.log.length);
+      return "sent";
     }
-    return { kind: "retry" };
+    // `from` is past what the call holds: it holds less than this device thought, so send again from there.
+    if (res.status === 409 && held !== null && held < ink.acked && ink.log.slice(held, ink.acked).every((e) => e !== null)) {
+      ink.acked = held;
+      return "again";
+    }
+    return "retry";
   } catch {
-    return { kind: "retry" };
+    return "retry";
   } finally {
     clearTimeout(timer);
   }
 }
 
-/** A board kept on this device: the board and when it was kept. A copy kept as the board alone counts from now. */
-function readUnsent(raw: string): { board: string; at: number } | null {
-  try {
-    const entry = JSON.parse(raw) as { board?: unknown; at?: unknown; v?: unknown };
-    if (typeof entry.board === "string") return { board: entry.board, at: typeof entry.at === "number" ? entry.at : Date.now() };
-    return entry.v === 1 ? { board: raw, at: Date.now() } : null;
-  } catch {
-    return null;
-  }
-}
-
 const storage = {
-  keys: (): string[] => { try { return Object.keys(window.localStorage).filter((k) => k.startsWith(UNSENT_ROOT)); } catch { return []; } },
+  keys: (): string[] => { try { return Object.keys(window.localStorage).filter((k) => k.startsWith(OUTBOX_ROOT)); } catch { return []; } },
   read: (key: string): string | null => { try { return window.localStorage.getItem(key); } catch { return null; } },
   write: (key: string, value: string) => { try { window.localStorage.setItem(key, value); } catch { /* Storage can be full or off. */ } },
   remove: (key: string) => { try { window.localStorage.removeItem(key); } catch { /* Nothing to remove. */ } },
 };
 
+/** An outbox read back: the sequence the call held, the events after it, and when it was written. */
+function readOutbox(raw: string): { ink: Ink; at: number } | null {
+  try {
+    const box = JSON.parse(raw) as { acked?: unknown; events?: unknown; at?: unknown };
+    const events = Array.isArray(box.events) ? box.events.map(readInkEvent) : null;
+    if (!Number.isInteger(box.acked) || (box.acked as number) < 0 || !events || events.some((e) => e === null) || typeof box.at !== "number") return null;
+    return { ink: { log: [...Array<null>(box.acked as number).fill(null), ...events], acked: box.acked as number, at: box.at }, at: box.at };
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Sends the chat's board to the call (#534): the newest copy, one request at a time, 1.5 s after the last change, and
- * at once before the chat ends or the page goes. Each try gives up after 5 s. A copy that could not be sent goes again
- * with the next one. When the call keeps a newer board (`stale`), this copy is rebuilt on it and sent again, and
- * `onSaved` hears the call's board so the board on screen takes it too (R625b-4).
- *
- * Before the chat ends, the last copy is first kept on this device, then tried three times (R625-5, R625b-2); the chat
- * ends either way. A copy left on the device is sent the next time the desk opens. It goes from the device only when
- * the call took it or said it is closed, or once the call's time for it is past (R625b-3): never because this session
- * or this desk was refused, which is about the desk, not the board.
+ * Sends the child's ink of a chat to the call (#534, #635) as an append-only log. Every change is first kept on this
+ * device (the outbox: the events the call does not hold yet), then sent 1.5 s after the last change, at once before the
+ * chat ends, and when the page goes. Each request carries only events from the first one the call does not hold, and
+ * the call answers with the last sequence it holds; nothing is ever replaced, so there is no conflict to resolve.
+ * Before the chat ends, the ink is tried three times; the chat ends either way (R625-5, R625b-2). The outbox goes from
+ * the device only when the call holds every event in it, or answered closed, or its time is past (R625b-3, R635-1,
+ * R635-2); the next desk load sends what is left.
  */
-function useBoardSaver(onSaved: (id: string, board: BoardHistory) => void) {
-  const next = useRef<BoardSave | null>(null);
+function useInkSaver() {
+  const chats = useRef(new Map<string, Ink>());
   const queue = useRef<Promise<boolean>>(Promise.resolve(true));
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const heard = useRef(onSaved);
-  useEffect(() => {
-    heard.current = onSaved;
-  });
-  /** One try, with a conflict resolved once: this copy rebuilt on the call's board, and sent again when it adds to it. */
-  const send = useCallback(async (save: BoardSave): Promise<Sent> => {
-    const sent = await sendBoard(save);
-    if (sent.kind !== "stale") return sent;
-    heard.current(save.id, sent.board);
-    const mine = decodeHistory(save.board);
-    const rebuilt = mine ? rebaseOnto(sent.board, mine, Math.max(historyLength(mine), historyLength(sent.board)) + 1) : sent.board;
-    if (rebuilt === sent.board) return { kind: "sent" };
-    return sendBoard({ id: save.id, board: encodeHistory(rebuilt) });
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  /** Keeps what the call does not hold on this device, or forgets it once the call holds all of it. */
+  const keep = useCallback((id: string, ink: Ink) => {
+    const key = `${OUTBOX_ROOT}${id}`;
+    if (ink.acked >= ink.log.length) storage.remove(key);
+    else storage.write(key, JSON.stringify({ acked: ink.acked, events: ink.log.slice(ink.acked), at: ink.at }));
   }, []);
-  /** Sends the newest copy; true when nothing is left to send. */
-  const flush = useCallback(() => {
-    clearTimeout(timer.current);
-    timer.current = undefined;
+  /** Sends a chat's events the call does not hold, one request after another; true when it holds them all. */
+  const flush = useCallback((id: string) => {
+    clearTimeout(timers.current.get(id));
     queue.current = queue.current.then(async () => {
-      const save = next.current;
-      if (!save) return true;
-      next.current = null;
-      if ((await send(save)).kind !== "retry") return true;
-      next.current ??= save;
-      return false;
+      const ink = chats.current.get(id);
+      if (!ink) return true;
+      while (ink.acked < ink.log.length) {
+        const sent = await sendInk(id, ink);
+        if (sent === "closed") {
+          // The call takes no more of this chat's ink.
+          chats.current.delete(id);
+          storage.remove(`${OUTBOX_ROOT}${id}`);
+          return true;
+        }
+        keep(id, ink);
+        if (sent === "retry") return false;
+      }
+      return true;
     });
     return queue.current;
-  }, [send]);
-  /** The last copy before the chat ends: kept on this device first, then tried with a pause between tries. */
-  const finish = useCallback(async () => {
-    const last = next.current;
-    const key = last && `${UNSENT_ROOT}${last.id}`;
-    if (last && key) storage.write(key, JSON.stringify({ board: last.board, at: Date.now() }));
+  }, [keep]);
+  /** The last ink before the chat ends: it is on the device already; tried with a pause between tries. */
+  const finish = useCallback(async (id: string) => {
     for (let i = 0; i < FINAL_TRIES; i++) {
       if (i > 0) await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** (i - 1)));
-      if (await flush()) {
-        if (key) storage.remove(key);
-        return true;
-      }
+      if (await flush(id)) return true;
     }
-    // Still not sent: it stays on this device for the next time the desk opens.
-    next.current = null;
     return false;
   }, [flush]);
+  /** A change of the chat's board: its whole log now; the call's place in it stays. */
   const save = useCallback((id: string, history: BoardHistory) => {
-    next.current = { id, board: encodeHistory(history) };
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => void flush(), BOARD_SAVE_MS);
-  }, [flush]);
+    const ink = chats.current.get(id) ?? { log: [], acked: 0, at: 0 };
+    ink.log = inkLog(history);
+    ink.at = Date.now();
+    ink.acked = Math.min(ink.acked, ink.log.length);
+    chats.current.set(id, ink);
+    keep(id, ink);
+    clearTimeout(timers.current.get(id));
+    timers.current.set(id, setTimeout(() => void flush(id), BOARD_SAVE_MS));
+  }, [flush, keep]);
+  /** The call holds the first `held` events of a chat (its log was read back for the board). */
+  const holds = useCallback((id: string, held: number) => {
+    const ink = chats.current.get(id) ?? { log: [], acked: 0, at: Date.now() };
+    ink.acked = Math.max(ink.acked, held);
+    chats.current.set(id, ink);
+  }, []);
   useEffect(() => {
-    // Boards an earlier visit could not send: each is tried once.
+    // Ink an earlier visit could not send: each chat's outbox is tried once now.
     for (const key of storage.keys()) {
       const raw = storage.read(key);
-      const entry = raw ? readUnsent(raw) : null;
-      if (!entry || Date.now() - entry.at > UNSENT_KEEP_MS) {
+      const box = raw ? readOutbox(raw) : null;
+      if (!box || Date.now() - box.at > OUTBOX_KEEP_MS) {
         storage.remove(key);
         continue;
       }
-      queue.current = queue.current.then(async () => {
-        if ((await send({ id: key.slice(UNSENT_ROOT.length), board: entry.board })).kind !== "retry") storage.remove(key);
-        return true;
-      });
+      const id = key.slice(OUTBOX_ROOT.length);
+      if (!chats.current.has(id)) chats.current.set(id, box.ink);
+      void flush(id);
     }
-    const gone = () => void flush();
+    const gone = () => { for (const id of chats.current.keys()) void flush(id); };
     window.addEventListener("pagehide", gone);
+    const pending = timers.current;
     return () => {
       window.removeEventListener("pagehide", gone);
-      void flush();
+      for (const t of pending.values()) clearTimeout(t);
+      gone();
     };
-  }, [flush, send]);
-  return { save, flush, finish };
+  }, [flush]);
+  return { save, flush, finish, holds };
 }
 
 export function useDeskChat(initial: ChatUsage | null, at: { book: string; page: number; question: number | null }) {
@@ -168,10 +187,12 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
   const requestBusy = useRef(false);
   const key = `unica-chat:${at.book}:${at.page}:${at.question}`;
   const [uncertain, setUncertain] = useState(false);
-  /** The call's board for a chat, when the desk took it from the call (`n` counts each time it did, R625b-4). */
-  const [savedBoard, setSavedBoard] = useState<{ id: string; history: BoardHistory; n: number } | null>(null);
-  const takeSaved = useCallback((id: string, history: BoardHistory) => setSavedBoard((was) => ({ id, history, n: (was?.n ?? 0) + 1 })), []);
-  const board = useBoardSaver(takeSaved);
+  /**
+   * A chat picked up again (#635): the ink log the call holds for it, which a board with no draft starts from. "loading"
+   * until the call answers (the board waits, so no line is drawn on a board the call's log would not match).
+   */
+  const [callInk, setCallInk] = useState<{ id: string; log: InkEvent[] | "loading" } | null>(null);
+  const board = useInkSaver();
   const request = useCallback(async (action: { type: string; [field: string]: unknown }, generation = epoch.current) => {
     const res = await fetch("/api/desk/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(action) });
     const answer = await res.json() as ChatReply;
@@ -216,14 +237,27 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
       if (initial && id) {
         const chatId = id;
         void request({ type: "read", id: chatId }, generation).catch(() => { if (generation === epoch.current) setError(ERROR); });
-        // The chat's board as the call keeps it: a board with no draft on this device takes it back (R625b-4).
-        void fetch(`/api/desk/chat/board?id=${chatId}`)
-          .then((res) => (res.ok ? (res.json() as Promise<{ board?: unknown }>) : null))
-          .then((answer) => {
-            const saved = typeof answer?.board === "string" ? decodeHistory(answer.board) : null;
-            if (saved && generation === epoch.current) takeSaved(chatId, saved);
-          })
-          .catch(() => { /* The board on this device stands as it is. */ });
+        // The ink the call holds for this chat: a board with no draft on this device starts from it (#635). Tried again
+        // until the call answers; a chat the call does not know for this desk has none.
+        setCallInk({ id: chatId, log: "loading" });
+        const readInk = async (wait: number): Promise<void> => {
+          try {
+            const res = await fetch(`/api/desk/chat/board?id=${chatId}`);
+            const answer = (await res.json().catch(() => null)) as { events?: unknown } | null;
+            if (generation !== epoch.current) return;
+            const log = res.ok && Array.isArray(answer?.events) ? answer.events.map(readInkEvent) : null;
+            if (log && log.every((e) => e !== null)) {
+              board.holds(chatId, log.length);
+              setCallInk({ id: chatId, log: log as InkEvent[] });
+              return;
+            }
+            if (res.status === 404) { setCallInk({ id: chatId, log: [] }); return; }
+          } catch { /* Tried again below. */ }
+          if (generation !== epoch.current) return;
+          await new Promise((resolve) => setTimeout(resolve, wait));
+          if (generation === epoch.current) await readInk(Math.min(30_000, wait * 2));
+        };
+        void readInk(3000);
       }
     });
     return () => { epoch.current = generation + 1; };
@@ -267,7 +301,7 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
           await request({ type, ...pending.current }, generation);
         } else {
           // The child's ink goes with the call before it ends (#534); if it cannot, it stays on this device (R625-5).
-          await board.finish();
+          await board.finish(chat.id);
           await request({ type, id: chat.id, revision: chat.revision }, generation);
         }
       }
@@ -280,7 +314,7 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
       return false;
     } finally { requestBusy.current = false; if (generation === epoch.current) setBusy(false); }
   };
-  return { usage, chat: ownerKey === key ? chat : null, busy, error, act, retry: refresh, uncertain, saveBoard: board.save, savedBoard };
+  return { usage, chat: ownerKey === key ? chat : null, busy, error, act, retry: refresh, uncertain, saveBoard: board.save, callInk };
 }
 export type DeskChatState = ReturnType<typeof useDeskChat>;
 
@@ -311,22 +345,36 @@ export function ChatControls({ state, picked }: { state: DeskChatState; picked: 
  * The chat's board (#534): "Our board" with Maya's replies on it. The child keeps the pen tools all through the chat;
  * Maya takes the pen only while she writes, never removes the child's ink, and every change goes to `onBoard`.
  */
-export function ChatBoard({ chat, still, carry, saved, onBoard }: {
+/**
+ * The chat's board (#534): "Our board" with Maya's replies on it. The child keeps the pen tools all through the chat;
+ * Maya takes the pen only while she writes, never removes the child's ink, and every change goes to `onBoard`. A chat
+ * picked up again with no draft on this device starts from the ink the call holds (`restore`); until the call answers,
+ * the board says it is coming.
+ */
+export function ChatBoard({ chat, still, carry, restore, onBoard }: {
   chat: ChatView;
   still: boolean;
   /** The question's board the chat started from: its ink comes onto the chat's board. */
   carry?: { book: string; page: number; question: number | null };
-  /** The call's board for this chat, when the desk took it from the call: the board is rebuilt on it (R625b-4). */
-  saved?: BoardHistory | null;
+  /** The ink log the call holds for this chat, "loading" while the desk asks for it, or null for a new chat. */
+  restore?: InkEvent[] | "loading" | null;
   onBoard?: (history: BoardHistory) => void;
 }) {
+  // Read once, when the board starts: the board takes it only then.
+  const restored = useMemo(() => (Array.isArray(restore) && restore.length > 0 ? historyFromLog(restore, chat.batches) : null), [restore, chat.batches]);
+  if (restore === "loading") {
+    return <section className="desk-board" id="chat-board" aria-labelledby="desk-board-title" aria-busy="true">
+      <header><h2 id="desk-board-title">Our board</h2></header>
+      <p className="desk-caption" role="status">Getting our board back…</p>
+    </section>;
+  }
   return <OurBoard
     key={chat.id}
     question={null}
     at={{ book: "chat", page: 0, question: null }}
     chat={{ id: chat.id, batches: chat.batches, carry }}
     onChange={onBoard}
-    saved={saved ?? null}
+    restore={restored}
     still={still}
     label="Maya's drawing for your question"
     caption="Follow each step. Then write on your paper."

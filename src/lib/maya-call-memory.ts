@@ -1,3 +1,4 @@
+import type { InkEvent } from "@/lib/board-history";
 import { INK_AFTER_END_MS, INK_SAVE_GAP_MS, type CallChange, type CallConnection, type CallRecord, type CallStore, type ConnectionLog } from "@/lib/maya-call";
 import type { SweepCallSource, SweepCursor, SweepKind, SweepPlace } from "@/lib/maya-call-sweep";
 
@@ -20,8 +21,9 @@ export function memoryCallStore(options: { testFamilies: readonly string[]; cloc
   const places = new Map<SweepKind, SweepPlace | null>();
   const written = new Map<string, number>();
   const wrote = (id: string) => written.set(id, (options.clock ?? Date.now)());
-  /** When each call's board from the desk was last saved (child_ink_at). */
+  /** When each chat's ink was last appended (child_ink_at), and each chat's ink log (maya_call_ink_events). */
   const inkAt = new Map<string, number>();
+  const inkLogs = new Map<string, InkEvent[]>();
   const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x));
   return {
     async insert(c) {
@@ -60,18 +62,22 @@ export function memoryCallStore(options: { testFamilies: readonly string[]; cloc
       wrote(id);
       return true;
     },
-    async saveInk(id, owner, ink) {
-      // No await between the checks and the write: the database function is one statement too.
+    async appendInk(id, owner, from, events) {
+      // No await between the checks and the write: the database function is one transaction too.
       const now = (options.clock ?? Date.now)();
       const r = rows.get(id);
-      if (!r || r.mode !== "text" || r.kind !== "chat" || r.parentId !== owner.parentId || r.childId !== owner.childId) return "not_found";
-      if (r.status === "ended" && r.endedAt && Date.parse(r.endedAt) < now - INK_AFTER_END_MS) return "closed";
-      if ((inkAt.get(id) ?? -Infinity) > now - INK_SAVE_GAP_MS) return "busy";
-      if (r.childInk && r.childInk.revision > ink.revision) return "stale";
-      // Not a change of the call's work: the revision and the write time stay.
-      rows.set(id, { ...r, childInk: copy(ink) });
+      const log = inkLogs.get(id) ?? [];
+      if (!r || r.mode !== "text" || r.kind !== "chat" || r.parentId !== owner.parentId || r.childId !== owner.childId) return { status: "not_found", held: 0 };
+      if (r.status === "ended" && r.endedAt && Date.parse(r.endedAt) < now - INK_AFTER_END_MS) return { status: "closed", held: log.length };
+      if ((inkAt.get(id) ?? -Infinity) > now - INK_SAVE_GAP_MS) return { status: "busy", held: log.length };
+      if (from > log.length + 1) return { status: "gap", held: log.length };
+      // Each sequence once: events the call holds already are left as they are.
+      inkLogs.set(id, [...log, ...events.slice(log.length + 1 - from).map(copy)]);
       inkAt.set(id, now);
-      return "saved";
+      return { status: "saved", held: inkLogs.get(id)!.length };
+    },
+    async readInk(id) {
+      return copy(inkLogs.get(id) ?? []);
     },
     appendConnection(event, revision, commit) {
       const r = rows.get(event.callId);

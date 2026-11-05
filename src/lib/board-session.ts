@@ -21,7 +21,6 @@ import {
   mayaSkipped,
   mayaWrites,
   penHolder,
-  rebaseOnto,
   restoreKept,
   takePen,
   undo,
@@ -131,11 +130,6 @@ export interface BoardSession {
   mayaReply(batches: readonly Batch[]): number;
   /** Maya has finished writing her reply: the pen passes back to the child, in the tab that holds the board. */
   handBack(): void;
-  /**
-   * The call's saved copy of this board (R625b-4), when the draft was lost or a save found a newer copy: the board is
-   * rebuilt on it, with this tab's own lines it lacks added back (`rebaseOnto`). The child keeps the pen if they had it.
-   */
-  rebase(stored: BoardHistory): void;
   /** The one way out of holding the board. */
   endHolding(reason: EndReason): void;
   /** The board tab's news: this tab's role, and the stored board. */
@@ -411,18 +405,6 @@ export function createBoardSession(o: SessionOptions): BoardSession {
       persist();
       emit();
       return count;
-    },
-    rebase(stored) {
-      if (!holds()) return;
-      let next = rebaseOnto(stored, history, now());
-      if (next === history) return;
-      if (penHolder(history) === "child" && penHolder(next) !== "child") {
-        const taken = takePen(next, now());
-        if (taken.ok) next = taken.history;
-      }
-      history = next;
-      persist();
-      emit();
     },
     handBack() {
       if (holds() && penHolder(history) === "maya") apply(takePen(history, now()));

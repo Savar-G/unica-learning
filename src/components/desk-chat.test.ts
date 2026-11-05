@@ -3,7 +3,7 @@ import { act, createElement, useLayoutEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatBoard, ChatControls, useDeskChat, type DeskChatState } from "@/components/desk-chat";
-import { boardDraftKey, childStrokes, createHistory, drawStroke, encodeHistory, mayaWrites, penHolder, saveDraft, takePen, type BoardHistory, type Change, type DraftStore } from "@/lib/board-history";
+import { boardDraftKey, childStrokes, createHistory, drawStroke, encodeHistory, inkLog, mayaWrites, penHolder, saveDraft, takePen, type BoardHistory, type Change, type DraftStore } from "@/lib/board-history";
 import type { ChatReply, ChatView } from "@/lib/maya-chat";
 
 const book = "45100000-0000-4000-8000-000000000031";
@@ -145,6 +145,14 @@ it("shows only the approved Maya line at the cap", async () => {
 });
 
 describe("#534: the board in a chat", () => {
+  const OUTBOX = `unica-chat-ink:${id}`;
+  const accepted = (c: Change) => { if (!c.ok) throw Error(c.reason); return c.history; };
+  /** A line of the child's at `x`, after the board's last event. */
+  const drawn = (h: Change | BoardHistory, x: number) => {
+    const from = "ok" in h ? accepted(h) : h;
+    const at = from.events.length * 1000 + 1000;
+    return accepted(drawStroke(from, { erase: false, w: 5, boardWidth: 800, page: 1, pts: [[x, 0.7, at], [x + 0.05, 0.75, at + 100]] }));
+  };
   const work = { transactionId: "reply-1", commands: [{ op: "columns", id: "work", operation: "add", operands: [{ id: "a", value: "27" }, { id: "b", value: "39" }], place: { region: "main" } }] };
 
   it("keeps the pen on the chat's board: Maya's work shows, then the pen passes to the child, and each change goes to the call", async () => {
@@ -161,18 +169,30 @@ describe("#534: the board in a chat", () => {
     expect(penHolder(last)).toBe("child");
   });
 
-  it("sends the board to the call before the chat ends", async () => {
+  it("sends the child's ink to the call before the chat ends, from the first event the call does not hold", async () => {
     const urls: string[] = [];
+    const bodies: { from: number; events: unknown[] }[] = [];
     vi.stubGlobal("fetch", async (url: string, options: RequestInit) => {
       urls.push(url);
-      if (url === "/api/desk/chat/board") return Response.json({ ok: true });
+      if (url === "/api/desk/chat/board") {
+        const body = JSON.parse(String(options.body)) as { from: number; events: unknown[] };
+        bodies.push(body);
+        return Response.json({ held: body.from + body.events.length - 1 });
+      }
       const action: RequestAction = JSON.parse(String(options.body)); requests.push(action);
       return Response.json(await answer(action));
     });
     await render(); await send("start");
-    await act(async () => state.saveBoard(id, createHistory()));
+    const one = drawn(takePen(createHistory(), 100), 0.4);
+    await act(async () => state.saveBoard(id, one));
+    await advance(2000);
+    // A second line later: only the new event goes.
+    await act(async () => state.saveBoard(id, drawn(one, 0.6)));
     expect(await send("end")).toBe(true);
-    expect(urls).toEqual(["/api/desk/chat", "/api/desk/chat/board", "/api/desk/chat"]);
+    expect(urls).toEqual(["/api/desk/chat", "/api/desk/chat/board", "/api/desk/chat/board", "/api/desk/chat"]);
+    expect(bodies.map((b) => [b.from, b.events.length])).toEqual([[1, 2], [3, 1]]);
+    // The call holds it all: nothing waits on the device.
+    expect(localStorage.getItem(OUTBOX)).toBeNull();
   });
 
   it("R625-4: carries the child's ink on the question's board into the chat when it starts", async () => {
@@ -195,17 +215,21 @@ describe("#534: the board in a chat", () => {
     expect(childStrokes(boards.at(-1)!)[0].pts.map(([x, y]) => [x, y])).toEqual([[0.1, 0.7], [0.2, 0.75]]);
   });
 
-  it("R625-5: tries the last board again before the chat ends, keeps it on the device when it still fails, and sends it on the next desk load", async () => {
+  it("R625-5: tries the last ink again before the chat ends, keeps it on the device when it still fails, and sends it on the next desk load", async () => {
     localStorage.clear();
     let boardStatus = 503;
     const boards: string[] = [];
     vi.stubGlobal("fetch", async (url: string, options: RequestInit) => {
-      if (url === "/api/desk/chat/board") { boards.push(String(options.body)); return Response.json({}, { status: boardStatus }); }
+      if (url === "/api/desk/chat/board") {
+        boards.push(String(options.body));
+        const body = JSON.parse(String(options.body)) as { from: number; events: unknown[] };
+        return boardStatus === 200 ? Response.json({ held: body.from + body.events.length - 1 }) : Response.json({ error: "unavailable" }, { status: boardStatus });
+      }
       const action: RequestAction = JSON.parse(String(options.body)); requests.push(action);
       return Response.json(await answer(action));
     });
     await render(); await send("start");
-    await act(async () => state.saveBoard(id, createHistory()));
+    await act(async () => state.saveBoard(id, drawn(takePen(createHistory(), 100), 0.4)));
     let ended = false;
     await act(async () => {
       const ending = state.act("end").then((ok) => { ended = ok; });
@@ -215,37 +239,40 @@ describe("#534: the board in a chat", () => {
     expect(boards).toHaveLength(3);
     expect(ended).toBe(true);
     expect(requests.at(-1)?.type).toBe("end");
-    expect(localStorage.getItem(`unica-chat-board-unsent:${id}`)).not.toBeNull();
-    // The next time the desk opens, the board goes to the call, and the device forgets it.
+    expect(localStorage.getItem(OUTBOX)).not.toBeNull();
+    // The next time the desk opens, the ink goes to the call, and the device forgets it.
     boardStatus = 200;
-    await act(async () => root.unmount());
-    root = createRoot(host);
-    await render(); await advance(100);
-    expect(boards).toHaveLength(4);
-    expect(JSON.parse(boards[3])).toEqual(JSON.parse(boards[0]));
-    expect(localStorage.getItem(`unica-chat-board-unsent:${id}`)).toBeNull();
+    expect(await reopen(boards)).toBeGreaterThanOrEqual(0);
+    expect(JSON.parse(boards.at(-1)!)).toEqual(JSON.parse(boards[0]));
+    expect(localStorage.getItem(OUTBOX)).toBeNull();
   });
 
-  const UNSENT = `unica-chat-board-unsent:${id}`;
-  /** A chat whose last board cannot reach the call: it ends, and the board waits on the device. */
-  async function endWithBoardLeft(boards: string[], status: () => number) {
-    vi.stubGlobal("fetch", async (url: string, options: RequestInit) => {
-      if (url === "/api/desk/chat/board") { boards.push(String(options.body)); return Response.json({ error: "x" }, { status: status() }); }
+  /** A chat whose last ink cannot reach the call: it ends, and the ink waits on the device. */
+  async function endWithInkLeft(boards: string[], status: () => number) {
+    vi.stubGlobal("fetch", async (url: string, options: RequestInit = {}) => {
+      if (url.startsWith("/api/desk/chat/board")) {
+        if (options.method === "POST") boards.push(String(options.body));
+        return Response.json({ error: "x" }, { status: status() });
+      }
       const action: RequestAction = JSON.parse(String(options.body)); requests.push(action);
       return Response.json(await answer(action));
     });
     await render(); await send("start");
-    await act(async () => state.saveBoard(id, createHistory()));
+    await act(async () => state.saveBoard(id, drawn(takePen(createHistory(), 100), 0.4)));
     await act(async () => { void state.act("end"); await vi.advanceTimersByTimeAsync(60_000); });
-    expect(localStorage.getItem(UNSENT)).not.toBeNull();
+    expect(localStorage.getItem(OUTBOX)).not.toBeNull();
   }
-  const reopen = async () => {
+  /** The desk closes (it tries waiting ink once more as it goes) and opens again; the requests of the new desk. */
+  const reopen = async (boards: string[]) => {
     await act(async () => root.unmount());
+    await advance(100);
+    const before = boards.length;
     root = createRoot(host);
     await render(); await advance(100);
+    return boards.length - before;
   };
 
-  it("R625b-2: a last board that never answers still lets the chat end, kept on the device before the first try", async () => {
+  it("R625b-2: ink that never gets an answer still lets the chat end, kept on the device before the first try", async () => {
     localStorage.clear();
     const boards: string[] = [];
     vi.stubGlobal("fetch", (url: string, options: RequestInit) => {
@@ -257,75 +284,110 @@ describe("#534: the board in a chat", () => {
       return answer(action).then((r) => Response.json(r));
     });
     await render(); await send("start");
-    await act(async () => state.saveBoard(id, createHistory()));
+    await act(async () => state.saveBoard(id, drawn(takePen(createHistory(), 100), 0.4)));
     let ended = false;
     await act(async () => { void state.act("end").then((ok) => { ended = ok; }); await vi.advanceTimersByTimeAsync(100); });
     expect(boards).toHaveLength(1);
-    expect(localStorage.getItem(UNSENT)).not.toBeNull();
+    expect(localStorage.getItem(OUTBOX)).not.toBeNull();
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
     expect(ended).toBe(true);
     expect(requests.at(-1)?.type).toBe("end");
-    expect(localStorage.getItem(UNSENT)).not.toBeNull();
+    expect(localStorage.getItem(OUTBOX)).not.toBeNull();
   });
 
-  it("R625b-3: a board waiting on the device stays when another child's desk or a signed-out session cannot send it, and goes only when the call is closed or its time is past", async () => {
+  it("R625b-3: ink waiting on the device stays when another child's desk or a signed-out session cannot send it, and goes only when the call is closed or its time is past", async () => {
     localStorage.clear();
     const boards: string[] = [];
     let status = 503;
-    await endWithBoardLeft(boards, () => status);
-    for (const refused of [404, 403, 401]) {
+    await endWithInkLeft(boards, () => status);
+    for (const refused of [404, 403, 401, 409]) {
       status = refused;
-      const before = boards.length;
-      await reopen();
-      expect(boards.length).toBe(before + 1);
-      expect(localStorage.getItem(UNSENT), `after ${refused}`).not.toBeNull();
+      expect(await reopen(boards)).toBe(1);
+      expect(localStorage.getItem(OUTBOX), `after ${refused}`).not.toBeNull();
     }
     status = 410;
-    await reopen();
-    expect(localStorage.getItem(UNSENT)).toBeNull();
+    await reopen(boards);
+    expect(localStorage.getItem(OUTBOX)).toBeNull();
     // Past the call's time (5 minutes after its end) the device forgets it without asking.
     status = 503;
     await act(async () => root.unmount());
     root = createRoot(host);
-    await endWithBoardLeft(boards, () => status);
+    await endWithInkLeft(boards, () => status);
     const later = Date.now() + 7 * 60_000;
     vi.spyOn(Date, "now").mockReturnValue(later);
-    const before = boards.length;
-    await reopen();
-    expect(boards.length).toBe(before);
-    expect(localStorage.getItem(UNSENT)).toBeNull();
+    expect(await reopen(boards)).toBe(0);
+    expect(localStorage.getItem(OUTBOX)).toBeNull();
   });
 
-  it("R625b-4: a chat's board with no draft takes back the call's saved board, and a conflict hands the saved board to the desk", async () => {
+  it("#635: a chat picked up again asks the call for its ink, waits for it, and the board starts from it", async () => {
     vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
     localStorage.clear();
-    const accepted = (c: Change) => { if (!c.ok) throw Error(c.reason); return c.history; };
     let saved = accepted(mayaWrites(createHistory(), work, 0));
-    saved = accepted(takePen(saved, 1000));
-    saved = accepted(drawStroke(saved, { erase: false, w: 5, boardWidth: 800, page: 1, pts: [[0.1, 0.7, 1500], [0.2, 0.75, 1700]] }));
-    // The board on screen takes it back.
+    saved = drawn(accepted(takePen(saved, 1000)), 0.1);
+    // The board on screen starts from the call's log.
     const boards: BoardHistory[] = [];
-    await act(async () => root.render(createElement(ChatBoard, { chat: { ...view(1), batches: [work] }, still: true, saved, onBoard: (h: BoardHistory) => boards.push(h) })));
+    await act(async () => root.render(createElement(ChatBoard, { chat: { ...view(1), batches: [work] }, still: true, restore: inkLog(saved), onBoard: (h: BoardHistory) => boards.push(h) })));
     await advance(5000);
     expect(childStrokes(boards.at(-1)!)).toHaveLength(1);
-    expect(boards.at(-1)!.revision).toBeGreaterThanOrEqual(saved.revision);
+    expect(inkLog(boards.at(-1)!).slice(0, inkLog(saved).length)).toEqual(inkLog(saved));
+    // While the call has not answered, the board says so and takes no line.
+    await act(async () => root.render(createElement(ChatBoard, { chat: { ...view(1), batches: [work] }, still: true, restore: "loading" })));
+    expect(host.textContent).toContain("Getting our board back");
+    expect(host.querySelector("svg.child-ink")).toBeNull();
     await act(async () => root.unmount());
     root = createRoot(host);
-    // The desk asks the call for its saved board when it picks a chat up again, and takes one back from a conflict.
+    // The desk asks the call for this chat's log when it picks the chat up again.
     const gets: string[] = [];
     vi.stubGlobal("fetch", async (url: string, options: RequestInit = {}) => {
-      if (url.startsWith("/api/desk/chat/board?")) { gets.push(url); return Response.json({ board: encodeHistory(saved) }); }
-      if (url === "/api/desk/chat/board") return Response.json({ error: "stale", board: encodeHistory(saved) }, { status: 409 });
+      if (url.startsWith("/api/desk/chat/board?")) { gets.push(url); return Response.json({ events: inkLog(saved) }); }
       const action: RequestAction = JSON.parse(String(options.body)); requests.push(action);
       return Response.json(await answer(action));
     });
     sessionStorage.setItem(`unica-chat:${book}:1:1`, id);
     await render(); await advance(100);
     expect(gets).toEqual([`/api/desk/chat/board?id=${id}`]);
-    expect(state.savedBoard?.id).toBe(id);
-    expect(state.savedBoard?.history.revision).toBe(saved.revision);
-    await act(async () => { state.saveBoard(id, createHistory()); await vi.advanceTimersByTimeAsync(2000); });
-    expect(state.savedBoard?.history.revision).toBe(saved.revision);
-    expect(state.savedBoard?.n).toBe(2);
+    expect(state.callInk).toEqual({ id, log: inkLog(saved) });
+  });
+});
+
+describe("#635: the child's ink in a chat never leaves the device until the call holds it", () => {
+  const accepted = (c: Change) => { if (!c.ok) throw Error(c.reason); return c.history; };
+  /** A chat's board with one line of the child's at a place no other test uses. */
+  const withLine = () => {
+    let h = accepted(takePen(createHistory(), 100));
+    h = accepted(drawStroke(h, { erase: false, w: 5, boardWidth: 800, page: 1, pts: [[0.123, 0.7, 200], [0.2, 0.75, 300]] }));
+    return h;
+  };
+  const kept = () => Object.keys(localStorage).filter((k) => k.includes(id)).map((k) => localStorage.getItem(k) ?? "").join("\n");
+  const stub = (board: (options: RequestInit) => Promise<Response>) => vi.stubGlobal("fetch", async (url: string, options: RequestInit = {}) => {
+    if (url.startsWith("/api/desk/chat/board")) return board(options);
+    const action: RequestAction = JSON.parse(String(options.body)); requests.push(action);
+    return Response.json(await answer(action));
+  });
+
+  it("R635-1: a save still on its way when the chat ends keeps the board on the device", async () => {
+    localStorage.clear();
+    // The board's request answers only after 3 s, and then with a server error.
+    stub((options) => new Promise((resolve, reject) => {
+      const timer = setTimeout(() => resolve(Response.json({ error: "unavailable" }, { status: 503 })), 3000);
+      options.signal?.addEventListener("abort", () => { clearTimeout(timer); reject(new DOMException("too long", "AbortError")); });
+    }));
+    await render(); await send("start");
+    await act(async () => state.saveBoard(id, withLine()));
+    // The save 1.5 s after the change is on its way when the child ends the chat.
+    await advance(1600);
+    await act(async () => { void state.act("end"); await vi.advanceTimersByTimeAsync(60_000); });
+    expect(requests.at(-1)?.type).toBe("end");
+    expect(kept()).toContain("0.123");
+  });
+
+  it("R635-2: a conflict answer, once or twice, never drops the device's copy of a line the call does not hold", async () => {
+    localStorage.clear();
+    stub(async () => Response.json({ error: "stale", board: encodeHistory(createHistory()) }, { status: 409 }));
+    await render(); await send("start");
+    await act(async () => state.saveBoard(id, withLine()));
+    await act(async () => { void state.act("end"); await vi.advanceTimersByTimeAsync(60_000); });
+    expect(requests.at(-1)?.type).toBe("end");
+    expect(kept()).toContain("0.123");
   });
 });
