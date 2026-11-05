@@ -289,7 +289,6 @@ export type Database = {
           resume_until: string
           route: string | null
           seed: number
-          stage3_route: string | null
           started_at: string
           status: string
           test: Json
@@ -313,7 +312,6 @@ export type Database = {
           resume_until?: string
           route?: string | null
           seed: number
-          stage3_route?: string | null
           started_at?: string
           status?: string
           test: Json
@@ -337,7 +335,6 @@ export type Database = {
           resume_until?: string
           route?: string | null
           seed?: number
-          stage3_route?: string | null
           started_at?: string
           status?: string
           test?: Json
@@ -969,58 +966,6 @@ export type Database = {
           },
         ]
       }
-      family_delete_attempts: {
-        Row: {
-          failed_attempts: number
-          locked_until: string | null
-          parent_id: string
-        }
-        Insert: {
-          failed_attempts?: number
-          locked_until?: string | null
-          parent_id: string
-        }
-        Update: {
-          failed_attempts?: number
-          locked_until?: string | null
-          parent_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "family_delete_attempts_parent_id_fkey"
-            columns: ["parent_id"]
-            isOneToOne: true
-            referencedRelation: "parents"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      family_delete_holds: {
-        Row: {
-          lease_token: string
-          lease_until: string
-          parent_id: string
-        }
-        Insert: {
-          lease_token: string
-          lease_until: string
-          parent_id: string
-        }
-        Update: {
-          lease_token?: string
-          lease_until?: string
-          parent_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "family_delete_holds_parent_id_fkey"
-            columns: ["parent_id"]
-            isOneToOne: true
-            referencedRelation: "parents"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       family_deletion_schedule: {
         Row: {
           last_parent: string | null
@@ -1042,7 +987,6 @@ export type Database = {
           lease_until: string | null
           parent_id: string
           phase: string
-          plans_stopped_at: string | null
           reason: string
           requested_at: string
         }
@@ -1051,7 +995,6 @@ export type Database = {
           lease_until?: string | null
           parent_id: string
           phase?: string
-          plans_stopped_at?: string | null
           reason: string
           requested_at?: string
         }
@@ -1060,7 +1003,6 @@ export type Database = {
           lease_until?: string | null
           parent_id?: string
           phase?: string
-          plans_stopped_at?: string | null
           reason?: string
           requested_at?: string
         }
@@ -1443,55 +1385,6 @@ export type Database = {
           },
           {
             foreignKeyName: "maya_call_connections_parent_id_fkey"
-            columns: ["parent_id"]
-            isOneToOne: false
-            referencedRelation: "parents"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      maya_call_ink_events: {
-        Row: {
-          call_id: string
-          child_id: string
-          event: Json
-          parent_id: string
-          received_at: string
-          seq: number
-        }
-        Insert: {
-          call_id: string
-          child_id: string
-          event: Json
-          parent_id: string
-          received_at?: string
-          seq: number
-        }
-        Update: {
-          call_id?: string
-          child_id?: string
-          event?: Json
-          parent_id?: string
-          received_at?: string
-          seq?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "maya_call_ink_events_call_fkey"
-            columns: ["call_id", "parent_id", "child_id"]
-            isOneToOne: false
-            referencedRelation: "maya_calls"
-            referencedColumns: ["id", "parent_id", "child_id"]
-          },
-          {
-            foreignKeyName: "maya_call_ink_events_child_fkey"
-            columns: ["child_id", "parent_id"]
-            isOneToOne: false
-            referencedRelation: "children"
-            referencedColumns: ["id", "parent_id"]
-          },
-          {
-            foreignKeyName: "maya_call_ink_events_parent_id_fkey"
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "parents"
@@ -1999,84 +1892,6 @@ export type Database = {
           },
         ]
       }
-      maya_spend: {
-        Row: {
-          call_id: string | null
-          charge: string
-          child_id: string | null
-          cost_micros: number | null
-          created_at: string
-          id: string
-          month: string
-          parent_id: string | null
-          reserved_micros: number
-          settled_at: string | null
-          uncertain: boolean
-          week: string | null
-          what: string
-        }
-        Insert: {
-          call_id?: string | null
-          charge: string
-          child_id?: string | null
-          cost_micros?: number | null
-          created_at?: string
-          id: string
-          month: string
-          parent_id?: string | null
-          reserved_micros: number
-          settled_at?: string | null
-          uncertain?: boolean
-          week?: string | null
-          what: string
-        }
-        Update: {
-          call_id?: string | null
-          charge?: string
-          child_id?: string | null
-          cost_micros?: number | null
-          created_at?: string
-          id?: string
-          month?: string
-          parent_id?: string | null
-          reserved_micros?: number
-          settled_at?: string | null
-          uncertain?: boolean
-          week?: string | null
-          what?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "maya_spend_child_fkey"
-            columns: ["child_id", "parent_id"]
-            isOneToOne: false
-            referencedRelation: "children"
-            referencedColumns: ["id", "parent_id"]
-          },
-          {
-            foreignKeyName: "maya_spend_parent_id_fkey"
-            columns: ["parent_id"]
-            isOneToOne: false
-            referencedRelation: "parents"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      maya_spend_alerts: {
-        Row: {
-          claimed_at: string
-          month: string
-        }
-        Insert: {
-          claimed_at?: string
-          month: string
-        }
-        Update: {
-          claimed_at?: string
-          month?: string
-        }
-        Relationships: []
-      }
       maya_wording_history: {
         Row: {
           child_id: string
@@ -2493,7 +2308,6 @@ export type Database = {
           parent_id: string
           printed_revision: string | null
           reserved_bytes: number
-          sent_at: string | null
           state: string
           stored_bytes: number
           terminal_at: string | null
@@ -2511,7 +2325,6 @@ export type Database = {
           parent_id: string
           printed_revision?: string | null
           reserved_bytes: number
-          sent_at?: string | null
           state?: string
           stored_bytes?: number
           terminal_at?: string | null
@@ -2529,7 +2342,6 @@ export type Database = {
           parent_id?: string
           printed_revision?: string | null
           reserved_bytes?: number
-          sent_at?: string | null
           state?: string
           stored_bytes?: number
           terminal_at?: string | null
@@ -2693,57 +2505,6 @@ export type Database = {
           subject?: string
         }
         Relationships: []
-      }
-      skill_state_history: {
-        Row: {
-          changed_at: string
-          child_id: string
-          evidence_at: string | null
-          evidence_source: string
-          id: number
-          parent_id: string
-          reason: string
-          standard: string
-          state: string
-        }
-        Insert: {
-          changed_at?: string
-          child_id: string
-          evidence_at?: string | null
-          evidence_source: string
-          id?: never
-          parent_id: string
-          reason: string
-          standard: string
-          state: string
-        }
-        Update: {
-          changed_at?: string
-          child_id?: string
-          evidence_at?: string | null
-          evidence_source?: string
-          id?: never
-          parent_id?: string
-          reason?: string
-          standard?: string
-          state?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "skill_state_history_child_fkey"
-            columns: ["child_id", "parent_id"]
-            isOneToOne: false
-            referencedRelation: "children"
-            referencedColumns: ["id", "parent_id"]
-          },
-          {
-            foreignKeyName: "skill_state_history_parent_id_fkey"
-            columns: ["parent_id"]
-            isOneToOne: false
-            referencedRelation: "parents"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       test_accounts: {
         Row: {
@@ -4300,13 +4061,6 @@ export type Database = {
           period_start: string
         }[]
       }
-      _maya_spend_counted: {
-        Args: { p_child: string; p_month: string; p_week: string }
-        Returns: {
-          month_micros: number
-          week_micros: number
-        }[]
-      }
       _maya_zone_at: { Args: { p_at: string; p_zone: string }; Returns: string }
       abandon_family_payment_operation: {
         Args: {
@@ -4342,7 +4096,6 @@ export type Database = {
           resume_until: string
           route: string | null
           seed: number
-          stage3_route: string | null
           started_at: string
           status: string
           test: Json
@@ -4382,7 +4135,6 @@ export type Database = {
         Returns: {
           created_at: string
           first_name: string
-          former_names: string[]
           grade: number
           id: string
           interests: string[] | null
@@ -4497,9 +4249,6 @@ export type Database = {
           resume_until: string
           route: string
           stage1: number
-          stage3_down: number
-          stage3_route: string
-          stage3_up: number
           started_at: string
           status: string
           stay: number
@@ -4526,9 +4275,6 @@ export type Database = {
           resume_until: string
           route: string
           stage1: number
-          stage3_down: number
-          stage3_route: string
-          stage3_up: number
           started_at: string
           status: string
           stay: number
@@ -4569,18 +4315,6 @@ export type Database = {
         Args: { p_call: string; p_kind: string; p_revision: number }
         Returns: string
       }
-      append_maya_call_ink: {
-        Args: {
-          p_after_end_ms: number
-          p_child: string
-          p_events: Json
-          p_from: number
-          p_gap_ms: number
-          p_id: string
-          p_parent: string
-        }
-        Returns: Json
-      }
       apply_workbook_print_contract: {
         Args: { p_workbook: Json }
         Returns: undefined
@@ -4612,10 +4346,6 @@ export type Database = {
       begin_family_card_operation: {
         Args: { p: string; token: string }
         Returns: undefined
-      }
-      begin_family_delete_hold: {
-        Args: { hold: string; p: string }
-        Returns: string
       }
       begin_family_payment_operation: {
         Args: {
@@ -4709,7 +4439,6 @@ export type Database = {
         Args: { p: string; token: string }
         Returns: undefined
       }
-      check_parent_family_deletion: { Args: { p: string }; Returns: string }
       checkpoint_workbook_edit: {
         Args: { p_id: string; p_lease: string; p_page: number; p_result: Json }
         Returns: boolean
@@ -4722,19 +4451,6 @@ export type Database = {
           p_session_created_at: string
         }
         Returns: string
-      }
-      claim_family_delete_attempt: {
-        Args: {
-          p_lock_seconds: number
-          p_max: number
-          p_now: string
-          p_parent: string
-        }
-        Returns: {
-          out_attempts_left: number
-          out_locked_until: string
-          out_status: string
-        }[]
       }
       claim_family_deletion: {
         Args: { p: string; token: string }
@@ -4757,7 +4473,6 @@ export type Database = {
         }
         Returns: Json
       }
-      claim_maya_spend_alert: { Args: { p_month: string }; Returns: boolean }
       claim_maya_weekly: {
         Args: {
           p_attempts: number
@@ -4833,10 +4548,6 @@ export type Database = {
             Args: { p_lease: string; p_run: string; p_runner: string }
             Returns: boolean
           }
-      clear_family_delete_attempts: {
-        Args: { p_parent: string }
-        Returns: undefined
-      }
       complete_family_deletion: {
         Args: { p: string; token: string }
         Returns: boolean
@@ -4923,10 +4634,6 @@ export type Database = {
         Returns: boolean
       }
       end_family_card_operation: { Args: { token: string }; Returns: undefined }
-      end_family_delete_hold: {
-        Args: { hold: string; p: string }
-        Returns: undefined
-      }
       end_plan_start: {
         Args: { p_card: string; p_key: string }
         Returns: boolean
@@ -5083,15 +4790,6 @@ export type Database = {
         Args: { p_answers: Json; p_assessment: string; p_route: string }
         Returns: string
       }
-      lock_stage2: {
-        Args: {
-          p_answers: Json
-          p_assessment: string
-          p_resume_until: string
-          p_stage3_route: string
-        }
-        Returns: string
-      }
       mark_workbook: {
         Args: {
           p_by: string
@@ -5120,15 +4818,6 @@ export type Database = {
             }
             Returns: number
           }
-      maya_spend_used: {
-        Args: { p_child: string; p_month: string; p_week: string }
-        Returns: {
-          month_micros: number
-          week_micros: number
-        }[]
-      }
-      my_family_deletion_state: { Args: never; Returns: string }
-      note_card_checked: { Args: { p_card: string }; Returns: undefined }
       parent_maya_note_sessions: {
         Args: { p_calls: string[] }
         Returns: {
@@ -5137,6 +4826,7 @@ export type Database = {
           started_at: string
         }[]
       }
+      note_card_checked: { Args: { p_card: string }; Returns: undefined }
       parent_reads_workbook: { Args: { p_workbook: string }; Returns: boolean }
       parent_reads_workbook_folder: {
         Args: { p_folder: string }
@@ -5198,15 +4888,6 @@ export type Database = {
         Args: { p_parent: string; p_report: string }
         Returns: undefined
       }
-      record_skill_state_changes: {
-        Args: {
-          p_build: string
-          p_child: string
-          p_parent: string
-          p_states: Json
-        }
-        Returns: number
-      }
       recover_maya_chat_message: {
         Args: { p_child: string; p_parent: string }
         Returns: Json
@@ -5251,34 +4932,6 @@ export type Database = {
       request_family_deletion: {
         Args: { confirmation: string; p: string }
         Returns: string
-      }
-      request_parent_family_deletion: {
-        Args: { check_only?: boolean; p: string }
-        Returns: string
-      }
-      request_parent_family_deletion_held: {
-        Args: { hold: string; p: string }
-        Returns: string
-      }
-      reserve_maya_spend: {
-        Args: {
-          p_call: string
-          p_charge: string
-          p_child: string
-          p_force: boolean
-          p_id: string
-          p_micros: number
-          p_month: string
-          p_month_cap: number
-          p_parent: string
-          p_week: string
-          p_week_cap: number
-          p_what: string
-        }
-        Returns: {
-          ok: boolean
-          over: string
-        }[]
       }
       reserve_workbook_edit_call: {
         Args: {
@@ -5342,18 +4995,6 @@ export type Database = {
             }
             Returns: string
           }
-      save_child_profile_and_skill_changes: {
-        Args: {
-          p_assessment: string
-          p_changes: Json
-          p_child: string
-          p_expected: string
-          p_parent: string
-          p_profile: Json
-          p_schema_version: number
-        }
-        Returns: Json
-      }
       save_family_payment_progress: {
         Args: {
           after_id: string
@@ -5448,10 +5089,6 @@ export type Database = {
         Args: { p_session: string; p_user: string }
         Returns: boolean
       }
-      send_scan_photos: {
-        Args: { p_child: string; p_ids: string[]; p_parent: string }
-        Returns: string[]
-      }
       send_workbook_comments: {
         Args: {
           p_by: string
@@ -5465,10 +5102,6 @@ export type Database = {
       settle_card_update: {
         Args: { p_card: string; p_confirmed: boolean; p_session: string }
         Returns: Json
-      }
-      settle_maya_spend: {
-        Args: { p_cost: number; p_id: string }
-        Returns: boolean
       }
       start_scan_photo: {
         Args: { p_id: string; p_parent: string }

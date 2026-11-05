@@ -48,6 +48,7 @@ export default async function AccountSettings({ searchParams }: PageProps<"/acco
         {cards?.some((c) => c.card_saved_at) && <li><Link href="/account/plan">Manage or cancel plan</Link></li>}
         <li><Link href="/account/password">Add or change your password</Link></li>
         <li><Link href="/account/pin">Set or change your PIN</Link></li>
+        <li><Link href="/account/maya-notice">Maya notice</Link></li>
       </ul>
       {await childDetails(db)}
       <AddChild province={kids?.at(-1)?.province ?? "BC"} />
