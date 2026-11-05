@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { answersAddUp } from "@/lib/area-level-check";
+import { answersAddUp, reportShowsPlacement } from "@/lib/area-level-check";
 import { fromRemovedRound, restoreSession, testAreaAnswers, type AreaAnswer, type Grade } from "@/lib/assessment";
 import type { Database } from "@/lib/database";
 import { LEARNING_COLUMNS } from "@/lib/learning-style";
@@ -23,9 +23,11 @@ import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 // filtered on the parent's id (the test attempt store's `load`, as the start screen reads an open test); the report's level
 // comes from the parent's session. The scans, the pages of a shipped workbook and the learning card come from the session.
 // The test is replayed by the assessment core (restoreSession, testAreaAnswers), as `npm run area-levels:check` does, and
-// compared with the stored score with the same check: a replay that differs gives no answers, so no bars.
-// The monthly summary (#562) counts Maya calls from the minutes ledger (maya_minute_grants, which a parent reads): only
-// the child and the start time of each call that used time.
+// compared with the stored score with the same check, and the stored score with the stored report: a replay that differs
+// from either gives no answers, so no bars. A test scored again after its report was made keeps the report's level and
+// shows no bars, as the bars would rest on the new score.
+// The monthly summary (#562) counts Maya calls in the minutes ledger (maya_minute_grants, which a parent reads): the
+// database counts one child's calls that used time in the month, so no row leaves it and no page of rows can hide one.
 // Plan state: the plan state table does not exist yet (#548), so `plans` returns no rows and every plan reads as
 // `unknown`. No family can be `ended` until #548 fills this read in.
 // A database error throws, and so does a missing secret key: an empty read would show a paying family "Start the test".
@@ -96,8 +98,10 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       try {
         // D-145: the removed extra round's answers are left out, as the test attempt module leaves them out.
         const replay = testAreaAnswers(restoreSession(loaded.test, loaded.answers.filter((a) => !fromRemovedRound(a.questionId)), loaded.route ?? null));
-        // Bars that count other answers than the report did would tell a second story beside the Level tile.
-        if (stored.data?.placement && answersAddUp(replay, stored.data.placement)) answers = replay;
+        // Bars that count other answers than the report did would tell a second story beside the Level tile: the replay
+        // must add up to the stored score, and the stored report must show that score.
+        const placement = stored.data?.placement;
+        if (placement && answersAddUp(replay, placement) && reportShowsPlacement(report.data.model, placement)) answers = replay;
       } catch (e) {
         console.error("[parent-view] test replay failed", e instanceof Error ? e.message : "failed");
       }
@@ -122,12 +126,15 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
     async pinSet() {
       return pinIsSet(parent);
     },
-    async mayaCalls() {
+    async mayaCalls(childId, from, to) {
       // The minutes ledger, which a parent reads: one grant per child call, settled with the seconds it used. Only the
-      // child and the start time leave this read; maya_calls itself stays closed to parents (#295).
-      const { data, error } = await session.from("maya_minute_grants").select("child_id, created_at").eq("kind", "child").gt("used_seconds", 0);
+      // count leaves this read; maya_calls itself stays closed to parents (#295).
+      const { count, error } = await session.from("maya_minute_grants").select("child_id", { count: "exact", head: true })
+        .eq("kind", "child").eq("child_id", childId).gt("used_seconds", 0)
+        .gte("created_at", new Date(from).toISOString()).lt("created_at", new Date(to).toISOString());
       if (error) throw new Error(`maya calls read: ${error.message}`);
-      return data.flatMap((g) => (g.child_id ? [{ childId: g.child_id, startedAt: g.created_at }] : []));
+      if (count === null) throw new Error("maya calls read: no count");
+      return count;
     },
     async switches() {
       const [scanPages, testFamily] = await Promise.all([

@@ -1,7 +1,7 @@
 // The check of the area rule on stored tests (D-243, #549): pure, so scripts/area-level-check.ts only reads and prints.
 // It compares each bar with the status the report shows for that area. The report counts answers at or below the school
 // grade, and the bar counts every answer, so a difference can be fair; each one is named so that a person can judge it.
-import { areaLevels, type AreaAnswer, type AreaBasis, type AreaLabel, type Certainty, type Placement, type ReportedStrand, type StrandStatus } from "@/lib/assessment";
+import { areaLevels, type AreaAnswer, type AreaBasis, type AreaLabel, type Certainty, type Placement, type ReportModel, type ReportedStrand, type StrandStatus } from "@/lib/assessment";
 
 /** Real families, families on the test and admin lists, and the copies without names of deleted families of each kind. */
 export type CheckGroup = "real" | "test-family" | "copy-real" | "copy-test-family";
@@ -82,6 +82,19 @@ export function answersAddUp(answers: readonly AreaAnswer[], placement: Placemen
     && placement.levels.every((l) => same(tallyOf(answers.filter((a) => a.level === l.level)), l))
     && [...areas].every((area) => placement.strands.some((s) => s.strand === area))
     && placement.strands.every((s) => same(tallyOf(atOrBelow.filter((a) => a.area === s.strand)), s));
+}
+
+/**
+ * Whether a stored report shows this stored score: the same level, grade, confidence and ceiling, and each area with
+ * the same status and counts (reportModel copies them from the score). A test scored again after its report was made
+ * does not, so answers that add up to the new score would draw bars beside the report's older level.
+ */
+export function reportShowsPlacement(model: Pick<ReportModel, "level" | "strands">, placement: Placement): boolean {
+  const { level } = model;
+  return level.working === placement.workingLevel && level.grade === placement.grade && level.confidence === placement.confidence
+    && level.atCeiling === placement.atCeiling
+    && Array.isArray(model.strands) && model.strands.length === placement.strands.length
+    && placement.strands.every((s) => model.strands.some((r) => r.strand === s.strand && r.status === s.status && r.correct === s.correct && r.total === s.total));
 }
 
 const emptyCounts = (): GroupCounts => ({

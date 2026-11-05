@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { monthLabel, renderMonthlySummary, summaryDocument, summaryFileName, summaryLimiter, SUMMARY_BOTTOM } from "@/lib/monthly-summary";
+import { memorySummaryQuota, monthLabel, renderMonthlySummary, renderSlots, summaryDocument, summaryFileName, SUMMARY_BOTTOM } from "@/lib/monthly-summary";
 import type { MonthlySummaryView } from "@/lib/parent-view";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
 
@@ -37,7 +37,7 @@ describe("the summary page", () => {
     const text = words(full);
     for (const s of [
       "Leah, October 2026", "Made on November 5, 2026", "Working at Grade 4", "Ahead", "In Grade 3 at school. From the test on September 10, 2026.",
-      "Level by area", "Number and operations", "Fractions and decimals", "Building up · Early sign", "The line marks Leah's school grade, Grade 3.",
+      "Level by area", "Number and operations", "Fractions and decimals", "Building up · Early sign", "The line marks the school grade, Grade 3.",
       "Early sign: too few answers in this area to be sure.", "Workbook mailed Workbook 2, on October 14", "Days of work scanned 7", "Calls with Maya 3",
       "What comes next", "Next workbook: October 28 to November 15, 2026", "An estimate.",
     ]) expect(text).toContain(s);
@@ -108,27 +108,28 @@ describe("names", () => {
   });
 });
 
-describe("the render limit", () => {
+describe("the render limits", () => {
   const MIN = 60_000;
-  it("lets a parent make a few summaries, then refuses until the oldest try leaves the window", () => {
-    const limit = summaryLimiter({ perParent: 2, windowMs: 10 * MIN, concurrent: 5 });
-    expect(limit.take("p1", 0)).toBe("ok");
-    limit.release();
-    expect(limit.take("p1", MIN)).toBe("ok");
-    limit.release();
-    expect(limit.take("p1", 2 * MIN)).toBe("too_many");
-    expect(limit.take("p2", 2 * MIN)).toBe("ok");
-    limit.release();
-    expect(limit.take("p1", 10 * MIN)).toBe("ok");
+  it("the shared count lets a parent make a few summaries, then refuses until the oldest try leaves the window", async () => {
+    const quota = memorySummaryQuota({ perParent: 2, windowMs: 10 * MIN });
+    expect(await quota.claim("p1", 0)).toBe(true);
+    expect(await quota.claim("p1", MIN)).toBe(true);
+    expect(await quota.claim("p1", 2 * MIN)).toBe(false);
+    expect(await quota.claim("p2", 2 * MIN)).toBe(true);
+    expect(await quota.claim("p1", 10 * MIN)).toBe(true);
+    expect(await quota.claim("p1", 10 * MIN)).toBe(false);
   });
-  it("renders only so many at once, and a busy refusal does not count against the parent", () => {
-    const limit = summaryLimiter({ perParent: 2, windowMs: 10 * MIN, concurrent: 1 });
-    expect(limit.take("p1", 0)).toBe("ok");
-    expect(limit.take("p2", 0)).toBe("busy");
-    expect(limit.take("p2", 0)).toBe("busy");
-    limit.release();
-    expect(limit.take("p2", 0)).toBe("ok");
-    limit.release();
-    expect(limit.take("p2", 0)).toBe("ok");
+  it("the shared count holds 5 tries in 10 minutes by default", async () => {
+    const quota = memorySummaryQuota();
+    for (let i = 0; i < 5; i++) expect(await quota.claim("p1", i)).toBe(true);
+    expect(await quota.claim("p1", 10 * MIN - 1)).toBe(false);
+  });
+  it("each instance renders at most 2 at once", () => {
+    const slots = renderSlots();
+    expect(slots.take()).toBe(true);
+    expect(slots.take()).toBe(true);
+    expect(slots.take()).toBe(false);
+    slots.release();
+    expect(slots.take()).toBe(true);
   });
 });

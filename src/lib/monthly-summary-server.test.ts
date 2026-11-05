@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { summaryLimiter } from "@/lib/monthly-summary";
+import { memorySummaryQuota, renderSlots } from "@/lib/monthly-summary";
 import { monthlySummaryResponse, type SummaryRequest } from "@/lib/monthly-summary-server";
 import { memoryParentViewReaders, type MemoryParentViewTables } from "@/lib/parent-view-memory";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
@@ -28,7 +28,7 @@ function request(over: Partial<SummaryRequest> = {}, tables: MemoryParentViewTab
   const r: SummaryRequest = {
     deskOpen: false, parent: "parent-1", childId: "child-1", month: "2026-10", now: NOW,
     access: async () => true, reader: (p) => readers.parent(p), engine: () => engine, fonts: async () => FONTS,
-    limiter: summaryLimiter(), signInUrl: "https://unicalearning.com/sign-in", ...over,
+    slots: renderSlots(), quota: memorySummaryQuota(), signInUrl: "https://unicalearning.com/sign-in", ...over,
   };
   return { r, engine, readers };
 }
@@ -74,27 +74,40 @@ describe("the monthly summary route", () => {
     }
   });
 
-  it("limits a parent's tries, and the renders running at once", async () => {
-    const limiter = summaryLimiter({ perParent: 2, windowMs: 600_000, concurrent: 2 });
-    expect((await monthlySummaryResponse(request({ limiter }).r)).status).toBe(200);
-    expect((await monthlySummaryResponse(request({ limiter, month: "2026-12" }).r)).status).toBe(404);
-    const third = await monthlySummaryResponse(request({ limiter }).r);
+  it("counts a parent's tries in one count that every function instance shares", async () => {
+    // Two instances, each with its own render slots, and the one count in the database.
+    const quota = memorySummaryQuota({ perParent: 2, windowMs: 600_000 });
+    const first = renderSlots();
+    const second = renderSlots();
+    expect((await monthlySummaryResponse(request({ slots: first, quota }).r)).status).toBe(200);
+    expect((await monthlySummaryResponse(request({ slots: second, quota, month: "2026-12" }).r)).status).toBe(404);
+    const third = await monthlySummaryResponse(request({ slots: second, quota }).r);
     expect(third.status).toBe(429);
     expect(third.headers.get("retry-after")).toBe("600");
-
-    const busy = { take: () => "busy" as const, release: vi.fn() };
-    const res = await monthlySummaryResponse(request({ limiter: busy }).r);
-    expect(res.status).toBe(429);
-    expect(res.headers.get("retry-after")).toBe("15");
-    expect(busy.release).not.toHaveBeenCalled();
+    expect(await text(third)).toBe("You have made several summaries in a few minutes. Try again in 10 minutes.");
+    // Another parent has their own count.
+    expect((await monthlySummaryResponse(request({ slots: first, quota, parent: "parent-2", childId: "child-2" }).r)).status).toBe(200);
   });
 
-  it("frees its render slot whatever happens", async () => {
-    const limiter = summaryLimiter({ perParent: 10, windowMs: 600_000, concurrent: 1 });
+  it("refuses when this instance is busy, without counting the try", async () => {
+    const slots = { take: () => false, release: vi.fn() };
+    const claim = vi.fn(async () => true);
+    const res = await monthlySummaryResponse(request({ slots, quota: { claim } }).r);
+    expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after")).toBe("15");
+    expect(claim).not.toHaveBeenCalled();
+    expect(slots.release).not.toHaveBeenCalled();
+  });
+
+  it("frees its render slot whatever happens, a refused or failed count too", async () => {
+    const slots = renderSlots(1);
     vi.spyOn(console, "error").mockImplementation(() => {});
     const broken = { print: async () => { throw new Error("no Chromium"); } };
-    expect((await monthlySummaryResponse(request({ limiter, engine: () => broken }).r)).status).toBe(503);
-    expect((await monthlySummaryResponse(request({ limiter }).r)).status).toBe(200);
+    expect((await monthlySummaryResponse(request({ slots, engine: () => broken }).r)).status).toBe(503);
+    expect((await monthlySummaryResponse(request({ slots, quota: { claim: async () => false } }).r)).status).toBe(429);
+    const down = await monthlySummaryResponse(request({ slots, quota: { claim: async () => { throw new Error("count: boom"); } } }).r);
+    expect(down.status).toBe(503);
+    expect((await monthlySummaryResponse(request({ slots }).r)).status).toBe(200);
   });
 
   it("a failed read, engine or one-page check answers in plain words, and logs no family data", async () => {

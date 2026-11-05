@@ -1800,6 +1800,32 @@ export type Database = {
           },
         ]
       }
+      monthly_summary_renders: {
+        Row: {
+          created_at: string
+          id: string
+          parent_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          parent_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          parent_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "monthly_summary_renders_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       parent_pins: {
         Row: {
           created_at: string
@@ -4242,6 +4268,10 @@ export type Database = {
           p_week: string
         }
         Returns: string
+      }
+      claim_monthly_summary_render: {
+        Args: { p_max: number; p_parent: string; p_window_seconds: number }
+        Returns: boolean
       }
       claim_pin_attempt: {
         Args: {

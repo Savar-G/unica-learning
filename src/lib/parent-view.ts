@@ -4,7 +4,7 @@ import {
   type AreaAnswer, type AreaLabel, type Attempt, type Grade, type Level, type ReportModel, type ReportedStrand,
 } from "@/lib/assessment";
 import { childStage, type StageView, type TabSwitches, type TestFact } from "@/lib/child-stage";
-import { addMonths, familyZone, localDay, localMonth, type FamilyZone } from "@/lib/family-time";
+import { addMonths, familyZone, localDateTime, localDay, localMonth, type FamilyZone } from "@/lib/family-time";
 import type { LearningRow } from "@/lib/learning-style";
 import { nextBook, type NextBook } from "@/lib/next-book";
 import type { ParentPlan } from "@/lib/parent-plan";
@@ -95,21 +95,22 @@ export interface ParentViewReader {
   learningCards(): Promise<LearningCardRecord[]>;
   /** Whether the parent has a PIN; null when it cannot be read. */
   pinSet(): Promise<boolean | null>;
-  /** The children's Maya calls that counted minutes (a call that used no time is not one), when each started. */
-  mayaCalls(): Promise<MayaCallRecord[]>;
-}
-
-/** One of a child's Maya calls: only when it started. Never its words, notes or outcome. */
-export interface MayaCallRecord {
-  childId: string;
-  startedAt: string;
+  /**
+   * How many of the child's Maya calls that counted minutes (a call that used no time is not one) started from `from`
+   * up to, not including, `to` (epoch ms). Only a number: never a call's words, notes or outcome.
+   */
+  mayaCalls(childId: string, from: number, to: number): Promise<number>;
 }
 
 /** A finished test, as the report reads it. */
 export interface TestResultRecord {
   /** The stored report's level (public.reports.model), before storedLevelCertainty. */
   level: ReportModel["level"];
-  /** One answer per scored question, tagged with its reported area and grade (testAreaAnswers); null when the stored test cannot be replayed, or the replay does not add up to the stored score. */
+  /**
+   * One answer per scored question, tagged with its reported area and grade (testAreaAnswers); null when the stored test
+   * cannot be replayed, the replay does not add up to the stored score, or the stored report does not show that score
+   * (a test scored again after its report was made).
+   */
   answers: AreaAnswer[] | null;
 }
 export interface SavedScanRecord {
@@ -440,8 +441,10 @@ export async function readMonthlySummary(reader: ParentViewReader, childId: stri
   if (first === null || month < first || month >= localMonth(now, zone)) return null;
   const inMonth = (at: string | number) => localMonth(at, zone) === month;
 
-  const [tests, reports, workbooks, scans, calls, books] = await Promise.all([
-    reader.tests(), reader.reports(), reader.shippedWorkbooks(), reader.savedScans(), reader.mayaCalls(), readWorkbooks(reader, child.id, now),
+  const [tests, reports, workbooks, scans, mayaCalls, books] = await Promise.all([
+    reader.tests(), reader.reports(), reader.shippedWorkbooks(), reader.savedScans(),
+    reader.mayaCalls(child.id, localDateTime(`${month}-01`, zone), localDateTime(`${addMonths(month, 1)}-01`, zone)),
+    readWorkbooks(reader, child.id, now),
   ]);
   // The newest test that finished by the month's end, as the Overview would have shown it then.
   const latest = tests
@@ -475,7 +478,6 @@ export async function readMonthlySummary(reader: ParentViewReader, childId: stri
     daysScanned += [...days.values()].filter((at) => at !== null && inMonth(at)).length;
   }
 
-  const mayaCalls = calls.filter((c) => c.childId === child.id && inMonth(c.startedAt)).length;
   const next = books?.next.kind === "range" ? { earliest: books.next.earliest, latest: books.next.latest } : null;
   return { firstName: child.firstName, schoolGrade: child.schoolGrade, month, madeOn: localDay(now, zone), level, areas, mailed, daysScanned, mayaCalls, next };
 }

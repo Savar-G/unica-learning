@@ -1,4 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import jsQR from "jsqr";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
@@ -194,6 +196,43 @@ describe.skipIf(!chromium)("the monthly summary with Chromium", () => {
       await mkdir(process.env.RENDER_OUT, { recursive: true });
       await writeFile(`${process.env.RENDER_OUT}/monthly-summary.pdf`, out.pdf);
       await writeFile(`${process.env.RENDER_OUT}/monthly-summary.png`, out.png);
+    }
+  }, 60_000);
+
+  // The most a real summary holds: the longest name a child may have (60 characters, public.children), an Early sign
+  // level, all four areas with Early sign, and more workbooks mailed in one month than a family gets.
+  const most = (firstName: string): MonthlySummaryView => ({
+    ...view,
+    firstName,
+    schoolGrade: 9,
+    level: { working: 0, earlySign: true, testedOn: "2026-09-10" },
+    areas: view.areas.map((a) => ({ ...a, level: 0, label: "building-up", earlySign: true })),
+    mailed: [1, 2, 3, 4].map((number) => ({ number, shippedOn: `2026-10-${String(number * 7).padStart(2, "0")}` })),
+    daysScanned: 30, mayaCalls: 31,
+  });
+  it.each([
+    ["words", "Maximiliana Alexandrina Josephine Wilhelmina Bartholomew Ann"],
+    ["one word", "W".repeat(60)],
+  ])("fits the fullest summary on one page with a 60-character name in %s", async (_, firstName) => {
+    expect(firstName).toHaveLength(60);
+    const out = await renderMonthlySummary({ view: most(firstName), engine: chromiumPrintEngine(), fonts: await fixedTemplateFonts() });
+    expect(out.status).toBe("rendered");
+  }, 60_000);
+
+  // The print engine leaves scripts and networking on for its other callers, so the summary must never put the name in
+  // as markup: a crafted name prints as text and asks for nothing.
+  it("prints a crafted name as text: it runs no script and loads nothing", async () => {
+    const asked: string[] = [];
+    const server = createServer((req, res) => { asked.push(req.url ?? ""); res.end("x"); });
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const at = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      const firstName = `<img src="${at}/img"><script>fetch("${at}/script")</script>`;
+      const out = await renderMonthlySummary({ view: { ...view, firstName }, engine: chromiumPrintEngine(), fonts: await fixedTemplateFonts() });
+      expect(out.status).toBe("rendered");
+      expect(asked).toEqual([]);
+    } finally {
+      server.close();
     }
   }, 60_000);
 

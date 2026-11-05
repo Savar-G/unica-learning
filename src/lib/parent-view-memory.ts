@@ -202,9 +202,10 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
           ...c, childId: c.id, learning_styles: null, interests: null, learning_note: null, math_feeling: null, learning_goal: null, weekly_time: null, ...c.learning,
         }));
       },
-      async mayaCalls() {
+      async mayaCalls(childId, from, to) {
         read("maya");
-        return own(tables.maya).filter((g) => g.kind === "child" && g.usedSeconds !== null && g.usedSeconds > 0).map((g) => ({ ...g, startedAt: g.createdAt }));
+        return own(tables.maya).filter((g) => g.kind === "child" && g.childId === childId && g.usedSeconds !== null && g.usedSeconds > 0
+          && Date.parse(g.createdAt) >= from && Date.parse(g.createdAt) < to).length;
       },
       async pinSet() {
         // As the server: a PIN that cannot be read is null, not an error.

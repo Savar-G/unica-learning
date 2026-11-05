@@ -1,17 +1,18 @@
 import "server-only";
-import { renderMonthlySummary, summaryFileName, type SummaryLimiter } from "@/lib/monthly-summary";
+import { renderMonthlySummary, summaryFileName, type RenderSlots, type SummaryQuota } from "@/lib/monthly-summary";
 import { readMonthlySummary, type ParentViewReader } from "@/lib/parent-view";
 import type { PrintEngine } from "@/lib/workbook-render";
 import type { TemplateFonts } from "@/lib/workbook-template-fixed";
 
 // The monthly summary route's answer (#562): one child's month as a one-page PDF, made now and never stored. The route
-// (src/app/api/account/children/[id]/monthly-summary/route.ts) gives the session, the desk lock, the print engine and the
-// limiter; this module decides. In order:
+// (src/app/api/account/children/[id]/monthly-summary/route.ts) gives the session, the desk lock, the print engine, the
+// instance's render slots and the shared count of tries; this module decides. In order:
 //   - the child's desk is open on this device: 423, as the proxy answers every account API then;
 //   - no one signed in: to sign-in, since the parent opened the link in the browser;
 //   - a family the dashboard switch does not open to, another family's child, a month the Overview does not offer: 404;
-//   - too many tries by this parent, or too many renders in this function now: 429 with Retry-After;
-//   - a read, the engine or the one-page check fails: 503.
+//   - too many renders in this function now: 429 with Retry-After, and the try is not counted;
+//   - too many tries by this parent in the shared count (every instance): 429 with Retry-After;
+//   - the count, a read, the engine or the one-page check fails: 503.
 // Every answer is private and never stored by a shared cache. A failure answers in plain words.
 
 export interface SummaryRequest {
@@ -24,7 +25,8 @@ export interface SummaryRequest {
   reader(parent: string): ParentViewReader;
   engine(): PrintEngine;
   fonts(): Promise<TemplateFonts>;
-  limiter: SummaryLimiter;
+  slots: RenderSlots;
+  quota: SummaryQuota;
   signInUrl: string;
 }
 
@@ -41,10 +43,9 @@ export async function monthlySummaryResponse(r: SummaryRequest): Promise<Respons
   if (!(await r.access(r.parent))) return say(NOT_FOUND, 404);
   if (!r.month) return say(NOT_FOUND, 404);
 
-  const take = r.limiter.take(r.parent, r.now);
-  if (take === "too_many") return say("You have made several summaries in a few minutes. Try again in 10 minutes.", 429, { "Retry-After": "600" });
-  if (take === "busy") return say("We are busy making other summaries. Try again in a moment.", 429, { "Retry-After": "15" });
+  if (!r.slots.take()) return say("We are busy making other summaries. Try again in a moment.", 429, { "Retry-After": "15" });
   try {
+    if (!(await r.quota.claim(r.parent, r.now))) return say("You have made several summaries in a few minutes. Try again in 10 minutes.", 429, { "Retry-After": "600" });
     const view = await readMonthlySummary(r.reader(r.parent), r.childId, r.month, r.now);
     if (!view) return say(NOT_FOUND, 404);
     const out = await renderMonthlySummary({ view, engine: r.engine(), fonts: await r.fonts() });
@@ -66,6 +67,6 @@ export async function monthlySummaryResponse(r: SummaryRequest): Promise<Respons
     console.error("[monthly-summary] failed", error instanceof Error ? error.message : "failed");
     return say(FAILED, 503);
   } finally {
-    r.limiter.release();
+    r.slots.release();
   }
 }
