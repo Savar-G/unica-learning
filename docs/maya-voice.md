@@ -76,7 +76,7 @@ Agents create no accounts. Create these, then set the values below.
 
 A real provider set without its privacy confirmation, key or voice stops the worker's job with a clear log line. It never falls back to the fake quietly (`voiceProviders`, `src/lib/maya-voice.ts`).
 
-Deploying the worker to LiveKit Cloud, the privacy page text, the voice choice and the delay measurements are #327.
+Deploying the worker to LiveKit Cloud, the voice choice and the delay measurements are #327. The privacy page and terms hold only a marked paragraph for voice, with no company named (#529); replace it, and raise `MAYA_NOTICE_VERSION`, before the first family call. `mintVoiceToken` refuses a family call without the parent's agreement; an admin test call is exempt (D-251).
 
 ## Commands
 

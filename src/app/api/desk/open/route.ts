@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { DESK_COOKIE, DESK_HOME, readLock } from "@/lib/desk";
 import { openDesk, sameOrigin } from "@/lib/desk-server";
+import { mayaNoticeDue } from "@/lib/maya-notice-server";
 import { pinIsSet } from "@/lib/parent-pin-server";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { isUuid } from "@/lib/workbook-content";
@@ -9,7 +10,8 @@ import { isUuid } from "@/lib/workbook-content";
 // Opens the child's desk on this device (#301): a form POST from Parent home (`child`) or from a page QR code (`child`,
 // `w` the workbook, `p` the page, `from` "qr"). The child is read with the parent's own session, so only their own child opens. The
 // desk needs the parent's PIN to leave, so a parent with no PIN sets one first. A desk open for another child stays: it
-// switches only after the PIN closes it.
+// switches only after the PIN closes it. A family with Maya open that has not agreed to her notice (#529) reads it first;
+// `maya` "later" opens the desk without Maya, and the server then refuses a chat.
 export async function POST(request: Request) {
   const to = (path: string) => NextResponse.redirect(new URL(path, request.url), 303);
   if (!sameOrigin(request)) return new Response("Forbidden", { status: 403 });
@@ -34,6 +36,7 @@ export async function POST(request: Request) {
   if (Number.isInteger(page) && page > 0) at.set("p", String(page));
   // A page QR code: the desk opens "Pick from my page" on that page and says how it opened.
   if (at.has("p") && form?.get("from") === "qr") at.set("from", "qr");
+  if (!open && form?.get("maya") !== "later" && await mayaNoticeDue(parent)) return to(`/account/maya-notice?child=${child.id}${at.size ? `&${at}` : ""}`);
   const response = to(at.size ? `${DESK_HOME}?${at}` : DESK_HOME);
   openDesk(response, parent, child.id);
   return response;

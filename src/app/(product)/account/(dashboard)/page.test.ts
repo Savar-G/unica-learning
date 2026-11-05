@@ -11,7 +11,9 @@ vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 const minutes = vi.hoisted(() => ({ value: new Map<string, import("@/lib/maya-minutes-server").ChildMinutes>() }));
 vi.mock("@/lib/maya-minutes-server", () => ({ parentMinutes: async () => minutes.value }));
 vi.mock("@/lib/parent-pin-server", () => ({ pinIsSet: async () => false }));
-vi.mock("@/lib/workbook-store", () => ({ workbookStore: () => ({ childWorkbooks: async () => [] }) }));
+const mayaNotice = vi.hoisted(() => ({ due: false, books: [] as { id: string; childId: string; number: number; status: string }[] }));
+vi.mock("@/lib/workbook-store", () => ({ workbookStore: () => ({ childWorkbooks: async (child: string) => mayaNotice.books.filter((b) => b.childId === child) }) }));
+vi.mock("@/lib/maya-notice-server", () => ({ mayaNoticeDue: async () => mayaNotice.due }));
 const scanning = vi.hoisted(() => ({ enabled: false }));
 vi.mock("@/lib/scan-pages-access", () => ({ scanPagesAccess: async () => scanning.enabled }));
 const notes = vi.hoisted(() => ({ latest: new Map<string, ParentNote>() }));
@@ -156,6 +158,27 @@ describe("a family the switch opens to", () => {
     return renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve(query) })));
   };
   beforeEach(() => { family.olderChild = true; });
+
+  // #529: the notice card is for a family with Maya open, no agreement and a desk to open.
+  it("shows the Maya notice card only when it is due and a child has a workbook, in both homes", async () => {
+    const render = async () => renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
+    const card = 'href="/account/maya-notice">Read the notice';
+    try {
+      mayaNotice.due = true;
+      expect(await render()).not.toContain(card);
+      mayaNotice.books = [{ id: "w1", childId: "c1", number: 1, status: "shipped" }];
+      expect(await render()).toContain(card);
+      mayaNotice.due = false;
+      expect(await render()).not.toContain(card);
+      mayaNotice.due = true;
+      dashboard.value = { children: [view("c1", "Asha")], remembered: null, pinSet: true, timeZoneSaved: true };
+      expect(await render()).toContain(card);
+    } finally {
+      mayaNotice.due = false;
+      mayaNotice.books = [];
+      dashboard.value = null;
+    }
+  });
 
   it("opens on the last child viewed, with only that child's part", async () => {
     dashboard.value = null;

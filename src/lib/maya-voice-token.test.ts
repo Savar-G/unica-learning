@@ -21,7 +21,7 @@ const A2: VoiceCallFacts = { ...A, id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" };
 const admits = (video: { roomJoin?: boolean; room?: string } | undefined, room: string) => video?.roomJoin === true && video.room === room;
 
 async function mint(call: VoiceCallFacts, family = call) {
-  const r = await mintVoiceToken({ call, parentId: family.parentId, childId: family.childId, project, name: "Leah", now: Date.UTC(2026, 10, 1, 16) });
+  const r = await mintVoiceToken({ call: { ...call, kind: "admin_test" }, notice: null, parentId: family.parentId, childId: family.childId, project, name: "Leah", now: Date.UTC(2026, 10, 1, 16) });
   if (!r.ok) throw new Error(r.error);
   return { ticket: r.ticket, claims: await verifier.verify(r.ticket.token) };
 }
@@ -62,10 +62,10 @@ describe("a voice call token", () => {
   });
 
   it("cannot be minted for another family's call, a text call or an ended call", async () => {
-    await expect(mintVoiceToken({ call: B, parentId: A.parentId, childId: A.childId, project })).resolves.toEqual({ ok: false, error: "wrong_family" });
-    await expect(mintVoiceToken({ call: B, parentId: B.parentId, childId: A.childId, project })).resolves.toEqual({ ok: false, error: "wrong_family" });
-    await expect(mintVoiceToken({ call: { ...A, mode: "text" }, parentId: A.parentId, childId: A.childId, project })).resolves.toEqual({ ok: false, error: "not_voice" });
-    await expect(mintVoiceToken({ call: { ...A, status: "ended" }, parentId: A.parentId, childId: A.childId, project })).resolves.toEqual({ ok: false, error: "ended" });
+    await expect(mintVoiceToken({ call: { ...B, kind: "admin_test" }, notice: null, parentId: A.parentId, childId: A.childId, project })).resolves.toEqual({ ok: false, error: "wrong_family" });
+    await expect(mintVoiceToken({ call: { ...B, kind: "admin_test" }, notice: null, parentId: B.parentId, childId: A.childId, project })).resolves.toEqual({ ok: false, error: "wrong_family" });
+    await expect(mintVoiceToken({ call: { ...A, kind: "admin_test", mode: "text" }, notice: null, parentId: A.parentId, childId: A.childId, project })).resolves.toEqual({ ok: false, error: "not_voice" });
+    await expect(mintVoiceToken({ call: { ...A, kind: "admin_test", status: "ended" }, notice: null, parentId: A.parentId, childId: A.childId, project })).resolves.toEqual({ ok: false, error: "ended" });
   });
 
   it("does not get its holder heard in another family's call: the worker refuses it there", async () => {
@@ -80,5 +80,34 @@ describe("a voice call token", () => {
   it("is refused when signed with another secret", async () => {
     const { ticket } = await mint(A);
     await expect(new TokenVerifier(project.apiKey, `${project.apiSecret}-other`).verify(ticket.token)).rejects.toThrow();
+  });
+});
+
+// #529: no token for a family that has not agreed to the Maya notice. An admin test call has no parent to agree.
+describe("a voice call token and the Maya notice", () => {
+  const facts = { call: { ...A, kind: "family" }, parentId: A.parentId, childId: A.childId, project, name: "Leah" };
+  const asks = (accepted: boolean) => vi.fn(async () => accepted);
+
+  it("refuses a family call without an agreement", async () => {
+    const notice = { accepted: asks(false) };
+    expect(await mintVoiceToken({ ...facts, notice })).toEqual({ ok: false, error: "notice_required" });
+    expect(notice.accepted).toHaveBeenCalledWith(A.parentId);
+  });
+
+  it("mints a token for a family call with an agreement", async () => {
+    const r = await mintVoiceToken({ ...facts, notice: { accepted: asks(true) } });
+    expect(r.ok).toBe(true);
+  });
+
+  it("refuses a family call when the notice cannot be checked", async () => {
+    expect(await mintVoiceToken({ ...facts, notice: null })).toEqual({ ok: false, error: "notice_required" });
+    await expect(mintVoiceToken({ ...facts, notice: { accepted: async () => { throw new Error("down"); } } })).rejects.toThrow("down");
+  });
+
+  it("does not ask for an admin test call, so admin demos keep working", async () => {
+    const notice = { accepted: asks(false) };
+    const r = await mintVoiceToken({ ...facts, call: { ...A, kind: "admin_test" }, notice });
+    expect(r.ok).toBe(true);
+    expect(notice.accepted).not.toHaveBeenCalled();
   });
 });

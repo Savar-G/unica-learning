@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { SendLink, StartTest, TrackOnce } from "@/components/account";
 import { NoteCard } from "@/components/parent-maya-notes";
-import { DemoMinutesLine, DeskText, MinutesRow } from "@/components/parent-home-rows";
+import { DemoMinutesLine, DeskText, MayaNoticeCard, MinutesRow } from "@/components/parent-home-rows";
 import { SupportPage } from "@/components/support-page";
 import type { StartState } from "@/lib/assessment";
 import { gradeLabel } from "@/lib/assessment/grades";
@@ -34,6 +34,7 @@ export interface DashboardHomeProps {
   chats: ReadonlyMap<string, ChatUsage>;
   notes: ReadonlyMap<string, ParentNote>;
   scansEnabled: boolean;
+  noticeDue: boolean;
   alerts: { password: boolean; pin: boolean; deskError: boolean; existing: boolean };
 }
 
@@ -41,7 +42,7 @@ export interface DashboardHomeProps {
  * The dashboard's home (#551): one child's part of Parent home, in the frame. It has no panels yet: #552 and #560 fill
  * it, and a panel with no data does not appear. The family's links are on the Account tab.
  */
-export function ParentDashboardHome({ dashboard, kids, addressChild, phone, sent, parentEmail, timeZone, states, reportFor, current, minutes, chats, notes, scansEnabled, alerts }: DashboardHomeProps) {
+export function ParentDashboardHome({ dashboard, kids, addressChild, phone, sent, parentEmail, timeZone, states, reportFor, current, minutes, chats, notes, scansEnabled, noticeDue, alerts }: DashboardHomeProps) {
   const view = pickChild(dashboard.children, addressChild, dashboard.remembered);
   const kid = kids.find((k) => k.id === view?.id);
   const links = tabLinks(view);
@@ -57,6 +58,7 @@ export function ParentDashboardHome({ dashboard, kids, addressChild, phone, sent
       {alerts.pin && <p role="status" className="acct-alert acct-saved">Your PIN is saved.</p>}
       {alerts.deskError && <p role="status" className="acct-alert">We cannot open the desk right now. Try again in a moment.</p>}
       {alerts.existing && <p role="status" className="acct-alert acct-saved">This email already has an account, so the code signed you in. Nothing in your account changed. To add a child, use Add another child.</p>}
+      {noticeDue && current.size > 0 && <MayaNoticeCard />}
       {!kid && <p className="lead">Add a child on the <Link href="/account/settings">Account</Link> page to start.</p>}
       {kid && state && (
         <>

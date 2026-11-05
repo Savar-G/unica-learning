@@ -6,6 +6,7 @@ import { DESK_COOKIE, DESK_HOME, deskView, questionCrop, readLock, tapAreas, typ
 import { formatInZone, familyZone, type FamilyZone } from "@/lib/family-time";
 import { questionBoard } from "@/lib/desk-board";
 import { parentChatUsage } from "@/lib/maya-chat-server";
+import { mayaNoticeDue } from "@/lib/maya-notice-server";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { WORKBOOK_FILES_BUCKET, type WorkbookSummary } from "@/lib/workbook-content";
 import { workbookStore } from "@/lib/workbook-store";
@@ -53,7 +54,10 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
   const province = await loadFamilyProvince(db, parent);
   const timeZone = familyZone({ timeZone: family?.time_zone, postal: family?.postal, province });
 
-  const chatUsage = child ? (await parentChatUsage(db, parent, [child], timeZone)).get(child.id) ?? null : null;
+  // Without a parent's agreement (#529), the desk shows chat as off and says who can turn it on.
+  const noticeDue = await mayaNoticeDue(parent);
+  const chatNote = noticeDue ? "Ask a grown-up to turn on Maya from their account." : null;
+  const chatUsage = child && !noticeDue ? (await parentChatUsage(db, parent, [child], timeZone)).get(child.id) ?? null : null;
 
   if (!child || !view || view.status === "no-workbook") {
     return (
@@ -78,6 +82,7 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
       key={`${workbook.id}-${page.number}`}
       name={name}
       chatUsage={chatUsage}
+      chatNote={chatNote}
       notice={view.notice === "not-this-child" ? `That workbook is not on ${name}'s desk, so ${name}'s newest workbook is open.` : null}
       books={view.workbooks.map((w) => book(w, timeZone))}
       book={book(workbook, timeZone)}
