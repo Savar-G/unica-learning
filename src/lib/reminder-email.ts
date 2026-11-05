@@ -84,7 +84,7 @@ function content(e: ReminderEmailInput): { subject: string; preview: string; par
         subject: `A quick question about ${name}'s math test`,
         preview: `Is anything getting in the way?`,
         paragraphs: [
-          `We're Cedric and Savar, the founders of Unica Learning. We noticed ${name} hasn't had a chance to take the free math test yet, so we wanted to check in ourselves.`,
+          `We're Savar and Cedric, the founders of Unica Learning. We noticed ${name} hasn't had a chance to take the free math test yet, so we wanted to check in ourselves.`,
           `Is anything getting in the way, like timing, signing in, or questions about how it works?`,
           `If you'd like to go ahead, it takes about 20 minutes. It's free, with no card needed.`,
         ],
