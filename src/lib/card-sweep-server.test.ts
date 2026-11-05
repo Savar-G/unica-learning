@@ -63,7 +63,7 @@ function network(net: Net) {
     const rpc = url.pathname.match(/\/rpc\/(.+)$/)?.[1];
     if (rpc) {
       net.rpcs.push({ name: rpc, body: JSON.parse(text || "{}") });
-      if (rpc === "card_check_rows") return Response.json([net.row]);
+      if (rpc === "card_recovery_rows") return Response.json([net.row]);
       if (rpc === "settle_card_update") return Response.json({ state: "flagged" });
       const body = JSON.parse(text || "{}");
       // The ledger's rule in both functions: one claim per key, and a claim given back may be taken again.

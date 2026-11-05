@@ -108,6 +108,8 @@ export type PlanStartOutcome =
 export interface CardRow extends NewestCard {
   cardId: string;
   customer: string;
+  /** A fenced family is visible only to resolve its existing open start and alert the team. */
+  deletionQueued?: boolean;
   needsRepair: boolean;
   /** The newest generation's start, closed or open. */
   planStart: PlanStart | null;
@@ -118,9 +120,9 @@ export interface CardRows {
   recordCard(cardId: string, card: RecordedCard): Promise<CardRecord>;
   /** After a comparison of Stripe with `session`'s card. Throws when it fails. */
   settleCard(cardId: string, session: string | null, confirmed: boolean): Promise<CardSettle>;
-  /** The card setup's row, or null. A family being deleted has none. Throws when it fails. */
+  /** The card setup's row, or null. A fenced family exposes only its existing open start. Throws when it fails. */
   cardRow(cardId: string): Promise<CardRow | null>;
-  /** The customer's row, or null. A family being deleted has none. Throws when it fails. */
+  /** The customer's row, or null. A fenced family exposes only its existing open start. Throws when it fails. */
   cardRowOfCustomer(customer: string): Promise<CardRow | null>;
   /** Rows with an open start, a pending email, or a card that is flagged or changed after `changedAfter` (ms), the row looked at longest ago first. Throws when it fails. */
   dueCardRows(changedAfter: number, limit: number): Promise<CardRow[]>;
@@ -288,8 +290,8 @@ export type PlanCheck =
   | "needs_team";
 
 /** Closes a record whose subscription was found. The parent hears about a plan that is still on, with a date to give. */
-export const startedOutcome = (plan: PlanCard): PlanStartOutcome => ({
-  state: "started", subscription: plan.id, firstCharge: plan.firstCharge, email: planNotOver(plan.status) && plan.firstCharge !== null,
+export const startedOutcome = (plan: PlanCard, emailAllowed = true): PlanStartOutcome => ({
+  state: "started", subscription: plan.id, firstCharge: plan.firstCharge, email: emailAllowed && planNotOver(plan.status) && plan.firstCharge !== null,
 });
 
 /** What a press does next, from the record and the customer's whole list of subscriptions. */
@@ -340,7 +342,7 @@ async function checkOpenStart(row: CardRow, start: PlanStart, seams: CardCheckSe
   const { plans } = await seams.stripe.cardState(row.customer);
   const step = pressStep(start, plans, now);
   if (step.step === "landed" || step.step === "other") {
-    const outcome = step.step === "landed" ? startedOutcome(step.plan) : { state: "other" as const, subscription: step.plan.id };
+    const outcome = step.step === "landed" ? startedOutcome(step.plan, !row.deletionQueued) : { state: "other" as const, subscription: step.plan.id };
     await seams.rows.finishPlanStart(row.cardId, start.generation, outcome);
     return { plan: step.step === "landed" ? "started" : "other", start: closed(start, outcome, now), justClosed: true };
   }
@@ -382,14 +384,14 @@ export interface CardCheck {
 
 /** Brings one row's Stripe side to the row, decides its open start, and sends its pending email. Throws only when the row cannot be flagged. */
 export async function checkCardRow(row: CardRow, seams: CardCheckSeams, now = Date.now()): Promise<CardCheck> {
-  const card = await settleNewestCard(row.cardId, row.customer, row, seams);
+  const card = row.deletionQueued ? { wrote: 0, failure: null } : await settleNewestCard(row.cardId, row.customer, row, seams);
   if (!row.planStart) return { wrote: card.wrote, plan: "none", email: "none", failure: card.failure };
   let start = row.planStart;
   let plan: PlanCheck = "none";
   let justClosed = false;
   try {
     if (start.state === "open") ({ plan, start, justClosed } = await checkOpenStart(row, start, seams, now));
-    return { wrote: card.wrote, plan, email: await tellParent(row, start, seams, justClosed, now), failure: card.failure };
+    return { wrote: card.wrote, plan, email: row.deletionQueued ? "none" : await tellParent(row, start, seams, justClosed, now), failure: card.failure };
   } catch (e) {
     console.error("[billing] plan start check failed", e instanceof Error ? e.message : "failed");
     return { wrote: card.wrote, plan: start.state === "open" && plan === "none" ? "waiting" : plan, email: start.email, failure: card.failure ?? e };
@@ -451,7 +453,7 @@ export async function sweepCards(seams: CardCheckSeams, time: SweepTime, limit =
       break;
     }
     try {
-      await untilEnd(seams.rows.noteCardChecked(row.cardId), time.signal);
+      if (!row.deletionQueued) await untilEnd(seams.rows.noteCardChecked(row.cardId), time.signal);
     } catch (e) {
       console.error("[billing] card row note failed", e instanceof Error ? e.message : "failed");
     }

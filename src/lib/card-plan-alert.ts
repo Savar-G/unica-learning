@@ -30,17 +30,23 @@ function alertLedger(rows: CardRows): SendLedger<AlertKey, AlertKey> {
   };
 }
 
-export function planStartAlertEmail(cardId: string, origin: string): { subject: string; text: string } {
+export function planStartAlertEmail(cardId: string, origin: string, deletionQueued = false): { subject: string; text: string } {
   return {
-    subject: "A plan start needs the team",
+    subject: deletionQueued ? "A queued family deletion needs a plan start check" : "A plan start needs the team",
     text: [
       "A plan start got no answer from Stripe, and 24 hours later we still find no plan from it. The request may still land, so nobody can safely press start again.",
       "",
       `Card setup: ${cardId}`,
       `Open the card: ${origin}${ADMIN_PATH}/next-steps`,
       "",
-      "Open the family in Stripe. If you find no plan from this start, press \"I checked Stripe: close this start\" on the card. The next press then starts a new plan.",
-      "If the plan shows up first, nothing more is needed: the record closes by itself, and the parent gets the confirmation email.",
+      ...(deletionQueued ? [
+        "The family's deletion is already queued. This open start blocks it. Recovery only reads Stripe and resolves or closes this start. It does not update cards or send a parent confirmation.",
+        "Open the family in Stripe. If you find no plan from this start, press \"I checked Stripe: close this start\" on the card. The deletion worker checks Stripe again and cancels any subscription before it removes the family.",
+        "If the plan shows up first, recovery resolves the record. The deletion worker cancels the subscription before it removes the family.",
+      ] : [
+        "Open the family in Stripe. If you find no plan from this start, press \"I checked Stripe: close this start\" on the card. The next press then starts a new plan.",
+        "If the plan shows up first, nothing more is needed: the record closes by itself, and the parent gets the confirmation email.",
+      ]),
     ].join("\n"),
   };
 }
@@ -49,5 +55,5 @@ const noAddress: MailTransport = { send: async () => ({ status: "refused", error
 
 /** Sends the alert once. `to`: SIGNUP_NOTIFY_EMAIL, the address of the other internal alerts; with none, it is refused and tried again. */
 export function sendPlanStartAlert(rows: CardRows, row: CardRow, start: PlanStart, { to, origin, transport }: { to: string | null; origin: string; transport?: MailTransport }): Promise<SendOutcome> {
-  return sendEmailOnce(alertLedger(rows), { cardId: row.cardId, generation: start.generation }, { sender: { to: "savar" }, to: to ?? "", ...planStartAlertEmail(row.cardId, origin) }, { transport: to ? transport : noAddress });
+  return sendEmailOnce(alertLedger(rows), { cardId: row.cardId, generation: start.generation }, { sender: { to: "savar" }, to: to ?? "", ...planStartAlertEmail(row.cardId, origin, row.deletionQueued) }, { transport: to ? transport : noAddress });
 }

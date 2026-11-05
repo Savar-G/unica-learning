@@ -4762,22 +4762,38 @@ export type Database = {
         Args: { p: string; token: string }
         Returns: undefined
       }
-      begin_family_delete_code: {
-        Args: {
-          p_day_seconds: number
-          p_hash: string
-          p_now: string
-          p_parent: string
-          p_per_day: number
-          p_per_window: number
-          p_ttl_seconds: number
-          p_window_seconds: number
-        }
-        Returns: {
-          out_retry_at: string
-          out_status: string
-        }[]
-      }
+      begin_family_delete_code:
+        | {
+            Args: {
+              p_day_seconds: number
+              p_hash: string
+              p_now: string
+              p_parent: string
+              p_per_day: number
+              p_per_window: number
+              p_ttl_seconds: number
+              p_window_seconds: number
+            }
+            Returns: {
+              out_retry_at: string
+              out_status: string
+            }[]
+          }
+        | {
+            Args: {
+              p_day_seconds: number
+              p_hash: string
+              p_parent: string
+              p_per_day: number
+              p_per_window: number
+              p_ttl_seconds: number
+              p_window_seconds: number
+            }
+            Returns: {
+              out_retry_at: string
+              out_status: string
+            }[]
+          }
       begin_family_delete_hold: {
         Args: { hold: string; p: string }
         Returns: string
@@ -4815,6 +4831,32 @@ export type Database = {
         Returns: {
           card_id: string
           customer: string
+          needs_repair: boolean
+          payment_method_id: string
+          session_id: string
+          start_alert: string
+          start_at: string
+          start_card: string
+          start_email: string
+          start_finished_at: string
+          start_first_charge: string
+          start_generation: number
+          start_key: string
+          start_state: string
+          start_subscription: string
+        }[]
+      }
+      card_recovery_rows: {
+        Args: {
+          p_card?: string
+          p_changed_after?: string
+          p_customer?: string
+          p_limit?: number
+        }
+        Returns: {
+          card_id: string
+          customer: string
+          deletion_queued: boolean
           needs_repair: boolean
           payment_method_id: string
           session_id: string
@@ -5083,6 +5125,10 @@ export type Database = {
         }
         Returns: Json
       }
+      consume_family_delete_code: {
+        Args: { p_hash: string; p_parent: string }
+        Returns: boolean
+      }
       correct_workbook_delivery: {
         Args: {
           p_child: string
@@ -5151,6 +5197,12 @@ export type Database = {
         }[]
       }
       family_deletion_cursor: { Args: never; Returns: string }
+      family_deletion_start_customers: {
+        Args: { p: string }
+        Returns: {
+          customer: string
+        }[]
+      }
       family_last_activity: { Args: { p: string }; Returns: string }
       family_plan_start_open: { Args: { p: string }; Returns: boolean }
       family_retention_candidates: {

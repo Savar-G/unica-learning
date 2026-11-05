@@ -24,6 +24,7 @@ for (const state of ["waiting", "active", "unresolved"] as const) {
           case "claim_family_retention": answer = { state: "ready", reason: "retention", phase: "checking" }; break;
           case "family_retention_cards": answer = cards; break;
           case "family_last_activity": answer = "2020-01-01T00:00:00Z"; break;
+          case "family_deletion_start_customers": answer = []; break;
           case "pending_family_payment_operations": answer = []; break;
           case "decide_family_deletion": expect(args.keep_family).toBe(true); unfrozen = true; answer = true; break;
           case "release_family_deletion": release = true; answer = true; break;
@@ -102,6 +103,7 @@ describe("the copy without names before a deletion", () => {
         const json = (answer: unknown, status = 200) => new Response(JSON.stringify(answer), { status, headers: { "content-type": "application/json" } });
         switch (name) {
           case "claim_family_deletion": return json({ state: "ready", reason: "request", phase });
+          case "family_deletion_start_customers": return json([]);
           case "pending_family_payment_operations": return json([]);
           case "decide_family_deletion": expect(args.keep_family).toBe(false); return json(true);
           case "renew_family_deletion": return json(true);

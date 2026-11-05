@@ -271,7 +271,7 @@ describe("the billing store", () => {
     expect(await store.cardRow("card-1")).toEqual(row);
     expect(await store.cardRowOfCustomer("cus_1")).toEqual(row);
     expect(await store.dueCardRows(5000, 10)).toEqual([row]);
-    expect(sent.map((s) => s.name)).toEqual(["card_check_rows", "card_check_rows", "card_check_rows"]);
+    expect(sent.map((s) => s.name)).toEqual(["card_recovery_rows", "card_recovery_rows", "card_recovery_rows"]);
     expect(sent.map((s) => s.body)).toEqual([{ p_card: "card-1" }, { p_customer: "cus_1" }, { p_changed_after: new Date(5000).toISOString(), p_limit: 10 }]);
     expect(await rpcStore(() => Response.json([])).store.cardRow("card-1")).toBeNull();
     expect((await rpcStore(() => Response.json([rowColumns])).store.cardRow("card-1"))?.planStart).toBeNull();

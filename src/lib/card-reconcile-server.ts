@@ -74,9 +74,10 @@ function readStart(data: unknown): PlanStart {
 }
 
 // The generator types a function's table columns as not null. The session, the card and the whole start can each be null here.
-type RowColumns = Database["public"]["Functions"]["card_check_rows"]["Returns"][number];
+type RowColumns = Database["public"]["Functions"]["card_recovery_rows"]["Returns"][number];
 const readRow = (r: RowColumns): CardRow => ({
   cardId: r.card_id, customer: r.customer, session: r.session_id, paymentMethod: r.payment_method_id, needsRepair: r.needs_repair,
+  ...(r.deletion_queued ? { deletionQueued: true } : {}),
   planStart: r.start_key ? readStart({
     generation: r.start_generation, key: r.start_key, card: r.start_card, at: r.start_at, state: r.start_state, subscription: r.start_subscription,
     first_charge: r.start_first_charge, finished_at: r.start_finished_at, email: r.start_email, alert: r.start_alert,
@@ -98,17 +99,17 @@ export function supabaseCardRows(db: SupabaseClient<Database>): CardRows {
       return readSettle(data);
     },
     async cardRow(cardId) {
-      const { data, error } = await db.rpc("card_check_rows", { p_card: cardId });
+      const { data, error } = await db.rpc("card_recovery_rows", { p_card: cardId });
       if (error) throw new Error(`card row read: ${error.message}`);
       return data[0] ? readRow(data[0]) : null;
     },
     async cardRowOfCustomer(customer) {
-      const { data, error } = await db.rpc("card_check_rows", { p_customer: customer });
+      const { data, error } = await db.rpc("card_recovery_rows", { p_customer: customer });
       if (error) throw new Error(`card row read: ${error.message}`);
       return data[0] ? readRow(data[0]) : null;
     },
     async dueCardRows(changedAfter, limit) {
-      const { data, error } = await db.rpc("card_check_rows", { p_changed_after: new Date(changedAfter).toISOString(), p_limit: limit });
+      const { data, error } = await db.rpc("card_recovery_rows", { p_changed_after: new Date(changedAfter).toISOString(), p_limit: limit });
       if (error) throw new Error(`card rows read: ${error.message}`);
       return data.map(readRow);
     },

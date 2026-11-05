@@ -11,8 +11,8 @@ import type { ProvePassword } from "@/lib/parent-pin";
 // 5. The family's delete hold is taken. From here no plan can start: the admin's start route is refused while it is live.
 // 6. Every customer is read again. Only "no plan can charge" goes on, so a lost answer from step 4 is settled here, and a
 //    plan that started before step 5 stops this request.
-// 7. The request is written, under the hold, which fences the family and ends the hold. The deletion worker never reads
-//    plans for a request, so a live plan would survive the family: step 6 must come first, and steps 5 to 7 must exclude a
+// 7. The request is written, under the hold, which fences the family and ends the hold. The deletion worker normally reads no
+//    plans for a request (except a start resolved after the fence), so step 6 must come first, and steps 5 to 7 must exclude a
 //    plan start. Any other live hold refuses the write. The hold has a lease, so a server that dies here strands nothing:
 //    the lease ends, and a request that names a lease that has ended is refused, because a plan may have started since.
 //

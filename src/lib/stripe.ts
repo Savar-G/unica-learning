@@ -239,6 +239,7 @@ export async function startPlan(s: Stripe, p: { cardSetup: string; customer: str
   if (!rows) throw new Error("No card rows");
   const canWrite = writeWindow();
   const row = await rows.cardRow(p.cardSetup);
+  if (row?.deletionQueued) throw new Error("Family deletion is queued");
   const current = (await customerSubscriptions(s, p.customer, CARD_READ)).map(planCardOf);
   const step = pressStep(row?.planStart ?? null, current, Date.now());
   const generationOfRow = row?.planStart?.generation ?? 0;
@@ -313,12 +314,13 @@ export type EndStuckStartOutcome =
  */
 export async function endStuckPlanStart(s: Stripe, p: { cardSetup: string; customer: string; generation: number; admin: string }, rows: CardRows | null = liveCardRows()): Promise<EndStuckStartOutcome> {
   if (!rows) throw new Error("No card rows");
-  const start = (await rows.cardRow(p.cardSetup))?.planStart;
+  const row = await rows.cardRow(p.cardSetup);
+  const start = row?.planStart;
   if (start?.state !== "open" || start.generation !== p.generation) return { ok: false, error: "changed" };
   if (Date.now() - start.at < PLAN_KEY_MS) return { ok: false, error: "too_soon" };
   const step = pressStep(start, (await customerSubscriptions(s, p.customer, CARD_READ)).map(planCardOf), Date.now());
   if (step.step === "landed") {
-    await rows.finishPlanStart(p.cardSetup, start.generation, startedOutcome(step.plan));
+    await rows.finishPlanStart(p.cardSetup, start.generation, startedOutcome(step.plan, !row?.deletionQueued));
     return { ok: false, error: "landed" };
   }
   if (step.step === "other") {
@@ -341,7 +343,7 @@ async function closeRecord(rows: CardRows, cardSetup: string, generation: number
 async function settleAfterStart(s: Stripe, rows: CardRows, cardSetup: string, canWrite: () => boolean, made?: PlanCard) {
   try {
     const row: CardRow | null = await rows.cardRow(cardSetup);
-    if (!row?.paymentMethod) return;
+    if (!row?.paymentMethod || row.deletionQueued) return;
     await settleNewestCard(cardSetup, row.customer, row, { rows, stripe: stripeCards(s), canWrite }, made);
   } catch (e) {
     console.error("[stripe] plan start could not settle the card", e instanceof Error ? e.message : "failed");
