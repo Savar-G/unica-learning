@@ -32,6 +32,6 @@ Limits: synthetic drawn digits on real printed pages. No real handwriting, real 
 
 ## Which page a photo shows
 
-The preview is ready only when the photo is one sheet, this page (#456, D-270). Calibration finds the four corner marks, compares the photo's ink with the printed page image, reads the QR code where the page printed it, and then compares the photo with the child's other printed pages of the same page type. Wherever one of those near twins prints differently from this page, the photo must hold this page's print. A QR code pasted on another page, or another page lying over this one, is refused with "another-page", and the parent is asked for another photo. The crop job reads those other page images from `workbook-pages` for each photo.
+The preview is ready only when the photo is one sheet, this page (#456, D-285). Calibration finds the four corner marks, compares the photo's ink with the printed page image, reads the QR code where the page printed it, and then compares the photo with the child's other printed pages of the same page type. Wherever one of those near twins prints differently from this page, the photo must hold this page's print. A QR code pasted on another page, or another page lying over this one, is refused with "another-page", and the parent is asked for another photo. The crop job reads those other page images from `workbook-pages` for each photo.
 
 #454 stays open. Physical iPhone Safari and Android Chrome camera checks and deployed cleanup checks remain.
