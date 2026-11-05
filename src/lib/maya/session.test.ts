@@ -708,6 +708,21 @@ describe("other events", () => {
     expect(said(effects)).toEqual([SAFETY_GUIDANCE.immediate]);
   });
 
+  it("writes no learning event for a held call that ends on a safety concern, after a resume (#527 review)", () => {
+    const c = afterExample();
+    c.send({ type: "content_problem", at: T0, detail: "the answer and the steps disagree" });
+    // The saved session, resumed: plain data with the content problem stored.
+    const resumed = JSON.parse(JSON.stringify(c.session));
+    let s = step(resumed, { type: "child_turn", at: T0 + 1000, text: "Someone at home hurts me." }).session;
+    const guided = step(s, { type: "proposal", at: T0 + 1000, proposal: { version: 2, act: "safety", parts: [], reading: { safety: "concern" } } });
+    expect(guided.refusal).toBeNull();
+    s = guided.session;
+    const closed = step(s, { type: "proposal", at: T0 + 2000, proposal: { version: 2, act: "close", parts: [] } });
+    s = closed.refusal ? step(s, { type: "hang_up", at: T0 + 2000 }).session : closed.session;
+    expect(s.outcome?.reason).toBe("safety");
+    expect(learningEvent(s, { parentId: "p", childId: "c" })).toBeNull();
+  });
+
   it("gives the held lines as the only fallback on a hold during the call (#527)", () => {
     const c = afterExample();
     c.send({ type: "content_problem", at: T0, detail: "the answer and the steps disagree" });

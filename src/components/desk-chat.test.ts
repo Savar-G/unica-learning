@@ -2,7 +2,7 @@
 import { act, createElement, useLayoutEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ChatControls, useDeskChat, type DeskChatState } from "@/components/desk-chat";
+import { ChatControls, showHeldNote, useDeskChat, type DeskChatState } from "@/components/desk-chat";
 import type { ChatReply, ChatView } from "@/lib/maya-chat";
 
 const book = "45100000-0000-4000-8000-000000000031";
@@ -45,6 +45,16 @@ describe("a question Maya cannot teach yet (#527)", () => {
     expect([...host.querySelectorAll("button")].map((b) => b.textContent)).not.toContain("Chat with Maya");
     expect(host.querySelector("input")!.disabled).toBe(true);
     expect(requests).toEqual([]);
+  });
+  it("shows Maya's held words when an old ended chat on the question never said them", () => {
+    const HELD = ["Hi, I'm Maya, an AI.", "I can't help with this kind of question yet.", "Pick another question, or ask a grown-up."];
+    const old = { ...view(4), ended: true, transcript: [{ speaker: "maya" as const, text: "I had fun working with you.", second: 0 }] };
+    const told = { ...view(4), ended: true, transcript: [{ speaker: "maya" as const, text: HELD.join(" "), second: 0 }] };
+    expect(showHeldNote(HELD, null)).toBe(true);
+    expect(showHeldNote(HELD, old)).toBe(true);
+    expect(showHeldNote(HELD, told)).toBe(false);
+    expect(showHeldNote(HELD, view(4))).toBe(false);
+    expect(showHeldNote(null, null)).toBe(false);
   });
   it("offers the chat on a question Maya teaches", async () => {
     await render(1, false);

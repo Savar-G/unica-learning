@@ -73,7 +73,7 @@ describe("the pre-check (#527)", () => {
   it("gives the held turn in short, plain sentences, with the AI disclosure first", () => {
     expect(heldSentences(true)).toEqual(["Hi, I'm Maya, an AI.", "I can't help with this kind of question yet.", "Pick another question, or ask a grown-up."]);
     expect(heldSentences(false)).toEqual(["I can't help with this kind of question yet.", "Pick another question, or ask a grown-up."]);
-    for (const line of heldSentences(true)) expect(line).not.toMatch(/—|fun|enjoy|happy|promise|will|soon/i);
+    for (const line of heldSentences(true)) expect(line).not.toMatch(/\u2014|fun|enjoy|happy|promise|will|soon/i);
   });
 });
 

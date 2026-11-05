@@ -116,6 +116,18 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
 }
 export type DeskChatState = ReturnType<typeof useDeskChat>;
 
+/**
+ * Whether the desk shows Maya's held words for the picked question (#527): it is held, and no chat is open on it, or an
+ * old ended chat on it never said them (a chat from before, which closed with other words).
+ */
+export function showHeldNote(held: readonly string[] | null, chat: ChatView | null): boolean {
+  if (!held) return false;
+  if (!chat) return true;
+  if (!chat.ended) return false;
+  const explained = held.slice(-2).join(" ");
+  return !chat.transcript.some((line) => line.speaker === "maya" && line.text.includes(explained));
+}
+
 /** `held`: the picked question is one Maya cannot teach yet (#527), so no chat starts on it. */
 export function ChatControls({ state, picked, held = false }: { state: DeskChatState; picked: boolean; held?: boolean }) {
   const [text, setText] = useState("");

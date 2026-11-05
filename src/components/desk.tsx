@@ -12,7 +12,7 @@ import type { RetryTime } from "@/lib/family-time";
 import { FamilyTime } from "@/components/family-time";
 import { Avatar, Icon } from "@/components/desk-icons";
 import { OurBoard } from "@/components/our-board";
-import { useDeskChat, ChatControls, ChatBoard } from "@/components/desk-chat";
+import { useDeskChat, ChatControls, ChatBoard, showHeldNote } from "@/components/desk-chat";
 import type { ChatUsage } from "@/lib/maya-chat";
 import "./desk.css";
 
@@ -157,9 +157,10 @@ export function Desk(props: DeskProps) {
             <p className="desk-bubble">{greeting}</p>
           )}
           {card && ready && <QuestionCard card={card} where={where!} image={ready.image} />}
-          {/* A question Maya cannot teach yet (#527): her words show at once, from the pre-check, and no chat starts. */}
-          {card?.held && props.chatUsage && !chat.chat && <p className="desk-bubble" role="status"><span className="sr-only">Maya: </span>{card.held.join(" ")}</p>}
           {chat.chat?.transcript.map((line, i) => <p key={`${chat.chat!.id}-${i}`} className={`desk-bubble${line.speaker === "child" ? " desk-child-bubble" : ""}`}><span className="sr-only">{line.speaker === "child" ? "You" : "Maya"}: </span>{line.text}</p>)}
+          {/* A question Maya cannot teach yet (#527): her words show at once, from the pre-check, and no chat starts. After an
+              old ended chat that never said them, they show below it. */}
+          {props.chatUsage && card?.held && showHeldNote(card.held, chat.chat) && <p className="desk-bubble" role="status"><span className="sr-only">Maya: </span>{card.held.join(" ")}</p>}
           {!!chat.chat?.hint && <p className="desk-event">Hint {chat.chat.hint} of 3</p>}
           {!!chat.chat?.batches.length && <button className="desk-pick" type="button" onClick={() => document.getElementById("chat-board")?.scrollIntoView({ behavior: still ? "instant" : "smooth", block: "center" })}>Show me on the board</button>}
         </div>}

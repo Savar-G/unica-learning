@@ -1,0 +1,14 @@
+{
+  "round": "maya-held-question",
+  "issue": 527,
+  "pr": 581,
+  "decision": "A small state on the existing desk (D-240, D-250): on a question Maya cannot teach yet, her code-written held words show under the question card and no chat button shows. No new layout, so no /design round.",
+  "status": "for Savar's review",
+  "captured": "2026-11-05, npm run dev on localhost:3527, test family \"Workbook samples\", Workbook 1 page 4 question 3 (\"Draw 5 dots.\"), T3 preview tools (Aside would not start)",
+  "options": [
+    { "id": "laptop", "viewport": "1440x900", "artifact": "desk-held-laptop-1440.png" },
+    { "id": "tablet", "viewport": "820x1180", "artifact": "desk-held-tablet-820.png" },
+    { "id": "phone", "viewport": "390x844", "artifact": "desk-held-phone-390.png" }
+  ],
+  "notes": "The tablet and phone screenshots are at 2x density; the preview tool scaled the laptop one to 1280x800. The round Next.js dev badge at the bottom left is dev-only. An old ended chat on a held question is covered by showHeldNote in src/components/desk-chat.test.ts, not by a screenshot."
+}

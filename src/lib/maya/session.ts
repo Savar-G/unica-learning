@@ -514,7 +514,8 @@ export function nextActs(session: Session): { expect: Expect; acts: Act[] } {
 export function learningEvent(session: Session, family: { parentId: string; childId: string }): NewLearningEvent | null {
   const { outcome, package: pkg } = session;
   // A held question (#527) records nothing: Maya taught nothing she could trust, so the call says nothing about the child.
-  if (!outcome || !pkg || session.startedAt === null || outcome.reason === "content_issue") return null;
+  // Any stored content problem counts, whatever the final reason (a safety concern after the hold ends as "safety").
+  if (!outcome || !pkg || session.startedAt === null || session.contentProblem !== null || outcome.reason === "content_issue") return null;
   const right = session.lastResult === "right";
   const result = right ? (outcome.assistance === "independent" ? "right" : "right_with_help") : "blank";
   const first = workSteps(pkg)[0]?.id ?? null;
