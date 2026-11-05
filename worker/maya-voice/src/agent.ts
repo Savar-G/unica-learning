@@ -384,7 +384,8 @@ export class VoiceCallRun {
    */
   private finalDropped(turn: VoiceTurn) {
     if (!turn.ended || this.finishing) return;
-    if (!this.childHere) { this.finalOwed = turn; return; }
+    // A later ended turn with no words (a late transcript) keeps the close the child is already owed.
+    if (!this.childHere) { if (turn.say.length || !this.finalOwed) this.finalOwed = turn; return; }
     void this.sayFirst(null, [turn]).catch(() => this.finish({ detail: "the final speech failed" }));
   }
 

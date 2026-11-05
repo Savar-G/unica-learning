@@ -1403,6 +1403,34 @@ describe("#589: the safety guidance does not wait for the close", () => {
     expect((await c.store.get(c.id))!.status).toBe("ended");
   });
 
+  it("a late transcript while the child is away does not erase the close they are owed", async () => {
+    const m = heldModel();
+    const c = await voiceCall({ model: m.model, ackLimitMs: 0 });
+    for (const [n, text] of ["66", "I wrote it."].entries()) {
+      c.say(text);
+      await waitFor(() => c.samples.length === n + 1 && c.session.agentState === "listening", `the answer to "${text}"`);
+    }
+    const before = c.said().length;
+    const asked = m.asked;
+    m.hold();
+    c.say("yes");
+    await waitFor(() => m.asked > asked, "the slow model call");
+    await c.run.childLeft("dropped");
+    m.release();
+    await waitFor(() => c.call.ended, "the controller's close");
+    await pause();
+    await c.call.settled();
+    // The ended call answers this with no words; the saved close must survive it.
+    c.say("are you there");
+    await pause();
+    await c.call.settled();
+    await c.run.childJoined();
+    await waitFor(() => c.run.done !== null, "the call's end");
+    await c.run.done;
+    expect(c.said().length).toBeGreaterThan(before);
+    expect((await c.store.get(c.id))!.status).toBe("ended");
+  });
+
   it("a silence close that ends while the child is away plays when they are back, and the call ends", async () => {
     const m = heldModel();
     const c = await voiceCall({ model: m.model, ackLimitMs: 0 });
