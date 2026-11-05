@@ -476,6 +476,33 @@ describe("a schema refusal, wherever OpenRouter puts it", () => {
     expect(sent.map((s) => s.body.response_format !== undefined)).toEqual([true, false]);
   });
 
+  it("judges a refusal on the whole text, also past the stored limit, and stores no more than the limit", async () => {
+    const late = { status: 400, body: { error: { code: 400, message: "Provider returned error", metadata: { raw: `${"x".repeat(2_200)} ${words}` } } } };
+    const { fetch, sent } = fakeFetch(late, ok);
+    await expect(openRouterClient({ apiKey: "sk-or-test", model: AI_DEFAULT_MODEL, fetch, maxRetries: 0 }).json(request({ schema: withUnions(3) }), signal())).resolves.toEqual({ answer: "85" });
+    expect(sent.map((s) => s.body.response_format !== undefined)).toEqual([true, false]);
+    const stored = fakeFetch(late);
+    const e = await openRouterClient({ apiKey: "sk-or-test", model: AI_DEFAULT_MODEL, fetch: stored.fetch, maxRetries: 0 }).json(request({ schema: SCHEMA }), signal()).catch((x: unknown) => x);
+    expect(providerWords(e)!.length).toBeLessThanOrEqual(2_000);
+  });
+
+  it("reads the choice's error in an HTTP error answer too", async () => {
+    const onChoice = { status: 400, body: { choices: [{ finish_reason: "error", error: { code: 400, message: "Provider returned error", metadata: { provider_name: "Google", raw: words } } }] } };
+    const { fetch, sent } = fakeFetch(onChoice, ok);
+    await expect(openRouterClient({ apiKey: "sk-or-test", model: AI_DEFAULT_MODEL, fetch, maxRetries: 0 }).json(request({ schema: withUnions(3) }), signal())).resolves.toEqual({ answer: "85" });
+    expect(sent.map((s) => s.body.response_format !== undefined)).toEqual([true, false]);
+  });
+
+  it("stops when the request with the schema in the instructions is refused for the schema too: no transport retry sends it again", async () => {
+    for (const status of [400, 502, 503]) {
+      const { fetch, sent } = fakeFetch({ status, body: { error: { code: status, message: words } } });
+      const e = await openRouterClient({ apiKey: "sk-or-test", model: AI_DEFAULT_MODEL, fetch, maxRetries: 1 }).json(request({ schema: withUnions(3) }), signal()).catch((x: unknown) => x);
+      expect(sent.map((s) => s.body.response_format !== undefined), String(status)).toEqual([true, false]);
+      expect((e as Error).message).toBe(`OpenRouter answered ${status}`);
+      expect(providerWords(e)).toContain("too many parameters with union types");
+    }
+  });
+
   it.each(FORMS)("keeps the words of %s in providerWords only, never in the message", async (_, refusal) => {
     const { fetch } = fakeFetch(refusal);
     const e = await openRouterClient({ apiKey: "sk-or-test", model: AI_DEFAULT_MODEL, fetch, maxRetries: 0 }).json(request({ schema: SCHEMA }), signal()).catch((x: unknown) => x);

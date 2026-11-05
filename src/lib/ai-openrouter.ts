@@ -23,7 +23,10 @@
 // name stays there. Nothing then holds the model to the schema: the callers' own checks judge the output, as they always
 // do, and output that is not JSON is the same failure as before.
 import type { AiClient, AiJsonRequest, AiPart } from "@/lib/ai-client";
+import { carryProviderWords, keepProviderWords, providerMark, providerWords } from "@/lib/ai-provider-words";
 import { firstObject, overConstrainedLimit, schemaInText } from "@/lib/ai-schema-text";
+
+export { providerWords };
 
 /** OpenRouter's slug of the host of every Claude model here (D-283). */
 export const CLAUDE_PROVIDER = "google-vertex";
@@ -96,23 +99,22 @@ class Retryable extends Error {}
  * What the provider said on a failed request. OpenRouter puts it in more than one place: the error's `message` and its
  * `metadata.raw`, at the top of the answer or on the choice (inside a 200). Any of them can repeat request text, which can
  * be a child's words, so none is in an error's message or on the error object: a log line that prints the error cannot
- * print it. All of them go into one private diagnostic, which only code that names `providerWords` reads, and the schema
- * refusal is judged from it wherever it came.
+ * print it. All of them go into one private diagnostic (src/lib/ai-provider-words.ts), which only code that names
+ * `providerWords` reads; the schema refusal is judged on the whole of it, wherever it came, before it is cut.
  */
-const WORDS_LIMIT = 2_000;
-const wordsOf = new WeakMap<Error, string>();
-export const providerWords = (e: unknown): string | null => (e instanceof Error ? wordsOf.get(e) ?? null : null);
-
 const asText = (v: unknown) => (v === undefined || v === null ? "" : typeof v === "string" ? v : JSON.stringify(v));
 
+/** The provider refused the schema itself, not the request (its words: too many union-type or optional fields). */
+const SCHEMA_REFUSAL = /union types|optional parameters|schema is too complex|compilation/i;
+
+/** Every place the answer holds the provider's words, joined; judged whole, then kept cut to the limit. */
 function withWords<E extends Error>(error: E, ...bodies: (ErrorBody | undefined)[]): E {
   const parts = bodies.flatMap((b) => {
     if (!b) return [];
     const said = [asText(b.message), asText(b.metadata?.raw)].filter(Boolean).join(" ");
     return said ? [`${b.metadata?.provider_name ? `${b.metadata.provider_name}: ` : ""}${said}`] : [];
   });
-  if (parts.length) wordsOf.set(error, parts.join(" | ").slice(0, WORDS_LIMIT));
-  return error;
+  return keepProviderWords(error, parts.join(" | "), { schema: SCHEMA_REFUSAL });
 }
 
 interface ErrorBody {
@@ -153,14 +155,16 @@ async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: A
     data = null;
   }
   // The status and the code only: what OpenRouter or the provider said goes to the private words (`withWords`).
-  const fallback: ErrorBody | undefined = data ? undefined : { message: text.slice(0, WORDS_LIMIT) };
+  const fallback: ErrorBody | undefined = data ? undefined : { message: text };
+  // An HTTP error can carry the provider's words at the top or on the choice: both are read.
+  const failure = [data?.error, data?.choices?.[0]?.error, fallback];
   if (res.status === 404) {
     // No endpoint meets the route (D-283). Never retried, never sent another way.
-    throw withWords(new Error(`OpenRouter has no endpoint for this request on the allowed route (${route}): 404`), data?.error, fallback);
+    throw withWords(new Error(`OpenRouter has no endpoint for this request on the allowed route (${route}): 404`), ...failure);
   }
   if (!res.ok) {
     const error = `OpenRouter answered ${res.status}`;
-    throw withWords(retryableStatus(res.status) ? new Retryable(error) : new Error(error), data?.error, fallback);
+    throw withWords(retryableStatus(res.status) ? new Retryable(error) : new Error(error), ...failure);
   }
   if (!data) throw new Error("OpenRouter answered 200 with a body that is not JSON");
   // After the provider accepts the request, OpenRouter reports a failure inside a 200 answer, at the top or on the choice.
@@ -183,8 +187,8 @@ async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: A
   }
 }
 
-/** The provider refused the schema itself, not the request (its words: too many union-type or optional fields). */
-const schemaRefused = (e: unknown) => /union types|optional parameters|schema is too complex|compilation/i.test(providerWords(e) ?? "");
+/** The provider refused the schema itself: judged on its whole words, before they were cut (`withWords`). */
+const schemaRefused = (e: unknown) => providerMark(e, "schema");
 
 export function openRouterClient({
   apiKey,
@@ -231,18 +235,20 @@ export function openRouterClient({
         try {
           return await once(fetch, init(), signal, timeout, routeWords(model), constrained, onDispatch);
         } catch (e) {
-          if (constrained && !signal.aborted && schemaRefused(e)) {
-            inText.add(request.name);
-            constrained = false;
-            attempt--;
-            continue;
+          if (!signal.aborted && schemaRefused(e)) {
+            // Constrained: once more with the schema in the instructions. Already in the instructions: the schema cannot
+            // go, so stop here; a transport retry would only send the same refused request again.
+            if (constrained) {
+              inText.add(request.name);
+              constrained = false;
+              attempt--;
+              continue;
+            }
+            throw e instanceof Retryable ? carryProviderWords(e, new Error(e.message)) : e;
           }
           if (!(e instanceof Retryable) || attempt >= maxRetries || signal.aborted) {
             if (!(e instanceof Retryable)) throw e;
-            const plain = new Error(e.message);
-            const words = wordsOf.get(e);
-            if (words) wordsOf.set(plain, words);
-            throw plain;
+            throw carryProviderWords(e, new Error(e.message));
           }
         }
       }

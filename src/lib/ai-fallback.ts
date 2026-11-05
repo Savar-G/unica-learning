@@ -14,6 +14,7 @@
 // the two clients are passed in.
 import type { AiClient } from "@/lib/ai-client";
 import { SubscriptionUnavailable } from "@/lib/ai-claude-cli";
+import { carryProviderWords } from "@/lib/ai-provider-words";
 
 export type AiProvider = "subscription" | "api";
 export const AI_PROVIDERS: readonly AiProvider[] = ["subscription", "api"];
@@ -134,7 +135,7 @@ export function fallbackAiClient(o: FallbackOptions): AiClient {
         if (!down || o.singleDispatch) throw error;
         if (last) {
           const other = provider === "subscription" ? "the API (no API key, or it is off for this run)" : "the subscription (none here, or it is off for this run)";
-          throw new Error(`${message(error)}; no fallback: ${other}`);
+          throw carryProviderWords(error, new Error(`${message(error)}; no fallback: ${other}`));
         }
       }
       throw new Error("No AI provider answered.");

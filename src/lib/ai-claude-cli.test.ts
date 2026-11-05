@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { claudeCliClient, claudeCliEnv, SubscriptionUnavailable, type SpawnResult, type Spawner } from "@/lib/ai-claude-cli";
-import { fallbackAiClient } from "@/lib/ai-fallback";
+import { fallbackAiClient, type AiCallRecord } from "@/lib/ai-fallback";
+import { providerWords } from "@/lib/ai-provider-words";
 import type { AiJsonRequest } from "@/lib/ai-client";
 
 const request: AiJsonRequest = {
@@ -132,5 +133,41 @@ describe("R404-3 CLI error results", () => {
     const client = fallbackAiClient({ model: "m", primary: "subscription", subscription: sub, api: () => ({ model: "api", json: async () => { calls++; return {}; } }) });
     await expect(client.json(request, signal())).rejects.toThrow();
     expect(calls).toBe(0);
+  });
+});
+
+// Codex P2 on #642: what claude -p printed can repeat the request, so it never reaches an error's message, the stored
+// call note or the admin run page. The message names the kind and the status; the words stay in providerWords.
+describe("the subscription's own words stay private", () => {
+  const SENTINEL = "SENTINEL-the-child-wrote-12";
+  const cases: [string, Partial<SpawnResult>][] = [
+    ["a usage limit", { stdout: envelope({ is_error: true, result: `Claude AI usage limit reached ${SENTINEL}` }) }],
+    ["a lost login", { code: 1, stderr: `Not logged in · Please run /login ${SENTINEL}` }],
+    ["a missing CLI", { code: null, error: { code: "ENOENT", message: `spawn claude ENOENT ${SENTINEL}` } }],
+    ["a process that did not start", { code: null, error: { code: "EACCES", message: `spawn EACCES ${SENTINEL}` } }],
+    ["a crash", { code: 134, stderr: `Segmentation fault ${SENTINEL}` }],
+    ["output that is not JSON", { code: 0, stdout: `not json ${SENTINEL}` }],
+    ["a 5xx", { stdout: envelope({ is_error: true, api_error_status: 529, result: `Overloaded ${SENTINEL}` }) }],
+    ["an execution error", { code: 1, stdout: envelope({ subtype: "error_during_execution", is_error: true, errors: [`worker crashed ${SENTINEL}`] }) }],
+    ["another error", { stdout: envelope({ is_error: true, subtype: "error", api_error_status: 400, result: `bad request ${SENTINEL}` }) }],
+  ];
+
+  it.each(cases)("keeps the words of %s out of the message, in providerWords only", async (_, answer) => {
+    const e = await fail(claudeCliClient({ spawn: fakeSpawn(() => answer).spawn }).json(request, signal()));
+    expect(e.message).not.toContain(SENTINEL);
+    expect(JSON.stringify(e)).not.toContain(SENTINEL);
+    expect(providerWords(e)).toContain(SENTINEL);
+  });
+
+  it.each(cases)("keeps the words of %s out of the stored call note and the run's error", async (_, answer) => {
+    const records: AiCallRecord[] = [];
+    const excluded: string[] = [];
+    const sub = claudeCliClient({ spawn: fakeSpawn(() => answer).spawn });
+    const client = fallbackAiClient({ model: "m", primary: "subscription", subscription: sub, api: null, onCall: (r) => { records.push(r); }, onExclude: (_p, why) => { excluded.push(why); } });
+    const e = await fail(client.json(request, signal()));
+    expect(records.length).toBeGreaterThan(0);
+    expect(records.every((r) => r.note !== null)).toBe(true);
+    expect(JSON.stringify([records, excluded])).not.toContain(SENTINEL);
+    expect(e.message).not.toContain(SENTINEL);
   });
 });
