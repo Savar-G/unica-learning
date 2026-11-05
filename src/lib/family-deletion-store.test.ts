@@ -69,7 +69,7 @@ describe("the copy without names before a deletion", () => {
     device: null, answers: [], shows: [{ position: 0, questionId: "s1-0", shownAt: "2026-02-01T09:00:05Z" }], facts: null, profile: null,
     learning: null,
   };
-  function family(missing: boolean) {
+  function family(missing: boolean, phase: "checking" | "deleting" = "deleting") {
     const calls: string[] = [];
     const saved: Record<string, unknown>[] = [];
     let copied = false;
@@ -83,7 +83,9 @@ describe("the copy without names before a deletion", () => {
         const args = JSON.parse(String(init?.body ?? "{}"));
         const json = (answer: unknown, status = 200) => new Response(JSON.stringify(answer), { status, headers: { "content-type": "application/json" } });
         switch (name) {
-          case "claim_family_deletion": return json({ state: "ready", reason: "request", phase: "deleting" });
+          case "claim_family_deletion": return json({ state: "ready", reason: "request", phase });
+          case "pending_family_payment_operations": return json([]);
+          case "decide_family_deletion": expect(args.keep_family).toBe(false); return json(true);
           case "renew_family_deletion": return json(true);
           case "family_copy_sources":
             if (missing) return json({ code: "PGRST202", message: "Could not find the function public.family_copy_sources(p)" }, 404);
@@ -130,6 +132,20 @@ describe("the copy without names before a deletion", () => {
     // The copy holds no id of the family or of the test.
     expect(JSON.stringify(f.saved)).not.toContain(parent);
     expect(JSON.stringify(f.saved)).not.toContain(test.id);
+  });
+
+  // #556: the self-serve path queues with reason `request` and phase `checking`. The plans stopped before the queue, so
+  // the run reads no plan state and a stopped plan cannot keep the family; the copy is still written first.
+  it("a parent's queued request settles its payment records, then writes the copy before Storage and Auth", async () => {
+    const f = family(false, "checking");
+    expect(await runFamilyDeletion(f.db, parent, f.db, Date.now() + 30_000, {
+      signal: new AbortController().signal, renewEveryMs: 60_000, paymentRequestTimeoutMs: 5_000, abortWork() {},
+      payments: new Stripe("sk_test_no_calls", { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(async () => { throw Error("A queued request reads nothing from Stripe"); }) }),
+    })).toEqual({ state: "deleted", images: 1, copies: 1 });
+    expect(f.calls.indexOf("decide_family_deletion")).toBeGreaterThan(f.calls.indexOf("pending_family_payment_operations"));
+    expect(f.calls.indexOf("save_family_test_copy")).toBeGreaterThan(f.calls.indexOf("decide_family_deletion"));
+    expect(f.calls.findIndex((c) => c === "save_family_test_copy")).toBeLessThan(f.calls.findIndex((c) => c.includes("/storage/")));
+    expect(f.calls.findIndex((c) => c.includes("/storage/"))).toBeLessThan(f.calls.findIndex((c) => c.includes("/auth/v1/admin/users/")));
   });
 
   it("deletes nothing and keeps the request when the copy's database functions are missing", async () => {
