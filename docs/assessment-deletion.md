@@ -304,9 +304,35 @@ Delivery time corrections use `workbook_delivery_corrections`. Each append-only 
 
 ## Self-serve delete (#556)
 
-A parent deletes the whole family from the Account tab (`/account/settings`, behind `PARENT_DASHBOARD_ENABLED`). The route is `/api/account/family/delete`; the steps and their order are in `src/lib/family-delete.ts`; the seams are `src/lib/family-delete-server.ts` and `src/lib/family-delete-memory.ts`. Migration `family_delete_self_serve` adds `public.family_delete_attempts` and the service-only functions `claim_family_delete_attempt` and `clear_family_delete_attempts`. Migration `family_delete_hold` (review of PR #602) adds `public.family_delete_holds`, the column `family_deletions.plans_stopped_at`, the service-only functions `check_parent_family_deletion`, `begin_family_delete_hold`, `end_family_delete_hold` and `request_parent_family_deletion_held`, and `my_family_deletion_state` for the signed-in parent. It replaces `begin_family_card_operation` with the same body plus the delete hold's refusal. The first function `request_parent_family_deletion(uuid, boolean)` stays, with no caller; a later cleanup can remove it.
+A parent deletes the whole family from the Account tab (`/account/settings`, behind `PARENT_DASHBOARD_ENABLED`). The routes are `/api/account/family/delete/code` (emails the code) and `/api/account/family/delete` (the delete); the steps and their order are in `src/lib/family-delete.ts`; the seams are `src/lib/family-delete-server.ts` and `src/lib/family-delete-memory.ts`. Migration `family_delete_self_serve` adds `public.family_delete_attempts` and the service-only functions `claim_family_delete_attempt` and `clear_family_delete_attempts`. Migration `family_delete_hold` (review of PR #602) adds `public.family_delete_holds`, the column `family_deletions.plans_stopped_at`, the service-only functions `check_parent_family_deletion`, `begin_family_delete_hold`, `end_family_delete_hold` and `request_parent_family_deletion_held`, and `my_family_deletion_state` for the signed-in parent. It replaces `begin_family_card_operation` with the same body plus the delete hold's refusal. The first function `request_parent_family_deletion(uuid, boolean)` stays, with no caller; a later cleanup can remove it.
 
-The form takes the password and the typed word `DELETE`. Each password try counts before the check (5 tries, then 15 minutes locked). `claim_pin_reset_attempt` cannot do this, because a parent with no PIN has no `parent_pins` row. A parent with no password (Google, or a short phone signup) adds one at `/account/password` first. `request_family_deletion` needs an admin session, so the parent's request has its own function with the same effects and refusals.
+The form takes a one-time code from the account's email and the typed word `DELETE` (D-255, #603; see [the code](#the-confirmation-code-603)). `claim_pin_reset_attempt` cannot count its tries, because a parent with no PIN has no `parent_pins` row. `request_family_deletion` needs an admin session, so the parent's request has its own function with the same effects and refusals.
+
+### The confirmation code (#603)
+
+The password of D-247 proved little: a signed-in session can set a new password with no current password (`security_update_password_require_reauthentication` is off), and a Google parent has none. So the delete needs something a stolen session alone does not have: the account's email. The screen flow is: press delete, read what stops and what stays, press "Email me a code", type the code and `DELETE`, confirm. The module is `src/lib/family-delete-code.ts`; migration `family_delete_code` adds `public.family_delete_codes` and the service-only functions `begin_family_delete_code`, `read_family_delete_code` and `spend_family_delete_code`.
+
+| Point | What the code does |
+|---|---|
+| Made and checked | On the server. The code is 6 random digits (`crypto.randomInt`). The browser never gets it |
+| Stored | Only a salted scrypt hash, in `code_hash`. No copy: the email goes through `sendEmail` with no ledger, so `email_copies` holds nothing. The code is in no log. The email provider keeps the body it sent, but the code has ended by then |
+| Life | 10 minutes, from the send |
+| A new code | Replaces the old one, in the same row. The old one then answers "wrong" |
+| Works once | The right code is spent when it is checked, by a conditional update, so of two requests sent together one gets it. A failure in any later step needs a new code |
+| Only this parent and action | The hash covers the action name, the parent's id and the address, so a stored hash is worth nothing for another parent, another address or another action |
+| Wrong tries | `family_delete_attempts`, unchanged: counted before the check under a row lock, 5 tries, then 15 minutes locked, with the end of the lock in family time. Asking for a code never resets the count, and no code goes out during a lock. A code lives 10 minutes and a lock 15, so a lock always needs a new code |
+| Sends | Per parent, under the row lock: 3 in any hour and 6 in any day. A send counts when the provider refuses it too |
+| Address | `user.email` from the Auth server's answer for this session, and only when `email_confirmed_at` is set. Never the request and never `parents.email`. An account with no confirmed address is told to email us |
+| The email | Says what the code is for, that it ends in 10 minutes, that a delete cannot be undone, and what to do if the parent did not ask. No child's name and no link. The code is not in the subject |
+| Provider answers | Refused: the code is taken back and the parent is told. Unknown: the code stays live and the screen says it may have been sent |
+
+Why not Supabase's email code. `signInWithOtp` is a sign-in: verifying it makes a session, and the code would prove sign-in and not this action, so a code asked for at sign-in could also confirm a delete. Its email is the "Magic link" template, which signup shows, so it could not say what it is for, and changing that template changes signup. Its life is `mailer_otp_exp`, 1 hour here and shared with signup. Supabase's reauthentication nonce is checked as part of a password update (read in `internal/api/user.go` of supabase/auth on 5 November 2026), and it has no check of its own to confirm another action. Our own code costs one table and keeps every point above.
+
+Can a stolen session move the code to another address? Read on 5 November 2026: `mailer_secure_email_change_enabled` is true and `mailer_autoconfirm` is false in the project's Auth settings, and manual identity linking is off (`security_manual_linking_enabled` false). In supabase/auth, `UserUpdate` applies a new email directly only for an anonymous user with autoconfirm; every other user goes through `sendEmailChange`, which with this setting also sends a code to the current address. So a session alone cannot change the address: the change also needs the old mailbox, and until it is done `user.email` stays the old address. No route in this site changes an Auth email: the `updateUser` calls in `src` set only a password, and `src` has no `updateUserById` call. The hash covers the address, so a code sent before a change does not work after it. Not proved: this was read from the settings and the source. No live email change ran, because it would send email and leave a pending change on a test family.
+
+What this does not stop: someone with both the session and the mailbox. A stolen session can also use up the sends or start the lock, which delays a real delete while that session lasts. Each code it asks for sends the parent an email.
+
+`family_delete_codes` has no family write fence trigger, for the same reason as `family_delete_attempts`: it holds a hash, some times and no family data, and a parent must be able to confirm for a family the retention job froze. The row goes with the parent through the cascade.
 
 ### Why the plans stop first
 
@@ -324,8 +350,10 @@ Unlike a card hold, the delete hold has a lease of 5 minutes. A card hold may hi
 
 | Failure | Family's data | Plans | Request and fence | What the parent sees |
 |---|---|---|---|---|
-| Wrong password, or locked | All there | Unchanged | None | Tries left, or the end of the lock |
-| Auth cannot check the password | All there | Unchanged | None | "We changed nothing" (the try stays counted, as in the PIN reset) |
+| Wrong code, or locked | All there | Unchanged | None | Tries left, or the end of the lock |
+| The code has ended or was used | All there | Unchanged | None | Ask for a new code (the try stays counted) |
+| The code cannot be read or spent | All there | Unchanged | None | "We changed nothing" (the try stays counted, as in the PIN reset) |
+| The code email is refused, or a send limit is reached | All there | Unchanged | None | The reason, with the time for a limit |
 | Admin account, or a card hold | All there | Unchanged | None | Refusal; a hold says to try again |
 | A customer or plan read fails, or an old booking has no match | All there | Unchanged | None | "We changed nothing" |
 | The only stop fails | All there | Unchanged | None | "We deleted nothing" |
@@ -344,11 +372,13 @@ Stripe's `customer.subscription.deleted` event can arrive while the family is fe
 
 ### Checks
 
-Local: the seams' tests (`src/lib/family-delete.test.ts`, `family-delete-server.test.ts`, the route's test and the start route's test). Hosted, on 5 November 2026 (UTC), in a block that rolled back with synthetic families (`supabase/tests/family_delete.sql`, result `PROBE_OK`): 5 tries and the lock; a parent and anon cannot call the functions or read the table; the service role cannot read the table directly; a check writes nothing; a hold refuses the check and the request; the request fences once with reason `request` and phase `checking`; a hold under the fence fails with 55000; a request over a retention freeze blocks that job's `keep`; the worker's claim reads the request. The attempts table's cascade was read from the catalog.
+Local: the seams' tests (`src/lib/family-delete.test.ts`, `family-delete-code.test.ts`, `family-delete-server.test.ts`, both routes' tests and the start route's test). Hosted, on 5 November 2026 (UTC), in a block that rolled back with synthetic families (`supabase/tests/family_delete.sql`, result `PROBE_OK`): 5 tries and the lock; a parent and anon cannot call the functions or read the table; the service role cannot read the table directly; a check writes nothing; a hold refuses the check and the request; the request fences once with reason `request` and phase `checking`; a hold under the fence fails with 55000; a request over a retention freeze blocks that job's `keep`; the worker's claim reads the request. The attempts table's cascade was read from the catalog.
 
 Stripe test mode, on 5 November 2026 (UTC), with a temporary test that refused any key that was not a test key: `runningPlans` found a real plan in its free month; `stopPlanNow` moved it to `canceled`; `runningPlans` then found none; the customer's invoice count did not change.
 
-Not proved: the whole flow with a real password, real Stripe and a real deletion on the hosted site. Also not proved: a plan in a paid month or with a failed payment on real Stripe, two connections racing on the row lock, `after()` on Vercel, and whether the production `STRIPE_SECRET_KEY` has the write access to Subscriptions and the read access to Customers that this needs. If it has not, the parent sees "we changed nothing" or "we could not stop your plan", and no request is written. Before families get the switch, run it on a preview with a new named QA family and a Stripe test-mode plan.
+The code, on 5 November 2026 (UTC), in a block that rolled back with synthetic families (`supabase/tests/family_delete_code.sql`, result `PROBE_OK`), with the migration's text in front before it was applied: a new code replaces the old one; a code ends after 10 minutes; of two spends one wins; 3 sends in an hour and 6 in a day, each with its time; no send during the tries' lock; a send under the fence works; the service role reaches the table only through the functions; a parent and anon reach neither. After applying: 0 rows, row-level security on with no policy, the cascade in the catalog, no trigger.
+
+Not proved: the whole flow with a real code, real Stripe and a real deletion on the hosted site. Also not proved: a plan in a paid month or with a failed payment on real Stripe, two connections racing on the row lock, `after()` on Vercel, and whether the production `STRIPE_SECRET_KEY` has the write access to Subscriptions and the read access to Customers that this needs. If it has not, the parent sees "we changed nothing" or "we could not stop your plan", and no request is written. Before families get the switch, run it on a preview with a new named QA family and a Stripe test-mode plan.
 
 ## Plan state (#548)
 

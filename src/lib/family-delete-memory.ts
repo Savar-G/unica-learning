@@ -1,7 +1,9 @@
+import type { DeleteCodeStore } from "@/lib/family-delete-code";
 import type { AttemptClaim, FamilyDeleteStore, FamilyPlans } from "@/lib/family-delete";
 
 // The self-serve delete's seams in memory, for tests. The store follows the database functions claim_family_delete_attempt,
-// begin_family_delete_hold, end_family_delete_hold and request_parent_family_deletion_held. `memoryPlanStart` follows the admin's
+// begin_family_delete_hold, end_family_delete_hold and request_parent_family_deletion_held; the codes follow
+// begin_family_delete_code, read_family_delete_code and spend_family_delete_code. `memoryPlanStart` follows the admin's
 // start route. `log` records the order of every change, so a test can read what happened first.
 
 /** As `interval '5 minutes'` in begin_family_delete_hold. */
@@ -26,10 +28,14 @@ export interface MemoryFamily {
   holdBeforeRequest: boolean;
   log: string[];
   attempts: { failed: number; lockedUntil: number | null };
+  /** The live code, as family_delete_codes. Only the hash is here. */
+  code: { hash: string; expiresAt: number } | null;
+  /** Every send still inside the day's window, as family_delete_codes.send_times. */
+  codeSends: number[];
 }
 
 export function memoryFamily(over: Partial<MemoryFamily> = {}): MemoryFamily {
-  return { plans: {}, holds: 0, admin: false, gone: false, fenced: false, plansStopped: false, deleteHold: null, time: 0, fail: {}, holdBeforeRequest: false, log: [], attempts: { failed: 0, lockedUntil: null }, ...over };
+  return { plans: {}, holds: 0, admin: false, gone: false, fenced: false, plansStopped: false, deleteHold: null, time: 0, fail: {}, holdBeforeRequest: false, log: [], attempts: { failed: 0, lockedUntil: null }, code: null, codeSends: [], ...over };
 }
 
 export function memoryDeleteStore(f: MemoryFamily): FamilyDeleteStore {
@@ -77,6 +83,29 @@ export function memoryDeleteStore(f: MemoryFamily): FamilyDeleteStore {
       f.deleteHold = null;
       f.log.push("queued");
       return "requested";
+    },
+  };
+}
+
+export function memoryDeleteCodes(f: MemoryFamily): DeleteCodeStore {
+  return {
+    async begin(_parent, hash, now, policy) {
+      if (f.attempts.lockedUntil !== null && f.attempts.lockedUntil > now) return { kind: "locked", until: f.attempts.lockedUntil };
+      const day = f.codeSends.filter((at) => at > now - policy.dayMs);
+      const hour = day.filter((at) => at > now - policy.windowMs);
+      if (hour.length >= policy.perWindow) return { kind: "too_many", until: hour[0] + policy.windowMs };
+      if (day.length >= policy.perDay) return { kind: "too_many", until: day[0] + policy.dayMs };
+      f.codeSends = [...day, now];
+      f.code = { hash, expiresAt: now + policy.ttlMs };
+      return { kind: "ok" };
+    },
+    async read() {
+      return f.code ? { ...f.code } : null;
+    },
+    async spend(_parent, hash, now) {
+      if (f.code?.hash !== hash || f.code.expiresAt <= now) return false;
+      f.code = null;
+      return true;
     },
   };
 }

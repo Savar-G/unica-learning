@@ -926,6 +926,35 @@ export type Database = {
           },
         ]
       }
+      family_delete_codes: {
+        Row: {
+          code_hash: string | null
+          expires_at: string | null
+          parent_id: string
+          send_times: string[]
+        }
+        Insert: {
+          code_hash?: string | null
+          expires_at?: string | null
+          parent_id: string
+          send_times?: string[]
+        }
+        Update: {
+          code_hash?: string | null
+          expires_at?: string | null
+          parent_id?: string
+          send_times?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "family_delete_codes_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: true
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       family_delete_holds: {
         Row: {
           lease_token: string
@@ -4336,6 +4365,22 @@ export type Database = {
         Args: { p: string; token: string }
         Returns: undefined
       }
+      begin_family_delete_code: {
+        Args: {
+          p_day_seconds: number
+          p_hash: string
+          p_now: string
+          p_parent: string
+          p_per_day: number
+          p_per_window: number
+          p_ttl_seconds: number
+          p_window_seconds: number
+        }
+        Returns: {
+          out_retry_at: string
+          out_status: string
+        }[]
+      }
       begin_family_delete_hold: {
         Args: { hold: string; p: string }
         Returns: string
@@ -4823,6 +4868,13 @@ export type Database = {
         }
         Returns: Json
       }
+      read_family_delete_code: {
+        Args: { p_parent: string }
+        Returns: {
+          out_expires_at: string
+          out_hash: string
+        }[]
+      }
       read_family_payment_progress: {
         Args: { customer: string; p: string; token: string }
         Returns: Json
@@ -5059,6 +5111,10 @@ export type Database = {
           p_runner: string
         }
         Returns: Json
+      }
+      spend_family_delete_code: {
+        Args: { p_hash: string; p_now: string; p_parent: string }
+        Returns: boolean
       }
       start_scan_photo: {
         Args: { p_id: string; p_parent: string }
