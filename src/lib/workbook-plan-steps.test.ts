@@ -106,6 +106,71 @@ const withWeak = (i: ReturnType<typeof personalInput>, codes: string[], certaint
 const dayParts = (p: WorkbookPlan, day: number) => p.days[day - 1].pages.flatMap(pg => pg.parts);
 
 describe("C3 personal plan", () => {
+  it("R599-P1: plans the first Kindergarten book with today's steps when no earlier review exists", () => {
+    const profile = firstCustomerProfile();
+    profile.grade = 0;
+    profile.assessment!.profile.test.grade = 0;
+    profile.assessment!.profile.level = { working: 0, certainty: "clear", confidence: "normal", atCeiling: false };
+    profile.standards = BC.level("U1")!.units.map(code => ({ ...profile.standards[0], code, status: "needs-attention", certainty: "clear", aboveGrade: false }));
+    const r = planNextWorkbook({ curriculum: BC, grade: 0, profile, workbooks: [], number: 1 });
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.levelId).toBe("U1");
+    const today = r.plan.newSteps.filter(s => s.day === 1).map(({ skill, step }) => ({ skill, step }));
+    expect(today.length).toBeGreaterThan(0);
+    const reviews = dayParts(r.plan, 1).filter(p => p.kind === "remember-these");
+    expect(reviews.length).toBeGreaterThan(0);
+    for (const p of reviews) {
+      expect(p.reviewSteps).toEqual(today);
+      expect(p.skills).toEqual(today.map(s => s.skill));
+      expect(p.items).toBeGreaterThan(0);
+    }
+    for (const d of r.plan.days) {
+      expect(d.pages.length).toBeGreaterThanOrEqual(4);
+      expect(d.pages.length).toBeLessThanOrEqual(6);
+      for (const p of dayParts(r.plan, d.day)) if (p.items > 0) expect(p.skills.length).toBeGreaterThan(0);
+    }
+    expect(r.plan.personal).toMatchObject({ reviewFallbacks: expect.arrayContaining([
+      expect.objectContaining({ day: 1, part: "remember-these", source: "today", steps: today }),
+    ]) });
+  });
+
+  it("R599-P1: leaves review empty when no past, current-day or below-start step exists", () => {
+    const i = personalInput("U1");
+    i.pausedWeeks = 2;
+    const p = plan(i);
+    expect(p.newSteps.some(s => s.day <= 2)).toBe(false);
+    const reviews = [1, 2].flatMap(day => dayParts(p, day).filter(p => p.kind === "remember-these"));
+    expect(reviews.length).toBeGreaterThan(0);
+    for (const r of reviews) expect(r).toMatchObject({ items: 0, skills: [], reviewSteps: [] });
+    expect(p.personal).toMatchObject({ reviewFallbacks: expect.arrayContaining([
+      expect.objectContaining({ day: 1, source: "no-review", steps: [] }),
+      expect.objectContaining({ day: 2, source: "no-review", steps: [] }),
+    ]) });
+  });
+
+  it("R599-P1: uses code steps below the start when the day has no teaching step", () => {
+    const i = personalInput("U4");
+    i.pausedWeeks = 2;
+    i.personal.secure = [];
+    i.profile.standards = [];
+    // Coins are not among U4's prerequisite review candidates.
+    i.level.codeReviewSteps = { "K11-describe-coins": [2] };
+    const p = plan(i);
+    expect(p.newSteps.some(s => s.day <= 2)).toBe(false);
+    const reviews = dayParts(p, 1).filter(p => p.kind === "remember-these");
+    expect(reviews.length).toBeGreaterThan(0);
+    for (const r of reviews) {
+      expect(r.reviewSteps).toEqual([{ skill: "K11-describe-coins", step: 2 }]);
+      for (const s of r.reviewSteps ?? []) {
+        expect(BC.levelOfSkill(s.skill)!.number).toBeLessThan(4);
+        expect(s.step !== null && i.level.codeReviewSteps![s.skill].includes(s.step)).toBe(true);
+      }
+    }
+    expect(p.personal).toMatchObject({ reviewFallbacks: expect.arrayContaining([
+      expect.objectContaining({ day: 1, source: "below-start" }),
+    ]) });
+  });
+
   it("reviews only workbook-taught steps or code steps below the start in the first customer's book", () => {
     const r = planNextWorkbook({ curriculum: BC, grade: 4, profile: firstCustomerProfile(), workbooks: [], number: 1 });
     if (!r.ok) throw new Error(r.reason);

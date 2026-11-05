@@ -260,6 +260,7 @@ export interface PlannedPart {
    * The steps a review, check or test part draws its items from (#489): each a skill and its step, the steps already done
    * before this day (this book's earlier days, passed steps, earlier levels). A null step is the skill's last step (a
    * skill of an earlier level, all of it done). Absent on a part on the plan's own step and on plans before #489.
+   * An empty personal review may use today's teaching steps; personal.reviewFallbacks records that exception.
    */
   reviewSteps?: { skill: string; step: number | null }[];
 }
@@ -322,6 +323,15 @@ export interface RequiredTimeShortfall {
   shortfall: number;
 }
 
+export interface ReviewFallback {
+  day: number;
+  page: number;
+  part: PartKind;
+  source: "today" | "below-start" | "no-review";
+  steps: { skill: string; step: number }[];
+  reason: "no eligible review steps";
+}
+
 export interface WorkbookPlan {
   personal?: BookSignals & {
     start?: import("./workbook-placement").PlacementTrace;
@@ -329,6 +339,7 @@ export interface WorkbookPlan {
     /** Whole Extra blocks were exhausted. Keep the book and report the remaining required minutes to the admin. */
     timeShortfalls?: RequiredTimeShortfall[];
     notReviewed?: { unit: string; skills: string[]; reason: "not reviewed: taught in a later book" }[];
+    reviewFallbacks?: ReviewFallback[];
   };
   level: number;
   lead: PlanLevel["lead"];
@@ -1053,7 +1064,9 @@ export function planWorkbook(input: PlanInput): PlanResult {
 
   // The step progression (#489): each review, check and test part names the steps it draws from, only steps already
   // done before its day: this book's earlier days (latest first), the spaced reviews' own steps, passed steps, and every
-  // step of an earlier level's skill (null: its last). A check asks a step 1; the level test and a mini-test the last.
+  // step of an earlier level's skill (null: its last). An empty personal review can use today's steps below.
+  // A check asks a step 1; the level test and a mini-test the last.
+  const REVIEWED = new Set<PartKind>(["remember-these", "mixed-set", "friday-5", "show-what-you-know", "picture-stories", "fix-it", "mini-test"]);
   if (steps || personal) {
     // Solve it two ways only on a step with a sum two methods can work (the U4 review, item 14).
     const sumsOf = (ref: StepRef | null) => !ref || levelSkills.find((s) => s.id === ref.skill)?.steps[ref.step - 1]?.sums !== false;
@@ -1074,7 +1087,6 @@ export function planWorkbook(input: PlanInput): PlanResult {
       const passed = input.passed[skill] ?? 0;
       return passed > 0 ? Math.min(passed, stepCount(own)) : undefined;
     };
-    const REVIEWED = new Set<PartKind>(["remember-these", "mixed-set", "friday-5", "show-what-you-know", "picture-stories", "fix-it", "mini-test"]);
     for (const d of days) {
       const before = sim.starts.filter((x) => x.day < d.day).reverse();
       for (const page of d.pages) {
@@ -1092,14 +1104,10 @@ export function planWorkbook(input: PlanInput): PlanResult {
             const checks = (p.weakChecks ?? []).flatMap(c => c.skills.map(skill => ({ skill, step: 1 })));
             list = [...checks, ...fix, ...spaced, ...(p.kind === "fix-it" || p.kind === "mini-test" ? [] : before.map((x) => ({ skill: x.skill, step: x.step }))), ...own];
           } else return p;
-          let unique = list.filter((x, i) => list.findIndex((y) => key(y) === key(x)) === i)
+          const unique = list.filter((x, i) => list.findIndex((y) => key(y) === key(x)) === i)
             .filter(x => !personal || !REVIEWED.has(p.kind) || p.kind === "show-what-you-know"
               || personalReviewStep(x.skill, d.day) !== undefined && x.step !== null && x.step <= personalReviewStep(x.skill, d.day)!
                 && (taughtStep(x.skill, d.day) > 0 || level.codeReviewSteps?.[x.skill]?.includes(x.step)));
-          if (personal && REVIEWED.has(p.kind) && !unique.length) unique = earlier.flatMap(skill => {
-            const step = personalReviewStep(skill, d.day);
-            return step !== undefined && (p.kind !== "remember-these" || rememberAllowed(skill, d.day)) ? [{ skill, step }] : [];
-          });
           if (!unique.length && !personal) return p;
           return { ...p, skills: [...new Set(unique.map((x) => x.skill))], reviewSteps: unique };
         });
@@ -1108,6 +1116,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
   }
 
   const timeShortfalls: RequiredTimeShortfall[] = [];
+  const reviewFallbacks: ReviewFallback[] = [];
   const notReviewed = personal ? [...new Set([...input.profile.standards.map(s => s.code), ...level.units.map(u => u.code)])].flatMap(unit => {
     const skills = (STANDARDS.get(unit)?.skills ?? []).map(s => s.id).filter(skill => (level.skillLevels?.[skill] ?? 0) >= n
       && levelSkills.find(s => s.id === skill)?.delivery !== "warm-up" && taughtStep(skill, DAYS + 1) === 0);
@@ -1121,7 +1130,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
       d.difficulty = { ...shifted, helpLevel: d.day <= personal.adjustments.picturesThrough ? "pictures" : base.helpLevel,
         storyShare: personal.adjustments.storyShare ?? base.storyShare, maxMinutes: 35 };
       d.shortStories = personal.adjustments.shortStories;
-      for (const p of d.pages.flatMap(page => page.parts)) {
+      for (const page of d.pages) for (const p of page.parts) {
         if (p.kind === "remember-these") {
           p.skills = p.skills.filter(skill => rememberAllowed(skill, d.day));
           if (p.reviewSteps) p.reviewSteps = p.reviewSteps.filter(r => rememberAllowed(r.skill, d.day));
@@ -1136,6 +1145,22 @@ export function planWorkbook(input: PlanInput): PlanResult {
         if (p.kind === "word-problems" || p.kind === "picture-stories") {
           p.reviewSteps = [...(p.reviewSteps ?? []), ...storyPrerequisites]
             .filter((r, i, all) => all.findIndex(other => other.skill === r.skill && other.step === r.step) === i);
+        }
+        if (REVIEWED.has(p.kind) && p.items > 0 && p.skills.length === 0) {
+          // No past review: consolidate today's teaching, or use code steps below the start.
+          // With neither, leave review out. The other blocks keep their normal practice and filling rules.
+          const today = sim.starts.filter(s => s.day === d.day).map(({ skill, step }) => ({ skill, step }));
+          const below = Object.entries(level.codeReviewSteps ?? {}).flatMap(([skill, steps]) => {
+            const step = steps.at(-1);
+            return step !== undefined && (level.skillLevels?.[skill] ?? n) < n && eligible(skill)
+              && (p.kind !== "remember-these" || rememberAllowed(skill, d.day)) ? [{ skill, step }] : [];
+          });
+          const refs = today.length ? today : below;
+          p.skills = [...new Set(refs.map(s => s.skill))];
+          p.reviewSteps = refs;
+          if (!refs.length) p.items = 0;
+          reviewFallbacks.push({ day: d.day, page: page.number, part: p.kind,
+            source: today.length ? "today" : below.length ? "below-start" : "no-review", steps: refs, reason: "no eligible review steps" });
         }
         if (p.kind === "challenge") {
           // The first card stays on today's step. Other cards may prefer secure steps already taught or reviewed.
@@ -1187,7 +1212,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
   return {
     ok: true,
     plan: {
-      ...(personal ? { personal: { ...personal, ...(timeShortfalls.length ? { timeShortfalls } : {}), ...(notReviewed.length ? { notReviewed } : {}) } } : {}),
+      ...(personal ? { personal: { ...personal, ...(timeShortfalls.length ? { timeShortfalls } : {}), ...(notReviewed.length ? { notReviewed } : {}), ...(reviewFallbacks.length ? { reviewFallbacks } : {}) } } : {}),
       level: n,
       lead: level.lead,
       pagesADay: { ...level.pagesPerDay },
