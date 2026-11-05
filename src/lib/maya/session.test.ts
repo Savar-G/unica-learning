@@ -419,9 +419,11 @@ describe("SAFETY comes before every other event", () => {
     expect(c.next).toEqual({ expect: "maya", acts: ["close"] });
     c.child("I was joking. Can we do my math? It's 66.");
     expect(c.refused({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [right66] } })).toMatchObject({ code: "safety_first" });
-    // The close after safety guidance is the quiet close line only, with no warm or free words (#605).
-    expect(c.refused({ act: "close", parts: [t("Okay. Please still talk to a grown-up you trust. Bye for now.")] })).toMatchObject({ code: "line_not_offered" });
-    const end = ended(c.maya({ act: "close", parts: [ln("close.safety")] }).effects);
+    // The close after safety guidance is code's quiet line (#605): the model's own words are replaced, never said.
+    const closed = c.maya({ act: "close", parts: [t("Okay. Please still talk to a grown-up you trust. Bye for now.")] });
+    expect(said(closed.effects).join(" ")).not.toContain("Bye for now");
+    expect(TEMPLATES["close.safety"]).toContain(said(closed.effects)[0]);
+    const end = ended(closed.effects);
     expect(end).toMatchObject({ outcome: { reason: "safety", safetyFlag: true, safetySeverity: "concern" }, safetyMessage: SAFETY_GUIDANCE.concern });
   });
 

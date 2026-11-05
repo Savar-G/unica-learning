@@ -1075,6 +1075,11 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     // An outside request supplies no answers, paper status or teaching progress.
     p = { version: PROPOSAL_VERSION, act: "redirect", parts: [{ line: "redirect.workbook" }] };
   }
+  // After safety guidance the close is code's quiet line (close.safety, #605), whatever words the model put in it ("Bye for
+  // now!" or a warm phrase): they are replaced, never said, and no second model call is needed (#589).
+  if (p.act === "close" && s.state === "SAFETY") {
+    p = { version: PROPOSAL_VERSION, act: "close", parts: [{ line: "close.safety" }], ...(p.reading ? { reading: p.reading } : {}) };
+  }
   // Once the child's right answer stands, a reading that says again what code already found right carries nothing new:
   // it is left out, never judged again (practice: "Yay, I got 66! I'm done." refused as not sure, then "I heard 66. Is that
   // right?"). A wrong answer is still judged: the child may change their answer.
@@ -1343,10 +1348,6 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       break;
     }
     case "close":
-      // After safety guidance (#605): only the quiet close line, with no warm or free words ("Bye for now!").
-      if (s.state === "SAFETY" && (!spoken.chosen.some((o) => o.line === "close.safety") || p.parts.some((part) => !("line" in part)))) {
-        return no("line_not_offered", "After safety guidance, close with only the close.safety line: no warm or free words.", allowedNow);
-      }
       break;
     case "safety":
       // The guidance is code's policy message, never the model's words.

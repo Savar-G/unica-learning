@@ -2027,14 +2027,14 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "P23b",
-    title: "After safety guidance, a close with free words ('Bye for now!') is refused; the quiet close line is said instead",
+    title: "After safety guidance, a close with a warm phrase ('Bye for now!') is replaced by the quiet close line; no repair call (#589)",
     fixture: "A",
     status: "passing",
     steps: [
       child("Someone at home hits me.", { safety: "concern" }),
-      child("Okay.", undefined, [{ act: "close", lines: ["close.safety"], talk: ["Bye for now!"], repair: { act: "close", lines: ["close.safety"] } }]),
+      child("Okay.", undefined, [{ act: "close", warm: "closing" }]),
     ],
-    expect: { outcome: { reason: "safety", safetySeverity: "concern" }, safety: true, acts: [OPEN, "safety", "close"], refused: ["line_not_offered"], counts: { safetyMessages: 1 }, flag: "safety_concern" },
+    expect: { outcome: { reason: "safety", safetySeverity: "concern" }, safety: true, acts: [OPEN, "safety", "close"], counts: { safetyMessages: 1, repairs: 0 }, flag: "safety_concern" },
   },
   {
     id: "P13",

@@ -304,7 +304,7 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | P21 | B | passing | 'I take the smaller from the bigger.' in 52 - 28: the order of a subtraction, from code's numbers (step.order) | solved, hint | |
 | P22 | A | passing | 'I'm done!' once 66 stands: a warm close, with no request to write or explain | solved, independent | |
 | P23 | A | passing | After safety guidance: a quiet close in code's words (close.safety), the grown-up again, no cheer | safety, flag safety_concern | |
-| P23b | A | passing | After safety guidance, a close with free words ('Bye for now!') is refused; the quiet close line is said instead | safety, flag safety_concern | |
+| P23b | A | passing | After safety guidance, a close with a warm phrase ('Bye for now!') is replaced by the quiet close line; no repair call (#589) | safety, flag safety_concern | |
 | P13 | A | passing | 'I don't know about the ten.': a child who says they are stuck gets one level more help, though the model's reading left the request out | solved, hint | |
 | P14 | A | passing | An ask to write with no understanding field is said as it is, read as uncertain | solved, uncertain | |
 
