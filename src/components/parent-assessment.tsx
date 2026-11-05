@@ -15,8 +15,9 @@ import "./report.css";
 
 // The Assessment tab's two pages (#552, spec #544): the report with the action beside it, and the test before there is a
 // report. Round r544, set 1, option B, which Savar has not chosen yet: the layout is these two components and the
-// `.pd-split` and `.pd-go` rules of parent-shell.css. The action is the report's own ReportNextActions on the current
-// card route, with no new form (D-249).
+// `.pd-split` and `.pd-go` rules of parent-shell.css. In the column, the action part never scrolls; the rest scrolls in
+// `.pd-rail-more`, so the button stays in view in a short window. The action is the report's own ReportNextActions on
+// the current card route, with no new form (D-249).
 
 export function ParentAlerts({ password, pin, deskError, existing }: { password: boolean; pin: boolean; deskError: boolean; existing: boolean }) {
   return (
@@ -71,21 +72,23 @@ export function ParentReport({ view, child, next, newTest, learning, alerts, tra
               <ReportNextActions reportId={view.id} step={nextStep(view)} childName={name} province={view.province} src={next.src} asked={next.asked} start={next.start} words={card ? freeMonthWords(name) : undefined} pinned />
             </div>
           )}
-          {card && <div className="pd-after"><p className="pd-k">What happens next</p><Steps steps={whatHappensNext(name)} /></div>}
-          {!child.readOnly && <div className="pd-after"><LearnLink path={learningPath(child.id)} answered={learning !== null} name={name} forWorkbook={card} /></div>}
-          {(tests.length > 0 || startable) && (
-            <div className="pd-after">
-              {tests.length > 0 && (
-                <>
-                  <p className="pd-k">Tests</p>
-                  <ul className="pd-tests">
-                    {tests.map((t) => <li key={t.href}><Link href={t.href} aria-current={t.current ? "page" : undefined}>{t.date}{t.current && <span>Shown</span>}</Link></li>)}
-                  </ul>
-                </>
-              )}
-              {startable && newTest && <Link className="btn ghost pd-new-test" href={newTest.href}>{newTest.label}</Link>}
-            </div>
-          )}
+          <div className="pd-rail-more">
+            {card && <div className="pd-after"><p className="pd-k">What happens next</p><Steps steps={whatHappensNext(name)} /></div>}
+            {!child.readOnly && <div className="pd-after"><LearnLink path={learningPath(child.id)} answered={learning !== null} name={name} forWorkbook={card} /></div>}
+            {(tests.length > 0 || startable) && (
+              <div className="pd-after">
+                {tests.length > 0 && (
+                  <>
+                    <p className="pd-k">Tests</p>
+                    <ul className="pd-tests">
+                      {tests.map((t) => <li key={t.href}><Link href={t.href} aria-current={t.current ? "page" : undefined}>{t.date}{t.current && <span>Shown</span>}</Link></li>)}
+                    </ul>
+                  </>
+                )}
+                {startable && newTest && <Link className="btn ghost pd-new-test" href={newTest.href}>{newTest.label}</Link>}
+              </div>
+            )}
+          </div>
         </aside>
       </div>
     </SupportPage>
@@ -135,7 +138,7 @@ export function ParentTestStart({ childId, name, state, when, report, phone, sen
               </div>
             </div>
           </div>
-          {learning && <div className="pd-after"><LearnLink path={learning.path} answered={learning.answered} name={name} forWorkbook={false} /></div>}
+          {learning && <div className="pd-rail-more"><div className="pd-after"><LearnLink path={learning.path} answered={learning.answered} name={name} forWorkbook={false} /></div></div>}
         </aside>
       </div>
     </SupportPage>

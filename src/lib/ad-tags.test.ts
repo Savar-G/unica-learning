@@ -297,6 +297,14 @@ describe("ad conversions", () => {
     expect(p.google[0][2]).toMatchObject({ send_to: "AW-1234567890/reportLbl" });
   });
 
+  it("send report_open to Google only, once, when the dashboard shows the report on /account (#552)", () => {
+    for (const path of ["/account", "/account?child=3f2b8c1e-9d4a-4f6b-8e2c-1a2b3c4d5e6f"]) {
+      const p = sent("report_open", path);
+      expect(p.meta).toEqual([]);
+      expect(p.google).toEqual([["event", "conversion", { send_to: "AW-1234567890/reportLbl", page_location: "https://unicalearning.com/account", page_referrer: "" }]]);
+    }
+  });
+
   it("send card_saved to Google only, worth the first charge (CAD 79.99): the thank-you address holds a Stripe reference", () => {
     expect(CARD_VALUE).toBe(79.99);
     const p = sent("card_saved", THANKS);
