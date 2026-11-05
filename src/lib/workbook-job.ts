@@ -246,6 +246,8 @@ export interface RunFrame {
 }
 
 export interface WorkbookJobSource {
+  /** Read only the report recommendation, test duration and device for this plan's assessment. */
+  planningMetadata?(assessmentId: string): Promise<Pick<import("./workbook-signals").BookSignalsInput, "report" | "device">>;
   /** Null when there is no such child. */
   inputs(childId: string): Promise<ChildInputs | null>;
   /** Refreshes the profiles only before the run has a frame. False refuses a book from incomplete assessment facts. */
@@ -584,7 +586,9 @@ async function runFrame(run: WorkbookRun, deps: WorkbookJobDeps & { ai: AiClient
     const prepared = await deps.source.prepareProfile(run.childId);
     if (!prepared.ok) throw new Refusal(`We couldn't build ${name}'s profile from the assessment. Try again, or check the admin profile page.`);
     inputs = { ...inputs, profile: prepared.profile };
-    const planned = planNextWorkbook({ curriculum, grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number });
+    const assessmentId = inputs.profile?.profile.assessment?.assessmentId;
+    const metadata = assessmentId ? await deps.source.planningMetadata?.(assessmentId) : undefined;
+    const planned = planNextWorkbook({ ...metadata, curriculum, grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number });
     if (!planned.ok) throw new Refusal(`The plan could not be made: ${planned.reason}.`);
     const made: RunFrame = {
       version: RUN_FRAME_VERSION, ...(deps.itemPolicy === "legacy" ? {} : { itemPolicy: "approved-v1" as const }), curriculum: key, grade: inputs.grade, profileRevision: inputs.profile?.revision ?? null, workbooks: inputs.workbooks,

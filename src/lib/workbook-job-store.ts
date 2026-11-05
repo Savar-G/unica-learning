@@ -156,6 +156,17 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
 export function workbookJobSource(admin: SupabaseClient<Database>, prepareProfile: WorkbookJobSource["prepareProfile"]): WorkbookJobSource {
   return {
     prepareProfile,
+    async planningMetadata(assessmentId) {
+      const [test, report] = await Promise.all([
+        admin.from("assessments").select("device").eq("id", assessmentId).maybeSingle(),
+        admin.from("reports").select("minutes, recommendation:model->>howWeHelp").eq("assessment_id", assessmentId).maybeSingle(),
+      ]);
+      const device = must(test, "plan device load")?.device ?? null;
+      const row = must(report, "plan report load");
+      const recommendation = row?.recommendation;
+      return { device, report: { minutes: row?.minutes ?? null,
+        howWeHelp: recommendation === "ahead" || recommendation === "behind" || recommendation === "on-grade" ? recommendation : null } };
+    },
     async inputs(childId) {
       const [child, books] = await Promise.all([
         admin.from("children").select("parent_id, first_name, grade, province").eq("id", childId).maybeSingle(),

@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
-import { runAiCallLog, type RunAiCall } from "@/lib/workbook-job-store";
+import { runAiCallLog, workbookJobSource, type RunAiCall } from "@/lib/workbook-job-store";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database";
 import { fallbackAiClient, type AiCallRecord } from "@/lib/ai-fallback";
 import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
@@ -24,6 +26,27 @@ it("bundles the standalone worker without cookie-based auth or next/headers", as
 
 const call = (provider: AiCallRecord["provider"], ms = 1234.6): AiCallRecord => ({ name: "workbook_page", provider, model: "m", outcome: "answered", ms, usd: provider === "api" ? 0.1 : 0, note: null });
 const request = { name: "workbook_page", system: "s", schema: {}, content: [{ type: "text" as const, text: "t" }] };
+
+it("reads only the selected assessment's code recommendation, duration and device for the plan", async () => {
+  const reads: { table: string; columns?: string; filter?: string[] }[] = [];
+  const device = { deviceClass: "desktop", input: "mouse", screenWidth: 1440, screenHeight: 900, browser: "chrome" };
+  const client = { from(table: string) {
+    const read = { table } as (typeof reads)[number];
+    reads.push(read);
+    const chain = {
+      select(columns: string) { read.columns = columns; return chain; },
+      eq(column: string, value: string) { read.filter = [column, value]; return chain; },
+      async maybeSingle() { return { data: table === "assessments" ? { device } : { minutes: 55, recommendation: "behind" }, error: null }; },
+    };
+    return chain;
+  } };
+  const source = workbookJobSource(client as unknown as SupabaseClient<Database>, async () => ({ ok: false }));
+  expect(await source.planningMetadata!("test-id")).toEqual({ device, report: { howWeHelp: "behind", minutes: 55 } });
+  expect(reads).toEqual([
+    { table: "assessments", columns: "device", filter: ["id", "test-id"] },
+    { table: "reports", columns: "minutes, recommendation:model->>howWeHelp", filter: ["assessment_id", "test-id"] },
+  ]);
+});
 
 describe("runAiCallLog", () => {
   it("R404-6 saves every completed call before returning, including fewer than ten calls", async () => {
