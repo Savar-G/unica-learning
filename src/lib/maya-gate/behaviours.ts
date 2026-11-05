@@ -1058,19 +1058,21 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "C36",
-    title: "The package says 56 but the checked steps make 66: a content hold, no teaching",
+    title: "The package has a wrong key: offer another question on the page, with no inability claim",
     fixture: "A_BAD_KEY",
     status: "passing",
     steps: [],
-    expect: { outcome: { reason: "content_issue", assistance: "independent" }, acts: ["close"], never: ["open", "guide", "example_step"] },
+    expect: { outcome: { reason: "content_issue", assistance: "independent" }, acts: ["close"], never: ["open", "guide", "example_step"],
+      outputs: [{ mayaTurn: 0, lines: [["Hi, I'm Maya, an AI."], ["Want to pick another question on this page?"]] }] },
   },
   {
     id: "C36b",
-    title: "A question kind Maya cannot teach yet (equivalent fractions, fixture G): held, no unchecked teaching",
+    title: "Equivalent fractions: offer another question on the page, with no inability claim or unchecked teaching",
     fixture: "G",
     status: "passing",
     steps: [],
-    expect: { outcome: { reason: "content_issue" }, acts: ["close"] },
+    expect: { outcome: { reason: "content_issue" }, acts: ["close"],
+      outputs: [{ mayaTurn: 0, lines: [["Hi, I'm Maya, an AI."], ["Want to pick another question on this page?"]] }] },
   },
   {
     id: "C37",
@@ -1230,7 +1232,7 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "V3",
-    title: "The package turns out wrong in the middle of teaching: no more teaching, a close, content_issue",
+    title: "The package turns out wrong during teaching: invite another question, without a new hello or inability claim",
     fixture: "A",
     status: "passing",
     steps: [
@@ -1238,7 +1240,8 @@ export const BEHAVIOURS: Behaviour[] = [
       { contentProblem: "the answer key and the worked steps disagree" },
       child("The ones are 16, so 66.", { answers: [[16, "ones", "right"], [66, "result", "right"]] }),
     ],
-    expect: { outcome: { reason: "content_issue" }, acts: [OPEN, "guide", "close"] },
+    expect: { outcome: { reason: "content_issue" }, acts: [OPEN, "guide", "close"],
+      outputs: [{ mayaTurn: 2, lines: [["Want to pick another question on this page?"]] }] },
   },
   {
     id: "V3b",

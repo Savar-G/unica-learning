@@ -384,7 +384,9 @@ export function showHeldNote(held: readonly string[] | null, chat: ChatView | nu
   if (!held) return false;
   if (!chat) return true;
   if (!chat.ended) return false;
-  const explained = held.slice(-2).join(" ");
+  // The invitation can arrive during a call, after the AI disclosure was already said.
+  const explained = held.at(-1);
+  if (!explained) return true;
   return !chat.transcript.some((line) => line.speaker === "maya" && line.text.includes(explained));
 }
 

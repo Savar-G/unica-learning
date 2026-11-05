@@ -32,8 +32,9 @@ import { simplestWords, teachSteps } from "./fractions";
  * Version 9 (#527): held.hello, held.cannot and held.next, Maya's words on a question she cannot teach yet. Version 10
  * (#605, Savar 2026-11-06: "conversational and human-like"): check.together, check.guess, check.fix, step.why,
  * step.order and close.safety; check.not_yet never praises wrong work; more wordings for about.no_secret.
+ * Version 11 (#605): a held question invites another question on the page, without an inability claim.
  */
-export const LINES_VERSION = 10;
+export const LINES_VERSION = 11;
 
 export const LINE_IDS = [
   "about.ai",
@@ -78,7 +79,6 @@ export const LINE_IDS = [
   "close.together",
   "repair.sorry",
   "held.hello",
-  "held.cannot",
   "held.next",
 ] as const;
 export type LineId = (typeof LINE_IDS)[number];
@@ -463,12 +463,10 @@ export const TEMPLATES = {
     "Oops, I said that wrong. Let me fix it.", "Sorry, I made a mistake there. Here it is again.", "Wait, I mixed that up. Let me say it again.",
     "Oops, my mistake. Let me try again.", "Sorry, that came out wrong. Here's the right way.",
   ],
-  // A question Maya cannot teach yet (#527, Savar 2026-11-04: "say so plainly"). One fixed wording each, all written by
-  // code: hello and that she is an AI (only when she has not said hello yet), that she cannot help with this kind of
-  // question yet, and what the child can do now. Plain words for a 6-year-old (D-202); no promise and no feeling (D-196).
+  // A held question (#605, Savar 2026-11-05): offer another question on the page, without an inability claim.
+  // Code adds the AI disclosure only before the first hello. No alternate question is invented or promised.
   "held.hello": ["Hi, I'm Maya, an AI."],
-  "held.cannot": ["I can't help with this kind of question yet."],
-  "held.next": ["Pick another question, or ask a grown-up."],
+  "held.next": ["Want to pick another question on this page?"],
 } as const satisfies Record<string, readonly string[]>;
 export type TemplateKey = keyof typeof TEMPLATES;
 
@@ -945,10 +943,10 @@ export function allLineTexts(pkg: OperationPackage, heardValues: readonly Answer
 
 /**
  * Maya's whole turn on a question she cannot teach yet (#527): hello and that she is an AI when she has not said hello
- * yet, then that she cannot help with this kind of question yet, then what the child can do now. Needs no package.
+ * yet, then an invitation to pick another question on the page. Needs no package.
  */
 export function heldOffers(hello: boolean): LineOffer[] {
-  return [...(hello ? [offer("held.hello", "held.hello", {})] : []), offer("held.cannot", "held.cannot", {}), offer("held.next", "held.next", {})];
+  return [...(hello ? [offer("held.hello", "held.hello", {})] : []), offer("held.next", "held.next", {})];
 }
 
 /** The held turn's sentences, as Maya says them and as the desk shows them before a chat. */

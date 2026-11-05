@@ -110,6 +110,11 @@ export const NEVER_SAY = [
     examples: ["I had fun working with you.", "I'm so happy!", "I love hearing about dogs!", "I feel excited today.", "I really enjoyed this."],
   },
   {
+    id: "held_limit",
+    rule: "When a workbook question is held because Maya does not teach its kind, never tell the child what Maya cannot teach or cannot help with, that she is not yet able, or that she does not know how. Invite the child to pick another question on the page instead. This rule is about held workbook questions; keep the separate AI disclosure, safety, secrecy and promise rules.",
+    examples: ["I can't help with this kind of question yet.", "I can't teach this question.", "I'm not yet able to teach this.", "I don't know how to teach this question."],
+  },
+  {
     id: "plain_language",
     rule: "Words or sentences a child aged 6 to 12 may not follow (D-202, the plain-language rules of the workbooks). Never correct the child's grammar or English. Respond to the math meaning. Each sentence is short and holds one idea, in everyday words. Never \"in all\", \"altogether\", \"all together\", \"total\" or \"left over\". In anything Maya tells, things only do what they really can: a toy does not feel or talk, and a number does not wait.",
     examples: ["What an extraordinary and magnificent achievement!", "Wow, that's a lot of toys altogether!", "Your teddy must have missed you all day!"],
@@ -159,7 +164,7 @@ export const NOT_OK_TALK: readonly { line: string; childTurn: string; rule: Neve
 ];
 
 /** The version of the review's instructions and input. Raise it when either changes; every trace records it. */
-export const TALK_REVIEW_PROMPT_VERSION = "maya-talk-review-7";
+export const TALK_REVIEW_PROMPT_VERSION = "maya-talk-review-8";
 
 /** What the review reads: the line, the child's last turn, and the call so far (the child's words are data). */
 export interface TalkReviewInput {

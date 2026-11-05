@@ -130,3 +130,11 @@ The reply to a doubtful yes is `check.together` (above). Every line is checked b
 
 "I carry the 1 to the tens" got "Was that 1?". Two causes, both fixed: "to the" after a number was read as a form code cannot read (it was meant for "66 to the power of 2"; "to the" before a place or position word is now a place), and the confirmation was offered on every turn. Now "Did you say...?" is offered only when what the child said is not clear: a turn code or the model read as unclear, numbers speech heard two ways, a choice, a hedge ("I think it's 66", "maybe", a question), or a final answer the child is not sure of. A turn with no number offers the redirect instead, so the model still sees the reply phrases (praise, promises, questions about Maya) it used to see through the confirmation. No new wording.
 
+### A held question offers another question (#605, Savar 2026-11-05)
+
+The shared held response now says: "Hi, I'm Maya, an AI. Want to pick another question on this page?" After the opening, it says only: "Want to pick another question on this page?"
+
+`held.next` has the new invitation. `held.cannot` is removed. The response uses code's fixed words and invents no alternate question reference. Text, voice, and the desk use the same line. The parent's note reports the invitation only when it was delivered. The call still ends as `content_issue`, with no learning event or model call.
+
+Line set 11 records the change. Review prompt `maya-talk-review-8` adds `held_limit`: for this situation, refuse "I can't help", "I can't teach", "not yet able", and "I don't know how" wording. Safety, secrecy, and AI disclosures keep their separate rules. Gate cases C36, C36b, and V3 check the complete positive response.
+

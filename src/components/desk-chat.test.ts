@@ -52,12 +52,16 @@ describe("a question Maya cannot teach yet (#527)", () => {
     expect(requests).toEqual([]);
   });
   it("shows Maya's held words when an old ended chat on the question never said them", () => {
-    const HELD = ["Hi, I'm Maya, an AI.", "I can't help with this kind of question yet.", "Pick another question, or ask a grown-up."];
+    const HELD = ["Hi, I'm Maya, an AI.", "Want to pick another question on this page?"];
     const old = { ...view(4), ended: true, transcript: [{ speaker: "maya" as const, text: "I had fun working with you.", second: 0 }] };
     const told = { ...view(4), ended: true, transcript: [{ speaker: "maya" as const, text: HELD.join(" "), second: 0 }] };
+    const midCall = { ...view(4), ended: true, transcript: [{ speaker: "maya" as const, text: HELD[1], second: 10 }] };
+    const former = { ...view(4), ended: true, transcript: [{ speaker: "maya" as const, text: "Hi, I'm Maya, an AI. I can't help with this kind of question yet. Pick another question, or ask a grown-up.", second: 0 }] };
     expect(showHeldNote(HELD, null)).toBe(true);
     expect(showHeldNote(HELD, old)).toBe(true);
     expect(showHeldNote(HELD, told)).toBe(false);
+    expect(showHeldNote(HELD, midCall)).toBe(false);
+    expect(showHeldNote(HELD, former)).toBe(true);
     expect(showHeldNote(HELD, view(4))).toBe(false);
     expect(showHeldNote(null, null)).toBe(false);
   });

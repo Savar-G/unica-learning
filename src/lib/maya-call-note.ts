@@ -254,7 +254,7 @@ export function codeSentences(f: NoteFacts, heldSaid = false): string[] {
   // the child did (no learning event, so no step they got stuck on).
   if (f.reason === "content_issue") {
     lines.push("Maya cannot help with this kind of question yet, so the call ended.");
-    if (heldSaid) lines.push(`She asked ${CHILD} to pick another question or ask a grown-up.`);
+    if (heldSaid) lines.push(`She asked ${CHILD} to pick another question on the page.`);
     if (f.help === "worked_example") lines.push("Maya showed an easier example first.");
     else if (f.help === "guided") lines.push("Maya helped one step at a time.");
     else if (f.help === "hint") lines.push("Maya gave a small hint.");

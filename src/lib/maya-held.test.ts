@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
-import { heldReason, heldSentences, memoryWordingHistoryStore } from "@/lib/maya";
+import { heldReason, heldSentences, memoryWordingHistoryStore, NEVER_SAY, TALK_REVIEW_SYSTEM } from "@/lib/maya";
 import { mayaCalls, type CallResult, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import { callNotes, noteSentences, noteStep } from "@/lib/maya-call-note";
@@ -13,15 +13,15 @@ import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace } from "@/lib/maya-trace";
 
 // A question Maya cannot teach yet (#527), through the call module's public interface on the in-memory seams: chat,
-// an admin test call and a voice call each give code's held turn (hello, that Maya is an AI, that she cannot help with
-// this kind of question yet, and to pick another question or ask a grown-up), ask the model nothing, write no learning
+// an admin test call and a voice call each give code's held turn (hello, that Maya is an AI, and an invitation to pick
+// another question on the page), ask the model nothing, write no learning
 // event and rebuild no profile. The parent's note says the same in plain words.
 
 const TEST_PARENT = "11111111-1111-4111-8111-111111111111";
 const PARENT = "44444444-4444-4444-8444-444444444444";
 const CHILD = "55555555-5555-4555-8555-555555555555";
 const T0 = Date.UTC(2026, 10, 4, 16, 0, 0);
-const HELD = "Hi, I'm Maya, an AI. I can't help with this kind of question yet. Pick another question, or ask a grown-up.";
+const HELD = "Hi, I'm Maya, an AI. Want to pick another question on this page?";
 const PKG = heldPackage({ source: "workbook", workbookId: "wb-1", page: 4, question: 9 });
 
 function setup() {
@@ -71,9 +71,22 @@ describe("the pre-check (#527)", () => {
   });
 
   it("gives the held turn in short, plain sentences, with the AI disclosure first", () => {
-    expect(heldSentences(true)).toEqual(["Hi, I'm Maya, an AI.", "I can't help with this kind of question yet.", "Pick another question, or ask a grown-up."]);
-    expect(heldSentences(false)).toEqual(["I can't help with this kind of question yet.", "Pick another question, or ask a grown-up."]);
-    for (const line of heldSentences(true)) expect(line).not.toMatch(/\u2014|fun|enjoy|happy|promise|will|soon/i);
+    expect(heldSentences(true)).toEqual(["Hi, I'm Maya, an AI.", "Want to pick another question on this page?"]);
+    expect(heldSentences(false)).toEqual(["Want to pick another question on this page?"]);
+    for (const line of heldSentences(true)) expect(line).not.toMatch(/\u2014|fun|enjoy|happy|promise|will|soon|can't|cannot|not yet|don't know how/i);
+  });
+
+  it("the review forbids inability claims when offering another workbook question", () => {
+    const rule = NEVER_SAY.find((entry) => entry.id === "held_limit");
+    expect(rule?.examples).toEqual(expect.arrayContaining([
+      "I can't help with this kind of question yet.",
+      "I can't teach this question.",
+      "I'm not yet able to teach this.",
+      "I don't know how to teach this question.",
+    ]));
+    expect(TALK_REVIEW_SYSTEM).toContain("held_limit:");
+    // Safety and privacy disclosures keep their separate rules.
+    expect(TALK_REVIEW_SYSTEM).toContain("I can't keep secrets");
   });
 });
 
@@ -101,7 +114,7 @@ describe("a held question in a call (#527)", () => {
     expect(noteSentences(note, "Leah")).toEqual([
       "Leah called Maya about page 4, question 9.",
       "Maya cannot help with this kind of question yet, so the call ended.",
-      "She asked Leah to pick another question or ask a grown-up.",
+      "She asked Leah to pick another question on the page.",
     ]);
     expect(note.facts.stuckOn).toBeNull();
     expect(note.warm).toBeNull();

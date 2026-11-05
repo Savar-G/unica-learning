@@ -8,8 +8,8 @@
 //
 // One call: READY -> OPEN -> ASSESS -> (MODEL_EXAMPLE -> TRY_TARGET | TRY_TARGET | GUIDE_TARGET) -> CHECK ->
 // WRITE_CLOSE -> CLOSE, or CONTENT_HOLD when the question package does not check or is a kind Maya cannot teach yet.
-// A question held from the start ends at once in code's words (#527: hello, that Maya is an AI, that she cannot help with
-// this kind of question yet, and to pick another question or ask a grown-up), with no model call; a hold during the
+// A question held from the start ends at once in code's words (#605: hello, that Maya is an AI, and an invitation to
+// pick another question on the page), with no model call; a hold during the
 // call closes with the held lines only. A held call writes no learning event.
 // The interrupts take over in this priority: SAFETY first, then a stop and the deadline (TIME_CLOSE), then a repair
 // Maya owes (REPAIR_MAYA), then confirmation of what was heard (CONFIRM_HEARD), then teaching with WAIT_WRITE and
@@ -942,8 +942,8 @@ export function step(session: Session, event: SessionEvent): StepResult {
       s.startedAt = event.at;
       s.state = s.package ? "OPEN" : "CONTENT_HOLD";
       s.expect = "maya";
-      // A question Maya cannot teach (#527): code says hello, that she is an AI, that she cannot help with this kind of
-      // question yet and what the child can do, then the call ends. No model is asked and nothing is taught.
+      // A held question (#605): code says hello, that she is an AI, and invites another question on the page, then
+      // the call ends. No model is asked and nothing is taught.
       if (!s.package) {
         const text = heldSentences(true).join(" ");
         effects.push({ kind: "say", act: "close", text });

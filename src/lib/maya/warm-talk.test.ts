@@ -102,7 +102,7 @@ describe("the phrase bank", () => {
         expect(wordings).toHaveLength(4);
         continue;
       }
-      if (["about.ai", "shorter.prompt", "answer.area", "input.spoken", "redirect.workbook", "held.hello", "held.cannot", "held.next"].includes(key)) {
+      if (["about.ai", "shorter.prompt", "answer.area", "input.spoken", "redirect.workbook", "held.hello", "held.next"].includes(key)) {
         expect(wordings).toHaveLength(1);
         continue;
       }

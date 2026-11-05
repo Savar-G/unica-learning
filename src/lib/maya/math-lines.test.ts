@@ -312,7 +312,7 @@ describe("the line set", () => {
         for (const v of variants) expect(v.split(/\s+/).length, v).toBeLessThanOrEqual(25);
         continue;
       }
-      if (["about.ai", "shorter.prompt", "answer.area", "input.spoken", "held.hello", "held.cannot", "held.next"].includes(key)) {
+      if (["about.ai", "shorter.prompt", "answer.area", "input.spoken", "held.hello", "held.next"].includes(key)) {
         expect(variants).toHaveLength(1);
         expect(variants[0].split(/\s+/).length).toBeLessThanOrEqual(25);
         continue;
