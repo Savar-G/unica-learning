@@ -1299,7 +1299,7 @@
       "page": "U16 p8",
       "scale": 0.7,
       "angle": "upright",
-      "status": "refused"
+      "status": "calibrated"
     },
     {
       "page": "U16 p12",
@@ -1317,7 +1317,7 @@
       "page": "U4 p4",
       "scale": 0.7,
       "angle": "rotated 7 degrees",
-      "status": "refused"
+      "status": "calibrated"
     },
     {
       "page": "U4 p5",
@@ -1335,13 +1335,13 @@
       "page": "U4 p7",
       "scale": 0.7,
       "angle": "rotated 7 degrees",
-      "status": "refused"
+      "status": "calibrated"
     },
     {
       "page": "U4 p8",
       "scale": 0.7,
       "angle": "rotated 7 degrees",
-      "status": "refused"
+      "status": "calibrated"
     },
     {
       "page": "U16 p3",
@@ -1359,13 +1359,13 @@
       "page": "U16 p5",
       "scale": 0.7,
       "angle": "rotated 7 degrees",
-      "status": "refused"
+      "status": "calibrated"
     },
     {
       "page": "U16 p6",
       "scale": 0.7,
       "angle": "rotated 7 degrees",
-      "status": "refused"
+      "status": "calibrated"
     },
     {
       "page": "U16 p7",
@@ -1377,13 +1377,13 @@
       "page": "U16 p8",
       "scale": 0.7,
       "angle": "rotated 7 degrees",
-      "status": "refused"
+      "status": "calibrated"
     },
     {
       "page": "U16 p9",
       "scale": 0.7,
       "angle": "rotated 7 degrees",
-      "status": "refused"
+      "status": "calibrated"
     },
     {
       "page": "U16 p10",
@@ -1401,7 +1401,7 @@
       "page": "U16 p12",
       "scale": 0.7,
       "angle": "rotated 7 degrees",
-      "status": "refused"
+      "status": "calibrated"
     },
     {
       "page": "U16 p13",
@@ -1413,7 +1413,7 @@
       "page": "U16 p14",
       "scale": 0.7,
       "angle": "rotated 7 degrees",
-      "status": "refused"
+      "status": "calibrated"
     },
     {
       "page": "U26 p3",
@@ -1443,7 +1443,7 @@
       "page": "U26 p7",
       "scale": 0.7,
       "angle": "rotated 7 degrees",
-      "status": "refused"
+      "status": "calibrated"
     },
     {
       "page": "U26 p8",
@@ -1479,13 +1479,13 @@
       "page": "U4 p7",
       "scale": 0.77,
       "angle": "rotated 7 degrees",
-      "status": "refused"
+      "status": "calibrated"
     },
     {
       "page": "U4 p8",
       "scale": 0.77,
       "angle": "rotated 7 degrees",
-      "status": "refused"
+      "status": "calibrated"
     },
     {
       "page": "U16 p3",
@@ -1497,7 +1497,7 @@
       "page": "U16 p4",
       "scale": 0.77,
       "angle": "rotated 7 degrees",
-      "status": "refused"
+      "status": "calibrated"
     },
     {
       "page": "U16 p5",
