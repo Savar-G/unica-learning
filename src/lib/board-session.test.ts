@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boardScene, childStrokes, createHistory, loadDraft, mayaWrites, penHolder, rebaseOnto, refusedBatches, replayFrame, replayOf, withChildInk, type BoardHistory, type InkStroke } from "@/lib/board-history";
+import { boardScene, childStrokes, createHistory, historyFromLog, inkLog, loadDraft, mayaWrites, penHolder, refusedBatches, replayFrame, replayOf, withChildInk, type BoardHistory, type InkStroke } from "@/lib/board-history";
 import { boardPaths } from "@/lib/board";
 import { createFakeTimers, createMemoryChannels, createMemoryDraftStore, createMemoryLocks } from "@/lib/board-history-memory";
 import { createBoardSession, type SessionNote } from "@/lib/board-session";
@@ -350,34 +350,62 @@ describe("Maya's replies in a chat (#534)", () => {
     expect(frame.child).toHaveLength(1);
   });
 
-  it("R625b-4: a board rebuilt without its draft takes the call's saved board back, and keeps its own newer lines", () => {
+});
+
+describe("a chat's board rebuilt from the call's ink log (#635)", () => {
+  it("R639-2: a chat's board does not go back to a stale stored draft: the next line takes the next sequence", () => {
+    let t = 0;
+    const first = createBoardSession({ initial: createHistory(), restored: false, clock: () => t, wall: () => t, noStore: true });
+    first.mayaReply([QUESTION]);
+    first.handBack();
+    for (const x of [0.1, 0.2]) {
+      t += 2000;
+      expect(first.penDown([x, 0.8], false, 800)).toBe(true);
+      t += 100;
+      first.penMove([[x + 0.05, 0.82]]);
+      first.penUp();
+    }
+    const whole = first.view().history;
+    const log = inkLog(whole);
+    // The draft stopped before the last line: a storage write failed. The call holds all of it.
+    const stale = historyFromLog(log.slice(0, -1), [QUESTION])!;
+    const again = createBoardSession({ initial: historyFromLog(log, [QUESTION])!, restored: true, clock: () => t, wall: () => t, appendOnly: true });
+    const saves: BoardHistory[] = [];
+    again.attach({ owns: () => true, stored: () => stale, save: (h) => { saves.push(h); return { status: "saved", history: h }; } }, "holder", stale);
+    expect(inkLog(again.view().history)).toEqual(log);
+    // The draft catches up at once.
+    expect(inkLog(saves.at(-1)!)).toEqual(log);
+    t = 50;
+    expect(again.penDown([0.6, 0.6], false, 800)).toBe(true);
+    t = 150;
+    again.penMove([[0.65, 0.62]]);
+    again.penUp();
+    const after = inkLog(again.view().history);
+    expect(after).toHaveLength(log.length + 1);
+    expect(after.slice(0, log.length)).toEqual(log);
+  });
+
+  it("R635-4: takes the child's next line, on a clock that goes on from where the board was left", () => {
     let t = 0;
     const first = createBoardSession({ initial: createHistory(), restored: false, clock: () => t, wall: () => t, noStore: true });
     first.mayaReply([QUESTION]);
     first.handBack();
     for (const x of [0.1, 0.2, 0.3]) {
-      t += 1000;
-      first.penDown([x, 0.8], false, 800);
+      t += 2000;
+      expect(first.penDown([x, 0.8], false, 800)).toBe(true);
       t += 100;
       first.penMove([[x + 0.05, 0.82]]);
       first.penUp();
     }
-    const saved = first.view().history;
-    // The same chat after the draft was lost: a fresh board, one new line, a lower revision.
+    // Another load of the desk, with no draft: the board comes from the call's log, and this page's clock starts at 0.
     t = 0;
-    const fresh = createBoardSession({ initial: createHistory(), restored: false, clock: () => t, wall: () => t, noStore: true });
-    fresh.mayaReply([QUESTION]);
-    fresh.handBack();
-    t = 500;
-    fresh.penDown([0.6, 0.6], false, 800);
-    t = 600;
-    fresh.penMove([[0.65, 0.62]]);
-    fresh.penUp();
-    expect(fresh.view().history.revision).toBeLessThan(saved.revision);
-    const rebased = rebaseOnto(saved, fresh.view().history, 20_000);
-    expect(childStrokes(rebased).map((s) => s.pts[0][0])).toEqual([0.1, 0.2, 0.3, 0.6]);
-    expect(rebased.revision).toBeGreaterThan(saved.revision);
-    // Nothing new: the board stays as it is.
-    expect(rebaseOnto(saved, saved, 20_000)).toBe(saved);
+    const again = createBoardSession({ initial: historyFromLog(inkLog(first.view().history), [QUESTION])!, restored: true, clock: () => t, wall: () => t, noStore: true });
+    expect(penHolder(again.view().history)).toBe("child");
+    t = 50;
+    expect(again.penDown([0.6, 0.6], false, 800)).toBe(true);
+    t = 150;
+    again.penMove([[0.65, 0.62]]);
+    again.penUp();
+    expect(childStrokes(again.view().history)).toHaveLength(4);
   });
 });
