@@ -1,0 +1,43 @@
+{
+  "round": "r557",
+  "ticket": "#557, spec #544, D-236 and D-255",
+  "route": "Design direct route. Extend the existing Account child cards and the existing family-delete form.",
+  "approval": "The dashboard stays behind parentDashboardAccess. Savar must approve the public privacy and terms sentences before merge and the dashboard release before real families see it.",
+  "capture": "Aside CLI --account u0, npm run dev on port 3557, verified separate test family, real emailed codes and real route responses. Only children created for this task were deleted. No live-mode Stripe call ran. The browser fixtures had no plans. The local server had a dummy test key.",
+  "viewports": {
+    "desktop_code": [
+      1440,
+      1200
+    ],
+    "desktop": [
+      1440,
+      1000
+    ],
+    "phone": [
+      390,
+      844
+    ]
+  },
+  "screens": {
+    "desktop-code.png": "Iris QA557 confirmation and empty code form at desktop width. Scrolled within Account. Captured before the final added audit-copy sentence. See desktop-open.png for final wording.",
+    "phone-code.png": "The real sent-code form at phone width. The long test address wraps. Captured before the final added audit-copy sentence. See phone-open.png for final wording.",
+    "desktop-deleted.png": "First child deleted, sibling still present. Real response.",
+    "phone-deleted.png": "First child deleted on the phone. Real response.",
+    "desktop-empty.png": "After deleting the last child, Account stays signed in and offers Add another child.",
+    "phone-empty.png": "The same empty account at phone width.",
+    "desktop-open.png": "Final wording, including removal of affected parent-owned email copies. Temporary preview child, no code requested.",
+    "phone-open.png": "Final deletion wording at phone width, including affected stored email copies."
+  },
+  "verification": {
+    "browser": "Two deletions through the visible form with codes read from the test mailbox. After the first, sibling row, test and Storage metadata hashes were identical. After the second: Auth 1, parent 1, children 0, tests 0, files 0, pending requests 0, folder guards 2. A late Storage upload to the removed child's folder failed with code 55000.",
+    "copies": "Three saved copies match the expected name-free payload of this task's three seeded tests, including the initial shared-family fixture that was cleaned up through the server deletion interfaces. None contains the fixture names.",
+    "local": "14 touched and directly affected test files, 225 tests, exit 0. ESLint src exit 0. npm run build exit 0. The whole npm test was not run.",
+    "database": "Seven additive schema migrations applied through Supabase MCP. Child deletion and admission probes passed and rolled back. The unchanged billing recovery probe reached its intentional PROBE_OK rollback after the child guard correction. The mixed email-copy probe also passed and rolled back."
+  },
+  "limits": [
+    "No Stripe cancellation ran in this browser check. Existing fake plan tests cover failed reads and stops.",
+    "No two-connection hosted lock wait was measured.",
+    "The scheduled Vercel retry is configured but has not run on a deployed build.",
+    "Visual and code review were self-review. Independent review is pending."
+  ]
+}

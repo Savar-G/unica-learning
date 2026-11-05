@@ -401,3 +401,42 @@ Checked on the live database (5 November 2026, UTC), in a transaction that was r
 ## Monthly summary renders (#562)
 
 `public.monthly_summary_renders` holds one row per monthly summary PDF a parent asked for (only the parent and the time), so every function instance shares one count of 5 tries in 10 minutes. The service function `claim_monthly_summary_render` deletes the parent's rows older than the window when it counts. `parent_id` references `public.parents` with `on delete cascade`, so the family deletion removes the rows. Checked on the live database (5 November 2026): the foreign key cascades; the table has the family write fence trigger, and with the family's deletion requested the function's insert was refused (`family_unavailable`, in a transaction that was rolled back); row-level security is on with no policy and no grant for anon or authenticated; only the service role can call the function.
+
+## Delete one child (#557)
+
+The Account tab uses the same emailed code module, code table, send limits and wrong-try count as family deletion. The hash also covers the child id. A child's code cannot confirm a family deletion or a sibling's deletion. Both child routes require the dashboard release check, a verified session, JSON and the same browser origin. The existing proxy desk lock and queued-family refusal apply to them.
+
+`childDeleteStore` adapts the existing plan-stop sequence in `requestFamilyDelete`. It checks ownership and pending starts, reads only the child's Stripe Customer, stops each plan immediately without a refund, takes the existing family delete hold, reads Stripe again, and records `child_deletions` under that hold. An unresolved saved-card Customer, shared Customer, old family booking without child scope, failed Stripe read or incomplete stop refuses deletion. No sibling Customer is stopped. Legacy pending starts and open `plan_starts` refuse deletion when those tables exist. PR #593 is not on the base commit, but both tables were present on the hosted database and were tested.
+
+The durable child request fences writes to the child's rows and file folders. The server then claims a two-minute worker lease, builds the tests' copies with the existing allowlist, saves them through `save_family_test_copy`, confirms every copy, drains only the captured folders, and calls `complete_child_deletion`. The final function rechecks the copies and empty Storage folders before it deletes the child. The foreign keys remove its dependent rows. Auth, the parent, siblings and the parent's PIN stay. A parent with no children can still use Account and Add another child.
+
+A failure after the request stays pending. The response distinguishes a completed deletion from a saved request with work left. The daily `/api/child-deletions` job retries saved requests with the cron secret and a bounded time limit. Its schedule is in `vercel.json`; hosted execution is not proved before deployment. A parent can also retry from Account. The worker never needs a Stripe key because the request already confirmed that no plan could charge.
+
+The captured folder set stays in the request until the child is removed. `child_deleted_folders` then keeps only the parent id, bucket and folder key. It has no name, child id, test content or file content. Its upload trigger prevents a late worker from restoring a deleted file after the child and request rows are gone. It is removed with the parent. This retention is stated in the confirmation and proposed public wording.
+
+Parent-owned email audit copies are also checked. At request time, `mark_child_email_copies` marks parent email logs whose call ids include the child, whose saved content links to the child id, or whose Maya content names the child or a former name. Completion removes those stored bodies after the test-copy check. The parent delivery ledger and unrelated sibling copies remain. A copy marker refuses a late body write. A mixed family email's whole stored audit body is removed; the sibling's original call notes and tests remain. Emails already delivered to the parent stay outside account storage.
+
+### Family-table coverage
+
+The hosted foreign key catalog was checked recursively from `parents` and `children`. The final query found 54 child-cascade tables and 13 parent-only tables. Every child-cascade table except the request itself had the child write trigger. A child deletion uses the existing child cascade, including indirect descendants. The catalog also includes tables from open PRs. Future child-owned tables must have a cascading child reference and the child write fence.
+
+| Treatment | Tables |
+| --- | --- |
+| Child and tests | `children`, `assessments`, `answers`, `assessment_facts`, `fact_answers`, `question_shows`, `work_reviews`, `reports`, `learner_profiles`, `anonymous_test_links` |
+| Child account and learning | `card_setups`, `waitlist_joins`, `sign_in_links`, `email_log`, dependent `email_copies` plus affected parent-owned email copies, `child_profiles`, `learning_events`, `skill_state_history`, `child_plan_states`, `child_card_updates`, `plan_starts`, `scan_link_emails` |
+| Child Maya records | `maya_calls`, `maya_call_connections`, `maya_call_alerts`, `maya_call_ink_events`, `maya_call_notes`, `maya_chat_messages`, `maya_demo_children`, `maya_minute_grants`, `maya_spend`, `maya_wording_history` |
+| Child workbook records | `workbooks`, `workbook_pages`, `workbook_questions`, `workbook_drafts`, `workbook_draft_revisions`, `workbook_runs`, `workbook_run_pages`, `workbook_run_attempts`, `workbook_run_solves`, `workbook_run_calls`, `workbook_run_frames`, `workbook_run_ai_calls`, `workbook_audit`, `workbook_edits`, `workbook_comments`, `workbook_edit_calls`, `workbook_emails`, `workbook_delivery_receipts`, `workbook_delivery_corrections` |
+| Child scan records | `scan_photos`, `scan_calibrations` |
+| Request removed with child | `child_deletions` |
+| Parent records kept | Auth, `parents`, `parent_pins`, `test_accounts`, `booking_family_links`, `family_card_operations`, `family_delete_attempts`, `family_delete_codes`, `family_delete_holds`, `maya_chat_families`, `maya_notice_acceptances`, `monthly_summary_renders`, `scan_photo_notices`, `child_deleted_folders` |
+| Worker records | `workbook_workers` stays as the machine record. Its `run_id` becomes null through its existing foreign key. |
+| Family deletion queue | `family_deletions`, `family_payment_operations`, `family_payment_progress` belong to whole-family deletion. Child deletion creates none of these rows. A queued family blocks the child worker. |
+| Outside both account cascades | `anonymous_tests` stays without its deleted link. Historical `signups` and `signup_heard`, payment provider records and delivered email copies stay as the privacy page states. `email_events` holds provider delivery events without a family foreign key. |
+
+Files: `shown-work/<parent>/<assessment>/`, `workbook-pages/<parent>/<workbook or draft>/`, and `scan-photos/<parent>/<photo>/`, including nested revisions, proof images, crops and straightened photos. The worker never drains a parent folder. A final SQL check also refuses completion for a mixed-case matching folder that the Storage API did not remove.
+
+### Billing recovery compatibility
+
+The correction `child_delete_plan_recovery` leaves `fence_plan_start_write` as the sole owner of billing's narrow queued-family recovery exception on `plan_starts`. The child trigger shares the parent lock but does not repeat the family refusal for this one table. It still refuses writes for a child with a deletion request. Every other table keeps the family write check. Billing's rejection of `open` to `other` is unchanged.
+
+Hosted checks on 5 November 2026, all rolled back: `supabase/tests/child_delete.sql` and `child_delete_admission.sql` passed. `child_delete_email_copies.sql` passed for a mixed Maya copy, a monthly copy, an unrelated sibling copy, the parent ledger and a late copy write. The unchanged billing probe from PR #593, `supabase/tests/plan_start_deletion_recovery.sql`, reached its intentional final `PROBE_OK` exception after this correction. These use one database connection. They prove the state rules and grants, but not waits between two hosted connections.
