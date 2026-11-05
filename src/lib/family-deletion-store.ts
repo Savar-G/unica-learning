@@ -307,7 +307,7 @@ export async function runFamilyDeletion(db: SupabaseClient<Database>, parent: st
   parent = parent.toLowerCase();
   const token = randomUUID();
   const args = { p: parent, token };
-  type Claim = { state: "ready" | "busy" | "excluded"; reason?: "request" | "retention"; phase?: "checking" | "deleting" };
+  type Claim = { state: "ready" | "busy" | "excluded" | "plan_start"; reason?: "request" | "retention"; phase?: "checking" | "deleting" };
   // jsonb: the claim object each function builds, read on its own, so a change of either answer type fails the build.
   const claim = retention
     ? (await rpc(db, "claim_family_retention", { ...args, subscription_ended_at: retention.endedAt })) as Claim

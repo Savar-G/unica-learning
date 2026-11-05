@@ -34,7 +34,7 @@ export function liveCardChecks(origin: string, { canWrite = writeWindow(), signa
   const client = signal ? stripeWithin(signal) : stripe();
   if (!db || !client) return null;
   const rows = supabaseCardRows(db);
-  const mail = transport && signal ? { send: (message: Parameters<MailTransport["send"]>[0]) => transport.send(message, { signal }) } : transport;
+  const mail: MailTransport | undefined = transport && signal ? { send: (message, options) => transport.send(message, { ...options, signal }) } : transport;
   return {
     rows,
     stripe: stripeCards(client),
@@ -43,11 +43,11 @@ export function liveCardChecks(origin: string, { canWrite = writeWindow(), signa
       if (!start.firstCharge) throw new Error("The plan has no first charge date");
       const { data, error } = await db.from("card_setups").select("plan, price").eq("id", row.cardId).maybeSingle();
       if (error || !data) throw new Error("Card setup read failed");
-      const sent = await sendPlanStartEmail(db, { cardId: row.cardId, price: planPrice(Number(data.price), data.plan), firstChargeAt: start.firstCharge, origin }, mail);
+      const sent = await sendPlanStartEmail(db, { cardId: row.cardId, generation: start.generation, price: planPrice(Number(data.price), data.plan), firstChargeAt: start.firstCharge, origin }, mail, { inTime: canWrite });
       if (sent.status !== "sent") console.warn("[billing] plan start email", sent.status);
       return sent;
     },
-    planEmailClaim: (cardId) => planStartEmailClaim(db, cardId),
+    planEmailClaim: (cardId, generation) => planStartEmailClaim(db, cardId, generation),
     alertTeam: (row, start) => sendPlanStartAlert(rows, row, start, { to: process.env.SIGNUP_NOTIFY_EMAIL || null, origin, transport: mail }),
   };
 }

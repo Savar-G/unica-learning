@@ -1,6 +1,6 @@
 // The school grades the assessment takes (D-156): Kindergarten (stored as 0) to Grade 9. No imports but types, so the
 // account forms (client) can use it without loading the question bank.
-import type { Grade, Level } from "./types";
+import type { Grade, Level, Stage3Direction } from "./types";
 
 /** Every school grade a parent can choose, in order. 0 is Kindergarten. Stored rows from before D-156 hold 1-7. */
 export const GRADES: readonly Grade[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
@@ -29,6 +29,20 @@ export const upLevel = (grade: Grade): Level => (grade === TOP_LEVEL ? TOP_LEVEL
 
 /** The level a stage 1 score under 40% routes to: one below the start, and no lower than Kindergarten. */
 export const downLevel = (grade: Grade): Level => Math.max(startLevel(grade) - 1, 0) as Level;
+
+/**
+ * The level of the third stage (D-282): one more grade past the stage 2 form in that direction, or null when there is
+ * none. A child who reached the bank's edge has no third stage: Kindergarten and Grade 1 going down, and Grades 7, 8 and
+ * 9 going up (D-153 rule 2: a Grade 7 or 8 child never gets grade 9 work from the assessment).
+ */
+export function stage3Level(grade: Grade, direction: Stage3Direction): Level | null {
+  if (direction === "up") {
+    const up = upLevel(grade);
+    return up > grade && up < UP_ROUTE_TOP ? ((up + 1) as Level) : null;
+  }
+  const down = downLevel(grade);
+  return down < grade && down > 0 ? ((down - 1) as Level) : null;
+}
 
 /**
  * The highest grade a finished test measured against the school grade: the school grade, except a Grade 9 test from

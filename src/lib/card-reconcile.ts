@@ -261,7 +261,7 @@ export async function settleNewestCard(cardId: string, customer: string, first: 
 }
 
 /** A send's outcome, as the email delivery module (src/lib/email-delivery.ts) answers it. */
-export type SendOutcome = { status: "sent"; emailId: string } | { status: "refused"; error: string } | { status: "unknown"; error: string } | { status: "busy" };
+export type SendOutcome = { status: "sent"; emailId: string } | { status: "refused"; error: string } | { status: "unknown"; error: string } | { status: "busy" } | { status: "not_sent"; released: boolean };
 
 export interface CardCheckSeams extends CardSeams {
   /** Tells the parent that the plan they did not hear about has started. Answers the send's outcome. Throws when the claim fails: nothing went. */
@@ -270,7 +270,7 @@ export interface CardCheckSeams extends CardSeams {
    * After a busy send: what the email's claim says. `pending`: another run is still sending it. `sent` or `unknown`: its outcome is
    * final, as with a claim that stopped with no outcome. Throws when it cannot read.
    */
-  planEmailClaim(cardId: string): Promise<"pending" | "sent" | "unknown">;
+  planEmailClaim(cardId: string, generation: number): Promise<"pending" | "sent" | "unknown">;
   /** Tells the team, once, that a start needs them (src/lib/card-plan-alert.ts). Throws when the claim fails: nothing went. */
   alertTeam(row: CardRow, start: PlanStart): Promise<SendOutcome>;
 }
@@ -363,8 +363,9 @@ async function tellParent(row: CardRow, start: PlanStart, seams: CardCheckSeams,
   if (!justClosed && start.finished !== null && now - start.finished < PLAN_ANSWER_MS) return "pending";
   if (!seams.canWrite()) return "pending";
   const sent = await seams.announcePlan(row, start);
+  if (sent.status === "not_sent") return "pending";
   if (sent.status === "refused") throw new Error(`The plan email did not go: ${sent.error}`);
-  const state = sent.status === "busy" ? await seams.planEmailClaim(row.cardId) : sent.status;
+  const state = sent.status === "busy" ? await seams.planEmailClaim(row.cardId, start.generation) : sent.status;
   if (state !== "pending") await seams.rows.notePlanEmail(row.cardId, start.generation, state);
   return state;
 }

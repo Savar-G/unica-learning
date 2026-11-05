@@ -187,7 +187,7 @@ export function stripeCustomerUrl(customer: string): string | null {
 }
 
 export type StartPlanOutcome =
-  | { ok: true; subscription: string; firstChargeAt: string }
+  | { ok: true; subscription: string; firstChargeAt: string; generation: number }
   /**
    * "unconfirmed": Stripe may still make the plan. The record stays open, and the webhook, the sweep or the next press decides it.
    * "needs_team": Stripe's key has expired with no plan found, so no press can be safe. Only an admin's check closes the record.
@@ -247,7 +247,7 @@ export async function startPlan(s: Stripe, p: { cardSetup: string; customer: str
       // An earlier press whose answer was lost: its subscription is here, so this press gets its answer.
       await closeRecord(rows, p.cardSetup, generationOfRow, startedOutcome(step.plan));
       await settleAfterStart(s, rows, p.cardSetup, canWrite, step.plan);
-      return planNotOver(step.plan.status) ? { ok: true, subscription: step.plan.id, firstChargeAt: step.plan.firstCharge ?? firstChargeAt(now, planTerms(p.price).trialDays).toISOString() } : { ok: false, error: "already" };
+      return planNotOver(step.plan.status) ? { ok: true, subscription: step.plan.id, firstChargeAt: step.plan.firstCharge ?? firstChargeAt(now, planTerms(p.price).trialDays).toISOString(), generation: generationOfRow } : { ok: false, error: "already" };
     }
     case "other":
       await closeRecord(rows, p.cardSetup, generationOfRow, { state: "other", subscription: step.plan.id });
@@ -295,7 +295,7 @@ export async function startPlan(s: Stripe, p: { cardSetup: string; customer: str
   await closeRecord(rows, p.cardSetup, held.generation, startedOutcome(plan));
   await settleAfterStart(s, rows, p.cardSetup, canWrite, { ...plan, defaultCard: plan.defaultCard ?? held.card });
   const end = created.trial_end ? new Date(created.trial_end * 1000) : firstChargeAt(now, terms.trialDays);
-  return { ok: true, subscription: created.id, firstChargeAt: end.toISOString() };
+  return { ok: true, subscription: created.id, firstChargeAt: end.toISOString(), generation: held.generation };
 }
 
 export type EndStuckStartOutcome =

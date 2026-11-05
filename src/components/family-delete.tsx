@@ -21,6 +21,8 @@ function message(answer: Exclude<Answer, { ok: true }>): ReactNode {
       return <>Too many wrong tries. Try again after <When at={answer.retryAt} text={answer.retryWhen ?? "15 minutes"} />.</>;
     case "busy":
       return <>A card step for your family is still running, so we changed nothing. Try again in a few minutes. If this keeps happening, email {email}.</>;
+    case "plan_start":
+      return <>Our team must finish a plan start before we can delete your family&apos;s account. We have told the team. You can also email {email}.</>;
     case "protected":
       return "This account cannot be deleted here.";
     case "not_finished":

@@ -27,6 +27,7 @@ interface Net {
 
 const started = Date.UTC(2026, 10, 5, 19);
 const wait = (ms: number, signal: AbortSignal | null | undefined, entry: Net["log"][number]) => new Promise<void>((resolve, reject) => {
+  if (ms === 0) { entry.endedAt = Date.now() - started; resolve(); return; }
   const timer = setTimeout(() => { entry.endedAt = Date.now() - started; resolve(); }, ms);
   signal?.addEventListener("abort", () => { clearTimeout(timer); entry.aborted = true; entry.endedAt = Date.now() - started; reject(signal.reason); }, { once: true });
 });
@@ -227,12 +228,66 @@ it("the sweep's emails go on the run's transport with the sweep's signal: the pa
   expect(stuck.rpcs.map((r) => r.name)).not.toContain("finish_plan_start");
 });
 
-it("the paced transport starts overlapping sends one gap apart, and a slow send holds up no other", async () => {
+it("the paced transport waits for a slow send to finish before the next request", async () => {
   const starts: number[] = [];
   const paced = pacedTransport({ send: async () => { starts.push(performance.now()); await new Promise((r) => setTimeout(r, 15_000)); return { status: "sent", emailId: "e" }; } }, 600);
   const message = { sender: { to: "parent" }, to: "priya@family.ca", subject: "S", text: "T" } as const;
   const all = Promise.all([paced.send(message), paced.send(message), paced.send(message)]);
-  await vi.advanceTimersByTimeAsync(16_500);
+  await vi.advanceTimersByTimeAsync(46_000);
   await all;
-  expect(starts.map((at) => at - starts[0])).toEqual([0, 600, 1200]);
+  expect(starts.map((at) => at - starts[0])).toEqual([0, 15_000, 30_000]);
+});
+
+it("an email reached at 24 seconds waits eight seconds for reads, then returns its unsent claim instead of sending at 32 seconds", async () => {
+  const net = family({ customerDefault: "pm_new", delays: { db: 0, stripeRead: 0, stripeWrite: 0, resend: 0 } });
+  net.row = { ...net.row, start_state: "started", start_subscription: "sub_1", start_first_charge: FIRST_CHARGE, start_finished_at: new Date(started - 3_600_000).toISOString(), start_email: "pending" };
+  let atAnnouncement: number | null = null;
+  const base = network(net);
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.pathname.endsWith("/card_setups") && url.searchParams.get("select")?.includes("price")) {
+      atAnnouncement = Date.now() - started;
+      await new Promise((resolve) => setTimeout(resolve, 8_000));
+    }
+    return base(input, init);
+  });
+  vi.setSystemTime(started + 24_000);
+  const result = sweepCardsNow({ origin: "https://unicalearning.com", startedAt: started, transport: pacedTransport(resendTransport(), 600) });
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(atAnnouncement).toBe(24_000);
+  expect(await result).toMatchObject({ emails: 0 });
+  expect(net.emails).toBe(0);
+  expect(net.rpcs.map((r) => r.name)).toContain("release_plan_start_email");
+  expect(net.rpcs.map((r) => r.name)).not.toContain("note_plan_start_email");
+});
+
+it("an email claimed in time but delayed by another send past 30 seconds gives back its claim and sends next run", async () => {
+  const net = family({ customerDefault: "pm_new", delays: { db: 0, stripeRead: 0, stripeWrite: 0, resend: 0 } });
+  net.row = { ...net.row, start_generation: 2, start_state: "started", start_subscription: "sub_2", start_first_charge: FIRST_CHARGE, start_finished_at: new Date(started - 3_600_000).toISOString(), start_email: "pending" };
+  const sends: number[] = [];
+  let hold: () => void = () => {};
+  let first = true;
+  const transport = pacedTransport({ send: async () => {
+    sends.push(Date.now() - started);
+    if (first) { first = false; await new Promise<void>((resolve) => { hold = resolve; }); }
+    return { status: "sent", emailId: "email" };
+  } }, 600);
+  vi.stubGlobal("fetch", network(net));
+  vi.setSystemTime(started + 24_000);
+  const earlier = transport.send({ sender: { to: "savar" }, to: "team@example.invalid", subject: "Earlier", text: "Earlier" });
+  const run = sweepCardsNow({ origin: "https://unicalearning.com", startedAt: started, transport });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(net.rpcs.map((r) => r.name)).toContain("claim_plan_start_email");
+  await vi.advanceTimersByTimeAsync(8_000);
+  hold();
+  await earlier;
+  expect(await run).toMatchObject({ emails: 0 });
+  expect(sends).toEqual([24_000]);
+  expect(net.rpcs).toContainEqual({ name: "release_plan_start_email", body: { p_card: CARD, p_generation: 2, p_token: expect.any(String) } });
+  expect(net.rpcs.map((r) => r.name)).not.toContain("note_plan_start_email");
+  const next = sweepCardsNow({ origin: "https://unicalearning.com", startedAt: Date.now(), transport });
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(await next).toMatchObject({ emails: 1 });
+  expect(sends).toEqual([24_000, 32_000]);
+  expect(net.rpcs).toContainEqual({ name: "note_plan_start_email", body: { p_card: CARD, p_generation: 2, p_state: "sent" } });
 });

@@ -42,33 +42,39 @@ export interface MailTransport {
    * Sends one message. Never throws: a request that ends without an answer is "unknown". `signal`: stops the send. Stopped before
    * the request starts, it is "refused", as nothing went. Stopped during the request, it is "unknown".
    */
-  send(message: EmailMessage, options?: { signal?: AbortSignal }): Promise<SendResult>;
+  send(message: EmailMessage, options?: { signal?: AbortSignal; inTime?: () => boolean }): Promise<SendResult>;
 }
 
 const OUT_OF_TIME: SendResult = { status: "refused", error: "The send did not start: the time ran out" };
 
 /**
  * One transport that starts one request every `gapMs`, for everything one run sends, whoever sends it and however the sends overlap.
- * Each send takes the next free start time, so a slow send holds up no other. A send stopped while it waits sends nothing.
+ * Requests run one after another. The gap is measured from the previous request's actual start. A stopped send sends nothing.
  */
 export function pacedTransport(transport: MailTransport, gapMs: number): MailTransport {
-  let nextStart = 0;
+  let lastStart: number | null = null;
+  let tail: Promise<unknown> = Promise.resolve();
   return {
-    async send(message, options) {
+    send(message, options) {
       const signal = options?.signal;
-      if (signal?.aborted) return OUT_OF_TIME;
-      const now = performance.now();
-      const start = Math.max(now, nextStart);
-      nextStart = start + gapMs;
-      if (start > now) {
-        const started = await new Promise<boolean>((resolve) => {
-          const stop = () => { clearTimeout(timer); resolve(false); };
-          const timer = setTimeout(() => { signal?.removeEventListener("abort", stop); resolve(true); }, start - now);
-          signal?.addEventListener("abort", stop, { once: true });
-        });
-        if (!started) return OUT_OF_TIME;
-      }
-      return transport.send(message, options);
+      const send = tail.then(async () => {
+        if (signal?.aborted || options?.inTime?.() === false) return OUT_OF_TIME;
+        const remaining = lastStart === null ? 0 : lastStart + gapMs - performance.now();
+        if (remaining > 0) {
+          const ready = await new Promise<boolean>((resolve) => {
+            const stop = () => { clearTimeout(timer); resolve(false); };
+            const timer = setTimeout(() => { signal?.removeEventListener("abort", stop); resolve(true); }, remaining);
+            signal?.addEventListener("abort", stop, { once: true });
+          });
+          if (!ready) return OUT_OF_TIME;
+        }
+        // A database read, a prior request, or a process pause may have used the remaining time.
+        if (signal?.aborted || options?.inTime?.() === false) return OUT_OF_TIME;
+        lastStart = performance.now();
+        return transport.send(message, options);
+      });
+      tail = send.catch(() => {});
+      return send;
     },
   };
 }
@@ -149,7 +155,12 @@ export async function sendEmailOnceInTime<K, H>(
 ): Promise<TimedDeliveryOutcome> {
   const handle = await ledger.claim(key, claimFields);
   if (handle === null) return { status: "busy" };
-  if (inTime()) return deliverClaimed(ledger, handle, key, message, transport);
+  let stopped = false;
+  const check = () => { const allowed = inTime(); if (!allowed) stopped = true; return allowed; };
+  if (check()) {
+    const result = await sendThrough(transport, message, { inTime: check });
+    if (!stopped) return recordDelivery(ledger, handle, key, message, result);
+  }
   try {
     return { status: "not_sent", released: await ledger.release(handle, key) };
   } catch (e) {
@@ -161,6 +172,10 @@ export async function sendEmailOnceInTime<K, H>(
 /** Sends a claimed email, then records the outcome and the copy. */
 async function deliverClaimed<K, H>(ledger: SendLedger<K, H>, handle: H, key: K, message: EmailMessage, transport: MailTransport): Promise<SendResult> {
   const result = await sendThrough(transport, message);
+  return recordDelivery(ledger, handle, key, message, result);
+}
+
+async function recordDelivery<K, H>(ledger: SendLedger<K, H>, handle: H, key: K, message: EmailMessage, result: SendResult): Promise<SendResult> {
   // The ledger's writes never throw by contract. If one does anyway, the email's outcome still reaches the caller; a
   // write that did not happen leaves the claim held, so the email is not sent again.
   try {
@@ -193,9 +208,9 @@ export async function sendEmail(message: EmailMessage, { transport = resendTrans
 export const emailConfigProblem = (): string | null => resendConfigProblem();
 
 /** A transport that throws anyway may have reached the provider, so its outcome is unknown. */
-async function sendThrough(transport: MailTransport, message: EmailMessage): Promise<SendResult> {
+async function sendThrough(transport: MailTransport, message: EmailMessage, options?: Parameters<MailTransport["send"]>[1]): Promise<SendResult> {
   try {
-    return await transport.send(message);
+    return await transport.send(message, options);
   } catch (e) {
     return { status: "unknown", error: `Email delivery is unknown: ${e instanceof Error ? e.message : String(e)}. Check delivery before sending again.` };
   }

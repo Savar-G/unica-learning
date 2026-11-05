@@ -57,7 +57,7 @@ export async function runRetentionWorker(config: WorkerConfiguration, store: Ret
   if (config.stripeKey) await store.verifyPayments();
   const candidates = await store.candidates();
   const decisions = { queued: 0, delete_free_test: 0, delete_former_customer: 0, keep_customer: 0, keep_former_customer: 0, keep_free_test: 0, keep_no_test: 0, unknown: 0 };
-  const counts = { eligible: 0, deleted: 0, busy: 0, excluded: 0, failed: 0, images: 0, copies: 0 };
+  const counts = { eligible: 0, deleted: 0, busy: 0, excluded: 0, plan_start: 0, failed: 0, images: 0, copies: 0 };
   const copy = { families: 0, tests: 0, copied: 0, questions: 0, facts: 0, profiles: 0, questionnaires: 0, failed: 0 };
   const dry = config.mode === "dry";
   const cursor = dry ? null : await store.cursor();
@@ -106,7 +106,7 @@ export async function runRetentionWorker(config: WorkerConfiguration, store: Ret
   }
   // Unknown or unprocessed candidates make an incomplete run visible to the operator. So does a copy that a deletion
   // could not write: that deletion would stop.
-  const ok = decisions.unknown === 0 && counts.failed === 0 && deferred === 0 && copy.failed === 0;
+  const ok = decisions.unknown === 0 && counts.plan_start === 0 && counts.failed === 0 && deferred === 0 && copy.failed === 0;
   if (dry) return { ok, dry: true, eligible: counts.eligible, deferred, ...decisions, copy: { ...copy, fields: copyFieldNames() } };
   return { ok, ...counts, deferred, ...decisions };
 }

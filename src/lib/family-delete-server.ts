@@ -11,9 +11,9 @@ import { adminClient } from "@/lib/supabase-auth";
 // The self-serve delete's seams for the live site (#556): the database functions of migrations family_delete_self_serve and family_delete_hold,
 // and Stripe with the site's key. The deletion worker's restricted key has no subscription write, so plans stop here.
 
-const CHECKS = ["ready", "busy", "protected", "missing"] as const;
-const HOLDS = ["held", "busy", "protected", "missing"] as const;
-const REQUESTS = ["requested", "busy", "protected", "missing"] as const;
+const CHECKS = ["ready", "busy", "protected", "missing", "plan_start"] as const;
+const HOLDS = ["held", "busy", "protected", "missing", "plan_start"] as const;
+const REQUESTS = ["requested", "busy", "protected", "missing", "plan_start"] as const;
 
 function answer<T extends string>(data: unknown, allowed: readonly T[]): T {
   if (!allowed.includes(data as T)) throw new Error("Family delete: unexpected answer");

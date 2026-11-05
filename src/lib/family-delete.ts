@@ -54,16 +54,16 @@ export interface FamilyDeleteStore {
   claimAttempt(parent: string, now: number, policy: DeletePolicy): Promise<AttemptClaim>;
   clearAttempts(parent: string): Promise<void>;
   /** Changes nothing. */
-  check(parent: string): Promise<"ready" | "busy" | "protected" | "missing">;
+  check(parent: string): Promise<"ready" | "busy" | "protected" | "missing" | "plan_start">;
   /** Takes the family's delete hold for `token`, with a lease. While it is live, a plan start is refused. Refused for any other live hold. */
-  hold(parent: string, token: string): Promise<"held" | "busy" | "protected" | "missing">;
+  hold(parent: string, token: string): Promise<"held" | "busy" | "protected" | "missing" | "plan_start">;
   /** Ends this token's hold only. A hold already gone changes nothing. */
   release(parent: string, token: string): Promise<void>;
   /**
    * Fences the family, queues its deletion once, records that its plans stopped, and ends the hold. Refused unless `token`
    * still holds a live lease, and for any other hold, decided under the row lock.
    */
-  request(parent: string, token: string): Promise<"requested" | "busy" | "protected" | "missing">;
+  request(parent: string, token: string): Promise<"requested" | "busy" | "protected" | "missing" | "plan_start">;
 }
 
 export interface FamilyPlans {
@@ -77,7 +77,7 @@ export interface FamilyPlans {
 
 export type FamilyDeleteResult =
   | { ok: true; plansStopped: number }
-  | { ok: false; error: "invalid" | "unavailable" | "busy" | "protected" | "not_found" }
+  | { ok: false; error: "invalid" | "unavailable" | "busy" | "protected" | "not_found" | "plan_start" }
   | { ok: false; error: "wrong_password"; attemptsLeft: number }
   | { ok: false; error: "locked"; retryAt: number }
   /** Stopping or queueing failed. No request exists, the family's data is all there, and `plansStopped` plans ended. */
@@ -137,6 +137,7 @@ export async function requestFamilyDelete(parent: string, input: unknown, prove:
     await letGo();
     return { ok: false, error: "not_finished", plansStopped: known };
   }
+  if (hold === "plan_start") { await letGo(); return { ok: false, error: "plan_start" }; }
   if (hold !== "held") return running.length === 0 && hold === "busy" ? { ok: false, error: "busy" } : { ok: false, error: "not_finished", plansStopped: known };
 
   let left: string[];
@@ -153,7 +154,9 @@ export async function requestFamilyDelete(parent: string, input: unknown, prove:
   }
 
   try {
-    if (await store.request(parent, token) === "requested") return { ok: true, plansStopped };
+    const requested = await store.request(parent, token);
+    if (requested === "requested") return { ok: true, plansStopped };
+    if (requested === "plan_start") { await letGo(); return { ok: false, error: "plan_start" }; }
   } catch { /* A lost answer may have written it. A retry answers the same, and a hold already gone changes nothing. */ }
   await letGo();
   return { ok: false, error: "not_finished", plansStopped };

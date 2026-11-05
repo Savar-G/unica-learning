@@ -64,6 +64,12 @@ describe("the Stripe seam", () => {
 });
 
 describe("the database seam", () => {
+  it("carries an open start refusal through the check, hold and request", async () => {
+    const store = supabaseDeleteStore(database({ check_parent_family_deletion: "plan_start", begin_family_delete_hold: "plan_start", request_parent_family_deletion_held: "plan_start" }));
+    expect(await store.check(parent)).toBe("plan_start");
+    expect(await store.hold(parent, "token")).toBe("plan_start");
+    expect(await store.request(parent, "token")).toBe("plan_start");
+  });
   it("passes the limit to the claim and reads its answer", async () => {
     const calls: { name: string; args: Record<string, unknown> }[] = [];
     const store = supabaseDeleteStore(database({ claim_family_delete_attempt: [{ out_status: "open", out_attempts_left: 4, out_locked_until: null }] }, calls));

@@ -13,7 +13,7 @@ import { adminClient, sessionClient } from "@/lib/supabase-auth";
 export const maxDuration = 120;
 
 const reply = (status: number, body: Record<string, unknown>) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
-const STATUS = { invalid: 400, wrong_password: 403, protected: 403, not_found: 404, busy: 409, locked: 429, not_finished: 502, unavailable: 503 } as const;
+const STATUS = { invalid: 400, wrong_password: 403, protected: 403, not_found: 404, busy: 409, plan_start: 409, locked: 429, not_finished: 502, unavailable: 503 } as const;
 
 /**
  * Ends every device's session, with one retry. Supabase answers a failure as `{ error }`, and only a broken network call
@@ -60,8 +60,8 @@ export async function POST(request: Request) {
   }
   if (!result.ok) {
     if (result.error === "locked") return reply(429, { ...result, ...await familyRetryTime(db, result.retryAt) });
-    if (result.error === "not_finished" && result.plansStopped > 0) {
-      const plansStopped = result.plansStopped;
+    if (result.error === "plan_start" || (result.error === "not_finished" && result.plansStopped > 0)) {
+      const plansStopped = result.error === "not_finished" ? result.plansStopped : 0;
       after(() => familyDeleteAlert(parent, { plansStopped, state: "not_queued" }));
     }
     return reply(STATUS[result.error], result);

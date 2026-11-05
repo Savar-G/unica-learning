@@ -17,7 +17,7 @@ const request = (value: unknown) => new Request(`https://unica.test/api/admin/ca
 });
 beforeEach(() => {
   state.admin = true;
-  state.start.mockReset().mockResolvedValue({ ok: true, subscription: "sub_1", firstChargeAt: "2026-12-05T00:00:00Z" });
+  state.start.mockReset().mockResolvedValue({ ok: true, generation: 1, subscription: "sub_1", firstChargeAt: "2026-12-05T00:00:00Z" });
   state.stripe.mockReset().mockReturnValue({});
   state.confirm.mockReset().mockResolvedValue({ status: "sent" });
   state.read.mockReset().mockResolvedValue({ data: { id, child_id: "child", parent_id: "parent", card_saved_at: "2026-11-01T00:00:00Z", stripe_customer_id: "cus_real", price: 79.99, plan: "one" }, error: null });
@@ -53,7 +53,7 @@ describe("the admin delivery confirmation route", () => {
   it("sends the confirmation with the plan's price and Stripe's first charge date", async () => {
     const response = await POST(request({ deliveryConfirmed: true }), ctx);
     expect(await response.json()).toMatchObject({ ok: true, firstChargeAt: "2026-12-05T00:00:00Z", confirmation: "sent" });
-    expect(state.confirm).toHaveBeenCalledWith({}, { cardId: id, price: 79.99, firstChargeAt: "2026-12-05T00:00:00Z", origin: "https://unica.test" });
+    expect(state.confirm).toHaveBeenCalledWith({}, { cardId: id, generation: 1, price: 79.99, firstChargeAt: "2026-12-05T00:00:00Z", origin: "https://unica.test" });
   });
   it("sends no confirmation when the plan did not start", async () => {
     state.start.mockResolvedValue({ ok: false, error: "already" });

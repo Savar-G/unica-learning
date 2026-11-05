@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { copyFieldNames, retentionDecision, workerConfiguration, runRetentionWorker, withDeletionHeartbeat } from "@/lib/assessment";
 
+it("reports and keeps a queued family whose claim finds an unresolved plan start", async () => {
+  const result = await runRetentionWorker({ kind: "run", mode: "delete", url: "unused", secret: "unused" }, {
+    candidates: async () => [{ id: "parent", queued: true, cards: [], lastTestAt: null }],
+    verifyPayments: async () => {}, customerPayments: async () => { throw Error("No Stripe read expected"); },
+    cursor: async () => null, advance: async () => {}, copySources: async () => { throw Error("No copy expected"); },
+    run: async () => ({ state: "plan_start" }),
+  }, () => 60_000, Date.now());
+  expect(result).toMatchObject({ ok: false, eligible: 1, deleted: 0, plan_start: 1, failed: 0 });
+});
+
 // The retention rules (#191, spec #181). A customer keeps their data. A former customer is deleted 6 calendar months
 // (UTC) after the subscription ends in Stripe. A free-test family (no card ever saved) is deleted 12 calendar months
 // after the latest test activity. Without a Stripe answer, the family is kept.
@@ -198,7 +208,7 @@ describe("retention run", () => {
   it("delete mode claims only the families the rules delete, with the Stripe end date", async () => {
     const s = store();
     expect(await runRetentionWorker(workerConfiguration(["--mode", "delete"], env), s.store, () => 840_000, NOW))
-      .toEqual({ ok: false, eligible: 3, deleted: 3, busy: 0, excluded: 0, failed: 0, images: 0, copies: 3, deferred: 0, ...decisions });
+      .toEqual({ ok: false, eligible: 3, deleted: 3, busy: 0, excluded: 0, plan_start: 0, failed: 0, images: 0, copies: 3, deferred: 0, ...decisions });
     expect(s.runs).toEqual([
       { id: "a-request", endedAt: null },
       { id: "b-free-test", endedAt: null },

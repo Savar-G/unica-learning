@@ -19,6 +19,30 @@ function harness(over: Partial<MemoryFamily> = {}) {
   };
 }
 
+it("an admin-closed start no longer blocks a family, and a family with no start is unchanged", async () => {
+  const h = harness({ planStartOpen: true });
+  expect(await h.send()).toEqual({ ok: false, error: "plan_start" });
+  expect(h.family.fenced).toBe(false);
+  h.family.planStartOpen = false;
+  expect(await h.send()).toEqual({ ok: true, plansStopped: 0 });
+  expect(await harness().send()).toEqual({ ok: true, plansStopped: 0 });
+});
+
+it.each(["hold", "request"] as const)("reports an open start found at the final %s and leaves the family intact", async (step) => {
+  const family = memoryFamily();
+  const store = memoryDeleteStore(family);
+  if (step === "hold") {
+    const action = store.hold;
+    store.hold = async (...args) => { family.planStartOpen = true; return action(...args); };
+  } else {
+    const action = store.request;
+    store.request = async (...args) => { family.planStartOpen = true; return action(...args); };
+  }
+  expect(await requestFamilyDelete(PARENT, form(), right, { store, plans: memoryPlans(family) })).toEqual({ ok: false, error: "plan_start" });
+  expect(family.fenced).toBe(false);
+  expect(family.deleteHold).toBeNull();
+});
+
 describe("the deliberate form", () => {
   it.each([
     [{ password: "right password" }],

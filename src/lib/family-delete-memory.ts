@@ -11,6 +11,7 @@ export interface MemoryFamily {
   /** Every running plan, by Stripe customer. A stopped plan leaves its list. */
   plans: Record<string, string[]>;
   holds: number;
+  planStartOpen: boolean;
   admin: boolean;
   gone: boolean;
   fenced: boolean;
@@ -29,11 +30,11 @@ export interface MemoryFamily {
 }
 
 export function memoryFamily(over: Partial<MemoryFamily> = {}): MemoryFamily {
-  return { plans: {}, holds: 0, admin: false, gone: false, fenced: false, plansStopped: false, deleteHold: null, time: 0, fail: {}, holdBeforeRequest: false, log: [], attempts: { failed: 0, lockedUntil: null }, ...over };
+  return { plans: {}, holds: 0, planStartOpen: false, admin: false, gone: false, fenced: false, plansStopped: false, deleteHold: null, time: 0, fail: {}, holdBeforeRequest: false, log: [], attempts: { failed: 0, lockedUntil: null }, ...over };
 }
 
 export function memoryDeleteStore(f: MemoryFamily): FamilyDeleteStore {
-  const verdict = () => (f.admin ? "protected" as const : f.gone ? "missing" as const : f.holds > 0 ? "busy" as const : null);
+  const verdict = () => (f.admin ? "protected" as const : f.gone ? "missing" as const : f.holds > 0 ? "busy" as const : f.planStartOpen ? "plan_start" as const : null);
   const live = () => (f.deleteHold && f.deleteHold.until > f.time ? f.deleteHold : null);
   return {
     async claimAttempt(_parent, now, policy): Promise<AttemptClaim> {

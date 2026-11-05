@@ -31,7 +31,7 @@
 // Results call: book_call (src report: the parent opened the Calendly booking page from the report). No child data.
 // Report wait: test_report_wait (status opened: the end screen opened the built report; slow: it was not built within 3
 // minutes and the screen points to the email). No time or score.
-// Check your answers (#253): test_check (status stage1 or stage2: "Done checking" locked that part). test_error has
+// Check your answers (#253): test_check (status stage1, stage2 or stage3: "Done checking" locked that part). test_error has
 // status check when it failed.
 // Reminders (#73): reminder_open (status = continue, come_back, start or start_followup: the parent opened the start screen from that
 // reminder email), unsubscribe (status done or failed: the unsubscribe page turned reminders off), unsubscribe_page

@@ -9,6 +9,19 @@ const parent = "11111111-1111-4111-8111-111111111111";
 const booking = { email: "parent@example.invalid", ref: "33333333-3333-4333-8333-333333333333" };
 const list = (data: unknown[]) => ({ object: "list", data, has_more: false, url: "/v1/list" });
 
+it.each([undefined, { endedAt: "2020-01-01T00:00:00Z" }])("keeps a family when its deletion claim reports an open plan start, claim %j", async (retention) => {
+  const calls: string[] = [];
+  const db = createClient("https://database.example.invalid", "synthetic-service-key", {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: async (input) => {
+      const url = new URL(String(input)); calls.push(url.pathname);
+      return Response.json({ state: "plan_start" });
+    } },
+  });
+  expect(await runFamilyDeletion(db, parent, db, Date.now() + 60_000, undefined, retention)).toEqual({ state: "plan_start" });
+  expect(calls).toEqual([`/rest/v1/rpc/${retention ? "claim_family_retention" : "claim_family_deletion"}`]);
+});
+
 for (const state of ["waiting", "active", "unresolved"] as const) {
   it(`keeps a booking-only family ${state} through the public candidate and frozen server paths`, async () => {
     let release = false, unfrozen = false;

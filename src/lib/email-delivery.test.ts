@@ -1,11 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { emailConfigProblem, sendEmail, sendEmailOnce, type EmailMessage, type MailTransport, type SendLedger } from "@/lib/email-delivery";
+import { emailConfigProblem, pacedTransport, sendEmail, sendEmailOnce, type EmailMessage, type MailTransport, type SendLedger } from "@/lib/email-delivery";
 import { memoryLedger, memoryTransport } from "@/lib/email-delivery-memory";
 
 // The parent email delivery module (#149, spec #143), through its public interface only. The in-memory transport stands
 // in for Resend and the in-memory ledger keeps the database's guards. Each step of both waits a tick, so two sends at
 // once really interleave (the style of the start request tests).
 vi.mock("server-only", () => ({}));
+
+it("paces actual request starts after a process pause, without overlapping requests", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+  try {
+    let clock = 0;
+    const starts: number[] = [];
+    vi.spyOn(performance, "now").mockImplementation(() => clock);
+    const paced = pacedTransport({ send: async () => {
+      starts.push(clock);
+      return { status: "sent", emailId: "email" };
+    } }, 600);
+    const sends = Promise.all([paced.send(report), paced.send(report), paced.send(report)]);
+    await vi.advanceTimersByTimeAsync(0);
+    // The process was suspended before either waiting request could start.
+    clock = 1360;
+    await vi.runOnlyPendingTimersAsync();
+    expect(starts).toEqual([0, 1360]);
+    clock = 1960;
+    await vi.runOnlyPendingTimersAsync();
+    await sends;
+    expect(starts).toEqual([0, 1360, 1960]);
+  } finally { vi.restoreAllMocks(); vi.useRealTimers(); }
+});
 
 const report: EmailMessage = {
   sender: { to: "parent" },

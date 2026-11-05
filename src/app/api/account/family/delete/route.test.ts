@@ -89,6 +89,17 @@ it("gives the lock's end in family time", async () => {
   expect(response.status).toBe(429);
   expect(await response.json()).toEqual({ ok: false, error: "locked", retryAt: 1234, retryWhen: "at 3:15 PM", retryTime: "3:15 PM" });
 });
+it("reports an unresolved plan start and sends the existing team alert without signing the parent out", async () => {
+  f.request.mockResolvedValue({ ok: false, error: "plan_start" });
+  const response = await POST(request());
+  expect(response.status).toBe(409);
+  expect(await response.json()).toEqual({ ok: false, error: "plan_start" });
+  expect(f.signOut).not.toHaveBeenCalled();
+  expect(f.finish).not.toHaveBeenCalled();
+  expect(f.after).toHaveBeenCalledTimes(1);
+  await f.after.mock.calls[0][0]();
+  expect(f.alert).toHaveBeenCalledWith(parent, { plansStopped: 0, state: "not_queued" });
+});
 it("answers 503 and changes nothing more when a step throws", async () => {
   f.request.mockRejectedValue(new Error("Database down"));
   const response = await POST(request());

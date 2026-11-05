@@ -31,12 +31,17 @@ import { ReadAloud, warmUpVoices } from "./test-read-aloud";
 import { Whiteboard, boardImage, clearDrafts, loadDraft, saveDraft, type BoardSize } from "./whiteboard";
 import "./test.css";
 
+/** The part number of a section (#253, D-282). */
+const PART = { stage1: 1, stage2: 2, stage3: 3 } as const;
+
 type Screen =
   | { name: "intro" }
   /** `testId` keys the saved whiteboard of the question (#67). */
-  | { name: "question"; question: PublicQuestion; number: number; total: number; breakAfter: number; testId: string; takeYourTime: boolean }
+  | { name: "question"; question: PublicQuestion; number: number; total: number; breakAfter: number; stage3After?: number; testId: string; takeYourTime: boolean }
+  /** D-282: between part 2 and the short part 3. It says only that a few more come, never why. */
+  | { name: "more"; next: Extract<TestStep, { status: "question" }> }
   /** #253: "Check your answers" at the end of a part: its question numbers; "Done checking" goes on. */
-  | { name: "check"; section: "stage1" | "stage2"; numbers: number[]; total: number; breakAfter: number; testId: string }
+  | { name: "check"; section: "stage1" | "stage2" | "stage3"; numbers: number[]; total: number; breakAfter: number; testId: string }
   | { name: "break"; next: Extract<TestStep, { status: "question" }> }
   /** The timed facts section (#70), after the halfway break; then the test carries on with `next`. */
   | { name: "facts"; testId: string; next: Extract<TestStep, { status: "question" }> }
@@ -211,7 +216,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
   }, []);
 
   // A stop (#72): the tab closes or the connection drops during a question, the break or quick facts. The answers so far are saved on the server.
-  const asking = screen.name === "question" || screen.name === "check" || screen.name === "break" || screen.name === "facts" || screen.name === "help";
+  const asking = screen.name === "question" || screen.name === "check" || screen.name === "more" || screen.name === "break" || screen.name === "facts" || screen.name === "help";
   useEffect(() => {
     if (!asking) return;
     // The page is going away: a beacon still goes out. Offline: PostHog queues the event and retries once back online.
@@ -289,7 +294,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
       return true;
     }
     // #189: the last three answers were very fast, so the question says "Take your time" (absent from an older server: off).
-    setScreen({ name: "question", question: step.question, number: step.number, total: step.total, breakAfter: step.breakAfter, testId: id, takeYourTime: step.takeYourTime === true });
+    setScreen({ name: "question", question: step.question, number: step.number, total: step.total, breakAfter: step.breakAfter, ...(step.stage3After !== undefined && { stage3After: step.stage3After }), testId: id, takeYourTime: step.takeYourTime === true });
     return true;
   }, [breakAfter]);
 
@@ -441,16 +446,22 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
 
   /**
    * #253: "Done checking" on the grid, after the saves before it. The test goes on: after part 1 (which it locks) to the
-   * break, after part 2 to "Did anyone help?". Resolves false when it failed: the child stays on the grid with the error
+   * break, after part 2 to the short part 3 (D-282) or "Did anyone help?", after part 3 to "Did anyone help?". Resolves false when it failed: the child stays on the grid with the error
    * and can press it again, or (a save failed) on the question whose save failed.
    */
-  const doneChecking = async (section: "stage1" | "stage2"): Promise<boolean> => {
+  const doneChecking = async (section: "stage1" | "stage2" | "stage3"): Promise<boolean> => {
     setFailure(null);
     await saves.current;
     if (viewingRef.current !== null) return false;
     const res = await call<StepResult>(`/api/account/assessments/${testId.current}/check`, post({ section }));
     if (res.ok) {
       track("test_check", { status: section });
+      // D-282: stage 2 locked into a third stage: one message screen first.
+      if (section === "stage2" && res.step.status === "question") {
+        setProgress({ total: res.step.total, breakAfter: res.step.breakAfter });
+        setScreen({ name: "more", next: res.step });
+        return true;
+      }
       return show(res.step);
     }
     // Another tab or a retry went on first: carry on from where the server is.
@@ -485,9 +496,13 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
   const viewed = (screen.name === "question" || screen.name === "check") && viewing !== null ? answered.find((a) => a.number === viewing) ?? null : null;
   // #253: the step row of the open part, on a question (not on the grid itself).
   const steps = screen.name === "question"
-    ? { part: screen.number <= screen.breakAfter ? 1 as const : 2 as const, first: screen.number <= screen.breakAfter ? 1 : screen.breakAfter + 1, last: screen.number <= screen.breakAfter ? screen.breakAfter : screen.total, current: viewed?.number ?? screen.number, newest: screen.number }
+    ? { ...(screen.number <= screen.breakAfter
+        ? { part: 1 as const, first: 1, last: screen.breakAfter }
+        : screen.stage3After !== undefined
+          ? { part: 3 as const, first: screen.stage3After + 1, last: screen.total }
+          : { part: 2 as const, first: screen.breakAfter + 1, last: screen.total }), current: viewed?.number ?? screen.number, newest: screen.number }
     : screen.name === "check" && viewed
-      ? { part: screen.section === "stage1" ? 1 as const : 2 as const, first: screen.numbers[0], last: screen.numbers.at(-1)!, current: viewed.number, newest: null }
+      ? { part: PART[screen.section], first: screen.numbers[0], last: screen.numbers.at(-1)!, current: viewed.number, newest: null }
       : null;
 
   // D-132: the question's main button ("Back to my answers" in review).
@@ -501,6 +516,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
         {screen.name === "check" && <TestProgress answered={screen.numbers.at(-1)!} total={screen.total} breakAfter={screen.breakAfter} at="check" current={viewed ? viewed.number - 1 : undefined} />}
         {screen.name === "break" && <TestProgress answered={screen.next.breakAfter} total={screen.next.total} breakAfter={screen.next.breakAfter} at="halfway" />}
         {screen.name === "facts" && <TestProgress answered={screen.next.number - 1} total={screen.next.total} breakAfter={screen.next.breakAfter} at="facts" />}
+        {screen.name === "more" && <TestProgress answered={screen.next.number - 1} total={screen.next.total} breakAfter={screen.next.breakAfter} at="help" />}
         {(screen.name === "help" || screen.name === "done") && progress && <TestProgress answered={progress.total} total={progress.total} breakAfter={progress.breakAfter} at={screen.name === "help" ? "help" : "end"} />}
       </header>
       {steps && (
@@ -525,12 +541,20 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
           ? <Question key={`${viewed.question.id}:${visit}`} testId={screen.testId} typing={typing}
               question={viewed.question} initial={viewed.response} revisit initialBoard={unsaved[viewed.question.id]} storedWork={viewed.work}
               canBack={answered.some((a) => a.number < viewed.number)} marked={marks.has(viewed.number)} onMark={() => toggleMark(viewed.number)} main={buttons.main} takeYourTime={false} onLeave={leave} onShown={onShown} failure={failure} boardHidden={boardHidden} onBoardHidden={setBoardHidden} />
-          : <TestCheck name={name} part={screen.section === "stage1" ? 1 : 2} numbers={screen.numbers} marked={marks} problem={<Problem error={failure} />}
+          : <TestCheck name={name} part={PART[screen.section]} numbers={screen.numbers} marked={marks} problem={<Problem error={failure} />}
               onOpen={(n) => {
                 setFailure(null);
                 open(n);
               }}
               onDone={() => doneChecking(screen.section)} />)}
+        {screen.name === "more" && (
+          <MessageScreen>
+            <p className="test-kicker">Almost done</p>
+            <h1 className="test-title">Just {screen.next.total - screen.next.number + 1} more, {name}.</h1>
+            <p className="test-lead">Part 2 is finished. Here is one more short part.</p>
+            <Button onClick={() => void show(screen.next)}>Keep going</Button>
+          </MessageScreen>
+        )}
         {screen.name === "break" && (
           <TestBreak name={name} answered={screen.next.breakAfter} total={screen.next.total} onDone={(how) => {
             track("test_break", { status: how });
