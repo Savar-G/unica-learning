@@ -133,6 +133,8 @@ export interface PrintJob {
   sheets: number;
   page: { width: number; height: number };
   scale: number;
+  /** Ends the print: the engine rejects as soon as it can. */
+  signal?: AbortSignal;
 }
 
 /** A marked element as laid out: its rect in CSS pixels from its sheet's top left corner, and its sizes. */

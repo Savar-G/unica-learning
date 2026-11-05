@@ -256,10 +256,13 @@ const pdfPageCount = (pdf: Uint8Array) => new TextDecoder("latin1").decode(pdf).
 export function chromiumPrintEngine(): PrintEngine {
   return {
     async print(job) {
+      job.signal?.throwIfAborted();
       const chromium = await findChromium();
       if (!chromium) throw new Error("print engine: no Chromium here; set CHROMIUM_PATH");
-      const browser = await puppeteer.launch({ ...chromium, headless: true });
+      // The signal closes the browser, so whatever this print is waiting on rejects.
+      const browser = await puppeteer.launch({ ...chromium, headless: true, signal: job.signal });
       try {
+        job.signal?.throwIfAborted();
         const page = await browser.newPage();
         await page.setViewport({ width: job.page.width, height: job.page.height, deviceScaleFactor: job.scale });
         await page.emulateMediaType("print");
@@ -314,7 +317,7 @@ export function chromiumPrintEngine(): PrintEngine {
         const measured = found.map(({ runs, ...m }) => ({ ...m, textPrinted: textPrinted(runs, inkedLines) }));
         return { pdf, pdfPages: pdfPageCount(pdf), images, measured };
       } finally {
-        await browser.close();
+        await browser.close().catch((e: unknown) => { if (!job.signal?.aborted) throw e; });
       }
     },
   };

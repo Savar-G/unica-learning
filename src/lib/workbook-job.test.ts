@@ -12,6 +12,7 @@ import { generateWorkbook, type FitCheck, type GeneratedWorkbook } from "@/lib/w
 import { placeChild, planNextWorkbook } from "@/lib/workbook-placement";
 import { memoryWorkbookFiles } from "@/lib/workbook-store-memory";
 import { workbookTemplate } from "@/lib/workbook-template";
+import { workbookWorker } from "@/lib/workbook-worker";
 import { keySolver, type Solver } from "@/lib/workbook-solve-check";
 import { firstCustomerProfile } from "@/lib/workbook-sample-profiles";
 
@@ -887,3 +888,217 @@ it("finishes a personalized run whose stored plan comes back in jsonb key order 
   expect((await s.runs.run(id))!.error).toBeNull();
   expect((await s.runs.frame(id))?.plan.level).toBe(16);
 }, 180_000);
+
+// The Stop button: an admin ends a run. The clock is fake, and each case holds the job at a known point.
+describe("an admin stops a run", () => {
+  const FAST = 2;
+  /** Resolves when the condition holds: the job runs on its own timers. */
+  const until = async (test: () => boolean) => {
+    const end = Date.now() + 150_000;
+    while (Date.now() < end && !test()) await new Promise((r) => setTimeout(r, 5));
+    expect(test()).toBe(true);
+  };
+  /** An AI client that waits for its signal, as `claude -p` does until it is ended. */
+  const hanging = () => {
+    const seen = { started: 0, aborted: 0 };
+    const ai: WorkbookJobDeps["ai"] = { model: "hang", json: (_request, signal) => new Promise((_, reject) => {
+      seen.started++;
+      signal.addEventListener("abort", () => { seen.aborted++; reject(new Error("ended")); }, { once: true });
+    }) };
+    return { ai, seen };
+  };
+  const started = async (s: ReturnType<typeof setup>) => {
+    const r = await startWorkbookRun(s.runs, CHILD, ADMIN);
+    if (r.status !== "started") throw new Error(r.status);
+    s.deps.stopCheckMs = FAST;
+    return r.runId;
+  };
+
+  it("ends a queued run, records who and when, and no job can claim or resume it", async () => {
+    const s = setup();
+    const id = await started(s);
+    expect(await s.runs.stop(id, ADMIN)).toBe("stopped");
+    const run = (await s.runs.run(id))!;
+    expect(run).toMatchObject({ status: "stale", stoppedBy: ADMIN.email, finishedAt: s.now().toISOString(), error: null, errors: [] });
+    expect(s.runs.audit.at(-1)).toMatchObject({ runId: id, actor: ADMIN.email, action: "run-stopped-by-admin" });
+    expect(runState(run, s.now())).toBe("stopped");
+    expect(await runWorkbookJob(id, s.deps)).toBe("not-claimed");
+    expect(await runWorkbookJob(id, s.deps, { resume: true })).toBe("not-claimed");
+  });
+
+  it("ends an AI call in progress, writes nothing after it, and does not read as a failure", async () => {
+    const { ai, seen } = hanging();
+    const s = setup({ ai });
+    const id = await started(s);
+    const job = runWorkbookJob(id, s.deps);
+    await until(() => seen.started > 0);
+    expect(await s.runs.stop(id, ADMIN)).toBe("stopped");
+    expect(await job).toBe("stale");
+    expect(seen.aborted).toBe(seen.started);
+    const run = (await s.runs.run(id))!;
+    expect(run).toMatchObject({ status: "stale", error: null, errors: [], draftId: null, stoppedBy: ADMIN.email });
+    expect(s.runs.audit.map((a) => a.action)).not.toContain("run-failed");
+    expect(await s.drafts.draft(run.draftKey)).toBeNull();
+  });
+
+  it("makes no AI call once a page in progress sees the stop", async () => {
+    const { ai, seen } = hanging();
+    const s = setup({ ai });
+    const id = await started(s);
+    const job = runWorkbookJob(id, s.deps);
+    await until(() => seen.started > 0);
+    await s.runs.stop(id, ADMIN);
+    await job;
+    const calls = seen.started;
+    await new Promise((r) => setTimeout(r, 10));
+    expect(seen.started).toBe(calls);
+  });
+
+  it("changes nothing on every late write under the old lease", async () => {
+    const s = setup();
+    const id = await started(s);
+    await s.runs.claim(id, "lease");
+    await s.runs.savePage(id, "lease", { number: 3 } as never);
+    await s.runs.stop(id, ADMIN);
+    const before = structuredClone(await s.runs.run(id));
+    const book = await buildDraft(s, before!.draftKey);
+    expect(await s.runs.renew(id, "lease")).toBe(false);
+    expect(await s.runs.progress(id, "lease", { step: "render" })).toBe(false);
+    expect(await s.runs.savePage(id, "lease", { number: 4 } as never)).toBe(false);
+    expect(await s.runs.saveCall(id, "lease", 4, 0, {} as never)).toBe(false);
+    expect(await s.runs.saveSolves(id, "lease", [])).toBe(false);
+    expect(await s.runs.useAttempts(id, "lease", 4, ["1.1"])).toBeNull();
+    expect(await s.runs.saveDraft(id, "lease", book)).toBe("lost");
+    expect(await s.runs.retry(id, "lease", "late")).toBe(false);
+    expect(await s.runs.fail(id, "lease", "late")).toBe(false);
+    expect(await s.runs.finish(id, "lease", { draftId: book.id, rendering: null, problems: [] })).toBe(false);
+    expect(await s.runs.yield(id, "lease")).toBe(false);
+    expect(await s.runs.run(id)).toEqual(before);
+    expect(s.runs.pageStore.get(id)?.has(4)).toBe(false);
+    expect(await s.drafts.draft(book.id)).toBeNull();
+  });
+
+  it("is harmless when pressed twice: the first stop's name stays, with one audit entry", async () => {
+    const s = setup();
+    const id = await started(s);
+    await s.runs.stop(id, ADMIN);
+    const other = { id: ADMIN.id, email: "other@example.com" };
+    expect(await s.runs.stop(id, other)).toBe("already");
+    expect((await s.runs.run(id))!.stoppedBy).toBe(ADMIN.email);
+    expect(s.runs.audit.filter((a) => a.action === "run-stopped-by-admin")).toHaveLength(1);
+  });
+
+  it("does not hold the child: the next start makes a new run at once", async () => {
+    const s = setup();
+    const id = await started(s);
+    await s.runs.stop(id, ADMIN);
+    const next = await startWorkbookRun(s.runs, CHILD, ADMIN);
+    expect(next.status).toBe("started");
+    expect(next).not.toMatchObject({ runId: id });
+    expect(await runWorkbookJob((next as { runId: string }).runId, s.deps)).toBe("done");
+  });
+
+  it("race: a finish that lands first wins, and the stop says the run is done", async () => {
+    const s = setup();
+    const id = await started(s);
+    expect(await runWorkbookJob(id, s.deps)).toBe("done");
+    const done = structuredClone(await s.runs.run(id));
+    expect(await s.runs.stop(id, ADMIN)).toBe("done");
+    expect(await s.runs.run(id)).toEqual(done);
+    expect(s.runs.audit.map((a) => a.action)).not.toContain("run-stopped-by-admin");
+  });
+
+  it("race: a stop that lands during the last save wins, and the finish removes its files", async () => {
+    const s = setup();
+    const id = await started(s);
+    const finish = s.runs.finish;
+    let paths = 0;
+    const put = s.deps.files.put.bind(s.deps.files);
+    s.deps.files = { ...s.deps.files, put: async (f) => { paths++; return put(f); } };
+    s.deps.runs = { ...s.runs, finish: async (runId, lease, o) => {
+      await s.runs.stop(runId, ADMIN);
+      return finish(runId, lease, o);
+    } };
+    expect(await runWorkbookJob(id, s.deps)).toBe("stale");
+    expect(paths).toBeGreaterThan(0);
+    expect(await s.runs.run(id)).toMatchObject({ status: "stale", stoppedBy: ADMIN.email, draftId: null });
+    expect(s.runs.revisions).toHaveLength(0);
+    expect(s.files.files.size).toBe(0);
+  });
+
+  it("ends a print in progress: the engine gets a signal, and the job ends without the rest of the render", async () => {
+    const s = setup();
+    const id = await started(s);
+    let printing = 0;
+    let aborted = 0;
+    s.deps.engine = { print: (job) => new Promise((_, reject) => {
+      printing++;
+      job.signal?.addEventListener("abort", () => { aborted++; reject(new Error("browser closed")); }, { once: true });
+    }) };
+    const job = runWorkbookJob(id, s.deps);
+    await until(() => printing > 0);
+    await s.runs.stop(id, ADMIN);
+    expect(await job).toBe("stale");
+    expect(aborted).toBeGreaterThan(0);
+    expect(await s.runs.run(id)).toMatchObject({ status: "stale", stoppedBy: ADMIN.email, draftId: null });
+    expect(s.runs.revisions).toHaveLength(0);
+  });
+
+  it("stops the plan's fit checks: the job does not sit through the rest of them", async () => {
+    const s = setup({ itemPolicy: "approved-v1" });
+    const id = await started(s);
+    let checks = 0;
+    let signal: AbortSignal | undefined;
+    s.deps.fit = (_parent, stop) => {
+      signal = stop;
+      return { fits: async () => {
+        checks++;
+        await new Promise((r) => setTimeout(r, 1));
+        return { ok: true };
+      } };
+    };
+    const job = runWorkbookJob(id, s.deps);
+    await until(() => checks > 0);
+    await s.runs.stop(id, ADMIN);
+    expect(await job).toBe("stale");
+    expect(signal?.aborted).toBe(true);
+    const at = checks;
+    await new Promise((r) => setTimeout(r, 10));
+    expect(checks).toBe(at);
+    expect(await s.runs.frame(id)).toBeNull();
+    // The plan's first steps are slow on a busy machine, before the first fit check.
+  }, 180_000);
+
+  it("the worker goes on to the next queued run after a stop", async () => {
+    const { ai, seen } = hanging();
+    const s = setup({ ai });
+    const first = await started(s);
+    s.runs.runs.get(first)!.runner = "mac";
+    s.deps.runner = "mac";
+    const log: string[] = [];
+    const worker = workbookWorker({
+      queue: {
+        candidates: async () => [...s.runs.runs.values()].filter((r) => r.runner === "mac" && r.status === "queued").map((r) => ({ id: r.id, resume: false })),
+        beat: async () => undefined,
+      },
+      runJob: async (id, resume) => {
+        const outcome = await runWorkbookJob(id, s.deps, { resume });
+        log.push(outcome);
+        return outcome;
+      },
+      keepAwake: () => () => undefined,
+    });
+    const turn = worker.tick();
+    await until(() => seen.started > 0);
+    await s.runs.stop(first, ADMIN);
+    expect(await turn).toEqual({ ran: first, outcome: "stale" });
+    // A second family's run is next, on a new child's start: the stopped run is no candidate.
+    const next = await startWorkbookRun(s.runs, CHILD, ADMIN);
+    const nextId = (next as { runId: string }).runId;
+    s.runs.runs.get(nextId)!.runner = "mac";
+    s.deps.ai = fakeAiClient({ answer });
+    expect(await worker.tick()).toEqual({ ran: nextId, outcome: "done" });
+    expect(log).toEqual(["stale", "done"]);
+    expect((await s.runs.run(first))!.stoppedBy).toBe(ADMIN.email);
+  });
+});

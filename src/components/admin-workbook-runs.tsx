@@ -12,7 +12,8 @@ import { ADMIN_WORKBOOKS_PATH, adminWorkbookPath, adminWorkbookRunPath, draftPdf
 import type { WorkbookStatus, WorkbookSummary } from "@/lib/workbook-content";
 import type { GeneratedPage, GeneratedQuestion } from "@/lib/workbook-generator";
 import { isCodeWorded } from "@/lib/workbook-generator-items";
-import { runState, type DraftRendering, type RunSolve, type RunState, type RunStep, type WorkbookRun } from "@/lib/workbook-job";
+import { runState, STALE_SECONDS, type DraftRendering, type RunSolve, type RunState, type WorkbookRun } from "@/lib/workbook-job";
+import { plainRunError, runProgress, type RunActivity } from "@/lib/workbook-run-progress";
 import type { RenderProblem } from "@/lib/workbook-render";
 import { plainProblem, plainReason } from "@/lib/workbook-reason";
 import { toSolve } from "@/lib/workbook-solve-check";
@@ -22,6 +23,7 @@ import { RecordFacts, childPath } from "@/components/admin-records";
 import { PackageCells, WorkbookStatusChip } from "@/components/admin-workbook";
 import { RunRefresh } from "@/components/admin-run-refresh";
 import { RunOnServer } from "@/components/run-on-server";
+import { StopWorkbookRun } from "@/components/stop-workbook-run";
 import { AuditLog } from "@/components/admin-workbook-audit";
 import { ApproveDraft } from "@/components/workbook-ship-actions";
 import { approvalProblems } from "@/lib/workbook-ship";
@@ -32,21 +34,37 @@ const STATE: Record<RunState, [string, Tone]> = {
   waiting: ["Waiting to start", "info"], preparing: ["Preparing", "info"], stopped: ["Stopped", "warn"], failed: ["Failed", "bad"], done: ["Draft ready", "ok"],
 };
 
-const STEP: Record<RunStep, string> = {
-  plan: "Planning the two weeks", write: "Writing and checking pages", render: "Making the page images", save: "Saving the draft",
-};
-
-export const RunStateChip = ({ state }: { state: RunState }) => <Chip tone={STATE[state][1]}>{STATE[state][0]}</Chip>;
+/** `stoppedBy`: an admin stopped the run on purpose, which is not a problem. */
+export const RunStateChip = ({ state, stoppedBy }: { state: RunState; stoppedBy?: string | null }) => <Chip tone={stoppedBy ? "muted" : STATE[state][1]}>{STATE[state][0]}</Chip>;
 
 const levelsText = (levels: number[]) => levels.map((l) => `U${l}`).join(", ");
 
-/** "12 of 80 day pages" with a bar, while a run writes. */
-export function RunProgress({ run }: { run: WorkbookRun }) {
-  const done = run.donePages ?? 0;
-  const total = run.totalPages ?? 0;
+/** The line for a run no one has taken yet. `worker`: undefined when this page does not know the Mac's state. */
+function waitingLine(run: WorkbookRun, worker: WorkerStatus | null | undefined) {
+  if (run.runner !== "mac") return "Starting on the server.";
+  if (worker === undefined) return "Waiting for the Mac.";
+  if (!worker) return "Waiting for the Mac. The workbook worker has never run.";
+  return worker.online ? "Waiting for the Mac. It is online, so this run starts in a few seconds." : `Waiting for the Mac. It is offline, last seen ${when(worker.seenAt)} (Pacific).`;
+}
+
+/** "Stopped by admin@example.com at Nov 5, 2026, 11:03 AM (Pacific)." */
+const stoppedLine = (run: WorkbookRun) => `Stopped by ${run.stoppedBy}${run.finishedAt ? ` at ${when(run.finishedAt)} (Pacific)` : ""}.`;
+
+/** The Stop button, only while the run can be stopped: it is queued or running, also when it has gone quiet. */
+const StopButton = ({ run }: { run: WorkbookRun }) => run.status === "queued" || run.status === "running"
+  ? <StopWorkbookRun runId={run.id} started={run.status === "running"} pages={run.donePages ?? 0} />
+  : null;
+
+/** A run being made: the step and pages, the bar, why a try stopped, whether it is working, and how much is left. */
+export function RunProgress({ run, activity, now, worker }: { run: WorkbookRun; activity?: RunActivity; now: Date; worker?: WorkerStatus | null }) {
+  if (runState(run, now) === "waiting") return <span className="adm-wb-progress"><span className="adm-sub">{waitingLine(run, worker)}</span></span>;
+  const v = runProgress(run, activity, now);
   return <span className="adm-wb-progress">
-    <span className="adm-sub">{run.step ? STEP[run.step] : "Starting"}{total > 0 && ` · ${done} of ${total} day pages`}{run.attempts > 1 && ` · try ${run.attempts} of ${run.maxAttempts}`}</span>
-    {total > 0 && <progress max={total} value={done} aria-label={`${done} of ${total} day pages written`} />}
+    <span className="adm-sub">{[v.step, v.pages && `${v.pages.done} of ${v.pages.total} day pages`, v.tries].filter(Boolean).join(" · ")}</span>
+    {v.pages && <progress max={v.pages.total} value={v.pages.done} aria-label={`${v.pages.done} of ${v.pages.total} day pages written`} />}
+    {v.retry && <span className="adm-sub">{v.retry}</span>}
+    <span className={`adm-sub${v.signal.warn ? " adm-wb-signal-warn" : ""}`} role={v.signal.warn ? "status" : undefined}>{v.signal.text}</span>
+    <span className="adm-sub adm-wb-left">{v.timeLeft}</span>
   </span>;
 }
 
@@ -65,16 +83,22 @@ export function ChecksCell({ counts, notRendered, oldFormat = false }: { counts:
   </span>;
 }
 
+/** Why a run with no error stopped: the rule in runState. */
+const STOPPED_TEXT = `It stopped without finishing: no signal from the job for ${STALE_SECONDS / 60} minutes.`;
+
 const childName = (children: Map<string, ChildRow>, id: string) => children.get(id)?.first_name ?? "Unknown child";
 
 /** The run's state cell: the chip, and the progress or the error. */
-function StateCell({ run, now }: { run: WorkbookRun; now: Date }) {
+function StateCell({ row, now, worker }: { row: RunListRow; now: Date; worker?: WorkerStatus | null }) {
+  const { run, activity } = row;
   const state = runState(run, now);
-  if (state === "waiting" && run.runner === "mac") return <><RunStateChip state={state} /><span className="adm-sub">Waiting for the Mac</span></>;
   return <>
-    <RunStateChip state={state} />
-    {(state === "preparing" || state === "waiting") && <RunProgress run={run} />}
-    {(state === "failed" || state === "stopped") && <span className="adm-sub">{run.error ?? "It stopped without finishing: no progress for 6 minutes."}</span>}
+    <RunStateChip state={state} stoppedBy={run.stoppedBy} />
+    {(state === "preparing" || state === "waiting") && <RunProgress run={run} activity={activity} now={now} worker={worker} />}
+    {run.stoppedBy
+      ? <span className="adm-sub">{stoppedLine(run)}</span>
+      : (state === "failed" || state === "stopped") && <span className="adm-sub">{run.error ? plainRunError(run.error) : STOPPED_TEXT}</span>}
+    <StopButton run={run} />
   </>;
 }
 
@@ -102,8 +126,8 @@ function keep(row: Row, filter: ListFilter): boolean {
 }
 
 /** The Workbooks list: every run's draft and every stored workbook, by child, newest first in each child. */
-export function AdminWorkbookList({ email, runs, more, workbooks, childNames: children, filter, now, deliveredIds = [] }: {
-  email: string; runs: RunListRow[]; more: boolean; workbooks: WorkbookSummary[]; childNames: Map<string, ChildRow>; filter: ListFilter; now: Date; deliveredIds?: string[];
+export function AdminWorkbookList({ email, runs, more, workbooks, childNames: children, filter, now, deliveredIds = [], worker }: {
+  email: string; runs: RunListRow[]; more: boolean; workbooks: WorkbookSummary[]; childNames: Map<string, ChildRow>; filter: ListFilter; now: Date; deliveredIds?: string[]; worker?: WorkerStatus | null;
 }) {
   const rows: Row[] = [
     ...runs.map((row): Row => ({ kind: "run", childId: row.run.childId, at: row.run.createdAt, row, state: runState(row.run, now) })),
@@ -128,7 +152,7 @@ export function AdminWorkbookList({ email, runs, more, workbooks, childNames: ch
           <tr key={r.row.run.id}>
             <td><Link href={childPath(r.childId)}>{childName(children, r.childId)}</Link></td>
             <td className="adm-nowrap"><Link href={adminWorkbookRunPath(r.row.run.id)}>Draft of workbook {r.row.run.number}</Link></td>
-            <td><StateCell run={r.row.run} now={now} /></td>
+            <td><StateCell row={r.row} now={now} worker={worker} /></td>
             <td><ChecksCell counts={r.row.counts} notRendered={r.row.notRendered} oldFormat={r.row.oldFormat} /></td>
             <td className="adm-nowrap">{when(r.row.run.createdAt)}</td>
             <td className="adm-sub">{r.row.run.startedBy.email ?? "Unknown"}</td>
@@ -152,16 +176,17 @@ export function AdminWorkbookList({ email, runs, more, workbooks, childNames: ch
 }
 
 /** The child page's list of runs. */
-export function ChildRunsTable({ runs, now }: { runs: RunListRow[]; now: Date }) {
-  return <Table label="Workbook drafts" head={["Draft", "Status", "Checks", "Started (Pacific)", "By"]} empty="No drafts yet.">
+export function ChildRunsTable({ runs, now, worker }: { runs: RunListRow[]; now: Date; worker?: WorkerStatus | null }) {
+  const preparing = runs.some((r) => ["preparing", "waiting"].includes(runState(r.run, now)));
+  return <>{preparing && <RunRefresh />}<Table label="Workbook drafts" head={["Draft", "Status", "Checks", "Started (Pacific)", "By"]} empty="No drafts yet.">
     {runs.map((r) => <tr key={r.run.id}>
       <td className="adm-nowrap"><Link href={adminWorkbookRunPath(r.run.id)}>Draft of workbook {r.run.number}</Link></td>
-      <td><StateCell run={r.run} now={now} /></td>
+      <td><StateCell row={r} now={now} worker={worker} /></td>
       <td><ChecksCell counts={r.counts} notRendered={r.notRendered} oldFormat={r.oldFormat} /></td>
       <td className="adm-nowrap">{when(r.run.createdAt)}</td>
       <td className="adm-sub">{r.run.startedBy.email ?? "Unknown"}</td>
     </tr>)}
-  </Table>;
+  </Table></>;
 }
 
 // ---------- Where runs are made (D-200) ----------
@@ -497,7 +522,7 @@ export function AdminWorkbookRun({ email, detail, now, only, worker, why }: { em
       {(state === "preparing" || state === "waiting") && <RunRefresh />}
       <RecordFacts facts={[
         ["Child", <Link key="child" href={childPath(run.childId)}>{name}</Link>],
-        ["Status", <span key="state" className="adm-wb-state"><RunStateChip state={state} />{(state === "preparing" || state === "waiting") && <RunProgress run={run} />}</span>],
+        ["Status", <span key="state" className="adm-wb-state"><RunStateChip state={state} stoppedBy={run.stoppedBy} />{(state === "preparing" || state === "waiting") && <RunProgress run={run} activity={detail.activity} now={now} worker={worker} />}<StopButton run={run} /></span>],
         ["Started (Pacific)", `${when(run.createdAt)} by ${run.startedBy.email ?? "unknown"}`],
         ["Finished (Pacific)", run.finishedAt ? when(run.finishedAt) : "Not yet"],
         ["Tries", `${run.attempts} of ${run.maxAttempts} allowed${run.resumes > 0 ? ` · taken up again ${run.resumes} ${run.resumes === 1 ? "time" : "times"}` : ""}`],
@@ -515,10 +540,13 @@ export function AdminWorkbookRun({ email, detail, now, only, worker, why }: { em
         <Approval detail={detail} name={name} />
       </div>}
 
-      {(state === "failed" || state === "stopped") && (
+      {run.stoppedBy && (
+        <p className="adm-note" role="status"><b>{stoppedLine(run)}</b> Its finished pages are not used. To make this workbook, press Prepare next workbook on <Link href={childPath(run.childId)}>{name}&apos;s page</Link>: it starts a new run.</p>
+      )}
+      {(state === "failed" || state === "stopped") && !run.stoppedBy && (
         <div className="adm-wb-alert" role="alert">
           <b>{state === "failed" ? "This run failed." : "This run stopped without finishing."}</b>
-          <p>{run.error ?? "It made no progress for 6 minutes, so it stopped. Its writes are no longer used."}</p>
+          <p>{run.error ?? `${STOPPED_TEXT} Its writes are no longer used.`}</p>
           {run.errors.length > 0 && <ol className="adm-wb-list">{run.errors.map((e, i) => <li key={i}><span className="adm-sub">Try {e.attempt}, {when(e.at)}</span> {e.error}</li>)}</ol>}
           <p className="adm-sub">To try again, press Prepare next workbook on <Link href={childPath(run.childId)}>{name}&apos;s page</Link>.</p>
         </div>

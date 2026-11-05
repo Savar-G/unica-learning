@@ -5,7 +5,7 @@ import type { RunDetail } from "@/lib/admin-store";
 import type { RunSolve } from "@/lib/workbook-job";
 import { workedSteps, type QuestionPackage } from "@/lib/question-package";
 import { solveReason, toSolve } from "@/lib/workbook-solve-check";
-import { AdminWorkbookRun } from "@/components/admin-workbook-runs";
+import { AdminWorkbookRun, ChildRunsTable } from "@/components/admin-workbook-runs";
 import { buildQuestion } from "@/lib/workbook-generator-items";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { summarizeAiCalls } from "@/lib/workbook-ai";
@@ -174,5 +174,63 @@ describe("admin workbook questions left out for room (#380)", () => {
     expect(html).toContain('title="Slot 1.8: the content does not fit the page"');
     expect(text).not.toContain("Left out to make room: Practice, a question");
     expect(visible(markup(runDetail("agreed")))).not.toContain("Left out to make room");
+  });
+});
+
+describe("admin workbook run progress", () => {
+  const now = new Date("2026-11-01T20:00:00Z");
+  const ago = (seconds: number) => new Date(now.getTime() - seconds * 1000).toISOString();
+  const running = (o: Partial<RunDetail["run"]> = {}): RunDetail["run"] => ({ ...runDetail("agreed").run, status: "running", step: "write", donePages: 20, totalPages: 80, heartbeatAt: ago(5), finishedAt: null, draftId: null, runner: "mac", ...o });
+  const activity = { pageTimes: Array.from({ length: 20 }, (_, i) => ago(12 + (19 - i) * 10)), lastWorkAt: ago(12) };
+  const onRunPage = (run: RunDetail["run"], worker: Parameters<typeof AdminWorkbookRun>[0]["worker"] = null) =>
+    visible(renderToStaticMarkup(createElement(AdminWorkbookRun, { email: "admin@example.com", detail: { ...runDetail("agreed"), run, draft: null, activity }, now, only: false, worker })));
+  const onChildPage = (run: RunDetail["run"], worker?: Parameters<typeof AdminWorkbookRun>[0]["worker"]) =>
+    visible(renderToStaticMarkup(createElement(ChildRunsTable, { runs: [{ run, counts: null, notRendered: null, oldFormat: false, activity }], now, worker })));
+
+  it("shows the same pages, working line and time left on the run page and the child page", () => {
+    for (const text of [onRunPage(running()), onChildPage(running())]) {
+      expect(text).toContain("Writing and checking pages · 20 of 80 day pages");
+      expect(text).toContain("Working. Last saved work 12 seconds ago.");
+      expect(text).toContain("About 12 minutes left.");
+    }
+  });
+
+  it("says a queued run waits for the Mac, and whether the Mac is online", () => {
+    const queued = running({ status: "queued", step: null, donePages: null, totalPages: null, heartbeatAt: null });
+    const seen = { id: "w", seenAt: ago(5), startedAt: ago(100), build: null, runId: null, primaryAi: "subscription" as const };
+    expect(onChildPage(queued, { ...seen, online: true })).toContain("Waiting for the Mac. It is online, so this run starts in a few seconds.");
+    expect(onChildPage(queued, { ...seen, online: false })).toContain("Waiting for the Mac. It is offline, last seen");
+    expect(onChildPage(queued)).toContain("Waiting for the Mac.");
+    expect(onRunPage(queued)).toContain("The workbook worker has never run.");
+  });
+
+  it("shows the Stop button only while the run can be stopped, also when it has gone quiet", () => {
+    const queued = running({ status: "queued", step: null, donePages: null, totalPages: null, heartbeatAt: null });
+    for (const run of [running(), queued, running({ heartbeatAt: ago(1000) })]) {
+      expect(onChildPage(run)).toContain("Stop this run");
+      expect(onRunPage(run)).toContain("Stop this run");
+    }
+    for (const run of [running({ status: "done" }), running({ status: "failed", error: "x" }), running({ status: "stale" }), running({ status: "stale", stoppedBy: "admin@example.com" })]) {
+      expect(onChildPage(run)).not.toContain("Stop this run");
+      expect(onRunPage(run)).not.toContain("Stop this run");
+    }
+  });
+
+  it("shows who stopped a run and when, and it does not read as a failure", () => {
+    const stopped = running({ status: "stale", stoppedBy: "savar@example.com", finishedAt: ago(60) });
+    for (const text of [onChildPage(stopped), onRunPage(stopped)]) {
+      expect(text).toMatch(/Stopped by savar@example\.com at .+ \(Pacific\)\./);
+      expect(text).not.toMatch(/stopped without finishing|This run failed|no signal from the job/);
+    }
+    expect(onRunPage(stopped)).toContain("Prepare next workbook");
+    const html = renderToStaticMarkup(createElement(AdminWorkbookRun, { email: "a", detail: { ...runDetail("agreed"), run: stopped, draft: null }, now, only: false, worker: null }));
+    expect(html).not.toContain('role="alert"');
+    expect(html).toContain("adm-chip is-muted");
+  });
+
+  it("names the stop rule from the code when a run stopped with no error", () => {
+    const stale = running({ status: "stale", heartbeatAt: ago(400) });
+    expect(onChildPage(stale)).toContain("no signal from the job for 6 minutes");
+    expect(onRunPage(stale)).toContain("no signal from the job for 6 minutes");
   });
 });

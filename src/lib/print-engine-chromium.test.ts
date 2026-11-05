@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { renderMonthlySummary } from "@/lib/monthly-summary";
 import type { MonthlySummaryView } from "@/lib/parent-view";
 import { chromiumPrintEngine, findChromium } from "@/lib/print-engine-chromium";
-import { renderWorkbook, type WorkbookDraft } from "@/lib/workbook-render";
+import { renderWorkbook, type PrintEngine, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleDraft } from "@/lib/workbook-sample";
 import { fixedTemplate } from "@/lib/workbook-template-fixed";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
@@ -59,6 +59,22 @@ describe.skipIf(!chromium)("renderWorkbook with Chromium", () => {
       for (const f of result.files) await writeFile(`${process.env.RENDER_OUT}/${f.path.split("/").pop()}`, f.bytes);
       await writeFile(`${process.env.RENDER_OUT}/boxes.json`, JSON.stringify(result.workbook.pages.map((p) => ({ page: p.number, boxes: p.questions.map((q) => q.box) })), null, 2));
     }
+  }, 60_000);
+
+  it("ends a print in progress when its signal aborts, and refuses a print after it", async () => {
+    const engine = chromiumPrintEngine();
+    const whole = Date.now();
+    await render(draft());
+    const wholeMs = Date.now() - whole;
+    const stop = new AbortController();
+    const started = Date.now();
+    const stopping: PrintEngine = { print: (job) => engine.print({ ...job, signal: stop.signal }) };
+    const printing = renderWorkbook({ draft: draft(), parentId: PARENT, template: fixedTemplate(await fixedTemplateFonts()), engine: stopping });
+    setTimeout(() => stop.abort(), 300);
+    await expect(printing).rejects.toThrow();
+    const stoppedMs = Date.now() - started;
+    expect(stoppedMs).toBeLessThan(Math.max(wholeMs, 1000));
+    await expect(engine.print({ html: "", sheets: 0, page: { width: 1, height: 1 }, scale: 1, signal: stop.signal })).rejects.toThrow();
   }, 60_000);
 
   it("fails a page with more questions than fit, naming what was pushed off it, and a question whose numbers do not fit its box", async () => {

@@ -48,6 +48,6 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
     <p><Link className="btn adm-btn" href={`/admin/children/${c.id}/preview-plan`} prefetch={false}>Preview plan</Link></p>
     <PrepareWorkbook childId={c.id} child={c.first_name} runner={runner} />
     {runner === "mac" && <p className="adm-note"><WorkerLine worker={worker} /></p>}
-    <ChildRunsTable runs={runs} now={new Date()} />
+    <ChildRunsTable runs={runs} now={new Date()} worker={runner === "mac" ? worker : undefined} />
   </AdminFrame>;
 }
