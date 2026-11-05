@@ -11,5 +11,5 @@ export async function savedWorkbookWhy(admin: AdminSession, runId: string | null
   if (error) throw new Error("Could not read the saved workbook plan.");
   const frame = data?.frame;
   if (!frame?.plan || !curriculumFor(frame.curriculum)) return null;
-  return frame.plan.personal?.why ?? workbookWhy(frame.plan);
+  return workbookWhy(frame.plan) ?? frame.plan.personal?.why ?? null;
 }

@@ -1,8 +1,9 @@
 // A1: a plain-language explanation made only from the saved planner data.
-import { MISCONCEPTIONS, type FactFamilyId } from "@/lib/assessment";
+import { BC_SKILL_MAP, MISCONCEPTIONS, type FactFamilyId } from "@/lib/assessment";
+import { UNIT_TITLES } from "@/lib/workbook-titles";
 import { feelingLabel, goalLabel, interestLabel, styleLabel, weeklyTimeLabel } from "@/lib/learning-style";
 import type { WorkbookPlan } from "@/lib/workbook-plan";
-import type { BookSignals, SignalId, SignalTrace } from "@/lib/workbook-signals";
+import type { BookSignals, BookSoftSource, SignalId, SignalTrace } from "@/lib/workbook-signals";
 import { bookSignals } from "@/lib/workbook-signals";
 import { childProfileFacts, type ChildProfileInput, type ChildLearnerProfile } from "@/lib/child-profile";
 import type { PlacementInput } from "@/lib/workbook-placement";
@@ -90,8 +91,13 @@ const FAMILIES: Record<FactFamilyId, string> = {
 };
 const grade = (n: number) => n === 0 ? "Kindergarten" : `Grade ${n}`;
 const list = (values: readonly string[], empty = "None") => values.length ? values.join(", ") : empty;
+const topic = (code: string) => `${(UNIT_TITLES[code] ?? BC_SKILL_MAP.standards.find(s => s.code === code)?.text ?? "Topic name unavailable").replace(/\b\d{1,3}(?: \d{3})+\b/g, n => n.replace(/ /g, ","))} (${code})`;
+const topicList = (codes: readonly string[]) => list(codes.map(topic));
 const reliability = (r: SignalTrace["reliability"]) => ({ fact: "Recorded fact", clear: "Clear", "early-sign": "Early sign", parent: "Parent answer", soft: "AI suggestion" })[r];
-const topics = (s: BookSignals["standards"]) => list(s.map(t => `${t.code} (${t.certainty === "clear" ? "clear" : "early sign"})`));
+const topics = (s: BookSignals["standards"]) => list(s.map(t => `${topic(t.code)}: ${t.certainty === "clear" ? "clear" : "early sign, limited evidence"}`));
+const aiSource = (source: BookSoftSource | undefined) => source
+  ? `Suggested topics: ${topicList(source.suggested)}. Review preferences: ${topicList(source.reviewOrder)}. Weak-topic preferences: ${topicList(source.weakOrder)}. Challenge preferences: ${topicList(source.challengeOrder)}. Not used: ${list(source.dropped.map(d => `${topic(d.standard)}: ${d.reason}`))}`
+  : "The saved plan has no separate source details for these notes";
 
 function values(s: BookSignals): Record<SignalId, string> {
   const b = s.behaviour;
@@ -102,10 +108,10 @@ function values(s: BookSignals): Record<SignalId, string> {
     S4: list(s.strands.map(a => `${({ number: "Number", fractions: "Fractions", algebra: "Patterns", shapes: "Shapes" })[a.strand]}: ${a.correct} of ${a.total} correct, ${grade(a.level)}`)),
     S5: `${s.secure.length} secure; ${s.weak.length} weak at or below school grade. Secure topics: ${topics(s.secure)}`,
     S6: topics(s.weak),
-    S7: list(s.mistakes.map(m => `${m.standard}: ${list(m.misconceptions.map(id => Object.entries(MISCONCEPTIONS).find(([key]) => key === id)?.[1].description ?? "Mistake not identified"))}; ${m.wrong} wrong, ${m.withHelp} with help, ${m.blank} blank, ${m.hints} hints`), "No known mistakes at or below school grade"),
+    S7: list(s.mistakes.map(m => `${topic(m.standard)}: ${list(m.misconceptions.map(id => Object.entries(MISCONCEPTIONS).find(([key]) => key === id)?.[1].description ?? "Mistake not identified"))}; ${m.wrong} wrong, ${m.withHelp} with help, ${m.blank} blank, ${m.hints} hints`), "No known mistakes at or below school grade"),
     S8: s.events ? `${s.events.counted} later answers counted; ${s.events.inAssessmentProfile} answers already in the test excluded` : "No later learning recorded",
     S9: list(s.facts.filter(f => f.source !== "none").map(f => `${FAMILIES[f.family]}: ${f.state === "known" ? "accurate and quick" : f.state === "needs-practice" ? "needs practice" : "not enough evidence"}${f.result ? `, ${f.result.correct} of ${f.result.answered} correct` : ""}${f.source === "section" ? " (whole-section result)" : ""}`), "No facts measured"),
-    S10: `Untested: ${list(s.unknowns?.untested ?? [])}. Check next: ${list(s.unknowns?.checkNext ?? [])}`,
+    S10: `Untested: ${topicList(s.unknowns?.untested ?? [])}. Check next: ${topicList(s.unknowns?.checkNext ?? [])}`,
     S11: b ? `${b.medianMs === null ? "No median time" : `${Math.round(b.medianMs / 1000)} seconds per question`}; ${b.unreliable || b.rushRuns > 0 ? "rushing found" : "no rushing found"}` : "No pace recorded",
     S12: b?.lateDrop === null || !b ? "Not enough evidence" : b.lateDrop ? "Results dropped near the end" : "No measured drop",
     S13: `${b?.readAloud ?? 0} questions read aloud`,
@@ -114,8 +120,8 @@ function values(s: BookSignals): Record<SignalId, string> {
     S16: "Excluded from planning",
     S17: `Interests: ${list(s.preferences.interests.map(interestLabel), "not answered")}. Learns from: ${list(s.preferences.styles.map(styleLabel), "not answered")}`,
     S18: `Feeling: ${s.parent.feeling ? feelingLabel(s.parent.feeling) : "not answered"}. Goal: ${s.parent.goal ? goalLabel(s.parent.goal) : "not answered"}. Weekly time: ${s.parent.weeklyTime ? weeklyTimeLabel(s.parent.weeklyTime) : "not answered"}`,
-    S19: `Suggested topics: ${list(s.soft.suggested)}. Review preferences: ${list(s.soft.reviewOrder)}. Weak-topic preferences: ${list(s.soft.weakOrder)}`,
-    S20: `Weak-topic preferences: ${list(s.soft.weakOrder)}`,
+    S19: aiSource(s.soft.sources?.test),
+    S20: aiSource(s.soft.sources?.learning),
     S21: s.report.howWeHelp ? ({ ahead: "Move ahead", behind: "Catch up", "on-grade": "Work at school grade" })[s.report.howWeHelp] : "No report recommendation supplied",
     S22: `${s.report.minutes === null ? "Time not supplied" : `${s.report.minutes} minutes`}; ${s.report.device ? `${s.report.device.deviceClass}, ${s.report.device.input}` : "device not supplied"}`,
   };
@@ -137,7 +143,7 @@ export function workbookWhy(plan: WorkbookPlan, fallback?: BookSignals, placemen
   if (s.hasAssessment && start?.rule === "P1") warnings.push("The child has a test, but the plan used school grade because a working level was unavailable.");
   const home = Number(start?.home.replace("U", ""));
   if ((s.report.howWeHelp === "ahead" && plan.level < home) || (s.report.howWeHelp === "behind" && s.working && s.working.working > s.grade && plan.level >= home)) warnings.push("The report recommendation and the starting level do not agree. Check the test before making the book.");
-  for (const drop of s.soft.dropped) warnings.push(`AI suggestion ${drop.standard} not used: ${drop.reason === "not in this level" ? "not in this level" : "above school grade, so it is not a weakness"}.`);
+  for (const drop of s.soft.dropped) warnings.push(`AI suggestion ${topic(drop.standard)} not used: ${drop.reason === "not in this level" ? "not in this level" : "above school grade, so it is not a weakness"}.`);
   for (const f of plan.personal?.timeShortfalls ?? []) warnings.push(`Day ${f.day}: ${f.required} required minutes exceed the ${f.target}-minute target by ${f.shortfall} minutes.`);
   if (plan.fixItLater.length) warnings.push(`${plan.fixItLater.length} skills need correction in a later book because this book has no room.`);
   const startReasons: Record<string, string> = {
@@ -148,11 +154,12 @@ export function workbookWhy(plan: WorkbookPlan, fallback?: BookSignals, placemen
     P5: `The measured working level is ${s.working ? grade(s.working.working) : "unavailable"}.${s.weak.length === 0 ? " No topic at or below school grade is weak." : " Early gaps below it do not lower the start."}`,
     P9: "Kindergarten starts at the first level.",
   };
-  const pages: WorkbookWhy["pages"] = [{ label: "Cover", choices: [`${s.working && s.working.working > s.grade && s.adjustments.trustedAboveGrade ? "Move ahead" : plan.units.support || s.clearlyWeak.length ? "Build weak topics step by step" : "Work at the measured level"} with taught topics ${list([...new Set(plan.newSteps.map(step => step.unit))])}. The cover wording is added when the book is made.`] }];
+  const pages: WorkbookWhy["pages"] = [{ label: "Cover", choices: [`${s.working && s.working.working > s.grade && s.adjustments.trustedAboveGrade ? "Move ahead" : plan.units.support || s.clearlyWeak.length ? "Build weak topics step by step" : "Work at the measured level"} with taught topics ${topicList([...new Set(plan.newSteps.map(step => step.unit))])}. The cover wording is added when the book is made.`] }];
   for (const day of plan.days) for (const page of day.pages) {
     const choices: string[] = [];
     const taught = [...new Set(page.parts.flatMap(p => p.step ? [p.step.unit] : []))];
-    if (taught.length && start?.rules.includes("P5a")) choices.push(`Teach topics ${taught.join(", ")} from their first steps. Early signs of secure work do not skip teaching.`);
+    const earlySecure = taught.filter(code => s.secure.some(t => t.code === code && t.certainty !== "clear"));
+    if (earlySecure.length && start?.rules.includes("P5a")) choices.push(`Teach ${topicList(earlySecure)} from step 1. The test suggests this work is secure, but the evidence is limited. One more answer could change the result.`);
     if (s.hasAssessment && page.parts.some(p => p.kind === "warm-up")) choices.push(`Known facts supplied for warm-up choices: ${list(s.facts.filter(f => f.state === "known").map(f => FAMILIES[f.family]))}. The final fact counts are chosen when the book is made.`);
     if (page.parts.some(p => p.kind === "word-problems" || p.kind === "picture-stories")) {
       if (s.preferences.interests.length) choices.push(`Story settings requested: ${s.preferences.interests.map(interestLabel).join(", ")}.`);
@@ -162,12 +169,12 @@ export function workbookWhy(plan: WorkbookPlan, fallback?: BookSignals, placemen
     if (day.shortStories && page.parts.some(p => p.kind === "word-problems" || p.kind === "picture-stories")) choices.push("Shorter stories follow the recorded read-aloud use.");
     if (s.hasAssessment && page.parts.some(p => p.kind === "new-idea")) choices.push(`Picture support stays through Day ${s.adjustments.picturesThrough}.`);
     for (const part of page.parts) {
-      if (part.step && s.weak.some(w => w.code === part.step!.unit)) choices.push(`Teach weak topic ${part.step.unit}, step ${part.step.step}.`);
-      if (part.weakChecks?.length) choices.push(`Check early gaps: ${part.weakChecks.map(c => `${c.unit}, ${c.items} questions`).join("; ")}.`);
+      if (part.step && s.weak.some(w => w.code === part.step!.unit)) choices.push(`Teach weak topic ${topic(part.step.unit)}, step ${part.step.step}.`);
+      if (part.weakChecks?.length) choices.push(`Check early gaps: ${part.weakChecks.map(c => `${topic(c.unit)}, ${c.items} questions`).join("; ")}.`);
       if (part.templateDifficulty === "hard") choices.push("Challenge uses the hardest allowed questions from the first day.");
       if (part.extra) choices.push("This block is Extra to reduce the required time.");
-      if (part.preferStandards?.length) choices.push(`Review or Challenge prefers secure topics ${part.preferStandards.join(", ")}. AI can choose only between equal allowed topics.`);
-      if (plan.units.support && part.step?.unit === plan.units.support) choices.push(`Teach lower topic ${plan.units.support} alongside the working level.`);
+      if (part.preferStandards?.length) choices.push(`Review or Challenge prefers secure topics ${topicList(part.preferStandards)}. AI can choose only between equal allowed topics.`);
+      if (plan.units.support && part.step?.unit === plan.units.support) choices.push(`Teach lower topic ${topic(plan.units.support)} alongside the working level.`);
     }
     if (day.time && (s.parent.weeklyTime || s.behaviour?.lateDrop || page.parts.some(p => p.extra))) choices.push(`Required time for the day: ${day.time.required} minutes; target: ${day.time.target} minutes. This is a planning estimate.`);
     pages.push({ label: `Day ${day.day}, page ${page.number}`, choices: [...new Set(choices.length ? choices : ["Same as a standard book"])] });

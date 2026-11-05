@@ -11,6 +11,7 @@ import { adminReportReader } from "@/lib/report-loading-server";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import { planNextWorkbook } from "@/lib/workbook-placement";
 import { previewWorkbook } from "@/lib/workbook-why";
+import { staleLearnerProfile, WORKBOOK_LEARNER_DERIVED_VERSION } from "@/lib/workbook-profile-freshness";
 
 // Only read operations. Use the admin's session, never a service-role client or a profile rebuild that saves.
 export async function loadPreviewPlan(admin: AdminSession, id: string) {
@@ -35,22 +36,34 @@ export async function loadPreviewPlan(admin: AdminSession, id: string) {
   const answers = learning && { styles: learning.styles, interests: learning.interests, feeling: learning.feeling, goal: learning.goal, weeklyTime: learning.weeklyTime };
   let assessment = null;
   let report = null;
+  let rebuilt = false;
   if (tests.data) {
     const test = tests.data;
     const metadata = await admin.db.rpc("admin_reports").select("minutes, recommendation:model->>howWeHelp").eq("assessment_id", test.id).maybeSingle();
     if (metadata.error) throw new Error("Could not read the report recommendation.");
     const recommendation = metadata.data?.recommendation;
     report = { minutes: metadata.data?.minutes ?? null, howWeHelp: recommendation === "ahead" || recommendation === "behind" || recommendation === "on-grade" ? recommendation : null };
-    const stored = await admin.db.from("learner_profiles").select("profile").eq("assessment_id", test.id).maybeSingle();
+    const stored = await admin.db.from("learner_profiles").select("schema_version, profile").eq("assessment_id", test.id).maybeSingle();
     if (stored.error) throw new Error("Could not read the test profile.");
-    let profile = storedProfile(stored.data?.profile);
+    let profile = staleLearnerProfile(stored.data?.schema_version ?? null, stored.data?.profile) ? null : storedProfile(stored.data?.profile);
     if (!profile) {
-      const inputs = await loadReportInputs(adminReportReader(admin), test.id, () => Promise.reject(new Error("Preview does not read comparisons.")));
-      if (inputs) profile = learnerProfile({ placement: inputs.assessment.placement, answers: inputs.profileAnswers(), help: inputs.assessment.help, learning: answers });
+      try {
+        const inputs = await loadReportInputs(adminReportReader(admin), test.id, () => Promise.reject(new Error("Preview does not read comparisons.")));
+        if (inputs) {
+          const derived = learnerProfile({ placement: inputs.assessment.placement, answers: inputs.profileAnswers(), help: inputs.assessment.help, learning: answers });
+          const current = derived && { ...derived, workbookDerivedVersion: WORKBOOK_LEARNER_DERIVED_VERSION };
+          profile = current;
+          rebuilt = !!current;
+        }
+      } catch {
+        profile = null;
+      }
     }
-    if (!profile) return { child, preview: { ok: false as const, reason: "The test profile could not be built. Check the child's profile before making the book." } };
+    if (!profile || staleLearnerProfile(profile.schemaVersion, profile)) return { child, preview: { ok: false as const, reason: "The test profile could not be built from the assessment. Check the child's profile before making the book." } };
     assessment = { assessmentId: test.id, completedAt: test.completed_at, buildId: null, profile };
   }
-  return { child, preview: previewWorkbook({ curriculum, grade: child.grade, workbooks: books, report, device: tests.data?.device ?? null, previous: storedChildProfile(previous.data?.profile),
-    facts: { grade: child.grade, learning: answers, assessment, events } }, planNextWorkbook) };
+  const preview = previewWorkbook({ curriculum, grade: child.grade, workbooks: books, report, device: tests.data?.device ?? null, previous: storedChildProfile(previous.data?.profile),
+    facts: { grade: child.grade, learning: answers, assessment, events } }, planNextWorkbook);
+  if (rebuilt && preview.ok) preview.why.warnings.push("This preview rebuilt older test facts without AI. A real run can add new AI notes after it rebuilds those facts.");
+  return { child, preview };
 }

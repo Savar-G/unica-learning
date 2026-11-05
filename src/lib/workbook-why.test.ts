@@ -27,7 +27,7 @@ describe("Why this book and read-only preview", () => {
     expect(why.pages).toHaveLength(1 + plan.days.reduce((n, d) => n + d.pages.length, 0));
     expect(why.inputs.find(i => i.label === "Number facts")?.value).toContain("2s, 5s and 10s");
     expect(why.inputs.find(i => i.label === "Parent's answers")).toMatchObject({ status: "Missing", reason: expect.stringContaining("Learning card not answered") });
-    expect(why.warnings).toContain("AI suggestion 5.13 not used: above school grade, so it is not a weakness.");
+    expect(why.warnings.some(w => w.includes("(5.13) not used: above school grade, so it is not a weakness."))).toBe(true);
   });
 
   it("stores the explanation with the plan and preserves it through JSON storage", () => {
@@ -124,5 +124,47 @@ describe("Why this book and read-only preview", () => {
     const stale = previewWorkbook({ curriculum, grade: 4, facts: input, workbooks: [], previous }, planNextWorkbook);
     expect(stale.ok).toBe(true);
     if (stale.ok) expect(stale.why.warnings).toContain("Stored AI notes were excluded because the profile facts changed. A real run may write new notes.");
+  });
+
+  it("names every displayed topic and explains why secure topics with limited evidence are taught", () => {
+    const { why } = preview();
+    const text = JSON.stringify(why);
+    expect(text).toContain("Numbers to a million (5.1)");
+    expect(text).toContain("Perimeter (4.14)");
+    expect(text.replace(/\((?:\d+\.\d+|K\d+)\)/g, "")).not.toMatch(/\b[1-9]\.\d+\b/);
+    expect(why.pages.some(p => p.choices.some(c => c.includes("Teach Numbers to a million (5.1) from step 1") && c.includes("secure, but the evidence is limited")))).toBe(true);
+  });
+
+  // Codex's source-isolation reproduction from /tmp/pr570-source-probe.cjs.
+  it("keeps a later-learning suggestion out of the test AI row", () => {
+    const profile = bookPersona("catch-up").profile;
+    profile.assessment!.profile.ai = { nextChallenge: { model: "test", value: ["6.8"] } };
+    profile.ai = { model: "test", findings: [{ standard: "3.3", hypothesis: "ignored", events: ["event"] }] };
+    profile.events.counted = 1;
+    const result = planNextWorkbook({ curriculum, grade: 4, profile, workbooks: [], number: 1 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const rows = result.plan.personal!.why!.inputs;
+    const test = rows.find(r => r.label === "AI notes from the test")!;
+    const learning = rows.find(r => r.label === "AI notes from later learning")!;
+    expect(test.status).toBe("Not used");
+    expect(test.value).toContain("6.8");
+    expect(test.value).not.toContain("3.3");
+    expect(learning.status).toBe("Used");
+    expect(learning.value).toContain("3.3");
+    expect(learning.value).not.toContain("6.8");
+  });
+
+  it("keeps a test suggestion out of the later-learning AI row", () => {
+    const profile = bookPersona("catch-up").profile;
+    profile.assessment!.profile.ai = { workbookPlan: { model: "test", value: { review: { percent: 0, standards: [] }, practise: { percent: 100, standards: ["3.3"] }, stretch: { percent: 0, standards: [] } } } };
+    profile.ai = { model: "test", findings: [{ standard: "6.8", hypothesis: "ignored", events: ["event"] }] };
+    profile.events.counted = 1;
+    const result = planNextWorkbook({ curriculum, grade: 4, profile, workbooks: [], number: 1 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const rows = result.plan.personal!.why!.inputs;
+    expect(rows.find(r => r.label === "AI notes from the test")).toMatchObject({ status: "Used", value: expect.stringContaining("3.3") });
+    expect(rows.find(r => r.label === "AI notes from later learning")).toMatchObject({ status: "Not used", value: expect.not.stringContaining("3.3") });
   });
 });

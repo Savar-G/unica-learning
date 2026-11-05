@@ -1,6 +1,9 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import type { AdminSession } from "@/lib/admin-store";
 import { firstCustomerProfile } from "@/lib/workbook-sample-profiles";
+import { WORKBOOK_LEARNER_DERIVED_VERSION } from "@/lib/workbook-profile-freshness";
+import { createSession, storedTest } from "@/lib/assessment";
+import { allRight, takeTest } from "@/lib/assessment/scripted-child";
 vi.mock("server-only", () => ({}));
 const f = vi.hoisted(() => ({ child: vi.fn(), books: vi.fn(), events: vi.fn(), requireAdmin: vi.fn(), inputs: vi.fn() }));
 vi.mock("@/lib/admin-store", () => ({ getChild: f.child, getChildWorkbooks: f.books, requireAdmin: f.requireAdmin }));
@@ -21,7 +24,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   reads.length = 0;
   latest = { id, completed_at: "2026-10-28T00:00:00Z", device: null };
-  stored = { profile: firstCustomerProfile().assessment!.profile };
+  stored = { schema_version: 1, profile: { ...firstCustomerProfile().assessment!.profile, workbookDerivedVersion: WORKBOOK_LEARNER_DERIVED_VERSION } };
   // No insert, update, delete or run-start method exists in this read-only test client.
   function read(name: string) {
     reads.push(name);
@@ -76,4 +79,44 @@ it("keeps grade-only planning when there is no completed test", async () => {
   expect(detail?.preview.ok).toBe(true);
   if (detail?.preview.ok) expect(detail.preview.plan.level).toBe(13);
   expect(reads).toEqual(["admin_assessments", "child_profiles"]);
+});
+
+// Codex's public-loader reproduction from /tmp/pr570-review-probes/load.test.ts.
+it("refuses an old schema-1 profile with missing facts when the raw assessment cannot be read", async () => {
+  const old = structuredClone(firstCustomerProfile().assessment!.profile);
+  const { facts: removed, ...withoutFacts } = old;
+  expect(removed).toBeTruthy();
+  stored = { schema_version: 1, profile: withoutFacts };
+  f.inputs.mockResolvedValue(null);
+  expect((await loadPreviewPlan(admin(), id))?.preview.ok).toBe(false);
+  expect(f.inputs).toHaveBeenCalledOnce();
+});
+
+it("gives a plain refusal when reading the raw assessment fails", async () => {
+  stored = { schema_version: 1, profile: firstCustomerProfile().assessment!.profile };
+  f.inputs.mockRejectedValue(new Error("private database error"));
+  expect((await loadPreviewPlan(admin(), id))?.preview).toMatchObject({ ok: false, reason: "The test profile could not be built from the assessment. Check the child's profile before making the book." });
+});
+
+it.each(["row schema", "JSON schema", "derived version", "facts"])("rebuilds the same stale learner facts a real run rebuilds: %s", async kind => {
+  const old = { ...firstCustomerProfile().assessment!.profile, workbookDerivedVersion: WORKBOOK_LEARNER_DERIVED_VERSION };
+  let schemaVersion = 1;
+  if (kind === "row schema") schemaVersion = 99;
+  if (kind === "JSON schema") old.schemaVersion = 99 as typeof old.schemaVersion;
+  if (kind === "derived version") old.workbookDerivedVersion--;
+  const value = kind === "facts" ? Object.fromEntries(Object.entries(old).filter(([key]) => key !== "facts")) : old;
+  stored = { schema_version: schemaVersion, profile: value };
+  const session = createSession({ grade: 4, province: "BC" }, 71);
+  const { placement, asked } = takeTest({ grade: 4, province: "BC" }, 71, allRight);
+  f.inputs.mockResolvedValue({ assessment: { id, childId: id, placement, help: "no", test: storedTest(session) },
+    profileAnswers: () => asked.map(question => ({ question, response: question.answer, correct: true, misconception: null, timeMs: 20_000, work: { required: false, drawing: false, typed: false }, readAloud: null, away: null })) });
+  const detail = await loadPreviewPlan(admin(), id);
+  expect(f.inputs).toHaveBeenCalledOnce();
+  expect(detail?.preview.ok).toBe(true);
+  if (detail?.preview.ok) {
+    expect(detail.preview.plan.level).toBe(16);
+    expect(detail.preview.plan.personal?.working?.working).toBe(5);
+    expect(detail.preview.plan.personal?.soft.sources?.test.suggested).toEqual([]);
+    expect(detail.preview.why.warnings).toContain("This preview rebuilt older test facts without AI. A real run can add new AI notes after it rebuilds those facts.");
+  }
 });
