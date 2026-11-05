@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { gradeLabel, type AreaLabel, type Level } from "@/lib/assessment";
+import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import { formatCalendarDate } from "@/lib/family-time";
 import { learningPath } from "@/lib/learning-style";
 import { WEEK_SECONDS } from "@/lib/maya-minutes";
@@ -26,12 +27,20 @@ const scaleTop = (o: OverviewView) => Math.max(8, o.child.schoolGrade, o.level?.
 const tick = (l: number) => (l === 0 ? "K" : String(l));
 
 export function ParentOverview({ overview, maya }: { overview: OverviewView; maya: ChildMinutes | null }) {
-  const { child, level, areas, resultPreparing, workbook, action } = overview;
+  const { child, level, areas, resultPreparing, resultLate, workbook, action } = overview;
   const n = scaleTop(overview) + 1;
   const tiles = level || workbook || maya;
   return (
     <div className="po">
-      {resultPreparing && <section className="po-card"><p className="po-preparing">{child.firstName}&apos;s new result is being prepared.</p></section>}
+      {resultPreparing && (
+        <section className="po-card">
+          <p className="po-preparing">
+            {resultLate
+              ? <>{child.firstName}&apos;s new result is taking longer than it should. Please email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a> and we will look into it.</>
+              : <>{child.firstName}&apos;s new result is being prepared.</>}
+          </p>
+        </section>
+      )}
       {tiles && (
         <div className="po-tiles">
           {level && <LevelTile working={level.working} grade={child.schoolGrade} earlySign={level.earlySign} testedOn={level.testedOn} n={n} />}
@@ -106,7 +115,7 @@ function LevelTile({ working, grade, earlySign, testedOn, n }: { working: Level;
 
 const ACTIONS: Record<ActionItem, (name: string, childId: string) => { title: string; body: string; href: string; button: string }> = {
   start_test: (name) => ({ title: "Start the test", body: `${name}'s first workbook starts from the test result.`, href: "#pd-test", button: "Go to the test" }),
-  continue_test: (name) => ({ title: "Continue test", body: `The answers are saved. ${name}'s first workbook starts from the test result.`, href: "#pd-test", button: "Go to the test" }),
+  continue_test: (name) => ({ title: "Go to the test", body: `The answers are saved. ${name}'s first workbook starts from the test result.`, href: "#pd-test", button: "Go to the test" }),
   payment_failed: (name) => ({ title: "A payment did not go through", body: `The last payment for ${name}'s plan did not go through. Check the card on the plan.`, href: "/account/plan", button: "See the plan" }),
   no_pin: (name) => ({ title: "Set your PIN", body: `Set a 4-digit PIN before ${name} uses the desk. The desk asks for it before anyone leaves the desk for your account.`, href: "/account/pin", button: "Set your PIN" }),
   learning_card_empty: (name, childId) => ({ title: `Tell us how ${name} learns`, body: `A few short questions about what ${name} likes and how ${name} learns. You can change the answers at any time.`, href: learningPath(childId), button: "Answer the questions" }),

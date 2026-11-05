@@ -307,7 +307,7 @@ describe("the Overview (#560)", () => {
 
   it("before the first test: no tile, no bar, and Start the test as the one thing to do", async () => {
     expect(await read({})).toEqual({
-      child: expect.objectContaining({ id: "child-1", stage: "first_book_coming" }), level: null, areas: [], resultPreparing: false, workbook: null, action: "start_test",
+      child: expect.objectContaining({ id: "child-1", stage: "first_book_coming" }), level: null, areas: [], resultPreparing: false, resultLate: false, workbook: null, action: "start_test",
     });
   });
 
@@ -340,6 +340,14 @@ describe("the Overview (#560)", () => {
     expect(view?.level).toBeNull();
     expect(view?.areas).toEqual([]);
     expect(view?.resultPreparing).toBe(true);
+    expect(view?.resultLate).toBe(false);
+  });
+  it("says a report is late more than an hour after the test finished, because the job does not retry", async () => {
+    const finishedAt = (hoursAgo: number) => [test("new", { completedAt: NOW - hoursAgo * HOUR })];
+    expect((await read({ ...delivered, tests: finishedAt(0.5) }))?.resultLate).toBe(false);
+    const late = await read({ ...delivered, tests: finishedAt(2) });
+    expect(late?.resultPreparing).toBe(true);
+    expect(late?.resultLate).toBe(true);
   });
 
   it("an open test does not hide the newest finished test's result", async () => {

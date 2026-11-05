@@ -280,6 +280,8 @@ export interface OverviewView {
   areas: AreaBarView[];
   /** The newest finished test's report is not ready, so no older result shows in its place. */
   resultPreparing: boolean;
+  /** The report is more than an hour late: the report job may have failed, and it does not retry on its own. */
+  resultLate: boolean;
   /** The current workbook and its scanned days; null when no day of it is scanned. */
   workbook: { number: number; scannedDays: number; days: number } | null;
   action: ActionItem | null;
@@ -315,6 +317,8 @@ function scannedDays(pages: readonly WorkbookPageRecord[], scans: readonly Saved
  * ready, they come from no test. Nothing comes from a raw profile, a learning event, a Maya call or an AI finding. Marked
  * pages do not count yet: no marking is live.
  */
+const RESULT_LATE_MS = 3_600_000;
+
 export async function readOverview(reader: ParentViewReader, childId: string, now: number): Promise<OverviewView | null> {
   const [child, children, family, tests, reports, workbooks, plans, cards, pinSet, scans] = await Promise.all([
     readChild(reader, childId, now), reader.children(), reader.family(), reader.tests(), reader.reports(), reader.shippedWorkbooks(),
@@ -358,5 +362,7 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
   ];
   const action = ACTION_STAGES.has(child.stage) ? items.find(([, applies]) => applies)?.[0] ?? null : null;
 
-  return { child, level, areas, resultPreparing: latest !== null && !reportReady, workbook, action };
+  const resultPreparing = latest !== null && !reportReady;
+  const resultLate = resultPreparing && now - latest!.completedAt! > RESULT_LATE_MS;
+  return { child, level, areas, resultPreparing, resultLate, workbook, action };
 }

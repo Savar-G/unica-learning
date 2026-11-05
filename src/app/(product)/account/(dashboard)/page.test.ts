@@ -286,6 +286,7 @@ describe("a family the switch opens to", () => {
         { area: "shapes", name: "Shapes, measurement and data", level: 4, label: "ahead", earlySign: false },
       ],
       resultPreparing: false,
+      resultLate: false,
       workbook: { number: 2, scannedDays: 3, days: 10 },
       action: "learning_card_empty",
     });
@@ -330,6 +331,13 @@ describe("a family the switch opens to", () => {
       expect(out).not.toContain("days scanned");
     });
 
+    it("asks the parent to email us when the new result is late", async () => {
+      const out = await render({ ...full(), level: null, areas: [], workbook: null, resultPreparing: true, resultLate: true });
+      expect(out).toContain("taking longer than it should");
+      expect(out).toContain("mailto:");
+      expect(out).not.toContain("being prepared");
+    });
+
     it("says a new result is being prepared, with no Level tile and no bars", async () => {
       const out = await render({ ...full(), level: null, areas: [], workbook: null, resultPreparing: true });
       expect(out).toContain("Asha&#x27;s new result is being prepared.");
@@ -341,7 +349,7 @@ describe("a family the switch opens to", () => {
 
     it("the card for an open test uses the start control's words", async () => {
       const out = await render({ ...full(), action: "continue_test" });
-      expect(out).toContain("Continue test");
+      expect(out).toContain("Go to the test");
       expect(out).toContain('href="#pd-test"');
       expect(out).not.toContain("Start the test");
       expect(out).not.toMatch(/\b(?:she|her)\b/i);
