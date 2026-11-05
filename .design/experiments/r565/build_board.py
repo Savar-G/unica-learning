@@ -14,6 +14,7 @@ def pick(opt=None, vp=None, states=None):
     return out
 def links(o, states):
     return "".join(f'<a href="{o["artifact"]}#{st}" data-t="f-{o["id"]}">{e(LABEL.get(st, st))}</a>' for st in states)
+LABEL.update({"add":"Add pages","manual":"Auto off","chosen":"Chosen photos","r-none":"Not a page","start-here":"Camera"})
 FLOW = {"A":["start","look","steady","got","late","stack","retake","clean","one","loop"],"B":["start","native","stack","r-blur","one"],"C":["start","target","stack","r-blur","one"]}
 LABEL["loop"] = "Play the loop"
 def option(o):
@@ -38,7 +39,9 @@ wide = [("tablet","Tablet, 768 px", pick(None,"tablet")),("desktop","Desktop, 14
 sec = "".join(f'<section id="{i}"><h2>{e(t)}</h2><div class="grid">{figs(sh)}</div></section>' for i,t,sh in sections)
 sec += "".join(f'<section id="{i}"><h2>{e(t)}</h2><div class="grid w">{figs(sh)}</div></section>' for i,t,sh in wide)
 rows = "".join(f"<tr><td><b>{e(o['id'])}</b> {e(o['name'])}</td><td>{e(o['taps_for_20_pages'])}</td><td>{'During the photo' if o['id'] != 'B' else 'After the photo'}</td><td>{'Live camera, untested on a real phone' if o['id'] != 'B' else 'Works today'}</td></tr>" for o in m["options"])
-qs = "".join(f"<li><b>{e(q['q'])}</b> {e(q['recommend'])}</li>" for q in m["open_decisions_for_savar"])
+qs = "".join(f"<li><b>{e(q['q'])}</b> {e(q['answer'])}</li>" for q in m["open_decisions_for_savar"])
+picked_links = "".join(f'<a href="picked.html#{st}">{e(LABEL.get(st, st))}</a>' for st in ["start","add","look","manual","stack","chosen","one","marking","page","change"])
+bn = "".join(f"<li>{e(x)}</li>" for x in m["build_notes"])
 fs = "".join(f"<li>{e(x)}</li>" for x in m["findings_from_the_round"])
 nt = "".join(f"<li>{e(x)}</li>" for x in m["not_tested"])
 page = f'''<!doctype html><html lang="en-CA"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Scan pages flows</title>
@@ -52,11 +55,15 @@ dl{{margin:0;display:grid;gap:12px}} dt{{font-weight:500;font-size:14px}} dd{{ma
 @media(max-width:760px){{.opt{{grid-template-columns:minmax(0,1fr)}}}} @media(max-width:370px){{.phone{{width:100%}}}} .tbl{{overflow-x:auto}}
 </style></head><body><div class="wrap">
 <header style="display:grid;gap:12px"><span class="eyebrow">Round r565 · Sample data · Not built</span><h1>Scan pages: batch and one page</h1><p class="lede">{e(m["decision"])}</p></header>
-<section class="pick"><b>Recommendation</b><p>{e(m["recommendation"])}</p></section>
+<section class="pick"><b>Picked by Savar, {e(m["picked"]["date"])} ({e(m["picked"]["decisions"])})</b><p>{e(m["picked"]["start_screen"])}. {e(m["picked"]["stack"])}.</p><p><b>Build order:</b> {e(m["picked"]["build_order"])}.</p><p class="st">{picked_links}</p></section>
+<section id="picked"><h2>The picked flow, phone</h2><div class="grid">{figs(pick("picked","phone"))}</div></section>
+<section><h2>The picked flow, tablet and desktop</h2><div class="grid w">{figs(pick("picked","tablet")+pick("picked","desktop"))}</div></section>
+<section><h2>The recommendation Savar answered</h2><p>{e(m["recommendation"])}</p></section>
 <section><h2>The three bets</h2><div class="tbl"><table><tr><th>Option</th><th>Taps for 20 pages</th><th>Guidance arrives</th><th>Camera</th></tr>{rows}</table></div><p class="small" style="margin-top:8px">{e(m["taps_note"])}</p></section>
 <section><h2>Try each one</h2><div class="opts">{"".join(option(o) for o in m["options"])}</div><p class="small">In the mock, screens after Send always show the 12-page sample, whatever count the button said.</p></section>
 <section><h2>What the round found</h2><ul class="l">{fs}</ul></section>
-<section><h2>Your decisions</h2><ul class="l">{qs}</ul></section>
+<section><h2>Savar's answers</h2><ul class="l">{qs}</ul></section>
+<section><h2>Notes for the build</h2><ul class="l">{bn}</ul></section>
 <section><h2>Not tested</h2><ul class="l">{nt}</ul></section>
 {sec}
 </div></body></html>'''

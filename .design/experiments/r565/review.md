@@ -28,3 +28,15 @@ Weighted score: 7.6 of 10.
 1. The real-phone camera test: does a video frame pass calibration, QR reading and handwriting reading? Option A depends on it.
 2. Can the parent hold a folded book flat with one hand and keep the phone still with the other? Page curl is untested (G13).
 3. Does auto-take fire at the wrong moment while a hand turns the page? The rule "new QR code and still for about a second" needs a real test.
+
+## Savar's pick, 2026-11-05 (D-269 to D-276)
+
+Start screen: A, plus Choose photos and the phone's camera on the same screen. Stack: B's. Everything else: the recommendations. `picked.html` is the result, and its shots are `shots/picked-*.png`.
+
+Changes since the review above:
+
+- **Targets:** every link and button on the picked screens is 44 px or more, on 24 states at 390, 768 and 1440 px. This raises Accessibility and responsive from 6 to 7. Keyboard use is still not tested. Weighted score: 7.7 of 10.
+- **New states:** Add pages, Auto off, 12 chosen photos being checked, and a chosen photo that is not a workbook page.
+- **Words:** the marking screens now say that an email comes if the parent closes the page.
+
+The weak spots above stay. The real-phone camera test still decides whether the live camera ships.

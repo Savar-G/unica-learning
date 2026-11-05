@@ -22,7 +22,7 @@ button { font: inherit; color: inherit; }
 .btn.ghost { background: #fff; color: var(--ink); border-color: var(--line); }
 .btn.wide { width: 100%; }
 .btn.off { background: var(--card); color: var(--ink-3); border-color: var(--line); cursor: default; }
-.link { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; background: none; border: 0; padding: 0; cursor: pointer; font-size: 15px; }
+.link { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; background: none; border: 0; padding: 0; cursor: pointer; font-size: 15px; }
 .eyebrow { display: inline-flex; align-items: center; gap: 8px; font: 400 12.5px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink); }
 .eyebrow::before { content: ""; width: 9px; height: 9px; background: var(--accent); }
 .mono { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); }
@@ -31,7 +31,7 @@ button { font: inherit; color: inherit; }
 /* The dashboard frame (parent-shell.css) */
 .shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100dvh; }
 .side { position: sticky; top: 0; align-self: start; height: 100dvh; display: flex; flex-direction: column; gap: 18px; padding: 22px 16px; border-right: 1px solid var(--line); }
-.logo { font: 600 19px/1 var(--sans); letter-spacing: -.03em; padding: 0 8px; display: inline-flex; align-items: baseline; text-decoration: none; }
+.logo { font: 600 19px/1 var(--sans); letter-spacing: -.03em; padding: 12.5px 8px; margin: -12.5px 0; display: inline-flex; align-items: baseline; text-decoration: none; }
 .logo b { display: inline-block; width: .36em; height: .36em; background: var(--accent); margin-left: 2px; }
 .kid { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); min-height: 52px; }
 .kid-av { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--sun); font: 600 13px/1 var(--sans); }
@@ -39,7 +39,7 @@ button { font: inherit; color: inherit; }
 .kid-t b { font-weight: 500; font-size: 15px; line-height: 1.2; }
 .kid-t span { font: 400 12px/1.3 var(--mono); color: var(--ink-2); }
 .nav { display: grid; gap: 2px; }
-.nav a { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); text-decoration: none; font-size: 15px; }
+.nav a { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); text-decoration: none; font-size: 15px; }
 .nav a[aria-current] { background: var(--accent-soft); color: var(--accent-ink); font-weight: 500; }
 .nav svg { width: 20px; height: 20px; flex: none; }
 .main { min-width: 0; padding: 36px clamp(24px, 3.5vw, 56px) 120px; }
@@ -53,13 +53,15 @@ h2.h { font-size: 19px; font-weight: 500; letter-spacing: -.01em; line-height: 1
 .dock-row .btn { flex: 1; min-height: 52px; }
 .dock-row .btn.add { flex: none; padding: 0 16px; }
 .dock .small { text-align: center; }
+.dock .link { justify-self: center; }
 @media (min-width: 900px) { .dock-row { justify-content: flex-end; } .dock-row .btn { flex: none; min-width: 280px; } .dock-row .btn.add { min-width: 0; } .dock .small { text-align: right; } }
 @media (max-width: 899px) {
   html { scrollbar-width: none; }
   .shell { display: block; }
   .side { display: none; }
   .top { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; min-height: 52px; padding: 0 16px; background: rgba(255,255,255,.94); border-bottom: 1px solid var(--line); }
-  .top .logo { padding: 0; }
+  .top .logo { padding: 12.5px 0; }
+  .kid-go { font-size: 14px; margin: -9px 0; flex: none; }
   .bar { position: fixed; z-index: 40; left: 0; right: 0; bottom: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); background: #fff; border-top: 1px solid var(--line); }
   .bar a { display: grid; justify-items: center; align-content: start; gap: 3px; min-height: 52px; padding: 6px 2px 0; color: var(--ink-2); text-decoration: none; font: 500 11.5px/1.15 var(--sans); }
   .bar svg { width: 22px; height: 22px; }
@@ -158,6 +160,7 @@ h2.h { font-size: 19px; font-weight: 500; letter-spacing: -.01em; line-height: 1
 .sheet figure .ph .pg { left: 6%; top: 4.5%; height: auto; width: 88%; transform: rotate(-.8deg); }
 .acts { display: grid; gap: 8px; margin-top: 2px; }
 .acts .link { justify-self: center; }
+.sheet > .link { justify-self: start; }
 
 /* The camera */
 .cam { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; background: #14110e; color: #fff; }
@@ -193,7 +196,7 @@ h2.h { font-size: 19px; font-weight: 500; letter-spacing: -.01em; line-height: 1
 .msg.warn > div { background: #fff; color: var(--ink); text-align: left; display: grid; gap: 4px; }
 .msg.warn small { color: var(--ink-2); opacity: 1; }
 .msg a { color: inherit; font-weight: 500; text-underline-offset: 3px; }
-.msg .act { display: inline-flex; align-items: center; min-height: 40px; font-size: 15px; }
+.msg .act { display: inline-flex; align-items: center; min-height: 44px; font-size: 15px; }
 .tray { flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 14px 18px max(18px, env(safe-area-inset-bottom)); background: #14110e; }
 .pile { position: relative; justify-self: start; display: block; width: 52px; height: 66px; text-decoration: none; }
 .pile .pg { position: absolute; inset: 0; width: 50px; border-radius: 2px; box-shadow: 0 1px 4px rgba(0,0,0,.6); }

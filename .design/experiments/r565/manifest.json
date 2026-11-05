@@ -2,8 +2,17 @@
   "round": "r565",
   "ticket": "Savar's ask of 2026-11-05: design the batch and one-page flows of Scan pages (spec #368; slices S3, S4, S5, S8, S9)",
   "route": "design skill, focused route, explore stage. job_kind new, surface product, constraint_mode existing-system. Mockups only: no product code changes.",
-  "picked": null,
-  "picked_by": "waiting for Savar (D-236: he approves every screen before families see it)",
+  "picked": {
+    "date": "2026-11-05",
+    "by": "Savar, through the orchestrator",
+    "artifact": "picked.html",
+    "start_screen": "A's start screen and live camera with auto-take, plus Choose photos and the phone's camera (B's fallback) on the same screen",
+    "stack": "B's stack. In this round A and B render the same stack screen: it is the parent's home when pages are waiting, and its camera button opens Add pages (Start scanning, Choose photos, Use my phone's camera)",
+    "other": "Savar accepted the recommendations in open_decisions_for_savar",
+    "decisions": "D-269 to D-276",
+    "build_order": "The shared stack on the current file input, then the real-phone camera test, then the live camera"
+  },
+  "picked_by": "Savar, 2026-11-05",
   "board": "index.html",
   "how_to_open": "From the repo root: python3 -m http.server 3565 --directory .design/experiments/r565, then open http://127.0.0.1:3565/. Everything is local. Each state has its own address, such as a.html#stack.",
   "decision": "Where does the parent stay between two photos, so that 10 to 20 pages in a sitting are comfortable with one hand?",
@@ -71,35 +80,43 @@
   "open_decisions_for_savar": [
     {
       "q": "Pick the option or a mix",
-      "recommend": "A with B's fallback and C's gap line, in the build order above"
+      "recommend": "A with B's fallback and C's gap line, in the build order above",
+      "answer": "A's start screen and live camera, Choose photos and the phone's camera on the same screen, B's stack (D-269)"
     },
     {
       "q": "Auto-take on by default, or shutter only?",
-      "recommend": "Auto on, with a switch at the top right. It is the only way the other hand stays on the book"
+      "recommend": "Auto on, with a switch at the top right. It is the only way the other hand stays on the book",
+      "answer": "Yes: on by default, with a switch (D-269)"
     },
     {
       "q": "Can Send go while some pages are refused or still being checked?",
-      "recommend": "Yes. Send what is ready; the others stay in the stack. Your ask reads 'send them all', so this needs your word"
+      "recommend": "Yes. Send what is ready; the others stay in the stack. Your ask reads 'send them all', so this needs your word",
+      "answer": "Yes: those pages stay in the stack (D-270)"
     },
     {
       "q": "Raise the limits?",
-      "recommend": "Yes: 40 photos per 10 minutes, keep 60 a day, and queue in the browser. Needs a small migration"
+      "recommend": "Yes: 40 photos per 10 minutes, keep 60 a day, and queue in the browser. Needs a small migration",
+      "answer": "Yes: 40 per 10 minutes, 60 a day stays (D-271)"
     },
     {
       "q": "Tell the parent when marks are ready?",
-      "recommend": "One email per send, only when the parent left the page. Not in the spec, and the mock promises nothing beyond 'the marks show here'"
+      "recommend": "One email per send, only when the parent left the page. Not in the spec, and the mock promises nothing beyond 'the marks show here'",
+      "answer": "Yes: one per send, only when the parent left the page (D-272)"
     },
     {
       "q": "Shorter child row on Scan pages for phones (one line, with Open the desk as a link)?",
-      "recommend": "Yes. The full block takes about 180 px above the stack. It is an exception to the r544 frame"
+      "recommend": "Yes. The full block takes about 180 px above the stack. It is an exception to the r544 frame",
+      "answer": "Yes (D-274)"
     },
     {
       "q": "Desktop: show the phone's pages live beside the QR code, with Send there too?",
-      "recommend": "Yes. It extends D-246. Retakes stay on the phone"
+      "recommend": "Yes. It extends D-246. Retakes stay on the phone",
+      "answer": "Yes, with Send there (D-273)"
     },
     {
       "q": "Allow two facing pages in one photo later?",
-      "recommend": "Not now. It would halve the photos, but D-252 refuses two sheets to protect the crops"
+      "recommend": "Not now. It would halve the photos, but D-252 refuses two sheets to protect the crops",
+      "answer": "No: Fold the book back (D-275)"
     }
   ],
   "not_tested": [
@@ -107,7 +124,7 @@
     "No parent has tried any option",
     "Live QR reading and auto-take are not built",
     "Keyboard use is not tested end to end in the mockups",
-    "Targets under 44 px, measured on 8 phone states: the wordmark (19 px, from the frame), Open the desk in the short child row (32 px), and the inline links More about photos and Delete this photo (20 px). The build must fix the last three. Reduced motion and the camera loop are checked; no state scrolls sideways at 390, 768 or 1440 px"
+    "Targets on the picked screens: every link and button is 44 px or more, measured on 24 states at 390, 768 and 1440 px (picked.html). The picked mock uses 44 px for the sidebar tabs; parent-shell.css has 40 px, so the build changes that. Options A, B and C keep their shots from before this fix"
   ],
   "browser": "Aside, account u0, viewport resizing. The mockups are static pages, so the desktop user agent does not change them. Bars are fixed to the viewport; a whole-page shot sets the viewport to the page height.",
   "viewports": {
@@ -871,7 +888,356 @@
       "width": 390,
       "whole_page": false,
       "shows": "The camera for one chosen page, with the printed page as a picture"
+    },
+    {
+      "file": "shots/picked-add-390.png",
+      "option": "picked",
+      "state": "add",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "The stack's camera button opens this: the same three ways to add pages"
+    },
+    {
+      "file": "shots/picked-add-768.png",
+      "option": "picked",
+      "state": "add",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "The stack's camera button opens this: the same three ways to add pages"
+    },
+    {
+      "file": "shots/picked-blocked-390.png",
+      "option": "picked",
+      "state": "blocked",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "No camera: try again, the phone's camera, or Choose photos"
+    },
+    {
+      "file": "shots/picked-change-1440.png",
+      "option": "picked",
+      "state": "change",
+      "viewport": "desktop",
+      "width": 1440,
+      "whole_page": false,
+      "shows": "Change this mark"
+    },
+    {
+      "file": "shots/picked-change-390.png",
+      "option": "picked",
+      "state": "change",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Change this mark"
+    },
+    {
+      "file": "shots/picked-changed-390.png",
+      "option": "picked",
+      "state": "changed",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "The mark changed"
+    },
+    {
+      "file": "shots/picked-chosen-390.png",
+      "option": "picked",
+      "state": "chosen",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "After Choose photos: 12 photos added, 9 still being checked, and Send works with the 3 that are ready"
+    },
+    {
+      "file": "shots/picked-chosen-768.png",
+      "option": "picked",
+      "state": "chosen",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "After Choose photos: 12 photos added, 9 still being checked, and Send works with the 3 that are ready"
+    },
+    {
+      "file": "shots/picked-got-390.png",
+      "option": "picked",
+      "state": "got",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Photo taken with no tap"
+    },
+    {
+      "file": "shots/picked-late-390.png",
+      "option": "picked",
+      "state": "late",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "A late refusal: the camera stays open"
+    },
+    {
+      "file": "shots/picked-limit-390.png",
+      "option": "picked",
+      "state": "limit",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "The new limit, 40 photos per 10 minutes: photos are safe and can be sent"
+    },
+    {
+      "file": "shots/picked-look-390.png",
+      "option": "picked",
+      "state": "look",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Live camera, with the switch reading Auto on"
+    },
+    {
+      "file": "shots/picked-look-768.png",
+      "option": "picked",
+      "state": "look",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "Live camera, with the switch reading Auto on"
+    },
+    {
+      "file": "shots/picked-manual-390.png",
+      "option": "picked",
+      "state": "manual",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "The switch at Auto off: the parent presses the button"
+    },
+    {
+      "file": "shots/picked-marking-1440.png",
+      "option": "picked",
+      "state": "marking",
+      "viewport": "desktop",
+      "width": 1440,
+      "whole_page": false,
+      "shows": "Marking: if the parent closes the page, one email comes when the marks are ready"
+    },
+    {
+      "file": "shots/picked-marking-390.png",
+      "option": "picked",
+      "state": "marking",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Marking: if the parent closes the page, one email comes when the marks are ready"
+    },
+    {
+      "file": "shots/picked-marking-768.png",
+      "option": "picked",
+      "state": "marking",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "Marking: if the parent closes the page, one email comes when the marks are ready"
+    },
+    {
+      "file": "shots/picked-native-390.png",
+      "option": "picked",
+      "state": "native",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "The phone's own camera, the fallback"
+    },
+    {
+      "file": "shots/picked-notice-390.png",
+      "option": "picked",
+      "state": "notice",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "First time only: the photo notice, with the privacy link as a full target"
+    },
+    {
+      "file": "shots/picked-one-1440.png",
+      "option": "picked",
+      "state": "one",
+      "viewport": "desktop",
+      "width": 1440,
+      "whole_page": false,
+      "shows": "Flow B: a stack of one"
+    },
+    {
+      "file": "shots/picked-one-390.png",
+      "option": "picked",
+      "state": "one",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Flow B: a stack of one"
+    },
+    {
+      "file": "shots/picked-one-768.png",
+      "option": "picked",
+      "state": "one",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "Flow B: a stack of one"
+    },
+    {
+      "file": "shots/picked-page-1440.png",
+      "option": "picked",
+      "state": "page",
+      "viewport": "desktop",
+      "width": 1440,
+      "whole_page": false,
+      "shows": "A marked page"
+    },
+    {
+      "file": "shots/picked-page-390.png",
+      "option": "picked",
+      "state": "page",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "A marked page"
+    },
+    {
+      "file": "shots/picked-page-768.png",
+      "option": "picked",
+      "state": "page",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "A marked page"
+    },
+    {
+      "file": "shots/picked-r-none-390.png",
+      "option": "picked",
+      "state": "r-none",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "A chosen photo that is not a workbook page"
+    },
+    {
+      "file": "shots/picked-r-two-1440.png",
+      "option": "picked",
+      "state": "r-two",
+      "viewport": "desktop",
+      "width": 1440,
+      "whole_page": false,
+      "shows": "Refused: two sheets. On a desktop the retake is on the phone"
+    },
+    {
+      "file": "shots/picked-r-two-390.png",
+      "option": "picked",
+      "state": "r-two",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Refused: two sheets. On a desktop the retake is on the phone"
+    },
+    {
+      "file": "shots/picked-ready-choice-390.png",
+      "option": "picked",
+      "state": "ready-choice",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "The choice: Fix mistakes with Maya or Just show results"
+    },
+    {
+      "file": "shots/picked-retake-390.png",
+      "option": "picked",
+      "state": "retake",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Fix mode: the refused pages one at a time"
+    },
+    {
+      "file": "shots/picked-stack-1440.png",
+      "option": "picked",
+      "state": "stack",
+      "viewport": "desktop",
+      "width": 1440,
+      "whole_page": false,
+      "shows": "The stack with mixed states; Send goes with what is ready"
+    },
+    {
+      "file": "shots/picked-stack-390-full.png",
+      "option": "picked",
+      "state": "stack",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": true,
+      "shows": "The stack with mixed states; Send goes with what is ready"
+    },
+    {
+      "file": "shots/picked-stack-390.png",
+      "option": "picked",
+      "state": "stack",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "The stack with mixed states; Send goes with what is ready"
+    },
+    {
+      "file": "shots/picked-stack-768.png",
+      "option": "picked",
+      "state": "stack",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "The stack with mixed states; Send goes with what is ready"
+    },
+    {
+      "file": "shots/picked-start-1440.png",
+      "option": "picked",
+      "state": "start",
+      "viewport": "desktop",
+      "width": 1440,
+      "whole_page": false,
+      "shows": "The start screen as picked: Start scanning, Choose photos, and Use my phone's camera. On a desktop: the phone message beside the phone's pages, live, with Send"
+    },
+    {
+      "file": "shots/picked-start-390.png",
+      "option": "picked",
+      "state": "start",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "The start screen as picked: Start scanning, Choose photos, and Use my phone's camera. On a desktop: the phone message beside the phone's pages, live, with Send"
+    },
+    {
+      "file": "shots/picked-start-768.png",
+      "option": "picked",
+      "state": "start",
+      "viewport": "tablet",
+      "width": 768,
+      "whole_page": false,
+      "shows": "The start screen as picked: Start scanning, Choose photos, and Use my phone's camera. On a desktop: the phone message beside the phone's pages, live, with Send"
+    },
+    {
+      "file": "shots/picked-steady-390.png",
+      "option": "picked",
+      "state": "steady",
+      "viewport": "phone",
+      "width": 390,
+      "whole_page": false,
+      "shows": "Corners green, ring filling: hold still"
     }
   ],
-  "review": "review.md"
+  "review": "review.md",
+  "build_notes": [
+    "The page's QR code, read by the phone's normal camera, opens the desk link (/tutor/p/<token>), not Scan pages. The build must route it, so a parent who scans a page that way can reach Scan pages.",
+    "Public copy still says 'the Unica app', though D-193 made scanning part of the web app: src/components/how-it-works.tsx, how-demos.tsx, whats-included.tsx, whats-included-scan.tsx, whats-included-dash.tsx, src/app/(site)/whats-included/page.tsx, src/lib/faq.ts, src/lib/parent.ts, src/lib/ai-summary.ts, and DESIGN.md (How it works step 5, For parents, Companion app).",
+    "Choose photos uses a file input with multiple and no capture. The current input has capture='environment', which forces the camera; Use my phone's camera keeps it.",
+    "The browser queues uploads, 2 at once (concurrent_uploads). The limit change needs a migration, and the current client refuses a busy upload.",
+    "The email needs a new kind and a way to know that the parent left the page. It carries no child work, as the other parent emails do."
+  ]
 }

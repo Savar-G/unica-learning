@@ -2,6 +2,9 @@
    (#state), so the board and the screenshots can open it. a.html, b.html and c.html differ only in data-opt. */
 const OPT = document.documentElement.dataset.opt || "a";
 const CHILD = "Leah";
+/* "p" is Savar's pick of 2026-11-05 (D-269): A's start screen and live camera, plus Choose photos and the phone's camera. */
+const PICK = OPT === "p";
+const AUTO = PICK ? "Auto on" : "Auto";
 
 /* ---------- Sample pages ---------- */
 const TITLES = {
@@ -117,7 +120,7 @@ function frame(body, o = {}) {
     </aside>
     <div>
       <header class="top"><a class="logo" href="#start">Unica Learning<b></b></a></header>
-      <div class="kid-line"><span class="kid-av">L</span><span>${CHILD} · Workbook 1</span><a class="link" href="#start" style="font-size:14px;min-height:32px">Open the desk</a></div>
+      <div class="kid-line"><span class="kid-av">L</span><span>${CHILD} · Workbook 1</span><a class="link kid-go" href="#start">Open the desk</a></div>
       <main class="main"><div class="main-in">${body}</div>${o.dock || ""}</main>
     </div>
     <nav class="bar" aria-label="Sections">${BAR.map(([k, l]) => `<a href="#start" ${k === "scan" ? 'aria-current="page"' : ""}>${I[k]}${l}</a>`).join("")}</nav>
@@ -150,7 +153,14 @@ function cleanStack() {
     <section class="grp"><div class="grp-h"><h2>Day 5</h2><span class="mono">4 photos</span></div><ul class="tiles">${row(5, 4)}</ul></section>`;
 }
 
-const ADD_HREF = { a: "#look", b: "#native", c: "#target" }[OPT];
+function chosenStack() {
+  const row = (d, n, ok) => Array.from({ length: n }, (_, i) => (i < ok ? tile(d, i + 1, "ok", `Page ${i + 1}`) : tile(d, i + 1, "wait", `Page ${i + 1}`, "Checking"))).join("");
+  return `<div style="display:grid;gap:6px"><h1 class="title">Scan pages</h1><p class="lede">12 photos added. 3 pages are ready to send.</p></div>
+    <section class="grp"><div class="grp-h"><h2>Day 4</h2><span class="mono">8 photos</span></div><ul class="tiles">${row(4, 8, 3)}</ul></section>
+    <section class="grp"><div class="grp-h"><h2>Day 5</h2><span class="mono">4 photos</span></div><ul class="tiles">${row(5, 4, 0)}</ul></section>`;
+}
+
+const ADD_HREF = { a: "#look", b: "#native", c: "#target", p: "#add" }[OPT];
 const addBtn = `<a class="btn ghost add" href="${ADD_HREF}" aria-label="Take more pages">${I.scan.replace("<svg ", '<svg width="22" height="22" ')}</a>`;
 const addB = () => (wide() ? "" : addBtn);
 const mixedDock = () => dock(`<a class="btn" href="#sending">Send 8 pages for marking</a>`, addB(), "2 pages are still being checked. They stay here.");
@@ -178,10 +188,10 @@ const tips = `<ul class="tips">
   <li>${I.fold}<span>Fold the book back, so only one page shows.</span></li>
   <li>${I.light}<span>Find good light. Keep shadows off the page.</span></li>
   <li>${I.corners}<span>Keep all four corners and the QR code in view.</span></li></ul>`;
-const privacy = `<p class="small">Photos are private and kept for 90 days. <a class="link" style="font-size:14px;min-height:0" href="#notice">More about photos</a></p>`;
+const privacy = `<p class="small">Photos are private and kept for 90 days. <a class="link" style="font-size:14px" href="#notice">More about photos</a></p>`;
 
 function desktopAway() {
-  const here = { a: "#look", b: "#native", c: "#target" }[OPT];
+  const here = { a: "#look", b: "#native", c: "#target", p: "#start-here" }[OPT];
   return `<div style="display:grid;gap:6px"><span class="eyebrow">Your account</span><h1 class="title">Scan pages</h1></div>
     <div class="away"><section class="away-l"><div class="away-qr">${QR_LARGE}</div><h2 class="h">Please take a picture with your phone</h2>
       <p class="small" style="font-size:15px">Point your phone's camera at this code. It opens this page on your phone. Your pages show here as you take them.</p>
@@ -199,11 +209,12 @@ function start() {
   if (wide()) return frame(desktopAway());
   if (OPT === "c") return frame(daySlots("start"), { dock: dock(`<a class="btn" href="#target">Take Day 4, page 1</a>`) });
   const body = `<div style="display:grid;gap:6px"><h1 class="title">Scan pages</h1><p class="lede">Take a photo of each finished page. We mark the pages and show you the results.</p></div>${tips}${privacy}`;
+  if (PICK) return frame(body, { dock: dock(`<a class="btn" href="#look">Start scanning</a>`, `<a class="btn ghost" href="#chosen" style="flex:none">Choose photos</a>`, `<a class="link" href="#native">Use my phone's camera</a>`) });
   if (OPT === "b") return frame(body, { dock: dock(`<a class="btn" href="#native">Take a photo</a>`, `<a class="btn ghost" href="#stack" style="flex:none">Choose photos</a>`) });
   return frame(body, { dock: dock(`<a class="btn" href="#look">Start scanning</a>`) });
 }
 const NOTICE = "We store this page photo privately for up to 90 days. When you ask us to check it, we send the whole page photo to an AI service. Your child's first name and printed page code can be in the photo. You and our admin team can view it. You can delete the photo sooner. We keep the marks and the AI's reading of the written answers until your family account is deleted.";
-const notice = () => start().replace("</div>\n  </div>", "</div></div>") + sheet(`<h2>Before you take a photo</h2><p style="font-size:16px">${NOTICE} <a href="#start">Read about privacy</a>.</p><div class="acts"><a class="btn wide" href="${ADD_HREF}">Got it</a></div>`, "About your page photos");
+const notice = () => start().replace("</div>\n  </div>", "</div></div>") + sheet(`<h2>Before you take a photo</h2><p style="font-size:16px">${NOTICE}</p><a class="link" href="#start">Read about privacy</a><div class="acts"><a class="btn wide" href="${PICK ? "#look" : ADD_HREF}">Got it</a></div>`, "About your page photos");
 
 /* ---------- The camera ---------- */
 const pileHtml = (count, bad) => `<a class="pile" href="#stack" aria-label="See your ${count} photos">${count ? pageSvg(4, 1) + pageSvg(4, 2) + pageSvg(4, 3) : ""}${count ? `<span class="ct">${count}</span>` : ""}${bad ? `<span class="ct bad">${bad}</span>` : ""}</a>
@@ -219,7 +230,7 @@ function camera(c) {
   const doneLabel = c.doneLabel || (c.count ? `Done · ${c.count}` : "Done");
   return `<div class="cam ${c.cls || ""}" id="cam">
     <div class="stage">${pile}
-      <div class="cam-top"><a class="cam-btn" href="${OPT === "a" ? "#stack" : "#stack"}" aria-label="Close the camera">✕</a><span class="cam-who">${c.title || `${CHILD} · Workbook 1`}</span>${(c.right ?? (OPT === "a" ? "Auto" : "")) ? `<a class="cam-btn" href="#">${c.right ?? "Auto"}</a>` : `<span style="width:44px"></span>`}</div>
+      <div class="cam-top"><a class="cam-btn" href="${OPT === "a" ? "#stack" : "#stack"}" aria-label="Close the camera">✕</a><span class="cam-who">${c.title || `${CHILD} · Workbook 1`}</span>${(c.right ?? (OPT === "a" || PICK ? AUTO : "")) ? `<a class="cam-btn" href="${PICK ? (c.right === "Auto off" ? "#look" : "#manual") : "#"}">${c.right ?? AUTO}</a>` : `<span style="width:44px"></span>`}</div>
       ${c.target ? `<div class="target">${pageSvg(c.target[0], c.target[1], { blank: true })}Page ${c.target[1]}</div>` : ""}
       ${c.fly ? `<div class="fly">${pageSvg(c.fly[0], c.fly[1])}</div>` : ""}
       ${msg}
@@ -242,14 +253,15 @@ const CAM = {
   late: () => camera({ count: 5, bad: 1, p: 6, tone: "warn", msg: "Day 4, page 3 needs another photo", small: "It is blurry. You can fix it now or at the end.", act: `<a class="act" href="#retake">Take it again now</a>` }),
   wrong: () => camera({ count: 5, who: "Noah", tone: "warn", msg: "This page is not in Leah's workbook", small: "We did not take a photo. Check that this is Leah's book." }),
   marked: () => camera({ count: 5, d: 3, p: 8, tone: "warn", msg: "Day 3, page 8 is already marked", small: "We did not take a photo. Turn to the next page.", act: `<a class="act" href="#page">See the marks</a>` }),
-  limit: () => camera({ count: 20, bad: 1, p: 7, d: 5, tone: "warn", msg: "Please wait a few minutes", small: "You took many photos in a short time. Your 20 photos are safe. You can send them now." }),
-  retake: () => camera({ count: 13, bad: 2, d: 4, p: 3, title: "Photo 1 of 2", cls: "lock", msg: "Now take Day 4 · Page 3", small: "The last photo was blurry. Hold the phone still.", doneLabel: "Stop", right: "Auto", shutter: "#clean", doneHref: "#stack" }),
+  limit: () => { const n = PICK ? 40 : 20; return camera({ count: n, bad: 1, p: 7, d: 5, tone: "warn", msg: "Please wait a few minutes", small: `You took many photos in a short time. Your ${n} photos are safe. You can send them now.` }); },
+  manual: () => camera({ count: 3, right: "Auto off", msg: "Press the button", small: "Press it when all four corners show." }),
+  retake: () => camera({ count: 13, bad: 2, d: 4, p: 3, title: "Photo 1 of 2", cls: "lock", msg: "Now take Day 4 · Page 3", small: "The last photo was blurry. Hold the phone still.", doneLabel: "Stop", right: AUTO, shutter: "#clean", doneHref: "#stack" }),
   target: () => camera({ count: 0, d: 4, p: 7, target: [4, 7], title: "Day 4 · Page 7", cls: "lock", msg: "Day 4 · Page 7", small: "Hold still.", doneLabel: "Back to list", shutter: "#stack", doneHref: "#stack", right: "" }),
 };
 const blocked = () => frame(`<div style="display:grid;gap:6px"><h1 class="title">We cannot use the camera</h1><p class="lede">Your browser did not allow the camera on this page.</p></div>
   <div class="panel"><h2>To fix this</h2><p style="font-size:15.5px">Open your browser's settings for this site. Allow the camera. Then try again.</p></div>
   <p style="font-size:15.5px">Or use your phone's own camera. You take one photo at a time, and the photos come back here.</p>`,
-  { dock: dock(`<a class="btn" href="#look">Try again</a>`, `<a class="btn ghost" href="#native" style="flex:1">Use phone's camera</a>`) });
+  { dock: dock(`<a class="btn" href="#look">Try again</a>`, `<a class="btn ghost" href="#native" style="flex:1">Use phone's camera</a>`, PICK ? `<a class="link" href="#chosen">Choose photos</a>` : "") });
 const native = () => `<div class="native"><div class="stage"><div class="native-tag">Your phone's own camera. We cannot add guidance here. You press the shutter, then "Use Photo", for each page.</div><div class="sheetpile">${pageSvg(4, 2)}</div></div><div class="native-bar"><span>Retake</span><a class="shutter" href="#stack" role="button" aria-label="Sample shutter"></a><a href="#stack" style="color:#fff;text-decoration:none"><span>Use Photo</span></a></div></div>`;
 
 /* ---------- Refusals ---------- */
@@ -258,15 +270,16 @@ const REASONS = {
   cut: { d: 5, p: 2, cls: "cut", who: "We cannot tell which page this is", title: "We cannot see the whole page.", text: "All four corners and the QR code must show. Move the phone back. Then take another photo." },
   dark: { d: 4, p: 5, cls: "dark", who: "Day 4 · Page 5", title: "This photo is too dark.", text: "We cannot read the answers. Move to better light. Then take another photo." },
   two: { d: 4, p: 6, two: true, who: "We cannot tell which page this is", title: "This photo shows more than one page.", text: "Fold the book back, so only one page shows. Then take another photo." },
+  none: { none: true, who: "Not a workbook page", title: "We cannot find a page in this photo.", text: "Choose a photo of one finished page, with its QR code in view." },
   wrong: { d: 4, p: 1, cls: "wrong", photoWho: "Noah", who: "Not a page from Leah's books", title: "This page is not in Leah's workbook.", text: "Check that this is Leah's book. Then take another photo." },
 };
 const background = () => OPT === "c" ? frame(daySlots("mixed"), { dock: cStackDock() }) : frame(mixedStack(), { dock: mixedDock() });
 const cStackDock = () => dock(`<a class="btn" href="#sending">Send 6 pages</a>`, wide() ? "" : `<a class="btn ghost" href="#target" style="flex:1">Take page 7</a>`);
 const refusal = (k) => {
   const r = REASONS[k];
-  const pic = r.two ? twoSheets(r.d, r.p, true) : photo(r.d, r.p, r.cls, { who: r.photoWho });
+  const pic = r.none ? `<div class="ph"></div>` : r.two ? twoSheets(r.d, r.p, true) : photo(r.d, r.p, r.cls, { who: r.photoWho });
   return background() + sheet(`${pic}<p class="qline">${r.who}</p><h2>${r.title}</h2><p style="font-size:16px">${r.text}</p>
-    <div class="acts">${wide() ? `<p class="saved" style="background:var(--card);color:var(--ink)">Take another photo with your phone. This page waits there.</p>` : `<a class="btn wide" href="${OPT === "b" ? "#native" : OPT === "c" ? "#target" : "#retake"}">Take another photo</a>`}<a class="link" href="#stack">Delete this photo</a></div>`, r.title);
+    <div class="acts">${wide() ? `<p class="saved" style="background:var(--card);color:var(--ink)">Take another photo with your phone. This page waits there.</p>` : `<a class="btn wide" href="${r.none ? "#chosen" : OPT === "b" ? "#native" : OPT === "c" ? "#target" : "#retake"}">${r.none ? "Choose another photo" : "Take another photo"}</a>`}<a class="link" href="#stack">Delete this photo</a></div>`, r.title);
 };
 const dupStack = () => background() + sheet(`<p class="qline">Day 4 · Page 2</p><h2>You already took this page.</h2>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><figure style="margin:0;display:grid;gap:4px">${photo(4, 2)}<figcaption class="small">First photo</figcaption></figure><figure style="margin:0;display:grid;gap:4px">${photo(4, 2, "blur")}<figcaption class="small">New photo</figcaption></figure></div>
@@ -275,6 +288,8 @@ const dupMarked = () => background() + sheet(`${photo(3, 8, "big")}<p class="qli
   <div class="acts"><a class="btn wide" href="#page">See the marks</a><a class="link" href="#stack">Delete this new photo</a></div>`, "This page is already marked");
 const pageOk = () => background() + sheet(`${photo(4, 2, "big")}<p class="qline">Day 4 · Page 2</p><h2>This page is ready to send.</h2><div class="acts"><a class="btn ghost wide" href="#stack">Close</a><a class="link" href="#stack">Delete this photo</a></div>`, "Day 4, page 2");
 
+const LEAVE = PICK ? "You can close this page. If you do, we email you when the marks are ready." : "You can close this page. We keep marking, and the marks show here.";
+
 /* ---------- One page (Flow B): the stack with one page in it ---------- */
 const onePage = (checking) => frame(`<div style="display:grid;gap:6px"><h1 class="title">Scan pages</h1></div>
   <section class="one">${photo(4, 2, "big")}<div class="one-t"><div class="one-id"><b>Day 4 · Page 2</b><span class="small">${CHILD} · Workbook 1</span></div>
@@ -282,7 +297,7 @@ const onePage = (checking) => frame(`<div style="display:grid;gap:6px"><h1 class
     <div class="only-big">${checking ? `<span class="btn off">Send this page for marking</span>` : `<a class="btn" href="#one-marking">Send this page for marking</a>`}<a class="btn ghost" href="${ADD_HREF}">Add another page</a></div>
     <a class="link" href="#stack">Delete this photo</a></div></section>`,
   { dockCls: "one-dock", dock: dock(checking ? `<span class="btn off">Send this page for marking</span>` : `<a class="btn" href="#one-marking">Send this page for marking</a>`, `<a class="btn ghost add" href="${ADD_HREF}" aria-label="Add another page">+ Page</a>`) });
-const oneMarking = () => frame(`<div style="display:grid;gap:6px"><h1 class="title">We are marking this page</h1><p class="lede">Day 4 · Page 2. You can close this page. We keep marking, and the marks show here.</p></div>
+const oneMarking = () => frame(`<div style="display:grid;gap:6px"><h1 class="title">We are marking this page</h1><p class="lede">Day 4 · Page 2. ${LEAVE}</p></div>
   <section class="one">${photo(4, 2, "big")}<div class="one-t"><span class="state"><span class="spin"></span>Marking...</span></div></section>`);
 
 /* ---------- Send and mark ---------- */
@@ -294,7 +309,7 @@ const groupRows = (fn) => [4, 5].map((d) => `<section class="grp"><div class="gr
 const row = (d, p, res, href = "#page") => `<li><a class="row" href="${href}">${photo(d, p)}<span><b>Page ${p}</b><span class="sub">${TITLES[d][p - 1]}</span></span>${res}</a></li>`;
 
 const sending = () => frame(`<div style="display:grid;gap:8px"><h1 class="title">Sending 12 pages</h1><p class="lede">Please wait a moment. You can leave this page after they are sent.</p>${segs(0, false)}</div>${groupRows((d, p) => row(d, p, `<span class="res wait">Sending</span>`, "#marking"))}`);
-const marking = () => frame(`<div style="display:grid;gap:8px"><h1 class="title">We are marking 12 pages</h1><p class="lede">3 of 12 are done. You can close this page. We keep marking, and the marks show here.</p>${segs(3, true)}</div>
+const marking = () => frame(`<div style="display:grid;gap:8px"><h1 class="title">We are marking 12 pages</h1><p class="lede">3 of 12 are done. ${LEAVE}</p>${segs(3, true)}</div>
   ${groupRows((d, p, i) => row(d, p, i < 3 ? (hasAsk(d, p) ? `<span class="res ask">Please check</span>` : `<span class="res">${scoreOf(d, p)}</span>`) : i === 3 ? `<span class="res wait">Marking...</span>` : `<span class="res wait">Waiting</span>`, i < 3 ? "#page" : "#marking"))}`);
 const paused = () => frame(`<div style="display:grid;gap:8px"><h1 class="title">We are marking 12 pages</h1><p class="lede">3 of 12 are done.</p>${segs(3, false)}</div>
   <div class="alert" role="status">Marking is paused on our side. Your pages are safe. We will mark them when marking starts again, and you do not have to send them again.</div>
@@ -334,7 +349,7 @@ function markedPage(o = {}) {
   }).join("");
   const body = `${o.one ? "" : `<a class="back" href="#results">← All pages</a>`}
     <div style="display:grid;gap:8px"><span class="eyebrow">Day 4 · Page 2</span><p class="score">${right} of 9 <small>right</small></p></div>
-    <div class="res-grid"><div class="res-page"><div class="sheet-img">${pageSvg(4, 2, { marks: true, flip, draw: true })}</div><span class="small">Your photo, straightened. <a class="link" style="font-size:14px;min-height:0" href="#page">Delete this photo</a></span></div>
+    <div class="res-grid"><div class="res-page"><div class="sheet-img">${pageSvg(4, 2, { marks: true, flip, draw: true })}</div><span class="small">Your photo, straightened. <a class="link" style="font-size:14px" href="#page">Delete this photo</a></span></div>
     <div style="display:grid;gap:14px">
       ${o.flip ? `<p class="saved" role="status">Mark changed. Question 5 is now right. We keep what we read first.</p>` : ""}
       ${o.one ? `<section class="panel sq"><h2>What next?</h2><p style="font-size:15.5px">${CHILD} can try the wrong answer again with Maya. The first answer keeps its mark.</p><div class="acts"><a class="btn" href="#maya">Fix mistakes with Maya</a><a class="btn ghost" href="#page">Just show results</a></div></section>` : ""}
@@ -358,11 +373,13 @@ const STACK = () => {
   return frame(mixedStack(), { dock: mixedDock() });
 };
 const ROUTES = {
-  start, notice, stack: STACK,
+  start, notice, stack: STACK, "start-here": () => CAM.look(),
   clean: () => frame(cleanStack(), { dock: cleanDock() }),
   blocked, native,
   one: () => onePage(false), "one-check": () => onePage(true), "one-marking": oneMarking, "one-marked": () => markedPage({ one: true }),
-  "r-blur": () => refusal("blur"), "r-cut": () => refusal("cut"), "r-dark": () => refusal("dark"), "r-two": () => refusal("two"), "r-wrong": () => refusal("wrong"),
+  "r-blur": () => refusal("blur"), "r-cut": () => refusal("cut"), "r-dark": () => refusal("dark"), "r-two": () => refusal("two"), "r-wrong": () => refusal("wrong"), "r-none": () => refusal("none"),
+  add: () => frame(mixedStack(), { dock: mixedDock() }) + sheet(`<h2>Add pages</h2><div class="acts"><a class="btn wide" href="#look">Start scanning</a><a class="btn ghost wide" href="#chosen">Choose photos</a><a class="link" href="#native">Use my phone's camera</a></div>`, "Add pages"),
+  chosen: () => frame(chosenStack(), { dock: dock(`<a class="btn" href="#sending">Send 3 pages for marking</a>`, addB(), "9 photos are still being checked. They stay here.") }),
   "d-stack": dupStack, "d-marked": dupMarked, "page-ok": pageOk,
   sending, marking, paused,
   ready: () => ready("ask"), "ready-choice": () => ready("choice"), results: () => ready("results"), maya: mayaSheet,
