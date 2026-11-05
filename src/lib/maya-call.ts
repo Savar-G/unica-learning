@@ -349,6 +349,11 @@ export interface VoiceTurn {
   safetyMessage: string | null;
   /** The call ended with this input. */
   ended: boolean;
+  /**
+   * Safety guidance after a child's disclosure, or the deadline close (`gate` and `step` in src/lib/maya/session.ts): the
+   * worker says it at once and waits for nothing that came before it.
+   */
+  priority?: boolean;
   /** How long this input spent on the model, its repair and the free-talk reviews (#532). Absent when no input ran. */
   time?: { modelMs: number; repairMs: number; reviewMs: number };
 }
@@ -908,7 +913,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           for (const id of t.output.board) ends.set(id, word);
         }
         const boardCues = out.board.map(batch => ({ batch, word: ends.get(batch.transactionId) ?? speechWords(out.say.join(" ")).length }));
-        return { say: out.say, newBatches: out.board.length, boardCues, safetyMessage: out.safetyMessage, ended: out.ended !== null, time };
+        const state = session.session;
+        const priority = state.safety.flagged || state.state === "TIME_CLOSE" || state.outcome?.reason === "time_limit";
+        return { say: out.say, newBatches: out.board.length, boardCues, safetyMessage: out.safetyMessage, ended: out.ended !== null, priority, time };
       };
       const call: VoiceCall = {
         id: record.id,

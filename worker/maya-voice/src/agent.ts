@@ -6,7 +6,8 @@
 //
 // A child's turn does not hold the speech back (#532): `llmNode` returns its stream at once, so a turn that is not ready
 // within the limit can say a code-written acknowledgement first (src/lib/maya-voice-ack.ts), as a segment of its own with
-// an empty board plan. The answer's board is staged only after that segment has played. A child who talks cancels it.
+// an empty board plan. The answer's board is staged only after that segment has played. A child who talks cancels it, and
+// safety guidance or the deadline close stops it at once.
 // VoiceCallRun also measures each child turn (./turn-timing.ts).
 //
 // VoiceCallRun owns the call's life around the speech: the opening when the child is there, the ticks the session asks
@@ -279,6 +280,8 @@ export class VoiceCallRun {
       repairMs: turns.reduce((sum, t) => sum + (t.time?.repairMs ?? 0), 0),
       reviewMs: turns.reduce((sum, t) => sum + (t.time?.reviewMs ?? 0), 0),
     });
+    // Safety comes first, and the deadline close with it: nothing that came before them holds them back.
+    if (turns.some(t => t.priority)) return this.sayFirst(pace, turns);
     // A new plan takes the audio from the old one, so the answer's board waits until the acknowledgement has played.
     if (pace.ack) await pace.ack;
     pace.clock.held();
@@ -290,6 +293,28 @@ export class VoiceCallRun {
     const text = said.join(" ");
     if (!text || !this.ownsReply(pace)) return this.closeTurn(pace, this.ownsReply(pace) ? "no_words" : "interrupted");
     pace.write(text);
+  }
+
+  /**
+   * Stops the reply and queues the words as speech of their own. LiveKit plays a reply's segments in order, so words added
+   * to the reply could not start until the phrase ended, and words in a stopped reply are never read at all.
+   */
+  private async sayFirst(pace: TurnPace, turns: VoiceTurn[]) {
+    this.cutAck(pace);
+    pace.clock.held();
+    const text = turns.flatMap(t => t.say).join(" ");
+    const last = turns.at(-1)!;
+    let speech: voice.SpeechHandle | null = null;
+    if (text) {
+      pace.handle?.interrupt(true);
+      // A plan with no batches has nothing to wait for, and a late board answer must not hold back these words.
+      try { await this.stageBoard(last, !!last.boardCues?.length); }
+      catch { if (pace.generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return this.closeTurn(pace); }
+      if (this.finishing || !this.childHere || pace.generation !== this.generation) return this.closeTurn(pace);
+      pace.clock.staged();
+      speech = this.session.say(text, { addToChatCtx: true });
+    } else this.closeTurn(pace, "no_words");
+    for (const turn of turns) await this.after(turn, speech, () => false);
   }
 
   /** No newer turn replaced this one, and its speech can still play. */
@@ -305,7 +330,7 @@ export class VoiceCallRun {
       const state = this.call.session;
       const why: AckSkip | null = !this.childHere || this.finishing || pace.generation !== this.generation ? "child_away"
         : this.childTalking(pace) ? "child_talking"
-        : state.safety.flagged || state.contentProblem !== null || state.outcome !== null ? "closing"
+        : state.safety.flagged || state.contentProblem !== null || state.outcome !== null || state.state === "TIME_CLOSE" ? "closing"
         : null;
       if (why) skip(why);
       return why !== null;
@@ -369,12 +394,14 @@ export class VoiceCallRun {
     else board.detach(scope);
   }
 
-  private async stageBoard(turn: Pick<VoiceTurn, "boardCues">) {
+  private async stageBoard(turn: Pick<VoiceTurn, "boardCues">, wait = true) {
     if (!this.options.board) return;
     const id = `speech-${this.segment}-${++this.utterance}`;
     const staging = this.options.board.stage(id, turn.boardCues ?? []);
-    this.boardScope = this.options.board.capture(id);
-    await staging;
+    const scope = this.options.board.capture(id);
+    this.boardScope = scope;
+    if (wait) await staging;
+    else if (scope) this.boardTask(staging, scope);
   }
 
   private get timers() { return this.options.timers ?? realTimers; }

@@ -71,4 +71,4 @@ Status: pending Savar. Added after the set above, and outside it: the voice work
 | `ack.moment.hmm` | Hmm, just a moment. |
 | `ack.see.here` | Let me see here. |
 
-"I'm thinking." and "Hmm, I'm thinking." were dropped in the review of PR #577: they claim a state of mind for an AI. For your reading: a child who says something hard can hear one of these before Maya's safety line, because the model has not read the child's words yet.
+"I'm thinking." and "Hmm, I'm thinking." were dropped in the review of PR #577: they claim a state of mind for an AI. For your reading: a child who says something hard can hear one of these before the model has read the words. When the model has read them, the phrase stops at once and the safety line follows.

@@ -10,8 +10,13 @@ import { workProblem } from "@/lib/maya";
 
 /** The child's end of speech to the acknowledgement, when the turn is not ready by then. MAYA_ACK_LIMIT_MS replaces it. */
 export const ACK_LIMIT_MS = 1500;
-/** The answer waits for a playing acknowledgement at most this long, if its audio never reports an end. */
-export const ACK_HOLD_LIMIT_MS = 5000;
+/**
+ * An ordinary answer waits for a phrase to finish, because cutting a phrase of a few words sounds worse than a short
+ * wait. This is the limit from the moment the phrase is queued, if its audio never reports an end: the longest phrase is
+ * about 1.5 s at a calm pace, and the rest is for the voice's first sound. Safety guidance and the deadline close do not
+ * wait at all.
+ */
+export const ACK_HOLD_LIMIT_MS = 3000;
 
 export interface Acknowledgement {
   id: string;

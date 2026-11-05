@@ -9,7 +9,7 @@ import { createBoardSpeech } from "@/lib/board-speech";
 import { templateSkills } from "@/lib/assessment";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
-import { memoryWordingHistoryStore, PROPOSAL_VERSION } from "@/lib/maya";
+import { memoryWordingHistoryStore, PROPOSAL_VERSION, SAFETY_GUIDANCE } from "@/lib/maya";
 import { mayaCalls, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import type { MayaModel } from "@/lib/maya-model";
@@ -17,7 +17,7 @@ import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 import { voiceProviders } from "@/lib/maya-voice";
-import { ACK_LIMIT_MS, ACK_PHRASES } from "@/lib/maya-voice-ack";
+import { ACK_HOLD_LIMIT_MS, ACK_LIMIT_MS, ACK_PHRASES } from "@/lib/maya-voice-ack";
 import type { QuestionPackage } from "@/lib/question-package";
 import { VoiceCallRun, voiceSession, type Timers } from "./agent";
 import { FakeTTS } from "./fake-providers";
@@ -57,6 +57,8 @@ class Speaker extends voice.AudioOutput {
   delay = () => {};
   /** The test's own stopwatch: when each playback began, on the system clock. */
   starts: number[] = [];
+  /** How many playbacks were cut short. */
+  cut = 0;
   private captured = 0;
   private waiting = false;
   constructor() { super(24_000); }
@@ -74,6 +76,7 @@ class Speaker extends voice.AudioOutput {
   private pendingStarts = 0;
   private finish(interrupted: boolean) {
     this.waiting = false;
+    if (interrupted && this.pendingPlayoutSegments > 0) this.cut++;
     if (this.pendingPlayoutSegments > 0) this.onPlaybackFinished({ playbackPosition: interrupted ? 0 : this.captured, interrupted });
     this.captured = 0;
   }
@@ -175,7 +178,7 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; seams?: Partial<CallSeams>; board?: boolean; speech?: ProbeSTT }) {
+async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; seams?: Partial<CallSeams>; board?: boolean; speech?: ProbeSTT; limitMs?: number }) {
   const clock = handClock();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -194,7 +197,7 @@ async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; seams
     ...options.seams,
   };
   const calls = mayaCalls(seams);
-  const started = await calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: "admin-1" });
+  const started = await calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: "admin-1", ...(options.limitMs ? { limitMs: options.limitMs } : {}) });
   if (!started.ok) throw new Error(started.error);
   const config = voiceProviders({});
   if (!config.ok) throw new Error("fake providers");
@@ -530,8 +533,8 @@ describe("the parts of one turn (#532)", () => {
 
 // The reproductions from the review of PR #577, on the delays that review found.
 describe("R577: what a delay can change while the phrase waits", () => {
-  /** A model that answers a first child turn with immediate danger, then holds the closing turn. */
-  function dangerModel() {
+  /** A model that answers a first child turn with danger, then holds the closing turn. */
+  function dangerModel(severity: "concern" | "immediate" = "immediate") {
     const inner = ruleMayaModel();
     let armed = false;
     let childCalls = 0;
@@ -544,7 +547,7 @@ describe("R577: what a delay can change while the phrase waits", () => {
       childCalls++;
       if (childCalls === 1) {
         await danger;
-        return { version: PROPOSAL_VERSION, act: "safety", reading: { safety: "immediate" }, parts: [] };
+        return { version: PROPOSAL_VERSION, act: "safety", reading: { safety: severity }, parts: [] };
       }
       await closing;
       return inner.propose(input, signal);
@@ -690,5 +693,172 @@ describe("R577: what a delay can change while the phrase waits", () => {
     m.release();
     await waitFor(() => c.samples.length === 1, "the sample");
     expect(c.samples[0]).toMatchObject({ ack: null, ackSkipped: "save" });
+  });
+
+  /**
+   * Watches a call from before the child speaks. `readyToQueued` lets the model answer and gives the time from the
+   * controller's finished turn to the words being queued (given to `session.say`, or reaching the voice), on the clock
+   * the phrase's hold runs on. The clock keeps moving, so a wait on any timer shows as its full length. The speaker
+   * stays held, as a phrase still playing.
+   */
+  function watchQueue(c: Awaited<ReturnType<typeof voiceCall>>) {
+    let readyAt: number | null = null;
+    let queuedAt: number | null = null;
+    const child = c.call.child.bind(c.call);
+    c.call.child = async (...args) => { const turn = await child(...args); readyAt = Date.now(); return turn; };
+    const say = c.session.say.bind(c.session);
+    vi.spyOn(c.session, "say").mockImplementation((...args) => { queuedAt ??= Date.now(); return say(...args); });
+    return async (release: () => void) => {
+      const spoken = c.said().length;
+      release();
+      await waitFor(() => readyAt !== null, "the finished turn");
+      for (let step = 0; step < 140 && queuedAt === null; step++) {
+        if (c.said().length > spoken) queuedAt = Date.now();
+        else await c.clock.advance(50);
+      }
+      return queuedAt === null ? Infinity : queuedAt - readyAt!;
+    };
+  }
+  /** One step of the clock can pass between the turn and its queue, as the test's own loop runs. */
+  const AT_ONCE_MS = 50;
+
+  async function phrasePlaying(c: Awaited<ReturnType<typeof voiceCall>>, say: () => void, modelAsked: () => boolean) {
+    c.speaker.held = true;
+    say();
+    await waitFor(modelAsked, "the model call");
+    await c.clock.advance(ACK_LIMIT_MS);
+    await waitFor(() => acksIn(c.said()).length === 1, "the phrase");
+    await waitFor(() => c.speaker.starts.length > 1, "the phrase's sound");
+  }
+
+  it.each(["immediate", "concern"] as const)("R577-4 %s danger read by the model stops a playing phrase and queues the guidance at once", async (severity) => {
+    const d = dangerModel(severity);
+    const c = await voiceCall({ model: d.model });
+    d.arm();
+    d.releaseClosing();
+    const readyToQueued = watchQueue(c);
+    await phrasePlaying(c, () => c.say("Someone is hurting me."), () => d.calls() === 1);
+    const cutBefore = c.speaker.cut;
+
+    const waited = await readyToQueued(d.releaseDanger);
+    expect(waited).toBeLessThanOrEqual(AT_ONCE_MS);
+    // Heard with the speaker still held: the guidance did not wait for the phrase to end.
+    await waitFor(() => c.said().join(" ").includes(SAFETY_GUIDANCE[severity].split(". ")[0]), "the guidance in the voice");
+    expect(c.speaker.cut).toBeGreaterThan(cutBefore);
+    expect(c.said().join(" ").indexOf(acksIn(c.said())[0])).toBeLessThan(c.said().join(" ").indexOf(SAFETY_GUIDANCE[severity].split(". ")[0]));
+    await waitFor(() => c.samples.length === 1, "the sample");
+    expect(c.samples[0]).toMatchObject({ outcome: "answered", ackHeard: true });
+    expect(c.samples[0].parts!.ackHoldMs).toBe(0);
+    expect(sum(c.samples[0])).toBe(c.samples[0].answerMs);
+    c.speaker.release();
+  });
+
+  it("R577-4 the deadline close stops a playing phrase and is queued at once", async () => {
+    const m = heldModel();
+    // Closing starts 2 s into this call, so the phrase at 1.5 s starts before it and the turn finishes after it.
+    const c = await voiceCall({ model: m.model, limitMs: 62_000 });
+    const asked = m.asked;
+    m.hold();
+    const readyToQueued = watchQueue(c);
+    await phrasePlaying(c, () => c.say("I got 56."), () => m.asked > asked);
+    const cutBefore = c.speaker.cut;
+    c.clock.move(1000);
+
+    const waited = await readyToQueued(() => m.release());
+    expect(waited).toBeLessThanOrEqual(AT_ONCE_MS);
+    expect(c.call.session.state).toBe("TIME_CLOSE");
+    await waitFor(() => c.speaker.cut > cutBefore, "the phrase to stop");
+    await waitFor(() => c.samples.length === 1, "the sample");
+    expect(c.samples[0].parts!.ackHoldMs).toBe(0);
+    c.speaker.release();
+  });
+
+  it("R577-4 no phrase starts once the deadline close has begun", async () => {
+    const m = heldModel();
+    const c = await voiceCall({ model: m.model, limitMs: 60_500 });
+    c.clock.move(600);
+    const asked = m.asked;
+    m.hold();
+    c.say("I got 56.");
+    await waitFor(() => m.asked > asked, "the model call");
+    await c.clock.advance(ACK_LIMIT_MS);
+    await pause();
+    expect(acksIn(c.said())).toEqual([]);
+    m.release();
+    await waitFor(() => c.samples.length === 1, "the sample");
+    expect(c.samples[0]).toMatchObject({ ack: null, ackSkipped: "closing" });
+  });
+
+  it("R577-4 the guidance does not wait for a phrase's board answer that has not come back", async () => {
+    const d = dangerModel();
+    const c = await voiceCall({ model: d.model });
+    c.say("I don't know.");
+    await waitFor(() => c.samples.length === 1 && c.session.agentState === "listening", "an answer that leaves a plan to cancel");
+    await c.board.settled();
+    d.arm();
+    d.releaseClosing();
+    const cancel = c.sender.cancel.bind(c.sender);
+    let releaseStage = () => {};
+    const delayed = new Promise<void>((r) => { releaseStage = r; });
+    let staging = false;
+    vi.spyOn(c.sender, "cancel").mockImplementation(async (...args) => {
+      const result = await cancel(...args);
+      staging = true;
+      await delayed;
+      return result;
+    });
+    const readyToQueued = watchQueue(c);
+    c.say("Someone is hurting me.");
+    await waitFor(() => d.calls() === 1, "the child turn's model call");
+    await c.clock.advance(ACK_LIMIT_MS);
+    await waitFor(() => staging, "the phrase's board stage");
+    try {
+      const waited = await readyToQueued(d.releaseDanger);
+      expect(waited).toBeLessThanOrEqual(AT_ONCE_MS);
+      await waitFor(() => c.said().join(" ").includes("Your safety comes first"), "the guidance in the voice, with the board answer still pending");
+      expect(acksIn(c.said())).toEqual([]);
+    } finally { releaseStage(); }
+  });
+
+  it("R577-4 guidance is queued even when the child's words stopped its reply, and plays when the child stops", async () => {
+    const d = dangerModel();
+    const speech = new ProbeSTT();
+    const c = await voiceCall({ model: d.model, speech });
+    d.arm();
+    d.releaseClosing();
+    const readyToQueued = watchQueue(c);
+    speech.says("Someone is hurting me.");
+    await waitFor(() => d.calls() === 1, "the child turn's model call");
+    // Words that stop the reply, and no end of the child's turn yet, so no new turn has replaced this one.
+    speech.send(stt.SpeechEventType.START_OF_SPEECH);
+    speech.send(stt.SpeechEventType.FINAL_TRANSCRIPT, "Please help.");
+    await waitFor(() => c.session.userState === "speaking", "the child talking");
+    await pause();
+    const waited = await readyToQueued(d.releaseDanger);
+    expect(waited).toBeLessThanOrEqual(AT_ONCE_MS);
+    // LiveKit holds new speech while the child is talking.
+    expect(c.said().join(" ")).not.toContain("Your safety comes first");
+    speech.send(stt.SpeechEventType.END_OF_SPEECH);
+    await waitFor(() => c.said().join(" ").includes("Your safety comes first"), "the guidance in the voice");
+  });
+
+  it("R577-4 an ordinary answer waits for the phrase, but at most 3 s if its end never comes", async () => {
+    const m = heldModel();
+    const c = await voiceCall({ model: m.model });
+    const stages = vi.spyOn(c.board, "stage");
+    const asked = m.asked;
+    m.hold();
+    await phrasePlaying(c, () => c.say("I don't know."), () => m.asked > asked);
+    const plans = () => stages.mock.calls.filter((a) => a[1].length > 0).length;
+    m.release();
+    await pause();
+    expect(c.speaker.cut).toBe(0);
+    await c.clock.advance(ACK_HOLD_LIMIT_MS - 1);
+    await pause();
+    expect(plans()).toBe(0);
+    await c.clock.advance(1);
+    await waitFor(() => plans() > 0, "the answer's plan");
+    expect(ACK_HOLD_LIMIT_MS).toBe(3000);
+    c.speaker.release();
   });
 });
