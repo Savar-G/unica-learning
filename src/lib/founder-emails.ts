@@ -58,7 +58,7 @@ export function welcomeEmail({ parentName, childName, url }: { parentName: strin
     parentName,
     why: "You get this email because you made an account for the free math assessment.",
     blocks: [
-      { p: `Thanks for signing up. We're Cedric and Savar, the founders of Unica Learning. ${FOUNDERS_WHY}` },
+      { p: `Thanks for signing up. We're Savar and Cedric, the founders of Unica Learning. ${FOUNDERS_WHY}` },
       { p: "Here's what happens next:" },
       {
         ordered: true,
@@ -83,7 +83,7 @@ export function phoneWelcomeEmail({ parentName, childName, url }: { parentName: 
     parentName,
     why: "You get this email because you made an account for the free math assessment.",
     blocks: [
-      { p: `Thanks for signing up. We're Cedric and Savar, the founders of Unica Learning. ${FOUNDERS_WHY}` },
+      { p: `Thanks for signing up. We're Savar and Cedric, the founders of Unica Learning. ${FOUNDERS_WHY}` },
       { p: `Open this email on the laptop or tablet ${childName} will use. The button signs you in and opens ${childName}'s start screen.` },
       { button: "Sign in and start", url },
       { p: "Here's what happens next:" },
