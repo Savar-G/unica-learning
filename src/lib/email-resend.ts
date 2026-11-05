@@ -43,7 +43,7 @@ const reason = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export function resendTransport({ fetch: request = (input, init) => fetch(input, init) }: { fetch?: typeof fetch } = {}): MailTransport {
   return {
     async send(message, options): Promise<SendResult> {
-      if (options?.signal?.aborted || options?.inTime?.() === false) return { status: "refused", error: "The send did not start: the time ran out" };
+      if (options?.signal?.aborted || options?.mayStart?.() === false) return { status: "refused", error: "The send did not start: the time ran out" };
       const key = process.env.RESEND_API_KEY;
       if (!key) return { status: "refused", error: "RESEND_API_KEY is not set" };
       const from = resendFrom(message);

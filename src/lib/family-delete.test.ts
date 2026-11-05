@@ -19,30 +19,6 @@ function harness(over: Partial<MemoryFamily> = {}) {
   };
 }
 
-it("an admin-closed start no longer blocks a family, and a family with no start is unchanged", async () => {
-  const h = harness({ planStartOpen: true });
-  expect(await h.send()).toEqual({ ok: false, error: "plan_start" });
-  expect(h.family.fenced).toBe(false);
-  h.family.planStartOpen = false;
-  expect(await h.send()).toEqual({ ok: true, plansStopped: 0 });
-  expect(await harness().send()).toEqual({ ok: true, plansStopped: 0 });
-});
-
-it.each(["hold", "request"] as const)("reports an open start found at the final %s and leaves the family intact", async (step) => {
-  const family = memoryFamily();
-  const store = memoryDeleteStore(family);
-  if (step === "hold") {
-    const action = store.hold;
-    store.hold = async (...args) => { family.planStartOpen = true; return action(...args); };
-  } else {
-    const action = store.request;
-    store.request = async (...args) => { family.planStartOpen = true; return action(...args); };
-  }
-  expect(await requestFamilyDelete(PARENT, form(), right, { store, plans: memoryPlans(family) })).toEqual({ ok: false, error: "plan_start" });
-  expect(family.fenced).toBe(false);
-  expect(family.deleteHold).toBeNull();
-});
-
 describe("the deliberate form", () => {
   it.each([
     [{ password: "right password" }],
@@ -57,6 +33,42 @@ describe("the deliberate form", () => {
     expect(h.family.attempts.failed).toBe(0);
     expect(h.family.plans.cus_1).toEqual(["sub_1"]);
     expect(h.family.fenced).toBe(false);
+  });
+});
+
+describe("an open plan start record (review round 5 of PR #593)", () => {
+  it("refuses at the check, before any plan stops, and tells nothing else", async () => {
+    const h = harness({ plans: { cus_1: ["sub_1"] }, openPlanStart: () => true });
+    expect(await h.send()).toEqual({ ok: false, error: "plan_start", plansStopped: 0 });
+    expect(h.family.plans.cus_1).toEqual(["sub_1"]);
+    expect(h.family.fenced).toBe(false);
+    expect(h.family.log).toEqual(["claim"]);
+  });
+  it("refuses at the hold when the record opened after the check, with the plans already stopped counted", async () => {
+    let open = false;
+    const h = harness({ plans: { cus_1: ["sub_1"] }, openPlanStart: () => open });
+    const store = memoryDeleteStore(h.family);
+    const seams = { plans: memoryPlans(h.family), store: { ...store, async hold(parent: string, token: string) { open = true; return store.hold(parent, token); } } };
+    expect(await requestFamilyDelete(PARENT, form(), right, seams)).toEqual({ ok: false, error: "plan_start", plansStopped: 1 });
+    expect(h.family.fenced).toBe(false);
+    expect(h.family.deleteHold).toBeNull();
+  });
+  it("refuses at the request when the record opened after the last read, and lets go of the hold", async () => {
+    let open = false;
+    const h = harness({ openPlanStart: () => open });
+    const store = memoryDeleteStore(h.family);
+    const seams = { plans: memoryPlans(h.family), store: { ...store, async request(parent: string, token: string) { open = true; return store.request(parent, token); } } };
+    expect(await requestFamilyDelete(PARENT, form(), right, seams)).toEqual({ ok: false, error: "plan_start", plansStopped: 0 });
+    expect(h.family.fenced).toBe(false);
+    expect(h.family.log).toContain("release");
+  });
+  it("works again once the record resolves", async () => {
+    let open = true;
+    const h = harness({ plans: { cus_1: ["sub_1"] }, openPlanStart: () => open });
+    expect((await h.send()).ok).toBe(false);
+    open = false;
+    expect(await h.send()).toEqual({ ok: true, plansStopped: 1 });
+    expect(h.family.fenced).toBe(true);
   });
 });
 

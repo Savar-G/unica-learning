@@ -13,7 +13,8 @@ import { planStartEmailClaim, sendPlanStartEmail } from "@/lib/workbook-email-se
 //
 // The sweep's times, from the start of the /api/reminders run, inside its 60-second limit:
 //   - 25 s: no new row starts.
-//   - 30 s: no Stripe write and no email starts. Each has a 15-second limit, so one that starts in time ends by 45 s.
+//   - 30 s: no Stripe write and no email starts, also after an email's reads, claim and wait in the transport. Each has a 15-second
+//     limit, so one that starts in time ends by 45 s.
 //   - 45 s: all the sweep's work ends. One signal goes to every Stripe call, database call and email in it.
 // The monthly emails' work ends at 50 s (MONTHLY_END_MS in the route), as before. That leaves 15 s and 10 s to answer.
 
@@ -34,7 +35,9 @@ export function liveCardChecks(origin: string, { canWrite = writeWindow(), signa
   const client = signal ? stripeWithin(signal) : stripe();
   if (!db || !client) return null;
   const rows = supabaseCardRows(db);
-  const mail: MailTransport | undefined = transport && signal ? { send: (message, options) => transport.send(message, { ...options, signal }) } : transport;
+  // The time is asked again right before each request, after the transport's wait. The plan email's own check goes first, so it can
+  // tell that the time stopped it.
+  const mail: MailTransport | undefined = transport && { send: (message, options) => transport.send(message, { signal, mayStart: canWrite, ...options }) };
   return {
     rows,
     stripe: stripeCards(client),
@@ -43,7 +46,7 @@ export function liveCardChecks(origin: string, { canWrite = writeWindow(), signa
       if (!start.firstCharge) throw new Error("The plan has no first charge date");
       const { data, error } = await db.from("card_setups").select("plan, price").eq("id", row.cardId).maybeSingle();
       if (error || !data) throw new Error("Card setup read failed");
-      const sent = await sendPlanStartEmail(db, { cardId: row.cardId, generation: start.generation, price: planPrice(Number(data.price), data.plan), firstChargeAt: start.firstCharge, origin }, mail, { inTime: canWrite });
+      const sent = await sendPlanStartEmail(db, { cardId: row.cardId, generation: start.generation, price: planPrice(Number(data.price), data.plan), firstChargeAt: start.firstCharge, origin }, mail, canWrite);
       if (sent.status !== "sent") console.warn("[billing] plan start email", sent.status);
       return sent;
     },

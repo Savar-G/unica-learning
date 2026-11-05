@@ -197,4 +197,3 @@ revoke all on function public.claim_plan_start_email(uuid, integer, uuid, jsonb)
 grant execute on function public.claim_plan_start_email(uuid, integer, uuid, jsonb),
   public.note_plan_start_email_send(uuid, integer, uuid, text, text, text),
   public.release_plan_start_email(uuid, integer, uuid) to service_role;
-

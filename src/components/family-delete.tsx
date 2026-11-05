@@ -22,7 +22,9 @@ function message(answer: Exclude<Answer, { ok: true }>): ReactNode {
     case "busy":
       return <>A card step for your family is still running, so we changed nothing. Try again in a few minutes. If this keeps happening, email {email}.</>;
     case "plan_start":
-      return <>Our team must finish a plan start before we can delete your family&apos;s account. We have told the team. You can also email {email}.</>;
+      return answer.plansStopped > 0
+        ? <>We stopped {plans(answer.plansStopped)}, but our team must finish starting a plan for your family before we can delete this account. Your family&apos;s data is all still here. We have told the team. Try again later, or email {email}.</>
+        : <>Our team must finish starting a plan for your family before we can delete this account, so we changed nothing. We have told the team. Try again later, or email {email}.</>;
     case "protected":
       return "This account cannot be deleted here.";
     case "not_finished":

@@ -11,9 +11,9 @@ import { adminClient } from "@/lib/supabase-auth";
 // The self-serve delete's seams for the live site (#556): the database functions of migrations family_delete_self_serve and family_delete_hold,
 // and Stripe with the site's key. The deletion worker's restricted key has no subscription write, so plans stop here.
 
-const CHECKS = ["ready", "busy", "protected", "missing", "plan_start"] as const;
-const HOLDS = ["held", "busy", "protected", "missing", "plan_start"] as const;
-const REQUESTS = ["requested", "busy", "protected", "missing", "plan_start"] as const;
+const CHECKS = ["ready", "busy", "plan_start", "protected", "missing"] as const;
+const HOLDS = ["held", "busy", "plan_start", "protected", "missing"] as const;
+const REQUESTS = ["requested", "busy", "plan_start", "protected", "missing"] as const;
 
 function answer<T extends string>(data: unknown, allowed: readonly T[]): T {
   if (!allowed.includes(data as T)) throw new Error("Family delete: unexpected answer");
@@ -71,17 +71,18 @@ export function stripeFamilyPlans(db: SupabaseClient<Database>, s: Stripe): Fami
  * Tells the team, so that no further workbook is prepared or mailed. It names no child. The family's id is there only
  * when the deletion did not finish, because the team may need to look at the family.
  */
-export async function familyDeleteAlert(parent: string, { plansStopped, state }: { plansStopped: number; state: "deleted" | "queued" | "not_queued" }) {
+export async function familyDeleteAlert(parent: string, { plansStopped, state }: { plansStopped: number; state: "deleted" | "queued" | "not_queued" | "plan_start" }) {
   const to = process.env.SIGNUP_NOTIFY_EMAIL;
   if (!to) return;
   const stateLine = {
     deleted: "The family's data is deleted, and the copy without names is written.",
     queued: "The deletion is queued. The daily job finishes it.",
     not_queued: "The deletion is NOT queued, and the family's data is all there. The parent was asked to try again.",
+    plan_start: "The deletion is NOT queued, and the family's data is all there. A plan start for this family has an unknown outcome. The parent was told that the team must finish it first. It ends when the plan shows up in Stripe, or when an admin closes it on the card under /admin/next-steps. The parent then has to ask again.",
   }[state];
   try {
     const outcome = await sendEmail({
-      sender: { to: "savar" }, to, subject: state === "not_queued" ? "Family delete not finished" : "Family deleted from Account",
+      sender: { to: "savar" }, to, subject: state === "not_queued" || state === "plan_start" ? "Family delete not finished" : "Family deleted from Account",
       text: [`A parent asked to delete their family from Account.`, `Plans stopped: ${plansStopped}`, stateLine, "Do not prepare or mail another workbook for this family.",
         ...(state === "deleted" ? [] : [`Family: ${parent}`])].join("\n"),
     });

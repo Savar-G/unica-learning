@@ -187,6 +187,7 @@ export function stripeCustomerUrl(customer: string): string | null {
 }
 
 export type StartPlanOutcome =
+  /** `generation`: the start's record, the key of its one confirmation email. */
   | { ok: true; subscription: string; firstChargeAt: string; generation: number }
   /**
    * "unconfirmed": Stripe may still make the plan. The record stays open, and the webhook, the sweep or the next press decides it.

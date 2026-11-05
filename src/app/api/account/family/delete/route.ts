@@ -60,9 +60,13 @@ export async function POST(request: Request) {
   }
   if (!result.ok) {
     if (result.error === "locked") return reply(429, { ...result, ...await familyRetryTime(db, result.retryAt) });
-    if (result.error === "plan_start" || (result.error === "not_finished" && result.plansStopped > 0)) {
-      const plansStopped = result.error === "not_finished" ? result.plansStopped : 0;
+    if (result.error === "not_finished" && result.plansStopped > 0) {
+      const plansStopped = result.plansStopped;
       after(() => familyDeleteAlert(parent, { plansStopped, state: "not_queued" }));
+    }
+    if (result.error === "plan_start") {
+      const plansStopped = result.plansStopped;
+      after(() => familyDeleteAlert(parent, { plansStopped, state: "plan_start" }));
     }
     return reply(STATUS[result.error], result);
   }

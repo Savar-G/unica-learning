@@ -3,7 +3,9 @@ import type { ProvePassword } from "@/lib/parent-pin";
 // A parent deletes the whole family from the Account tab (#556, spec #544, D-247). The order of the steps is the point:
 //
 // 1. The form, then the password: each try is counted before the password is checked, 5 tries, then 15 minutes locked.
-// 2. A check that changes nothing: an admin account, a family with a card hold, or a family already gone stops here.
+// 2. A check that changes nothing: an admin account, a family with a card hold, a family with an open plan start record, or a family
+//    already gone stops here. An open record means that Stripe may still make a plan no read can see yet, so only the team can end it
+//    (#554). Steps 5 and 7 check it again, as a record can open in between.
 // 3. Every Stripe customer and every plan is read before any plan stops. A failed read leaves the family untouched.
 // 4. Each plan stops at once, with no refund. After a failed stop, later plans are left alone.
 // 5. The family's delete hold is taken. From here no plan can start: the admin's start route is refused while it is live.
@@ -54,16 +56,16 @@ export interface FamilyDeleteStore {
   claimAttempt(parent: string, now: number, policy: DeletePolicy): Promise<AttemptClaim>;
   clearAttempts(parent: string): Promise<void>;
   /** Changes nothing. */
-  check(parent: string): Promise<"ready" | "busy" | "protected" | "missing" | "plan_start">;
+  check(parent: string): Promise<"ready" | "busy" | "plan_start" | "protected" | "missing">;
   /** Takes the family's delete hold for `token`, with a lease. While it is live, a plan start is refused. Refused for any other live hold. */
-  hold(parent: string, token: string): Promise<"held" | "busy" | "protected" | "missing" | "plan_start">;
+  hold(parent: string, token: string): Promise<"held" | "busy" | "plan_start" | "protected" | "missing">;
   /** Ends this token's hold only. A hold already gone changes nothing. */
   release(parent: string, token: string): Promise<void>;
   /**
    * Fences the family, queues its deletion once, records that its plans stopped, and ends the hold. Refused unless `token`
    * still holds a live lease, and for any other hold, decided under the row lock.
    */
-  request(parent: string, token: string): Promise<"requested" | "busy" | "protected" | "missing" | "plan_start">;
+  request(parent: string, token: string): Promise<"requested" | "busy" | "plan_start" | "protected" | "missing">;
 }
 
 export interface FamilyPlans {
@@ -77,11 +79,13 @@ export interface FamilyPlans {
 
 export type FamilyDeleteResult =
   | { ok: true; plansStopped: number }
-  | { ok: false; error: "invalid" | "unavailable" | "busy" | "protected" | "not_found" | "plan_start" }
+  | { ok: false; error: "invalid" | "unavailable" | "busy" | "protected" | "not_found" }
   | { ok: false; error: "wrong_password"; attemptsLeft: number }
   | { ok: false; error: "locked"; retryAt: number }
   /** Stopping or queueing failed. No request exists, the family's data is all there, and `plansStopped` plans ended. */
-  | { ok: false; error: "not_finished"; plansStopped: number };
+  | { ok: false; error: "not_finished"; plansStopped: number }
+  /** The team must finish a plan start first. No request exists, the family's data is all there, and `plansStopped` plans ended. */
+  | { ok: false; error: "plan_start"; plansStopped: number };
 
 export interface FamilyDeleteSeams {
   store: FamilyDeleteStore;
@@ -108,6 +112,7 @@ export async function requestFamilyDelete(parent: string, input: unknown, prove:
 
   const ready = await store.check(parent);
   if (ready === "missing") return { ok: false, error: "not_found" };
+  if (ready === "plan_start") return { ok: false, error: "plan_start", plansStopped: 0 };
   if (ready !== "ready") return { ok: false, error: ready };
 
   const everyPlan = async () => (await Promise.all((await plans.customers(parent)).map((c) => plans.running(c)))).flat();
@@ -137,7 +142,7 @@ export async function requestFamilyDelete(parent: string, input: unknown, prove:
     await letGo();
     return { ok: false, error: "not_finished", plansStopped: known };
   }
-  if (hold === "plan_start") { await letGo(); return { ok: false, error: "plan_start" }; }
+  if (hold === "plan_start") return { ok: false, error: "plan_start", plansStopped: known };
   if (hold !== "held") return running.length === 0 && hold === "busy" ? { ok: false, error: "busy" } : { ok: false, error: "not_finished", plansStopped: known };
 
   let left: string[];
@@ -153,11 +158,11 @@ export async function requestFamilyDelete(parent: string, input: unknown, prove:
     return { ok: false, error: "not_finished", plansStopped };
   }
 
+  let requested: Awaited<ReturnType<FamilyDeleteStore["request"]>> | null = null;
   try {
-    const requested = await store.request(parent, token);
+    requested = await store.request(parent, token);
     if (requested === "requested") return { ok: true, plansStopped };
-    if (requested === "plan_start") { await letGo(); return { ok: false, error: "plan_start" }; }
   } catch { /* A lost answer may have written it. A retry answers the same, and a hold already gone changes nothing. */ }
   await letGo();
-  return { ok: false, error: "not_finished", plansStopped };
+  return { ok: false, error: requested === "plan_start" ? "plan_start" : "not_finished", plansStopped };
 }

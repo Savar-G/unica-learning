@@ -1,16 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { copyFieldNames, retentionDecision, workerConfiguration, runRetentionWorker, withDeletionHeartbeat } from "@/lib/assessment";
 
-it("reports and keeps a queued family whose claim finds an unresolved plan start", async () => {
-  const result = await runRetentionWorker({ kind: "run", mode: "delete", url: "unused", secret: "unused" }, {
-    candidates: async () => [{ id: "parent", queued: true, cards: [], lastTestAt: null }],
-    verifyPayments: async () => {}, customerPayments: async () => { throw Error("No Stripe read expected"); },
-    cursor: async () => null, advance: async () => {}, copySources: async () => { throw Error("No copy expected"); },
-    run: async () => ({ state: "plan_start" }),
-  }, () => 60_000, Date.now());
-  expect(result).toMatchObject({ ok: false, eligible: 1, deleted: 0, plan_start: 1, failed: 0 });
-});
-
 // The retention rules (#191, spec #181). A customer keeps their data. A former customer is deleted 6 calendar months
 // (UTC) after the subscription ends in Stripe. A free-test family (no card ever saved) is deleted 12 calendar months
 // after the latest test activity. Without a Stripe answer, the family is kept.
@@ -215,6 +205,15 @@ describe("retention run", () => {
       { id: "c-former", endedAt: "2026-03-01T00:00:00.000Z" },
     ]);
     expect(s.calls[0]).toBe("verify");
+  });
+
+  it("keeps a family with an open plan start and reports it, with no failure and no id", async () => {
+    const s = store();
+    const run = s.store.run;
+    const keep = { ...s.store, run: async (id: string, limit: number, claim: { endedAt: string | null }) => id === "b-free-test" ? { state: "plan_start" as const } : run(id, limit, claim) };
+    const result = await runRetentionWorker(workerConfiguration(["--mode", "delete"], env), keep, () => 840_000, NOW);
+    expect(result).toMatchObject({ eligible: 3, deleted: 2, plan_start: 1, failed: 0 });
+    expect(JSON.stringify(result)).not.toContain("b-free-test");
   });
 
   it("retries queued work within each budget despite slow unrelated Stripe reads", async () => {

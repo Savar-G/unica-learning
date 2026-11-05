@@ -11,7 +11,10 @@ export async function withFamilyCardOperation<T>(store: { begin(): Promise<boole
   return result;
 }
 
-/** `copies`: the copies without names this run wrote (#201); a retry after an earlier run's copies writes 0. */
+/**
+ * `copies`: the copies without names this run wrote (#201); a retry after an earlier run's copies writes 0. `plan_start`: the family is
+ * kept, as Stripe may still make a plan for it (#554).
+ */
 export type FamilyDeletionResult = { state: "deleted"; images: number; copies: number } | { state: "busy" | "excluded" | "plan_start" };
 
 /** The external worker must enforce its time limit. Saving the cursor first also survives termination. */

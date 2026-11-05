@@ -17,7 +17,7 @@ const request = (value: unknown) => new Request(`https://unica.test/api/admin/ca
 });
 beforeEach(() => {
   state.admin = true;
-  state.start.mockReset().mockResolvedValue({ ok: true, generation: 1, subscription: "sub_1", firstChargeAt: "2026-12-05T00:00:00Z" });
+  state.start.mockReset().mockResolvedValue({ ok: true, subscription: "sub_1", firstChargeAt: "2026-12-05T00:00:00Z", generation: 1 });
   state.stripe.mockReset().mockReturnValue({});
   state.confirm.mockReset().mockResolvedValue({ status: "sent" });
   state.read.mockReset().mockResolvedValue({ data: { id, child_id: "child", parent_id: "parent", card_saved_at: "2026-11-01T00:00:00Z", stripe_customer_id: "cus_real", price: 79.99, plan: "one" }, error: null });

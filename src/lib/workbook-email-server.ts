@@ -67,39 +67,48 @@ export async function sendWorkbookNotice(db: SupabaseClient<Database>, key: Work
   return sendEmailOnce(workbookEmailLedger(db, message), key, message, { transport });
 }
 
-type PlanEmailKey = { cardId: string; generation: number };
-type PlanEmailClaim = PlanEmailKey & { token: string };
+/** The plan start email's send key: the start's own record. */
+interface PlanEmailKey { cardId: string; generation: number }
 
-/** One claim per durable start generation. Refused sends retry; sent and unknown are final. */
-function planEmailLedger(db: SupabaseClient<Database>, message: EmailMessage): ReleasableLedger<PlanEmailKey, PlanEmailClaim> {
-  async function outcome(c: PlanEmailClaim, status: "sent" | "failed" | "unknown", emailId: string | null, reason: string | null) {
+/** The record of one plan start as the send ledger of its email (migration plan_start_holds_deletion). Each generation has its own claim. */
+function planStartEmailLedger(db: SupabaseClient<Database>, message: EmailMessage): ReleasableLedger<PlanEmailKey, PlanEmailKey & { token: string }> {
+  async function outcome(c: PlanEmailKey & { token: string }, status: "sent" | "failed" | "unknown", emailId: string | null, error: string | null) {
     try {
-      const { error } = await db.rpc("note_plan_start_email_send", { p_card: c.cardId, p_generation: c.generation, p_token: c.token, p_status: status, p_email_id: emailId, p_error: reason });
-      if (error) console.error("[plan email] outcome not recorded; claim remains held", error.code);
-    } catch { console.error("[plan email] outcome write failed; claim remains held"); }
+      const { error: failed } = await db.rpc("note_plan_start_email_send", { p_card: c.cardId, p_generation: c.generation, p_token: c.token, p_status: status, p_email_id: emailId, p_error: error });
+      if (failed) console.error("[plan start email] outcome not recorded; claim remains held", c.cardId, failed.message);
+    } catch { console.error("[plan start email] outcome write failed; claim remains held", c.cardId); }
   }
   return {
     async claim(key) {
       const token = randomUUID();
-      const { data, error } = await db.rpc("claim_plan_start_email", { p_card: key.cardId, p_generation: key.generation, p_token: token,
-        p_message: { to: message.to, subject: message.subject, text: message.text, html: message.html ?? null } });
-      if (error) throw Error("store_failed");
+      const { data, error } = await db.rpc("claim_plan_start_email", {
+        p_card: key.cardId, p_generation: key.generation, p_token: token,
+        p_message: { to: message.to, subject: message.subject, text: message.text, html: message.html ?? null },
+      });
+      if (error) throw Error(error.message);
       return data ? { ...key, token } : null;
     },
-    sent: (c, id) => outcome(c, "sent", id, null),
-    refused: (c, reason) => outcome(c, "failed", null, reason),
-    unknown: (c, reason) => outcome(c, "unknown", null, reason),
+    sent: (c, emailId) => outcome(c, "sent", emailId, null),
+    refused: (c, error) => outcome(c, "failed", null, error),
+    unknown: (c, error) => outcome(c, "unknown", null, error),
     async release(c) {
       try {
         const { data, error } = await db.rpc("release_plan_start_email", { p_card: c.cardId, p_generation: c.generation, p_token: c.token });
+        if (error) console.error("[plan start email] release failed; claim remains held", c.cardId, error.message);
         return !error && data === true;
-      } catch { return false; }
+      } catch {
+        console.error("[plan start email] release failed; claim remains held", c.cardId);
+        return false;
+      }
     },
   };
 }
 
-/** One confirmation per plan generation. Time is checked after the reads, the claim, and the transport's wait. */
-export async function sendPlanStartEmail(db: SupabaseClient<Database>, p: { cardId: string; generation: number; price: number; firstChargeAt: string; origin: string }, transport?: MailTransport, { inTime = () => true }: { inTime?: () => boolean } = {}): Promise<TimedDeliveryOutcome> {
+/**
+ * The confirmation when a free month starts: one per plan start, so a retry cannot send a second copy, and a later start of the same
+ * saved card has its own. `inTime`: when it answers false, also after the transport's wait, nothing goes and the claim is given back.
+ */
+export async function sendPlanStartEmail(db: SupabaseClient<Database>, p: { cardId: string; generation: number; price: number; firstChargeAt: string; origin: string }, transport?: MailTransport, inTime: () => boolean = () => true): Promise<TimedDeliveryOutcome> {
   const { data: card, error } = await db.from("card_setups").select("parent_id, child_id").eq("id", p.cardId).maybeSingle();
   if (error || !card) throw Error("store_failed");
   const [parent, child] = await Promise.all([
@@ -113,15 +122,15 @@ export async function sendPlanStartEmail(db: SupabaseClient<Database>, p: { card
     sender: { to: "parent" }, to: parent.data.email, replyTo: SUPPORT_EMAIL,
     ...planStartEmail({ parentName: parent.data.name, childName: child.data.first_name, price: p.price, firstCharge, planUrl: `${p.origin}/account/plan` }),
   };
-  return sendEmailOnceInTime(planEmailLedger(db, message), { cardId: p.cardId, generation: p.generation }, message, { transport, inTime });
+  return sendEmailOnceInTime(planStartEmailLedger(db, message), { cardId: p.cardId, generation: p.generation }, message, { transport, inTime });
 }
 
 /** A claim this old stopped with no outcome (the same limit as the dispatch's check of a welcome). The email may have gone. */
 const SENDING_STOPPED_MS = 10 * 60 * 1000;
 
 /**
- * After a busy send of the plan start email: what its claim says. `pending`: another run is still sending it, or a refused send may be
- * claimed again. `sent` and `unknown` are final. Throws when it cannot read.
+ * After a busy send of a plan start's email: what that generation's claim says. `pending`: another run is still sending it, or a refused
+ * send may be claimed again. `sent` and `unknown` are final. Throws when it cannot read.
  */
 export async function planStartEmailClaim(db: SupabaseClient<Database>, cardId: string, generation: number, now = Date.now()): Promise<"pending" | "sent" | "unknown"> {
   const state = (status: string | null | undefined, claimedAt: string | null | undefined): "pending" | "sent" | "unknown" => {

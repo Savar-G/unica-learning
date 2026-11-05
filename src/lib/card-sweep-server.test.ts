@@ -23,11 +23,14 @@ interface Net {
   plans: Record<string, unknown>[];
   rpcs: { name: string; body: Record<string, unknown> }[];
   emails: number;
+  /** Slow answers by a part of the request's name, in milliseconds. */
+  slow?: Record<string, number>;
+  /** The send ledger's claims by key, kept across runs. A sent claim is never given again. */
+  claims?: Map<string, string>;
 }
 
 const started = Date.UTC(2026, 10, 5, 19);
 const wait = (ms: number, signal: AbortSignal | null | undefined, entry: Net["log"][number]) => new Promise<void>((resolve, reject) => {
-  if (ms === 0) { entry.endedAt = Date.now() - started; resolve(); return; }
   const timer = setTimeout(() => { entry.endedAt = Date.now() - started; resolve(); }, ms);
   signal?.addEventListener("abort", () => { clearTimeout(timer); entry.aborted = true; entry.endedAt = Date.now() - started; reject(signal.reason); }, { once: true });
 });
@@ -56,13 +59,21 @@ function network(net: Net) {
       if (url.pathname.startsWith("/v1/customers/")) return Response.json({ id: "cus_1", invoice_settings: { default_payment_method: net.customerDefault } });
       return Response.json({ id: "sub_1" });
     }
-    await wait(net.delays.db, signal, entry);
+    await wait(Object.entries(net.slow ?? {}).find(([part]) => url.pathname.endsWith(part))?.[1] ?? net.delays.db, signal, entry);
     const rpc = url.pathname.match(/\/rpc\/(.+)$/)?.[1];
     if (rpc) {
       net.rpcs.push({ name: rpc, body: JSON.parse(text || "{}") });
       if (rpc === "card_check_rows") return Response.json([net.row]);
       if (rpc === "settle_card_update") return Response.json({ state: "flagged" });
-      if (rpc === "claim_workbook_email") return Response.json([{ id: "e1", claim_token: "t1" }]);
+      const body = JSON.parse(text || "{}");
+      // The ledger's rule in both functions: one claim per key, and a claim given back may be taken again.
+      if (rpc === "claim_workbook_email" || rpc === "claim_plan_start_email") {
+        const key = rpc === "claim_workbook_email" ? `${body.p_card_setup_id}:${body.p_kind}:${body.p_workbook_number}` : `${body.p_card}:plan_start:${body.p_generation}`;
+        if (net.claims?.has(key)) return Response.json(rpc === "claim_workbook_email" ? [] : false);
+        net.claims?.set(key, "sending");
+        return Response.json(rpc === "claim_workbook_email" ? [{ id: "e1", claim_token: "t1" }] : true);
+      }
+      if (rpc === "release_plan_start_email") { net.claims?.delete(`${body.p_card}:plan_start:${body.p_generation}`); return Response.json(true); }
       return Response.json(true);
     }
     if (url.pathname.endsWith("/card_setups")) return Response.json(method === "GET" && url.searchParams.get("select")?.includes("price") ? { plan: "one", price: 79.99 } : { parent_id: "p", child_id: "c" });
@@ -179,6 +190,39 @@ it("a pending email goes on the shared transport inside the sweep's time, with n
   expect(net.rpcs).toContainEqual({ name: "note_plan_start_email", body: { p_card: CARD, p_generation: 1, p_state: "sent" } });
 });
 
+const pendingEmail = (generation: number, overrides: Partial<Net> = {}) => {
+  const net = family({ customerDefault: "pm_new", plans: [{ id: "sub_1", status: "trialing", default_payment_method: "pm_new", metadata: { start_key: "key-1" }, trial_end: 1_900_000_000 }], ...overrides });
+  net.row = { ...net.row, start_generation: generation, start_state: "started", start_subscription: "sub_1", start_first_charge: FIRST_CHARGE, start_finished_at: new Date(started - 3_600_000).toISOString(), start_email: "pending" };
+  return net;
+};
+
+it("a second generation gets its own email: the first generation's sent claim does not answer for it", async () => {
+  const claims = new Map<string, string>();
+  const first = pendingEmail(1, { claims });
+  expect((await run(first)).result).toMatchObject({ emails: 1, failed: 0 });
+  expect(first.emails).toBe(1);
+  const second = pendingEmail(2, { claims });
+  expect((await run(second, { at: started + 3_600_000 })).result).toMatchObject({ emails: 1, failed: 0 });
+  expect(second.emails).toBe(1);
+  expect(second.rpcs).toContainEqual({ name: "note_plan_start_email", body: { p_card: CARD, p_generation: 2, p_state: "sent" } });
+});
+
+it("the deadline holds after the reads: at 24 s it may write, an 8 s read ends at 32 s, nothing is sent, and the next run sends it", async () => {
+  const claims = new Map<string, string>();
+  // The row's other reads take no time, so the email's turn comes at 24 s. Its first read then takes 8 s, past the write limit at 30 s.
+  const late = pendingEmail(1, { claims, delays: { ...SLOW, db: 0, stripeRead: 0 }, slow: { "/card_setups": 8_000 } });
+  const { result } = await run(late, { elapsed: 24_000 });
+  expect(late.emails).toBe(0);
+  expect(late.log.filter((r) => r.what.includes("resend"))).toEqual([]);
+  expect(result).toMatchObject({ failed: 0, emails: 0 });
+  expect(late.rpcs.map((r) => r.name)).toContain("release_plan_start_email");
+  expect(late.rpcs.map((r) => r.name)).not.toContain("note_plan_start_email");
+
+  const next = pendingEmail(1, { claims });
+  expect((await run(next, { at: started + 900_000 })).result).toMatchObject({ emails: 1, failed: 0 });
+  expect(next.emails).toBe(1);
+});
+
 it("an email stopped by the deadline: before its request nothing goes, and during its request the outcome is unknown", async () => {
   vi.stubGlobal("fetch", (_input: unknown, init?: RequestInit) => new Promise((_, reject) => init?.signal?.addEventListener("abort", () => reject(init.signal!.reason))));
   const message = { sender: { to: "parent" }, to: "priya@family.ca", subject: "S", text: "T" } as const;
@@ -228,66 +272,19 @@ it("the sweep's emails go on the run's transport with the sweep's signal: the pa
   expect(stuck.rpcs.map((r) => r.name)).not.toContain("finish_plan_start");
 });
 
-it("the paced transport waits for a slow send to finish before the next request", async () => {
+it("the paced transport runs overlapping sends one after another, and a quick send's next request waits the full gap", async () => {
   const starts: number[] = [];
-  const paced = pacedTransport({ send: async () => { starts.push(performance.now()); await new Promise((r) => setTimeout(r, 15_000)); return { status: "sent", emailId: "e" }; } }, 600);
+  let ms = 15_000;
+  const paced = pacedTransport({ send: async () => { starts.push(performance.now()); await new Promise((r) => setTimeout(r, ms)); return { status: "sent", emailId: "e" }; } }, 600);
   const message = { sender: { to: "parent" }, to: "priya@family.ca", subject: "S", text: "T" } as const;
-  const all = Promise.all([paced.send(message), paced.send(message), paced.send(message)]);
+  const slow = Promise.all([paced.send(message), paced.send(message), paced.send(message)]);
   await vi.advanceTimersByTimeAsync(46_000);
-  await all;
+  await slow;
   expect(starts.map((at) => at - starts[0])).toEqual([0, 15_000, 30_000]);
-});
-
-it("an email reached at 24 seconds waits eight seconds for reads, then returns its unsent claim instead of sending at 32 seconds", async () => {
-  const net = family({ customerDefault: "pm_new", delays: { db: 0, stripeRead: 0, stripeWrite: 0, resend: 0 } });
-  net.row = { ...net.row, start_state: "started", start_subscription: "sub_1", start_first_charge: FIRST_CHARGE, start_finished_at: new Date(started - 3_600_000).toISOString(), start_email: "pending" };
-  let atAnnouncement: number | null = null;
-  const base = network(net);
-  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = new URL(input instanceof Request ? input.url : String(input));
-    if (url.pathname.endsWith("/card_setups") && url.searchParams.get("select")?.includes("price")) {
-      atAnnouncement = Date.now() - started;
-      await new Promise((resolve) => setTimeout(resolve, 8_000));
-    }
-    return base(input, init);
-  });
-  vi.setSystemTime(started + 24_000);
-  const result = sweepCardsNow({ origin: "https://unicalearning.com", startedAt: started, transport: pacedTransport(resendTransport(), 600) });
-  await vi.advanceTimersByTimeAsync(10_000);
-  expect(atAnnouncement).toBe(24_000);
-  expect(await result).toMatchObject({ emails: 0 });
-  expect(net.emails).toBe(0);
-  expect(net.rpcs.map((r) => r.name)).toContain("release_plan_start_email");
-  expect(net.rpcs.map((r) => r.name)).not.toContain("note_plan_start_email");
-});
-
-it("an email claimed in time but delayed by another send past 30 seconds gives back its claim and sends next run", async () => {
-  const net = family({ customerDefault: "pm_new", delays: { db: 0, stripeRead: 0, stripeWrite: 0, resend: 0 } });
-  net.row = { ...net.row, start_generation: 2, start_state: "started", start_subscription: "sub_2", start_first_charge: FIRST_CHARGE, start_finished_at: new Date(started - 3_600_000).toISOString(), start_email: "pending" };
-  const sends: number[] = [];
-  let hold: () => void = () => {};
-  let first = true;
-  const transport = pacedTransport({ send: async () => {
-    sends.push(Date.now() - started);
-    if (first) { first = false; await new Promise<void>((resolve) => { hold = resolve; }); }
-    return { status: "sent", emailId: "email" };
-  } }, 600);
-  vi.stubGlobal("fetch", network(net));
-  vi.setSystemTime(started + 24_000);
-  const earlier = transport.send({ sender: { to: "savar" }, to: "team@example.invalid", subject: "Earlier", text: "Earlier" });
-  const run = sweepCardsNow({ origin: "https://unicalearning.com", startedAt: started, transport });
-  await vi.advanceTimersByTimeAsync(0);
-  expect(net.rpcs.map((r) => r.name)).toContain("claim_plan_start_email");
-  await vi.advanceTimersByTimeAsync(8_000);
-  hold();
-  await earlier;
-  expect(await run).toMatchObject({ emails: 0 });
-  expect(sends).toEqual([24_000]);
-  expect(net.rpcs).toContainEqual({ name: "release_plan_start_email", body: { p_card: CARD, p_generation: 2, p_token: expect.any(String) } });
-  expect(net.rpcs.map((r) => r.name)).not.toContain("note_plan_start_email");
-  const next = sweepCardsNow({ origin: "https://unicalearning.com", startedAt: Date.now(), transport });
-  await vi.advanceTimersByTimeAsync(1_000);
-  expect(await next).toMatchObject({ emails: 1 });
-  expect(sends).toEqual([24_000, 32_000]);
-  expect(net.rpcs).toContainEqual({ name: "note_plan_start_email", body: { p_card: CARD, p_generation: 2, p_state: "sent" } });
+  ms = 10;
+  starts.length = 0;
+  const quick = Promise.all([paced.send(message), paced.send(message)]);
+  await vi.advanceTimersByTimeAsync(2_000);
+  await quick;
+  expect(starts[1] - starts[0]).toBe(600);
 });

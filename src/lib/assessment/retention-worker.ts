@@ -106,7 +106,7 @@ export async function runRetentionWorker(config: WorkerConfiguration, store: Ret
   }
   // Unknown or unprocessed candidates make an incomplete run visible to the operator. So does a copy that a deletion
   // could not write: that deletion would stop.
-  const ok = decisions.unknown === 0 && counts.plan_start === 0 && counts.failed === 0 && deferred === 0 && copy.failed === 0;
+  const ok = decisions.unknown === 0 && counts.failed === 0 && deferred === 0 && copy.failed === 0;
   if (dry) return { ok, dry: true, eligible: counts.eligible, deferred, ...decisions, copy: { ...copy, fields: copyFieldNames() } };
   return { ok, ...counts, deferred, ...decisions };
 }

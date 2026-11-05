@@ -35,4 +35,3 @@ begin
       and (s.email_send_status is null or s.email_send_status = 'failed');
   return found;
 end $$;
-

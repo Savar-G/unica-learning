@@ -1,18 +1,14 @@
 import { beforeEach, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
-const f = vi.hoisted(() => ({ session: vi.fn(), receipt: vi.fn(), books: vi.fn(), stripe: vi.fn(), start: vi.fn(), admin: vi.fn(), hold: vi.fn(), release: vi.fn() }));
+const f = vi.hoisted(() => ({ session: vi.fn(), receipt: vi.fn(), books: vi.fn(), stripe: vi.fn(), start: vi.fn(), admin: vi.fn(), hold: vi.fn(), release: vi.fn(), confirm: vi.fn() }));
 vi.mock("@/lib/admin-store", () => ({ adminSession: f.session }));
 vi.mock("@/lib/workbook-delivery-store", () => ({ workbookDeliveryStore: () => ({ receipt: f.receipt }) }));
 vi.mock("@/lib/workbook-store", () => ({ workbookStore: () => ({ childWorkbooks: f.books }) }));
 vi.mock("@/lib/stripe", () => ({ stripe: f.stripe, startPlan: f.start }));
 vi.mock("@/lib/supabase-auth", () => ({ adminClient: f.admin }));
-vi.mock("@/lib/workbook-email-server", () => ({ sendPlanStartEmail: vi.fn() }));
+vi.mock("@/lib/workbook-email-server", () => ({ sendPlanStartEmail: f.confirm }));
 vi.mock("@/lib/family-deletion-store", () => ({ holdPlanStart: f.hold, endCardOperation: f.release }));
 import { POST } from "./route";
-import Stripe from "stripe";
-import { memoryBilling } from "@/lib/billing-memory";
-import { requestFamilyDelete } from "@/lib/family-delete";
-import { memoryDeleteStore, memoryFamily, memoryPlans } from "@/lib/family-delete-memory";
 const id = "00000000-0000-4000-8000-000000000001";
 const book = { id, childId: "child", parentId: "parent", number: 1, status: "shipped" };
 const receipt = { workbookId: id, childId: "child", parentId: "parent", number: 1 };
@@ -24,7 +20,8 @@ beforeEach(() => {
   chain.select.mockReturnValue(chain); chain.eq.mockReturnValue(chain);
   f.session.mockResolvedValue({ db: { rpc: () => chain } });
   f.books.mockResolvedValue([book]); f.receipt.mockResolvedValue(receipt);
-  f.stripe.mockReturnValue({ provider: "fake" }); f.start.mockResolvedValue({ ok: true, generation: 1, subscription: "sub", firstChargeAt: "2026-12-02" });
+  f.stripe.mockReturnValue({ provider: "fake" }); f.start.mockResolvedValue({ ok: true, subscription: "sub", firstChargeAt: "2026-12-02", generation: 1 });
+  f.confirm.mockResolvedValue({ status: "sent", emailId: "email-1" });
   f.admin.mockReturnValue({ service: true }); f.hold.mockResolvedValue("held"); f.release.mockResolvedValue(undefined);
 });
 it("holds the family before Stripe, so a plan cannot start under a deletion, and lets go after a known result", async () => {
@@ -53,44 +50,25 @@ it("starts no plan when the hold cannot be taken", async () => {
   expect((await POST(request(), context)).status).toBe(503);
   expect(f.start).not.toHaveBeenCalled();
 });
-it("an unconfirmed return releases the card hold, but its open start prevents deletion until the late plan resolves", async () => {
-  const family = memoryFamily({ plans: { customer: [] } });
-  const billing = memoryBilling({ children: [{ parentId: "parent", childId: "child", firstName: "Leah", card: { id, customer: "customer", saved: true } }] });
-  let land: () => void = () => {};
-  const s = new Stripe("sk_test_synthetic", { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(async (input, init) => {
-    const url = new URL(String(input));
-    if (url.pathname === "/v1/subscriptions" && init?.method === "POST") {
-      land = () => { family.plans.customer.push("sub_late"); };
-      throw new Error("The creation answer was lost");
-    }
-    if (url.pathname === "/v1/subscriptions") return Response.json({ object: "list", data: [], has_more: false });
-    if (url.pathname.startsWith("/v1/customers/")) return Response.json({ id: "customer", invoice_settings: { default_payment_method: { id: "pm_1", type: "card" } } });
-    if (url.pathname.startsWith("/v1/products/")) return Response.json({ id: "unica_math" });
-    throw new Error(`Unexpected request ${url.pathname}`);
-  }) });
-  const real = await vi.importActual<typeof import("@/lib/stripe")>("@/lib/stripe");
-  f.stripe.mockReturnValue(s);
-  f.hold.mockImplementation(async () => { family.holds++; return "held"; });
-  f.release.mockImplementation(async () => { family.holds--; });
-  f.start.mockImplementation(async (client, params) => {
-    const result = await real.startPlan(client, params, undefined, billing.store);
-    family.planStartOpen = billing.planStarts.get(id)?.some((start) => start.state === "open") ?? false;
-    return result;
-  });
+it("lets go of the hold when startPlan answers unconfirmed: a timeout takes this return path, and the plan start record, not the hold, then refuses a deletion", async () => {
+  f.start.mockResolvedValue({ ok: false, error: "unconfirmed" });
   const response = await POST(request(), context);
   expect(response.status).toBe(409);
   expect(await response.json()).toEqual({ ok: false, error: "unconfirmed" });
-  expect(family.holds).toBe(0);
-  expect(family.planStartOpen).toBe(true);
-  const remove = () => requestFamilyDelete("parent", { password: "right", confirm: "DELETE" }, async () => "ok", { store: memoryDeleteStore(family), plans: memoryPlans(family) });
-  expect(await remove()).toEqual({ ok: false, error: "plan_start" });
-  expect(family.fenced).toBe(false);
-  land();
-  expect(await remove()).toEqual({ ok: false, error: "plan_start" });
-  await billing.store.finishPlanStart(id, 1, { state: "started", subscription: "sub_late", firstCharge: "2026-12-02", email: true });
-  family.planStartOpen = false;
-  expect(await remove()).toEqual({ ok: true, plansStopped: 1 });
-  expect(family.plans.customer).toEqual([]);
+  expect(f.release).toHaveBeenCalledExactlyOnceWith({ service: true }, id);
+});
+it("keeps the hold when startPlan throws: its work stopped at a point it cannot name, and a retry with the same key ends the hold", async () => {
+  f.start.mockRejectedValue(new Error("Store down"));
+  expect((await POST(request(), context)).status).toBe(502);
+  expect(f.release).not.toHaveBeenCalled();
+  f.start.mockResolvedValue({ ok: true, subscription: "sub", firstChargeAt: "2026-12-02", generation: 1 });
+  expect((await POST(request(), context)).status).toBe(200);
+  expect(f.release).toHaveBeenCalledExactlyOnceWith({ service: true }, id);
+});
+it("sends the confirmation of the start's own generation", async () => {
+  f.start.mockResolvedValue({ ok: true, subscription: "sub", firstChargeAt: "2026-12-02", generation: 3 });
+  expect((await POST(request(), context)).status).toBe(200);
+  expect(f.confirm).toHaveBeenCalledExactlyOnceWith({ service: true }, { cardId: id, generation: 3, price: 79.99, firstChargeAt: "2026-12-02", origin: "https://example.test" });
 });
 it("makes zero billing calls when the first receipt is absent or belongs to book 2", async () => {
   for (const value of [null, { ...receipt, number: 2 }, { ...receipt, childId: "other" }]) {

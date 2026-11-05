@@ -38,7 +38,7 @@ describe("the free month starts after home delivery confirmation", () => {
   });
   it("starts a full 30-day trial after delivery, with an audit reason and a recorded send key", async () => {
     const f = provider();
-    expect(await startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt, locks())).toEqual({ ok: true, generation: 1, subscription: "sub_trial", firstChargeAt: "2026-12-05T18:00:00.000Z" });
+    expect(await startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt, locks())).toEqual({ ok: true, subscription: "sub_trial", firstChargeAt: "2026-12-05T18:00:00.000Z", generation: 1 });
     const create = f.requests.filter((r) => r.path.endsWith("/subscriptions") && r.method === "POST");
     expect(create).toHaveLength(1);
     expect(create[0].body.get("trial_period_days")).toBe("30");

@@ -36,45 +36,66 @@ export type SendResult =
   /** The email may have gone (a 5xx or 408 answer, a timeout, no answer). Nothing sends it again automatically. */
   | { status: "unknown"; error: string };
 
+/** How one send may be stopped. */
+export interface SendOptions {
+  /**
+   * Stops the send. Stopped before the request starts, it is "refused", as nothing went. Stopped during the request, it is "unknown".
+   */
+  signal?: AbortSignal;
+  /**
+   * Asked last, right before the request starts, after any wait of the transport. False: nothing goes, and the answer is "refused".
+   * A transport with no wait of its own may leave it unasked, as its caller has just checked.
+   */
+  mayStart?(): boolean;
+}
+
 /** The mail transport seam: Resend in production (src/lib/email-resend.ts), in memory in tests. */
 export interface MailTransport {
-  /**
-   * Sends one message. Never throws: a request that ends without an answer is "unknown". `signal`: stops the send. Stopped before
-   * the request starts, it is "refused", as nothing went. Stopped during the request, it is "unknown".
-   */
-  send(message: EmailMessage, options?: { signal?: AbortSignal; inTime?: () => boolean }): Promise<SendResult>;
+  /** Sends one message. Never throws: a request that ends without an answer is "unknown". */
+  send(message: EmailMessage, options?: SendOptions): Promise<SendResult>;
 }
 
 const OUT_OF_TIME: SendResult = { status: "refused", error: "The send did not start: the time ran out" };
 
+/** Answers true when `ms` passed, and false at the signal. */
+function waited(ms: number, signal?: AbortSignal): Promise<boolean> {
+  if (signal?.aborted) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const stop = () => { clearTimeout(timer); resolve(false); };
+    const timer = setTimeout(() => { signal?.removeEventListener("abort", stop); resolve(true); }, ms);
+    signal?.addEventListener("abort", stop, { once: true });
+  });
+}
+
 /**
- * One transport that starts one request every `gapMs`, for everything one run sends, whoever sends it and however the sends overlap.
- * Requests run one after another. The gap is measured from the previous request's actual start. A stopped send sends nothing.
+ * One transport for everything one run sends, whoever sends it and however the sends overlap. Sends run one after another: a request
+ * starts when the one before it has its answer and at least `gapMs` after that request really started. The gap is measured when the
+ * turn comes, not reserved beforehand, so a process pause cannot make two requests start together. A send stopped in the queue answers
+ * at once, sends nothing and holds up nothing.
  */
 export function pacedTransport(transport: MailTransport, gapMs: number): MailTransport {
-  let lastStart: number | null = null;
-  let tail: Promise<unknown> = Promise.resolve();
+  let lastStart = -Infinity;
+  let queue: Promise<void> = Promise.resolve();
   return {
     send(message, options) {
       const signal = options?.signal;
-      const send = tail.then(async () => {
-        if (signal?.aborted || options?.inTime?.() === false) return OUT_OF_TIME;
-        const remaining = lastStart === null ? 0 : lastStart + gapMs - performance.now();
-        if (remaining > 0) {
-          const ready = await new Promise<boolean>((resolve) => {
-            const stop = () => { clearTimeout(timer); resolve(false); };
-            const timer = setTimeout(() => { signal?.removeEventListener("abort", stop); resolve(true); }, remaining);
-            signal?.addEventListener("abort", stop, { once: true });
-          });
-          if (!ready) return OUT_OF_TIME;
-        }
-        // A database read, a prior request, or a process pause may have used the remaining time.
-        if (signal?.aborted || options?.inTime?.() === false) return OUT_OF_TIME;
-        lastStart = performance.now();
-        return transport.send(message, options);
+      if (signal?.aborted) return Promise.resolve(OUT_OF_TIME);
+      return new Promise<SendResult>((resolve, reject) => {
+        const stop = () => resolve(OUT_OF_TIME);
+        signal?.addEventListener("abort", stop, { once: true });
+        queue = queue.then(async () => {
+          // A timer can fire early and a pause late, so each pass reads the clock again.
+          for (let left = lastStart + gapMs - performance.now(); left > 0; left = lastStart + gapMs - performance.now()) {
+            if (!await waited(left, signal)) return;
+          }
+          if (signal?.aborted) return;
+          signal?.removeEventListener("abort", stop);
+          if (options?.mayStart && !options.mayStart()) return resolve(OUT_OF_TIME);
+          lastStart = performance.now();
+          // A throw goes to this send's own caller, and the queue goes on.
+          try { resolve(await transport.send(message, options)); } catch (e) { reject(e); }
+        });
       });
-      tail = send.catch(() => {});
-      return send;
     },
   };
 }
@@ -144,8 +165,8 @@ export async function sendEmailOnce<K, H>(
 }
 
 /**
- * sendEmailOnce with one more check: after the claim, `inTime` decides if the send may start. When it may not, nothing
- * goes and the claim is given back. Throws only when the claim itself fails.
+ * sendEmailOnce with one more check: after the claim, and again right before the request, after the transport's wait, `inTime` decides
+ * if the send may start. When it may not, nothing goes and the claim is given back. Throws only when the claim itself fails.
  */
 export async function sendEmailOnceInTime<K, H>(
   ledger: ReleasableLedger<K, H>,
@@ -155,11 +176,11 @@ export async function sendEmailOnceInTime<K, H>(
 ): Promise<TimedDeliveryOutcome> {
   const handle = await ledger.claim(key, claimFields);
   if (handle === null) return { status: "busy" };
-  let stopped = false;
-  const check = () => { const allowed = inTime(); if (!allowed) stopped = true; return allowed; };
-  if (check()) {
-    const result = await sendThrough(transport, message, { inTime: check });
-    if (!stopped) return recordDelivery(ledger, handle, key, message, result);
+  let late = !inTime();
+  if (!late) {
+    const mayStart = () => { late = !inTime(); return !late; };
+    const result = await sendThrough(transport, message, { mayStart });
+    if (!late) return recordOutcome(ledger, handle, key, message, result);
   }
   try {
     return { status: "not_sent", released: await ledger.release(handle, key) };
@@ -171,11 +192,11 @@ export async function sendEmailOnceInTime<K, H>(
 
 /** Sends a claimed email, then records the outcome and the copy. */
 async function deliverClaimed<K, H>(ledger: SendLedger<K, H>, handle: H, key: K, message: EmailMessage, transport: MailTransport): Promise<SendResult> {
-  const result = await sendThrough(transport, message);
-  return recordDelivery(ledger, handle, key, message, result);
+  return recordOutcome(ledger, handle, key, message, await sendThrough(transport, message));
 }
 
-async function recordDelivery<K, H>(ledger: SendLedger<K, H>, handle: H, key: K, message: EmailMessage, result: SendResult): Promise<SendResult> {
+/** Records a claimed email's outcome and its copy. */
+async function recordOutcome<K, H>(ledger: SendLedger<K, H>, handle: H, key: K, message: EmailMessage, result: SendResult): Promise<SendResult> {
   // The ledger's writes never throw by contract. If one does anyway, the email's outcome still reaches the caller; a
   // write that did not happen leaves the claim held, so the email is not sent again.
   try {
@@ -208,9 +229,9 @@ export async function sendEmail(message: EmailMessage, { transport = resendTrans
 export const emailConfigProblem = (): string | null => resendConfigProblem();
 
 /** A transport that throws anyway may have reached the provider, so its outcome is unknown. */
-async function sendThrough(transport: MailTransport, message: EmailMessage, options?: Parameters<MailTransport["send"]>[1]): Promise<SendResult> {
+async function sendThrough(transport: MailTransport, message: EmailMessage, options?: SendOptions): Promise<SendResult> {
   try {
-    return await transport.send(message, options);
+    return await (options ? transport.send(message, options) : transport.send(message));
   } catch (e) {
     return { status: "unknown", error: `Email delivery is unknown: ${e instanceof Error ? e.message : String(e)}. Check delivery before sending again.` };
   }

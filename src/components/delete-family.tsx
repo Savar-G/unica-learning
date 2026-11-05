@@ -7,7 +7,7 @@ const ERRORS: Record<string, string> = {
   confirmation: "Enter the parent's email address exactly as shown.",
   protected: "An admin account cannot be deleted here.",
   busy: "A card action is in progress. Try again after it finishes.",
-  plan_start: "Finish the family's open plan start before you request deletion. Check Next steps.",
+  plan_start: "A plan start has an unknown outcome, and Stripe may still make that plan. It ends when the plan shows up, or when you close it on the card under Next steps. Then try again.",
   unavailable: "Deletion is unavailable. Try again later.",
   pending: "Deletion is incomplete. The request is saved. Select Delete family to try again.",
 };

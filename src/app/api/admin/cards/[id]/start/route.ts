@@ -38,8 +38,9 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
     if (!s) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
     // #556: a family's deletion request reads no plans, so a plan must not start under one. Started first, this hold makes
     // the request wait for a retry that sees the plan. Requested first, the fence refuses the hold, and so does the delete's
-    // hold, from before its final plan read. An unconfirmed return releases this hold. The durable open start then refuses
-    // every deletion request and worker claim until Stripe's outcome resolves or the team closes the record.
+    // hold, from before its final plan read. A throw below stopped at a point it cannot name, so the hold stays until a retry.
+    // An answer ends the hold, "unconfirmed" too: Stripe may still make that plan, but the open plan start record refuses the
+    // family's deletion in the database until it resolves or an admin closes it, which can take days (#554).
     const service = adminClient();
     if (!service) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
     if (await holdPlanStart(service, card.parent_id, card.id) === "fenced") return Response.json({ ok: false, error: "family_unavailable" }, { status: 409 });
