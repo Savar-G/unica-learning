@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { BC_SKILL_MAP, type Grade, type StrandStatus } from "@/lib/assessment";
 import { childProfileFacts } from "@/lib/child-profile";
 import { curriculumFor } from "@/lib/workbook-curriculum";
+import { bookSignals } from "@/lib/workbook-signals";
+import { bookPersona, sampleChild, samplePlanInput } from "@/lib/workbook-sample-profiles";
 import {
   A_TO_B,
   DEFAULT_STEPS,
@@ -690,5 +692,57 @@ describe("the two-week curriculum plan: placement checks (CONTEXT 2)", () => {
         expect(A / B, `U${l.number} day ${day.day}`).toBeLessThanOrEqual(A_TO_B.max);
       }
     }
+  });
+});
+
+
+describe("personal plan bounds", () => {
+  it("keeps practice at 8-10, the new-idea floor, page counts and three Challenge items in every band", () => {
+    for (const level of ["U4", "U9", "U10", "U16", "U18", "U19", "U27", "U30"]) {
+      const i = samplePlanInput(BC, sampleChild(BC, level)!, "first");
+      const personal = bookSignals({ grade: i.grade, profile: bookPersona("ahead").profile });
+      const p = plan({ ...i, personal });
+      for (const day of p.days) {
+        expect(day.pages).toHaveLength(p.level < 19 ? 8 : 6);
+        expect(day.time!.estimated).toBeLessThan(35);
+        expect(day.pages.flatMap(pg => pg.parts).filter(p => p.kind === "challenge").reduce((n,p) => n+p.items,0)).toBe(3);
+        for (const part of day.pages.flatMap(pg => pg.parts)) {
+          if (part.kind === "practice") {
+            expect(part.items).toBeGreaterThanOrEqual(8);
+            expect(part.items).toBeLessThanOrEqual(10);
+          }
+          if (part.kind === "new-idea") expect(part.items).toBeGreaterThanOrEqual(p.level <= 9 ? 2 : p.level <= 18 ? 3 : 2);
+          if (part.kind === "challenge" && part.step) {
+            expect(p.newSteps.some(s => s.skill === part.step!.skill && s.step === part.step!.step && s.day <= day.day)).toBe(true);
+          }
+        }
+      }
+    }
+  });
+
+  it("lets AI break equal weak ties, but never put an early weakness before a clear one", () => {
+    const i = samplePlanInput(BC, sampleChild(BC, "U13")!, "first");
+    const personal = bookSignals({ grade: 4, profile: bookPersona("ahead").profile });
+    personal.weak = ["4.1", "4.9"].map(code => ({ code, grade: 4, status: "developing", certainty: "clear", aboveGrade: false }));
+    personal.clearlyWeak = personal.weak;
+    personal.secure = personal.secure.filter(s => !["4.1", "4.9"].includes(s.code));
+    const base = plan({ ...i, personal });
+    personal.soft.weakOrder = ["4.9", "4.1", "9.5"];
+    const tie = plan({ ...i, personal });
+    expect(base.newSteps[0].unit).toBe("4.1");
+    expect(tie.newSteps[0].unit).toBe("4.9");
+    expect(tie.level).toBe(base.level);
+    expect(tie.days.map(d => d.pages.length)).toEqual(base.days.map(d => d.pages.length));
+    personal.weak[1].certainty = "early-sign";
+    expect(plan({ ...i, personal }).newSteps[0].unit).toBe("4.1");
+    expect(tie.newSteps.some(s => s.unit === "9.5")).toBe(false);
+  });
+
+  it("moves a passed weak review through the same 2, 5 and 15 day intervals", () => {
+    const first = { skill: "4.3-estimate-sums", step: 1, interval: 0, due: 3 };
+    const second = nextReview(first, 3, true)!;
+    expect(second).toMatchObject({ interval: 1, due: 8 });
+    expect(nextReview(second, 8, true)).toMatchObject({ interval: 2, due: 23 });
+    expect(nextReview(second, 8, false)).toMatchObject({ interval: 0, due: 10 });
   });
 });
