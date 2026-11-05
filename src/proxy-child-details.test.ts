@@ -4,7 +4,10 @@ import { proxy } from "./proxy";
 
 // While the child's desk is open on this device, the Account tab's name and learning card routes stay closed (#555).
 vi.mock("@/lib/scan-pages-access", () => ({ scanPagesAccess: async () => false }));
-vi.mock("@supabase/ssr", () => ({ createServerClient: () => ({ auth: { getClaims: async () => ({ data: { claims: { sub: "00000000-0000-4000-8000-000000000001" } }, error: null }) } }) }));
+vi.mock("@supabase/ssr", () => ({ createServerClient: () => ({ auth: { getClaims: async () => ({ data: { claims: { sub: "00000000-0000-4000-8000-000000000001" } }, error: null }) },
+  // The proxy reads the family's deletion state first (#556); no deletion is queued for this family.
+  rpc: async (name: string) => name === "my_family_deletion_state" ? { data: null, error: null } : { data: null, error: { code: "PGRST202" } },
+}) }));
 
 const locked = (path: string, method = "POST") => new NextRequest(`https://unicalearning.com${path}`, { method, headers: { Cookie: "unica_desk=00000000-0000-4000-8000-000000000001.00000000-0000-4000-8000-000000000002" } });
 
