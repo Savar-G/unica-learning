@@ -52,7 +52,10 @@ function setup(o: {
     itemPolicy: o.itemPolicy ?? "legacy",
     runs, drafts, files: o.files ?? files, ai, template: workbookTemplate(), fit: () => fits, engine: fakePrintEngine(),
     solver: o.solver === undefined ? keySolver() : o.solver, ...(o.solveCost ? { solveCost: o.solveCost } : {}),
-    source: { inputs: async (id) => (id === CHILD ? (o.inputs ?? child()) : null) },
+    source: {
+      inputs: async (id) => (id === CHILD ? (o.inputs ?? child()) : null),
+      prepareProfile: async () => ({ ok: true, profile: o.inputs?.profile ?? null }),
+    },
     newId, qrToken: () => `token-${String(++tokens).padStart(12, "0")}`, fileKey: () => `k${ids}`,
     now: () => clock.getTime(), concurrency: o.concurrency ?? 4, budgetMs: o.budgetMs ?? 1e9, handOff: o.handOff,
   };
@@ -304,7 +307,8 @@ describe("stale runs", () => {
     expect(await startWorkbookRun(s.runs, CHILD, ADMIN)).toEqual({ status: "busy", runId: first });
     s.tick(STALE_SECONDS + 1);
     expect(await startWorkbookRun(s.runs, CHILD, ADMIN)).toEqual({ status: "stalled", runId: first });
-    expect(await runWorkbookJob(first, s.deps, { resume: true })).toBe("done");
+    expect(await runWorkbookJob(first, s.deps, { resume: true })).toBe("failed");
+    expect((await s.runs.run(first))!.error).toBe("This run has no stored plan, so it cannot resume safely. Start a new run.");
   });
 
   it("never lets a call whose run was taken up by another write over the newer call's work", async () => {
@@ -651,7 +655,7 @@ describe("a run's plan, made once and stored (R379-8-2), and its solve checks ke
 
     const s = setup();
     let inputs = child();
-    s.deps.source = { inputs: async () => inputs };
+    s.deps.source = { ...s.deps.source, inputs: async () => inputs };
     const id = await stoppedAt(s);
     expect(s.runs.pageStore.get(id)?.size ?? 0).toBe(0);
     expect(s.runs.callStore.get(id)!.size).toBeGreaterThan(0);
@@ -708,7 +712,7 @@ describe("a run's plan, made once and stored (R379-8-2), and its solve checks ke
     const id = await stoppedAt(s);
     s.runs.frameStore.delete(id);
     expect(await runWorkbookJob(id, s.deps, { resume: true })).toBe("failed");
-    expect((await s.runs.run(id))!.error).toBe("This run was started before a run's plan was stored, so it cannot go on safely. Start a new run.");
+    expect((await s.runs.run(id))!.error).toBe("This run has no stored plan, so it cannot resume safely. Start a new run.");
   });
 
   it("fails closed when a stored page or call does not fit the stored plan's pages and slots", async () => {
