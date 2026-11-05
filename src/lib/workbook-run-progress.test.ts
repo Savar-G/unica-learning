@@ -6,7 +6,7 @@ const NOW = new Date("2026-11-05T12:00:00Z");
 const ago = (seconds: number) => new Date(NOW.getTime() - seconds * 1000).toISOString();
 
 const run = (o: Partial<Parameters<typeof runProgress>[0]> = {}): Parameters<typeof runProgress>[0] => ({
-  step: "write", attempts: 1, maxAttempts: 2, donePages: 20, totalPages: 80, heartbeatAt: ago(5), createdAt: ago(900), errors: [], ...o,
+  step: "write", attempts: 1, maxAttempts: 2, donePages: 20, totalPages: 80, heartbeatAt: ago(5), createdAt: ago(900), startedAt: ago(800), resumes: 0, errors: [], ...o,
 });
 /** `count` pages, the newest `newest` seconds ago, `every` seconds apart. */
 const pages = (count: number, every: number, newest = 5) => Array.from({ length: count }, (_, i) => ago(newest + (count - 1 - i) * every));
@@ -54,7 +54,7 @@ describe("is the run working", () => {
   it("starts the wait for saved work again on a new try", () => {
     const errors = [{ attempt: 1, at: ago(30), error: "lost" }];
     const v = runProgress(run({ attempts: 2, errors }), activity(pages(20, 5, 600)), NOW);
-    expect(v.signal).toEqual({ warn: false, text: "Working. Last saved work 30 seconds ago." });
+    expect(v.signal).toEqual({ warn: false, text: "Working. No new page or AI answer has been saved yet. Last signal from the job 5 seconds ago." });
   });
 
   it("shows no negative time when the database clock is ahead", () => {

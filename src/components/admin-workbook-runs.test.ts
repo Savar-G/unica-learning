@@ -5,7 +5,7 @@ import type { RunDetail } from "@/lib/admin-store";
 import type { RunSolve } from "@/lib/workbook-job";
 import { workedSteps, type QuestionPackage } from "@/lib/question-package";
 import { solveReason, toSolve } from "@/lib/workbook-solve-check";
-import { AdminWorkbookRun, ChildRunsTable } from "@/components/admin-workbook-runs";
+import { AdminWorkbookList, AdminWorkbookRun, ChildRunsTable } from "@/components/admin-workbook-runs";
 import { buildQuestion } from "@/lib/workbook-generator-items";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { summarizeAiCalls } from "@/lib/workbook-ai";
@@ -180,7 +180,7 @@ describe("admin workbook questions left out for room (#380)", () => {
 describe("admin workbook run progress", () => {
   const now = new Date("2026-11-01T20:00:00Z");
   const ago = (seconds: number) => new Date(now.getTime() - seconds * 1000).toISOString();
-  const running = (o: Partial<RunDetail["run"]> = {}): RunDetail["run"] => ({ ...runDetail("agreed").run, status: "running", step: "write", donePages: 20, totalPages: 80, heartbeatAt: ago(5), finishedAt: null, draftId: null, runner: "mac", ...o });
+  const running = (o: Partial<RunDetail["run"]> = {}): RunDetail["run"] => ({ ...runDetail("agreed").run, status: "running", step: "write", donePages: 20, totalPages: 80, createdAt: ago(900), startedAt: ago(800), heartbeatAt: ago(5), finishedAt: null, draftId: null, runner: "mac", ...o });
   const activity = { pageTimes: Array.from({ length: 20 }, (_, i) => ago(12 + (19 - i) * 10)), lastWorkAt: ago(12) };
   const onRunPage = (run: RunDetail["run"], worker: Parameters<typeof AdminWorkbookRun>[0]["worker"] = null) =>
     visible(renderToStaticMarkup(createElement(AdminWorkbookRun, { email: "admin@example.com", detail: { ...runDetail("agreed"), run, draft: null, activity }, now, only: false, worker })));
@@ -198,10 +198,21 @@ describe("admin workbook run progress", () => {
   it("says a queued run waits for the Mac, and whether the Mac is online", () => {
     const queued = running({ status: "queued", step: null, donePages: null, totalPages: null, heartbeatAt: null });
     const seen = { id: "w", seenAt: ago(5), startedAt: ago(100), build: null, runId: null, primaryAi: "subscription" as const };
-    expect(onChildPage(queued, { ...seen, online: true })).toContain("Waiting for the Mac. It is online, so this run starts in a few seconds.");
+    expect(onChildPage(queued, { ...seen, online: true })).toContain("Waiting for the Mac. The workbook worker is online.");
     expect(onChildPage(queued, { ...seen, online: false })).toContain("Waiting for the Mac. It is offline, last seen");
     expect(onChildPage(queued)).toContain("Waiting for the Mac.");
     expect(onRunPage(queued)).toContain("The workbook worker has never run.");
+  });
+
+  it.each([null, "another-run"])("makes no start-time promise with worker run %s on any page", (runId) => {
+    const run = running({ status: "queued", step: null, donePages: null, totalPages: null, heartbeatAt: null });
+    const worker = { id: "w", seenAt: ago(5), startedAt: ago(100), build: null, runId, primaryAi: "subscription" as const, online: true };
+    const list = visible(renderToStaticMarkup(createElement(AdminWorkbookList, { email: "admin@example.com", runs: [{ run, counts: null, notRendered: null, oldFormat: false }], now, worker, more: false, workbooks: [], childNames: new Map(), filter: "all" })));
+    for (const text of [onRunPage(run, worker), onChildPage(run, worker), list]) {
+      expect(text).not.toMatch(/starts in a few seconds|starts this run in a few seconds/);
+      expect(text).toContain(runId ? "It is making another workbook" : "The workbook worker is online");
+      expect(text).toContain("Stop this run");
+    }
   });
 
   it("shows the Stop button only while the run can be stopped, also when it has gone quiet", () => {

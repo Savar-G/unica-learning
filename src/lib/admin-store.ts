@@ -647,14 +647,18 @@ export interface RunListRow {
 async function runActivity(a: AdminSession, runId: string): Promise<RunActivity> {
   const newest = (table: "workbook_run_calls" | "workbook_run_solves") => a.db.from(table).select("created_at").eq("run_id", runId).order("created_at", { ascending: false }).limit(1)
     .then((r) => must<{ created_at: string }[]>(r, table));
-  const [pages, calls, solves] = await Promise.all([
+  const [pages, calls, solves, frame, resumed] = await Promise.all([
     a.db.from("workbook_run_pages").select("created_at").eq("run_id", runId).order("created_at").range(0, 999).then((r) => must<{ created_at: string }[]>(r, "workbook run pages")),
     newest("workbook_run_calls"),
     newest("workbook_run_solves"),
+    a.db.from("workbook_run_frames").select("created_at").eq("run_id", runId).limit(1)
+      .then((r) => must<{ created_at: string }[]>(r, "workbook run plan time")),
+    a.db.from("workbook_audit").select("at").eq("run_id", runId).eq("action", "run-resumed").order("at", { ascending: false }).limit(1)
+      .then((r) => must<{ at: string }[]>(r, "workbook run resume time")),
   ]);
   const pageTimes = pages.map((p) => p.created_at);
   const lastWorkAt = [pageTimes.at(-1), calls[0]?.created_at, solves[0]?.created_at].filter((t): t is string => !!t).sort((x, y) => Date.parse(x) - Date.parse(y)).at(-1) ?? null;
-  return { pageTimes, lastWorkAt };
+  return { pageTimes, lastWorkAt, writingStartedAt: frame[0]?.created_at ?? null, resumedAt: resumed[0]?.at ?? null };
 }
 
 const DRAFT_COUNT_COLUMNS = "id, schema_version, pages, questions, failed, not_checked, failed_pages, cover:draft->pages->0->content";

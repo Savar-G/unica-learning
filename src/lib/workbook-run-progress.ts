@@ -13,6 +13,10 @@ import { STALE_SECONDS, type WorkbookRun } from "@/lib/workbook-job";
 export interface RunActivity {
   pageTimes: string[];
   lastWorkAt: string | null;
+  /** The stored plan's first save starts writing, but is not a saved page or AI answer. */
+  writingStartedAt?: string | null;
+  /** The newest run-resumed audit time, even when the pause was short. */
+  resumedAt?: string | null;
 }
 
 export interface RunProgressView {
@@ -29,7 +33,7 @@ export interface RunProgressView {
   timeLeft: string;
 }
 
-type ProgressRun = Pick<WorkbookRun, "step" | "attempts" | "maxAttempts" | "donePages" | "totalPages" | "heartbeatAt" | "createdAt" | "errors">;
+type ProgressRun = Pick<WorkbookRun, "step" | "attempts" | "maxAttempts" | "donePages" | "totalPages" | "heartbeatAt" | "createdAt" | "startedAt" | "resumes" | "errors">;
 
 /** Warn when there is no signal or no saved work for this long. */
 export const WARN_SECONDS = 120;
@@ -56,6 +60,11 @@ const span = (seconds: number) => (seconds < 60 ? plural(Math.floor(seconds), "s
 
 const STOP_MINUTES = STALE_SECONDS / 60;
 
+const newestTime = (...values: (string | null | undefined)[]) => {
+  const times = values.map((value) => value ? Date.parse(value) : NaN).filter(Number.isFinite);
+  return times.length ? Math.max(...times) : null;
+};
+
 /** Each kind of error a try can stop on, in plain words, most specific first. */
 const REASONS: [RegExp, string][] = [
   [/browser process|WS endpoint|chrom(e|ium)|puppeteer/i, "the program that prints the pages did not start"],
@@ -72,12 +81,14 @@ export function plainRunError(error: string): string {
 
 /** Seconds per page from this run's own saved pages, or null until the pace is known. */
 function secondsPerPage(run: ProgressRun, activity: RunActivity): number | null {
-  const retried = Math.max(0, ...run.errors.map((e) => Date.parse(e.at)).filter(Number.isFinite));
+  // A resume count without its stored boundary is not enough to distinguish kept pages from new pages.
+  if (run.resumes > 0 && newestTime(activity.resumedAt) === null) return null;
+  const retried = newestTime(...run.errors.map((e) => e.at), activity.resumedAt, activity.writingStartedAt) ?? 0;
   const times = activity.pageTimes.map(Date.parse).filter(Number.isFinite).sort((a, b) => a - b);
   // The newest stretch only: pages kept from before a retry or a resume did not take this stretch's time.
   let first = times.length - 1;
-  while (first > 0 && times[first - 1] >= retried && times[first] - times[first - 1] <= PACE_BREAK_SECONDS * 1000) first--;
-  const pages = first < 0 ? [] : times.slice(first).filter((t) => t >= retried);
+  while (first > 0 && times[first - 1] > retried && times[first] - times[first - 1] <= PACE_BREAK_SECONDS * 1000) first--;
+  const pages = first < 0 ? [] : times.slice(first).filter((t) => t > retried);
   if (pages.length < PACE_PAGES) return null;
   const seconds = (pages[pages.length - 1] - pages[0]) / 1000;
   return seconds < PACE_SPAN_SECONDS ? null : seconds / (pages.length - 1);
@@ -86,25 +97,30 @@ function secondsPerPage(run: ProgressRun, activity: RunActivity): number | null 
 /** What the admin sees for a run that is being made. `now`: the clock. */
 export function runProgress(run: ProgressRun, activity: RunActivity | undefined, now: Date): RunProgressView {
   const saved = activity ?? { pageTimes: [], lastWorkAt: null };
-  const age = (at: string) => Math.max(0, (now.getTime() - Date.parse(at)) / 1000);
+  const age = (at: number) => Math.max(0, (now.getTime() - at) / 1000);
   const done = run.donePages ?? 0;
   const total = run.totalPages ?? 0;
   const lastError = [...run.errors].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).at(-1);
   const writing = run.step === "write" && total > 0 && done < total;
   const allWritten = run.step === "write" && total > 0 && done >= total;
 
-  const heard = age(run.heartbeatAt ?? run.createdAt);
-  // A new try starts the wait for saved work again.
-  const workAt = [saved.lastWorkAt, lastError?.at ?? null].filter((t): t is string => !!t).sort((a, b) => Date.parse(a) - Date.parse(b)).at(-1);
+  const heard = age(Date.parse(run.heartbeatAt ?? run.createdAt));
+  // Retry, resume and plan times reset the wait. They never become evidence of a saved page or AI answer.
+  const waitingFrom = newestTime(lastError?.at, saved.resumedAt, saved.writingStartedAt) ?? Date.parse(run.startedAt ?? run.createdAt);
+  const actualWorkAt = newestTime(saved.lastWorkAt);
+  const workAt = actualWorkAt !== null && actualWorkAt >= waitingFrom ? actualWorkAt : null;
+  const waiting = age(workAt ?? waitingFrom);
   const silent = heard >= WARN_SECONDS;
-  const stuck = !silent && writing && !!workAt && age(workAt) >= WARN_SECONDS;
+  const stuck = !silent && writing && activity !== undefined && waiting >= WARN_SECONDS;
 
   const signal = silent
     ? { warn: true, text: `No signal from the job for ${span(heard)}. The run stops if this reaches ${STOP_MINUTES} minutes.` }
     : stuck
-      ? { warn: true, text: `The job is still running, but no page or AI answer has been saved for ${span(age(workAt!))}. It may be waiting on a slow AI call. The run stops only if the job goes silent for ${STOP_MINUTES} minutes.` }
-      : writing && workAt
+      ? { warn: true, text: `The job is still running, but no new page or AI answer has been saved for ${span(waiting)}. It may be waiting on a slow AI call. The run stops only if the job goes silent for ${STOP_MINUTES} minutes.` }
+      : writing && workAt !== null
         ? { warn: false, text: `Working. Last saved work ${span(age(workAt))} ago.` }
+        : writing && activity !== undefined
+          ? { warn: false, text: `Working. No new page or AI answer has been saved yet. Last signal from the job ${span(heard)} ago.` }
         : { warn: false, text: `Working. Last signal from the job ${span(heard)} ago.` };
 
   let timeLeft: string;

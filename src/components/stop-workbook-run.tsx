@@ -19,13 +19,15 @@ export function StopWorkbookRun({ runId, started, pages }: { runId: string; star
     try {
       const res = await fetch(`/api/admin/workbook-runs/${runId}/stop`, { method: "POST" });
       if (res.status === 404) { setError("This run is unavailable or your admin access has ended."); return; }
-      if (res.status === 403) { setError("The stop was refused, so the run is still going. Reload the page and try again."); return; }
-      const result = await res.json() as { ok: boolean; error?: string };
-      if (result.ok) { setAsking(false); router.refresh(); return; }
-      if (result.error === "done") { setError("This run finished before the stop. Its draft is ready."); router.refresh(); return; }
-      if (result.error === "failed" || result.error === "stale") { setError("This run ended before the stop."); router.refresh(); return; }
-      setError("The stop did not work. The database is unavailable. Try again.");
-    } catch { setError("The response was lost. Reload the page to see whether the run stopped."); }
+      if (res.status === 403) { setError("The stop request was refused. Reload the page to check this run."); return; }
+      const result = await res.json() as { ok?: unknown; error?: unknown } | null;
+      if (res.ok && result?.ok === true) { setAsking(false); router.refresh(); return; }
+      if (res.status === 409 && result?.ok === false) {
+        if (result.error === "done") { setError("This run finished before the stop. Its draft is ready."); router.refresh(); return; }
+        if (result.error === "failed" || result.error === "stale") { setError("This run ended before the stop."); router.refresh(); return; }
+      }
+      setError("The stop could not be confirmed. Reload the page to see whether the run stopped.");
+    } catch { setError("The stop could not be confirmed. Reload the page to see whether the run stopped."); }
     finally { setBusy(false); }
   }
   if (!asking) {

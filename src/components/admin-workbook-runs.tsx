@@ -44,7 +44,10 @@ function waitingLine(run: WorkbookRun, worker: WorkerStatus | null | undefined) 
   if (run.runner !== "mac") return "Starting on the server.";
   if (worker === undefined) return "Waiting for the Mac.";
   if (!worker) return "Waiting for the Mac. The workbook worker has never run.";
-  return worker.online ? "Waiting for the Mac. It is online, so this run starts in a few seconds." : `Waiting for the Mac. It is offline, last seen ${when(worker.seenAt)} (Pacific).`;
+  if (worker.online) return worker.runId && worker.runId !== run.id
+    ? "Waiting for the Mac. It is making another workbook."
+    : "Waiting for the Mac. The workbook worker is online.";
+  return `Waiting for the Mac. It is offline, last seen ${when(worker.seenAt)} (Pacific).`;
 }
 
 /** "Stopped by admin@example.com at Nov 5, 2026, 11:03 AM (Pacific)." */
@@ -224,7 +227,7 @@ function MacWait({ run, state, worker }: { run: WorkbookRun; state: RunState; wo
   const stalled = state === "stopped" && run.status === "running";
   if (run.runner !== "mac" || (state !== "waiting" && !stalled)) return null;
   if (worker?.online) {
-    return <p className="adm-note" role="status">{stalled ? "The Mac worker is online and takes this run up again where it stopped." : "The Mac worker is online. It starts this run in a few seconds."}</p>;
+    return <p className="adm-note" role="status">{waitingLine(run, worker)}</p>;
   }
   return <div className="adm-wb-wait" role="status">
     <b>{stalled ? "This run stopped, and the Mac is offline." : "Waiting for the Mac."}</b>
