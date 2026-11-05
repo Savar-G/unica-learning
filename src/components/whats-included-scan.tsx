@@ -1,6 +1,6 @@
 "use client";
 
-// The Unica app on the phone in the scan photo: camera, marking, marked, on a loop (D-177, r162 option S-A).
+// Scan pages, on our website in the phone's browser, on the phone in the scan photo: camera, marking, marked, on a loop (D-177, r162 option S-A).
 // With reduced motion it shows the marked screen and stays there.
 import { useEffect, useState } from "react";
 import { MarkedPage } from "./whats-included-parts";

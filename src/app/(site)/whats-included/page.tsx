@@ -5,7 +5,7 @@ import { WhatsIncluded } from "@/components/whats-included";
 export const metadata = pageMetadata({
   path: "/whats-included",
   title: "What's included",
-  description: "Everything your child gets, in the order it happens: the free assessment, the workbook, the AI Teaching Assistant, the Unica app, the parent dashboard and the next workbook.",
+  description: "Everything your child gets, in the order it happens: the free assessment, the workbook, the AI Teaching Assistant, page scanning on our website, the parent dashboard and the next workbook.",
 });
 
 export default function WhatsIncludedPage() {

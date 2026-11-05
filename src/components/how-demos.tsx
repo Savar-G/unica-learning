@@ -3,7 +3,7 @@
 // The animated pictures of three How it works cards (D-216, prototype round r32), built with the Stageshow kit
 // (src/vendor/stageshow). Each plays a short story while its card is on screen and shows its last frame as a still
 // under reduced motion: the report finds the child's level, the Teaching Assistant works a question on the shared
-// board, and the Unica app marks a scanned page. The screens copy the real product screens in public/whats-included
+// board, and Scan pages on our website marks a scanned page. The screens copy the real product screens in public/whats-included
 // (report-level.webp, ta-call.webp, app-marked.png); the numbers are sample data.
 import type { Act } from "@/vendor/stageshow/act";
 import { Phone } from "@/vendor/stageshow/phone";
@@ -148,7 +148,7 @@ export function TeachingDemo() {
   );
 }
 
-/* ------------------------------------------------------------------ 05: scanning a page in the Unica app */
+/* ------------------------------------------------------------------ 05: scanning a page in Scan pages on the website */
 
 type P = { scene: "camera" | "marked"; found: boolean; flash: boolean; marks: boolean };
 const CAMERA: P = { scene: "camera", found: false, flash: false, marks: false };

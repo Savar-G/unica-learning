@@ -13,7 +13,7 @@ import {
   type StoredTest,
   type Submission,
 } from "@/lib/assessment";
-import { allRight, knowsUpTo, takeTest, type Script, checked } from "@/lib/assessment/scripted-child";
+import { allRight, knowsUpTo, takeTest, type Script, checked, beforeThirdStage } from "@/lib/assessment/scripted-child";
 import { answerQuestion, doneChecking, finishTest, nextStep, retakeState, startStates, startTest, stateFor, StoreError, type AnswerInput, type AttemptStore, type HelpInput } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 import { answerFact, readFacts, startFacts } from "@/lib/test-attempt";
@@ -47,7 +47,7 @@ function answersOf(test: StoredTest, count: number, script: Script = allRight): 
 
 /** Asha's stored test (or another grade 4 child's), drawn from `seed`, with the first `answered` answers of a scripted child. */
 function stored(attempt: Attempt, { seed = 7, parent = P1, child = C1, answered = 0 }: { seed?: number; parent?: string; child?: string; answered?: number } = {}): MemoryTest {
-  const test = storedTest(createSession(ASHA, seed));
+  const test = beforeThirdStage(storedTest(createSession(ASHA, seed)));
   return { ...attempt, parentId: parent, childId: child, seed, test, answers: answersOf(test, answered) };
 }
 
