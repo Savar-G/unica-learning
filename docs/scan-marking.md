@@ -1,0 +1,57 @@
+# S4 marking contract
+
+Source: issue #457 and the integration checklist supplied on 5 November 2026.
+Base: 89ecf73965eccbf0f59e49401b69cf09a4e12579. PR #640 and PR #657 are included.
+
+D-235 permits implementation. Family release stays off. This change does not set SCAN_PAGES_ENABLED.
+Do not release before sample approval, S3a #637, provider privacy verification, the fixed whole-page model comparison, hosted probes, visual approval and independent review.
+
+## Ownership and states
+
+| Record | Owner | State rule |
+| --- | --- | --- |
+| Photo and crops | Existing scan lifecycle | Terminal deletion or expiry prevents dispatch and application. Physical cleanup follows the terminal record. |
+| Job | Family, child, evidence photo | Queued, running, extracted or finished. The photo/family lifecycle supplies terminal refusal. One active worker per family and printed page. A lease takeover invalidates the previous token. |
+| Item | Workbook, immutable revision, page, item | One original. Pending items can move to a later job. Finalized items and parent versions cannot be replaced by recognition. |
+| Reading | Canonical item and evidence | Bounded text, typed value, model and prompt version. Image expiry preserves it. Child or family deletion removes it. |
+| Publication | Canonical item | Durable original event intent. Append-only event key never changes across photos. Recovery publishes an intent once. |
+| Budget | Whole service, UTC month | USD 50. Reported charge or outstanding maximum, including unknown cost. Dispatch admission is atomic. The reservation survives deletion without family or image references. |
+
+Upload processing and marking share the configured family active-job count under the same family lock. Accepted unsent photos and reservations also count toward the bounded future queue. A worker stores dispatch intent before each transport attempt. It stores validated extraction before applying observations. It resumes stored extraction without another request. Two transport attempts and two job dispatches are the same shared limit, not multiplied limits. A cost with no verified maximum stops dispatch. No enabled production price bound ships in this change.
+
+The request contains one metadata-free whole normalized page and local item/region aliases with measured boxes. It contains no separate account, workbook, child or family identifiers, answer keys, printed examples, stored question text, or model authority to score. Code checks the one-box whole-number format against trusted packages. Other formats keep explicit pending, parent-check or unscored observations.
+
+## Effective results and follow-on slices
+
+All page and profile readers use the canonical effective observation. `markingEvent` owns eligibility. Raw original events stay append-only. The effective projection replaces marking events by canonical key for profile facts and AI inputs. Skill states receive the same eligible set. Future #458 must use an expected result version, append a correction link and preserve the original reading. It must not append another original event. Future #470 can page canonical results by stable keys; photo expiry is not a history filter. Second tries need separate evidence and never enter this original projection.
+
+Parent solutions are withheld while any item is pending or needs a parent check. This slice exposes no solution content. Parent views show Right, Wrong, Blank, Please check this answer, or Not scored. Admin detail includes the authenticated photo/crop routes, reading, eligibility, original event link, job state and dispatch cost. No signed image URL is created.
+
+## Falsifiers and proof limits
+
+- Concurrent scans fail the contract if both replace a finalized item or publish two original events.
+- A version change fails the contract if an old job overwrites it.
+- Deletion or expiry fails the contract if a released response creates a mark, event, derivative or later dispatch.
+- Budget tests fail if charges plus outstanding reservations exceed USD 50, including at rollover and after deletion.
+- Completion fails if an all-unscored page needs a score, or a parent check counts as complete.
+- Privacy fails if a captured request has separate identity, keys, examples, free page text or crop-only input.
+- Authorization fails if another family or anonymous caller can read images or results.
+- Local tests prove only synthetic workflow and local SQL behavior. They do not prove recognition accuracy, hosted permissions, camera readiness, browser layout, provider retention or release acceptance.
+
+## Parent integration
+
+Apply `supabase/migrations/20261105_scan_marking.sql` after the merged scan stack, scan crops, child deletion and profile-history migrations. It creates no enabled price row. Generate `src/lib/database.types.ts` with the normal generator. The three new RPC names and their nullable arguments are intentionally checked against generated types; compilation must fail until those types exist.
+
+`SCAN_MARKING_ENABLED=test-only` permits only server-verified test families and admins. Its default is off. The new cron and the parent retry route use the same worker. Existing `sent_at` photos enter the persisted recovery cursor. Neither the parent result GET nor an image GET starts model work. Keep both scanning and marking closed to ordinary families.
+
+A price row needs a verified worst-case charge for one whole image up to its pixel limit, the bounded alias/instruction input, 4096 total output tokens and the configured model. Reserve that maximum separately for each of the two allowed transport attempts. Record the pricing source, date, calculation and provider settings in its evidence. Do not enter the USD 0.02 target as the maximum. No verified bound was supplied or invented here. The Haiku comparison still needs the same fixed synthetic whole-page set, thresholds and global ledger admission. No paid comparison ran in this task.
+
+The job's `blocked_reason` records budget, off, unverified-price or exhausted-attempt states. A hold releases the worker lease without resetting its dispatch count. A budget hold preserves the photo and every pending answer. Reconciliation never shifts a charge to another month. The UTC month is read after the budget lock.
+
+For #458, the database table is `scan_marking_items`. Change only a currently authorized child's row under the same parent/scan lock and an expected `result_version`. Preserve `original_event`, `event_id`, original text and each job extraction. Append the versioned correction to a child/family-fenced table in that later slice. Increment `scan_marking_revisions.revision` in the same transaction. Keep that version check even after photo expiry. Do not use a photo lease for a parent judgment. Call the existing profile rebuild afterward; its new snapshot check refuses stale facts and skill-state rows. Do not write a second original learning event.
+
+For #470, `MarkingStore.effective(parent, child)` reads canonical rows with keyset pagination, through the service-only RPC and current family/child checks. `effectiveMarkingEvents` projects the current result over the append-only original event. `effectiveSkillMarks` uses the same published eligible set. Read prior photo extractions as evidence, not extra originals. This slice does not implement a correction action, second-try collection, the final marks dashboard, reminder episodes or new workbook snapshots.
+
+The new family-owned tables are `scan_marking_jobs`, `scan_marking_items`, `scan_marking_revisions` and `scan_marking_dispatches`. Each has direct child/family cascades and both write fences. No bucket or file path was added. Existing photo/crop cleanup and deleted-folder guards remain in use. The global `scan_marking_spend` table keeps only a random dispatch id, UTC period, model, amounts and times after a family is deleted. Its family-owned link is removed. It holds no child, family, workbook, photo, text or file reference. This prevents deletion from releasing an unknown provider charge. Retention clocks and anonymous test-copy serializers are unchanged.
+
+Local reproduction uses a fresh disposable database per run. The runner refuses network addresses and non-disposable database names. Start a local PostgreSQL cluster with only a Unix socket under `/tmp/pd457-pg-*`. Create a fresh database whose name starts with `pd457_`. Run `SCAN_MARKING_SOCKET=<socket directory> SCAN_MARKING_DATABASE=<fresh database> node supabase/tests/scan_marking.cjs --bootstrap`. The runner loads actual production functions and triggers with reduced dependency tables. It also runs `supabase/tests/scan_marking.sql` and confirms rollback. This proves no hosted permission, signed-URL API, real worker credential or physical camera behavior.

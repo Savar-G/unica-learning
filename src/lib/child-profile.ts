@@ -1,3 +1,4 @@
+import { effectiveMarkingEvents, effectiveSkillMarks, type EffectiveMark } from "@/lib/scan-marking";
 // The child's profile (#303, spec #295): the profile part of the learning record. One current profile per child,
 // versioned (CHILD_PROFILE_SCHEMA_VERSION, kept beside the JSON), built by code from the child's latest assessment
 // profile (src/lib/assessment/profile.ts, one per finished test) plus every learning event of the child
@@ -282,6 +283,8 @@ export interface NewChildProfile {
   profile: ChildLearnerProfile;
   /** The skill state history rows that go with this build, stored in the same transaction or not at all. */
   skillChanges?: SkillChanges;
+  /** Effective marking snapshot read for this build. A save refuses a changed revision. */
+  markingRevision?: number;
 }
 
 /** History rows to store, and the tests they were worked out from. */
@@ -306,6 +309,8 @@ export interface SkillInputs {
 
 /** The profile's reads and writes. A database error throws; a missing row is null. */
 export interface ChildProfileStore {
+  /** Canonical effective originals, including after photo expiry. */
+  marks?(childId: string): Promise<{ revision: number; items: EffectiveMark[] }>;
   /** The child's stored profile; null when none is stored. */
   current(childId: string): Promise<StoredChildProfile | null>;
   /**
@@ -374,9 +379,6 @@ export const REBUILD_TRIES = 3;
 /** Every event of a child: the events' read needs a range. */
 const ALL_TIME = { from: "2000-01-01T00:00:00.000Z", to: "9999-01-01T00:00:00.000Z" };
 
-/** Marked results reach the skill states when marking is live (#457). No "marking" event exists yet. */
-const MARKS_NOT_LIVE: readonly SkillMark[] = [];
-
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -417,14 +419,16 @@ export async function rebuildChildProfile(childId: string, seams: ChildProfileSe
     const earlier = stored ? storedChildProfile(stored.profile)?.ai ?? null : null;
     const source = await profiles.inputs(id);
     if (!source) return { built: false, reason: "no_child" };
-    const read = await learningEvents(events).read(id, ALL_TIME);
+    const raw = await learningEvents(events).read(id, ALL_TIME);
+    const marks = await profiles.marks?.(id);
+    const read = marks ? effectiveMarkingEvents(raw, marks.items) : raw;
     const profile = buildFacts({ ...source, events: read });
     // After the stored build was read: a build stored since then makes the save below fail, so these changes are never stale.
-    const planned = await plannedChanges(profiles, id, source.grade);
+    const planned = await plannedChanges(profiles, id, source.grade, marks ? effectiveSkillMarks(marks.items) : []);
     // With nothing to build from, a stored profile is still replaced, and a history row that no longer holds still gets
     // its change: the inputs are gone (a test or events deleted).
-    if (!profile.assessment && profile.events.counted === 0 && !expected && !("changes" in planned && planned.changes.length > 0)) return { built: false, reason: "nothing_to_build" };
-    const row = { childId: id, parentId: source.parentId, assessmentId: profile.assessment?.assessmentId ?? null };
+    if (!profile.assessment && profile.events.counted === 0 && !expected && !marks?.items.length && !("changes" in planned && planned.changes.length > 0)) return { built: false, reason: "nothing_to_build" };
+    const row = { childId: id, parentId: source.parentId, assessmentId: profile.assessment?.assessmentId ?? null, markingRevision: marks?.revision };
     const storing = seams.keepFindings ? { ...profile, ai: earlier } : profile;
     const { saved, states } = await saveFacts(profiles, { ...row, profile: storing }, expected, planned);
     if (saved === "changed") continue;
@@ -442,11 +446,11 @@ const problemOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 type PlannedChanges = { changes: StandardSkillState[]; tests: string[] } | { problem: string };
 
 /** The history rows this build adds. Never throws: a read that fails is a problem for this build, and the next one catches up. */
-async function plannedChanges(profiles: ChildProfileStore, childId: string, schoolGrade: Grade): Promise<PlannedChanges> {
+async function plannedChanges(profiles: ChildProfileStore, childId: string, schoolGrade: Grade, marks: readonly SkillMark[]): Promise<PlannedChanges> {
   try {
     const { tests, workbookStandards, history } = await profiles.skillInputs(childId);
     const results = tests.flatMap((t) => profileSkillResults(t.profile, t.completedAt, t.unreliable));
-    return { changes: skillStateChanges({ schoolGrade, tests: results, workbookStandards, marks: MARKS_NOT_LIVE }, history), tests: tests.map((t) => t.assessmentId) };
+    return { changes: skillStateChanges({ schoolGrade, tests: results, workbookStandards, marks }, history), tests: tests.map((t) => t.assessmentId) };
   } catch (e) {
     const problem = problemOf(e);
     console.error("[child profile] skill states not read", childId, problem);

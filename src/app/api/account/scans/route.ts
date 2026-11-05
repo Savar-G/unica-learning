@@ -1,3 +1,4 @@
+import { markingAccess } from "@/lib/scan-marking-server";
 import { isUuid } from "@/lib/workbook-content";
 import { scanSession, scanJson } from "@/lib/scan-photo-server";
 import { markedFamily } from "@/lib/scan-pages-access";
@@ -26,6 +27,6 @@ export async function GET(request: Request) {
   if (!child || !isUuid(child)) return scanJson({ error: "refused" }, 400);
   try {
     const checks = await markedFamily(session.parent, session.admin);
-    return scanJson({ checks, ...await readScanStack(session.admin, session.parent, child, checks) });
+    return scanJson({ checks, marking: await markingAccess(session.admin, session.parent), ...await readScanStack(session.admin, session.parent, child, checks) });
   } catch { return scanJson({ error: "unavailable" }, 503); }
 }

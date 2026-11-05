@@ -1,0 +1,121 @@
+PASS defaults fail closed before dispatch and RPC/table grants exclude all browser roles
+PASS two simultaneous connections serialize one active family/page job and one canonical original
+PASS version compare-and-set protects a parent change from an already extracted response
+PASS retake resolves pending only, finalized original and its reading survive image expiry
+PASS old lease cannot overwrite newer photo; extraction is durable and takeover sends no additional request
+PASS delete and clock expiry independently refuse held results, retries and late derivative writes
+PASS global 49.99 budget across families and models admits one concurrently; unknown holds survive restart and rollover
+PASS two transport attempts are the total job limit; cost reconciliation cannot release unknown or exceed maximum
+PASS family freeze and one-child request fence every job/result write, while anonymous provider outcomes remain reconcilable
+PASS durable event intent publishes once and published child/family deletion has no cross-cascade restoration
+PASS child cascade removes all sensitive tables, keeps sibling and anonymous charge holds, forbids late restoration
+PASS existing sent photos recover without another Send
+PASS real profile compare-and-set refuses stale effective snapshots, including first build
+PASS concurrent upload and queued-job boundaries admit only available slots, without objects or paid work
+PASS simultaneous frequency, stored-byte and concurrent-upload boundaries refuse before objects
+FAIL upload processing and marking share one active family slot in both directions AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
++ actual - expected
+
++ {
++   extraction: null,
++   items: [
++     {
++       child_id: 'cbc234ce-f2ec-4766-8dfb-9a40375d9375',
++       event_id: null,
++       evidence_at: '2026-11-05T16:47:16.699668-07:00',
++       expected: {
++         identity: {
++           itemId: 'item1',
++           pageId: '2929ee1b-ca98-462e-8684-2777f9d484aa',
++           printedRevision: 'immutable',
++           workbookId: 'afc8e57a-7aae-4275-b857-f535f0b7a7ee'
++         },
++         mastery: {
++           eligible: true,
++           reason: null
++         },
++         method: 'code',
++         number: 1,
++         scoredRegions: [
++           'a'
++         ],
++         teaching: {
++           curriculum: {
++             key: 'bc',
++             version: 'v1'
++           },
++           itemStep: {
++             skill: 'add',
++             step: 1,
++             unit: 'U1'
++           },
++           part: 'practice',
++           practiceType: 'now-you',
++           slot: '1'
++         }
++       },
++       id: 'dfd1ae7a-2a6d-4b4c-bb5e-fa1eccdae7cf',
++       item_id: 'item1',
++       model: null,
++       observation: {
++         actor: 'system',
++         certainty: 'not-read',
++         evidence: {
++           photoRevision: 'e3db346e-7f3d-4b40-bb67-0c07f87f4780'
++         },
++         help: 'none',
++         identity: {
++           itemId: 'item1',
++           pageId: '2929ee1b-ca98-462e-8684-2777f9d484aa',
++           printedRevision: 'immutable',
++           workbookId: 'afc8e57a-7aae-4275-b857-f535f0b7a7ee'
++         },
++         mastery: {
++           eligible: true,
++           reason: null
++         },
++         method: 'code',
++         readAnswerText: null,
++         regions: [],
++         result: null,
++         resultVersion: 1,
++         state: 'pending',
++         teaching: {
++           curriculum: {
++             key: 'bc',
++             version: 'v1'
++           },
++           itemStep: {
++             skill: 'add',
++             step: 1,
++             unit: 'U1'
++           },
++           part: 'practice',
++           practiceType: 'now-you',
++           slot: '1'
++         },
++         version: 1
++       },
++       original_event: null,
++       owner_photo: 'e3db346e-7f3d-4b40-bb67-0c07f87f4780',
++       page_id: '2929ee1b-ca98-462e-8684-2777f9d484aa',
++       parent_id: '61b1e89f-837b-4fb9-8731-4b89beddaef4',
++       printed_revision: 'immutable',
++       prompt: null,
++       result_version: 1,
++       workbook_id: 'afc8e57a-7aae-4275-b857-f535f0b7a7ee'
++     }
++   ],
++   token: '220ffbce-5bf2-41ba-ab15-f4bbc5845872'
++ }
+- 'busy'
+
+    at /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-3fc2643b/supabase/tests/scan_marking.cjs:170:10
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async test (/Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-3fc2643b/supabase/tests/scan_marking.cjs:34:36)
+    at async /Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/t3-3fc2643b/supabase/tests/scan_marking.cjs:166:2
+PASS budget/off pause records its reason and releases the lease without resetting dispatch attempts
+PASS all-unscored rollback probe restores its fixture and produces no event
+PASS child image policy admits owner/admin and refuses copied family identity or a pending child deletion
+PASS RLS denies existing private photo/crop objects despite broad policies for owner, admin and anonymous
+{"passed":19,"failures":1,"limits":{"perTenMinutes":40,"perDay":60,"concurrentUploads":2,"activeJobs":1,"queuedJobs":8,"inputBytes":20971520,"decodedPixels":48000000,"familyBytes":2147483648},"proof":"local synthetic SQL, not hosted Storage API"}

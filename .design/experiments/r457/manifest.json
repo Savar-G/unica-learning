@@ -1,0 +1,30 @@
+{
+  "route": "direct",
+  "job_kind": "new",
+  "surface": "product",
+  "constraint_mode": "existing-system",
+  "source": "DESIGN.md and r565 accepted scan patterns",
+  "scope": "Minimal page results and admin scan detail only",
+  "states": [
+    "pending",
+    "parent-check",
+    "all-unscored",
+    "scored",
+    "budget-held",
+    "photo-ended"
+  ],
+  "viewports": [
+    390,
+    820,
+    1280
+  ],
+  "browser_qa": "Parent must run browser checks. This task prohibits browser use.",
+  "approval": "pending",
+  "release": "off",
+  "parent_result_path": "/account/scan/results/<photo id>",
+  "admin_result_path": "/admin/scans/<photo id>",
+  "image_delivery": "Authenticated no-store bytes with local object URLs",
+  "existing_reference": "r455/ready-phone-390.png inspected; current r565 views and tokens read",
+  "screenshots": [],
+  "render_check": "Synthetic React static rendering only. Browser rendering remains with parent."
+}
