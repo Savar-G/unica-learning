@@ -161,7 +161,12 @@ describe("reading the review's answer", () => {
   it("turns a throw and a time-out into an error, with fixed wording only", async () => {
     const input: TalkReviewInput = { promptVersion: "x", line: "Hi!", childTurn: null, transcript: [] };
     const thrown = await runReview({ id: "x", promptVersion: "x", review: () => Promise.reject(new Error("401 sk-secret-key")) }, input);
-    expect(thrown).toEqual({ verdict: "error", reason: "the review call failed" });
+    expect(thrown).toEqual({ verdict: "error", reason: "the review call failed (unknown)" });
+    // #604: the trace's fixed error code says why the call failed, never the provider's own text.
+    const limited = await runReview({ id: "x", promptVersion: "x", review: () => Promise.reject(new Error("OpenRouter answered 429: slow down, key sk-secret-key")) }, input);
+    expect(limited).toEqual({ verdict: "error", reason: "the review call failed (http_429)" });
+    const offline = await runReview({ id: "x", promptVersion: "x", review: () => Promise.reject(new Error("OpenRouter could not be reached: ECONNRESET")) }, input);
+    expect(offline).toEqual({ verdict: "error", reason: "the review call failed (network)" });
     expect(await runReview(fakeTalkReviewer(() => "hang"), input, 20)).toEqual({ verdict: "error", reason: "the review did not answer in time" });
   });
 });

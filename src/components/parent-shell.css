@@ -49,6 +49,79 @@
 .pd-links a { display: flex; align-items: center; min-height: 52px; color: var(--ink); text-decoration: none; }
 .pd-links a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
+/* The Assessment tab (#552): round r544, set 1, option B. Savar has not chosen yet: another option changes these rules and
+   src/components/parent-assessment.tsx, nothing else. The column beside the report keeps the action in view at every
+   scroll depth: the action part never scrolls, and the rest of the column scrolls under it (.pd-rail-more). Below 1280 px,
+   or in a window too short for the column, it falls under the report and its button is fixed at the bottom. */
+.support-page .pd-sub { margin: 8px 0 0; color: var(--ink-2); font-size: 15px; }
+.pd-split { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 32px; align-items: start; margin-top: 28px; }
+.pd-split-main { min-width: 0; container-type: inline-size; display: grid; gap: 20px; }
+.pd-split-rail { position: sticky; top: 24px; max-height: calc(100dvh - 48px); display: flex; flex-direction: column; gap: 22px; padding: 2px; }
+.pd-split-rail > .rpt { flex: none; }
+.pd-rail-more { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: grid; align-content: start; gap: 22px; padding: 2px; margin: -2px; }
+.pd-rail-more:empty { display: none; }
+.support-page .pd-split-rail p { margin: 0; }
+.pd-split-rail .rpt-next { padding: 24px; }
+.support-page .pd-split-rail .rpt .rpt-next p { margin-bottom: 16px; font-size: 15.5px; }
+.support-page .pd-split-rail .rpt .rpt-next .rpt-small { margin-bottom: 0; font-size: 13px; }
+[data-look="warm"] .pd-split-rail .rpt .rpt-next h3 { font-size: 20px; }
+.pd-split-rail .rpt-plans { margin-bottom: 12px; }
+.pd-split-rail .rpt-plans .btn, .pd-split-rail .rpt-next > .pd-go > .btn, .pd-test-go .btn { width: 100%; min-width: 0; justify-content: center; }
+.pd-test-go { margin-top: 14px; }
+.support-page .pd-test-go .acct-start { display: grid; justify-items: stretch; gap: 10px; width: 100%; text-align: left; }
+.pd-test-go .small { color: var(--ink); }
+.pd-test-go .acct-done, .pd-test-go .acct-start .small { display: block; max-width: none; text-align: left; }
+.pd-test-go a.btn:not(.ghost), .pd-test-go a.btn:not(.ghost):hover { color: #fff; }
+.pd-go-short, .pd-go-status { display: none; }
+.pd-k { font: 400 12px/1.3 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
+.pd-after { display: grid; gap: 14px; padding: 0 4px; }
+.pd-card { border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: clamp(20px, 2.2vw, 28px); }
+[data-look="warm"] .pd-card h2 { margin: 0 0 14px; font: 500 19px/1.3 var(--sans); letter-spacing: -0.015em; }
+.support-page .pd-card p { margin: 0; color: var(--ink-2); }
+.support-page .pd-card p.small { margin-top: 16px; }
+.support-page .pd-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; counter-reset: s; }
+.support-page .pd-steps li { display: grid; grid-template-columns: 30px 1fr; gap: 12px; align-items: start; margin: 0; counter-increment: s; }
+.pd-steps li::before { content: counter(s); width: 30px; height: 30px; border-radius: 6px; display: grid; place-items: center; background: var(--card); font: 500 13px/1 var(--mono); }
+.pd-steps b { display: block; font-weight: 500; }
+.pd-steps span span { color: var(--ink-2); font-size: 15px; }
+.support-page .pd-tests { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line-soft); }
+.support-page .pd-tests li { margin: 0; border-bottom: 1px solid var(--line-soft); }
+.pd-tests a { display: flex; align-items: center; justify-content: space-between; min-height: 44px; color: var(--ink); text-decoration: none; font-size: 15px; }
+.pd-tests a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.pd-tests a[aria-current="page"] { font-weight: 500; }
+.pd-tests a[aria-current="page"] span { font: 400 12px/1.3 var(--mono); color: var(--ink-2); }
+.pd-new-test { width: 100%; justify-content: center; }
+/* The report's own title stays the small line it is on the report page: the frame's page heading is the h1 above. */
+[data-look="warm"] .pd-main .support-page .rpt-head h1 { margin: 6px 0 0; font: 400 12.5px/1.3 var(--mono); letter-spacing: 0.06em; }
+/* The report in the narrower column stacks its rows, as it does on a tablet. */
+.pd-split-main .rpt-head { grid-template-columns: 1fr; gap: 20px; }
+.pd-split-main .rpt-row { grid-template-columns: 1fr; }
+.support-page .pd-split-main .rpt .rpt-row-h p { max-width: none; }
+@container (max-width: 720px) {
+  .pd-split-main .rpt-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .support-page .pd-split-main .rpt-work { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+}
+@media (max-width: 1279px), (max-height: 619px) {
+  .pd-split { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .pd-split-rail { position: static; max-height: none; padding: 0; }
+  .pd-rail-more { overflow: visible; padding: 0; margin: 0; }
+  /* Before the report the action comes first. */
+  .pd-split-start .pd-split-rail { order: -1; }
+  /* --ck-space: the room the cookie choice takes at the bottom while it is open (cookie-consent.tsx). The button sits
+     above it, so neither covers the other, and the page leaves room for both. */
+  .pd-split:has(.pd-go) { padding-bottom: calc(112px + env(safe-area-inset-bottom) + var(--ck-space, 0px)); }
+  /* A message in the fixed part makes it taller. */
+  .pd-split:has(.pd-go .rpt-next-note) { padding-bottom: calc(260px + env(safe-area-inset-bottom) + var(--ck-space, 0px)); }
+  .pd-go { position: fixed; z-index: 35; left: var(--pd-side); right: 0; bottom: var(--ck-space, 0px); display: grid; gap: 6px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: #fff; border-top: 1px solid var(--line); }
+  body:has([data-cookie-banner]) .pd-go { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .pd-split-rail .pd-go .rpt-plans { margin: 0; }
+  .support-page .pd-split-rail .rpt .rpt-next .pd-go p { margin: 0; color: var(--ink-2); text-align: center; }
+  .support-page .pd-split-rail .rpt .rpt-next .pd-go .rpt-next-note { color: var(--ink); text-align: left; background: var(--soft); }
+  .pd-go-long { display: none; }
+  .pd-go-short { display: inline; }
+  .pd-go-status { display: block; }
+}
+
 /* The family delete on the Account tab (#556): at the foot of the page, and red only on the final button. */
 .support-page .pd-delete { margin-top: 56px; padding-top: 28px; border-top: 1px solid var(--line-soft); }
 .support-page .pd-delete h2 { margin-top: 0; font-size: 22px; }
@@ -66,7 +139,7 @@
 .pd-top, .pd-bar, .pd-main-kid { display: none; }
 
 @media (max-width: 899px) {
-  .pd-shell { display: block; }
+  .pd-shell { display: block; --pd-side: 0px; }
   .pd-side { display: none; }
   .pd-top { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; padding: 0 16px; background: rgba(255, 255, 255, 0.94); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
   .pd-top-links { display: flex; gap: 14px; }

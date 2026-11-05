@@ -1,0 +1,10 @@
+# The image needs src/lib and the worker's own files only (Dockerfile). No .env file, test, cache or build output.
+*
+!src/lib
+!worker/maya-voice/package.json
+!worker/maya-voice/package-lock.json
+!worker/maya-voice/build.mjs
+!worker/maya-voice/src
+**/*.test.ts
+**/node_modules
+**/.env*

@@ -104,14 +104,16 @@ function asFamily(e: Ended, id = e.call.id, parentId = PARENT, childId = CHILD):
   return { ...e.call, id, kind: "family", parentId, childId, status: "ended" };
 }
 
-function setup(ai: AiClient | null, calls: MemoryCall[] = [], testFamilies: string[] = [TEST_PARENT], name: () => Promise<string | null> = async () => "Leah") {
+type Names = { firstName: string; formerNames: string[] };
+function setup(ai: AiClient | null, calls: MemoryCall[] = [], testFamilies: string[] = [TEST_PARENT], name: () => Promise<string | null | Names> = async () => "Leah") {
   const store = memoryNoteStore({ calls: () => calls, testFamilies });
   const names: string[] = [];
   const notes = callNotes({
     store, ai, isTestFamily: async (p) => testFamilies.includes(p), clock: () => T0 + 60_000,
-    childName: async (id) => {
+    childNames: async (id) => {
       names.push(id);
-      return name();
+      const n = await name();
+      return typeof n === "string" ? { firstName: n, formerNames: [] } : n;
     },
   });
   return { store, notes, names };
@@ -568,6 +570,31 @@ describe("hiding the child's name (R403-2)", () => {
     const shown = noteTranscriptLines(note, "Zoë").filter((l) => l.speaker === "child").map((l) => l.text);
     expect(shown[0]).toBe("Hi Maya, I'm Zoë.");
     expect(shown[2]).toBe("Zoë's turn now?");
+  });
+
+  // A parent renamed the child (#555) after the call: the note waited (note_pending) and is written under the new name.
+  it.each([
+    ["Hi Maya, I'm Leáh.", "Hi Maya, I'm {child}."],
+    ["LEAH's turn now?", "{child}'s turn now?"],
+    ["My name is L e a h.", "My name is {child}."],
+    ["Leahhh, Ava and Mia", "{child}, {child} and Mia"],
+  ])("a former name in %s reaches neither the AI nor the stored note", async (text, hidden) => {
+    const { ended } = await endedTestCall([text, ...NO_START], undefined, "Leah");
+    const call = asFamily(ended);
+    const ai = fakeNoteAi("sure");
+    const s = setup(ai, [call], [TEST_PARENT], async () => ({ firstName: "Ava", formerNames: ["Leah", "Zoë"] }));
+    const note = written(await s.notes.write({ call, package: ended.package, event: ended.event }));
+    expect(ai.requests.length).toBeGreaterThan(0);
+    expect(note.transcript.filter((l) => l.speaker === "child")[0].text).toBe(hidden);
+    for (const sent of [JSON.stringify(ai.requests), JSON.stringify(s.store.rows())]) {
+      expect(foldWord(sent)).not.toMatch(/(?<!\p{L})(?:leah|ava)(?!\p{L})/u);
+      expect(sent).not.toMatch(/L e a h/i);
+    }
+  });
+
+  it("hides every name it is given, in every form, in one pass", () => {
+    expect(hideName("Leáh, zoe and Ava met Avery.", ["Ava", "Leah", "Zoë"], "{child}")).toBe("{child}, {child} and {child} met Avery.");
+    expect(hideName("Leah and Ava", "Ava", "{child}")).toBe("Leah and {child}");
   });
 
   it("asks no AI and writes no note when the child's name cannot be read", async () => {

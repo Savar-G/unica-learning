@@ -275,7 +275,7 @@ describe("the Maya tab (#553)", () => {
   type Tab = import("@/lib/child-stage").ChildTab;
   const withMaya: Tab[] = ["overview", "workbooks", "maya", "assessment", "account"];
   const view = (id: string, firstName: string, tabs: Tab[]) => ({
-    id, firstName, schoolGrade: 3 as const, stage: "active" as const, opensOn: "overview" as const, tabs, readOnly: false, currentWorkbook: { number: 1 }, reportIds: [],
+    id, firstName, schoolGrade: 3 as const, stage: "active" as const, opensOn: "overview" as const, tabs, readOnly: false, currentWorkbook: { number: 1 }, reportIds: [], finishedTests: [],
   });
   const open = (tabs: Tab[] = withMaya) => {
     tab.dashboard = { children: [view(sibling, "Sam", withMaya), view(child, "Leah", tabs)], remembered: null, pinSet: true, timeZoneSaved: true };

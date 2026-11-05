@@ -578,6 +578,7 @@ export type Database = {
         Row: {
           created_at: string
           first_name: string
+          former_names: string[]
           grade: number
           id: string
           interests: string[] | null
@@ -593,6 +594,7 @@ export type Database = {
         Insert: {
           created_at?: string
           first_name: string
+          former_names?: string[]
           grade: number
           id?: string
           interests?: string[] | null
@@ -608,6 +610,7 @@ export type Database = {
         Update: {
           created_at?: string
           first_name?: string
+          former_names?: string[]
           grade?: number
           id?: string
           interests?: string[] | null
@@ -1845,6 +1848,32 @@ export type Database = {
           },
           {
             foreignKeyName: "maya_wording_history_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      monthly_summary_renders: {
+        Row: {
+          created_at: string
+          id: string
+          parent_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          parent_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          parent_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "monthly_summary_renders_parent_id_fkey"
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "parents"
@@ -4308,6 +4337,10 @@ export type Database = {
         }
         Returns: string
       }
+      claim_monthly_summary_render: {
+        Args: { p_max: number; p_parent: string; p_window_seconds: number }
+        Returns: boolean
+      }
       claim_pin_attempt: {
         Args: {
           p_lock_seconds: number
@@ -4696,6 +4729,15 @@ export type Database = {
       release_workbook_edit: {
         Args: { p_id: string; p_lease: string }
         Returns: boolean
+      }
+      rename_child: {
+        Args: {
+          p_child: string
+          p_first_name: string
+          p_parent: string
+          p_stale_seconds: number
+        }
+        Returns: string
       }
       renew_family_deletion: {
         Args: { p: string; token: string }

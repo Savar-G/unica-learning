@@ -64,7 +64,8 @@ export class TurnClock {
   staged() { this.stagedAt = this.now(); this.answerQueued = true; }
   ackQueued(id: string) { this.ackId = id; }
   ackEnded() { this.ackOver = true; }
-  ackSkipped(reason: AckSkip) { this.ackSkip = reason; }
+  /** A phrase already given to the voice was not skipped. */
+  ackSkipped(reason: AckSkip) { if (this.ackId === null) this.ackSkip = reason; }
   get ackHeard() { return this.ackSoundAt !== null; }
 
   /** A playback began. Segments play in order, so the acknowledgement's sound always comes before the answer's. */

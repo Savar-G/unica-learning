@@ -10,6 +10,7 @@ import { extraPracticeRepeats, newIdeaFloor, twoWaysCountsAsStory } from "./work
 import { generatedDayTime, printedQuestionMinutes, requiredTimeProblem } from "./workbook-feedback-check";
 import { printedNumbers } from "./workbook-book";
 import { storyFrame, wordedTask, taskType, reasoningSteps, taskIdentity, printedForm, sentenceFrameOf, stemOf, largestNumber, storyKind, cardFrame, cardFrameProblem, cardNumbers, operationStory, type CardFrameUse } from "./workbook-task-identity";
+import { printedWorkbookQuestion } from "./workbook-maya-operation";
 import { dayDifficulty } from "./workbook-plan";
 import { circleProblem, repeatedInstruction } from "./workbook-layout-check";
 
@@ -75,6 +76,10 @@ const NOT_COUNTED: ReadonlySet<string> = new Set(["spot-the-error", "solve-it-tw
 const ANSWER_WORDS: ReadonlySet<string> = new Set(["if", "else", "and", "or", "not", "in", "str", "int", "max", "min", "abs", "round", "floor", "ceil", "sqrt", "isqrt", "gcd", "lcm", "sum", "len", "sorted", "Fraction", "True", "False"]);
 
 export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
+  pages = pages.map(p => ({ ...p,
+    questions: p.questions.map(q => ({ ...q, package: q.package ? printedWorkbookQuestion(q.package) : null })),
+    ...(p.panelExamples ? { panelExamples: p.panelExamples.map(q => q ? printedWorkbookQuestion(q) : null) } : {}),
+  }));
   const issues: BookIssue[] = [];
   const days: DayQuality[] = [];
   const seen = new Map<string, number[]>();
