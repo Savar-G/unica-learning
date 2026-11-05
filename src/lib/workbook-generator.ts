@@ -125,7 +125,7 @@ function slotStep(input: GenerateInput, slot: Slot, attempt: number, level: numb
     // The last questions of a practice block review an earlier step (the U16 and U4 reviews: a day mixes the new step
     // with earlier ones, not one task twenty times).
     const ordinal = Number(slot.id.split(".")[1]) || 1;
-    if ((slot.place === "on-your-own" && ordinal >= 6 || slot.place === "practice-row" && ordinal >= 8) && attempt < LATE_ATTEMPT) {
+    if (!slot.refillOwnStep && (slot.place === "on-your-own" && ordinal >= 6 || slot.place === "practice-row" && ordinal >= 8) && attempt < LATE_ATTEMPT) {
       const earlier = earlierSteps(input, slot, day, level);
       if (earlier.length) return earlier[(ordinal + Math.floor(attempt / 12)) % earlier.length];
     }
@@ -837,6 +837,8 @@ interface Slot {
   refits?: number;
   /** How often the capacity stage gave the slot a shorter question of an earlier step instead of dropping one. */
   swaps?: number;
+  /** A floor refill tries unused tasks of its own taught step before earlier-step review. */
+  refillOwnStep?: boolean;
   /** The skill and the kind of question code chose for the slot (#380): the skill's kinds in turn through the book. */
   aim?: { skill: string; kind: QuestionKind; orElse: QuestionKind[] };
   /**
@@ -2160,7 +2162,8 @@ function contentOf(input: GenerateInput, w: PageWork, questions: GeneratedQuesti
       const formats = new Set(questions.filter(q => q.package && q.place !== "warm-up").map(q => q.package!.item?.format ?? "write-number"));
       const circle = !!circleLine, boxes = formats.has("boxes"), write = [...formats].some(f => !["circle", "boxes"].includes(f));
       const writes = questions.some(q => q.package && q.place !== "warm-up" && (q.package.item?.regions ?? []).some(r => r.kind === "box"));
-      const parts = [boxes ? (writes && write ? "Fill in the missing numbers and write the answers in the boxes." : "Fill in the missing numbers.") : writes ? "Write the answer in the box." : null, circle ? circleLine : null].filter(Boolean);
+      const boxLine = writes && write ? (input.plan.level === 4 ? "Fill in the boxes." : "Fill in the missing numbers and write the answers in the boxes.") : "Fill in the missing numbers.";
+      const parts = [boxes ? boxLine : writes ? "Write the answer in the box." : null, circle ? circleLine : null].filter(Boolean);
       if (parts.length) content.subtitle = parts.join(" ");
     } else if (circleLine && !/\bcircle\b/i.test(content.subtitle ?? "")) content.subtitle = `${content.subtitle ? `${content.subtitle.replace(/\s*$/, "")} ` : ""}${circleLine}`;
     if (w.page.extraPractice) Object.assign(content, { extraPractice: true, title: "Extra practice", subtitle: `Answer questions from this workbook.${circleLine ? ` ${circleLine}` : ""}` });
@@ -2341,7 +2344,8 @@ function layOut(input: GenerateInput) {
     // practice took the "7 + 1" Day 5's Challenge needed).
     // Then every number stories page: stories are scarce at the young levels (the full U4 book: Day 10's ran out), and
     // the other pages can take drills.
-    const first = (w: PageWork) => w.page.type === "challenge" ? 0 : w.page.type === "word-problems" ? 1
+    // U4's final review reserves its small task pool too, before practice takes every printable alternative.
+    const first = (w: PageWork) => w.page.type === "challenge" || input.plan.level === 4 && w.page.type === "show-what-you-know" ? 0 : w.page.type === "word-problems" ? 1
       : input.plan.level === 4 && w.page.type === "new-idea" ? 2 : 3;
     // (The Challenges from the last day back: a later day reaches larger numbers, so it takes the largest, and an earlier
     // day's still fit its smaller range. The full U4 book: Day 2's took "7 + 1", which Day 5's needed.)
@@ -2779,6 +2783,8 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         : w.page.type === "remember-these-mixed-set" || w.page.type === "friday-5" ? minimum + 4 : minimum;
       let ceiling = max;
       let added: Slot | null = null;
+      const rejectedRefills = new Set<string>();
+      let pendingRefill: { key: string; rollback(): void } | null = null;
       for (let round = 0; round < 64; round++) {
         // A worked example's task turns with the page's templates: once they change, it takes a free task again.
         repickPanels(input, work, w);
@@ -2810,7 +2816,9 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         const counted = w.slots.filter((s) => !["spot-the-error", "solve-it-two-ways", "warm-up", "how-do-you-know"].includes(s.place ?? "")).length;
         const belowFloor = !w.page.extraPractice && counted < pageMinimum(w.page.type, input.plan.level, false);
         const wanted = Math.max(minimum, w.slots.length + (belowFloor ? 1 : 0));
-        const short = refillPage && fit.ok && w.slots.length < wanted && (w.page.refills ?? 0) < 8 && round < 48;
+        const restoringFloor = input.plan.level === 4 && belowFloor;
+        const canRefill = restoringFloor ? round < 63 : (w.page.refills ?? 0) < 8 && round < 48;
+        const short = refillPage && fit.ok && w.slots.length < wanted && canRefill;
         // (Its floor does not fit beside the full example panel, two refills on: the panel becomes a one-line reminder,
         // U4 to U9, Savar 2026-11-04 "make the practice-page panel a one-line reminder rather than a full panel".)
         if (belowFloor && (fit.ok || (w.page.refills ?? 0) >= 2) && !w.page.compactPanel && input.plan.level <= 9 && ["practice", "practice-2"].includes(w.page.type) && w.panels.some((x) => x.place === "watch-one")) {
@@ -2820,6 +2828,8 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         if (!fit.ok && !short && fit.problems.every(p => p.kind === "layout")) break;
         if (short || !fit.ok && fit.problems.every(p => p.kind === "fullness" || p.kind === "layout")) {
           added = null;
+          pendingRefill = null;
+          let refillKey = "";
           const open = (s: Slot) => !s.existing && ["remember-these","on-your-own","finish-these","practice-row","unit-b-practice","now-you","word-problems","challenge"].includes(s.place ?? "") && !!s.place && w.slots.filter(x=>x.layoutSlot===s.layoutSlot).length < slotMax(s.place,{level:input.plan.level,pages:input.plan.pagesADay.max,consistentLayout:true,extraPractice:!!w.page.extraPractice});
           // (A page refilling below its planned count adds to its practice, which may take a short question of an earlier
           // step, not to a review of one tall kind: the full U4 book's Day 9.)
@@ -2834,13 +2844,14 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
           // The day at its time limit is the page's maximum: its gaps may spread (the report shows its occupied height).
           // (A page below its planned count takes questions again once it has room: a drop lowered its ceiling while a
           // tall question was still on it, the full U4 book's Day 9 at 24 minutes with 4 of 8 questions.)
-          const refill = refillPage && w.slots.length < wanted && (w.page.refills ?? 0) < 8 && round < 48;
+          const refill = refillPage && w.slots.length < wanted && canRefill;
           if (target && (w.slots.length < ceiling || refill) && w.layout && !timeOk) w.page.timeLimited = true;
           if (target && (w.slots.length < ceiling || refill) && w.layout && timeOk) {
             if (w.slots.length >= ceiling) w.page.refills = (w.page.refills ?? 0) + 1;
             const layoutSlot=target.layoutSlot;
             const ordinal=w.slots.filter(s=>s.layoutSlot===layoutSlot).length+1;
-            const slot={...target,id:`${Number(target.id.split(".")[0])}.${target.place === "challenge" ? ordinal : 99+ordinal}`,contract:null};
+            const slot={...target,id:`${Number(target.id.split(".")[0])}.${target.place === "challenge" ? ordinal : 99+ordinal}`,contract:null,
+              refillOwnStep: restoringFloor };
             // Every planned task of the book by its mathematical data, and the sentence frames of this page and its day.
             const planned=(p:PageWork)=>p.slots.flatMap(s=>{ const pkg=s.contract ? contractPackage(input,p,s.contract) : null; return pkg && s.place!=="warm-up" ? [pkg] : []; });
             const taken=new Set([...work.flatMap(p=>planned(p).map(taskIdentity)), ...work.flatMap(p=>panelTasks(input,p))]);
@@ -2852,6 +2863,8 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
               if (!c || !c.template && (c.source==="story" || c.type==="likelihood") && frames.has(storyFrame(c.item.text))) continue;
               const built=buildPlannedItem(c,c.item,{id:"capacity",workbookId:input.workbookId,page:w.number,question:w.slots.length+1,level:input.plan.level,skills:[c.item.skill]});
               if (!built.package || built.check.status === "failed" || scheduledItemProblem(built.package,input.curriculum,w.day,slot.place ?? "")) continue;
+              const trialKey = JSON.stringify([layoutSlot, taskIdentity(built.package), built.package.text, built.package.item]);
+              if (rejectedRefills.has(trialKey)) continue;
               if (taken.has(taskIdentity(built.package))) continue;
               if (slot.place !== "challenge" && slot.place !== "show-what-you-know" && reachesChallenge(work, w.day, c)) continue;
               // A template twice a page at most (as the planner).
@@ -2870,11 +2883,19 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
                 }).length;
                 if (same>=Math.ceil((w.slots.length+1)/2)) continue;
               }
-              // (Refilling: a short question only, so the page keeps its room.)
-              if (refilling && plannedTallness({ contract: c }) > 70) continue;
-              added={...slot,contract:c}; break;
+              // A floor candidate takes the physical fit check, including a sequence with a short instruction.
+              if (refilling && !restoringFloor && plannedTallness({ contract: c }) > 70) continue;
+              added={...slot,contract:c}; refillKey=trialKey; break;
             }
             if (added) {
+              // ownStepFirst can move contracts between slot objects. Roll back the whole trial, not the last slot.
+              const beforeSlots = w.slots.map(s => ({ ...s }));
+              const beforeLayout = structuredClone(w.layout);
+              const beforeGap = w.page.extraGap, beforeMaximum = w.page.atMaximum;
+              pendingRefill = { key: refillKey, rollback: () => {
+                w.slots = beforeSlots; w.layout = beforeLayout;
+                w.page.extraGap = beforeGap; w.page.atMaximum = beforeMaximum;
+              } };
               w.slots.splice(w.slots.findLastIndex(s=>s.layoutSlot===layoutSlot)+1,0,added); w.layout.slots[layoutSlot].items++;
               // (A new question is measured with the page's normal gaps: grown gaps would push it off the page.)
               w.page.extraGap = 0; w.page.atMaximum = false;
@@ -2906,9 +2927,10 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
           continue;
         }
         if (added && w.layout) {
-          w.slots=w.slots.filter(s=>s!==added);
-          w.layout.slots[added.layoutSlot].items--;
-          ceiling=w.slots.length; added=null; continue;
+          if (!pendingRefill) throw new Error("a capacity refill has no rollback state");
+          rejectedRefills.add(pendingRefill.key);
+          pendingRefill.rollback();
+          ceiling=w.slots.length; added=null; pendingRefill=null; continue;
         }
         // A worked example with its method has no room for its Watch out line too: the method stays, the line goes.
         if (!w.page.noWatchOut && fit.problems.some(p => /panel must fit/.test(p.reason))) { w.page.noWatchOut = true; continue; }
@@ -3005,7 +3027,10 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         }
         if (shorterPanel) continue;
         // Then one practice item fewer, while the page keeps its type's minimum (Cedric's table), before any writing.
-        const fewer = w.layout && droppable(w, input.plan.level);
+        const drop = w.layout && droppable(w, input.plan.level);
+        // A young review may keep four of six cards. Remove the card that cannot print before a shorter card.
+        const fewer = drop && input.plan.level === 4 && w.page.type === "show-what-you-know" && wideSlot?.contract?.template
+          ? wideSlot : drop;
         if (fewer && w.layout) {
           w.slots=w.slots.filter(s=>s!==fewer);
           w.layout.slots[fewer.layoutSlot].items--;
@@ -3058,6 +3083,11 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
           ceiling = Math.min(ceiling, w.slots.length); continue;
         }
         return `Page ${w.number}: the required questions exceed the template capacity: day ${w.day} ${w.page.type} (${w.slots.map(s => s.place).join(", ")}): ${fit.problems.map(p => p.reason).join(" ")}`;
+      }
+      if (input.plan.level === 4 && !w.page.extraPractice && ["practice", "practice-2", "remember-these", "show-what-you-know"].includes(w.page.type)) {
+        const count = w.slots.filter(s => (s.contract || s.existing) && !["spot-the-error", "solve-it-two-ways", "warm-up", "how-do-you-know"].includes(s.place ?? "")).length;
+        const floor = pageMinimum(w.page.type, input.plan.level, false);
+        if (count < floor) return `Page ${w.number}: capacity could not restore ${floor} distinct valid practice questions; ${count} remain`;
       }
       const oldSlots = w.slots;
       w.page = { ...w.page, parts: w.page.parts.map((p, i) => ({ ...p, items: (w.layout?.slots ?? []).filter(s => s.part === i && s.slot !== "how-do-you-know").reduce((n,s)=>n+s.items,0) + (p.kind === "practice" ? p.faded?.watch ?? 0 : 0) })), capacity: w.layout?.slots, capacityChecked: true };

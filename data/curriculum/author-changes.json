@@ -7632,5 +7632,18 @@
     "before": "{name} counts up and says {n}, then {m}. Which number did {name} skip?",
     "after": "{name} counts up: {n}, then {m}. What was skipped?",
     "why": "Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text."
+  },
+  {
+    "kind": "page-instruction",
+    "level": 4,
+    "skill": "workbook-page-instructions",
+    "step": 0,
+    "template": null,
+    "path": [
+      "subtitle"
+    ],
+    "before": "Fill in the missing numbers and write the answers in the boxes.",
+    "after": "Fill in the boxes.",
+    "why": "Keep the instruction for both missing-number boxes and answer boxes. The shorter U4 instruction leaves room for the separate circle instruction and eight practice questions. Other levels keep their instruction."
   }
 ]

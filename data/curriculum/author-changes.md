@@ -4799,3 +4799,11 @@ Before: "{name} counts up and says {n}, then {m}. Which number did {name} skip?"
 After: "{name} counts up: {n}, then {m}. What was skipped?"
 
 Reason: Keep the numbers, answer, difficulty and task. Remove repeated names or words so eight questions fit at the U4 type size. Other levels keep their source text.
+
+### U4 mixed-box page instruction
+
+Before: "Fill in the missing numbers and write the answers in the boxes."
+
+After: "Fill in the boxes."
+
+Reason: Keep the instruction for both missing-number boxes and answer boxes. The shorter U4 instruction leaves room for the separate circle instruction and eight practice questions. Other levels keep their instruction. This changes code-owned page text in `workbook-generator.ts`, outside Cedric's template data.

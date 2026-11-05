@@ -50,8 +50,17 @@ describe("v2 data and answer contracts", () => {
   });
 
   it("replays every recorded change and keeps all template positions with easy and hard coverage", () => {
-    const patches = JSON.parse(read("author-changes.json")) as { skill: string; step: number; template: number | null; path: string[]; before: unknown; after: unknown; why: string; kind?: "quality-fallback" | "wording-rewrite" | "level-wording"; level?: number; beforeAbsent?: boolean; afterAbsent?: boolean }[];
+    const patches = JSON.parse(read("author-changes.json")) as { skill: string; step: number; template: number | null; path: string[]; before: unknown; after: unknown; why: string; kind?: "quality-fallback" | "wording-rewrite" | "level-wording" | "page-instruction"; level?: number; beforeAbsent?: boolean; afterAbsent?: boolean }[];
     for (const patch of patches) {
+      // Page instructions belong to generated content, outside Cedric's raw template data.
+      if (patch.kind === "page-instruction") {
+        expect(patch.level).toBe(4);
+        expect(patch.path).toEqual(["subtitle"]);
+        expect(patch.before).toBe("Fill in the missing numbers and write the answers in the boxes.");
+        expect(patch.after).toBe("Fill in the boxes.");
+        expect(patch.why).not.toBe("");
+        continue;
+      }
       const step = original.steps.find(s => s.skill === patch.skill && s.number === patch.step)!;
       const target = (patch.template === null ? step : step.templates![patch.template - 1]) as unknown as Record<string, unknown>;
       expect(patch.path).toHaveLength(1);
