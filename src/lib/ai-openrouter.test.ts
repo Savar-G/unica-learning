@@ -197,8 +197,8 @@ describe("the OpenRouter AI client: no output is an error, never a result (#183)
   });
 });
 
-// D-282: children's data on OpenRouter goes only to Claude on Google Vertex, with zero data retention and no training.
-describe("the pinned route (D-282), for every AI feature on this client", () => {
+// D-283: children's data on OpenRouter goes only to Claude on Google Vertex, with zero data retention and no training.
+describe("the pinned route (D-283), for every AI feature on this client", () => {
   const PINNED = { order: ["google-vertex"], only: ["google-vertex"], allow_fallbacks: false, require_parameters: true, zdr: true, data_collection: "deny" };
   afterEach(() => vi.unstubAllGlobals());
 
@@ -286,7 +286,7 @@ describe("the provider's words on a refusal", () => {
   });
 });
 
-// D-282: Claude's constrained output refuses a schema with more than 16 union-type fields ("exponential compilation cost",
+// D-283: Claude's constrained output refuses a schema with more than 16 union-type fields ("exponential compilation cost",
 // the provider's words on 2026-11-05). Such a schema goes in the instructions, on the same route, and the caller's own
 // checks judge the output.
 describe("a schema over the limit of constrained output", () => {

@@ -4,7 +4,7 @@ import { voiceProviders } from "@/lib/maya-voice";
 import { FakeSTT, FakeTTS } from "./fake-providers";
 import { makeProviders } from "./providers";
 
-// Providers change by configuration only (#326, D-163, D-238, D-284): the same worker builds LiveKit Inference (the
+// Providers change by configuration only (#326, D-163, D-238, D-285): the same worker builds LiveKit Inference (the
 // default), the fakes, or AssemblyAI and Inworld directly, from the environment. The real plugins are only constructed here (no network, no account): whether they work is
 // checked once the accounts exist (docs/maya-voice.md).
 
@@ -17,7 +17,7 @@ const build = async (env: Record<string, string>) => {
 };
 
 describe("the worker's providers", () => {
-  it("are LiveKit Inference with nothing chosen (D-284)", async () => {
+  it("are LiveKit Inference with nothing chosen (D-285)", async () => {
     const { providers, config } = await build({ LIVEKIT_API_KEY: "test-key", LIVEKIT_API_SECRET: "test-secret", MAYA_VOICE: "Ashley" });
     expect(config.ids).toEqual({ speechToText: "inference/assemblyai/universal-3-6-pro", voice: "inference/inworld/inworld-tts-2/Ashley" });
     expect(providers.stt).toBeInstanceOf(inference.STT);

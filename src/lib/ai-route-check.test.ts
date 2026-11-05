@@ -5,7 +5,7 @@ import { PROPOSAL_SCHEMA, PROPOSAL_VERSION } from "@/lib/maya/proposal";
 import { ITEMS_SCHEMA } from "@/lib/workbook-generator-items";
 import { REVIEW_DEFAULT_MODEL } from "@/lib/maya-talk-review";
 
-// The route check (D-282) with fetch faked: one fixed request with no child data, through the real adapter.
+// The route check (D-283) with fetch faked: one fixed request with no child data, through the real adapter.
 
 const signal = () => new AbortController().signal;
 
@@ -24,7 +24,7 @@ const answered = {
   choices: [{ finish_reason: "stop", native_finish_reason: "end_turn", message: { role: "assistant", content: JSON.stringify({ answer: "85" }) } }],
 };
 
-describe("the route check (D-282)", () => {
+describe("the route check (D-283)", () => {
   it("reports the status, the model and the provider that answered", async () => {
     const { fetch } = fakeFetch(200, answered);
     await expect(checkAiRoute({ apiKey: "sk-or-test", model: AI_DEFAULT_MODEL, fetch, signal: signal() })).resolves.toMatchObject({

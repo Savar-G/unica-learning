@@ -4,7 +4,7 @@
 // provider.require_parameters: only providers that support every parameter sent (the JSON schema above all) get the
 // request.
 //
-// The route (D-282). Children's work and words go through this client, so every request carries its data policy, not
+// The route (D-283). Children's work and words go through this client, so every request carries its data policy, not
 // only the account settings (#182): `zdr: true` (zero data retention endpoints only) and `data_collection: "deny"` (no
 // provider that may train on inputs). A request for a Claude model (`anthropic/...` on OpenRouter) is pinned to Google
 // Vertex (`only` and `order`, with `allow_fallbacks: false`), so it never goes to another host of the same model. Vertex,
@@ -16,7 +16,7 @@
 // field: it stays off (docs, AGENTS.md). Fields from https://openrouter.ai/docs/guides/routing/provider-selection and
 // https://openrouter.ai/docs/guides/features/zdr (read 2026-11-05). Live check: POST /api/admin/ai-route.
 //
-// Constrained decoding (D-282). Claude's constrained output refuses a schema with more than 16 union-type fields; Maya's
+// Constrained decoding (D-283). Claude's constrained output refuses a schema with more than 16 union-type fields; Maya's
 // proposal has 33 and the workbook writer's items have 73 (the provider's words, 2026-11-05). Such a schema goes in the
 // instructions, on the same route, decided from the schema before the first request, so it never costs a refused call.
 // If the provider still says a schema is too complex, that request goes once more in the instructions and that request
@@ -25,7 +25,7 @@
 import type { AiClient, AiJsonRequest, AiPart } from "@/lib/ai-client";
 import { firstObject, overConstrainedLimit, schemaInText } from "@/lib/ai-schema-text";
 
-/** OpenRouter's slug of the host of every Claude model here (D-282). */
+/** OpenRouter's slug of the host of every Claude model here (D-283). */
 export const CLAUDE_PROVIDER = "google-vertex";
 
 /** A Claude model: pinned to `CLAUDE_PROVIDER`. */
@@ -34,7 +34,7 @@ export const isClaudeModel = (model: string) => model.startsWith("anthropic/");
 /** The route in words, for an error message. */
 const routeWords = (model: string) => isClaudeModel(model) ? "Google Vertex only, zero data retention, no training" : "zero data retention, no training";
 
-/** The provider routing of every request for `model` (D-282). */
+/** The provider routing of every request for `model` (D-283). */
 export function providerRoute(model: string) {
   const policy = { require_parameters: true, zdr: true, data_collection: "deny" as const };
   if (!isClaudeModel(model)) return policy;
@@ -124,7 +124,7 @@ async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: A
     data = null;
   }
   if (res.status === 404) {
-    // No endpoint meets the route (D-282). Never retried, never sent another way.
+    // No endpoint meets the route (D-283). Never retried, never sent another way.
     throw withWords(new Error(`OpenRouter has no endpoint for this request on the allowed route (${route}): 404 ${short(data?.error?.message ?? text)}`), data?.error?.metadata);
   }
   if (!res.ok) {

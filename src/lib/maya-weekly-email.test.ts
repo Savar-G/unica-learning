@@ -51,7 +51,7 @@ function setup(notes: CallNote[], parents: WeeklyParent[] = [priya], children: W
 
 const tokenOf = (text: string) => /\/unsubscribe\?t=([A-Za-z0-9_-]+)/.exec(text)![1];
 
-describe("D-283: the email carries no words from a call", () => {
+describe("D-284: the email carries no words from a call", () => {
   it("sends a count per child and a sign-in link to each child's notes, never the transcript or the note's sentences", async () => {
     const { store, mail, run } = setup([
       note({ endedAt: pdt(2, 15, 30), warm: "w1" }),

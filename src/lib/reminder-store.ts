@@ -3,7 +3,7 @@ import { loadFamilyChildren } from "@/lib/family-time-server";
 import { familyProvince } from "@/lib/family-time";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { bandFor, testLength, type Grade, type Route } from "@/lib/assessment";
+import { bandFor, testLength, type Grade, type Route, type Stage3Route } from "@/lib/assessment";
 import { toAttempt, type AttemptRow } from "@/lib/assessment-store";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { saveEmailCopy } from "@/lib/email-copies";
@@ -75,7 +75,7 @@ async function allRows<T>(page: (from: number, to: number) => PromiseLike<{ data
   }
 }
 
-type TestRow = AttemptRow & { child_id: string; grade: number; route: Route | null };
+type TestRow = AttemptRow & { child_id: string; grade: number; route: Route | null; stage3_route: Stage3Route | null };
 
 export function reminderStore(admin: SupabaseClient<Database>): ReminderStore<LoadedState> {
   return {
@@ -97,7 +97,7 @@ export function reminderStore(admin: SupabaseClient<Database>): ReminderStore<Lo
       // Every test of those children: the start screen's rules read all of them.
       const [childRows, testRows] = await Promise.all([
         inChunks(childIds, (ids) => admin.from("children").select("id, parent_id, first_name, grade, province, created_at").in("id", ids)),
-        inChunks(childIds, (ids) => admin.from("assessments").select("id, child_id, grade, route, status, started_at, last_answer_at, resume_until, completed_at").in("child_id", ids)),
+        inChunks(childIds, (ids) => admin.from("assessments").select("id, child_id, grade, route, stage3_route, status, started_at, last_answer_at, resume_until, completed_at").in("child_id", ids)),
       ]);
       const parentIds = [...new Set(childRows.map((c) => c.parent_id))];
       const [parentRows, logRows, tests, familyChildren] = await Promise.all([
@@ -175,7 +175,7 @@ async function lengthOf(admin: SupabaseClient<Database>, row: TestRow): Promise<
   if (!row.route || (row.status !== "in_progress" && row.status !== "expired")) return band;
   const { data, error } = await admin.from("assessments").select("test").eq("id", row.id).maybeSingle();
   if (error) throw new Error(`test load: ${error.message}`);
-  return data?.test ? testLength(data.test, row.route) : band;
+  return data?.test ? testLength(data.test, row.route, row.stage3_route) : band;
 }
 
 /** A test row in the rules' terms. One in progress counts its answers: with every answer in, it waits to be scored. */

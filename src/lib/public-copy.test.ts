@@ -115,7 +115,7 @@ describe("a space follows every full stop and colon in public copy", () => {
   });
 });
 
-describe("the privacy page on the weekly Maya email (D-283)", () => {
+describe("the privacy page on the weekly Maya email (D-284)", () => {
   const text = () => renderToStaticMarkup(Privacy()).replace(/<[^>]+>/g, " ").replace(/&#x27;|&apos;/g, "'").replace(/\s+/g, " ");
 
   it("says it holds counts and sign-in links, never what was said", () => {

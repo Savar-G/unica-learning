@@ -119,7 +119,7 @@ describe("the notice text", () => {
     expect(text).toMatch(/Chat is for Grade 3 and up/);
   });
 
-  it("says the chat can go to the AI after it ends, that other details can remain, and what the weekly email holds (D-283)", () => {
+  it("says the chat can go to the AI after it ends, that other details can remain, and what the weekly email holds (D-284)", () => {
     expect(text).toMatch(/After a chat ends, we can also send the chat to the AI company/);
     expect(text).toMatch(/other personal details your child typed can remain/);
     expect(text).toMatch(/how many chats or calls each child had, with a link to sign in and read the notes/);

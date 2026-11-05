@@ -153,7 +153,8 @@ export function ProgressPanel({ id, initial, live }: { id: string; initial: Prog
       <p className="dash-prog-text">{p.text}{p.open && <span className="dash-muted"> · {p.sinceText} {span(p.since, now)} ago</span>}</p>
       <Bar p={p} />
       <p className="dash-prog-legend dash-muted">
-        {p.answered} of {p.total} answered · Part 1: {Math.min(p.answered, p.part1)} of {p.part1} · Part 2: {Math.max(0, p.answered - p.part1)} of {p.total - p.part1}
+        {p.answered} of {p.total} answered · Part 1: {Math.min(p.answered, p.part1)} of {p.part1} · Part 2: {Math.min(Math.max(0, p.answered - p.part1), p.total - p.part1 - p.part3)} of {p.total - p.part1 - p.part3}
+        {p.part3 > 0 && <> · Part 3: {Math.max(0, p.answered - (p.total - p.part3))} of {p.part3}</>}
         {p.facts && <> · Quick facts: {p.facts.answered}{p.facts.done ? "" : " so far"}</>}
       </p>
       {p.current && (

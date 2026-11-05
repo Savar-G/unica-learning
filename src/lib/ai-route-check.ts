@@ -1,4 +1,4 @@
-// The live check of the AI route (D-282): fixed requests with no child data through the real adapter, so an admin can see
+// The live check of the AI route (D-283): fixed requests with no child data through the real adapter, so an admin can see
 // that OpenRouter serves the pinned route for what the features really send, and which provider answered. It is the check
 // to run when the model or the route changes. Each request has no retry, so a refusal shows as it came. Admins press it:
 // POST /api/admin/ai-route.
@@ -23,7 +23,7 @@ export interface RouteCheck {
   requested: string;
   /** The size of the JSON schema sent. */
   schemaBytes: number;
-  /** How the schema went: through constrained decoding, or in the instructions (D-282). */
+  /** How the schema went: through constrained decoding, or in the instructions (D-283). */
   decoding: "constrained" | "in_text" | null;
   /** OpenRouter's HTTP status; null when no answer came. */
   status: number | null;

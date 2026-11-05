@@ -2,7 +2,7 @@
 // 16 union-type fields or 24 optional ones ("exponential compilation cost", the provider's words). Such a schema goes in
 // the instructions, and the caller's own checks judge the output. Shared by the Claude API adapter (src/lib/ai-anthropic.ts)
 // and the OpenRouter adapter (src/lib/ai-openrouter.ts). Limits: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
-// (read 2026-10-31), and the provider's refusal of 2026-11-05 (D-282).
+// (read 2026-10-31), and the provider's refusal of 2026-11-05 (D-283).
 
 export const UNION_LIMIT = 16;
 export const OPTIONAL_LIMIT = 24;

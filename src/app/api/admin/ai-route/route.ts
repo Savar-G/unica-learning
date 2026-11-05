@@ -1,7 +1,7 @@
 import { adminSession } from "@/lib/admin-store";
 import { checkAiRoute, routeChecks } from "@/lib/ai-route-check";
 
-// The live check of the AI route (D-282): fixed requests with no child data, a small one per model this deployment uses
+// The live check of the AI route (D-283): fixed requests with no child data, a small one per model this deployment uses
 // and the real-size ones (the largest schema, Maya's schema, an image). Answers
 // { ok, checks: [{ ok, shape, requested, schemaBytes, status, model, provider, error? }] }. Admins only; POST, from this site.
 export const maxDuration = 120;

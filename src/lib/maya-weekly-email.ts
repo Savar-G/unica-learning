@@ -2,7 +2,7 @@
 // No calls means no email. Claims in email_log use (parent, week_start). Refused sends can retry three times;
 // unknown sends stay claimed. The shared reminder job runs this through sendEmailOnce after the reminders.
 // The CASL footer and Maya unsubscribe are separate from the reminders. No AI call is made here. The email gives a
-// count per child and a sign-in link to the notes, never words from a call (D-283).
+// count per child and a sign-in link to the notes, never words from a call (D-284).
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { emailDocument, emailFooterText, emailSignatureText } from "@/lib/email-brand";
 import { sendEmailOnce, type EmailMessage, type MailTransport, type SendLedger } from "@/lib/email-delivery";
@@ -122,7 +122,7 @@ export function dueWeeklyEmails(state: WeeklyState, now: number): DueWeekly[] {
 
 // ---------- The email ----------
 
-/** One child's line in the email: a count and the link to the child's notes. Never words from a call (D-283). */
+/** One child's line in the email: a count and the link to the child's notes. Never words from a call (D-284). */
 export interface WeeklyEmailChild {
   name: string;
   /** Every completed call of the child in this email, with or without a note. */
@@ -156,7 +156,7 @@ const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 /**
  * The weekly Maya email: subject, text and HTML, with the CASL footer and the unsubscribe link. It says how many calls
  * each child had and links to the child's notes behind sign-in. It never carries the transcript, the note's sentences
- * or anything else said in a call (D-283): an email is copied to mail servers and kept in inboxes we do not control.
+ * or anything else said in a call (D-284): an email is copied to mail servers and kept in inboxes we do not control.
  */
 export function weeklyEmail(e: WeeklyEmailInput): { subject: string; text: string; html: string } {
   const names = e.children.map((c) => c.name);

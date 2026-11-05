@@ -2,6 +2,7 @@ import "server-only";
 import {
   MISCONCEPTIONS,
   fromRemovedRound,
+  everyQuestion,
   reportFindings,
   storedProfile,
   storedReportModel,
@@ -163,9 +164,8 @@ export async function loadReportInputs(reader: ReportReader, assessmentId: strin
   const a = await reader.assessment(assessmentId);
   if (!a || a.status !== "completed" || !a.completedAt || !a.placement) return null;
   const stored = await reader.answers(a.id);
-  // The question map: every question the test could ask, from stage 1 and the three stage 2 paths.
-  const { stage1, stage2 } = a.test;
-  const questions = new Map([...stage1, ...stage2.up, ...stage2.stay, ...stage2.down].map((q) => [q.id, q]));
+  // The question map: every question the test could ask, from every stage and path.
+  const questions = new Map(everyQuestion(a.test).map((q) => [q.id, q]));
   // D-145: the answers to the removed extra round's questions (#190), which two tests still store, are left out: no
   // report part, learner profile or count reads them.
   const answers = stored.filter((x) => !fromRemovedRound(x.questionId));
