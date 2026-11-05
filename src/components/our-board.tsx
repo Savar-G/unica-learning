@@ -11,7 +11,7 @@
 // to her while she writes, then back to the child), the child keeps the pen tools all through the chat, and every
 // change goes to `onChange`, which sends the board to the call.
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { boardDraftKey, chatBoardKey, chatBoardView, chatViewKey, childStrokes, createHistory, keptStroke, loadDraft, markClosed, markOpen, mayaSteps, mayaWrites, mayaWritingEnds, penHasMoved, penHolder, restoreKept, type BoardHistory, type DraftStore } from "@/lib/board-history";
+import { boardDraftKey, chatBoardKey, chatBoardView, chatViewKey, childStrokes, createHistory, keptStroke, loadDraft, markClosed, markOpen, mayaSteps, mayaWrites, mayaWritingEnds, penHasMoved, penHolder, restoreKept, startingChatBoard, type BoardHistory, type DraftStore } from "@/lib/board-history";
 import type { Batch } from "@/lib/board";
 import { BATCH_GAP_MS, timeline } from "@/lib/board-svg";
 import { createBoardSession, type SessionNote } from "@/lib/board-session";
@@ -148,8 +148,8 @@ export interface OurBoardProps {
   /** Hears every change of the board this tab holds (a chat sends it to the call). */
   onChange?: (history: BoardHistory) => void;
   /**
-   * A chat's board as the call holds it (#635), for a page with no draft of it: the board starts from it, its clock going
-   * on from where it was left (R635-4).
+   * A chat's board as the call holds it, with the ink waiting on this device (#635, R639-1): the board starts from it,
+   * unless a draft holds all of it, its clock going on from where it was left (R635-4).
    */
   restore?: BoardHistory | null;
   label: string;
@@ -197,8 +197,11 @@ const NOTES: Record<SessionNote, string> = {
 };
 
 function LiveBoard({ question, chat, onChange, restore, label, caption, still, draftKey, store }: OurBoardProps & { draftKey: string; store: DraftStore | null }) {
-  // The board as it was left: this tab's draft, else (a chat) the board the call holds.
-  const [restored] = useState(() => (store ? loadDraft(store, draftKey) : null) ?? (chat && restore ? restore : null));
+  // The board as it was left: this tab's draft; a chat's draft only when it holds all the call holds (R639-2).
+  const [restored] = useState(() => {
+    const draft = store ? loadDraft(store, draftKey) : null;
+    return chat ? startingChatBoard(restore ?? null, draft) : draft;
+  });
   const [session] = useState(() =>
     createBoardSession({
       initial: restored ?? (chat ? carried(store, chat.carry) : firstBoard(question)),
@@ -208,6 +211,7 @@ function LiveBoard({ question, chat, onChange, restore, label, caption, still, d
       still,
       pen: { w: PEN_W, eraserW: ERASER_W, minGapPx: MIN_GAP_PX },
       noStore: !store,
+      appendOnly: !!chat,
     }),
   );
   const view = useSyncExternalStore(session.subscribe, session.view, session.view);

@@ -55,7 +55,7 @@ import { voiceBoardHistory } from "@/lib/voice-board-history";
 import type { BoardSnapshot } from "@/lib/board-protocol";
 import { speechWords, type BoardCue } from "@/lib/board-speech";
 import { applyBatch, boardView, createScene, type Batch } from "@/lib/board";
-import { createHistory, mayaWrites, readInkEvent, withChildInk, withInkLog, type BoardHistory, type InkEvent } from "@/lib/board-history";
+import { createHistory, inkLog, mayaWrites, readInkEvent, withChildInk, withInkLog, type BoardHistory, type InkEvent } from "@/lib/board-history";
 import { fitView, type PlayStep } from "@/lib/board-svg";
 import type { LearningEvents, NewLearningEvent } from "@/lib/learning-events";
 import type { NoteStep } from "@/lib/maya-call-note";
@@ -222,7 +222,8 @@ export interface CallStore {
    * Appends a chat's ink events (#635), in one step and without raising the call's revision: `events[i]` has sequence
    * `from + i`, and an event at a sequence the call holds already is left as it is. `closed`: the call ended more than
    * INK_AFTER_END_MS ago. `busy`: an append came less than INK_SAVE_GAP_MS ago. `gap`: `from` is past the next sequence.
-   * `not_found`: no chat with this id of this parent and child. `held`: the last sequence the call holds.
+   * `not_found`: no chat with this id of this parent and child. `held`: the last sequence the call holds. A chat from
+   * before the log (R639-4) with no event yet has its whole-board copy turned into events first, in the same step.
    */
   appendInk(id: string, owner: InkOwner, from: number, events: readonly InkEvent[]): Promise<InkAppend>;
   /** A chat's ink log, in sequence order. */
@@ -461,6 +462,12 @@ export interface MayaCalls {
    * raises the call's revision. `held` is the last sequence the call holds, which the desk sends on from.
    */
   appendInk(id: string, owner: InkOwner, from: unknown, events: unknown): Promise<{ ok: true; held: number } | { ok: false; error: "invalid_input" | "not_found" | "busy" | "closed" | "gap"; held: number }>;
+  /**
+   * A chat's ink log for its own desk (#635), or null when it is not a chat of this parent and child. A chat from before
+   * the log (R639-4) that has no event yet answers its whole-board copy as a log; the store turns that copy into events
+   * before it appends the first new one, so the sequences are the same.
+   */
+  readInk(id: string, owner: InkOwner): Promise<InkEvent[] | null>;
   view(id: string): Promise<CallView | null>;
 }
 
@@ -1167,6 +1174,13 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       if (!read || read.some((e) => e === null) || first < 1 || first + read.length - 1 > MAX_INK_SEQ) return { ok: false, error: "invalid_input", held: 0 };
       const appended = await store.appendInk(id, owner, first, read as InkEvent[]);
       return appended.status === "saved" ? { ok: true, held: appended.held } : { ok: false, error: appended.status, held: appended.held };
+    },
+
+    async readInk(id, owner) {
+      const record = await store.get(id);
+      if (!record || record.kind !== "chat" || record.mode !== "text" || record.parentId !== owner.parentId || record.childId !== owner.childId) return null;
+      const log = await store.readInk(id);
+      return log.length > 0 ? log : inkLog(record.childInk ?? createHistory());
     },
 
     async view(id) {

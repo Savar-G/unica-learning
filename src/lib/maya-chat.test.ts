@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { chatFamilyGate, chatLimitLabel, chatServesGrade, getsNoParentNotes, rehearsalRefusal, chatUsage, chatWindow, chatCapLine, childChatView } from "@/lib/maya-chat";
-import { INK_AFTER_END_MS, INK_SAVE_GAP_MS, mayaCalls, type CallResult, type CallSeams } from "@/lib/maya-call";
+import { INK_AFTER_END_MS, INK_SAVE_GAP_MS, mayaCalls, type CallChange, type CallResult, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore } from "@/lib/maya-call-memory";
 import { memoryWordingHistoryStore, SAFETY_GUIDANCE } from "@/lib/maya";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
@@ -9,7 +9,7 @@ import { ruleMayaModel, fakeMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace } from "@/lib/maya-trace";
 import { NOTE_CALL_KINDS } from "@/lib/maya-call-note";
-import { childStrokes, createHistory, drawStroke, givePen, inkLog, mayaWrites, penHolder, replayFrame, takePen, type BoardHistory, type Change } from "@/lib/board-history";
+import { childStrokes, createHistory, drawStroke, givePen, inkLog, mayaWrites, penHolder, replayFrame, takePen, type BoardHistory, type Change, type InkEvent } from "@/lib/board-history";
 import type { Batch } from "@/lib/board";
 import { callReplay } from "@/lib/maya-call-review";
 
@@ -255,6 +255,33 @@ describe("#534, #635: the child's ink is kept with the chat as a log", () => {
     expect(await c.calls.appendInk(id, owner, 5, log.slice(4, 5))).toEqual({ ok: true, held: 5 });
     c.advance(INK_AFTER_END_MS + 1);
     expect(await c.calls.appendInk(id, owner, 6, [{ kind: "clear", t: 99_999 }])).toEqual({ ok: false, error: "closed", held: 5 });
+  });
+
+  it("R639-4: a chat from before the log keeps its old ink: read back, turned into the log before new events, and in the replay", async () => {
+    const c = await clocked();
+    const id = c.r.view.id;
+    const old = grow(createHistory(), c.r.view.batches, 1, 1000);
+    const legacy = inkLog(old);
+    expect(await c.memory.update(id, c.memory.rows()[0].revision, { childInk: old } as CallChange)).toBe(true);
+    // A desk with no draft reads the old ink, and a desk from another child reads nothing.
+    expect(await c.calls.readInk(id, owner)).toEqual(legacy);
+    expect(await c.calls.readInk(id, { parentId: parent, childId: "55555555-5555-4555-8555-555555555555" })).toBeNull();
+    const next: InkEvent = { kind: "clear", t: 900_000 };
+    // A new event goes after the old ink, and the old ink is kept as it was.
+    expect(await c.calls.appendInk(id, owner, legacy.length + 1, [next])).toEqual({ ok: true, held: legacy.length + 1 });
+    expect(await c.memory.readInk(id)).toEqual([...legacy, next]);
+    expect(await c.calls.readInk(id, owner)).toEqual([...legacy, next]);
+    const view = (await c.calls.view(id))!;
+    expect(view.boardHistory.events.some((e) => e.kind === "stroke")).toBe(true);
+  });
+
+  it("R639-4: the replay of a chat from before the log, with no new event, shows its old ink", async () => {
+    const c = await clocked();
+    const id = c.r.view.id;
+    const old = grow(createHistory(), c.r.view.batches, 1, 1000);
+    expect(await c.memory.update(id, c.memory.rows()[0].revision, { childInk: old } as CallChange)).toBe(true);
+    expect(childStrokes((await c.calls.view(id))!.boardHistory)).toHaveLength(1);
+    expect(await c.memory.readInk(id)).toEqual([]);
   });
 
   it("R625b-5: keeps ink only for a chat of that parent and child", async () => {

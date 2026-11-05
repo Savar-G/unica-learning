@@ -1,4 +1,4 @@
-import type { InkEvent } from "@/lib/board-history";
+import { inkLog, type InkEvent } from "@/lib/board-history";
 import { INK_AFTER_END_MS, INK_SAVE_GAP_MS, type CallChange, type CallConnection, type CallRecord, type CallStore, type ConnectionLog } from "@/lib/maya-call";
 import type { SweepCallSource, SweepCursor, SweepKind, SweepPlace } from "@/lib/maya-call-sweep";
 
@@ -66,9 +66,11 @@ export function memoryCallStore(options: { testFamilies: readonly string[]; cloc
       // No await between the checks and the write: the database function is one transaction too.
       const now = (options.clock ?? Date.now)();
       const r = rows.get(id);
-      const log = inkLogs.get(id) ?? [];
+      let log = inkLogs.get(id) ?? [];
       if (!r || r.mode !== "text" || r.kind !== "chat" || r.parentId !== owner.parentId || r.childId !== owner.childId) return { status: "not_found", held: 0 };
       if (r.status === "ended" && r.endedAt && Date.parse(r.endedAt) < now - INK_AFTER_END_MS) return { status: "closed", held: log.length };
+      // A chat from before the log: its whole-board copy becomes the first events, as in the database function (R639-4).
+      if (log.length === 0 && r.childInk) inkLogs.set(id, (log = copy(inkLog(r.childInk))));
       if ((inkAt.get(id) ?? -Infinity) > now - INK_SAVE_GAP_MS) return { status: "busy", held: log.length };
       if (from > log.length + 1) return { status: "gap", held: log.length };
       // Each sequence once: events the call holds already are left as they are.

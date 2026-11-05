@@ -9,7 +9,7 @@ import { chatFamilyGate, chatGradeLine, chatServesGrade, chatUsage, chatWindow, 
 import { mayaCalls, recordView, type CallRecord } from "@/lib/maya-call";
 import type { InkEvent } from "@/lib/board-history";
 import { callSeams } from "@/lib/maya-call-seams";
-import { mayaCallStore, readInkLog } from "@/lib/maya-call-store";
+import { mayaCallStore } from "@/lib/maya-call-store";
 import { mayaNotice } from "@/lib/maya-notice";
 import { noticeStore } from "@/lib/maya-notice-store";
 import { workbookStore } from "@/lib/workbook-store";
@@ -101,11 +101,10 @@ export async function appendChatInk(ctx: ChatContext, id: string, from: unknown,
   return mayaCalls({ ...callSeams(db), canChat: async (p, c) => p === parent && c === child }).appendInk(id, { parentId: parent, childId: child }, from, events);
 }
 
-/** The ink log the call holds for a chat of this child (#635), for a desk with no draft of the board; null when none. */
+/** The ink log the call holds for a chat of this child (#635, R639-4), for the board the desk starts from; null when none. */
 export async function readChatInk(ctx: ChatContext, id: string): Promise<InkEvent[] | null> {
-  const record = await mayaCallStore(ctx.db).get(id);
-  if (!record || record.kind !== "chat" || record.parentId !== ctx.parent || record.childId !== ctx.child) return null;
-  return readInkLog(ctx.db, id);
+  const { db, parent, child } = ctx;
+  return mayaCalls({ ...callSeams(db), canChat: async (p, c) => p === parent && c === child }).readInk(id, { parentId: parent, childId: child });
 }
 
 /** One authorized desk request. The database serializes message admission before the shared call module runs. */

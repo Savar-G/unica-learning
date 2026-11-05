@@ -542,7 +542,12 @@ export function readInkEvent(raw: unknown): InkEvent | null {
 function logEvents(log: readonly InkEvent[], batches: ReadonlyMap<string, Batch>): HistoryEvent[] {
   let scene = createScene();
   const events: HistoryEvent[] = [];
-  for (const e of log) {
+  // A line drawn on a board that fell behind has an earlier time than the event before it (R639-2): it moves up.
+  let last = 0;
+  for (const raw of log) {
+    const by = last - (raw.kind === "delivered" ? raw.t : startOf(raw));
+    const e: InkEvent = by <= 0 ? raw : raw.kind === "delivered" ? { ...raw, t: last } : (timed(raw, (t) => t + by) as InkEvent);
+    last = e.kind === "stroke" ? e.pts[e.pts.length - 1][2] : e.t;
     if (e.kind !== "delivered") {
       events.push(e);
       if (e.kind === "stroke" || e.kind === "recovered") {
@@ -572,6 +577,49 @@ export function historyFromLog(log: readonly InkEvent[], batches: readonly Batch
   const events = logEvents(log, new Map(batches.map((b) => [b.transactionId, b])));
   return decodeHistory(encodeHistory({ v: 1, revision: events.length, events }));
 }
+
+const sameInk = (a: InkEvent, b: InkEvent) => a === b || JSON.stringify(readInkEvent(a)) === JSON.stringify(readInkEvent(b));
+/** How far two logs are the same, from the first event. `null`: only the call has that event, so it counts as the same. */
+const sharedInk = (a: readonly (InkEvent | null)[], b: readonly InkEvent[]): number => {
+  let n = 0;
+  while (n < a.length && n < b.length && (a[n] === null || sameInk(a[n] as InkEvent, b[n]))) n++;
+  return n;
+};
+
+/**
+ * A log with what a board holds now (R639-1, R639-2). A sequence once given is never given to another event, because the
+ * call keeps the first event at each sequence: a board that goes on from the log becomes the log; a shorter one changes
+ * nothing; the new events of a board that went another way go at the end, once each.
+ */
+export function growInkLog<T extends InkEvent | null>(log: T[], board: InkEvent[]): (T | InkEvent)[] {
+  const shared = sharedInk(log, board);
+  if (shared === log.length) return board;
+  if (shared === board.length) return log;
+  const on = new Set(log.flatMap((e) => (e ? [JSON.stringify(readInkEvent(e))] : [])));
+  return [...log, ...board.slice(shared).filter((e) => !on.has(JSON.stringify(readInkEvent(e))))];
+}
+
+/**
+ * The board a chat picked up again starts from (R639-2): the board from the call's log and the ink waiting on the device
+ * (`call`), or this device's draft (`draft`), whichever holds the other. A draft a failed storage write left behind never
+ * beats the call. A draft that went another way adds back only its own lines, after all that the call holds.
+ */
+export function startingChatBoard(call: BoardHistory | null, draft: BoardHistory | null): BoardHistory | null {
+  if (!call || !draft) return call ?? draft;
+  const held = inkLog(call);
+  const device = inkLog(draft);
+  const shared = sharedInk(held, device);
+  if (shared === held.length) return draft;
+  if (shared === device.length) return call;
+  const on = new Set(childStrokes(call).map((s) => JSON.stringify(s)));
+  return restoreKept(call, childStrokes(draft).filter((s) => !on.has(JSON.stringify(s))).map(keptStroke), historyLength(call) + 1).history;
+}
+
+/** Whether `h` holds all of `other`'s log, in order: on a chat's board, nothing is lost by showing `h` in its place. */
+export const holdsInk = (h: BoardHistory, other: BoardHistory): boolean => {
+  const theirs = inkLog(other);
+  return sharedInk(theirs, inkLog(h)) === theirs.length;
+};
 
 /** A call's board with the child's ink log (#635): `withChildInk` with the log as the desk's copy. */
 export function withInkLog(call: BoardHistory, log: readonly InkEvent[], options: { endMs?: number } = {}): BoardHistory {

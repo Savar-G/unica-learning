@@ -39,6 +39,8 @@ import {
   withInkLog,
   refusedBatches,
   withChildInk,
+  growInkLog,
+  startingChatBoard,
   type BoardHistory,
   type Change,
   type InkStroke,
@@ -530,6 +532,46 @@ describe("the call's board with the child's ink (#534)", () => {
 });
 
 describe("the child's ink as an event log (#635)", () => {
+  const ok = (c: Change) => { if (!c.ok) throw Error(c.reason); return c.history; };
+  const stroke = (h: BoardHistory, x: number, at: number) => ok(drawStroke(h, { erase: false, w: 5, boardWidth: 800, page: 1, pts: [[x, 0.5, at], [x + 0.05, 0.55, at + 10]] }));
+  const penned = () => ok(takePen(createHistory(), 10));
+
+  it("R639-2: a chat's board starts from the longer of the call's log and the draft, and keeps a draft's line the call never had", () => {
+    const two = stroke(penned(), 0.1, 100);
+    const three = stroke(two, 0.2, 200);
+    expect(startingChatBoard(three, two)).toBe(three);
+    expect(startingChatBoard(two, three)).toBe(three);
+    expect(startingChatBoard(null, two)).toBe(two);
+    expect(startingChatBoard(two, null)).toBe(two);
+    expect(startingChatBoard(null, null)).toBeNull();
+    // The draft went another way: all the call holds stays first, and the draft's own line is added back.
+    const other = stroke(two, 0.9, 150);
+    const started = startingChatBoard(three, other)!;
+    expect(inkLog(started).slice(0, 3)).toEqual(inkLog(three));
+    expect(childStrokes(started).map((s) => s.pts[0][0])).toEqual([0.1, 0.2, 0.9]);
+  });
+
+  it("R639-2: growing a log keeps every sequence it has: a shorter board changes nothing, and a board that went another way adds its new events once", () => {
+    const three = inkLog(stroke(stroke(penned(), 0.1, 100), 0.2, 200));
+    const four = inkLog(stroke(stroke(stroke(penned(), 0.1, 100), 0.2, 200), 0.3, 300));
+    expect(growInkLog(three, four)).toEqual(four);
+    expect(growInkLog(three, three.slice(0, 2))).toEqual(three);
+    const other = inkLog(stroke(stroke(penned(), 0.1, 100), 0.9, 150));
+    const grown = growInkLog(three, other);
+    expect(grown).toEqual([...three, other[2]]);
+    expect(growInkLog(grown, other)).toEqual(grown);
+    // Only the call has the first events on this device: they count as the same.
+    expect(growInkLog([null, three[1]], three)).toEqual(three);
+  });
+
+  it("R639-2: a log with an event earlier than the one before it still builds the board, with that event moved up", () => {
+    const three = inkLog(stroke(stroke(penned(), 0.1, 100), 0.2, 200));
+    const late = inkLog(stroke(penned(), 0.9, 50))[1];
+    const h = historyFromLog([...three, late], [])!;
+    expect(h).not.toBeNull();
+    expect(childStrokes(h).map((s) => s.pts[0][0])).toEqual([0.1, 0.2, 0.9]);
+  });
+
   const glow: Batch = { transactionId: "glow", commands: [{ op: "mark", id: "onesGlow", target: { objectId: "question", part: "column", column: "ones" }, style: "highlight", ink: "yellow" }] };
   const eraser = (at: number): InkStroke => ({ erase: true, w: 28, boardWidth: 800, page: 1, pts: [[0.1, 0.8, at], [0.3, 0.85, at + 100]] });
   const line = (at: number): InkStroke => ({ erase: false, w: 5, boardWidth: 800, page: 1, pts: [[0.1, 0.8, at], [0.3, 0.85, at + 100]] });

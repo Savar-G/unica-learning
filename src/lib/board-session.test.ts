@@ -353,6 +353,38 @@ describe("Maya's replies in a chat (#534)", () => {
 });
 
 describe("a chat's board rebuilt from the call's ink log (#635)", () => {
+  it("R639-2: a chat's board does not go back to a stale stored draft: the next line takes the next sequence", () => {
+    let t = 0;
+    const first = createBoardSession({ initial: createHistory(), restored: false, clock: () => t, wall: () => t, noStore: true });
+    first.mayaReply([QUESTION]);
+    first.handBack();
+    for (const x of [0.1, 0.2]) {
+      t += 2000;
+      expect(first.penDown([x, 0.8], false, 800)).toBe(true);
+      t += 100;
+      first.penMove([[x + 0.05, 0.82]]);
+      first.penUp();
+    }
+    const whole = first.view().history;
+    const log = inkLog(whole);
+    // The draft stopped before the last line: a storage write failed. The call holds all of it.
+    const stale = historyFromLog(log.slice(0, -1), [QUESTION])!;
+    const again = createBoardSession({ initial: historyFromLog(log, [QUESTION])!, restored: true, clock: () => t, wall: () => t, appendOnly: true });
+    const saves: BoardHistory[] = [];
+    again.attach({ owns: () => true, stored: () => stale, save: (h) => { saves.push(h); return { status: "saved", history: h }; } }, "holder", stale);
+    expect(inkLog(again.view().history)).toEqual(log);
+    // The draft catches up at once.
+    expect(inkLog(saves.at(-1)!)).toEqual(log);
+    t = 50;
+    expect(again.penDown([0.6, 0.6], false, 800)).toBe(true);
+    t = 150;
+    again.penMove([[0.65, 0.62]]);
+    again.penUp();
+    const after = inkLog(again.view().history);
+    expect(after).toHaveLength(log.length + 1);
+    expect(after.slice(0, log.length)).toEqual(log);
+  });
+
   it("R635-4: takes the child's next line, on a clock that goes on from where the board was left", () => {
     let t = 0;
     const first = createBoardSession({ initial: createHistory(), restored: false, clock: () => t, wall: () => t, noStore: true });
