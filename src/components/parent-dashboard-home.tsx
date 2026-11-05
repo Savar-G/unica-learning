@@ -63,6 +63,7 @@ export function ParentDashboardHome({ dashboard, overview, kids, addressChild, p
   if (kid && state && view && (view.opensOn === "start_test" || view.opensOn === "continue_or_wait")) {
     return (
       <ParentTestStart childId={kid.id} name={kid.first_name} state={state} when={startWhen(state, timeZone)} report={reportFor(kid.id, state)} phone={phone} sent={sentHere} parentEmail={parentEmail} alerts={alerts} learning={view.reportIds.length > 0 ? { path: learningPath(kid.id), answered: !!fromRow(kid) } : null}>
+        {noticeDue && current.size > 0 && <MayaNoticeCard />}
         {mayaHere && (minutes.has(kid.id) || chats.has(kid.id)) && <MinutesRow name={kid.first_name} minutes={minutes.get(kid.id)} chat={chats.get(kid.id)} />}
         {mayaHere && notes.has(kid.id) && <NoteCard note={notes.get(kid.id)!} name={kid.first_name} zone={timeZone} latest />}
         {scanLink}

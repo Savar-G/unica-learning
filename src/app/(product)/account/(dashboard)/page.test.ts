@@ -185,7 +185,10 @@ describe("a family the switch opens to", () => {
       mayaNotice.due = false;
       expect(await render()).not.toContain(card);
       mayaNotice.due = true;
+      // The dashboard's test-start view returns early, so check it and the overview.
       dashboard.value = { children: [view("c1", "Asha")], remembered: null, pinSet: true, timeZoneSaved: true };
+      expect(await render()).toContain(card);
+      dashboard.value = { children: [{ ...view("c1", "Asha"), opensOn: "overview" }], remembered: null, pinSet: true, timeZoneSaved: true };
       expect(await render()).toContain(card);
     } finally {
       mayaNotice.due = false;
