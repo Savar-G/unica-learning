@@ -292,7 +292,6 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
 
   return {
     store,
-    planStarts,
     provider,
     stripe,
     calls,
