@@ -8,6 +8,7 @@ import { curriculumFor } from "@/lib/workbook-curriculum";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { generateWorkbook, type GeneratedWorkbook } from "@/lib/workbook-generator";
 import { WORKBOOK_INTERESTS } from "@/lib/workbook-interests";
+import { interestEligible, printsInterest } from "@/lib/workbook-personal-items";
 import { planNextWorkbook } from "@/lib/workbook-placement";
 import { reviewDays } from "@/lib/workbook-review-days";
 import { bookPersona, firstCustomerProfile, type BookPersona } from "@/lib/workbook-sample-profiles";
@@ -23,10 +24,10 @@ const INTERESTS = [...new Set(Object.values(WORKBOOK_INTERESTS).flatMap((w) => [
 const words = (t: string) => t.trim().split(/\s+/).length;
 
 /** A persona's fake book; `signals: false` makes the same plan's book with G1's personal choices off (today's items). */
-async function book(profile: ReturnType<typeof firstCustomerProfile>, signals = true): Promise<{ plan: WorkbookPlan; draft: GeneratedWorkbook }> {
+async function book(profile: ReturnType<typeof firstCustomerProfile>, signals = true, days = DAYS): Promise<{ plan: WorkbookPlan; draft: GeneratedWorkbook }> {
   const placed = planNextWorkbook({ curriculum: BC, grade: 4, profile, workbooks: [], number: 1 });
   if (!placed.ok) throw new Error(placed.reason);
-  const plan = reviewDays(signals ? placed.plan : { ...placed.plan, personal: undefined }, DAYS);
+  const plan = reviewDays(signals ? placed.plan : { ...placed.plan, personal: undefined }, days);
   const child = "00000000-0000-4000-8000-000000000071", parent = "00000000-0000-4000-8000-000000000001";
   let token = 0;
   const result = await generateWorkbook(
@@ -46,11 +47,17 @@ function features(plan: WorkbookPlan, draft: GeneratedWorkbook) {
   const stories = questions.filter(({ q }) => ["word-problems", "picture-stories"].includes(q.place ?? "") && q.package).map(({ q }) => q.package!.text);
   return {
     start: `U${plan.level}:${plan.units.A.join(",")}`,
+    // The PRINTED operations of the Day 1 to 5 warm-ups, never their skill labels (×3/4: a 3s or 4s table fact).
     warmUp: Object.entries(questions.filter(({ page, q }) => (page.day ?? 99) <= 5 && q.place === "warm-up" && q.package).reduce<Record<string, number>>((n, { q }) => {
-      const k = q.package!.skill.skills[0];
+      const op = q.package!.operation;
+      const k = !op ? "none" : op.kind === "multiply" ? (op.operands.some((x) => x === 3 || x === 4) ? "×3/4" : "×") : op.kind;
       n[k] = (n[k] ?? 0) + 1;
       return n;
     }, {})).sort().map(([k, n]) => `${k}:${n}`).join(","),
+    interestShare: (() => {
+      const eligible = questions.filter(({ q }) => q.package && interestEligible(BC, q.itemPlan));
+      return `${eligible.filter(({ q }) => printsInterest(plan, q.package!.text)).length}/${eligible.length}`;
+    })(),
     spot: questions.filter(({ q }) => q.place === "spot-the-error").map(({ q }) => q.package?.wrongAnswers[0]?.cause ?? "").join(","),
     hard: questions.filter(({ q }) => q.place !== "challenge" && q.itemPlan?.template?.difficulty === "hard").length,
     watchOut: blocks.flatMap((b) => (b.explain?.startsWith("Watch out") ? [b.explain] : [])).join("|"),
@@ -83,13 +90,23 @@ describe("G1 persona books", () => {
     if (process.env.G1_FEATURES) writeFileSync(process.env.G1_FEATURES, JSON.stringify({ personal: f, today }, null, 1));
     // Ahead: U16 from the trusted level, the ×3 and ×4 facts in the warm-up.
     expect(f.ahead.start.startsWith("U16:")).toBe(true);
-    expect(f.ahead.warmUp).toContain("5.9-recall-facts");
+    const count = (warmUp: string, key: string) => Number(warmUp.split(",").find((x) => x.startsWith(`${key}:`))?.split(":")[1] ?? 0);
+    const total = (warmUp: string) => warmUp.split(",").reduce((n, x) => n + Number(x.split(":")[1] ?? 0), 0);
+    expect(count(f.ahead.warmUp, "×3/4") * 2).toBeGreaterThanOrEqual(total(f.ahead.warmUp));
+    expect(count(today.ahead.warmUp, "×3/4")).toBe(0);
     // Catch up: reads with help (short stories where the step has them), under an hour a week (Extra blocks).
     expect(f["catch-up"].longStories).toBeLessThanOrEqual(today["catch-up"].longStories);
     expect(f["catch-up"].storyWords).toBeLessThanOrEqual(today["catch-up"].storyWords);
     expect(f["catch-up"].extra).toBeGreaterThan(0);
     // On level: sports and space words in its stories.
     expect(f["on-level"].interests).toBeGreaterThan(0);
+    // The printed share of eligible code stories that name an interest: half to two thirds (item 5).
+    for (const p of ["on-level", "catch-up"] as const) {
+      const [named, eligible] = f[p].interestShare.split("/").map(Number);
+      expect(eligible, p).toBeGreaterThanOrEqual(6);
+      expect(named / eligible, p).toBeGreaterThanOrEqual(0.5);
+      expect(named / eligible, p).toBeLessThanOrEqual(2 / 3);
+    }
     expect(today["on-level"].interests).toBe(0);
     expect(f.ahead.interests).toBe(0);
     // Each persona's G1 book differs from its plan's book without the personal choices (the stretch, facts, words).
@@ -98,5 +115,27 @@ describe("G1 persona books", () => {
       const differ = (Object.keys(f[a]) as (keyof ReturnType<typeof features>)[]).filter((k) => f[a][k] !== f[b][k]);
       expect(differ.length, `${a} and ${b} differ only in ${differ.join(", ")}`).toBeGreaterThanOrEqual(3);
     }
+  }, 600_000);
+
+  it("prints C2's verified Watch out pair for the child's own coded mistake, and today's line without it", async () => {
+    const skill = "4.1-place-value-10000";
+    const pair = curriculumFor("bc")!.skillSteps(skill)![1].mistakes.find((m) => m.misconception === "zero-placeholder")!.watchOut!;
+    const withMistake = () => {
+      const p = bookPersona("on-level").profile;
+      const a = p.assessment!.profile;
+      a.struggles.push({ ...a.standards.find((x) => x.code === "4.1")!, wrong: [{ questionId: "", templateId: "", prompt: "", response: "", rightAnswer: "", misconception: "zero-placeholder" }], misconceptions: ["zero-placeholder"] });
+      return p;
+    };
+    const lines = async (profile: ReturnType<typeof firstCustomerProfile>) => {
+      const placed = planNextWorkbook({ curriculum: BC, grade: 4, profile, workbooks: [], number: 1 });
+      if (!placed.ok) throw new Error(placed.reason);
+      const day = placed.plan.newSteps.find((x) => x.skill === skill && x.step === 2)!.day;
+      const { draft } = await book(profile, true, String(day));
+      return draft.pages.flatMap((p) => (p.content?.kind === "day" ? p.content.blocks : [])).flatMap((b) => (b.explain?.startsWith("Watch out") ? [b.explain] : []));
+    };
+    const own = await lines(withMistake());
+    expect(own.some((l) => l.startsWith(`Watch out: ${pair.wrong.replace(/\.?$/, ".")}`))).toBe(true);
+    const today = await lines(bookPersona("on-level").profile);
+    expect(today.some((l) => l.includes(pair.wrong))).toBe(false);
   }, 600_000);
 });

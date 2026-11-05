@@ -80,7 +80,7 @@ import { approvedQuestionTypes, buildPlannedItem, planItem, itemExamples, itemNu
 import { isNumberStory } from "@/lib/workbook-code-story";
 import { cardFrame, cardFrameProblem, cardNumbers, type CardFrameUse, largestNumber, operationStory, printedForm, sentenceFrameOf, stemOf, storyKind, storyFrame, taskIdentity, taskType, wordedTask } from "@/lib/workbook-task-identity";
 import { COMPACT_STORY_FRAMES } from "@/lib/workbook-story-bank";
-import { childSamMistakes, difficultyDay, daySchedule, interestTurn, interestWords, shortStories, SHORT_STORY_WORDS, storyThings, styleKinds, warmUpSkill } from "@/lib/workbook-personal-items";
+import { childSamMistakes, difficultyDay, daySchedule, INTEREST_SHARE, interestEligible, interestShareProblems, interestWords, printsInterest, shortStories, SHORT_STORY_WORDS, storyThings, styleKinds, templateSpotShown, warmUpFact, warmUpShareProblems, warmUpSkill, type WarmUpFact } from "@/lib/workbook-personal-items";
 import { isTwoStep } from "@/lib/workbook-curriculum/house-templates";
 import { buildStepItem, challengeTemplateCount, hasHardNumberTemplate, NO_TEMPLATE_PLACES, STEP_STORY_PLACES, stepAiItem, stepBounds, stepOf, stepRank, stepTemplateItem, stepTemplateOf, sumTemplate, templateProblem } from "@/lib/workbook-step-items";
 
@@ -205,12 +205,20 @@ function templateContractFor(input: GenerateInput, w: PageWork, slot: Slot, atte
   // (A Show what you know card holds 3 lines, D-201: its room is 3 of its lines, not twice its 2-line room.)
   const card = slot.place === "show-what-you-know" || slot.place === "level-test";
   const room = drill && slot.place !== "spot-the-error" ? (card ? drill.perLine * 3 : Math.round(Math.max(drill.characters * 2, drill.perLine * 3) * (attempt >= 128 && LONGER_PLACES.has(slot.place!) ? 1.6 : 1))) : undefined;
-  const filled = stepTemplateItem({
+  const fill = stepTemplateItem({
     curriculum: input.curriculum, skill: at.skill, step: at.step, place: panel ? "worked-example" : slot.place, level, day: difficultyDay(input.plan, w.day),
     seed: hashOf(`${input.workbookId}:${w.number}:${slot.id}`) % 1_000_000_007, attempt, ordinal, usedOnPage: used, room, avoid: input.book?.child || null,
     ...(slot.interest ? { interests: interestWords(input.plan) } : {}),
   });
-  if (!filled) return null;
+  if (!fill) return null;
+  // (A copy: the filler keeps its results, and a personal shown answer must not reach another request.)
+  const filled = { ...fill };
+  // G1 (item 3): the day's first Spot the error shows the child's own mistake when the step's pair is verified and the
+  // sum allows it; else the template's plausible wrong answer, as today.
+  if (slot.place === "spot-the-error" && filled.ref.kind === "spot" && samPrefer(input, w).length) {
+    const shown = templateSpotShown(input.curriculum, input.plan, at.skill, at.step, filled.text);
+    if (shown !== null && String(shown) !== filled.ref.answer) filled.ref = { ...filled.ref, shown: String(shown) };
+  }
   // Likelihood panels supply the definitions in contentOf; other templates need their own method.
   if (panel && !/likelihood/.test(at.skill) && filled.ref.kind !== "sequence" && !templateMethod(filled.ref.source, filled.text)) return null;
   // Only a story template goes to the writer for its words; code keeps every other text as the template wrote it.
@@ -519,7 +527,24 @@ function contractFor(input: GenerateInput, w: PageWork, slot: Slot, attempt = 0,
     const candidate = contractFor(input, w, slot, attempt, other);
     if (candidate) return candidate;
   }
-  return planned;
+  return planned && slot.interest ? withInterestNoun(input, w, slot, planned, attempt) : planned;
+}
+
+/**
+ * A code story with an interest thing in place of its counted thing (G1, item 5): code's own text, only the noun
+ * changed, everywhere it prints; kept only when every number is under 1,000 (no one has 5,380 jerseys) and no other
+ * form of the old noun is left. Otherwise the story as it was.
+ */
+function withInterestNoun(input: GenerateInput, w: PageWork, slot: Slot, c: ItemPlan, attempt: number): ItemPlan {
+  const old = c.item.thing;
+  const things = interestWords(input.plan).things;
+  if (c.source !== "story" || c.template || !old || !things.length || c.numbers.some((n) => n >= 1000)) return c;
+  const thing = things[(hashOf(`${w.number}:${slot.id}`) + attempt) % things.length];
+  const escaped = old.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const text = c.item.text.replace(new RegExp(`\\b${escaped}\\b`, "g"), thing);
+  const singular = old.replace(/(?:es|s)$/, "");
+  if (text === c.item.text || singular && new RegExp(`\\b${singular.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text)) return c;
+  return { ...c, item: { ...c.item, text, thing } };
 }
 /** The day's number and picture check (scheduledItemProblem): with no signals exactly today's. */
 const NEW_IDEA_PICTURES: ReadonlySet<string> = new Set(["worked-example", "now-you", "try-first"]);
@@ -546,7 +571,22 @@ function samPrefer(input: GenerateInput, w: PageWork): import("@/lib/workbook-bo
 /** Spot the error's offered mistakes with the child's own first (G1, through the closed Sam table); else today's. */
 function personalMistakes<T extends { name: string }>(input: GenerateInput, mistakes: T[]): T[] {
   const own = childSamMistakes(input.plan);
-  return own.length ? [...mistakes].sort((a, b) => Number(!own.includes(b.name as never)) - Number(!own.includes(a.name as never)) || own.indexOf(a.name as never) - own.indexOf(b.name as never)) : mistakes;
+  const rank = (m: T) => { const i = own.indexOf(m.name as never); return i < 0 ? own.length : i; };
+  // (The child's own first, in their order; the others keep today's order: sort is stable.)
+  return own.length ? [...mistakes].sort((a, b) => rank(a) - rank(b)) : mistakes;
+}
+
+/** A code fact as the writer's item shape (G1, item 4): code's operation, operands, text and one careless wrong answer. */
+function factItem(id: string, f: WarmUpFact) {
+  const [a, b] = f.operands;
+  const right = f.kind === "add" ? a + b : f.kind === "subtract" ? a - b : f.kind === "multiply" ? a * b : a / b;
+  const op = (x: number, y: number) => ({ kind: f.kind, operands: [itemNumber(x), itemNumber(y)], expression: null, unit: null, denominator: null, values: [] });
+  const sign = { add: "+", subtract: "−", multiply: "×", divide: "÷" }[f.kind];
+  return {
+    slot: id, skill: f.skill, difficulty: 1, text: f.text, format: "write-number", figure: null, numbers: [], places: null, direction: null, sequence: null, pattern: null, relation: null, figureShows: null, name: null, thing: null,
+    operation: op(a, b), easier: f.kind === "divide" ? { text: "4 ÷ 2 = ?", operation: op(4, 2) } : { text: `2 ${sign} ${f.kind === "multiply" ? 2 : 1} = ?`, operation: op(2, f.kind === "multiply" ? 2 : 1) },
+    wrongAnswers: [{ value: itemNumber(right + 1), cause: "careless", description: "One more than the answer.", step: null }], shownWrong: null,
+  };
 }
 
 const wordsIn = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
@@ -895,8 +935,10 @@ interface Slot {
   swaps?: number;
   /** A floor refill tries unused tasks of its own taught step before earlier-step review. */
   refillOwnStep?: boolean;
-  /** G1 (item 5): the story slot's template takes the parent's interest nouns (3 of every 5 story slots). */
+  /** G1 (item 5): the story slot's template takes the parent's interest nouns, as the book's share needs. */
   interest?: boolean;
+  /** G1 (item 4): the warm-up fact code chose from the child's fact family; the writer is not asked for it. */
+  fact?: WarmUpFact;
   /** The skill and the kind of question code chose for the slot (#380): the skill's kinds in turn through the book. */
   aim?: { skill: string; kind: QuestionKind; orElse: QuestionKind[] };
   /**
@@ -1053,6 +1095,7 @@ function planBook(input: GenerateInput, work: PageWork[]) {
     const pageNumbers = new Map<number, number>();
     // G1: the child's style takes the first fitting slot of the page only (item 6: at most one item a page).
     let pageStyled = false;
+    const pageFacts = new Set<string>();
     for (const slot of w.slots) {
       const k = inPart.get(slot.part) ?? 0;
       inPart.set(slot.part, k + 1);
@@ -1061,6 +1104,9 @@ function planBook(input: GenerateInput, work: PageWork[]) {
       // G1: a warm-up or In your head slot aims at the fact skills the child has not shown as known (item 4).
       const fact = FLUENCY_PLACES.has(slot.place) ? warmUpSkill(curriculum, plan, w.day, slot.part.skills, k, slot.place) : null;
       if (fact) slot.aim = { skill: fact, kind: "fact", orElse: [] };
+      // (A warm-up fact is code's: its operation and operands come from the aimed family, never from the writer.)
+      const chosen = fact && slot.place === "warm-up" ? warmUpFact(curriculum, plan, fact, hashOf(`${w.day}:${w.page.number}:${slot.id}`) % 997, pageFacts) : null;
+      if (chosen) { slot.fact = chosen; pageFacts.add(chosen.text); }
       if (slot.place === "spot-the-error") {
         // Sam's sum: on the slot's skill with the widest range, so the sum fits each of its rules.
         const skill = [...slot.part.skills].sort((a, b) => skillRange(curriculum, plan.level, b).max - skillRange(curriculum, plan.level, a).max)[0];
@@ -1666,13 +1712,16 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
       if (c) local.set(p.id, c.item);
     }
   }
+  // G1: a code fact (item 4) is built here from code's operation; the writer is never asked for it.
+  const facts = new Map(which.flatMap((i) => { const f = w.slots[i].fact; return f && w.slots[i].existing ? [[w.slots[i].id, f] as const] : []; }));
+  for (const [id, f] of facts) local.set(id, factItem(id, f));
   const existing = new Set([...which.filter(i=>w.slots[i].existing).map(i=>w.slots[i].id), ...panels.filter(p=>!contracts.get(p.id)).map(p=>p.id)]);
-  const ids = [...ask.slots, ...ask.panels].filter(id => input.itemPolicy !== "approved-v1" || existing.has(id) || contracts.get(id)?.source === "explain" && contracts.get(id)?.type !== "template");
+  const ids = [...ask.slots, ...ask.panels].filter(id => !facts.has(id) && (input.itemPolicy !== "approved-v1" || existing.has(id) || contracts.get(id)?.source === "explain" && contracts.get(id)?.type !== "template"));
   const open = ids.filter((id) => hasTry(w, id));
   const denied = open.length > 0 && deps.attempts ? (await deps.attempts.use(w.number, open)).refused : [];
   const refused = new Set([...ids.filter((id) => !open.includes(id)), ...denied]);
   for (const id of open) w.tries.used.set(id, denied.includes(id) ? w.tries.max : (w.tries.used.get(id) ?? 0) + 1);
-  const asked = which.map((i) => w.slots[i]).filter((x) => !refused.has(x.id) && (input.itemPolicy !== "approved-v1" || x.existing || contracts.get(x.id)?.source === "explain" && contracts.get(x.id)?.type !== "template"));
+  const asked = which.map((i) => w.slots[i]).filter((x) => !refused.has(x.id) && !facts.has(x.id) && (input.itemPolicy !== "approved-v1" || x.existing || contracts.get(x.id)?.source === "explain" && contracts.get(x.id)?.type !== "template"));
   const askedPanels = panels.filter((x) => !refused.has(x.id) && (input.itemPolicy !== "approved-v1" || existing.has(x.id)));
   const out = asked.length + askedPanels.length > 0
     ? await callAi(deps, name, pageRequest(input, w, asked, note, askedPanels, memory, pageTexts, attempt), [...asked.map((x) => x.id), ...askedPanels.map((x) => x.id)])
@@ -1709,15 +1758,17 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
       id: `${input.workbookId}:d${w.day}p${w.page.number}s${slot.id}`,
       // A step template item's skill is its step's (a story page's reviewed step, a Challenge's stretch, a taught step
       // when the page's own tasks ran out): code picked it, so the place allows it.
-      workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: c ? [...new Set([c.item.skill, ...slot.part.skills])] : slot.part.skills,
+      workbookId: input.workbookId, page: w.number, question: i + 1, level: input.plan.level, skills: c ? [...new Set([c.item.skill, ...slot.part.skills])] : slot.fact ? [...new Set([slot.fact.skill, ...slot.part.skills])] : slot.part.skills,
       signs: skillSigns(input.curriculum, input.plan.level, c ? c.item.skill : slot.part.skills[0]),
       // A shorter rewrite (the page did not fit) gives code's wordings two thirds of the room: a shorter one prints.
       ...(slot.place ? { room: shorterRoom(roomOf(input, slot.place, w.day)?.characters, name === "workbook_page_shorter") } : {}), variant: w.number + i,
-      ...(slotWording(input, slot) ? { wording: slotWording(input, slot) } : {}),
+      // (A code fact prints code's text as it is.)
+      ...(slot.fact ? { preserveText: true } : slotWording(input, slot) ? { wording: slotWording(input, slot) } : {}),
       ...(slot.place && STORY_CHECK_PLACES.has(slot.place) ? { story: true } : {}),
     });
     // Sam is only Spot the error's child: anyone else named Sam takes the slot's planned name.
     if (b.package && slot.place && slot.place !== "spot-the-error") b.package = withoutSam(b.package, slot.planned?.name ?? null);
+    if (b.package && facts.has(slot.id)) b.package.textSource = "code";
     if (out.error && !out.items.has(slot.id) && (input.itemPolicy !== "approved-v1" || c)) b.check = { status: "failed", reason: `the AI gave no answer: ${out.error}` };
     else if (input.itemPolicy !== "approved-v1" && !out.items.has(slot.id) && b.check.status === "failed") b.check = { status: "failed", reason: `${b.check.reason}${missing(slot.id)}` };
     // A slot with a layout of its own takes only its format: another would not lay out there.
@@ -2395,11 +2446,6 @@ function layOut(input: GenerateInput) {
         tries: { used: new Map(), max: Infinity }, calls: { next: 0, kept: new Map() }, solves: new Map() });
     }
   }
-  // G1 (item 5): with the parent's interests, 3 of every 5 story slots of the book, in book order, offer their nouns.
-  if (interestWords(input.plan).things.length) {
-    let turn = 0;
-    for (const w of work) for (const slot of w.slots) if (slot.place && STORY_CHECK_PLACES.has(slot.place) && interestTurn(turn++)) slot.interest = true;
-  }
   // Each slot's skill, kind of question, numbers and person, planned in book order (#380), so the same skill is not
   // asked the same way page after page and no two questions of a page work one sum.
   if (input.book) planBook(input, work);
@@ -2458,7 +2504,14 @@ function layOut(input: GenerateInput) {
     const cardFrames = new Map<string, CardFrameUse[]>();
     const cardUse = (w: PageWork, slot: Slot, p: QuestionPackage): CardFrameUse => ({ day: w.day, challenge: slot.place === "challenge", numbers: cardNumbers(p) });
     const cardPlace = (slot: Slot) => slot.place === "challenge" || slot.place === "show-what-you-know";
+    // G1 (item 5): the book's eligible code stories so far and how many name an interest, in book order.
+    const interesting = interestWords(input.plan).things.length > 0;
+    const interest = { eligible: 0, named: 0 };
+    // G1 (item 8): the reading-load story share caps stories in a page's practice and review slots.
+    const storyShare = input.plan.personal?.hasAssessment ? input.plan.personal.adjustments.storyShare : null;
     for (const w of planning) {
+      let pageStoryCount = 0;
+      const storyCap = storyShare === null ? Infinity : Math.max(1, Math.floor(storyShare * w.slots.filter((x) => x.place && x.place !== "warm-up" && !STORY_CHECK_PLACES.has(x.place)).length));
       const pageOps = new Set<string>();
       // The same words twice on a page read as one question asked again, whatever its format family.
       const pageTexts = new Set<string>();
@@ -2484,6 +2537,10 @@ function layOut(input: GenerateInput) {
       for (const [index, slot] of order.map((i, k) => [k, w.slots[i]] as const)) {
         const skill = slot.aim && FLUENCY_PLACES.has(slot.place ?? "warm-up") ? slot.aim.skill : slot.part.skills[((Number(slot.id.split(".")[1]) || 1) - 1) % slot.part.skills.length];
         const challengeSkill = input.plan.days.find(d=>d.day===w.day)?.pages.flatMap(p=>p.parts.filter(p=>p.unit==="A").flatMap(p=>p.skills)).find(s=>/^1\.1-(?:count|read-write|number-line)/.test(s));
+        // G1: a code fact of the child's family is built from its own operation, with no writer and no contract.
+        if (slot.fact && !w.page.existingSlots) { slot.existing = true; slot.contract = null; continue; }
+        // G1 (item 5): a slot offers the interest nouns while the book's printed share of them is below its target.
+        if (interesting && slot.place !== "warm-up") slot.interest = interest.named < INTEREST_SHARE.target * (interest.eligible + 1);
         // A slot its step's templates fill (#489) never goes to the existing writer.
         // (A few attempts: a long hard template fits a Challenge card's room only with some of its numbers.)
         const templated = !w.page.existingSlots && [0, 1, 2, 3, 6, 12, 128].some((k) => !!templateContractFor(input, w, { ...slot, contract: undefined }, k));
@@ -2529,6 +2586,10 @@ function layOut(input: GenerateInput) {
             if (!p || built.check.status === "failed" || dayProblem(input, p, w.day,slot.place ?? "")) continue;
             // G1: a short-story day takes stories of at most 20 words first (reading load, item 8).
             if (strict && candidate < 256 && slot.place && STORY_CHECK_PLACES.has(slot.place) && shortStories(input.plan, w.day) && wordsIn(p.text) > SHORT_STORY_WORDS) continue;
+            // (An interest slot takes a story that names an interest first, while its early attempts find one, item 5.)
+            if (strict && candidate < 64 && slot.interest && interestEligible(input.curriculum, c) && !printsInterest(input.plan, p.text)) continue;
+            // (And at most its story share of the page's practice and review items are stories, item 8.)
+            if (strict && slot.place && !STORY_CHECK_PLACES.has(slot.place) && !STEP_STORY_PLACES.has(slot.place) && isNumberStory(p.text) && pageStoryCount >= storyCap) continue;
             // The task is its mathematical data: "? = 9 × 2" repeats "9 × 2 = ?" (warm-up facts come back on purpose).
             const key = slot.place === "warm-up" ? JSON.stringify(["warm-up", c.item.text, c.item.operation]) : taskIdentity(p);
             const op = c.item.operation ? JSON.stringify(c.item.operation) : key;
@@ -2607,6 +2668,8 @@ function layOut(input: GenerateInput) {
           // of a form the page has (another of its block stays), as a step with small ranges runs out (#489).
         }
         if (best) {
+          if (slot.place && !STORY_CHECK_PLACES.has(slot.place) && !STEP_STORY_PLACES.has(slot.place) && isNumberStory(best.p.text)) pageStoryCount++;
+          if (interesting && interestEligible(input.curriculum, best.c)) { interest.eligible++; if (printsInterest(input.plan, best.p.text)) interest.named++; }
           const truth = truthOf(best.c);
           if (truth) {
             truthCounts.set(truth, (truthCounts.get(truth) ?? 0) + 1);
@@ -3482,6 +3545,10 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
       return { ...page, questions, ...(content ? { content } : {}), fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems } };
     });
     quality = reviewed.quality;
+    // G1: the personal book checks read the printed book: the warm-up's fact families (item 4) and the interest share
+    // (item 5). A failure is a whole-book issue on its page; with no signals there are none.
+    const personal = [...warmUpShareProblems(input.curriculum, input.plan, reviewed.pages), ...interestShareProblems(input.curriculum, input.plan, reviewed.pages)];
+    if (personal.length) quality = { ...quality, ready: false, issues: [...quality.issues, ...personal.map((x) => ({ page: x.page, kind: "variety" as const, reason: x.reason }))] };
     pages = reviewed.pages.map(p => {
       const issues = quality!.issues.filter(i => i.page === p.number);
       return issues.length ? { ...p, fit: { status: "failed" as const, problems: [...(p.fit.status === "failed" ? p.fit.problems : []), ...issues.map(i => ({ question: null, reason: `whole-book check: ${i.reason}` }))] } } : p;

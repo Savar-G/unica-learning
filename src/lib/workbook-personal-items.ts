@@ -4,8 +4,11 @@
 // it never adds a skill, a step, a count or a page, and with no signals (a plan with no `personal`) every function
 // gives today's answer. Pure: no network, database, clock or randomness.
 import { FACTS_BY_GRADE, factsCoverage, type FactFamilyId } from "@/lib/assessment";
-import type { Curriculum, CurriculumStep, ExpectedMistake } from "@/lib/workbook-curriculum";
-import { SAM_MISTAKES, levelMistakes, type SamMistake } from "@/lib/workbook-book";
+import type { Curriculum, CurriculumStep } from "@/lib/workbook-curriculum";
+import { levelMistakes, samAnswer, type SamMistake } from "@/lib/workbook-book";
+import { verifiedWatchOut as acceptedPair } from "@/lib/workbook-curriculum/watch-out";
+import { samMistakeFor } from "@/lib/workbook-mistake-map";
+import type { Operation } from "@/lib/question-package";
 import { WORKBOOK_INTERESTS } from "@/lib/workbook-interests";
 import { dayDifficulty, type DayDifficulty, type WorkbookPlan } from "@/lib/workbook-plan";
 import { THINGS } from "@/lib/workbook-wording";
@@ -33,11 +36,6 @@ export function daySchedule(plan: Plan, day: number): DayDifficulty {
 
 // ---------- Mistakes (item 3) ----------
 
-/** A step mistake's printable pair once C2 (PR #524) lands; only a pair marked verified may ever print. */
-interface PairedMistake extends ExpectedMistake {
-  watchOut?: { wrong: string; fix: string; verified?: boolean };
-}
-
 /** The child's coded mistakes on a standard at or below the school grade (the signals keep only those, D-084). */
 function childMisconceptions(plan: Plan, standard: string | null): Set<string> {
   const s = signalsOf(plan);
@@ -47,50 +45,53 @@ function childMisconceptions(plan: Plan, standard: string | null): Set<string> {
 
 /**
  * The Watch out pair of the child's own mistake on a step, or null for today's line. Fail closed: a pair prints only
- * when the step's mistake names a misconception the child showed on the step's standard and its pair is marked
- * `verified: true` (C2). Until C2 merges no step has a pair, so this is always null and today's line prints.
+ * when the step's mistake names a misconception the child showed on the step's standard and C2's loader accepts its
+ * pair (`verifiedWatchOut` in workbook-curriculum/watch-out.ts: marked verified by the verifier model, its hash bound
+ * to this step and this exact text, and printable). Anything else keeps today's line.
  */
 export function verifiedWatchOut(curriculum: Curriculum, plan: Plan, skill: string, step: CurriculumStep | undefined): { wrong: string; fix: string } | null {
+  return verifiedMistake(curriculum, plan, skill, step)?.pair ?? null;
+}
+
+/** The child's coded mistake on a step with its accepted pair (the same rule as verifiedWatchOut), or null. */
+function verifiedMistake(curriculum: Curriculum, plan: Plan, skill: string, step: CurriculumStep | undefined | null): { misconception: string; pair: { wrong: string; fix: string } } | null {
   if (!step) return null;
   const standard = curriculum.skill(skill)?.unit ?? null;
   const shown = childMisconceptions(plan, standard);
   if (!standard || !shown.size) return null;
-  for (const m of step.mistakes as readonly PairedMistake[]) {
-    const pair = m.watchOut;
-    if (!m.misconception || !shown.has(m.misconception) || pair?.verified !== true) continue;
-    if (typeof pair.wrong !== "string" || typeof pair.fix !== "string" || !pair.wrong.trim() || !pair.fix.trim()) continue;
-    return { wrong: pair.wrong, fix: pair.fix };
+  for (const m of step.mistakes) {
+    if (!m.misconception || !shown.has(m.misconception)) continue;
+    const pair = acceptedPair(step, m);
+    if (pair) return { misconception: m.misconception, pair: { wrong: pair.wrong, fix: pair.fix } };
   }
   return null;
 }
 
-/**
- * The closed table from the child's misconception ids to the mistakes Sam can show (the entries of C2's
- * `samMistakeFor`, PR #524, plus each Sam mistake's own id). An id not listed maps to nothing: no fallback.
- */
-const SAM_TABLE: Readonly<Record<string, SamMistake>> = {
-  O3: "forgot-carry",
-  "carry-dropped": "forgot-carry",
-  O1: "smaller-from-larger",
-  O2: "smaller-from-larger",
-  "regroup-forget": "regroup-not-taken",
-  "count-start": "wrong-start",
-  operation: "wrong-operation",
-  "operation-swap": "wrong-operation",
-  "digit-reversal": "swapped-digits",
-};
-
-/** Sam's mistake for a misconception id, or null. */
+/** Sam's mistake for a misconception id through C2's closed table (workbook-mistake-map.ts), or null. */
 export function samMistakeOf(misconception: string): SamMistake | null {
-  if (Object.hasOwn(SAM_TABLE, misconception)) return SAM_TABLE[misconception];
-  // (Read when called, never at load: workbook-book imports this module too.)
-  return (SAM_MISTAKES as readonly string[]).includes(misconception) ? misconception as SamMistake : null;
+  return samMistakeFor(misconception);
 }
 
 /** The Sam mistakes of the child's own coded mistakes that the level allows, in the order of the signals. */
 export function childSamMistakes(plan: Plan): SamMistake[] {
   const allowed = new Set(levelMistakes(plan.level));
   return [...new Set([...childMisconceptions(plan, null)].flatMap((m) => { const s = samMistakeOf(m); return s && allowed.has(s) ? [s] : []; }))];
+}
+
+/**
+ * The wrong answer a step template Spot the error shows for the child's own mistake (item 3), or null for today's
+ * plausible one. Fail closed: only for a step whose coded mistake the child showed has a verified C2 pair, only through
+ * the closed Sam table and the level's mistakes, and only on a bare sum ("3,456 + 2,789 = ?") the mistake can happen on.
+ */
+export function templateSpotShown(curriculum: Curriculum, plan: Plan, skill: string, step: number, text: string): number | null {
+  const own = verifiedMistake(curriculum, plan, skill, curriculum.skillSteps(skill)?.find((s) => s.number === step));
+  const sum = own ? /^(\d[\d,]*) ([+−-]) (\d[\d,]*) = \?$/.exec(text.trim()) : null;
+  if (!own || !sum) return null;
+  const value = (x: string) => Number(x.replace(/,/g, ""));
+  const op = { kind: sum[2] === "+" ? "add" : "subtract", operands: [value(sum[1]), value(sum[3])] } as unknown as Operation;
+  // (C2's table reads the operation: a cause that means adding where a difference is asked needs a subtraction.)
+  const mistake = samMistakeFor(own.misconception, op);
+  return mistake && levelMistakes(plan.level).includes(mistake) ? samAnswer(op, mistake) : null;
 }
 
 // ---------- Facts (item 4) ----------
@@ -132,6 +133,100 @@ export function warmUpSkill(curriculum: Curriculum, plan: Plan, day: number, ski
   return pool[k % pool.length];
 }
 
+/** A fact family's times tables (D-156 facts.ts: 4.8 recalls 2s, 5s and 10s; 5.9 adds 3s and 4s; 6.2 to 10 × 10). */
+const FAMILY_TABLES: Partial<Record<FactFamilyId, readonly number[]>> = {
+  mul2510: [2, 5, 10], mul234510: [2, 3, 4, 5, 10], mul100: [2, 3, 4, 5, 6, 7, 8, 9, 10], div100: [2, 3, 4, 5, 6, 7, 8, 9, 10],
+};
+/** Families in the grade order BC first expects them, for a skill's own table. */
+const FAMILY_ORDER: readonly FactFamilyId[] = ["add5", "sub5", "add10", "sub10", "add20", "sub20", "mul2510", "mul234510", "mul100", "div100"];
+
+/** The operation a fluency skill's facts take, from its id, or null: then the writer keeps today's choice. */
+function factKind(skill: string): "add" | "subtract" | "multiply" | "divide" | "extend" | null {
+  if (/divi/.test(skill)) return "divide";
+  if (/multipl|recall-facts/.test(skill)) return "multiply";
+  if (/extend-facts/.test(skill)) return "extend";
+  if (/subtract/.test(skill)) return "subtract";
+  if (/add/.test(skill)) return "add";
+  return null;
+}
+
+/** The tables a multiplication or division skill practises: its first family's, without the ones the child knows. */
+function skillTables(curriculum: Curriculum, plan: Plan, skill: string): readonly number[] {
+  const s = signalsOf(plan)!;
+  const own = FAMILY_ORDER.find((f) => FAMILY_TABLES[f] && Object.values(factsCoverage([f])).some((skills) => skills.includes(skill)));
+  const tables = own ? FAMILY_TABLES[own]! : FAMILY_TABLES.mul100!;
+  const known = new Set(s.facts.filter((f) => f.state === "known").flatMap((f) => [...(FAMILY_TABLES[f.family] ?? [])]));
+  const open = tables.filter((t) => !known.has(t));
+  return open.length && skillFactState(curriculum, plan, skill) !== "known" ? open : tables;
+}
+
+/** A warm-up fact code chose: its operation and operands, never the writer's (G1, item 4). */
+export interface WarmUpFact {
+  skill: string;
+  kind: "add" | "subtract" | "multiply" | "divide";
+  operands: [number, number];
+  text: string;
+}
+
+/**
+ * The fact a personal warm-up slot prints (item 4), chosen by code from the aimed skill's family, or null for today's
+ * writer: the slot's turn `seed` picks the table and the other factor; `taken` holds the page's facts so far.
+ */
+export function warmUpFact(curriculum: Curriculum, plan: Plan, skill: string, seed: number, taken: ReadonlySet<string>): WarmUpFact | null {
+  const kind = factKind(skill);
+  if (!signalsOf(plan) || !kind) return null;
+  const tables = skillTables(curriculum, plan, skill);
+  for (let k = 0; k < 90; k++) {
+    const n = seed + k;
+    const a = 2 + (n % 9), b = 2 + (Math.floor(n / 9) % 9);
+    let fact: WarmUpFact;
+    if (kind === "multiply" || kind === "divide") {
+      const t = tables[n % tables.length], f = 2 + (Math.floor(n / tables.length) % 9);
+      fact = kind === "multiply" ? (n % 2 ? { skill, kind, operands: [f, t], text: `${f} × ${t} = ?` } : { skill, kind, operands: [t, f], text: `${t} × ${f} = ?` })
+        : { skill, kind, operands: [t * f, t], text: `${t * f} ÷ ${t} = ?` };
+    } else if (kind === "extend") {
+      fact = n % 2 ? { skill, kind: "subtract", operands: [(a + b) * 10, b * 10], text: `${(a + b) * 10} − ${b * 10} = ?` } : { skill, kind: "add", operands: [a * 10, b * 10], text: `${a * 10} + ${b * 10} = ?` };
+    } else fact = kind === "add" ? { skill, kind, operands: [a, b], text: `${a} + ${b} = ?` } : { skill, kind, operands: [a + b, b], text: `${a + b} − ${b} = ?` };
+    if (!taken.has(fact.text)) return fact;
+  }
+  return null;
+}
+
+/** Whether a printed warm-up operation practises one of the aimed open skills (needs practice or not measured). */
+function practisesOpen(curriculum: Curriculum, plan: Plan, open: readonly string[], op: { kind: string; operands: readonly number[] }): boolean {
+  return open.some((skill) => {
+    const kind = factKind(skill);
+    if (!kind) return false;
+    if (kind === "multiply") return op.kind === "multiply" && op.operands.some((x) => skillTables(curriculum, plan, skill).includes(x));
+    if (kind === "divide") return op.kind === "divide" && skillTables(curriculum, plan, skill).includes(op.operands[1]);
+    if (kind === "extend") return (op.kind === "add" || op.kind === "subtract") && op.operands.every((x) => x % 10 === 0);
+    return op.kind === kind;
+  });
+}
+
+/**
+ * The book check of item 4 on the PRINTED warm-ups, Days 1 to 5: where the plan splits the fact skills into ones to
+ * practise and known ones, at least half of a day's printed warm-up facts practise an open family and at most a third
+ * are known ones. One problem per failing day, on its warm-up page; none without signals.
+ */
+export function warmUpShareProblems(curriculum: Curriculum, plan: Plan, pages: readonly { number: number; day: number | null; questions: readonly { place?: string | null; package: { operation: { kind: string; operands: readonly unknown[] } | null } | null }[] }[]): { page: number; reason: string }[] {
+  if (!signalsOf(plan)) return [];
+  const problems: { page: number; reason: string }[] = [];
+  for (const d of plan.days.filter((x) => x.day <= 5)) {
+    const part = d.pages.flatMap((p) => p.parts).find((x) => x.kind === "warm-up");
+    if (!part || part.skills.length < 2 || warmUpSkill(curriculum, plan, d.day, part.skills, 0) === null) continue;
+    const open = part.skills.filter((x) => skillFactState(curriculum, plan, x) !== "known");
+    if (!open.length || open.length === part.skills.length) continue;
+    const printed = pages.filter((p) => p.day === d.day).flatMap((p) => p.questions.filter((q) => q.place === "warm-up" && q.package).map((q) => ({ page: p.number, op: q.package!.operation })));
+    if (!printed.length) continue;
+    const opened = printed.filter((x) => x.op && practisesOpen(curriculum, plan, open, { kind: x.op.kind, operands: x.op.operands.map((v) => Number(typeof v === "object" && v !== null && "value" in v ? (v as { value: unknown }).value : v)) })).length;
+    const known = printed.length - opened;
+    if (opened * 2 < printed.length || known * 3 > printed.length + 2)
+      problems.push({ page: printed[0].page, reason: `Day ${d.day}'s warm-up prints ${opened} of ${printed.length} facts on the families the child still needs (${open.join(", ")}); at least half must be, and at most a third known ones` });
+  }
+  return problems;
+}
+
 // ---------- Interests (item 5) ----------
 
 /** The interest things and places of the parent's interests, in order, or empty for today's lists. */
@@ -158,6 +253,31 @@ export function storyThings(plan: Plan): readonly string[] {
 
 /** Whether the book's story slot at this turn takes an interest word (the same 3 of every 5 as storyThings). */
 export const interestTurn = (turn: number): boolean => [0, 1, 3].includes(turn % 5);
+
+/** Whether a code story has a noun slot interests can fill (item 5): a template with {things} or {places}, or a code frame's thing. */
+export function interestEligible(curriculum: Curriculum, c: { source: string; item: { thing?: string | null }; template?: { skill: string; step: number; index: number } } | null | undefined): boolean {
+  if (!c) return false;
+  if (c.template) return /\{(?:things|places)\}/.test(curriculum.skillSteps(c.template.skill)?.find((s) => s.number === c.template!.step)?.templates?.[c.template.index]?.text ?? "");
+  return c.source === "story" && !!c.item.thing;
+}
+
+/** Whether a printed text names one of the parent's interest nouns. */
+export function printsInterest(plan: Plan, text: string): boolean {
+  const { things, places } = interestWords(plan);
+  return [...things, ...places].some((w) => new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text));
+}
+
+/** The share item 5 sets: at least half and at most two thirds of the eligible stories name an interest. */
+export const INTEREST_SHARE = { min: 0.5, max: 2 / 3, target: 0.63 } as const;
+
+/** The book check of item 5 on the printed book: the interest share of its eligible code stories (6 or more). */
+export function interestShareProblems(curriculum: Curriculum, plan: Plan, pages: readonly { number: number; questions: readonly { itemPlan?: Parameters<typeof interestEligible>[1]; package: { text: string } | null }[] }[]): { page: number; reason: string }[] {
+  if (!interestWords(plan).things.length) return [];
+  const eligible = pages.flatMap((p) => p.questions.filter((q) => q.package && interestEligible(curriculum, q.itemPlan)).map((q) => ({ page: p.number, interest: printsInterest(plan, q.package!.text) })));
+  if (eligible.length < 6) return [];
+  const share = eligible.filter((x) => x.interest).length / eligible.length;
+  return share >= INTEREST_SHARE.min && share <= INTEREST_SHARE.max ? [] : [{ page: eligible[0].page, reason: `${eligible.filter((x) => x.interest).length} of ${eligible.length} stories with a thing or place name an interest; the book needs half to two thirds` }];
+}
 
 // ---------- Reading load (item 8) ----------
 

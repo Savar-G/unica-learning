@@ -974,6 +974,13 @@ function samLines(op: Operation, mistake: SamMistake): Omit<SamWork, "mistake"> 
   }
 }
 
+/** The answer Sam's mistake gives on a sum (G1: a step template Spot the error shows it), or null when it cannot happen. */
+export function samAnswer(op: Operation, mistake: SamMistake): number | null {
+  const work = samLines(op, mistake);
+  const right = operationResult(op);
+  return work && !(right.type === "number" && right.value === work.answer) ? work.answer : null;
+}
+
 /**
  * Sam's wrong work for a question's shown wrong answer: the mistake named (`cause`, when it is one of SAM_MISTAKES),
  * else the first mistake whose answer is that wrong answer. Null when the mistake cannot happen on the sum or does not
