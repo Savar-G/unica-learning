@@ -10,4 +10,6 @@ Round 1 reviewed candidate `8365f43afa1af1ec8c83d167949c23de9d83b85d` against `9
 | S2 | should | Fixed. Export the adaptive pool and assign selected block positions. | The export returned zero rows before the fix. The regression now checks all pool rows, all selected positions and both block numbers. All 29 export tests pass. |
 | S3 | should | Fixed. Preserve the exact unknown response in deletion copies. | The response was null before the fix. Both answer formats and their change histories now preserve it. Other free text remains null. All 19 deletion-copy tests pass. |
 
-No finding was declined. Round 2 will check these fixes and changed code only. The reviewed source diff was 30 files, 970 insertions and 90 deletions before the fixes.
+No finding was declined. Round 2 checked these fixes and changed code only. Verdict: APPROVE on `09f88fa74e61e522e6bcf796639cd8f87f86cb58`, on Savar's MacBook Pro (4). The reviewer independently reproduced the old defects, confirmed all three fixes, and passed all 298 targeted tests. The reviewed source diff was 30 files, 970 insertions and 90 deletions before the fixes.
+
+Two rounds completed. S1, S2 and S3 are resolved. No blocker or should remains open. The production build, lint and TypeScript checks passed on the fixed candidate. No source changes followed that approval.

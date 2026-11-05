@@ -36,7 +36,7 @@ Aside, account u0, local Next development server, real session for a marked test
 
 Both QA tabs were closed. No report email, paid model call or workbook generation ran. Browser proof covers the first routing decision, review and resume. The full completion paths and grade ranges are covered by the core and attempt tests.
 
-`npx eslint src` and `npx tsc --noEmit` passed. The production build and independent review are recorded in the PR when complete.
+`npx eslint src` and `npx tsc --noEmit` passed. The production build passed on the fixed candidate. The independent review approved it in round 2, with S1, S2 and S3 resolved.
 
 ## Review fixes
 
