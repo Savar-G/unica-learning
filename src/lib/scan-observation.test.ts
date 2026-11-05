@@ -181,6 +181,62 @@ describe("eligibility and the marking event", () => {
   });
 });
 
+describe("automatic scoring needs a confirmed reading", () => {
+  const [e] = page([{ package: pkg("a"), teaching: teaching() }]);
+  const reading = (o: Partial<Observation["regions"][number]> = {}) => ({ regionId: "a", text: "12", value: "12", certainty: "certain" as const, ...o });
+  const unread: Observation = { ...firstObservation(e, "photo-1"), state: "scored", result: "blank" };
+
+  it.each<[string, Observation]>([
+    ["a blank with nothing read", unread],
+    ["a blank with no regions, claiming certainty", { ...unread, certainty: "certain", readAnswerText: "" }],
+    ["a blank with text that says something was written", { ...unread, certainty: "certain", readAnswerText: "12", regions: [reading()] }],
+    ["a blank with a region that holds text", { ...unread, certainty: "certain", readAnswerText: "", regions: [reading()] }],
+    ["a blank with an unreadable region", { ...unread, certainty: "certain", readAnswerText: "", regions: [reading({ text: null, value: null })] }],
+    ["a blank with an uncertain region", { ...unread, certainty: "certain", readAnswerText: "", regions: [reading({ text: "", value: null, certainty: "uncertain" })] }],
+    ["a blank with a region not read", { ...unread, certainty: "certain", readAnswerText: "", regions: [reading({ text: "", value: null, certainty: "not-read" })] }],
+    ["a right with an uncertain region under a certain page", { ...unread, result: "right", certainty: "certain", readAnswerText: "12", regions: [reading({ certainty: "uncertain" })] }],
+    ["a wrong with an unreadable region", { ...unread, result: "wrong", certainty: "certain", readAnswerText: "12", regions: [reading({ text: null, value: null })] }],
+    ["a wrong that read nothing", { ...unread, result: "wrong", certainty: "certain", readAnswerText: "", regions: [reading({ text: "", value: null })] }],
+    ["a right with top-level certainty not read", { ...unread, result: "right", certainty: "not-read", readAnswerText: "12", regions: [reading()] }],
+  ])("refuses %s: invalid, not complete, no event", (_name, o) => {
+    // Disproved if an unconfirmed reading can finish an item or publish a mark. A blank is a reading too.
+    expect(observationProblem(o)).not.toBeNull();
+    expect(pageCompletion([e], [o]).status).toBe("incomplete");
+    expect(markingEvent(e, o)).toEqual({ publish: false, reason: "invalid" });
+  });
+
+  it("any observation that claims certainty with an uncertain region is refused, whatever its state", () => {
+    const o: Observation = { ...firstObservation(e, "photo-1"), certainty: "certain", readAnswerText: "12", regions: [reading({ certainty: "uncertain" })] };
+    expect(observationProblem(o)).toMatch(/region/);
+  });
+
+  it("the positive controls: a confirmed blank and a confirmed answer finish the item and may publish", () => {
+    // Disproved (and the refusals above worthless) if nothing can pass.
+    const blank: Observation = { ...unread, certainty: "certain", readAnswerText: "", regions: [reading({ text: "", value: null })] };
+    const right: Observation = { ...unread, result: "right", certainty: "certain", readAnswerText: "12", regions: [reading()] };
+    for (const o of [blank, right]) {
+      expect(observationProblem(o)).toBeNull();
+      expect(pageCompletion([e], [o]).status).toBe("complete");
+      expect(markingEvent(e, o)).toMatchObject({ publish: true, result: o.result });
+    }
+  });
+
+  it("every scored region of the item needs a reading: one box of two does not finish it", () => {
+    // Disproved if a reading of part of an item scores the whole item.
+    const two = { format: "boxes" as const, regions: [{ id: "a", kind: "box" as const, label: null, answer: { type: "number" as const, value: 1 } }, { id: "b", kind: "box" as const, label: null, answer: { type: "number" as const, value: 2 } }] };
+    const [item] = page([{ package: pkg("two", two), teaching: teaching({ eligibility: { format: "boxes" } }) }]);
+    const base: Observation = { ...firstObservation(item, "photo-1"), state: "scored", result: "right", certainty: "certain", readAnswerText: "1 2" };
+    const partial = { ...base, regions: [reading({ text: "1", value: "1" })] };
+    const stranger = { ...base, regions: [reading({ text: "1", value: "1" }), reading({ regionId: "z", text: "2", value: "2" })] };
+    const whole = { ...base, regions: [reading({ text: "1", value: "1" }), reading({ regionId: "b", text: "2", value: "2" })] };
+    expect(pageCompletion([item], [partial]).status).toBe("incomplete");
+    expect(markingEvent(item, partial)).toEqual({ publish: false, reason: "not-terminal" });
+    expect(pageCompletion([item], [stranger]).status).toBe("incomplete");
+    expect(pageCompletion([item], [whole]).status).toBe("complete");
+    expect(markingEvent(item, whole).publish).toBe(true);
+  });
+});
+
 describe("the observation's shape", () => {
   const [e] = page([{ package: pkg("a"), teaching: teaching() }]);
 

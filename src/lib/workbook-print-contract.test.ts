@@ -31,7 +31,7 @@ import { mark, proofPages, renderedPages, renderWorkbook, type MeasuredElement, 
 import { cropPlan } from "@/lib/scan-calibration";
 import { readScanPreview, runScanCrops, scanPartPath } from "@/lib/scan-crops";
 import { memoryScanCropStore } from "@/lib/scan-crops-memory";
-import { blankPage, cropCut, drawDigit, drawMark, drawPrintedContent, greyRaster, pagePng, photoJpeg, photographed, readDigit, uprightCorners } from "@/lib/scan-synthetic";
+import { blankPage, cropCut, drawDigit, drawMark, drawPrintedContent, drawQr, greyRaster, pagePng, photoJpeg, photographed, readDigit, uprightCorners } from "@/lib/scan-synthetic";
 import { teachingFrame } from "@/lib/workbook-teaching-frame";
 import { sampleDraft } from "@/lib/workbook-sample";
 import { sampleBook } from "@/lib/workbook-sample-book";
@@ -113,6 +113,7 @@ function drawingEngine(): PrintEngine {
       const images = await Promise.all(out.images.map(async (image, sheet) => {
         const r = blankPage(image.width, image.height);
         drawPrintedContent(r);
+        if (image.qrText) drawQr(r, { x: image.width - 255, y: image.height - 210, width: 170, height: 170 }, image.qrText);
         for (const m of out.measured.filter((x) => x.sheet === sheet)) {
           const mark = /^scan-(t|b)(l|r)$/.exec(m.name);
           if (mark) drawMark(r, `${mark[1]}${mark[2]}` as "tl", { x: (mark[2] === "l" ? m.x : m.x + m.width) * s, y: (mark[1] === "t" ? m.y : m.y + m.height) * s });
@@ -420,7 +421,7 @@ describe("a changed revision changes its contract as one unit", () => {
       m.printed.set(page.image!.path, files.get(page.image!.path)!);
       m.photos.set(PHOTO, {
         parent: PARENT, state: "saved", createdAt: Date.parse(NOW), expiresAt: Date.parse(NOW) + 90 * 86_400_000, bytes, storedBytes: 1,
-        frame: { printedRevision: photoRevision, book: { printedRevision: w.printedRevision }, page: { printContract: page.printContract, imagePath: page.image!.path, questions: questionsOf(page) } },
+        frame: { printedRevision: photoRevision, book: { printedRevision: w.printedRevision }, page: { printContract: page.printContract, imagePath: page.image!.path, qrToken: page.qrToken, questions: questionsOf(page) } },
       });
       return { m, preview: await runScanCrops(m.store, { parent: PARENT, photo: PHOTO }, "00000000-0000-4000-8000-0000000000e1") };
     };

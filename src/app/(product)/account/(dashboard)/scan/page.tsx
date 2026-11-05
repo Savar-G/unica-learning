@@ -39,7 +39,7 @@ export default async function ScanPage({ searchParams }: PageProps<"/account/sca
     parentDashboard(),
     headers(),
     searchParams,
-    // Test families and admins only, whatever the Scan pages switch says (D-250).
+    // Test families and admins only, whatever the Scan pages switch says (D-252).
     markedFamily(parent, admin),
   ]);
   const list = kids.data ?? [];

@@ -3,8 +3,9 @@ import { beforeAll, describe, expect, it } from "vitest";
 import type { QuestionPackage } from "@/lib/question-package";
 import { isFenceRefusal, readScanPreview, runScanCrops, scanPartPath, type ScanFrame } from "@/lib/scan-crops";
 import { memoryScanCropStore } from "@/lib/scan-crops-memory";
-import { blankPage, cropCut, drawBoxOutline, drawDigit, drawMark, drawPrintedContent, greyRaster, pagePng, photoJpeg, photographed, readDigit, uprightCorners } from "@/lib/scan-synthetic";
+import { blankPage, cropCut, drawBoxOutline, drawDigit, drawMark, drawPrintedContent, drawQr, greyRaster, pagePng, photoJpeg, photographed, readDigit, uprightCorners } from "@/lib/scan-synthetic";
 import { SCAN_MARKS, sha256Hex, type Box, type PagePrintContract, type Point } from "@/lib/workbook-print-contract";
+import { pageUrl } from "@/lib/workbook-render";
 
 // The crop job through its public functions and the in-memory store, with a clock the test holds. Each test names what
 // would disprove it. The real Storage fence and policies are proved on the hosted database: scripts/scan-crops-hosted.ts.
@@ -15,6 +16,7 @@ const ref = { parent: PARENT, photo: PHOTO };
 const token = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const POINTS: Record<(typeof SCAN_MARKS)[number], Point> = { tl: { x: 34.375, y: 34.375 }, tr: { x: 1240.625, y: 34.375 }, br: { x: 1240.625, y: 1615.625 }, bl: { x: 34.375, y: 1615.625 } };
 const ANSWERS: { box: Box; digit: number }[] = Array.from({ length: 6 }, (_, i) => ({ box: { x: 120 + (i % 3) * 340, y: 800 + Math.floor(i / 3) * 300, width: 320, height: 280 }, digit: (i * 3 + 2) % 10 }));
+const TOKEN = "test-page-token-0001";
 const pkg = (id: string, value = 12): QuestionPackage => ({
   id, item: { format: "write-number", scorable: true, parentChecked: false, regions: [{ id: "a", kind: "box", label: null, answer: { type: "number", value } }], checks: [], error: null },
 } as unknown as QuestionPackage);
@@ -26,6 +28,7 @@ function drawn(written: boolean) {
   const r = blankPage(W, H);
   for (const m of SCAN_MARKS) drawMark(r, m, POINTS[m]);
   drawPrintedContent(r);
+  drawQr(r, { x: 1020, y: 1440, width: 170, height: 170 }, pageUrl(TOKEN));
   for (const a of ANSWERS) { drawBoxOutline(r, a.box); if (written) drawDigit(r, a.box, a.digit); }
   return r;
 }
@@ -53,7 +56,7 @@ function setup(o: { book?: string | null; photoRevision?: string | null; contrac
       printedRevision: o.photoRevision === undefined ? REVISION : o.photoRevision,
       book: { printedRevision: book },
       page: {
-        printContract: o.contract === undefined ? contract : o.contract, imagePath: "page.png",
+        printContract: o.contract === undefined ? contract : o.contract, imagePath: "page.png", qrToken: TOKEN,
         questions: o.questions ?? ANSWERS.map((a, i) => ({ number: i + 1, package: pkg(`q${i + 1}`), regions: [{ id: "a", kind: "box", box: a.box }] })),
       },
     },

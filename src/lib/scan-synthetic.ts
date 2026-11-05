@@ -1,6 +1,7 @@
 // Synthetic scan pages for tests and test scripts only: a page drawn from a contract's own geometry, answers "written" as
 // seven-segment digits, and a "photo" of it through a perspective map. This ink proves geometry. It says nothing about
 // reading real handwriting. Never used for a family.
+import QRCode from "qrcode";
 import sharp from "sharp";
 import { applyTransform, perspectiveTransform, type Raster } from "@/lib/scan-calibration";
 import type { Box, Point, ScanMark } from "@/lib/workbook-print-contract";
@@ -35,6 +36,16 @@ export function drawBoxOutline(r: Raster, b: Box) {
   fillBox(r, b.x, b.y, 2, b.height, 150); fillBox(r, b.x + b.width - 2, b.y, 2, b.height, 150);
 }
 
+/** A real QR code of `text`, as a page prints it. */
+export function drawQr(r: Raster, b: Box, text: string) {
+  const { size, data } = QRCode.create(text, { errorCorrectionLevel: "M" }).modules;
+  fillBox(r, b.x, b.y, b.width, b.height, 252);
+  const cell = b.width / (size + 8);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    if (data[y * size + x]) fillBox(r, b.x + (x + 4) * cell, b.y + (y + 4) * cell, cell, cell, 15);
+  }
+}
+
 export const DIGIT_SEGMENTS = ["abcdef", "bc", "abdeg", "abcdg", "bcfg", "acdfg", "acdefg", "abc", "abcdefg", "abcdfg"];
 
 /** Where each segment sits, as a box in parts of the digit's box. */
@@ -51,9 +62,9 @@ export function drawDigit(r: Raster, b: Box, digit: number, ink = 30) {
 }
 
 /** A "photo": the page seen through a map onto `corners`, on a darker surface, with shade across it. */
-export function photographed(source: Raster, size: { width: number; height: number }, corners: Point[], o: { background?: number; shade?: number } = {}): Raster {
+export function photographed(source: Raster, size: { width: number; height: number }, corners: Point[], o: { background?: number; shade?: number; onto?: Raster } = {}): Raster {
   const W = source.width, H = source.height;
-  const out = new Uint8Array(size.width * size.height).fill(o.background ?? 96);
+  const out = o.onto ? o.onto.data : new Uint8Array(size.width * size.height).fill(o.background ?? 96);
   const t = perspectiveTransform(corners, [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }])!;
   for (let y = 0; y < size.height; y++) for (let x = 0; x < size.width; x++) {
     const p = applyTransform(t, { x: x + 0.5, y: y + 0.5 });

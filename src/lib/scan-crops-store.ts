@@ -38,10 +38,10 @@ export function scanCropStore(db: SupabaseClient<Database>): ScanCropStore {
       if (!row.data) return null;
       const p = row.data;
       const active = isActive(p, Date.now());
-      if (!p.page_id || !p.workbook_id) return { photo: { id: p.id, printedRevision: p.printed_revision, active }, book: { printedRevision: null }, page: { printContract: null, imagePath: null, questions: [] } };
+      if (!p.page_id || !p.workbook_id) return { photo: { id: p.id, printedRevision: p.printed_revision, active }, book: { printedRevision: null }, page: { printContract: null, imagePath: null, qrToken: null, questions: [] } };
       const [book, page, questions] = await Promise.all([
         db.from("workbooks").select("printed_revision").eq("id", p.workbook_id).eq("parent_id", parent).maybeSingle(),
-        db.from("workbook_pages").select("page_number,image_path,image_width,image_height,print_contract").eq("id", p.page_id).eq("parent_id", parent).maybeSingle(),
+        db.from("workbook_pages").select("page_number,image_path,image_width,image_height,print_contract,qr_token").eq("id", p.page_id).eq("parent_id", parent).maybeSingle(),
         db.from("workbook_questions").select("question_number,schema_version,package,box_x,box_y,box_width,box_height,regions,teaching").eq("page_id", p.page_id).eq("parent_id", parent).order("question_number"),
       ]);
       if (book.error || page.error || questions.error) throw new Error("scan crops: page");
@@ -53,6 +53,7 @@ export function scanCropStore(db: SupabaseClient<Database>): ScanCropStore {
         page: {
           printContract: pg?.print_contract ? storedPrintContract(pg.print_contract, { workbookId: p.workbook_id, page: pg.page_number, image }) : null,
           imagePath: pg?.image_path ?? null,
+          qrToken: pg?.qr_token ?? null,
           questions: (questions.data ?? []).flatMap((q) => {
             if (!pg) return [];
             const read = storedQuestion({

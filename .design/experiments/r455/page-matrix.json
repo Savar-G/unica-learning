@@ -1,0 +1,105 @@
+{
+  "summary": {
+    "pages": 36,
+    "angles": 2,
+    "samePage": 72,
+    "samePageCalibrated": 71,
+    "otherPage": 2520,
+    "falseAccepts": 0,
+    "stoppedByInk": 2510,
+    "passedInkStoppedByQr": 10,
+    "other": 0
+  },
+  "wrong": [
+    {
+      "photo": "U4 p3",
+      "angle": "straight on",
+      "against": "U4 p11",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "fit": null
+    },
+    {
+      "photo": "U4 p5",
+      "angle": "straight on",
+      "against": "U4 p8",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "fit": null
+    },
+    {
+      "photo": "U4 p8",
+      "angle": "straight on",
+      "against": "U4 p5",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "fit": null
+    },
+    {
+      "photo": "U16 p10",
+      "angle": "straight on",
+      "against": "U16 p18",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "fit": null
+    },
+    {
+      "photo": "U16 p18",
+      "angle": "straight on",
+      "against": "U16 p10",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "fit": null
+    },
+    {
+      "photo": "U4 p3",
+      "angle": "tilted",
+      "against": "U4 p11",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "fit": null
+    },
+    {
+      "photo": "U4 p5",
+      "angle": "tilted",
+      "against": "U4 p8",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "fit": null
+    },
+    {
+      "photo": "U4 p8",
+      "angle": "tilted",
+      "against": "U4 p5",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "fit": null
+    },
+    {
+      "photo": "U16 p10",
+      "angle": "tilted",
+      "against": "U16 p18",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "fit": null
+    },
+    {
+      "photo": "U16 p18",
+      "angle": "tilted",
+      "against": "U16 p10",
+      "status": "refused",
+      "reason": "qr-mismatch",
+      "fit": null
+    }
+  ],
+  "missed": [
+    {
+      "photo": "U16 p14",
+      "angle": "tilted",
+      "against": "U16 p14",
+      "status": "refused",
+      "reason": "page-mismatch",
+      "fit": null
+    }
+  ]
+}

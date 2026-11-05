@@ -15,6 +15,7 @@ import {
   type Raster,
 } from "@/lib/scan-calibration";
 import { printContractForPhoto, sha256Hex, type Box, type PagePrintContract } from "@/lib/workbook-print-contract";
+import { pageUrl } from "@/lib/workbook-render";
 
 export const STRAIGHT_PART = "straight";
 export const cropPart = (n: number) => `crop-${n}`;
@@ -63,7 +64,7 @@ export type ScanPreview =
 export interface ScanFrame {
   photo: { id: string; printedRevision: string | null; active: boolean };
   book: { printedRevision: string | null };
-  page: { printContract: PagePrintContract | null; imagePath: string | null; questions: CropQuestion[] };
+  page: { printContract: PagePrintContract | null; imagePath: string | null; qrToken: string | null; questions: CropQuestion[] };
 }
 
 export interface StoredScanCalibration {
@@ -157,7 +158,9 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   const printedBytes = frame.page.imagePath ? await store.printedBytes(frame.page.imagePath) : null;
   if (!printedBytes || await sha256Hex(printedBytes) !== contract.contract.fingerprints.image) return finished("refused", { reason: "printed-page-changed" }, 0);
   const [photo, printed] = await Promise.all([decode(await store.photoBytes(ref), 3), decode(printedBytes, 1)]);
-  const result = calibratePhoto({ photo, printed, contract });
+  if (!frame.page.qrToken) return finished("refused", { reason: "qr-mismatch" }, 0);
+  const writing = frame.page.questions.flatMap((q) => (q.regions ?? []).flatMap((r) => (r.box ? [r.box] : [])));
+  const result = calibratePhoto({ photo, printed, contract, pageLink: pageUrl(frame.page.qrToken), writing });
   if (result.status === "unavailable") return { status: "unavailable", reason: result.reason };
   if (result.status === "refused") return finished("refused", { reason: result.reason }, 0);
   const { calibration } = result;

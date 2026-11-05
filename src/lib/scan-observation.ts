@@ -92,6 +92,25 @@ export interface Observation {
   resultVersion: number;
 }
 
+/**
+ * What code's score needs: a confirmed reading of the answer. Blank is a reading too, not the absence of one: a region read
+ * as genuinely empty. Reading uncertainty is pending, never blank.
+ */
+function scoredReadingProblem(o: Observation): string | null {
+  if (o.certainty === "uncertain") return "an uncertain reading stays pending";
+  if (o.certainty !== "certain") return "a score needs a confirmed reading";
+  if (o.regions.length === 0) return "a score needs a confirmed reading of its regions";
+  if (o.regions.some((r) => r.certainty !== "certain" || r.text === null)) return "a score needs every region confirmed";
+  const empty = (t: string | null) => t !== null && t.trim() === "";
+  if (o.result === "blank") {
+    if (!empty(o.readAnswerText) || !o.regions.every((r) => empty(r.text))) return "a blank result needs every region read as empty";
+  } else {
+    if (o.readAnswerText === null) return "a right or wrong result needs what was read";
+    if (empty(o.readAnswerText) || o.regions.every((r) => empty(r.text))) return "a right or wrong result needs something read";
+  }
+  return null;
+}
+
 /** What is wrong with an observation's shape, or null. */
 export function observationProblem(o: Observation): string | null {
   if (o.version !== OBSERVATION_VERSION) return "the observation is of a version this code does not read";
@@ -105,9 +124,13 @@ export function observationProblem(o: Observation): string | null {
   if (o.state === "scored" && o.method !== "code") return "only code scores an item";
   if ((o.state === "parent-pending" || o.state === "parent-checked") && o.method !== "parent") return "only a parent-checked item waits for a parent";
   if (o.state === "unscored" && o.method !== "unscored") return "only an unscored item can be unscored";
-  // Reading uncertainty is pending, not blank.
-  if (o.state === "scored" && o.certainty === "uncertain") return "an uncertain reading stays pending";
-  if (o.state === "scored" && o.result !== "blank" && o.readAnswerText === null) return "a right or wrong result needs what was read";
+  // The page's certainty cannot say more than its regions do.
+  if (o.certainty === "certain" && o.regions.some((r) => r.certainty !== "certain")) return "a region is less certain than the observation says";
+  if (o.regions.some((r) => r.certainty === "not-read" && r.text !== null)) return "a region not read holds text";
+  if (o.state === "scored") {
+    const problem = scoredReadingProblem(o);
+    if (problem) return problem;
+  }
   if (o.mastery.eligible && o.state === "unscored") return "an unscored item cannot count toward mastery";
   return null;
 }
@@ -151,6 +174,8 @@ export interface ExpectedItem {
   /** The printed question number. */
   number: number;
   method: CheckMethod;
+  /** The regions a score must read: each answer box and choice of the item. */
+  scoredRegions: string[];
   mastery: MasteryDecision;
   teaching: TeachingReference | null;
 }
@@ -162,6 +187,9 @@ export interface PageForObservation {
   questions: readonly { number: number; package: QuestionPackage | null; teaching: TeachingContext | null }[];
 }
 
+const scoredRegions = (pkg: QuestionPackage | null) =>
+  (checkMethod(pkg) === "code" ? packageItem(pkg!).regions.filter((r) => r.kind === "box" || r.kind === "choice").map((r) => r.id) : []);
+
 const reference = (t: TeachingContext | null): TeachingReference | null => t && {
   curriculum: t.curriculum, part: t.part, slot: t.slot, practiceType: t.practiceType, itemStep: t.itemStep,
 };
@@ -172,6 +200,7 @@ export function expectedItems(page: PageForObservation): ExpectedItem[] {
     identity: { workbookId: page.workbookId, printedRevision: page.printedRevision, pageId: page.pageId, itemId: q.package?.id ?? `question-${q.number}` },
     number: q.number,
     method: checkMethod(q.package),
+    scoredRegions: scoredRegions(q.package),
     mastery: masteryDecision(q.package, q.teaching),
     teaching: reference(q.teaching),
   }));
@@ -199,8 +228,15 @@ export interface PageCompletion {
   total: number;
 }
 
+/** Exactly the item's scored regions, each once: a reading of part of an item does not score the item. */
+const readsWholeItem = (e: ExpectedItem, o: Observation) => {
+  const read = o.regions.map((r) => r.regionId).sort();
+  const wanted = [...e.scoredRegions].sort();
+  return read.length === wanted.length && read.every((id, i) => id === wanted[i]);
+};
+
 const isTerminal = (e: ExpectedItem, o: Observation) =>
-  (e.method === "code" && o.state === "scored" && o.result !== null)
+  (e.method === "code" && o.state === "scored" && o.result !== null && readsWholeItem(e, o))
   || (e.method === "parent" && o.state === "parent-checked" && o.result !== null)
   || (e.method === "unscored" && o.state === "unscored");
 

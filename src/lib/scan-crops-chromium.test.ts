@@ -3,7 +3,7 @@ import { chromiumPrintEngine, findChromium } from "@/lib/print-engine-chromium";
 import { calibratePhoto, cropBox, cropPlan, type Calibration, type CropItem, type Raster } from "@/lib/scan-calibration";
 import { cropCut, drawDigit, greyRaster, photoJpeg, photographed, readDigit, rotatedCorners, uprightCorners } from "@/lib/scan-synthetic";
 import { printContractForPhoto, type PagePrintContract } from "@/lib/workbook-print-contract";
-import { renderWorkbook, type DraftPage } from "@/lib/workbook-render";
+import { pageUrl, renderWorkbook, type DraftPage } from "@/lib/workbook-render";
 import { sampleBook } from "@/lib/workbook-sample-book";
 import { workbookTemplate } from "@/lib/workbook-template";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
@@ -28,7 +28,7 @@ async function renderedPages(level: string) {
   return result.workbook.pages.flatMap((page) => {
     const plan = cropPlan(page.questions.map((q) => ({ number: q.number, package: q.package as never, regions: q.regions ?? null })));
     const png = result.files.find((f) => f.path === page.image!.path)?.bytes;
-    return page.printContract && png ? [{ number: page.number, contract: page.printContract, png, plan }] : [];
+    return page.printContract && png ? [{ number: page.number, contract: page.printContract, png, plan, link: pageUrl(page.qrToken), writing: page.questions.flatMap((q) => (q.regions ?? []).flatMap((r) => (r.box ? [r.box] : []))) }] : [];
   });
 }
 
@@ -61,7 +61,7 @@ describe.skipIf(!chromium)("calibration on real printed pages", () => {
       const contract = printContractForPhoto({ printedRevision: REVISION }, { printContract: page.contract }, { printedRevision: REVISION });
       for (const [name, corners] of Object.entries(CORNERS)) {
         const photo = await greyRaster(await photoJpeg(photographed(written, SIZE, corners, { shade: 0.25 })));
-        const result = calibratePhoto({ photo, printed, contract });
+        const result = calibratePhoto({ photo, printed, contract, pageLink: page.link, writing: page.writing });
         if (result.status !== "calibrated") throw new Error(`${level} page ${page.number} ${name}: ${result.reason}`);
         expect(read(photo, result.calibration, page.contract, page.plan.crops), `${level} page ${page.number} ${name}`).toEqual(wanted);
         checked += wanted.length;
@@ -75,9 +75,9 @@ describe.skipIf(!chromium)("calibration on real printed pages", () => {
     const [one, two] = await renderedPages("U16");
     const printedOne = await greyRaster(one.png), printedTwo = await greyRaster(two.png);
     const photo = await greyRaster(await photoJpeg(photographed(printedTwo, SIZE, CORNERS["straight on"])));
-    const own = calibratePhoto({ photo, printed: printedTwo, contract: printContractForPhoto({ printedRevision: REVISION }, { printContract: two.contract }, { printedRevision: REVISION }) });
+    const own = calibratePhoto({ photo, printed: printedTwo, contract: printContractForPhoto({ printedRevision: REVISION }, { printContract: two.contract }, { printedRevision: REVISION }), pageLink: two.link, writing: two.writing });
     expect(own.status).toBe("calibrated");
-    const other = calibratePhoto({ photo, printed: printedOne, contract: printContractForPhoto({ printedRevision: REVISION }, { printContract: one.contract }, { printedRevision: REVISION }) });
+    const other = calibratePhoto({ photo, printed: printedOne, contract: printContractForPhoto({ printedRevision: REVISION }, { printContract: one.contract }, { printedRevision: REVISION }), pageLink: one.link, writing: one.writing });
     expect(other.status).toBe("refused");
   }, 120_000);
 });

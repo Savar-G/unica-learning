@@ -13,7 +13,7 @@ import {
   type Raster,
   type Transform,
 } from "@/lib/scan-calibration";
-import { blankPage, cropCut, drawBoxOutline, drawDigit, drawMark, drawPrintedContent, fillBox, greyRaster, photoJpeg, photographed, readDigit, rotatedCorners, uprightCorners } from "@/lib/scan-synthetic";
+import { blankPage, cropCut, drawBoxOutline, drawDigit, drawMark, drawPrintedContent, drawQr, fillBox, greyRaster, photoJpeg, photographed, readDigit, rotatedCorners, uprightCorners } from "@/lib/scan-synthetic";
 import { SCAN_MARKS, printContractForPhoto, type Box, type PagePrintContract, type PhotoContract, type Point } from "@/lib/workbook-print-contract";
 
 // Scan calibration through its public functions, on synthetic pages. Each answer is a seven-segment digit "written" in
@@ -33,9 +33,13 @@ const contract: PagePrintContract = {
 };
 const available: PhotoContract = { status: "available", revision: REVISION, contract };
 
+const LINK = "https://unicalearning.com/tutor/p/test-page-token-0001";
 const page = () => blankPage(W, H);
 const fill = fillBox;
 const mark = (r: Raster, m: (typeof SCAN_MARKS)[number]) => drawMark(r, m, POINTS[m]);
+
+/** Where these pages print their QR code. */
+const QR_BOX: Box = { x: 1020, y: 1440, width: 170, height: 170 };
 
 const ANSWERS: { box: Box; digit: number }[] = Array.from({ length: 12 }, (_, i) => ({
   // Twelve boxes in tight rows: a neighbour is 14 pixels away.
@@ -46,6 +50,7 @@ function printedPage(): Raster {
   const r = page();
   for (const m of SCAN_MARKS) mark(r, m);
   drawPrintedContent(r);
+  drawQr(r, QR_BOX, LINK);
   for (const a of ANSWERS) drawBoxOutline(r, a.box);
   return r;
 }
@@ -90,7 +95,7 @@ describe("calibratePhoto and its crops", () => {
   it.each(CASES)("every crop holds its own written answer: $name", async ({ size, corners, turns }) => {
     // Disproved if a crop reads another box's digit or none, for any scale, rotation or perspective here.
     const photo = await stored(photographed(written, size, corners, { shade: 0.3 }));
-    const result = calibratePhoto({ photo, printed, contract: available });
+    const result = calibratePhoto({ photo, printed, contract: available, pageLink: LINK });
     if (result.status !== "calibrated") throw new Error(`refused: ${JSON.stringify(result)}`);
     expect(result.calibration.quarterTurns).toBe(turns);
     expect(digitsRead(photo, result.calibration)).toEqual(wanted);
@@ -106,7 +111,7 @@ describe("calibratePhoto and its crops", () => {
   it("a control: a map shifted by half a box reads the wrong digits, so this check can fail", async () => {
     // Disproved (and the test above worthless) if a wrong map still reads every digit.
     const photo = await stored(photographed(written, SIZE, square(SIZE, 60)));
-    const result = calibratePhoto({ photo, printed, contract: available });
+    const result = calibratePhoto({ photo, printed, contract: available, pageLink: LINK });
     if (result.status !== "calibrated") throw new Error("refused");
     const c = result.calibration;
     const scale = Math.hypot(c.transform[0], c.transform[3]);
@@ -118,7 +123,7 @@ describe("calibratePhoto and its crops", () => {
 
   it("a control: the printed page with no answers reads no digit in any crop", async () => {
     const photo = await stored(photographed(printed, SIZE, square(SIZE, 60)));
-    const result = calibratePhoto({ photo, printed, contract: available });
+    const result = calibratePhoto({ photo, printed, contract: available, pageLink: LINK });
     if (result.status !== "calibrated") throw new Error("refused");
     expect(digitsRead(photo, result.calibration).filter((d) => d !== null)).toEqual([]);
   }, 20_000);
@@ -127,7 +132,7 @@ describe("calibratePhoto and its crops", () => {
     // Disproved if the preview's corners are not ink at the contract's points.
     const corners = [{ x: 300, y: 80 }, { x: 1380, y: 240 }, { x: 1180, y: 1800 }, { x: 60, y: 1560 }];
     const photo = await stored(photographed(written, SIZE, corners));
-    const result = calibratePhoto({ photo, printed, contract: available });
+    const result = calibratePhoto({ photo, printed, contract: available, pageLink: LINK });
     if (result.status !== "calibrated") throw new Error("refused");
     const straight = straightenedPage(photo, result.calibration, contract);
     expect([straight.width, straight.height]).toEqual([W, H]);
@@ -154,19 +159,19 @@ describe("refusals", () => {
   it.each(SCAN_MARKS)("refuses a photo with mark %s out of view, and makes no calibration", async (m) => {
     // Disproved if three marks and a guess give a map.
     const photo = await stored(photographed(covered(m), SIZE, square(SIZE, 60)));
-    expect(calibratePhoto({ photo, printed, contract: available })).toEqual({ status: "refused", reason: "marks-missing" });
+    expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK })).toEqual({ status: "refused", reason: "marks-missing" });
   }, 20_000);
 
   it("refuses a photo with a thumb across a mark", async () => {
     const r = writtenPage();
     fill(r, 20, 20, 90, 30, 60);
     const photo = await stored(photographed(r, SIZE, square(SIZE, 60)));
-    expect(calibratePhoto({ photo, printed, contract: available }).status).toBe("refused");
+    expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK }).status).toBe("refused");
   }, 20_000);
 
   it("refuses a blank photo", () => {
     const photo = { width: 800, height: 1000, channels: 1 as const, data: new Uint8Array(800000).fill(240) };
-    expect(calibratePhoto({ photo, printed, contract: available })).toEqual({ status: "refused", reason: "marks-missing" });
+    expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK })).toEqual({ status: "refused", reason: "marks-missing" });
   });
 
   it("refuses a photo of another page: its marks line up, but its ink does not follow the printed page", async () => {
@@ -174,8 +179,9 @@ describe("refusals", () => {
     const other = page();
     for (const m of SCAN_MARKS) mark(other, m);
     for (let i = 0; i < 40; i++) fill(other, 200 + (i * 37) % 800, 500 + (i * 71) % 900, 60, 14);
+    drawQr(other, QR_BOX, LINK);
     const photo = await stored(photographed(other, SIZE, square(SIZE, 60)));
-    expect(calibratePhoto({ photo, printed, contract: available })).toEqual({ status: "refused", reason: "page-mismatch" });
+    expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK })).toEqual({ status: "refused", reason: "page-mismatch" });
   }, 20_000);
 
   it("refuses when two ways up fit alike: the marks alone cannot say which way is up", async () => {
@@ -183,8 +189,9 @@ describe("refusals", () => {
     const even = page();
     for (const m of SCAN_MARKS) mark(even, m);
     for (let line = 0; line < 8; line++) { fill(even, 200, 200 + line * 60, 300, 20); fill(even, W - 500, H - 220 - line * 60, 300, 20); }
+    drawQr(even, QR_BOX, LINK);
     const photo = await stored(photographed(even, SIZE, square(SIZE, 60)));
-    expect(calibratePhoto({ photo, printed: even, contract: available })).toEqual({ status: "refused", reason: "orientation-unclear" });
+    expect(calibratePhoto({ photo, printed: even, contract: available, pageLink: LINK })).toEqual({ status: "refused", reason: "orientation-unclear" });
   }, 20_000);
 });
 
@@ -197,10 +204,10 @@ describe("a photo and its printed revision", () => {
     const NEW = "b".repeat(28);
     const old = printContractForPhoto({ printedRevision: NEW }, { printContract: contract }, { printedRevision: REVISION });
     expect(old).toEqual({ status: "unavailable", reason: "other-revision" });
-    expect(calibratePhoto({ photo, printed, contract: old })).toEqual({ status: "unavailable", reason: "other-revision" });
+    expect(calibratePhoto({ photo, printed, contract: old, pageLink: LINK })).toEqual({ status: "unavailable", reason: "other-revision" });
     // Positive control: the same bytes against their own revision calibrate.
     const own = printContractForPhoto({ printedRevision: REVISION }, { printContract: contract }, { printedRevision: REVISION });
-    const result = calibratePhoto({ photo, printed, contract: own });
+    const result = calibratePhoto({ photo, printed, contract: own, pageLink: LINK });
     if (result.status !== "calibrated") throw new Error("refused");
     expect(result.calibration.revision).toBe(REVISION);
     expect(calibrationForPhoto(result.calibration, { printedRevision: REVISION })).toBe(result.calibration);
@@ -211,7 +218,7 @@ describe("a photo and its printed revision", () => {
   it("a legacy book has no contract, so no calibration", async () => {
     const photo = await stored(photographed(written, SIZE, square(SIZE, 60)));
     const legacy = printContractForPhoto({ printedRevision: null }, { printContract: null }, { printedRevision: "2026-11-01 10:00:00+00" });
-    expect(calibratePhoto({ photo, printed, contract: legacy })).toEqual({ status: "unavailable", reason: "no-contract" });
+    expect(calibratePhoto({ photo, printed, contract: legacy, pageLink: LINK })).toEqual({ status: "unavailable", reason: "no-contract" });
   }, 20_000);
 });
 
