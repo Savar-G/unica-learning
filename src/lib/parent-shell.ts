@@ -14,7 +14,7 @@ export function lastChildCookie(childId: string, secure: boolean): string {
 export const ACCOUNT_PATH = "/account/settings";
 
 /** What the Account tab says after a parent comes back from Stripe's card page (`?card=`). */
-export type CardNotice = "updated" | "unchanged" | "failed";
+export type CardNotice = "updated" | "unchanged" | "unconfirmed" | "failed";
 
 const homePath = (childId: string) => `/account?child=${encodeURIComponent(childId)}`;
 

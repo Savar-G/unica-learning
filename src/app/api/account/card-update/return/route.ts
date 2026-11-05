@@ -5,7 +5,10 @@ import { ACCOUNT_PATH, type CardNotice } from "@/lib/parent-shell";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 
 const SESSION = /^cs_(?:test|live)_[A-Za-z0-9]+$/;
-const NOTICE: Record<CardUpdateFinish, CardNotice | null> = { updated: "updated", stale: null, incomplete: "unchanged", not_found: "failed", failed: "failed" };
+const NOTICE: Record<CardUpdateFinish, CardNotice | null> = { updated: "updated", stale: null, unconfirmed: "unconfirmed", incomplete: "unchanged", not_found: "failed", failed: "failed" };
+
+// Shorter than the card lock (CARD_LOCK_SECONDS), so the lock outlives this request.
+export const maxDuration = 60;
 
 // Stripe sends the parent back here after the hosted page saved a card (#554). This is where the card becomes the
 // plan's default. The answer is always a redirect to the Account tab, which says what happened. A parent signed out on

@@ -1,11 +1,13 @@
 import Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
+import { memoryBilling } from "@/lib/billing-memory";
 import { startPlan } from "@/lib/stripe";
 
 vi.mock("server-only", () => ({}));
 
 const deliveredAt = new Date("2026-11-05T18:00:00Z");
 const setup = { cardSetup: "card-1", customer: "cus_family", price: 79.99 };
+const locks = () => memoryBilling({ children: [{ parentId: "p", childId: "c", firstName: "Leah", card: { id: "card-1", customer: "cus_family", saved: true } }] }).store;
 
 /** Stripe's answers to the subscription list in turn, one page each; the last repeats. */
 function provider(alreadyStarted = false, pages: unknown[] = [{ data: alreadyStarted ? [{ id: "sub_existing", status: "trialing" }] : [], has_more: false }], customer: unknown = { id: "cus_family", invoice_settings: { default_payment_method: null } }) {
@@ -31,12 +33,12 @@ const ended = (count: number) => Array.from({ length: count }, (_, i) => ({ id: 
 describe("the free month starts after home delivery confirmation", () => {
   it("makes no Stripe request before an admin confirms delivery", async () => {
     const f = provider();
-    expect(await startPlan(f.client, { ...setup, deliveryConfirmed: false }, deliveredAt)).toEqual({ ok: false, error: "not_delivered" });
+    expect(await startPlan(f.client, { ...setup, deliveryConfirmed: false }, deliveredAt, locks())).toEqual({ ok: false, error: "not_delivered" });
     expect(f.requests).toEqual([]);
   });
   it("starts a full 30-day trial after delivery, with an audit reason and the existing send key", async () => {
     const f = provider();
-    expect(await startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt)).toEqual({ ok: true, subscription: "sub_trial", firstChargeAt: "2026-12-05T18:00:00.000Z" });
+    expect(await startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt, locks())).toEqual({ ok: true, subscription: "sub_trial", firstChargeAt: "2026-12-05T18:00:00.000Z" });
     const create = f.requests.filter((r) => r.path.endsWith("/subscriptions") && r.method === "POST");
     expect(create).toHaveLength(1);
     expect(create[0].body.get("trial_period_days")).toBe("30");
@@ -47,7 +49,7 @@ describe("the free month starts after home delivery confirmation", () => {
   });
   it("charges the customer's newest card and writes only the plan, for a customer with no default card", async () => {
     const f = provider();
-    await startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt);
+    await startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt, locks());
     const list = f.requests.filter((r) => r.path.endsWith("/payment_methods"));
     expect(list).toHaveLength(1);
     const writes = f.requests.filter((r) => r.method === "POST");
@@ -56,7 +58,7 @@ describe("the free month starts after home delivery confirmation", () => {
   });
   it("charges the customer's default card when a card update set one, and does not read the list", async () => {
     const f = provider(false, undefined, { id: "cus_family", invoice_settings: { default_payment_method: { id: "pm_chosen", type: "card" } } });
-    await startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt);
+    await startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt, locks());
     expect(f.requests.some((r) => r.path.endsWith("/payment_methods"))).toBe(false);
     expect(f.requests.find((r) => r.path.endsWith("/subscriptions") && r.method === "POST")?.body.get("default_payment_method")).toBe("pm_chosen");
   });
@@ -65,17 +67,17 @@ describe("the free month starts after home delivery confirmation", () => {
     ["was deleted", { id: "cus_family", deleted: true }],
   ])("falls back to the newest card when the customer's default %s", async (_case, customer) => {
     const f = provider(false, undefined, customer);
-    await startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt);
+    await startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt, locks());
     expect(f.requests.find((r) => r.path.endsWith("/subscriptions") && r.method === "POST")?.body.get("default_payment_method")).toBe("pm_card");
   });
   it("does not start another trial for an existing plan", async () => {
     const f = provider(true);
-    expect(await startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt)).toEqual({ ok: false, error: "already" });
+    expect(await startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt, locks())).toEqual({ ok: false, error: "already" });
     expect(f.requests.some((r) => r.method === "POST")).toBe(false);
   });
   it("does not start another trial for a plan behind a full page of cancelled plans", async () => {
     const f = provider(false, [{ data: ended(100), has_more: true }, { data: [{ id: "sub_running", status: "active" }], has_more: false }]);
-    expect(await startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt)).toEqual({ ok: false, error: "already" });
+    expect(await startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt, locks())).toEqual({ ok: false, error: "already" });
     expect(f.requests.filter((r) => r.path.endsWith("/subscriptions")).map((r) => r.after)).toEqual([null, "sub_old_99"]);
     expect(f.requests.some((r) => r.method === "POST")).toBe(false);
   });
@@ -86,7 +88,7 @@ describe("the free month starts after home delivery confirmation", () => {
     ["the list has more pages than it can read", Array.from({ length: 11 }, (_, page) => ({ data: [{ id: `sub_${page}`, status: "canceled" }], has_more: true })), "Too many subscriptions"],
   ])("starts nothing and throws when %s", async (_case, pages, message) => {
     const f = provider(false, pages);
-    await expect(startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt)).rejects.toThrow(message);
+    await expect(startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt, locks())).rejects.toThrow(message);
     expect(f.requests.some((r) => r.method === "POST")).toBe(false);
   });
 });

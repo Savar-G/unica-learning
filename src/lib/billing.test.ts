@@ -267,24 +267,37 @@ describe("the card update", () => {
     expect(defaults(b).sub_live).toBe("pm_new");
   });
 
-  it("writes the newer card again when a newer return took the row during this write", async () => {
+  it("writes the newer card when a newer return arrives during this write, and tells the newer return only what it knows", async () => {
     const b = withPlan();
     await twoUpdates(b);
-    // B's return runs from start to end while A's write is on its way, so A's write lands last at Stripe unless A corrects it.
-    b.duringNextWrite(async () => { expect(await finishCardUpdate("p1", "cs_test_2", b)).toBe("updated"); });
+    // B's return finds the lock busy for its whole wait, so it records its card and does not claim it took effect.
+    b.duringNextWrite(async () => { expect(await finishCardUpdate("p1", "cs_test_2", b)).toBe("unconfirmed"); });
     expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("stale");
-    expect(b.calls.setDefault).toBe(3);
+    expect(b.calls.setDefault).toBe(2);
     expect(defaults(b).sub_live).toBe("pm_b");
+    expect(b.customerDefaults.cus_1).toBe("pm_b");
+    expect(b.updates.get("c1")).toMatchObject({ sessionId: "cs_test_2", needsRepair: false, token: null });
+  });
+
+  it("says updated to a return that waited, when the holder wrote its card meanwhile", async () => {
+    const b = withPlan();
+    await twoUpdates(b);
+    let second: Promise<string> | null = null;
+    b.duringNextWrite(async () => { second = finishCardUpdate("p1", "cs_test_2", { ...b, pause: () => new Promise((resolve) => setTimeout(resolve, 1)) }); await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("stale");
+    expect(await second).toBe("updated");
+    expect(b.calls.setDefault).toBe(2);
+    expect(await finishCardUpdate("p1", "cs_test_2", b)).toBe("stale");
   });
 
   it("answers failed, and does not say updated, when the claim or the finish cannot be stored", async () => {
     const b = withPlan();
     await startCardUpdate("p1", "card-1", urls, b);
     b.complete("cs_test_1", "pm_new");
-    b.fail.claim = new Error("Database down");
+    b.fail.take = new Error("Database down");
     expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("failed");
     expect(b.calls.setDefault).toBe(0);
-    delete b.fail.claim;
+    delete b.fail.take;
     b.fail.finish = new Error("Database down");
     expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("failed");
   });
@@ -303,7 +316,7 @@ describe("the card update", () => {
 
 describe("a card update before the plan starts", () => {
   const urls = { returnUrl: "https://unica.test/return", cancelUrl: "https://unica.test/cancel" };
-  const start = (b: ReturnType<typeof memoryBilling>) => startPlan(b.stripe, { cardSetup: "card-1", customer: "cus_1", price: 79.99, deliveryConfirmed: true });
+  const start = (b: ReturnType<typeof memoryBilling>) => startPlan(b.stripe, { cardSetup: "card-1", customer: "cus_1", price: 79.99, deliveryConfirmed: true }, undefined, b.store);
   const family = () => memoryBilling({ children: [leah], paymentMethods: { cus_1: [{ id: "pm_old", type: "card" }] } });
 
   it("charges the card the parent chose, even when a newer card is on the customer", async () => {

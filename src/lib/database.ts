@@ -97,6 +97,8 @@ type KnownArgs<T extends { [F in keyof T]: F extends keyof Fns ? keyof Fns[F]["A
 type AnswerNulls = "p_misconception" | "p_read_aloud_count" | "p_read_aloud_at_ms" | "p_away_count" | "p_away_ms" | "p_work_text";
 type NullArgs = KnownArgs<{
   queue_workbook_edit: "p_question" | "p_item";
+  // A plan start on a child with no card update has no session.
+  finish_card_lock: "p_session";
   finish_workbook_edit: "p_content" | "p_rendering" | "p_error";
   admin_template_stats_v2: "school_grade" | "curriculum";
   // An idle worker has no run; a worker outside git has no build.

@@ -1,9 +1,11 @@
 import "server-only";
 import Stripe from "stripe";
 import { gradeName } from "@/lib/assessment/grades";
+import { letGoOfCardLock, lockWindow, writeNewestCard, type CardLocks } from "@/lib/card-lock";
+import { liveCardLocks } from "@/lib/card-lock-server";
 import { RUNNING_PLAN } from "@/lib/parent-plan";
 import { cad, priceWithOffer } from "@/lib/site";
-import { customerSubscriptions } from "@/lib/stripe-subscriptions";
+import { CARD_READ, CARD_WRITE, customerSubscriptions, writeCardDefault } from "@/lib/stripe-subscriptions";
 import { PLAN_PRODUCT, firstChargeAt, planTerms } from "@/lib/subscription-plan";
 
 // Created on first use, so a build without STRIPE_SECRET_KEY still works. Without the key, BC parents
@@ -169,7 +171,7 @@ export function stripeCustomerUrl(customer: string): string | null {
 
 export type StartPlanOutcome =
   | { ok: true; subscription: string; firstChargeAt: string }
-  | { ok: false; error: "no_card" | "already" | "not_delivered" };
+  | { ok: false; error: "no_card" | "already" | "not_delivered" | "busy" };
 
 /** True when Stripe has no object with this id (a 404), so the caller creates it. */
 const missing = (e: unknown) => e instanceof Stripe.errors.StripeError && e.statusCode === 404;
@@ -177,10 +179,10 @@ const missing = (e: unknown) => e instanceof Stripe.errors.StripeError && e.stat
 /** The plan's product, created once with a fixed id. */
 async function planProduct(s: Stripe) {
   try {
-    await s.products.retrieve(PLAN_PRODUCT.id);
+    await s.products.retrieve(PLAN_PRODUCT.id, {}, CARD_READ);
   } catch (e) {
     if (!missing(e)) throw e;
-    await s.products.create({ id: PLAN_PRODUCT.id, name: PLAN_PRODUCT.name }, { idempotencyKey: `product-${PLAN_PRODUCT.id}` });
+    await s.products.create({ id: PLAN_PRODUCT.id, name: PLAN_PRODUCT.name }, { ...CARD_WRITE, idempotencyKey: `product-${PLAN_PRODUCT.id}` });
   }
 }
 
@@ -189,10 +191,10 @@ async function planProduct(s: Stripe) {
  * newest card. Only a card: a default of another type is not one the plan start charges.
  */
 async function planCard(s: Stripe, customer: string): Promise<string | undefined> {
-  const found = await s.customers.retrieve(customer, { expand: ["invoice_settings.default_payment_method"] });
+  const found = await s.customers.retrieve(customer, { expand: ["invoice_settings.default_payment_method"] }, CARD_READ);
   const chosen = found.deleted ? null : found.invoice_settings?.default_payment_method;
   if (chosen && typeof chosen !== "string" && chosen.type === "card") return chosen.id;
-  const cards = await s.paymentMethods.list({ customer, type: "card", limit: 1 });
+  const cards = await s.paymentMethods.list({ customer, type: "card", limit: 1 }, CARD_READ);
   return cards.data[0]?.id;
 }
 
@@ -202,22 +204,59 @@ async function planCard(s: Stripe, customer: string): Promise<string | undefined
  * charged), then the full price on day 30 and each month after until the parent cancels. Refuses when the
  * customer already has a subscription that is not over, or no saved card. Throws, and starts nothing, when it cannot
  * read the customer's whole list. The card setup's id keys the create, so a double click starts one subscription.
+ *
+ * #554: the start holds the child's card lock (card-lock.ts), so it cannot start on a card that a card update is replacing.
+ * It answers "busy" while an update holds the lock. It first repairs a card a failed update left behind, and it charges the
+ * row's newest card, else the card planCard finds. A newer card that arrives meanwhile goes on the Customer and on the new
+ * plan before the lock is let go. When that last step fails the plan has still started, so the answer says so: the row's
+ * needs_repair stays set, and the next return, update or plan start writes the card.
  */
-export async function startPlan(s: Stripe, p: { cardSetup: string; customer: string; price: number; deliveryConfirmed: boolean }, now = new Date()): Promise<StartPlanOutcome> {
+export async function startPlan(s: Stripe, p: { cardSetup: string; customer: string; price: number; deliveryConfirmed: boolean }, now = new Date(), locks: CardLocks | null = liveCardLocks()): Promise<StartPlanOutcome> {
   if (p.deliveryConfirmed !== true) return { ok: false, error: "not_delivered" };
-  const current = await customerSubscriptions(s, p.customer);
+  if (!locks) throw new Error("No card lock");
+  const canWrite = lockWindow();
+  const lock = await locks.takeCardLock(p.cardSetup);
+  if (lock.state === "busy") return { ok: false, error: "busy" };
+  if (lock.state !== "taken") throw new Error("The card setup has no card lock");
+  const started: string[] = [];
+  const write = (card: string) => writeCardDefault(s, p.customer, card, canWrite, started);
+  let outcome: StartPlanOutcome;
+  try {
+    if (lock.needsRepair) {
+      if (!lock.paymentMethod) throw new Error("The newest card update has no card");
+      await write(lock.paymentMethod);
+    }
+    outcome = await startHeldPlan(s, p, lock.paymentMethod, canWrite, now);
+  } catch (e) {
+    await letGoOfCardLock(locks, p.cardSetup, lock.token);
+    throw e;
+  }
+  if (outcome.ok) started.push(outcome.subscription);
+  try {
+    await writeNewestCard(locks, p.cardSetup, lock.token, { session: lock.session, paymentMethod: lock.paymentMethod, write: false }, write);
+  } catch (e) {
+    console.error("[stripe] plan start could not settle the card", e instanceof Error ? e.message : "failed");
+    await letGoOfCardLock(locks, p.cardSetup, lock.token);
+  }
+  return outcome;
+}
+
+/** The start itself, under the lock. `newest` is the row's newest card, when a card update recorded one. */
+async function startHeldPlan(s: Stripe, p: { cardSetup: string; customer: string; price: number }, newest: string | null, canWrite: () => boolean, now: Date): Promise<StartPlanOutcome> {
+  const current = await customerSubscriptions(s, p.customer, CARD_READ);
   if (current.some((x) => x.status !== "canceled" && x.status !== "incomplete_expired")) return { ok: false, error: "already" };
-  const card = await planCard(s, p.customer);
+  const card = newest ?? await planCard(s, p.customer);
   if (!card) return { ok: false, error: "no_card" };
   const terms = planTerms(p.price);
   await planProduct(s);
+  if (!canWrite()) throw new Error("The card lock is about to end");
   const created = await s.subscriptions.create({
     customer: p.customer,
     items: [{ price_data: { currency: "cad", product: PLAN_PRODUCT.id, unit_amount: terms.monthlyCents, recurring: { interval: "month" } } }],
     trial_period_days: terms.trialDays,
     default_payment_method: card,
     metadata: { card_setup: p.cardSetup, price: cad(p.price), trial_start_reason: "workbook_delivered", delivery_confirmed: "true" },
-  }, { idempotencyKey: `start-plan-${p.cardSetup}` });
+  }, { ...CARD_WRITE, idempotencyKey: `start-plan-${p.cardSetup}` });
   const end = created.trial_end ? new Date(created.trial_end * 1000) : firstChargeAt(now, terms.trialDays);
   return { ok: true, subscription: created.id, firstChargeAt: end.toISOString() };
 }

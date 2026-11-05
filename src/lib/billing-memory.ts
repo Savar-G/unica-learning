@@ -1,10 +1,11 @@
 // The billing module's store and provider (src/lib/billing.ts) in memory, for tests. The store keeps the database's
-// guards: every read is filtered by the signed-in parent, and the card update order is the rule of claim_card_update and
-// finish_card_update. The provider keeps Stripe's rules as the live provider reads them: invoices belong to a customer, a
+// guards: every read is filtered by the signed-in parent, and the card order and lock are the rules of take_card_lock,
+// finish_card_lock and release_card_lock, on the clock of Date.now. The provider keeps Stripe's rules as the live provider reads them: invoices belong to a customer, a
 // read of a whole list either answers or throws, a card update session names the row and the customer it was made for, and
 // only a plan that can still charge takes a new default card. `stripe` is a real Stripe client over the same memory, so
 // startPlan (src/lib/stripe.ts) runs on what a card update left behind.
 import Stripe from "stripe";
+import { CARD_LOCK_SECONDS } from "@/lib/card-lock";
 import { RUNNING_PLAN } from "@/lib/parent-plan";
 import type { BillingProvider, BillingStore, CardUpdateRequest, CardUpdateSession, ProviderInvoice } from "@/lib/billing";
 
@@ -29,7 +30,18 @@ export interface MemoryPaymentMethod {
   type: string;
 }
 
-type Operation = "family" | "card" | "invoices" | "create" | "read" | "setDefault" | "claim" | "finish";
+type Operation = "family" | "card" | "invoices" | "create" | "read" | "setDefault" | "take" | "finish" | "release";
+
+/** One child_card_updates row. */
+export interface MemoryCardRow {
+  sessionId: string | null;
+  created: number | null;
+  paymentMethod: string | null;
+  applied: boolean;
+  needsRepair: boolean;
+  token: string | null;
+  expiresAt: number | null;
+}
 
 export function memoryBilling({ children, invoices = {}, subscriptions = [], paymentMethods = {}, customerDefaults = {} }: {
   children: MemoryBillingChild[];
@@ -43,8 +55,11 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
   const sessions = new Map<string, CardUpdateSession>();
   const created: CardUpdateRequest[] = [];
   /** One row per child: child_card_updates. */
-  const updates = new Map<string, { sessionId: string; created: number; applied: boolean }>();
-  const calls: Record<Operation, number> = { family: 0, card: 0, invoices: 0, create: 0, read: 0, setDefault: 0, claim: 0, finish: 0 };
+  const updates = new Map<string, MemoryCardRow>();
+  let tokens = 0;
+  const calls: Record<Operation, number> = { family: 0, card: 0, invoices: 0, create: 0, read: 0, setDefault: 0, take: 0, finish: 0, release: 0 };
+  /** Cards whose subscription write Stripe refuses, after the Customer's write landed. */
+  const refuseOnSubscription = new Set<string>();
   /** Set an operation's error to make every call of it throw, as a database or Stripe error would. */
   const fail: Partial<Record<Operation, Error>> = {};
   /** Customers whose invoice read throws, as one customer's page failing would. */
@@ -56,6 +71,10 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
     if (fail[operation]) throw fail[operation];
   };
   const childOfCard = (parentId: string, cardId: string) => children.find((c) => c.parentId === parentId && c.card?.id === cardId);
+  const rowOfCard = (cardId: string) => {
+    const child = children.find((c) => c.card?.id === cardId);
+    return child && updates.get(child.childId);
+  };
 
   const store: BillingStore = {
     async family(parentId) {
@@ -69,24 +88,38 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
       const child = childOfCard(parentId, cardId);
       return child?.card ? { cardId: child.card.id, childId: child.childId, customer: child.card.customer, cardSaved: child.card.saved } : null;
     },
-    async claimCardUpdate(parentId, cardId, session) {
-      begin("claim");
-      const child = childOfCard(parentId, cardId);
-      if (!child) return "no_match";
-      const row = updates.get(child.childId);
-      if (!row || session.created > row.created || (session.created === row.created && session.id > row.sessionId)) {
-        updates.set(child.childId, { sessionId: session.id, created: session.created, applied: false });
-        return "apply";
+    async takeCardLock(cardId, card) {
+      begin("take");
+      const child = card ? childOfCard(card.parentId, cardId) : children.find((c) => c.card?.id === cardId);
+      if (!child) return { state: "no_match" };
+      let row = updates.get(child.childId);
+      if (!row) updates.set(child.childId, row = { sessionId: null, created: null, paymentMethod: null, applied: false, needsRepair: false, token: null, expiresAt: null });
+      let recorded = false;
+      if (card) {
+        if (row.sessionId === null || row.created === null || card.created > row.created || (card.created === row.created && card.session > row.sessionId)) {
+          Object.assign(row, { sessionId: card.session, created: card.created, paymentMethod: card.paymentMethod, applied: false, needsRepair: true });
+          recorded = true;
+        }
+        if (!row.needsRepair) return { state: "clean", session: row.sessionId, recorded: false };
       }
-      return row.sessionId === session.id && !row.applied ? "apply" : "stale";
+      if (row.token && row.expiresAt !== null && row.expiresAt > Date.now()) return { state: "busy", session: row.sessionId, recorded };
+      row.token = `lock-${++tokens}`;
+      row.expiresAt = Date.now() + CARD_LOCK_SECONDS * 1000;
+      return { state: "taken", token: row.token, session: row.sessionId, paymentMethod: row.paymentMethod, needsRepair: row.needsRepair, recorded };
     },
-    async finishCardUpdate(parentId, cardId, sessionId) {
+    async finishCardLock(cardId, token, session, wrote) {
       begin("finish");
-      const child = childOfCard(parentId, cardId);
-      const row = child && updates.get(child.childId);
-      if (!row) return null;
-      if (row.sessionId === sessionId) row.applied = true;
-      return row.sessionId;
+      const row = rowOfCard(cardId);
+      if (!row || row.token !== token) return { state: "lost" };
+      if (row.sessionId !== session) return { state: "newer", session: row.sessionId, paymentMethod: row.paymentMethod };
+      if (!wrote) return { state: "unchanged" };
+      Object.assign(row, { needsRepair: false, token: null, expiresAt: null, applied: row.sessionId !== null });
+      return { state: "done" };
+    },
+    async releaseCardLock(cardId, token) {
+      begin("release");
+      const row = rowOfCard(cardId);
+      if (row?.token === token) Object.assign(row, { token: null, expiresAt: null });
     },
   };
 
@@ -107,12 +140,14 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
       begin("read");
       return sessions.get(id) ?? null;
     },
-    async setCardDefault(customer, paymentMethod) {
+    async setCardDefault(customer, paymentMethod, canWrite) {
       begin("setDefault");
       const during = duringNextWrite;
       duringNextWrite = null;
       await during?.();
+      if (!canWrite()) throw new Error("The card lock is about to end");
       customerDefaults[customer] = paymentMethod;
+      if (refuseOnSubscription.has(paymentMethod)) throw new Error("Stripe refused the subscription write");
       for (const s of subscriptions) if (s.customer === customer && RUNNING_PLAN.has(s.status)) s.defaultCard = paymentMethod;
     },
   };
@@ -129,6 +164,21 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
       const id = `sub_memory_${subscriptions.length + 1}`;
       subscriptions.push({ id, customer: form.get("customer")!, status: "trialing", defaultCard: form.get("default_payment_method") });
       return answer({ id, trial_end: 1_900_000_000 });
+    }
+    if (url.pathname.startsWith("/v1/subscriptions/") && method === "POST") {
+      const form = new URLSearchParams(String(init?.body ?? ""));
+      const id = url.pathname.split("/").at(-1)!;
+      const subscription = subscriptions.find((s) => s.id === id);
+      const card = form.get("default_payment_method")!;
+      if (!subscription || refuseOnSubscription.has(card)) return new Response(JSON.stringify({ error: { type: "invalid_request_error", message: "Refused" } }), { status: 400 });
+      subscription.defaultCard = card;
+      return answer({ id });
+    }
+    if (url.pathname.startsWith("/v1/customers/") && method === "POST") {
+      const form = new URLSearchParams(String(init?.body ?? ""));
+      const customer = url.pathname.split("/").at(-1)!;
+      customerDefaults[customer] = form.get("invoice_settings[default_payment_method]")!;
+      return answer({ id: customer });
     }
     if (url.pathname.startsWith("/v1/customers/") && method === "GET") {
       const customer = url.pathname.split("/").at(-1)!;
@@ -155,6 +205,10 @@ export function memoryBilling({ children, invoices = {}, subscriptions = [], pay
     subscriptions,
     paymentMethods,
     customerDefaults,
+    refuseOnSubscription,
+    updates,
+    /** No real wait between tries of a busy lock. */
+    pause: async () => {},
     /** The parent finishes Stripe's page: the session now holds the card, and it is the customer's newest. */
     complete(id: string, paymentMethod: string, type = "card") {
       const session = sessions.get(id);

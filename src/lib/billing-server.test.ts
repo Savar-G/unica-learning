@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
 import { CARD_UPDATE_SOURCE, stripeBillingProvider, supabaseBillingStore } from "@/lib/billing-server";
+import { CARD_LOCK_SECONDS } from "@/lib/card-lock";
 import { stripeCardProvider } from "@/lib/saved-card-server";
 
 vi.mock("server-only", () => ({}));
@@ -119,7 +120,7 @@ describe("the card update on Stripe", () => {
     const { client, requests } = recordingStripe((url, method) => (method === "POST"
       ? { body: { id: "written" } }
       : { body: { object: "list", has_more: false, data: [running("sub_live", "active"), running("sub_trial", "trialing"), running("sub_late", "past_due"), running("sub_over", "canceled"), running("sub_gone", "incomplete_expired")] } }));
-    await stripeBillingProvider(client).setCardDefault("cus_1", "pm_new");
+    await stripeBillingProvider(client).setCardDefault("cus_1", "pm_new", () => true);
     expect(requests[0].method).toBe("GET");
     const [customer, ...subscriptions] = requests.filter((r) => r.method === "POST");
     expect(new URL(customer.url).pathname).toBe("/v1/customers/cus_1");
@@ -130,7 +131,7 @@ describe("the card update on Stripe", () => {
 
   it("stores the card on the customer when no subscription exists yet, so the plan start can use it", async () => {
     const { client, requests } = recordingStripe((url, method) => (method === "POST" ? { body: { id: "cus_1" } } : { body: { object: "list", has_more: false, data: [] } }));
-    await stripeBillingProvider(client).setCardDefault("cus_1", "pm_new");
+    await stripeBillingProvider(client).setCardDefault("cus_1", "pm_new", () => true);
     const writes = requests.filter((r) => r.method === "POST");
     expect(writes.map((r) => new URL(r.url).pathname)).toEqual(["/v1/customers/cus_1"]);
     expect(writes[0].body.get("invoice_settings[default_payment_method]")).toBe("pm_new");
@@ -138,8 +139,19 @@ describe("the card update on Stripe", () => {
 
   it("writes nothing when it cannot read the whole list", async () => {
     const { client, requests } = recordingStripe(() => ({ status: 500, body: { error: { type: "api_error", message: "down" } } }));
-    await expect(stripeBillingProvider(client).setCardDefault("cus_1", "pm_new")).rejects.toThrow();
+    await expect(stripeBillingProvider(client).setCardDefault("cus_1", "pm_new", () => true)).rejects.toThrow();
     expect(requests.filter((r) => r.method === "POST")).toEqual([]);
+  });
+
+  it("starts no Stripe write once the lock's time is nearly over, and stops between writes", async () => {
+    const answer = (url: string, method: string) => (method === "POST" ? { body: { id: "written" } } : { body: { object: "list", has_more: false, data: [{ id: "sub_live", status: "active" }] } });
+    const none = recordingStripe(answer);
+    await expect(stripeBillingProvider(none.client).setCardDefault("cus_1", "pm_new", () => false)).rejects.toThrow("about to end");
+    expect(none.requests.filter((r) => r.method === "POST")).toEqual([]);
+    const one = recordingStripe(answer);
+    let left = 1;
+    await expect(stripeBillingProvider(one.client).setCardDefault("cus_1", "pm_new", () => left-- > 0)).rejects.toThrow("about to end");
+    expect(one.requests.filter((r) => r.method === "POST").map((r) => new URL(r.url).pathname)).toEqual(["/v1/customers/cus_1"]);
   });
 
   it("leaves saved-card's first card on the row after an update", async () => {
@@ -198,25 +210,45 @@ describe("the billing store", () => {
     return { store, sent };
   };
 
-  it("claims with the parent, the row, the session and its time from Stripe", async () => {
-    const { store, sent } = rpcStore(() => Response.json("apply"));
-    expect(await store.claimCardUpdate(P1, "card-1", { id: "cs_test_1", created: 1_800_000_000 })).toBe("apply");
-    expect(sent).toEqual([{ name: "claim_card_update", body: { p_parent: P1, p_card: "card-1", p_session: "cs_test_1", p_session_created_at: new Date(1_800_000_000_000).toISOString() } }]);
+  const CARD = { parentId: P1, session: "cs_test_1", created: 1_800_000_000, paymentMethod: "pm_new" };
+
+  it("records a return's card with the parent, the row, the session, its time from Stripe and the card's id", async () => {
+    const { store, sent } = rpcStore(() => Response.json({ state: "taken", token: "t1", session: "cs_test_1", payment_method: "pm_new", needs_repair: true, recorded: true }));
+    expect(await store.takeCardLock("card-1", CARD)).toEqual({ state: "taken", token: "t1", session: "cs_test_1", paymentMethod: "pm_new", needsRepair: true, recorded: true });
+    expect(sent).toEqual([{ name: "take_card_lock", body: { p_card: "card-1", p_seconds: CARD_LOCK_SECONDS, p_parent: P1, p_session: "cs_test_1", p_session_created_at: new Date(1_800_000_000_000).toISOString(), p_payment_method: "pm_new" } }]);
   });
 
-  it.each(["stale", "no_match"])("passes the claim's answer %s on", async (answer) => {
-    expect(await rpcStore(() => Response.json(answer)).store.claimCardUpdate(P1, "card-1", { id: "cs_test_1", created: 1 })).toBe(answer);
+  it("takes the lock for a plan start with only the row", async () => {
+    const { store, sent } = rpcStore(() => Response.json({ state: "busy", session: null, recorded: false }));
+    expect(await store.takeCardLock("card-1")).toEqual({ state: "busy", session: null, recorded: false });
+    expect(sent).toEqual([{ name: "take_card_lock", body: { p_card: "card-1", p_seconds: CARD_LOCK_SECONDS } }]);
   });
 
-  it("throws on a claim it cannot read or that fails, so no card is written", async () => {
-    await expect(rpcStore(() => Response.json("maybe")).store.claimCardUpdate(P1, "card-1", { id: "cs_test_1", created: 1 })).rejects.toThrow("unreadable");
-    await expect(rpcStore(() => Response.json({ message: "boom" }, { status: 500 })).store.claimCardUpdate(P1, "card-1", { id: "cs_test_1", created: 1 })).rejects.toThrow("claim");
+  it("passes the other answers of the lock on", async () => {
+    expect(await rpcStore(() => Response.json({ state: "no_match" })).store.takeCardLock("card-1", CARD)).toEqual({ state: "no_match" });
+    expect(await rpcStore(() => Response.json({ state: "clean", session: "cs_test_2", recorded: false })).store.takeCardLock("card-1", CARD)).toEqual({ state: "clean", session: "cs_test_2", recorded: false });
   });
 
-  it("finishes with the parent, the row and the session, and answers the newest session", async () => {
-    const { store, sent } = rpcStore(() => Response.json("cs_test_2"));
-    expect(await store.finishCardUpdate(P1, "card-1", "cs_test_1")).toBe("cs_test_2");
-    expect(sent).toEqual([{ name: "finish_card_update", body: { p_parent: P1, p_card: "card-1", p_session: "cs_test_1" } }]);
-    await expect(rpcStore(() => Response.json({ message: "boom" }, { status: 500 })).store.finishCardUpdate(P1, "card-1", "cs_test_1")).rejects.toThrow("finish");
+  it("throws on a lock answer it cannot read or that fails, so no card is written", async () => {
+    for (const answer of ["maybe", { state: "maybe" }, { state: "taken", session: null }, null]) {
+      await expect(rpcStore(() => Response.json(answer)).store.takeCardLock("card-1", CARD)).rejects.toThrow("unreadable");
+    }
+    await expect(rpcStore(() => Response.json({ message: "boom" }, { status: 500 })).store.takeCardLock("card-1", CARD)).rejects.toThrow("take");
+  });
+
+  it("finishes with the row, the token, the session and whether it wrote, and reads each answer", async () => {
+    const { store, sent } = rpcStore(() => Response.json({ state: "newer", session: "cs_test_2", payment_method: "pm_b" }));
+    expect(await store.finishCardLock("card-1", "t1", "cs_test_1", true)).toEqual({ state: "newer", session: "cs_test_2", paymentMethod: "pm_b" });
+    expect(sent).toEqual([{ name: "finish_card_lock", body: { p_card: "card-1", p_token: "t1", p_session: "cs_test_1", p_wrote: true } }]);
+    for (const state of ["done", "unchanged", "lost"]) expect(await rpcStore(() => Response.json({ state })).store.finishCardLock("card-1", "t1", null, false)).toEqual({ state });
+    await expect(rpcStore(() => Response.json({ state: "maybe" })).store.finishCardLock("card-1", "t1", null, true)).rejects.toThrow("unreadable");
+    await expect(rpcStore(() => Response.json({ message: "boom" }, { status: 500 })).store.finishCardLock("card-1", "t1", null, true)).rejects.toThrow("finish");
+  });
+
+  it("lets go with the row and the token", async () => {
+    const { store, sent } = rpcStore(() => Response.json(true));
+    await store.releaseCardLock("card-1", "t1");
+    expect(sent).toEqual([{ name: "release_card_lock", body: { p_card: "card-1", p_token: "t1" } }]);
+    await expect(rpcStore(() => Response.json({ message: "boom" }, { status: 500 })).store.releaseCardLock("card-1", "t1")).rejects.toThrow("release");
   });
 });

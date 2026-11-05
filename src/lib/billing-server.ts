@@ -2,11 +2,11 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
 import type { BillingProvider, BillingStore, CardUpdates, FamilyBillingSeams, ProviderInvoice } from "@/lib/billing";
+import { supabaseCardLocks } from "@/lib/card-lock-server";
 import type { Database } from "@/lib/database";
-import { RUNNING_PLAN } from "@/lib/parent-plan";
 import { stripePlanProvider, supabasePlanStore } from "@/lib/plan-state-server";
 import { stripe } from "@/lib/stripe";
-import { customerSubscriptions } from "@/lib/stripe-subscriptions";
+import { writeCardDefault } from "@/lib/stripe-subscriptions";
 import { adminClient } from "@/lib/supabase-auth";
 
 // The billing module's seams (src/lib/billing.ts) for the live site: card_setups and children in Supabase, read with the
@@ -18,7 +18,6 @@ export const CARD_UPDATE_SOURCE = "card_update";
 /** More invoices than these pages hold is not a list this page can show whole: the read throws. */
 const INVOICE_PAGES = 12;
 const READ = { timeout: 4000, maxNetworkRetries: 1 };
-const WRITE = { timeout: 15_000, maxNetworkRetries: 1 };
 
 const idOf = (value: string | { id: string } | null | undefined) => (typeof value === "string" ? value : value?.id ?? null);
 
@@ -95,13 +94,8 @@ export function stripeBillingProvider(client: Stripe | null): BillingProvider {
       const saved = session.status === "complete" && intent && typeof intent !== "string" && intent.status === "succeeded" && idOf(intent.customer) === customer;
       return { id: session.id, ref, customer, created: session.created, paymentMethod: saved ? idOf(intent.payment_method) : null };
     },
-    async setCardDefault(customer, paymentMethod) {
-      const subscriptions = await customerSubscriptions(s(), customer, READ);
-      // A plan that has not started has no subscription: startPlan reads this default. A plan that ends and starts again reads it too.
-      await s().customers.update(customer, { invoice_settings: { default_payment_method: paymentMethod } }, WRITE);
-      for (const subscription of subscriptions) {
-        if (RUNNING_PLAN.has(subscription.status)) await s().subscriptions.update(subscription.id, { default_payment_method: paymentMethod }, WRITE);
-      }
+    async setCardDefault(customer, paymentMethod, canWrite) {
+      await writeCardDefault(s(), customer, paymentMethod, canWrite);
     },
   };
 }
@@ -109,6 +103,7 @@ export function stripeBillingProvider(client: Stripe | null): BillingProvider {
 /** card_setups and children as the billing store. */
 export function supabaseBillingStore(db: SupabaseClient<Database>): BillingStore {
   return {
+    ...supabaseCardLocks(db),
     async family(parentId) {
       const [children, cards] = await Promise.all([
         db.from("children").select("id, first_name").eq("parent_id", parentId).order("created_at").order("id"),
@@ -125,17 +120,6 @@ export function supabaseBillingStore(db: SupabaseClient<Database>): BillingStore
       const { data, error } = await db.from("card_setups").select("id, child_id, stripe_customer_id, card_saved_at").eq("id", cardId).eq("parent_id", parentId).maybeSingle();
       if (error) throw new Error(`card read: ${error.message}`);
       return data && { cardId: data.id, childId: data.child_id, customer: data.stripe_customer_id, cardSaved: !!data.card_saved_at };
-    },
-    async claimCardUpdate(parentId, cardId, session) {
-      const { data, error } = await db.rpc("claim_card_update", { p_parent: parentId, p_card: cardId, p_session: session.id, p_session_created_at: new Date(session.created * 1000).toISOString() });
-      if (error) throw new Error(`card update claim: ${error.message}`);
-      if (data !== "apply" && data !== "stale" && data !== "no_match") throw new Error("Card update claim unreadable");
-      return data;
-    },
-    async finishCardUpdate(parentId, cardId, sessionId) {
-      const { data, error } = await db.rpc("finish_card_update", { p_parent: parentId, p_card: cardId, p_session: sessionId });
-      if (error) throw new Error(`card update finish: ${error.message}`);
-      return data;
     },
   };
 }

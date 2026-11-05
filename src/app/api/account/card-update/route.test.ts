@@ -74,7 +74,7 @@ describe("coming back from Stripe", () => {
     expect(f.finish).toHaveBeenCalledWith("parent-1", "cs_test_abc123", SEAMS);
   });
 
-  it.each([["incomplete", "unchanged"], ["not_found", "failed"], ["failed", "failed"]])("turns %s into the notice %s", async (result, notice) => {
+  it.each([["incomplete", "unchanged"], ["unconfirmed", "unconfirmed"], ["not_found", "failed"], ["failed", "failed"]])("turns %s into the notice %s", async (result, notice) => {
     f.finish.mockResolvedValue(result);
     expect(location(await GET(back("?session_id=cs_test_abc123")))).toBe(`https://unica.test/account/settings?card=${notice}`);
   });

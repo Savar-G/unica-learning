@@ -17,6 +17,7 @@ export const metadata = pageMetadata({ path: ACCOUNT_PATH, title: "Your account"
 function CardNote({ card }: { card: unknown }) {
   if (card === "updated") return <p role="status" className="acct-alert">Your new card is saved. We use it for your plan&apos;s next charge.</p>;
   if (card === "unchanged") return <p role="status" className="acct-alert">Your card did not change.</p>;
+  if (card === "unconfirmed") return <p role="status" className="acct-alert">We could not confirm your card update. Try again in a few minutes, or email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</p>;
   if (card === "failed") return <p role="alert" className="acct-alert">We could not update your card. Try again, or email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</p>;
   return null;
 }
