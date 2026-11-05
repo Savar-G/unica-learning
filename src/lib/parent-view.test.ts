@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { listChildren, readChild } from "@/lib/parent-view";
-import { memoryParentViewReaders, type MemoryParentViewTables, type MemoryTest } from "@/lib/parent-view-memory";
+import { listChildren, readChild, readWorkbooks } from "@/lib/parent-view";
+import { memoryParentViewReaders, type MemoryParentViewTables, type MemoryTest, type MemoryWorkbook } from "@/lib/parent-view-memory";
 
 // The parent view module (spec #544), through its public interface, over the in-memory reader, which keeps the
 // database's access rules: a parent reads only their own rows, and only shipped workbooks.
@@ -102,7 +102,7 @@ describe("what a parent reads", () => {
     const readers = memoryParentViewReaders({ children: [younger, omar, leah] });
     const list = await listChildren(readers.parent("parent-1"), NOW);
     expect(list.map((c) => c.firstName)).toEqual(["Leah", "Ana"]);
-    expect(readers.reads).toEqual({ children: 1, tests: 1, reports: 1, cards: 1, deliveries: 1, workbooks: 1, plans: 1, switches: 1 });
+    expect(readers.reads).toEqual({ children: 1, tests: 1, reports: 1, cards: 1, deliveries: 1, workbooks: 1, plans: 1, switches: 1, corrections: 0, dispatches: 0, family: 0 });
   });
   it("lists a child's reports, the newest test first", async () => {
     const reader = parent({ tests: [test("old", { completedAt: NOW - 90 * HOUR }), test("new", { completedAt: NOW - 10 * HOUR })], reports: [report("old"), report("new")] });
@@ -170,5 +170,115 @@ describe("the finished tests of a child", () => {
   it("leaves out a finished test whose report is not ready, and a test that has not finished", async () => {
     const view = await readChild(parent({ tests: [test("waiting"), open("running")] }), "child-1", NOW);
     expect(view?.finishedTests).toEqual([]);
+  });
+});
+
+describe("the Workbooks tab (#558)", () => {
+  const own = { parentId: "parent-1", childId: "child-1" };
+  const card = { cards: [{ ...own, cardSavedAt: "2026-10-20T00:00:00Z" }] };
+  // Leah's family has no saved time zone or postal code, so family time comes from Leah's province: BC, Pacific.
+  const book = (number: number, over: Partial<MemoryWorkbook> = {}): MemoryWorkbook => ({ ...own, id: `wb-${number}`, number, status: "shipped", shippedAt: "2026-11-02T22:00:00Z", pdfPath: `parent-1/wb-${number}/workbook.pdf`, ...over });
+  const mail = { method: "mail", carrier: "Canada Post", trackingNumber: "7023 1234", trackingUrl: "https://www.canadapost-postescanada.ca/track?n=70231234" };
+  const read = (tables: Parameters<typeof parent>[0], now = NOW) => readWorkbooks(parent({ ...card, ...tables }), "child-1", now);
+
+  it("before the first book ships: the status, with no date and no book", async () => {
+    expect(await read({ workbooks: [book(1, { status: "printed" })] })).toEqual({
+      child: expect.objectContaining({ id: "child-1", firstName: "Leah", stage: "first_book_coming" }),
+      current: null, next: { kind: "first_book_coming" }, books: [],
+    });
+  });
+  it("a shipped book with no confirmed delivery: shipped in family time, tracking, and 14 to 35 days after shipping", async () => {
+    const view = await read({ workbooks: [book(1)], dispatches: [{ ...own, number: 1, delivery: mail }] });
+    // 22:00 UTC on November 2 is 14:00 on November 2 in Vancouver.
+    expect(view?.current).toEqual({ id: "wb-1", number: 1, shippedOn: "2026-11-02", deliveredOn: null, delivery: { method: "mail", carrier: "Canada Post", trackingNumber: "7023 1234", trackingUrl: mail.trackingUrl } });
+    expect(view?.next).toEqual({ kind: "range", earliest: "2026-11-16", latest: "2026-12-07" });
+  });
+  it("uses the family's time zone for every day", async () => {
+    const view = await read({ workbooks: [book(1, { shippedAt: "2026-11-03T04:30:00Z" })], family: { timeZone: "America/Toronto", postal: null } });
+    expect(view?.current?.shippedOn).toBe("2026-11-02");
+    const pacific = await read({ workbooks: [book(1, { shippedAt: "2026-11-03T04:30:00Z" })] });
+    expect(pacific?.current?.shippedOn).toBe("2026-11-02");
+    const late = await read({ workbooks: [book(1, { shippedAt: "2026-11-03T06:30:00Z" })], family: { timeZone: "America/Toronto", postal: null } });
+    expect(late?.current?.shippedOn).toBe("2026-11-03");
+  });
+  it("a confirmed delivery ends the range 28 days after it, and the newest correction wins", async () => {
+    const deliveries = [{ ...own, workbookId: "wb-1", deliveredAt: "2026-11-05T20:00:00Z" }];
+    expect((await read({ workbooks: [book(1)], deliveries }))?.next).toEqual({ kind: "range", earliest: "2026-11-16", latest: "2026-12-03" });
+    const corrections = [
+      { ...own, workbookId: "wb-1", deliveredAt: "2026-11-04T20:00:00Z", auditId: 7 },
+      { ...own, workbookId: "wb-1", deliveredAt: "2026-11-06T20:00:00Z", auditId: 9 },
+      { ...own, workbookId: "wb-1", deliveredAt: "2026-11-03T20:00:00Z", auditId: 8 },
+    ];
+    const view = await read({ workbooks: [book(1)], deliveries, corrections });
+    expect(view?.current?.deliveredOn).toBe("2026-11-06");
+    expect(view?.next).toEqual({ kind: "range", earliest: "2026-11-16", latest: "2026-12-04" });
+  });
+  it("the current book is the newest shipped one, with its own delivery and tracking", async () => {
+    const view = await read({
+      workbooks: [book(1, { shippedAt: "2026-10-10T18:00:00Z" }), book(2), book(3, { status: "approved" })],
+      deliveries: [{ ...own, workbookId: "wb-1", deliveredAt: "2026-10-14T18:00:00Z" }],
+      dispatches: [{ ...own, number: 1, delivery: { method: "hand" } }, { ...own, number: 2, delivery: mail }],
+    });
+    expect(view?.current).toMatchObject({ id: "wb-2", number: 2, deliveredOn: null, delivery: { method: "mail" } });
+    expect(view?.books.map((b) => b.number)).toEqual([2, 1]);
+  });
+  it("lists every shipped book, newest first, with whether it has a PDF", async () => {
+    const view = await read({ workbooks: [book(1, { pdfPath: null, shippedAt: "2026-10-10T18:00:00Z" }), book(2)] });
+    expect(view?.books).toEqual([
+      { id: "wb-2", number: 2, shippedOn: "2026-11-02", hasPdf: true },
+      { id: "wb-1", number: 1, shippedOn: "2026-10-10", hasPdf: false },
+    ]);
+  });
+  it("hand delivery has no tracking; a mail dispatch with no tracking link keeps the number", async () => {
+    expect((await read({ workbooks: [book(1)], dispatches: [{ ...own, number: 1, delivery: { method: "hand", carrier: "stale", trackingNumber: "stale" } }] }))?.current?.delivery).toEqual({ method: "hand" });
+    expect((await read({ workbooks: [book(1)], dispatches: [{ ...own, number: 1, delivery: { ...mail, trackingUrl: "" } }] }))?.current?.delivery).toEqual({ method: "mail", carrier: "Canada Post", trackingNumber: "7023 1234", trackingUrl: null });
+  });
+  it("shows no tracking that does not pass the delivery check, and none from an email not yet made", async () => {
+    for (const delivery of [{}, { method: "mail", carrier: "Canada Post" }, { ...mail, trackingUrl: "http://plain.example/track" }, { ...mail, trackingUrl: "javascript:alert(1)" }]) {
+      expect((await read({ workbooks: [book(1)], dispatches: [{ ...own, number: 1, delivery }] }))?.current?.delivery).toBeNull();
+    }
+    expect((await read({ workbooks: [book(1)] }))?.current?.delivery).toBeNull();
+  });
+  it("after the range passed: a status, with no date", async () => {
+    expect((await read({ workbooks: [book(1)] }, Date.parse("2026-12-08T20:00:00Z")))?.next).toEqual({ kind: "past_estimate" });
+  });
+  it("a shipped book with no shipping time gives no date", async () => {
+    expect((await read({ workbooks: [book(1, { shippedAt: null })] }))?.next).toEqual({ kind: "none" });
+  });
+  it("after the plan ended: the books stay, with no next book", async () => {
+    const view = await read({ workbooks: [book(1)], deliveries: [{ ...own, workbookId: "wb-1", deliveredAt: "2026-11-05T20:00:00Z" }], plans: [{ ...own, kind: "ended" }] });
+    expect(view?.child.stage).toBe("ended");
+    expect(view?.next).toEqual({ kind: "none" });
+    expect(view?.books).toHaveLength(1);
+  });
+  it("is not found for a child whose stage has no Workbooks tab", async () => {
+    expect(await readWorkbooks(parent({}), "child-1", NOW)).toBeNull();
+  });
+  it("reads only the parent's own shipped books: another family's rows never show or move a date", async () => {
+    const other = { parentId: "parent-2", childId: "child-1" };
+    const view = await read({
+      workbooks: [{ ...book(1), ...other, id: "theirs" }, book(1, { status: "draft" })],
+      deliveries: [{ ...other, workbookId: "wb-1", deliveredAt: "2026-11-03T20:00:00Z" }],
+      corrections: [{ ...other, workbookId: "wb-1", deliveredAt: "2026-11-03T20:00:00Z", auditId: 1 }],
+      dispatches: [{ ...other, number: 1, delivery: mail }],
+    });
+    expect(view).toMatchObject({ current: null, next: { kind: "first_book_coming" }, books: [] });
+  });
+  it("reads another family's child as not found", async () => {
+    const readers = memoryParentViewReaders({ children: [leah, omar], cards: [{ parentId: "parent-2", childId: "child-2", cardSavedAt: "2026-10-20T00:00:00Z" }], workbooks: [{ ...book(1), parentId: "parent-2", childId: "child-2" }] });
+    expect(await readWorkbooks(readers.parent("parent-1"), "child-2", NOW)).toBeNull();
+  });
+  it("copies only the fields it names, whatever a row holds", async () => {
+    const SECRET = "RAW-CANARY";
+    const view = await read({
+      workbooks: [{ ...book(1), levels: [SECRET], profileBuild: SECRET } as MemoryWorkbook],
+      dispatches: [{ ...own, number: 1, delivery: { ...mail, note: SECRET }, to_address: SECRET, text_body: SECRET } as never],
+      deliveries: [{ ...own, workbookId: "wb-1", deliveredAt: "2026-11-05T20:00:00Z", actorId: SECRET } as never],
+    });
+    expect(JSON.stringify(view)).not.toContain(SECRET);
+    expect(JSON.stringify(view)).not.toContain("workbook.pdf");
+  });
+  it.each(["corrections", "dispatches", "family"] as const)("a failed read of %s throws", async (table) => {
+    await expect(read({ workbooks: [book(1)], fail: [table] })).rejects.toThrow(table);
   });
 });

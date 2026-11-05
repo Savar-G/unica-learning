@@ -15,6 +15,9 @@ export const ACCOUNT_PATH = "/account/settings";
 
 const homePath = (childId: string) => `/account?child=${encodeURIComponent(childId)}`;
 
+/** The child's Workbooks tab (#558). */
+export const workbooksPath = (childId: string) => `/account/workbooks/${encodeURIComponent(childId)}`;
+
 const LABELS: Record<ChildTab, string> = {
   overview: "Overview",
   progress: "Progress",
@@ -28,14 +31,14 @@ const LABELS: Record<ChildTab, string> = {
 type ShellChild = Pick<ChildView, "id" | "tabs" | "reportIds" | "opensOn">;
 
 /**
- * Where each tab goes today. Null means the tab has no page yet, so it does not appear: Progress (#561) and Workbooks
- * (#558) fill these in. Assessment (#552) opens the newest report, or the child's home, which holds the test button: also
- * while a new test is open, because the child's page is then that test.
+ * Where each tab goes today. Null means the tab has no page yet, so it does not appear: Progress (#561) fills this in.
+ * Assessment (#552) opens the newest report, or the child's home, which holds the test button: also while a new test is
+ * open, because the child's page is then that test.
  */
 const TAB_PAGE: Record<ChildTab, (child: ShellChild) => string | null> = {
   overview: (c) => homePath(c.id),
   progress: () => null,
-  workbooks: () => null,
+  workbooks: (c) => workbooksPath(c.id),
   scan_pages: () => "/account/scan",
   maya: (c) => `/account/notes/${c.id}`,
   assessment: (c) => (c.reportIds[0] && c.opensOn !== "continue_or_wait" ? `/account/report/${c.reportIds[0]}` : homePath(c.id)),
@@ -61,7 +64,7 @@ export function tabLinks(child: ShellChild | null): TabLink[] {
 export function addressChild(pathname: string, queryChild: string | null, children: readonly Pick<ChildView, "id" | "reportIds">[]): string | null {
   if (pathname === "/account") return queryChild;
   const [, , section, id] = pathname.split("/");
-  if (section === "notes" || section === "learning") return id ?? null;
+  if (section === "notes" || section === "learning" || section === "workbooks") return id ?? null;
   if (section === "report") return children.find((c) => c.reportIds.includes(id))?.id ?? null;
   return null;
 }
@@ -80,6 +83,7 @@ export function activeTab(pathname: string, links: readonly TabLink[]): ChildTab
   const tab: ChildTab | null = !section || section === "learning" ? home
     : section === "report" ? "assessment"
     : section === "notes" ? "maya"
+    : section === "workbooks" ? "workbooks"
     : section === "scan" ? "scan_pages"
     : section === "settings" || section === "plan" || section === "pin" || section === "password" ? "account"
     : null;

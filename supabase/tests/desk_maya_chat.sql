@@ -40,6 +40,8 @@ begin
   if r->>'status' <> 'accepted' then raise exception 'Prior day messages consumed today'; end if;
   if (select count(*) from public.maya_chat_messages where call_id=c.id and received_at>=date_trunc('day',now())) <> 1 then raise exception 'Day distribution incorrect'; end if;
   update public.maya_calls set status='ended',live=null,ended_at=now(),outcome_reason='child_stopped',trace=jsonb_build_object('callId',c.id::text) where id=c.id;
+  -- Test families get a recap only as the rehearsal family (#530).
+  insert into public.maya_chat_families(parent_id,added_by,rehearsal) values(p,p,true) on conflict (parent_id) do update set rehearsal=true;
   v_claim:=public.claim_maya_weekly(p,v_week,array[c.id],repeat('a',64),null,0);
   if v_claim is null then raise exception 'Weekly claim refused chat'; end if;
   if public.claim_maya_weekly(p,v_week,array[c.id],repeat('a',64),null,0) is not null then raise exception 'Weekly duplicate claim accepted'; end if;

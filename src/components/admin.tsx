@@ -41,6 +41,7 @@ const NAV = [
   { key: "skill-map", href: `${ADMIN_PATH}/skill-map`, label: "Skill map" },
   { key: "board", href: `${ADMIN_PATH}/board`, label: "Maya board" },
   { key: "maya", href: `${ADMIN_PATH}/maya`, label: "Maya calls" },
+  { key: "maya-chat", href: `${ADMIN_PATH}/maya-chat`, label: "Maya chat" },
   { key: "export", href: `${ADMIN_PATH}/export`, label: "Export" },
 ] as const;
 
