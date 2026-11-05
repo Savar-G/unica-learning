@@ -6,8 +6,14 @@
 // src/lib/board-history.ts), the board tab (one tab writes a board, src/lib/board-tab.ts) and the board session (the
 // stroke in progress, holding the board and the ink kept when it moves away, src/lib/board-session.ts). This component
 // measures the screen, forwards events to the session and paints what it shows.
+//
+// In a chat with Maya (#534) the same board is the chat's board: her replies go on it through the session (the pen goes
+// to her while she writes, then back to the child), the child keeps the pen tools all through the chat, and every
+// change goes to `onChange`, which sends the board to the call.
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { boardDraftKey, childStrokes, createHistory, loadDraft, markClosed, markOpen, mayaWrites, mayaWritingEnds, penHolder, type BoardHistory, type DraftStore } from "@/lib/board-history";
+import { boardDraftKey, chatBoardKey, childStrokes, createHistory, loadDraft, markClosed, markOpen, mayaSteps, mayaWrites, mayaWritingEnds, penHasMoved, penHolder, type BoardHistory, type DraftStore } from "@/lib/board-history";
+import type { Batch } from "@/lib/board";
+import { BATCH_GAP_MS, fitView, timeline } from "@/lib/board-svg";
 import { createBoardSession, type SessionNote } from "@/lib/board-session";
 import { boardWidthOf, canvasViewBox, eraserLine, inkLayers, inkOutline, parseViewBox, toBoard, type Box, type CapturePoint, type InkLayer, type ViewBox } from "@/lib/child-ink-svg";
 import { leaseLocks, openBoardTab, type BoardChannel, type BoardLocks, type BoardMessage, type BoardTab, type TabTimers } from "@/lib/board-tab";
@@ -137,6 +143,10 @@ export interface OurBoardProps {
   question: QuestionBoard | null;
   /** Where the board's draft is kept: the workbook, its page and the question. */
   at: { book: string; page: number; question: number | null };
+  /** A chat with Maya (#534): the board is the chat's, with her replies' batches; its draft is kept by the chat's id. */
+  chat?: { id: string; batches: readonly Batch[] };
+  /** Hears every change of the board this tab holds (a chat sends it to the call). */
+  onChange?: (history: BoardHistory) => void;
   label: string;
   caption: ReactNode;
   /** Less motion: Maya's strokes show at once. */
@@ -145,7 +155,7 @@ export interface OurBoardProps {
 
 export function OurBoard(props: OurBoardProps) {
   const hydrated = useHydrated();
-  const key = boardDraftKey(props.at.book, props.at.page, props.at.question);
+  const key = props.chat ? chatBoardKey(props.chat.id) : boardDraftKey(props.at.book, props.at.page, props.at.question);
   // After hydration the board starts again with its draft: a new key, so its state starts from the store.
   return <LiveBoard key={hydrated ? key : `server:${key}`} draftKey={key} store={hydrated ? localDrafts : null} {...props} />;
 }
@@ -171,11 +181,11 @@ const NOTES: Record<SessionNote, string> = {
   not_added: NOT_ADDED_NOTE,
 };
 
-function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoardProps & { draftKey: string; store: DraftStore | null }) {
+function LiveBoard({ question, chat, onChange, label, caption, still, draftKey, store }: OurBoardProps & { draftKey: string; store: DraftStore | null }) {
   const [restored] = useState(() => (store ? loadDraft(store, draftKey) : null));
   const [session] = useState(() =>
     createBoardSession({
-      initial: restored ?? firstBoard(question),
+      initial: restored ?? (chat ? createHistory() : firstBoard(question)),
       restored: restored !== null,
       clock: () => performance.now(),
       wall: () => Date.now(),
@@ -205,6 +215,17 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
 
   const { history, role, live, kept } = view;
   const pen = penHolder(history);
+  // A chat's board: Maya's replies as the board core drew them beside the child's ink. A new reply draws; the steps
+  // before it show at once (a restored board shows all of them at once).
+  const mayaIds = history.events.flatMap((e) => (e.kind === "maya" ? [e.batchId] : [])).join("\n");
+  // Only a new batch changes Maya's steps: the child's later ink never moves what she wrote before it.
+  const isChat = chat !== undefined;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const steps = useMemo(() => (isChat ? mayaSteps(history) : null), [isChat, mayaIds]);
+  const chatView = useMemo(() => (steps ? fitView(steps.flatMap((s) => s.drawn), 0.06) : null), [steps]);
+  const [played, setPlayed] = useState(restored ? Infinity : 0);
+  const handTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const handAt = useRef<number | null>(null);
   const ink = useMemo(() => childStrokes(history), [history]);
   // Kept ink this tab could not save (the board moved away) stays on screen with the rest.
   const shown = useMemo(() => {
@@ -295,11 +316,51 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
     observer.observe(el);
     const maya = el.querySelector("svg.maya-board");
     if (maya) observer.observe(maya);
+    // A chat's board grows with Maya's replies: measure again for its new view.
+    measure();
     return () => observer.disconnect();
+  }, [chatView]);
+
+  // A chat (#534): Maya's new batches go on the board in the tab that holds it, and when she has finished writing them
+  // the pen passes back to the child. A new board passes it at once when she has nothing to write. `handAt` is when
+  // the pen goes back (performance.now), kept across a remount so the timer is set again.
+  useEffect(() => {
+    if (!chat || role !== "holder") return;
+    const written = session.mayaReply(chat.batches);
+    if (written > 0) {
+      const all = mayaSteps(session.view().history);
+      const before = all.length - written;
+      const drawing = still ? 0 : timeline(all).durationMs - (before > 0 ? timeline(all.slice(0, before)).durationMs + BATCH_GAP_MS : 0);
+      handAt.current = performance.now() + Math.max(0, drawing);
+      queueMicrotask(() => setPlayed(still ? Infinity : before));
+      clearTimeout(handTimer.current);
+      handTimer.current = undefined;
+    } else if (handAt.current === null && !penHasMoved(session.view().history)) handAt.current = performance.now();
+    if (handAt.current === null || handTimer.current !== undefined) return;
+    handTimer.current = setTimeout(() => {
+      handTimer.current = undefined;
+      handAt.current = null;
+      session.handBack();
+      setPlayed(Infinity);
+    }, Math.max(0, handAt.current - performance.now()));
+  }, [chat, role, session, still]);
+  useEffect(() => () => {
+    clearTimeout(handTimer.current);
+    handTimer.current = undefined;
   }, []);
+
+  // Every change of the board this tab holds goes to the caller (a chat sends it to the call).
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  });
+  useEffect(() => {
+    if (role === "holder" && history.events.length > 0) onChangeRef.current?.(history);
+  }, [history, role]);
 
   // When Maya has finished writing the question, the pen passes to the child (D-184). A restored board keeps it.
   useEffect(() => {
+    if (chat) return;
     const ends = restored || !question || still ? 0 : mayaWritingEnds(session.view().history);
     const done = setTimeout(() => session.mayaDone(), ends);
     return () => clearTimeout(done);
@@ -401,14 +462,16 @@ function LiveBoard({ question, label, caption, still, draftKey, store }: OurBoar
   const childHas = pen === "child" && role === "holder";
   return (
     <>
-      <section className="desk-board" aria-labelledby="desk-board-title">
+      <section className="desk-board" id={chat ? "chat-board" : undefined} aria-labelledby="desk-board-title">
         <header>
           <h2 id="desk-board-title">Our board</h2>
-          <p><Avatar size={22} />Maya draws here in a call</p>
+          <p><Avatar size={22} />{chat ? "Maya draws here" : "Maya draws here in a call"}</p>
         </header>
         <div className="desk-board-body">
           <div ref={canvas} className="desk-canvas" data-pen={pen}>
-            {question ? (
+            {steps && chatView ? (
+              <MayaBoard steps={steps} viewBox={chatView} instant={still} shown={played} label={label} />
+            ) : question ? (
               // A restored board shows Maya's work at once: she wrote it before the reload.
               <MayaBoard steps={question.steps} viewBox={question.viewBox} instant={still || restored !== null} label={label} />
             ) : null}

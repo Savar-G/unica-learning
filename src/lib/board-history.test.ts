@@ -32,6 +32,7 @@ import {
   saveDraft,
   takePen,
   undo,
+  withChildInk,
   type BoardHistory,
   type Change,
   type InkStroke,
@@ -438,5 +439,35 @@ describe("old test whiteboard recordings", () => {
     const rec = readStrokes(JSON.parse(STORED))!;
     const pts = (historyFromRecording(rec).events.filter((e) => e.kind === "stroke") as { pts: TimedPoint[] }[]).map((e) => e.pts);
     expect(pts).toEqual(rec.events.filter((e) => e.kind === "stroke").map((e) => (e as { pts: TimedPoint[] }).pts));
+  });
+});
+
+describe("the call's board with the child's ink (#534)", () => {
+  const ok = (c: Change) => { if (!c.ok) throw new Error(c.reason); return c.history; };
+  const batch = (id: string, value: string): Batch => id === "a"
+    ? { ...QUESTION, transactionId: "a" }
+    : { transactionId: id, commands: [{ op: "write", id: `note-${id}`, text: value, place: { below: "question" } }] };
+  const line = (at: number): InkStroke => ({ erase: false, w: 5, boardWidth: 800, page: 1, pts: [[0.1, 0.8, at], [0.2, 0.85, at + 200]] });
+
+  it("puts the desk's ink on the call's clock, between the batches it came between, with the call's own batches", () => {
+    // The call recorded the batches 3 s later than the desk's board showed them.
+    const call = ok(mayaWrites(ok(mayaWrites(createHistory(), batch("a", "1"), 3000)), batch("b", "2"), 9000));
+    let desk = ok(mayaWrites(createHistory(), batch("a", "1"), 0));
+    desk = ok(takePen(desk, 1000));
+    desk = ok(drawStroke(desk, line(2000)));
+    desk = ok(givePen(desk, 5000));
+    desk = ok(mayaWrites(desk, batch("b", "2"), 6000));
+    const merged = withChildInk(call, desk);
+    expect(merged.events.map((e) => e.kind)).toEqual(["maya", "pen", "stroke", "pen", "maya"]);
+    expect(childStrokes(merged)[0].pts.map((p) => p[2])).toEqual([5000, 5200]);
+    expect(merged.events.filter((e) => e.kind === "maya").map((e) => (e.kind === "maya" ? e.t : -1))).toEqual([3000, 9000]);
+    expect(decodeHistory(encodeHistory(merged))).toEqual({ v: 1, revision: merged.revision, events: merged.events });
+  });
+
+  it("takes only the child's side of the desk's copy: Maya's batches there are not the record", () => {
+    const call = ok(mayaWrites(createHistory(), batch("a", "1"), 0));
+    const desk = ok(mayaWrites(createHistory(), { ...QUESTION, transactionId: "forged" }, 0));
+    expect(withChildInk(call, desk)).toBe(call);
+    expect(withChildInk(call, null)).toBe(call);
   });
 });

@@ -1429,6 +1429,7 @@ export type Database = {
           call_seconds: number | null
           channel: string | null
           child_id: string
+          child_ink: Json | null
           child_turns: number | null
           connected_seconds: number | null
           counts_minutes: boolean
@@ -1482,6 +1483,7 @@ export type Database = {
           call_seconds?: number | null
           channel?: string | null
           child_id: string
+          child_ink?: Json | null
           child_turns?: number | null
           connected_seconds?: number | null
           counts_minutes?: boolean
@@ -1535,6 +1537,7 @@ export type Database = {
           call_seconds?: number | null
           channel?: string | null
           child_id?: string
+          child_ink?: Json | null
           child_turns?: number | null
           connected_seconds?: number | null
           counts_minutes?: boolean

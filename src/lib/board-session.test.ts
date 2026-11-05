@@ -268,3 +268,54 @@ describe("a stroke in progress, and every way out of holding the board", () => {
     expect(c.notes).toContain("elsewhere");
   });
 });
+
+describe("Maya's replies in a chat (#534)", () => {
+  const REPLY = {
+    transactionId: "reply-1",
+    commands: [{ op: "columns", id: "work", operation: "add", operands: [{ id: "a", value: "27" }, { id: "b", value: "39" }], place: { region: "main" } }],
+  };
+  const mayaIds = (h: BoardHistory) => h.events.flatMap((e) => (e.kind === "maya" ? [e.batchId] : []));
+
+  it("Maya's reply takes the pen while she writes, never removes the child's ink, and the pen comes back", async () => {
+    const b = browser();
+    const t = await b.first();
+    expect(t.draw(0.1)).toBe(true);
+    const ink = childStrokes(t.session.view().history);
+    expect(ink).toHaveLength(1);
+
+    expect(t.session.mayaReply([QUESTION, REPLY])).toBe(1);
+    const written = t.session.view().history;
+    expect(mayaIds(written)).toEqual(["desk-question", "reply-1"]);
+    expect(childStrokes(written)).toEqual(ink);
+    expect(penHolder(written)).toBe("maya");
+    expect(t.draw(0.3)).toBe(false);
+    expect(t.notes).toContain("pen_with_maya");
+
+    t.session.handBack();
+    expect(penHolder(t.session.view().history)).toBe("child");
+    expect(t.draw(0.3)).toBe(true);
+    // The same reply again writes nothing.
+    expect(t.session.mayaReply([QUESTION, REPLY])).toBe(0);
+    // The draft holds Maya's work and both of the child's lines.
+    const stored = loadDraft(b.store, KEY)!;
+    expect(mayaIds(stored)).toEqual(["desk-question", "reply-1"]);
+    expect(childStrokes(stored)).toHaveLength(2);
+  });
+
+  it("a stroke in progress when Maya's reply comes ends and is kept, never dropped", async () => {
+    const b = browser();
+    const t = await b.first();
+    t.begin(0.2);
+    expect(t.session.mayaReply([REPLY])).toBe(1);
+    expect(places(b, 0.2, t.session.view().kept)).toEqual({ stored: 1, kept: 0 });
+    expect(t.session.view().live).toBeNull();
+  });
+
+  it("a tab showing the board read-only writes no reply", async () => {
+    const b = browser();
+    await b.first();
+    const c = await b.open("c");
+    expect(c.session.mayaReply([REPLY])).toBe(0);
+    expect(mayaIds(loadDraft(b.store, KEY)!)).toEqual(["desk-question"]);
+  });
+});

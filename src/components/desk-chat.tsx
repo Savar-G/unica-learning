@@ -1,12 +1,57 @@
 "use client";
-import { useMemo, useRef, useState, useEffect, useCallback, type FormEvent } from "react";
-import { applyBatch, boardView, createScene } from "@/lib/board";
-import { fitView, type PlayStep } from "@/lib/board-svg";
+import { useRef, useState, useEffect, useCallback, type FormEvent } from "react";
+import { encodeHistory, type BoardHistory } from "@/lib/board-history";
 import { chatCapLine, type ChatUsage, type ChatView, type ChatReply } from "@/lib/maya-chat";
-import { MayaBoard } from "@/components/maya-board";
+import { OurBoard } from "@/components/our-board";
 import { Icon } from "@/components/desk-icons";
 
 const ERROR = "Your message could not be sent. Try again in a moment.";
+/** How long the chat's board waits after a change before it goes to the call (#534). */
+const BOARD_SAVE_MS = 1500;
+/** A browser sends a request after the page has gone (keepalive) only below about 64 KB. */
+const KEEPALIVE_MAX = 60_000;
+
+/**
+ * Sends the chat's board to the call (#534): the newest copy, one request at a time, 1.5 s after the last change, and
+ * at once before the chat ends or the page goes. A copy that could not be sent goes again with the next one.
+ */
+function useBoardSaver() {
+  const next = useRef<{ id: string; board: string } | null>(null);
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const flush = useCallback(() => {
+    clearTimeout(timer.current);
+    timer.current = undefined;
+    queue.current = queue.current.then(async () => {
+      const save = next.current;
+      if (!save) return;
+      next.current = null;
+      const body = JSON.stringify(save);
+      try {
+        const res = await fetch("/api/desk/chat/board", { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: body.length < KEEPALIVE_MAX });
+        if (res.status >= 500) next.current ??= save;
+      } catch {
+        next.current ??= save;
+      }
+    });
+    return queue.current;
+  }, []);
+  const save = useCallback((id: string, history: BoardHistory) => {
+    next.current = { id, board: encodeHistory(history) };
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => void flush(), BOARD_SAVE_MS);
+  }, [flush]);
+  useEffect(() => {
+    const gone = () => void flush();
+    window.addEventListener("pagehide", gone);
+    return () => {
+      window.removeEventListener("pagehide", gone);
+      void flush();
+    };
+  }, [flush]);
+  return { save, flush };
+}
+
 export function useDeskChat(initial: ChatUsage | null, at: { book: string; page: number; question: number | null }) {
   const [usage, setUsage] = useState(initial);
   const [chat, setChat] = useState<ChatView | null>(null);
@@ -19,6 +64,7 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
   const requestBusy = useRef(false);
   const key = `unica-chat:${at.book}:${at.page}:${at.question}`;
   const [uncertain, setUncertain] = useState(false);
+  const board = useBoardSaver();
   const request = useCallback(async (action: { type: string; [field: string]: unknown }, generation = epoch.current) => {
     const res = await fetch("/api/desk/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(action) });
     const answer = await res.json() as ChatReply;
@@ -101,7 +147,11 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
         if (type === "child") {
           pending.current ??= { id: chat.id, messageId: crypto.randomUUID(), revision: chat.revision, text: text ?? "" };
           await request({ type, ...pending.current }, generation);
-        } else await request({ type, id: chat.id, revision: chat.revision }, generation);
+        } else {
+          // The child's ink goes with the call before it ends (#534).
+          await board.flush();
+          await request({ type, id: chat.id, revision: chat.revision }, generation);
+        }
       }
       return true;
     } catch {
@@ -112,7 +162,7 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
       return false;
     } finally { requestBusy.current = false; if (generation === epoch.current) setBusy(false); }
   };
-  return { usage, chat: ownerKey === key ? chat : null, busy, error, act, retry: refresh, uncertain };
+  return { usage, chat: ownerKey === key ? chat : null, busy, error, act, retry: refresh, uncertain, saveBoard: board.save };
 }
 export type DeskChatState = ReturnType<typeof useDeskChat>;
 
@@ -139,23 +189,19 @@ export function ChatControls({ state, picked }: { state: DeskChatState; picked: 
   </>;
 }
 
-export function ChatBoard({ chat, still }: { chat: ChatView; still: boolean }) {
-  const playback = useMemo(() => {
-    let scene = createScene();
-    const steps: PlayStep[] = [];
-    for (const batch of chat.batches) {
-      const applied = applyBatch(scene, batch);
-      if (!applied.ok) break;
-      scene = applied.scene;
-      steps.push({ drawn: applied.drawn, erased: applied.erased, view: boardView(scene) });
-    }
-    return { steps, viewBox: fitView(steps.flatMap((s) => s.drawn), 0.06) };
-  }, [chat.batches]);
-  return <section className="desk-board desk-chat-board" id="chat-board" aria-labelledby="desk-board-title">
-    <header><h2 id="desk-board-title">Our board</h2><p>Maya draws here</p></header>
-    <div className="desk-canvas">
-      <MayaBoard steps={playback.steps} viewBox={playback.viewBox} instant={still} label="Maya's drawing for your question" />
-    </div>
-    <p className="desk-caption">Follow each step. Then write on your paper.</p>
-  </section>;
+/**
+ * The chat's board (#534): "Our board" with Maya's replies on it. The child keeps the pen tools all through the chat;
+ * Maya takes the pen only while she writes, never removes the child's ink, and every change goes to `onBoard`.
+ */
+export function ChatBoard({ chat, still, onBoard }: { chat: ChatView; still: boolean; onBoard?: (history: BoardHistory) => void }) {
+  return <OurBoard
+    key={chat.id}
+    question={null}
+    at={{ book: "chat", page: 0, question: null }}
+    chat={{ id: chat.id, batches: chat.batches }}
+    onChange={onBoard}
+    still={still}
+    label="Maya's drawing for your question"
+    caption="Follow each step. Then write on your paper."
+  />;
 }

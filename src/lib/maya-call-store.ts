@@ -94,6 +94,7 @@ export function fromCallRow(r: Row): CallRecord {
     live: r.live,
     trace: r.trace,
     boardHistory: r.board_history,
+    childInk: r.child_ink,
     learningEventId: r.learning_event_id,
     profileRebuiltAt: r.profile_rebuilt_at,
     notePending: r.note_pending,
@@ -160,6 +161,13 @@ export function mayaCallStore(admin: SupabaseClient<Database>): CallStore {
         .limit(Math.max(1, Math.min(limit, 20)));
       if (error) throw new Error(`maya call pending notes: ${error.message}`);
       return (data ?? []).map(fromCallRow);
+    },
+    async saveInk(id, ink) {
+      if (!UUID.test(id)) return false;
+      // Not a change of the call's work: the revision and the write time stay (#534).
+      const { data, error } = await admin.from("maya_calls").update({ child_ink: ink }).eq("id", id.toLowerCase()).eq("mode", "text").select("id");
+      if (error) throw new Error(`maya call save ink: ${error.message}`);
+      return (data ?? []).length === 1;
     },
     async clearNote(id) {
       if (!UUID.test(id)) return false;

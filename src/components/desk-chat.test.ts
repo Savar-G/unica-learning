@@ -2,7 +2,8 @@
 import { act, createElement, useLayoutEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ChatControls, useDeskChat, type DeskChatState } from "@/components/desk-chat";
+import { ChatBoard, ChatControls, useDeskChat, type DeskChatState } from "@/components/desk-chat";
+import { createHistory, penHolder, type BoardHistory } from "@/lib/board-history";
 import type { ChatReply, ChatView } from "@/lib/maya-chat";
 
 const book = "45100000-0000-4000-8000-000000000031";
@@ -141,4 +142,36 @@ it("shows only the approved Maya line at the cap", async () => {
   expect(host.querySelector("input")).toBeNull();
   expect(host.querySelector("form")).toBeNull();
   expect(host.querySelector("button")).toBeNull();
+});
+
+describe("#534: the board in a chat", () => {
+  const work = { transactionId: "reply-1", commands: [{ op: "columns", id: "work", operation: "add", operands: [{ id: "a", value: "27" }, { id: "b", value: "39" }], place: { region: "main" } }] };
+
+  it("keeps the pen on the chat's board: Maya's work shows, then the pen passes to the child, and each change goes to the call", async () => {
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    const boards: BoardHistory[] = [];
+    await act(async () => root.render(createElement(ChatBoard, { chat: { ...view(1), batches: [work] }, still: true, onBoard: (h: BoardHistory) => boards.push(h) })));
+    await advance(5000);
+    expect(host.querySelector('button[aria-label="Pen"]')).not.toBeNull();
+    expect(host.querySelector('button[aria-label="Eraser"]')).not.toBeNull();
+    expect(host.textContent).toContain("You have the pen");
+    expect(host.querySelector('button[aria-label="Pen"]')?.hasAttribute("disabled")).toBe(false);
+    const last = boards.at(-1)!;
+    expect(last.events.flatMap((e) => (e.kind === "maya" ? [e.batchId] : []))).toEqual(["reply-1"]);
+    expect(penHolder(last)).toBe("child");
+  });
+
+  it("sends the board to the call before the chat ends", async () => {
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", async (url: string, options: RequestInit) => {
+      urls.push(url);
+      if (url === "/api/desk/chat/board") return Response.json({ ok: true });
+      const action: RequestAction = JSON.parse(String(options.body)); requests.push(action);
+      return Response.json(await answer(action));
+    });
+    await render(); await send("start");
+    await act(async () => state.saveBoard(id, createHistory()));
+    expect(await send("end")).toBe(true);
+    expect(urls).toEqual(["/api/desk/chat", "/api/desk/chat/board", "/api/desk/chat"]);
+  });
 });

@@ -18,6 +18,7 @@ import {
   mayaWritingEnds,
   penHasMoved,
   keptStroke,
+  mayaWrites,
   penHolder,
   restoreKept,
   takePen,
@@ -27,6 +28,7 @@ import {
   type InkStroke,
   type KeptStroke,
 } from "@/lib/board-history";
+import type { Batch } from "@/lib/board";
 import type { BoardTab, TabRole } from "@/lib/board-tab";
 import { addPoint, capturedPoints, startCapture, type Capture } from "@/lib/child-ink-svg";
 import type { TimedPoint } from "@/lib/strokes";
@@ -118,6 +120,14 @@ export interface BoardSession {
   clear(): void;
   /** Maya has finished writing the question: the pen passes to the child, once, in the tab that holds the board. */
   mayaDone(): void;
+  /**
+   * Maya's reply in a chat (#534): the batches of `batches` not on the board yet. The pen goes to her first (a stroke in
+   * progress ends as if the pointer went up, and is kept), then she writes them; the child's ink stays. Only in the tab
+   * that holds the board. Returns how many batches went on the board; a batch the board refuses is not tried again.
+   */
+  mayaReply(batches: readonly Batch[]): number;
+  /** Maya has finished writing her reply: the pen passes back to the child, in the tab that holds the board. */
+  handBack(): void;
   /** The one way out of holding the board. */
   endHolding(reason: EndReason): void;
   /** The board tab's news: this tab's role, and the stored board. */
@@ -253,6 +263,8 @@ export function createBoardSession(o: SessionOptions): BoardSession {
 
   /** Maya's question is written: the pen passes to the child, once, when this tab holds a board whose pen never moved. */
   let written = false;
+  /** Maya's batches the board refused: never tried again. */
+  const refusedBatches = new Set<string>();
   const passPen = () => {
     if (!written || role !== "holder" || penHasMoved(history)) return;
     const passed = mayaFinished(history, now());
@@ -355,6 +367,37 @@ export function createBoardSession(o: SessionOptions): BoardSession {
       written = true;
       passPen();
       emit();
+    },
+    mayaReply(batches) {
+      if (!holds()) return 0;
+      const on = new Set(history.events.flatMap((e) => (e.kind === "maya" ? [e.batchId] : [])));
+      const missing = batches.filter((b) => !on.has(b.transactionId) && !refusedBatches.has(b.transactionId));
+      if (missing.length === 0) return 0;
+      // The pen goes to Maya: a stroke in progress is ended first, as if the pointer went up.
+      if (live) penUp(live.pointer);
+      if (role !== "holder") return 0;
+      let next = history;
+      if (penHolder(next) === "child") {
+        const given = givePen(next, now());
+        if (given.ok) next = given.history;
+      }
+      let count = 0;
+      for (const b of missing) {
+        const r = mayaWrites(next, b, now());
+        if (r.ok) {
+          next = r.history;
+          count++;
+        } else if (r.code === "full") say("full");
+        else refusedBatches.add(b.transactionId);
+      }
+      // Nothing written: the pen stays where it was.
+      if (count > 0) history = next;
+      persist();
+      emit();
+      return count;
+    },
+    handBack() {
+      if (holds() && penHolder(history) === "maya") apply(takePen(history, now()));
     },
     endHolding: end,
     tabChanged(r, stored) {

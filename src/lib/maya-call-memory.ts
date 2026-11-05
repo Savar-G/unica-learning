@@ -58,6 +58,13 @@ export function memoryCallStore(options: { testFamilies: readonly string[]; cloc
       wrote(id);
       return true;
     },
+    async saveInk(id, ink) {
+      const r = rows.get(id);
+      if (!r || r.mode !== "text") return false;
+      // Not a change of the call's work: the revision and the write time stay.
+      rows.set(id, { ...r, childInk: copy(ink) });
+      return true;
+    },
     appendConnection(event, revision, commit) {
       const r = rows.get(event.callId);
       if (!r || r.revision !== revision || r.mode !== "voice" || r.parentId !== event.parentId || r.childId !== event.childId) return false;

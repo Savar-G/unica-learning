@@ -10,7 +10,7 @@
 // stroke that ends after the pen moved to Maya is refused. The child's undo and clear touch the child's ink only, and
 // nothing of Maya's ever removes or covers it (the board core's rule).
 import { addChildInk, applyBatch, boardView, createScene, type Batch, type BoardPath, type Refusal, type Scene } from "@/lib/board";
-import { frameAt, type FrameStroke, type Timeline } from "@/lib/board-svg";
+import { frameAt, type FrameStroke, type PlayStep, type Timeline } from "@/lib/board-svg";
 import type { BoardSnapshot, PenHolder } from "@/lib/board-protocol";
 import type { StrokeRecording, TimedPoint } from "@/lib/strokes";
 
@@ -357,6 +357,75 @@ export function historyFromRecording(rec: StrokeRecording): BoardHistory {
   return { v: 1, revision: events.length, events };
 }
 
+/**
+ * Maya's batches as the board core drew them on this board, in order, each with the view after it (a chat's board,
+ * #534): the child's ink before a batch is on the board when it is laid out, so her writing keeps clear of it as it does
+ * in the replay. A batch the board core refuses is left out.
+ */
+export function mayaSteps(h: BoardHistory): PlayStep[] {
+  let scene = createScene();
+  const steps: PlayStep[] = [];
+  for (const e of h.events) {
+    if (e.kind === "maya") {
+      const r = applyBatch(scene, { transactionId: e.batchId, commands: e.commands });
+      if (!r.ok) continue;
+      scene = r.scene;
+      steps.push({ drawn: r.drawn, erased: r.erased, view: boardView(r.scene) });
+    } else if (e.kind === "stroke" || e.kind === "recovered") {
+      try {
+        scene = addChildInk(scene, { page: e.page, stroke: { erase: e.erase, w: e.w, pts: e.pts.map(([x, y]) => [x, y]) }, boardWidth: e.boardWidth }).scene;
+      } catch {
+        // A stroke the board could not keep: it was never added.
+      }
+    }
+  }
+  return steps;
+}
+
+/** An event moved `by` ms later on the board's clock (earlier when negative). */
+function shifted(e: HistoryEvent, by: number): HistoryEvent {
+  if (e.kind === "stroke") return { ...e, pts: e.pts.map(([x, y, t]): TimedPoint => [x, y, t + by]) };
+  if (e.kind === "recovered") return { ...e, t: e.t + by, pts: e.pts.map(([x, y, t]): TimedPoint => [x, y, Math.max(0, t + by)]) };
+  return { ...e, t: e.t + by };
+}
+
+/**
+ * A call's board with the child's ink (#534): Maya's batches as the call recorded them (`call`), and the child's
+ * strokes, undos, clears and pen moves from the desk's copy of the board (`desk`). Maya's batches in the desk's copy are
+ * not taken: the call's own are the record. The desk's clock starts when its board opened; the first batch both copies
+ * hold moves it onto the call's clock (with none, it is left as it is). The events keep their order by time (the
+ * child's side first at the same time), and one that would start before the event before it ends moves up to it. When
+ * the result does not replay, the call's board is returned as it was.
+ */
+export function withChildInk(call: BoardHistory, desk: BoardHistory | null): BoardHistory {
+  const child = desk?.events.filter((e) => e.kind !== "maya") ?? [];
+  if (!desk || child.length === 0) return call;
+  const recorded = new Map(call.events.flatMap((e) => (e.kind === "maya" ? [[e.batchId, e.t] as const] : [])));
+  const anchor = desk.events.find((e) => e.kind === "maya" && recorded.has(e.batchId));
+  const by = anchor?.kind === "maya" ? recorded.get(anchor.batchId)! - anchor.t : 0;
+  const both = [
+    ...call.events.map((e, i) => ({ e, side: 0, i })),
+    ...child.map((e, i) => ({ e: shifted(e, by), side: 1, i })),
+    // At the same time, the child's side first: the desk moves the pen to Maya before she writes.
+  ].sort((a, b) => startOf(a.e) - startOf(b.e) || b.side - a.side || a.i - b.i);
+  const events: HistoryEvent[] = [];
+  let last = 0;
+  for (const { e } of both) {
+    if (e.kind === "stroke") {
+      const later = Math.max(0, last - e.pts[0][2]);
+      const moved = later ? (shifted(e, later) as typeof e) : e;
+      events.push(moved);
+      last = moved.pts[moved.pts.length - 1][2];
+    } else {
+      const t = Math.max(last, e.t);
+      events.push(t === e.t ? e : ({ ...e, t } as HistoryEvent));
+      last = t;
+    }
+  }
+  const merged = decodeHistory(encodeHistory({ v: 1, revision: call.revision + child.length, events }));
+  return merged ?? call;
+}
+
 // ---------- the saved copy ----------
 
 export const encodeHistory = (h: BoardHistory): string => JSON.stringify({ v: h.v, revision: h.revision, events: h.events });
@@ -447,6 +516,8 @@ export interface DraftStore {
 export const BOARD_DRAFT_ROOT = "unica-board:";
 /** The draft of the board for one question of one workbook page. */
 export const boardDraftKey = (book: string, page: number, question: number | null) => `${BOARD_DRAFT_ROOT}${book}:${page}:${question ?? "none"}`;
+/** The draft of a chat's board (#534), by the chat's id. */
+export const chatBoardKey = (chatId: string) => `${BOARD_DRAFT_ROOT}chat:${chatId}`;
 /** A board open in a tab says so under this key, with the time it last said it (`markOpen`). */
 export const OPEN_ROOT = "unica-board-open:";
 /** The board drafts a device keeps: past this, drafts not touched in RECENT_MS and not open in a tab go, oldest first. */

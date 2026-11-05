@@ -11,6 +11,12 @@
 // (`learningEvent` of the session, key `call:<id>`, so a retry stores it once) and rebuilds the child's profile.
 // "end" on an ended call whose event, rebuild or parent note failed runs those again.
 //
+// The child's ink in a chat (#534): the child's desk sends its copy of the chat's board (Maya's batches and the child's
+// strokes, src/lib/board-history.ts) with `saveInk`. It is kept beside the call (`childInk`) and never raises the
+// revision, so the chat's next message still goes in at the revision the desk holds. The call's board (`callView`) is
+// Maya's batches as the call recorded them with the child's ink from that copy (`withChildInk`), as the admin replay
+// plays it.
+//
 // The child's wording history (D-196, #375): `start` reads it before the session is made, so Maya prefers the wordings
 // the child has not heard lately; the session keeps it in its saved state for the call's later requests. When the call
 // ends, the wordings it said are added to it (before the learning event; again on a retried "end" while the call keeps
@@ -48,7 +54,7 @@ import { voiceBoardHistory } from "@/lib/voice-board-history";
 import type { BoardSnapshot } from "@/lib/board-protocol";
 import { speechWords, type BoardCue } from "@/lib/board-speech";
 import { applyBatch, boardView, createScene, type Batch } from "@/lib/board";
-import { createHistory, mayaWrites, type BoardHistory } from "@/lib/board-history";
+import { createHistory, decodeHistory, mayaWrites, withChildInk, type BoardHistory } from "@/lib/board-history";
 import { fitView, type PlayStep } from "@/lib/board-svg";
 import type { LearningEvents, NewLearningEvent } from "@/lib/learning-events";
 import type { NoteStep } from "@/lib/maya-call-note";
@@ -161,6 +167,11 @@ export interface CallRecord {
   live: { package: QuestionPackage; text: SavedTextSession; cancelled?: true; pendingVoice?: VoiceTurn; acknowledged?: string[] } | null;
   trace: MayaTrace | null;
   boardHistory: BoardHistory | null;
+  /**
+   * A text call's board as the child's desk last sent it (#534): its strokes are the child's ink of the call. Saved
+   * without raising the revision; absent or null when the desk sent none.
+   */
+  childInk?: BoardHistory | null;
   learningEventId: string | null;
   profileRebuiltAt: string | null;
   /** An ended call whose parent note is not written yet: the note's inputs, kept for a retry. Null once done. */
@@ -206,6 +217,8 @@ export interface CallStore {
    * holds stale. True when the call had a pending note.
    */
   clearNote(id: string): Promise<boolean>;
+  /** Keeps a text call's board from the child's desk (#534), without raising its revision. False when there is no such call. */
+  saveInk(id: string, ink: BoardHistory): Promise<boolean>;
 }
 
 export interface CallSeams {
@@ -258,6 +271,8 @@ export type CallInput = { type: "child"; text: string } | { type: "tick" } | { t
 
 /** The most characters of one typed child turn. */
 export const MAX_CHILD_TEXT = 500;
+/** The longest board a desk may send with a call, as JSON text (#534); the database keeps under 2 MB. */
+export const MAX_INK_TEXT = 1_000_000;
 
 /** One line of the transcript, as the admin reads it. */
 export interface TranscriptLine {
@@ -420,6 +435,11 @@ export interface MayaCalls {
   /** Opens a live voice call in the worker, with the providers that carry it. */
   openVoice(id: string, providers: { speechToText: string; voice: string }, childName: string | null): Promise<OpenVoiceResult>;
   input(id: string, revision: number, input: CallInput, childName: string | null): Promise<CallResult>;
+  /**
+   * Keeps the child's desk copy of a text call's board (#534): the encoded board history, live or ended. An older copy
+   * (a lower revision) than the one kept changes nothing. Never raises the call's revision.
+   */
+  saveInk(id: string, board: string): Promise<{ ok: true } | { ok: false; error: "not_found" | "invalid_input" | "voice_call" }>;
   view(id: string): Promise<CallView | null>;
 }
 
@@ -489,7 +509,9 @@ export function boardPlayback(batches: readonly Batch[]): { steps: PlayStep[]; v
 export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertState[] = []): CallView {
   // A missing delivery field identifies the legacy contract. An explicit empty delivery is authoritative.
   const observed = record.mode === "voice" && record.boardHistory?.delivery !== undefined;
-  const history = record.boardHistory ?? boardHistoryOf(trace);
+  const recorded = record.boardHistory ?? boardHistoryOf(trace);
+  // A text call's board carries the child's ink from the desk (#534); a voice call's ink is in its observed board.
+  const history = record.mode === "text" ? withChildInk(recorded, record.childInk ?? null) : recorded;
   return {
     id: record.id,
     kind: record.kind,
@@ -1105,6 +1127,18 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       }
       if (!saved2) return { ok: false, error: "conflict" };
       return result(saved2, saved2.trace ?? session.trace(), out);
+    },
+
+    async saveInk(id, board) {
+      if (typeof board !== "string" || board.length > MAX_INK_TEXT) return { ok: false, error: "invalid_input" };
+      const ink = decodeHistory(board);
+      if (!ink) return { ok: false, error: "invalid_input" };
+      const record = await store.get(id);
+      if (!record) return { ok: false, error: "not_found" };
+      if (record.mode === "voice") return { ok: false, error: "voice_call" };
+      // A copy that comes after a newer one (a slow request) changes nothing.
+      if (record.childInk && record.childInk.revision > ink.revision) return { ok: true };
+      return (await store.saveInk(id, ink)) ? { ok: true } : { ok: false, error: "not_found" };
     },
 
     async view(id) {
