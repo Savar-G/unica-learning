@@ -36,6 +36,21 @@ npm run maya:practice -- --report traces/maya-practice/<run>          # count a 
 
 **The key.** `OPENROUTER_API_KEY` in the environment, or `OPENROUTER_API_KEY_FILE` (a file that holds only the key), or `.env.local`. It is a Vercel Secret variable, so `vercel env pull` gives an empty value. Use the Unica OpenRouter key only. The exit code is 0 only when every planned run passed.
 
+## Compare two turn models
+
+`--maya-model` sets the model that writes Maya's turns (#532). It changes only this run: the default stays `AI_MODEL`, and no run changes it. Change the default only after a full passing run on the new model.
+
+```sh
+npm run maya:practice -- --anthropic --maya-model claude-haiku-5-5 --estimate      # what the run costs, then stop
+npm run maya:practice -- --anthropic --maya-model claude-haiku-5-5 --out traces/maya-practice/haiku
+npm run maya:practice -- --anthropic --out traces/maya-practice/sonnet              # the default model, the same suite
+npm run maya:practice -- --maya-model anthropic/claude-haiku-5.5 --estimate         # on OpenRouter: its model ids
+```
+
+Read two files from each run. `report.md` names Maya's model and says what passed. `turn-time.md` gives the real time of each model and review call: calls, failures, p50 and p95. The run's own clock is simulated, so the traces do not hold real times. `turn-time` is not a gate result, it is not in the run's hashed files, and it holds no speech-to-text or voice time; the voice worker's `voice turn` log measures a whole turn (`docs/maya-voice.md`). The practice suite runs through the text adapter, so it does not run the voice worker's acknowledgement.
+
+`--maya-model` with `--fake` is refused: the rule player is always Maya there.
+
 ## Cost
 
 Before a real run, the command runs the whole suite once with the fakes (no network), measures each request each model would get, and prices it with OpenRouter's public model list (with `--anthropic`, the Claude API price table). The free-talk review is counted at its upper bound: one review for every Maya call. It adds a 1.5 margin and counts each call's output at the assumed worst case (Maya 1,500 tokens, the child 150, the validity judge 400, the judge 4,000, thinking included). On 2026-10-31, the 13 cases × 3 runs came to about **$17.16** (Maya on Sonnet 5.5 $13.14, the judge on GPT-5.4 $3.85, the validity judge on GPT-5.4 mini $0.13, the child on Haiku 5.5 $0.05).
@@ -61,7 +76,7 @@ When the subscription's usage limit is met, the run stops: the calls in flight e
 | `src/lib/ai-claude-cli-practice.ts` | The subscription client (`--subscription`): one `claude -p` call per request, behind a process seam its tests replace. |
 | `scripts/maya-practice-cli.ts` | The command line. |
 
-A run's folder: `plan.json` (the planned runs, every model and prompt version, the suite hash, the commit, the cap), then for each run `runs/<case>-r<n>.trace.json` (Maya's trace, with her model and prompt version and the question package hash), `.child.json` (each raw simulator turn, with the simulator's model and prompt version; errors keep only a code), `.validity.json` (the validity judge's raw output, its model and prompt version, an error code, or why it was skipped) and `.judge.json` (the judge's raw output, its model and prompt version, or an error code), and last `.record.json`: the sha256 of the exact text of each of those files and of `plan.json`. Then `report.md` and `report.json`, and `free-talk.md` and `free-talk.json`: every piece of Maya's own words in the required runs, what the code guards and the review made of it, what was said, and the pieces the review failed after the code guards passed them. The free-talk file is not a gate result; the gate's `free_talk_unchecked` hard failure is.
+A run's folder: `plan.json` (the planned runs, every model and prompt version, the suite hash, the commit, the cap), then for each run `runs/<case>-r<n>.trace.json` (Maya's trace, with her model and prompt version and the question package hash), `.child.json` (each raw simulator turn, with the simulator's model and prompt version; errors keep only a code), `.validity.json` (the validity judge's raw output, its model and prompt version, an error code, or why it was skipped) and `.judge.json` (the judge's raw output, its model and prompt version, or an error code), and last `.record.json`: the sha256 of the exact text of each of those files and of `plan.json`. Then `report.md` and `report.json`, and `free-talk.md` and `free-talk.json`: every piece of Maya's own words in the required runs, what the code guards and the review made of it, what was said, and the pieces the review failed after the code guards passed them. The free-talk file is not a gate result; the gate's `free_talk_unchecked` hard failure is. `turn-time.md` and `.json` give the real time of each model and review call; they are not hashed and are not a gate result.
 
 ## How a run works
 

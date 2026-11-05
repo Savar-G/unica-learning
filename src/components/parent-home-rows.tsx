@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ChatUsageRow } from "@/components/chat-usage";
 import type { ChatUsage } from "@/lib/maya-chat";
-import { WEEK_SECONDS } from "@/lib/maya-minutes";
+import { DEMO_DAILY_MINUTES, WEEK_SECONDS } from "@/lib/maya-minutes";
 import type { ChildMinutes } from "@/lib/maya-minutes-server";
 import type { WorkbookSummary } from "@/lib/workbook-content";
 
@@ -48,4 +48,9 @@ export function MinutesRow({ name, minutes, chat }: { name: string; minutes?: Ch
       </span>
     </div>
   );
+}
+
+/** The parent's own "Try Maya" calls have their own limit, shown beside a child's minutes. */
+export function DemoMinutesLine() {
+  return <p className="small">Your &quot;Try Maya&quot; calls have a separate limit of {DEMO_DAILY_MINUTES} minutes a day for your account. They do not use your child&apos;s weekly minutes.</p>;
 }
