@@ -7,14 +7,14 @@ import { codeStoryProblem } from "./workbook-code-story";
 import { numberAnswer } from "./workbook-generator-items";
 import { likelihoodChoicesProblem, likelihoodWord } from "./workbook-likelihood";
 import { extraPracticeRepeats, newIdeaFloor, twoWaysCountsAsStory } from "./workbook-early-levels";
-import { dayTimeProblem, estimatedDayMinutes } from "./workbook-feedback-check";
+import { generatedDayTime, printedQuestionMinutes, requiredTimeProblem } from "./workbook-feedback-check";
 import { printedNumbers } from "./workbook-book";
 import { storyFrame, wordedTask, taskType, reasoningSteps, taskIdentity, printedForm, sentenceFrameOf, stemOf, largestNumber, storyKind, cardFrame, cardFrameProblem, cardNumbers, operationStory, type CardFrameUse } from "./workbook-task-identity";
 import { dayDifficulty } from "./workbook-plan";
 import { circleProblem, repeatedInstruction } from "./workbook-layout-check";
 
 export interface BookIssue { page: number; kind: "repeat" | "progress" | "variety" | "time" | "coverage" | "challenge" | "step" | "range"; reason: string }
-export interface DayQuality { day: number; minutes: number; formats: number; largestNumber: number }
+export interface DayQuality { day: number; minutes: number; formats: number; largestNumber: number; requiredMinutes?: number; requiredTimeTarget?: number }
 export interface BookQuality {
   /**
    * #489: the average step rank of each day's step template questions (the progression check: the last day above the
@@ -39,13 +39,7 @@ export function fewChallengePage(p: GeneratedPage): boolean {
 }
 
 export function questionMinutes(q: GeneratedPage["questions"][number]): number {
-  const p = q.package;
-  if (!p) return .5;
-  const text = p.text.trim().split(/\s+/).length / 80;
-  const f = p.item?.format;
-  const work = f === "written-reason" || f === "two-ways" ? 1.25 : f === "show-work" || f === "draw" ? .8 : .25;
-  const boxes = Math.max(0, (p.item?.regions.filter(r => r.kind === "box").length ?? 1) - 1) * .08;
-  return text + work + boxes;
+  return printedQuestionMinutes(q.package);
 }
 
 /** A question's type for the half-page and half-book limits: a step template item's context or format (#489), else its task. */
@@ -370,13 +364,20 @@ export function workbookQuality(pages: readonly GeneratedPage[]): BookQuality {
       if (frame) dayFrames.set(frame, [...(dayFrames.get(frame) ?? []), p.number]);
     }
     for (const [frame, at] of dayFrames) if (at.length > 2) issues.push({ page: at[2], kind: "variety", reason: `Day ${day} uses the sentence frame "${frame}" ${at.length} times; the limit is 2 a day` });
-    // Include time to read worked examples and move between pages.
-    const packages = questions.flatMap(q => q.package ? [q.package] : []);
-    const panels = ofDay.reduce((n,p)=>n + (p.content?.kind === "day" ? p.content.blocks.filter(b => ["worked-example", "watch-one", "reminder"].includes(b.slot)).length : 0),0);
-    const minutes = Math.max(questions.reduce((n, q) => n + questionMinutes(q), 0) + ofDay.length * .35, estimatedDayMinutes(packages, panels));
+    // L1/G1 contract: only draft Block.extra and DayContent.requiredTimeTarget control required time.
+    // The plan's guessed minutes never replace the generated-question estimate.
+    const { minutes, requiredMinutes, hasExtra } = generatedDayTime(ofDay);
+    const targets = ofDay.flatMap(p => p.content?.kind === "day" && p.content.requiredTimeTarget !== undefined ? [p.content.requiredTimeTarget] : []);
+    const target = targets.length ? Math.min(...targets) : undefined;
     const largestNumber = Math.max(0, ...questions.flatMap(q => q.package ? printedNumbers({...q.package, wrongAnswers: [], easierExample: null}).map(Math.abs) : []));
-    days.push({ day, minutes: Math.round(minutes * 10) / 10, formats: formats.size, largestNumber });
-    if (minutes >= 35 || dayTimeProblem(packages, panels)) for (const p of ofDay) issues.push({ page: p.number, kind: "time", reason: `Day ${day} is estimated at ${minutes.toFixed(1)} minutes; keep it below 35` });
+    days.push({ day, minutes: Math.round(minutes * 10) / 10, formats: formats.size, largestNumber,
+      ...(hasExtra || target !== undefined ? { requiredMinutes: Math.ceil((requiredMinutes - 1e-9) * 10) / 10 } : {}),
+      ...(target !== undefined ? { requiredTimeTarget: target } : {}) });
+    if (minutes >= 35) for (const p of ofDay) issues.push({ page: p.number, kind: "time", reason: `Day ${day} is estimated at ${minutes.toFixed(1)} minutes; keep it below 35` });
+    if (target !== undefined) {
+      const problem = requiredTimeProblem(requiredMinutes, target);
+      if (problem) for (const p of ofDay) issues.push({ page: p.number, kind: "time", reason: `Day ${day}: ${problem}` });
+    }
     if (questions.length >= 8 && formats.size < 2) for (const p of ofDay) issues.push({ page: p.number, kind: "variety", reason: `Day ${day} uses only ${formats.size} answer format` });
   }
   // Compare the numbers of the same skills, so changing Unit B does not hide a
@@ -451,7 +452,16 @@ export async function checkWholeBook(pages: GeneratedPage[], rewrite: (page: Gen
     if (fresh.questions.filter(q => q.check.status === "failed").length > oldFailures) continue;
     if (next.issues.length < workbookQuality(result).issues.length) result[index] = fresh;
   }
-  return { pages: result, quality: workbookQuality(result) };
+  const quality = workbookQuality(result);
+  // Keep the generated estimate on the plan row too: sample output and reprints can render this page alone.
+  const required = new Map(quality.days.filter(d => d.requiredMinutes !== undefined).map(d => [d.day, d.requiredMinutes!]));
+  const withMinutes = result.map(p => p.content?.kind === "how-plan" && required.size ? { ...p, content: {
+    ...p.content, rows: p.content.rows.map(row => required.has(row.day) ? { ...row,
+      requiredMinutes: required.get(row.day)!,
+      extra: result.some(p => p.day === row.day && p.content?.kind === "day" && p.content.blocks.some(b => b.extra)),
+    } : row),
+  } } : p);
+  return { pages: withMinutes, quality };
 }
 
 export interface PageUse { page: number; fraction: number | null; problem?: string | null; largestGap?: number; empty?: number }
