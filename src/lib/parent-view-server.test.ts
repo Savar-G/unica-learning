@@ -77,9 +77,11 @@ describe("the Supabase reader", () => {
     expect(await stage(delivered)).toBe("active");
   });
   it("keeps a family's dashboard when the plan read fails: every plan reads as unknown", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const [child] = await listChildren(reader("child_plan_states").reader, NOW);
     expect(child.stage).toBe("first_book_coming");
+    expect(log).toHaveBeenCalledWith("[parent-view] plan read failed", "plans read: boom");
+    log.mockRestore();
   });
   it("reads only the tables it needs, and no raw profile, event or call table", async () => {
     const r = reader();
@@ -287,7 +289,7 @@ describe("the Supabase reader of the Overview (#560)", () => {
     expect((await r.reader.learningCards())[0]).toMatchObject({ childId: CHILD, interests: ["space"] });
     await readOverview(r.reader, CHILD, NOW);
     expect(tables(r.session)).toEqual(["card_setups", "children", "parents", "reports", "scan_photos", "workbook_delivery_corrections", "workbook_delivery_receipts", "workbook_pages", "workbooks"]);
-    expect(tables(r.admin)).toEqual(["admin_users", "answers", "assessments", "test_accounts"]);
+    expect(tables(r.admin)).toEqual(["admin_users", "answers", "assessments", "child_plan_states", "test_accounts"]);
   });
 });
 
