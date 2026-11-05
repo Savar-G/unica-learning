@@ -85,7 +85,7 @@ describe("a stopped test, as the reminder job reads it", () => {
     const { state, due } = await remindersFor(mayaTables("up", 36));
     expect(due).toMatchObject([{ kind: "continue", childId: "c1", assessmentId: "a1" }]);
     const email = reminderMessage(due[0], "tok", state, ORIGIN);
-    expect(email?.text).toContain("after 36 of 42 questions");
+    expect(email?.text).toContain("answered 36 of 42 questions");
   });
 
   it("on the up route with every one of its 42 answers in waits to be scored: no continue reminder", async () => {
@@ -96,7 +96,7 @@ describe("a stopped test, as the reminder job reads it", () => {
   it("falls back to the band length (36 for grade 4) while the route is not chosen", async () => {
     const { state, due } = await remindersFor(mayaTables(null, 10));
     expect(due).toMatchObject([{ kind: "continue" }]);
-    expect(reminderMessage(due[0], "tok", state, ORIGIN)?.text).toContain("after 10 of 36 questions");
+    expect(reminderMessage(due[0], "tok", state, ORIGIN)?.text).toContain("answered 10 of 36 questions");
   });
 });
 

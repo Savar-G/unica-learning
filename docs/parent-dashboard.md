@@ -33,6 +33,10 @@ What a name change updates, because these read `children.first_name` when they s
 
 What it does not update: a workbook draft or shipped workbook already made (its pages, page ids, images and PDF print the old name, so an unshipped draft ships with the old name unless an admin makes a new one), and an email already sent, with its copy in `email_copies`. A call's stored trace (admins only) hides only the exact name the child had during the call, as before; the note hides every name.
 
+## The family delete (#556)
+
+The Account tab's delete and its route follow the same switch: the route answers 404 for a family the switch does not open to. The confirmation is `/family-deleted`, outside the account pages, because the session has ended. The privacy and terms pages are worded to stay true while the switch is off: they say "if your account page offers it". See `docs/assessment-deletion.md`.
+
 ## Adding a tab's page
 
 A tab with no page does not appear. When a ticket builds a tab's page, change that tab's line in `TAB_PAGE` in `src/lib/parent-shell.ts`. The stage rule (`src/lib/child-stage.ts`) still decides which tabs a child may have.

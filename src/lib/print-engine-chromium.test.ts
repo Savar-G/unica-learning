@@ -6,7 +6,7 @@ import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import { renderMonthlySummary } from "@/lib/monthly-summary";
 import type { MonthlySummaryView } from "@/lib/parent-view";
-import { chromiumPrintEngine, findChromium } from "@/lib/print-engine-chromium";
+import { browserStartPlan, chromiumPrintEngine, findChromium, startBrowser } from "@/lib/print-engine-chromium";
 import { renderWorkbook, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleDraft } from "@/lib/workbook-sample";
 import { fixedTemplate } from "@/lib/workbook-template-fixed";
@@ -21,6 +21,49 @@ const PARENT = "11111111-1111-4111-8111-111111111111";
 const CHILD = "22222222-2222-4222-8222-222222222222";
 const WORKBOOK = "55555555-5555-4555-8555-555555555555";
 const TOKENS = ["Xq3vR8kLm2NpT7wYzA4bCd", "Ht6sJ9uEo1GiK5lMnB8vFr", "Wp2cQ7xZa4DyS0eR3tUgLk"];
+
+describe("starting Chromium on a busy machine", () => {
+  const noWait = async () => {};
+  const { waitsMs } = browserStartPlan({});
+
+  it("tries again when Chromium does not start, and uses the browser that started", async () => {
+    let tries = 0;
+    const waits: number[] = [];
+    const browser = await startBrowser(async () => {
+      tries++;
+      if (tries === 1) throw new Error("Failed to launch the browser process:  Code: null");
+      if (tries === 2) throw new Error("Timed out after 30000 ms while waiting for the WS endpoint URL to appear in stdout!");
+      return "browser";
+    }, waitsMs, async (ms) => { waits.push(ms); });
+    expect(browser).toBe("browser");
+    expect(tries).toBe(3);
+    expect(waits).toEqual([5_000, 15_000]);
+  });
+
+  it("gives the last error after the last try", async () => {
+    let tries = 0;
+    await expect(startBrowser(async () => { tries++; throw new Error(`no start ${tries}`); }, waitsMs, noWait)).rejects.toThrow("no start 3");
+    expect(tries).toBe(3);
+  });
+
+  it("starts once when the first try works", async () => {
+    let tries = 0;
+    await expect(startBrowser(async () => ++tries, waitsMs, noWait)).resolves.toBe(1);
+  });
+
+  it("gives a Vercel function one try inside its time limit, and the Mac 3 longer tries", async () => {
+    const server = browserStartPlan({ VERCEL: "1" });
+    expect(server).toEqual({ timeoutMs: 30_000, waitsMs: [0] });
+    let tries = 0;
+    await expect(startBrowser(async () => { tries++; throw new Error("no start"); }, server.waitsMs, noWait)).rejects.toThrow("no start");
+    expect(tries).toBe(1);
+    const mac = browserStartPlan({});
+    expect(mac.timeoutMs).toBe(120_000);
+    expect(mac.waitsMs).toHaveLength(3);
+    // A function can begin printing with 150 s left, so its one start must fit in that.
+    expect(server.timeoutMs).toBeLessThan(150_000);
+  });
+});
 
 const chromium = await findChromium();
 const draft = () => sampleDraft({ workbookId: WORKBOOK, childId: CHILD, qrTokens: TOKENS });
