@@ -26,9 +26,7 @@
 // key goes to the solve check (src/lib/workbook-solve-check.ts) in the generator.
 // Pure TypeScript: no Next.js, React, network, database, clock or randomness.
 import { BC_SKILL_MAP } from "@/lib/assessment";
-import type { StepReference } from "@/lib/workbook-print-contract";
-import type { Curriculum } from "@/lib/workbook-curriculum";
-import { selectHandBuiltStep } from "@/lib/workbook-step-items";
+import type { StepDeclaration, StepReference } from "@/lib/workbook-print-contract";
 import { isNumberStory } from "@/lib/workbook-code-story";
 import { readNumbers } from "@/lib/number-words";
 import { defaultItem, figureCount } from "@/lib/question-package-items";
@@ -621,7 +619,8 @@ export interface BuiltQuestion {
   package: QuestionPackage | null;
   /** The worked step ids of the AI's operation, when it is valid: the names a wrong answer's step may use. */
   stepIds: string[];
-  /** Code's selection from this slot's skill, after its printed numbers are known. */
+  /** Only a step-specific builder can declare the step it was asked to build. */
+  stepDeclaration?: StepDeclaration;
   itemStep?: StepReference | null;
   itemStepReason?: string | null;
   /**
@@ -638,8 +637,6 @@ export function selectedItemStep(pkg: QuestionPackage | null, selected: StepRefe
 
 /** Where a slot's question goes, and what the plan lets it be. */
 export interface SlotPlace {
-  /** Code's curriculum and the builder's requested step. No field from the writer can supply these. */
-  stepSelection?: { curriculum: Curriculum; step?: number };
   /** Trusted declarations from code or an approved question type. Raw AI fields cannot supply these. */
   givens?: readonly CoinGiven[];
   /** The package's stable id. */
@@ -718,18 +715,9 @@ export function buildQuestion(given: unknown, place: SlotPlace): BuiltQuestion {
   const raw: unknown = twoWaysCode(given, place);
   try {
     const made = build(raw, place);
-    if (made.package && place.stepSelection) {
-      const pkg = made.package;
-      const numbers = pkg.item?.checks.flatMap(c => c.kind === "places" ? [c.number]
-        : c.kind === "order" ? c.numbers.map(n => n.type === "number" ? n.value : NaN) : []) ?? [];
-      // build() accepted this skill only from the slot's code-owned skills. Search that skill alone.
-      const selection = selectHandBuiltStep(place.stepSelection.curriculum, {
-        skill: pkg.skill.skills[0] ?? "", numbers,
-        operation: pkg.operation ? { kind: pkg.operation.kind, operands: pkg.operation.operands.map(n => typeof n === "number" ? n : NaN) } : null,
-      }, place.stepSelection.step);
-      made.itemStep = selection.itemStep;
-      made.itemStepReason = selection.reason;
-    }
+    // This generic builder was given a skill and arithmetic, not a step-specific construction request.
+    made.itemStep = null;
+    made.itemStepReason = "The generic item builder has no declared curriculum step.";
     // (A minus prints as "−" whoever wrote the text, the U16 r14 review.)
     const built = made.package ? { ...made, package: { ...made.package, text: printedMinus(made.package.text) }, ...(made.wordings ? { wordings: made.wordings.map(printedMinus) } : {}) } : made;
     if (built.check.status === "failed" || !built.package || !isObject(raw)) return built;

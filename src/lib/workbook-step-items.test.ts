@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { checkQuestionPackage, type ItemCheck } from "@/lib/question-package";
 import { BC_CURRICULUM, curriculumFor, curriculumFromData } from "@/lib/workbook-curriculum";
-import { buildStepItem, choicesFor, handBuiltStep, selectHandBuiltStep, sequenceOf, stepBounds, stepOf, stepRangeProblem, stepRank, stepTemplateItem, templateProblem } from "@/lib/workbook-step-items";
+import { buildStepItem, choicesFor, sequenceOf, stepBounds, stepOf, stepRangeProblem, stepRank, stepTemplateItem, templateProblem } from "@/lib/workbook-step-items";
 import { itemNumber, planItem } from "@/lib/workbook-item-plan";
 import { buildQuestion, selectedItemStep, type AiItem } from "@/lib/workbook-generator-items";
 
@@ -11,52 +11,52 @@ const place = (level: number, skill: string) => ({ id: "q1", workbookId: "000000
 const item = (skill: string, step: number, slot: Parameters<typeof stepTemplateItem>[0]["place"], seed = 1, attempt = 0, level = 4) =>
   stepTemplateItem({ curriculum: BC, skill, step, place: slot, level, day: 1, seed, attempt, ordinal: 0 });
 
-describe("hand-built tested-step selection (#597)", () => {
-  const fact = (skill: string, kind: "add" | "subtract" | "multiply" | "divide", a: number, b: number): AiItem => ({
+describe("step declarations (#597)", () => {
+  const fact = (skill: string, kind: "add" | "subtract", a: number, b: number, text: string): AiItem => ({
     ...planItem({ skill: "4.8-multiplication-facts", slot: "1.1", level: 16, day: 1, ordinal: 1, range: { min: 2, max: 100, pictures: false, help: "none" } })!.item,
-    skill, operation: { kind, operands: [itemNumber(a), itemNumber(b)], expression: null, unit: null, denominator: null, values: [] },
+    skill, text, format: "write-number",
+    wrongAnswers: [{ value: itemNumber((kind === "add" ? a + b : a - b) + 1), cause: "careless", description: "One more than the answer.", step: null }],
+    easier: { text: kind === "add" ? "2 + 1 = ?" : "5 − 2 = ?", operation: { kind, operands: [itemNumber(kind === "add" ? 2 : 5), itemNumber(kind === "add" ? 1 : 2)], expression: null, unit: null, denominator: null, values: [] } },
+    operation: { kind, operands: [itemNumber(a), itemNumber(b)], expression: null, unit: null, denominator: null, values: [] },
   });
 
   it.each([
-    ["5.8-extend-facts", "add", 300, 400, 1], ["5.8-extend-facts", "subtract", 9000, 4000, 2],
-    ["5.8-extend-facts", "add", 1000, 1000, 1],
-    ["4.8-multiplication-facts", "multiply", 7, 3, 2], ["4.8-division-facts", "divide", 56, 7, 3],
-    ["5.9-recall-facts", "multiply", 6, 4, 1], ["5.9-recall-facts", "divide", 36, 4, 2],
-    ["4.7-addition-facts-fluency", "add", 6, 7, 1], ["3.4-subtraction-facts-20", "subtract", 18, 9, 1],
-    ["3.9-area-square-units", "add", 3, 4, 2], ["4.4-subtract-within-10000", "subtract", 1010, 17, 5],
-    ["K5-two-more-less", "subtract", 8, 2, 2],
-  ] as const)("keeps %s %s %s,%s on its true step %s", (skill, kind, a, b, step) => {
-    expect(handBuiltStep(BC, fact(skill, kind, a, b))).toEqual({ unit: BC.skill(skill)!.unit, skill, step });
+    ["3.9-area-square-units", "add", 3, 4, "Amy has 3 crayons. She finds 4 more. How many crayons does she have now?"],
+    ["5.8-extend-facts", "subtract", 190, 100, "190 − 100 = ?"],
+    ["5.8-extend-facts", "subtract", 150, 100, "150 − 100 = ?"],
+  ] as const)("does not infer a step for %s %s(%s,%s)", (skill, kind, a, b, text) => {
+    // A stale caller's old selection settings must not turn generic arithmetic into provenance.
+    const legacyPlace = { ...place(16, skill), preserveText: true, stepSelection: { curriculum: BC } };
+    const built = buildQuestion(fact(skill, kind, a, b, text), legacyPlace);
+    expect(built.check.status, JSON.stringify(built.check)).toBe("checked");
+    expect(built.package!.text).toBe(text);
+    expect(built.itemStep).toBeNull();
+    expect(built.stepDeclaration).toBeUndefined();
+    expect(built.itemStepReason).toContain("no declared curriculum step");
   });
 
-  it("leaves mislabeled writer tasks and facts with no true step excluded", () => {
-    for (const candidate of [fact("5.8-extend-facts", "add", 56, 15), fact("5.8-extend-facts", "add", 60, 70), fact("3.9-area-square-units", "add", 65, 5)]) {
-      expect(handBuiltStep(BC, candidate)).toBeNull();
+  it.each([["3.9-area-square-units", 2], ["5.8-extend-facts", 1]] as const)("keeps the exact requested template step %s#%s", (skill, step) => {
+    const filled = Array.from({ length: 20 }, (_, i) => item(skill, step, "practice-row", i + 1, 0, 16)).find(x => x?.ref.format === "bare")!;
+    expect(filled).toBeTruthy();
+    const built = buildStepItem(filled.ref, filled.text, place(16, skill), "code");
+    expect(built.check.status).toBe("checked");
+    expect(built.stepDeclaration).toEqual({ source: "template", reference: { unit: BC.skill(skill)!.unit, skill, step } });
+    expect(built.itemStep).toEqual(built.stepDeclaration!.reference);
+    if (skill === "3.9-area-square-units") expect(built.package!.text).toMatch(/area|squares/i);
+    else {
+      const numbers = [...built.package!.text.matchAll(/\d[\d,]*/g)].map(m => Number(m[0].replace(/,/g, "")));
+      expect(numbers.length).toBeGreaterThanOrEqual(2);
+      expect(numbers.every(n => n % 100 === 0)).toBe(true);
     }
   });
 
-  it("selects the place-value step from code's candidate and ignores a writer's reference", () => {
-    const candidate = planItem({ skill: "5.1-place-value-million", slot: "1.1", level: 16, day: 1, ordinal: 1, range: { min: 700000, max: 700000, pictures: false, help: "none" } })!.item;
-    const selected = handBuiltStep(BC, candidate);
-    expect(selected).toEqual({ unit: "5.1", skill: candidate.skill, step: 2 });
-    const built = buildQuestion({ ...candidate, itemStep: { unit: "wrong", skill: "wrong", step: 99 } }, { ...place(16, candidate.skill), stepSelection: { curriculum: BC } });
-    expect(built.check.status).toBe("checked");
-    expect(built.itemStep).toEqual(selected);
-    expect(selectedItemStep(built.package, selected)).toEqual(selected);
+  it("ignores a declaration supplied by the writer", () => {
+    const raw = fact("5.8-extend-facts", "subtract", 190, 100, "190 − 100 = ?");
+    const injected = { unit: "5.8", skill: raw.skill, step: 1 };
+    const built = buildQuestion({ ...raw, itemStep: injected, stepDeclaration: { source: "code", reference: injected } }, { ...place(16, raw.skill), preserveText: true });
+    expect(built.itemStep).toBeNull();
+    expect(built.stepDeclaration).toBeUndefined();
     expect(selectedItemStep(built.package, null)).toBeNull();
-    expect(selectedItemStep(built.package, { unit: "4.8", skill: "4.8-multiplication-facts", step: 1 })).toBeNull();
-  });
-
-  it("reads the selected skill's current ranges and keeps the builder's requested step", () => {
-    const candidate = fact("5.8-extend-facts", "add", 1000, 1000);
-    expect(handBuiltStep(BC, candidate, 2)).toEqual({ unit: "5.8", skill: candidate.skill, step: 2 });
-    const custom = { ...BC, skillSteps: (id: string) => id === candidate.skill ? BC.skillSteps(id)!.map(s => s.number === 1
-      ? { ...s, numbers: { operand1: { min: 1, max: 99 }, operand2: { min: 1, max: 99 } } } : s) : BC.skillSteps(id) };
-    expect(handBuiltStep(custom, fact(candidate.skill, "add", 56, 15))).toEqual({ unit: "5.8", skill: candidate.skill, step: 1 });
-    const rejected = selectHandBuiltStep(BC, { skill: candidate.skill, operation: { kind: "add", operands: [56, 15] }, numbers: [] });
-    expect(rejected.itemStep).toBeNull();
-    expect(rejected.reason).toContain('"min":100,"max":2000');
-    expect(selectHandBuiltStep(BC, { skill: "", operation: null, numbers: [] }).reason).toContain("No trusted skill");
   });
 });
 

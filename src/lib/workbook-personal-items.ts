@@ -5,6 +5,8 @@
 // gives today's answer. Pure: no network, database, clock or randomness.
 import { FACTS_BY_GRADE, factsCoverage, type FactFamilyId } from "@/lib/assessment";
 import type { Curriculum, CurriculumStep } from "@/lib/workbook-curriculum";
+import { domainContains } from "@/lib/workbook-curriculum/template";
+import type { StepDeclaration } from "@/lib/workbook-print-contract";
 import { levelMistakes, samAnswer, type SamMistake } from "@/lib/workbook-book";
 import { verifiedWatchOut as acceptedPair } from "@/lib/workbook-curriculum/watch-out";
 import { samMistakeFor } from "@/lib/workbook-mistake-map";
@@ -166,6 +168,25 @@ export interface WarmUpFact {
   kind: "add" | "subtract" | "multiply" | "divide";
   operands: [number, number];
   text: string;
+  /** Present only when the step-specific generator constructed this fact from the requested step. */
+  declaration?: StepDeclaration;
+}
+
+/** Build the requested mixed-multiplication step, using its own operand and result domains. */
+function recallMultiplicationFact(step: CurriculumStep, unit: string, tables: readonly number[], seed: number): WarmUpFact | null {
+  const { operand1, operand2, result } = step.numbers ?? {};
+  if (step.skill !== "5.9-recall-facts" || step.number !== 1 || !operand1 || !operand2 || !result || !tables.length) return null;
+  const left = seed % 2 ? operand1 : operand2;
+  const right = seed % 2 ? operand2 : operand1;
+  const stepTables = tables.filter(t => domainContains(right, BigInt(t)));
+  if (!stepTables.length) return null;
+  const t = stepTables[seed % stepTables.length];
+  const factors = Array.from({ length: 9 }, (_, i) => i + 2).filter(f => domainContains(left, BigInt(f)) && domainContains(result, BigInt(t * f)));
+  if (!factors.length) return null;
+  const f = factors[Math.floor(seed / stepTables.length) % factors.length];
+  const operands: [number, number] = seed % 2 ? [f, t] : [t, f];
+  return { skill: step.skill, kind: "multiply", operands, text: `${operands[0]} × ${operands[1]} = ?`,
+    declaration: { source: "warm-up", reference: { unit, skill: step.skill, step: step.number } } };
 }
 
 /**
@@ -184,6 +205,12 @@ export function warmUpFact(curriculum: Curriculum, plan: Plan, skill: string, se
       const t = tables[n % tables.length], f = 2 + (Math.floor(n / tables.length) % 9);
       fact = kind === "multiply" ? (n % 2 ? { skill, kind, operands: [f, t], text: `${f} × ${t} = ?` } : { skill, kind, operands: [t, f], text: `${t} × ${f} = ?` })
         : { skill, kind, operands: [t * f, t], text: `${t * f} ÷ ${t} = ?` };
+      // This branch requests an exact step before construction. Other family builders make no step declaration.
+      if (skill === "5.9-recall-facts" && kind === "multiply") {
+        const requested = curriculum.skillSteps(skill)?.find(s => s.number === 1);
+        const unit = curriculum.skill(skill)?.unit;
+        if (requested && unit) fact = recallMultiplicationFact(requested, unit, tables, n) ?? fact;
+      }
     } else if (kind === "extend") {
       fact = n % 2 ? { skill, kind: "subtract", operands: [(a + b) * 10, b * 10], text: `${(a + b) * 10} − ${b * 10} = ?` } : { skill, kind: "add", operands: [a * 10, b * 10], text: `${a * 10} + ${b * 10} = ?` };
     } else fact = kind === "add" ? { skill, kind, operands: [a, b], text: `${a} + ${b} = ?` } : { skill, kind, operands: [a + b, b], text: `${a + b} − ${b} = ?` };

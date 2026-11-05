@@ -83,8 +83,8 @@ import { cardFrame, cardFrameProblem, cardNumbers, type CardFrameUse, largestNum
 import { COMPACT_STORY_FRAMES } from "@/lib/workbook-story-bank";
 import { childSamMistakes, difficultyDay, daySchedule, INTEREST_SHARE, interestEligible, interestShareProblems, interestWords, printsInterest, shortStories, SHORT_STORY_WORDS, storyThings, styleKinds, templateSpotShown, warmUpFact, warmUpShareProblems, warmUpSkill, type WarmUpFact } from "@/lib/workbook-personal-items";
 import { isTwoStep } from "@/lib/workbook-curriculum/house-templates";
-import { buildStepItem, challengeTemplateCount, handBuiltStep, hasHardNumberTemplate, NO_TEMPLATE_PLACES, STEP_STORY_PLACES, stepAiItem, stepBounds, stepOf, stepRank, stepTemplateItem, stepTemplateOf, sumTemplate, templateProblem } from "@/lib/workbook-step-items";
-import type { StepReference } from "@/lib/workbook-print-contract";
+import { buildStepItem, challengeTemplateCount, hasHardNumberTemplate, NO_TEMPLATE_PLACES, STEP_STORY_PLACES, stepAiItem, stepBounds, stepOf, stepRank, stepTemplateItem, stepTemplateOf, sumTemplate, templateProblem } from "@/lib/workbook-step-items";
+import type { StepDeclaration, StepReference } from "@/lib/workbook-print-contract";
 
 /** A replacement must retain the practice page's own-step minimum before it can borrow review work. */
 function needsOwnPractice(input: GenerateInput, w: PageWork, slot: Slot): boolean {
@@ -191,7 +191,7 @@ function templateContractFor(input: GenerateInput, w: PageWork, slot: Slot, atte
     if (count && !Array.isArray(count)) {
       const r = count as { min: number; max: number };
       const planned = planItem({ skill: at.skill, slot: slot.id, level, day: w.day, ordinal: w.number * 31 + ordinal + 1, attempt, range: { min: r.min, max: r.max, pictures: false, help: "none" } });
-      if (planned?.type === "count" && planned.numbers[0] >= r.min && planned.numbers[0] <= r.max) return { ...planned, itemStep: { unit: input.curriculum.skill(at.skill)!.unit, skill: at.skill, step: at.step } };
+      if (planned?.type === "count" && planned.numbers[0] >= r.min && planned.numbers[0] <= r.max) return planned;
     }
   }
   const panel = /^e\d+$/.test(slot.id);
@@ -530,9 +530,7 @@ function contractFor(input: GenerateInput, w: PageWork, slot: Slot, attempt = 0,
     if (candidate) return candidate;
   }
   if (!planned) return null;
-  const itemStep = handBuiltStep(input.curriculum, planned.item, own?.number);
-  const selected = itemStep ? { ...planned, itemStep } : planned;
-  return slot.interest ? withInterestNoun(input, w, slot, selected, attempt) : selected;
+  return slot.interest ? withInterestNoun(input, w, slot, planned, attempt) : planned;
 }
 
 /**
@@ -682,6 +680,7 @@ export interface GeneratedQuestion {
   itemPlan?: ItemPlan;
   /** Code's tested-step selection, kept with the generated question for the permanent print contract. */
   itemStep?: StepReference | null;
+  stepDeclaration?: StepDeclaration;
   itemStepReason?: string | null;
   /** This skill still uses the existing writer until its approved builder exists. */
   existing?: boolean;
@@ -959,7 +958,6 @@ interface Slot {
   interest?: boolean;
   /** G1 (item 4): the warm-up fact code chose from the child's fact family; the writer is not asked for it. */
   fact?: WarmUpFact;
-  factStep?: StepReference | null;
   /**
    * G1 (item 3): this Spot the error slot may show the child's own mistake. The day's allowance (once a day) goes to the
    * first slot, in book order, whose sum admits a verified mistake; a slot whose sum does not admit it passes it on.
@@ -1132,7 +1130,7 @@ function planBook(input: GenerateInput, work: PageWork[]) {
       if (fact) slot.aim = { skill: fact, kind: "fact", orElse: [] };
       // (A warm-up fact is code's: its operation and operands come from the aimed family, never from the writer.)
       const chosen = fact && slot.place === "warm-up" ? warmUpFact(curriculum, plan, fact, hashOf(`${w.day}:${w.page.number}:${slot.id}`) % 997, pageFacts) : null;
-      if (chosen) { slot.fact = chosen; slot.factStep = handBuiltStep(curriculum, factItem(slot.id, chosen)); pageFacts.add(chosen.text); }
+      if (chosen) { slot.fact = chosen; pageFacts.add(chosen.text); }
       if (slot.place === "spot-the-error") {
         // Sam's sum: on the slot's skill with the widest range, so the sum fits each of its rules.
         const skill = [...slot.part.skills].sort((a, b) => skillRange(curriculum, plan.level, b).max - skillRange(curriculum, plan.level, a).max)[0];
@@ -1781,7 +1779,6 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
     const c = contracts.get(slot.id);
     const builder = input.itemPolicy === "approved-v1" && !slot.existing ? (raw: unknown, place: Parameters<typeof buildQuestion>[1]) => c ? buildPlannedItem(c, raw, place) : unapprovedBuild() : buildQuestion;
     const b = builder(shortSequence(out.items.get(slot.id), input.plan.level), {
-      stepSelection: { curriculum: input.curriculum, step: c?.itemStep?.step },
       id: `${input.workbookId}:d${w.day}p${w.page.number}s${slot.id}`,
       // A step template item's skill is its step's (a story page's reviewed step, a Challenge's stretch, a taught step
       // when the page's own tasks ran out): code picked it, so the place allows it.
@@ -1991,14 +1988,19 @@ function rewordRepeat(input: GenerateInput, b: BuiltQuestion, slot: Slot, memory
   return again.check.status === "failed" ? b : again;
 }
 
-const generated = (w: PageWork, i: number, b: BuiltQuestion, attempts: GeneratedQuestion["attempts"]): GeneratedQuestion => ({
-  number: i + 1, slot: w.slots[i].id, part: w.slots[i].part.kind, ...(w.slots[i].place ? { place: w.slots[i].place! } : {}), check: b.check, attempts, package: b.package,
-  ...(w.slots[i].contract ? { itemPlan: structuredClone(w.slots[i].contract!) } : {}),
-  itemStep: selectedItemStep(b.package, b.itemStep !== undefined ? b.itemStep : w.slots[i].contract?.itemStep ?? w.slots[i].factStep),
-  itemStepReason: b.itemStepReason ?? null,
-  ...(w.slots[i].existing ? { existing: true } : {}),
-  ...(!w.slots[i].contract && b.package && b.wordings?.includes(b.package.text) ? { codeText: b.package.text } : {}),
-});
+const generated = (w: PageWork, i: number, b: BuiltQuestion, attempts: GeneratedQuestion["attempts"]): GeneratedQuestion => {
+  const fact = w.slots[i].fact;
+  const declared = fact?.declaration ?? b.stepDeclaration;
+  const itemStep = selectedItemStep(b.package, declared?.reference);
+  return {
+    number: i + 1, slot: w.slots[i].id, part: w.slots[i].part.kind, ...(w.slots[i].place ? { place: w.slots[i].place! } : {}), check: b.check, attempts, package: b.package,
+    ...(w.slots[i].contract ? { itemPlan: structuredClone(w.slots[i].contract!) } : {}),
+    itemStep, ...(itemStep && declared ? { stepDeclaration: structuredClone(declared) } : {}),
+    itemStepReason: itemStep ? null : fact ? "The G1 family builder did not declare a curriculum step." : b.itemStepReason ?? "No step-specific builder declared this item.",
+    ...(w.slots[i].existing ? { existing: true } : {}),
+    ...(!w.slots[i].contract && b.package && b.wordings?.includes(b.package.text) ? { codeText: b.package.text } : {}),
+  };
+};
 
 /** What to do about a failed check, said plainly for the redo; null when the reason says it all. */
 function hintFor(reason: string): string | null {
@@ -2766,7 +2768,7 @@ function layOut(input: GenerateInput) {
 export function bookOutline(input: GenerateInput): string {
   const { work, total } = layOut(input.book ? { ...input, book: { child: "" } } : input);
   return digestOf({
-    number: input.number, level: input.plan.level, total, laidOut: !!input.book, ...(input.itemPolicy === "approved-v1" ? { itemPipeline: { version: 5, examples: ITEM_EXAMPLES, compactExamples: COMPACT_STORY_FRAMES } } : {}),
+    number: input.number, level: input.plan.level, total, laidOut: !!input.book, ...(input.itemPolicy === "approved-v1" ? { itemPipeline: { version: 6, examples: ITEM_EXAMPLES, compactExamples: COMPACT_STORY_FRAMES } } : {}),
     pages: work.map((w) => ({
       number: w.number, day: w.day, page: w.page.number, type: w.page.type, layout: w.layout, panels: w.panels,
       slots: w.slots.map((x) => ({
@@ -3703,7 +3705,6 @@ export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDep
       throw new Error("Stories print the generator's own wording. Change the numbers or regenerate the question instead.");
     const builder = input.itemPolicy === "approved-v1" && !slot.existing ? (raw: unknown, place: Parameters<typeof buildQuestion>[1]) => slot.contract ? buildPlannedItem(slot.contract, raw, place) : unapprovedBuild() : buildQuestion;
     const b = builder(raw, { id: q.package?.id ?? `${input.workbookId}:p${page.number}q${q.number}`,
-      stepSelection: { curriculum: input.curriculum, step: slot.contract?.itemStep?.step },
       workbookId: input.workbookId, page: page.number, question: q.number, level: input.plan.level,
       skills: slot.contract ? [...new Set([slot.contract.item.skill, ...slot.part.skills])] : slot.part.skills, signs: skillSigns(input.curriculum, input.plan.level, slot.contract ? slot.contract.item.skill : slot.part.skills[0]), story: !!slot.place && STORY_CHECK_PLACES.has(slot.place) });
     if (b.package && typeof raw.text === "string") {

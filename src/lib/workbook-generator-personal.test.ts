@@ -105,7 +105,7 @@ describe("G1 persona books", () => {
         const excluded = all.filter(t => !t?.eligibility.mastery).length;
         expect(report).toContain(`| All | ${all.length} | ${excluded} |`);
         expect(report.split("### Each excluded item")[1].split("\n").filter(line => /^\| \d+ \| \d+ \|/.test(line))).toHaveLength(excluded);
-        expect(report).toContain("Operand ranges:");
+        expect(report).toContain("declared curriculum step");
       }
       // No personal choice fails a question the same plan's book without them passes.
       const failed = (d: GeneratedWorkbook) => d.pages.flatMap((p) => p.questions.filter((q) => q.check.status === "failed").map((q) => `${p.type} d${p.day} ${q.place}: ${(q.check as { reason: string }).reason}`)).sort();

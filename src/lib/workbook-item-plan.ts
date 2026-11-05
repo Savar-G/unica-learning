@@ -8,7 +8,6 @@ import { checkQuestionPackage } from "./question-package";
 import { LIKELIHOOD_EVENTS } from "./workbook-likelihood-bank";
 import { STORY_FRAMES, COMPACT_STORY_FRAMES } from "./workbook-story-bank";
 import { buildStepItem, type StepTemplateRef } from "./workbook-step-items";
-import type { StepReference } from "./workbook-print-contract";
 
 /** An approved hand-built type, or "template": a question filled from its step's templates (#489). */
 export type QuestionType = keyof typeof approvedSkills | "template";
@@ -23,8 +22,6 @@ export interface ItemPlan {
   textBudget?: { lines: number; perLine: number; characters: number };
   /** #489: the step template the item was filled from; absent on a hand-built item. */
   template?: StepTemplateRef;
-  /** The tested step selected with a hand-built item. Absent when no true step is known. */
-  itemStep?: StepReference;
 }
 
 export function itemTextLines(text: string, perLine: number): number {
@@ -344,8 +341,6 @@ export function buildPlannedItem(plan: ItemPlan, raw: unknown, place: SlotPlace)
   // (The writer edits no story text, Savar 2026-11-04 B1: code's planned text prints, whatever came back.)
   const text = plan.source === "explain" ? item.text : plan.item.text;
   const built = buildQuestion({ ...plan.item, text }, { ...place, preserveText: true });
-  // The builder was asked for this exact selected step, and the contract above checked its fixed math.
-  if (plan.itemStep) { built.itemStep = { ...plan.itemStep }; built.itemStepReason = null; }
   if (!built.package) return built;
   // Reuse existing circle, picture and region support. These tasks are checked
   // by the parent: there is no false claim that code can check a coloured scan.
