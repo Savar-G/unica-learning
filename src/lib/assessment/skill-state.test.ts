@@ -125,6 +125,22 @@ describe("the skill state of a BC standard", () => {
         .toMatchObject({ state: "mastered", reason: "held_on_review" });
       expect(stateOf({ tests: [...failed, test(5, 5, 9)], marks: [review(false, 2)] })).toMatchObject({ state: "mastered", reason: "secure_on_test" });
     });
+
+    it("keeps the failed review when a newer Clear test is not Secure, also with the standard in the workbook", () => {
+      // Mastered on day 10, wrong on review on day 11, Developing with Clear certainty on day 12.
+      const tests = [test(5, 5, 10), test(3, 5, 12)];
+      const marks = [review(false, 11)];
+      expect(stateOf({ tests, marks, workbookStandards: [CODE] })).toEqual({ standard: CODE, state: "needs_review", reason: "failed_review", evidence: "pages" });
+      expect(stateOf({ tests, marks })).toMatchObject({ state: "needs_review", reason: "failed_review" });
+      expect(stateOf({ tests: [test(5, 5, 10), test(0, 2, 12)], marks })).toMatchObject({ state: "needs_review", reason: "failed_review" });
+    });
+
+    it("reads a review against the test results before it, not only the newest", () => {
+      // Mastered on day 10, then a newer Developing, Clear test on day 11: a wrong review on day 12 is not a failed one.
+      expect(stateOf({ tests: [test(5, 5, 10), test(3, 5, 11)], marks: [review(false, 12)] })).toMatchObject({ state: "not_started", reason: "developing_on_test" });
+      // Mastered on day 10, wrong on review on day 11, Mastered again on day 12.
+      expect(stateOf({ tests: [test(5, 5, 10), test(5, 5, 12)], marks: [review(false, 11)] })).toMatchObject({ state: "mastered", reason: "secure_on_test" });
+    });
   });
 
   describe("when two rules fit", () => {

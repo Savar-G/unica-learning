@@ -12,8 +12,11 @@
 // 5. Not started: everything else, also an Early sign result.
 //
 // Choices the spec leaves open:
-// - The test result of a standard is that of the newest test with a Clear result on it. An Early sign never replaces a
-//   Clear result, because one more answer could change it. With no Clear result, the newest result gives the reason.
+// - The rule replays every test result and mark of the standard by date before it applies the order above, so a newer
+//   test does not wipe out what happened before it. A Clear test result turns Mastered from the test on (Secure) or off
+//   (not Secure). An Early sign never replaces a Clear result, because one more answer could change it.
+// - For rules 4 and 5, the test result of a standard is that of the newest test with a Clear result on it. With no
+//   Clear result, the newest result gives the reason.
 // - After a failed review, the standard stays Needs review until Mastered is earned again: by a newer Secure and Clear
 //   test, or by the page rule with a later review item that is right.
 import { STRAND_SECURE_PERCENT, atLeast } from "./constants";
@@ -94,22 +97,31 @@ function testResultOf(results: readonly SkillTestResult[]): SkillTestResult | nu
   return newest.find((r) => strandCertainty(r.correct, r.total) === "clear") ?? newest[0] ?? null;
 }
 
-const isSecureAndClear = (r: SkillTestResult | null): r is SkillTestResult =>
-  r !== null && strandStatus(r.correct, r.total) === "secure" && strandCertainty(r.correct, r.total) === "clear";
+const isSecureAndClear = (r: SkillTestResult): boolean =>
+  strandStatus(r.correct, r.total) === "secure" && strandCertainty(r.correct, r.total) === "clear";
 
-/** Walks the Secure and Clear test and the marks by date: is the standard Mastered at the end, or did it fail a review? */
-function masteryOf(test: SkillTestResult | null, marks: readonly SkillMark[]): "failed_review" | "secure_on_test" | "held_on_review" | null {
-  // The test first, so it counts before a mark at the same time.
-  const steps = [...(isSecureAndClear(test) ? [{ at: test.at, mark: null }] : []), ...marks.map((mark) => ({ at: mark.at, mark }))]
-    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+/**
+ * Replays every test result and mark of the standard by date: is it Mastered at the end, or did it fail a review?
+ * A Clear test result sets Mastered from the test: on when Secure, off when not. An Early sign changes nothing. A
+ * failed review stays until Mastered is earned again, so a newer test that is not Secure does not clear it.
+ */
+function masteryOf(tests: readonly SkillTestResult[], marks: readonly SkillMark[]): "failed_review" | "secure_on_test" | "held_on_review" | null {
+  // Tests first, so a test counts before a mark at the same time.
+  const steps = [
+    ...tests.filter((t) => t.total > 0).map((test) => ({ at: test.at, test, mark: null })),
+    ...marks.map((mark) => ({ at: mark.at, test: null, mark })),
+  ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   let result: ReturnType<typeof masteryOf> = null;
   let right = 0;
   let total = 0;
-  for (const { mark } of steps) {
-    if (!mark) {
-      result = "secure_on_test";
+  for (const { test, mark } of steps) {
+    if (test) {
+      if (strandCertainty(test.correct, test.total) !== "clear") continue;
+      if (isSecureAndClear(test)) result = "secure_on_test";
+      else if (result === "secure_on_test") result = null;
       continue;
     }
+    if (!mark) continue;
     const mastered = result === "secure_on_test" || result === "held_on_review";
     // "Later": the results before this review item must meet the page rule.
     const pagesReady = total >= PAGE_MASTERY_MIN_RESULTS && atLeast(right, total, STRAND_SECURE_PERCENT);
@@ -121,11 +133,12 @@ function masteryOf(test: SkillTestResult | null, marks: readonly SkillMark[]): "
   return result;
 }
 
-function reasonOf(grade: number, schoolGrade: Grade, test: SkillTestResult | null, inWorkbook: boolean, marks: readonly SkillMark[]): { state: SkillState; reason: SkillStateReason } {
-  const mastery = masteryOf(test, marks);
+function reasonOf(grade: number, schoolGrade: Grade, tests: readonly SkillTestResult[], inWorkbook: boolean, marks: readonly SkillMark[]): { state: SkillState; reason: SkillStateReason } {
+  const mastery = masteryOf(tests, marks);
   if (mastery === "failed_review") return { state: "needs_review", reason: mastery };
   if (mastery) return { state: "mastered", reason: mastery };
   if (inWorkbook) return { state: "working_on", reason: "in_workbook" };
+  const test = testResultOf(tests);
   if (!test) return { state: "not_started", reason: "no_evidence" };
   if (strandCertainty(test.correct, test.total) === "early-sign") return { state: "not_started", reason: "early_sign_on_test" };
   if (strandStatus(test.correct, test.total) === "developing") return { state: "not_started", reason: "developing_on_test" };
@@ -137,8 +150,7 @@ function reasonOf(grade: number, schoolGrade: Grade, test: SkillTestResult | nul
 export function skillStates({ schoolGrade, tests, workbookStandards, marks }: SkillStateInput): StandardSkillState[] {
   const inWorkbook = new Set(workbookStandards);
   return BC_SKILL_MAP.standards.map(({ code, grade }) => {
-    const test = testResultOf(tests.filter((t) => t.standard === code));
-    const { state, reason } = reasonOf(grade, schoolGrade, test, inWorkbook.has(code), marks.filter((m) => m.standard === code));
+    const { state, reason } = reasonOf(grade, schoolGrade, tests.filter((t) => t.standard === code), inWorkbook.has(code), marks.filter((m) => m.standard === code));
     return { standard: code, state, reason, evidence: EVIDENCE[reason] };
   });
 }
