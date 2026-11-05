@@ -2,8 +2,36 @@
 // schema) and image input. Server only, and only with an OpenRouter API key. No SDK: one fetch per try, so tests fake
 // fetch. API: https://openrouter.ai/docs/api/reference/overview (read 2026-10-16).
 // provider.require_parameters: only providers that support every parameter sent (the JSON schema above all) get the
-// request. Which providers may train on inputs is an account setting on OpenRouter (#182), not a request field.
+// request.
+//
+// The route (D-282). Children's work and words go through this client, so every request carries its data policy, not
+// only the account settings (#182): `zdr: true` (zero data retention endpoints only) and `data_collection: "deny"` (no
+// provider that may train on inputs). A request for a Claude model (`anthropic/...` on OpenRouter) is pinned to Google
+// Vertex (`only` and `order`, with `allow_fallbacks: false`), so it never goes to another host of the same model. Vertex,
+// not Anthropic's own endpoint: OpenRouter's list of zero data retention endpoints (`/api/v1/endpoints/zdr`, read
+// 2026-11-05) has no endpoint hosted by Anthropic, so that pin would refuse every request; of the hosts it lists for
+// Claude Sonnet 5.5 and Haiku 5.5, Vertex alone supports `structured_outputs`, at the same price. When no allowed
+// endpoint can serve a request, OpenRouter answers 404 and the request fails with a plain message; nothing widens the
+// route. Whether Safety Retention endpoints may serve a ZDR request is an account setting on OpenRouter, not a request
+// field: it stays off (docs, AGENTS.md). Fields from https://openrouter.ai/docs/guides/routing/provider-selection and
+// https://openrouter.ai/docs/guides/features/zdr (read 2026-11-05). Live check: POST /api/admin/ai-route.
 import type { AiClient, AiJsonRequest, AiPart } from "@/lib/ai-client";
+
+/** OpenRouter's slug of the host of every Claude model here (D-282). */
+export const CLAUDE_PROVIDER = "google-vertex";
+
+/** A Claude model: pinned to `CLAUDE_PROVIDER`. */
+export const isClaudeModel = (model: string) => model.startsWith("anthropic/");
+
+/** The route in words, for an error message. */
+const routeWords = (model: string) => isClaudeModel(model) ? "Google Vertex only, zero data retention, no training" : "zero data retention, no training";
+
+/** The provider routing of every request for `model` (D-282). */
+export function providerRoute(model: string) {
+  const policy = { require_parameters: true, zdr: true, data_collection: "deny" as const };
+  if (!isClaudeModel(model)) return policy;
+  return { order: [CLAUDE_PROVIDER], only: [CLAUDE_PROVIDER], allow_fallbacks: false, ...policy };
+}
 
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 /** One request stops after this long. A time-out, a lost connection, a 408, a 429 or a 5xx gets one more try. */
@@ -26,7 +54,7 @@ function body(model: string, request: AiJsonRequest) {
       { role: "user", content: request.content.map(part) },
     ],
     response_format: { type: "json_schema", json_schema: { name: request.name, strict: true, schema: request.schema } },
-    provider: { require_parameters: true },
+    provider: providerRoute(model),
     ...(request.effort ? { reasoning: { effort: request.effort, exclude: true } } : {}),
   };
 }
@@ -52,7 +80,7 @@ const short = (s: unknown) => String(s ?? "").slice(0, 160);
 const retryableStatus = (status: number) => status === 408 || status === 429 || status >= 500;
 
 /** One try: the parsed JSON output, or an error. Error messages hold codes and OpenRouter's words, never the output. */
-async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: AbortSignal, timeout: number, onDispatch?: () => void): Promise<unknown> {
+async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: AbortSignal, timeout: number, route: string, onDispatch?: () => void): Promise<unknown> {
   let res: Response;
   try {
     const options = { ...init, signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]) };
@@ -69,6 +97,10 @@ async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: A
     data = JSON.parse(text) as Completion;
   } catch {
     data = null;
+  }
+  if (res.status === 404) {
+    // No endpoint meets the route (D-282). Never retried, never sent another way.
+    throw new Error(`OpenRouter has no endpoint for this request on the allowed route (${route}): 404 ${short(data?.error?.message ?? text)}`);
   }
   if (!res.ok) {
     const error = `OpenRouter answered ${res.status}: ${short(data?.error?.message ?? text)}`;
@@ -124,7 +156,7 @@ export function openRouterClient({
         await onRequest?.();
         if (signal.aborted) throw new Error("time is up");
         try {
-          return await once(fetch, init, signal, timeout, onDispatch);
+          return await once(fetch, init, signal, timeout, routeWords(model), onDispatch);
         } catch (e) {
           if (!(e instanceof Retryable) || attempt >= maxRetries || signal.aborted) throw e instanceof Retryable ? new Error(e.message) : e;
         }

@@ -4,21 +4,31 @@ import { voiceProviders } from "@/lib/maya-voice";
 import { FakeSTT, FakeTTS } from "./fake-providers";
 import { makeProviders } from "./providers";
 
-// Providers change by configuration only (#326, D-163, D-238): the same worker builds the fakes, LiveKit Inference, or
-// AssemblyAI and Inworld directly, from the environment. The real plugins are only constructed here (no network, no account): whether they work is
+// Providers change by configuration only (#326, D-163, D-238, D-284): the same worker builds LiveKit Inference (the
+// default), the fakes, or AssemblyAI and Inworld directly, from the environment. The real plugins are only constructed here (no network, no account): whether they work is
 // checked once the accounts exist (docs/maya-voice.md).
 
 initializeLogger({ pretty: false, level: "silent" });
 
 const build = async (env: Record<string, string>) => {
-  const config = voiceProviders({ MAYA_VOICE_PRIVACY_CONFIRMED: "assemblyai-optout,inworld-retention,livekit-inference-zdr,child-use-approved", ...env });
+  const config = voiceProviders({ MAYA_VOICE_PRIVACY_CONFIRMED: "assemblyai-optout,inworld-retention,livekit-inference-zdr", ...env });
   if (!config.ok) throw new Error(config.problems.join("; "));
   return { config, providers: await makeProviders(config) };
 };
 
 describe("the worker's providers", () => {
-  it("are the fakes with nothing set", async () => {
-    const { providers } = await build({});
+  it("are LiveKit Inference with nothing chosen (D-284)", async () => {
+    const { providers, config } = await build({ LIVEKIT_API_KEY: "test-key", LIVEKIT_API_SECRET: "test-secret", MAYA_VOICE: "Ashley" });
+    expect(config.ids).toEqual({ speechToText: "inference/assemblyai/universal-3-6-pro", voice: "inference/inworld/inworld-tts-2/Ashley" });
+    expect(providers.stt).toBeInstanceOf(inference.STT);
+    expect(providers.tts).toBeInstanceOf(inference.TTS);
+    expect(providers.fake).toBe(false);
+    await providers.tts.close();
+    await providers.stt.close();
+  });
+
+  it("are the fakes only when both are set to fake", async () => {
+    const { providers } = await build({ MAYA_STT: "fake", MAYA_TTS: "fake" });
     expect(providers.stt).toBeInstanceOf(FakeSTT);
     expect(providers.tts).toBeInstanceOf(FakeTTS);
     expect(providers.fake).toBe(true);
@@ -40,7 +50,7 @@ describe("the worker's providers", () => {
   });
 
   it("mix: a real speech-to-text with the fake voice", async () => {
-    const { providers, config } = await build({ MAYA_STT: "assemblyai", ASSEMBLYAI_API_KEY: "test-key", MAYA_STT_MODEL: "universal-streaming-english" });
+    const { providers, config } = await build({ MAYA_STT: "assemblyai", ASSEMBLYAI_API_KEY: "test-key", MAYA_STT_MODEL: "universal-streaming-english", MAYA_TTS: "fake" });
     expect(config.ids).toEqual({ speechToText: "assemblyai/universal-streaming-english", voice: "fake" });
     expect(providers.stt.model).toBe("universal-streaming-english");
     expect(providers.tts).toBeInstanceOf(FakeTTS);

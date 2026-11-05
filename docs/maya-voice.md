@@ -2,7 +2,7 @@
 
 An admin speaks to Maya as a test child on an assessment question. The call runs in Maya's voice worker (`worker/maya-voice`), a LiveKit Agents for Node worker outside the Vercel build. The worker wraps Maya's controller through the text adapter: the speech-to-text turns the child's speech into child turns, Maya's session (`src/lib/maya`) answers, and the voice says only the words the session accepted, plus a code-written acknowledgement when a turn is slow (below). LiveKit never asks a model itself.
 
-Everything runs with **fake providers** until the accounts below exist. The fake speech-to-text hears typed words from the call page, and the fake voice is silent. Nothing is paid and no account is needed. The real route is LiveKit Inference (D-238): speech-to-text and the voice through the LiveKit project's own key. The direct AssemblyAI and Inworld plugins stay as options (D-163). Packaging and deploying the worker, and the listening test that picks the voice: [Deploying Maya's voice worker](maya-voice-deploy.md).
+Speech goes through **LiveKit Inference** (D-238, D-284): speech-to-text and the voice through the LiveKit project's own key, with zero data retention. It is the worker's default: with `MAYA_STT` and `MAYA_TTS` unset, the worker uses Inference, and it refuses a job until the LiveKit key, the voice and the `livekit-inference-zdr` marker are set. It never falls back to a fake. The **fake providers** run only when `MAYA_STT=fake` and `MAYA_TTS=fake` name them: the fake speech-to-text hears typed words from the call page, and the fake voice is silent. Nothing is paid and no account is needed, so tests and local runs use them. The direct AssemblyAI and Inworld plugins stay only as an explicit opt-in (`MAYA_STT=assemblyai`, `MAYA_TTS=inworld`, D-163). Packaging and deploying the worker, and the listening test that picks the voice: [Deploying Maya's voice worker](maya-voice-deploy.md).
 
 ## How a call runs
 
@@ -28,25 +28,25 @@ The app does not save audio. The worker starts its session with `record: false`.
 
 ## Privacy gate
 
-Each real route needs its own marker in `MAYA_VOICE_PRIVACY_CONFIRMED`, and every real route also needs `child-use-approved` (`requiredMarkers`, `src/lib/maya-voice.ts`). The worker refuses a job without them, and refuses an unknown marker, so a typo never passes. A marker records an operator's confirmation. It cannot verify an external account setting or contract.
+Each real route needs its own marker in `MAYA_VOICE_PRIVACY_CONFIRMED` (`requiredMarkers`, `src/lib/maya-voice.ts`). The worker refuses a job without it, and refuses an unknown marker, so a typo never passes. A marker records an operator's confirmation. It cannot verify an external account setting or contract.
 
-| Route | Setting | Markers |
+| Route | Setting | Marker |
 |---|---|---|
-| LiveKit Inference (preferred, D-238) | `MAYA_STT=inference` or `MAYA_TTS=inference` | `livekit-inference-zdr`, `child-use-approved` |
-| AssemblyAI direct | `MAYA_STT=assemblyai` | `assemblyai-optout`, `child-use-approved` |
-| Inworld direct | `MAYA_TTS=inworld` | `inworld-retention`, `child-use-approved` |
+| LiveKit Inference (the default, D-238, D-284) | `MAYA_STT` and `MAYA_TTS` unset, or `inference` | `livekit-inference-zdr` |
+| AssemblyAI direct (opt-in) | `MAYA_STT=assemblyai` | `assemblyai-optout` |
+| Inworld direct (opt-in) | `MAYA_TTS=inworld` | `inworld-retention` |
+
+Written confirmations from the providers that a service for children may use them are not being sought for now (Savar, 2026-11-05, D-282). No route needs `child-use-approved` any more; the worker still accepts it in the list, so an older setting keeps working. The safeguards in place are the route itself: LiveKit Inference with zero data retention, observability off, and only the allow-listed models and stock voices.
 
 A mixed setting (for example Inference speech-to-text with the direct Inworld voice) needs the markers of both routes.
 
 ### LiveKit Inference
 
-LiveKit's page says: "LiveKit Inference is zero data retention (ZDR) by default", and "Neither LiveKit nor the underlying model providers log, store, or train on your data", for every speech-to-text and voice model, on every plan. It also says ZDR is separate from agent observability, which can keep session data in LiveKit Cloud, and from custom voices, which store a voice sample ([LiveKit Inference](https://docs.livekit.io/agents/models/inference/), read 2026-11-04). The page says nothing about children. Before `livekit-inference-zdr`:
+LiveKit's page says: "LiveKit Inference is zero data retention (ZDR) by default", and "Neither LiveKit nor the underlying model providers log, store, or train on your data", for every speech-to-text and voice model, on every plan. It also says ZDR is separate from agent observability, which can keep session data in LiveKit Cloud, and from custom voices, which store a voice sample ([LiveKit Inference](https://docs.livekit.io/agents/models/inference/), read 2026-11-04). The page says nothing about children (see D-282 above). Before `livekit-inference-zdr`:
 
 1. Turn off agent observability (session recording and audio) in the LiveKit project, and check it stays off. The worker's `record: false` only controls the session setting.
 2. Use no custom voice: `MAYA_VOICE` is one of the provider's own voices.
 3. Keep the models on the allow list (`INFERENCE_STT_MODELS`, `INFERENCE_TTS_MODELS`). Each is listed on the Inference page. The worker refuses any other.
-
-Before `child-use-approved`: get a written answer from LiveKit (and, through it, the providers of the chosen models) that a service for children aged 6 to 12 may use them, with parent consent, under the agreed processing locations. ZDR is not that answer. Keep real providers off until it arrives. This marker is still open.
 
 ### AssemblyAI and Inworld direct
 
@@ -54,8 +54,9 @@ These plugins connect directly to AssemblyAI and Inworld. LiveKit Inference rete
 
 1. In AssemblyAI, opt out of model improvement before the first request. Verify the effective opt-out for the worker's account and streaming endpoint. The research records that this opt-out is prospective. See [AssemblyAI data retention and model training](https://assemblyai.com/docs/data-retention-and-model-training). Then `assemblyai-optout`.
 2. Obtain and verify Inworld's retention arrangements for the direct TTS API. Confirm the plan or written agreement, retention exceptions, and training use. Do not infer these from LiveKit settings. See [Inworld zero data retention](https://docs.inworld.ai/portal/zero-data-retention). Then `inworld-retention`.
-3. Obtain written confirmation that the selected providers permit the downstream service for children aged 6-12. Check the [AssemblyAI terms](https://www.assemblyai.com/legal/terms-of-service) and [Inworld terms](https://inworld.ai/terms), parent consent, subprocessors, and the agreed processing locations. Then `child-use-approved`.
-4. Verify that LiveKit recording and audio observability are disabled.
+3. Verify that LiveKit recording and audio observability are disabled.
+
+The direct route is an opt-in only; Inference is the route in use (D-284).
 
 ElevenLabs (a listening-test candidate) is not on LiveKit Inference, and the worker has no ElevenLabs route. If it wins the listening test, its direct route needs its own settings, marker and checks first.
 
@@ -81,11 +82,11 @@ Agents create no accounts. Create these, then set the values below.
 | `LIVEKIT_URL` | Yes | Yes | `wss://<project>.livekit.cloud`. In Vercel it turns on the **Speak** option. |
 | `LIVEKIT_API_KEY` | Yes | Yes | Vercel mints tokens. The worker registers with LiveKit. |
 | `LIVEKIT_API_SECRET` | Yes (Secret) | Yes | Never sent to a browser. |
-| `MAYA_VOICE_PRIVACY_CONFIRMED` | No | Yes for real providers | The route's markers (privacy gate above), for example `livekit-inference-zdr,child-use-approved`, only after the checks. |
-| `MAYA_STT` | No | Yes | `inference` (LiveKit Inference), `assemblyai` (direct), or `fake` (default). |
+| `MAYA_VOICE_PRIVACY_CONFIRMED` | No | Yes for real providers | The route's markers (privacy gate above), for example `livekit-inference-zdr`, only after the checks. |
+| `MAYA_STT` | No | Optional | `inference` (LiveKit Inference, the default), `fake` (tests and local runs), or `assemblyai` (direct, opt-in). |
 | `ASSEMBLYAI_API_KEY` | No | Yes | Needed when `MAYA_STT=assemblyai`. |
 | `MAYA_STT_MODEL` | No | Optional | With `inference`: one of `assemblyai/universal-3-6-pro` (default), `assemblyai/universal-3-5-pro`, `assemblyai/universal-streaming`, `deepgram/flux-general-en`. With `assemblyai`: default `universal-3-6-pro`; other ids `universal-streaming-english`, `universal-3-5-pro`. |
-| `MAYA_TTS` | No | Yes | `inference` (LiveKit Inference), `inworld` (direct), or `fake` (default). |
+| `MAYA_TTS` | No | Optional | `inference` (LiveKit Inference, the default), `fake` (tests and local runs), or `inworld` (direct, opt-in). |
 | `INWORLD_API_KEY` | No | Yes | Needed when `MAYA_TTS=inworld`. |
 | `MAYA_VOICE` | No | Yes | The voice id (for example Inworld `Ashley`, or a Cartesia voice id). Needed when `MAYA_TTS` is `inference` or `inworld`. The listening test picks it. |
 | `MAYA_TTS_MODEL` | No | Optional | With `inference`: `inworld/inworld-tts-2` (default) or `cartesia/sonic-3.6`. With `inworld`: default `inworld-tts-2`; `inworld-tts-2-flash` is the cheaper option. |
@@ -96,7 +97,7 @@ Agents create no accounts. Create these, then set the values below.
 | `MAYA_ACK_LIMIT_MS` | No | Optional | The child's end of speech to the acknowledgement, in ms. Default 1500. `0` turns it off. |
 | `MAYA_VOICE_LOAD_LIMIT` | No | Optional | 0 to 1: the machine load above which the worker takes no new call. LiveKit's default otherwise. |
 
-A real provider set without its privacy confirmation, key or voice, or with an Inference model off the allow list, stops the worker's job with a clear log line. It never falls back to the fake quietly (`voiceProviders`, `src/lib/maya-voice.ts`). With `inference`, the worker uses `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`, which LiveKit Cloud injects.
+A real provider (Inference by default) without its privacy confirmation, key or voice, or with an Inference model off the allow list, stops the worker's job with a clear log line. It never falls back to the fake quietly (`voiceProviders`, `src/lib/maya-voice.ts`). With `inference`, the worker uses `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`, which LiveKit Cloud injects.
 
 **Word timings through Inference.** The board draws in time with Maya's words when the voice returns word timings. With `inference`, the worker asks for them with each model's option (Inworld `timestamp_type: "WORD"`, Cartesia `add_timestamps: true`), the options LiveKit Agents for Node 1.9.5 checks before it reads the gateway's word alignment into timed transcripts (`hasAlignedTranscript`, `inference/tts.js`). The Inference page does not mention word timings, so whether the gateway sends them to the Node worker is not verified. Where they do not come, the board follows sentence ends (below). The listening test reports it per voice, and each `board cue` log line says `word` or `sentence`.
 
@@ -213,9 +214,11 @@ Once a call row exists, its whole grant counts until the call ends. A crashed ca
 
 ## Weekly recap call coverage
 
-The recap claims all included completed call IDs in `email_log.call_ids`, including calls without notes and notes outside the displayed ten. A sent or claimed recap covers those IDs permanently. A refused send can retry. Unknown delivery stays claimed. `claim_maya_weekly` locks the parent before it checks both the weekly claim and overlapping call IDs. It stores the IDs and unsubscribe hash in the same transaction.
+The recap claims all included completed call IDs in `email_log.call_ids`, including calls without notes. A sent or claimed recap covers those IDs permanently. A refused send can retry. Unknown delivery stays claimed. `claim_maya_weekly` locks the parent before it checks both the weekly claim and overlapping call IDs. It stores the IDs and unsubscribe hash in the same transaction.
 
 The job releases one delivery slot per parent at Monday 7 a.m. family time. The slot ends at the next Monday midnight. It includes uncovered calls from the last 14 elapsed days that ended before the current local Monday. It defers pending or missing notes until the final local Sunday. Calls expire from the lookback window. Local week labels group the display and do not determine call coverage. A zone change can move a call to another displayed week without duplicating it or hiding it behind an earlier weekly claim.
+
+The email says how many calls each child had and links to each child's notes behind sign-in (`/sign-in?next=/account/notes/<child>`). It never carries the transcript, the note's sentences or the child's words (D-283). A call Maya stopped for safety gets a code-written line asking the parent to read the note.
 
 ## Board timing, code portion of #329
 

@@ -1,6 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
-import type { AiJsonRequest } from "@/lib/ai-client";
-import { openRouterClient } from "@/lib/ai-openrouter";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { AI_DEFAULT_MODEL, AI_SOLVE_DEFAULT_MODEL, aiClient, type AiJsonRequest } from "@/lib/ai-client";
+import { costingFetch, openRouterClient } from "@/lib/ai-openrouter";
+import { REVIEW_DEFAULT_MODEL } from "@/lib/maya-talk-review";
+import { workbookAi } from "@/lib/workbook-ai";
 
 // The OpenRouter adapter with fetch faked: no network. Checks what goes to OpenRouter and what comes back.
 
@@ -84,7 +86,7 @@ describe("the OpenRouter AI client (#183), fetch faked", () => {
       model: "anthropic/claude-sonnet-5.5",
       stream: false,
       response_format: { type: "json_schema", json_schema: { name: "work_review", strict: true, schema: SCHEMA } },
-      provider: { require_parameters: true },
+      provider: { order: ["google-vertex"], only: ["google-vertex"], allow_fallbacks: false, require_parameters: true, zdr: true, data_collection: "deny" },
       reasoning: { effort: "medium", exclude: true },
     });
     expect(req.body.max_tokens).toBeGreaterThan(0);
@@ -188,5 +190,58 @@ describe("the OpenRouter AI client: no output is an error, never a result (#183)
     controller.abort();
     await expect(pending).rejects.toThrow();
     expect(sent).toHaveLength(1);
+  });
+});
+
+// D-282: children's data on OpenRouter goes only to Claude on Google Vertex, with zero data retention and no training.
+describe("the pinned route (D-282), for every AI feature on this client", () => {
+  const PINNED = { order: ["google-vertex"], only: ["google-vertex"], allow_fallbacks: false, require_parameters: true, zdr: true, data_collection: "deny" };
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("pins every Anthropic model to Google Vertex, with no fallback, zero data retention and no training", async () => {
+    for (const model of [AI_DEFAULT_MODEL, AI_SOLVE_DEFAULT_MODEL, REVIEW_DEFAULT_MODEL, "anthropic/claude-opus-5.5"]) {
+      const { fetch, sent } = fakeFetch(completion(JSON.stringify({ answer: "85" })));
+      await openRouterClient({ apiKey: "sk-or-test", model, fetch }).json(request(), signal());
+      expect(sent[0].body.provider).toEqual(PINNED);
+    }
+  });
+
+  it("carries the route for the features on aiClient (work review, report text, profiles, call notes, Maya and her review)", async () => {
+    const { fetch, sent } = fakeFetch(completion(JSON.stringify({ answer: "85" })));
+    vi.stubGlobal("fetch", fetch);
+    const env = { OPENROUTER_API_KEY: "sk-or-test" };
+    await aiClient(env)!.json(request(), signal());
+    await aiClient({ ...env, AI_MODEL: "anthropic/claude-opus-5.5" })!.json(request(), signal());
+    await aiClient(env, REVIEW_DEFAULT_MODEL)!.json(request({ name: "talk_review" }), signal());
+    expect(sent.map((s) => s.body.model)).toEqual([AI_DEFAULT_MODEL, "anthropic/claude-opus-5.5", REVIEW_DEFAULT_MODEL]);
+    for (const s of sent) expect(s.body.provider).toEqual(PINNED);
+  });
+
+  it("carries the route for the workbook generator and its solve check on the API, cost accounting included", async () => {
+    const { fetch, sent } = fakeFetch(completion(JSON.stringify({ answer: "85" })));
+    const { ai } = workbookAi({ OPENROUTER_API_KEY: "sk-or-test", WORKBOOK_AI_PRIMARY: "api" }, { subscription: false, fetch });
+    await ai!.json(request({ name: "day_page" }), signal());
+    await openRouterClient({ apiKey: "sk-or-test", model: AI_SOLVE_DEFAULT_MODEL, fetch: costingFetch(() => {}, fetch) }).json(request({ name: "solve" }), signal());
+    expect(sent).toHaveLength(2);
+    for (const s of sent) {
+      expect(s.body.provider).toEqual(PINNED);
+      expect(s.body.usage).toEqual({ include: true });
+    }
+  });
+
+  it("a model of another maker still gets zero data retention and no training, never the pin of a Claude model", async () => {
+    const { fetch, sent } = fakeFetch(completion(JSON.stringify({ answer: "85" })));
+    await openRouterClient({ apiKey: "sk-or-test", model: "openai/gpt-6", fetch }).json(request(), signal());
+    expect(sent[0].body.provider).toEqual({ require_parameters: true, zdr: true, data_collection: "deny" });
+  });
+
+  it("fails plainly, once and on OpenRouter only, when no allowed endpoint can serve the request", async () => {
+    const { fetch, sent } = fakeFetch({ status: 404, body: { error: { code: 404, message: "No endpoints found matching your data policy (Zero data retention)." } } });
+    const failed = openRouterClient({ apiKey: "sk-or-test", model: AI_DEFAULT_MODEL, fetch }).json(request(), signal());
+    await expect(failed).rejects.toThrow("OpenRouter has no endpoint for this request on the allowed route (Google Vertex only, zero data retention, no training): 404 No endpoints found");
+    expect(sent).toHaveLength(1);
+    expect(sent[0].url).toBe("https://openrouter.ai/api/v1/chat/completions");
+    const other = fakeFetch({ status: 404, body: { error: { code: 404, message: "No endpoints found" } } });
+    await expect(openRouterClient({ apiKey: "sk-or-test", model: "openai/gpt-6", fetch: other.fetch }).json(request(), signal())).rejects.toThrow("on the allowed route (zero data retention, no training): 404");
   });
 });

@@ -3,9 +3,9 @@
 // Pure: no network, no clock, no LiveKit packages.
 //
 // - Providers by configuration only (D-163, D-238): speech-to-text, the voice and the model each come from environment
-//   variables. `fake` speech-to-text and voice need no account (local runs and tests). `inference` routes them through
-//   LiveKit Inference with the LiveKit project's own key (D-238's preferred route); `assemblyai` and `inworld` are the
-//   direct LiveKit plugins, kept as options. The model is Maya's model through OpenRouter (`AI_MODEL`), or the fake rule
+//   variables. `inference`, the default (D-284), routes them through LiveKit Inference with the LiveKit project's own
+//   key; `fake` (no account, for local runs and tests) and `assemblyai` and `inworld` (the direct LiveKit plugins) run
+//   only when a variable names them. The model is Maya's model through OpenRouter (`AI_MODEL`), or the fake rule
 //   player when the worker has no OPENROUTER_API_KEY (src/lib/maya-call-seams.ts).
 // - One call, one room: the room's name holds the call id, and a token admits one participant, the child, to that room
 //   only (src/lib/maya-voice-token.ts). The worker checks the joiner again against the call before it listens.
@@ -144,18 +144,19 @@ export const INFERENCE_TTS_DEFAULT: InferenceTtsModel = "inworld/inworld-tts-2";
 
 /**
  * The operator's confirmations in MAYA_VOICE_PRIVACY_CONFIRMED (docs/maya-voice.md, "Privacy gate"). Each records a check
- * a person made outside the code; none can be verified by it.
+ * a person made outside the code; none can be verified by it. `child-use-approved` is still accepted in the list, so an
+ * older setting keeps working, but no route needs it: written confirmations for children's use are not being sought for
+ * now (D-282).
  */
 export const PRIVACY_MARKERS = ["assemblyai-optout", "inworld-retention", "livekit-inference-zdr", "child-use-approved"] as const;
 export type PrivacyMarker = (typeof PRIVACY_MARKERS)[number];
 
-/** The markers a configuration needs: one per route that receives data, and child-use-approved for any real provider. */
+/** The markers a configuration needs: one per route that receives data. */
 export function requiredMarkers(stt: SpeechToTextConfig["provider"], tts: VoiceConfig["provider"]): PrivacyMarker[] {
   const out: PrivacyMarker[] = [];
   if (stt === "assemblyai") out.push("assemblyai-optout");
   if (tts === "inworld") out.push("inworld-retention");
   if (stt === "inference" || tts === "inference") out.push("livekit-inference-zdr");
-  if (stt !== "fake" || tts !== "fake") out.push("child-use-approved");
   return out;
 }
 
@@ -171,13 +172,13 @@ const has = <T extends string>(list: readonly T[], v: string): v is T => (list a
 /**
  * The speech-to-text and the voice from the worker's environment.
  *
- * `MAYA_STT`: `fake` (default); `inference` (LiveKit Inference with `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`, model
- * `MAYA_STT_MODEL` from INFERENCE_STT_MODELS, default assemblyai/universal-3-6-pro); or `assemblyai` (the direct plugin,
- * `ASSEMBLYAI_API_KEY`, model `MAYA_STT_MODEL`, default universal-3-6-pro).
+ * `MAYA_STT`: `inference` (default, D-284: LiveKit Inference with `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`, model
+ * `MAYA_STT_MODEL` from INFERENCE_STT_MODELS, default assemblyai/universal-3-6-pro); `fake` (tests and local runs); or
+ * `assemblyai` (the direct plugin, `ASSEMBLYAI_API_KEY`, model `MAYA_STT_MODEL`, default universal-3-6-pro).
  *
- * `MAYA_TTS`: `fake` (default); `inference` (the LiveKit key, voice `MAYA_VOICE`, model `MAYA_TTS_MODEL` from
- * INFERENCE_TTS_MODELS, default inworld/inworld-tts-2); or `inworld` (the direct plugin, `INWORLD_API_KEY`, voice
- * `MAYA_VOICE`, model `MAYA_TTS_MODEL`, default inworld-tts-2).
+ * `MAYA_TTS`: `inference` (default, D-284: the LiveKit key, voice `MAYA_VOICE`, model `MAYA_TTS_MODEL` from
+ * INFERENCE_TTS_MODELS, default inworld/inworld-tts-2); `fake` (tests and local runs); or `inworld` (the direct plugin,
+ * `INWORLD_API_KEY`, voice `MAYA_VOICE`, model `MAYA_TTS_MODEL`, default inworld-tts-2).
  *
  * A missing key or voice, a model off the allow list, an unknown privacy marker or a missing one is a problem, never a
  * silent fallback to the fake. The ids are what the call row stores; they hold no key.
@@ -191,7 +192,7 @@ export function voiceProviders(env: Readonly<Record<string, string | undefined>>
     const apiSecret = value(env, "LIVEKIT_API_SECRET");
     return { apiKey, apiSecret, missing: !apiKey || !apiSecret };
   };
-  const stt = value(env, "MAYA_STT").toLowerCase() || "fake";
+  const stt = value(env, "MAYA_STT").toLowerCase() || "inference";
   if (stt === "assemblyai") {
     const apiKey = value(env, "ASSEMBLYAI_API_KEY");
     if (!apiKey) problems.push("MAYA_STT is assemblyai, but ASSEMBLYAI_API_KEY is not set");
@@ -203,7 +204,7 @@ export function voiceProviders(env: Readonly<Record<string, string | undefined>>
     if (has(INFERENCE_STT_MODELS, model)) speechToText = { provider: "inference", model, apiKey, apiSecret };
     else problems.push(`MAYA_STT is inference, but MAYA_STT_MODEL "${model}" is not one of ${INFERENCE_STT_MODELS.join(", ")}`);
   } else if (stt !== "fake") problems.push(`MAYA_STT must be fake, inference or assemblyai, not "${stt}"`);
-  const tts = value(env, "MAYA_TTS").toLowerCase() || "fake";
+  const tts = value(env, "MAYA_TTS").toLowerCase() || "inference";
   if (tts === "inworld") {
     const apiKey = value(env, "INWORLD_API_KEY");
     const id = value(env, "MAYA_VOICE");

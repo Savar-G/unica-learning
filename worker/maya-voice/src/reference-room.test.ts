@@ -12,6 +12,9 @@ initializeLogger({ pretty: false, level: "silent" });
 const job = { id: "00000000-0000-4000-8000-000000000335", parentId: "11111111-1111-4111-8111-111111111111", childId: "22222222-2222-4222-8222-222222222222", workbookId: "33333333-3333-4333-8333-333333333333" };
 
 function fixture(foreign = false) {
+  // The fakes by name: with nothing set the worker would use LiveKit Inference (D-284).
+  vi.stubEnv("MAYA_STT", "fake");
+  vi.stubEnv("MAYA_TTS", "fake");
   const reads: string[] = [];
   const db = createClient<Database>("https://fake.invalid", "fake-key", { global: { fetch: async url => {
     const table = new URL(String(url)).pathname.split("/").at(-1)!;

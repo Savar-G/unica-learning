@@ -51,6 +51,42 @@ function setup(notes: CallNote[], parents: WeeklyParent[] = [priya], children: W
 
 const tokenOf = (text: string) => /\/unsubscribe\?t=([A-Za-z0-9_-]+)/.exec(text)![1];
 
+describe("D-283: the email carries no words from a call", () => {
+  it("sends a count per child and a sign-in link to each child's notes, never the transcript or the note's sentences", async () => {
+    const { store, mail, run } = setup([
+      note({ endedAt: pdt(2, 15, 30), warm: "w1" }),
+      note({ endedAt: pdt(3, 10) }),
+      note({ childId: "c2", endedAt: pdt(8, 18, 5), transcript: [{ speaker: "child", text: "my secret is 42", second: 3 }] }),
+    ]);
+    await run(pdt(9, 7));
+    const m = mail.delivered[0];
+    expect(m.text).toContain("Sam and Leah had 3 calls with Maya, our AI teaching assistant, from Monday, November 2 to Sunday, November 8.");
+    expect(m.text).toContain(`Sam had 1 call. Read Sam's notes from Maya: ${ORIGIN}/sign-in?next=%2Faccount%2Fnotes%2Fc2`);
+    expect(m.text).toContain(`Leah had 2 calls. Read Leah's notes from Maya: ${ORIGIN}/sign-in?next=%2Faccount%2Fnotes%2Fc1`);
+    expect(m.text).toContain("To keep your family's calls private, this email does not include what was said. Sign in to read each note.");
+    expect(m.html).toContain(`href="${ORIGIN}/sign-in?next=%2Faccount%2Fnotes%2Fc1"`);
+    expect(m.html).toContain(`href="${ORIGIN}/sign-in?next=%2Faccount%2Fnotes%2Fc2"`);
+    // The copy kept of the email (email_copies) is the same message: nothing from the calls in it either.
+    expect(store.copies[0].copy.message.text).toBe(m.text);
+    for (const body of [m.text, m.html, store.copies[0].copy.message.html]) {
+      for (const words of ["I don't get the tens", "I don&#39;t get the tens", "my secret is 42", "Writing on paper", "I'm Maya", "What was said", "page 23", "got stuck", "adding the tens"]) expect(body).not.toContain(words);
+    }
+  });
+
+  it("tells the parent to read a note when Maya stopped a call for safety, without its words", async () => {
+    const { mail, run } = setup([note({
+      endedAt: pdt(2, 15),
+      facts: { ...note({ endedAt: 0 }).facts, safety: true, finished: "not_finished", reason: "safety" },
+      sentences: ["{child} called Maya about page 23, question 4.", "Something {child} said made Maya stop the math.", "She told {child} to talk to a grown-up they trust.", "Please read the call below."],
+    })]);
+    await run(pdt(9, 7));
+    const { text, html } = mail.delivered[0];
+    expect(text).toContain("Maya stopped the math in 1 of Leah's calls because of something Leah said. Please read the note.");
+    expect(html).toContain("Maya stopped the math in 1 of Leah&#39;s calls because of something Leah said. Please read the note.");
+    expect(text).not.toContain("Please read the call below.");
+  });
+});
+
 describe("chat recap coverage", () => {
   it("counts a chat only under the existing family, note, coverage and time rules", () => {
     const n = note({ endedAt: pdt(8, 16) });
@@ -74,15 +110,10 @@ describe("one email per parent per week", () => {
     expect(m.subject).toBe("Maya this week: Sam and Leah");
     expect(m.text).toContain("Hi Priya,");
     expect(m.text).toContain("Sam and Leah had 2 calls with Maya, our AI teaching assistant, from Monday, November 2 to Sunday, November 8.");
-    expect(m.text).toContain("Leah called Maya about page 23, question 4. Leah got stuck on adding the tens and carrying.");
-    expect(m.text).toContain("Sam called Maya about page 23, question 4.");
-    expect(m.text).toContain("Monday, November 2 · 3:30 p.m. · 6 minutes");
-    expect(m.text).toContain("Sunday, November 8 · 6:05 p.m. · 1 minute");
-    expect(m.text).toContain("Maya: Hi Leah, I'm Maya, an AI teaching assistant.");
-    expect(m.text).toContain("Leah: I don't get the tens <b>");
+    expect(m.text).toContain("Sam had 1 call. Read Sam's notes from Maya:");
+    expect(m.text).toContain("Leah had 1 call. Read Leah's notes from Maya:");
     expect(m.text).not.toContain("{child}");
-    // HTML: the child's words are escaped.
-    expect(m.html).toContain("I don&#39;t get the tens &lt;b&gt;");
+    expect(m.text).not.toContain("I don't get the tens");
     expect(m.html).not.toContain("<b>");
     // One claim row for (parent, week start), sent, and a copy kept.
     expect(store.rows()).toMatchObject([{ kind: "maya_weekly", parentId: "p1", weekStart: "2026-11-02", status: "sent", attempts: 1 }]);
@@ -93,17 +124,15 @@ describe("one email per parent per week", () => {
     expect(mail.delivered).toHaveLength(1);
   });
 
-  it("labels each call by its day and time, newest first, and says how many in the intro", async () => {
+  it("with one child, says how many in the intro and links once to the child's notes", async () => {
     const { mail, run } = setup([note({ endedAt: pdt(2, 9) }), note({ endedAt: pdt(2, 16) })]);
     await run(pdt(9, 8));
     const m = mail.delivered[0];
     expect(m.subject).toBe("Maya this week: Leah");
     expect(m.text).toContain("Leah had 2 calls with Maya");
-    const later = m.text.indexOf("Monday, November 2 · 4:00 p.m. · 6 minutes");
-    const earlier = m.text.indexOf("Monday, November 2 · 9:00 a.m. · 6 minutes");
-    expect(later).toBeGreaterThan(-1);
-    expect(earlier).toBeGreaterThan(later);
-    expect(m.text).not.toMatch(/Call \d/);
+    expect(m.text).toContain(`\n\nRead Leah's notes from Maya: ${ORIGIN}/sign-in?next=%2Faccount%2Fnotes%2Fc1`);
+    expect(m.text).not.toContain("Leah had 2 calls.");
+    expect(m.text.match(/notes%2Fc1/g)).toHaveLength(1);
   });
 
   it("waits until Monday at 7 a.m. in the family's time zone", async () => {
@@ -116,16 +145,15 @@ describe("one email per parent per week", () => {
 
   it("uses local Monday midnight to split weeks, including a late Sunday call", async () => {
     const toronto: WeeklyParent = { ...priya, postal: "M5V 2T6" };
-    const { mail, run } = setup([
-      note({ endedAt: Date.parse("2026-11-09T04:59:59Z"), sentences: ["Sunday call."] }),
-      note({ endedAt: Date.parse("2026-11-09T05:00:00Z"), sentences: ["Monday call."] }),
-    ], [toronto]);
+    const sunday = note({ endedAt: Date.parse("2026-11-09T04:59:59Z") });
+    const monday = note({ endedAt: Date.parse("2026-11-09T05:00:00Z") });
+    const { store, mail, run } = setup([sunday, monday], [toronto]);
     expect(await run(Date.parse("2026-11-09T12:00:00Z"))).toMatchObject({ due: 1, sent: 1 });
-    expect(mail.delivered[0].text).toContain("Sunday call.");
-    expect(mail.delivered[0].text).not.toContain("Monday call.");
+    expect(mail.delivered[0].text).toContain("Leah had 1 call with Maya");
+    expect(store.rows()[0].callIds).toEqual([sunday.callId]);
     expect(await run(Date.parse("2026-11-16T12:00:00Z"))).toMatchObject({ due: 1, sent: 1 });
-    expect(mail.delivered[1].text).toContain("Monday call.");
-    expect(mail.delivered[1].text).not.toContain("Sunday call.");
+    expect(mail.delivered[1].text).toContain("Leah had 1 call with Maya");
+    expect(store.rows()[1].callIds).toEqual([monday.callId]);
   });
 
   it.each([
@@ -145,20 +173,13 @@ describe("one email per parent per week", () => {
     ["permanent BC November", "2026-10-26T07:00:00Z", "2026-11-02T06:59:59Z", "2026-11-02T07:00:00Z", "2026-11-02T14:00:00Z"],
     ["spring", "2026-03-02T08:00:00Z", "2026-03-09T06:59:59Z", "2026-03-09T07:00:00Z", "2026-03-09T14:00:00Z"],
   ])("includes the whole week across the %s daylight saving change", async (_, start, end, next, release) => {
-    const { run, mail } = setup([
-      note({ endedAt: Date.parse(release) - 14 * 86_400_000 - 1, sentences: ["Before week."] }),
-      note({ endedAt: Date.parse(start), sentences: ["First call."] }),
-      note({ endedAt: Date.parse(end), sentences: ["Last call."] }),
-      note({ endedAt: Date.parse(next), sentences: ["Next week."] }),
-    ]);
+    const first = note({ endedAt: Date.parse(start) });
+    const last = note({ endedAt: Date.parse(end) });
+    const { store, run, mail } = setup([note({ endedAt: Date.parse(release) - 14 * 86_400_000 - 1 }), first, last, note({ endedAt: Date.parse(next) })]);
     expect(await run(Date.parse(release) - 1)).toMatchObject({ sent: 0 });
     expect(await run(Date.parse(release))).toMatchObject({ sent: 1 });
-    const text = mail.delivered[0].text;
-    expect(text).toContain("First call.");
-    expect(text).toContain("Last call.");
-    expect(text).not.toContain("Before week.");
-    expect(text).not.toContain("Next week.");
-    expect(text.indexOf("Last call.")).toBeLessThan(text.indexOf("First call."));
+    expect(mail.delivered[0].text).toContain("Leah had 2 calls with Maya");
+    expect(store.rows()[0].callIds).toEqual([last.callId, first.callId]);
   });
 
   it("sends late recaps inside the lookback window, then expires uncovered calls", async () => {
@@ -171,32 +192,16 @@ describe("one email per parent per week", () => {
     expect(await run(pdt(16, 15, 1))).toMatchObject({ due: 0 });
   });
 
-  it("shows the newest ten calls across the family and counts every other call", async () => {
-    const calls = Array.from({ length: 13 }, (_, i) => note({
-      endedAt: pdt(2, i), childId: i % 2 ? "c2" : "c1",
-      sentences: [`Unique call ${i}.`], transcript: [{ speaker: "child", text: `Words ${i}.`, second: 0 }],
-    }));
+  it("counts every call of the family, per child, newest child first", async () => {
+    const calls = Array.from({ length: 13 }, (_, i) => note({ endedAt: pdt(2, i), childId: i % 2 ? "c2" : "c1" }));
     const { run, mail } = setup(calls);
     expect(await run(pdt(9, 7))).toMatchObject({ sent: 1 });
     const m = mail.delivered[0];
     expect(m.subject).toBe("Maya this week: Leah and Sam");
-    expect(m.text).toContain("had 13 calls with Maya");
-    expect(m.text).toContain("There were 3 more calls this week. This email shows the newest 10.");
-    expect(m.html).toContain("There were 3 more calls this week.");
-    for (let i = 0; i < 13; i++) {
-      if (i < 3) { expect(m.text).not.toContain(`Unique call ${i}.`); expect(m.html).not.toContain(`Words ${i}.`); }
-      else { expect(m.text).toContain(`Unique call ${i}.`); expect(m.html).toContain(`Words ${i}.`); }
-    }
-    expect(m.text.indexOf("Unique call 12.")).toBeLessThan(m.text.indexOf("Unique call 10."));
-    expect(m.text.indexOf("Unique call 11.")).toBeLessThan(m.text.indexOf("Unique call 9."));
-  });
-
-  it("keeps a child's name when their only call is outside the newest ten", async () => {
-    const calls = [note({ endedAt: pdt(2, 1), childId: "c2" }), ...Array.from({ length: 10 }, (_, i) => note({ endedAt: pdt(3, i) }))];
-    const { run, mail } = setup(calls);
-    await run(pdt(9, 7));
-    expect(mail.delivered[0].subject).toBe("Maya this week: Leah and Sam");
-    expect(mail.delivered[0].text).toContain("There was 1 more call this week.");
+    expect(m.text).toContain("Leah and Sam had 13 calls with Maya");
+    expect(m.text).toContain("Leah had 7 calls.");
+    expect(m.text).toContain("Sam had 6 calls.");
+    expect(m.text.indexOf("Leah had 7 calls.")).toBeLessThan(m.text.indexOf("Sam had 6 calls."));
   });
 
 });
@@ -217,7 +222,8 @@ describe("R421W-1: delayed notes", () => {
     calls[10].notePending = false;
     expect(await run(pdt(9, 8))).toMatchObject({ due: 1, sent: 1 });
     expect(mail.delivered[0].text).toContain("had 11 calls with Maya");
-    expect(mail.delivered[0].text).toContain("The delayed note.");
+    expect(mail.delivered[0].text).not.toContain("no note yet");
+    expect(store.rows()[0].callIds).toContain(late.callId);
     expect(await run(pdt(9, 9))).toMatchObject({ due: 0 });
   });
 
@@ -236,7 +242,6 @@ describe("R421W-1: delayed notes", () => {
     expect(m.text).toContain(`had ${savedCount + 2} calls with Maya`);
     expect(m.text).toContain("2 calls this week have no note yet.");
     expect(m.html).toContain("2 calls this week have no note yet.");
-    if (savedCount > 10) expect(m.text).toContain("There was 1 more call this week.");
     expect(await run(pdt(16, 15, 1))).toMatchObject({ due: 0 });
   });
 
@@ -380,15 +385,6 @@ describe("the decision", () => {
     expect(due).toEqual([{ parentId: "p1", weekStart: "2026-11-02", zone: "America/Vancouver", callIds: [later.callId, earlier.callId], retry: null }]);
   });
 
-  it("a safety note keeps its own sentences", async () => {
-    const { mail, run } = setup([note({
-      endedAt: pdt(2, 15),
-      facts: { ...note({ endedAt: 0 }).facts, safety: true, finished: "not_finished", reason: "safety" },
-      sentences: ["{child} called Maya about page 23, question 4.", "Something {child} said made Maya stop the math.", "She told {child} to talk to a grown-up they trust.", "Please read the call below."],
-    })]);
-    await run(pdt(9, 7));
-    expect(mail.delivered[0].text).toContain("Something Leah said made Maya stop the math. She told Leah to talk to a grown-up they trust. Please read the call below.");
-  });
 });
 
 
@@ -403,30 +399,24 @@ describe("shared family time for the weekly recap", () => {
     const beforeMonday = Date.parse(monday) - 1000;
     const family = [{ ...priya, timeZone, postal }];
     const kids = [{ ...leah, province }];
-    const notes = [
-      note({ endedAt: beforeMonday, sentences: ["Sunday call."] }),
-      note({ endedAt: beforeMonday + 1000, sentences: ["Next week call."] }),
-    ];
-    const { run, mail } = setup(notes, family, kids);
+    const notes = [note({ endedAt: beforeMonday }), note({ endedAt: beforeMonday + 1000 })];
+    const { store, run, mail } = setup(notes, family, kids);
     expect(await run(Date.parse(release) - 1)).toMatchObject({ sent: 0 });
     expect(await run(Date.parse(release))).toMatchObject({ sent: 1 });
-    expect(mail.delivered[0].text).toContain("Sunday, November 8 · 11:59 p.m.");
-    expect(mail.delivered[0].text).toContain("Sunday call.");
-    expect(mail.delivered[0].text).not.toContain("Next week call.");
+    expect(mail.delivered[0].text).toContain("from Monday, November 2 to Sunday, November 8.");
+    expect(store.rows()[0].callIds).toEqual([notes[0].callId]);
     const previousWeekOnly = notes.slice(0, 1);
     expect(await setup(previousWeekOnly, family, kids).run(Date.parse(expiry) - 1)).toMatchObject({ sent: 1 });
     expect(await setup(previousWeekOnly, family, kids).run(Date.parse(expiry))).toMatchObject({ sent: 0 });
   });
 });
 
-it("R425M-1: groups uncovered calls by displayed week and claims all call IDs", async () => {
-  const older = note({ endedAt: pdt(2, 15), sentences: ["An earlier uncovered call."] });
-  const newer = note({ endedAt: pdt(9, 15), sentences: ["A more recent call."] });
+it("R425M-1: covers every uncovered week in one period and claims all call IDs", async () => {
+  const older = note({ endedAt: pdt(2, 15) });
+  const newer = note({ endedAt: pdt(9, 15) });
   const { store, mail, run } = setup([older, newer]);
   expect(await run(pdt(16, 7))).toMatchObject({ sent: 1 });
   const text = mail.delivered[0].text;
-  expect(text).toContain("from Monday, November 2 to Sunday, November 15");
-  expect(text.indexOf("Week of Monday, November 9")).toBeLessThan(text.indexOf("A more recent call."));
-  expect(text.indexOf("Week of Monday, November 2")).toBeLessThan(text.indexOf("An earlier uncovered call."));
+  expect(text).toContain("Leah had 2 calls with Maya, our AI teaching assistant, from Monday, November 2 to Sunday, November 15.");
   expect(store.rows()[0].callIds).toEqual([newer.callId, older.callId]);
 });
