@@ -253,17 +253,40 @@ function pngSize(png: Uint8Array): { width: number; height: number } {
 /** The page count of a PDF Chromium printed: its page objects, which Chromium writes uncompressed. */
 const pdfPageCount = (pdf: Uint8Array) => new TextDecoder("latin1").decode(pdf).match(/\/Type\s*\/Page\b/g)?.length ?? 0;
 
+/** How long Chromium gets to start, and to load a page. A busy Mac needs more than puppeteer's default 30 s. */
+export const BROWSER_START_MS = 120_000;
+/** Tries to start Chromium for one print job, and the wait before each try after the first. */
+const START_WAITS_MS = [0, 5_000, 15_000];
+
+/**
+ * Starts Chromium, and tries again when it does not start: a start that times out on a busy machine, or a process that
+ * dies while Chrome updates itself, says nothing about the book, so it must not use up one of the run's attempts. After
+ * the last try the error goes to the caller. Only the start is tried again: a job that fails in the page fails.
+ */
+export async function startBrowser<T>(start: () => Promise<T>, wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))): Promise<T> {
+  for (const [i, ms] of START_WAITS_MS.entries()) {
+    if (ms > 0) await wait(ms);
+    try {
+      return await start();
+    } catch (e) {
+      if (i === START_WAITS_MS.length - 1) throw e;
+      console.warn(`print engine: Chromium did not start (try ${i + 1}): ${e instanceof Error ? e.message.split("\n")[0] : String(e)}`);
+    }
+  }
+  throw new Error("print engine: Chromium did not start");
+}
+
 export function chromiumPrintEngine(): PrintEngine {
   return {
     async print(job) {
       const chromium = await findChromium();
       if (!chromium) throw new Error("print engine: no Chromium here; set CHROMIUM_PATH");
-      const browser = await puppeteer.launch({ ...chromium, headless: true });
+      const browser = await startBrowser(() => puppeteer.launch({ ...chromium, headless: true, timeout: BROWSER_START_MS }));
       try {
         const page = await browser.newPage();
         await page.setViewport({ width: job.page.width, height: job.page.height, deviceScaleFactor: job.scale });
         await page.emulateMediaType("print");
-        await page.setContent(job.html, { waitUntil: "load" });
+        await page.setContent(job.html, { waitUntil: "load", timeout: BROWSER_START_MS });
         await page.evaluate("document.fonts.ready.then(() => true)");
         const found = await page.evaluate(MEASURE) as (Omit<MeasuredElement, "textPrinted"> & { runs: Run[] })[];
         const tops = await page.evaluate(SHEET_TOPS) as number[];
