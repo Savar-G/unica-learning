@@ -1,12 +1,15 @@
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
-import { listChildren, readWorkbooks } from "@/lib/parent-view";
+import { createSession, finish, nextQuestion, storedTest, submitAnswer, testAreaAnswers, testStep, type Session } from "@/lib/assessment";
+import { checked } from "@/lib/assessment/scripted-child";
+import { listChildren, readOverview, readWorkbooks } from "@/lib/parent-view";
 import { parentViewReader } from "@/lib/parent-view-server";
 
 // The parent view's Supabase reader, through its interface, against a fake PostgREST. It checks what the memory reader
 // cannot: the tables and columns asked for, the parent's filter on secret-key reads, and that a failed read throws.
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/parent-pin-server", () => ({ pinIsSet: async () => true }));
 
 const PARENT = "11111111-1111-4111-8111-111111111111";
 const CHILD = "22222222-2222-4222-8222-222222222222";
@@ -121,5 +124,119 @@ describe("the Supabase reader of the Workbooks tab (#558)", () => {
   });
   it.each(["workbook_delivery_corrections", "workbook_emails", "parents"])("throws when %s fails", async (table) => {
     await expect(readWorkbooks(reader(table).reader, CHILD, NOW)).rejects.toThrow();
+  });
+});
+
+describe("the Supabase reader of the Overview (#560)", () => {
+  /** A whole test. The first `rushed` answers are wrong and very fast, which leaves them out of the score (#189). */
+  const take = (rushed = 0): Session => {
+    let session = createSession({ grade: 3, province: "BC" }, 7);
+    let n = 0;
+    for (let step = testStep(session); step.status === "question"; step = testStep(session)) {
+      const q = nextQuestion(session)!;
+      const fast = n < rushed;
+      session = checked(submitAnswer(session, { questionId: step.question.id, response: fast ? "wrong" : n % 3 === 0 ? "0" : q.answer, timeMs: fast ? 100 : 9_000 }));
+      n++;
+    }
+    return session;
+  };
+  const level = { working: 3, grade: 3, atCeiling: false, confidence: "normal", certainty: "clear" };
+  const scored = (session: Session, over: Record<string, unknown> = {}) => ({
+    reports: [{ id: "report-1", child_id: CHILD, assessment_id: TEST, assessment: { province: "BC" }, model: { level } }],
+    assessments: [{ ...(ROWS.assessments as object[])[0], test: storedTest(session), route: session.route, break_started_at: null, break_ended_at: null, help: null, placement: finish(session) }],
+    answers: session.answers.map((a) => ({ question_id: a.questionId, response: a.response, time_ms: a.timeMs })),
+    ...over,
+  });
+  function overviewReader(rows: Record<string, unknown>) {
+    const children = [{ ...(ROWS.children as object[])[0], learning_styles: null, interests: ["space"], learning_note: null, math_feeling: null, learning_goal: null, weekly_time: null }];
+    const all: Record<string, unknown> = { ...ROWS, children, ...rows };
+    const session: URL[] = [];
+    const admin: URL[] = [];
+    const fake = (requests: URL[]) => createClient<never>("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input) => {
+      const url = new URL(String(input));
+      requests.push(url);
+      return Response.json(all[url.pathname.replace("/rest/v1/", "")] ?? []);
+    } } }) as never;
+    return { session, admin, reader: parentViewReader(fake(session), PARENT, fake(admin), {}) };
+  }
+  const select = (requests: URL[], table: string) => requests.find((u) => u.pathname.endsWith(`/${table}`))!.searchParams;
+
+  it("replays the stored test with the assessment core and keeps the stored report's level", async () => {
+    const session = take();
+    const r = overviewReader(scored(session));
+    expect(await r.reader.testResult(TEST)).toEqual({ level, answers: testAreaAnswers(session) });
+    expect(select(r.admin, "assessments").get("parent_id")).toBe(`eq.${PARENT}`);
+    expect(select(r.admin, "assessments").get("id")).toBe(`eq.${TEST}`);
+    expect(select(r.session, "reports").get("select")).toBe("model");
+    expect(GRANTED.reports.has("model")).toBe(true);
+  });
+  it("a replay that agrees with the stored score gives the bars, with rushed answers left out by both", async () => {
+    const session = take(4);
+    expect(testAreaAnswers(session).length).toBe(session.answers.length - 4);
+    const view = await readOverview(overviewReader(scored(session)).reader, CHILD, NOW);
+    expect(view?.level?.working).toBe(3);
+    expect(view?.areas.length).toBeGreaterThan(0);
+  });
+  it("a score stored before the rushing rule differs from the replay: the Level tile stays and no bar shows", async () => {
+    const session = take(4);
+    // As a test stored before #189: the report counted the rushed answers, and the stored score has no pace.
+    const counted = finish({ ...session, answers: session.answers.map((a) => ({ ...a, timeMs: 9_000 })) });
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const r = overviewReader(scored(session, { assessments: [{ ...scored(session).assessments[0], placement: { ...counted, pace: undefined } }] }));
+    expect(await r.reader.testResult(TEST)).toEqual({ level, answers: null });
+    const view = await readOverview(r.reader, CHILD, NOW);
+    expect(view?.level?.working).toBe(3);
+    expect(view?.areas).toEqual([]);
+    expect(log).not.toHaveBeenCalled();
+    log.mockRestore();
+  });
+  it("a test with no stored score has no bars", async () => {
+    const session = take();
+    const r = overviewReader(scored(session, { assessments: [{ ...scored(session).assessments[0], placement: null }] }));
+    expect(await r.reader.testResult(TEST)).toEqual({ level, answers: null });
+  });
+  it("reads the stored score with the secret key, filtered on the parent", async () => {
+    const r = overviewReader(scored(take()));
+    await r.reader.testResult(TEST);
+    const score = r.admin.find((u) => u.pathname.endsWith("/assessments") && u.searchParams.get("select") === "placement")!.searchParams;
+    expect(score.get("parent_id")).toBe(`eq.${PARENT}`);
+    expect(score.get("id")).toBe(`eq.${TEST}`);
+    expect(r.session.filter((u) => u.pathname.endsWith("/assessments"))).toEqual([]);
+  });
+  it("a failed read of the stored score throws", async () => {
+    const failing = (requests: URL[]) => createClient<never>("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input) => {
+      const url = new URL(String(input));
+      requests.push(url);
+      if (url.searchParams.get("select") === "placement") return Response.json({ message: "boom" }, { status: 500 });
+      return Response.json(({ ...ROWS, ...scored(take()) } as Record<string, unknown>)[url.pathname.replace("/rest/v1/", "")] ?? []);
+    } } }) as never;
+    await expect(parentViewReader(failing([]), PARENT, failing([]), {}).testResult(TEST)).rejects.toThrow("stored score read");
+  });
+  it("a test the family does not have, or one with no report, is null", async () => {
+    expect(await overviewReader(scored(take(), { assessments: [] })).reader.testResult(TEST)).toBeNull();
+    expect(await overviewReader(scored(take(), { reports: [] })).reader.testResult(TEST)).toBeNull();
+  });
+  it("a stored test that cannot be replayed keeps the level with no answers, and is logged", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const r = overviewReader(scored(take(), { answers: [] }));
+    expect(await r.reader.testResult(TEST)).toEqual({ level, answers: null });
+    expect(log).toHaveBeenCalledWith("[parent-view] test replay failed", expect.any(String));
+    log.mockRestore();
+  });
+  it("reads saved scans, a workbook's pages and the learning card with the parent's session, and no raw profile, event or call table", async () => {
+    const r = overviewReader({
+      ...scored(take()),
+      scan_photos: [{ workbook_id: WORKBOOK, page_id: "p1", expires_at: "2027-01-01T00:00:00Z" }],
+      workbook_pages: [{ id: "p1", day_label: "Day 1" }],
+      children: [{ id: CHILD, first_name: "Leah", grade: 3, learning_styles: null, interests: ["space"], learning_note: null, math_feeling: null, learning_goal: null, weekly_time: null }],
+    });
+    expect(await r.reader.savedScans()).toEqual([{ workbookId: WORKBOOK, pageId: "p1", expiresAt: "2027-01-01T00:00:00Z" }]);
+    expect(select(r.session, "scan_photos").get("state")).toBe("eq.saved");
+    expect(await r.reader.workbookPages(WORKBOOK)).toEqual([{ id: "p1", dayLabel: "Day 1" }]);
+    expect(select(r.session, "workbook_pages").get("workbook_id")).toBe(`eq.${WORKBOOK}`);
+    expect((await r.reader.learningCards())[0]).toMatchObject({ childId: CHILD, interests: ["space"] });
+    await readOverview(r.reader, CHILD, NOW);
+    expect(tables(r.session)).toEqual(["card_setups", "children", "parents", "reports", "scan_photos", "workbook_delivery_receipts", "workbook_pages", "workbooks"]);
+    expect(tables(r.admin)).toEqual(["admin_users", "answers", "assessments", "test_accounts"]);
   });
 });

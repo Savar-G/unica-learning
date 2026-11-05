@@ -1,8 +1,11 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Grade } from "@/lib/assessment";
+import { answersAddUp } from "@/lib/area-level-check";
+import { fromRemovedRound, restoreSession, testAreaAnswers, type AreaAnswer, type Grade } from "@/lib/assessment";
 import type { Database } from "@/lib/database";
+import { LEARNING_COLUMNS } from "@/lib/learning-style";
 import type { ParentViewReader } from "@/lib/parent-view";
+import { pinIsSet } from "@/lib/parent-pin-server";
 import { scanPagesAccess } from "@/lib/scan-pages-access";
 import { withAnswers } from "@/lib/test-attempt";
 import { attemptStore } from "@/lib/test-attempt-server";
@@ -16,6 +19,11 @@ import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 //     It also reads test_accounts for the Maya switch, and the dispatch emails' delivery details (carrier and tracking,
 //     #558), which only admins may read in workbook_emails; it selects only the child, the workbook number and the
 //     delivery. Nothing it reads reaches the output except through parent-view.ts, which checks the delivery.
+// The Overview (#560): the scored answers of a finished test need the stored test, which only the secret key reads,
+// filtered on the parent's id (the test attempt store's `load`, as the start screen reads an open test); the report's level
+// comes from the parent's session. The scans, the pages of a shipped workbook and the learning card come from the session.
+// The test is replayed by the assessment core (restoreSession, testAreaAnswers), as `npm run area-levels:check` does, and
+// compared with the stored score with the same check: a replay that differs gives no answers, so no bars.
 // Plan state: the plan state table does not exist yet (#548), so `plans` returns no rows and every plan reads as
 // `unknown`. No family can be `ended` until #548 fills this read in.
 // A database error throws, and so does a missing secret key: an empty read would show a paying family "Start the test".
@@ -71,6 +79,46 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
     },
     async plans() {
       return [];
+    },
+    async testResult(assessmentId) {
+      if (!admin) throw new Error("test result read: no secret key");
+      const [loaded, report, stored] = await Promise.all([
+        attemptStore(admin).load(parent, assessmentId),
+        session.from("reports").select("model").eq("assessment_id", assessmentId).maybeSingle(),
+        admin.from("assessments").select("placement").eq("id", assessmentId).eq("parent_id", parent).maybeSingle(),
+      ]);
+      if (report.error) throw new Error(`report read: ${report.error.message}`);
+      if (stored.error) throw new Error(`stored score read: ${stored.error.message}`);
+      if (!loaded || !report.data) return null;
+      let answers: AreaAnswer[] | null = null;
+      try {
+        // D-145: the removed extra round's answers are left out, as the test attempt module leaves them out.
+        const replay = testAreaAnswers(restoreSession(loaded.test, loaded.answers.filter((a) => !fromRemovedRound(a.questionId)), loaded.route ?? null));
+        // Bars that count other answers than the report did would tell a second story beside the Level tile.
+        if (stored.data?.placement && answersAddUp(replay, stored.data.placement)) answers = replay;
+      } catch (e) {
+        console.error("[parent-view] test replay failed", e instanceof Error ? e.message : "failed");
+      }
+      return { level: report.data.model.level, answers };
+    },
+    async savedScans() {
+      const { data, error } = await session.from("scan_photos").select("workbook_id, page_id, expires_at").eq("state", "saved");
+      if (error) throw new Error(`scans read: ${error.message}`);
+      // A saved photo always has a page (a check constraint); the workbook is the page's.
+      return data.flatMap((s) => (s.workbook_id && s.page_id ? [{ workbookId: s.workbook_id, pageId: s.page_id, expiresAt: s.expires_at }] : []));
+    },
+    async workbookPages(workbookId) {
+      const { data, error } = await session.from("workbook_pages").select("id, day_label").eq("workbook_id", workbookId);
+      if (error) throw new Error(`pages read: ${error.message}`);
+      return data.map((p) => ({ id: p.id, dayLabel: p.day_label }));
+    },
+    async learningCards() {
+      const { data, error } = await session.from("children").select(`id, ${LEARNING_COLUMNS}`);
+      if (error) throw new Error(`learning card read: ${error.message}`);
+      return data.map(({ id, ...card }) => ({ childId: id, ...card }));
+    },
+    async pinSet() {
+      return pinIsSet(parent);
     },
     async switches() {
       const [scanPages, testFamily] = await Promise.all([

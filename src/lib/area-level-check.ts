@@ -68,7 +68,11 @@ function kindOf(label: AreaLabel, status: StrandStatus | "none"): DisagreementKi
 
 const tallyOf = (answers: readonly AreaAnswer[]) => ({ correct: answers.filter((a) => a.correct).length, total: answers.length });
 
-function addsUp({ answers, placement }: CheckedTest): boolean {
+/**
+ * Whether scored answers add up to the stored placement: each level's and each area's count, as the report counted them.
+ * Old rows that nothing rewrites do not: a test stored before the rushing rule (#189) counts its rushed answers.
+ */
+export function answersAddUp(answers: readonly AreaAnswer[], placement: Placement): boolean {
   const same = (a: { correct: number; total: number }, b: { correct: number; total: number }) => a.correct === b.correct && a.total === b.total;
   const levels = new Set(answers.map((a) => a.level));
   const stored = new Set(placement.levels.map((l) => l.level));
@@ -97,7 +101,7 @@ export function checkAreaLevels(tests: readonly CheckedTest[]): AreaLevelCheck {
   for (const t of tests) {
     const counts = groups[t.group];
     counts.tests++;
-    if (!addsUp(t)) inputMismatches.push(t.id);
+    if (!answersAddUp(t.answers, t.placement)) inputMismatches.push(t.id);
     const unreliable = t.placement.pace?.unreliable === true;
     for (const bar of areaLevels({ answers: t.answers, schoolGrade: t.placement.grade, workingLevel: t.placement.workingLevel })) {
       const reported = t.placement.strands.find((s) => s.strand === bar.area);

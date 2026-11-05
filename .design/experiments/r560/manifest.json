@@ -1,0 +1,18 @@
+{
+  "round": "r560",
+  "ticket": "#560 (spec #544, parent dashboard): Overview tiles (Level, This workbook, Maya this week), area bars and the one action card",
+  "route": "Built in src/ behind the dashboard switch (D-236). Screenshots of the real page on npm run dev, for Savar's one review page (D-249). Not a variant round: the look is the mock's chosen direction (D-242), with the mock's 'Level by strand' bars and their school grade line, and the report's ruler colours.",
+  "picked": null,
+  "picked_by": "waiting for Savar's review page (D-249)",
+  "captured": "2026-11-05, T3 preview (the Aside CLI was down), signed in as the test family of the child 'QA E2E Three' (in test_accounts). Real stored data, nothing written: stage first_book_coming, one finished test with a report (working level 4, Early sign, school grade 3, not flagged unreliable), Workbook 2 shipped, PIN set, learning card empty.",
+  "viewports": { "desktop": [1280, 1720], "phone": [390, 2400] },
+  "shots": [
+    { "file": "overview-desktop.png", "viewport": "desktop", "state": "Level tile (Working at Grade 4, In Grade 3 at school, Early sign, the small ruler), Level by area (four bars from the area rule on the stored test; two Early sign bars lighter), one action card: Tell us how QA E2E Three learns. No This workbook tile (no scanned day) and no Maya tile (no Maya tab before delivery)." },
+    { "file": "overview-phone.png", "viewport": "phone", "state": "the same page at 390 px: tiles and bars stacked, the bar labels above each bar, Overview active in the bottom bar, no horizontal scroll (scrollWidth 390). Captured at device pixel ratio 2." }
+  ],
+  "not_captured": [
+    "This workbook tile: no family has a saved scan (one scan_photos row in production, deleted). Covered by src/lib/parent-view.test.ts.",
+    "Maya this week tile: the test family's child is not delivered, so it has no Maya tab. Covered by src/app/(product)/account/(dashboard)/page.test.ts.",
+    "The other action cards (Start the test, payment failed, no PIN): covered by src/lib/parent-view.test.ts and page.test.ts."
+  ]
+}
