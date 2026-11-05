@@ -23,13 +23,14 @@ export async function loadFamilyProvince(db: SupabaseClient<Database>, parentId?
 }
 
 /** Include siblings with no activity. Page by ID so concurrent deletion cannot skip a child. */
-export async function loadFamilyChildren(db: SupabaseClient<Database>, parentIds: readonly string[]) {
+export async function loadFamilyChildren(db: SupabaseClient<Database>, parentIds: readonly string[], signal?: AbortSignal) {
   const children = [];
   for (let i = 0; i < parentIds.length; i += 100) {
     let after: string | null = null;
     for (;;) {
       let query = db.from("children").select("id, parent_id, first_name, province, created_at").in("parent_id", parentIds.slice(i, i + 100)).order("id").limit(1000);
       if (after) query = query.gt("id", after);
+      if (signal) query = query.abortSignal(signal);
       const { data, error } = await query;
       if (error) throw new Error(`family children load: ${error.message}`);
       children.push(...(data ?? []));
