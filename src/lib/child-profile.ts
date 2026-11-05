@@ -56,6 +56,7 @@ import {
 } from "@/lib/assessment";
 import { withTimeLimit, type AiClient } from "@/lib/ai-client";
 import { CHILD_PROFILE_AI_MS, writeChildProfileFindings, type FindingDrop, type QuestionReader } from "@/lib/child-profile-ai";
+import { SpendRefused } from "@/lib/maya-spend-ai";
 import { learningEvents, type EventSource, type LearningEvent, type LearningEventStore } from "@/lib/learning-events";
 import type { Interest, LearningGoal, LearningStyle, MathFeeling, WeeklyTime } from "@/lib/learning-style";
 
@@ -291,6 +292,8 @@ export interface ChildProfileSeams {
   events: LearningEventStore;
   /** The AI client; null or left out: the AI is off, and the profile has the facts only. */
   ai?: AiClient | null;
+  /** The facts are saved with the stored findings, not with none: Maya's spending ledger does not allow the AI now. */
+  keepFindings?: boolean;
   /** The trusted question data the AI reads about each event; null or left out: none (no question, step or mistake is sent). */
   questions?: QuestionReader | null;
   /** The findings step's one time limit: the question reads, the AI request and the findings save (CHILD_PROFILE_AI_MS). */
@@ -304,7 +307,7 @@ export interface ChildProfileSeams {
  * findings were not stored.
  */
 export type FindingsOutcome =
-  | { outcome: "off" | "no_events" }
+  | { outcome: "off" | "no_events" | "kept" }
   | { outcome: "failed"; problem: string }
   | { outcome: "none" | "late"; dropped: FindingDrop[] }
   | { outcome: "stored"; kept: number; dropped: FindingDrop[] };
@@ -361,6 +364,7 @@ export async function rebuildChildProfile(childId: string, seams: ChildProfileSe
     // The stored build first: a build stored after this read makes the save below fail, so these inputs are never stale.
     const stored = await profiles.current(id);
     const expected: ExpectedBuild = stored && { revision: stored.revision, buildToken: stored.buildToken };
+    const earlier = stored ? storedChildProfile(stored.profile)?.ai ?? null : null;
     const source = await profiles.inputs(id);
     if (!source) return { built: false, reason: "no_child" };
     const read = await learningEvents(events).read(id, ALL_TIME);
@@ -368,13 +372,13 @@ export async function rebuildChildProfile(childId: string, seams: ChildProfileSe
     // With nothing to build from, a stored profile is still replaced: its inputs are gone (a test or events deleted).
     if (!profile.assessment && profile.events.counted === 0 && !expected) return { built: false, reason: "nothing_to_build" };
     const row = { childId: id, parentId: source.parentId, assessmentId: profile.assessment?.assessmentId ?? null };
-    const saved = await profiles.save({ ...row, profile }, expected);
+    const saved = await profiles.save({ ...row, profile: seams.keepFindings ? { ...profile, ai: earlier } : profile }, expected);
     if (saved === "changed") continue;
     if ("refused" in saved) return { built: false, reason: "refused", detail: saved.refused };
     const facts = { built: true as const, revision: saved.revision, profile };
     if (!ai) return { ...facts, findings: { outcome: "off" } };
     if (read.length === 0) return { ...facts, findings: { outcome: "no_events" } };
-    return addFindings({ ...seams, ai }, { ...row, profile }, saved, read);
+    return addFindings({ ...seams, ai }, { ...row, profile }, saved, read, earlier);
   }
   return { built: false, reason: "busy" };
 }
@@ -392,6 +396,7 @@ async function addFindings(
   built: NewChildProfile,
   stored: { revision: number; buildToken: string },
   read: readonly LearningEvent[],
+  earlier: ChildLearnerProfile["ai"],
 ): Promise<RebuildResult> {
   const factsOnly = (findings: FindingsOutcome): RebuildResult => ({ built: true, revision: stored.revision, profile: built.profile, findings });
   try {
@@ -405,6 +410,11 @@ async function addFindings(
       return { built: true, revision: saved.revision, profile, findings: { outcome: "stored", kept: findings.length, dropped } };
     });
   } catch (e) {
-    return factsOnly({ outcome: "failed", problem: problemOf(e) });
+    if (!(e instanceof SpendRefused)) return factsOnly({ outcome: "failed", problem: problemOf(e) });
+    // Maya's spending ledger refused the request: nothing newer replaces the earlier findings, so they stay.
+    const profile: ChildLearnerProfile = { ...built.profile, ai: earlier };
+    const saved = await profiles.save({ ...built, profile }, stored);
+    if (saved === "changed" || "refused" in saved) return factsOnly({ outcome: "failed", problem: problemOf(e) });
+    return { built: true, revision: saved.revision, profile, findings: { outcome: "kept" } };
   }
 }

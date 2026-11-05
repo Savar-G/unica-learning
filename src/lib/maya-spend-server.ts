@@ -38,16 +38,16 @@ export function familyZoneLookup(db: SupabaseClient<Database>): (parentId: strin
   };
 }
 
-/** The team's email when Maya's monthly total is reached. Plain words, no family data. */
-export function spendAlertEmail(month: string, monthlyMicros: number): { subject: string; text: string } {
+/** The team's email when Maya's month reaches the alert amount. It stops nobody. Plain words, no family data. */
+export function spendAlertEmail(month: string, alertMicros: number): { subject: string; text: string } {
   const name = formatInZone(Date.parse(`${month}T12:00:00Z`), SPEND_MONTH_ZONE, { month: "long", year: "numeric" });
-  const cad = (monthlyMicros / MICROS_PER_CAD).toFixed(2);
+  const cad = (alertMicros / MICROS_PER_CAD).toFixed(2);
   return {
-    subject: "Maya is paused: the monthly spending total is reached",
+    subject: "Maya's spending this month reached the alert amount",
     text: [
-      `Maya's spending for ${name} reached the monthly total of CAD ${cad}.`,
-      "New chats and calls are paused until the month ends. Families see \"Maya is taking a short break. There's no extra charge.\"",
-      "To go on this month, raise MAYA_MONTHLY_CAP_CAD in Vercel and in the voice worker's settings.",
+      `Maya's spending for ${name} reached the alert amount of CAD ${cad}.`,
+      "Nothing changes for families: Maya keeps working, and each child's limit of CAD 10 a week still applies.",
+      "The amount is MAYA_MONTHLY_ALERT_CAD in Vercel and in the voice worker's settings. Practice runs and admin tests count in it.",
       "This email is sent once a month.",
     ].join("\n\n"),
   };
@@ -64,8 +64,8 @@ export function mayaSpendLedger(db: SupabaseClient<Database>, options: { env?: E
     config,
     zone: familyZoneLookup(db),
     async alert(month) {
-      if (!to) return console.error("[maya spend] the monthly total is reached; SIGNUP_NOTIFY_EMAIL is not set");
-      const sent = await (options.transport ?? resendTransport()).send({ sender: { to: "savar" }, to, ...spendAlertEmail(month, config.monthlyMicros) });
+      if (!to) return console.error("[maya spend] the month's alert amount is reached; SIGNUP_NOTIFY_EMAIL is not set");
+      const sent = await (options.transport ?? resendTransport()).send({ sender: { to: "savar" }, to, ...spendAlertEmail(month, config.monthlyAlertMicros) });
       if (sent.status !== "sent") console.error("[maya spend] the monthly alert did not go", sent.status, sent.error);
     },
   });
@@ -80,7 +80,7 @@ export function mayaCallSpend(ledger: SpendLedger, newId: () => string): CallSpe
  * An OpenRouter client behind the ledger: the model `model` (or AI_MODEL), charged to `charge`. Null without
  * OPENROUTER_API_KEY.
  */
-export function meteredClient(env: Env, ledger: SpendLedger, meter: { charge: Charge; callId: string | null; newId: () => string }, what: "model" | "review" | "note", model?: string): AiClient | null {
+export function meteredClient(env: Env, ledger: SpendLedger, meter: { charge: Charge; callId: string | null; newId: () => string; safetyRead?: boolean }, what: "model" | "review" | "note", model?: string): AiClient | null {
   if (!aiClient(env, model)) return null;
-  return meteredAi((fetch) => aiClient(env, model, fetch)!, { ledger, ...meter }, what);
+  return meteredAi((hooks) => aiClient(env, model, hooks)!, { ledger, ...meter }, what);
 }

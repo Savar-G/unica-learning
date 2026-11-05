@@ -43,11 +43,11 @@ const model = (t: ReturnType<typeof setup>) => usdToMicros(RESERVE_USD.model, t.
 
 describe("the configuration", () => {
   it("turns US dollars into CAD at 1.40 by default, and reads the rate and the monthly total from the environment", () => {
-    expect(spendConfig({})).toMatchObject({ usdToCad: 1.4, monthlyMicros: 400 * CAD });
+    expect(spendConfig({})).toMatchObject({ usdToCad: 1.4, monthlyAlertMicros: 400 * CAD });
     expect(usdToMicros(1, spendConfig({}))).toBe(1.4 * CAD);
-    expect(spendConfig({ MAYA_USD_TO_CAD: "1.37", MAYA_MONTHLY_CAP_CAD: "250" })).toMatchObject({ usdToCad: 1.37, monthlyMicros: 250 * CAD });
+    expect(spendConfig({ MAYA_USD_TO_CAD: "1.37", MAYA_MONTHLY_ALERT_CAD: "250" })).toMatchObject({ usdToCad: 1.37, monthlyAlertMicros: 250 * CAD });
     // A value that is not a positive number keeps the default.
-    expect(spendConfig({ MAYA_USD_TO_CAD: "zero", MAYA_MONTHLY_CAP_CAD: "-5" })).toMatchObject({ usdToCad: 1.4, monthlyMicros: 400 * CAD });
+    expect(spendConfig({ MAYA_USD_TO_CAD: "zero", MAYA_MONTHLY_ALERT_CAD: "-5" })).toMatchObject({ usdToCad: 1.4, monthlyAlertMicros: 400 * CAD });
   });
 });
 
@@ -64,19 +64,20 @@ describe("reservations", () => {
     expect(await t.ledger.state({ kind: "child", parentId: P, childId: C2 })).toBe("open");
   });
 
-  it("lets only one of two requests take the month's last room, sends the team one email, and pauses every child", async () => {
-    const t = setup({ env: { MAYA_MONTHLY_CAP_CAD: "1" } });
-    t.store.spent({ charge: "global", parentId: null, childId: null, week: null, month: "2026-11-01" }, CAD - model(t) - 1);
-    const both = await Promise.all([C, C2].map((childId) => t.ledger.reserve({ id: t.newId(), charge: { kind: "child", parentId: P, childId }, what: "model", micros: model(t) })));
-    expect(both.filter((r) => r.ok)).toHaveLength(1);
-    expect(both.find((r) => !r.ok)).toEqual({ ok: false, state: "paused" });
-    expect(await t.ledger.state({ kind: "child", parentId: P, childId: C2 })).toBe("paused");
-    expect(await t.ledger.state({ kind: "global", parentId: null, childId: null })).toBe("paused");
+  it("emails the team once a month when the total is reached", async () => {
+    const t = setup({ env: { MAYA_MONTHLY_ALERT_CAD: "1" } });
+    t.store.spent({ charge: "global", parentId: null, childId: null, week: null, month: "2026-11-01" }, CAD);
+    await t.ledger.reserve({ id: t.newId(), charge: child, what: "model", micros: model(t) });
+    await t.ledger.reserve({ id: t.newId(), charge: child, what: "model", micros: model(t) });
     expect(t.alert).toHaveBeenCalledTimes(1);
     expect(t.alert).toHaveBeenCalledWith("2026-11-01");
-    // A new month: open again, and its own alert when it is reached.
+    // A new month counts from nothing, with its own alert when it is reached.
     t.at("2026-12-01T08:00:00Z");
-    expect(await t.ledger.state(child)).toBe("open");
+    await t.ledger.reserve({ id: t.newId(), charge: child, what: "model", micros: model(t) });
+    expect(t.alert).toHaveBeenCalledTimes(1);
+    await t.ledger.reserve({ id: t.newId(), charge: child, what: "model", micros: CAD });
+    expect(t.alert).toHaveBeenCalledTimes(2);
+    expect(t.alert).toHaveBeenLastCalledWith("2026-12-01");
   });
 
   it("settles a request at a lower actual cost, a higher one, or keeps it reserved when the cost is not known", async () => {
@@ -101,11 +102,11 @@ describe("reservations", () => {
     expect(t.store.rows()).toMatchObject([{ charge: "global", week: null, month: "2026-11-01" }]);
   });
 
-  it("counts a local practice run toward the monthly total only, even past the cap", async () => {
-    const t = setup({ env: { MAYA_MONTHLY_CAP_CAD: "1" } });
+  it("counts a local practice run toward the month's total only, and it stops nobody", async () => {
+    const t = setup({ env: { MAYA_MONTHLY_ALERT_CAD: "1" } });
     await recordLocalSpend(t.ledger, 2, t.newId());
     expect(t.store.rows()).toMatchObject([{ charge: "global", childId: null, week: null, cost: 2.8 * CAD }]);
-    expect(await t.ledger.state(child)).toBe("paused");
+    expect(await t.ledger.state(child)).toBe("open");
     expect((await t.ledger.week({ parentId: P, childId: C })).usedMicros).toBe(0);
   });
 
@@ -136,7 +137,7 @@ describe("the week in family time", () => {
 });
 
 describe("the words", () => {
-  it("tells the parent at 80% of the week, when it is used up, and when Maya is paused", async () => {
+  it("tells the parent at 80% of the week, when it is used up, and when the ledger cannot be read", async () => {
     const t = setup();
     t.store.spent({ charge: "child", parentId: P, childId: C, week: "2026-11-02", month: "2026-11-01" }, 0.79 * WEEK_MICROS);
     expect(parentSpendLine(await t.ledger.week({ parentId: P, childId: C }), "Leah")).toBeNull();
@@ -146,10 +147,10 @@ describe("the words", () => {
     t.store.spent({ charge: "child", parentId: P, childId: C, week: "2026-11-02", month: "2026-11-01" }, 0.2 * WEEK_MICROS);
     expect(parentSpendLine(await t.ledger.week({ parentId: P, childId: C }), "Leah"))
       .toBe("Maya's weekly time is used up. It resets on Monday, November 9. There's no extra charge.");
-    t.store.spent({ charge: "global", parentId: null, childId: null, week: null, month: "2026-11-01" }, 400 * CAD);
-    const paused = await t.ledger.week({ parentId: P, childId: C });
-    expect(parentSpendLine(paused, "Leah")).toBe(PAUSED_LINE);
-    expect(childSpendLine(paused.state, paused.resetsAt, paused.zone)).toBe("Maya is taking a short break. There's no extra charge.");
+    // The state a page shows when the ledger cannot be read (src/lib/maya-chat-server.ts).
+    const week = await t.ledger.week({ parentId: P, childId: C });
+    expect(parentSpendLine({ ...week, state: "paused" }, "Leah")).toBe(PAUSED_LINE);
+    expect(childSpendLine("paused", week.resetsAt, week.zone)).toBe("Maya is taking a short break. There's no extra charge.");
   });
 });
 
@@ -162,7 +163,7 @@ describe("a metered AI client", () => {
   const request = { name: "t", system: "s", content: [{ type: "text" as const, text: "x" }], schema: {} };
 
   function client(t: ReturnType<typeof setup>, fetch: typeof globalThis.fetch) {
-    return meteredAi((f) => openRouterClient({ apiKey: "k", model: "m", fetch: f, maxRetries: 0 }), { ledger: t.ledger, charge: child, callId: null, newId: t.newId }, "model", fetch);
+    return meteredAi((hooks) => openRouterClient({ apiKey: "k", model: "m", ...hooks, maxRetries: 0 }), { ledger: t.ledger, charge: child, callId: null, newId: t.newId }, "model", fetch);
   }
 
   it("reserves before the request, asks OpenRouter for the cost, and settles with it", async () => {
@@ -205,7 +206,7 @@ describe("a voice call's meter", () => {
     let elapsed = 0;
     const meter = callSpend(t.ledger, { clock: () => Date.parse("2026-11-05T18:00:00Z") + elapsed, newId: t.newId }).voice({ id: "call-1", kind: "chat", parentId: P, childId: C });
     expect(await meter.ensure()).toBe("open");
-    await meter.speech("x".repeat(1000));
+    await meter.spoken("x".repeat(1000));
     elapsed = 30_000;
     expect(await meter.ensure()).toBe("open");
     elapsed = 90_000;
@@ -225,7 +226,7 @@ describe("a voice call's meter", () => {
     t.store.spent({ charge: "child", parentId: P, childId: C, week: "2026-11-02", month: "2026-11-01" }, WEEK_MICROS);
     const meter = callSpend(t.ledger, { clock: () => Date.now(), newId: t.newId }).voice({ id: "call-1", kind: "chat", parentId: P, childId: C });
     expect(await meter.ensure()).toBe("week_used");
-    await meter.speech("That's all our time for this week.");
+    await meter.spoken("That's all our time for this week.");
     expect(t.store.rows().filter((r) => !r.id.startsWith("spent-")).map((r) => r.what)).toEqual(["voice"]);
   });
 });

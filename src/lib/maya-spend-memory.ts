@@ -1,14 +1,15 @@
-import type { ReserveRequest, SpendStore } from "@/lib/maya-spend";
+import { RESERVATION_TTL_MS, type ReserveRequest, type SpendStore } from "@/lib/maya-spend";
 
 // The spending ledger's store (src/lib/maya-spend.ts) in memory, for tests. It keeps the database's rules (migration
-// add_maya_spend): a reservation is atomic for all of Maya (no await inside, like the function's one lock), the month is
-// checked before the week, the same id answers ok again, a settled request counts its cost, and an unsettled or uncertain
-// one its reservation. `fail` makes every call throw, as a store that cannot answer.
+// maya_spend_no_monthly_stop): a reservation is atomic (no await inside, like the function's lock), only a child's week
+// can refuse, the same id answers ok again, a settled request counts its cost, a settled unknown cost its reservation, and
+// an open one its reservation until RESERVATION_TTL_MS. `fail` makes every call throw, as a store that cannot answer.
 
 interface Row {
   request: ReserveRequest;
   cost: number | null;
   settled: boolean;
+  at: number;
 }
 
 export interface MemorySpendStore extends SpendStore {
@@ -19,7 +20,8 @@ export interface MemorySpendStore extends SpendStore {
   fail(on: boolean): void;
 }
 
-export function memorySpendStore(): MemorySpendStore {
+export function memorySpendStore(options: { clock?: () => number } = {}): MemorySpendStore {
+  const clock = options.clock ?? Date.now;
   const rows = new Map<string, Row>();
   const alerts: string[] = [];
   let failing = false;
@@ -27,7 +29,7 @@ export function memorySpendStore(): MemorySpendStore {
   const check = () => {
     if (failing) throw new Error("maya spend: the store did not answer");
   };
-  const counted = (r: Row) => (r.cost !== null ? r.cost : r.request.micros);
+  const counted = (r: Row) => (r.cost !== null ? r.cost : r.settled || clock() - r.at <= RESERVATION_TTL_MS ? r.request.micros : 0);
   const used = (childId: string | null, week: string | null, month: string) => {
     let w = 0;
     let m = 0;
@@ -40,15 +42,12 @@ export function memorySpendStore(): MemorySpendStore {
   return {
     async reserve(r) {
       check();
-      if (rows.has(r.id)) return { ok: true };
+      if (rows.has(r.id)) return { ok: true, monthMicros: used(r.childId, r.week, r.month).month };
       if (r.charge === "child" && (r.childId === null || r.week === null)) throw new Error("maya spend: a child's charge names the child and the week");
       const u = used(r.childId, r.week, r.month);
-      if (!r.force) {
-        if (u.month + r.micros > r.monthMicros) return { ok: false, over: "month" };
-        if (r.charge === "child" && u.week + r.micros > r.weekMicros) return { ok: false, over: "week" };
-      }
-      rows.set(r.id, { request: { ...r }, cost: null, settled: false });
-      return { ok: true };
+      if (!r.force && r.charge === "child" && u.week + r.micros > r.weekMicros) return { ok: false, over: "week" };
+      rows.set(r.id, { request: { ...r }, cost: null, settled: false, at: clock() });
+      return { ok: true, monthMicros: u.month + r.micros };
     },
     async settle(id, micros) {
       check();
@@ -70,7 +69,7 @@ export function memorySpendStore(): MemorySpendStore {
     rows: () => [...rows.entries()].map(([id, r]) => ({ id, charge: r.request.charge, childId: r.request.childId, what: r.request.what, reserved: r.request.micros, cost: r.cost, settled: r.settled, week: r.request.week, month: r.request.month })),
     spent(r, micros) {
       const id = `spent-${++n}`;
-      rows.set(id, { request: { id, callId: null, what: "model", micros, weekMicros: 0, monthMicros: 0, force: true, ...r }, cost: micros, settled: true });
+      rows.set(id, { request: { id, callId: null, what: "model", micros, weekMicros: 0, force: true, ...r }, cost: micros, settled: true, at: clock() });
     },
     alerts: () => [...alerts],
     fail(on) {

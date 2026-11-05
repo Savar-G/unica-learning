@@ -299,20 +299,20 @@ function writeReport(cases: readonly PracticeCase[], runs: number, dir: string):
 const usd = (x: number) => `$${x.toFixed(2)}`;
 /** What the run cost: USD 0 on the subscription and with the fakes. */
 /**
- * Maya's monthly spending total (D-290) counts the practice suite's API spend, never a child's week. With no database
- * key here (SUPABASE_URL and SUPABASE_SECRET_KEY), it says so and counts nothing.
+ * Maya's month's total (D-291) counts the practice suite's API spend, for the team's alert only: never a child's week, and
+ * it stops nobody. With no database key here (SUPABASE_URL and SUPABASE_SECRET_KEY), it says so and counts nothing.
  */
 async function countMonthly(o: Options, s: Spending): Promise<void> {
   if (o.fake || o.provider === "subscription" || !(s.spent > 0)) return;
   const url = process.env.SUPABASE_URL?.trim(), key = process.env.SUPABASE_SECRET_KEY?.trim();
-  if (!url || !key) return console.log("-- not counted in Maya's monthly spending total: SUPABASE_URL and SUPABASE_SECRET_KEY are not set.");
+  if (!url || !key) return console.log("-- not counted in Maya's month's total: SUPABASE_URL and SUPABASE_SECRET_KEY are not set.");
   try {
     const db = createClient<Database>(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
     const ledger = createSpendLedger({ store: mayaSpendStore(db), clock: Date.now, config: spendConfig(), zone: async () => "America/Vancouver" });
     await recordLocalSpend(ledger, s.spent, randomUUID());
-    console.log(`-- counted ${usd(s.spent)} in Maya's monthly spending total.`);
+    console.log(`-- counted ${usd(s.spent)} in Maya's month's total.`);
   } catch (e) {
-    console.error(`[maya-practice] not counted in Maya's monthly spending total: ${redactText(e instanceof Error ? e.message : String(e))}`);
+    console.error(`[maya-practice] not counted in Maya's month's total: ${redactText(e instanceof Error ? e.message : String(e))}`);
   }
 }
 

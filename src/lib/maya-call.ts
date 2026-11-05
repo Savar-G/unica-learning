@@ -46,14 +46,16 @@
 // only rises. Each later request on a flagged call sends its alert again if it was refused or never claimed, so a
 // failed alert is retried by the next input, or by "end" on an ended call; an unknown one is never sent again.
 //
-// Maya's spending cap (D-290, D-291, src/lib/maya-spend.ts): the model and the review seams get the call, so each paid
-// request is reserved and settled in the spending ledger for the right child (an admin test call only for the monthly
-// total). A new call starts only while the ledger is "open". Before and after each input of a live call the module asks
-// the ledger again: when the week is used up, or Maya is paused, the call ends with code's closing line
-// (SPEND_CLOSE) after what Maya has already said, and the model is asked nothing more. The close ends the call as a
-// technical stop with SPEND_CLOSE's detail in the trace; the record's outcome says "time_limit", and the transcript shows
-// the closing line as Maya's. Safety guidance due when the cap closes a call is said before the closing line. A voice
-// call also counts its speech-to-text and voice (`VoiceMeter`).
+// Maya's spending cap (D-290, D-291, src/lib/maya-spend.ts): the model, the review and the rebuild seams get the call, so
+// each paid request is reserved and settled in the spending ledger for the right child (an admin test call only toward
+// the month's total). A new call starts only while the ledger is "open". Before and after each input of a live call the
+// module asks the ledger again: when the week is used up, or the ledger cannot be read, the call ends with code's closing
+// line (SPEND_CLOSE) after what Maya has already said. The close ends the call as a technical stop with SPEND_CLOSE's
+// detail in the trace; the record's outcome says "time_limit", and the transcript shows the closing line as Maya's.
+// Safety comes before the cap. Only the model reads the child's words for danger, so words that the cap would leave unread
+// get one safety read: it cannot be refused, it is off the child's week, and no words of the model are said unless it
+// raises a flag. A flag then gives code's guidance, the alert and the safety close, as in any call. A voice call also
+// counts its speech-to-text, renewed on the worker's own timer (`meter`), and its voice when it is made (`spoken`).
 //
 // Seams: the call store (Supabase: src/lib/maya-call-store.ts; memory: src/lib/maya-call-memory.ts), the wording
 // history (Supabase: src/lib/maya-wording-history-store.ts; memory: memoryWordingHistoryStore), the learning events, the
@@ -76,6 +78,7 @@ import { packageHash, type MayaTrace } from "@/lib/maya-trace";
 import { checkQuestionPackage, type QuestionPackage, type QuestionRef } from "@/lib/question-package";
 import { connectedSeconds, VOICE_CALL_STALE_MS, type ConnectionEvent, type ConnectionKind } from "@/lib/maya-voice";
 import { spendCloseOf, SPEND_CLOSE, type CallSpend, type SpendCall, type SpendState, type VoiceMeter } from "@/lib/maya-spend";
+import { SpendRefused } from "@/lib/maya-spend-ai";
 export type { SpendCall } from "@/lib/maya-spend";
 
 /** The longest the note step of an ended call may take; after it the note stays pending. */
@@ -243,12 +246,13 @@ export interface CallSeams {
   history: WordingHistoryStore;
   events: LearningEvents;
   /** Rebuilds the child's profile; true when it was built. Never throws. */
-  rebuild(childId: string, options?: { factsOnly: boolean }): Promise<boolean>;
+  rebuild(childId: string, options?: { factsOnly?: boolean; call?: SpendCall }): Promise<boolean>;
   /**
    * The model to use: `null` asks for the model a new call uses now (the real one when the server has its key, else
-   * the fake); an id asks for that model again, or null when it is no longer available.
+   * the fake); an id asks for that model again, or null when it is no longer available. `safetyRead`: the model reads the
+   * child's words for danger at the cap (src/lib/maya-spend-ai.ts).
    */
-  model(id: string | null, call?: SpendCall): MayaModel | null;
+  model(id: string | null, call?: SpendCall, how?: { safetyRead?: boolean }): MayaModel | null;
   /**
    * The free-talk review (D-197) for a call on this model, or null (then every free-talk piece becomes a bank phrase).
    * Optional: without it a call has no review.
@@ -443,6 +447,13 @@ export interface VoiceCall {
   limit(): Promise<void>;
   /** Stores a connection event (on the server's clock). Never throws. */
   connection(kind: ConnectionKind): Promise<void>;
+  /**
+   * Renews speech-to-text ahead of its end, whatever the child is doing; the worker asks on its own timer. When no more
+   * fits and no input is running, the call closes and this returns code's closing words. Else null.
+   */
+  meter(): Promise<VoiceTurn | null>;
+  /** Counts the voice of words that became audio at the provider. Never throws, and nothing waits for it. */
+  spoken(text: string): Promise<void>;
   /**
    * Ends the call if it has not ended: "child_stopped" when the child hung up, else a technical issue with `detail`.
    * Stores the outcome, the connected seconds, the learning event and the profile rebuild. Safe to call twice.
@@ -658,15 +669,61 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
    * Ends a live call because of the cap, from its last saved state and with no model: safety guidance still due comes
    * first, then code's closing line. What reached the child before stays as it was. Null on a conflict.
    */
-  async function closeAtCap(record: CallRecord, state: Exclude<SpendState, "open">, childName: string | null, extra?: (endedAt: number) => Promise<CallChange>): Promise<{ record: CallRecord; say: string[]; safetyMessage: string | null } | null> {
+  async function closeAtCap(record: CallRecord, state: Exclude<SpendState, "open">, childName: string | null, extra?: (endedAt: number) => Promise<CallChange>, childText?: string): Promise<{ record: CallRecord; say: string[]; safetyMessage: string | null; guidance?: string } | null> {
     const live = record.live!;
-    const session = textSession(record, live.package, idleModel(record), childName, live.text);
+    const read = childText && !live.text.session.safety.flagged ? await safetyRead(record, childName, childText) : null;
+    const session = read?.session ?? textSession(record, live.package, idleModel(record), childName, live.text);
     const safety = session.session.safety;
-    const owed = safety.flagged && !safety.guided && safety.severity ? SAFETY_GUIDANCE[safety.severity] : null;
-    const ended = await end(record, live.package, session, { detail: SPEND_CLOSE[state].detail }, extra, record.startedAt === null, true);
+    const owed = !read && safety.flagged && !safety.guided && safety.severity ? [SAFETY_GUIDANCE[safety.severity]] : [];
+    const closedAlready = session.ended;
+    const ended = closedAlready ? await end(record, live.package, session, {}, extra) : await end(record, live.package, session, { detail: SPEND_CLOSE[state].detail }, extra, record.startedAt === null, true);
     if (!ended) return null;
-    return { record: ended, say: [...(owed ? [owed] : []), SPEND_CLOSE[state].line], safetyMessage: safety.flagged && safety.severity ? SAFETY_GUIDANCE[safety.severity] : null };
+    const say = [...(read?.say ?? owed), ...(closedAlready ? [] : [SPEND_CLOSE[state].line])];
+    const guidance = say.find((text) => (Object.values(SAFETY_GUIDANCE) as string[]).includes(text));
+    return { record: ended, say, safetyMessage: safety.flagged && safety.severity ? SAFETY_GUIDANCE[safety.severity] : null, ...(guidance ? { guidance } : {}) };
   }
+
+  /**
+   * The child's words at the cap, read once by the model for danger. Null when they raise no flag: then none of the
+   * model's words are said, and nothing but this one request is sent. With a flag, the session goes on in code's words.
+   */
+  async function safetyRead(record: CallRecord, childName: string | null, text: string): Promise<{ session: TextSession; say: string[] } | null> {
+    const base = seams.model(record.model, spendCall(record), { safetyRead: true });
+    if (!base) return null;
+    let asked = false;
+    const once: MayaModel = {
+      ...base,
+      async propose(input, signal) {
+        if (asked) throw new Error("the model is not asked again after a safety read");
+        asked = true;
+        const proposal = await base.propose(input, signal);
+        const reading = (proposal as { reading?: { safety?: unknown } | null } | null)?.reading;
+        if (!reading?.safety && !readsUnsafe(proposal)) throw new Error("the words raise no flag");
+        return proposal;
+      },
+    };
+    const session = textSession(record, record.live!.package, once, childName, record.live!.text);
+    try {
+      const out = await session.child(text);
+      return flagOf(session, unsafe) ? { session, say: out.say } : null;
+    } catch (e) {
+      console.error("[maya call] the safety read failed", record.id, e instanceof Error ? e.message : String(e));
+      return null;
+    }
+  }
+
+  /** The model, telling `refused` when the ledger refuses one of its requests in the middle of a turn. */
+  const watched = (model: MayaModel, refused: (state: Exclude<SpendState, "open">) => void): MayaModel => ({
+    ...model,
+    async propose(input, signal) {
+      try {
+        return await model.propose(input, signal);
+      } catch (e) {
+        if (e instanceof SpendRefused) refused(e.state);
+        throw e;
+      }
+    },
+  });
 
   /** Sends the alert of a flagged call's flag when it has not gone (the seam sends each call and level once). */
   async function alert(record: CallRecord) {
@@ -747,7 +804,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       }
     }
     const rebuilt = () => current.kind === "admin_test" && current.model === FAKE_MODEL_ID && current.question.source === "workbook"
-      ? seams.rebuild(current.childId, { factsOnly: true }) : seams.rebuild(current.childId);
+      ? seams.rebuild(current.childId, { factsOnly: true, call: spendCall(current) }) : seams.rebuild(current.childId, { call: spendCall(current) });
     if (current.learningEventId && !current.live && !current.profileRebuiltAt && (await rebuilt())) {
       const at = iso(seams.clock());
       if (await store.update(current.id, current.revision, { profileRebuiltAt: at })) current = { ...current, profileRebuiltAt: at, revision: current.revision + 1 };
@@ -934,8 +991,10 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       if (!found) return { ok: false, error: "not_found" };
       if (found.mode !== "voice") return { ok: false, error: "not_voice" };
       if (found.status !== "live" || !found.live) return { ok: false, error: "ended" };
-      const model = found.live.text.session.outcome ? idleModel(found) : seams.model(found.model, spendCall(found));
-      if (!model) return { ok: false, error: "model_unavailable" };
+      let refusal: Exclude<SpendState, "open"> | null = null;
+      const asked = found.live.text.session.outcome ? idleModel(found) : seams.model(found.model, spendCall(found));
+      if (!asked) return { ok: false, error: "model_unavailable" };
+      const model = watched(asked, (state) => { refusal = state; });
       const restored = structuredClone(found.live.text);
       restored.session.variety.name = null;
       restored.session.variety.nameAt = null;
@@ -950,8 +1009,6 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       let told = 0;
       const session = textSession(record, pkg, model, null, restored, undefined, undefined, undefined, undefined, undefined, (out) => {
         persist(out);
-        // Guidance is always said and counted.
-        void meter?.speech(out.say.join(" "));
         const from = told;
         told = session.trace().turns.length;
         // Only a worker that lost the call to another stays silent.
@@ -1034,11 +1091,11 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         return stt !== "open" ? stt : seams.spend.state(spendCall(record));
       };
       /** Ends the call because of the cap after `said` (what this input already says), with code's closing line. */
-      const capClose = async (state: Exclude<SpendState, "open">, said: VoiceTurn | null): Promise<VoiceTurn> => {
+      const capClose = async (state: Exclude<SpendState, "open">, said: VoiceTurn | null, childText?: string): Promise<VoiceTurn> => {
         let closed: Awaited<ReturnType<typeof closeAtCap>> = null;
         later(async () => {
           if (lost || record.status === "ended" || !record.live) return;
-          closed = await closeAtCap(record, state, null, connected);
+          closed = await closeAtCap(record, state, null, connected, childText);
           if (!closed) { lost = true; replaced = true; }
           else record = closed.record;
         });
@@ -1046,16 +1103,18 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         await meter?.stop();
         const done = closed as Awaited<ReturnType<typeof closeAtCap>>;
         if (!done) return said ?? none;
-        await meter?.speech(done.say.join(" "));
         return {
           ...(said ?? none), say: [...(said?.say ?? []), ...done.say], ended: true,
-          safetyMessage: said?.safetyMessage ?? done.safetyMessage, ...(said ? {} : { priority: done.safetyMessage !== null }),
+          safetyMessage: said?.safetyMessage ?? done.safetyMessage,
+          ...(said && !done.guidance ? {} : { priority: done.safetyMessage !== null }),
+          ...(done.guidance ? { guidance: done.guidance } : {}),
         };
       };
-      const turn = async (run: () => Promise<TextOutput>): Promise<VoiceTurn> => {
+      const turn = async (run: () => Promise<TextOutput>, childText?: string): Promise<VoiceTurn> => {
         if (inactive()) return none;
         const capped = await capNow();
-        if (capped !== "open") return capClose(capped, null);
+        if (capped !== "open") return capClose(capped, null, childText);
+        refusal = null;
         const before = session.trace().turns.length;
         working++;
         let out: TextOutput;
@@ -1066,11 +1125,12 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const from = Math.max(before, told);
         told = session.trace().turns.length;
         const said = voiceTurn(out, from);
-        await meter?.speech(said.say.join(" "));
         if (!session.ended) {
-          // The words this input chose are said; then the cap closes the call when it is reached.
-          const after = await capNow();
-          if (after !== "open") return capClose(after, said);
+          // The words this input chose are said; then the cap closes the call when it is reached. A request refused in
+          // the middle of the turn left the child's words unread, so they get the safety read.
+          const stopped: Exclude<SpendState, "open"> | null = refusal;
+          const after = stopped ?? await capNow();
+          if (after !== "open") return capClose(after, said, stopped ? childText : undefined);
         }
         return said;
       };
@@ -1125,7 +1185,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           if (lost) throw new Error("The observed board could not be saved.");
         },
         start: () => turn(() => session.start()),
-        child: (text, options) => turn(() => session.child(text.trim().slice(0, MAX_CHILD_TEXT), options)),
+        child: (text, options) => turn(() => session.child(text.trim().slice(0, MAX_CHILD_TEXT), options), text.trim().slice(0, MAX_CHILD_TEXT)),
         tick: () => turn(() => session.tick()),
         writing: (status) => turn(() => session.writing(status)),
         async limit() {
@@ -1157,6 +1217,14 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           });
           await queue;
         },
+        async meter() {
+          if (!meter || inactive() || session.ended) return null;
+          const state = await meter.ensure();
+          // A running input closes the call itself when it is done, after its own words.
+          if (state === "open" || inactive() || session.ended || working > 0) return null;
+          return capClose(state, null);
+        },
+        spoken: (text) => meter?.spoken(text) ?? Promise.resolve(),
         async end(how) {
           await queue;
           await meter?.stop();
@@ -1214,15 +1282,17 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       }
       const { package: pkg, text: saved } = record.live;
       if (input.type !== "end") {
-        // The cap first: a call whose week is used, or while Maya is paused, closes without asking the model.
+        // At the cap Maya teaches no more, and only the child's own words are read, for safety.
         const state = await spendState(record);
         if (state !== "open") {
-          const closed = await closeAtCap(record, state, childName);
+          const closed = await closeAtCap(record, state, childName, undefined, input.type === "child" ? input.text.trim() : undefined);
           if (!closed) return { ok: false, error: "conflict" };
           return { ok: true, view: callView(closed.record, closed.record.trace!, await alertsOf(closed.record)), output: { say: closed.say, newBatches: 0, safetyMessage: closed.safetyMessage } };
         }
       }
-      const model = seams.model(record.model, spendCall(record));
+      let refusal: Exclude<SpendState, "open"> | null = null;
+      const asked = seams.model(record.model, spendCall(record));
+      const model = asked && watched(asked, (state) => { refusal = state; });
       if (!model) {
         // The model this call started with is gone (the key was removed): the call ends, recorded with its own model.
         const session = textSession(record, pkg, idleModel(record), childName, saved);
@@ -1243,10 +1313,12 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       }
       if (!saved2) return { ok: false, error: "conflict" };
       if (saved2.status === "live" && input.type !== "end") {
-        // The turn that reached the cap is said in full; then code's closing line ends the call.
-        const state = await spendState(saved2);
+        // The turn that reached the cap is said in full; then code's closing line ends the call. A request refused in the
+        // middle of the turn left the child's words unread, so they get the safety read.
+        const stopped: Exclude<SpendState, "open"> | null = refusal;
+        const state = stopped ?? await spendState(saved2);
         if (state !== "open") {
-          const closed = await closeAtCap(saved2, state, childName);
+          const closed = await closeAtCap(saved2, state, childName, undefined, stopped && input.type === "child" ? input.text.trim() : undefined);
           if (!closed) return { ok: false, error: "conflict" };
           return {
             ok: true, view: callView(closed.record, closed.record.trace!, await alertsOf(closed.record)),

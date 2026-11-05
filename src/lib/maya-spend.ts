@@ -2,19 +2,23 @@
 //
 // - A child may use CAD 10 of Maya a week (WEEK_CAD, Savar's decision of 2026-11-05). The week is the minutes ledger's:
 //   Monday 00:00 to Monday 00:00 in the family's time zone (src/lib/family-time.ts `weekOf`).
-// - All of Maya together may use a monthly total (MAYA_MONTHLY_CAP_CAD, default CAD 400), by calendar month in Pacific
-//   time. Admin test calls and the local practice tools count only toward this total, never toward a child's week.
+// - No cap is shared between children. The month's total for all of Maya (calendar month, Pacific time) only sends the
+//   team one email at MAYA_MONTHLY_ALERT_CAD (default CAD 400); it has no effect on access. Admin test calls, the local
+//   practice tools and safety reads count only toward this total, never toward a child's week.
 // - Amounts are whole micro-units of CAD (1 CAD = 1 000 000). Providers report US dollars; one configured rate turns
 //   them into CAD (MAYA_USD_TO_CAD, default 1.40).
-// - Every paid request is reserved before it is sent (the model, the free-talk review, the call note's AI, the voice
-//   call's speech-to-text and voice) and settled with its actual cost when it comes back. A request whose cost is not
-//   known (no answer, a time-out, an answer without a cost) stays counted at its reservation. The reservation and the
-//   check are one database function under one lock (`reserve_maya_spend`, migration add_maya_spend), so requests sent
-//   together cannot spend past the cap. When the ledger cannot be read, no new paid work starts.
-// - "open": a model request still fits. "week_used": the child's week does not fit one more model request; Maya closes
-//   the call with a code-written line, and new chats and calls wait for the next week. "paused": the monthly total does
-//   not fit one, or the ledger cannot be read; every child waits, and the team gets one email per month.
-// - Safety guidance needs no paid request (code writes it), so the cap never stops it.
+// - Each provider attempt is reserved before it is sent (the model, the free-talk review, the call note's AI, the
+//   profile's AI, the voice call's speech-to-text) and settled with its actual cost when it comes back. An attempt whose
+//   cost is not known (no answer, a time-out, an answer without a cost) stays counted at its reservation. A reservation
+//   left open past RESERVATION_TTL_MS (a crash) stops counting, so it cannot lock a child out. The reservation and the
+//   check are one database function under the child's lock (`reserve_maya_spend`), so requests sent together cannot spend
+//   past the cap. When the ledger cannot be read, no new paid work starts.
+// - The voice is counted where it is made: when audio came back from the voice provider (`VoiceMeter.spoken`).
+// - "open": a model request still fits. "week_used": the child's week does not fit one more; Maya closes the call with a
+//   code-written line, and new chats and calls wait for the next week. "paused": the ledger cannot be read.
+// - Safety is never held back by the cap. The danger is read by the model (the proposal's reading), so the child's words
+//   at the cap get one safety read that cannot be refused and is off the child's week (`Meter.safetyRead`); the guidance
+//   itself is code's and needs no request.
 //
 // Seams: the store (Supabase: src/lib/maya-spend-store.ts; memory: src/lib/maya-spend-memory.ts), the clock, the
 // family's time zone and the alert. Pure otherwise: no network, database or Next.js.
@@ -28,27 +32,34 @@ export const WEEK_MICROS = WEEK_CAD * MICROS_PER_CAD;
 /** Parent home tells the parent when this share of the week is used. */
 export const NOTICE_SHARE = 0.8;
 export const DEFAULT_USD_TO_CAD = 1.4;
-export const DEFAULT_MONTHLY_CAD = 400;
-/** The monthly total's calendar month is Pacific time (the business's own zone). */
+/** The month's total that sends the team one email. It stops nobody. */
+export const DEFAULT_MONTHLY_ALERT_CAD = 400;
+/** A reservation left unsettled this long stops counting (a crash). A settled unknown cost stays counted. Also in the database function. */
+export const RESERVATION_TTL_MS = 10 * 60_000;
+/** The month's calendar month is Pacific time (the business's own zone). */
 export const SPEND_MONTH_ZONE: FamilyZone = PACIFIC_ZONE;
 
 /**
  * What one request reserves before it is sent, in US dollars: above what one request costs on the default models
- * (Maya's turn on Sonnet with its whole prompt, a short Haiku review, a call note's one pick), so a reservation rarely
+ * (Maya's turn on Sonnet with its whole prompt, a short Haiku review, a call note's one pick, the profile's findings), so a reservation rarely
  * settles higher. The settle replaces it with the actual cost.
  */
-export const RESERVE_USD = { model: 0.15, review: 0.02, note: 0.05 } as const;
+export const RESERVE_USD = { model: 0.15, review: 0.02, note: 0.05, profile: 0.3 } as const;
 /** Speech-to-text is reserved ahead for this long at a time while a voice call runs. */
 export const VOICE_BLOCK_MS = 60_000;
+/** The next block is reserved this long before the current one ends, so the stream never runs past what is reserved. */
+export const VOICE_RENEW_EARLY_MS = 20_000;
+/** How often the worker asks the meter, whatever the child is doing. Less than VOICE_RENEW_EARLY_MS. */
+export const VOICE_METER_TICK_MS = 10_000;
 export const DEFAULT_STT_USD_PER_MINUTE = 0.01;
 export const DEFAULT_VOICE_USD_PER_1K_CHARS = 0.03;
 
-export type SpendWhat = "model" | "review" | "note" | "speech_to_text" | "voice";
+export type SpendWhat = "model" | "review" | "note" | "profile" | "speech_to_text" | "voice";
 export type SpendState = "open" | "week_used" | "paused";
 
 export interface SpendConfig {
   usdToCad: number;
-  monthlyMicros: number;
+  monthlyAlertMicros: number;
   sttUsdPerMinute: number;
   voiceUsdPer1kChars: number;
 }
@@ -58,11 +69,11 @@ const positive = (value: string | undefined, fallback: number) => {
   return value?.trim() && Number.isFinite(n) && n > 0 ? n : fallback;
 };
 
-/** The settings: MAYA_USD_TO_CAD, MAYA_MONTHLY_CAP_CAD, MAYA_STT_USD_PER_MINUTE, MAYA_VOICE_USD_PER_1K_CHARS. */
+/** The settings: MAYA_USD_TO_CAD, MAYA_MONTHLY_ALERT_CAD, MAYA_STT_USD_PER_MINUTE, MAYA_VOICE_USD_PER_1K_CHARS. */
 export function spendConfig(env: Readonly<Record<string, string | undefined>> = process.env): SpendConfig {
   return {
     usdToCad: positive(env.MAYA_USD_TO_CAD, DEFAULT_USD_TO_CAD),
-    monthlyMicros: Math.round(positive(env.MAYA_MONTHLY_CAP_CAD, DEFAULT_MONTHLY_CAD) * MICROS_PER_CAD),
+    monthlyAlertMicros: Math.round(positive(env.MAYA_MONTHLY_ALERT_CAD, DEFAULT_MONTHLY_ALERT_CAD) * MICROS_PER_CAD),
     sttUsdPerMinute: positive(env.MAYA_STT_USD_PER_MINUTE, DEFAULT_STT_USD_PER_MINUTE),
     voiceUsdPer1kChars: positive(env.MAYA_VOICE_USD_PER_1K_CHARS, DEFAULT_VOICE_USD_PER_1K_CHARS),
   };
@@ -71,7 +82,7 @@ export function spendConfig(env: Readonly<Record<string, string | undefined>> = 
 /** US dollars as micro-units of CAD at the configured rate, rounded up. */
 export const usdToMicros = (usd: number, config: Pick<SpendConfig, "usdToCad">): number => Math.max(0, Math.ceil(usd * config.usdToCad * MICROS_PER_CAD - 1e-6));
 
-/** Who pays: a child's week and the monthly total, or the monthly total only (admin test calls, local tools). */
+/** Who pays: a child's week and the month's total, or the month's total only (admin test calls, local tools, safety reads). */
 export type Charge = { kind: "child"; parentId: string; childId: string } | { kind: "global"; parentId: string | null; childId: string | null };
 
 /** What the ledger needs of a call. */
@@ -82,7 +93,7 @@ export interface SpendCall {
   childId: string;
 }
 
-/** An admin test call counts only toward the monthly total; every other call is the child's. */
+/** An admin test call counts only toward the month's total; every other call is the child's. */
 export function chargeOf(call: Pick<SpendCall, "kind" | "parentId" | "childId">): Charge {
   return call.kind === "admin_test" ? { kind: "global", parentId: call.parentId, childId: call.childId } : { kind: "child", parentId: call.parentId, childId: call.childId };
 }
@@ -102,22 +113,21 @@ export interface ReserveRequest {
   weekMicros: number;
   /** The first day of the month (YYYY-MM-DD). */
   month: string;
-  monthMicros: number;
-  /** Counted even past a cap: speech of words already chosen. */
+  /** Counted even past the cap: speech of words already said. */
   force: boolean;
 }
 
 /** The store seam. Every call throws when the store cannot answer. */
 export interface SpendStore {
   /**
-   * Stores the reservation when it fits: the month's counted micros plus this one at most monthMicros, and for a child
-   * the week's at most weekMicros. Atomic for all of Maya: two reservations at once never both take the last room. The
-   * same id again changes nothing and answers ok.
+   * Stores the reservation when it fits: for a child, the week's counted micros plus this one at most weekMicros. Atomic
+   * per child: two reservations at once never both take the last room. The same id again changes nothing and answers ok.
+   * `monthMicros`: the month's counted micros, for the team's alert.
    */
-  reserve(r: ReserveRequest): Promise<{ ok: true } | { ok: false; over: "week" | "month" }>;
+  reserve(r: ReserveRequest): Promise<{ ok: true; monthMicros: number } | { ok: false; over: "week" }>;
   /** The actual cost; null keeps the reservation counted (the cost is not known). The first settle stays. */
   settle(id: string, micros: number | null): Promise<void>;
-  /** Counted micros: a settled request at its cost, any other at its reservation. */
+  /** Counted micros: a settled request at its cost, an unknown cost at its reservation, an open one until RESERVATION_TTL_MS. */
   used(q: { childId: string | null; week: string | null; month: string }): Promise<{ week: number; month: number }>;
   /** True the first time for a month: the monthly alert goes once. */
   claimAlert(month: string): Promise<boolean>;
@@ -125,7 +135,7 @@ export interface SpendStore {
 
 // ---------- the ledger ----------
 
-export type Reservation = { ok: true } | { ok: false; state: Exclude<SpendState, "open"> };
+export type Reservation = { ok: true } | { ok: false; state: "week_used" };
 
 export interface WeekSpend {
   usedMicros: number;
@@ -158,7 +168,7 @@ export interface SpendSeams {
   config: SpendConfig;
   /** The family's time zone (the shared rule of src/lib/family-time.ts). */
   zone(parentId: string): Promise<FamilyZone>;
-  /** The team's email when the monthly total is reached; called once per month. */
+  /** The team's email when the month's total reaches MAYA_MONTHLY_ALERT_CAD; called once per month. It stops nobody. */
   alert?(month: string): Promise<void>;
 }
 
@@ -166,10 +176,13 @@ export function createSpendLedger(seams: SpendSeams): SpendLedger {
   const { store, clock, config } = seams;
   const room = usdToMicros(RESERVE_USD.model, config);
   const month = () => monthOf(clock(), SPEND_MONTH_ZONE).start;
+  const told = new Set<string>();
 
   async function alertOnce(m: string) {
+    if (!seams.alert || told.has(m)) return;
+    told.add(m);
     try {
-      if (seams.alert && (await store.claimAlert(m))) await seams.alert(m);
+      if (await store.claimAlert(m)) await seams.alert(m);
     } catch (e) {
       console.error("[maya spend] monthly alert failed", e instanceof Error ? e.message : String(e));
     }
@@ -185,10 +198,6 @@ export function createSpendLedger(seams: SpendSeams): SpendLedger {
   async function stateOf(charge: Charge): Promise<SpendState> {
     const p = await periods(charge);
     const used = await store.used({ childId: charge.kind === "child" ? charge.childId : null, week: p.week, month: p.month });
-    if (used.month + room > config.monthlyMicros) {
-      await alertOnce(p.month);
-      return "paused";
-    }
     return charge.kind === "child" && used.week + room > WEEK_MICROS ? "week_used" : "open";
   }
 
@@ -199,11 +208,11 @@ export function createSpendLedger(seams: SpendSeams): SpendLedger {
       const p = await periods(charge);
       const r = await store.reserve({
         id, charge: charge.kind, parentId: charge.parentId, childId: charge.childId, callId, what, micros,
-        week: p.week, weekMicros: WEEK_MICROS, month: p.month, monthMicros: config.monthlyMicros, force,
+        week: p.week, weekMicros: WEEK_MICROS, month: p.month, force,
       });
-      if (r.ok) return r;
-      if (r.over === "month") await alertOnce(p.month);
-      return { ok: false, state: r.over === "month" ? "paused" : "week_used" };
+      if (!r.ok) return { ok: false, state: "week_used" };
+      if (r.monthMicros >= config.monthlyAlertMicros) await alertOnce(p.month);
+      return { ok: true };
     },
     settle: (id, micros) => store.settle(id, micros === null ? null : Math.max(0, Math.ceil(micros))),
     settleUsd: (id, usd) => store.settle(id, usd === null ? null : usdToMicros(usd, config)),
@@ -219,7 +228,7 @@ export function createSpendLedger(seams: SpendSeams): SpendLedger {
       const charge: Charge = { kind: "child", parentId, childId };
       const p = await periods(charge);
       const used = await store.used({ childId, week: p.week, month: p.month });
-      const state: SpendState = used.month + room > config.monthlyMicros ? "paused" : used.week + room > WEEK_MICROS ? "week_used" : "open";
+      const state: SpendState = used.week + room > WEEK_MICROS ? "week_used" : "open";
       return { usedMicros: used.week, weekMicros: WEEK_MICROS, state, notice: used.week >= NOTICE_SHARE * WEEK_MICROS, resetsAt: p.resetsAt!, zone: p.zone! };
     },
   };
@@ -230,10 +239,13 @@ export function createSpendLedger(seams: SpendSeams): SpendLedger {
 
 /** A voice call's speech-to-text and voice, reserved and counted as the call runs. */
 export interface VoiceMeter {
-  /** Reserves speech-to-text ahead when the current block is used. "open", or why no more may be reserved. */
+  /**
+   * Reserves the next speech-to-text block when the current one is close to its end. One at a time: checks that come
+   * together share one block. "open", or why no more may be reserved. After `stop`, it reserves nothing.
+   */
   ensure(): Promise<SpendState>;
-  /** Counts the voice for words Maya is about to say (always counted: the words are already chosen). */
-  speech(text: string): Promise<void>;
+  /** Counts the voice of words that became audio. Always counted, and never throws: the words are already said. */
+  spoken(text: string): Promise<void>;
   /** Settles the open speech-to-text block at the time used. Safe to call twice. */
   stop(): Promise<void>;
 }
@@ -255,7 +267,15 @@ export function callSpend(ledger: SpendLedger, seams: { clock: () => number; new
       const charge = chargeOf(call);
       const perMs = ledger.config.sttUsdPerMinute / 60_000;
       let block: { id: string; from: number } | null = null;
-      let refused: Exclude<SpendState, "open"> | null = null;
+      let refused: "week_used" | null = null;
+      let stopped = false;
+      const counting = new Set<Promise<void>>();
+      let queue: Promise<unknown> = Promise.resolve();
+      const inOrder = <T>(work: () => Promise<T>): Promise<T> => {
+        const next = queue.then(work);
+        queue = next.catch(() => {});
+        return next;
+      };
       const close = async (at: number) => {
         if (!block) return;
         const b = block;
@@ -263,10 +283,11 @@ export function callSpend(ledger: SpendLedger, seams: { clock: () => number; new
         await ledger.settleUsd(b.id, Math.max(0, at - b.from) * perMs);
       };
       return {
-        async ensure() {
+        ensure: () => inOrder(async (): Promise<SpendState> => {
           if (refused) return refused;
+          if (stopped) return "open";
           const now = seams.clock();
-          if (block && now < block.from + VOICE_BLOCK_MS) return "open";
+          if (block && now < block.from + VOICE_BLOCK_MS - VOICE_RENEW_EARLY_MS) return "open";
           try {
             await close(now);
             const id = seams.newId();
@@ -276,36 +297,42 @@ export function callSpend(ledger: SpendLedger, seams: { clock: () => number; new
             return "open";
           } catch (e) {
             console.error("[maya spend] speech-to-text not reserved", call.id, e instanceof Error ? e.message : String(e));
-            return (refused = "paused");
+            return "paused";
           }
-        },
-        async speech(text) {
-          const chars = text.length;
-          if (chars === 0) return;
-          const usd = (chars / 1000) * ledger.config.voiceUsdPer1kChars;
+        }),
+        spoken(text) {
+          const usd = (text.length / 1000) * ledger.config.voiceUsdPer1kChars;
+          if (usd === 0) return Promise.resolve();
           const id = seams.newId();
-          try {
-            const r = await ledger.reserve({ id, charge, callId: call.id, what: "voice", micros: usdToMicros(usd, ledger.config), force: true });
-            if (r.ok) await ledger.settleUsd(id, usd);
-          } catch (e) {
-            console.error("[maya spend] voice not counted", call.id, e instanceof Error ? e.message : String(e));
-          }
+          const work = (async () => {
+            try {
+              const r = await ledger.reserve({ id, charge, callId: call.id, what: "voice", micros: usdToMicros(usd, ledger.config), force: true });
+              if (r.ok) await ledger.settleUsd(id, usd);
+            } catch (e) {
+              console.error("[maya spend] voice not counted", call.id, e instanceof Error ? e.message : String(e));
+            }
+          })();
+          counting.add(work);
+          void work.finally(() => counting.delete(work));
+          return work;
         },
-        async stop() {
+        stop: () => inOrder(async () => {
+          stopped = true;
           try {
             await close(seams.clock());
           } catch (e) {
             console.error("[maya spend] speech-to-text not settled", call.id, e instanceof Error ? e.message : String(e));
           }
-        },
+          await Promise.all(counting);
+        }),
       };
     },
   };
 }
 
 /**
- * Counts what a local tool spent (the practice suite on the API) toward the monthly total only, after the run: the tool
- * has its own cap (--max-usd), so this is counted, not refused.
+ * Counts what a local tool spent (the practice suite on the API) toward the month's total only, after the run: never
+ * toward a child's week. The tool has its own limit (--max-usd).
  */
 export async function recordLocalSpend(ledger: SpendLedger, usd: number, id: string): Promise<void> {
   if (!(usd > 0)) return;
@@ -318,7 +345,7 @@ export async function recordLocalSpend(ledger: SpendLedger, usd: number, id: str
 /** Maya's last line when the cap closes a call, and the trace's detail for it. Code-written: no model request. */
 export const SPEND_CLOSE: Record<Exclude<SpendState, "open">, { line: string; detail: string }> = {
   week_used: { line: "That's all our time for this week. You worked hard today. See you next week!", detail: "Maya's time for this week was used up" },
-  paused: { line: "I have to stop here for now. You worked hard today. Bye for now!", detail: "Maya is taking a short break" },
+  paused: { line: "I have to stop here for now. You worked hard today. Bye for now!", detail: "Maya could not check her time" },
 };
 
 /** The detail of a call the cap closed, or null. */

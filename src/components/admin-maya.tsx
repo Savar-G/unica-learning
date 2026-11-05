@@ -72,7 +72,7 @@ const ERROR_TEXT: Record<string, string> = {
   not_test_family: "Only test families can have test calls.",
   model_unavailable: "The AI is not available right now.",
   week_used: "This child's Maya time for this week is used up.",
-  paused: "Maya is paused: this month's spending total is reached, or the spending ledger cannot be read.",
+  paused: "Maya's spending ledger cannot be read, so she starts no new work.",
   unavailable: "The server is missing its database key.",
   voice_unavailable: "Voice calls are not set up on this server yet.",
   voice_call: "Maya's voice helper is running this call. Hang up from the call first.",

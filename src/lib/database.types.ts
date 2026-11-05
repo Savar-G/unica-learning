@@ -4996,13 +4996,13 @@ export type Database = {
           p_id: string
           p_micros: number
           p_month: string
-          p_month_cap: number
           p_parent: string
           p_week: string
           p_week_cap: number
           p_what: string
         }
         Returns: {
+          month_micros: number
           ok: boolean
           over: string
         }[]
