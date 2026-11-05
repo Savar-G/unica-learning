@@ -19,10 +19,12 @@ import {
   finish,
   fromRemovedRound,
   lockStage1,
+  lockStage2,
   nextQuestion,
   openSection,
   recordAnswer,
   restoreSession,
+  stage3Due,
   startAttempt,
   startState,
   storedTest,
@@ -38,6 +40,7 @@ import {
   type Placement,
   type Province,
   type Route,
+  type Stage3Route,
   type Session,
   type StartState,
   type StoredTest,
@@ -70,6 +73,8 @@ export interface LoadedAttempt {
   help?: HelpAnswer | null;
   /** #253: the stored route, the stage 1 lock record: null or absent while stage 1 is not locked. */
   route?: Route | null;
+  /** D-282: the stored third stage, the stage 2 lock record: null or absent while stage 2 is not locked. */
+  stage3Route?: Stage3Route | null;
 }
 
 /** A new test to store: its times, the seed, and the questions drawn from it. */
@@ -196,6 +201,13 @@ export interface AttemptStore extends FactsStore, ShownStore, ContextStore {
    * stored. "closed" when the test is not in progress.
    */
   lockStage1(id: string, lock: { route: Route; answers: readonly Pick<Submission, "questionId" | "response">[] }): Promise<Route | "changed" | "closed">;
+  /**
+   * D-282: locks stage 2: stores `stage3Route`, the stage 2 lock record, only while the test is in progress, no record is
+   * stored, and the stored answers of stages 1 and 2 are still `answers`. A third stage also moves the deadline to
+   * `resumeUntil` in the same write: a child can come back to this grid after the deadline, as every answer was in.
+   * Returns the stored record: this one, or the one stored before; "changed" or "closed" as lockStage1.
+   */
+  lockStage2(id: string, lock: { stage3Route: Stage3Route; answers: readonly Pick<Submission, "questionId" | "response">[]; resumeUntil: number }): Promise<Stage3Route | "changed" | "closed">;
   /**
    * Completes the scored test at `at`: stores the completion time, the placement with its route, and the child's answer
    * to "Did anyone help?". Only while the test is in progress: a second finish at the same moment changes nothing.
@@ -536,7 +548,8 @@ export async function answerQuestion(store: AttemptStore, parent: string, id: st
 // Back and change an answer (#249, #250). The child can go back to an answered question of the open section and change
 // the answer: the change overwrites the stored answer, so the report, the admin page and the export read the final one.
 // A visit that keeps the answer adds its time and events. Stage 1 closes at its lock ("Done checking" on its grid,
-// #253), which stores the route; stage 2 closes when the test is finished.
+// #253), which stores the route. Stage 2 closes at its lock when the route has a third stage form (D-282), and else
+// when the test is finished. The third stage closes when the test is finished.
 
 /** #249: a change of an answered question, as the route read it: the answer, and whether the work changed in this visit. */
 export interface ChangeInput extends AnswerInput {
@@ -549,10 +562,11 @@ export interface ChangeInput extends AnswerInput {
 
 /**
  * #249: the section of the test that takes changes now, or null: only while the test is in progress; stage 1 until
- * it is locked (#253: the stored route), then stage 2 until the test is finished.
+ * it is locked (#253: the stored route), then stage 2, then the third stage until the test is finished. D-282: a stage 2
+ * locked with no third stage ("none") is the end of the test: nothing changes while it waits to be finished.
  */
 function changeable(read: ReadTest): OpenSection | null {
-  return takesAnswers(read) ? openSection(read.session) : null;
+  return takesAnswers(read) && read.session.stage3Route !== "none" ? openSection(read.session) : null;
 }
 
 /**
@@ -668,19 +682,21 @@ export async function changeAnswer(store: AttemptStore, parent: string, id: stri
   return { ok: true, step };
 }
 
-// "Check your answers" (#249, #253). After the last question of stage 1 and of stage 2, the step is the section's grid
-// (status "check"). "Done checking" goes on: stage 1 locks, then the halfway break, quick facts and stage 2; stage 2
+// "Check your answers" (#249, #253). After the last question of each stage, the step is the section's grid (status
+// "check"). "Done checking" goes on: stage 1 locks, then the halfway break, quick facts and stage 2. Stage 2 locks when
+// its route has a third stage form (D-282), and goes on to the third stage or to "Did anyone help?". The last section
 // goes on to "Did anyone help?" and locks with the finish.
 
 /** #253: a section of the test that ends on a "Check your answers" grid. */
-export type CheckSection = "stage1" | "stage2";
+export type CheckSection = "stage1" | "stage2" | "stage3";
 
 /**
  * #253: "Done checking" on the grid of `section` of the parent's test at `now`: sends the next step. Stage 1: sets the
  * route from the final stage 1 answers and stores it, the lock record, which must succeed; it moves the deadline like
- * an answer (#72). The next step is the first question after halfway (the break and quick facts come first). Stage 2:
- * writes nothing (stage 2 locks with the finish), and the step goes on to "Did anyone help?"; a resume shows the grid
- * again. A section that is already locked (a retry after a lost response, another tab) sends the step the test is at;
+ * an answer (#72). The next step is the first question after halfway (the break and quick facts come first). Stage 2 of
+ * a route with a third stage form (D-282): sets the third stage from the final stage 2 answers and stores it, the lock
+ * record, which must succeed. The last section: writes nothing (it locks with the finish), and the step goes on to "Did
+ * anyone help?"; a resume shows the grid again. A section that is already locked (a retry after a lost response, another tab) sends the step the test is at;
  * for stage 1 it also opens the answer window from `now` again, while answers remain. "conflict" with the step when the
  * test is not on that grid and has not passed it.
  */
@@ -699,17 +715,18 @@ export async function doneChecking(store: AttemptStore, parent: string, id: stri
       }
       return carryOn(store, id, open, now);
     }
-    if (section === "stage2") return { ok: true, step: testStep(open.session) };
-    const outcome = await lockFirstStage(store, parent, id, open, now);
+    if (section !== "stage1" && !stage3Due(open.session)) return { ok: true, step: testStep(open.session) };
+    const outcome = await (section === "stage1" ? lockFirstStage : lockSecondStage)(store, parent, id, open, now);
     // An answer changed between the read and the lock: read again, and lock from the final answers.
     if (outcome !== "changed") return outcome;
   }
   return { ok: false, error: "busy" };
 }
 
-/** #253: true when the test moved past `section`: stage 1 is locked (a route is stored), or the test is finished. */
+/** #253: true when the test moved past `section`: stage 1 or 2 is locked (D-282: its record is stored), or the test is finished. */
 function passed({ attempt, session }: ReadTest, section: CheckSection): boolean {
   if (attempt.status === "completed") return true;
+  if (section === "stage2") return session.stage3Route != null;
   return section === "stage1" && session.route !== null;
 }
 
@@ -752,6 +769,26 @@ async function lockFirstStage(store: AttemptStore, parent: string, id: string, o
   if (stored === "closed") return freshConflict(store, parent, id, now);
   // The stored route wins: a retry after a lost response, or another tab, may have stored it first.
   return carryOn(store, id, { ...open, session: { ...session, route: stored } }, now);
+}
+
+/** D-282: the stage 2 lock of a test on that grid. "changed": an answer changed since the read; nothing is stored. */
+async function lockSecondStage(store: AttemptStore, parent: string, id: string, open: ReadTest, now: number): Promise<StepOutcome | "changed"> {
+  const { attempt, session } = open;
+  const stage3Route = lockStage2(session).stage3Route!;
+  const answers = session.answers.map(({ questionId, response }) => ({ questionId, response }));
+  let stored: Stage3Route | "changed" | "closed";
+  try {
+    stored = await store.lockStage2(id, { stage3Route, answers, resumeUntil: recordAnswer(attempt, now).resumeUntil });
+  } catch (e) {
+    // The child stays on the grid with "could not save", and can press "Done checking" again.
+    logFailure("[test] stage 2 lock failed", e);
+    return { ok: false, error: "store_failed" };
+  }
+  if (stored === "changed") return "changed";
+  if (stored === "closed") return freshConflict(store, parent, id, now);
+  if (stored !== "none") await bestEffort("[test] answer time save failed", () => store.recordAnswerTime(id, now));
+  // The stored record wins: a retry after a lost response, or another tab, may have stored it first.
+  return carryOn(store, id, { ...open, session: { ...session, stage3Route: stored } }, now);
 }
 
 /** Logs a failed store write the way the answer route logged it before the module (#147): the line, then the cause. */
@@ -843,8 +880,8 @@ async function readTest(store: AttemptStore, parent: string, id: string): Promis
   // their main answers, are left out of the session (fromRemovedRound).
   const roundAnswers = loaded.answers.filter((a) => fromRemovedRound(a.questionId));
   try {
-    // #253: the stored route is the stage 1 lock record.
-    session = restoreSession(loaded.test, loaded.answers.filter((a) => !fromRemovedRound(a.questionId)), loaded.route ?? null);
+    // #253: the stored route is the stage 1 lock record. D-282: the stored third stage is the stage 2 lock record.
+    session = restoreSession(loaded.test, loaded.answers.filter((a) => !fromRemovedRound(a.questionId)), loaded.route ?? null, loaded.stage3Route ?? null);
   } catch (e) {
     console.error("[test] restore failed", id, messageOf(e));
     return { ok: false, error: "store_failed", unreadable: true };
@@ -1174,7 +1211,7 @@ export async function recordBreak(store: AttemptStore, parent: string, id: strin
   const read = await readTest(store, parent, id);
   if (!read.ok) return contextRefusal(read);
   const step = testStep(read.session);
-  const pastBreak = step.status === "complete" || (step.status === "question" && step.number > step.breakAfter);
+  const pastBreak = step.status === "complete" || (step.status === "check" && step.section !== "stage1") || (step.status === "question" && step.number > step.breakAfter);
   const { attempt } = read;
   // Context does not extend the answer window. An end can arrive after finish, but cannot reopen an expired test,
   // create a new break screen after finish, or change any score. The store repeats the status/deadline guards.
@@ -1216,14 +1253,14 @@ const takesAnswers = ({ attempt }: ReadTest): boolean => attempt.status === "in_
 
 /**
  * The step the screen shows next. #249: a question comes with the answered questions of the open section, when they
- * can change, so Back shows them at once (also after a resume on another device). #253: while stage 2 is complete and
- * the test is in progress, the step is its "Check your answers" grid; a grid comes with its answered questions too, so a
- * tap opens one at once.
+ * can change, so Back shows them at once (also after a resume on another device). #253: while the last section is
+ * complete and the test is in progress, the step is its "Check your answers" grid; a grid comes with its answered
+ * questions too, so a tap opens one at once.
  */
 function stepOf(read: ReadTest): TestStep {
   const main = testStep(read.session);
   const section = changeable(read);
-  const step: TestStep = main.status === "complete" && section?.name === "stage2"
+  const step: TestStep = main.status === "complete" && section && section.name !== "stage1"
     ? { status: "check", section: section.name, numbers: section.answered.map((a) => a.position + 1), total: main.total, breakAfter: read.session.stage1.length }
     : main;
   if (step.status === "complete") return step;

@@ -24,6 +24,7 @@ import {
   type Level,
   type Placement,
   type Route,
+  type Stage3Route,
   type StoredTest,
   type Strand,
 } from "@/lib/assessment";
@@ -46,6 +47,7 @@ interface LiveRow {
   id: string;
   test_family: boolean;
   route: Route | null;
+  stage3_route: Stage3Route | null;
   test: StoredTest;
   placement: Placement;
   answers: { question_id: string; response: string; time_ms: number; correct: boolean }[];
@@ -59,7 +61,7 @@ interface CopyRow {
 }
 
 const LIVE = `
-  select a.id, a.route, a.test, a.placement,
+  select a.id, a.route, a.stage3_route, a.test, a.placement,
     exists (select 1 from public.test_accounts t where t.parent_id = a.parent_id)
       or exists (select 1 from public.admin_users u where u.user_id = a.parent_id) as test_family,
     coalesce((select jsonb_agg(jsonb_build_object('question_id', x.question_id, 'response', x.response, 'time_ms', x.time_ms, 'correct', x.correct) order by x.position)
@@ -86,7 +88,7 @@ const differences = new Map<string, string>();
 function liveTest(row: LiveRow, markChanged: string[]): CheckedTest {
   const id = anonymous(row.id);
   const answers = row.answers.filter((a) => !fromRemovedRound(a.question_id));
-  const session = restoreSession(row.test, answers.map((a) => ({ questionId: a.question_id, response: a.response, timeMs: a.time_ms })), row.route);
+  const session = restoreSession(row.test, answers.map((a) => ({ questionId: a.question_id, response: a.response, timeMs: a.time_ms })), row.route, row.stage3_route);
   if (session.answers.some((a, i) => a.correct !== answers[i].correct)) markChanged.push(id);
   const difference = storedDifference(row.placement, answers.length);
   if (difference) differences.set(id, difference);
