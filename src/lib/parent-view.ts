@@ -1,7 +1,11 @@
 import "server-only";
-import { attemptState, type Attempt, type Grade } from "@/lib/assessment";
+import {
+  REPORTED_STRAND_NAMES, areaLevels, attemptState, storedLevelCertainty,
+  type AreaAnswer, type AreaLabel, type Attempt, type Grade, type Level, type ReportModel, type ReportedStrand,
+} from "@/lib/assessment";
 import { childStage, type StageView, type TabSwitches, type TestFact } from "@/lib/child-stage";
 import { familyZone, localDay } from "@/lib/family-time";
+import type { LearningRow } from "@/lib/learning-style";
 import { nextBook, type NextBook } from "@/lib/next-book";
 import type { ParentPlan } from "@/lib/parent-plan";
 import type { CurriculumId } from "@/lib/signup";
@@ -13,7 +17,7 @@ import { workbookDelivery } from "@/lib/workbook-email";
 //   - in memory (src/lib/parent-view-memory.ts), for tests.
 // The output holds only fields named here, copied one by one. The reader has no read of child_profiles,
 // learner_profiles, learning_events or maya_calls, because parents get nothing from them directly (#295). Later tickets
-// add the Overview (#560) and Progress (#561) reads. The Workbooks read (#558) is `readWorkbooks`.
+// add the Progress (#561) read. The Workbooks read (#558) is `readWorkbooks`; the Overview read (#560) is `readOverview`.
 
 export interface ChildRecord {
   id: string;
@@ -80,7 +84,37 @@ export interface ParentViewReader {
   switches(): Promise<TabSwitches>;
   /** The family's saved time zone and postal code, for family time. */
   family(): Promise<{ timeZone: string | null; postal: string | null }>;
+  /** One of the family's finished tests with a report, scored; null for a test the family does not have or with no report. */
+  testResult(assessmentId: string): Promise<TestResultRecord | null>;
+  /** The family's scans saved to a page (state `saved`). */
+  savedScans(): Promise<SavedScanRecord[]>;
+  /** The pages of one of the family's shipped workbooks, with their day labels. */
+  workbookPages(workbookId: string): Promise<WorkbookPageRecord[]>;
+  /** The learning card of each of the family's children. */
+  learningCards(): Promise<LearningCardRecord[]>;
+  /** Whether the parent has a PIN; null when it cannot be read. */
+  pinSet(): Promise<boolean | null>;
 }
+
+/** A finished test, as the report reads it. */
+export interface TestResultRecord {
+  /** The stored report's level (public.reports.model), before storedLevelCertainty. */
+  level: ReportModel["level"];
+  /** One answer per scored question, tagged with its reported area and grade (testAreaAnswers); null when the stored test cannot be replayed, or the replay does not add up to the stored score. */
+  answers: AreaAnswer[] | null;
+}
+export interface SavedScanRecord {
+  workbookId: string;
+  pageId: string;
+  /** The photo expires then; an expired photo no longer counts. */
+  expiresAt: string;
+}
+export interface WorkbookPageRecord {
+  id: string;
+  /** "Day 1" to "Day 10"; null for a cover or another page with no day. */
+  dayLabel: string | null;
+}
+export type LearningCardRecord = { childId: string } & LearningRow;
 
 export interface ChildView extends StageView {
   id: string;
@@ -213,4 +247,122 @@ export async function readWorkbooks(reader: ParentViewReader, childId: string, n
     ? { kind: "none" }
     : nextBook({ shippedOn: current?.shippedOn ?? null, deliveredOn: current?.deliveredOn ?? null, today: localDay(now, zone), ended: child.readOnly });
   return { child, current, next, books: books.map((w) => ({ id: w.id, number: w.number, shippedOn: day(w.shippedAt), hasPdf: w.hasPdf })) };
+}
+
+/** One reported area's bar (D-243). The school grade line is the child's `schoolGrade`. */
+export interface AreaBarView {
+  area: ReportedStrand;
+  /** The area's name, as the report names it. */
+  name: string;
+  level: Level;
+  label: AreaLabel;
+  /** Too few answers to be sure: the bar shows lighter and says "Early sign". */
+  earlySign: boolean;
+}
+
+/** The Level tile: the working level stored in the latest finished test's result. */
+export interface LevelTileView {
+  working: Level;
+  /** An estimated level reads as an Early sign, as on the report. */
+  earlySign: boolean;
+  /** The day the test finished, in family time. */
+  testedOn: string;
+}
+
+/** One thing to do, in the spec's order; the Overview shows only the first that applies (D-248). */
+export type ActionItem = "start_test" | "continue_test" | "payment_failed" | "no_pin" | "learning_card_empty";
+
+export interface OverviewView {
+  child: ChildView;
+  /** From the newest finished test. Null before the first one, and while its report is not ready. */
+  level: LevelTileView | null;
+  /** One bar per reported area with answers, from the same test; empty when `level` is null. */
+  areas: AreaBarView[];
+  /** The newest finished test's report is not ready, so no older result shows in its place. */
+  resultPreparing: boolean;
+  /** The report is more than an hour late: the report job may have failed, and it does not retry on its own. */
+  resultLate: boolean;
+  /** The current workbook and its scanned days; null when no day of it is scanned. */
+  workbook: { number: number; scannedDays: number; days: number } | null;
+  action: ActionItem | null;
+}
+
+/** The stages whose Overview has an action card (spec #544, "Action card triggers"). */
+const ACTION_STAGES = new Set<ChildView["stage"]>(["first_book_coming", "active", "ended"]);
+
+/** All six learning card answers are empty. */
+function cardEmpty(card: LearningRow): boolean {
+  const none = (v: string | string[] | null) => v === null || (Array.isArray(v) ? v.length === 0 : v.trim() === "");
+  return [card.learning_styles, card.interests, card.math_feeling, card.learning_goal, card.weekly_time, card.learning_note].every(none);
+}
+
+/**
+ * A day of the workbook counts as scanned when every page with that day label has a saved photo that has not expired.
+ * Pages to scan and the Day 7 rule (#475) will count days from the print manifest; until then this tile counts whole days.
+ */
+function scannedDays(pages: readonly WorkbookPageRecord[], scans: readonly SavedScanRecord[], now: number): { scanned: number; days: number } {
+  const saved = new Set(scans.filter((s) => Date.parse(s.expiresAt) > now).map((s) => s.pageId));
+  const days = new Map<string, boolean>();
+  for (const p of pages) {
+    if (p.dayLabel === null) continue;
+    days.set(p.dayLabel, (days.get(p.dayLabel) ?? true) && saved.has(p.id));
+  }
+  return { scanned: [...days.values()].filter(Boolean).length, days: days.size };
+}
+
+/**
+ * One child's Overview (#560, spec #544): the Level tile, the area bars, This workbook and the one action card. Null for
+ * a child that is not the parent's, and for a child whose stage has no Overview. A panel with no data is null or empty.
+ * The level and the bars come from the newest finished test, scored by the assessment core; while its report is not
+ * ready, they come from no test. Nothing comes from a raw profile, a learning event, a Maya call or an AI finding. Marked
+ * pages do not count yet: no marking is live.
+ */
+const RESULT_LATE_MS = 3_600_000;
+
+export async function readOverview(reader: ParentViewReader, childId: string, now: number): Promise<OverviewView | null> {
+  const [child, children, family, tests, reports, workbooks, plans, cards, pinSet, scans] = await Promise.all([
+    readChild(reader, childId, now), reader.children(), reader.family(), reader.tests(), reader.reports(), reader.shippedWorkbooks(),
+    plansOf(reader), reader.learningCards(), reader.pinSet(), reader.savedScans(),
+  ]);
+  if (!child || !child.tabs.includes("overview")) return null;
+  const zone = familyZone({ timeZone: family.timeZone, postal: family.postal, province: children[0]?.province ?? null });
+
+  const own = tests.filter((t) => t.childId === child.id);
+  const latest = own
+    .filter((t) => t.status === "completed" && t.completedAt !== null)
+    .reduce<TestRecord | null>((best, t) => (!best || t.completedAt! > best.completedAt! ? t : best), null);
+  const reportReady = latest !== null && reports.some((r) => r.assessmentId === latest.id);
+  const result = reportReady ? await reader.testResult(latest.id) : null;
+  const level: LevelTileView | null = latest && result ? {
+    working: result.level.working,
+    earlySign: result.level.confidence === "low" || storedLevelCertainty(result.level) === "early-sign",
+    testedOn: localDay(latest.completedAt!, zone),
+  } : null;
+  const areas: AreaBarView[] = result?.answers
+    ? areaLevels({ answers: result.answers, schoolGrade: child.schoolGrade, workingLevel: result.level.working })
+      .map((a) => ({ area: a.area, name: REPORTED_STRAND_NAMES[a.area], level: a.level, label: a.label, earlySign: a.certainty !== "clear" }))
+    : [];
+
+  const book = workbooks.filter((w) => w.childId === child.id).sort((a, b) => b.number - a.number)[0];
+  const bookScans = book ? scans.filter((s) => s.workbookId === book.id) : [];
+  let workbook: OverviewView["workbook"] = null;
+  if (book && bookScans.length > 0) {
+    const { scanned, days } = scannedDays(await reader.workbookPages(book.id), bookScans, now);
+    if (scanned > 0) workbook = { number: book.number, scannedDays: scanned, days };
+  }
+
+  const card = cards.find((c) => c.childId === child.id);
+  const items: [ActionItem, boolean][] = [
+    // A saved card with no finished test: the test comes first (spec #544, "Stage order"). An open test continues.
+    [own.some((t) => attemptState(t, now) === "open") ? "continue_test" : "start_test", !child.readOnly && latest === null],
+    ["payment_failed", plans.find((p) => p.childId === child.id)?.kind === "payment_failed"],
+    // "Pages to scan" waits for marking (#457, #475).
+    ["no_pin", child.currentWorkbook !== null && pinSet === false],
+    ["learning_card_empty", card !== undefined && cardEmpty(card)],
+  ];
+  const action = ACTION_STAGES.has(child.stage) ? items.find(([, applies]) => applies)?.[0] ?? null : null;
+
+  const resultPreparing = latest !== null && !reportReady;
+  const resultLate = resultPreparing && now - latest!.completedAt! > RESULT_LATE_MS;
+  return { child, level, areas, resultPreparing, resultLate, workbook, action };
 }

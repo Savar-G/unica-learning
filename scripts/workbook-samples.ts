@@ -33,7 +33,7 @@
 // Supabase Management API with SUPABASE_ACCESS_TOKEN or the Keychain item "supabase-pagewise". No key is printed.
 import { sampleAiCache } from "./workbook-sample-cache";
 import { renderSamplePages, samplePrintCache } from "./workbook-sample-render";
-import { samplePages, pagesMarkdown, writePageDiff } from "./workbook-sample-pages";
+import { samplePages, pagesMarkdown, writePageDiff, mayaCoverage, mayaCoverageMarkdown } from "./workbook-sample-pages";
 import { browserStats, closeSampleBrowser } from "./workbook-sample-browser";
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -465,7 +465,7 @@ async function oneBook(db: SupabaseClient<Database> | null, family: Family | nul
   await writeFile(`${out}/${label}-draft.json`, JSON.stringify(draft, null, 2));
   const pages = await timed("text-dump", async () => samplePages(draft, template, [...problems, ...renderProblems]));
   await Promise.all([
-    writeFile(`${out}/${label}-pages.md`, pagesMarkdown(label, pages)),
+    writeFile(`${out}/${label}-pages.md`, pagesMarkdown(label, pages, mayaCoverage(draft))),
     writeFile(`${out}/${label}-pages.json`, JSON.stringify(pages, null, 2)),
   ]);
   const changed = values.diff ? await timed("diff", () => writePageDiff({ label, before: values.diff!, out, pages })) : undefined;
@@ -587,6 +587,7 @@ async function writeIndex() {
     "|---|---|---|---|---|---|---|---|---|---|",
     ...rows,
     "",
+    ...ok.flatMap(r => [`### ${r.label}`, "", mayaCoverageMarkdown(mayaCoverage(r.draft))]),
     "## Builder coverage (#480, #489)",
     `Fully covered levels (level and fluency skills): ${workbookBuilderCoverage(BC).filter(c=>c.fullyCovered).map(c=>c.level).join(", ") || "none"}. A skill whose steps all have printable templates takes its questions from them; the warm-up's fluency facts and skills without printable templates use #482's builders or, with neither, the existing writer. Personal review skills are routed individually.`,
     "| Level | Step templates | Hand-built builders | Existing writer | Existing writer IDs |",
