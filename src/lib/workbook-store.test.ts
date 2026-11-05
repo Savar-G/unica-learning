@@ -306,8 +306,8 @@ describe.each(stores)("the %s workbook store", (_name, make) => {
     };
     const REGIONS: PrintedRegion[] = [{ id: "answer", kind: "box", box: { x: 10.5, y: 20.25, width: 100, height: 50 } }, { id: "work", kind: "work", box: null }];
     const TEACHING: TeachingContext = {
-      version: 1, curriculum: { key: "bc", version: "v1" }, practiceType: "now-you", part: "new-idea", slot: "1.1", extra: false, track: "A", unit: "2.4", skill: "2.4-add",
-      plannedStep: 3, itemStep: null, reviewSteps: [], eligibility: { format: "write-number", scorable: true, parentChecked: false, mastery: true, reason: null },
+      version: 1, curriculum: { key: "bc", version: "v1" }, practiceType: "now-you", part: "new-idea", slot: "1.1", extra: false, track: "A",
+      plannedStep: { unit: "2.4", skill: "2.4-add", step: 3 }, itemStep: { unit: "2.4", skill: "2.4-add", step: 3 }, reviewSteps: [], eligibility: { format: "write-number", scorable: true, parentChecked: false, mastery: true, reason: null },
     };
     /** The sample with a whole contract: every page, every question, the manifest, the PDF's fingerprint and the revision. */
     const contracted = (): WorkbookInput => {
@@ -359,6 +359,9 @@ describe.each(stores)("the %s workbook store", (_name, make) => {
         ["a region off the image", page(contracted(), (p) => { p.questions[0].regions = [{ id: "a", kind: "box", box: { x: 1270, y: 0, width: 100, height: 5 } }]; }), /not inside the page image/],
         ["a region twice", page(contracted(), (p) => { p.questions[0].regions = [{ id: "a", kind: "box", box: null }, { id: "a", kind: "box", box: null }]; }), /listed twice/],
         ["teaching of another version", page(contracted(), (p) => { p.questions[0].teaching = { ...TEACHING, version: 9 }; }), /teaching context/],
+        ["an item step in part", page(contracted(), (p) => { p.questions[0].teaching = { ...TEACHING, itemStep: { unit: "", skill: "2.4-add", step: 3 } }; }), /teaching context/],
+        ["a planned step with no number", page(contracted(), (p) => { p.questions[0].teaching = { ...TEACHING, plannedStep: { unit: "2.4", skill: "2.4-add", step: null as unknown as number } }; }), /teaching context/],
+        ["mastery with no item step", page(contracted(), (p) => { p.questions[0].teaching = { ...TEACHING, itemStep: null }; }), /teaching context/],
         ["a cover in a required set", { ...contracted(), printManifest: { ...contracted().printManifest!, days: [{ day: 1, pages: [1] }] } }, /not a page of Day 1/],
         ["a revision of other contents", page(contracted(), (p) => { p.questions[0].regions = []; }), /printed revision is not this workbook's/],
         ["a timestamp for a revision", { ...contracted(), printedRevision: "2026-11-01 00:00:00+00" }, /printed revision is not this workbook's/],

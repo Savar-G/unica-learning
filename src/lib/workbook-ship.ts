@@ -127,7 +127,8 @@ export function approvedWorkbook(d: DraftForApproval): WorkbookInput {
   const rendered = new Map(r.pages.map((p) => [p.number, p]));
   const contracted = d.draft.pages.every((p) => {
     const contract = rendered.get(p.number)?.printContract;
-    return !!contract && contract.workbookId === d.draftId && contract.fingerprints.content === pageContentFingerprint({
+    return !!contract && contract.workbookId === d.draftId && contract.page === p.number && contract.day === p.day && contract.pageOfDay === p.pageOfDay
+      && contract.fingerprints.content === pageContentFingerprint({
       number: p.number, dayLabel: p.dayLabel, type: p.type, qrToken: p.qrToken, content: p.content,
       questions: p.questions.flatMap((q) => (q.package ? [{ number: q.number, package: q.package }] : [])),
     });

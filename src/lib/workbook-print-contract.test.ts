@@ -28,6 +28,7 @@ import {
   type TeachingFrame,
 } from "@/lib/workbook-print-contract";
 import { mark, proofPages, renderedPages, renderWorkbook, type MeasuredElement, type WorkbookDraft, type WorkbookTemplate } from "@/lib/workbook-render";
+import { teachingFrame } from "@/lib/workbook-teaching-frame";
 import { sampleDraft } from "@/lib/workbook-sample";
 import { sampleBook } from "@/lib/workbook-sample-book";
 import { approveDraft, approvedWorkbook, type DraftForApproval } from "@/lib/workbook-ship";
@@ -87,7 +88,7 @@ async function rendered(draft: GeneratedWorkbook, key: string): Promise<DraftRen
   return { pdfPath: result.workbook.pdfPath, pdfSha256: result.workbook.pdfSha256, pages: renderedPages(result) };
 }
 
-const frameOf = (f: RunFrame): TeachingFrame => ({ curriculum: f.curriculum, curriculumVersion: f.versions.curriculum, plan: f.plan });
+const frameOf = (f: RunFrame): TeachingFrame => teachingFrame(f);
 
 function setupShip(...d: DraftForApproval[]) {
   const workbooks = memoryWorkbookStore({ children: [{ id: CHILD, parentId: PARENT }], now: () => new Date(NOW) });
@@ -178,21 +179,40 @@ describe("render, job, approval and store", () => {
     expect(ship.audit[0].detail).toMatchObject({ printedRevision: w.printedRevision });
   });
 
-  it("teaching context comes from the stored plan: the planned step, not a worked-solution step id", () => {
+  it("teaching context keeps the planned step and the step the item really tests apart, each complete", () => {
+    // Disproved by a reference that mixes two steps: a unit or number of the planned part with a skill of the item.
     const w = approvedWorkbook(approval);
+    const curriculum = curriculumFor("bc")!;
     const plan = made.frame.plan;
-    let checked = 0;
+    const counts = { planned: 0, otherSkill: 0, earlierReview: 0, withoutTemplate: 0 };
     for (const p of sound.pages) {
       if (p.content?.kind !== "day" || p.content.extraPractice) continue;
       const planned = plan.days.find((d) => d.day === (p.content as DayContent).day)!.pages.find((x) => x.number === (p.content as DayContent).page)!;
       for (const q of p.questions) {
         const t = w.pages.find((x) => x.number === p.number)!.questions.find((x) => x.number === q.number)!.teaching!;
         const part = planned.parts[Number(q.slot.split(".")[0]) - 1];
-        expect(t).toMatchObject({ part: part.kind, slot: q.slot, plannedStep: part.step?.step ?? null, practiceType: q.place ?? null, curriculum: { key: "bc", version: curriculumVersion("bc") } });
-        if (part.step) { expect(typeof t.plannedStep).toBe("number"); checked++; }
+        const template = q.itemPlan?.template;
+        expect(t).toMatchObject({ part: part.kind, slot: q.slot, practiceType: q.place ?? null, curriculum: { key: "bc", version: curriculumVersion("bc") } });
+        expect(t.plannedStep).toEqual(part.step ? { unit: part.step.unit, skill: part.step.skill, step: part.step.step } : null);
+        if (template) {
+          // The step the question tests, whole: its unit is its own skill's, never the planned part's.
+          expect(t.itemStep).toEqual({ unit: curriculum.skill(template.skill)!.unit, skill: template.skill, step: template.step });
+          if (part.step && template.skill !== part.step.skill) counts.otherSkill++;
+          if (!part.step) counts.earlierReview++;
+        } else {
+          counts.withoutTemplate++;
+          if (t.itemStep) expect(t.itemStep).toEqual(t.plannedStep);
+        }
+        if (part.step) counts.planned++;
+        expect("unit" in t || "skill" in t).toBe(false);
+        // The practice type is the block the question printed in.
+        expect(t.practiceType).toBe((p.content as DayContent).blocks.find((b) => b.items.includes(q.number))!.slot);
       }
     }
-    expect(checked).toBeGreaterThan(0);
+    // Each case above must have run on this book.
+    expect(counts.planned).toBeGreaterThan(0);
+    expect(counts.otherSkill).toBeGreaterThan(0);
+    expect(counts.earlierReview).toBeGreaterThan(0);
   });
 
   it("the manifest requires each printed day's question pages, and never a cover, padding or extra page", () => {
@@ -203,6 +223,26 @@ describe("render, job, approval and store", () => {
     const required = new Set(m.days.flatMap((d) => d.pages));
     for (const p of sound.pages.filter((x) => x.day === null)) expect(required.has(p.number)).toBe(false);
     expect(sound.pages.some((p) => p.type === "cover" || p.type === "blank")).toBe(true);
+  });
+});
+
+describe("the units a teaching context reads", () => {
+  // The contract is permanent, so its units are those of the curriculum the run was planned on, not today's.
+  const plan = {} as WorkbookPlan;
+  const curriculumNow = curriculumVersion("bc")!;
+
+  it("the job freezes each skill's unit on the run's frame", () => {
+    expect(made.frame.units?.["1.1-count-to-20"]).toBe("1.1");
+    expect(made.frame.units?.[Object.keys(made.frame.units ?? {})[0]]).toBe(curriculumFor("bc")!.skill(Object.keys(made.frame.units ?? {})[0])!.unit);
+  });
+
+  it("a frame's own units win, even when the curriculum has changed since", () => {
+    expect(teachingFrame({ curriculum: "bc", versions: { curriculum: "older" }, plan, units: { "x-skill": "x.1" } })!.units).toEqual({ "x-skill": "x.1" });
+  });
+
+  it("a frame from before the units reads them only from the same curriculum version; else it has none", () => {
+    expect(teachingFrame({ curriculum: "bc", versions: { curriculum: curriculumNow }, plan })!.units["1.1-count-to-20"]).toBe("1.1");
+    expect(teachingFrame({ curriculum: "bc", versions: { curriculum: "older" }, plan })!.units).toEqual({});
   });
 });
 
@@ -228,7 +268,8 @@ describe("the Supabase ship store", () => {
     } } });
     const store = workbookShipStore(db);
     const d = (await store.draftForApproval(made.runId))!;
-    expect(d.frame).toEqual({ curriculum: made.frame.curriculum, curriculumVersion: made.frame.versions.curriculum, plan: JSON.parse(JSON.stringify(made.frame.plan)) });
+    expect(d.frame).toMatchObject({ curriculum: made.frame.curriculum, curriculumVersion: made.frame.versions.curriculum, plan: JSON.parse(JSON.stringify(made.frame.plan)) });
+    expect(d.frame?.units["1.1-count-to-20"]).toBe("1.1");
     expect(await approveDraft(store, { runId: made.runId, revision: 1, actor: ADMIN })).toEqual({ status: "approved", workbookId: sound.id });
     const w = sent[0].p_workbook as WorkbookInput;
     expect(w.printedRevision).toMatch(/^[0-9a-f]{28}$/);
@@ -334,6 +375,38 @@ describe("a changed revision changes its contract as one unit", () => {
     expect(w.pages.every((p) => p.printContract === null)).toBe(true);
     expect(w.printManifest).toBeNull();
     expect(w.pages.flatMap((p) => p.questions).every((q) => q.regions === null)).toBe(true);
+  });
+
+  it("a contract whose printed day is not the draft page's day gives no contract", () => {
+    // Disproved if the day identity comes only from a stored contract, never compared with the page it describes.
+    const moved = structuredClone(approval);
+    const number = moved.draft.pages.find((p) => p.day !== null)!.number;
+    moved.rendering!.pages.find((p) => p.number === number)!.printContract!.day = 99;
+    expect(approvedWorkbook(moved).printedRevision).toBeNull();
+  });
+
+  it("only a draft takes a contract, and only with all its pages and questions: a printed book never changes", async () => {
+    // The memory store keeps the database's rule (migration workbook_print_contract_lock, probed on the hosted database).
+    const { workbooks, ship } = setupShip(approval);
+    await approveDraft(ship, { runId: made.runId, revision: 1, actor: ADMIN });
+    const whole = approvedWorkbook(approval);
+    const before = (await workbooks.workbook(sound.id))!;
+    for (const to of ["approved", "printed", "shipped"] as const) {
+      workbooks.setStatus(sound.id, to);
+      expect(() => workbooks.applyPrintContract({ ...whole, pages: [], printedRevision: null, pdfSha256: null, printManifest: null })).toThrow(/cannot change/);
+      expect(() => workbooks.applyPrintContract(whole)).toThrow(/cannot change/);
+    }
+    const after = (await workbooks.workbook(sound.id))!;
+    expect([after.printedRevision, after.pdfSha256, after.printManifest]).toEqual([before.printedRevision, before.pdfSha256, before.printManifest]);
+    // A draft: a call with no pages or no questions changes nothing either.
+    workbooks.setStatus(sound.id, "draft");
+    const draft = (await workbooks.workbook(sound.id))!;
+    expect(() => workbooks.applyPrintContract({ ...whole, pages: [] })).toThrow(/pages/);
+    const page = whole.pages.find((p) => p.questions.length > 0)!;
+    expect(() => workbooks.applyPrintContract({ ...whole, pages: whole.pages.map((p) => (p === page ? { ...p, questions: [] } : p)) })).toThrow(/questions/);
+    expect((await workbooks.workbook(sound.id))!.pdfSha256).toBe(draft.pdfSha256);
+    workbooks.applyPrintContract(whole);
+    expect((await workbooks.workbook(sound.id))!.printedRevision).toBe(whole.printedRevision);
   });
 
   it("a book with part of a contract has none", () => {
@@ -485,27 +558,57 @@ describe("answer regions as printed", () => {
 
 describe("teaching context", () => {
   const item = (o: Partial<Item>): Item => ({ format: "write-number", scorable: true, parentChecked: false, regions: [{ id: "a", kind: "box", answer: null } as unknown as Item["regions"][number]], checks: [], error: null, ...o });
-  const pkg = (i: Item): QuestionPackage => ({
+  const pkg = (i: Item, skills: string[] = ["2.4-add"]): QuestionPackage => ({
     id: "q", ref: { source: "workbook", workbookId: "w", page: 1, question: 1 }, templateId: null, text: "1 + 1 = ?", item: i, answer: null, operation: null,
-    steps: [{ id: "worked-step-99" } as unknown as QuestionPackage["steps"][number]], skill: { standard: "2.4", skills: ["2.4-add"] }, level: 10, difficulty: 1, wrongAnswers: [], easierExample: null,
+    steps: [{ id: "worked-step-99" } as unknown as QuestionPackage["steps"][number]], skill: { standard: "2.4", skills }, level: 10, difficulty: 1, wrongAnswers: [], easierExample: null,
   });
   const plan = {
     days: [{ day: 1, pages: [{ number: 1, parts: [{ kind: "new-idea", unit: "A", step: { unit: "2.4", skill: "2.4-add", step: 3 }, skills: ["2.4-add"], extra: true }, { kind: "remember-these", unit: null, step: null, skills: ["2.1-count"] }] }] }],
   } as unknown as WorkbookPlan;
-  const frame: TeachingFrame = { curriculum: "bc", curriculumVersion: "v1", plan };
+  const frame: TeachingFrame = { curriculum: "bc", curriculumVersion: "v1", plan, units: { "2.4-add": "2.4", "2.1-count": "2.1", "K5-take-away-change": "K.5" } };
   const page = { content: { kind: "day", day: 1, page: 1 } as unknown as PageContent, expected: [{ slot: "2.1", steps: ["2.1-count#2"] }] };
 
-  it("freezes the planned part, slot, unit, skill and step: not the worked solution's step id", () => {
+  it("freezes the planned part and slot, and a whole planned step: not the worked solution's step id", () => {
     expect(teachingContext(frame, page, { slot: "1.1", part: "new-idea", place: "now-you", package: pkg(item({})) })).toEqual({
-      version: 1, curriculum: { key: "bc", version: "v1" }, practiceType: "now-you", part: "new-idea", slot: "1.1", extra: true, track: "A", unit: "2.4", skill: "2.4-add",
-      plannedStep: 3, itemStep: null, reviewSteps: [],
+      version: 1, curriculum: { key: "bc", version: "v1" }, practiceType: "now-you", part: "new-idea", slot: "1.1", extra: true, track: "A",
+      plannedStep: { unit: "2.4", skill: "2.4-add", step: 3 }, itemStep: { unit: "2.4", skill: "2.4-add", step: 3 }, reviewSteps: [],
       eligibility: { format: "write-number", scorable: true, parentChecked: false, mastery: true, reason: null },
     });
   });
 
-  it("reads the step of the item's own template, and keeps a review slot's steps", () => {
-    const t = teachingContext(frame, page, { slot: "2.1", part: "remember-these", package: pkg(item({})), itemPlan: { template: { skill: "2.1-count", step: 2 } } })!;
-    expect(t).toMatchObject({ plannedStep: null, itemStep: 2, skill: "2.1-count", reviewSteps: ["2.1-count#2"], eligibility: { mastery: true } });
+  it("an item from another skill keeps both steps whole: Codex's K5-take-away-change on a counting part", () => {
+    // The bug: unit and step of the planned part, skill of the item. Each reference must be one step.
+    const t = teachingContext(frame, page, { slot: "1.1", part: "new-idea", place: "word-problems", package: pkg(item({}), ["K5-take-away-change", "2.4-add"]), itemPlan: { template: { skill: "K5-take-away-change", step: 3 } } })!;
+    expect(t.plannedStep).toEqual({ unit: "2.4", skill: "2.4-add", step: 3 });
+    expect(t.itemStep).toEqual({ unit: "K.5", skill: "K5-take-away-change", step: 3 });
+    expect(t.eligibility).toMatchObject({ mastery: true, reason: null });
+  });
+
+  it("a question reviewing an earlier step of the same skill names that step, and the planned step stays apart", () => {
+    const t = teachingContext(frame, page, { slot: "1.2", part: "new-idea", place: "on-your-own", package: pkg(item({})), itemPlan: { template: { skill: "2.4-add", step: 1 } } })!;
+    expect(t.plannedStep).toEqual({ unit: "2.4", skill: "2.4-add", step: 3 });
+    expect(t.itemStep).toEqual({ unit: "2.4", skill: "2.4-add", step: 1 });
+  });
+
+  it("a review part has no planned step; its item names the step it reviews, and keeps the slot's steps", () => {
+    const t = teachingContext(frame, page, { slot: "2.1", part: "remember-these", package: pkg(item({}), ["2.1-count"]), itemPlan: { template: { skill: "2.1-count", step: 2 } } })!;
+    expect(t).toMatchObject({ plannedStep: null, itemStep: { unit: "2.1", skill: "2.1-count", step: 2 }, reviewSteps: ["2.1-count#2"], eligibility: { mastery: true } });
+  });
+
+  it("an item step is never partial or guessed: no unit, a template the package does not name, or a written item off the planned skill", () => {
+    const unknown = teachingContext(frame, page, { slot: "1.1", part: "new-idea", package: pkg(item({}), ["9.9-unknown", "2.4-add"]), itemPlan: { template: { skill: "9.9-unknown", step: 2 } } })!;
+    const stale = teachingContext(frame, page, { slot: "1.1", part: "new-idea", package: pkg(item({}), ["2.4-add"]), itemPlan: { template: { skill: "2.1-count", step: 2 } } })!;
+    const offSkill = teachingContext(frame, page, { slot: "1.1", part: "new-idea", package: pkg(item({}), ["2.1-count"]) })!;
+    for (const t of [unknown, stale, offSkill]) {
+      expect(t.itemStep).toBeNull();
+      expect(t.plannedStep).toEqual({ unit: "2.4", skill: "2.4-add", step: 3 });
+      expect(t.eligibility).toMatchObject({ mastery: false, reason: "no-item-step" });
+    }
+  });
+
+  it("a planned step with no known unit is left out, not stored in part", () => {
+    const noStepUnit = { ...plan, days: [{ day: 1, pages: [{ number: 1, parts: [{ kind: "new-idea", unit: "A", step: { unit: "", skill: "2.4-add", step: 3 }, skills: [] }] }] }] } as unknown as WorkbookPlan;
+    expect(teachingContext({ ...frame, plan: noStepUnit }, page, { slot: "1.1", part: "new-idea", package: pkg(item({})) })!.plannedStep).toBeNull();
   });
 
   it.each<[string, Item, string | undefined, string]>([
@@ -517,8 +620,8 @@ describe("teaching context", () => {
     expect(t.eligibility).toMatchObject({ mastery: false, reason });
   });
 
-  it("a review question with no step is not eligible", () => {
-    expect(teachingContext(frame, page, { slot: "2.1", part: "remember-these", package: pkg(item({})) })!.eligibility).toMatchObject({ mastery: false, reason: "no-planned-step" });
+  it("a review question with no step of its own is not eligible", () => {
+    expect(teachingContext(frame, page, { slot: "2.1", part: "remember-these", package: pkg(item({}), ["2.1-count"]) })!.eligibility).toMatchObject({ mastery: false, reason: "no-item-step" });
   });
 
   it("a slot the stored plan does not hold has no context: it is not rebuilt from anything else", () => {
@@ -536,7 +639,7 @@ describe("the scan manifest", () => {
   const book = (number: number, type: string) => ({ number, type, dayLabel: null, day: null, pageOfDay: null, questions: [] });
   const part = (kind = "practice", over = {}) => ({ kind, unit: null, step: null, skills: [], ...over });
   const planOf = (days: { day: number; pages: { number: number; parts: unknown[]; extraPractice?: boolean }[] }[], testWorkbook = false) => ({ days, testWorkbook }) as unknown as WorkbookPlan;
-  const frameFor = (plan: WorkbookPlan): TeachingFrame => ({ curriculum: "bc", curriculumVersion: "v1", plan });
+  const frameFor = (plan: WorkbookPlan): TeachingFrame => ({ curriculum: "bc", curriculumVersion: "v1", plan, units: {} });
   const ordinary = planOf([{ day: 1, pages: [{ number: 1, parts: [part()] }, { number: 2, parts: [part()] }] }, { day: 7, pages: [{ number: 1, parts: [part()] }] }]);
 
   it("lists each day's question pages; covers, padding and extra practice stay out", () => {

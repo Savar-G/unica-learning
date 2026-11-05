@@ -81,7 +81,14 @@ export interface PrintedRegion {
   box: Box | null;
 }
 
-export type MasteryReason = "not-scorable" | "parent-checked" | "try-first" | "no-planned-step";
+export type MasteryReason = "not-scorable" | "parent-checked" | "try-first" | "no-item-step";
+
+/** One curriculum step, whole: its unit, its skill and its number. Never parts of two steps; null when one is not known. */
+export interface StepReference {
+  unit: string;
+  skill: string;
+  step: number;
+}
 
 export interface TeachingContext {
   version: number;
@@ -93,14 +100,15 @@ export interface TeachingContext {
   slot: string;
   /** Part of an optional block (D-233). */
   extra: boolean;
-  /** The unit track of the part ("A", "B"), or null. */
+  /** The planned part's unit track ("A", "B"), or null. */
   track: string | null;
-  unit: string | null;
-  skill: string | null;
-  /** The curriculum step the planned part teaches, or null for review and mixed parts. Never a worked-solution step id. */
-  plannedStep: number | null;
-  /** The curriculum step the item's template belongs to, or null for an item with no template. */
-  itemStep: number | null;
+  /** The step the planned part teaches, or null for review and mixed parts. Never a worked-solution step id. */
+  plannedStep: StepReference | null;
+  /**
+   * The step the question really tests: marking events and the next book read this one. It is the step of the item's
+   * template, or the planned step for an item written on that step's skill; null when neither is known.
+   */
+  itemStep: StepReference | null;
   /** The steps a review slot may draw from ("<skill>#<step>"). */
   reviewSteps: string[];
   eligibility: {
@@ -300,9 +308,15 @@ export function regionsProblem(regions: unknown, image: { width: number; height:
   return null;
 }
 
+const isStepReference = (r: unknown): r is StepReference =>
+  isObject(r) && typeof r.unit === "string" && r.unit !== "" && typeof r.skill === "string" && r.skill !== "" && Number.isInteger(r.step) && (r.step as number) >= 1;
+
 const isTeaching = (t: unknown): t is TeachingContext =>
   isObject(t) && t.version === TEACHING_CONTEXT_VERSION && isObject(t.curriculum) && typeof t.slot === "string" && isObject(t.eligibility)
-  && typeof t.eligibility.mastery === "boolean" && typeof t.eligibility.scorable === "boolean";
+  && typeof t.eligibility.mastery === "boolean" && typeof t.eligibility.scorable === "boolean"
+  && (t.plannedStep === null || isStepReference(t.plannedStep)) && (t.itemStep === null || isStepReference(t.itemStep))
+  // (Mastery counts toward a step, so it needs that step.)
+  && (t.itemStep !== null || !t.eligibility.mastery);
 
 export const teachingProblem = (t: unknown) => (isTeaching(t) ? null : "the teaching context is not of a version this code reads");
 
@@ -358,6 +372,8 @@ export interface TeachingFrame {
   curriculum: string;
   curriculumVersion: string;
   plan: WorkbookPlan;
+  /** Each skill's unit in that curriculum, for an item from a skill the planned part does not teach. */
+  units: Readonly<Record<string, string>>;
 }
 
 /** The planned page of a printed page, by the day and page of its template content. */
@@ -394,20 +410,33 @@ export function teachingContext(frame: TeachingFrame, page: { content?: PageCont
   // (A package with neither an item nor an answer has not passed its check: the store refuses it.)
   if (!part || (!q.package.item && !q.package.answer)) return null;
   const item = packageItem(q.package);
-  const template = q.itemPlan?.template ?? null;
-  const step = template?.step ?? part.step?.step ?? null;
+  const plannedStep = part.step?.unit && part.step.skill ? { unit: part.step.unit, skill: part.step.skill, step: part.step.step } : null;
+  const itemStep = testedStep(frame, plannedStep, q);
   const practiceType = q.place ?? null;
   const reason: MasteryReason | null = !item.scorable ? (item.parentChecked ? "parent-checked" : "not-scorable")
     : practiceType === "try-first" ? "try-first"
-      : step === null ? "no-planned-step" : null;
+      : itemStep === null ? "no-item-step" : null;
   return {
     version: TEACHING_CONTEXT_VERSION, curriculum: { key: frame.curriculum, version: frame.curriculumVersion },
-    practiceType, part: q.part, slot: q.slot, extra: !!part.extra, track: part.unit, unit: part.step?.unit ?? null,
-    skill: template?.skill ?? part.step?.skill ?? q.package.skill.skills[0] ?? null,
-    plannedStep: part.step?.step ?? null, itemStep: template?.step ?? null,
+    practiceType, part: q.part, slot: q.slot, extra: !!part.extra, track: part.unit, plannedStep, itemStep,
     reviewSteps: page.expected?.find((e) => e.slot === q.slot)?.steps ?? [],
     eligibility: { format: item.format, scorable: item.scorable, parentChecked: item.parentChecked, mastery: reason === null, reason },
   };
+}
+
+/**
+ * The step a question really tests, whole or not at all: its template's step (with that skill's own unit), when the
+ * package names that skill; else the planned step, for an item written on the planned skill. A review item with no
+ * template names no step here: its slot's list says only what it may draw from.
+ */
+function testedStep(frame: TeachingFrame, planned: StepReference | null, q: TeachingQuestion): StepReference | null {
+  const skills = q.package.skill.skills;
+  const template = q.itemPlan?.template;
+  if (template) {
+    const unit = frame.units[template.skill];
+    return unit && skills.includes(template.skill) ? { unit, skill: template.skill, step: template.step } : null;
+  }
+  return planned && skills[0] === planned.skill ? planned : null;
 }
 
 interface ManifestSource extends ManifestPage {

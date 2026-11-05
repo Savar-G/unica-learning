@@ -6,6 +6,7 @@ import { READABLE_DRAFT_VERSIONS, type GeneratedWorkbook } from "@/lib/workbook-
 import type { DraftRendering } from "@/lib/workbook-job";
 import type { RenderProblem } from "@/lib/workbook-render";
 import type { MarkResult, WorkbookShipStore } from "@/lib/workbook-ship";
+import { teachingFrame } from "@/lib/workbook-teaching-frame";
 
 // The ship store (#314) in Supabase (migration workbook_ship). Pass a client with the secret key: approve_workbook_draft
 // and mark_workbook are service-only. The draft's current revision is its latest; its content is the revision's own
@@ -37,7 +38,7 @@ export function workbookShipStore(db: SupabaseClient<Database>): WorkbookShipSto
         draft: content,
         rendering: revision.data.rendering as DraftRendering | null,
         renderProblems: revision.data.render_problems as RenderProblem[],
-        frame: frame.data ? { curriculum: frame.data.frame.curriculum, curriculumVersion: frame.data.frame.versions.curriculum, plan: frame.data.frame.plan } : null,
+        frame: frame.data ? teachingFrame(frame.data.frame) : null,
       };
     },
 

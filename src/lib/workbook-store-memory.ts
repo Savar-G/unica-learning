@@ -24,8 +24,9 @@ import { storedPrintContract, type ScanManifest } from "@/lib/workbook-print-con
 // `children`: the children the store knows, with their parent. `setStatus` moves a kept workbook to a status, as the
 // team does in the database (a test of a product that reads only shipped workbooks, like the desk, ships one first); it
 // is not part of the store's interface. Back to draft ends the printed revision, as the database's trigger does.
-// `applyPrintContract` is the approval of a stored draft (apply_workbook_print_contract): it takes the book's whole
-// contract, or clears it. Nor is it part of the interface.
+// `applyPrintContract` is the approval of a stored draft (apply_workbook_print_contract): a draft takes the book's whole
+// contract, or clears it; any other status, or a call that does not name its pages and questions, throws. Nor is it part
+// of the interface.
 
 interface Kept {
   summary: WorkbookSummary;
@@ -61,6 +62,13 @@ export function memoryWorkbookStore(o: { children: readonly { id: string; parent
     applyPrintContract(input) {
       const book = books.get(input.id);
       if (!book) throw new Error(`no workbook ${input.id}`);
+      // As the database: only a draft takes a contract, and only with exactly its pages and questions.
+      if (book.summary.status !== "draft") throw new Error(`workbook ${input.id} is ${book.summary.status}: its print contract cannot change`);
+      const numbers = (list: { number: number }[]) => list.map((x) => x.number).sort((a, b) => a - b).join(",");
+      if (numbers(input.pages) !== numbers(book.pages)) throw new Error(`workbook ${input.id}: the print contract does not name the workbook's pages`);
+      for (const p of input.pages) {
+        if (numbers(p.questions) !== numbers(book.pages.find((x) => x.number === p.number)!.questions)) throw new Error(`workbook ${input.id}, page ${p.number}: the print contract does not name the page's questions`);
+      }
       const w = structuredClone(input);
       book.print = { pdfSha256: w.pdfSha256 ?? null, printManifest: w.printManifest ?? null, printedRevision: w.printedRevision ?? null };
       for (const p of w.pages) {

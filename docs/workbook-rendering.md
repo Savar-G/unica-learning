@@ -81,8 +81,9 @@ is in `src/lib/workbook-print-contract.ts`.
   stored plan (`workbook_run_frames`): the required pages of each printed day and the test workbook's Day 7 level test.
   `printedRevision` joins all of it into one identity. A contract is one unit: if any page has none, or a page's content
   is not what its contract printed, the book keeps no contract and no revision. It is still approved.
+- **Teaching context.** `plannedStep` is the step the planned part teaches. `itemStep` is the step the question really tests: its template's step, else the planned step for an item written on that skill. Each is a whole unit, skill and step number, or null, so read `itemStep` to know what a mark says about the child. A skill's unit comes from the run's stored frame (`RunFrame.units`), never from a later curriculum.
 - **Afterwards.** Taking a workbook back to draft or saving a new rendering ends its revision. `identify_scan_photo`
-  gives a photo the revision of its book. `printContractForPhoto` answers only for a photo of the book's current revision.
+  gives a photo the revision of its book. `printContractForPhoto` answers only for a photo of the book's current revision. The printed-book lock covers the revision, the PDF fingerprint, the manifest and the page and question rows.
 - **Legacy books.** A book with no revision keeps its photos, with no automatic marking. Never render a stored book
   again to invent its contract. A draft rendered before #536 has no contract, so prepare it again before approving it if
   it needs automatic marking.
