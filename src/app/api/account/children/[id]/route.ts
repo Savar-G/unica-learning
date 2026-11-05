@@ -19,8 +19,10 @@ const fail = (error: ChildNameError, status: number) => reply(status, { ok: fals
 //
 // A workbook being made prints the name in the id of each kept page, and a resume with another name fails the run
 // (workbook-generator.ts), so the name waits until that run ends. rename_child checks the runs and writes the name in
-// one transaction under the child's row lock, which start_workbook_run takes too, so no run starts in between. A run
-// that has stopped by the app's rule (runState, STALE_SECONDS) does not block. The function keeps the former name, which
+// one transaction under the child's row lock, which start_workbook_run takes too, so no run starts in between. It locks
+// the child's runs too, so a resume being made is seen. A run that has stopped by the app's rule (runState,
+// STALE_SECONDS) does not block: the rename ends it, with its lease, so it cannot go on with the old name (migration
+// child_rename_stops_runs). The function keeps the former name, which
 // the call note writer hides as it hides the name now (src/lib/maya-call-note.ts).
 export async function PATCH(request: Request, { params }: RouteContext<"/api/account/children/[id]">) {
   if (request.headers.get("origin") !== new URL(request.url).origin) return fail("forbidden", 403);
