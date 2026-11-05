@@ -60,6 +60,7 @@ import type { ChildStandard } from "@/lib/child-profile";
 import type { QuestionRef } from "@/lib/question-package";
 import type { Curriculum, CurriculumLevel, Delivery, Range } from "@/lib/workbook-curriculum";
 import { sumTemplate, templateProblem } from "@/lib/workbook-step-items";
+import type { BookSignals } from "@/lib/workbook-signals";
 
 /** Shared ten-day schedule (#479). Apply the range inside each skill's curriculum bound.
  * Fixed benchmarks, measures and fractions keep their values; support and complexity still change.
@@ -220,6 +221,14 @@ export interface FixItem {
 }
 
 export interface PlannedPart {
+  /** The whole block is optional. It keeps its full item count (D-233, Q6). */
+  extra?: boolean;
+  /** C3: G1 selects the hardest allowed templates, without adding an untaught step. */
+  templateDifficulty?: "hard";
+  /** Preferred secure standards, limited to the part's allowed steps. */
+  preferStandards?: string[];
+  /** P6: reserve this many items per standard, before the general review items. */
+  weakChecks?: { unit: string; skills: string[]; items: number }[];
   kind: PartKind;
   /** The unit track it teaches, or null for review, warm-up, tests and mixed work. */
   unit: Track | null;
@@ -251,6 +260,8 @@ export interface PlannedPart {
 }
 
 export interface PlannedPage {
+  /** The weak unit whose first taught day replaces a stories page with practice. */
+  weakPractice?: string;
   extraPractice?: boolean;
   extraGap?: number;
   fillingComplete?: boolean;
@@ -287,6 +298,11 @@ export interface PlannedPage {
 export type DayKind = "teach" | "remember" | "test" | "light" | "mixed";
 
 export interface PlannedDay {
+  /** C3 schedule for G1. Number ranges still need each curriculum skill's bound. */
+  difficulty?: DayDifficulty;
+  shortStories?: boolean;
+  /** Pre-generation estimate. L1 must check it again against the generated questions. */
+  time?: { estimated: number; required: number; target: number };
   /** 1 to 10. */
   day: number;
   week: 1 | 2;
@@ -295,6 +311,7 @@ export interface PlannedDay {
 }
 
 export interface WorkbookPlan {
+  personal?: BookSignals;
   level: number;
   lead: PlanLevel["lead"];
   /** Pages a day (D-186) on a teaching day. */
@@ -333,6 +350,8 @@ export type PlanProfile = {
 };
 
 export interface PlanInput {
+  /** Absent, or without assessment evidence: preserve the previous plan byte for byte. */
+  personal?: BookSignals;
   profile: PlanProfile;
   /** The child's school grade now. */
   grade: Grade;
@@ -491,6 +510,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
   if (notUnit) return { ok: false, reason: `${notUnit} is not a BC standard` };
 
   const n = level.number;
+  const personal = input.personal?.hasAssessment ? input.personal : undefined;
   const parentLed = n <= PARENT_LED_TO;
   const sixPages = n >= UPPER_FROM;
   const instructions = n <= ICONS_TO ? "icons" : "text";
@@ -502,6 +522,11 @@ export function planWorkbook(input: PlanInput): PlanResult {
   // The profile: a standard above the school grade is never a weakness (D-084); one above the level's grade comes with
   // its own level.
   const status = new Map(input.profile.standards.map((s) => [s.code, s.status]));
+  const weak = new Map((personal?.weak ?? []).filter(s => s.grade <= input.grade && !s.aboveGrade && s.status !== "secure").map(s => [s.code, s]));
+  const weakRank = (code: string) => !weak.has(code) ? 2 : weak.get(code)!.certainty === "clear" ? 0 : 1;
+  const tie = (codes: readonly string[], code: string) => codes.includes(code) ? codes.indexOf(code) : codes.length;
+  const personalOrder = (a: string, b: string) => weakRank(a) - weakRank(b)
+    || (weak.has(a) && weak.has(b) ? tie(personal?.soft.weakOrder ?? [], a) - tie(personal?.soft.weakOrder ?? [], b) : 0);
   const standardOf = (skill: string) => MAP_SKILLS.get(skill)!.standard;
   /**
    * A skill the plan may bring back as review or Fix it: at or below the school grade, or of a secure standard. The
@@ -542,7 +567,17 @@ export function planWorkbook(input: PlanInput): PlanResult {
       remaining.set(s.unit, [...(remaining.get(s.unit) ?? []), { unit: s.unit, skill: s.id, step, pages: pages[step - 1] }]);
     }
   }
-  const unitsLeft = level.units.map((u) => u.code).filter((code) => remaining.has(code));
+  let unitsLeft = level.units.map((u) => u.code).filter((code) => remaining.has(code));
+  if (personal) {
+    // Stable dependency order. A weak unit never moves before a prerequisite unit.
+    const pending = [...unitsLeft].sort(personalOrder);
+    unitsLeft = [];
+    while (pending.length) {
+      const at = pending.findIndex(code => !(remaining.get(code) ?? []).some(s => pending.some(other => other !== code && (remaining.get(other) ?? []).some(r => prerequisites(s.skill).has(r.skill)))));
+      if (at < 0) return { ok: false, reason: "the remaining units have a prerequisite cycle" };
+      unitsLeft.push(pending.splice(at, 1)[0]);
+    }
+  }
   const testWorkbook = unitsLeft.length === 0 || input.workbook.inLevel >= level.workbooks + 2;
   const support = input.support !== null && input.workbook.inLevel < SUPPORT_WORKBOOKS ? input.support : null;
 
@@ -783,6 +818,27 @@ export function planWorkbook(input: PlanInput): PlanResult {
   }
   sim = simulate();
   const shapes = shapesFor(sim.startDays);
+  const weakPractice = new Map<number, StepRef>();
+  if (personal) for (const code of weak.keys()) {
+    const first = sim.starts.find(s => s.unit === code);
+    if (!first) continue;
+    const story = shapes[first.day - 1].find(s => s.role === "story");
+    if (story) {
+      story.type = pageType("practice");
+      story.role = "weak-practice";
+      story.parts = [T("practice", first.track)];
+      weakPractice.set(first.day, stepRef(first));
+    }
+  }
+  const below = (code: string) => (STANDARDS.get(code)?.skills ?? []).map(s => s.id).filter(id => {
+    const at = level.skillLevels?.[id];
+    return at !== undefined ? at < n : standardOf(id).grade < levelGrade;
+  });
+  const earlyBelow = personal ? personal.earlyWeak.filter(s => weak.has(s.code)).flatMap(s => {
+    const skills = below(s.code);
+    return skills.length ? [{ unit: s.code, skills }] : [];
+  }) : [];
+  const secureBelow = new Set((personal?.secure ?? []).flatMap(s => below(s.code)));
 
   // Spaced reviews, with their step and interval, into the day's Remember these? (2 items each, as many as it holds).
   /** Items in a page's Remember these? (DESIGN 7 slot limits; a parent-led page holds 6 to 10 in all). */
@@ -795,6 +851,10 @@ export function planWorkbook(input: PlanInput): PlanResult {
     return parentLed ? (shape.role === "challenge" ? 6 : 2) : 4;
   };
   const room = shapes.map((day) => day.reduce((sum, s) => sum + (s.parts.some((p) => p.kind === "remember-these") && !(s.role === "slot" && support) ? rememberItems(s) / REVIEW_ITEMS_EACH : 0), 0));
+  if (earlyBelow.length && [2, 3, 4].some(day => room[day - 1] < earlyBelow.length)) return { ok: false, reason: "the early weak checks exceed the day's review room" };
+  // P6 checks take review room, not another page. Friday reserves one of its five items per standard.
+  if (earlyBelow.length > FRIDAY_5_ITEMS) return { ok: false, reason: "the early weak checks exceed the Friday 5" };
+  for (const day of [2, 3, 4]) room[day - 1] -= earlyBelow.length;
   const placed: SpacedReview[] = [];
   const reviewsAfter: SpacedReview[] = [];
   const reviewsSkipped: SpacedReview[] = [];
@@ -808,9 +868,13 @@ export function planWorkbook(input: PlanInput): PlanResult {
     if (eligible(r.skill)) place(r);
     else reviewsSkipped.push(r);
   }
+  for (const s of earlyBelow) for (const skill of s.skills) {
+    if (!input.reviews.some(r => r.skill === skill)) place({ skill, step: 1, interval: 0, due: 2 });
+  }
+  for (const skill of secureBelow) if (!input.reviews.some(r => r.skill === skill)) place({ skill, step: 1, interval: 2, due: 15 });
   for (const track of ["A", "B"] as const) {
     const mine = sim.starts.filter((s) => s.track === track);
-    mine.forEach((s, i) => place({ skill: s.skill, step: s.step, interval: 0, due: (mine[i + 1]?.day ?? DAYS + 1) - 1 + SPACED_INTERVALS[0] }));
+    mine.forEach((s, i) => place({ skill: s.skill, step: s.step, interval: 0, due: (weak.has(s.unit) ? s.day : (mine[i + 1]?.day ?? DAYS + 1) - 1) + SPACED_INTERVALS[0] }));
   }
 
   // The rest of Remember these?: every unit (test workbook), weak then secure standards, the level's secure units and
@@ -820,6 +884,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
   const buildsOn = [...new Set(levelSkills.flatMap((s) => MAP_SKILLS.get(s.id)!.skill.requires.filter((r) => !levelIds.has(r))))].filter(eligible).sort(skillOrder);
   /** The test workbook's mixed review of every unit, fluency units too: first in each day's Remember these?. */
   const everyUnit = testWorkbook ? level.units.map((u) => u.skills[0]?.id).filter((x): x is string => !!x) : [];
+  // Keep known prerequisites available for stories and mixed work. Only their scheduled reviews start at 15 days.
   const filler = [...new Set([
     ...everyUnit,
     ...standards.flatMap((s) => s.skills.filter((id) => !levelIds.has(id) || passedSkills.includes(id)).slice(0, 1)),
@@ -853,6 +918,7 @@ export function planWorkbook(input: PlanInput): PlanResult {
     const turned = [...new Set([...everyUnit, ...earlier.slice(turn), ...earlier.slice(0, turn)])];
     let used = 0;
     let fillAt = 0;
+    let checkAt = 0;
     const pagesOut = dayShapes.map((shape, p): PlannedPage => {
       const out = shape.parts.map(({ kind: k, track }, idx): PlannedPart => {
         const t = track ?? "A";
@@ -870,19 +936,22 @@ export function planWorkbook(input: PlanInput): PlanResult {
             const items = rememberItems(shape);
             if (shape.role === "slot" && support) return part(k, items, { skills: supportSkills });
             const slots = items / REVIEW_ITEMS_EACH;
-            const reviews = dueHere.slice(used, used + slots);
+            const checks = [2, 3, 4].includes(day) ? earlyBelow.slice(checkAt, checkAt + slots) : [];
+            checkAt += checks.length;
+            const reviews = dueHere.slice(used, used + slots - checks.length);
             used += reviews.length;
-            const fill = turned.length === 0 ? [] : Array.from({ length: slots - reviews.length }, () => turned[fillAt++ % turned.length]);
+            const fill = turned.length === 0 ? [] : Array.from({ length: slots - reviews.length - checks.length }, () => turned[fillAt++ % turned.length]);
             return part(k, items, {
-              skills: [...new Set([...reviews.map((r) => r.skill), ...fill])],
+              skills: [...new Set([...checks.flatMap(c => c.skills), ...reviews.map((r) => r.skill), ...fill])],
               reviews: reviews.map((r) => ({ skill: r.skill, step: r.step, interval: r.interval })),
+              ...(checks.length ? { weakChecks: checks.map(c => ({ ...c, items: 2 })) } : {}),
             });
           }
           case "try-first": return unitPart(k, t, 1);
           case "new-idea": return unitPart(k, t, parentLed ? (t === "B" ? 4 : 5) : 4, { methods: ["Method 1", "Method 2"] });
           case "spot-the-error": return unitPart(k, t, 1);
           case "practice": {
-            if (shape.role === "practice-2") return unitPart(k, t, 12);
+            if (shape.role === "practice-2") return unitPart(k, t, personal ? 10 : 12);
             // A parent-led page shared with a New idea or with picture stories keeps the page within 6 to 10 items. Beside
             // picture stories, practice takes the page's 6 cards: Watch one, two to finish and two on your own (#380).
             const items = parentLed && shape.role === "slot" && shape.parts.length > 1 ? 3
@@ -899,9 +968,12 @@ export function planWorkbook(input: PlanInput): PlanResult {
           case "friday-5": {
             // The last 3 weeks: this workbook's steps so far, then the reviews carried at their first intervals.
             const recent = [...new Set([...stepsBefore(day), ...input.reviews.filter((r) => r.interval <= 1 && eligible(r.skill)).map((r) => r.skill)])];
-            return part(k, FRIDAY_5_ITEMS, { hints: false, skills: recent.length > 0 ? recent : passedSkills.length > 0 ? passedSkills : earlier });
+            const checks = day === 5 ? earlyBelow : [];
+            return part(k, FRIDAY_5_ITEMS, { hints: false, skills: [...new Set([...checks.flatMap(c => c.skills), ...(recent.length > 0 ? recent : passedSkills.length > 0 ? passedSkills : earlier)])],
+              ...(checks.length ? { weakChecks: checks.map(c => ({ ...c, items: 1 })) } : {}) });
           }
-          case "challenge": return unitPart(k, t, parentLed || shape.parts.length > 1 ? 1 : 2);
+          case "challenge": return unitPart(k, t, personal ? 3 : parentLed || shape.parts.length > 1 ? 1 : 2,
+            personal?.adjustments.hardChallenge ? { templateDifficulty: "hard" } : {});
           case "show-what-you-know": {
             // One of each step of the workbook (or of each skill passed, when none is new), and the hardest again.
             const skills = sim.starts.length > 0 ? [...new Set(sim.starts.map((s) => s.skill))] : passedSkills.length > 0 ? passedSkills : teachSkills;
@@ -936,7 +1008,8 @@ export function planWorkbook(input: PlanInput): PlanResult {
         }
       });
       const unit = out.find((x) => x.unit !== null)?.unit ?? null;
-      return { number: p + 1, type: shape.type, unit, instructions, parts: out };
+      return { number: p + 1, type: shape.type, unit, instructions, parts: out,
+        ...(shape.role === "weak-practice" ? { weakPractice: weakPractice.get(day)!.unit } : {}) };
     });
     return { day, week: day <= DAYS_A_WEEK ? 1 : 2, kind, pages: pagesOut };
   });
@@ -978,13 +1051,61 @@ export function planWorkbook(input: PlanInput): PlanResult {
             const own = p.skills.flatMap((skill) => { const at = doneStep(skill, d.day); return at === undefined ? [] : [{ skill, step: at }]; });
             const spaced = (p.reviews ?? []).map((r) => ({ skill: r.skill, step: r.step }));
             const fix = p.kind === "fix-it" ? p.skills.map((skill) => ({ skill, step: doneStep(skill, d.day) ?? 1 })) : [];
-            list = [...fix, ...spaced, ...(p.kind === "fix-it" || p.kind === "mini-test" ? [] : before.map((x) => ({ skill: x.skill, step: x.step }))), ...own];
+            const checks = (p.weakChecks ?? []).flatMap(c => c.skills.map(skill => ({ skill, step: 1 })));
+            list = [...checks, ...fix, ...spaced, ...(p.kind === "fix-it" || p.kind === "mini-test" ? [] : before.map((x) => ({ skill: x.skill, step: x.step }))), ...own];
           } else return p;
           const unique = list.filter((x, i) => list.findIndex((y) => key(y) === key(x)) === i);
           if (!unique.length) return p;
           return { ...p, skills: [...new Set(unique.map((x) => x.skill))], reviewSteps: unique };
         });
       }
+    }
+  }
+
+  if (personal) {
+    for (const d of days) {
+      // Support keeps the real day's pictures. Stretch changes only the number range and difficulty.
+      const base = dayDifficulty(n, d.day);
+      const shifted = dayDifficulty(n, Math.min(DAYS, d.day + personal.adjustments.stretchShift));
+      d.difficulty = { ...shifted, helpLevel: d.day <= personal.adjustments.picturesThrough ? "pictures" : base.helpLevel,
+        storyShare: personal.adjustments.storyShare ?? base.storyShare, maxMinutes: 35 };
+      d.shortStories = personal.adjustments.shortStories;
+      for (const p of d.pages.flatMap(page => page.parts)) {
+        if (p.kind === "challenge") {
+          // The first card stays on today's step. Other cards may prefer secure steps already taught or reviewed.
+          const earlier = [...sim.starts.filter(s => s.day < d.day).map(s => ({ skill: s.skill, step: s.step })),
+            ...d.pages.flatMap(pg => pg.parts.filter(part => part.kind === "remember-these").flatMap(part => part.reviewSteps ?? []))];
+          p.reviewSteps = earlier.filter((r, i) => personal.secure.some(s => s.code === standardOf(r.skill).code)
+            && earlier.findIndex(other => other.skill === r.skill && other.step === r.step) === i);
+        }
+        const allowed = [...new Set([...(p.step ? [p.step.skill] : []), ...(p.reviewSteps ?? []).map(r => r.skill)])];
+        const secure = personal.secure.filter(s => allowed.some(id => standardOf(id).code === s.code));
+        // The stored personal.soft orders let G1 break ties within this certainty order.
+        const preferences = secure.sort((a, b) => Number(b.certainty === "clear") - Number(a.certainty === "clear")).map(s => s.code);
+        if (preferences.length && (p.kind === "challenge" || p.kind === "remember-these")) p.preferStandards = preferences;
+      }
+      // Planning counts, not a child-speed prediction. G1/L1 must recalculate after writing and fitting.
+      // Warm-ups are short facts. New idea counts include its panel, not four full written questions.
+      const minutes = (p: PlannedPart) => p.kind === "new-idea" ? .5 + (n <= 9 ? 2 : n <= 18 ? 3 : 2) * .3
+        : p.items * (p.kind === "warm-up" ? .08 : p.kind === "challenge" || p.kind === "word-problems" || p.kind === "picture-stories" ? .75
+          : p.kind === "solve-it-two-ways" || p.kind === "spot-the-error" ? 1 : .3);
+      const all = d.pages.flatMap(p => p.parts);
+      const estimate = () => 2 + d.pages.length * .35 + all.filter(p => !p.extra).reduce((sum, p) => sum + minutes(p), 0);
+      const estimated = estimate();
+      if (estimated >= 35) return { ok: false, reason: `day ${d.day}: the planned estimate reaches 35 minutes` };
+      const weekly = personal.parent.weeklyTime === "under_1h" ? 20 : personal.parent.weeklyTime === "1_to_2h" ? 25 : estimated;
+      const target = Math.min(estimated, weekly) - (personal.behaviour?.lateDrop ? 5 : 0);
+      const challenge = all.filter(p => p.kind === "challenge");
+      const practice = [...d.pages].reverse().filter(page => page.parts.some(p => p.kind === "practice")).map(page => page.parts);
+      if (personal.adjustments.extraChallenge) for (const p of challenge) p.extra = true;
+      // Each next practice block is the day's last remaining practice block. Counts and pages stay full.
+      for (const block of [...challenge.map(p => [p]), ...practice]) {
+        if (estimate() <= target) break;
+        for (const p of block) p.extra = true;
+      }
+      if (estimate() > target) return { ok: false, reason: `day ${d.day}: whole Extra blocks cannot meet the required time` };
+      const round = (v: number) => Math.round(v * 10) / 10;
+      d.time = { estimated: round(estimated), required: round(estimate()), target: round(target) };
     }
   }
 
@@ -999,10 +1120,12 @@ export function planWorkbook(input: PlanInput): PlanResult {
   return {
     ok: true,
     plan: {
+      ...(personal ? { personal } : {}),
       level: n,
       lead: level.lead,
       pagesADay: { ...level.pagesPerDay },
-      timeTarget: { min: Math.min(level.dailyMinutes.min, 30), max: Math.min(level.dailyMinutes.max, 30) },
+      timeTarget: personal ? { min: Math.min(...days.map(d => d.time!.required)), max: Math.max(...days.map(d => d.time!.required)) }
+        : { min: Math.min(level.dailyMinutes.min, 30), max: Math.min(level.dailyMinutes.max, 30) },
       testWorkbook,
       units: { A: unitsA.filter((code) => code === firstA || sim.starts.some((s) => s.unit === code)), B: unitB, support },
       newSteps: sim.starts,
