@@ -870,7 +870,6 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         say: last?.kind === "maya" && last.stateAfter === "CLOSE" ? [...(last.output?.say ?? [])] : [],
         newBatches: 0, safetyMessage: null, ended: true,
       } : null;
-      const seen: ConnectionEvent[] = [];
       const acknowledged = [...(found.live.acknowledged ?? [])];
       let lost = false;
       let replaced = false;
@@ -881,14 +880,13 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           console.error("[maya voice] save failed", record.id, e instanceof Error ? e.message : String(e));
         });
       };
-      /** The connected seconds when the call ends: from every stored event of the call (a restarted worker's too). */
+      /**
+       * The connected seconds when the call ends: from every stored event of the call (a restarted worker's too). A read
+       * that fails throws, which refuses the end: this worker's own events are not all of the call's (after a restart it
+       * has none), so the call stays live and the sweep ends it from the stored times later (#586).
+       */
       const connected = async (endedAt: number): Promise<CallChange> => {
-        let events: ConnectionEvent[] = seen;
-        try {
-          events = await log.read(record.id);
-        } catch (e) {
-          console.error("[maya voice] connections read failed", record.id, e instanceof Error ? e.message : String(e));
-        }
+        const events = await log.read(record.id);
         // The outcome can precede final playout. Count room time through the media close.
         return { connectedSeconds: connectedSeconds(events, Math.max(endedAt, seams.clock(), ...events.map((e) => e.at))) };
       };
@@ -1024,7 +1022,6 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
               const at = await log.append({ ...event, callId: record.id, parentId: record.parentId, childId: record.childId }, record.revision);
               if (at === null) { lost = true; replaced = true; return; }
               record = { ...record, revision: record.revision + 1 };
-              seen.push({ kind, at });
             } catch (e) {
               lost = true;
               console.error("[maya voice] connection event not stored", record.id, kind, e instanceof Error ? e.message : String(e));

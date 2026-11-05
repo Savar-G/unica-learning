@@ -210,6 +210,18 @@ export function sweepCallSource(admin: SupabaseClient<Database>): SweepCallSourc
       if (error) throw new Error(`maya unfinished calls: ${error.message}`);
       return (data ?? []).map(fromCallRow);
     },
+    // The sweep's place in each list (#586): public.maya_call_sweep_cursors, one row per kind.
+    async readPlace(kind) {
+      const { data, error } = await admin.from("maya_call_sweep_cursors").select("at, call_id").eq("kind", kind).maybeSingle();
+      if (error) throw new Error(`maya sweep place: ${error.message}`);
+      return data?.at && data.call_id ? { at: data.at, id: data.call_id } : null;
+    },
+    async writePlace(kind, place) {
+      if (place && (!STORED_TIME.test(place.at) || !Number.isFinite(Date.parse(place.at)) || !UUID.test(place.id))) throw new Error("maya sweep: bad cursor");
+      const { error } = await admin.from("maya_call_sweep_cursors")
+        .upsert({ kind, at: place?.at ?? null, call_id: place?.id.toLowerCase() ?? null, updated_at: new Date().toISOString() }, { onConflict: "kind" });
+      if (error) throw new Error(`maya sweep place write: ${error.message}`);
+    },
   };
 }
 
