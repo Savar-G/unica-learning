@@ -268,7 +268,7 @@ const CSS = `
 .ct>*{flex-shrink:0}
 .blk{display:flex;flex:1 0 auto;flex-direction:column;gap:8px}
 .blk.grow{flex-grow:1}
-.blk.optional-block{border:1px solid #5A4300;border-radius:2px}
+.blk.optional-block{border:1px solid #5A4300;border-radius:2px;padding-left:4px}
 .ft{position:absolute;left:64px;top:950px;width:688px;height:58px;display:flex;align-items:center;gap:12px}
 .ft [data-measure="qr"]{width:58px;height:58px;flex:none}
 .ft svg{width:58px;height:58px;display:block}

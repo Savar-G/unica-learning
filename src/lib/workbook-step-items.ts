@@ -237,6 +237,9 @@ export function sentenceFrame(text: string, names: readonly string[]): string {
 
 const HAS_SENTENCE = /\{(?:name|They|they|them|their|Their|things|animals|foods|places|container)\}/;
 
+const SMALL_THINGS = /\b\d{4,}\s+(leaves|beads|shells|stickers|crayons|marbles|buttons|blocks|acorns|apples|pencils|cookies|toy cars|stamps|grapes|carrots|muffins|crackers|pancakes|berries|orange slices|hockey cards|books|cards|pebbles|rocks|feathers|seeds|toys|balloons)\b/i;
+const escapeWord = (w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 export interface StepItemRequest {
   curriculum: Curriculum;
   skill: string;
@@ -260,6 +263,11 @@ export interface StepItemRequest {
   room?: number;
   /** A name never to print (the child's own). */
   avoid?: string | null;
+  /**
+   * G1 (D-231): code's interest nouns (workbook-interests.ts, C1) a template's {things} and {places} take instead of the
+   * shared lists. The printed story is still code's template text; only its noun differs. Absent: today's lists.
+   */
+  interests?: { things: readonly string[]; places: readonly string[] };
 }
 
 /**
@@ -437,7 +445,8 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
       const purchase = t.text.includes("{things}") && /\$|\bdollars?\b|\b(?:buys?|bought)\b|Each \{container\} holds|puts .* in each \{container\}/.test(t.text);
       // (Sam is Spot the error's child: no other story names Sam, so code's text prints unchanged, B1.)
       const people = r.place === "spot-the-error" ? contexts.people : contexts.people.filter((x) => x.name !== "Sam");
-      prepared = prepareTemplate(step, t, { ...contexts, people, ...(purchase ? { things: ["books", "notebooks", "tickets", "toy cars"] } : {}) });
+      const interest = r.interests ? { ...(r.interests.things.length ? { things: r.interests.things } : {}), ...(r.interests.places.length ? { places: r.interests.places } : {}) } : {};
+      prepared = prepareTemplate(step, t, { ...contexts, people, ...interest, ...(purchase ? { things: ["books", "notebooks", "tickets", "toy cars"] } : {}) });
     } catch { continue; }
     const random = seededRandom(((r.seed * 31 + r.attempt * 7919 + k * 104729) % 2147483647) + 1);
     // A Challenge takes the fill with the largest numbers of several, the top of the step's range (the U4 review); a
@@ -481,7 +490,8 @@ function stepTemplateFill(r: StepItemRequest): { ref: StepTemplateRef; text: str
       // review: pages, people, kilometres, dollars).
       // Things that come in thousands take their place ("counts 4521 tickets on Monday", the U16 review: Grade 5 stories
       // work with the step's 4-digit numbers); a container holding thousands of them is still no story.
-      const SMALL = /\b\d{4,}\s+(leaves|beads|shells|stickers|crayons|marbles|buttons|blocks|acorns|apples|pencils|cookies|toy cars|stamps|grapes|carrots|muffins|crackers|pancakes|berries|orange slices|hockey cards|books|cards|pebbles|rocks|feathers|seeds|toys|balloons)\b/i;
+      // (An interest's things too: no one has 5380 jerseys.)
+      const SMALL = r.interests?.things.length ? new RegExp(`${SMALL_THINGS.source.slice(0, -3)}|${r.interests.things.map(escapeWord).join("|")})\\b`, "i") : SMALL_THINGS;
       const small = SMALL.exec(text);
       if (small) {
         if (/\b(?:holds?|box(?:es)?|bags?|jars?|trays?|baskets?|bins?|containers?|packs?|bottles?)\b/i.test(text)) continue;
