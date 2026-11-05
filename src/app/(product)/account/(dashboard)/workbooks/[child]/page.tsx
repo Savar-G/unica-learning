@@ -45,11 +45,11 @@ export default async function Workbooks({ params }: PageProps<"/account/workbook
             <p className="pw-sub">An estimate. We will email you when it is on its way.</p>
           </section>
         )}
-        {next.kind === "preparing" && (
+        {next.kind === "past_estimate" && (
           <section className="pw-card" aria-labelledby="pw-next">
             <p className="pw-label" id="pw-next">Next workbook</p>
-            <p className="pw-value">Being prepared</p>
-            <p className="pw-sub">We will email you when {name}&apos;s next workbook is on its way.</p>
+            <p className="pw-value">Not sent yet</p>
+            <p className="pw-sub">This is later than our estimate. We will email you when {name}&apos;s next workbook is on its way.</p>
           </section>
         )}
       </div>

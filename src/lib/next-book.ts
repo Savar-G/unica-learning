@@ -7,7 +7,7 @@ import { addDays } from "@/lib/family-time";
 //     confirmed delivery, its shipping day plus 35 days.
 //   - Before the first book ships: a status, with no date.
 // Two cases the spec leaves open, kept as statuses with no date, so the page never shows a date we cannot keep:
-//   - The range has passed and no newer book shipped: `preparing`.
+//   - The range has passed and no newer book shipped: `past_estimate`. Nothing here knows whether the next book is being made.
 //   - The plan ended: `none`.
 // Pause (#559) moves both ends by the paused weeks; it is not built yet.
 
@@ -28,7 +28,7 @@ export interface NextBookInput {
 export type NextBook =
   | { kind: "first_book_coming" }
   | { kind: "range"; earliest: string; latest: string }
-  | { kind: "preparing" }
+  | { kind: "past_estimate" }
   | { kind: "none" };
 
 function day(value: string, name: string): string {
@@ -42,6 +42,6 @@ export function nextBook({ shippedOn, deliveredOn, today, ended }: NextBookInput
   if (shippedOn === null) return { kind: "first_book_coming" };
   const shipped = day(shippedOn, "shippedOn");
   const latest = deliveredOn === null ? addDays(shipped, LATEST_AFTER_SHIPPING_DAYS) : addDays(day(deliveredOn, "deliveredOn"), LATEST_AFTER_DELIVERY_DAYS);
-  if (today > latest) return { kind: "preparing" };
+  if (today > latest) return { kind: "past_estimate" };
   return { kind: "range", earliest: addDays(shipped, EARLIEST_DAYS), latest };
 }

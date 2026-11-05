@@ -28,8 +28,8 @@ describe("the next book's range", () => {
     expect(nextBook({ ...input, today: "2026-12-04" }).kind).toBe("range");
   });
   it("after the range has passed: a status, with no date", () => {
-    expect(nextBook({ shippedOn: "2026-11-02", deliveredOn: "2026-11-06", today: "2026-12-05", ended: false })).toEqual({ kind: "preparing" });
-    expect(nextBook({ shippedOn: "2026-11-02", deliveredOn: null, today: "2026-12-08", ended: false })).toEqual({ kind: "preparing" });
+    expect(nextBook({ shippedOn: "2026-11-02", deliveredOn: "2026-11-06", today: "2026-12-05", ended: false })).toEqual({ kind: "past_estimate" });
+    expect(nextBook({ shippedOn: "2026-11-02", deliveredOn: null, today: "2026-12-08", ended: false })).toEqual({ kind: "past_estimate" });
   });
   it("after the plan ended: no next book", () => {
     expect(nextBook({ shippedOn: "2026-11-02", deliveredOn: "2026-11-06", today: "2026-11-07", ended: true })).toEqual({ kind: "none" });
