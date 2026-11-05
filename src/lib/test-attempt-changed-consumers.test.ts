@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { checked } from "@/lib/assessment/scripted-child";
+import { checked, beforeThirdStage } from "@/lib/assessment/scripted-child";
 import {
   COPY_FIELDS,
   anonymousTestCopy,
@@ -70,7 +70,7 @@ const revisit = (row: MemoryTest, position: number, response: string, more: Part
  * Both carry typed working, which only the stored row may keep. Then the child answered stage 2, all right.
  */
 async function changedTest() {
-  const test = storedTest(createSession(ASHA, 7));
+  const test = beforeThirdStage(storedTest(createSession(ASHA, 7)));
   const stage1 = test.stage1;
   // A: the first stage 1 question at or below the school grade with a known mistake; B: the first after it with a choice or number.
   const a = stage1.findIndex((q) => q.level <= ASHA.grade && q.wrong.length > 0);

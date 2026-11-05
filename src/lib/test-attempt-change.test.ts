@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { checked } from "@/lib/assessment/scripted-child";
+import { checked, beforeThirdStage } from "@/lib/assessment/scripted-child";
 import {
   QUESTION_TIME_CAP_MS,
   createSession,
@@ -52,7 +52,7 @@ function answersOf(test: StoredTest, count: number, script: Script = allRight): 
 
 /** Asha's open test (seed 7 unless given), started at T0, with the first `answered` answers in; the last one at T0 + 1 hour. */
 function openTest(answered: number, { seed = 7, script = allRight }: { seed?: number; script?: Script } = {}): MemoryTest {
-  const test = storedTest(createSession(ASHA, seed));
+  const test = beforeThirdStage(storedTest(createSession(ASHA, seed)));
   const at = answered ? { lastAnswerAt: T0 + HOUR, resumeUntil: T0 + HOUR + DAY } : {};
   return { ...startAttempt("a1", T0), ...at, parentId: P1, childId: C1, seed, test, answers: answersOf(test, answered, script) };
 }

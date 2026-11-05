@@ -25,8 +25,8 @@ export const BackLabel = () => <>{ICON.left}<span>Back</span></>;
 /** "Next →" (D-127). */
 export const NextLabel = ({ text = "Next" }: { text?: string }) => <><span>{text}</span>{ICON.right}</>;
 
-/** #253: the part of the test a row or a grid is for: 1 before the halfway break, 2 after it. */
-export type TestPart = 1 | 2;
+/** #253: the part of the test a row or a grid is for: 1 before the halfway break, 2 after it, 3 the short third stage (D-282). */
+export type TestPart = 1 | 2 | 3;
 
 export interface TestStepsProps {
   part: TestPart;
@@ -129,7 +129,7 @@ export function TestCheck({ name, part, numbers, marked, onOpen, onDone, problem
         </div>
         {problem}
         <div className="test-check-foot">
-          <p className="test-intro-note">{part === 1 ? "When you press Done checking, part 1 is finished. Then you get a break." : "When you press Done checking, part 2 is finished."}</p>
+          <p className="test-intro-note">{part === 1 ? "When you press Done checking, part 1 is finished. Then you get a break." : `When you press Done checking, part ${part} is finished.`}</p>
           <Button onClick={done} disabled={sending} aria-busy={sending} arrow={false}>{sending ? "Saving…" : "Done checking"}</Button>
         </div>
       </div>

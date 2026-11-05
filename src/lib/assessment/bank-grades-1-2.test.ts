@@ -30,7 +30,7 @@ describe("grade 1-2 tests from the default bank", () => {
       expect(session.stage1.every((q) => q.level === grade), province).toBe(true);
       for (const [route, level] of [["up", grade + 1], ["stay", grade], ["down", grade - 1]] as const) {
         expect(session.stage2[route], `${province} ${route}`).toHaveLength(route === "up" && (province === "BC" || province === "other") ? 18 : 12);
-        expect(session.stage2[route].every((q, i) => q.level === (route === "up" && i >= 12 ? grade : level)), `${province} ${route}`).toBe(true);
+        expect(session.stage2[route].every((q, i) => q.level === (route === "up" && i < session.stage2.up.length - 12 ? grade : level)), `${province} ${route}`).toBe(true);
       }
     }
   });

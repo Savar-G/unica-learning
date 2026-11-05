@@ -13,7 +13,7 @@
 //
 // The readers (src/lib/assessment-questions.ts in Supabase, src/lib/assessment-questions-memory.ts in memory) find the
 // stored question and pass it here. Pure TypeScript: no Next.js, React, network, database or clock.
-import { MISCONCEPTIONS, templateSkills, type MisconceptionId, type Question, type Route, type StoredTest } from "@/lib/assessment";
+import { MISCONCEPTIONS, givenQuestions, templateSkills, type MisconceptionId, type Question, type Route, type Stage3Route, type StoredTest } from "@/lib/assessment";
 import {
   checkQuestionPackage,
   operationProblem,
@@ -121,15 +121,15 @@ export interface AssessmentQuestionReader {
 }
 
 /**
- * The questions a child was given in a stored test: stage 1, and the stage 2 form of its route once it is routed.
- * The other stage 2 forms are kept in the test but never shown.
+ * The questions a child was given in a stored test: stage 1, the stage 2 form of its route once it is routed, and the
+ * third stage once stage 2 locked into one (D-282). The other forms are kept in the test but never shown.
  */
-function givenQuestion(test: StoredTest, route: Route | null, questionId: string): Question | undefined {
-  return [...test.stage1, ...(route ? test.stage2[route] : [])].find((q) => q.id === questionId);
+function givenQuestion(test: StoredTest, route: Route | null, stage3Route: Stage3Route | null | undefined, questionId: string): Question | undefined {
+  return givenQuestions(test, route, stage3Route).find((q) => q.id === questionId);
 }
 
 /** A reader's answer from a stored test row: the package of a question the child was given, or not found. */
-export function lookupStoredQuestion(ref: AssessmentQuestionRef, row: { test: StoredTest; route: Route | null } | null): QuestionLookup {
-  const question = row && givenQuestion(row.test, row.route, ref.questionId);
+export function lookupStoredQuestion(ref: AssessmentQuestionRef, row: { test: StoredTest; route: Route | null; stage3Route?: Stage3Route | null } | null): QuestionLookup {
+  const question = row && givenQuestion(row.test, row.route, row.stage3Route, ref.questionId);
   return question ? assessmentQuestionPackage(ref, question) : { status: "not-found" };
 }
