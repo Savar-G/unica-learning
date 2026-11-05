@@ -71,7 +71,9 @@ async function sendInk(id: string, ink: Ink): Promise<Sent> {
     if (res.status === 410) return "final";
     if (res.status === 429) return "busy";
     const answer = (await res.json().catch(() => null)) as { held?: unknown; error?: unknown } | null;
-    // Only the route's own answer: another 404 (a page that is not this route) says nothing about the call.
+    // Only the route's own answer: another 404 (a page that is not this route) says nothing about the call. Since #652 the
+    // route says not_found only when there is no such chat; another child's or family's chat is 403 "not_this_desk",
+    // which, like any refusal of the desk that asked, keeps the ink.
     if (res.status === 404 && answer?.error === "not_found") return "final";
     const held = Number.isInteger(answer?.held) ? (answer!.held as number) : null;
     if (res.ok && held !== null && held >= ink.acked) {
@@ -121,8 +123,14 @@ function readOutbox(raw: string, child: string): Ink | "sibling" | null {
  * R639b-2): the call alone knows when its time is past. The next desk load sends what is left: each chat has its own
  * queue, and old chats go one at a time in the background, so they never hold the chat on the desk. A sibling's outbox is
  * never read, sent or removed here: it waits on the device for that child's desk (R639c).
+ *
+ * A send belongs to the desk that started it (#652): when the desk closes or turns to another child, every send of it
+ * stops before its next request or wait, and an answer that comes back after that changes nothing on the device. The
+ * next desk asks again under its own lock.
  */
 function useInkSaver(child: string) {
+  /** Counts the desks this saver has served: a send of an earlier one stops. */
+  const generation = useRef(0);
   const chats = useRef(new Map<string, Ink>());
   const queues = useRef(new Map<string, Promise<boolean>>());
   /** The chats of this visit: what a page going away sends, before old ink can use up what the browser allows. */
@@ -137,12 +145,18 @@ function useInkSaver(child: string) {
   /** Sends a chat's events the call does not hold, one request after another; true when it holds them all. */
   const flush = useCallback((id: string) => {
     clearTimeout(timers.current.get(id));
+    const mine = generation.current;
+    const stopped = () => generation.current !== mine;
     const run = (queues.current.get(id) ?? Promise.resolve(true)).then(async () => {
       const ink = chats.current.get(id);
-      if (!ink) return true;
+      if (!ink || stopped()) return !ink;
       let busy = 0;
       while (ink.acked < ink.log.length) {
-        const sent = await sendInk(id, ink);
+        // Work on a copy: an answer for a desk that has closed must not move this device's place in the log.
+        const tried: Ink = { ...ink };
+        const sent = await sendInk(id, tried);
+        if (stopped()) return false;
+        ink.acked = tried.acked;
         if (sent === "final") {
           // The call will never take this chat's ink.
           chats.current.delete(id);
@@ -154,6 +168,7 @@ function useInkSaver(child: string) {
         if (sent === "sent") busy = 0;
         // The next part waits for the call's one append a second (R639-3).
         if ((sent === "busy" || sent === "sent") && ink.acked < ink.log.length) await new Promise((resolve) => setTimeout(resolve, PART_GAP_MS));
+        if (stopped()) return false;
       }
       return true;
     });
@@ -162,8 +177,10 @@ function useInkSaver(child: string) {
   }, [keep]);
   /** The last ink before the chat ends: it is on the device already; tried with a pause between tries. */
   const finish = useCallback(async (id: string) => {
-    for (let i = 0; i < FINAL_TRIES; i++) {
+    const mine = generation.current;
+    for (let i = 0; i < FINAL_TRIES && generation.current === mine; i++) {
       if (i > 0) await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** (i - 1)));
+      if (generation.current !== mine) break;
       if (await flush(id)) return true;
     }
     return false;
@@ -220,14 +237,22 @@ function useInkSaver(child: string) {
         await flush(id);
       }
     })();
+    // A page going away sends this visit's ink, under this desk's lock while the page still holds it.
     const gone = () => { for (const id of visit.current) void flush(id); };
     window.addEventListener("pagehide", gone);
     const pending = timers.current;
+    const chatsNow = chats.current, queuesNow = queues.current, visitNow = visit.current, desks = generation;
     return () => {
+      // The desk closes or turns to another child (#652): every send of this desk stops, and nothing of it is sent
+      // later under another desk's lock. What the call does not hold stays on the device for this child's next desk.
       left = false;
+      desks.current++;
       window.removeEventListener("pagehide", gone);
       for (const t of pending.values()) clearTimeout(t);
-      gone();
+      pending.clear();
+      chatsNow.clear();
+      queuesNow.clear();
+      visitNow.clear();
     };
   }, [child, flush]);
   return { save, flush, finish, restore };
@@ -302,14 +327,15 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
         const readInk = async (wait: number): Promise<void> => {
           try {
             const res = await fetch(`/api/desk/chat/board?id=${chatId}`);
-            const answer = (await res.json().catch(() => null)) as { events?: unknown } | null;
+            const answer = (await res.json().catch(() => null)) as { events?: unknown; error?: unknown } | null;
             if (generation !== epoch.current) return;
             const log = res.ok && Array.isArray(answer?.events) ? answer.events.map(readInkEvent) : null;
             if (log && log.every((e) => e !== null)) {
               setCallInk({ id: chatId, log: board.restore(chatId, log as InkEvent[]) });
               return;
             }
-            if (res.status === 404) { setCallInk({ id: chatId, log: [] }); return; }
+            // No such chat, or not this desk's (#652): the board starts with what this device holds.
+            if (res.status === 404 || (res.status === 403 && answer?.error === "not_this_desk")) { setCallInk({ id: chatId, log: [] }); return; }
           } catch { /* Tried again below. */ }
           if (generation !== epoch.current) return;
           await new Promise((resolve) => setTimeout(resolve, wait));
