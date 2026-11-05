@@ -1,3 +1,4 @@
+import { ADAPTIVE_BREAK_AFTER, adaptiveEvidence, adaptiveQuestions, adaptiveTop, LEVEL_EVIDENCE_MINIMUM, UNKNOWN_RESPONSE } from "./adaptive";
 // The assessment session: pure functions over plain data.
 // No network, database, clock or Math.random: the caller passes the seed and every time value.
 import {
@@ -348,10 +349,10 @@ const thirdStage = (test: StoredTest, stage3Route: Stage3Route | null | undefine
 
 /** The questions a child gets, in order: stage 1, the stage 2 form of the route, then the third stage (D-282). */
 export const givenQuestions = (test: StoredTest, route: Route | null, stage3Route?: Stage3Route | null): Question[] =>
-  route ? [...test.stage1, ...test.stage2[route], ...thirdStage(test, stage3Route)] : test.stage1;
+  test.adaptive ? adaptiveQuestions(test.adaptive) : route ? [...test.stage1, ...test.stage2[route], ...thirdStage(test, stage3Route)] : test.stage1;
 
 /** Every question a stored test holds, also the forms the child never got. */
-export const everyQuestion = (test: StoredTest): Question[] => [
+export const everyQuestion = (test: StoredTest): Question[] => test.adaptive ? test.adaptive.pool : [
   ...test.stage1, ...test.stage2.up, ...test.stage2.stay, ...test.stage2.down, ...(test.stage3?.up ?? []), ...(test.stage3?.down ?? []),
 ];
 
@@ -373,7 +374,7 @@ export function nextQuestion(session: Session): Question | null {
 }
 
 /** True when every question of the routed test has an answer: the test only waits to be scored. */
-export const allAnswered = (session: Session): boolean => session.route !== null && session.answers.length >= questionsOnRoute(session).length;
+export const allAnswered = (session: Session): boolean => session.adaptive ? session.adaptive.complete : session.route !== null && session.answers.length >= questionsOnRoute(session).length;
 
 /**
  * D-145: the optional extra round (#190, D-116) is removed, and migration drop_extra_round_data deleted its answers,
@@ -414,8 +415,8 @@ export interface Submission {
 /** The response marked against its question: right or wrong, and the misconception of a coded wrong answer. */
 function marked(q: Question, response: string, timeMs: number): Answer {
   if (!Number.isFinite(timeMs) || timeMs < 0) throw new Error("timeMs must be a time in milliseconds");
-  const correct = isSameAnswer(q, response, q.answer);
-  const misconception = correct ? null : (q.wrong.find((w) => isSameAnswer(q, response, w.value))?.misconception ?? null);
+  const correct = response !== UNKNOWN_RESPONSE && isSameAnswer(q, response, q.answer);
+  const misconception = correct || response === UNKNOWN_RESPONSE ? null : (q.wrong.find((w) => isSameAnswer(q, response, w.value))?.misconception ?? null);
   return {
     questionId: q.id,
     response,
@@ -475,7 +476,7 @@ export function lockStage2(session: Session): Session {
 }
 
 /** #249: the parts of a test the child can go back in: stage 1, stage 2 (the routed form) and stage 3 (D-282). */
-export type SectionName = "stage1" | "stage2" | "stage3";
+export type SectionName = "stage1" | "stage2" | "stage3" | `block-${number}`;
 
 /** #249: an answered question of a section: its place in the test (from 0), the question and the child's answer. */
 export interface SectionAnswer {
@@ -498,6 +499,12 @@ export interface OpenSection {
 
 export function openSection(session: Session): OpenSection {
   const questions = questionsOnRoute(session);
+  if (session.adaptive) {
+    const index = session.adaptive.locked;
+    const first = session.adaptive.blocks.slice(0, index).reduce((n,b) => n + b.questions.length, 0);
+    const end = first + (session.adaptive.blocks[index]?.questions.length ?? 0);
+    return { name: `block-${index + 1}`, first, end, answered: session.answers.slice(first,end).map((answer,i) => ({ position: first+i, question: questions[first+i], answer })) };
+  }
   const third = thirdStage(session, session.stage3Route).length;
   const [name, first, end]: [SectionName, number, number] = !session.route
     ? ["stage1", 0, session.stage1.length]
@@ -523,8 +530,8 @@ export function changeAnswer(session: Session, change: Submission): Session {
 
 /** The part of a session the server stores when the test starts. The answers are stored one row at a time. */
 export function storedTest(session: Session): StoredTest {
-  const { profile, seed, stage1, stage2, stage3 } = session;
-  return { profile, seed, stage1, stage2, ...(stage3 && { stage3 }) };
+  const { profile, seed, stage1, stage2, stage3, adaptive } = session;
+  return { profile, seed, stage1, stage2, ...(stage3 && { stage3 }), ...(adaptive && { adaptive }) };
 }
 
 /**
@@ -536,6 +543,15 @@ export function storedTest(session: Session): StoredTest {
  * `extra` (the removed round, #190) is left behind.
  */
 export function restoreSession(stored: StoredTest, submissions: readonly Submission[], route: Route | null = null, stage3Route: Stage3Route | null = null): Session {
+  if (stored.adaptive) {
+    const questions = adaptiveQuestions(stored.adaptive);
+    if (submissions.length > questions.length) throw new Error("Answers exceed stored blocks");
+    const answers = submissions.map((s,i) => {
+      if (s.questionId !== questions[i].id) throw new Error("Answer does not fit stored block");
+      return marked(questions[i], s.response, s.timeMs);
+    });
+    return { ...stored, route: "stay", answers };
+  }
   const { profile, seed, stage1, stage2, stage3 } = stored;
   let session: Session = { profile, seed, stage1, stage2, ...(stage3 && { stage3 }), route: null, stage3Route, answers: [] };
   for (const [i, { questionId, response, timeMs }] of submissions.entries()) {
@@ -555,11 +571,21 @@ export function restoreSession(stored: StoredTest, submissions: readonly Submiss
  * the answer while the route is not chosen yet.
  */
 export function testLength(test: StoredTest, route: Route | null, stage3Route?: Stage3Route | null): number {
+  if (test.adaptive) return adaptiveQuestions(test.adaptive).length;
   return route ? givenQuestions(test, route, stage3Route).length : bandFor(test.profile.grade).length;
 }
 
 /** What the browser gets next: the current question without its answer, the stage 1 grid (#253), or "complete". */
 export function testStep(session: Session): TestStep {
+  if (session.adaptive) {
+    const a = session.adaptive;
+    const total = adaptiveQuestions(a).length;
+    if (a.complete) return { status: "complete", total, sufficientEvidence: a.sufficientEvidence };
+    const section = openSection(session);
+    const breakAfter = ADAPTIVE_BREAK_AFTER;
+    if (session.answers.length === total) return { status: "check", section: section.name, numbers: section.answered.map(x => x.position + 1), total, breakAfter };
+    return { status: "question", question: toPublicQuestion(nextQuestion(session)!), number: session.answers.length + 1, total, breakAfter, takeYourTime: takeYourTime(session.answers), block: { number: a.locked + 1, first: section.first + 1, end: section.end } };
+  }
   const breakAfter = session.stage1.length;
   // Before routing, use the longest stored form. Once routed, the exact stored form is authoritative.
   const main = session.route
@@ -599,7 +625,7 @@ export const breakDue = (step: TestStep): boolean => step.status === "question" 
  */
 export function testAreaAnswers(session: Session): AreaAnswer[] {
   const questions = questionsOnRoute(session);
-  if (!session.route || session.answers.length < questions.length) {
+  if (!session.route || session.answers.length < questions.length || (session.adaptive && (!session.adaptive.complete || !session.adaptive.sufficientEvidence))) {
     throw new Error(`The test is not complete: ${session.answers.length} of ${questions.length} answered`);
   }
   const out = leftOutOfScore(session.answers);
@@ -612,7 +638,7 @@ export function testAreaAnswers(session: Session): AreaAnswer[] {
  */
 export function finish(session: Session, facts: FactsSession | null = null, help: HelpAnswer | null = null): Placement {
   const questions = questionsOnRoute(session);
-  if (!session.route || session.answers.length < questions.length) {
+  if (!session.route || session.answers.length < questions.length || (session.adaptive && (!session.adaptive.complete || !session.adaptive.sufficientEvidence))) {
     throw new Error(`The test is not complete: ${session.answers.length} of ${questions.length} answered`);
   }
   const marked = questions.map((q, i) => ({ q, correct: session.answers[i].correct }));
@@ -626,7 +652,8 @@ export function finish(session: Session, facts: FactsSession | null = null, help
   const levels: LevelResult[] = [...new Set(marked.map((m) => m.q.level))]
     .sort((a, b) => a - b)
     .map((level) => ({ level, ...tally(scored.filter((m) => m.q.level === level)) }));
-  const workingLevel = workingLevelOf(levels);
+  const workingLevel = session.adaptive ? adaptiveEvidence(session).level : workingLevelOf(levels);
+  const placementLevels = session.adaptive ? levels.filter(l => l.total >= LEVEL_EVIDENCE_MINIMUM) : levels;
 
   // An area's status counts only the questions at or below the school grade (D-084: never invent a weakness; decision
   // of 2026-10-11 on #65). Harder questions from a stage 2 routed up still count toward the working level above, but a
@@ -642,15 +669,15 @@ export function finish(session: Session, facts: FactsSession | null = null, help
     province: session.profile.province,
     scoredAgainst: scoredAgainst(session.profile.province),
     workingLevel,
-    confidence: levels.some((l) => atLeast(l.correct, l.total, WORKING_LEVEL_PERCENT)) ? "normal" : "low",
-    levelCertainty: levelCertainty(levels),
+    confidence: placementLevels.some((l) => atLeast(l.correct, l.total, WORKING_LEVEL_PERCENT)) ? "normal" : "low",
+    levelCertainty: levelCertainty(placementLevels),
     // Only a child routed up who clears the highest level asked may work above what the test could show. For Grade 8 the
     // up form is at level 8 (D-153 rule 2) and for Grade 9 at level 9, the top of the bank, so clearing it is the ceiling.
     // D-282: with a third stage up, the highest level asked is the third stage's.
-    atCeiling: session.route === "up" && workingLevel === (session.stage3Route === "up" ? stage3Level(session.profile.grade, "up") : upLevel(session.profile.grade)),
+    atCeiling: session.adaptive ? workingLevel === adaptiveTop(session.profile) : session.route === "up" && workingLevel === (session.stage3Route === "up" ? stage3Level(session.profile.grade, "up") : upLevel(session.profile.grade)),
     route: session.route,
     ...(session.stage3Route && { stage3Route: session.stage3Route }),
-    stage1: tally(marked.slice(0, session.stage1.length)),
+    stage1: tally(marked.slice(0, session.adaptive?.blocks[0].questions.length ?? session.stage1.length)),
     levels,
     strands,
     facts: facts ? factsResult(facts) : null,

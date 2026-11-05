@@ -63,13 +63,14 @@ export function markBreakSeen(testId: string): void {
 
 export interface TestBreakProps {
   name: string;
+  adaptive?: boolean;
   answered: number;
   total: number;
   /** Called once. rested = "I am back from my break"; skipped = "Keep going". */
   onDone: (how: "rested" | "skipped") => void;
 }
 
-export function TestBreak({ name, answered, total, onDone }: TestBreakProps) {
+export function TestBreak({ name, adaptive = false, answered, total, onDone }: TestBreakProps) {
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);
   // One break, one answer: a double tap must not end it twice.
@@ -82,8 +83,8 @@ export function TestBreak({ name, answered, total, onDone }: TestBreakProps) {
   return (
     <section className="test-split test-break" aria-labelledby="test-break-title">
       <div className="test-pane test-pane-l is-msg">
-        <p className="test-kicker">{answered} of {total} done</p>
-        <h1 id="test-break-title" ref={heading} tabIndex={-1} className="test-title">Halfway there, {name}.</h1>
+        <p className="test-kicker">{adaptive ? `${answered} questions done` : `${answered} of ${total} done`}</p>
+        <h1 id="test-break-title" ref={heading} tabIndex={-1} className="test-title">{adaptive ? `Time for a break, ${name}.` : `Halfway there, ${name}.`}</h1>
         <p className="test-lead">Take a short break if you want one. Stretch, get some water, then come back.</p>
         <div className="test-btns">
           <Button onClick={() => end("skipped")}>Keep going</Button>

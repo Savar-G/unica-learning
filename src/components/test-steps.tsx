@@ -4,6 +4,7 @@
 // under today's thin bar (read only), one row of round number steps for the open part only; at the end of a part, a
 // full-width page of large ink number tiles. A step or a tile never shows right or wrong.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { Button } from "@/ds";
 import "./test-base.css";
 import "./test-steps.css";
@@ -26,7 +27,7 @@ export const BackLabel = () => <>{ICON.left}<span>Back</span></>;
 export const NextLabel = ({ text = "Next" }: { text?: string }) => <><span>{text}</span>{ICON.right}</>;
 
 /** #253: the part of the test a row or a grid is for: 1 before the halfway break, 2 after it, 3 the short third stage (D-282). */
-export type TestPart = 1 | 2 | 3;
+export type TestPart = number;
 
 export interface TestStepsProps {
   part: TestPart;
@@ -129,9 +130,11 @@ export function TestCheck({ name, part, numbers, marked, onOpen, onDone, problem
         </div>
         {problem}
         <div className="test-check-foot">
-          <p className="test-intro-note">{part === 1 ? "When you press Done checking, part 1 is finished. Then you get a break." : `When you press Done checking, part ${part} is finished.`}</p>
+          <p className="test-intro-note">{part === 1 ? "When you press Done checking, part 1 is finished." : `When you press Done checking, part ${part} is finished.`}</p>
           <Button onClick={done} disabled={sending} aria-busy={sending} arrow={false}>{sending ? "Saving…" : "Done checking"}</Button>
         </div>
+        <p className="test-lead">Your answers are saved. You can pause here. Return within 24 hours of your last saved answer.</p>
+        <Link href="/account">Pause and return later</Link>
       </div>
     </section>
   );

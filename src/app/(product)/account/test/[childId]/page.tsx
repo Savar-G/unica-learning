@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { userAgent } from "next/server";
-import { bandFor, createSession, readsAloudFirst, type Grade } from "@/lib/assessment";
+import { bandFor, createAdaptiveSession, readsAloudFirst, type Grade } from "@/lib/assessment";
 import { stateFor } from "@/lib/test-attempt";
 import { parentStartStates } from "@/lib/test-attempt-server";
 import { pageMetadata } from "@/lib/metadata";
@@ -38,7 +38,7 @@ export default async function TestPage(props: PageProps<"/account/test/[childId]
   // Every grade has a bank (D-156); a test that cannot be built shows "not ready".
   let ready = true;
   try {
-    createSession({ grade, province: child.province }, 0);
+    createAdaptiveSession({ grade, province: child.province }, 0);
   } catch {
     ready = false;
   }

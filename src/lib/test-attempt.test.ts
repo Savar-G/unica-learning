@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createSession,
+  createAdaptiveSession,
   nextQuestion,
   recordAnswer,
   restoreSession,
@@ -159,7 +160,7 @@ describe("the new test a start request stores", () => {
   it("has the questions drawn from its seed for the child's grade and province, and no answers", async () => {
     const { store, tests: rows } = family();
     await start(store, T0, { restart: false, newSeed: seeds(42) });
-    expect(rows[0].test).toEqual(storedTest(createSession(ASHA, 42)));
+    expect(rows[0].test).toEqual(storedTest(createAdaptiveSession(ASHA, 42)));
     expect(rows[0].answers).toEqual([]);
     expect(await nextStep(store, P1, "a1", T0)).toMatchObject({ ok: true, step: { status: "question", number: 1 } });
   });
