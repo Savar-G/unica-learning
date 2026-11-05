@@ -14,6 +14,7 @@ import {
   drawStroke,
   givePen,
   historyLength,
+  holdsInk,
   mayaFinished,
   mayaWritingEnds,
   penHasMoved,
@@ -21,7 +22,6 @@ import {
   mayaSkipped,
   mayaWrites,
   penHolder,
-  rebaseOnto,
   restoreKept,
   takePen,
   undo,
@@ -92,6 +92,11 @@ export interface SessionOptions {
   pen?: { w: number; eraserW: number; minGapPx: number };
   /** Starts in a tab with no draft store: it holds the board and saves nothing. */
   noStore?: boolean;
+  /**
+   * A chat's board (R639-2): its log only grows, because each event's place is its sequence at the call. A stored board
+   * that does not hold all of this one (a storage write failed) is not taken: taking it would give a sequence out twice.
+   */
+  appendOnly?: boolean;
 }
 
 export interface BoardSession {
@@ -131,11 +136,6 @@ export interface BoardSession {
   mayaReply(batches: readonly Batch[]): number;
   /** Maya has finished writing her reply: the pen passes back to the child, in the tab that holds the board. */
   handBack(): void;
-  /**
-   * The call's saved copy of this board (R625b-4), when the draft was lost or a save found a newer copy: the board is
-   * rebuilt on it, with this tab's own lines it lacks added back (`rebaseOnto`). The child keeps the pen if they had it.
-   */
-  rebase(stored: BoardHistory): void;
   /** The one way out of holding the board. */
   endHolding(reason: EndReason): void;
   /** The board tab's news: this tab's role, and the stored board. */
@@ -184,6 +184,9 @@ export function createBoardSession(o: SessionOptions): BoardSession {
     clock = null;
   };
 
+  /** Whether this tab may show a stored board in place of the one it has. */
+  const takes = (stored: BoardHistory) => !o.appendOnly || holdsInk(stored, history);
+
   /** Saves the board when this tab holds it and it changed. */
   const persist = () => {
     if (role !== "holder" || !tab || history === saved) return;
@@ -191,7 +194,7 @@ export function createBoardSession(o: SessionOptions): BoardSession {
     if (result.status === "saved") saved = result.history;
     else if (result.status === "reader") end("lost");
     else if (result.status === "reload") {
-      if (result.history) adopt(result.history);
+      if (result.history && takes(result.history)) adopt(result.history);
       say("other_tab");
     }
   };
@@ -309,7 +312,10 @@ export function createBoardSession(o: SessionOptions): BoardSession {
       tab = t;
       role = r;
       // What this tab read at its start may be older than the stored board now.
-      if (stored && stored !== saved) adopt(stored);
+      if (stored && stored !== saved) {
+        if (takes(stored)) adopt(stored);
+        else if (role === "holder") t.save(history, o.wall());
+      }
       passPen();
       emit();
     },
@@ -412,18 +418,6 @@ export function createBoardSession(o: SessionOptions): BoardSession {
       emit();
       return count;
     },
-    rebase(stored) {
-      if (!holds()) return;
-      let next = rebaseOnto(stored, history, now());
-      if (next === history) return;
-      if (penHolder(history) === "child" && penHolder(next) !== "child") {
-        const taken = takePen(next, now());
-        if (taken.ok) next = taken.history;
-      }
-      history = next;
-      persist();
-      emit();
-    },
     handBack() {
       if (holds() && penHolder(history) === "maya") apply(takePen(history, now()));
     },
@@ -434,7 +428,7 @@ export function createBoardSession(o: SessionOptions): BoardSession {
         if (role === "holder") end("forced");
         role = "reader";
         // Ink kept here stays on screen until "Use it here" adds it back.
-        if (kept.length === 0 && stored) adopt(stored);
+        if (kept.length === 0 && stored && takes(stored)) adopt(stored);
         emit();
         return;
       }
@@ -442,7 +436,7 @@ export function createBoardSession(o: SessionOptions): BoardSession {
       // whoever holds the pen now (the child drew them holding it). A kept stroke leaves `kept` only once the history
       // holds it (R370-5-1).
       role = "holder";
-      if (stored) adopt(stored);
+      if (stored && takes(stored)) adopt(stored);
       const on = new Set(childStrokes(history).map(key));
       const back = restoreKept(history, kept.filter((k) => !on.has(key(k.stroke))), now());
       history = back.history;

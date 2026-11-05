@@ -1,6 +1,6 @@
 // /whats-included (D-170, D-179): everything a family gets, in the order it happens. Built from design round r162
 // (.design/experiments/r162): the free assessment, the workbook (a 3D book that turns its pages), the AI Teaching
-// Assistant, the Unica app scanning the open workbook (S-A), the parent dashboard on the web and in the app (D-A),
+// Assistant, Scan pages on the website scanning the open workbook (S-A), the parent dashboard on the web and in the app (D-A),
 // and the next workbook with where each change comes from. Product screens are sample data.
 /* eslint-disable @next/next/no-img-element -- fixed-size product mockups; next/image wrappers would break the absolute layout */
 import Link from "next/link";
@@ -54,7 +54,7 @@ function ScanPhoto() {
     <Fit w={CROP.w} h={CROP.h} className="wi-ov-fit">
       <div className="wi-ov">
         <div className="wi-ov-in" style={{ transform: `translate(${-CROP.x}px, ${-CROP.y}px)` }}>
-          <img className="wi-ov-bg" src={`${ASSETS}/scan-base.jpg`} alt="A parent holds a phone over an open Unica workbook. The Unica app finds page 1, marks it, and shows 28 of 30 right." />
+          <img className="wi-ov-bg" src={`${ASSETS}/scan-base.jpg`} alt="A parent holds a phone over an open Unica workbook. Scan pages, on our website, finds page 1, marks it, and shows 28 of 30 right." />
           <div className="wi-ov-paper" style={{ WebkitMaskImage: mask, maskImage: mask }}>
             <div className="wi-warp" style={{ width: 541, height: 700, transform: warpTransform(541, 700, PAGE_L) }}><MarkedPage width={541} name className="flat" /></div>
             <div className="wi-warp" style={{ width: 541, height: 700, transform: warpTransform(541, 700, PAGE_R) }}><PageTwo width={541} className="flat" /></div>
@@ -70,7 +70,7 @@ function ScanPhoto() {
 // ---------- the next workbook, built from three sources ----------
 const SOURCES: { title: string; sub: string; thumb: React.ReactNode; showed: string; changes: Change["tag"][]; labels: string[] }[] = [
   {
-    title: "From her marked pages", sub: "Every page she scans in the Unica app",
+    title: "From her marked pages", sub: "Every page scanned on our website",
     thumb: <div className="th-page"><MarkedPage width={260} marks /></div>,
     showed: "When she borrows, she takes the smaller digit from the bigger one, like 5 − 0 instead of 0 − 5. Carrying: all right.",
     changes: ["more", "less"], labels: ["borrowing across zero", "carrying"],
@@ -149,7 +149,7 @@ const CARDS = [
       </div>
     ),
   },
-  { tone: "t4", title: "Unica app", text: "Scan the pages. They come back marked, with the steps.", im: <img className="ct-phone" src={`${ASSETS}/app-marked.png`} alt="" /> },
+  { tone: "t4", title: "Scan pages", text: "Scan the pages with your phone, on our website. They come back marked, with the steps.", im: <img className="ct-phone" src={`${ASSETS}/app-marked.png`} alt="" /> },
   { tone: "t5", title: "Parent dashboard", text: "Level, skills, past work and sessions with Maya.", im: <div className="mini-br wide"><div className="bar" /><img src={`${ASSETS}/dash.jpg`} alt="" /></div> },
   {
     tone: "t6", title: "Next workbook", text: "Built on everything before it. Arrives before this one ends.",
@@ -205,7 +205,7 @@ export function WhatsIncluded() {
           </Section>
 
           <Section className="wi-full" aria-labelledby="wiApp">
-            <StepHead id="wiApp" eyebrow="Unica app" title="When the day's pages are done, scan them. The app marks them." lead="Take a photo of each page in the Unica app. Each page comes back marked in seconds, with the steps for anything wrong." />
+            <StepHead id="wiApp" eyebrow="Scan pages" title="When the day's pages are done, scan them. We mark them." lead="Take a photo of each page with your phone, on our website. There is nothing to install. Each page comes back marked, with the steps for anything wrong." />
             <ScanPhoto />
           </Section>
 
