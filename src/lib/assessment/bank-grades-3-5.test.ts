@@ -471,7 +471,7 @@ describe("grade 3-5 tests from the default bank", () => {
           const form = session.stage2[route];
           const bc = province === "BC" || province === "other";
           expect(form, `${province} ${route}`).toHaveLength(bc && route === "up" ? 24 : 18);
-          expect(form.every((q, i) => q.level === (bc && route === "up" && i >= 18 ? grade : bc && grade === 3 && route === "down" && q.strand === "F" ? 3 : level)), `${province} ${route}`).toBe(true);
+          expect(form.every((q, i) => q.level === (bc && route === "up" && i < form.length - 18 ? grade : bc && grade === 3 && route === "down" && q.strand === "F" ? 3 : level)), `${province} ${route}`).toBe(true);
           // Every reported strand is asked at every level; fractions only from level 3.
           const strands = level >= 3 || (bc && grade === 3 && route === "down") ? ["algebra", "fractions", "number", "shapes"] : ["algebra", "number", "shapes"];
           expect(Object.keys(strandCounts(form)).sort(), `${province} ${route}`).toEqual(strands);
