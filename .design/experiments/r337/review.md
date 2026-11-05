@@ -1,13 +1,27 @@
 # Round r337 review
 
+## Savar's picks (2026-11-05)
+
+| Row | Pick | What changed in the round |
+|---|---|---|
+| D-277 | A at 1024 px and wider, B below | `call.html` opens on the mix; the review bar still has A, B and C |
+| D-278 | The board is always there during a call | The Call tab and its screen are gone. Tabs are Chat and Call + board. Chat is off during a call |
+| D-279 | Never tell the child what Maya can't do | The `held` screen is gone. New: `quiet` (no call or chat button, no reason), `say-offer` and `offer` |
+| D-280 | Failed payment: calls stop at once | New: `desk-paused` ("Calls are paused. Ask a grown-up."). `p-failed` now says "Payment failed" with Update the card |
+| D-281 | The four new lines are approved | Marked in the manifest |
+
+Re-rendered after the picks: all option A screens, the desk and pause screens, and `p-failed`, 103 captures in all, with no sideways scroll and no broken image. Checked in the browser: the mix is B at 1023 px and A at 1024 px; the tabs in a call are Chat (off) and Call + board; the words "can't help", "cannot help", "payment", "card", "plan" and "yet" are on none of the child's screens `quiet`, `say-offer`, `desk-paused`, `offer`, `pick` and `confirm`. The click path from pick to the Try Maya after-screen ran again on the mix at 1024 px, and each click reached the planned screen. It did not run below 1024 px after the picks. Tap targets and the canvas sizes were not measured again. Open points are in `open_points` in the manifest.
+
+## First review (before the picks)
+
 Not independent: the agent that made the mockups wrote this review. It used the rubric of the `/design` skill. No child or parent saw these screens, and nobody heard a voice.
 
 ## What was checked in the browser (Aside, account u0, the local mockup)
 
 | Check | Result | What it does not prove |
 |---|---|---|
-| Horizontal scroll on all 178 captures | None | Text zoom was not tested |
-| Images load on all 178 captures and on the board page | No broken image | - |
+| Horizontal scroll on the 178 captures of that pass | None | Text zoom was not tested |
+| Images load on those captures and on the board page | No broken image | - |
 | Click path: pick, page, question 4, call, mic, connecting, talking, take the pen, give it back, mic off and on, Ask why, hang up, back, Leave, PIN, Parent home, Try Maya, sample call, after | Each click reached the planned screen | The mockup has no call, mic or server behind it |
 | Tap targets under 44 px on a phone (9 sample screens, after the fix below) | None | Rail items were included only in this last sample |
 | Strokes animate when the page is not in still mode | Dash offset was moving on the talking screen | Timing against speech: no audio exists here |

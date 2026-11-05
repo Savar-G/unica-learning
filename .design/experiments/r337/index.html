@@ -27,26 +27,27 @@ th { font-weight: 600; }
 const R = window.ROUND, VPS = ["laptop", "tablet-l", "tablet-p", "phone"];
 const fig = (file, cap, link) => `<figure><a href="${link}"><img loading="lazy" src="${file}" alt="${cap}"></a><figcaption>${cap}</figcaption></figure>`;
 let h = `<h1>Maya call screens, round r337</h1><p>#337 and #336. Mockups only. Click any picture to open the clickable mockup; its bar at the bottom right changes the option and the screen.</p>`;
-h += `<div class="rec"><h3 style="margin-top:0">Recommendation: ${R.recommendation.pick}</h3><ul>${R.recommendation.why.map(w => `<li>${w}</li>`).join("")}</ul></div>`;
+h += `<div class="rec"><h3 style="margin-top:0">Savar picked: ${R.recommendation.pick} (D-277). <a href="call.html">Open the picked mockup</a></h3><ul>${R.recommendation.why.map(w => `<li>${w}</li>`).join("")}</ul></div>`;
+h += `<h2>Savar's picks</h2><table><tr><th></th><th>Question</th><th>Answer</th></tr>${R.decided.map(d => `<tr><td>${d.id}</td><td>${d.question}</td><td>${d.answer}</td></tr>`).join("")}</table>`;
+h += `<h2>Still open</h2><ul>${R.open_points.map(p => `<li><b>${p.point}:</b> ${p.note}</li>`).join("")}</ul>`;
+const mix = (st) => ["a-" + st + "-laptop", "a-" + st + "-tablet-l", "b-" + st + "-tablet-p", "b-" + st + "-phone"];
+h += `<h2>The picked mix</h2>`;
+for (const st of R.shots.options.states) h += `<h3>${st}</h3><div class="strip">${mix(st).map(n => fig(`shots/opt-${n}.png`, n, `call.html?state=${st}`)).join("")}</div>`;
+for (const st of R.shots.recommended_more.states) h += `<h3>${st}</h3><div class="strip">${mix(st).map(n => fig(`shots/opt-${n}.png`, n, `call.html?state=${st}`)).join("")}</div>`;
 h += `<h2>The decision</h2><p>${R.decision}</p><table><tr><th>Option</th><th>Bet</th><th>Benefit</th><th>Cost</th><th>Failure risk</th></tr>${R.options.map(o => `<tr><td><a href="${o.artifact}"><b>${o.id}</b> ${o.name}</a></td><td>${o.bet}</td><td>${o.benefit}</td><td>${o.cost}</td><td>${o.risk}</td></tr>`).join("")}</table>`;
+h += `<p>Options as compared before the pick. Option A's screens show the two tabs of D-278; B and C have no tabs in a call.</p>`;
 for (const o of R.options) {
   h += `<h2>${o.id}: ${o.name}</h2>`;
   for (const st of R.shots.options.states) {
     h += `<h3>${st}</h3><div class="strip">${VPS.map(v => fig(`shots/opt-${o.id.toLowerCase()}-${st}-${v}.png`, v, `call.html?opt=${o.id.toLowerCase()}&state=${st}`)).join("")}</div>`;
   }
 }
-h += `<h2>Other call states (recommended mix)</h2>`;
-for (const st of R.shots.recommended_more.states) {
-  h += `<h3>${st}</h3><div class="strip">${["a-" + st + "-laptop", "a-" + st + "-tablet-l", "b-" + st + "-tablet-p", "b-" + st + "-phone"].map(n => fig(`shots/opt-${n}.png`, n, `call.html?opt=${n[0]}&state=${st}`)).join("")}</div>`;
-}
-h += `<h3>The Call tab during a call</h3><div class="strip">${["laptop", "tablet-l", "tablet-p"].map(v => fig(`shots/opt-a-call-only-${v}.png`, v, `call.html?state=call-only`)).join("")}</div>`;
 h += `<h2>The flow around the call (same in every option)</h2>`;
 for (const [g, list] of Object.entries(R.shots.flow)) {
   h += `<h3 style="font-size:18px;margin-top:30px">${g}</h3>`;
   for (const s of list) h += `<h3>${s.state}: <span style="font-weight:400">${s.what}</span></h3><div class="strip">${["laptop", "tablet-p", "phone"].map(v => fig(`shots/${s.state}-${v}.png`, v, `call.html?state=${s.state}`)).join("")}</div>`;
 }
 h += `<h3 style="font-size:18px;margin-top:30px">Other devices</h3><div class="strip">${fig("shots/mic-refused-android-phone.png", "mic refused, Android", "call.html?state=mic-refused&device=android")}${fig("shots/mic-refused-tablet-l.png", "mic refused, iPad on its side", "call.html?state=mic-refused&device=safari")}${fig("shots/opt-b-listening-phone-landscape.png", "phone on its side", "call.html?opt=b&state=listening")}</div>`;
-h += `<h2>Decisions for Savar</h2><table><tr><th>Question</th><th>Recommendation</th></tr>${R.open_decisions.map(d => `<tr><td>${d.question}</td><td>${d.recommend}</td></tr>`).join("")}</table>`;
 h += `<h2>For the build</h2><ul>${R.for_the_build.map(x => `<li>${x}</li>`).join("")}</ul>`;
 document.getElementById("o").innerHTML = h;
 </script></body></html>

@@ -268,6 +268,8 @@
   .ctl { flex: 1; min-width: 0; padding: 0 6px; font-size: 14px; gap: 5px; }
   .call-bar .pen-who { display: none; }
   .call-caption { font-size: 15px; }
+  .call-caption.has-heard { max-width: calc(100% - 24px); }
+  .call-caption.has-heard + .call-heard { bottom: 64px; }
   .call-pill { top: 8px; right: 8px; }
   .q-tile { top: 8px; left: 8px; }
   .call-note { top: 62px; }
@@ -287,6 +289,8 @@
 }
 .still *, .still *::before, .still *::after { animation: none !important; }
 .still .r-draw { stroke-dashoffset: 0 !important; }
+
+.desk-modes button:nth-child(2) .desk-icon { color: var(--sky); }
 
 /* The desk's tabs and Sound button are 40 and 36 px today; the desk's rule is 44 px. */
 .desk-modes button { min-height: 44px; }

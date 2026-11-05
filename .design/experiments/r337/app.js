@@ -1,9 +1,9 @@
 // Round r337: a clickable mockup of Maya's call screens. No network, no microphone, no product code.
-// call.html?opt=a|b|c&state=<state>[&still=1][&bare=1][&device=chrome|safari|android]
+// call.html?opt=mix|a|b|c&state=<state>[&still=1][&bare=1][&device=chrome|safari|android]
 // Words Maya says come from src/lib/maya/lines.ts where a line exists; see manifest.json for the ones that need a line.
 
 const Q = new URLSearchParams(location.search);
-const S = { opt: Q.get("opt") || "a", state: Q.get("state") || "pick", still: Q.has("still"), bare: Q.has("bare"), device: Q.get("device") };
+const S = { opt: Q.get("opt") || "mix", state: Q.get("state") || "pick", still: Q.has("still"), bare: Q.has("bare"), device: Q.get("device") };
 const MAYA = "../../../public/desk/maya.webp";
 const NAME = "Leah";
 
@@ -87,6 +87,7 @@ const LINES = {
   penask: "Yes, 6. Take the pen and write it in the tens.",
   paper: "Please write 66 on your paper.",
   why: "Hmm, let me think.",
+  back: "Let's get back to 27 + 39.",
   close: "We have one minute left. Let's finish this question.",
 };
 const CALL = {
@@ -94,6 +95,7 @@ const CALL = {
   listening: { maya: "listening", label: "Maya is listening", stage: 2, caption: LINES.tens, yours: true, time: "02:41", left: "19 min left this week", said: ["m:tried", "c:I got 56.", "m:ones", "c:16.", "m:carry", "m:tens"] },
   pen: { maya: "listening", label: "Maya is listening", stage: 3, caption: LINES.penask, pen: "child", time: "03:02", left: "18 min left this week", said: ["c:16.", "m:carry", "m:tens", "c:6.", "m:penask"] },
   why: { maya: "moment", label: "One moment", stage: 1, caption: LINES.why, heard: "Why?", time: "02:19", left: "19 min left this week", said: ["c:I got 56.", "m:ones", "c:16.", "m:carry", "c:Why?", "m:why"] },
+  offer: { maya: "talking", label: "Maya is talking", stage: 2, caption: LINES.back, heard: "What about number 2?", time: "03:10", left: "18 min left this week", said: ["m:carry", "m:tens", "c:What about number 2?", "m:back"] },
   wait: { maya: "waiting", label: "Maya is waiting", sub: "Take your time.", stage: 4, caption: LINES.paper, time: "03:40", left: "18 min left this week", said: ["m:tens", "c:6.", "m:penask", "m:paper"] },
   muted: { maya: "listening", label: "Your mic is off", stage: 2, caption: LINES.tens, muted: true, time: "02:44", left: "19 min left this week", note: { text: "Maya can't hear you.", small: "Tap the mic to talk." }, said: ["m:ones", "c:16.", "m:carry", "m:tens"] },
   reconnect: { maya: "away", label: "Getting Maya back", stage: 2, off: true, time: "02:52", left: "19 min left this week", note: { spin: true, text: "We lost the line. Getting Maya back.", small: "Your board is safe. This wait does not use your minutes." }, said: ["m:ones", "c:16.", "m:carry", "m:tens"] },
@@ -138,7 +140,7 @@ function head({ sub, calls = "22 min left this week", chat = "56 left today", st
   return `<header class="desk-maya-head">${state ? stateAvatar(48) : avatar(48)}<div class="desk-who"><h1>Maya</h1><p>${sub || "Workbook 1 · Day 4"}</p></div><dl class="desk-limits" aria-label="Help from Maya"><div><dt>${icon("phone", 14)}Calls</dt><dd>${calls}</dd></div>${chat ? `<div><dt>${icon("chat", 14)}Chat</dt><dd>${chat}</dd></div>` : ""}</dl></header>`;
 }
 function tabs(active, off = []) {
-  const t = [["Chat", "chat"], ["Call", "phone"], ["Call + board", "board"]];
+  const t = [["Chat", "chat"], ["Call + board", "board"]];
   return `<div class="desk-modes" role="group" aria-label="How to talk with Maya">${t.map(([l, i]) => `<button type="button" aria-pressed="${l === active}" ${off.includes(l) ? "disabled" : ""}>${icon(i, 18)}${l}</button>`).join("")}</div>`;
 }
 function emptyBoard(tag, inner, canvasExtra = "") {
@@ -147,7 +149,7 @@ function emptyBoard(tag, inner, canvasExtra = "") {
 function deskFrame({ headOpt, talk, foot, main, inCall, opt = "", attrs = "" }) {
   return `<div class="look-root desk-root${inCall ? " in-call" : ""} ${opt}" data-look="warm" ${attrs}>${topBar()}${rail(inCall)}<main class="desk-body"><section class="desk-maya" aria-label="Maya">${head(headOpt || {})}<div class="desk-talk" aria-live="polite">${talk}</div>${foot ? `<footer class="desk-say">${foot}</footer>` : ""}</section><div class="desk-main">${main}</div></main></div>`;
 }
-const callTabs = () => tabs("Call + board");
+const callTabs = () => tabs("Call + board", ["Chat"]);
 const aiLine = `<p class="r-line">Maya is an AI teaching assistant. Your grown-up gets a short note after each call.</p>`;
 const bubble = (t) => `<p class="desk-bubble">${t}</p>`;
 
@@ -172,13 +174,6 @@ function optC(c) {
   return `<div class="look-root c-root opt-c" data-look="warm" data-maya="${c.maya}">${topBar(`<span class="c-live">Live · ${c.time}</span>`)}<main class="c-body"><div class="c-main"><section class="desk-board"><header><h2>Our board</h2><p>${c.pen === "child" ? `${icon("pen", 18)}You have the pen` : "Maya has the pen"}</p></header><div class="desk-board-body"><div class="desk-canvas" data-pen="${c.pen === "child" ? "child" : "maya"}">${stageEl(c.stage)}${qTile()}${c.note ? overBoard({ note: c.note }) : ""}${narrow() || matchMedia("(max-width: 1023px)").matches ? overBoard({ caption: c.caption, yours: c.yours, heard: c.heard }) : c.yours ? `<p class="call-caption yours"><b>Your turn</b>What is 1 + 2 + 3?</p>` : ""}</div>${toolRail(c)}</div></section></div><aside class="c-side"><div class="c-maya">${stateAvatar(matchMedia("(max-width: 1023px)").matches ? 52 : 104)}<div>${statusLine(c)}</div><span class="c-left${c.low ? " low" : ""}">${c.left}</span></div><div class="c-said"><h3>What Maya said</h3>${c.said.slice(-4).map((l) => { const [w, t] = [l.slice(0, 1), l.slice(2)]; return w === "m" ? `<p>${LINES[t]}</p>` : `<p class="you">${t}</p>`; }).join("")}</div>${ctl}</aside></main></div>`;
 }
 
-// ---------- "Call" tab during a call: the same call with no board on screen ----------
-function callOnly() {
-  const c = CALL.listening;
-  const main = `${tabs("Call")}<section class="desk-board" style="align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center" data-maya="${c.maya}">${stateAvatar(120)}<div style="font:500 22px/1.2 var(--sans)">${statusLine(c)}</div><p class="r-line" style="max-width:40ch;font-size:16px">${LINES.tens}</p><p class="r-line">Maya keeps drawing on the board. Tap <b>Call + board</b> to see it.</p><div class="call-pill" style="position:static">${wave("you")}<time>${c.time}</time><button class="hang" ${go("after-stopped")} aria-label="Hang up">${icon("phone", 22)}</button></div></section><div class="call-bar">${micBtn(c)}${whyBtn(c)}</div>`;
-  return deskFrame({ opt: "opt-a", attrs: `data-maya="${c.maya}"`, headOpt: { sub: statusLine(c), calls: c.left, state: true }, talk: qCard(true) + said(c), main });
-}
-
 // ---------- pre-call ----------
 const deskQuestionBoard = () => emptyBoard(`${avatar(22)}Maya draws here in a call`, `${stageEl(0)}`);
 const deskEmptyBoard = () => emptyBoard(`${avatar(22)}Maya draws here in a call`, "");
@@ -190,21 +185,21 @@ const screens = {
   "say-miss": () => deskFrame({ talk: bubble(greeting) + bubble("Page 40 is not in this workbook. Say the page again, or pick it from your page."), foot: `<button class="r-btn" ${go("popup")}>${icon("page", 20)}Pick from my page</button><button class="r-btn ghost" ${go("say")}>${icon("mic", 20)}Say it again</button>`, main: tabs("Call + board") + deskEmptyBoard() }),
   popup: () => screens.pick() + `<div class="r-overlay" style="padding:12px;place-items:center"><div class="r-sheet" style="width:min(720px,100%);padding:0;gap:0;overflow:hidden;border-radius:18px"><header style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 14px 12px 22px;border-bottom:1px solid var(--line)"><div><h2 style="font:600 20px/1.2 var(--sans)">Pick from my page</h2><p style="font-size:14px">Page 23 · Day 4</p></div><button class="desk-x" ${go("pick")} aria-label="Close">✕</button></header><div style="padding:14px;background:#f5f5f6;display:grid;gap:10px"><div style="position:relative;background:#fff;border:1px solid var(--line);padding:18px 20px 22px;display:grid;grid-template-columns:repeat(3,1fr);gap:14px">${[["1","35","+ 41"],["2","62","+ 18"],["3","14","+ 28"],["4","27","+ 39"],["5","46","+ 37"],["6","58","+ 25"]].map(([n,a,b]) => `<button ${n==="4"?go("confirm"):""} class="desk-area" style="position:static;display:grid;justify-items:end;padding:6px 14px 26px;font:500 clamp(18px,3vw,26px)/1.2 'Geist Mono',monospace;color:var(--ink)${n==="4"?";border:3px solid var(--tang);background:rgba(255,106,61,.1);box-shadow:0 0 0 5px rgba(255,106,61,.16)":""}" aria-pressed="${n==="4"}" aria-label="Question ${n}"><span style="justify-self:start;font:700 13px var(--sans)">${n}.</span><span>${a}</span><span>${b}</span><span style="width:100%;height:2px;background:var(--ink)"></span></button>`).join("")}</div><nav class="desk-pagebar" aria-label="Pages"><a class="prev" href="#">← Page 22</a><p>Tap the question you are on.</p><a class="next" href="#">Page 24 →</a></nav></div></div></div>`,
   confirm: () => deskFrame({ talk: bubble("Question 4 on page 23. Is that the one?") + qCard(), foot: `<button class="r-btn" ${go("mic-ask")}>${icon("phone", 20)}Yes, call Maya</button><button class="r-btn ghost" ${go("popup")}>${icon("page", 20)}Pick another question</button><p class="r-line">You have 22 minutes this week. A call can be up to 10 minutes.</p>${aiLine}`, main: tabs("Call + board") + deskQuestionBoard() }),
-  held: () => deskFrame({ talk: bubble("Hi, I'm Maya, an AI helper. I can't help with this kind of question yet. You can pick another question, or ask a grown-up.") + `<figure class="desk-card"><figcaption><b>2</b><span>Workbook 1 · Page 24</span></figcaption><div class="q-crop" style="justify-items:start;font:500 18px/1.3 var(--sans)"><span style="padding-top:12px">True or false: 5 tens is the same as 50 ones.</span></div></figure>`, foot: `<button class="r-btn" ${go("popup")}>${icon("page", 20)}Pick another question</button><p class="r-line">No minutes were used.</p>`, main: tabs("Call + board") + deskEmptyBoard() }),
+  quiet: () => deskFrame({ talk: bubble("Question 2 on page 24.") + `<figure class="desk-card"><figcaption><b>2</b><span>Workbook 1 · Page 24</span></figcaption><div class="q-crop" style="justify-items:start;font:500 18px/1.3 var(--sans)"><span style="padding-top:12px">True or false: 5 tens is the same as 50 ones.</span></div></figure>`, foot: `<button class="r-btn" ${go("popup")}>${icon("page", 20)}Pick another question</button>`, main: `<div style="height:8px"></div>` + emptyBoard("", "") }),
+  "say-offer": () => deskFrame({ talk: bubble(greeting) + `<p class="desk-bubble desk-child-bubble">Page 24, number 2.</p>` + bubble("Let's try number 4 on page 23. Is that okay?") + qCard(), foot: `<button class="r-btn" ${go("mic-ask")}>${icon("phone", 20)}Yes, call Maya</button><button class="r-btn ghost" ${go("popup")}>${icon("page", 20)}Pick another question</button>`, main: tabs("Call + board") + deskQuestionBoard() }),
   "mic-ask": () => screens.confirm() + `<div class="r-overlay"><div class="r-sheet"><div class="who">${avatar(56)}<h2>Maya needs to hear you.</h2></div><p>Your browser will ask to use the microphone. Tap <b>Allow</b>.</p><div class="r-prompt" aria-hidden="true"><span>unicalearning.com wants to use your microphone</span><div class="acts"><span class="a">Don't allow</span><span class="a go">Allow</span></div></div><div class="btns"><button class="r-btn" ${go("connecting")}>OK</button><button class="r-btn ghost" ${go("confirm")}>Not now</button></div></div></div>`,
   "mic-refused": () => screens.confirm() + micRefused(device()),
   "mic-none": () => screens.confirm() + `<div class="r-overlay"><div class="r-sheet"><div class="who">${avatar(56)}<h2>We can't find a microphone.</h2></div><p>Ask a grown-up to plug one in or turn it on. Then press <b>Try again</b>. No minutes were used.</p><div class="btns"><button class="r-btn" ${go("connecting")}>Try again</button><button class="r-btn ghost" ${go("chat")}>${icon("chat", 20)}Chat with Maya instead</button></div></div></div>`,
   connecting: () => screens.confirm() + `<div class="r-overlay"><div class="r-sheet center"><div class="ring">${avatar(84)}</div><h2>Calling Maya…</h2><p>Turn your sound up so you can hear her.</p><div class="btns"><button class="r-btn ghost" ${go("confirm")}>Cancel</button></div></div></div>`,
   "no-answer": () => screens.confirm() + `<div class="r-overlay"><div class="r-sheet center">${`<div style="justify-self:center;filter:grayscale(1);opacity:.75">${avatar(84)}</div>`}<h2>Maya did not pick up.</h2><p>Try again in a minute. No minutes were used.</p><div class="btns"><button class="r-btn" ${go("connecting")}>${icon("phone", 20)}Call again</button><button class="r-btn ghost" ${go("confirm")}>Back to my page</button></div></div></div>`,
   lost: () => { const c = { ...CALL.reconnect, note: null }; return renderCall(c) + `<div class="r-overlay"><div class="r-sheet center"><div style="justify-self:center;filter:grayscale(1);opacity:.75">${avatar(84)}</div><h2>We could not get Maya back.</h2><p>Your work is still on the board. The time away did not use your minutes.</p><div class="btns"><button class="r-btn" ${go("connecting")}>${icon("phone", 20)}Call Maya again</button><button class="r-btn ghost" ${go("confirm")}>Back to my page</button></div></div></div>`; },
-  "call-only": callOnly,
   "after-solved": () => after({ title: `Nice work, ${NAME}!`, line: "We finished 27 + 39 together.", paper: "Now write your answer on your page, next to number 4.", facts: ["18 minutes left this week.", "Your grown-up gets a short note about this call."], stage: 4, tag: "Call ended · 4 min", primary: ["Back to my page", "confirm-back"], secondary: ["Pick another question", "popup"] }),
   "after-stopped": () => after({ title: `Thanks for calling, ${NAME}.`, line: "You can go on with number 4 on your paper, or call Maya again.", facts: ["19 minutes left this week.", "Your grown-up gets a short note about this call."], stage: 2, tag: "Call ended · 3 min", primary: ["Back to my page", "confirm-back"], secondary: ["Call Maya again", "connecting"] }),
   "after-week": () => after({ title: `Thanks for calling, ${NAME}.`, line: "That was your last call this week. Maya is back on Monday, November 9.", paper: "You can keep going on your paper. Use what is on the board.", facts: ["Your grown-up gets a short note about this call."], stage: 2, tag: "Call ended · 8 min", primary: ["Back to my page", "desk-zero"], chat: "56 left today", calls: "Back on Monday" }),
   "confirm-back": () => deskFrame({ talk: bubble(`Hi ${NAME}! Which question are you on? Pick it from your page, or say it.`) + qCard(), foot: `<button class="r-btn" ${go("mic-ask")}>${icon("phone", 20)}Call Maya</button><button class="r-btn ghost" ${go("popup")}>${icon("page", 20)}Pick another question</button><p class="r-line">You have 18 minutes this week.</p>`, main: tabs("Call + board") + deskQuestionBoard(), headOpt: { calls: "18 min left this week" } }),
-  "desk-zero": () => deskFrame({ headOpt: { calls: "Back on Monday" }, talk: bubble("You used your call minutes for this week. I'm back on Monday, November 9. You can still chat with me.") + qCard(), foot: `<button class="r-btn" ${go("chat")}>${icon("chat", 20)}Chat with Maya</button><button class="r-btn ghost" ${go("popup")}>${icon("page", 20)}Pick another question</button>`, main: tabs("Chat", ["Call", "Call + board"]) + deskQuestionBoard() }),
-  "desk-soon": () => deskFrame({ headOpt: { calls: "Start soon", chat: null }, talk: bubble(`Hi ${NAME}! Which question are you on? Pick it from your page.`) + qCard(), foot: `<button class="r-btn" ${go("popup")}>${icon("page", 20)}Pick another question</button><p class="desk-soon">Chat and calls with Maya start soon.</p>`, main: tabs("Call + board", ["Chat", "Call", "Call + board"]) + deskQuestionBoard() }),
-  "desk-off": () => deskFrame({ headOpt: { calls: "Off", chat: null }, talk: bubble(`Hi ${NAME}! Calls with me are off right now. Ask your grown-up to look at this. You can still see your pages here.`) + qCard(), foot: `<button class="r-btn" ${go("popup")}>${icon("page", 20)}Pick another question</button>`, main: `<div style="height:8px"></div>` + emptyBoard("", stageEl(0)) }),
+  "desk-zero": () => deskFrame({ headOpt: { calls: "Back on Monday" }, talk: bubble("You used your call minutes for this week. I'm back on Monday, November 9. You can still chat with me.") + qCard(), foot: `<button class="r-btn" ${go("chat")}>${icon("chat", 20)}Chat with Maya</button><button class="r-btn ghost" ${go("popup")}>${icon("page", 20)}Pick another question</button>`, main: tabs("Chat", ["Call + board"]) + deskQuestionBoard() }),
+  "desk-soon": () => deskFrame({ headOpt: { calls: "Start soon", chat: null }, talk: bubble(`Hi ${NAME}! Which question are you on? Pick it from your page.`) + qCard(), foot: `<button class="r-btn" ${go("popup")}>${icon("page", 20)}Pick another question</button><p class="desk-soon">Chat and calls with Maya start soon.</p>`, main: tabs("Call + board", ["Chat", "Call + board"]) + deskQuestionBoard() }),
+  "desk-paused": () => deskFrame({ headOpt: { calls: "Paused", chat: null }, talk: bubble(`Hi ${NAME}! Which question are you on? Pick it from your page.`) + qCard(), foot: `<button class="r-btn" ${go("popup")}>${icon("page", 20)}Pick another question</button><p class="desk-soon">Calls are paused. Ask a grown-up.</p>`, main: `<div style="height:8px"></div>` + emptyBoard("", stageEl(0)) }),
   pin: () => screens["confirm-back"]() + `<div class="r-overlay"><div class="r-sheet"><h2 style="font:400 28px/1.15 var(--sans)">Leave the desk</h2><p>A grown-up enters the 4-digit PIN.</p><label for="pin" style="font:500 14px/1 var(--sans)">PIN</label><input id="pin" class="desk-pin" type="password" inputmode="numeric" maxlength="4" value="••"><div class="desk-dialog-btns"><button class="r-btn" style="flex:1" ${go("p-home")}>Leave the desk</button><button class="r-btn ghost" style="flex:1" ${go("confirm-back")}>Stay</button></div><a class="desk-forgot" href="#">Forgot the PIN?</a></div></div>`,
   "pin-call": () => renderCall(CALL.listening) + `<div class="r-overlay"><div class="r-sheet"><h2 style="font:400 28px/1.15 var(--sans)">Leave the desk</h2><p>A grown-up enters the 4-digit PIN. This ends the call with Maya.</p><label for="pin" style="font:500 14px/1 var(--sans)">PIN</label><input id="pin" class="desk-pin" type="password" inputmode="numeric" maxlength="4" value="••"><div class="desk-dialog-btns"><button class="r-btn" style="flex:1" ${go("p-home")}>End call and leave</button><button class="r-btn ghost" style="flex:1" ${go("listening")}>Stay</button></div><a class="desk-forgot" href="#">Forgot the PIN?</a></div></div>`,
   chat: () => deskFrame({ talk: bubble("Chat stays as it is today (#358).") + qCard(), foot: `<button class="r-btn" ${go("confirm")}>Back</button>`, main: tabs("Chat") + deskQuestionBoard() }),
@@ -213,7 +208,7 @@ const screens = {
   "p-home": () => parentPage(tryCard("2 minutes left today") + notes()),
   "p-used": () => parentPage(tryUsed() + notes()),
   "p-ended": () => parentPage(`<div class="pd-card"><h3>Calls with Maya are off</h3><p>Maya stopped when ${NAME}'s plan ended on October 28. Your notes stay here. Restart the plan to turn calls on again.</p><div class="acts"><a class="r-btn sm" href="#" style="color:#fff">Restart the plan</a></div></div>` + notes(), { noWeek: true }),
-  "p-failed": () => parentPage(`<div class="pd-card"><h3>Calls with Maya are off for now</h3><p>The last payment did not go through. ${NAME} can call Maya again when the card works.</p><div class="acts"><a class="r-btn sm" href="#" style="color:#fff">Update the card</a></div></div>` + notes(), { noWeek: true }),
+  "p-failed": () => parentPage(`<div class="pd-card try"><h3>Payment failed</h3><p>The last payment did not go through. ${NAME}'s calls with Maya are paused until the card works.</p><div class="acts"><a class="r-btn sm" href="#" style="color:#fff">Update the card</a></div></div>` + notes(), { noWeek: true }),
   "try-mic": () => parentPage(tryCard("2 minutes left today") + notes()) + `<div class="r-overlay"><div class="r-sheet"><div class="who">${avatar(56)}<h2>Try Maya</h2></div><p>You talk with Maya on a sample question, the way ${NAME} would. Your browser will ask to use the microphone.</p><ul class="r-facts"><li>Up to 2 minutes a day.</li><li>It does not use ${NAME}'s minutes.</li><li>Nothing from this call goes in ${NAME}'s record.</li></ul><div class="btns"><button class="r-btn" ${go("try-call")}>${icon("phone", 20)}Start the sample call</button><button class="r-btn ghost" ${go("p-home")}>Not now</button></div></div></div>`,
   "try-call": () => tryCall({ maya: "talking", label: "Maya is talking", stage: 0, caption: "Hi, I'm Maya, an AI helper. Let's do this one: 27 + 39.", time: "1:48", left: "1:48 left today" }),
   "try-listen": () => tryCall({ maya: "listening", label: "Maya is listening", stage: 2, caption: LINES.tens, yours: true, time: "1:05", left: "1:05 left today" }),
@@ -252,7 +247,7 @@ function micRefused(d) {
 }
 
 // ---------- render ----------
-function renderCall(c) { return S.opt === "b" ? optB(c) : S.opt === "c" ? optC(c) : optA(c); }
+function renderCall(c) { const o = S.opt === "mix" ? (innerWidth >= 1024 ? "a" : "b") : S.opt; return o === "b" ? optB(c) : o === "c" ? optC(c) : optA(c); }
 function render() {
   const app = document.getElementById("app");
   const st = S.state;
@@ -291,17 +286,17 @@ function wireInk() {
 
 // ---------- review bar (not part of the design) ----------
 const GROUPS = {
-  "Before the call": ["pick", "say", "say-miss", "popup", "confirm", "held", "mic-ask", "mic-refused", "mic-none", "connecting", "no-answer"],
-  "The call": [...CALL_STATES, "call-only", "lost", "pin-call"],
+  "Before the call": ["pick", "say", "say-miss", "say-offer", "popup", "confirm", "quiet", "mic-ask", "mic-refused", "mic-none", "connecting", "no-answer"],
+  "The call": [...CALL_STATES, "lost", "pin-call"],
   "After": ["after-solved", "after-stopped", "after-week", "confirm-back", "desk-zero", "pin"],
-  "Others": ["desk-soon", "desk-off"],
+  "Others": ["desk-soon", "desk-paused"],
   "Parent": ["p-home", "p-used", "p-ended", "p-failed", "try-mic", "try-call", "try-listen", "try-closing", "try-after"],
 };
 function bar() {
   document.querySelector(".rv")?.remove();
   if (S.bare) return;
   const d = document.createElement("div"); d.className = "rv";
-  d.innerHTML = `<select id="rv-o" aria-label="Option">${["a", "b", "c"].map((o) => `<option value="${o}" ${o === S.opt ? "selected" : ""}>Option ${o.toUpperCase()}</option>`).join("")}</select><select id="rv-s" aria-label="Screen">${Object.entries(GROUPS).map(([g, l]) => `<optgroup label="${g}">${l.map((s) => `<option ${s === S.state ? "selected" : ""}>${s}</option>`).join("")}</optgroup>`).join("")}</select><a href="index.html">Board</a>`;
+  d.innerHTML = `<select id="rv-o" aria-label="Option">${["mix", "a", "b", "c"].map((o) => `<option value="${o}" ${o === S.opt ? "selected" : ""}>${o === "mix" ? "Picked: A + B" : "Option " + o.toUpperCase()}</option>`).join("")}</select><select id="rv-s" aria-label="Screen">${Object.entries(GROUPS).map(([g, l]) => `<optgroup label="${g}">${l.map((s) => `<option ${s === S.state ? "selected" : ""}>${s}</option>`).join("")}</optgroup>`).join("")}</select><a href="index.html">Board</a>`;
   document.body.appendChild(d);
   d.querySelector("#rv-o").onchange = (e) => { S.opt = e.target.value; set(S.state); };
   d.querySelector("#rv-s").onchange = (e) => set(e.target.value);

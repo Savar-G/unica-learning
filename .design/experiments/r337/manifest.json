@@ -72,7 +72,8 @@
    "At 768 x 1024 A leaves only 280 px, and the side work gets small; B gives 711 px at the same size.",
    "On a phone the board must fill the screen (spec story 23), so A and B are nearly the same there (canvas 356 px wide in both)."
   ],
-  "what_c_gives": "Take C's labelled hang up idea only if testing shows children miss the icon. The mix keeps the icon, as in the video."
+  "what_c_gives": "Take C's labelled hang up idea only if testing shows children miss the icon. The mix keeps the icon, as in the video.",
+  "status": "picked (D-277)"
  },
  "viewports": {
   "laptop": [
@@ -111,11 +112,11 @@
     "micstop",
     "closecall",
     "lost",
-    "pin-call"
+    "pin-call",
+    "offer"
    ],
-   "pattern": "A at laptop and tablet-l, B at tablet-p and phone: shots/opt-<a|b>-<state>-<viewport>.png"
+   "pattern": "The picked mix: A at laptop and tablet-l, B at tablet-p and phone: shots/opt-<a|b>-<state>-<viewport>.png"
   },
-  "call_only_tab": "shots/opt-a-call-only-<laptop|tablet-l|tablet-p>.png",
   "flow": {
    "1 Pick a question": [
     {
@@ -135,12 +136,16 @@
      "what": "Said a page that is not in the book"
     },
     {
+     "state": "say-offer",
+     "what": "Said a question Maya cannot teach yet: she offers one she can do, with no reason (D-279)"
+    },
+    {
      "state": "confirm",
      "what": "Maya confirms the question; Yes, call Maya; minutes; AI line"
     },
     {
-     "state": "held",
-     "what": "Maya cannot teach this kind of question yet (D-240): no call, no minutes"
+     "state": "quiet",
+     "what": "Picked a question Maya cannot teach yet: no call or chat button, no reason (D-279)"
     }
    ],
    "2 Start the call": [
@@ -197,16 +202,16 @@
      "what": "Plan not started (book on its way) or family not on the list: existing line"
     },
     {
-     "state": "desk-off",
-     "what": "Plan ended or payment failed: child sees no money words"
+     "state": "desk-paused",
+     "what": "Payment failed: 'Calls are paused. Ask a grown-up.' with no payment words (D-280); plan ended too"
+    },
+    {
+     "state": "p-failed",
+     "what": "Parent, payment failed: Payment failed, Update the card (D-280)"
     },
     {
      "state": "p-ended",
      "what": "Parent, plan ended"
-    },
-    {
-     "state": "p-failed",
-     "what": "Parent, payment failed"
     }
    ],
    "5 Parent: Try Maya (#336)": [
@@ -261,67 +266,58 @@
   "While the child holds the pen, Maya's staged drawing is cancelled (R450-10); the board note 'Maya has the pen' from src/components/our-board.tsx stays for a stroke without the pen.",
   "In option A, Leave stays in the rail during a call and the PIN dialog says it ends the call (pin-call). In B there is no rail, so Leave is one hang up away.",
   "The call screen must not say audio is not kept: docs/maya-voice.md says provider settings are not verified yet. The privacy page holds that text (#529, PR #596).",
-  "The parent notice of PR #596 comes before the first call: 'Open the desk' goes to it first and the call token is refused without it. It is not redrawn here.",
-  "Reduced motion: the board shows finished strokes, the waves and rings stop. State always has words."
+  "Reduced motion: the board shows finished strokes, the waves and rings stop. State always has words.",
+  "The parent notice of PR #596 (still open) comes before the first call: 'Open the desk' goes to it first and the call token is refused without it. It is not redrawn here.",
+  "D-279: the desk needs to know whether a question can be taught before it shows the tabs, Call and the chat box. Hide all of them for a question that cannot. The server must also refuse a call or chat on it.",
+  "D-279: PR #581 and #527 build the old D-240 ('say plainly when she cannot teach'). They need to change before they merge. Chat follows the same rule.",
+  "D-279: in a call, the existing redirect.back line goes back to the call's question. The call stays on its one question.",
+  "D-278: src/components/desk.tsx and DESIGN.md still name three tabs. #337 changes them. D-184 also names the Call tab.",
+  "D-280: the chat tab and chat box are hidden with the calls, as chat has the same plan check. Update the card uses the Stripe-hosted page (D-247)."
  ],
  "words_needing_a_line": [
   {
    "text": "We have one minute left. Let's finish this question.",
-   "why": "lines.ts has no line that tells the child time is short. TIME_CLOSE goes straight to give_answer, ask_write, close. New code-written bank line; Savar approves wording."
+   "why": "lines.ts has no line that tells the child time is short. TIME_CLOSE goes straight to give_answer, ask_write, close. New code-written bank line; Savar approves wording.",
+   "status": "approved, D-281"
   },
   {
    "text": "Let's do this one: 27 + 39.",
-   "why": "Try Maya has no page and number, so WORKBOOK_OPENING does not fit."
+   "why": "Try Maya has no page and number, so WORKBOOK_OPENING does not fit.",
+   "status": "approved, D-281"
   },
   {
    "text": "We're almost out of time. Thanks for trying this with me.",
-   "why": "Try Maya's close."
+   "why": "Try Maya's close.",
+   "status": "approved, D-281"
   },
   {
    "text": "Question 4 on page 23. Is that the one?",
-   "why": "Spec story 3 asks Maya to confirm. As a line on the desk it is screen text, written by code, before any call."
-  }
- ],
- "open_decisions": [
-  {
-   "id": "layout",
-   "question": "Which call layout?",
-   "recommend": "A at 1024 px and wider, B below."
-  },
-  {
-   "id": "call_tab",
-   "question": "D-183 keeps a Call tab without the board; spec #297 says the board is always there. Keep Call as a view during a call?",
-   "recommend": "Keep it on tablet and laptop, as a view of the same call (call-only). A child can look at the paper and Maya keeps drawing. No tabs on a phone."
-  },
-  {
-   "id": "held_precheck",
-   "question": "D-240 has Maya say she cannot help during a call. Check before the call instead?",
-   "recommend": "Yes (held). It uses no minutes and no mic. D-239 counted 0 of 204 questions teachable in U4 and 43 of 231 in U16 on 2026-11-04, so until #525 and #526 land, most questions a child picks would reach this screen."
-  },
-  {
-   "id": "failed_payment",
-   "question": "Calls stop when a plan is not free trial or active. Should a failed payment stop calls at once, while the card company retries?",
-   "recommend": "Follow the rule for the first customer (desk-off, p-failed). Consider some days of grace later: a child loses Maya because of a card."
-  },
-  {
-   "id": "new_lines",
-   "question": "Approve the new Maya lines listed in words_needing_a_line.",
-   "recommend": "Approve or rewrite; none is said until code has it."
+   "why": "Spec story 3 asks Maya to confirm. As a line on the desk it is screen text, written by code, before any call.",
+   "status": "approved, D-281"
   }
  ],
  "not_settled_by_this_round": [
-  "D-266 (voice for the first customer) is in open PR #627, not on main yet.",
   "child-use-approved in docs/maya-voice.md is still open: no real voice call with a child until the written answer arrives.",
   "Nothing here was heard. Whether a child understands the wave and ring states needs a real child or a parent test."
  ],
  "verification": {
   "browser": "Aside repl, Savar's browser, account u0, localhost mock",
-  "checked": "Horizontal overflow on every captured screen: none. Click path from pick to Try Maya's after-screen. Tap targets on a phone: see review.md."
+  "checked": "Horizontal overflow and image loading on all captures: none broken. Click path from pick to Try Maya's after-screen, before the picks and again on the mix at 1024 px. After the picks: the mix switches from B to A at 1024 px; tabs in a call are Chat (off) and Call + board; the words can't help, cannot help, payment, card, plan and yet appear on none of the child's screens quiet, say-offer, desk-paused, offer, pick and confirm. See review.md."
  },
- "picked": null,
- "picked_by": "waiting for Savar",
+ "picked": {
+  "layout": "A at 1024 px and wider, B below 1024 px",
+  "in_mockup": "call.html with no opt, or opt=mix",
+  "decisions": [
+   "D-277",
+   "D-278",
+   "D-279",
+   "D-280",
+   "D-281"
+  ]
+ },
+ "picked_by": "Savar, 2026-11-05, through the orchestrator",
  "measured_canvas_px": {
-  "note": "Width x height of .desk-canvas, talking state, measured in the browser. It leaves out the pen tools and bars.",
+  "note": "Width x height of .desk-canvas, talking state, measured in the browser. It leaves out the pen tools and bars. Measured before the picks; the tabs row keeps its height, so the sizes stand.",
   "A": {
    "laptop": [
     858,
@@ -376,5 +372,68 @@
     636
    ]
   }
- }
+ },
+ "decided": [
+  {
+   "id": "D-277",
+   "question": "Which call layout?",
+   "answer": "A at 1024 px and wider, B below 1024 px."
+  },
+  {
+   "id": "D-278",
+   "question": "Keep a Call view with no board?",
+   "answer": "No. The board is always there during a call, so Maya can draw and explain while the child talks. Every call view keeps the shared board. This changes D-183's board-less Call tab."
+  },
+  {
+   "id": "D-279",
+   "question": "What does the child see for a question Maya cannot teach yet?",
+   "answer": "Never tell the child what Maya can't do. That question offers no call or chat button and gives no reason. If a child still asks Maya about one, she offers to work on a question she can do, without saying she can't. This changes D-240's 'she says so during a call'."
+  },
+  {
+   "id": "D-280",
+   "question": "Failed payment?",
+   "answer": "Calls stop at once. The parent sees 'Payment failed' with a way to fix the card. The child's desk shows 'Calls are paused. Ask a grown-up.' with no payment words."
+  },
+  {
+   "id": "D-281",
+   "question": "Approve the four new Maya lines?",
+   "answer": "Approved as written."
+  }
+ ],
+ "open_points": [
+  {
+   "point": "Tabs before a call",
+   "note": "Savar's pick names the Call tab during a call. The mockup also removes it from the desk before a call, because no board-less call exists now. The desk has two tabs: Chat, Call + board. Confirm."
+  },
+  {
+   "point": "Plan ended, child's screen",
+   "note": "D-280 sets the words for a failed payment. The mockup uses the same neutral screen when the plan ended, because the old words ('Calls with me are off') told the child what Maya can't do. Confirm."
+  },
+  {
+   "point": "A call already open when a payment fails",
+   "note": "Not decided. 'Calls stop at once' can mean no new call, or the open call ends too. No screen shows it."
+  },
+  {
+   "point": "The desk's offer wording",
+   "note": "'Let's try number 4 on page 23. Is that okay?' is new and is not one of the four approved lines. Savar needs to approve it."
+  },
+  {
+   "point": "When nothing nearby can be taught",
+   "note": "The offer needs a teachable question. With none (U4 had 0 of 204 teachable on 2026-11-04, D-239), the desk gives no offer and no button."
+  }
+ ],
+ "words_needing_approval": [
+  {
+   "text": "Let's try number 4 on page 23. Is that okay?",
+   "where": "say-offer, when a child says a question Maya cannot teach yet",
+   "status": "proposed, not approved"
+  }
+ ],
+ "words_from_existing_lines": [
+  {
+   "text": "Let's get back to 27 + 39.",
+   "id": "redirect.back",
+   "where": "offer, in a call"
+  }
+ ]
 }
