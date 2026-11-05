@@ -1,4 +1,5 @@
 // D-233, Q8: one true cover sentence from checked signals and the topics actually taught.
+import { FACTS_BY_GRADE } from "@/lib/assessment";
 import type { WorkbookPlan } from "@/lib/workbook-plan";
 import { UNIT_TITLES } from "@/lib/workbook-titles";
 
@@ -42,8 +43,18 @@ export function workbookCoverLine(plan: WorkbookPlan, child: string, workbook: n
   const b = s.behaviour;
   const trusted = s.working?.certainty === "clear" && s.working.confidence === "normal"
     && !!b && !b.helpLikely && !b.unreliable && b.rushRuns === 0;
-  const ahead = trusted && s.adjustments.trustedAboveGrade && s.weak.length === 0
-    && ["number", "fractions", "algebra", "shapes"].every(strand => s.strands.some(x => x.strand === strand && x.status === "secure" && x.total > 0));
+  const secureAreas = s.strands.length === 4
+    && ["number", "fractions", "algebra", "shapes"].every(strand => s.strands.some(x => x.strand === strand && x.status === "secure" && x.total > 0 && x.correct > 0 && x.correct <= x.total));
+  // Signals also list untested families. Require the grade's round in full and check any other recorded family.
+  // This catches a missing byFamily row, which otherwise looks like a family the assessment never asked.
+  const testedFamilies = new Set([...FACTS_BY_GRADE[s.grade], ...s.facts.filter(f => f.source !== "none").map(f => f.family)]);
+  const secureFacts = testedFamilies.size > 0 && [...testedFamilies].every(family => {
+    const f = s.facts.find(f => f.family === family);
+    const r = f?.result;
+    return f?.source !== "none" && f?.state === "known" && !!r && r.answered > 0 && r.correct > 0 && r.correct <= r.answered
+      && r.accuracy === "secure" && r.speed === "quick" && r.medianMs !== null && Number.isFinite(r.medianMs) && r.medianMs > 0;
+  });
+  const ahead = trusted && s.adjustments.trustedAboveGrade && s.weak.length === 0 && secureAreas && secureFacts;
   const catchUp = s.start?.rule === "P3" || !!s.working && s.working.working < s.grade;
   for (const name of [child, "Your child"]) for (let count = topics.length; count > 0; count--) {
     const selected = topics.slice(0, count);

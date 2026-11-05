@@ -19,8 +19,16 @@ const PERSONAS: BookPersona[] = ["ahead", "catch-up", "on-level", "rushed"];
 const chromium = await findChromium();
 
 describe.skipIf(!chromium)("personal cover print fit", () => {
-  it("prints every persona and the first customer, and rejects a clipped cover box", async () => {
-    const fixtures = [...PERSONAS.map(key => ({ key, ...bookPersona(key) })), { key: "first-customer", initials: "I.J.", profile: firstCustomerProfile() }];
+  it("prints the personas, first customer and narrower claims, and rejects a clipped cover box", async () => {
+    const controls = ["facts-needs-practice", "facts-missing", "weak-area"].map(key => {
+      const profile = firstCustomerProfile();
+      const assessment = profile.assessment!.profile;
+      if (key === "facts-needs-practice") assessment.facts!.speed = "needs-practice";
+      if (key === "facts-missing") assessment.facts = null;
+      if (key === "weak-area") assessment.strands[0] = { ...assessment.strands[0], correct: 1, status: "needs-attention" };
+      return { key, initials: "I.J.", profile };
+    });
+    const fixtures = [...PERSONAS.map(key => ({ key, ...bookPersona(key) })), { key: "first-customer", initials: "I.J.", profile: firstCustomerProfile() }, ...controls];
     const draft: WorkbookDraft = {
       id: "55555555-5555-4555-8555-0000000000b1", childId: CHILD, number: 1, levels: [10, 13, 16], profileBuild: null,
       pages: fixtures.map(({ profile, initials }, i) => {
@@ -39,7 +47,7 @@ describe.skipIf(!chromium)("personal cover print fit", () => {
     } } });
     expect(result.status === "failed" ? result.problems : []).toEqual([]);
     expect(result.status).toBe("rendered");
-    expect(printed!.pdfPages).toBe(5);
+    expect(printed!.pdfPages).toBe(fixtures.length);
     const measured = printed!.measured;
     for (const [i, page] of draft.pages.entries()) {
       if (page.content?.kind !== "cover") throw new Error("not a cover");
@@ -70,7 +78,7 @@ describe.skipIf(!chromium)("personal cover print fit", () => {
         tiles.push({ input: label, left: i % 3 * 657, top: Math.floor(i / 3) * 880 });
         tiles.push({ input: resized, left: i % 3 * 657, top: Math.floor(i / 3) * 880 + 35 });
       }
-      await sharp({ create: { width: 1971, height: 1760, channels: 3, background: "#eeeeee" } }).composite(tiles).png().toFile(`${out}/contact-sheet.png`);
+      await sharp({ create: { width: 1971, height: Math.ceil(fixtures.length / 3) * 880, channels: 3, background: "#eeeeee" } }).composite(tiles).png().toFile(`${out}/contact-sheet.png`);
       await writeFile(`${out}/covers.pdf`, printed!.pdf);
       await writeFile(`${out}/evidence.json`, JSON.stringify({ fixtures: fixtures.map((f, i) => ({ key: f.key, sentence: draft.pages[i].content?.kind === "cover" ? draft.pages[i].content.sentence : null })), measured: measured.filter(m => m.name === "slot-made-from"), clipped: fit }, null, 2));
     }

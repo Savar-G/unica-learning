@@ -21,6 +21,58 @@ describe("the personal cover sentence", () => {
     expect(workbookCoverLine(plan(), "I.J.", 1)).toBe(expected);
     expect(cover(plan())).toMatchObject({ madeFrom: "assessment", sentence: expected });
     expect(expected).not.toContain("Warm-ups");
+    expect(firstCustomerProfile().assessment!.profile.facts).toMatchObject({ answered: 19, correct: 19, accuracy: "secure", speed: "quick" });
+  });
+
+  it.each(["accuracy", "speed"] as const)("does not praise every part when fact %s needs practice", field => {
+    const profile = firstCustomerProfile();
+    profile.assessment!.profile.facts![field] = "needs-practice";
+    if (field === "accuracy") profile.assessment!.profile.facts!.correct = 2;
+    expect(cover(plan(profile))).toMatchObject({ sentence: "This book works on larger numbers, multiplication and pattern rules, at the level I.J. showed on the assessment." });
+  });
+
+  it("does not praise every part when the facts round is missing", () => {
+    const profile = firstCustomerProfile();
+    profile.assessment!.profile.facts = null;
+    expect(cover(plan(profile))).toMatchObject({ sentence: "This book works on larger numbers, multiplication and pattern rules, at the level I.J. showed on the assessment." });
+  });
+
+  it.each(["accuracy", "speed", "medianMs"] as const)("does not praise every part when fact %s is missing", field => {
+    const profile = firstCustomerProfile();
+    profile.assessment!.profile.facts![field] = null;
+    expect(cover(plan(profile))).toMatchObject({ sentence: expect.not.stringContaining("every part") });
+  });
+
+  it("requires a complete quick and accurate result in every fact family, even with a strong section result", () => {
+    const profile = firstCustomerProfile();
+    const facts = profile.assessment!.profile.facts!;
+    facts.byFamily = {
+      add20: { answered: 6, correct: 6, skipped: 0, medianMs: 2620, accuracy: "secure", speed: "quick" },
+      sub20: { answered: 6, correct: 6, skipped: 0, medianMs: 2620, accuracy: "secure", speed: "quick" },
+      mul2510: { answered: 7, correct: 7, skipped: 0, medianMs: 2620, accuracy: "secure", speed: "quick" },
+    };
+    expect(cover(plan(profile))).toMatchObject({ sentence: expect.stringContaining("every part") });
+    for (const family of facts.families) {
+      const saved = facts.byFamily[family]!;
+      facts.byFamily[family] = { ...saved, accuracy: "needs-practice", correct: 1 };
+      expect(cover(plan(profile))).toMatchObject({ sentence: expect.not.stringContaining("every part") });
+      facts.byFamily[family] = { ...saved, speed: "needs-practice" };
+      expect(cover(plan(profile))).toMatchObject({ sentence: expect.not.stringContaining("every part") });
+      delete facts.byFamily[family];
+      expect(cover(plan(profile))).toMatchObject({ sentence: expect.not.stringContaining("every part") });
+      facts.byFamily[family] = { ...saved, answered: 0, correct: 0 };
+      expect(cover(plan(profile))).toMatchObject({ sentence: expect.not.stringContaining("every part") });
+      facts.byFamily[family] = saved;
+    }
+    // Dropping a family from the declared round must not make its missing data look complete.
+    facts.families = ["add20", "sub20"];
+    expect(cover(plan(profile))).toMatchObject({ sentence: expect.not.stringContaining("every part") });
+  });
+
+  it("does not praise every part when an assessment area is weak", () => {
+    const profile = firstCustomerProfile();
+    profile.assessment!.profile.strands[0] = { ...profile.assessment!.profile.strands[0], correct: 1, status: "needs-attention" };
+    expect(cover(plan(profile))).toMatchObject({ sentence: expect.not.stringContaining("every part") });
   });
 
   it.each<[BookPersona, string]>([
