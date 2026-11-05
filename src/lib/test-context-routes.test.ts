@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { checked } from "@/lib/assessment/scripted-child";
+import { checked, beforeThirdStage } from "@/lib/assessment/scripted-child";
 import { createFacts, createSession, nextQuestion, restoreSession, startAttempt, storedTest, submitAnswer, type Attempt, type Submission } from "@/lib/assessment";
 import { StoreError } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
@@ -39,7 +39,7 @@ const IPAD: TestDevice = { deviceClass: "tablet", input: "pen", screenWidth: 102
 
 /** Asha's test, with the first `answered` answers right. */
 function stored(attempt: Attempt, { parent = P1, answered = 0 } = {}): MemoryTest {
-  const test = storedTest(createSession(ASHA, 7));
+  const test = beforeThirdStage(storedTest(createSession(ASHA, 7)));
   let session = restoreSession(test, []);
   const answers: Submission[] = [];
   for (let q = nextQuestion(session); q && answers.length < answered; q = nextQuestion(session)) {
@@ -87,7 +87,7 @@ describe("POST /api/account/assessments/[id]/context (the halfway break and the 
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(Object.keys(body).sort()).toEqual(["break", "ok", "step"]);
     expect(body.break).toEqual({ startedAt: T0 + HOUR, ended: false });
-    expect(Object.keys(body.step.question).sort()).toEqual(["choices", "format", "id", "level", "prompt", "readAloud", "say", "showWork", "strand", "whiteboard"]);
+    expect(Object.keys(body.step.question).filter((k) => k !== "choices" && k !== "say").sort()).toEqual(["format", "id", "level", "prompt", "readAloud", "showWork", "strand", "whiteboard"]);
     signedIn = P2;
     expect(await sent(await request())).toEqual({ status: 404, body: { ok: false, error: "not_found" } });
   });

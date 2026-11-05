@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { checked } from "@/lib/assessment/scripted-child";
-import { REPORTED_STRAND, bankFor, bandFor, createSession, nextQuestion, submitAnswer, testStep, type Grade, type Session, type Template } from "@/lib/assessment";
+import { REPORTED_STRAND, bankFor, bandFor, createSession, nextQuestion, submitAnswer, testStep, type Grade, type Session } from "@/lib/assessment";
 
 // D-156: Kindergarten (0) to Grade 9. Each grade starts at its own level (D-158: Grade 9 at level 9).
 const GRADES: Grade[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
@@ -25,31 +25,27 @@ describe.each(GRADES)("BC selection through the public assessment interface, gra
       }
     }
   });
-  it("uses each template once and rotates available standards across both stages", () => {
+  it("uses each template once and spreads each level and area across its available standards on both stages", () => {
     const bank = bankFor(grade);
     const byId = new Map(bank.map((t) => [t.id, t]));
-    // The level and strand do not change while a route uses up its templates.
-    const pools = new Map<string, Template[]>();
-    for (const t of bank) {
-      const key = `${t.grades.BC}:${REPORTED_STRAND[t.strand]}`;
-      const pool = pools.get(key) ?? [];
-      pool.push(t);
-      pools.set(key, pool);
-    }
+    // D-282: a stage is shown easy to hard, so the draw order is gone; the spread it made is what this holds.
     for (const [seed, session] of sessions.entries()) {
       for (const route of ROUTES) {
-        const used = new Set<string>();
+        const asked = [...session.stage1, ...session.stage2[route]];
+        const used = new Set(asked.map((q) => q.templateId));
+        expect(used.size, `grade ${grade} ${route} seed ${seed}`).toBe(asked.length);
         const counts = new Map<string, number>();
-        for (const q of [...session.stage1, ...session.stage2[route]]) {
-          const label = `grade ${grade} ${route} seed ${seed} ${q.templateId}`;
-          expect(used.has(q.templateId), label).toBe(false);
-          const template = byId.get(q.templateId)!;
-          const available = pools.get(`${q.level}:${REPORTED_STRAND[q.strand]}`)!.filter((t) => !used.has(t.id));
-          const key = (standard: string) => `${REPORTED_STRAND[q.strand]}:${standard}`;
-          const before = counts.get(key(template.standard)) ?? 0;
-          expect(before, label).toBe(Math.min(...available.map((t) => counts.get(key(t.standard)) ?? 0)));
-          used.add(q.templateId);
-          counts.set(key(template.standard), before + 1);
+        for (const q of asked) {
+          const key = `${REPORTED_STRAND[q.strand]}:${byId.get(q.templateId)!.standard}`;
+          counts.set(key, (counts.get(key) ?? 0) + 1);
+        }
+        for (const q of asked) {
+          const strand = REPORTED_STRAND[q.strand];
+          const free = bank.filter((t) => t.grades.BC === q.level && REPORTED_STRAND[t.strand] === strand && !used.has(t.id));
+          // A standard with an unused template at this level was never passed over twice for this question's standard.
+          const least = Math.min(...free.map((t) => counts.get(`${strand}:${t.standard}`) ?? 0));
+          const mine = counts.get(`${strand}:${byId.get(q.templateId)!.standard}`)!;
+          if (free.length) expect(mine, `grade ${grade} ${route} seed ${seed} ${q.templateId}`).toBeLessThanOrEqual(least + 1);
         }
       }
     }
@@ -72,7 +68,8 @@ describe("BC route lengths sent to the child", () => {
     // school-grade questions (D-156, D-158).
     const lengths = grade <= 2 ? { up: 30, stay: 24, down: 24 } : grade <= 5 ? { up: 42, stay: 36, down: 36 } : grade <= 7 ? { up: 45, stay: 42, down: 42 } : { up: 42, stay: 42, down: 42 };
     for (const route of ROUTES) {
-      let session = createSession({ grade, province: "BC" }, 123);
+      // A test with no third stage: the third stage has its own tests (third-stage.test.ts).
+      let session: Session = { ...createSession({ grade, province: "BC" }, 123), stage3: undefined };
       let answered = 0;
       while (nextQuestion(session)) {
         const q = nextQuestion(session)!;

@@ -42,7 +42,7 @@ export const COPY_FIELDS = {
  * D-145: so is `extraRound`, which two placements from before the round's removal (#190) still hold.
  */
 const PLACEMENT_FIELDS = [
-  "grade", "province", "scoredAgainst", "workingLevel", "confidence", "levelCertainty", "atCeiling", "route", "stage1",
+  "grade", "province", "scoredAgainst", "workingLevel", "confidence", "levelCertainty", "atCeiling", "route", "stage3Route", "stage1",
   "levels", "strands", "facts", "flags", "pace",
 ] as const;
 

@@ -6,15 +6,17 @@
 // The server sees answers and a few screens, not every screen: a child can go Back to an answered question, or open one
 // from a check grid, and nothing is stored. So the view names the next question to answer, not the one on screen, and
 // says "or on the last step" where the records cannot tell a check grid from the end.
-import { FACTS_SECONDS, type Route } from "@/lib/assessment";
+import { FACTS_SECONDS, type Route, type Stage3Route } from "@/lib/assessment";
 import type { AssessmentStatus } from "@/lib/test-api";
 
 /** One test's records, as public.admin_test_progress() returns them (migration add_admin_test_progress). Times are ISO. */
 export interface ProgressInput {
   status: AssessmentStatus;
   route: Route | null;
-  /** How many questions each stored part has. */
-  lengths: { stage1: number; up: number; stay: number; down: number };
+  /** D-282: the stage 2 lock record: null or absent while stage 2 is not locked. */
+  stage3Route?: Stage3Route | null;
+  /** How many questions each stored part has. `stage3Up` and `stage3Down` (D-282) are absent on older tests. */
+  lengths: { stage1: number; up: number; stay: number; down: number; stage3Up?: number; stage3Down?: number };
   /**
    * How many questions have an answer. D-145: two finished tests also have answers to the removed extra round (#190);
    * the count is capped at the test's length, so they never show.
@@ -49,7 +51,7 @@ export type ProgressPhase =
   | "finished"
   | "closed"; // expired: no answer for 24 hours
 
-export type ProgressPart = "Part 1" | "Part 2";
+export type ProgressPart = "Part 1" | "Part 2" | "Part 3";
 
 export interface TestProgress {
   phase: ProgressPhase;
@@ -65,6 +67,8 @@ export interface TestProgress {
   total: number;
   /** Where part 2 starts (the halfway break); for the bar. */
   part1: number;
+  /** D-282: the questions of the third stage; 0 when the test has none. */
+  part3: number;
   /** The next question to answer; null when the child is not on a question (a grid, the break, the facts, the end). */
   current: { number: number; part: ProgressPart; prompt: string | null } | null;
   /** When the child reached what they are doing now, and what that moment was: "shown", "last answer". */
@@ -95,7 +99,8 @@ export function testProgress(t: ProgressInput, now: number): TestProgress {
   const { lengths: l } = t;
   const part1 = l.stage1;
   // Before routing, the child's screen counts the longest stored form (testStep); once routed, the routed one.
-  const total = part1 + (t.route ? l[t.route] : Math.max(l.up, l.stay, l.down));
+  const part3 = t.stage3Route === "up" ? l.stage3Up ?? 0 : t.stage3Route === "down" ? l.stage3Down ?? 0 : 0;
+  const total = part1 + (t.route ? l[t.route] : Math.max(l.up, l.stay, l.down)) + part3;
   const n = Math.min(t.answered, total);
   // A test from before the stage 1 lock can have Part 2 answers and no stored route (restoreSession routes it by its
   // Part 1 answers). Its route is not known here: it counts as Part 2, without a prompt, and never as closed too early.
@@ -111,13 +116,13 @@ export function testProgress(t: ProgressInput, now: number): TestProgress {
 
   const next = n < total && (n < part1 || t.route || legacy) ? {
     number: n + 1,
-    part: (n < part1 ? "Part 1" : "Part 2") as ProgressPart,
+    part: (n < part1 ? "Part 1" : n < total - part3 ? "Part 2" : "Part 3") as ProgressPart,
     prompt: t.nextPrompt,
   } : null;
   const of = (number: number) => `${number} of ${total}`;
   const shownNow = t.lastShown?.position === n ? t.lastShown.at : null;
   const lastAnswer = { since: t.lastAnswerAt ?? t.startedAt, sinceText: t.lastAnswerAt ? "last answer" : "started" };
-  const base = { answered: n, total, part1, facts, lastActivityAt, current: null, open: true };
+  const base = { answered: n, total, part1, part3, facts, lastActivityAt, current: null, open: true };
   const onQuestion = (): TestProgress => ({
     ...base, phase: "question", current: next, text: `Next question: ${of(n + 1)}`, short: `Next: Q ${of(n + 1)}`,
     ...(shownNow ? { since: shownNow, sinceText: "shown" } : lastAnswer),
@@ -145,7 +150,7 @@ export function testProgress(t: ProgressInput, now: number): TestProgress {
     if (t.breakEndedAt) return { ...base, phase: "facts", text: "On the quick facts start screen", short: "Quick facts next", since: t.breakEndedAt, sinceText: "break ended" };
     return { ...base, phase: "break", text: "At the halfway break", short: "Halfway", ...lastAnswer };
   }
-  // Part 2. "Done checking" on Part 2 writes nothing, so the grid and the last step look the same.
+  // Part 2 and Part 3 (D-282). "Done checking" on the last part writes nothing, so the grid and the last step look the same.
   if (n < total) return onQuestion();
-  return { ...base, phase: "check", text: "Checking the Part 2 answers, or on the last step", short: "Checking or finishing", ...lastAnswer };
+  return { ...base, phase: "check", text: `Checking the ${part3 ? "Part 3" : "Part 2"} answers, or on the last step`, short: "Checking or finishing", ...lastAnswer };
 }
