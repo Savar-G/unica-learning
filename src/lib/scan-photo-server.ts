@@ -48,8 +48,13 @@ export async function scanView(db: SupabaseClient<Database>, parent: string, id:
   return { ...photo, state: live && !active ? "expired" : photo.state, child: child?.first_name, book: book?.number, day: page?.day_label, page: page?.page_number };
 }
 
+/** Removes the photo and every file derived from it. A listing failure stays retryable: reconcile refuses while any file remains. */
 export async function cleanupScanPhoto(db: SupabaseClient<Database>, parent: string, id: string) {
-  const { error } = await db.storage.from(SCAN_BUCKET).remove([scanPath(parent, id)]);
+  const bucket = db.storage.from(SCAN_BUCKET);
+  const listed = await bucket.list(`${parent}/${id}`, { limit: 1000 });
+  if (listed.error) return false;
+  const files = new Set([scanPath(parent, id), ...listed.data.map((o) => `${parent}/${id}/${o.name}`)]);
+  const { error } = await bucket.remove([...files]);
   if (error) return false;
   const result = await db.rpc("reconcile_scan_cleanup", { p_id: id });
   return !result.error && result.data;

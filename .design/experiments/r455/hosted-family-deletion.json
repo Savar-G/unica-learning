@@ -1,0 +1,17 @@
+{
+  "credential": "Dedicated retention_worker key",
+  "result": {
+    "state": "deleted",
+    "images": 39,
+    "copies": 0
+  },
+  "beforeFiles": 29,
+  "checks": [
+    "Freeze refuses a late crop and a new job",
+    "Worker removes the photos, straightened pages and crops before Auth",
+    "Calibration and photo rows cascade",
+    "Auth user absent",
+    "Family scan folder empty",
+    "Old image route refused"
+  ]
+}

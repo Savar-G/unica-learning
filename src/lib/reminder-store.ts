@@ -234,22 +234,25 @@ export function reminderMessage(r: DueReminder, token: string, state: LoadedStat
 export type UnsubscribeState = "subscribed" | "unsubscribed" | "unknown";
 /**
  * What a token's link turns off. "reminders": the reminders and emails about our plans (a reminder's or a report
- * email's token). "maya": only the weekly Maya email (its own token, #332). Each link stops its own emails.
+ * email's token). "maya": only the weekly Maya email (its own token, #332). "monthly": only the monthly summary email
+ * (its own token, #563). Each link stops its own emails.
  */
-export type UnsubscribeScope = "reminders" | "maya";
+export type UnsubscribeScope = "reminders" | "maya" | "monthly";
 
-const OFF_KIND: Record<UnsubscribeScope, "unsubscribe" | "maya_unsubscribe"> = { reminders: "unsubscribe", maya: "maya_unsubscribe" };
+const OFF_KIND: Record<UnsubscribeScope, "unsubscribe" | "maya_unsubscribe" | "monthly_summary_unsubscribe"> = { reminders: "unsubscribe", maya: "maya_unsubscribe", monthly: "monthly_summary_unsubscribe" };
+
+const scopeOf = (kind: string): UnsubscribeScope => (kind === "maya_daily" || kind === "maya_weekly" ? "maya" : kind === "monthly_summary" ? "monthly" : "reminders");
 
 /**
- * The parent an unsubscribe token belongs to, and what it turns off, or null: a reminder's or a weekly Maya email's
- * token (email_log), or a report email's (reports, #80).
+ * The parent an unsubscribe token belongs to, and what it turns off, or null: a reminder's, a weekly Maya email's or a
+ * monthly summary email's token (email_log), or a report email's (reports, #80).
  */
 async function tokenParent(admin: SupabaseClient<Database>, token: unknown): Promise<{ parentId: string; scope: UnsubscribeScope } | null> {
   const hash = hashToken(token);
   if (!hash) return null;
   const { data, error } = await admin.from("email_log").select("parent_id, kind").eq("unsubscribe_hash", hash).maybeSingle();
   if (error) throw new Error(`unsubscribe lookup: ${error.message}`);
-  if (data) return { parentId: data.parent_id, scope: (data.kind === "maya_daily" || data.kind === "maya_weekly") ? "maya" : "reminders" };
+  if (data) return { parentId: data.parent_id, scope: scopeOf(data.kind) };
   const report = await admin.from("reports").select("parent_id").eq("unsubscribe_hash", hash).maybeSingle();
   if (report.error) throw new Error(`unsubscribe lookup: ${report.error.message}`);
   return report.data ? { parentId: report.data.parent_id, scope: "reminders" } : null;
