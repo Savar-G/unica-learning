@@ -1,25 +1,26 @@
 import "server-only";
 import {
   REPORTED_STRAND_NAMES, areaLevels, attemptState, storedLevelCertainty,
-  type AreaAnswer, type AreaLabel, type Attempt, type Grade, type Level, type ReportModel, type ReportedStrand,
+  type AreaAnswer, type AreaLabel, type Attempt, type Grade, type Level, type ReportModel, type ReportedStrand, type SkillTestResult,
 } from "@/lib/assessment";
 import { childStage, type StageView, type TabSwitches, type TestFact } from "@/lib/child-stage";
-import { addMonths, familyZone, localDateTime, localDay, localMonth, type FamilyZone } from "@/lib/family-time";
+import { addMonths, familyZone, formatCalendarDate, localDateTime, localDay, localMonth, type FamilyZone } from "@/lib/family-time";
 import type { LearningRow } from "@/lib/learning-style";
 import { firstDeliveryMonth, offeredSummaryMonth } from "@/lib/monthly-summary-offer";
 import { nextBook, type NextBook } from "@/lib/next-book";
 import type { ParentPlan } from "@/lib/parent-plan";
 import type { CurriculumId } from "@/lib/signup";
+import { skillMapView, type SkillAreaView } from "@/lib/skill-map-view";
 import { workbookDelivery } from "@/lib/workbook-email";
 
 // The parent view module (spec #544): the one server module for the dashboard's data. One seam: the reader, which is
 // always one signed-in parent's and sees only that family's rows:
 //   - Supabase (src/lib/parent-view-server.ts);
 //   - in memory (src/lib/parent-view-memory.ts), for tests.
-// The output holds only fields named here, copied one by one. The reader has no read of child_profiles,
-// learner_profiles, learning_events or maya_calls, because parents get nothing from them directly (#295). Later tickets
-// add the Progress (#561) read. The Workbooks read (#558) is `readWorkbooks`; the Overview read (#560) is `readOverview`;
-// the monthly summary's (#562) is `readMonthlySummary`.
+// The output holds only fields named here, copied one by one. The reader has no read of child_profiles, learning_events
+// or maya_calls, and of learner_profiles only each standard's tally (`skillTests`), because parents get nothing from them
+// directly (#295). The Workbooks read (#558) is `readWorkbooks`; the Overview read (#560) is `readOverview`; the monthly
+// summary's (#562) is `readMonthlySummary`; the Progress read (#561) is `readProgress`.
 
 export interface ChildRecord {
   id: string;
@@ -101,6 +102,10 @@ export interface ParentViewReader {
    * up to, not including, `to` (epoch ms). Only a number: never a call's words, notes or outcome.
    */
   mayaCalls(childId: string, from: number, to: number): Promise<number>;
+  /** Each finished test's tally of each standard it asked, for one child: what the skill state rule reads, and nothing else. */
+  skillTests(childId: string): Promise<SkillTestResult[]>;
+  /** The BC standards of one of the family's shipped workbooks. */
+  workbookStandards(workbookId: string): Promise<string[]>;
 }
 
 /** A finished test, as the report reads it. */
@@ -409,6 +414,50 @@ async function testLevel(reader: ParentViewReader, test: TestRecord, schoolGrade
 async function readFirstDeliveryMonth(reader: ParentViewReader, childId: string, zone: FamilyZone): Promise<string | null> {
   const [deliveries, corrections] = await Promise.all([reader.deliveries(), reader.deliveryCorrections()]);
   return firstDeliveryMonth(deliveries, corrections, childId, zone);
+}
+
+/** The Progress tab (#561). No marks and no progress line: they come with #565. What we've learned has no counted fact before marks. */
+export interface ProgressView {
+  child: ChildView;
+  /** From the newest finished test; null before its report is ready. */
+  level: LevelTileView | null;
+  /** The newest shipped workbook's number; null before the first one ships. */
+  workbookNumber: number | null;
+  /** The skill map by reported area; empty with no level and no workbook. */
+  areas: SkillAreaView[];
+}
+
+/**
+ * One child's Progress tab (#561). Null for a child that is not the parent's, and for a child with no Progress tab: its
+ * stage has none, or the switch for #194 is off. The working level comes from the newest finished test with a report, as
+ * on the Overview. The states come from the rule (src/lib/skill-map-view.ts), and nothing comes from an AI finding.
+ */
+export async function readProgress(reader: ParentViewReader, childId: string, now: number): Promise<ProgressView | null> {
+  const child = await readChild(reader, childId, now);
+  if (!child || !child.tabs.includes("progress")) return null;
+  const [children, family, tests, reports, workbooks, results] = await Promise.all([
+    reader.children(), reader.family(), reader.tests(), reader.reports(), reader.shippedWorkbooks(), reader.skillTests(child.id),
+  ]);
+  const zone = familyZone({ timeZone: family.timeZone, postal: family.postal, province: children[0]?.province ?? null });
+  const latest = tests
+    .filter((t) => t.childId === child.id && t.status === "completed" && t.completedAt !== null)
+    .reduce<TestRecord | null>((best, t) => (!best || t.completedAt! > best.completedAt! ? t : best), null);
+  const { level } = latest && reports.some((r) => r.assessmentId === latest.id)
+    ? await testLevel(reader, latest, child.schoolGrade, zone)
+    : { level: null };
+  const book = workbooks.filter((w) => w.childId === child.id).sort((a, b) => b.number - a.number)[0];
+  const workbookStandards = book ? await reader.workbookStandards(book.id) : [];
+  const areas = skillMapView({
+    firstName: child.firstName,
+    schoolGrade: child.schoolGrade,
+    workingLevel: level?.working ?? null,
+    // Field by field: a tally reaches the rule, and nothing else of the record does.
+    tests: results.map((r) => ({ standard: r.standard, correct: r.correct, total: r.total, at: r.at })),
+    workbookStandards,
+    workbookNumber: book?.number ?? null,
+    day: (at) => formatCalendarDate(localDay(at, zone), { month: "long", day: "numeric" }),
+  });
+  return { child, level, workbookNumber: book?.number ?? null, areas };
 }
 
 /** The monthly summary (#562, D-248): one child's calendar month in family time, for the one-page PDF. */

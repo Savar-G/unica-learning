@@ -1,0 +1,19 @@
+{
+  "round": "r561",
+  "ticket": "#561 (spec #544, parent dashboard): the Progress tab: skill map by reported area, and the panel on a selected skill",
+  "route": "Built in src/ behind the dashboard switch and PROGRESS_TAB_ENABLED (D-236). Screenshots of the real page on next dev, for Savar's one review page (D-249). Not a variant round: the look is the mock's 'Skill map' block (D-242).",
+  "picked": null,
+  "picked_by": "waiting for Savar's review page (D-249)",
+  "captured": "2026-11-05, Aside repl, signed in as the test family of the child 'QA E2E Three' (in test_accounts), with PROGRESS_TAB_ENABLED=on only in local dev. Real stored data, nothing written: school grade 3, working level 4 (Early sign), one finished test, Workbook 2 shipped with one standard (3.3).",
+  "viewports": { "desktop": [1280, 1320], "desktop-panel": [1280, 900], "phone": [390, 3000], "phone-panel": [390, 844] },
+  "shots": [
+    { "file": "progress-desktop.png", "viewport": "desktop", "state": "19 tiles under four areas: the 18 Grade 4 standards and 3.3 from the workbook, marked Grade 3. 2 Mastered (3.3 and 4.11, the only shown standards with every answer right and at least 2 answers), 17 Not started." },
+    { "file": "panel-desktop.png", "viewport": "desktop-panel", "state": "The panel on a Mastered skill: the state, one line with the test's day, the skills inside it, and what comes next." },
+    { "file": "progress-phone.png", "viewport": "phone", "state": "The same map in one column, Progress active in the bottom bar, no horizontal scroll (scrollWidth 390 at 390)." },
+    { "file": "panel-phone.png", "viewport": "phone-panel", "state": "The panel as a sheet from the bottom, on a Not started skill: no 'What comes next' section, because code does not know it." }
+  ],
+  "not_captured": [
+    "Working on and Needs review tiles: the test family's real data has none, and the legend shows their colours. The only workbook standard is already Mastered. Covered by src/lib/skill-map-view.test.ts.",
+    "The one line with no map, and the report's note on an unreliable test: covered by the page test."
+  ]
+}

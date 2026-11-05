@@ -95,8 +95,21 @@ export interface MemoryPage {
   id: string;
   dayLabel: string | null;
 }
+/** One finished test's tally of one standard, as the learner profiles hold it. */
+export interface MemorySkillTest extends Owned {
+  standard: string;
+  correct: number;
+  total: number;
+  at: string;
+}
+/** One question of a workbook: its standard, as the question package names it. */
+export interface MemoryWorkbookQuestion {
+  parentId: string;
+  workbookId: string;
+  standard: string | null;
+}
 
-const TABLES = ["children", "tests", "reports", "cards", "deliveries", "workbooks", "plans", "switches", "corrections", "dispatches", "family", "results", "scans", "pages", "learning", "pin", "maya"] as const;
+const TABLES = ["children", "tests", "reports", "cards", "deliveries", "workbooks", "plans", "switches", "corrections", "dispatches", "family", "results", "scans", "pages", "learning", "pin", "maya", "skillTests", "questions"] as const;
 type Table = (typeof TABLES)[number];
 
 export interface MemoryParentViewTables {
@@ -120,6 +133,8 @@ export interface MemoryParentViewTables {
   /** One value for every parent; true when left out. */
   pinSet?: boolean | null;
   maya?: MemoryMayaGrant[];
+  skillTests?: MemorySkillTest[];
+  questions?: MemoryWorkbookQuestion[];
   fail?: Table[];
 }
 
@@ -210,6 +225,17 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
         read("maya");
         return own(tables.maya).filter((g) => g.kind === "child" && g.childId === childId && g.usedSeconds !== null && g.usedSeconds > 0
           && Date.parse(g.createdAt) >= from && Date.parse(g.createdAt) < to).length;
+      },
+      async skillTests(childId) {
+        read("skillTests");
+        return own(tables.skillTests).filter((t) => t.childId === childId);
+      },
+      async workbookStandards(workbookId) {
+        read("questions");
+        // As the database: a parent reads only the questions of a shipped workbook of the family.
+        const shipped = own(tables.workbooks).some((w) => (w.id ?? `wb-${w.childId}-${w.number}`) === workbookId && w.status === "shipped");
+        if (!shipped) return [];
+        return [...new Set(own(tables.questions).filter((q) => q.workbookId === workbookId).flatMap((q) => q.standard ?? []))];
       },
       async pinSet() {
         // As the server: a PIN that cannot be read is null, not an error.

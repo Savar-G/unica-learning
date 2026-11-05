@@ -55,6 +55,7 @@ import {
   REPORTED_STRAND,
   curriculumOrder,
   skillStateChanges,
+  profileSkillResults,
   storedProfile,
   strandCertainty,
   strandStatus,
@@ -438,7 +439,7 @@ type PlannedChanges = { changes: StandardSkillState[]; tests: string[] } | { pro
 async function plannedChanges(profiles: ChildProfileStore, childId: string, schoolGrade: Grade): Promise<PlannedChanges> {
   try {
     const { tests, workbookStandards, history } = await profiles.skillInputs(childId);
-    const results = tests.flatMap((t) => (storedProfile(t.profile)?.standards ?? []).map((s) => ({ standard: s.code, correct: s.correct, total: s.total, at: t.completedAt })));
+    const results = tests.flatMap((t) => profileSkillResults(t.profile, t.completedAt));
     return { changes: skillStateChanges({ schoolGrade, tests: results, workbookStandards, marks: MARKS_NOT_LIVE }, history), tests: tests.map((t) => t.assessmentId) };
   } catch (e) {
     const problem = problemOf(e);

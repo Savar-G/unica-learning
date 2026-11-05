@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AreaAnswer, ReportModel } from "@/lib/assessment";
-import { listChildren, readChild, readMonthlySummary, readOverview, readWorkbooks } from "@/lib/parent-view";
+import { listChildren, readChild, readMonthlySummary, readOverview, readProgress, readWorkbooks } from "@/lib/parent-view";
 import { memoryParentViewReaders, type MemoryParentViewTables, type MemoryResult, type MemoryTest, type MemoryWorkbook } from "@/lib/parent-view-memory";
 
 // The parent view module (spec #544), through its public interface, over the in-memory reader, which keeps the
@@ -103,7 +103,7 @@ describe("what a parent reads", () => {
     const readers = memoryParentViewReaders({ children: [younger, omar, leah] });
     const list = await listChildren(readers.parent("parent-1"), NOW);
     expect(list.map((c) => c.firstName)).toEqual(["Leah", "Ana"]);
-    expect(readers.reads).toEqual({ children: 1, tests: 1, reports: 1, cards: 1, deliveries: 1, workbooks: 1, plans: 1, switches: 1, corrections: 0, dispatches: 0, family: 0, results: 0, scans: 0, pages: 0, learning: 0, pin: 0, maya: 0 });
+    expect(readers.reads).toEqual({ children: 1, tests: 1, reports: 1, cards: 1, deliveries: 1, workbooks: 1, plans: 1, switches: 1, corrections: 0, dispatches: 0, family: 0, results: 0, scans: 0, pages: 0, learning: 0, pin: 0, maya: 0, skillTests: 0, questions: 0 });
   });
   it("lists a child's reports, the newest test first", async () => {
     const reader = parent({ tests: [test("old", { completedAt: NOW - 90 * HOUR }), test("new", { completedAt: NOW - 10 * HOUR })], reports: [report("old"), report("new")] });
@@ -640,5 +640,111 @@ describe("the monthly summary (#562)", () => {
       children: [{ ...leah, ...raw }, omar],
     });
     expect(JSON.stringify(view)).not.toContain(SECRET);
+  });
+});
+
+describe("the Progress tab (#561)", () => {
+  const ON = { progress: true, maya: false, scanPages: false };
+  const card = { cards: [{ parentId: "parent-1", childId: "child-1", cardSavedAt: "2026-10-05T00:00:00Z" }], switches: ON };
+  const finished = test("t1", { completedAt: Date.parse("2026-10-30T18:00:00Z") });
+  const level = { working: 3, top: 3, certainty: "clear", confidence: "high" } as unknown as ReportModel["level"];
+  const result: MemoryResult = { parentId: "parent-1", childId: "child-1", assessmentId: "t1", level, answers: [] };
+  const withTest = { ...card, tests: [finished], reports: [report("t1")], results: [result] };
+  const tally = (standard: string, correct: number, total: number) => ({ parentId: "parent-1", childId: "child-1", standard, correct, total, at: "2026-10-30T18:00:00Z" });
+  const read = (tables: Parameters<typeof parent>[0]) => readProgress(parent(tables), "child-1", NOW);
+  const tile = (view: Awaited<ReturnType<typeof read>>, code: string) => view!.areas.flatMap((a) => a.tiles).find((t) => t.code === code);
+
+  describe("who sees it", () => {
+    it("is hidden with the switch for #194 off, also for a child with a test and a card", async () => {
+      const off = await read({ ...withTest, switches: { progress: false, maya: false, scanPages: false } });
+      expect(off).toBeNull();
+    });
+    it("is hidden with every switch left out: a normal family's stage gets no Progress tab", async () => {
+      const tables = { ...withTest, switches: undefined };
+      expect(await read(tables)).toBeNull();
+      expect((await listChildren(parent(tables), NOW))[0].tabs).toEqual(["overview", "workbooks", "assessment", "account"]);
+    });
+    it("is hidden in a stage with no Progress tab", async () => {
+      expect(await read({ switches: ON })).toBeNull();
+      expect(await read({ tests: [finished], reports: [report("t1")], results: [result], switches: ON })).toBeNull();
+    });
+    it("reads another family's child as not found", async () => {
+      const readers = memoryParentViewReaders({
+        children: [leah, omar], switches: ON,
+        cards: [{ parentId: "parent-2", childId: "child-2", cardSavedAt: "2026-10-05T00:00:00Z" }],
+      });
+      expect(await readProgress(readers.parent("parent-1"), "child-2", NOW)).toBeNull();
+      expect(await readProgress(readers.parent("parent-2"), "child-2", NOW)).not.toBeNull();
+      expect(readers.reads.skillTests).toBe(1);
+    });
+    it("makes no read of the tallies when the tab is hidden", async () => {
+      const readers = memoryParentViewReaders({ children: [leah], ...withTest, switches: { progress: false, maya: false, scanPages: false } });
+      await readProgress(readers.parent("parent-1"), "child-1", NOW);
+      expect(readers.reads.skillTests).toBe(0);
+    });
+  });
+
+  describe("the map", () => {
+    it("shows the working level's grade with each state, from the tallies of only this child", async () => {
+      const view = await read({ ...withTest, skillTests: [tally("3.1", 2, 2), tally("3.2", 0, 4), { ...tally("3.3", 2, 2), childId: "child-2" }] });
+      expect(view!.level).toMatchObject({ working: 3, testedOn: "2026-10-30" });
+      expect(tile(view, "3.1")).toMatchObject({ state: "mastered", why: "Leah got every question on this right on the test on October 30." });
+      expect(tile(view, "3.2")?.state).toBe("needs_review");
+      expect(tile(view, "3.3")?.state).toBe("not_started");
+      expect(view!.areas.map((a) => a.area)).toEqual(["number", "fractions", "algebra", "shapes"]);
+    });
+    it("gives a Grade 2 child three areas", async () => {
+      const grade2 = { ...leah, grade: 2 };
+      const view = await readProgress(memoryParentViewReaders({ children: [grade2], ...withTest, results: [{ ...result, level: { ...level, working: 2 } }] }).parent("parent-1"), "child-1", NOW);
+      expect(view!.areas.map((a) => a.area)).toEqual(["number", "algebra", "shapes"]);
+    });
+    it("reads the newest workbook's standards for Working on, and adds one from another grade", async () => {
+      const view = await read({
+        ...withTest,
+        workbooks: [{ parentId: "parent-1", childId: "child-1", number: 1, status: "shipped" }, { parentId: "parent-1", childId: "child-1", number: 2, status: "shipped" }],
+        questions: [
+          { parentId: "parent-1", workbookId: "wb-child-1-1", standard: "3.5" },
+          { parentId: "parent-1", workbookId: "wb-child-1-2", standard: "3.1" },
+          { parentId: "parent-1", workbookId: "wb-child-1-2", standard: "2.1" },
+          { parentId: "parent-1", workbookId: "wb-child-1-2", standard: null },
+        ],
+      });
+      expect(view!.workbookNumber).toBe(2);
+      expect(tile(view, "3.1")).toMatchObject({ state: "working_on", why: "This skill is in Workbook 2, Leah's current workbook." });
+      expect(tile(view, "2.1")).toMatchObject({ state: "working_on", grade: 2 });
+      expect(tile(view, "3.5")?.state).toBe("not_started");
+    });
+    it("uses the family's time for the day in a line", async () => {
+      const lateAtNight = Date.parse("2026-10-31T02:00:00Z");
+      const view = await read({ ...withTest, family: { timeZone: "America/Vancouver", postal: null }, tests: [{ ...finished, completedAt: lateAtNight }], skillTests: [{ ...tally("3.1", 2, 2), at: "2026-10-31T02:00:00Z" }] });
+      expect(tile(view, "3.1")?.why).toContain("on October 30");
+    });
+    it("has no map while the newest test's report is not ready, and no older result in its place", async () => {
+      const newer = test("t2", { completedAt: NOW - HOUR });
+      const view = await read({ ...withTest, tests: [finished, newer] });
+      expect(view).toMatchObject({ level: null, areas: [] });
+    });
+    it("has no map with a saved card and no test", async () => {
+      expect(await read(card)).toMatchObject({ level: null, workbookNumber: null, areas: [] });
+    });
+    it("keeps the report's note on a test the report calls unreliable", async () => {
+      const view = await read({ ...withTest, results: [{ ...result, unreliable: true }] });
+      expect(view!.level?.unreliable).toBe(true);
+    });
+  });
+
+  describe("what leaves the module", () => {
+    it("holds only the named fields: no raw record field, no marks, no counts", async () => {
+      const raw = { ...tally("3.1", 2, 2), secret: "RAW-PROFILE", ai: "AI-GUESS" };
+      const view = await read({ ...withTest, skillTests: [raw] });
+      expect(Object.keys(view!).sort()).toEqual(["areas", "child", "level", "workbookNumber"]);
+      expect(Object.keys(view!.areas[0]).sort()).toEqual(["area", "name", "tiles"]);
+      expect(Object.keys(view!.areas[0].tiles[0]).sort()).toEqual(["code", "grade", "name", "next", "skills", "state", "why"]);
+      const text = JSON.stringify(view!.areas);
+      for (const bad of ["RAW-PROFILE", "AI-GUESS", '"correct"', '"total"', '"evidenceAt"', '"reason"']) expect(text).not.toContain(bad);
+    });
+    it("throws when the tallies cannot be read: an empty read would show every skill as Not started", async () => {
+      await expect(read({ ...withTest, fail: ["skillTests"] })).rejects.toThrow("skillTests read failed");
+    });
   });
 });

@@ -13,6 +13,7 @@ import { RUSH_RUN, paceOf } from "./rushing";
 import { fromRemovedRound } from "./session";
 import type { Interest, LearningGoal, LearningStyle, MathFeeling, WeeklyTime } from "@/lib/learning-style";
 import { BC_SKILL_MAP } from "./skill-map";
+import type { SkillTestResult } from "./skill-state";
 import type { Grade, Level, LevelResult, Placement, Province, Question, ReportedStrand, Route, StrandStatus } from "./types";
 
 /** The version of the profile's JSON. A change that a reader of stored profiles must know about adds one. */
@@ -470,6 +471,14 @@ export function storedProfile(value: unknown): LearnerProfile | null {
     unknowns: { ...profile.unknowns, earlySigns: { ...profile.unknowns.earlySigns, level: certainty === "early-sign" } },
     ...(ai ? { ai } : {}),
   };
+}
+
+/**
+ * What the skill states read from one stored profile (src/lib/assessment/skill-state.ts): its tally of each standard, at
+ * the time its test finished. Nothing else leaves the profile. A profile of another schema version gives nothing.
+ */
+export function profileSkillResults(profile: unknown, finishedAt: string): SkillTestResult[] {
+  return (storedProfile(profile)?.standards ?? []).map((s) => ({ standard: s.code, correct: s.correct, total: s.total, at: finishedAt }));
 }
 
 /** D-145: a stored struggle without its wrong answers to the removed extra round's questions (#190). */

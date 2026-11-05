@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { answersAddUp, reportShowsPlacement } from "@/lib/area-level-check";
-import { fromRemovedRound, restoreSession, testAreaAnswers, type AreaAnswer, type Grade } from "@/lib/assessment";
+import { fromRemovedRound, profileSkillResults, restoreSession, testAreaAnswers, type AreaAnswer, type Grade } from "@/lib/assessment";
 import type { Database } from "@/lib/database";
 import { LEARNING_COLUMNS } from "@/lib/learning-style";
 import type { ParentViewReader } from "@/lib/parent-view";
@@ -28,6 +28,9 @@ import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 // shows no bars, as the bars would rest on the new score.
 // The monthly summary (#562) counts Maya calls in the minutes ledger (maya_minute_grants, which a parent reads): the
 // database counts one child's calls that used time in the month, so no row leaves it and no page of rows can hide one.
+// The Progress tab (#561): the skill states read each finished test's stored learner profile with the secret key, filtered
+// on the parent and the child; only each standard's tally leaves this read (profileSkillResults). A shipped workbook's
+// standards come from the session; only the code in each question package leaves that read.
 // Plan state: the plan state table does not exist yet (#548), so `plans` returns no rows and every plan reads as
 // `unknown`. No family can be `ended` until #548 fills this read in.
 // A database error throws, and so does a missing secret key: an empty read would show a paying family "Start the test".
@@ -135,6 +138,25 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       if (error) throw new Error(`maya calls read: ${error.message}`);
       if (count === null) throw new Error("maya calls read: no count");
       return count;
+    },
+    async skillTests(childId) {
+      if (!admin) throw new Error("skill tests read: no secret key");
+      const [tests, profiles] = await Promise.all([
+        admin.from("assessments").select("id, completed_at").eq("parent_id", parent).eq("child_id", childId).eq("status", "completed"),
+        admin.from("learner_profiles").select("assessment_id, profile").eq("parent_id", parent).eq("child_id", childId),
+      ]);
+      if (tests.error) throw new Error(`skill tests read: ${tests.error.message}`);
+      if (profiles.error) throw new Error(`learner profiles read: ${profiles.error.message}`);
+      const finished = new Map(tests.data.flatMap((t) => (t.completed_at ? [[t.id, new Date(t.completed_at).toISOString()] as const] : [])));
+      return profiles.data.flatMap((p) => {
+        const at = finished.get(p.assessment_id);
+        return at ? profileSkillResults(p.profile, at) : [];
+      });
+    },
+    async workbookStandards(workbookId) {
+      const { data, error } = await session.from("workbook_questions").select("standard:package->skill->>standard").eq("workbook_id", workbookId);
+      if (error) throw new Error(`workbook standards read: ${error.message}`);
+      return [...new Set(data.flatMap((q) => q.standard ?? []))];
     },
     async switches() {
       const [scanPages, testFamily] = await Promise.all([
