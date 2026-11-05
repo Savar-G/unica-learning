@@ -3,7 +3,7 @@ import type { AdStep } from "@/lib/ad-visit-steps";
 import type { AnswerChange } from "@/lib/answer-events";
 import type { EventResult, EventSource, EvidenceKind } from "@/lib/learning-events";
 import type { QuestionRef } from "@/lib/question-package";
-import type { AnonymousTestCopy, AttemptStatus, FactsTest, HelpAnswer, Placement, Province, ReportModel, Route, StoredTest } from "@/lib/assessment";
+import type { AnonymousTestCopy, AttemptStatus, FactsTest, HelpAnswer, Placement, Province, ReportModel, Route, SkillEvidence, SkillState, SkillStateReason, StoredTest } from "@/lib/assessment";
 import type { LogKind, LogStatus } from "@/lib/reminders";
 import type { PlanId } from "@/lib/site";
 import type { TestDevice } from "@/lib/test-context";
@@ -54,6 +54,7 @@ type ColumnTypes = KnownColumns<{
   maya_wording_history: { heard: WordingHistory };
   parents: { source: Record<string, string> };
   reports: { model: ReportModel };
+  skill_state_history: { state: SkillState; reason: SkillStateReason; evidence_source: SkillEvidence };
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };
   workbooks: { status: WorkbookStatus };
   workbook_drafts: { draft: GeneratedWorkbook };

@@ -75,6 +75,7 @@ export { BC_LEVEL_STANDARDS, BC_SKILL_MAP, STRAND_NAMES, skillMapProblems, type 
 export { SKILL_TAGS, skillTagProblems, tagSkills, templateSkills, type SkillTag, type TemplateSkill } from "./skill-tags";
 // The learner profile (#196): the facts code writes about one finished test.
 export * from "./profile";
+export * from "./skill-state";
 // The learner profile's AI parts (#197): what the AI reads and the checks on what it writes.
 export { PROFILE_AI_SCHEMA, PROFILE_AI_TEXT_MAX, checkProfileAi, profileAiFacts, type ProfileAiCheck, type ProfileAiDrop } from "./profile-ai";
 // What the parent's report shows from the learner profile (#198).

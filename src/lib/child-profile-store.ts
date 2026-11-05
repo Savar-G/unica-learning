@@ -14,7 +14,9 @@ import { LEARNING_COLUMNS, fromRow } from "@/lib/learning-style";
 // save; 55000 family_scope refuses one on another family's test, but for a test that no longer exists it means the test
 // was deleted after the inputs were read, so the rebuild builds again (review R345-1). The foreign key to the child
 // under its parent (23503) refuses a save; the one to the test (23503 too) means the test is gone: build again. The
-// inputs read the child, its finished tests and which have a stored learner profile, then that one profile. Tests use
+// inputs read the child, its finished tests and which have a stored learner profile, then that one profile. The skill
+// states read every finished test's stored profile and the latest shipped workbook's standards, and write through the
+// service function record_skill_state_changes (migration add_skill_state_history). Tests use
 // src/lib/child-profile-memory.ts.
 
 const message = (error: { message: string }) => error.message;
@@ -81,6 +83,36 @@ export function childProfileStore(admin: SupabaseClient<Database>): ChildProfile
         throw new Error(`child profile save: ${message(error)}`);
       }
       return data.length > 0 ? { revision: data[0].revision, buildToken: data[0].build_token } : "changed";
+    },
+    async skillInputs(childId) {
+      const [tests, profiles, book] = await Promise.all([
+        admin.from("assessments").select("id, completed_at").eq("child_id", childId).eq("status", "completed"),
+        admin.from("learner_profiles").select("assessment_id, profile").eq("child_id", childId),
+        admin.from("workbooks").select("id").eq("child_id", childId).eq("status", "shipped").order("number", { ascending: false }).limit(1).maybeSingle(),
+      ]);
+      for (const [read, r] of [["tests", tests], ["learner profiles", profiles], ["workbook", book]] as const) {
+        if (r.error) throw new Error(`skill state ${read} load: ${message(r.error)}`);
+      }
+      const finished = new Map((tests.data ?? []).flatMap((t) => (t.completed_at ? [[t.id, new Date(t.completed_at).toISOString()] as const] : [])));
+      let workbookStandards: string[] = [];
+      if (book.data) {
+        const questions = await admin.from("workbook_questions").select("standard:package->skill->>standard").eq("workbook_id", book.data.id);
+        if (questions.error) throw new Error(`skill state workbook questions load: ${message(questions.error)}`);
+        workbookStandards = [...new Set(questions.data.flatMap((q) => q.standard ?? []))];
+      }
+      return {
+        tests: (profiles.data ?? []).flatMap((p) => {
+          const completedAt = finished.get(p.assessment_id);
+          return completedAt ? [{ assessmentId: p.assessment_id, completedAt, profile: p.profile }] : [];
+        }),
+        workbookStandards,
+      };
+    },
+    async recordSkillStates({ childId, parentId, buildToken, states }) {
+      const { data, error } = await admin.rpc("record_skill_state_changes", { p_child: childId, p_parent: parentId, p_build: buildToken, p_states: toJson(states) });
+      if (error) throw new Error(`skill state history: ${message(error)}`);
+      // The function answers null when another build is stored; the generated types do not say so.
+      return data === null ? "changed" : { changes: data };
     },
   };
 }

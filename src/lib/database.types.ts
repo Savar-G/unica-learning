@@ -2168,6 +2168,54 @@ export type Database = {
         }
         Relationships: []
       }
+      skill_state_history: {
+        Row: {
+          changed_at: string
+          child_id: string
+          evidence_source: string
+          id: number
+          parent_id: string
+          reason: string
+          standard: string
+          state: string
+        }
+        Insert: {
+          changed_at?: string
+          child_id: string
+          evidence_source: string
+          id?: never
+          parent_id: string
+          reason: string
+          standard: string
+          state: string
+        }
+        Update: {
+          changed_at?: string
+          child_id?: string
+          evidence_source?: string
+          id?: never
+          parent_id?: string
+          reason?: string
+          standard?: string
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "skill_state_history_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "skill_state_history_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       test_accounts: {
         Row: {
           marked_at: string
@@ -4433,6 +4481,15 @@ export type Database = {
       record_report_email_click: {
         Args: { p_parent: string; p_report: string }
         Returns: undefined
+      }
+      record_skill_state_changes: {
+        Args: {
+          p_build: string
+          p_child: string
+          p_parent: string
+          p_states: Json
+        }
+        Returns: number
       }
       recover_maya_chat_message: {
         Args: { p_child: string; p_parent: string }

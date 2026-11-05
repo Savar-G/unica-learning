@@ -48,6 +48,13 @@ const TESTS = [
   { id: UNSCORED, completedAt: "2026-10-25T18:00:00.000Z", profile: null },
 ];
 
+// The child's workbooks: an older shipped one, the latest shipped one (a standard twice), and a newer draft.
+const WORKBOOKS = [
+  { id: "00000000-0000-4000-8000-0000000000b1", number: 1, status: "shipped" as const, standards: ["3.1"] },
+  { id: "00000000-0000-4000-8000-0000000000b2", number: 2, status: "shipped" as const, standards: ["3.2", "3.3", "3.2"] },
+  { id: "00000000-0000-4000-8000-0000000000b3", number: 3, status: "draft" as const, standards: ["3.6"] },
+];
+
 function fakePostgrest(): ChildProfileStore {
   const tables: Record<string, Record<string, unknown>[]> = {
     children: [
@@ -61,19 +68,34 @@ function fakePostgrest(): ChildProfileStore {
     ],
     learner_profiles: TESTS.filter((t) => t.profile).map((t) => ({ assessment_id: t.id, child_id: CHILD, profile: t.profile })),
     child_profiles: [],
+    workbooks: WORKBOOKS.map((w) => ({ id: w.id, child_id: CHILD, number: w.number, status: w.status })),
+    workbook_questions: WORKBOOKS.flatMap((w) => w.standards.map((standard) => ({ workbook_id: w.id, package: { skill: { standard } } }))),
   };
+  const history: { child_id: string; standard: string; state: string }[] = [];
   const fenced = [FENCED_PARENT];
   const db = createClient("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input, init) => {
     // A request whose signal is aborted fails as fetch fails.
     if (init?.signal?.aborted) throw new DOMException("The operation was aborted.", "AbortError");
     const url = new URL(String(input));
     const table = url.pathname.replace("/rest/v1/", "");
+    // public.record_skill_state_changes: the fence, then the build token, then one row per changed state.
+    if (table === "rpc/record_skill_state_changes") {
+      const { p_child, p_parent, p_build, p_states } = JSON.parse(String(init?.body));
+      if (fenced.includes(p_parent)) return Response.json({ code: "55000", message: "family_unavailable" }, { status: 400 });
+      if (!tables.child_profiles.some((r) => r.child_id === p_child && r.parent_id === p_parent && r.build_token === p_build)) return Response.json(null);
+      const changed = (p_states as { standard: string; state: string }[]).filter((s) => (history.findLast((h) => h.child_id === p_child && h.standard === s.standard)?.state ?? "not_started") !== s.state);
+      history.push(...changed.map((s) => ({ child_id: p_child, standard: s.standard, state: s.state })));
+      return Response.json(changed.length);
+    }
     const rows = tables[table];
     if (!rows) throw new Error(`unexpected request ${url.pathname}`);
     const filters = [...url.searchParams].filter(([column]) => !["select", "order", "limit"].includes(column));
     if (!filters.every(([, test]) => test.startsWith("eq."))) throw new Error(`unexpected filter ${url.search}`);
     const hit = rows.filter((r) => filters.every(([column, test]) => String(r[column]) === test.slice(3)));
-    const pick = (list: Record<string, unknown>[]) => list.map((r) => Object.fromEntries((url.searchParams.get("select") ?? "*").split(",").map((c) => c.trim()).map((c) => [c, r[c]])));
+    if (url.searchParams.get("order") === "number.desc") hit.sort((a, b) => Number(b.number) - Number(a.number));
+    if (url.searchParams.has("limit")) hit.splice(Number(url.searchParams.get("limit")));
+    const cell = (r: Record<string, unknown>, c: string) => (c === "standard:package->skill->>standard" ? ["standard", (r.package as { skill: { standard: string } }).skill.standard] : [c, r[c]]);
+    const pick = (list: Record<string, unknown>[]) => list.map((r) => Object.fromEntries((url.searchParams.get("select") ?? "*").split(",").map((c) => c.trim()).map((c) => cell(r, c))));
     const one = init?.headers && new Headers(init.headers).get("accept") === "application/vnd.pgrst.object+json";
     const answer = (list: Record<string, unknown>[]) => (one ? (list.length ? Response.json(pick(list)[0]) : Response.json({ code: "PGRST116", message: "0 rows" }, { status: 406 })) : Response.json(pick(list)));
     if (!init?.method || init.method === "GET") return answer(hit);
@@ -105,6 +127,7 @@ function memory(): ChildProfileStore {
     tests: [...TESTS.map((t) => ({ ...t, childId: CHILD })), { id: OTHER_TEST, childId: OTHER_CHILD, completedAt: "2026-10-01T18:00:00.000Z", profile: null }],
     learning: { [CHILD]: LEARNING },
     deleting: [FENCED_PARENT],
+    workbooks: WORKBOOKS.map((w) => ({ ...w, childId: CHILD })),
   }).profiles;
 }
 
@@ -146,6 +169,29 @@ describe.each([["Supabase", fakePostgrest], ["in-memory", memory]] as const)("th
     expect(await store.save({ childId: CHILD, parentId: PARENT, assessmentId: OTHER_TEST, profile: PROFILE }, null)).toEqual({ refused: expect.stringContaining("family_scope") });
     expect(await store.current(FENCED_CHILD)).toBeNull();
     expect(await store.current(CHILD)).toBeNull();
+  });
+
+  it("gives the skill states every finished test with a stored profile, and the latest shipped workbook's standards", async () => {
+    const store = open();
+    const inputs = await store.skillInputs(CHILD);
+    expect(inputs.tests.map((t) => t.assessmentId).sort()).toEqual([OLD, NEW]);
+    expect(inputs.tests.find((t) => t.assessmentId === NEW)).toEqual({ assessmentId: NEW, completedAt: expect.stringMatching(/^2026-10-20T18:00:00/), profile: expect.objectContaining({ buildId: "build-new" }) });
+    expect([...new Set(inputs.workbookStandards)].sort()).toEqual(["3.2", "3.3"]);
+    expect(await store.skillInputs(OTHER_CHILD)).toEqual({ tests: [], workbookStandards: [] });
+  });
+
+  it("adds a history row only for a changed state, only from the stored build, and never for a family being deleted", async () => {
+    const store = open();
+    const mastered = { standard: "3.3", state: "mastered", reason: "secure_on_test", evidence: "test" } as const;
+    const quiet = { standard: "3.4", state: "not_started", reason: "no_evidence", evidence: "none" } as const;
+    await store.save({ childId: CHILD, parentId: PARENT, assessmentId: NEW, profile: PROFILE }, null);
+    const { buildToken } = (await store.current(CHILD))!;
+    const row = { childId: CHILD, parentId: PARENT, buildToken };
+    expect(await store.recordSkillStates({ ...row, buildToken: "00000000-0000-4000-8000-000000000001", states: [mastered] })).toBe("changed");
+    expect(await store.recordSkillStates({ ...row, states: [mastered, quiet] })).toEqual({ changes: 1 });
+    expect(await store.recordSkillStates({ ...row, states: [mastered, quiet] })).toEqual({ changes: 0 });
+    expect(await store.recordSkillStates({ ...row, states: [{ ...mastered, state: "needs_review", reason: "failed_review", evidence: "pages" }] })).toEqual({ changes: 1 });
+    await expect(store.recordSkillStates({ childId: FENCED_CHILD, parentId: FENCED_PARENT, buildToken, states: [mastered] })).rejects.toThrow("family_unavailable");
   });
 
   // R345-1: the live fence trigger answers 55000 family_scope for a test that no longer exists, before the foreign key.
