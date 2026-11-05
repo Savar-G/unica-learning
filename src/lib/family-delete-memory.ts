@@ -11,6 +11,8 @@ export interface MemoryFamily {
   /** Every running plan, by Stripe customer. A stopped plan leaves its list. */
   plans: Record<string, string[]>;
   holds: number;
+  /** An open plan start record, as public.plan_starts with state 'open'. */
+  openPlanStart: () => boolean;
   admin: boolean;
   gone: boolean;
   fenced: boolean;
@@ -29,7 +31,7 @@ export interface MemoryFamily {
 }
 
 export function memoryFamily(over: Partial<MemoryFamily> = {}): MemoryFamily {
-  return { plans: {}, holds: 0, admin: false, gone: false, fenced: false, plansStopped: false, deleteHold: null, time: 0, fail: {}, holdBeforeRequest: false, log: [], attempts: { failed: 0, lockedUntil: null }, ...over };
+  return { plans: {}, holds: 0, openPlanStart: () => false, admin: false, gone: false, fenced: false, plansStopped: false, deleteHold: null, time: 0, fail: {}, holdBeforeRequest: false, log: [], attempts: { failed: 0, lockedUntil: null }, ...over };
 }
 
 export function memoryDeleteStore(f: MemoryFamily): FamilyDeleteStore {
@@ -50,7 +52,7 @@ export function memoryDeleteStore(f: MemoryFamily): FamilyDeleteStore {
     },
     async check() {
       if (f.fail.check) throw new Error("Database down");
-      return verdict() ?? (live() ? "busy" : "ready");
+      return verdict() ?? (live() ? "busy" : f.openPlanStart() ? "plan_start" : "ready");
     },
     async hold(_parent, token) {
       if (f.fail.hold) throw new Error("Database down");
@@ -58,6 +60,7 @@ export function memoryDeleteStore(f: MemoryFamily): FamilyDeleteStore {
       if (refused) return refused;
       const other = live();
       if (other && other.token !== token) return "busy";
+      if (f.openPlanStart()) return "plan_start";
       f.deleteHold = { token, until: f.time + HOLD_LEASE_MS };
       f.log.push("hold");
       return "held";
@@ -72,6 +75,7 @@ export function memoryDeleteStore(f: MemoryFamily): FamilyDeleteStore {
       const refused = verdict();
       if (refused) return refused;
       if (live()?.token !== token) return "busy";
+      if (f.openPlanStart()) return "plan_start";
       f.fenced = true;
       f.plansStopped = true;
       f.deleteHold = null;

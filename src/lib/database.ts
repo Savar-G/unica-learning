@@ -104,6 +104,7 @@ type NullArgs = KnownArgs<{
   // A refused start has no plan, and a plan with no trial has no first charge.
   finish_plan_start: "p_subscription" | "p_first_charge";
   note_plan_start_alert: "p_email_id" | "p_error";
+  note_plan_start_email_send: "p_email_id" | "p_error";
   finish_workbook_edit: "p_content" | "p_rendering" | "p_error";
   admin_template_stats_v2: "school_grade" | "curriculum";
   // An idle worker has no run; a worker outside git has no build.

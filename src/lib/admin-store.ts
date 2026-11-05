@@ -24,7 +24,7 @@ import type { ExportReader, ExportRow, PagedTable } from "@/lib/admin-export";
 import type { AnonymousTestRow } from "@/lib/anonymous-copy-export";
 import { WORKBOOK_FILES_BUCKET, type Workbook, type WorkbookSummary } from "@/lib/workbook-content";
 import { workbookStore } from "@/lib/workbook-store";
-import type { WorkbookEmailRecord } from "@/lib/workbook-email";
+import type { WorkbookEmailRecord, WorkbookEmailStatus } from "@/lib/workbook-email";
 import { READABLE_DRAFT_VERSIONS, type GeneratedWorkbook } from "@/lib/workbook-generator";
 import { readPaged, type DraftRendering, type RunSolve, type WorkbookRun } from "@/lib/workbook-job";
 import { RUN_COLUMNS, runFromRow } from "@/lib/workbook-job-store";
@@ -458,8 +458,15 @@ async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promi
   const workbookEmailsReadAt = Date.now();
   const openStarts = await allRows(a.db.from("plan_starts").select("card_setup_id, generation, started_at")
     .in("card_setup_id", cards.map((c) => c.id)).eq("state", "open").order("card_setup_id").order("generation"), "plan starts");
+  // The plan start emails: one per generation, on the start's record. They read as ledger rows, with the generation as the number.
+  const planEmails = await allRows(a.db.from("plan_starts").select("card_setup_id, generation, email_send_status, email_claimed_at, email_sent_at, email_subject, email_text")
+    .in("card_setup_id", cards.map((c) => c.id)).not("email_send_status", "is", null).order("card_setup_id").order("generation"), "plan start emails");
+  const planEmailRecords = planEmails.map((e) => ({
+    id: `plan-${e.card_setup_id}-${e.generation}`, card_setup_id: e.card_setup_id, kind: "plan_start" as const, workbook_number: e.generation,
+    status: e.email_send_status as WorkbookEmailStatus, claimed_at: e.email_claimed_at, sent_at: e.email_sent_at, delivery: {}, subject: e.email_subject, text_body: e.email_text,
+  }));
   const stuck = new Map(openStarts.filter((s) => workbookEmailsReadAt - Date.parse(s.started_at) >= PLAN_KEY_MS).map((s) => [s.card_setup_id, s.generation]));
-  return cards.map((c) => ({ ...c, workbookEmails: emails.filter((e) => e.card_setup_id === c.id), workbookEmailsReadAt, stuckPlanStart: stuck.get(c.id) ?? null }));
+  return cards.map((c) => ({ ...c, workbookEmails: [...emails, ...planEmailRecords].filter((e) => e.card_setup_id === c.id), workbookEmailsReadAt, stuckPlanStart: stuck.get(c.id) ?? null }));
 }
 
 export interface WaitlistRow {

@@ -2086,8 +2086,19 @@ export type Database = {
       plan_starts: {
         Row: {
           card_setup_id: string
+          email_attempts: number
+          email_claim_token: string | null
+          email_claimed_at: string | null
+          email_error: string | null
+          email_html: string | null
           email_noted_at: string | null
+          email_provider_id: string | null
+          email_send_status: string | null
+          email_sent_at: string | null
           email_state: string
+          email_subject: string | null
+          email_text: string | null
+          email_to: string | null
           ended_by: string | null
           finished_at: string | null
           first_charge_at: string | null
@@ -2105,8 +2116,19 @@ export type Database = {
         }
         Insert: {
           card_setup_id: string
+          email_attempts?: number
+          email_claim_token?: string | null
+          email_claimed_at?: string | null
+          email_error?: string | null
+          email_html?: string | null
           email_noted_at?: string | null
+          email_provider_id?: string | null
+          email_send_status?: string | null
+          email_sent_at?: string | null
           email_state?: string
+          email_subject?: string | null
+          email_text?: string | null
+          email_to?: string | null
           ended_by?: string | null
           finished_at?: string | null
           first_charge_at?: string | null
@@ -2124,8 +2146,19 @@ export type Database = {
         }
         Update: {
           card_setup_id?: string
+          email_attempts?: number
+          email_claim_token?: string | null
+          email_claimed_at?: string | null
+          email_error?: string | null
+          email_html?: string | null
           email_noted_at?: string | null
+          email_provider_id?: string | null
+          email_send_status?: string | null
+          email_sent_at?: string | null
           email_state?: string
+          email_subject?: string | null
+          email_text?: string | null
+          email_to?: string | null
           ended_by?: string | null
           finished_at?: string | null
           first_charge_at?: string | null
@@ -4752,6 +4785,15 @@ export type Database = {
         Args: { p_card: string; p_generation: number }
         Returns: boolean
       }
+      claim_plan_start_email: {
+        Args: {
+          p_card: string
+          p_generation: number
+          p_message: Json
+          p_token: string
+        }
+        Returns: boolean
+      }
       claim_scan_link_email: {
         Args: {
           p_child: string
@@ -4901,6 +4943,7 @@ export type Database = {
       }
       family_deletion_cursor: { Args: never; Returns: string }
       family_last_activity: { Args: { p: string }; Returns: string }
+      family_plan_start_open: { Args: { p: string }; Returns: boolean }
       family_retention_candidates: {
         Args: { after_id: string; page_size?: number }
         Returns: {
@@ -5075,6 +5118,17 @@ export type Database = {
             Returns: number
           }
       my_family_deletion_state: { Args: never; Returns: string }
+      note_plan_start_email_send: {
+        Args: {
+          p_card: string
+          p_email_id: string
+          p_error: string
+          p_generation: number
+          p_status: string
+          p_token: string
+        }
+        Returns: boolean
+      }
       parent_maya_note_sessions: {
         Args: { p_calls: string[] }
         Returns: {
@@ -5190,6 +5244,10 @@ export type Database = {
       release_family_deletion: {
         Args: { p: string; token: string }
         Returns: undefined
+      }
+      release_plan_start_email: {
+        Args: { p_card: string; p_generation: number; p_token: string }
+        Returns: boolean
       }
       release_workbook_edit: {
         Args: { p_id: string; p_lease: string }

@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 import type { Database } from "@/lib/database";
 import type { EmailMessage, MailTransport, SendResult } from "@/lib/email-delivery";
-import { sendWorkbookNotice, workbookEmailLedger, type WorkbookNotice } from "@/lib/workbook-email-server";
+import { planStartEmailClaim, sendPlanStartEmail, sendWorkbookNotice, workbookEmailLedger, type WorkbookNotice } from "@/lib/workbook-email-server";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/stripe", () => ({ stripe: () => null, keepSavedPlan: vi.fn() }));
@@ -108,5 +108,76 @@ describe("workbook email delivery through its public server interface", () => {
     expect([...f.rows.values()][0].status).toBe("sending");
     await ledger.sent(second!, "new-email");
     expect([...f.rows.values()][0].status).toBe("sent");
+  });
+});
+
+describe("the plan start email, one per generation (review round 5 of PR #593)", () => {
+  type Claim = { email_send_status: string; email_claim_token: string; email_claimed_at: string };
+  function planFixture() {
+    const records = new Map<number, Claim>([[1, { email_send_status: "", email_claim_token: "", email_claimed_at: "" }], [2, { email_send_status: "", email_claim_token: "", email_claimed_at: "" }]]);
+    const legacy: number[] = [];
+    const db = createClient<Database>("https://fixture.invalid", "sb_secret_synthetic", {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: async (input, init) => {
+        const url = new URL(String(input));
+        const json = (data: unknown) => new Response(JSON.stringify(data), { status: 200, headers: { "content-type": "application/json" } });
+        const body = init?.body ? JSON.parse(String(init.body)) : {};
+        if (url.pathname.endsWith("/card_setups")) return json([{ parent_id: "parent-1", child_id: "child-1" }]);
+        if (url.pathname.endsWith("/parents")) return json([{ name: "Priya", email: "real-parent@example.com", postal: "V3S 1A1", time_zone: null }]);
+        if (url.pathname.endsWith("/children")) return json([{ first_name: "Asha", province: "BC" }]);
+        // The old ledger's one key, for a head that still uses it: a second send with the same key finds it taken.
+        if (url.pathname.endsWith("/rpc/claim_workbook_email")) { legacy.push(body.p_workbook_number); return json(legacy.length === 1 ? [{ id: "e1", claim_token: body.p_token }] : []); }
+        if (url.pathname.endsWith("/workbook_emails")) return json(null);
+        if (url.pathname.endsWith("/rpc/claim_plan_start_email")) {
+          const row = records.get(body.p_generation)!;
+          if (row.email_send_status && row.email_send_status !== "failed") return json(false);
+          Object.assign(row, { email_send_status: "sending", email_claim_token: body.p_token, email_claimed_at: new Date().toISOString() });
+          return json(true);
+        }
+        if (url.pathname.endsWith("/rpc/note_plan_start_email_send")) {
+          const row = records.get(body.p_generation)!;
+          if (row.email_claim_token === body.p_token) row.email_send_status = body.p_status;
+          return json(true);
+        }
+        if (url.pathname.endsWith("/rpc/release_plan_start_email")) {
+          const row = records.get(body.p_generation)!;
+          if (row.email_claim_token === body.p_token) row.email_send_status = "";
+          return json(true);
+        }
+        if (url.pathname.endsWith("/plan_starts")) return json([records.get(Number(url.searchParams.get("generation")?.replace("eq.", "")))]);
+        throw Error(`Unexpected request: ${url.pathname}`);
+      } },
+    });
+    const messages: EmailMessage[] = [];
+    const transport: MailTransport = { async send(m) { messages.push(m); return { status: "sent", emailId: "provider-1" }; } };
+    return { db, records, messages, transport };
+  }
+  const key = (generation: number) => ({ cardId: "card-1", generation, price: 79.99, firstChargeAt: "2026-12-05T18:00:00.000Z", origin: "https://unica.test" });
+
+  it("two generations send two emails, and the same generation sends one", async () => {
+    const f = planFixture();
+    expect((await sendPlanStartEmail(f.db, key(1), f.transport)).status).toBe("sent");
+    expect((await sendPlanStartEmail(f.db, key(1), f.transport)).status).toBe("busy");
+    expect((await sendPlanStartEmail(f.db, key(2), f.transport)).status).toBe("sent");
+    expect(f.messages).toHaveLength(2);
+  });
+  it("reads each generation's claim on its own", async () => {
+    const f = planFixture();
+    await sendPlanStartEmail(f.db, key(1), f.transport);
+    expect(await planStartEmailClaim(f.db, "card-1", 1)).toBe("sent");
+    expect(await planStartEmailClaim(f.db, "card-1", 2)).toBe("pending");
+  });
+  it("gives the claim back when the time ran out, with nothing sent, so the next send goes", async () => {
+    const f = planFixture();
+    expect(await sendPlanStartEmail(f.db, key(2), f.transport, () => false)).toEqual({ status: "not_sent", released: true });
+    expect(f.messages).toEqual([]);
+    expect((await sendPlanStartEmail(f.db, key(2), f.transport)).status).toBe("sent");
+    expect(f.messages).toHaveLength(1);
+  });
+  it("a claim held for 10 minutes reads as unknown, as the email may have gone", async () => {
+    const f = planFixture();
+    Object.assign(f.records.get(1)!, { email_send_status: "sending", email_claim_token: "t", email_claimed_at: new Date(1_000_000).toISOString() });
+    expect(await planStartEmailClaim(f.db, "card-1", 1, 1_000_000 + 9 * 60_000)).toBe("pending");
+    expect(await planStartEmailClaim(f.db, "card-1", 1, 1_000_000 + 10 * 60_000)).toBe("unknown");
   });
 });

@@ -60,6 +60,24 @@ for (const state of ["waiting", "active", "unresolved"] as const) {
   });
 }
 
+// Review round 5 of PR #593: the claim keeps a family with an open plan start. The worker reports it, and nothing is read, decided or removed.
+for (const retention of [undefined, { endedAt: "2020-01-01T00:00:00Z" }]) {
+  it(`keeps a family with an open plan start on the ${retention ? "retention" : "queue"} claim`, async () => {
+    const calls: string[] = [];
+    const db = createClient("https://database.example.invalid", "synthetic-service-key", {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: async (input) => {
+        const url = new URL(input instanceof Request ? input.url : String(input));
+        const name = url.pathname.split("/").at(-1)!;
+        calls.push(name);
+        return new Response(JSON.stringify(name.startsWith("claim_family") ? { state: "plan_start" } : true), { status: 200, headers: { "content-type": "application/json" } });
+      } },
+    });
+    await expect(runFamilyDeletion(db, parent, db, Date.now() + 30_000, undefined, retention)).resolves.toEqual({ state: "plan_start" });
+    expect(calls).toEqual([retention ? "claim_family_retention" : "claim_family_deletion"]);
+  });
+}
+
 // #201: the copy without names goes through the database before any Storage or Auth removal, on every deletion path
 // (a parent's request, the retention worker and the manual route all run runFamilyDeletion).
 describe("the copy without names before a deletion", () => {

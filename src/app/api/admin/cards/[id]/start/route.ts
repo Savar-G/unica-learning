@@ -38,8 +38,9 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
     if (!s) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
     // #556: a family's deletion request reads no plans, so a plan must not start under one. Started first, this hold makes
     // the request wait for a retry that sees the plan. Requested first, the fence refuses the hold, and so does the delete's
-    // hold, from before its final plan read. A throw below may mean that the plan started, so the hold stays until a retry
-    // with the same Stripe key settles it.
+    // hold, from before its final plan read. A throw below stopped at a point it cannot name, so the hold stays until a retry.
+    // An answer ends the hold, "unconfirmed" too: Stripe may still make that plan, but the open plan start record refuses the
+    // family's deletion in the database until it resolves or an admin closes it, which can take days (#554).
     const service = adminClient();
     if (!service) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
     if (await holdPlanStart(service, card.parent_id, card.id) === "fenced") return Response.json({ ok: false, error: "family_unavailable" }, { status: 409 });
@@ -47,7 +48,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
     const result = await startPlan(s, { cardSetup: card.id, customer: card.stripe_customer_id, price, deliveryConfirmed: true });
     await endCardOperation(service, card.id);
     if (!result.ok) return Response.json(result, { status: 409 });
-    return Response.json({ ...result, confirmation: await confirm(card.id, price, result.firstChargeAt, new URL(request.url).origin) });
+    return Response.json({ ...result, confirmation: await confirm(card.id, result.generation, price, result.firstChargeAt, new URL(request.url).origin) });
   } catch (e) {
     console.error("[stripe] start plan failed", e instanceof Error ? e.message : "failed");
     return Response.json({ ok: false, error: "failed" }, { status: 502 });
@@ -55,11 +56,11 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
 }
 
 /** The plan has started, so a failed email must not read as a failed start. The admin sees the outcome. */
-async function confirm(cardId: string, price: number, firstChargeAt: string, origin: string) {
+async function confirm(cardId: string, generation: number, price: number, firstChargeAt: string, origin: string) {
   const db = adminClient();
   if (!db) return "not_sent";
   try {
-    return (await sendPlanStartEmail(db, { cardId, price, firstChargeAt, origin })).status;
+    return (await sendPlanStartEmail(db, { cardId, generation, price, firstChargeAt, origin })).status;
   } catch (e) {
     console.error("[stripe] plan start email failed", e instanceof Error ? e.message : "failed");
     return "not_sent";

@@ -143,3 +143,17 @@ it("keeps the request and claims no sign-out when both tries return an error", a
   expect(f.after).toHaveBeenCalledTimes(1);
   log.mockRestore();
 });
+
+it("answers 409 for an open plan start, and tells the team, whether or not plans stopped", async () => {
+  f.after.mockImplementation((work: () => unknown) => work());
+  for (const plansStopped of [0, 2]) {
+    f.alert.mockClear();
+    f.request.mockResolvedValue({ ok: false, error: "plan_start", plansStopped });
+    const response = await POST(request());
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ ok: false, error: "plan_start", plansStopped });
+    expect(f.alert).toHaveBeenCalledExactlyOnceWith(parent, { plansStopped, state: "plan_start" });
+  }
+  expect(f.finish).not.toHaveBeenCalled();
+  expect(f.signOut).not.toHaveBeenCalled();
+});

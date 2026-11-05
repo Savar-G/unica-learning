@@ -36,6 +36,42 @@ describe("the deliberate form", () => {
   });
 });
 
+describe("an open plan start record (review round 5 of PR #593)", () => {
+  it("refuses at the check, before any plan stops, and tells nothing else", async () => {
+    const h = harness({ plans: { cus_1: ["sub_1"] }, openPlanStart: () => true });
+    expect(await h.send()).toEqual({ ok: false, error: "plan_start", plansStopped: 0 });
+    expect(h.family.plans.cus_1).toEqual(["sub_1"]);
+    expect(h.family.fenced).toBe(false);
+    expect(h.family.log).toEqual(["claim"]);
+  });
+  it("refuses at the hold when the record opened after the check, with the plans already stopped counted", async () => {
+    let open = false;
+    const h = harness({ plans: { cus_1: ["sub_1"] }, openPlanStart: () => open });
+    const store = memoryDeleteStore(h.family);
+    const seams = { plans: memoryPlans(h.family), store: { ...store, async hold(parent: string, token: string) { open = true; return store.hold(parent, token); } } };
+    expect(await requestFamilyDelete(PARENT, form(), right, seams)).toEqual({ ok: false, error: "plan_start", plansStopped: 1 });
+    expect(h.family.fenced).toBe(false);
+    expect(h.family.deleteHold).toBeNull();
+  });
+  it("refuses at the request when the record opened after the last read, and lets go of the hold", async () => {
+    let open = false;
+    const h = harness({ openPlanStart: () => open });
+    const store = memoryDeleteStore(h.family);
+    const seams = { plans: memoryPlans(h.family), store: { ...store, async request(parent: string, token: string) { open = true; return store.request(parent, token); } } };
+    expect(await requestFamilyDelete(PARENT, form(), right, seams)).toEqual({ ok: false, error: "plan_start", plansStopped: 0 });
+    expect(h.family.fenced).toBe(false);
+    expect(h.family.log).toContain("release");
+  });
+  it("works again once the record resolves", async () => {
+    let open = true;
+    const h = harness({ plans: { cus_1: ["sub_1"] }, openPlanStart: () => open });
+    expect((await h.send()).ok).toBe(false);
+    open = false;
+    expect(await h.send()).toEqual({ ok: true, plansStopped: 1 });
+    expect(h.family.fenced).toBe(true);
+  });
+});
+
 describe("the password check", () => {
   it("refuses a wrong password, counts it, and changes nothing else", async () => {
     const h = harness({ plans: { cus_1: ["sub_1"] } });

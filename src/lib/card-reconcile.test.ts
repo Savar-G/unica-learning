@@ -308,7 +308,7 @@ describe("a plan creation lands late (the review's second case)", () => {
     const f = await creationLandsLate();
     dropEvents(f);
     const answer = await f.start();
-    expect(answer).toEqual({ ok: true, subscription: "sub_made_1", firstChargeAt: new Date(1_900_000_000_000).toISOString() });
+    expect(answer).toEqual({ ok: true, subscription: "sub_made_1", firstChargeAt: new Date(1_900_000_000_000).toISOString(), generation: 1 });
     expect(f.stripe.creates()).toHaveLength(1);
     expect(plans(f).map((p) => p.default)).toEqual(["pm_b"]);
     expect(record(f)?.state).toBe("started");
