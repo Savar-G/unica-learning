@@ -28,13 +28,24 @@ describe("the skill state of a BC standard", () => {
   });
 
   describe("from the test", () => {
-    it("is Mastered when the test says Secure with Clear certainty", () => {
-      expect(stateOf({ tests: [test(5, 5)] })).toEqual({ standard: CODE, state: "mastered", reason: "secure_on_test", evidence: "test" });
+    it("is Mastered when every answer on the standard is right, with 2 answers or more (#578)", () => {
+      expect(stateOf({ tests: [test(2, 2)] })).toEqual({ standard: CODE, state: "mastered", reason: "secure_on_test", evidence: "test" });
+      expect(stateOf({ tests: [test(3, 3)] })).toMatchObject({ state: "mastered" });
+      expect(stateOf({ tests: [test(5, 5)] })).toMatchObject({ state: "mastered" });
     });
 
-    it("stays Not started on a Secure, Early sign result", () => {
+    it("is not Mastered on one right answer alone", () => {
       expect(stateOf({ tests: [test(1, 1)] })).toMatchObject({ state: "not_started", reason: "early_sign_on_test", evidence: "test" });
+      expect(stateOf({ tests: [test(1, 1)], workbookStandards: [CODE] })).toMatchObject({ state: "working_on" });
+      // Two tests that each ask it once are not one test with every answer right.
+      expect(stateOf({ tests: [test(1, 1, 1), test(1, 1, 20)] })).toMatchObject({ state: "not_started" });
+    });
+
+    it("is not Mastered with one wrong answer among several", () => {
+      expect(stateOf({ tests: [test(2, 3)] })).toMatchObject({ state: "not_started", reason: "developing_on_test" });
       expect(stateOf({ tests: [test(4, 5)] })).toMatchObject({ state: "not_started", reason: "early_sign_on_test" });
+      // Secure with Clear certainty is not enough on its own any more.
+      expect(stateOf({ tests: [test(9, 10)] })).toEqual({ standard: CODE, state: "not_started", reason: "secure_on_test", evidence: "test" });
     });
 
     it("is Needs review when the test says Needs attention with Clear certainty", () => {
@@ -53,15 +64,29 @@ describe("the skill state of a BC standard", () => {
       expect(stateOf({ schoolGrade: 3, tests: [test(0, 2, 1, ABOVE)] }, ABOVE)).toMatchObject({ state: "not_started", reason: "above_school_grade", evidence: "test" });
       expect(stateOf({ schoolGrade: 5, tests: [test(0, 2, 1, ABOVE)] }, ABOVE)).toMatchObject({ state: "needs_review" });
       // Above the school grade, a strong result still counts.
-      expect(stateOf({ schoolGrade: 3, tests: [test(5, 5, 1, ABOVE)] }, ABOVE)).toMatchObject({ state: "mastered" });
+      expect(stateOf({ schoolGrade: 3, tests: [test(2, 2, 1, ABOVE)] }, ABOVE)).toMatchObject({ state: "mastered" });
     });
 
-    it("reads the newest Clear result, and an Early sign never replaces a Clear result", () => {
-      expect(stateOf({ tests: [test(5, 5, 20), test(0, 2, 1)] })).toMatchObject({ state: "mastered" });
-      expect(stateOf({ tests: [test(5, 5, 1), test(0, 2, 20)] })).toMatchObject({ state: "needs_review" });
-      expect(stateOf({ tests: [test(5, 5, 1), test(0, 1, 20)] })).toMatchObject({ state: "mastered" });
-      expect(stateOf({ tests: [test(0, 2, 1), test(1, 1, 20)] })).toMatchObject({ state: "needs_review" });
-      expect(stateOf({ tests: [test(5, 5, 1), test(3, 5, 20)] })).toMatchObject({ state: "not_started", reason: "developing_on_test" });
+    it("earns Mastered on a newer test with every answer right", () => {
+      expect(stateOf({ tests: [test(2, 2, 20), test(0, 2, 1)] })).toMatchObject({ state: "mastered", reason: "secure_on_test" });
+    });
+
+    it("keeps Mastered when a newer test skips the standard, or asks it once and it is right", () => {
+      expect(stateOf({ tests: [test(2, 2, 1), test(5, 5, 20, OTHER)] })).toMatchObject({ state: "mastered", reason: "secure_on_test" });
+      expect(stateOf({ tests: [test(2, 2, 1), test(1, 1, 20)] })).toMatchObject({ state: "mastered", reason: "secure_on_test" });
+    });
+
+    it("goes to Needs review on a wrong answer on a newer test, also a single one", () => {
+      expect(stateOf({ tests: [test(3, 3, 1), test(0, 2, 20)] })).toEqual({ standard: CODE, state: "needs_review", reason: "failed_review", evidence: "test" });
+      expect(stateOf({ tests: [test(3, 3, 1), test(0, 1, 20)] })).toMatchObject({ state: "needs_review", reason: "failed_review", evidence: "test" });
+      expect(stateOf({ tests: [test(3, 3, 1), test(4, 5, 20)] })).toMatchObject({ state: "needs_review", reason: "failed_review" });
+      // In the current workbook too: rule 1 comes first.
+      expect(stateOf({ tests: [test(3, 3, 1), test(1, 2, 20)], workbookStandards: [CODE] })).toMatchObject({ state: "needs_review", reason: "failed_review" });
+    });
+
+    it("needs Mastered before a wrong test answer is a failed one, and reads the newest Clear result then", () => {
+      expect(stateOf({ tests: [test(0, 2, 1), test(1, 1, 20)] })).toMatchObject({ state: "needs_review", reason: "needs_attention_on_test" });
+      expect(stateOf({ tests: [test(0, 2, 1), test(3, 5, 20)] })).toMatchObject({ state: "not_started", reason: "developing_on_test" });
     });
 
     it("keeps one standard's result off another standard", () => {
@@ -98,8 +123,11 @@ describe("the skill state of a BC standard", () => {
       expect(stateOf({ marks: [review(true, 6), ...FIVE_RIGHT.slice(1), review(true, 5)] })).toMatchObject({ state: "mastered", reason: "held_on_review" });
     });
 
-    it("does not take Mastered away for a wrong item that is not a review", () => {
-      expect(stateOf({ tests: [test(5, 5)], marks: [page(false, 2), page(false, 3)] })).toMatchObject({ state: "mastered" });
+    it("takes Mastered away for any wrong marked item after it, also one that is not a review", () => {
+      expect(stateOf({ tests: [test(2, 2, 1)], marks: [page(false, 2)] })).toEqual({ standard: CODE, state: "needs_review", reason: "failed_review", evidence: "pages" });
+      expect(stateOf({ tests: [test(2, 2, 1)], marks: [page(true, 2), review(true, 3)] })).toMatchObject({ state: "mastered", reason: "secure_on_test" });
+      // A wrong page before the test does not.
+      expect(stateOf({ tests: [test(2, 2, 5)], marks: [page(false, 2)] })).toMatchObject({ state: "mastered" });
     });
 
     it("keeps one standard's marks off another standard", () => {
@@ -136,8 +164,10 @@ describe("the skill state of a BC standard", () => {
     });
 
     it("reads a review against the test results before it, not only the newest", () => {
-      // Mastered on day 10, then a newer Developing, Clear test on day 11: a wrong review on day 12 is not a failed one.
-      expect(stateOf({ tests: [test(5, 5, 10), test(3, 5, 11)], marks: [review(false, 12)] })).toMatchObject({ state: "not_started", reason: "developing_on_test" });
+      // Mastered on day 10, wrong on the test on day 11: a right review on day 12 does not earn it back.
+      expect(stateOf({ tests: [test(5, 5, 10), test(3, 5, 11)], marks: [review(true, 12)] })).toMatchObject({ state: "needs_review", reason: "failed_review", evidence: "test" });
+      // Not Mastered before day 12: a wrong review is not a failed one.
+      expect(stateOf({ tests: [test(1, 1, 10)], marks: [review(false, 12)] })).toMatchObject({ state: "not_started", reason: "early_sign_on_test" });
       // Mastered on day 10, wrong on review on day 11, Mastered again on day 12.
       expect(stateOf({ tests: [test(5, 5, 10), test(5, 5, 12)], marks: [review(false, 11)] })).toMatchObject({ state: "mastered", reason: "secure_on_test" });
     });
@@ -154,15 +184,15 @@ describe("the skill state of a BC standard", () => {
     });
 
     it("puts Mastered from pages over Needs review from the test", () => {
-      expect(stateOf({ tests: [test(0, 2, 20)], marks: [...FIVE_RIGHT, review(true, 6)] })).toMatchObject({ state: "mastered", reason: "held_on_review" });
+      expect(stateOf({ tests: [test(0, 2, 1)], marks: [...FIVE_RIGHT, review(true, 6)] })).toMatchObject({ state: "mastered", reason: "held_on_review" });
     });
 
     it("puts Working on over Needs review from the test", () => {
       expect(stateOf({ tests: [test(0, 2)], workbookStandards: [CODE] })).toMatchObject({ state: "working_on", reason: "in_workbook" });
     });
 
-    it("puts Working on over a Secure, Early sign result", () => {
-      expect(stateOf({ tests: [test(1, 1)], workbookStandards: [CODE] })).toMatchObject({ state: "working_on" });
+    it("puts Working on over a Secure result with a wrong answer", () => {
+      expect(stateOf({ tests: [test(9, 10)], workbookStandards: [CODE] })).toMatchObject({ state: "working_on" });
     });
   });
 });

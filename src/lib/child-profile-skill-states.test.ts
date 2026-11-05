@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { learnerProfile, type LearnerProfile } from "@/lib/assessment";
+import { BANKS, learnerProfile, type LearnerProfile } from "@/lib/assessment";
 import { knowsUpTo, takeTest } from "@/lib/assessment/scripted-child";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { rebuildChildProfile, readChildProfile, type ChildProfileStore } from "@/lib/child-profile";
@@ -126,6 +126,31 @@ describe("the rebuild's skill state history", () => {
     // The profile's own tally is Secure and Clear with the calls in it; the skill state still reads the test's Early sign.
     expect(standard).toMatchObject({ status: "secure", certainty: "clear" });
     expect(changes(f)).toEqual([]);
+  });
+
+  it("leaves out a rushed wrong answer, as the report does, so it neither earns nor takes away Mastered (#578)", async () => {
+    // A standard the test asked at least 3 times: one answer is wrong, very fast and in a rushed run.
+    const standardOf = new Map(Object.values(BANKS).flat().map((t) => [t.id, t.standard]));
+    const byStandard = Map.groupBy(asked, (q) => standardOf.get(q.templateId) ?? "");
+    const [code, questions] = [...byStandard].find(([c, qs]) => c && qs.length >= 3) ?? never();
+    const rushed = questions[0];
+    const profileWith = (leftOut: string[]) => learnerProfile({
+      placement: { ...placement, pace: { veryFast: 3, answers: asked.length, leftOut, unreliable: false } },
+      answers: asked.map((q) => ({
+        question: q, response: q === rushed ? "wrong" : q.answer, correct: q !== rushed, misconception: null,
+        timeMs: q === rushed ? 500 : 20_000, work: { required: false, drawing: false, typed: false }, readAloud: null, away: null,
+      })),
+      help: "no",
+      learning: null,
+    })!;
+    const stateAfter = async (profile: LearnerProfile) => {
+      const f = family({ tests: [{ id: TEST, childId: CHILD, completedAt: "2026-10-20T18:00:00.000Z", profile }] });
+      await rebuildChildProfile(CHILD, f);
+      return changes(f).find((r) => r.standard === code)?.state ?? "not_started";
+    };
+    expect(await stateAfter(profileWith([rushed.id]))).toBe("mastered");
+    // The same wrong answer, counted: not every answer is right.
+    expect(await stateAfter(profileWith([]))).not.toBe("mastered");
   });
 
   it("leaves marked pages out until marking is live", async () => {
