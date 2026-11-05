@@ -6,6 +6,7 @@ import { aiTextProblem } from "@/lib/number-words";
 import { likelihoodChoicesProblem, likelihoodWord } from "@/lib/workbook-likelihood";
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import { stepBounds, stepOf, stepTemplateOf } from "@/lib/workbook-step-items";
+import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 
 export function instructionProblem(text: string): string | null {
   if (!text.trim() || /[\r\n]/.test(text)) return "Every page needs a plain instruction on one line.";
@@ -44,6 +45,8 @@ const BENCHMARKS: Readonly<Record<string, readonly number[]>> = {
 /** The writer calls this before accepting any format. Unreadable data fails closed. */
 export function scheduledItemProblem(p: QuestionPackage, curriculum: Curriculum, day: number, place: string): string | null {
   try {
+    const checked = checkQuestionPackage(p);
+    p = printedWorkbookQuestion(p);
     const feedback = feedbackItemProblem(p);
     if (feedback) return feedback;
     const d = dayDifficulty(p.level, day);
@@ -51,7 +54,6 @@ export function scheduledItemProblem(p: QuestionPackage, curriculum: Curriculum,
     if (p.item?.figure && !countingTask && (d.helpLevel === "none" || d.helpLevel === "new-ideas-only" && !["worked-example", "now-you", "try-first"].includes(place))) return "This day has no picture support in this place.";
     const item = packageItem(p);
     if (!Object.hasOwn(READABLE_FORMATS, item.format)) return "The daily number check cannot read this item format.";
-    const checked = checkQuestionPackage(p);
     if (checked.status === "failed" || checked.status === "unsupported" && !(p.operation === null && item.parentChecked && !item.scorable && item.checks.length === 0))
       return `The daily number check cannot read this item: ${checked.reason}`;
     if (p.skill.skills.length === 0 || p.skill.skills.some(s => !curriculum.skill(s))) return "The daily number check needs a known curriculum skill.";

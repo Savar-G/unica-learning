@@ -29,6 +29,12 @@ import { instructionProblem, feedbackItemProblem } from "@/lib/workbook-feedback
 import { titleProblem } from "@/lib/workbook-titles";
 import { printedMinus, singularPlaces } from "@/lib/workbook-wording";
 import { bottomGapLimit, layoutProblems } from "@/lib/workbook-layout-check";
+import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
+
+/** Teaching data does not select a print layout or change a printed method. */
+function printedPage(page: DraftPage): DraftPage {
+  return { ...page, questions: page.questions.map(q => ({ ...q, package: printedWorkbookQuestion(q.package) })) };
+}
 
 /**
  * Numbers of 1,000 and up print with commas, everywhere a page prints text (Savar, 2026-11-03, D-230, replacing the BC
@@ -1553,6 +1559,7 @@ export function workbookTemplate(fonts?: TemplateFonts): WorkbookTemplate {
   return {
     css: (fonts ? fontFace("Unica Sans", "300 700", fonts.sans) + fontFace("Unica Mono", "400 500", fonts.mono) : "") + CSS,
     page(page, parts) {
+      page = printedPage(page);
       const c = page.content;
       if (!c) return null;
       switch (c.kind) {
@@ -1565,7 +1572,10 @@ export function workbookTemplate(fonts?: TemplateFonts): WorkbookTemplate {
     },
     // (With the layout checks of Savar's page reviews: spacing, alignment, one number style, no repeated instruction,
     // no clipped text.)
-    fit: (page, measured) => [...fitProblems(page, measured), ...layoutProblems(page, measured, pagePlan(page))],
+    fit: (page, measured) => {
+      const printed = printedPage(page);
+      return [...fitProblems(printed, measured), ...layoutProblems(printed, measured, pagePlan(printed))];
+    },
     answerMin: ANSWER_MIN,
   };
 }
