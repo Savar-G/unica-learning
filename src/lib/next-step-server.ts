@@ -207,7 +207,7 @@ export async function joinWaitlist(parentId: string, reportId: string, origin: s
     text: [
       `Waitlist (${CURRICULA[province]} curriculum), joined from the report: ${parent.name} <${parent.email}>`,
       `Child: ${report.child!.first_name}, school ${gradeName(report.assessment!.grade)}`,
-      `Postal code: ${parent.postal ?? "not given"}`,
+      ...(parent.postal ? [`Postal code: ${parent.postal}`] : []),
       `Report: ${origin}${reportPath(report.id)}`,
     ].join("\n"),
   }));
@@ -229,7 +229,7 @@ function cardAlert(setup: ReportCardSetup, report: ReportRow, option: PlanOption
       `Parent: ${setup.name} <${setup.email}>`,
       `Plan: ${option.subject}, ${priceWithOffer(option.price)}`,
       `Child: ${report.child!.first_name}, school ${gradeName(setup.grade)}`,
-      `Postal code: ${setup.postal ?? "not given"}`,
+      ...(setup.postal ? [`Postal code: ${setup.postal}`] : []),
       `Opened from: ${src === "email" ? "the report email" : "the account"}`,
       `Ref (card_setups.id; Stripe metadata ref): ${setup.ref}`,
       `Report: ${origin}${reportPath(report.id)}`,

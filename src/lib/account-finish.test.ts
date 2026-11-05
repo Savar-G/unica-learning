@@ -165,7 +165,7 @@ function supabase(world: World) {
   });
 }
 
-const details = { name: "Priya Shah", postal: "V6B 1A1", child: { firstName: "Asha", grade: 4, province: "BC" }, source: { utm_source: "flyer" } };
+const details = { name: "Priya Shah", child: { firstName: "Asha", grade: 4, province: "BC" }, source: { utm_source: "flyer" } };
 
 function finish(body: unknown, ua = LAPTOP) {
   return POST(new Request("https://unica.test/api/account/finish", {
@@ -209,7 +209,7 @@ describe("a password set before the email was proved never reaches a family acco
     // Both changes go through the parent's own session, the one in their cookies.
     expect(calls.filter((c) => `${c.method} ${c.path}` === OWN_PASSWORD).map((c) => c.auth)).toEqual([`Bearer ${accessToken()}`, `Bearer ${accessToken()}`]);
     expect(calls.find((c) => c.path === "/rest/v1/rpc/create_family")?.body).toMatchObject({
-      p_parent: ID, p_email: "priya@family.ca", p_name: "Priya Shah", p_postal: "V6B 1A1", p_child_name: "Asha", p_child_grade: 4, p_child_province: "BC",
+      p_parent: ID, p_email: "priya@family.ca", p_name: "Priya Shah", p_postal: null, p_child_name: "Asha", p_child_grade: 4, p_child_province: "BC",
     });
   });
 
@@ -253,7 +253,7 @@ describe("a password set before the email was proved never reaches a family acco
 
   it("is replaced even when the request is not valid", async () => {
     supabase({ earlierPassword: "strangers-password" });
-    const res = await finish({ ...details, postal: "90210", password: "a-long-password" });
+    const res = await finish({ ...details, name: "P", password: "a-long-password" });
     expect(res.status).toBe(400);
     expect(paths()).toEqual([OWN_PASSWORD]);
     expect(auth.password).not.toBe("strangers-password");
@@ -417,14 +417,12 @@ describe("what the database decides (#82, #78)", () => {
 });
 
 describe("finishing on a phone (#63)", () => {
-  it("makes the family from the short phone signup: no postal code and no password (D-134), then emails the link", async () => {
+  it("makes the family from the short phone signup: no password (D-134), then emails the link", async () => {
     vi.stubEnv("RESEND_API_KEY", "re_synthetic");
     vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");
     vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ id: "email-1" }), { status: 200 }));
     supabase({ earlierPassword: "strangers-password", admission: { status: "created", child: "child-42" } });
-    const { postal: _, ...short } = details;
-    void _;
-    const res = await finish(short, PHONE);
+    const res = await finish(details, PHONE);
     vi.unstubAllGlobals();
     expect(await res.json()).toEqual({ ok: true, linkSent: true });
     expect(calls.find((c) => c.path === "/rest/v1/rpc/create_family")?.body).toMatchObject({ p_postal: null, p_child_name: "Asha" });

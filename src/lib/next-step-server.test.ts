@@ -15,6 +15,7 @@ const { startCard } = await import("@/lib/next-step-server");
 
 const PARENT = "5e55-parent";
 const REPORT = "7d9f3c4e-1111-4a2b-9c3d-0000000000aa";
+let familyPostal: string | null;
 
 function fakeSupabase() {
   const json = (value: unknown) => new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
@@ -28,7 +29,7 @@ function fakeSupabase() {
         if (url.pathname === "/rest/v1/reports") {
           return json([{ id: REPORT, child_id: "child-1", assessment_id: "test-1", cta: "card", assessment: { province: "BC", grade: 4 }, child: { first_name: "Asha" } }]);
         }
-        if (url.pathname === "/rest/v1/parents") return json([{ name: "Priya Shah", email: "priya@family.ca", postal: "V6B 1A1" }]);
+        if (url.pathname === "/rest/v1/parents") return json([{ name: "Priya Shah", email: "priya@family.ca", postal: familyPostal }]);
         if (url.pathname === "/rest/v1/card_setups") {
           if ((init?.method ?? "GET") === "GET") return json([]);
           const row = { id: "card-1", plan: "one", stripe_customer_id: null, card_saved_at: null };
@@ -57,6 +58,7 @@ async function chooseThePlan() {
 
 beforeEach(() => {
   afterResponse = [];
+  familyPostal = "V6B 1A1";
   fakeSupabase();
   vi.stubEnv("STRIPE_SECRET_KEY", "");
   vi.stubEnv("SIGNUP_NOTIFY_EMAIL", "savar@unicalearning.com");
@@ -83,7 +85,17 @@ describe("the card-link alert to Savar", () => {
       subject: "Card link needed: Priya Shah (Math, grade 4)",
     });
     expect(resend[0].body.text).toContain("Plan chosen from the report, but STRIPE_SECRET_KEY is not set: email them a link to add a card.");
+    expect(resend[0].body.text).toContain("Postal code: V6B 1A1");
     expect(info).toHaveBeenCalledWith("[next-step] alert sent:", "Card link needed");
+  });
+
+  it("has no postal code line for a family without one (D-224)", async () => {
+    vi.stubEnv("EMAIL_FROM", "Unica Learning <contact@unicalearning.com>");
+    familyPostal = null;
+    resendAnswers(200, { id: "re_alert" });
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    await chooseThePlan();
+    expect(resend[0].body.text).not.toContain("Postal code");
   });
 
   it("is refused, and Resend is never asked, when EMAIL_FROM is not set", async () => {
