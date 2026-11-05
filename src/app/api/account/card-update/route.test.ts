@@ -79,6 +79,11 @@ describe("coming back from Stripe", () => {
     expect(location(await GET(back("?session_id=cs_test_abc123")))).toBe(`https://unica.test/account/settings?card=${notice}`);
   });
 
+  it("shows the normal page, with no notice, for a return that changed nothing", async () => {
+    f.finish.mockResolvedValue("stale");
+    expect(location(await GET(back("?session_id=cs_test_abc123")))).toBe("https://unica.test/account/settings");
+  });
+
   it("sends a signed-out parent to sign in and back to this address, so the card still takes effect", async () => {
     f.parent.mockResolvedValue(null);
     const to = new URL(location(await GET(back("?session_id=cs_test_abc123")))!);

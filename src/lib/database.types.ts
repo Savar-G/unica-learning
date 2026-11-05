@@ -456,6 +456,48 @@ export type Database = {
           },
         ]
       }
+      child_card_updates: {
+        Row: {
+          applied_at: string | null
+          child_id: string
+          parent_id: string
+          session_created_at: string
+          session_id: string
+          updated_at: string
+        }
+        Insert: {
+          applied_at?: string | null
+          child_id: string
+          parent_id: string
+          session_created_at: string
+          session_id: string
+          updated_at?: string
+        }
+        Update: {
+          applied_at?: string | null
+          child_id?: string
+          parent_id?: string
+          session_created_at?: string
+          session_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "child_card_updates_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "child_card_updates_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       child_plan_states: {
         Row: {
           child_id: string
@@ -4112,6 +4154,15 @@ export type Database = {
         Args: { p_id: string; p_lease: string; p_page: number; p_result: Json }
         Returns: boolean
       }
+      claim_card_update: {
+        Args: {
+          p_card: string
+          p_parent: string
+          p_session: string
+          p_session_created_at: string
+        }
+        Returns: string
+      }
       claim_family_deletion: {
         Args: { p: string; token: string }
         Returns: Json
@@ -4313,6 +4364,10 @@ export type Database = {
       finish_booking_signup: {
         Args: { booking_ref: string; customer: string }
         Returns: boolean
+      }
+      finish_card_update: {
+        Args: { p_card: string; p_parent: string; p_session: string }
+        Returns: string
       }
       finish_family_payment_operation: {
         Args: {

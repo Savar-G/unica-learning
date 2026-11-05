@@ -185,6 +185,18 @@ async function planProduct(s: Stripe) {
 }
 
 /**
+ * The card a new plan charges: the card a parent chose in a card update (the Customer's default, #554), else the Customer's
+ * newest card. Only a card: a default of another type is not one the plan start charges.
+ */
+async function planCard(s: Stripe, customer: string): Promise<string | undefined> {
+  const found = await s.customers.retrieve(customer, { expand: ["invoice_settings.default_payment_method"] });
+  const chosen = found.deleted ? null : found.invoice_settings?.default_payment_method;
+  if (chosen && typeof chosen !== "string" && chosen.type === "card") return chosen.id;
+  const cards = await s.paymentMethods.list({ customer, type: "card", limit: 1 });
+  return cards.data[0]?.id;
+}
+
+/**
  * D-139: starts the paid plan of a saved card when the first workbook arrives at your home. A monthly subscription at the card's
  * price on the child's customer, charged to the saved card: the free first month first (a 30-day trial, nothing
  * charged), then the full price on day 30 and each month after until the parent cancels. Refuses when the
@@ -195,8 +207,7 @@ export async function startPlan(s: Stripe, p: { cardSetup: string; customer: str
   if (p.deliveryConfirmed !== true) return { ok: false, error: "not_delivered" };
   const current = await customerSubscriptions(s, p.customer);
   if (current.some((x) => x.status !== "canceled" && x.status !== "incomplete_expired")) return { ok: false, error: "already" };
-  const cards = await s.paymentMethods.list({ customer: p.customer, type: "card", limit: 1 });
-  const card = cards.data[0]?.id;
+  const card = await planCard(s, p.customer);
   if (!card) return { ok: false, error: "no_card" };
   const terms = planTerms(p.price);
   await planProduct(s);

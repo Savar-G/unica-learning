@@ -3,6 +3,9 @@ import { canUpdateCard, finishCardUpdate, loadFamilyBilling, startCardUpdate, ty
 import { memoryBilling, type MemoryBillingChild } from "@/lib/billing-memory";
 import type { PlanOwner } from "@/lib/plan-state";
 import { memoryPlanStates } from "@/lib/plan-state-memory";
+import { startPlan } from "@/lib/stripe";
+
+vi.mock("server-only", () => ({}));
 
 const leah: MemoryBillingChild = { parentId: "p1", childId: "c1", firstName: "Leah", card: { id: "card-1", customer: "cus_1", saved: true } };
 const omar: MemoryBillingChild = { parentId: "p1", childId: "c2", firstName: "Omar", card: { id: "card-2", customer: "cus_2", saved: true } };
@@ -192,7 +195,7 @@ describe("the card update", () => {
 
   it("writes nothing for another family's session", async () => {
     const b = withPlan();
-    b.addSession({ id: "cs_test_theirs", ref: "card-9", customer: "cus_9", paymentMethod: "pm_x" });
+    b.addSession({ id: "cs_test_theirs", ref: "card-9", customer: "cus_9", created: 1_800_000_000, paymentMethod: "pm_x" });
     expect(await finishCardUpdate("p1", "cs_test_theirs", b)).toBe("not_found");
     expect(b.calls.setDefault).toBe(0);
     expect(defaults(b).sub_other).toBe("pm_theirs");
@@ -200,7 +203,7 @@ describe("the card update", () => {
 
   it("writes nothing for a session whose row and customer do not match", async () => {
     const b = withPlan();
-    b.addSession({ id: "cs_test_mixed", ref: "card-1", customer: "cus_9", paymentMethod: "pm_x" });
+    b.addSession({ id: "cs_test_mixed", ref: "card-1", customer: "cus_9", created: 1_800_000_000, paymentMethod: "pm_x" });
     expect(await finishCardUpdate("p1", "cs_test_mixed", b)).toBe("not_found");
     expect(b.calls.setDefault).toBe(0);
   });
@@ -213,5 +216,135 @@ describe("the card update", () => {
     b.fail.setDefault = new Error("Stripe down");
     expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("failed");
     expect(defaults(b).sub_live).toBe("pm_old");
+  });
+
+  /** Two finished updates of one child, A then B, with Stripe's pages opened in that order. */
+  const twoUpdates = async (b: ReturnType<typeof memoryBilling>) => {
+    await startCardUpdate("p1", "card-1", urls, b);
+    await startCardUpdate("p1", "card-1", urls, b);
+    b.complete("cs_test_1", "pm_a");
+    b.complete("cs_test_2", "pm_b");
+  };
+
+  it("keeps B when A, B, then A's return address again: the next charge stays on B", async () => {
+    const b = withPlan();
+    await twoUpdates(b);
+    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("updated");
+    expect(defaults(b).sub_live).toBe("pm_a");
+    expect(await finishCardUpdate("p1", "cs_test_2", b)).toBe("updated");
+    expect(defaults(b).sub_live).toBe("pm_b");
+    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("stale");
+    expect(defaults(b).sub_live).toBe("pm_b");
+    expect(b.customerDefaults.cus_1).toBe("pm_b");
+    expect(b.calls.setDefault).toBe(2);
+  });
+
+  it("changes nothing and says nothing new when the same return address opens again", async () => {
+    const b = withPlan();
+    await startCardUpdate("p1", "card-1", urls, b);
+    b.complete("cs_test_1", "pm_new");
+    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("updated");
+    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("stale");
+    expect(b.calls.setDefault).toBe(1);
+  });
+
+  it("does not apply an older update for the first time after a newer one applied", async () => {
+    const b = withPlan();
+    await twoUpdates(b);
+    expect(await finishCardUpdate("p1", "cs_test_2", b)).toBe("updated");
+    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("stale");
+    expect(defaults(b).sub_live).toBe("pm_b");
+  });
+
+  it("tries the same address again after Stripe failed, so a failed write does not lose the card", async () => {
+    const b = withPlan();
+    await startCardUpdate("p1", "card-1", urls, b);
+    b.complete("cs_test_1", "pm_new");
+    b.fail.setDefault = new Error("Stripe down");
+    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("failed");
+    delete b.fail.setDefault;
+    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("updated");
+    expect(defaults(b).sub_live).toBe("pm_new");
+  });
+
+  it("writes the newer card again when a newer return took the row during this write", async () => {
+    const b = withPlan();
+    await twoUpdates(b);
+    // B's return runs from start to end while A's write is on its way, so A's write lands last at Stripe unless A corrects it.
+    b.duringNextWrite(async () => { expect(await finishCardUpdate("p1", "cs_test_2", b)).toBe("updated"); });
+    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("stale");
+    expect(b.calls.setDefault).toBe(3);
+    expect(defaults(b).sub_live).toBe("pm_b");
+  });
+
+  it("answers failed, and does not say updated, when the claim or the finish cannot be stored", async () => {
+    const b = withPlan();
+    await startCardUpdate("p1", "card-1", urls, b);
+    b.complete("cs_test_1", "pm_new");
+    b.fail.claim = new Error("Database down");
+    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("failed");
+    expect(b.calls.setDefault).toBe(0);
+    delete b.fail.claim;
+    b.fail.finish = new Error("Database down");
+    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("failed");
+  });
+
+  it("keeps one child's order apart from another child's", async () => {
+    const b = memoryBilling({ children: [leah, omar] });
+    await startCardUpdate("p1", "card-1", urls, b);
+    await startCardUpdate("p1", "card-2", urls, b);
+    b.complete("cs_test_1", "pm_leah");
+    b.complete("cs_test_2", "pm_omar");
+    expect(await finishCardUpdate("p1", "cs_test_2", b)).toBe("updated");
+    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("updated");
+    expect(b.customerDefaults).toEqual({ cus_1: "pm_leah", cus_2: "pm_omar" });
+  });
+});
+
+describe("a card update before the plan starts", () => {
+  const urls = { returnUrl: "https://unica.test/return", cancelUrl: "https://unica.test/cancel" };
+  const start = (b: ReturnType<typeof memoryBilling>) => startPlan(b.stripe, { cardSetup: "card-1", customer: "cus_1", price: 79.99, deliveryConfirmed: true });
+  const family = () => memoryBilling({ children: [leah], paymentMethods: { cus_1: [{ id: "pm_old", type: "card" }] } });
+
+  it("charges the card the parent chose, even when a newer card is on the customer", async () => {
+    const b = family();
+    await startCardUpdate("p1", "card-1", urls, b);
+    b.complete("cs_test_1", "pm_new");
+    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("updated");
+    b.paymentMethods.cus_1.unshift({ id: "pm_later", type: "card" });
+    expect((await start(b)).ok).toBe(true);
+    expect(b.subscriptions.map((s) => s.defaultCard)).toEqual(["pm_new"]);
+  });
+
+  it("keeps B through A, B, A again, and then starts on B", async () => {
+    const b = family();
+    await startCardUpdate("p1", "card-1", urls, b);
+    await startCardUpdate("p1", "card-1", urls, b);
+    // Finished in the other order, so B is not the newest card on the customer.
+    b.complete("cs_test_2", "pm_b");
+    b.complete("cs_test_1", "pm_a");
+    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("updated");
+    expect(await finishCardUpdate("p1", "cs_test_2", b)).toBe("updated");
+    expect(await finishCardUpdate("p1", "cs_test_1", b)).toBe("stale");
+    expect((await start(b)).ok).toBe(true);
+    expect(b.subscriptions.map((s) => s.defaultCard)).toEqual(["pm_b"]);
+  });
+
+  it("starts on the customer's newest card, as it always did, with no card update", async () => {
+    const b = memoryBilling({ children: [leah], paymentMethods: { cus_1: [{ id: "pm_newest", type: "card" }, { id: "pm_old", type: "card" }] } });
+    expect((await start(b)).ok).toBe(true);
+    expect(b.subscriptions.map((s) => s.defaultCard)).toEqual(["pm_newest"]);
+  });
+
+  it("does not charge a default that is not a card, and takes the newest card", async () => {
+    const b = memoryBilling({ children: [leah], paymentMethods: { cus_1: [{ id: "pm_klarna", type: "klarna" }, { id: "pm_card", type: "card" }] }, customerDefaults: { cus_1: "pm_klarna" } });
+    expect((await start(b)).ok).toBe(true);
+    expect(b.subscriptions.map((s) => s.defaultCard)).toEqual(["pm_card"]);
+  });
+
+  it("answers no_card when the customer has no card at all", async () => {
+    const b = memoryBilling({ children: [leah] });
+    expect(await start(b)).toEqual({ ok: false, error: "no_card" });
+    expect(b.subscriptions).toEqual([]);
   });
 });

@@ -67,6 +67,8 @@ export function stripeBillingProvider(client: Stripe | null): BillingProvider {
       const session = await s().checkout.sessions.create({
         mode: "setup",
         currency: "cad",
+        // Cards only: the plan start charges only a card. Stripe refuses payment_method_types here (checked in test mode, 2026-11-05).
+        allowed_payment_method_types: ["card"],
         customer,
         client_reference_id: ref,
         metadata,
@@ -91,10 +93,12 @@ export function stripeBillingProvider(client: Stripe | null): BillingProvider {
       const intent = session.setup_intent;
       // A SetupIntent on another customer saved no card for this one.
       const saved = session.status === "complete" && intent && typeof intent !== "string" && intent.status === "succeeded" && idOf(intent.customer) === customer;
-      return { id: session.id, ref, customer, paymentMethod: saved ? idOf(intent.payment_method) : null };
+      return { id: session.id, ref, customer, created: session.created, paymentMethod: saved ? idOf(intent.payment_method) : null };
     },
     async setCardDefault(customer, paymentMethod) {
       const subscriptions = await customerSubscriptions(s(), customer, READ);
+      // A plan that has not started has no subscription: startPlan reads this default. A plan that ends and starts again reads it too.
+      await s().customers.update(customer, { invoice_settings: { default_payment_method: paymentMethod } }, WRITE);
       for (const subscription of subscriptions) {
         if (RUNNING_PLAN.has(subscription.status)) await s().subscriptions.update(subscription.id, { default_payment_method: paymentMethod }, WRITE);
       }
@@ -121,6 +125,17 @@ export function supabaseBillingStore(db: SupabaseClient<Database>): BillingStore
       const { data, error } = await db.from("card_setups").select("id, child_id, stripe_customer_id, card_saved_at").eq("id", cardId).eq("parent_id", parentId).maybeSingle();
       if (error) throw new Error(`card read: ${error.message}`);
       return data && { cardId: data.id, childId: data.child_id, customer: data.stripe_customer_id, cardSaved: !!data.card_saved_at };
+    },
+    async claimCardUpdate(parentId, cardId, session) {
+      const { data, error } = await db.rpc("claim_card_update", { p_parent: parentId, p_card: cardId, p_session: session.id, p_session_created_at: new Date(session.created * 1000).toISOString() });
+      if (error) throw new Error(`card update claim: ${error.message}`);
+      if (data !== "apply" && data !== "stale" && data !== "no_match") throw new Error("Card update claim unreadable");
+      return data;
+    },
+    async finishCardUpdate(parentId, cardId, sessionId) {
+      const { data, error } = await db.rpc("finish_card_update", { p_parent: parentId, p_card: cardId, p_session: sessionId });
+      if (error) throw new Error(`card update finish: ${error.message}`);
+      return data;
     },
   };
 }

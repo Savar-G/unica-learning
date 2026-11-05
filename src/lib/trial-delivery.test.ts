@@ -8,7 +8,7 @@ const deliveredAt = new Date("2026-11-05T18:00:00Z");
 const setup = { cardSetup: "card-1", customer: "cus_family", price: 79.99 };
 
 /** Stripe's answers to the subscription list in turn, one page each; the last repeats. */
-function provider(alreadyStarted = false, pages: unknown[] = [{ data: alreadyStarted ? [{ id: "sub_existing", status: "trialing" }] : [], has_more: false }]) {
+function provider(alreadyStarted = false, pages: unknown[] = [{ data: alreadyStarted ? [{ id: "sub_existing", status: "trialing" }] : [], has_more: false }], customer: unknown = { id: "cus_family", invoice_settings: { default_payment_method: null } }) {
   const requests: { method: string; path: string; body: URLSearchParams; key: string | null; after: string | null }[] = [];
   let reads = 0;
   const client = new Stripe("sk_test_delivery", { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(async (input, init) => {
@@ -16,6 +16,7 @@ function provider(alreadyStarted = false, pages: unknown[] = [{ data: alreadySta
     requests.push({ method, path: url.pathname, body: new URLSearchParams(String(init?.body ?? "")), key: new Headers(init?.headers).get("Idempotency-Key"), after: url.searchParams.get("starting_after") });
     if (url.pathname.endsWith("/subscriptions") && method === "GET" && pages[Math.min(reads, pages.length - 1)] === "fail") return new Response(JSON.stringify({ error: { message: "Stripe down" } }), { status: 500 });
     const data = url.pathname.endsWith("/subscriptions") && method === "GET" ? pages[Math.min(reads++, pages.length - 1)]
+      : url.pathname.includes("/customers/") ? customer
       : url.pathname.endsWith("/payment_methods") ? { data: [{ id: "pm_card" }], has_more: false }
       : url.pathname.includes("/products/") ? { id: "unica_math" }
       : url.pathname.endsWith("/subscriptions") && method === "POST" ? { id: "sub_trial", trial_end: deliveredAt.getTime() / 1000 + 30 * 86400 }
@@ -43,6 +44,29 @@ describe("the free month starts after home delivery confirmation", () => {
     expect(create[0].body.get("metadata[delivery_confirmed]")).toBe("true");
     expect(create[0].key).toBe("start-plan-card-1");
     expect(f.requests.some((r) => /\/(charges|payment_intents)$/.test(r.path))).toBe(false);
+  });
+  it("charges the customer's newest card and writes only the plan, for a customer with no default card", async () => {
+    const f = provider();
+    await startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt);
+    const list = f.requests.filter((r) => r.path.endsWith("/payment_methods"));
+    expect(list).toHaveLength(1);
+    const writes = f.requests.filter((r) => r.method === "POST");
+    expect(writes.map((r) => r.path)).toEqual(["/v1/subscriptions"]);
+    expect(writes[0].body.get("default_payment_method")).toBe("pm_card");
+  });
+  it("charges the customer's default card when a card update set one, and does not read the list", async () => {
+    const f = provider(false, undefined, { id: "cus_family", invoice_settings: { default_payment_method: { id: "pm_chosen", type: "card" } } });
+    await startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt);
+    expect(f.requests.some((r) => r.path.endsWith("/payment_methods"))).toBe(false);
+    expect(f.requests.find((r) => r.path.endsWith("/subscriptions") && r.method === "POST")?.body.get("default_payment_method")).toBe("pm_chosen");
+  });
+  it.each<[string, unknown]>([
+    ["is not a card", { id: "cus_family", invoice_settings: { default_payment_method: { id: "pm_klarna", type: "klarna" } } }],
+    ["was deleted", { id: "cus_family", deleted: true }],
+  ])("falls back to the newest card when the customer's default %s", async (_case, customer) => {
+    const f = provider(false, undefined, customer);
+    await startPlan(f.client, { ...setup, deliveryConfirmed: true }, deliveredAt);
+    expect(f.requests.find((r) => r.path.endsWith("/subscriptions") && r.method === "POST")?.body.get("default_payment_method")).toBe("pm_card");
   });
   it("does not start another trial for an existing plan", async () => {
     const f = provider(true);
