@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import ParentNotes from "./[child]/page";
 import ParentSession from "./[child]/[session]/page";
 import { latestParentMayaNotes, listParentMayaNotes, readParentMayaNote, sessionWhen } from "@/lib/parent-maya-notes";
@@ -8,6 +8,20 @@ import { sessionClient } from "@/lib/supabase-auth";
 import type { NoteFacts } from "@/lib/maya-call-note";
 
 vi.mock("server-only", () => ({}));
+// The Maya tab (#553): the dashboard's facts, the minutes ledger and the chat count, as the server reads them.
+const tab = vi.hoisted(() => ({
+  dashboard: null as import("@/lib/parent-dashboard-server").ParentDashboard | null,
+  minutes: new Map<string, import("@/lib/maya-minutes-server").ChildMinutes>(),
+  minuteReads: [] as string[][],
+}));
+vi.mock("@/lib/parent-dashboard-server", () => ({ parentDashboard: async () => tab.dashboard }));
+vi.mock("@/lib/maya-minutes-server", () => ({
+  parentMinutes: async (_db: unknown, _parent: string, _zone: string, kids: { id: string }[]) => {
+    tab.minuteReads.push(kids.map((k) => k.id));
+    return new Map([...tab.minutes].filter(([id]) => kids.some((k) => k.id === id)));
+  },
+}));
+vi.mock("@/lib/maya-chat-server", () => ({ parentChatUsage: async () => new Map() }));
 vi.mock("next/navigation", () => ({
   notFound: () => { throw new Error("NOT_FOUND"); },
   redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); },
@@ -101,7 +115,7 @@ function row(id = chat, childId = child, parent = "p1", channel = "chat") {
     ],
   };
 }
-beforeEach(() => { state.user = "p1"; state.postal = "V3S 1A1"; state.zone = null; state.name = "Leah"; state.rows = [row(), row(call, child, "p1", "call")]; state.projections = []; state.fail = false; state.metadata = true; });
+beforeEach(() => { tab.dashboard = null; tab.minutes = new Map(); tab.minuteReads = []; state.user = "p1"; state.postal = "V3S 1A1"; state.zone = null; state.name = "Leah"; state.rows = [row(), row(call, child, "p1", "call")]; state.projections = []; state.fail = false; state.metadata = true; });
 const html = (node: React.ReactNode) => renderToStaticMarkup(createElement("div", null, node));
 const list = (id = child, cursor?: string) => ParentNotes({ params: Promise.resolve({ child: id }), searchParams: Promise.resolve({ cursor }) });
 const session = (id = child, note = chat) => ParentSession({ params: Promise.resolve({ child: id, session: note }), searchParams: Promise.resolve({}) });
@@ -248,4 +262,73 @@ it.each([
     { at: "2026-11-08T01:06:00Z", id: chat, direction: "invalid" }, null].map((c) => Buffer.from(JSON.stringify(c)).toString("base64url")),
 ])("returns the first page for invalid cursor %s", async (input) => {
   expect(html(await ParentNotes({ params: Promise.resolve({ child }), searchParams: Promise.resolve({ cursor: input }) }))).toBe(html(await list()));
+});
+
+// The golden files were written from these pages before the Maya tab existed (#553). A family the dashboard's switch does
+// not open to keeps them byte for byte.
+it("gives a family without the dashboard today's notes pages, byte for byte", async () => {
+  await expect(html(await list())).toMatchFileSnapshot("./notes-list.golden.html");
+  await expect(html(await session())).toMatchFileSnapshot("./notes-session.golden.html");
+});
+
+describe("the Maya tab (#553)", () => {
+  type Tab = import("@/lib/child-stage").ChildTab;
+  const withMaya: Tab[] = ["overview", "workbooks", "maya", "assessment", "account"];
+  const view = (id: string, firstName: string, tabs: Tab[]) => ({
+    id, firstName, schoolGrade: 3 as const, stage: "active" as const, opensOn: "overview" as const, tabs, readOnly: false, currentWorkbook: { number: 1 }, reportIds: [],
+  });
+  const open = (tabs: Tab[] = withMaya) => {
+    tab.dashboard = { children: [view(sibling, "Sam", withMaya), view(child, "Leah", tabs)], remembered: null, pinSet: true, timeZoneSaved: true };
+    tab.minutes = new Map([[child, { used: 12, left: 18, backOn: "Monday, November 9" }], [sibling, { used: 30, left: 0, backOn: "Monday, November 9" }]]);
+  };
+
+  it("shows this child's minutes left this week and a note per call, with the transcript one click down", async () => {
+    open();
+    const out = html(await list());
+    expect(out).toContain('<p class="eyebrow">Maya</p>');
+    expect(out).toContain("<h1>Leah</h1>");
+    expect(out).toContain("Leah used 12 of 30 minutes. 18 minutes left. The minutes start again on Monday, November 9.");
+    expect(out).not.toContain("Sam used");
+    expect(tab.minuteReads).toEqual([[child]]);
+    expect(out.match(/class="maya-note-item"/g)).toHaveLength(2);
+    expect(out).toContain(`href="/account/notes/${child}/${chat}"`);
+    expect(out).toContain(`href="/account/notes/${child}/${call}"`);
+    expect(out).not.toContain("Shall we get going?");
+    expect(state.projections.some((p) => p.includes("transcript"))).toBe(false);
+    // The tabs are the way back.
+    expect(out).not.toContain("Back to your account");
+    expect(out).not.toMatch(/\b(?:she|her|companion)\b/i);
+  });
+
+  it("keeps the minutes when there are no notes yet", async () => {
+    open();
+    state.rows = [];
+    const out = html(await list());
+    expect(out).toContain("18 minutes left");
+    expect(out).toContain("There are no notes from Maya yet.");
+  });
+
+  it("never lists a note that has no family call or chat behind it, such as an admin test call", async () => {
+    open();
+    state.rows = [row(), row(call, child, "p1", "admin_test")];
+    const out = html(await list());
+    expect(out.match(/class="maya-note-item"/g)).toHaveLength(1);
+    expect(out).not.toContain(`/${child}/${call}`);
+    expect(out).toContain(`/${child}/${chat}`);
+  });
+
+  it("takes the transcript page back to the Maya tab", async () => {
+    open();
+    const out = html(await session(child, call));
+    expect(out).toContain(`<a class="maya-notes-back" href="/account/notes/${child}">← Back to Maya</a>`);
+    expect(out).toContain("Hi Leah! Shall we get going?");
+    expect(out).not.toContain("Back to your account");
+  });
+
+  it("leaves a child without the Maya tab on today's pages, with no minutes read", async () => {
+    open(["overview", "workbooks", "assessment", "account"]);
+    await expect(html(await list())).toMatchFileSnapshot("./notes-list.golden.html");
+    await expect(html(await session())).toMatchFileSnapshot("./notes-session.golden.html");
+    expect(tab.minuteReads).toEqual([]);
+  });
 });

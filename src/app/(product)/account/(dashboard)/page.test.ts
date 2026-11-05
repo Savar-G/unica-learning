@@ -8,7 +8,8 @@ import type { ParentNote } from "@/lib/parent-maya-notes";
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({}) }));
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
-vi.mock("@/lib/maya-minutes-server", () => ({ parentMinutes: async () => new Map() }));
+const minutes = vi.hoisted(() => ({ value: new Map<string, import("@/lib/maya-minutes-server").ChildMinutes>() }));
+vi.mock("@/lib/maya-minutes-server", () => ({ parentMinutes: async () => minutes.value }));
 vi.mock("@/lib/parent-pin-server", () => ({ pinIsSet: async () => false }));
 vi.mock("@/lib/workbook-store", () => ({ workbookStore: () => ({ childWorkbooks: async () => [] }) }));
 const scanning = vi.hoisted(() => ({ enabled: false }));
@@ -49,7 +50,7 @@ vi.mock("@/lib/supabase-auth", () => ({
   }),
 }));
 
-beforeEach(() => { dashboard.value = null; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; scanning.enabled = false; notes.latest = new Map(); });
+beforeEach(() => { minutes.value = new Map(); dashboard.value = null; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; scanning.enabled = false; notes.latest = new Map(); });
 
 it("shows only the latest note and its links on the matching child's card, without an empty notes section", async () => {
   family.olderChild = true;
@@ -178,6 +179,27 @@ describe("a family the switch opens to", () => {
     expect(out).toContain("on Tuesday, November 17");
     expect(out).toContain("<p class=\"eyebrow\">Assessment</p>");
     expect(out).not.toMatch(/\b(?:she|her)\b/i);
+  });
+
+  it("moves the minutes and the note to the Maya tab when the child has it", async () => {
+    notes.latest.set("c1", {
+      child_id: "c1", call_id: "latest-chat", channel: "chat", startedAt: "2026-11-08T01:00:00Z", call_ended_at: "2026-11-08T01:06:00Z",
+      facts: { question: { source: "workbook", page: 23, number: 4, text: "27 + 39" }, minutes: 6, finished: "with_help", reason: "solved", help: "hint", stuckOn: null, paper: "unknown", safety: false },
+      sentences: ["{child} called Maya about page 23, question 4.", "{child} finished it after a small hint."], warm: null,
+    });
+    minutes.value = new Map([["c1", { used: 12, left: 18, backOn: "Monday, November 9" }]]);
+    const tabs = ["overview", "workbooks", "maya", "assessment", "account"] as const;
+    const asha = { ...view("c1", "Asha"), stage: "active" as const, opensOn: "overview" as const, tabs: [...tabs] };
+    dashboard.value = { children: [view("z-old", "Sam"), asha], remembered: null, pinSet: true, timeZoneSaved: true };
+    const out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ child: "c1" }) })));
+    expect(out).not.toContain("Latest note from Maya");
+    expect(out).not.toContain("Maya this week");
+    expect(out).not.toContain("Try Maya");
+    // Without the tab the same facts stay on the home page.
+    dashboard.value = { children: [view("z-old", "Sam"), { ...asha, tabs: tabs.filter((t) => t !== "maya") }], remembered: null, pinSet: true, timeZoneSaved: true };
+    const kept = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ child: "c1" }) })));
+    expect(kept).toContain("Latest note from Maya");
+    expect(kept).toContain("Asha used 12 of 30 minutes.");
   });
 
   it("keeps the note and the scan link until a tab holds them", async () => {
