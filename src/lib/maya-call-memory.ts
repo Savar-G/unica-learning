@@ -8,6 +8,8 @@ import type { CallChange, CallConnection, CallRecord, CallStore, ConnectionLog }
 interface MemoryCallStore extends CallStore {
   rows(): CallRecord[];
   appendConnection(event: CallConnection, revision: number, commit: () => void): boolean;
+  /** Live calls made at or before `createdBefore`, oldest first (the sweep's source, src/lib/maya-call-sweep.ts). */
+  liveCalls(createdBefore: string, limit: number): Promise<CallRecord[]>;
 }
 
 export function memoryCallStore(options: { testFamilies: readonly string[] }): MemoryCallStore {
@@ -54,6 +56,13 @@ export function memoryCallStore(options: { testFamilies: readonly string[] }): M
       commit();
       rows.set(r.id, { ...r, revision: revision + 1 });
       return true;
+    },
+    async liveCalls(createdBefore, limit) {
+      return [...rows.values()]
+        .filter((r) => r.status === "live" && Date.parse(r.createdAt) <= Date.parse(createdBefore))
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+        .slice(0, limit)
+        .map(copy);
     },
     rows: () => [...rows.values()].map(copy),
   };

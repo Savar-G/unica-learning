@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import type { CallChange, CallRecord, CallStore, ConnectionLog } from "@/lib/maya-call";
+import type { LiveCallSource } from "@/lib/maya-call-sweep";
 import type { QuestionRef } from "@/lib/question-package";
 
 // The call store of Maya's calls (src/lib/maya-call.ts, #323) in Supabase: public.maya_calls with the secret key (only
@@ -171,6 +172,24 @@ export function mayaCallStore(admin: SupabaseClient<Database>): CallStore {
         .select("id");
       if (error) throw new Error(`maya call clear note: ${error.message}`);
       return (data ?? []).length === 1;
+    },
+  };
+}
+
+/** Live calls for the sweep of abandoned calls (#528), on the partial index of migration maya_calls_live_index. */
+export function liveCallSource(admin: SupabaseClient<Database>): LiveCallSource {
+  return {
+    async liveCalls(createdBefore, limit) {
+      const { data, error } = await admin
+        .from("maya_calls")
+        .select("*")
+        .eq("status", "live")
+        .lte("created_at", createdBefore)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .limit(Math.max(1, Math.min(limit, 50)));
+      if (error) throw new Error(`maya live calls: ${error.message}`);
+      return (data ?? []).map(fromCallRow);
     },
   };
 }
