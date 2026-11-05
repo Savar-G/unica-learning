@@ -344,6 +344,8 @@ export function buildPlannedItem(plan: ItemPlan, raw: unknown, place: SlotPlace)
   // (The writer edits no story text, Savar 2026-11-04 B1: code's planned text prints, whatever came back.)
   const text = plan.source === "explain" ? item.text : plan.item.text;
   const built = buildQuestion({ ...plan.item, text }, { ...place, preserveText: true });
+  // The builder was asked for this exact selected step, and the contract above checked its fixed math.
+  if (plan.itemStep) { built.itemStep = { ...plan.itemStep }; built.itemStepReason = null; }
   if (!built.package) return built;
   // Reuse existing circle, picture and region support. These tasks are checked
   // by the parent: there is no false claim that code can check a coloured scan.

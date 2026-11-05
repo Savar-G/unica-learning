@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { checkQuestionPackage, type ItemCheck } from "@/lib/question-package";
 import { BC_CURRICULUM, curriculumFor, curriculumFromData } from "@/lib/workbook-curriculum";
-import { buildStepItem, choicesFor, handBuiltStep, sequenceOf, stepBounds, stepOf, stepRangeProblem, stepRank, stepTemplateItem, templateProblem } from "@/lib/workbook-step-items";
+import { buildStepItem, choicesFor, handBuiltStep, selectHandBuiltStep, sequenceOf, stepBounds, stepOf, stepRangeProblem, stepRank, stepTemplateItem, templateProblem } from "@/lib/workbook-step-items";
 import { itemNumber, planItem } from "@/lib/workbook-item-plan";
 import { buildQuestion, selectedItemStep, type AiItem } from "@/lib/workbook-generator-items";
 
@@ -19,16 +19,18 @@ describe("hand-built tested-step selection (#597)", () => {
 
   it.each([
     ["5.8-extend-facts", "add", 300, 400, 1], ["5.8-extend-facts", "subtract", 9000, 4000, 2],
+    ["5.8-extend-facts", "add", 1000, 1000, 1],
     ["4.8-multiplication-facts", "multiply", 7, 3, 2], ["4.8-division-facts", "divide", 56, 7, 3],
     ["5.9-recall-facts", "multiply", 6, 4, 1], ["5.9-recall-facts", "divide", 36, 4, 2],
-    ["4.7-addition-facts-fluency", "add", 6, 7, 3], ["3.4-subtraction-facts-20", "subtract", 18, 9, 3],
+    ["4.7-addition-facts-fluency", "add", 6, 7, 1], ["3.4-subtraction-facts-20", "subtract", 18, 9, 1],
+    ["3.9-area-square-units", "add", 3, 4, 2], ["4.4-subtract-within-10000", "subtract", 1010, 17, 5],
     ["K5-two-more-less", "subtract", 8, 2, 2],
   ] as const)("keeps %s %s %s,%s on its true step %s", (skill, kind, a, b, step) => {
     expect(handBuiltStep(BC, fact(skill, kind, a, b))).toEqual({ unit: BC.skill(skill)!.unit, skill, step });
   });
 
   it("leaves mislabeled writer tasks and facts with no true step excluded", () => {
-    for (const candidate of [fact("5.8-extend-facts", "add", 56, 15), fact("5.8-extend-facts", "add", 60, 70), fact("3.9-area-square-units", "add", 3, 4), fact("5.9-recall-facts", "divide", 35, 4)]) {
+    for (const candidate of [fact("5.8-extend-facts", "add", 56, 15), fact("5.8-extend-facts", "add", 60, 70), fact("3.9-area-square-units", "add", 65, 5)]) {
       expect(handBuiltStep(BC, candidate)).toBeNull();
     }
   });
@@ -36,12 +38,25 @@ describe("hand-built tested-step selection (#597)", () => {
   it("selects the place-value step from code's candidate and ignores a writer's reference", () => {
     const candidate = planItem({ skill: "5.1-place-value-million", slot: "1.1", level: 16, day: 1, ordinal: 1, range: { min: 700000, max: 700000, pictures: false, help: "none" } })!.item;
     const selected = handBuiltStep(BC, candidate);
-    expect(selected).toEqual({ unit: "5.1", skill: candidate.skill, step: 4 });
-    const built = buildQuestion({ ...candidate, itemStep: { unit: "wrong", skill: "wrong", step: 99 } }, place(16, candidate.skill));
+    expect(selected).toEqual({ unit: "5.1", skill: candidate.skill, step: 2 });
+    const built = buildQuestion({ ...candidate, itemStep: { unit: "wrong", skill: "wrong", step: 99 } }, { ...place(16, candidate.skill), stepSelection: { curriculum: BC } });
     expect(built.check.status).toBe("checked");
+    expect(built.itemStep).toEqual(selected);
     expect(selectedItemStep(built.package, selected)).toEqual(selected);
     expect(selectedItemStep(built.package, null)).toBeNull();
     expect(selectedItemStep(built.package, { unit: "4.8", skill: "4.8-multiplication-facts", step: 1 })).toBeNull();
+  });
+
+  it("reads the selected skill's current ranges and keeps the builder's requested step", () => {
+    const candidate = fact("5.8-extend-facts", "add", 1000, 1000);
+    expect(handBuiltStep(BC, candidate, 2)).toEqual({ unit: "5.8", skill: candidate.skill, step: 2 });
+    const custom = { ...BC, skillSteps: (id: string) => id === candidate.skill ? BC.skillSteps(id)!.map(s => s.number === 1
+      ? { ...s, numbers: { operand1: { min: 1, max: 99 }, operand2: { min: 1, max: 99 } } } : s) : BC.skillSteps(id) };
+    expect(handBuiltStep(custom, fact(candidate.skill, "add", 56, 15))).toEqual({ unit: "5.8", skill: candidate.skill, step: 1 });
+    const rejected = selectHandBuiltStep(BC, { skill: candidate.skill, operation: { kind: "add", operands: [56, 15] }, numbers: [] });
+    expect(rejected.itemStep).toBeNull();
+    expect(rejected.reason).toContain('"min":100,"max":2000');
+    expect(selectHandBuiltStep(BC, { skill: "", operation: null, numbers: [] }).reason).toContain("No trusted skill");
   });
 });
 

@@ -530,7 +530,7 @@ function contractFor(input: GenerateInput, w: PageWork, slot: Slot, attempt = 0,
     if (candidate) return candidate;
   }
   if (!planned) return null;
-  const itemStep = handBuiltStep(input.curriculum, planned.item);
+  const itemStep = handBuiltStep(input.curriculum, planned.item, own?.number);
   const selected = itemStep ? { ...planned, itemStep } : planned;
   return slot.interest ? withInterestNoun(input, w, slot, selected, attempt) : selected;
 }
@@ -682,6 +682,7 @@ export interface GeneratedQuestion {
   itemPlan?: ItemPlan;
   /** Code's tested-step selection, kept with the generated question for the permanent print contract. */
   itemStep?: StepReference | null;
+  itemStepReason?: string | null;
   /** This skill still uses the existing writer until its approved builder exists. */
   existing?: boolean;
   /** The text code wrote for a question with no plan (code's wording of its operation): a story prints it exactly (B1). */
@@ -1780,6 +1781,7 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
     const c = contracts.get(slot.id);
     const builder = input.itemPolicy === "approved-v1" && !slot.existing ? (raw: unknown, place: Parameters<typeof buildQuestion>[1]) => c ? buildPlannedItem(c, raw, place) : unapprovedBuild() : buildQuestion;
     const b = builder(shortSequence(out.items.get(slot.id), input.plan.level), {
+      stepSelection: { curriculum: input.curriculum, step: c?.itemStep?.step },
       id: `${input.workbookId}:d${w.day}p${w.page.number}s${slot.id}`,
       // A step template item's skill is its step's (a story page's reviewed step, a Challenge's stretch, a taught step
       // when the page's own tasks ran out): code picked it, so the place allows it.
@@ -1992,7 +1994,8 @@ function rewordRepeat(input: GenerateInput, b: BuiltQuestion, slot: Slot, memory
 const generated = (w: PageWork, i: number, b: BuiltQuestion, attempts: GeneratedQuestion["attempts"]): GeneratedQuestion => ({
   number: i + 1, slot: w.slots[i].id, part: w.slots[i].part.kind, ...(w.slots[i].place ? { place: w.slots[i].place! } : {}), check: b.check, attempts, package: b.package,
   ...(w.slots[i].contract ? { itemPlan: structuredClone(w.slots[i].contract!) } : {}),
-  itemStep: selectedItemStep(b.package, w.slots[i].contract?.itemStep ?? w.slots[i].factStep),
+  itemStep: selectedItemStep(b.package, b.itemStep !== undefined ? b.itemStep : w.slots[i].contract?.itemStep ?? w.slots[i].factStep),
+  itemStepReason: b.itemStepReason ?? null,
   ...(w.slots[i].existing ? { existing: true } : {}),
   ...(!w.slots[i].contract && b.package && b.wordings?.includes(b.package.text) ? { codeText: b.package.text } : {}),
 });
@@ -3700,6 +3703,7 @@ export async function reviseWorkbookPage(input: GenerateInput, deps: GenerateDep
       throw new Error("Stories print the generator's own wording. Change the numbers or regenerate the question instead.");
     const builder = input.itemPolicy === "approved-v1" && !slot.existing ? (raw: unknown, place: Parameters<typeof buildQuestion>[1]) => slot.contract ? buildPlannedItem(slot.contract, raw, place) : unapprovedBuild() : buildQuestion;
     const b = builder(raw, { id: q.package?.id ?? `${input.workbookId}:p${page.number}q${q.number}`,
+      stepSelection: { curriculum: input.curriculum, step: slot.contract?.itemStep?.step },
       workbookId: input.workbookId, page: page.number, question: q.number, level: input.plan.level,
       skills: slot.contract ? [...new Set([slot.contract.item.skill, ...slot.part.skills])] : slot.part.skills, signs: skillSigns(input.curriculum, input.plan.level, slot.contract ? slot.contract.item.skill : slot.part.skills[0]), story: !!slot.place && STORY_CHECK_PLACES.has(slot.place) });
     if (b.package && typeof raw.text === "string") {

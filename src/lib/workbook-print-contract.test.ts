@@ -624,6 +624,11 @@ describe("teaching context", () => {
     expect(teachingContext(frame, page, { slot: "2.1", part: "remember-these", package: pkg(item({}), ["2.1-count"]) })!.eligibility).toMatchObject({ mastery: false, reason: "no-item-step" });
   });
 
+  it("a rejected selection never borrows the planned step", () => {
+    expect(teachingContext(frame, page, { slot: "1.1", part: "new-idea", package: pkg(item({})), itemStep: null })!.eligibility)
+      .toMatchObject({ mastery: false, reason: "no-item-step" });
+  });
+
   it("keeps a code-selected hand-built step without borrowing the review list", () => {
     const q = { slot: "2.1", part: "remember-these" as const, package: pkg(item({}), ["2.1-count"]), itemStep: { unit: "2.1", skill: "2.1-count", step: 1 } };
     const t = teachingContext(frame, page, q)!;

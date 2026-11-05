@@ -101,7 +101,11 @@ describe("G1 persona books", () => {
           expect(teachingContext(frame, p, { ...q, package: q.package! })).toMatchObject({ plannedStep: null, itemStep: q.itemStep, eligibility: { mastery: true } });
         }
         const all = draft.pages.flatMap(p => p.questions.map(q => q.package ? teachingContext(frame, p, { ...q, package: q.package }) : null));
-        expect(masteryCoverageMarkdown(draft, frame)).toContain(`| All | ${all.length} | ${all.filter(t => !t?.eligibility.mastery).length} |`);
+        const report = masteryCoverageMarkdown(draft, frame);
+        const excluded = all.filter(t => !t?.eligibility.mastery).length;
+        expect(report).toContain(`| All | ${all.length} | ${excluded} |`);
+        expect(report.split("### Each excluded item")[1].split("\n").filter(line => /^\| \d+ \| \d+ \|/.test(line))).toHaveLength(excluded);
+        expect(report).toContain("Operand ranges:");
       }
       // No personal choice fails a question the same plan's book without them passes.
       const failed = (d: GeneratedWorkbook) => d.pages.flatMap((p) => p.questions.filter((q) => q.check.status === "failed").map((q) => `${p.type} d${p.day} ${q.place}: ${(q.check as { reason: string }).reason}`)).sort();

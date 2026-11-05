@@ -11,8 +11,15 @@ import { teachingContext, type TeachingFrame } from "@/lib/workbook-print-contra
 /** Count the same permanent teaching context approval stores, including every excluded question. */
 export function masteryCoverageMarkdown(draft: GeneratedWorkbook, frame: TeachingFrame): string {
   const groups = new Map<string, { total: number; excluded: number; noStep: number }>();
+  const excluded: string[] = [];
+  const cell = (value: string) => value.replace(/\|/g, "\\|").replace(/\s+/g, " ");
   for (const page of draft.pages) for (const q of page.questions) {
     const teaching = q.package ? teachingContext(frame, page, { ...q, package: q.package }) : null;
+    if (!teaching?.eligibility.mastery) {
+      const reason = teaching?.eligibility.reason === "no-item-step" ? q.itemStepReason ?? "No recorded tested step."
+        : teaching?.eligibility.reason ?? "No teaching context or package.";
+      excluded.push(`| ${page.number} | ${q.number} | ${q.place ?? q.part} | ${cell(q.package?.skill.skills.join(", ") ?? "none")} | ${cell(q.package?.text ?? "no package")} | ${cell(reason)} |`);
+    }
     for (const kind of ["All", q.place ?? q.part]) {
       const row = groups.get(kind) ?? { total: 0, excluded: 0, noStep: 0 };
       row.total++;
@@ -24,7 +31,8 @@ export function masteryCoverageMarkdown(draft: GeneratedWorkbook, frame: Teachin
   return ["## Mastery exclusions (#597)", "", "| Kind | Questions | Excluded | No tested step |", "|---|---:|---:|---:|",
     ...[...groups].sort(([a], [b]) => a === "All" ? -1 : b === "All" ? 1 : a.localeCompare(b))
       .map(([kind, row]) => `| ${kind} | ${row.total} | ${row.excluded} | ${row.noStep} |`), "",
-    "Excluded includes missing context, unscored items, parent checks and Try first. A review-step list does not identify a tested step.", ""].join("\n");
+    "Excluded includes missing context, unscored items, parent checks and Try first. A review-step list does not identify a tested step.", "",
+    "### Each excluded item", "", "| Page | Question | Kind | Selected skill | Printed question | Reason |", "|---|---|---|---|---|---|", ...excluded, ""].join("\n");
 }
 import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 

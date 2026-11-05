@@ -441,6 +441,7 @@ function testedStep(frame: TeachingFrame, planned: StepReference | null, q: Teac
     return frame.units[q.itemStep.skill] === q.itemStep.unit && skills.includes(q.itemStep.skill)
       ? { ...q.itemStep } : null;
   }
+  if (q.itemStep === null) return null;
   return planned && skills[0] === planned.skill ? planned : null;
 }
 

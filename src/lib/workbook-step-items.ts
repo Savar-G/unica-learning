@@ -11,6 +11,7 @@
 //   box to fix it), Solve it two ways (two work boxes and the answer), else one answer box.
 // - The AI may reword a story's text only (in real runs): the same numbers, every one of them, checked by code.
 // Pure TypeScript: no Next.js, React, network, database, clock or Math.random.
+import { decimalValue } from "./workbook-curriculum/expression";
 import { likelihoodWord } from "./workbook-likelihood";
 import { printedMinus, singularPlaces, takeAwayProblem } from "./workbook-wording";
 import { BC_SKILL_MAP } from "@/lib/assessment";
@@ -18,59 +19,81 @@ import type { AnswerRegion, Item, ItemCheck, QuestionPackage } from "@/lib/quest
 import { checkQuestionPackage } from "@/lib/question-package";
 import { storedDomain, templateAnswerValue, templateScalar, type TemplateScalar, type TemplateSource } from "@/lib/question-package-template";
 import type { Curriculum, CurriculumStep, NumberDomain, NumberRange, StepTemplate, TemplateDifficulty } from "@/lib/workbook-curriculum";
-import { prepareTemplate, seededRandom, slotDomain } from "@/lib/workbook-curriculum/template";
+import { domainContains, prepareTemplate, seededRandom, slotDomain } from "@/lib/workbook-curriculum/template";
 import { isChallengeOnly, isTwoStep, templateAtLevel } from "@/lib/workbook-curriculum/house-templates";
 import type { AiItem, BuiltQuestion, SlotPlace } from "@/lib/workbook-generator-items";
 import type { SlotName } from "@/lib/workbook-page";
 import type { StepReference } from "@/lib/workbook-print-contract";
 
-/** A hand-built candidate's tested step, selected from code's item data, never a review-step list or writer text. */
-export function handBuiltStep(curriculum: Curriculum, item: AiItem): StepReference | null {
-  const skill = curriculum.skill(item.skill);
-  if (!skill) return null;
-  const op = item.operation;
-  const [a, b] = op?.operands.map(v => v.type === "number" ? v.value : null) ?? [];
-  let number: number | null = null;
-  if (a != null && b != null) {
-    // These branches name the exact task the code builder selected. A skill label alone is insufficient.
-    if (item.skill === "5.8-extend-facts" && ["add", "subtract"].includes(op!.kind)) {
-      const result = op!.kind === "add" ? a + b : a - b;
-      for (const [step, scale] of [[2, 1000], [1, 100]] as const) {
-        if ([a, b, result].every(n => n >= scale && n <= 20 * scale && n % scale === 0)) { number = step; break; }
-      }
-    } else if (item.skill === "5.9-recall-facts") {
-      if (op!.kind === "multiply" && [a, b].every(n => Number.isInteger(n) && n >= 2 && n <= 10)) number = 1;
-      if (op!.kind === "divide" && Number.isInteger(b) && b >= 2 && b <= 10 && a % b === 0 && a / b >= 2 && a / b <= 10) number = 2;
-    } else if (item.skill === "4.7-addition-facts-fluency" && ["add", "subtract"].includes(op!.kind)) {
-      if ([a, b].every(n => Number.isInteger(n) && n >= 0) && (op!.kind === "add" ? a + b <= 20 : a <= 20 && a >= b)) number = 3;
-    } else if (item.skill === "3.4-subtraction-facts-20" && op!.kind === "subtract") {
-      if ([a, b].every(Number.isInteger) && a <= 20 && a >= b && b >= 0) number = 3;
-    } else if (item.skill === "4.8-multiplication-facts" && op!.kind === "multiply") {
-      if ([a, b].every(n => Number.isInteger(n) && n >= 2 && n <= 10)) {
-        number = [a, b].some(n => [2, 5, 10].includes(n)) ? 1 : [a, b].some(n => [3, 4].includes(n)) ? 2 : 3;
-      }
-    } else if (item.skill === "4.8-division-facts" && op!.kind === "divide") {
-      if (Number.isInteger(b) && b >= 2 && b <= 10 && a % b === 0 && a / b >= 2 && a / b <= 10) number = [2, 5, 10].includes(b) ? 1 : [3, 4].includes(b) ? 2 : 3;
-    } else if (["K5-one-more-less", "K5-two-more-less", "1.1-one-more-less-20"].includes(item.skill) && ["add", "subtract"].includes(op!.kind)) {
-      const change = item.skill === "K5-two-more-less" ? 2 : 1;
-      if (b === change && a >= change && a + (op!.kind === "add" ? b : -b) <= (item.skill.startsWith("K") ? 10 : 20)) {
-        number = item.skill.startsWith("K") ? op!.kind === "add" ? 1 : 2 : a + b <= 10 ? 1 : 2;
-      }
-    }
+export interface HandBuiltStepSelection {
+  itemStep: StepReference | null;
+  reason: string | null;
+}
+
+/** The operations a curriculum step prints. This reads trusted templates, never a generated question's words. */
+function stepOperations(step: CurriculumStep): Set<string> {
+  const operations = new Set<string>();
+  const kinds: Record<string, string> = { "+": "add", "-": "subtract", "*": "multiply", "/": "divide", "//": "divide" };
+  for (const template of step.templates ?? []) {
+    const binary = template.answer.trim().match(/^(?:[a-zA-Z_]\w*|\d+)\s*(\/\/|[+*\/-])\s*(?:[a-zA-Z_]\w*|\d+)$/);
+    if (binary) operations.add(kinds[binary[1]]);
+    if (/[÷]/.test(template.text)) operations.add("divide");
+    if (template.format === "missing" && template.text.includes("+")) operations.add("missing-addend");
   }
-  if (item.format === "places" && item.numbers.length === 1 && item.numbers[0].type === "number") {
-    const n = item.numbers[0].value;
-    if (n != null && Number.isInteger(n)) {
-      if (item.skill === "2.1-place-value-tens-ones" && n >= 10 && n <= 99) number = 1;
-      if (item.skill === "3.1-place-value-1000" && n >= 100 && n <= 999) number = String(n).includes("0") ? 2 : 1;
-      if (item.skill === "4.1-place-value-10000" && n >= 1000 && n <= 10000) number = n === 10000 ? 3 : String(n).includes("0") ? 2 : 1;
-      if (item.skill === "5.1-place-value-million" && n >= 10000 && n <= 1000000) {
-        const zeros = (String(n).match(/0/g) ?? []).length;
-        number = n < 100000 ? zeros === 0 ? 1 : null : n === 1000000 || zeros > 2 ? 4 : zeros ? 3 : 2;
-      }
-    }
+  return operations;
+}
+
+/** The named operand ranges belong to the selected skill's step. Auxiliary template variables are never operands. */
+function operandDomains(step: CurriculumStep, kind: string): NumberDomain[] | null {
+  const n = step.numbers ?? {};
+  if (n.operand1 && n.operand2) return [n.operand1, n.operand2];
+  if (kind === "divide" && n.dividend && n.divisor) return [n.dividend, n.divisor];
+  if (n.rows && n.columns) return [n.rows, n.columns];
+  if (n.length) return [n.length, n.width ?? n.length];
+  if (n.start && n.change) return [n.start, n.change];
+  if (n.start) {
+    const sign = kind === "add" ? "+" : kind === "subtract" ? "-" : null;
+    const literal = sign && step.templates?.map(t => t.answer.trim().match(/^[a-zA-Z_]\w*\s*([+-])\s*(\d+)$/))
+      .find(m => m?.[1] === sign);
+    if (literal) return [n.start, [Number(literal[2])]];
   }
-  return number !== null && stepOf(curriculum, item.skill, number) ? { unit: skill.unit, skill: item.skill, step: number } : null;
+  return null;
+}
+
+/**
+ * Select the lowest step whose operation and operand ranges cover this item. A builder can request one step explicitly.
+ * Only the selected skill is searched. Neither the review list nor the printed wording supplies a reference.
+ */
+export function selectHandBuiltStep(curriculum: Curriculum, selected: { skill: string; operation: { kind: string; operands: readonly number[] } | null; numbers: readonly number[] }, requestedStep?: number): HandBuiltStepSelection {
+  const skill = curriculum.skill(selected.skill);
+  const none = (reason: string): HandBuiltStepSelection => ({ itemStep: null, reason });
+  if (!skill) return none(`No trusted skill: ${selected.skill || "none"}.`);
+  const steps = [...(curriculum.skillSteps(skill.id) ?? [])].sort((a, b) => a.number - b.number);
+  const inside = (domain: NumberDomain, value: number) => Number.isFinite(value) && domainContains(domain, decimalValue(value));
+  const details: string[] = [];
+  for (const step of steps) {
+    if (requestedStep !== undefined && step.number !== requestedStep) continue;
+    const op = selected.operation;
+    const domains = op ? operandDomains(step, op.kind) : null;
+    const value = step.numbers?.value ?? step.numbers?.number ?? step.numbers?.count;
+    const allowed = !op || stepOperations(step).has(op.kind);
+    const fits = op ? !!domains && op.operands.length === domains.length && (op.operands.every((n, i) => inside(domains[i], n))
+      || ["add", "multiply"].includes(op.kind) && [...op.operands].reverse().every((n, i) => inside(domains[i], n)))
+      : !!value && selected.numbers.length > 0 && selected.numbers.every(n => inside(value, n));
+    if (allowed && fits) return { itemStep: { unit: skill.unit, skill: skill.id, step: step.number }, reason: null };
+    details.push(`step ${step.number}: ${!allowed ? `operation ${op!.kind} is not covered; ` : ""}${JSON.stringify(op ? domains : value ?? null)}`);
+  }
+  const task = selected.operation ? `${selected.operation.kind}(${selected.operation.operands.join(", ")})` : selected.numbers.join(", ");
+  return none(`${skill.id}: no step covers ${task}. Operand ranges: ${details.join("; ") || "none"}.`);
+}
+
+/** The candidate and its tested step are selected together, before a writer can supply any fields. */
+export function handBuiltStep(curriculum: Curriculum, item: AiItem, requestedStep?: number): StepReference | null {
+  return selectHandBuiltStep(curriculum, {
+    skill: item.skill,
+    operation: item.operation ? { kind: item.operation.kind, operands: item.operation.operands.map(v => v.type === "number" ? v.value ?? NaN : NaN) } : null,
+    numbers: item.numbers.map(v => v.type === "number" ? v.value ?? NaN : NaN),
+  }, requestedStep).itemStep;
 }
 
 /** How the question is answered on the page. */
