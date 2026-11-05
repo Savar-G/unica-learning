@@ -109,7 +109,7 @@ function setup() {
   };
 }
 
-const total = (rs: SweepResult[], key: keyof SweepResult) => rs.reduce((sum, r) => sum + r[key], 0);
+const total = (rs: SweepResult[], key: Exclude<keyof SweepResult, "cut">) => rs.reduce((sum, r) => sum + r[key], 0);
 
 describe("the sweep of abandoned calls", () => {
   it("never touches a live chat before its own end plus the grace, however quiet the child is", async () => {
