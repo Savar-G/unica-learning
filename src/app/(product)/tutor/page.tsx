@@ -6,7 +6,7 @@ import { DESK_COOKIE, DESK_HOME, deskView, questionCrop, readLock, tapAreas, typ
 import { formatInZone, familyZone, type FamilyZone } from "@/lib/family-time";
 import { questionBoard } from "@/lib/desk-board";
 import { heldSentences } from "@/lib/maya";
-import { parentChatUsage } from "@/lib/maya-chat-server";
+import { deskChat } from "@/lib/maya-chat-server";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { WORKBOOK_FILES_BUCKET, type WorkbookSummary } from "@/lib/workbook-content";
 import { workbookStore } from "@/lib/workbook-store";
@@ -40,7 +40,7 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
 
   const { w, p, q, pick, from } = await searchParams;
   const [{ data: child }, { data: family }, view] = await Promise.all([
-    db.from("children").select("id, first_name, province").eq("id", lock.childId).maybeSingle(),
+    db.from("children").select("id, first_name, grade, province").eq("id", lock.childId).maybeSingle(),
     db.from("parents").select("postal, time_zone").maybeSingle(),
     // A failed read still shows the desk, with Leave, and says the workbook cannot be shown.
     deskView(workbookStore(db), {
@@ -54,12 +54,13 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
   const province = await loadFamilyProvince(db, parent);
   const timeZone = familyZone({ timeZone: family?.time_zone, postal: family?.postal, province });
 
-  const chatUsage = child ? (await parentChatUsage(db, parent, [child], timeZone)).get(child.id) ?? null : null;
+  const chat = child ? await deskChat(db, parent, child, timeZone) : { usage: null, note: null };
 
   if (!child || !view || view.status === "no-workbook") {
     return (
       <Desk
         name={name}
+        chatNote={chat.note}
         problem={view ? `There is no workbook here yet. When ${name ? `${name}'s` : "your"} workbook arrives, its pages show here.`
           : "Your workbook cannot be shown right now. Try again in a moment."}
       />
@@ -78,7 +79,8 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
       // A new workbook or page starts the desk again, with the question asked for.
       key={`${workbook.id}-${page.number}`}
       name={name}
-      chatUsage={chatUsage}
+      chatUsage={chat.usage}
+      chatNote={chat.note}
       notice={view.notice === "not-this-child" ? `That workbook is not on ${name}'s desk, so ${name}'s newest workbook is open.` : null}
       books={view.workbooks.map((w) => book(w, timeZone))}
       book={book(workbook, timeZone)}

@@ -98,6 +98,17 @@ export interface CurriculumSkill {
   requires: readonly string[];
 }
 
+/** The wrong move and its correction, printed together in a Watch out line. */
+export interface WatchOutPair {
+  wrong: string;
+  fix: string;
+  /** Only a separate verifier can mark a pair accepted. Old candidates have no mark. */
+  verified?: boolean;
+  verifierModel?: string;
+  /** Binds acceptance to this step's context and this exact text. */
+  verificationHash?: string;
+}
+
 /** An expected wrong answer on a step. */
 export interface ExpectedMistake {
   answer: string;
@@ -105,6 +116,8 @@ export interface ExpectedMistake {
   kind: "careless" | "conceptual";
   /** A misconception id, from the assessment's misconceptions.ts where one exists. */
   misconception: string | null;
+  /** Present for every coded mistake in the active data. Older imports can omit it. */
+  watchOut?: WatchOutPair;
 }
 
 export type TemplateDifficulty = "easy" | "medium" | "hard";

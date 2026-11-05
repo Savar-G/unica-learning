@@ -41,7 +41,7 @@
 import { isGrade, type Grade } from "@/lib/assessment";
 import type { AiClient } from "@/lib/ai-client";
 import type { ChildLearnerProfile } from "@/lib/child-profile";
-import type { PageImage, QuestionBox, WorkbookFiles } from "@/lib/workbook-content";
+import type { RenderedPage, WorkbookFiles } from "@/lib/workbook-content";
 import { curriculumFor, curriculumVersion } from "@/lib/workbook-curriculum";
 import {
   bookOutline,
@@ -60,9 +60,10 @@ import {
   type WorkbookDraftStore,
 } from "@/lib/workbook-generator";
 import { planNextWorkbook } from "@/lib/workbook-placement";
+import { skillUnits } from "@/lib/workbook-teaching-frame";
 import type { WorkbookPlan } from "@/lib/workbook-plan";
 import type { SolveLog, Solver, SolveVerdict } from "@/lib/workbook-solve-check";
-import { IMAGE_SCALE, PRINT_PAGE, proofPages, renderWorkbook, type DraftPage, type PrintEngine, type RenderProblem, type WorkbookTemplate } from "@/lib/workbook-render";
+import { IMAGE_SCALE, PRINT_PAGE, proofPages, renderedPages, renderWorkbook, type DraftPage, type PrintEngine, type RenderProblem, type WorkbookTemplate } from "@/lib/workbook-render";
 
 /** Attempts of one run in all: the first and one retry. */
 export const RUN_ATTEMPTS = 2;
@@ -120,11 +121,14 @@ export type RunRunner = "server" | "mac";
 
 /**
  * A draft revision's rendering: the PDF of the pages that rendered, and each page's image with its question boxes. A
- * page that did not render has a proof image (`proof`): its failure marked on it, no boxes, never printed.
+ * page that did not render has a proof image (`proof`): its failure marked on it, no boxes, never printed. Each rendered
+ * page keeps its print contract and each question its regions (#536); `contractProblem` says why a page has no contract.
+ * A revision stored before #536 has none of these.
  */
 export interface DraftRendering {
   pdfPath: string | null;
-  pages: { number: number; image: PageImage; questions: { number: number; box: QuestionBox }[]; proof?: boolean }[];
+  pdfSha256?: string | null;
+  pages: (RenderedPage & { proof?: boolean; contractProblem?: string | null })[];
 }
 
 export type StartResult =
@@ -227,6 +231,8 @@ export interface RunFrame {
   itemPolicy?: "approved-v1";
   /** The curriculum key ("bc"). */
   curriculum: string;
+  /** Each skill's unit in that curriculum, frozen for the print contract's teaching context (#536); absent on older frames. */
+  units?: Record<string, string>;
   grade: Grade;
   /** The child profile revision the plan was made from, or null. */
   profileRevision: number | null;
@@ -246,6 +252,8 @@ export interface RunFrame {
 }
 
 export interface WorkbookJobSource {
+  /** Read only the report recommendation, test duration and device for this plan's assessment. */
+  planningMetadata?(assessmentId: string): Promise<Pick<import("./workbook-signals").BookSignalsInput, "report" | "device">>;
   /** Null when there is no such child. */
   inputs(childId: string): Promise<ChildInputs | null>;
   /** Refreshes the profiles only before the run has a frame. False refuses a book from incomplete assessment facts. */
@@ -441,8 +449,7 @@ async function renderDraft(draft: GeneratedWorkbook, parentId: string, deps: Wor
         continue;
       }
       for (const file of result.files) await put(file);
-      const rendered = result.workbook.pages.map((p) => ({ number: p.number, image: p.image!, questions: p.questions.map((q) => ({ number: q.number, box: q.box })) }));
-      return { rendering: { pdfPath: result.workbook.pdfPath!, pages: [...rendered, ...proofs].sort((a, b) => a.number - b.number) }, problems, paths: stored };
+      return { rendering: { pdfPath: result.workbook.pdfPath!, pdfSha256: result.workbook.pdfSha256 ?? null, pages: [...renderedPages(result), ...proofs].sort((a, b) => a.number - b.number) }, problems, paths: stored };
     }
   } catch (e) {
     await deps.files.remove(stored).catch(() => undefined);
@@ -584,10 +591,12 @@ async function runFrame(run: WorkbookRun, deps: WorkbookJobDeps & { ai: AiClient
     const prepared = await deps.source.prepareProfile(run.childId);
     if (!prepared.ok) throw new Refusal(`We couldn't build ${name}'s profile from the assessment. Try again, or check the admin profile page.`);
     inputs = { ...inputs, profile: prepared.profile };
-    const planned = planNextWorkbook({ curriculum, grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number });
+    const assessmentId = inputs.profile?.profile.assessment?.assessmentId;
+    const metadata = assessmentId ? await deps.source.planningMetadata?.(assessmentId) : undefined;
+    const planned = planNextWorkbook({ ...metadata, curriculum, grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number });
     if (!planned.ok) throw new Refusal(`The plan could not be made: ${planned.reason}.`);
     const made: RunFrame = {
-      version: RUN_FRAME_VERSION, ...(deps.itemPolicy === "legacy" ? {} : { itemPolicy: "approved-v1" as const }), curriculum: key, grade: inputs.grade, profileRevision: inputs.profile?.revision ?? null, workbooks: inputs.workbooks,
+      version: RUN_FRAME_VERSION, ...(deps.itemPolicy === "legacy" ? {} : { itemPolicy: "approved-v1" as const }), curriculum: key, units: skillUnits(curriculum), grade: inputs.grade, profileRevision: inputs.profile?.revision ?? null, workbooks: inputs.workbooks,
       plan: deps.itemPolicy === "legacy" ? planned.plan : workbookCapacityPlan(curriculum, planned.plan), versions: { curriculum: "", outline: "", model: deps.ai.model, solveModel: deps.solver.model, build: deps.build ?? null },
     };
     if (made.itemPolicy === "approved-v1") made.plan = await prepareWorkbookCapacity(generateInput(run, made, name), deps.fit(run.parentId));

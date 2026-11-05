@@ -651,11 +651,21 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
       fail("free_talk_unchecked", `Maya turn ${i} said free talk in a turn with a math line`);
     }
   }
-  // Board text: every number on the board is one of the question's or the example's own numbers.
+  // Board text. A note (`write`) with a number must be exactly a code line's board text for this question: its expression
+  // or equation ("12 − 8 = 4", the regrouped ones of 52 − 28, #604), which code computed. Every other text on the board
+  // (a digit put in a cell, a column operand) holds only the question's or the example's own numbers.
   const own = op ? new Set([...valuesIn(JSON.stringify(op.steps)), ...valuesIn(JSON.stringify(op.easierExample.steps)), ...valuesIn(op.text), ...valuesIn(op.easierExample.text)].map((v) => JSON.stringify(v))) : new Set<string>();
+  const notes = op ? lineBoardTexts(op, heardValues(b, t)) : new Set<string>();
   for (const batch of t.board) {
-    for (const text of boardTexts(batch.commands)) {
-      if (valuesIn(text).some((v) => !own.has(JSON.stringify(v)))) fail("math_not_from_code", `board batch ${batch.transactionId} wrote "${text}"`);
+    for (const command of batch.commands) {
+      const x = command as { op?: unknown; text?: unknown };
+      if (x.op === "write" && typeof x.text === "string") {
+        if (valuesIn(x.text).length > 0 && !notes.has(x.text)) fail("math_not_from_code", `board batch ${batch.transactionId} wrote "${x.text}", which is not a code line's board text`);
+        continue;
+      }
+      for (const text of boardTexts([command])) {
+        if (valuesIn(text).some((v) => !own.has(JSON.stringify(v)))) fail("math_not_from_code", `board batch ${batch.transactionId} wrote "${text}"`);
+      }
     }
   }
 
@@ -883,6 +893,22 @@ function judgeCall(b: Behaviour, t: MayaTrace, savedCall: string | undefined, fa
     if (pairs(call.next) !== JSON.stringify(want.next)) fail("flow_mismatch", `alerts after the next request ${pairs(call.next)}, expected ${JSON.stringify(want.next)}`);
     if (call.emails !== want.emails) fail("flow_mismatch", `${call.emails} alert emails delivered, expected ${want.emails}`);
   }
+}
+
+/**
+ * Every text a code line may write on the board for this question (its `board`: the question's expression, an
+ * example's or a step's equation, the checked answer), with the equal forms of the answer the child said (#407). The
+ * offers are the ones `allLineTexts` lists; a line left out here only makes the gate stricter.
+ */
+function lineBoardTexts(op: OperationPackage, heard: readonly AnswerValue[]): Set<string> {
+  const l = packageLines(op);
+  const equalForms = heard.filter((v) => (v.type === "fraction" || v.type === "mixed") && equivalent(v, op.answer.value) && !sameValue(v, op.answer.value));
+  const offers = [
+    ...equalForms.flatMap((v) => [...l.answerRight(v), ...l.simplifyOwn(v)]),
+    ...l.question(), ...l.exampleIntro(), ...op.easierExample.steps.flatMap((s) => l.exampleStep(s.id)), ...l.tryTarget(),
+    ...l.stepIds.flatMap((id) => [...l.help(id), ...l.regroupOut(id), ...l.rightStep(id)]), ...l.help("result"), ...l.answerRight(),
+  ];
+  return new Set(offers.flatMap((o) => (o.board ? [o.board] : [])));
 }
 
 /** The text a board batch shows: `write` texts, `put` values and column operands. */

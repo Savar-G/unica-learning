@@ -1,0 +1,19 @@
+{
+  "round": "r564",
+  "ticket": "#564 (spec #544, parent dashboard): Scan pages tab, with the desktop message",
+  "route": "Built in src/ behind the scan release check (SCAN_PAGES_ENABLED off: test families and admins only) and the dashboard switch (D-236). Screenshots of the real page on npm run dev, for Savar's one review page (D-249). Not a variant round: the look is the mock's chosen direction (D-242).",
+  "picked": null,
+  "picked_by": "waiting for Savar's review page (D-249)",
+  "captured": "2026-11-05, T3 preview (the Aside CLI was down), signed in as the test family of the child 'QA E2E Three' (in test_accounts) with one recovery-link session, signed out afterwards. The preview keeps a desktop user agent at every size, so the phone-size camera flow is shown through 'Take the pictures on this device' (?here=1), which renders the same screen a phone gets. curl with that session confirmed the server picks the camera flow for an iPhone and an Android tablet user agent, and the desktop screen for the Mac user agent iPadOS Safari sends.",
+  "viewports": { "desktop": [1280, 800], "phone": [390, 844] },
+  "shots": [
+    { "file": "desktop-1280.png", "viewport": "desktop", "state": "Desktop: 'Please take a picture with your phone', the QR code (decoded in the page with jsQR: http://localhost:3564/account/scan, nothing else), Email me the link, and Take the pictures on this device" },
+    { "file": "desktop-1280-email-sent.png", "viewport": "desktop", "state": "After Email me the link: one email sent to the test family's own address (scan_link_emails row 'sent' with a Resend id)" },
+    { "file": "desktop-ua-390.png", "viewport": "phone", "state": "The desktop screen in a narrow window: QR code above the words, bottom bar, no horizontal scroll" },
+    { "file": "camera-flow-390.png", "viewport": "phone", "state": "The camera flow inside the dashboard frame at 390 px; its fixed Take or choose a photo button sits above the bottom bar" }
+  ],
+  "not_captured": [
+    "The Scan pages entry in the sidebar and the bottom bar: the tab shows only for a child whose first workbook was delivered (stage active), and no test family has a delivery receipt. The page was opened at /account/scan. The tab rule is unchanged (src/lib/child-stage.ts, src/lib/parent-shell.ts).",
+    "A real phone camera: still open in #454."
+  ]
+}

@@ -22,7 +22,7 @@ Meta adds `fbclid` to the link by itself.
    | track() event | Where it fires | Meta | Google Ads |
    |---|---|---|---|
    | `account_created` | `/start` (password) or `/account/finish` (Google; the OAuth code lands on `/auth/callback`, which redirects) | `Lead` | conversion, lead label |
-   | `report_open` | `/account/report/<id>` | nothing (the address holds the report id) | conversion, report label |
+   | `report_open` | `/account/report/<id>` | nothing, on any address (the report address holds its id, and the dashboard can show a report on `/account`, #552) | conversion, report label |
    | `card_saved` | `/thank-you?session_id=...` | nothing (the address holds the Stripe session reference) | conversion, card label, value 79.99 CAD |
 
    So Meta gets `PageView` and `Lead`; it optimizes for landing page views and signups, and our database is the measure. `account_created` on a `/start` address with another query key (for example `?next=`) also stays off Meta. No email, name, child data, grade or id travels with any conversion. Google gets the page address and the referrer (`page_referrer`) with ids replaced and only the ad tags (`utm_*`, `gclid`) kept in the query, also on its first call when it loads; another site's referrer is cut to its origin.

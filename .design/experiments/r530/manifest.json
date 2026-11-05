@@ -1,0 +1,70 @@
+{
+  "issue": 530,
+  "route": "direct",
+  "surface": "product (admin and child desk, visible only to test families and admins)",
+  "constraint_mode": "existing-system",
+  "browser": "T3 preview tools, incognito profile. Aside CLI hung on 'Waiting for Aside to restart'.",
+  "fixture": "A new marked test family (temporary admin) with Ivy, Grade 2, and Noor, Grade 5, no workbook. Added to the chat list and marked as the rehearsal family through the new admin control. Deleted afterwards; every row counted 0 after deletion.",
+  "live_api": {
+    "ivy_grade2_read": "403 {\"error\":\"unavailable\"}",
+    "noor_grade5_read": "200, reached the chat module (not_found for a made-up chat id)"
+  },
+  "viewports": {
+    "laptop": [
+      1440,
+      900
+    ],
+    "tablet": [
+      768,
+      1024
+    ],
+    "phone": [
+      390,
+      844
+    ]
+  },
+  "screenshots": [
+    {
+      "path": ".design/experiments/r530/admin-list-laptop.png",
+      "viewport": "laptop",
+      "state": "Admin, Maya chat list: switch off line, one rehearsal test family, Remove and Stop the rehearsal buttons.",
+      "sha256": "9eae8c66d93d35fd30f465626cdb53b8aa4acd556d5d1625e65470ee25806894"
+    },
+    {
+      "path": ".design/experiments/r530/admin-list-tablet.png",
+      "viewport": "tablet",
+      "state": "Same list at tablet width.",
+      "sha256": "7fbd4938822dcda5e13f164c45378f6597ae33a8228cf6efc3a520e2c07ed66c"
+    },
+    {
+      "path": ".design/experiments/r530/admin-list-phone.png",
+      "viewport": "phone",
+      "state": "Same list at phone width; the table scrolls inside its region, the page has no sideways scroll.",
+      "sha256": "d8f54eb05df152a64a7b46c340ab7e95d1e524e71d88cd3345c191fbd94debd4"
+    },
+    {
+      "path": ".design/experiments/r530/desk-grade2-laptop.png",
+      "viewport": "laptop",
+      "state": "Desk of a Grade 2 child in a family with chat: the grade line replaces 'start soon'.",
+      "sha256": "363666255c4d187f4464b6498174abd1e051d786209d5d559c40d1556559731a"
+    },
+    {
+      "path": ".design/experiments/r530/desk-grade2-tablet.png",
+      "viewport": "tablet",
+      "state": "Same desk at tablet width.",
+      "sha256": "3016d434103d5b177f98045d7be934e3527c31a07a37daf9a3807895e283c4b7"
+    },
+    {
+      "path": ".design/experiments/r530/desk-grade2-phone.png",
+      "viewport": "phone",
+      "state": "Same desk at phone width.",
+      "sha256": "9165260061d21fa230fc58ea86f1da01052a4f3ea391ebd40565a5ccb9ce9612"
+    },
+    {
+      "path": ".design/experiments/r530/desk-grade5-laptop.png",
+      "viewport": "laptop",
+      "state": "Desk of a Grade 5 child in the same family, no workbook: unchanged.",
+      "sha256": "1da5c90935dba1b44f26d4395c4619b07ee4bbc9948268511de3c237e42d563e"
+    }
+  ]
+}

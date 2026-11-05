@@ -37,6 +37,7 @@ describe("the parent's plan state", () => {
     expect(parentPlan([old, sub({ created: 2 })]).kind).toBe("free_month");
     expect(parentPlan([old])).toEqual({ kind: "ended" });
     expect(parentPlan([sub({ status: "incomplete_expired" })])).toEqual({ kind: "ended" });
+    expect(parentPlan([sub({ status: "canceled", endedAt: 100 }), sub({ status: "canceled", endedAt: 200 })])).toEqual({ kind: "ended", endedOn: when(200) });
   });
   it("offers the button only when a plan can still charge the card", () => {
     expect(canCancel({ kind: "not_started" })).toBe(false);

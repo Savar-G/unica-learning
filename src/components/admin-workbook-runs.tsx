@@ -468,7 +468,7 @@ function Approval({ detail, name }: { detail: RunDetail; name: string }) {
 }
 
 /** One run: its state, then its draft page by page, then the audit log. `only`: only the pages that need attention. */
-export function AdminWorkbookRun({ email, detail, now, only, worker }: { email: string; detail: RunDetail; now: Date; only: boolean; worker: WorkerStatus | null }) {
+export function AdminWorkbookRun({ email, detail, now, only, worker, why }: { email: string; detail: RunDetail; now: Date; only: boolean; worker: WorkerStatus | null; why?: ReactNode }) {
   const { run, child, draft } = detail;
   const state = runState(run, now);
   const name = child?.first_name ?? "Child";
@@ -493,6 +493,7 @@ export function AdminWorkbookRun({ email, detail, now, only, worker }: { email: 
   }));
   return (
     <AdminFrame email={email} section="workbooks" title={`${name}: draft of workbook ${run.number}`}>
+      {why}
       {(state === "preparing" || state === "waiting") && <RunRefresh />}
       <RecordFacts facts={[
         ["Child", <Link key="child" href={childPath(run.childId)}>{name}</Link>],

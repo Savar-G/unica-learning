@@ -4,9 +4,12 @@ import type { ChildLearnerProfile } from "@/lib/child-profile";
 import type { Curriculum, CurriculumLevel } from "@/lib/workbook-curriculum";
 import { planLevel, planWorkbook, type WorkbookPlan } from "@/lib/workbook-plan";
 import { bookSignals, type BookSignals, type BookStandard } from "@/lib/workbook-signals";
+import { workbookWhy } from "@/lib/workbook-why";
 
 export const PLACEMENT_CEILING = 27;
 export interface PlacementInput {
+  report?: import("./workbook-signals").BookSignalsInput["report"];
+  device?: import("./workbook-signals").BookSignalsInput["device"];
   curriculum: Curriculum;
   grade: Grade;
   profile: ChildLearnerProfile | null;
@@ -123,5 +126,6 @@ export function planNextWorkbook(o: PlacementInput & { number: number }): NextWo
       }
     }
   }
+  if (plan.personal) plan.personal.why = workbookWhy(plan)!;
   return { ok: true, plan, levelId: place.level.id, placement: trace };
 }

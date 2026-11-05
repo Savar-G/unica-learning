@@ -3,7 +3,7 @@ import type { Json } from "@/lib/database.types";
 import { workbookQuality } from "@/lib/workbook-quality";
 import type { AiClient } from "@/lib/ai-client";
 import type { GeneratedWorkbook, GenerateInput, GenerateDeps } from "@/lib/workbook-generator";
-import { reviseWorkbookPage, WriterPersistenceError } from "@/lib/workbook-generator";
+import { personalBookIssues, reviseWorkbookPage, withPersonalIssues, WriterPersistenceError } from "@/lib/workbook-generator";
 import type { DraftRendering, RunActor, RunRunner, RunSolve } from "@/lib/workbook-job";
 import type { RenderProblem } from "@/lib/workbook-render";
 
@@ -41,7 +41,7 @@ export interface EditJobDeps {
   store: WorkbookEditStore; runner: RunRunner; newId(): string;
   generation: Omit<GenerateDeps, "ai"> & { ai: AiClient | null };
   renderPage(snapshot: EditSnapshot, draft: GeneratedWorkbook, page: number): Promise<{ page: DraftRendering["pages"][number]; paths: string[] }>;
-  assemble(snapshot: EditSnapshot, pages: DraftRendering["pages"]): Promise<{ pdfPath: string; paths: string[] }>;
+  assemble(snapshot: EditSnapshot, pages: DraftRendering["pages"]): Promise<{ pdfPath: string; pdfSha256?: string; paths: string[] }>;
   remove(paths: string[]): Promise<void>;
   shouldYield?(): boolean;
   handOff?(id: string): Promise<void>;
@@ -101,7 +101,11 @@ export async function runWorkbookEdit(id: string, deps: EditJobDeps): Promise<"d
         // The whole-book check of the candidate book, before it renders (Codex at 09a095cd): its quality is fresh, never the
         // last revision's "ready".
         const pagesNext = draft.pages.map((p) => p.number === number ? next : p);
-        const candidate = { ...draft, pages: pagesNext, quality: workbookQuality(pagesNext) };
+        // G1: an edit may not add a personal book problem (the warm-up's fact families, the interest share).
+        const had = new Set(personalBookIssues(snapshot.input, draft.pages).map((i) => i.page));
+        const added = personalBookIssues(snapshot.input, pagesNext).filter((i) => !had.has(i.page));
+        if (added.length) throw new Error(`This edit was not saved: ${added[0].reason}.`);
+        const candidate = { ...draft, pages: pagesNext, quality: withPersonalIssues(snapshot.input, pagesNext, workbookQuality(pagesNext)) };
         const rendered = await deps.renderPage(snapshot, candidate, number);
         images.set(number, rendered.page); draft = candidate; changed++;
         result = { number, page: next, image: rendered.page, solves };
@@ -112,7 +116,7 @@ export async function runWorkbookEdit(id: string, deps: EditJobDeps): Promise<"d
     }
     if (!changed) throw new Error("No comments could be applied. The workbook is unchanged.");
     // (The revision saves the book check of the book it saves.)
-    draft = { ...draft, quality: workbookQuality(draft.pages) };
+    draft = { ...draft, quality: withPersonalIssues(snapshot.input, draft.pages, workbookQuality(draft.pages)) };
     const qs = draft.pages.flatMap((p) => p.questions);
     draft.counts = { pages: draft.pages.length, questions: qs.length, checked: qs.filter((q) => q.check.status === "checked").length,
       notChecked: qs.filter((q) => q.check.status === "not-checked").length, failed: qs.filter((q) => q.check.status === "failed").length,
@@ -121,7 +125,7 @@ export async function runWorkbookEdit(id: string, deps: EditJobDeps): Promise<"d
     const pdf = await deps.assemble(snapshot, pages); paths.push(...pdf.paths);
     let saved: Awaited<ReturnType<WorkbookEditStore["finish"]>>;
     try {
-      saved = await deps.store.finish(id, lease, { draft, rendering: { pdfPath: pdf.pdfPath, pages }, problems: failures });
+      saved = await deps.store.finish(id, lease, { draft, rendering: { pdfPath: pdf.pdfPath, pdfSha256: pdf.pdfSha256 ?? null, pages }, problems: failures });
     } catch {
       // A lost response can follow a committed revision. Keep its files and let the stored batch settle the outcome.
       return "failed";

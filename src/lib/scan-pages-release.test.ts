@@ -6,13 +6,17 @@ import * as scans from "@/app/api/account/scans/route";
 import * as photo from "@/app/api/account/scans/[id]/route";
 import * as image from "@/app/api/account/scans/[id]/image/route";
 import * as notice from "@/app/api/account/scans/notice/route";
-import ScanPage from "@/app/(product)/account/scan/page";
+import ScanPage from "@/app/(product)/account/(dashboard)/scan/page";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/components/scan-pages", () => ({ ScanPages: () => null }));
 const requestAuth = vi.hoisted(() => ({ db: null as SupabaseClient<Database> | null, signedIn: true, claimsMatch: true }));
+// The Scan pages tab (#564) reads the device and the dashboard: a phone, outside the dashboard frame.
+vi.mock("next/headers", () => ({ headers: async () => new Headers({ "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) Mobile/15E148", host: "unicalearning.com" }) }));
+vi.mock("@/lib/parent-dashboard-server", () => ({ parentDashboard: async () => null }));
 vi.mock("@/lib/supabase-auth", () => ({
   adminClient: () => requestAuth.db,
+  parentId: async () => (requestAuth.signedIn ? "00000000-0000-4000-8000-000000000001" : null),
   sessionClient: async () => ({
     from: requestAuth.db!.from.bind(requestAuth.db),
     auth: {
@@ -76,6 +80,7 @@ const endpoints = [
   ["notice", () => notice.POST(request("POST", "/notice")), 403],
 ] as const;
 const notFound = { digest: "NEXT_HTTP_ERROR_FALLBACK;404" };
+const page = () => ScanPage({ params: Promise.resolve({}), searchParams: Promise.resolve({}) });
 
 it.each(endpoints)("off: %s returns the normal not-found result before any photo read, write or body parse", async (_name, run) => {
   await expect(run()).rejects.toMatchObject(notFound);
@@ -83,14 +88,14 @@ it.each(endpoints)("off: %s returns the normal not-found result before any photo
 });
 
 it("off: the page returns not-found before it reads children or the notice", async () => {
-  await expect(ScanPage()).rejects.toMatchObject(notFound);
+  await expect(page()).rejects.toMatchObject(notFound);
   expect(state.effects).toEqual([]);
 });
 
 it.each(["on", "test", "admin"] as const)("%s: the real page and every handler pass the release gate", async (mode) => {
   state.env = mode === "on" ? { SCAN_PAGES_ENABLED: "on" } : {};
   state.test = mode === "test"; state.admin = mode === "admin";
-  await expect(ScanPage()).resolves.toBeTruthy();
+  await expect(page()).resolves.toBeTruthy();
   for (const [, run, expected] of endpoints) expect((await run()).status).toBe(expected);
   expect(state.effects.some(path => path.endsWith("/scan_photos"))).toBe(true);
   expect(state.effects.some(path => path.endsWith("/children"))).toBe(true);
@@ -100,7 +105,8 @@ it.each(["signed-out", "mismatched claims", "revoked session"])("on still refuse
   state.env = { SCAN_PAGES_ENABLED: "on" };
   requestAuth.signedIn = kind !== "signed-out"; requestAuth.claimsMatch = kind !== "mismatched claims"; state.sessionActive = kind !== "revoked session";
   for (const [, run] of endpoints) await expect(run()).rejects.toMatchObject(notFound);
-  await expect(ScanPage()).rejects.toMatchObject(notFound);
+  // A signed-out visitor signs in and comes back (#564), so the QR code works on a phone; nothing is read before.
+  await expect(page()).rejects.toMatchObject(kind === "signed-out" ? { digest: expect.stringContaining("/sign-in?next=%2Faccount%2Fscan") } : notFound);
   expect(state.effects).toEqual([]);
 });
 

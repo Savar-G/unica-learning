@@ -13,6 +13,7 @@
 //
 // The words here are code's, never the AI's: headers, panel labels and explanations come from the plan and the
 // curriculum. Pure TypeScript: no Next.js, React, network, database, clock or randomness.
+import { verifiedWatchOut } from "@/lib/workbook-personal-items";
 import { templateAnswer, templateNumbers, type TemplateSource } from "@/lib/question-package-template";
 import { TITLE_WORDS_MAX, titleWords } from "@/lib/workbook-title-rules";
 import { likelihoodWord } from "@/lib/workbook-likelihood";
@@ -530,6 +531,17 @@ export function levelSigns(curriculum: Curriculum, level: number): string[] {
 }
 
 /**
+ * The signs a Mixed set item on a skill may offer to tick: the level's signs that the skill's own range allows (G1). An
+ * earlier level's skill under review (3.3 adding within 1,000 in a U16 book) is checked against its own level's ideas,
+ * so its choices never print a sign that check refuses (× before U11).
+ */
+export function skillSigns(curriculum: Curriculum, level: number, skill: string | undefined): string[] {
+  if (!skill) return levelSigns(curriculum, level);
+  const r = skillRange(curriculum, level, skill);
+  return levelSigns(curriculum, level).filter((sign) => { const op = signOperation(sign); return !op || r[op]; });
+}
+
+/**
  * The limit a skill's id names ("1.3-add-within-10", "3.4-recall-addition-20", "2.1-ten-more-less-100"), or null; none
  * for an id ending in two numbers ("1.1-skip-count-2-5", "K3-benchmarks-5-10").
  */
@@ -962,6 +974,13 @@ function samLines(op: Operation, mistake: SamMistake): Omit<SamWork, "mistake"> 
   }
 }
 
+/** The answer Sam's mistake gives on a sum (G1: a step template Spot the error shows it), or null when it cannot happen. */
+export function samAnswer(op: Operation, mistake: SamMistake): number | null {
+  const work = samLines(op, mistake);
+  const right = operationResult(op);
+  return work && !(right.type === "number" && right.value === work.answer) ? work.answer : null;
+}
+
 /**
  * Sam's wrong work for a question's shown wrong answer: the mistake named (`cause`, when it is one of SAM_MISTAKES),
  * else the first mistake whose answer is that wrong answer. Null when the mistake cannot happen on the sum or does not
@@ -1007,13 +1026,15 @@ export function samProblem(p: QuestionPackage, level: number): string | null {
  * answer, its cause and its step from it; the first such package `ok` takes (the caller's checks: the package checker,
  * the level's numbers). Null when no mistake of the level gives one.
  */
-export function samFix(p: QuestionPackage, level: number, from: number, ok: (p: QuestionPackage) => boolean): QuestionPackage | null {
+export function samFix(p: QuestionPackage, level: number, from: number, ok: (p: QuestionPackage) => boolean, prefer: readonly SamMistake[] = []): QuestionPackage | null {
   const op = p.operation;
   if (!op || !p.item) return null;
   const allowed = levelMistakes(level);
   const right = operationResult(op);
-  for (let k = 0; k < allowed.length; k++) {
-    const mistake = allowed[(from + k) % allowed.length];
+  // G1: the child's own mistakes first (the level's only), then the others in turn as before.
+  const first = prefer.filter((m) => allowed.includes(m));
+  const order = [...first, ...allowed.map((_, k) => allowed[(from + k) % allowed.length]).filter((m) => !first.includes(m))];
+  for (const mistake of order) {
     const work = samLines(op, mistake);
     if (!work || (right.type === "number" && right.value === work.answer)) continue;
     const answer: AnswerValue = { type: "number", value: work.answer };
@@ -1082,7 +1103,10 @@ export function dayPageContent(o: {
       if (!printable(step.example?.problem) || !step.example?.answer) return null;
       // The mistake with its fix ("The 3 in 83 175 is worth 300. No: it is in the thousands place: 3 000."), never the
       // fix alone (the U16 sample: a fix line out of context).
-      const mistake = step.spotTheError;
+      // G1: the child's own coded mistake on the step, only when C2's pair is verified; else today's line.
+      // (A personal pair that would not print keeps today's line.)
+      const own = verifiedWatchOut(curriculum, plan, part!.step!.skill, step);
+      const mistake = own && printable(own.wrong) && printable(own.fix) && `${own.wrong} ${own.fix}`.length <= 150 ? own : step.spotTheError;
       // Once a day: a later page of the day that teaches the same step prints no Watch out line (the real U4 sample:
       // "Mia wrote 9, 10, 12" on three pages of Day 1).
       const day = plan.days.find((d) => d.day === o.day);
@@ -1152,10 +1176,15 @@ export function dayPageContent(o: {
     }
   });
   const two = (n: number) => String(n).padStart(2, "0");
+  // L1/G1 contract (D-233, Q6): every block of a part the plan marked Extra, and the day's required-time target when the
+  // parent's weekly time sets one, ride with the page; the book checks and the template read them from the draft.
+  const extra = layout.slots.map((s) => !!page.parts[s.part]?.extra);
+  const target = !page.extraPractice && plan.personal?.adjustments.requiredMinutes != null ? plan.days.find((d) => d.day === o.day)?.time?.target : undefined;
   return {
     // An extra practice page is no day's page (#482 review at db3b1a0: "D10·P9" under "Extra practice").
     kind: "day", id: pageId(o.child, o.workbook, page.extraPractice ? `EXTRA·${two(page.number)}` : `D${two(o.day)}·P${page.number}`), level: plan.level, day: o.day, page: page.number, pages,
-    ...layout.header, blocks,
+    ...layout.header, blocks: extra.some(Boolean) ? blocks.map((b, i) => (extra[i] ? { ...b, extra: true } : b)) : blocks,
+    ...(target !== undefined ? { requiredTimeTarget: target } : {}),
   };
 }
 

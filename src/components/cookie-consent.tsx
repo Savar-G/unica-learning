@@ -43,6 +43,24 @@ export function CookieConsent({ privacyHref = "/privacy" }: { privacyHref?: stri
     };
   }, [reopened]);
 
+  // While it is open, the banner tells the page how much room it takes at the bottom (--ck-space), so a fixed button
+  // can sit above it (the parent dashboard's .pd-go, #552).
+  useEffect(() => {
+    const el = root.current;
+    if (!open || !el) return;
+    const style = document.documentElement.style;
+    const measure = () => style.setProperty("--ck-space", `${Math.ceil(el.offsetHeight + (parseFloat(getComputedStyle(el).bottom) || 0)) + 8}px`);
+    measure();
+    const seen = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    seen?.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      seen?.disconnect();
+      window.removeEventListener("resize", measure);
+      style.removeProperty("--ck-space");
+    };
+  }, [open]);
+
   if (!open) return null;
 
   return (

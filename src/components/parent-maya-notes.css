@@ -17,6 +17,10 @@
 .maya-note-links a, .maya-notes-nav a, .maya-notes-back { display: inline-flex; align-items: center; min-height: 44px; text-underline-offset: 3px; }
 .maya-note-links a:focus-visible, .maya-notes-nav a:focus-visible, .maya-notes-back:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; border-radius: 2px; }
 .maya-notes-back { margin-bottom: 20px; font-size: 15px; }
+/* The Maya tab (#553): the week's minutes in a soft card, then the notes. */
+.maya-tab-week { margin: 24px 0 8px; padding: 18px 22px; border-radius: 10px; background: var(--card); }
+.maya-tab-week .acct-desk { padding-top: 0; border-top: 0; }
+.support-page .maya-tab-notes { margin: 36px 0 0; font-size: 22px; }
 .support-page .maya-notes-list { list-style: none; padding: 0; margin: 24px 0; display: grid; gap: 20px; }
 .support-page .maya-notes-list > li + li { margin-top: 0; }
 .maya-notes-nav { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px 24px; margin-top: 24px; font-size: 15px; }

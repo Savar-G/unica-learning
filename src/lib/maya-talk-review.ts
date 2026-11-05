@@ -7,6 +7,7 @@
 // small and fast, and another model than Maya's). Tests use the fake below.
 import { withTimeLimit, type AiClient } from "@/lib/ai-client";
 import { readTalkReview, TALK_REVIEW_PROMPT_VERSION, TALK_REVIEW_SCHEMA, TALK_REVIEW_SYSTEM, type Session, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
+import { classifyError } from "@/lib/maya-trace";
 
 /** The review model when MAYA_REVIEW_MODEL is not set: an OpenRouter model id with structured output. */
 export const REVIEW_DEFAULT_MODEL = "anthropic/claude-haiku-5.5";
@@ -48,7 +49,8 @@ export function aiTalkReviewer(client: AiClient, options: { effort?: "low" | "me
 
 /**
  * Runs one review with the time limit, and never throws: a throw is an error, a time-out an error (both fail the
- * line). The error's own text is never kept (a provider's message can hold a key): only fixed wording.
+ * line). The error's own text is never kept (a provider's message can hold a key): only fixed wording, with the
+ * trace's fixed error code for a failed call (`classifyError`: "the review call failed (http_429)", #604).
  */
 export async function runReview(reviewer: TalkReviewer, input: TalkReviewInput, ms: number = REVIEW_TIME_LIMIT_MS, onError?: (e: unknown) => void): Promise<TalkReviewResult> {
   try {
@@ -59,7 +61,7 @@ export async function runReview(reviewer: TalkReviewer, input: TalkReviewInput, 
   } catch (e) {
     onError?.(e);
     const text = e instanceof Error ? e.message : "";
-    return { verdict: "error", reason: text === "time is up" ? "the review did not answer in time" : "the review call failed" };
+    return { verdict: "error", reason: text === "time is up" ? "the review did not answer in time" : `the review call failed (${classifyError(e, "model").code})` };
   }
 }
 

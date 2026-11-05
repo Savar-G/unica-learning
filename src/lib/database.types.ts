@@ -456,6 +456,66 @@ export type Database = {
           },
         ]
       }
+      child_plan_states: {
+        Row: {
+          child_id: string
+          ending_free: boolean
+          ends_at: string | null
+          event_at: string | null
+          event_id: string | null
+          kind: string
+          monthly_cents: number | null
+          next_charge_at: string | null
+          parent_id: string
+          read_at: string
+          read_order: number | null
+          updated_at: string
+        }
+        Insert: {
+          child_id: string
+          ending_free?: boolean
+          ends_at?: string | null
+          event_at?: string | null
+          event_id?: string | null
+          kind: string
+          monthly_cents?: number | null
+          next_charge_at?: string | null
+          parent_id: string
+          read_at: string
+          read_order?: number | null
+          updated_at?: string
+        }
+        Update: {
+          child_id?: string
+          ending_free?: boolean
+          ends_at?: string | null
+          event_at?: string | null
+          event_id?: string | null
+          kind?: string
+          monthly_cents?: number | null
+          next_charge_at?: string | null
+          parent_id?: string
+          read_at?: string
+          read_order?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "child_plan_states_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "child_plan_states_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       child_profiles: {
         Row: {
           assessment_id: string | null
@@ -518,6 +578,7 @@ export type Database = {
         Row: {
           created_at: string
           first_name: string
+          former_names: string[]
           grade: number
           id: string
           interests: string[] | null
@@ -533,6 +594,7 @@ export type Database = {
         Insert: {
           created_at?: string
           first_name: string
+          former_names?: string[]
           grade: number
           id?: string
           interests?: string[] | null
@@ -548,6 +610,7 @@ export type Database = {
         Update: {
           created_at?: string
           first_name?: string
+          former_names?: string[]
           grade?: number
           id?: string
           interests?: string[] | null
@@ -1521,6 +1584,35 @@ export type Database = {
           },
         ]
       }
+      maya_chat_families: {
+        Row: {
+          added_at: string
+          added_by: string
+          parent_id: string
+          rehearsal: boolean
+        }
+        Insert: {
+          added_at?: string
+          added_by?: string
+          parent_id: string
+          rehearsal?: boolean
+        }
+        Update: {
+          added_at?: string
+          added_by?: string
+          parent_id?: string
+          rehearsal?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maya_chat_families_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: true
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       maya_chat_messages: {
         Row: {
           body: string | null
@@ -1934,6 +2026,51 @@ export type Database = {
           singleton?: boolean
         }
         Relationships: []
+      }
+      scan_link_emails: {
+        Row: {
+          child_id: string
+          created_at: string
+          email_id: string | null
+          error: string | null
+          id: string
+          parent_id: string
+          status: string
+        }
+        Insert: {
+          child_id: string
+          created_at?: string
+          email_id?: string | null
+          error?: string | null
+          id?: string
+          parent_id: string
+          status?: string
+        }
+        Update: {
+          child_id?: string
+          created_at?: string
+          email_id?: string | null
+          error?: string | null
+          id?: string
+          parent_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_link_emails_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scan_link_emails_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       scan_photo_notices: {
         Row: {
@@ -3029,6 +3166,7 @@ export type Database = {
           page_number: number
           page_type: string
           parent_id: string
+          print_contract: Json | null
           qr_token: string
           workbook_id: string
         }
@@ -3042,6 +3180,7 @@ export type Database = {
           page_number: number
           page_type: string
           parent_id: string
+          print_contract?: Json | null
           qr_token: string
           workbook_id: string
         }
@@ -3055,6 +3194,7 @@ export type Database = {
           page_number?: number
           page_type?: string
           parent_id?: string
+          print_contract?: Json | null
           qr_token?: string
           workbook_id?: string
         }
@@ -3081,7 +3221,9 @@ export type Database = {
           parent_id: string
           question_key: string
           question_number: number
+          regions: Json | null
           schema_version: number
+          teaching: Json | null
           workbook_id: string
         }
         Insert: {
@@ -3096,7 +3238,9 @@ export type Database = {
           parent_id: string
           question_key: string
           question_number: number
+          regions?: Json | null
           schema_version: number
+          teaching?: Json | null
           workbook_id: string
         }
         Update: {
@@ -3111,7 +3255,9 @@ export type Database = {
           parent_id?: string
           question_key?: string
           question_number?: number
+          regions?: Json | null
           schema_version?: number
+          teaching?: Json | null
           workbook_id?: string
         }
         Relationships: [
@@ -3614,7 +3760,10 @@ export type Database = {
           number: number
           parent_id: string
           pdf_path: string | null
+          pdf_sha256: string | null
+          print_manifest: Json | null
           printed_at: string | null
+          printed_revision: string | null
           profile_build: string | null
           shipped_at: string | null
           status: string
@@ -3628,7 +3777,10 @@ export type Database = {
           number: number
           parent_id: string
           pdf_path?: string | null
+          pdf_sha256?: string | null
+          print_manifest?: Json | null
           printed_at?: string | null
+          printed_revision?: string | null
           profile_build?: string | null
           shipped_at?: string | null
           status?: string
@@ -3642,7 +3794,10 @@ export type Database = {
           number?: number
           parent_id?: string
           pdf_path?: string | null
+          pdf_sha256?: string | null
+          print_manifest?: Json | null
           printed_at?: string | null
+          printed_revision?: string | null
           profile_build?: string | null
           shipped_at?: string | null
           status?: string
@@ -3959,6 +4114,10 @@ export type Database = {
         Args: { p_call: string; p_kind: string; p_revision: number }
         Returns: string
       }
+      apply_workbook_print_contract: {
+        Args: { p_workbook: Json }
+        Returns: undefined
+      }
       approve_workbook_draft: {
         Args: {
           p_by: string
@@ -4110,6 +4269,15 @@ export type Database = {
           out_locked_until: string
           out_status: string
         }[]
+      }
+      claim_scan_link_email: {
+        Args: {
+          p_child: string
+          p_max: number
+          p_parent: string
+          p_window_seconds: number
+        }
+        Returns: string
       }
       claim_workbook_edit: {
         Args: { p_id: string; p_lease: string; p_runner: string }
@@ -4343,6 +4511,7 @@ export type Database = {
         Returns: undefined
       }
       lock_booking_email: { Args: { mail: string }; Returns: undefined }
+      lock_maya_family: { Args: { p: string }; Returns: undefined }
       lock_stage1: {
         Args: { p_answers: Json; p_assessment: string; p_route: string }
         Returns: string
@@ -4450,6 +4619,15 @@ export type Database = {
         Args: { p_id: string; p_lease: string }
         Returns: boolean
       }
+      rename_child: {
+        Args: {
+          p_child: string
+          p_first_name: string
+          p_parent: string
+          p_stale_seconds: number
+        }
+        Returns: string
+      }
       renew_family_deletion: {
         Args: { p: string; token: string }
         Returns: boolean
@@ -4499,6 +4677,35 @@ export type Database = {
         Args: { p_run: string; p_runner: string; p_stale_seconds: number }
         Returns: string
       }
+      save_child_plan_state:
+        | {
+            Args: {
+              p_customer: string
+              p_ending_free: boolean
+              p_ends_at: string
+              p_event_at: string
+              p_event_id: string
+              p_kind: string
+              p_monthly_cents: number
+              p_next_charge_at: string
+              p_read_at: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_customer: string
+              p_ending_free: boolean
+              p_ends_at: string
+              p_event_at: string
+              p_event_id: string
+              p_kind: string
+              p_monthly_cents: number
+              p_next_charge_at: string
+              p_read_order: number
+            }
+            Returns: string
+          }
       save_family_payment_progress: {
         Args: {
           after_id: string
@@ -4616,6 +4823,7 @@ export type Database = {
         }
         Returns: Json
       }
+      take_plan_read_order: { Args: never; Returns: number }
       use_workbook_run_attempts: {
         Args: {
           p_lease: string

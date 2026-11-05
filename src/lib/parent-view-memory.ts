@@ -2,8 +2,9 @@
 // a parent reads only their own rows of each table, and only shipped workbooks. It hands back whole rows, with any extra
 // field a test puts on them, so a test can tell that the module copies only the fields it names. It counts the reads of
 // each table, and a table in `fail` throws when read.
-import type { AttemptStatus, Grade } from "@/lib/assessment";
+import type { AreaAnswer, AttemptStatus, Grade, ReportModel } from "@/lib/assessment";
 import type { TabSwitches } from "@/lib/child-stage";
+import type { LearningRow } from "@/lib/learning-style";
 import type { ParentViewReader, PlanRecord } from "@/lib/parent-view";
 import type { CurriculumId } from "@/lib/signup";
 
@@ -17,6 +18,10 @@ export interface MemoryChild {
   firstName: string;
   grade: number;
   createdAt: string;
+  /** Defaults to BC. */
+  province?: string;
+  /** The learning card; every answer empty when left out. */
+  learning?: Partial<LearningRow>;
 }
 export interface MemoryTest extends Owned {
   id: string;
@@ -29,6 +34,8 @@ export interface MemoryTest extends Owned {
   answeredAll?: boolean;
 }
 export interface MemoryReport extends Owned {
+  /** Defaults to `report-<assessmentId>`. */
+  id?: string;
   assessmentId: string;
 }
 export interface MemoryCard extends Owned {
@@ -37,10 +44,46 @@ export interface MemoryCard extends Owned {
 export interface MemoryWorkbook extends Owned {
   number: number;
   status: string;
+  /** Defaults to `wb-<child>-<number>`. */
+  id?: string;
+  shippedAt?: string | null;
+  pdfPath?: string | null;
+}
+export interface MemoryDelivery extends Owned {
+  /** Defaults to an id that matches no workbook. */
+  workbookId?: string;
+  deliveredAt?: string;
+}
+export interface MemoryCorrection extends Owned {
+  workbookId: string;
+  deliveredAt: string;
+  auditId: number;
+}
+export interface MemoryDispatch extends Owned {
+  number: number;
+  delivery: unknown;
 }
 export type MemoryPlan = Owned & Pick<PlanRecord, "kind">;
+/** A finished test's stored report level and its scored answers (null: the stored test cannot be replayed). */
+export interface MemoryResult extends Owned {
+  assessmentId: string;
+  level: ReportModel["level"];
+  answers: AreaAnswer[] | null;
+}
+export interface MemoryScan extends Owned {
+  workbookId: string;
+  pageId: string;
+  state: string;
+  expiresAt: string;
+}
+export interface MemoryPage {
+  parentId: string;
+  workbookId: string;
+  id: string;
+  dayLabel: string | null;
+}
 
-const TABLES = ["children", "tests", "reports", "cards", "deliveries", "workbooks", "plans", "switches"] as const;
+const TABLES = ["children", "tests", "reports", "cards", "deliveries", "workbooks", "plans", "switches", "corrections", "dispatches", "family", "results", "scans", "pages", "learning", "pin"] as const;
 type Table = (typeof TABLES)[number];
 
 export interface MemoryParentViewTables {
@@ -48,11 +91,21 @@ export interface MemoryParentViewTables {
   tests?: MemoryTest[];
   reports?: MemoryReport[];
   cards?: MemoryCard[];
-  deliveries?: Owned[];
+  deliveries?: MemoryDelivery[];
+  corrections?: MemoryCorrection[];
   workbooks?: MemoryWorkbook[];
+  /** The workbook emails' dispatch rows (admin-only in the database; the server reads them for the parent). */
+  dispatches?: MemoryDispatch[];
   plans?: MemoryPlan[];
+  /** One value for every parent; no saved zone or postal code when left out. */
+  family?: { timeZone: string | null; postal: string | null };
   /** One value for every parent; every switch is off when left out. */
   switches?: TabSwitches;
+  results?: MemoryResult[];
+  scans?: MemoryScan[];
+  pages?: MemoryPage[];
+  /** One value for every parent; true when left out. */
+  pinSet?: boolean | null;
   fail?: Table[];
 }
 
@@ -70,7 +123,7 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
         read("children");
         return own(tables.children)
           .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
-          .map((c) => ({ ...c, grade: c.grade as Grade }));
+          .map((c) => ({ ...c, grade: c.grade as Grade, province: c.province ?? "BC" }));
       },
       async tests() {
         read("tests");
@@ -81,7 +134,7 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
         const tests = own(tables.tests);
         return own(tables.reports).flatMap((r) => {
           const test = tests.find((t) => t.id === r.assessmentId);
-          return test ? [{ ...r, curriculum: test.province }] : [];
+          return test ? [{ ...r, id: r.id ?? `report-${r.assessmentId}`, curriculum: test.province }] : [];
         });
       },
       async cardsSaved() {
@@ -90,11 +143,24 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
       },
       async deliveries() {
         read("deliveries");
-        return own(tables.deliveries);
+        return own(tables.deliveries).map((d) => ({ ...d, workbookId: d.workbookId ?? "no-workbook", deliveredAt: d.deliveredAt ?? "2026-01-01T00:00:00Z" }));
+      },
+      async deliveryCorrections() {
+        read("corrections");
+        return own(tables.corrections);
       },
       async shippedWorkbooks() {
         read("workbooks");
-        return own(tables.workbooks).filter((w) => w.status === "shipped");
+        return own(tables.workbooks).filter((w) => w.status === "shipped")
+          .map((w) => ({ ...w, id: w.id ?? `wb-${w.childId}-${w.number}`, shippedAt: w.shippedAt ?? null, hasPdf: (w.pdfPath ?? null) !== null }));
+      },
+      async dispatches() {
+        read("dispatches");
+        return own(tables.dispatches);
+      },
+      async family() {
+        read("family");
+        return tables.family ?? { timeZone: null, postal: null };
       },
       async plans() {
         read("plans");
@@ -103,6 +169,34 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
       async switches() {
         read("switches");
         return tables.switches ?? { progress: false, maya: false, scanPages: false };
+      },
+      async testResult(assessmentId) {
+        read("results");
+        // As the database: only the family's own test, and only one with a report.
+        const reported = own(tables.reports).some((r) => r.assessmentId === assessmentId);
+        const row = own(tables.results).find((r) => r.assessmentId === assessmentId);
+        return reported && row ? row : null;
+      },
+      async savedScans() {
+        read("scans");
+        return own(tables.scans).filter((s) => s.state === "saved");
+      },
+      async workbookPages(workbookId) {
+        read("pages");
+        const shipped = own(tables.workbooks).some((w) => (w.id ?? `wb-${w.childId}-${w.number}`) === workbookId && w.status === "shipped");
+        return shipped ? own(tables.pages).filter((p) => p.workbookId === workbookId) : [];
+      },
+      async learningCards() {
+        read("learning");
+        return own(tables.children).map((c) => ({
+          ...c, childId: c.id, learning_styles: null, interests: null, learning_note: null, math_feeling: null, learning_goal: null, weekly_time: null, ...c.learning,
+        }));
+      },
+      async pinSet() {
+        // As the server: a PIN that cannot be read is null, not an error.
+        reads.pin++;
+        if (tables.fail?.includes("pin")) return null;
+        return tables.pinSet === undefined ? true : tables.pinSet;
       },
     };
   };
