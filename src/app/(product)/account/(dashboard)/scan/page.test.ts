@@ -10,6 +10,7 @@ const TABLET = "Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 (KHT
 // iPadOS Safari asks for the desktop site by default, so the server sees a Mac.
 const IPAD_AS_MAC = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15";
 
+const BOOK = "6f1c2a3b-0000-4000-8000-000000000001";
 const state = vi.hoisted(() => ({
   signedIn: true as boolean,
   released: true as boolean,
@@ -37,12 +38,16 @@ vi.mock("@/lib/scan-photo-server", () => ({
     return {
       parent: "p1",
       db: {
-        from: () => ({
+        from: (table: string) => ({
           select: () => ({
-            eq: () => ({
-              order: async () => result(kids),
-              maybeSingle: async () => result(null),
-            }),
+            eq: () => {
+              // A page's QR code names workbook 1 of Leo (c2): Day 4 is pages 10 to 13.
+              if (table === "workbook_pages") return Promise.resolve(result([10, 11, 12, 13, 14].map((n) => ({ id: `p${n}`, page_number: n, day_label: n < 14 ? "Day 4" : "Day 5" }))));
+              return {
+                order: async () => result(kids),
+                maybeSingle: async () => result(table === "workbooks" ? { id: BOOK, child_id: "c2", number: 1, status: "shipped" } : null),
+              };
+            },
           }),
         }),
       },
@@ -50,7 +55,8 @@ vi.mock("@/lib/scan-photo-server", () => ({
   },
 }));
 vi.mock("@/components/scan-pages", () => ({
-  ScanPages: ({ childrenList }: { childrenList: { first_name: string }[] }) => createElement("p", null, `camera flow: ${childrenList.map((c) => c.first_name).join(", ")}`),
+  ScanPages: ({ childrenList, mode = "phone", focus }: { childrenList: { first_name: string }[]; mode?: string; focus?: { label: string } | null }) =>
+    createElement("p", null, `${mode === "desktop" ? "pages from the phone" : "camera flow"}: ${childrenList.map((c) => c.first_name).join(", ")}${focus ? ` · ${focus.label}` : ""}`),
 }));
 
 const render = async (query: Record<string, string> = {}) =>
@@ -78,6 +84,8 @@ it("asks a desktop for a phone, with a QR code of the page's address only and th
   const out = await render();
   expect(out).toContain("Please take a picture with your phone");
   expect(out).not.toContain("camera flow");
+  // D-273: the pages from the phone, live, beside the code, on the child in view.
+  expect(out).toContain("pages from the phone: Leo, Iris");
   expect(state.qr).toEqual(["http://localhost:3000/account/scan"]);
   expect(out).toContain("<svg>qr</svg>");
   expect(out).toContain("Email me the link");
@@ -110,4 +118,10 @@ it("keeps the scan gate: a family scanning is not released to gets the 404 on ev
   state.ua = IPAD_AS_MAC;
   await expect(render()).rejects.toThrow("NOT_FOUND");
   expect(state.qr).toEqual([]);
+});
+
+it("opens Scan pages on the page a QR code named, for that page's child", async () => {
+  expect(await render({ w: BOOK, p: "12" })).toContain("camera flow: Leo, Iris · Day 4 · Page 3");
+  // Anything that is not a workbook id and a page number names no page.
+  expect(await render({ w: "not-an-id", p: "12" })).toContain("camera flow: Iris, Leo<");
 });

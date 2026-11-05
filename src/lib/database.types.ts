@@ -2207,6 +2207,7 @@ export type Database = {
           parent_id: string
           printed_revision: string | null
           reserved_bytes: number
+          sent_at: string | null
           state: string
           stored_bytes: number
           terminal_at: string | null
@@ -2224,6 +2225,7 @@ export type Database = {
           parent_id: string
           printed_revision?: string | null
           reserved_bytes: number
+          sent_at?: string | null
           state?: string
           stored_bytes?: number
           terminal_at?: string | null
@@ -2241,6 +2243,7 @@ export type Database = {
           parent_id?: string
           printed_revision?: string | null
           reserved_bytes?: number
+          sent_at?: string | null
           state?: string
           stored_bytes?: number
           terminal_at?: string | null
@@ -4913,6 +4916,10 @@ export type Database = {
       scan_session_active: {
         Args: { p_session: string; p_user: string }
         Returns: boolean
+      }
+      send_scan_photos: {
+        Args: { p_child: string; p_ids: string[]; p_parent: string }
+        Returns: string[]
       }
       send_workbook_comments: {
         Args: {

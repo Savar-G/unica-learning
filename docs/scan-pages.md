@@ -31,3 +31,16 @@ Page matrix (`.design/experiments/r455/page-matrix.json`): 36 real pages at 2 an
 Limits: synthetic drawn digits on real printed pages. No real handwriting, real camera or curled saddle-stitched page has been tested (G13 in `.design/research/marking-audit-2026-11-04.md`).
 
 #454 stays open. Physical iPhone Safari and Android Chrome camera checks and deployed cleanup checks remain.
+
+## The stack (round r565, D-269 to D-276, step 1 of D-276)
+
+`/account/scan` is the stack from the picked round (`.design/experiments/r565/picked.html`), on the phone's own file input. The live camera comes after the real-phone test (D-276).
+
+- **Start screen.** The three tips, "Choose photos" (several photos at once) and "Start scanning" (the phone's own camera through the file input's `capture`). The photo notice opens once, before the first photo, and "Got it" opens the camera or the photos in the same tap.
+- **Each photo saves when it arrives** (D-269): upload, then save, with no confirm per page. The browser sends one photo at a time, because the server takes 2 uploads at once and processes 1. A photo the server refuses at upload (no page code, a page of another workbook, a page that already has a photo, an unreadable or too large photo, too many photos) stays on this device in the stack with its reason; it is not saved.
+- **Checks** (test families and admins only, D-252): the browser asks for each saved photo's straightened page (S2b), one at a time. The calibration's refusals become the short reasons in the stack: Cut off, Not flat, Wrong page, Turned, Two pages, Code not clear, Cannot check. A book printed before checks shows "Cannot be checked". No new reason is made up: blur and darkness are not checked yet (S3).
+- **The stack** (`src/lib/scan-stack.ts`): refused pages first with their reason and "Take the photo again" (one at a time); then the pages by day, in page order, with "No photo yet: page 2" for a page of the day with no photo; then the pages sent for marking. A retake deletes the old photo only once a new photo is chosen.
+- **Send** (`POST /api/account/scans/send`, `send_scan_photos`, D-270) counts only ready pages: saved, active, and checked ready on the photo's own printing. It records `scan_photos.sent_at` once; refused and still-checking pages stay in the stack. Marking (S4) is not built: Send marks nothing and calls no AI. Like the checks, Send is for test families and admins only until marking ships.
+- **Limit** (D-271, migration `20261105_scan_stack.sql`): 40 photos per 10 minutes and 60 a day. Refused and retaken photos count. `admit_scan_photo` reads `scan_limits` under the family lock. Probe: `supabase/tests/scan_stack.sql` (a pass is the error `PROBE_OK`).
+- **Desktop** (D-273): the QR code, "Email me the link" and "Take the pictures on this device" beside the pages from the phone, which refresh every 5 seconds, with Send. Retakes stay on the phone.
+- **A page's QR code.** Read by the phone's own camera, it still opens the desk for the child whose desk is open on that device. Otherwise, a parent who was on Scan pages in the last 30 minutes (the cookie `unica_scanning`, a note and not a credential) goes to Scan pages for that page (`/account/scan?w=<workbook>&p=<page>`); everyone else gets the desk question with "Scan this page". Both need the scan release.
