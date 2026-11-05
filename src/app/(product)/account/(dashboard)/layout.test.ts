@@ -50,7 +50,7 @@ it("sends a parent whose family's deletion is queued to the confirmation, not to
 });
 it("shows the delete on the Account tab closed, and says what it does before any form", async () => {
   state.dashboard = family();
-  const html = renderToStaticMarkup(await AccountSettings());
+  const html = renderToStaticMarkup(await AccountSettings({ params: Promise.resolve({}), searchParams: Promise.resolve({}) }));
   expect(html).toContain("Delete your family&#x27;s account");
   expect(html).toContain("stops every plan");
   expect(html).not.toContain("d-password");
