@@ -4778,6 +4778,10 @@ export type Database = {
         Args: { p: string; token: string }
         Returns: undefined
       }
+      release_scan_photo: {
+        Args: { p_id: string; p_parent: string }
+        Returns: string
+      }
       release_workbook_edit: {
         Args: { p_id: string; p_lease: string }
         Returns: boolean

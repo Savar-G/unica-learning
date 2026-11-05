@@ -175,6 +175,19 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     })();
   }, [listing, load, mode]);
 
+  // A photo the list shows reached the server after all, whatever answers were lost: drop its refused entry.
+  useEffect(() => {
+    if (!listing) return;
+    const here = new Set(listing.photos.map((p) => p.id));
+    const found = uploadsRef.current.filter((u) => u.status === "refused" && u.reservation && here.has(u.reservation));
+    if (!found.length) return;
+    for (const u of found) {
+      const url = urls.current.get(u.key);
+      if (url) { URL.revokeObjectURL(url); urls.current.delete(u.key); }
+    }
+    putUploads(uploadsRef.current.filter((u) => !found.includes(u)));
+  }, [listing, putUploads]);
+
   // Thumbnails, two at a time, through the checked image route.
   useEffect(() => {
     if (!listing) return;
@@ -272,9 +285,12 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     }
   }
 
-  /** A photo the parent gives up on may hold an upload slot from a lost answer: let it go. */
+  /**
+   * A photo the parent gives up on may hold an upload slot from a lost answer: ask the server to let it go. The photo may
+   * have reached the server after all, so the server decides and keeps it. Only "Delete this photo" deletes.
+   */
   function release(u: Local | undefined) {
-    if (u?.reservation) void api(`/api/account/scans/${u.reservation}`, { method: "DELETE" }).catch(() => {});
+    if (u?.reservation) void api(`/api/account/scans/${u.reservation}/release`, { method: "POST" }).catch(() => {});
   }
 
   const pump = useCallback(async () => {
@@ -366,7 +382,9 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     if (t.uploadKey) {
       const url = urls.current.get(t.uploadKey);
       if (url) { URL.revokeObjectURL(url); urls.current.delete(t.uploadKey); }
-      release(uploadsRef.current.find((u) => u.key === t.uploadKey));
+      const reservation = uploadsRef.current.find((u) => u.key === t.uploadKey)?.reservation;
+      // The parent asked for this delete, so it may remove a photo that reached the server after a lost answer.
+      if (reservation) void api(`/api/account/scans/${reservation}`, { method: "DELETE" }).then(() => load()).catch(() => {});
       putUploads(uploadsRef.current.filter((u) => u.key !== t.uploadKey));
       return;
     }

@@ -18,12 +18,14 @@ let photos: Map<string, Photo & { two: boolean }>;
 let uploading: number, overlap: boolean;
 // Admission ids in order; how many admissions commit and then lose their answer; how many saves fail; which ids' leases ended.
 let admitted: string[], loseAdmissions: number, saveFailures: number, expired: Set<string>;
+// Uploads that land and lose their answer; status answers lost; the list down; the children on the page; the ids released.
+let losePuts: number, loseStatus: boolean, listDown: boolean, kids: { id: string; first_name: string }[], released: string[];
 const calls: string[] = [];
 
 const buttons = () => [...document.querySelectorAll("button")];
 const button = (text: string) => buttons().find((b) => b.textContent === text || b.getAttribute("aria-label") === text);
 const settle = async () => { for (let i = 0; i < 30; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); };
-const render = async () => { await act(async () => root.render(createElement(ScanPages, { childrenList: [{ id: "child", first_name: "Leah" }], parent: "parent", noticeAcknowledged: acknowledged }))); await settle(); };
+const render = async () => { await act(async () => root.render(createElement(ScanPages, { childrenList: kids, parent: "parent", noticeAcknowledged: acknowledged }))); await settle(); };
 const choose = async (input: "camera" | "library", ...names: string[]) => {
   const el = host.querySelector<HTMLInputElement>(input === "camera" ? "input[capture]" : "input[multiple]")!;
   Object.defineProperty(el, "files", { configurable: true, value: names.map((n) => new File(["x"], n, { type: "image/jpeg" })) });
@@ -36,11 +38,14 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   checks = true; acknowledged = true; photos = new Map(); uploading = 0; overlap = false; calls.length = 0;
   admitted = []; loseAdmissions = 0; saveFailures = 0; expired = new Set();
+  losePuts = 0; loseStatus = false; listDown = false; kids = [{ id: "child", first_name: "Leah" }]; released = [];
   vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
     const method = init?.method ?? "GET"; calls.push(`${method} ${path}`);
     const id = /\/api\/account\/scans\/([^/?]+)/.exec(path)?.[1];
     if (path === "/api/account/scans/notice") { acknowledged = true; return Response.json({ acknowledged: true }); }
     if (path.startsWith("/api/account/scans?child=")) {
+      if (listDown) return Response.json({ error: "unavailable" }, { status: 503 });
+      if (path.endsWith("=other")) return Response.json({ checks, pages: PAGES, photos: [] });
       return Response.json({ checks, pages: PAGES, photos: [...photos.values()].map(({ two, ...p }) => { void two; return p; }) });
     }
     if (path === "/api/account/scans" && method === "POST") {
@@ -53,6 +58,11 @@ beforeEach(() => {
       const ids: string[] = JSON.parse(String(init!.body)).ids;
       for (const pid of ids) { const p = photos.get(pid); if (p && p.check === "ready" && p.state === "saved") p.sentAt = "2026-11-05T12:00:00Z"; }
       return Response.json({ sent: [...photos.values()].filter((p) => p.sentAt && ids.includes(p.id)).map((p) => p.id) });
+    }
+    // As the database does: only a reservation with no photo yet lets go.
+    if (path.endsWith("/release") && id) {
+      if (photos.has(id)) return Response.json({ error: photos.get(id)!.state }, { status: 409 });
+      released.push(id); return Response.json({ state: "released" });
     }
     if (path.endsWith("/image")) return new Response(new Blob(["private photo"]));
     if (path.endsWith("/preview") && id) {
@@ -70,8 +80,10 @@ beforeEach(() => {
       if (!page) return Response.json({ error: "qr" }, { status: 422 });
       if ([...photos.values()].some((p) => p.pageId === page.id)) return Response.json({ error: "duplicate" }, { status: 422 });
       photos.set(id, { id, pageId: page.id, workbookId: "book", book: 1, pageNumber: page.pageNumber, state: "pending", check: checks ? "checking" : "none", reason: null, sentAt: null, createdAt: `2026-11-05T10:00:0${photos.size}Z`, two: name.startsWith("two") });
+      if (losePuts > 0) { losePuts--; throw new TypeError("the answer was lost"); }
       return Response.json({ photo: { id, state: "pending" } });
     }
+    if (method === "GET" && id && loseStatus) throw new TypeError("the answer was lost");
     if (method === "POST" && id && saveFailures > 0) { saveFailures--; return Response.json({ error: "refused" }, { status: 409 }); }
     if (method === "POST" && id) { photos.get(id)!.state = "saved"; return Response.json({ photo: { id, state: "saved" } }); }
     if (method === "DELETE" && id) { photos.delete(id); return Response.json({ state: "deleted" }); }
@@ -212,6 +224,8 @@ it("gives the slot back when a photo with a lost admission answer is deleted", a
   await act(async () => button("Delete this photo")!.click());
   await settle();
   expect(calls).toContain(`DELETE /api/account/scans/${admitted[0]}`);
+  // The parent asked for this delete: it is not the release path.
+  expect(calls).not.toContain(`POST /api/account/scans/${admitted[0]}/release`);
 });
 
 it("asks to save again when a save fails after the upload, so the page reaches its check and Send", async () => {
@@ -258,4 +272,59 @@ it("shows and deletes a sent photo when the only open page is one ready photo", 
   await settle();
   expect(photos.has("sent")).toBe(false);
   expect(photos.has("ready")).toBe(true);
+});
+
+/** The waits between status requests, without their seconds. */
+const shortWaits = () => { const real = setTimeout; vi.stubGlobal("setTimeout", (run: () => void, ms?: number) => real(run, Math.min(ms ?? 0, 1))); };
+const changeChild = async () => {
+  const select = host.querySelector<HTMLSelectElement>(".scan-child select")!;
+  select.value = "other";
+  await act(async () => { select.dispatchEvent(new Event("change", { bubbles: true })); });
+  await settle();
+};
+const twoChildren = () => { kids = [{ id: "child", first_name: "Leah" }, { id: "other", first_name: "Sam" }]; };
+
+it("keeps a saved photo when the child changes after the upload landed and every answer about it was lost", async () => {
+  shortWaits(); twoChildren(); losePuts = 1; loseStatus = true;
+  await render();
+  await choose("library", "p10.jpg");
+  const id = admitted[0];
+  // The next list found the photo and saved it.
+  expect(photos.get(id)?.state).toBe("saved");
+  await changeChild();
+  expect(calls).not.toContain(`DELETE /api/account/scans/${id}`);
+  expect(photos.get(id)?.state).toBe("saved");
+});
+
+it("shows a photo the list found once, with no refused entry left beside it", async () => {
+  shortWaits(); losePuts = 1; loseStatus = true;
+  await render();
+  await choose("library", "p10.jpg");
+  expect(photos.size).toBe(1);
+  expect(text()).not.toContain("Not sent");
+  expect(text()).toContain("1 photo. 1 page is ready to send.");
+});
+
+it("asks the server to release when the list is down too, and the server keeps the photo", async () => {
+  shortWaits(); twoChildren();
+  await render();
+  listDown = true; losePuts = 1; loseStatus = true;
+  await choose("library", "p10.jpg");
+  const id = admitted[0];
+  expect(text()).toContain("Not sent");
+  await changeChild();
+  expect(calls).toContain(`POST /api/account/scans/${id}/release`);
+  expect(calls).not.toContain(`DELETE /api/account/scans/${id}`);
+  expect(released).toEqual([]);
+  expect(photos.get(id)?.state).toBe("pending");
+});
+
+it("releases only a reservation with no photo when the child changes, by the release path", async () => {
+  twoChildren(); loseAdmissions = 1;
+  await render();
+  await choose("library", "p10.jpg");
+  const id = admitted[0];
+  await changeChild();
+  expect(released).toEqual([id]);
+  expect(calls).not.toContain(`DELETE /api/account/scans/${id}`);
 });
