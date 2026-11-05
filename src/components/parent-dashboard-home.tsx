@@ -2,6 +2,7 @@ import Link from "next/link";
 import { SendLink, StartTest, TrackOnce } from "@/components/account";
 import { NoteCard } from "@/components/parent-maya-notes";
 import { DeskText, MinutesRow } from "@/components/parent-home-rows";
+import { ParentAlerts, ParentTestStart } from "@/components/parent-assessment";
 import { SupportPage } from "@/components/support-page";
 import type { StartState } from "@/lib/assessment";
 import { gradeLabel } from "@/lib/assessment/grades";
@@ -35,12 +36,13 @@ export interface DashboardHomeProps {
   chats: ReadonlyMap<string, ChatUsage>;
   notes: ReadonlyMap<string, ParentNote>;
   scansEnabled: boolean;
-  alerts: { password: boolean; pin: boolean; deskError: boolean; existing: boolean };
+  alerts: Parameters<typeof ParentAlerts>[0];
 }
 
 /**
- * The dashboard's home (#551): one child's part of Parent home, in the frame. It has no panels yet: #552 and #560 fill
- * it, and a panel with no data does not appear. The family's links are on the Account tab.
+ * The dashboard's home (#551): before the report (#552), the test beside how it works; once a child's stage opens on the
+ * Overview, one child's part of Parent home until #560 fills it. A panel with no data does not appear. A stage that opens
+ * on the report never reaches this page: /account sends it there. The family's links are on the Account tab.
  */
 export function ParentDashboardHome({ dashboard, kids, addressChild, phone, sent, parentEmail, timeZone, states, reportFor, current, minutes, chats, notes, scansEnabled, alerts }: DashboardHomeProps) {
   const view = pickChild(dashboard.children, addressChild, dashboard.remembered);
@@ -50,12 +52,21 @@ export function ParentDashboardHome({ dashboard, kids, addressChild, phone, sent
   const state = kid && stateFor(states, kid.id);
   // A sign-in link goes to the family's first child (Parent home says so too).
   const sentHere = sent && kid?.id === kids[0]?.id;
+  const scanLink = scansEnabled && !links.some((l) => l.tab === "scan_pages") && <p><Link className="btn" href="/account/scan">Scan pages <span aria-hidden="true">→</span></Link></p>;
+  const demoLimit = minutes.size > 0 && <p className="small">Your &quot;Try Maya&quot; calls have a separate limit of {DEMO_DAILY_MINUTES} minutes a day for your account. They do not use your child&apos;s weekly minutes.</p>;
+  if (kid && state && view && (view.opensOn === "start_test" || view.opensOn === "continue_or_wait")) {
+    return (
+      <ParentTestStart childId={kid.id} name={kid.first_name} state={state} when={startWhen(state, timeZone)} report={reportFor(kid.id, state)} phone={phone} sent={sentHere} parentEmail={parentEmail} alerts={alerts} learning={view.reportIds.length > 0 ? { path: learningPath(kid.id), answered: !!fromRow(kid) } : null}>
+        {(minutes.has(kid.id) || chats.has(kid.id)) && <MinutesRow name={kid.first_name} minutes={minutes.get(kid.id)} chat={chats.get(kid.id)} />}
+        {notes.has(kid.id) && <NoteCard note={notes.get(kid.id)!} name={kid.first_name} zone={timeZone} latest />}
+        {scanLink}
+        {demoLimit}
+      </ParentTestStart>
+    );
+  }
   return (
     <SupportPage label={label} title={kid?.first_name ?? "Your account"}>
-      {alerts.password && <p role="status" className="acct-alert acct-saved">Your password is saved.</p>}
-      {alerts.pin && <p role="status" className="acct-alert acct-saved">Your PIN is saved.</p>}
-      {alerts.deskError && <p role="status" className="acct-alert">We cannot open the desk right now. Try again in a moment.</p>}
-      {alerts.existing && <p role="status" className="acct-alert acct-saved">This email already has an account, so the code signed you in. Nothing in your account changed. To add a child, use Add another child.</p>}
+      <ParentAlerts {...alerts} />
       {!kid && <p className="lead">Add a child on the <Link href="/account/settings">Account</Link> page to start.</p>}
       {kid && state && (
         <>
@@ -67,7 +78,6 @@ export function ParentDashboardHome({ dashboard, kids, addressChild, phone, sent
               {sentHere && <p role="status" className="acct-sent">We sent the link for {kid.first_name} to <b>{parentEmail}</b>.</p>}
             </div>
           )}
-          {!phone && (view?.stage === "no_test" || view?.stage === "test_running") && <p className="lead">{kid.first_name} takes the test alone, on this device, in one sitting. Start when {kid.first_name} is ready.</p>}
           <ul className="acct-kids">
             <li className="acct-kid">
               <span>
@@ -86,8 +96,8 @@ export function ParentDashboardHome({ dashboard, kids, addressChild, phone, sent
           </ul>
         </>
       )}
-      {scansEnabled && !links.some((l) => l.tab === "scan_pages") && <p><Link className="btn" href="/account/scan">Scan pages <span aria-hidden="true">→</span></Link></p>}
-      {minutes.size > 0 && <p className="small">Your &quot;Try Maya&quot; calls have a separate limit of {DEMO_DAILY_MINUTES} minutes a day for your account. They do not use your child&apos;s weekly minutes.</p>}
+      {scanLink}
+      {demoLimit}
     </SupportPage>
   );
 }

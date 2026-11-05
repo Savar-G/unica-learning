@@ -11,6 +11,7 @@ import { CURRICULA } from "@/lib/signup";
 import { BRAND } from "@/lib/site";
 import type { ReportSrc } from "@/lib/next-step";
 import { BookCall, ReportNextActions, type NextStepStart } from "@/components/report-next";
+import { BOOKING_URL } from "@/lib/contact";
 import { LearningStep } from "@/components/learning";
 import type { LearningAnswers } from "@/lib/learning-style";
 import Link from "next/link";
@@ -68,8 +69,9 @@ export interface NewTestOffer {
 /**
  * `nextSlot` replaces the next-step row: the public sample report shows its own button there. `newTest` (#189): when the
  * next test opens, and the button under the reliability note; without it the note names no time (the admin's copy).
+ * `actionBeside` (#552): the dashboard shows the next step beside the report, so the report ends with the call only.
  */
-export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, newTest = null }: { view: ReportView; next?: ReportNextContext; readOnly?: boolean; nextSlot?: ReactNode; newTest?: NewTestOffer | null }) {
+export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, newTest = null, actionBeside = false }: { view: ReportView; next?: ReportNextContext; readOnly?: boolean; nextSlot?: ReactNode; newTest?: NewTestOffer | null; actionBeside?: boolean }) {
   return (
     <article className="rpt" aria-labelledby="rpt-title">
       <ReportHeader view={view} />
@@ -81,7 +83,7 @@ export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, n
       <ReportNumberFacts view={view} />
       <ReportWork view={view} />
       <ReportHelp view={view} />
-      {nextSlot ? <Row id={NEXT_STEP_ANCHOR} title="Next step">{nextSlot}</Row> : readOnly ? <Row id={NEXT_STEP_ANCHOR} title="Next step"><p>{nextStep(view).title}</p></Row> : <ReportNextStep view={view} next={next} />}
+      {actionBeside ? BOOKING_URL && <Row id="rpt-call" title="Questions"><BookCall childName={view.childName} /></Row> : nextSlot ? <Row id={NEXT_STEP_ANCHOR} title="Next step">{nextSlot}</Row> : readOnly ? <Row id={NEXT_STEP_ANCHOR} title="Next step"><p>{nextStep(view).title}</p></Row> : <ReportNextStep view={view} next={next} />}
       <p className="rpt-meta">{metaLine(view)}</p>
     </article>
   );

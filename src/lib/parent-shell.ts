@@ -25,11 +25,12 @@ const LABELS: Record<ChildTab, string> = {
   account: "Account",
 };
 
-type ShellChild = Pick<ChildView, "id" | "tabs" | "reportIds">;
+type ShellChild = Pick<ChildView, "id" | "tabs" | "reportIds" | "opensOn">;
 
 /**
  * Where each tab goes today. Null means the tab has no page yet, so it does not appear: Progress (#561) and Workbooks
- * (#558) fill these in. Assessment (#552) opens the newest report, or the child's home, which holds the test button.
+ * (#558) fill these in. Assessment (#552) opens the newest report, or the child's home, which holds the test button: also
+ * while a new test is open, because the child's page is then that test.
  */
 const TAB_PAGE: Record<ChildTab, (child: ShellChild) => string | null> = {
   overview: (c) => homePath(c.id),
@@ -37,7 +38,7 @@ const TAB_PAGE: Record<ChildTab, (child: ShellChild) => string | null> = {
   workbooks: () => null,
   scan_pages: () => "/account/scan",
   maya: (c) => `/account/notes/${c.id}`,
-  assessment: (c) => (c.reportIds[0] ? `/account/report/${c.reportIds[0]}` : homePath(c.id)),
+  assessment: (c) => (c.reportIds[0] && c.opensOn !== "continue_or_wait" ? `/account/report/${c.reportIds[0]}` : homePath(c.id)),
   account: () => ACCOUNT_PATH,
 };
 
@@ -49,7 +50,7 @@ export interface TabLink {
 
 /** The child's tabs that have a page, in the stage's order. A family with no children has only Account. */
 export function tabLinks(child: ShellChild | null): TabLink[] {
-  const shown: ShellChild = child ?? { id: "", tabs: ["account"], reportIds: [] };
+  const shown: ShellChild = child ?? { id: "", tabs: ["account"], reportIds: [], opensOn: "start_test" };
   return shown.tabs.flatMap((tab) => {
     const href = TAB_PAGE[tab](shown);
     return href ? [{ tab, label: LABELS[tab], href }] : [];

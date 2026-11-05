@@ -1,0 +1,32 @@
+{
+  "round": "r552",
+  "ticket": "#552 (spec #544): Assessment tab and Start free month. Not a choice round: these are checks of what was built, for Savar's one review page (D-249).",
+  "picked": "Pre-trial layout: set 1, option B of r544, as the ticket asks. Savar has not chosen yet; the layout is src/components/parent-assessment.tsx and the .pd-split and .pd-go rules of src/components/parent-shell.css.",
+  "how_taken": "npm run dev on production data as test families (Savar's +unicademo, +adtest20261104 and +e2e accounts), with the T3 preview browser at 1440 x 900, 390 x 844 and 1024 x 768. Preview resize keeps a desktop user agent, so the phone-only test card was checked with curl and an iPhone user agent, not in these pictures. The round Next.js button in the corner is the dev overlay. Screenshots at 1440 wide are saved at 1280. Files with 'forced' in the name came from a local edit, since reverted, that forced the stage or test state, because no test family is in it.",
+  "screens": [
+    { "file": "report_ready_bc-desktop.png", "stage": "report_ready_bc", "data": "real", "shows": "/account opens here. The report, with Start free month beside it" },
+    { "file": "report_ready_bc-desktop-scrolled.png", "stage": "report_ready_bc", "data": "real", "shows": "2200 px down: the button is still in view" },
+    { "file": "report_ready_bc-phone.png", "stage": "report_ready_bc", "data": "real", "shows": "One button fixed at the bottom; top bar, no bottom bar" },
+    { "file": "report_ready_bc-phone-scrolled.png", "stage": "report_ready_bc", "data": "real", "shows": "End of the page: the price, what happens next, the button" },
+    { "file": "report_ready_bc-tablet-1024.png", "stage": "report_ready_bc", "data": "real", "shows": "Below 1280 px there is no room for the column, so the button is fixed at the bottom, right of the sidebar. A saved message came through /account?password=1" },
+    { "file": "stripe-page-test-mode-phone.png", "stage": "report_ready_bc", "data": "real click, Stripe test mode", "shows": "One click from the button: the Stripe page, with its wording" },
+    { "file": "report_ready_bc-back-from-stripe-phone.png", "stage": "report_ready_bc", "data": "real", "shows": "Back from Stripe with no card: the message sits with the button" },
+    { "file": "no_test-desktop.png", "stage": "no_test", "data": "real", "shows": "Start test, how it works. The Maya and Scan pages parts are #551's, for test families, until their tabs hold them" },
+    { "file": "no_test-phone-size.png", "stage": "no_test", "data": "real", "shows": "Action first. Desktop user agent, so this shows Start test; a phone user agent gets Email me the link" },
+    { "file": "report_ready_waitlist-forced-desktop.png", "stage": "report_ready_waitlist", "data": "forced", "shows": "The report, with Join the waitlist beside it" },
+    { "file": "report_ready_waitlist-forced-phone.png", "stage": "report_ready_waitlist", "data": "forced", "shows": "Join the waitlist fixed at the bottom" },
+    { "file": "report_ready_waitlist-joined-forced-phone.png", "stage": "report_ready_waitlist", "data": "forced", "shows": "The waitlist status in the same fixed place" },
+    { "file": "test_running-open-forced-desktop.png", "stage": "test_running", "data": "forced", "shows": "A test is open: Continue test" },
+    { "file": "test_running-open-forced-phone-size.png", "stage": "test_running", "data": "forced", "shows": "A test is open, at phone size" },
+    { "file": "test_running-waiting-forced-desktop.png", "stage": "test_running", "data": "forced", "shows": "Finished, the report not ready. Taken before the alignment fix of the test action" },
+    { "file": "test_running-waiting-forced-phone-size.png", "stage": "test_running", "data": "forced", "shows": "Finished, the report not ready, at phone size" },
+    { "file": "older-tests-new-test-forced-desktop.png", "stage": "report_ready_bc", "data": "forced", "shows": "Two tests by date and Start a new test. The column is scrolled to its end in this picture; it opens at the top, with the button" }
+  ],
+  "stages_not_reached": {
+    "report_ready_waitlist": "Every test family's test is BC. Forced pictures and unit tests only.",
+    "test_running": "No test family has an open test or a finished test with no report. Forced pictures and unit tests only.",
+    "older tests and a new test after 30 days": "No test family has two finished tests or a test older than 30 days. Forced picture and unit tests only.",
+    "a family the switch does not open to": "Not opened in the browser: the only such accounts are real families. Byte-for-byte golden tests of /account and the report page cover them.",
+    "active and ended": "Not opened. They show the report with no action; unit tests only. first_book_coming was opened on real data: no action, no plan row."
+  }
+}
