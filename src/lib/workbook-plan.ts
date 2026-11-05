@@ -319,6 +319,8 @@ export interface RequiredTimeShortfall {
 
 export interface WorkbookPlan {
   personal?: BookSignals & {
+    start?: import("./workbook-placement").PlacementTrace;
+    why?: import("./workbook-why").WorkbookWhy;
     /** Whole Extra blocks were exhausted. Keep the book and report the remaining required minutes to the admin. */
     timeShortfalls?: RequiredTimeShortfall[];
   };

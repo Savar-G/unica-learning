@@ -35,6 +35,13 @@ export interface BookFactFamily {
   source: "family" | "section" | "none";
   result: FamilyResult | null;
 }
+export interface BookSoftSource {
+  suggested: string[];
+  weakOrder: string[];
+  reviewOrder: string[];
+  challengeOrder: string[];
+  dropped: { standard: string; reason: string }[];
+}
 export interface BookSignals {
   grade: Grade;
   /** False preserves the old grade-and-standards path, including profiles with events but no assessment. */
@@ -56,7 +63,8 @@ export interface BookSignals {
   /** Code values for downstream plan rules. No page mix or layout changes occur in this module. */
   adjustments: { trustedAboveGrade: boolean; stretchShift: 0 | 1 | 2; hardChallenge: boolean; picturesThrough: 3 | 5; shortStories: boolean; storyShare: 0.2 | null; requiredMinutes: number | null; extraChallenge: boolean };
   /** Only standard codes survive soft input. Consumers may use these to order equal candidates only. */
-  soft: { weakOrder: string[]; reviewOrder: string[]; challengeOrder: string[]; suggested: string[]; dropped: { standard: string; reason: string }[] };
+  soft: { weakOrder: string[]; reviewOrder: string[]; challengeOrder: string[]; suggested: string[]; dropped: { standard: string; reason: string }[];
+    sources?: { test: BookSoftSource; learning: BookSoftSource } };
   report: { howWeHelp: "behind" | "on-grade" | "ahead" | null; minutes: number | null; device: TestDevice | null };
   trace: SignalTrace[];
 }
@@ -140,12 +148,17 @@ export function bookSignals(input: BookSignalsInput): BookSignals {
     : suggestions.every(c => MAP.get(c)!.grade > grade) ? `${source} suggestions are above school grade`
     : suggestions.every(c => !permitted(c)) ? `${source} suggestions are outside the allowed standards or above school grade`
     : `${source} suggestions match no eligible ${kind} standard`;
+  const dropped = (suggestions: string[]) => suggestions.filter(c => !permitted(c)).map(c => ({ standard: c, reason: MAP.get(c)!.grade > grade ? "above school grade, not a weakness" : "not in this level" }));
   const soft = {
     weakOrder: codes([...learnerWeak, ...childWeak]),
     reviewOrder: learnerReview,
     challengeOrder: learnerChallenge,
     suggested,
-    dropped: suggested.filter(c => !permitted(c)).map(c => ({ standard: c, reason: MAP.get(c)!.grade > grade ? "above school grade, not a weakness" : "not in this level" })),
+    dropped: dropped(suggested),
+    sources: {
+      test: { suggested: learnerSuggestions, weakOrder: learnerWeak, reviewOrder: learnerReview, challengeOrder: learnerChallenge, dropped: dropped(learnerSuggestions) },
+      learning: { suggested: childSuggestions, weakOrder: childWeak, reviewOrder: [], challengeOrder: [], dropped: dropped(childSuggestions) },
+    },
   };
   const unknowns = a?.unknowns ? { untested: codes(a.unknowns.untested.map(s => s.code)), checkNext: codes(a.unknowns.checkNext.map(s => s.code)), earlyLevel: a.unknowns.earlySigns.level, earlyStrands: [...a.unknowns.earlySigns.strands] } : null;
   const behaviour = b ? { medianMs: b.medianMs, veryFast: b.veryFast, leftOut: b.leftOut, unreliable: b.unreliable, rushRuns: b.rushRuns, lateDrop, readAloud: b.readAloud?.questions ?? null, whiteboard: b.whiteboard ? { required: b.whiteboard.required, requiredWithWork: b.whiteboard.requiredWithWork, optionalWithWork: b.whiteboard.optionalWithWork } : null, helpLikely: b.help?.likely ?? false, helpAnswer: b.help?.answer ?? null, helpFlags: b.help?.flags.length ?? 0 } : null;

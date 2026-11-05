@@ -307,6 +307,28 @@ describe("P2 profile at plan time", () => {
     expect(s.rebuilds).toEqual({ prepare: 1, learner: 1, child: 1 });
   });
 
+  it("saves report and device inputs in the real job plan and never rereads them on resume", async () => {
+    const s = setup({ ahead: true });
+    const metadata = {
+      report: { howWeHelp: "behind" as const, minutes: 55 },
+      device: { deviceClass: "desktop" as const, input: "mouse" as const, screenWidth: 1440, screenHeight: 900, browser: "chrome" as const },
+    };
+    s.deps.source.planningMetadata = vi.fn(async assessmentId => {
+      expect(assessmentId).toBe(TEST);
+      return metadata;
+    });
+    const id = await s.start();
+    expect(await runWorkbookJob(id, s.deps)).toBe("handed-on");
+    const frame = JSON.parse(JSON.stringify(await s.runs.frame(id)));
+    expect(frame.plan.personal.report).toEqual({ ...metadata.report, device: metadata.device });
+    expect(frame.plan.personal.why.inputs.find((r: { label: string }) => r.label === "Report recommendation")).toMatchObject({ status: "Used", value: "Catch up" });
+    expect(frame.plan.personal.why.inputs.find((r: { label: string }) => r.label === "Test length and device")).toMatchObject({ status: "Not used", value: "55 minutes; desktop, mouse" });
+    expect(frame.plan.personal.why.warnings.some((w: string) => w.includes("do not agree"))).toBe(true);
+    expect(await runWorkbookJob(id, s.deps, { resume: true })).toBe("handed-on");
+    expect(s.deps.source.planningMetadata).toHaveBeenCalledOnce();
+    expect(await s.runs.frame(id)).toEqual(frame);
+  });
+
   it("refuses a resume without a frame before any profile build", async () => {
     const s = setup();
     const id = await s.start();

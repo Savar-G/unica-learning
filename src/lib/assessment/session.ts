@@ -11,6 +11,7 @@ import {
   bandFor,
 } from "./constants";
 import { levelCertainty, strandCertainty, strandStatus, workingLevelOf } from "./certainty";
+import type { AreaAnswer } from "./area-level";
 import { bankFor } from "./bank";
 import { downLevel, startLevel, upLevel } from "./grades";
 import { factsResult, type FactsSession } from "./facts";
@@ -491,6 +492,19 @@ export function testStep(session: Session): TestStep {
 
 /** True on the first question after halfway: the browser shows the skippable break screen before it (D-083). */
 export const breakDue = (step: TestStep): boolean => step.status === "question" && step.number === step.breakAfter + 1;
+
+/**
+ * A completed test's answers for the area rule (D-243): one per question, with what `finish` leaves out of the score
+ * (a very fast wrong answer in a run, #189) left out here too.
+ */
+export function testAreaAnswers(session: Session): AreaAnswer[] {
+  const questions = questionsOnRoute(session);
+  if (!session.route || session.answers.length < questions.length) {
+    throw new Error(`The test is not complete: ${session.answers.length} of ${questions.length} answered`);
+  }
+  const out = leftOutOfScore(session.answers);
+  return questions.flatMap((q, i) => (out[i] ? [] : [{ area: REPORTED_STRAND[q.strand], level: q.level, correct: session.answers[i].correct }]));
+}
 
 /**
  * Scores a completed test. The facts section (#70), when the child had one, goes beside it and never changes the working level.
