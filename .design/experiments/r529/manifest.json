@@ -32,19 +32,19 @@
       "path": ".design/experiments/r529/notice-laptop.png",
       "state": "The notice, reached from Open the desk.",
       "viewport": "laptop",
-      "sha256": "ce8290ccea158881967435dc03c88be4e028f014efd67cd25445f716cce2c7d7"
+      "sha256": "08e180e4a4e84395abdfac870a9a1e85ca40f85af36432402af4a91b3218c46f"
     },
     {
       "path": ".design/experiments/r529/notice-tablet.png",
       "state": "The notice.",
       "viewport": "tablet",
-      "sha256": "76dbd11e7ec5b6ff5759eb75c1ec1b7186d87db95c7290c3c5508bd8d65b7638"
+      "sha256": "7e0f00f812c3445550aeb5cd02481f432a7b73faefada19fb649f9e2633295ae"
     },
     {
       "path": ".design/experiments/r529/notice-phone.png",
       "state": "The notice. Full-height capture.",
       "viewport": "phone",
-      "sha256": "744c3a731ffab1f11ff14a613e8c4d15123fe4a7154b29bedf23fe2ad40b624b"
+      "sha256": "bf2b60f3e07f5d254f3f750e097997a6cb08fb29c54bf8bb6313728e843a86ad"
     },
     {
       "path": ".design/experiments/r529/notice-saved-laptop.png",
@@ -80,7 +80,7 @@
       "path": ".design/experiments/r529/terms-maya-phone.png",
       "state": "Terms: the Maya section.",
       "viewport": "phone",
-      "sha256": "75a3744a472f12e77f83305df1857df16dbee6c4436a0b805536979bca5308a9"
+      "sha256": "c1b8934affb2be2e1bb169064149f9955b450c46324d3feede207d87e3738b78"
     },
     {
       "path": ".design/experiments/r529/dashboard-card-laptop.png",
@@ -95,5 +95,5 @@
       "sha256": "8b8793c924bd8bc0eff386f003fbaa6156eb652c35cdd0e6ef0ba845f932ed9b"
     }
   ],
-  "review_round": "Codex review of 110919a: notice, saved, privacy and terms screens retaken after the five fixes."
+  "review_round": "Codex review of 110919a: screens retaken after the five fixes. Notice, privacy, terms and the laptop desk retaken again on the merge with #584 (Grade 3 limit). Tablet and phone desk, the Parent home card and the dashboard cards are from before these text changes; those screens did not change."
 }
