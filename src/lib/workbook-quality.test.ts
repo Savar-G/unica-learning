@@ -24,6 +24,72 @@ it("checks actual progression, repeats, format variety and day time", () => {
   expect(q.ready).toBe(false);
 });
 
+function timedPage(number: number, day: number, count: number, extra = false): GeneratedPage {
+  const p = page(number, day, count);
+  p.content = { kind: "day", id: `time-${number}`, level: 4, day, page: 1, pages: 2,
+    topic: "Numbers", title: "Numbers", subtitle: "Write the answers.", grownUp: null, requiredTimeTarget: 20,
+    blocks: [{ slot: "on-your-own", items: p.questions.map(q => q.number), ...(extra ? { extra: true } : {}) }] };
+  return p;
+}
+
+it("keeps every under-one-hour day below 20 required minutes without dropping Extra questions", () => {
+  const pages = Array.from({ length: 10 }, (_, i) => [timedPage(i * 2 + 3, i + 1, 40), timedPage(i * 2 + 4, i + 1, 40, true)]).flat();
+  const before = structuredClone(pages);
+  const quality = workbookQuality(pages);
+  expect(quality.days).toHaveLength(10);
+  expect(quality.days.every(d => d.requiredMinutes! <= 20 && d.minutes > 20 && d.minutes < 35)).toBe(true);
+  expect(quality.issues.filter(i => i.kind === "time")).toEqual([]);
+  expect(pages).toEqual(before);
+});
+
+it("rejects generated required work above the target and keeps the whole-day limit with Extra", async () => {
+  const required = timedPage(3, 1, 64), extra = timedPage(4, 1, 10, true);
+  const issues = () => workbookQuality([required, extra]).issues.filter(i => i.kind === "time");
+  expect(issues()).toEqual(expect.arrayContaining([expect.objectContaining({ reason: expect.stringMatching(/Required work.*at or below 20/) })]));
+  const reviewed = await checkWholeBook([required, extra], async () => null);
+  expect(reviewed.quality.ready).toBe(false);
+  expect(reviewed.quality.days[0].requiredMinutes).toBeGreaterThan(20);
+  for (const p of [required, extra]) if (p.content?.kind === "day") p.content.requiredTimeTarget = 25;
+  expect(issues()).toEqual([]);
+  extra.questions = page(4, 1, 100).questions;
+  if (extra.content?.kind === "day") extra.content.blocks[0].items = extra.questions.map(q => q.number);
+  expect(issues()).toContainEqual(expect.objectContaining({ reason: expect.stringMatching(/keep it below 35/) }));
+});
+
+it("keeps the previous time results without the optional fields", () => {
+  const p = timedPage(3, 1, 64);
+  if (p.content?.kind !== "day") throw new Error("not a day");
+  delete p.content.requiredTimeTarget;
+  const plain = workbookQuality([p]);
+  expect(plain.days[0]).not.toHaveProperty("requiredMinutes");
+  expect(plain.issues.filter(i => i.kind === "time")).toEqual([]);
+  const bare = { ...p, content: undefined };
+  expect(workbookQuality([bare]).days).toEqual(plain.days);
+});
+
+it("keeps an exact 20-minute boundary despite floating-point noise", () => {
+  const p = timedPage(3, 1, 14);
+  p.questions = p.questions.map((q, i) => ({ ...q, package: { ...q.package!,
+    text: Array(i === 13 ? 3 : 13).fill("word").join(" "),
+    item: { ...q.package!.item!, format: "written-reason", regions: [] },
+  } }));
+  const quality = workbookQuality([p]);
+  expect(quality.days[0].requiredMinutes).toBe(20);
+  expect(quality.issues.filter(i => i.kind === "time")).toEqual([]);
+});
+
+it("keeps recalculated minutes on the plan row when that page prints alone", async () => {
+  const summary: GeneratedPage = { ...page(2, 1, 0), type: "how-plan", day: null, content: {
+    kind: "how-plan", id: "plan", level: 4, child: "Noah", workbook: 1, pagesADay: 8,
+    minutes: { min: 30, max: 30 }, rows: [{ day: 1, topic: "Numbers", second: "Practice", pages: [3, 4] }],
+  } };
+  const result = await checkWholeBook([summary, timedPage(3, 1, 40), timedPage(4, 1, 40, true)], async () => null);
+  const content = result.pages[0].content;
+  if (content?.kind !== "how-plan") throw new Error("not the plan");
+  expect(content.rows[0]).toMatchObject({ requiredMinutes: result.quality.days[0].requiredMinutes, extra: true });
+  expect(summary.content).not.toHaveProperty("rows.0.requiredMinutes");
+});
+
 it("does not call a rewrite more than once per page or accept a bad fit", async () => {
   const pages = [page(3, 1), page(4, 8, 100)];
   const calls: number[] = [];

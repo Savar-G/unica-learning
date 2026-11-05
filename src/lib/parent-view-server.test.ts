@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
-import { listChildren } from "@/lib/parent-view";
+import { listChildren, readWorkbooks } from "@/lib/parent-view";
 import { parentViewReader } from "@/lib/parent-view-server";
 
 // The parent view's Supabase reader, through its interface, against a fake PostgREST. It checks what the memory reader
@@ -12,6 +12,7 @@ const PARENT = "11111111-1111-4111-8111-111111111111";
 const CHILD = "22222222-2222-4222-8222-222222222222";
 const TEST = "33333333-3333-4333-8333-333333333333";
 const NOW = Date.parse("2026-11-04T18:00:00Z");
+const WORKBOOK = "44444444-4444-4444-8444-444444444444";
 
 function grantedColumns(file: string, table: string): Set<string> {
   const grant = readFileSync(`supabase/migrations/${file}`, "utf8").match(new RegExp(`grant select \\(([^)]+)\\)\\s+on table public\\.${table} to authenticated`, "i"));
@@ -30,7 +31,10 @@ const ROWS: Record<string, unknown> = {
   reports: [{ id: "report-1", child_id: CHILD, assessment_id: TEST, assessment: { province: "BC" } }],
   card_setups: [{ child_id: CHILD }],
   workbook_delivery_receipts: [],
-  workbooks: [{ child_id: CHILD, number: 1 }],
+  workbooks: [{ id: WORKBOOK, child_id: CHILD, number: 1, shipped_at: "2026-11-03T04:30:00Z", pdf_path: `${PARENT}/${WORKBOOK}/workbook.pdf` }],
+  workbook_delivery_corrections: [],
+  workbook_emails: [{ child_id: CHILD, workbook_number: 1, delivery: { method: "mail", carrier: "Canada Post", trackingNumber: "7023", trackingUrl: "https://track.example/7023" } }],
+  parents: { time_zone: "America/Toronto", postal: null },
   assessments: [{ id: TEST, child_id: CHILD, seed: 1, status: "completed", started_at: "2026-11-01T00:00:00Z", last_answer_at: "2026-11-01T00:30:00Z", resume_until: "2026-11-02T00:30:00Z", completed_at: "2026-11-01T00:40:00Z", unreliable: null }],
   test_accounts: null,
   admin_users: null,
@@ -115,5 +119,28 @@ describe("the Supabase reader", () => {
   it("turns Progress on only with its server switch", async () => {
     expect((await listChildren(reader(undefined, { PROGRESS_TAB_ENABLED: "on" }).reader, NOW))[0].tabs).toContain("progress");
     expect((await listChildren(reader(undefined, { PROGRESS_TAB_ENABLED: "off" }).reader, NOW))[0].tabs).not.toContain("progress");
+  });
+});
+
+describe("the Supabase reader of the Workbooks tab (#558)", () => {
+  it("gives the current book, its tracking and the range, in family time", async () => {
+    const view = await readWorkbooks(reader().reader, CHILD, NOW);
+    expect(view?.current).toEqual({ id: WORKBOOK, number: 1, shippedOn: "2026-11-02", deliveredOn: null, delivery: { method: "mail", carrier: "Canada Post", trackingNumber: "7023", trackingUrl: "https://track.example/7023" } });
+    expect(view?.next).toEqual({ kind: "range", earliest: "2026-11-16", latest: "2026-12-07" });
+    expect(view?.books).toEqual([{ id: WORKBOOK, number: 1, shippedOn: "2026-11-02", hasPdf: true }]);
+  });
+  it("reads books, deliveries and the family with the parent's session, and only the dispatch details with the secret key, filtered on the parent", async () => {
+    const r = reader();
+    await readWorkbooks(r.reader, CHILD, NOW);
+    expect(tables(r.session)).toEqual(["card_setups", "children", "parents", "reports", "workbook_delivery_corrections", "workbook_delivery_receipts", "workbooks"]);
+    expect(tables(r.admin)).toEqual(["admin_users", "assessments", "child_plan_states", "test_accounts", "workbook_emails"]);
+    const emails = r.admin.find((u) => u.pathname.endsWith("/workbook_emails"))!.searchParams;
+    expect(emails.get("select")).toBe("child_id,workbook_number,delivery");
+    expect(emails.get("parent_id")).toBe(`eq.${PARENT}`);
+    expect(emails.get("kind")).toBe("eq.dispatch");
+    expect(r.session.find((u) => u.pathname.endsWith("/workbooks"))!.searchParams.get("status")).toBe("eq.shipped");
+  });
+  it.each(["workbook_delivery_corrections", "workbook_emails", "parents"])("throws when %s fails", async (table) => {
+    await expect(readWorkbooks(reader(table).reader, CHILD, NOW)).rejects.toThrow();
   });
 });

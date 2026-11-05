@@ -17,6 +17,8 @@ export interface MemoryChild {
   firstName: string;
   grade: number;
   createdAt: string;
+  /** Defaults to BC. */
+  province?: string;
 }
 export interface MemoryTest extends Owned {
   id: string;
@@ -39,10 +41,28 @@ export interface MemoryCard extends Owned {
 export interface MemoryWorkbook extends Owned {
   number: number;
   status: string;
+  /** Defaults to `wb-<child>-<number>`. */
+  id?: string;
+  shippedAt?: string | null;
+  pdfPath?: string | null;
+}
+export interface MemoryDelivery extends Owned {
+  /** Defaults to an id that matches no workbook. */
+  workbookId?: string;
+  deliveredAt?: string;
+}
+export interface MemoryCorrection extends Owned {
+  workbookId: string;
+  deliveredAt: string;
+  auditId: number;
+}
+export interface MemoryDispatch extends Owned {
+  number: number;
+  delivery: unknown;
 }
 export type MemoryPlan = Owned & Pick<PlanRecord, "kind">;
 
-const TABLES = ["children", "tests", "reports", "cards", "deliveries", "workbooks", "plans", "switches"] as const;
+const TABLES = ["children", "tests", "reports", "cards", "deliveries", "workbooks", "plans", "switches", "corrections", "dispatches", "family"] as const;
 type Table = (typeof TABLES)[number];
 
 export interface MemoryParentViewTables {
@@ -50,9 +70,14 @@ export interface MemoryParentViewTables {
   tests?: MemoryTest[];
   reports?: MemoryReport[];
   cards?: MemoryCard[];
-  deliveries?: Owned[];
+  deliveries?: MemoryDelivery[];
+  corrections?: MemoryCorrection[];
   workbooks?: MemoryWorkbook[];
+  /** The workbook emails' dispatch rows (admin-only in the database; the server reads them for the parent). */
+  dispatches?: MemoryDispatch[];
   plans?: MemoryPlan[];
+  /** One value for every parent; no saved zone or postal code when left out. */
+  family?: { timeZone: string | null; postal: string | null };
   /** One value for every parent; every switch is off when left out. */
   switches?: TabSwitches;
   fail?: Table[];
@@ -72,7 +97,7 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
         read("children");
         return own(tables.children)
           .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
-          .map((c) => ({ ...c, grade: c.grade as Grade }));
+          .map((c) => ({ ...c, grade: c.grade as Grade, province: c.province ?? "BC" }));
       },
       async tests() {
         read("tests");
@@ -92,11 +117,24 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
       },
       async deliveries() {
         read("deliveries");
-        return own(tables.deliveries);
+        return own(tables.deliveries).map((d) => ({ ...d, workbookId: d.workbookId ?? "no-workbook", deliveredAt: d.deliveredAt ?? "2026-01-01T00:00:00Z" }));
+      },
+      async deliveryCorrections() {
+        read("corrections");
+        return own(tables.corrections);
       },
       async shippedWorkbooks() {
         read("workbooks");
-        return own(tables.workbooks).filter((w) => w.status === "shipped");
+        return own(tables.workbooks).filter((w) => w.status === "shipped")
+          .map((w) => ({ ...w, id: w.id ?? `wb-${w.childId}-${w.number}`, shippedAt: w.shippedAt ?? null, hasPdf: (w.pdfPath ?? null) !== null }));
+      },
+      async dispatches() {
+        read("dispatches");
+        return own(tables.dispatches);
+      },
+      async family() {
+        read("family");
+        return tables.family ?? { timeZone: null, postal: null };
       },
       async plans() {
         read("plans");

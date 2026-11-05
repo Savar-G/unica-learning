@@ -5,6 +5,8 @@ import { workbookProblem } from "@/lib/workbook-content";
 import { renderWorkbook, type DraftPage, type PrintEngine, type WorkbookDraft } from "@/lib/workbook-render";
 import { sampleBook } from "@/lib/workbook-sample-book";
 import { bandOf, workbookTemplate } from "@/lib/workbook-template";
+import { generatedDayTime } from "@/lib/workbook-feedback-check";
+import { Window } from "happy-dom";
 
 // The workbook templates (#310) through the renderer with the fake print engine: every page type of the sample books
 // has a layout and prints its number and QR code, the rendered book is one the store takes, and the template's fit
@@ -23,8 +25,113 @@ const only = (draft: WorkbookDraft, p: DraftPage): WorkbookDraft => ({ ...draft,
 const first = (draft: WorkbookDraft, type: string) => draft.pages.find((p) => p.type === type)!;
 /** The content area where DESIGN.md puts it: 688 by 720 under the header. */
 const AREA = { "1 slot-content": { x: 64, y: 210, width: 688, height: 720 } };
+const parsedPage = (html: string) => {
+  const root = new Window().document.createElement("div");
+  root.innerHTML = html;
+  return root;
+};
 
 describe("the workbook templates", () => {
+  it.each(["U4", "U16"].flatMap(level => ["practice", "practice-2", "challenge"].map(type => [level, type])))("prints one unambiguous label for a whole Extra page in %s %s", (level, type) => {
+    const draft = book(level);
+    const p = first(draft, type);
+    if (p.content?.kind !== "day") throw new Error("not a day");
+    const content = { ...p.content, blocks: p.content.blocks.map(b => ({ ...b, extra: true })) };
+    const html = workbookTemplate().page({ ...p, content }, { qr: "", qrUrl: "" }, draft)!;
+    const original = workbookTemplate().page(p, { qr: "", qrUrl: "" }, draft)!;
+    const root = parsedPage(html);
+    expect(root.querySelectorAll('[data-measure^="chipbadge-extra-"]')).toHaveLength(1);
+    expect(root.querySelector('.hd [data-measure="chipbadge-extra-page"]')?.textContent).toBe("Extra page: optional");
+    expect(root.querySelectorAll('.ct [data-measure^="chipbadge-extra-"]')).toHaveLength(0);
+    expect(root.querySelectorAll(".optional-block")).toHaveLength(0);
+    for (const q of p.questions) expect(html).toContain(`data-measure="question-${q.number}"`);
+    expect(html.match(/class="chiprow"/g)).toHaveLength(original.match(/class="chiprow"/g)?.length ?? 0);
+    expect(original).not.toContain(">Extra</span>");
+  });
+
+  it.each(["U4", "U16"])("labels only the optional example inside its panel on a mixed %s page", level => {
+    const draft = book(level), p = first(draft, "practice");
+    if (p.content?.kind !== "day") throw new Error("not a day");
+    const content = { ...p.content, blocks: p.content.blocks.map(b => ({ ...b, extra: b.slot === "watch-one" })) };
+    const root = parsedPage(workbookTemplate().page({ ...p, content }, { qr: "", qrUrl: "" }, draft)!);
+    expect(root.querySelectorAll('[data-measure^="chipbadge-extra-"]')).toHaveLength(1);
+    expect(root.querySelector('.panel .lab [data-measure^="chipbadge-extra-"]')?.textContent).toBe("Extra");
+    expect(root.querySelectorAll('.chiprow [data-measure^="chipbadge-extra-"], .hd [data-measure^="chipbadge-extra-"]')).toHaveLength(0);
+    for (const q of p.questions) expect(root.querySelector(`[data-measure="question-${q.number}"]`)?.closest(".panel")).toBeNull();
+  });
+
+  it.each(["U4", "U16"])("keeps an optional %s block and its review inside one visible boundary", level => {
+    const draft = book(level), p = first(draft, "practice");
+    if (p.content?.kind !== "day") throw new Error("not a day");
+    const content = { ...p.content, blocks: p.content.blocks.map(b => ({ ...b, extra: b.slot === "on-your-own",
+      ...(b.slot === "on-your-own" ? { reviewFrom: b.items[Math.floor(b.items.length / 2)] } : {}),
+    })) };
+    const root = parsedPage(workbookTemplate().page({ ...p, content }, { qr: "", qrUrl: "" }, draft)!);
+    const group = root.querySelector('.optional-block[data-slot="on-your-own"]');
+    expect(group).not.toBeNull();
+    expect(group!.querySelectorAll('[data-measure^="chipbadge-extra-"]')).toHaveLength(1);
+    expect(group!.querySelector('[data-measure^="review-"]')?.textContent).toBe("Remember these");
+    const optional = content.blocks.find(b => b.extra)!.items;
+    for (const q of p.questions) expect(root.querySelector(`[data-measure="question-${q.number}"]`)?.closest(".optional-block") === group).toBe(optional.includes(q.number));
+    expect(root.querySelectorAll('.chiprow [data-measure^="chipbadge-extra-"], .hd [data-measure^="chipbadge-extra-"]')).toHaveLength(0);
+  });
+
+  it.each(["U4", "U16"])("prints no Extra label or optional boundary on a required %s page", level => {
+    const draft = book(level), p = first(draft, "practice");
+    if (p.content?.kind !== "day") throw new Error("not a day");
+    const template = workbookTemplate();
+    const original = template.page(p, { qr: "", qrUrl: "" }, draft)!;
+    const html = template.page({ ...p, content: { ...p.content, blocks: p.content.blocks.map(b => ({ ...b, extra: false })) } }, { qr: "", qrUrl: "" }, draft)!;
+    expect(html).toBe(original);
+    expect(parsedPage(html).querySelectorAll('[data-measure^="chipbadge-extra-"], .optional-block')).toHaveLength(0);
+  });
+
+  it("prints required minutes from the draft in How it works and each plan row", () => {
+    const draft = book("U16");
+    for (const p of draft.pages) if (p.content?.kind === "day") {
+      p.content.requiredTimeTarget = 20;
+      for (const b of p.content.blocks) if (p.type === "challenge" || p.type === "practice-2") b.extra = true;
+    }
+    const plan = first(draft, "how-plan");
+    if (plan.content?.kind !== "how-plan") throw new Error("not the plan");
+    plan.content.minutes = { min: 99, max: 99 };
+    const html = workbookTemplate().page(plan, { qr: "", qrUrl: "" }, draft)!;
+    const minutes = plan.content.rows.map(r => generatedDayTime(draft.pages.filter(p => p.content?.kind === "day" && p.content.day === r.day)).requiredMinutes);
+    expect(html).toContain(`about ${Math.ceil(Math.max(...minutes))} minutes, plus Extra if there's time`);
+    expect(html).toContain("Extra blocks are optional.");
+    expect(html).not.toContain("99 minutes");
+    for (const [i, row] of plan.content.rows.entries()) expect(html).toContain(`data-measure="slot-required-time-${row.day}">${Math.ceil(minutes[i])} min`);
+  });
+
+  it("keeps How it works unchanged without Extra and required-time fields", () => {
+    const draft = book("U16"), plan = first(draft, "how-plan");
+    if (plan.content?.kind !== "how-plan") throw new Error("not the plan");
+    plan.content.minutes = { min: 17, max: 17 };
+    const html = workbookTemplate().page(plan, { qr: "", qrUrl: "" }, draft)!;
+    expect(html).toContain("about 17 minutes.");
+    expect(html).not.toMatch(/REQUIRED TIME|Extra|plan-time|slot-required-time/);
+  });
+
+  it("uses the generated row estimate when only the plan page is printed", () => {
+    const draft = book("U16"), plan = first(draft, "how-plan");
+    if (plan.content?.kind !== "how-plan") throw new Error("not the plan");
+    plan.content.rows = plan.content.rows.map(row => ({ ...row, requiredMinutes: row.day + 7.2, extra: true }));
+    const html = workbookTemplate().page(plan, { qr: "", qrUrl: "" }, only(draft, plan))!;
+    expect(html).toContain("about 18 minutes, plus Extra if there's time");
+    expect(html).toContain('data-measure="slot-required-time-1">9 min');
+    expect(html).toContain('data-measure="slot-required-time-10">18 min');
+  });
+
+  it("prints 20 minutes at the exact budget boundary despite floating-point noise", () => {
+    const draft = book("U16"), plan = first(draft, "how-plan");
+    if (plan.content?.kind !== "how-plan") throw new Error("not the plan");
+    plan.content.rows = plan.content.rows.map(row => ({ ...row, requiredMinutes: 20.000000000000004, extra: true }));
+    const html = workbookTemplate().page(plan, { qr: "", qrUrl: "" }, only(draft, plan))!;
+    expect(html).toContain("about 20 minutes, plus Extra if there's time");
+    expect(html).toContain('data-measure="slot-required-time-1">20 min');
+    expect(html).not.toContain("21 min");
+  });
+
   it.each([["U2"], ["U6"], ["U12"], ["U22"]])("lay out every page of a %s sample book, and the book is one the store takes", async (level) => {
     const result = await render(book(level));
     if (result.status !== "rendered") throw new Error(JSON.stringify(result.problems.slice(0, 5)));
