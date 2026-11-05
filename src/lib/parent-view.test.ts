@@ -314,7 +314,7 @@ describe("the Overview (#560)", () => {
   it("the Level tile: the stored working level and the day of the test in family time", async () => {
     // 2026-11-01T02:00Z is October 31 in Pacific time, Leah's province's zone.
     const view = await read({ tests: [test("t", { completedAt: Date.parse("2026-11-01T02:00:00Z") })], reports: [report("t")], results: [result("t", { level: level({ working: 2 }) })] });
-    expect(view?.level).toEqual({ working: 2, earlySign: false, testedOn: "2026-10-31" });
+    expect(view?.level).toEqual({ working: 2, earlySign: false, testedOn: "2026-10-31", unreliable: false });
   });
 
   it.each([
@@ -379,6 +379,31 @@ describe("the Overview (#560)", () => {
     const view = await read({ ...tested, results: [result("t", { answers: null })] });
     expect(view?.level?.working).toBe(3);
     expect(view?.areas).toEqual([]);
+  });
+
+  describe("a test the report calls unreliable (D-258, #579)", () => {
+    const answers = [...at("number", 3, 4, 0), ...at("shapes", 4, 4, 0)];
+    it("has no area bars, and keeps the Level tile with the flag", async () => {
+      const view = await read({ ...tested, results: [result("t", { answers, unreliable: true })] });
+      expect(view?.level).toEqual({ working: 3, earlySign: false, testedOn: expect.any(String), unreliable: true });
+      expect(view?.areas).toEqual([]);
+    });
+    it("reads the stored test's pace flag too", async () => {
+      const view = await read({ tests: [test("t", { unreliable: true })], reports: [report("t")], results: [result("t", { answers })] });
+      expect(view?.level?.unreliable).toBe(true);
+      expect(view?.areas).toEqual([]);
+    });
+    it("a reliable test keeps its bars", async () => {
+      const view = await read({ ...tested, results: [result("t", { answers, unreliable: false })] });
+      expect(view?.level?.unreliable).toBe(false);
+      expect(view?.areas.map((a) => [a.area, a.label])).toEqual([["number", "at-grade"], ["shapes", "ahead"]]);
+    });
+    it("only the newest finished test counts: an older unreliable test does not hide the new bars", async () => {
+      const tests = [test("old", { completedAt: NOW - 90 * HOUR }), test("new", { completedAt: NOW - 10 * HOUR })];
+      const view = await read({ tests, reports: [report("old"), report("new")], results: [result("old", { answers, unreliable: true }), result("new", { answers })] });
+      expect(view?.level?.unreliable).toBe(false);
+      expect(view?.areas).toHaveLength(2);
+    });
   });
 
   describe("This workbook", () => {
@@ -540,12 +565,19 @@ describe("the monthly summary (#562)", () => {
     });
     expect(view).toEqual({
       firstName: "Leah", schoolGrade: 3, month: "2026-10", madeOn: "2026-11-04",
-      level: { working: 3, earlySign: false, testedOn: "2026-09-10" },
+      level: { working: 3, earlySign: false, testedOn: "2026-09-10", unreliable: false },
       areas: [{ area: "number", name: expect.any(String), level: 3, label: "at-grade", earlySign: false }],
       mailed: [{ number: 2, shippedOn: "2026-10-14" }],
       daysScanned: 2, mayaCalls: 2,
       next: { earliest: "2026-10-28", latest: "2026-11-15" },
     });
+  });
+
+  it("a test the report calls unreliable has no area bars in the summary; a reliable one keeps them (D-258)", async () => {
+    const flagged = await summary({ results: [result("t", { answers: answers("number", 3, 4), unreliable: true })] });
+    expect(flagged?.level).toMatchObject({ working: 3, unreliable: true });
+    expect(flagged?.areas).toEqual([]);
+    expect((await summary())?.areas).toHaveLength(1);
   });
 
   it("has nothing for a section with no data", async () => {
@@ -569,7 +601,7 @@ describe("the monthly summary (#562)", () => {
   it("uses the newest test finished by the month's end, not a later one", async () => {
     const tests = [test("t", { completedAt: Date.parse("2026-09-10T18:00:00Z") }), test("nov", { completedAt: Date.parse("2026-11-02T18:00:00Z") })];
     const view = await summary({ tests, reports: [report("t"), report("nov")], results: [result("t"), result("nov", { level: level({ working: 5 }) })] });
-    expect(view?.level).toEqual({ working: 3, earlySign: false, testedOn: "2026-09-10" });
+    expect(view?.level).toEqual({ working: 3, earlySign: false, testedOn: "2026-09-10", unreliable: false });
   });
 
   it("a day counts only when every page of it has a saved photo, in the month of its last page", async () => {

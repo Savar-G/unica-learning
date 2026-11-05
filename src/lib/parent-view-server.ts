@@ -105,7 +105,7 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       } catch (e) {
         console.error("[parent-view] test replay failed", e instanceof Error ? e.message : "failed");
       }
-      return { level: report.data.model.level, answers };
+      return { level: report.data.model.level, answers, unreliable: report.data.model.reliability !== undefined };
     },
     async savedScans() {
       const { data, error } = await session.from("scan_photos").select("workbook_id, page_id, expires_at, created_at").eq("state", "saved");
