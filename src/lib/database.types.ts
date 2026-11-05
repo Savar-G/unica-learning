@@ -2041,6 +2041,53 @@ export type Database = {
           },
         ]
       }
+      scan_calibrations: {
+        Row: {
+          attempts: number
+          created_at: string
+          finished_at: string | null
+          lease_token: string
+          lease_until: string
+          parent_id: string
+          photo_id: string
+          printed_revision: string
+          result: Json | null
+          state: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          finished_at?: string | null
+          lease_token: string
+          lease_until: string
+          parent_id: string
+          photo_id: string
+          printed_revision: string
+          result?: Json | null
+          state: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          finished_at?: string | null
+          lease_token?: string
+          lease_until?: string
+          parent_id?: string
+          photo_id?: string
+          printed_revision?: string
+          result?: Json | null
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_calibration_photo"
+            columns: ["photo_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "scan_photos"
+            referencedColumns: ["id", "parent_id"]
+          },
+        ]
+      }
       scan_limits: {
         Row: {
           active_jobs: number
@@ -4209,6 +4256,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      begin_scan_calibration: {
+        Args: {
+          p_id: string
+          p_lease_seconds?: number
+          p_parent: string
+          p_token: string
+        }
+        Returns: Json
+      }
       change_answer: {
         Args: {
           p_answer_changes: Json
@@ -4488,6 +4544,17 @@ export type Database = {
           token: string
         }
         Returns: undefined
+      }
+      finish_scan_calibration: {
+        Args: {
+          p_bytes: number
+          p_id: string
+          p_parent: string
+          p_result: Json
+          p_state: string
+          p_token: string
+        }
+        Returns: string
       }
       finish_scan_photo: {
         Args: { p_bytes: number; p_id: string; p_parent: string }
@@ -4837,6 +4904,10 @@ export type Database = {
       }
       save_workbook_run_solves: {
         Args: { p_lease: string; p_logs: Json; p_run: string }
+        Returns: boolean
+      }
+      scan_photo_is_active: {
+        Args: { p_created: string; p_expires: string; p_state: string }
         Returns: boolean
       }
       scan_session_active: {
