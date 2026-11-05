@@ -43,7 +43,7 @@ import { speechWords, saidAsApproved } from "./speech";
 import { findOffer, normalSlots, packageLines, workbookOpening, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
-import { committedText, readAnswer, readNumbers, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead } from "./numbers";
+import { committedText, readAnswer, readNumbers, saysYes, saysWritten, startsWithYes, takenBack, unreadableAnswer, valuesIn, type AnswerRead } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
@@ -546,6 +546,19 @@ export function learningEvent(session: Session, family: { parentId: string; chil
 
 /** The worked steps a child does, without the result (fractions.ts: the steps Maya teaches for this question). */
 const workSteps = (pkg: OperationPackage) => teachSteps(pkg);
+
+/** The child's turn names exactly the numbers of this addition column, carry included, and no other number ("Oh, so 2
+ * plus 3 plus 1?"): the child set the step up themselves, with no result yet. Other step kinds are not read (#605). */
+function saidSetup(pkg: OperationPackage, stepId: string, text: string): boolean {
+  const st = workSteps(pkg).find((x) => x.id === stepId);
+  if (!st || st.kind !== "add-column") return false;
+  const terms = [...st.digits, ...(st.carryIn > 0 ? [st.carryIn] : [])];
+  // The last sentence with numbers: "Yes, the 1 ten. So 1 plus 2 plus 3?" sets the step up in its last sentence (C05-r3).
+  const said = text.split(/[.!?\n]+/).map((x) => valuesIn(x)).filter((v) => v.length > 0).at(-1) ?? [];
+  if (terms.length < 2 || said.length !== terms.length || said.some((v) => v.type !== "number")) return false;
+  const sort = (xs: number[]) => [...xs].sort((a, b) => a - b).join(",");
+  return sort(said.map((v) => (v as { value: number }).value)) === sort(terms);
+}
 const rank = (a: Assistance) => ASSISTANCE.indexOf(a);
 const number = (value: number): AnswerValue => ({ type: "number", value });
 
@@ -1215,7 +1228,15 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       // Code's fallback for a child still stuck on this step rises one level per child turn (#605), never on silence.
       const stuck = fallback && s.turn !== null ? Math.min(3, ladder.hint + 1) : -1;
       const cap = Math.max(stuck, (main === "ASSESS" || main === "TRY_TARGET") && ladder.hint === -1 ? Math.max(ladder.unlocked, 2) : ladder.unlocked);
-      if (p.level > cap) return no("hint_too_high", `Help may rise to H${cap} now: more help needs a failed attempt or a request, not silence.`, allowedNow);
+      // The operation line after the child said this step's own setup ("so 2 plus 3 plus 1?") only says it back: it
+      // is allowed at any cap and is no new help (#605 practice run 1: C01-r2, F04-r3).
+      const echo = s.turn !== null && spoken.chosen.length > 0 && spoken.chosen.every((o) => o.line === "step.operation") &&
+        saidSetup(pkg!, ladder.step, s.turn.text);
+      if (p.level > cap && !echo) return no("hint_too_high", `Help may rise to H${cap} now: more help needs a failed attempt or a request, not silence.`, allowedNow);
+      if (echo) {
+        moveTo(s, s.solved !== null ? "CHECK" : "GUIDE_TARGET");
+        break;
+      }
       // The regroup explanation is new help for a child who lost the carry, whatever level the ladder is on.
       const regroupNow = spoken.chosen.some((o) => o.line === "step.regroup");
       if (ladder.failures >= 2 && p.level <= ladder.hint && !regroupNow) return no("same_hint_again", `Two attempts failed at H${ladder.hint}: give more help or offer to stop.`, allowedNow);
@@ -1428,7 +1449,12 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
 
 /** The number a plain yes gives in this turn ("Did you say 66?", "Yes."), or null (#605). */
 function yesValue(s: Session): AnswerValue | null {
-  return s.heardAsked && s.turn && saysYes(s.turn.text) ? s.heardAsked : null;
+  if (!s.heardAsked || !s.turn) return null;
+  if (saysYes(s.turn.text)) return s.heardAsked;
+  // A yes that says only the confirmed number again ("Yes, I think 66 is right.") gives it too (#605, C10-r1).
+  const asked = s.heardAsked;
+  const said = s.package ? valuesIn(s.turn.text, readOptionsFor(s.package)) : [];
+  return startsWithYes(s.turn.text) && said.length > 0 && said.every((v) => saidAs(v, asked)) ? asked : null;
 }
 
 /** The right final answer a plain yes gives, as a reading's answer, or null. A yes to a wrong number is judged by the model. */

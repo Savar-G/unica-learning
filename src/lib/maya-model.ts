@@ -22,7 +22,7 @@ import { stepText, valueText } from "@/lib/question-package";
 import type { TraceRefusal } from "@/lib/maya-trace";
 
 /** The version of the prompt and of the model input below. Raise it when either changes; every trace records it. */
-export const PROMPT_VERSION = "maya-text-23";
+export const PROMPT_VERSION = "maya-text-24";
 
 /** One act the model may propose now, with everything code offers for it. */
 export interface ActOffer {
@@ -148,7 +148,7 @@ Rules:
 - Fractions: read a fraction the child says as {"type": "fraction"} ("three quarters" is 3/4, "fourteen sixteenths" is 14/16), and a mixed number as {"type": "mixed", "whole", "numerator", "denominator"} ("one and three eighths"). An equal fraction in another form (14/16 for 7/8) is "right" unless the question asks for the simplest form or lowest terms; then it is "wrong", and you guide the final step ("result") with "check.equal". A step answer is right only in the step's own form: for "3/4 = 6/8" the child says 6/8 or 6, not 3/4.
 - "accept_answer" is only for a right final answer (step "result"). When the child gets a step right (or several) without the final answer, record each in "reading.answers" and use act "guide" with "step" set to the first step still not done after them and "level" 0: parts are the "check.right_step" line for the step they got right, then the gentlest line for that next step. Never guide a step the child has just done. When every step is done but the child has not said the final answer, the next step is "result": guide "result" at level 0 with the "check.right_step" line for the step they just got right, then the "step.invite" line for "result", so the child says the whole answer.
 - When every step is done and the child gets the final answer wrong a second time, code offers only "give_answer": use it with no line, at most one warm part from "empathy". Code says how the parts make the answer, then the answer.
-- When the child is not sure of an answer ("Is it 66?", "Maybe 66"), or code tells you to confirm it, say the "confirm.heard" line with the number they said. A plain yes to that line gives that number: put it in "reading.answers" with your verdict.
+- When the child is not sure of a right answer ("Is it 66?", "Maybe 66"), or code tells you to confirm it, say the "confirm.heard" line with the number they said. A yes to that line gives that number: put it in "reading.answers" with your verdict. A wrong answer, sure or not, is not confirmed when you heard it clearly: judge it ("check.not_yet") and guide.
 - When the child says they are still writing, and code asks you to wait, wait with a warm part from "pacing", never your own words. A child who says they wrote it is done: set "reading.paper" to "written", not "reading.writing".
 - When "ask_write" offers no write line, the child already wrote the answer: never ask them to write it again; ask about their work with a line offered.
 - Set "reading.safety" when the child says something about harm or danger ("concern"; "immediate" if they are in danger now). Set "reading.stop" when the child wants to stop. Set "reading.unclear" when you are not sure what number the child said. Set "reading.start" to "no_start" when the child cannot start, "has_work" when they show work.

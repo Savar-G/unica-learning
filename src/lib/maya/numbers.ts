@@ -540,8 +540,11 @@ const NEGATIVE = /\b(?:not|never|wrong|nope|nah|false|untrue|doubt|doubts|withdr
  * counts as pointing back: the 56 is not the child's own answer, so no number is kept and Maya asks on (C10).
  */
 const POINTS_BACK = /\b(?:wrong|nope|nah|false|untrue|doubts?|withdraw|withdrawn|retract|incorrect|mistake|mistaken|reject|rejected|ruled|scratch|forget|ignore|undo|cancel)\b|\b(?:take|taking|took|takes) (?:that|it|this|my answer|it all)? ?back\b|\b(?:erase|erased|delete|deleted|rub out|cross out|crossed out|start over|redo|different answer)\b|\b(?:change|changed|changing) (?:my|the) answer\b|\b(?:changed?|changing) my mind\b|\bnever ?mind\b|\b(?:that|it|this|those|these|mine|answer)(?:['’]?s| is| was| are| were)?\s+(?:not|never)\b|\b(?:that|it|this|those|these|mine|answer)\s+(?:isn['’]?t|wasn['’]?t|aren['’]?t|weren['’]?t)\b|\b(?:isn['’]?t|wasn['’]?t|aren['’]?t|not|never)\s+(?:right|correct|true|it|the answer|that|so)\b|\b(?:don['’]?t|do not|didn['’]?t|did not)\s+(?:think|believe|mean|want)\b|^[\s\W]*(?:not|never)(?:\s+(?:really|quite|at all))?[\s\W]*$/i;
-/** The clauses a negative can reach: a sentence end, a semicolon or "but" ends one ("16 but I don't know what to do"). */
-const CLAUSE_END = /(?<=[.!?…])\s+|;|\bbut\b/i;
+/**
+ * The clauses a negative can reach: a sentence end, a semicolon, "but" or ", so" ends one ("16 but I don't know what to
+ * do", "The one is not a big deal, so it's still 56": practice run 1 of #605, C10-r1).
+ */
+const CLAUSE_END = /(?<=[.!?…])\s+|;|\bbut\b|,\s*so\b/i;
 
 /**
  * The text with what the child's negatives take back left out (#605, R391-3, R391-4-1, R391-6-2): the numbers in a
@@ -885,6 +888,15 @@ const YES_TURN = new RegExp(`^[\\s,.!]*(?:(?:um+|uh+|oh|okay|ok|well)[\\s,.!]+)*
 
 /** The whole turn is a plain yes (#605): it answers Maya's "Did you say 66?". */
 export const saysYes = (text: string) => YES_TURN.test(text);
+
+const YES_START = new RegExp(`^[\\s,.!]*(?:(?:um+|uh+|oh|okay|ok|well)[\\s,.!]+)*${YES_WORD}\\b`, "i");
+
+/**
+ * The turn starts with a yes and has no doubt, no question mark and no negative ("Yes, I think 66 is right."): with only
+ * the confirmed number in it, it answers "Did you say 66?" too (practice run 1 of #605, C10-r1). The caller checks the
+ * numbers.
+ */
+export const startsWithYes = (text: string) => YES_START.test(text) && !DOUBT.test(text) && !NEGATIVE.test(text) && !offersChoice(text);
 
 /**
  * The child says the writing is done (#605): "I wrote 66", "66 is on my paper", "I'm done writing". Not "I'm writing",

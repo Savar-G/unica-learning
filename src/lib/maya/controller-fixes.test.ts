@@ -498,3 +498,89 @@ describe("#605 item 9: a flipped column of this question is not another problem"
     expect(scopeReason(SUBTRACT as OperationPackage, "7 minus 1", false)).toBe("changed_problem");
   });
 });
+
+describe("#605 practice run 1: a child who says the step's own setup hears it said back", () => {
+  // C01-r2 and F04-r3: "Oh, so 2 plus 3 plus 1?" got "What could you try for the tens?" because the operation line
+  // was refused as help above the cap. Said back, it is the child's own setup, so it is no new help.
+  const onTens = () => {
+    const c = call();
+    c.child("Seven plus nine is sixteen.");
+    c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right")] } });
+    return c;
+  };
+  const operation = { act: "guide" as const, step: "tens", level: 2 as const, parts: [ln("step.operation", { step: "tens" })], reading: { start: "has_work" as const } };
+
+  it.each(["Oh, so 2 plus 3 plus 1?", "Um, I add the 2 and the 3 and the 1?", "two plus three plus one"])("says the operation back after %j, and counts no hint", (setup) => {
+    const c = onTens();
+    c.child(setup);
+    expect(c.maya(operation)).toContain("2 + 3 + 1");
+    expect(c.session.hints).toBe(0);
+    expect(c.session.ladder.hint).toBe(0);
+    c.child("Six. So 66.");
+    c.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [ans(6, "tens", "right"), ans(66, "result", "right")] } });
+    expect(c.session.assistance).not.toContain("hint");
+  });
+
+  it.each(["Um.", "So 2 plus 3?", "2 plus 3 plus 1 is 5.", "I write the 6 and carry the 1."])("still refuses the operation line after %j", (turn) => {
+    const c = onTens();
+    c.child(turn);
+    expect(c.propose(operation).refusal?.code).toBe("hint_too_high");
+  });
+});
+
+describe("#605 practice run 1: a said-back setup is no hint at any cap", () => {
+  it("counts no hint when help up to H3 was already allowed (the child asked to be shown)", () => {
+    const c = call();
+    c.child("Seven plus nine is sixteen.");
+    c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right")] } });
+    c.child("Is it 2 plus 3 plus 1? Show me.");
+    expect(c.maya({ act: "guide", step: "tens", level: 2, parts: [ln("step.operation", { step: "tens" })], reading: { help: "show" } })).toContain("2 + 3 + 1");
+    expect(c.session.hints).toBe(0);
+    expect(c.session.ladder.hint).toBe(0);
+  });
+});
+
+describe("#605 practice run 1: a yes that names the confirmed number gives it (C10-r1)", () => {
+  it.each(["Yes, I think 66 is right.", "Yes, I said 66. I think 66 is right.", "Yes, 66.", "Yeah, it's 66!"])("takes %j after 'Did you say 66?'", (yes) => {
+    const c = call();
+    c.child("Oh, so it's 66? I got 66.");
+    c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "66" })] });
+    c.child(yes);
+    expect(c.propose({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [ans(66, "result", "right")] } }).refusal).toBeNull();
+  });
+
+  it.each(["Yes, maybe 66.", "Yes, 66?", "Yes, 56.", "Yes, 66 or 56.", "Yes, but not 66."])("does not take %j as a yes to 66", (not) => {
+    const c = call();
+    c.child("Is it 66?");
+    c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "66" })] });
+    c.child(not);
+    expect(c.propose({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [ans(66, "result", "right")] } }).refusal).not.toBeNull();
+  });
+});
+
+describe("#605 practice run 1: a negative before ', so' does not take back the number after it (C10-r1)", () => {
+  it("keeps 56 in 'The one is not a big deal, so it's still 56.'", () => {
+    expect(readAnswer("Two plus three is five. The one is not a big deal, so it's still 56.").final).toEqual(num(56));
+  });
+  it("still takes back the negated number: 'It's not 56, so 66.'", () => {
+    const r = readAnswer("It's not 56, so 66.");
+    expect(r.kept).toEqual([num(66)]);
+  });
+  it("lets Maya judge the kept 56 wrong", () => {
+    const c = call();
+    c.child("Seven plus nine is sixteen. Two plus three is five. The one is not a big deal, so it's still 56.");
+    const r = c.propose({ act: "guide", step: "tens", level: 1, parts: [ln("check.not_yet", { step: "tens" }), ln("step.regroup", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right"), ans(5, "tens", "wrong"), ans(56, "result", "wrong")] } });
+    expect(r.refusal, JSON.stringify(r.refusal)).toBeNull();
+  });
+});
+
+describe("#605 practice run 1: the setup is read from the last sentence with numbers (C05-r3)", () => {
+  it("says the operation back after 'Yes, the 1 ten. So 1 plus 2 plus 3?'", () => {
+    const c = call();
+    c.child("Seven plus nine is sixteen.");
+    c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right")] } });
+    c.child("Yes, the 1 ten. So 1 plus 2 plus 3?");
+    expect(c.maya({ act: "guide", step: "tens", level: 2, parts: [ln("step.operation", { step: "tens" })] })).toContain("2 + 3 + 1");
+    expect(c.session.hints).toBe(0);
+  });
+});

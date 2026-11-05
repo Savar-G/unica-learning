@@ -385,6 +385,13 @@ export const packageOf = (b: Behaviour): QuestionPackage => FIXTURES[b.fixture];
 /** A plain yes, as a whole child turn. The judge's own reading, apart from the controller's (#605). */
 const GATE_YES = /^[\s,.!]*(?:(?:um+|uh+|oh|okay|ok|well)[\s,.!]+)*(?:yes|yeah|yea|yep|yup|uh[- ]huh|mm[- ]?hmm|mhm|right|correct|exactly|that['’]?s (?:right|it|what i said)|it is|i did|i said (?:that|it))(?:[\s,.!]+(?:yes|yeah|yep|right|correct|exactly|that['’]?s (?:right|it|what i said)|it is|i did|i said (?:that|it)))*[\s,.!]*$/i;
 
+/**
+ * A yes that says only the number Maya asked about again ("Yes, I think 66 is right."), with no doubt, no question, no
+ * negative and no choice (#605 practice run 1). The judge's own words, apart from the controller's.
+ */
+const GATE_YES_START = /^[\s,.!]*(?:(?:um+|uh+|oh|okay|ok|well)[\s,.!]+)*(?:yes|yeah|yea|yep|yup|right|correct|exactly)\b/i;
+const GATE_NOT_SURE = /\?|\b(?:maybe|perhaps|probably|possibly|guess|guessing|unsure|or|not|no|never|wrong|but)\b|n['’]t\b/i;
+
 /** The time limit of one scripted review: a "hang" ends after it. */
 export const GATE_REVIEW_MS = 20;
 
@@ -726,7 +733,9 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
       // The child's final answer: the last number kept outside their explanation (D-199), right for the question as it is
       // worded (#407: an equal fraction when the question does not ask for the simplest form).
       const read = readAnswer(lastChild, opts);
-      const yes = askedHeard !== null && GATE_YES.test(lastChild) ? askedHeard : null;
+      const named = askedHeard !== null && GATE_YES_START.test(lastChild) && !GATE_NOT_SURE.test(lastChild) &&
+        valuesIn(lastChild, opts).length > 0 && valuesIn(lastChild, opts).every((v) => sameValue(v, askedHeard));
+      const yes = askedHeard !== null && (GATE_YES.test(lastChild) || named) ? askedHeard : null;
       const final = yes ?? read.final;
       if (!final || (yes === null && !read.sure) || !rightForQuestion(op, final)) fail("accepted_wrong_answer", `Maya turn ${i} accepted an answer after "${lastChild}"`);
     }

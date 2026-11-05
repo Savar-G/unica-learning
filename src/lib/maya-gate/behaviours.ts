@@ -1778,6 +1778,72 @@ export const BEHAVIOURS: Behaviour[] = [
       counts: { refusals: 0 },
     },
   },
+  {
+    id: "P10",
+    title: "'Oh, so 2 plus 3 plus 1?': the operation line says back the child's own setup; it is accepted and is no hint",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("Seven plus nine is sixteen.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("Oh, so 2 plus 3 plus 1?", undefined, [{ act: "guide", step: "tens", level: 2, lines: ["step.operation"] }]),
+      child("Six. So 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+    },
+  },
+  {
+    id: "P10b",
+    title: "'Yes, the 1 ten. So 1 plus 2 plus 3?': the setup in the last sentence with numbers is said back, and is no hint",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("Seven plus nine is sixteen.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("Yes, the 1 ten. So 1 plus 2 plus 3?", undefined, [{ act: "guide", step: "tens", level: 2, lines: ["step.operation"] }]),
+      child("Six. So 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+    },
+  },
+  {
+    id: "P11",
+    title: "'Yes, I think 66 is right.' after 'Did you say 66?': a yes that names only the confirmed number gives it, with no second confirmation",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("Oh, so it's 66? I got 66.", { start: "has_work", answers: [[66, "result", "right"]] }, [{ act: "confirm", heard: "66" }]),
+      child("Yes, I think 66 is right.", { answers: [[66, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "independent" },
+      acts: [OPEN, "confirm", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0, confirmations: 1 },
+    },
+  },
+  {
+    id: "P12",
+    title: "'The one is not a big deal, so it's still 56.': the negative does not take back the 56 after ', so', and Maya judges it",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("Seven plus nine is sixteen. Two plus three is five. The one is not a big deal, so it's still 56.", { start: "has_work", answers: [[16, "ones", "right"], [5, "tens", "wrong"], [56, "result", "wrong"]] }, [{ act: "guide", step: "tens", level: 1, lines: ["check.not_yet", "step.regroup"] }]),
+      child("Two plus three plus one is six. So 66.", { answers: [[6, "tens", "right"], [66, "result", "right"]] }),
+      ...solvedEnd(),
+    ],
+    expect: {
+      outcome: { reason: "solved", assistance: "hint" },
+      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+    },
+  },
 ];
 
 /** What the gate cannot run yet, with the reason. Each research id is in BEHAVIOURS or here. */
