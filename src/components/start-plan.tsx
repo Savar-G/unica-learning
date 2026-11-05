@@ -9,6 +9,8 @@ const ERRORS: Record<string, string> = {
   no_card: "No saved card was found for this family.",
   not_delivered: "Confirm that the first workbook has arrived at the family's home before starting the free month.",
   delivery_receipt_required: "Open this child's workbook 1 and confirm its delivery. Then return here to start the free month.",
+  unconfirmed: "We could not confirm that Stripe started this plan. Do not start another one. Reload this page in 15 minutes, or check the family in Stripe.",
+  needs_team: "This start needs the team: Stripe did not answer it, and after 24 hours we still find no plan. Do not start another one. Reload this page to see what to do.",
   unavailable: "Stripe is unavailable. Try again later.",
   failed: "Stripe could not start the plan. Check Stripe before trying again.",
 };
@@ -39,7 +41,7 @@ export function StartPlan({ cardId, child }: { cardId: string; child: string }) 
   }
   if (done) return <>
     <span className="adm-note">Started. First charge {localDay(done, PACIFIC_ZONE)}</span>
-    {unconfirmed && <p role="alert" className="adm-note">We could not confirm the free month email. Reload this page and check Workbook emails on this card. If it did not go, send the parent its text by hand.</p>}
+    {unconfirmed && <p role="alert" className="adm-note">We could not confirm the free month email. If it was refused, we try again every 15 minutes. Reload this page later and check Workbook emails on this card. If it still did not go, send the parent its text by hand.</p>}
   </>;
   return <>
     <button type="button" className="btn adm-btn" onClick={start} disabled={busy}>{busy ? "Starting..." : "Workbook delivered: start free month"}</button>

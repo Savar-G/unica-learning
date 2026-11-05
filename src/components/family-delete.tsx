@@ -29,6 +29,10 @@ function message(answer: Exclude<Answer, { ok: true }>): ReactNode {
       return lockedOut(answer);
     case "busy":
       return cardStep;
+    case "plan_start":
+      return answer.plansStopped > 0
+        ? <>We stopped {plans(answer.plansStopped)}, but our team must finish starting a plan for your family before we can delete this account. Your family&apos;s data is all still here. We have told the team. Try again later, or email {email}.</>
+        : <>Our team must finish starting a plan for your family before we can delete this account, so we changed nothing. We have told the team. Try again later, or email {email}.</>;
     case "protected":
       return "This account cannot be deleted here.";
     case "not_finished":
@@ -46,6 +50,8 @@ function message(answer: Exclude<Answer, { ok: true }>): ReactNode {
 
 function codeMessage(answer: Exclude<CodeAnswer, { ok: true }>): ReactNode {
   switch (answer.error) {
+    case "plan_start":
+      return message({ ok: false, error: "plan_start", plansStopped: 0 });
     case "too_many":
       return <>We have sent as many codes as we can for now. Try again after <When at={answer.retryAt} text={answer.retryWhen ?? "an hour"} />.</>;
     case "locked":

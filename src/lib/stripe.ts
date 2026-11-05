@@ -1,9 +1,12 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import Stripe from "stripe";
 import { gradeName } from "@/lib/assessment/grades";
+import { PLAN_KEY_MS, PLAN_RETRY_MS, planNotOver, pressStep, settleNewestCard, startedOutcome, writeWindow, type CardRow, type CardRows, type PlanCard, type PlanStartOutcome } from "@/lib/card-reconcile";
+import { liveCardRows } from "@/lib/card-reconcile-server";
 import { RUNNING_PLAN } from "@/lib/parent-plan";
 import { cad, priceWithOffer } from "@/lib/site";
-import { customerSubscriptions } from "@/lib/stripe-subscriptions";
+import { CARD_READ, CARD_WRITE, customerSubscriptions, planCard as planCardOf, refusedByStripe, stripeCards } from "@/lib/stripe-subscriptions";
 import { PLAN_PRODUCT, firstChargeAt, planTerms } from "@/lib/subscription-plan";
 
 // Created on first use, so a build without STRIPE_SECRET_KEY still works. Without the key, BC parents
@@ -15,6 +18,22 @@ export function stripe(): Stripe | null {
   if (!key) return null;
   client ??= new Stripe(key);
   return client;
+}
+
+/**
+ * A client whose every request ends at `signal`, for work with one deadline (the card sweep). Stripe's SDK takes no signal per request,
+ * so it goes on the client's fetch. A stopped write's outcome is unknown, as with any timeout.
+ */
+export function stripeWithin(signal: AbortSignal): Stripe | null {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) return null;
+  return new Stripe(key, {
+    httpClient: Stripe.createFetchHttpClient(async (input, init) => {
+      // The SDK's own retry can come after the end. It reaches no network.
+      signal.throwIfAborted();
+      return fetch(input, { ...init, signal: init?.signal ? AbortSignal.any([init.signal, signal]) : signal });
+    }),
+  });
 }
 
 export interface CardSetup {
@@ -168,8 +187,13 @@ export function stripeCustomerUrl(customer: string): string | null {
 }
 
 export type StartPlanOutcome =
-  | { ok: true; subscription: string; firstChargeAt: string }
-  | { ok: false; error: "no_card" | "already" | "not_delivered" };
+  /** `generation`: the start's record, the key of its one confirmation email. */
+  | { ok: true; subscription: string; firstChargeAt: string; generation: number }
+  /**
+   * "unconfirmed": Stripe may still make the plan. The record stays open, and the webhook, the sweep or the next press decides it.
+   * "needs_team": Stripe's key has expired with no plan found, so no press can be safe. Only an admin's check closes the record.
+   */
+  | { ok: false; error: "no_card" | "already" | "not_delivered" | "unconfirmed" | "needs_team" };
 
 /** True when Stripe has no object with this id (a 404), so the caller creates it. */
 const missing = (e: unknown) => e instanceof Stripe.errors.StripeError && e.statusCode === 404;
@@ -177,11 +201,23 @@ const missing = (e: unknown) => e instanceof Stripe.errors.StripeError && e.stat
 /** The plan's product, created once with a fixed id. */
 async function planProduct(s: Stripe) {
   try {
-    await s.products.retrieve(PLAN_PRODUCT.id);
+    await s.products.retrieve(PLAN_PRODUCT.id, {}, CARD_READ);
   } catch (e) {
     if (!missing(e)) throw e;
-    await s.products.create({ id: PLAN_PRODUCT.id, name: PLAN_PRODUCT.name }, { idempotencyKey: `product-${PLAN_PRODUCT.id}` });
+    await s.products.create({ id: PLAN_PRODUCT.id, name: PLAN_PRODUCT.name }, { ...CARD_WRITE, idempotencyKey: `product-${PLAN_PRODUCT.id}` });
   }
+}
+
+/**
+ * The card a new plan charges: the card a parent chose in a card update (the Customer's default, #554), else the Customer's
+ * newest card. Only a card: a default of another type is not one the plan start charges.
+ */
+async function planCard(s: Stripe, customer: string): Promise<string | undefined> {
+  const found = await s.customers.retrieve(customer, { expand: ["invoice_settings.default_payment_method"] }, CARD_READ);
+  const chosen = found.deleted ? null : found.invoice_settings?.default_payment_method;
+  if (chosen && typeof chosen !== "string" && chosen.type === "card") return chosen.id;
+  const cards = await s.paymentMethods.list({ customer, type: "card", limit: 1 }, CARD_READ);
+  return cards.data[0]?.id;
 }
 
 /**
@@ -189,26 +225,127 @@ async function planProduct(s: Stripe) {
  * price on the child's customer, charged to the saved card: the free first month first (a 30-day trial, nothing
  * charged), then the full price on day 30 and each month after until the parent cancels. Refuses when the
  * customer already has a subscription that is not over, or no saved card. Throws, and starts nothing, when it cannot
- * read the customer's whole list. The card setup's id keys the create, so a double click starts one subscription.
+ * read the customer's whole list.
+ *
+ * #554: each start is one durable record (public.plan_starts, card-reconcile.ts), one key per card setup and generation. Only
+ * admitPlanStart leads to the create call, and it is atomic in the database, so a press that read an empty list before another press
+ * finished finds that record and answers "already". A retry sends the record's key and card. A timeout answers "unconfirmed" and the
+ * record stays open: the request can still land. Time never closes a record. It charges the row's newest card, else the card planCard
+ * finds. A card update during the start is corrected right after it and, for a late creation, by the webhook or the sweep. When that
+ * last step fails the plan has still started, so the answer says so.
  */
-export async function startPlan(s: Stripe, p: { cardSetup: string; customer: string; price: number; deliveryConfirmed: boolean }, now = new Date()): Promise<StartPlanOutcome> {
+export async function startPlan(s: Stripe, p: { cardSetup: string; customer: string; price: number; deliveryConfirmed: boolean }, now = new Date(), rows: CardRows | null = liveCardRows()): Promise<StartPlanOutcome> {
   if (p.deliveryConfirmed !== true) return { ok: false, error: "not_delivered" };
-  const current = await customerSubscriptions(s, p.customer);
-  if (current.some((x) => x.status !== "canceled" && x.status !== "incomplete_expired")) return { ok: false, error: "already" };
-  const cards = await s.paymentMethods.list({ customer: p.customer, type: "card", limit: 1 });
-  const card = cards.data[0]?.id;
+  if (!rows) throw new Error("No card rows");
+  const canWrite = writeWindow();
+  const row = await rows.cardRow(p.cardSetup);
+  if (row?.deletionQueued) throw new Error("Family deletion is queued");
+  const current = (await customerSubscriptions(s, p.customer, CARD_READ)).map(planCardOf);
+  const step = pressStep(row?.planStart ?? null, current, Date.now());
+  const generationOfRow = row?.planStart?.generation ?? 0;
+
+  switch (step.step) {
+    case "landed": {
+      // An earlier press whose answer was lost: its subscription is here, so this press gets its answer.
+      await closeRecord(rows, p.cardSetup, generationOfRow, startedOutcome(step.plan));
+      await settleAfterStart(s, rows, p.cardSetup, canWrite, step.plan);
+      return planNotOver(step.plan.status) ? { ok: true, subscription: step.plan.id, firstChargeAt: step.plan.firstCharge ?? firstChargeAt(now, planTerms(p.price).trialDays).toISOString(), generation: generationOfRow } : { ok: false, error: "already" };
+    }
+    case "other":
+      await settleAfterStart(s, rows, p.cardSetup, canWrite);
+      return { ok: false, error: "already" };
+    case "already":
+      await settleAfterStart(s, rows, p.cardSetup, canWrite);
+      return { ok: false, error: "already" };
+    case "unconfirmed":
+    case "needs_team":
+      return { ok: false, error: step.step };
+  }
+
+  const card = step.card ?? row?.paymentMethod ?? await planCard(s, p.customer);
   if (!card) return { ok: false, error: "no_card" };
   const terms = planTerms(p.price);
   await planProduct(s);
-  const created = await s.subscriptions.create({
-    customer: p.customer,
-    items: [{ price_data: { currency: "cad", product: PLAN_PRODUCT.id, unit_amount: terms.monthlyCents, recurring: { interval: "month" } } }],
-    trial_period_days: terms.trialDays,
-    default_payment_method: card,
-    metadata: { card_setup: p.cardSetup, price: cad(p.price), trial_start_reason: "workbook_delivered", delivery_confirmed: "true" },
-  }, { idempotencyKey: `start-plan-${p.cardSetup}` });
+  const held = await rows.admitPlanStart(p.cardSetup, step.generation, `start-plan-${p.cardSetup}-${randomUUID()}`, card);
+  if (held.state === "started" || held.state === "other") {
+    // Another press finished after this press read its list.
+    await settleAfterStart(s, rows, p.cardSetup, canWrite);
+    return { ok: false, error: "already" };
+  }
+  // Another press's start with an answer this press did not read, or a key too near its end to send. The next press reads it all again.
+  if (held.state !== "open" || held.generation !== step.generation || Date.now() - held.at >= PLAN_RETRY_MS) return { ok: false, error: "unconfirmed" };
+  let created: Stripe.Subscription;
+  try {
+    created = await s.subscriptions.create({
+      customer: p.customer,
+      items: [{ price_data: { currency: "cad", product: PLAN_PRODUCT.id, unit_amount: terms.monthlyCents, recurring: { interval: "month" } } }],
+      trial_period_days: terms.trialDays,
+      default_payment_method: held.card,
+      metadata: { card_setup: p.cardSetup, start_key: held.key, price: cad(p.price), trial_start_reason: "workbook_delivered", delivery_confirmed: "true" },
+    }, { ...CARD_WRITE, idempotencyKey: held.key });
+  } catch (e) {
+    if (refusedByStripe(e)) {
+      // Nothing started, and Stripe answers this key the same way for 24 hours, so the next press opens a new generation.
+      await closeRecord(rows, p.cardSetup, held.generation, { state: "refused" });
+      throw e;
+    }
+    console.error("[stripe] plan start not confirmed", e instanceof Error ? e.message : "failed");
+    return { ok: false, error: "unconfirmed" };
+  }
+  const plan = planCardOf(created);
+  await closeRecord(rows, p.cardSetup, held.generation, startedOutcome(plan));
+  await settleAfterStart(s, rows, p.cardSetup, canWrite, { ...plan, defaultCard: plan.defaultCard ?? held.card });
   const end = created.trial_end ? new Date(created.trial_end * 1000) : firstChargeAt(now, terms.trialDays);
-  return { ok: true, subscription: created.id, firstChargeAt: end.toISOString() };
+  return { ok: true, subscription: created.id, firstChargeAt: end.toISOString(), generation: held.generation };
+}
+
+export type EndStuckStartOutcome =
+  | { ok: true }
+  /**
+   * "changed": the record is not the open one the admin saw. "too_soon": Stripe may still answer its key. "landed": its plan is in
+   * Stripe, so the record closed as started and the parent hears by email. "already": another running plan is in Stripe.
+   */
+  | { ok: false; error: "changed" | "too_soon" | "landed" | "already" };
+
+/**
+ * The one way an open record with no plan found closes: an admin's press, after their own check in Stripe. It reads Stripe's whole
+ * list again first, and throws when it cannot, so it never closes a record on a read that failed.
+ */
+export async function endStuckPlanStart(s: Stripe, p: { cardSetup: string; customer: string; generation: number; admin: string }, rows: CardRows | null = liveCardRows()): Promise<EndStuckStartOutcome> {
+  if (!rows) throw new Error("No card rows");
+  const row = await rows.cardRow(p.cardSetup);
+  const start = row?.planStart;
+  if (start?.state !== "open" || start.generation !== p.generation) return { ok: false, error: "changed" };
+  if (Date.now() - start.at < PLAN_KEY_MS) return { ok: false, error: "too_soon" };
+  const step = pressStep(start, (await customerSubscriptions(s, p.customer, CARD_READ)).map(planCardOf), Date.now());
+  if (step.step === "landed") {
+    await rows.finishPlanStart(p.cardSetup, start.generation, startedOutcome(step.plan, !row?.deletionQueued));
+    return { ok: false, error: "landed" };
+  }
+  if (step.step === "other") {
+    return { ok: false, error: "already" };
+  }
+  return await rows.teamEndPlanStart(p.cardSetup, start.generation, p.admin) ? { ok: true } : { ok: false, error: "changed" };
+}
+
+/** Only logs when it cannot: the answer stands, the record stays open, and the webhook or the sweep closes it when it finds the plan. */
+async function closeRecord(rows: CardRows, cardSetup: string, generation: number, outcome: PlanStartOutcome) {
+  try {
+    await rows.finishPlanStart(cardSetup, generation, outcome);
+  } catch (e) {
+    console.error("[stripe] plan start record not closed", e instanceof Error ? e.message : "failed");
+  }
+}
+
+/** Brings the Customer and the plan to the row's newest card. Only logs when it cannot: the row stays flagged, and the sweep comes back. */
+async function settleAfterStart(s: Stripe, rows: CardRows, cardSetup: string, canWrite: () => boolean, made?: PlanCard) {
+  try {
+    const row: CardRow | null = await rows.cardRow(cardSetup);
+    if (!row?.paymentMethod || row.deletionQueued) return;
+    await settleNewestCard(cardSetup, row.customer, row, { rows, stripe: stripeCards(s), canWrite }, made);
+  } catch (e) {
+    console.error("[stripe] plan start could not settle the card", e instanceof Error ? e.message : "failed");
+  }
 }
 
 export type CancelPlanOutcome =
