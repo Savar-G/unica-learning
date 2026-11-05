@@ -1436,9 +1436,14 @@ describe("#589: the safety guidance does not wait for the close", () => {
     const c = await voiceCall({ model: m.model, ackLimitMs: 0 });
     c.say("I don't know.");
     await waitFor(() => c.samples.length === 1 && c.session.agentState === "listening", "the answer");
-    // The check-in after the quiet, then the tick that closes for no response, held at the model.
+    // The check-in after the quiet, then the tick that closes for no response, held at the model. The tick saves
+    // "checked" before the voice has the check-in's words, so wait until the child has heard it: the clock jump below
+    // must not reach the close while the check-in is still on its way (#622).
+    const saidBefore = c.said().length;
+    const playedBefore = c.speaker.plays.length;
     await c.clock.advance(15_000);
-    await waitFor(() => c.call.session.silence === "checked" && c.session.agentState === "listening", "the check-in");
+    await waitFor(() => c.call.session.silence === "checked" && c.said().length > saidBefore
+      && c.speaker.plays.length > playedBefore && c.session.agentState === "listening", "the check-in, heard");
     const asked = m.asked;
     m.hold();
     await c.clock.advance(30_000);
