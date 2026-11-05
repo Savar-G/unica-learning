@@ -15,6 +15,8 @@ import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import type { MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
+import { callSpend, createSpendLedger, spendConfig, SPEND_CLOSE, WEEK_MICROS } from "@/lib/maya-spend";
+import { memorySpendStore } from "@/lib/maya-spend-memory";
 import { checkTrace } from "@/lib/maya-trace";
 import { RECONNECT_GRACE_MS, voiceProviders } from "@/lib/maya-voice";
 import type { QuestionPackage } from "@/lib/question-package";
@@ -129,7 +131,7 @@ afterEach(async () => {
   cleanup = null;
 });
 
-async function voiceCall(options: { speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean; workbookReference?: string } = {}) {
+async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["spend"]; speech?: ProbeSTT; speaker?: Speaker; seed?: number; model?: MayaModel; board?: boolean; timestamps?: boolean; workbookReference?: string } = {}) {
   const clock = handTimers();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -145,6 +147,7 @@ async function voiceCall(options: { speech?: ProbeSTT; speaker?: Speaker; seed?:
     rebuild,
     model: (id) => (id === null || id === "fake" ? options.model ?? ruleMayaModel() : null),
     isTestFamily: async (p) => p === PARENT,
+    ...(options.spend ? { spend: options.spend(clock.now) } : {}),
     clock: clock.now,
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,
     seed: () => options.seed ?? 42,
@@ -714,4 +717,70 @@ it("R450-9 an interrupt before native forwarding leaves no unmatched playback se
     await output.waitForPlayout();
     expect(c.board.owns(scope)).toBe(true);
   } finally { await run.hangUp(); native.clearBuffer(); await native.close(); }
+});
+
+describe("Maya's spending in a voice call (review of PR #640)", () => {
+  const WEEK = "2026-10-26";
+  const MONTH = "2026-11-01";
+  function spending() {
+    const store = memorySpendStore({ clock: () => now() });
+    let now = () => T0;
+    let n = 0;
+    const make = (clock: () => number) => {
+      now = clock;
+      const ledger = createSpendLedger({ store, clock, config: spendConfig({}), zone: async () => "America/Vancouver" });
+      return callSpend(ledger, { clock, newId: () => `10000000-0000-4000-8000-${String(++n).padStart(12, "0")}` });
+    };
+    return { store, make };
+  }
+
+  it("counts the voice at the provider, for the words the child hears", async () => {
+    const s = spending();
+    const c = await voiceCall({ spend: s.make });
+    const spoken = vi.spyOn(c.call, "spoken");
+    await c.run.childJoined();
+    await waitFor(() => c.said().length === 1, "Maya's opening");
+    await waitFor(() => s.store.rows().some((r) => r.what === "voice"), "the voice's count");
+    expect(spoken).toHaveBeenCalledWith(c.said()[0]);
+    const voice = s.store.rows().filter((r) => r.what === "voice");
+    expect(voice).toHaveLength(1);
+    expect(voice[0].cost).toBeGreaterThan(0);
+  });
+
+  it("renews speech-to-text on its own timer while nobody speaks", async () => {
+    const s = spending();
+    const c = await voiceCall({ spend: s.make });
+    const meter = vi.spyOn(c.call, "meter");
+    await c.run.childJoined();
+    await waitFor(() => c.said().length === 1, "Maya's opening");
+    // Less than the silence the session allows: no input and no turn in this time would be enough on its own.
+    await c.clock.advance(45);
+    expect(meter.mock.calls.length).toBeGreaterThanOrEqual(4);
+    expect(s.store.rows().filter((r) => r.what === "speech_to_text").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("stops the timer's renewals when the call ends", async () => {
+    const s = spending();
+    const c = await voiceCall({ spend: s.make });
+    await c.run.childJoined();
+    await waitFor(() => c.said().length === 1, "Maya's opening");
+    await c.run.finish({ reason: "child_stopped" });
+    const blocks = s.store.rows().filter((r) => r.what === "speech_to_text");
+    expect(blocks.every((r) => r.settled)).toBe(true);
+    await c.clock.advance(120);
+    expect(s.store.rows().filter((r) => r.what === "speech_to_text")).toHaveLength(blocks.length);
+  });
+
+  it("says code's closing line and ends when the week runs out during silence", async () => {
+    const s = spending();
+    const c = await voiceCall({ spend: (clock) => {
+      const spend = s.make(clock);
+      return { ...spend, voice: (call) => spend.voice({ ...call, kind: "chat" }) };
+    } });
+    await c.run.childJoined();
+    await waitFor(() => c.said().length === 1, "Maya's opening");
+    s.store.spent({ charge: "child", parentId: PARENT, childId: CHILD, week: WEEK, month: MONTH }, WEEK_MICROS);
+    await c.clock.advance(60);
+    await waitFor(() => c.said().join(" ").includes(SPEND_CLOSE.week_used.line), "the closing line");
+  });
 });

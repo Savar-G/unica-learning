@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState, useEffect, useCallback, useMemo, type FormEvent } from "react";
 import { growInkLog, historyFromLog, inkLog, readInkEvent, type BoardHistory, type InkEvent } from "@/lib/board-history";
-import { chatCapLine, type ChatUsage, type ChatView, type ChatReply } from "@/lib/maya-chat";
+import { chatCapLine, chatSpendLine, type ChatUsage, type ChatView, type ChatReply } from "@/lib/maya-chat";
 import { OurBoard } from "@/components/our-board";
 import { Icon } from "@/components/desk-icons";
 
@@ -291,7 +291,8 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
         setUncertain(false);
       } else setUncertain(true);
     }
-    if (answer.error && answer.error !== "cap") throw Error(ERROR);
+    // The message cap and Maya's spending cap (D-290) are told by the usage, not as an error.
+    if (answer.error && !["cap", "week_used", "paused"].includes(answer.error)) throw Error(ERROR);
     setError(null);
     return answer;
   }, []);
@@ -410,6 +411,8 @@ export function ChatControls({ state, picked }: { state: DeskChatState; picked: 
     if (await state.act("child", text)) setText("");
   };
   if (state.usage?.left === 0) return <p className="desk-bubble" role="status">{chatCapLine()}</p>;
+  const stopped = chatSpendLine(state.usage);
+  if (stopped && (!state.chat || state.chat.ended)) return <p className="desk-bubble" role="status">{stopped}</p>;
   const closed = !state.usage?.left || state.chat?.ended;
   return <>
     {state.chat?.pending && <p className="desk-event" role="status">Maya is working on your message…</p>}

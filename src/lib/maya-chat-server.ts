@@ -12,7 +12,9 @@ import { mayaCallStore } from "@/lib/maya-call-store";
 import { mayaNotice } from "@/lib/maya-notice";
 import { noticeStore } from "@/lib/maya-notice-store";
 import { workbookStore } from "@/lib/workbook-store";
-import { type FamilyZone } from "@/lib/family-time";
+import { weekOf, type FamilyZone } from "@/lib/family-time";
+import { mayaSpendLedger } from "@/lib/maya-spend-server";
+import type { ChatSpend } from "@/lib/maya-chat";
 import type { WorkbookQuestionRef } from "@/lib/question-package";
 
 type DB = SupabaseClient<Database>;
@@ -53,10 +55,29 @@ export async function chatAccess(db: DB, parent: string): Promise<boolean> {
 
 export async function readChatUsage(db: DB, parent: string, child: string, zone: FamilyZone, now = Date.now()): Promise<ChatUsage> {
   const window = chatWindow(now, zone);
-  const { count, error } = await db.from("maya_chat_messages").select("id", { count: "exact", head: true })
-    .eq("parent_id", parent).eq("child_id", child).gte("received_at", new Date(window.start).toISOString()).lt("received_at", new Date(window.end).toISOString());
+  const [{ count, error }, spend] = await Promise.all([
+    db.from("maya_chat_messages").select("id", { count: "exact", head: true })
+      .eq("parent_id", parent).eq("child_id", child).gte("received_at", new Date(window.start).toISOString()).lt("received_at", new Date(window.end).toISOString()),
+    readChatSpend(parent, child, zone, now),
+  ]);
   if (error || count === null) throw Error("Chat usage could not be read");
-  return chatUsage(count, now, zone);
+  return { ...chatUsage(count, now, zone), spend };
+}
+
+/**
+ * The child's spending week (D-290), read with the secret key (the ledger has no parent access). A ledger that cannot be
+ * read shows Maya as paused, as the call module refuses new paid work then.
+ */
+async function readChatSpend(parent: string, child: string, zone: FamilyZone, now: number): Promise<ChatSpend> {
+  try {
+    const admin = adminClient();
+    if (!admin) throw Error("no secret key");
+    const week = await mayaSpendLedger(admin).week({ parentId: parent, childId: child });
+    return { state: week.state, notice: week.notice, resetsAt: week.resetsAt, zone: week.zone };
+  } catch (e) {
+    console.error("[desk chat] Maya spending could not be read", e instanceof Error ? e.message : "unknown");
+    return { state: "paused", notice: false, resetsAt: weekOf(now, zone).resetsAt, zone };
+  }
 }
 
 /** The whole chat check on every chat request: the family first, then the child's grade (Grade 3 and up). */

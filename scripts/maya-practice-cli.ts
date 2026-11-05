@@ -48,6 +48,11 @@ import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { aiTalkReviewer, fakeTalkReviewer, REVIEW_DEFAULT_MODEL, runReview, type TalkReviewer } from "@/lib/maya-talk-review";
 import { redactText } from "@/lib/maya-trace";
+import { randomUUID } from "node:crypto";
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database";
+import { createSpendLedger, recordLocalSpend, spendConfig } from "@/lib/maya-spend";
+import { mayaSpendStore } from "@/lib/maya-spend-store";
 import {
   aiChildSimulator, aiJudge, aiValidityJudge, buildReport, fakeValidityJudge, cappedClient, estimateCost, fakeJudge, freeTalkMarkdown, freeTalkReport, meteredFetch, planSuite, PRACTICE_CASES, reportMarkdown,
   RUNS_PER_CASE, runSuite, scriptedSimulator, SIMULATOR_PROMPT_VERSION, Spending, timedTurns, turnTimeMarkdown,
@@ -293,6 +298,24 @@ function writeReport(cases: readonly PracticeCase[], runs: number, dir: string):
 
 const usd = (x: number) => `$${x.toFixed(2)}`;
 /** What the run cost: USD 0 on the subscription and with the fakes. */
+/**
+ * Maya's month's total (D-291) counts the practice suite's API spend, for the team's alert only: never a child's week, and
+ * it stops nobody. With no database key here (SUPABASE_URL and SUPABASE_SECRET_KEY), it says so and counts nothing.
+ */
+async function countMonthly(o: Options, s: Spending): Promise<void> {
+  if (o.fake || o.provider === "subscription" || !(s.spent > 0)) return;
+  const url = process.env.SUPABASE_URL?.trim(), key = process.env.SUPABASE_SECRET_KEY?.trim();
+  if (!url || !key) return console.log("-- not counted in Maya's month's total: SUPABASE_URL and SUPABASE_SECRET_KEY are not set.");
+  try {
+    const db = createClient<Database>(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+    const ledger = createSpendLedger({ store: mayaSpendStore(db), clock: Date.now, config: spendConfig(), zone: async () => "America/Vancouver" });
+    await recordLocalSpend(ledger, s.spent, randomUUID());
+    console.log(`-- counted ${usd(s.spent)} in Maya's month's total.`);
+  } catch (e) {
+    console.error(`[maya-practice] not counted in Maya's month's total: ${redactText(e instanceof Error ? e.message : String(e))}`);
+  }
+}
+
 const spent = (o: Options, s: Spending) => (o.fake || o.provider === "subscription" ? `cost USD 0${o.provider === "subscription" && !o.fake ? " (claude -p on the Claude subscription)" : ""}` : `spent about ${usd(s.spent)}`);
 function printEstimate(e: CostEstimate, cases: number, runs: number) {
   console.log(`-- cost estimate for ${cases} cases × ${runs} runs (a dry run with the fakes, ×1.5 margin, worst-case output; the review at one call per Maya call):`);
@@ -409,6 +432,7 @@ async function main() {
     const dir = resolve(o.out ?? join(root, "traces/maya-practice", `review-check-${new Date().toISOString().replace(/[:.]/g, "-")}`));
     const ok = await reviewCheck(reviewer!, dir, o.concurrency, o.provider === "subscription" ? SUBSCRIPTION_REVIEW_MS : 30_000);
     console.log(`-- provider: ${o.provider}; ${spent(o, spending)}`);
+    await countMonthly(o, spending);
     if (usageLimit !== null) console.log("-- the Claude subscription's usage limit was reached: the check is incomplete. Run it again after the limit resets.");
     process.exit(ok ? 0 : 1);
   }
@@ -447,6 +471,7 @@ async function main() {
   console.log(`-- turn time: ${turnTime.maya.id}: ${turnTime.maya.calls} calls, ${turnTime.maya.failed} failed, p50 ${turnTime.maya.p50Ms ?? "-"} ms, p95 ${turnTime.maya.p95Ms ?? "-"} ms: ${join(dir, "turn-time.md")}`);
   const passed = writeReport(cases, o.runs, dir);
   console.log(`-- provider: ${o.fake ? "fake" : o.provider}; ${spent(o, spending)}`);
+  await countMonthly(o, spending);
   process.exit(passed ? 0 : 1);
 }
 

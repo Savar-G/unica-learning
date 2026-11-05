@@ -1,10 +1,15 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
+import type { AiClient } from "@/lib/ai-client";
 import { callNotes, noteAiClient, noteStep, type CallNote, type CallNotes, type ChildNames, type NoteStep } from "@/lib/maya-call-note";
 import { mayaCallNoteStore } from "@/lib/maya-call-note-store";
+import { NOTE_FAKE_MODEL } from "@/lib/maya-call-note-fake";
 import type { CallRecord } from "@/lib/maya-call";
 import { getsNoParentNotes } from "@/lib/maya-chat";
+import { chargeOf, type SpendLedger } from "@/lib/maya-spend";
+import { meteredClient } from "@/lib/maya-spend-server";
+import { randomUUID } from "node:crypto";
 import type { NewLearningEvent } from "@/lib/learning-events";
 import type { QuestionPackage } from "@/lib/question-package";
 
@@ -12,7 +17,8 @@ import type { QuestionPackage } from "@/lib/question-package";
 // module runs `writeNoteAfterCall` when a call ends (the `note` seam of src/lib/maya-call.ts); it writes with the secret
 // key. The parent home reads with the parent's own session (`parentCallNotes`), so row-level security gives only that
 // family's notes. The AI: OpenRouter with OPENROUTER_API_KEY, the fake in development with AI_REVIEW_FAKE, else none
-// (then every note is code only).
+// (then every note is code only). With the spending ledger (D-290), the note's AI request is reserved and settled for
+// the call's child; a refused or failed request leaves the note code only.
 
 /** A test family gets no note, except the rehearsal family on the chat list (#530); the database trigger agrees. */
 async function isTestFamily(db: SupabaseClient<Database>, parentId: string): Promise<boolean> {
@@ -35,10 +41,10 @@ async function childNames(db: SupabaseClient<Database>, childId: string): Promis
 }
 
 /** The note module with the secret key. `codeOnly`: no AI warm sentence (the sweep of abandoned calls, #528). */
-export function serverCallNotes(admin: SupabaseClient<Database>, options: { codeOnly?: boolean } = {}): CallNotes {
+export function serverCallNotes(admin: SupabaseClient<Database>, options: { codeOnly?: boolean; ai?: AiClient | null } = {}): CallNotes {
   return callNotes({
     store: mayaCallNoteStore(admin),
-    ai: options.codeOnly ? null : noteAiClient(),
+    ai: options.codeOnly ? null : options.ai !== undefined ? options.ai : noteAiClient(),
     isTestFamily: (p) => isTestFamily(admin, p),
     childNames: (id) => childNames(admin, id),
     clock: () => Date.now(),
@@ -49,9 +55,15 @@ export function serverCallNotes(admin: SupabaseClient<Database>, options: { code
  * The `note` seam of the call module: writes the note of an ended call. "done" when the note is stored or refused for
  * good (a test call or a test family); "pending" otherwise, so the call keeps the note's inputs for a retry.
  */
-export function writeNoteAfterCall(admin: SupabaseClient<Database>, options: { codeOnly?: boolean } = {}) {
-  const notes = serverCallNotes(admin, options);
+export function writeNoteAfterCall(admin: SupabaseClient<Database>, options: { codeOnly?: boolean; ledger?: SpendLedger } = {}) {
+  const plain = serverCallNotes(admin, options);
+  const ledger = options.ledger;
   return async ({ call, package: pkg, event }: { call: CallRecord; package: QuestionPackage; event: NewLearningEvent | null }): Promise<NoteStep> => {
+    // The real AI behind the ledger, charged to the call's child; the development fake and code-only notes stay as they are.
+    const ai = ledger && !options.codeOnly ? noteAiClient() : null;
+    const metered = ledger && ai && ai.model !== NOTE_FAKE_MODEL
+      ? meteredClient(process.env, ledger, { charge: chargeOf(call), callId: call.id, newId: () => randomUUID() }, "note") : undefined;
+    const notes = metered ? serverCallNotes(admin, { ai: metered }) : plain;
     const result = await notes.write({ call, package: pkg, event });
     return noteStep(result, call.id);
   };

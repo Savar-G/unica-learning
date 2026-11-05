@@ -123,6 +123,10 @@ type NullArgs = KnownArgs<{
   finish_booking_signup: "customer";
   // A parent's demo minutes have no child (#330).
   grant_maya_minutes: "p_child";
+  reserve_maya_spend: "p_parent" | "p_child" | "p_call" | "p_week" | "p_week_cap";
+  maya_spend_used: "p_child" | "p_week";
+  settle_maya_spend: "p_cost";
+  settle_maya_spend_month: "p_cost";
   maya_minutes_used: "p_child";
   // A draft none of whose pages rendered has no rendering.
   finish_workbook_run: "p_rendering";
