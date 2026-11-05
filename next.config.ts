@@ -6,7 +6,8 @@ const POSTHOG_ASSETS = POSTHOG.replace(".i.posthog.com", "-assets.i.posthog.com"
 const nextConfig: NextConfig = {
   images: {
     formats: ["image/avif", "image/webp"],
-    qualities: [75],
+    // 90 is for photos of people (the founders photo on /our-story), where 75 looks soft.
+    qualities: [75, 90],
   },
   // First-party proxy so ad blockers do not drop funnel events.
   async rewrites() {
