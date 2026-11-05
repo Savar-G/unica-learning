@@ -1797,6 +1797,35 @@ export type Database = {
           },
         ]
       }
+      maya_notice_acceptances: {
+        Row: {
+          accepted_at: string
+          accepted_by: string
+          notice_version: string
+          parent_id: string
+        }
+        Insert: {
+          accepted_at?: string
+          accepted_by: string
+          notice_version: string
+          parent_id: string
+        }
+        Update: {
+          accepted_at?: string
+          accepted_by?: string
+          notice_version?: string
+          parent_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maya_notice_acceptances_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       maya_wording_history: {
         Row: {
           child_id: string

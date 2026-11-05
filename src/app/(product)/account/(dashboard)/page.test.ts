@@ -12,7 +12,9 @@ vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 const minutes = vi.hoisted(() => ({ value: new Map<string, import("@/lib/maya-minutes-server").ChildMinutes>() }));
 vi.mock("@/lib/maya-minutes-server", () => ({ parentMinutes: async () => minutes.value }));
 vi.mock("@/lib/parent-pin-server", () => ({ pinIsSet: async () => false }));
-vi.mock("@/lib/workbook-store", () => ({ workbookStore: () => ({ childWorkbooks: async () => [] }) }));
+const mayaNotice = vi.hoisted(() => ({ due: false, books: [] as { id: string; childId: string; number: number; status: string }[] }));
+vi.mock("@/lib/workbook-store", () => ({ workbookStore: () => ({ childWorkbooks: async (child: string) => mayaNotice.books.filter((b) => b.childId === child) }) }));
+vi.mock("@/lib/maya-notice-server", () => ({ mayaNoticeDue: async () => mayaNotice.due }));
 const scanning = vi.hoisted(() => ({ enabled: false }));
 vi.mock("@/lib/scan-pages-access", () => ({ scanPagesAccess: async () => scanning.enabled }));
 const notes = vi.hoisted(() => ({ latest: new Map<string, ParentNote>() }));
@@ -171,6 +173,30 @@ describe("a family the switch opens to", () => {
   };
   beforeEach(() => { family.olderChild = true; });
 
+  // #529: the notice card is for a family with Maya open, no agreement and a desk to open.
+  it("shows the Maya notice card only when it is due and a child has a workbook, in both homes", async () => {
+    const render = async () => renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
+    const card = 'href="/account/maya-notice">Read the notice';
+    try {
+      mayaNotice.due = true;
+      expect(await render()).not.toContain(card);
+      mayaNotice.books = [{ id: "w1", childId: "c1", number: 1, status: "shipped" }];
+      expect(await render()).toContain(card);
+      mayaNotice.due = false;
+      expect(await render()).not.toContain(card);
+      mayaNotice.due = true;
+      // The dashboard's test-start view returns early, so check it and the overview.
+      dashboard.value = { children: [view("c1", "Asha")], remembered: null, pinSet: true, timeZoneSaved: true };
+      expect(await render()).toContain(card);
+      dashboard.value = { children: [{ ...view("c1", "Asha"), opensOn: "overview" }], remembered: null, pinSet: true, timeZoneSaved: true };
+      expect(await render()).toContain(card);
+    } finally {
+      mayaNotice.due = false;
+      mayaNotice.books = [];
+      dashboard.value = null;
+    }
+  });
+
   it("opens on the last child viewed, with only that child's part", async () => {
     dashboard.value = null;
     const first = await open();
@@ -285,7 +311,7 @@ describe("a family the switch opens to", () => {
     const asha = (t: readonly (typeof tabs)[number][] = tabs) => ({ ...view("c1", "Asha"), stage: "active" as const, opensOn: "overview" as const, tabs: [...t], currentWorkbook: { number: 2 } });
     const full = (t?: readonly (typeof tabs)[number][]): import("@/lib/parent-view").OverviewView => ({
       child: asha(t),
-      level: { working: 4, earlySign: true, testedOn: "2026-10-31" },
+      level: { working: 4, earlySign: true, testedOn: "2026-10-31", unreliable: false },
       areas: [
         { area: "number", name: "Number and operations", level: 3, label: "at-grade", earlySign: false },
         { area: "fractions", name: "Fractions and decimals", level: 2, label: "building-up", earlySign: true },
@@ -321,6 +347,18 @@ describe("a family the switch opens to", () => {
       expect(out).toContain('href="/account/learning/c1"');
       expect(out).not.toMatch(/\b(?:she|her|hers|he|his|him)\b/i);
       expect(out).not.toMatch(/\d\s*%|streak|percent|wrong|other children/i);
+    });
+
+    it("a test the report calls unreliable: no bars, one sentence and the report's link in their place (D-258)", async () => {
+      const out = await render({ ...full(), child: { ...asha(), reportIds: ["r2", "r1"] }, level: { ...full().level!, unreliable: true }, areas: [] });
+      expect(out).toContain("Working at Grade 4");
+      expect(out).toContain("Level by area");
+      expect(out).toContain("The last test may not show Asha&#x27;s level reliably, so the report offers Asha a new test with new questions.");
+      expect(out).toContain('href="/account/report/r2">See the report');
+      expect(out).not.toContain("po-bar");
+      expect(out).not.toContain("The line marks");
+      expect(out).not.toMatch(/\b(?:she|her)\b/i);
+      expect(await render(full())).not.toContain("may not show");
     });
 
     it("shows Maya this week only for a child with the Maya tab", async () => {
