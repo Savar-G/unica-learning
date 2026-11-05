@@ -90,14 +90,15 @@ export type ChatAction = { type: "start"; id: string; question: WorkbookQuestion
 
 /**
  * The chat's board from the child's desk (#534): the desk's copy of the board, kept with the call so the admin replay
- * shows the child's ink. Only for a chat of this child; live or ended. Never changes the chat's revision.
+ * shows the child's ink. Only for a chat of this child, live or ended a few minutes ago at most, and one board a second
+ * (R625-6). Never changes the chat's revision.
  */
-export async function saveChatBoard(ctx: ChatContext, id: string, board: string): Promise<{ ok: true } | { ok: false; error: "not_found" | "invalid_input" }> {
+export async function saveChatBoard(ctx: ChatContext, id: string, board: string): Promise<{ ok: true } | { ok: false; error: "not_found" | "invalid_input" | "busy" | "closed" }> {
   const { db, parent, child } = ctx;
   const record = await mayaCallStore(db).get(id);
   if (!record || record.kind !== "chat" || record.parentId !== parent || record.childId !== child) return { ok: false, error: "not_found" };
   const saved = await mayaCalls({ ...callSeams(db), canChat: async (p, c) => p === parent && c === child }).saveInk(id, board);
-  return saved.ok ? saved : { ok: false, error: saved.error === "invalid_input" ? "invalid_input" : "not_found" };
+  return saved;
 }
 
 /** One authorized desk request. The database serializes message admission before the shared call module runs. */

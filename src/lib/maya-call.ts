@@ -217,8 +217,13 @@ export interface CallStore {
    * holds stale. True when the call had a pending note.
    */
   clearNote(id: string): Promise<boolean>;
-  /** Keeps a text call's board from the child's desk (#534), without raising its revision. False when there is no such call. */
-  saveInk(id: string, ink: BoardHistory): Promise<boolean>;
+  /**
+   * Keeps a text call's board from the child's desk (#534), without raising its revision, in one step (R625-2): it
+   * compares and writes together, so of two saves the newer board stays whatever their order. `closed`: the call ended
+   * more than INK_AFTER_END_MS ago. `busy`: a board was saved less than INK_SAVE_GAP_MS ago. `stale`: the kept board has
+   * a higher revision; nothing was written. `not_found`: no text call with this id.
+   */
+  saveInk(id: string, ink: BoardHistory): Promise<InkSave>;
 }
 
 export interface CallSeams {
@@ -273,6 +278,12 @@ export type CallInput = { type: "child"; text: string } | { type: "tick" } | { t
 export const MAX_CHILD_TEXT = 500;
 /** The longest board a desk may send with a call, as JSON text (#534); the database keeps under 2 MB. */
 export const MAX_INK_TEXT = 1_000_000;
+/** One board a second per call at most (R625-6): the desk sends one 1.5 s after a change, and again before the end. */
+export const INK_SAVE_GAP_MS = 1000;
+/** A board is taken this long after the call ended, and not later (R625-6). */
+export const INK_AFTER_END_MS = 5 * 60_000;
+/** What one save of the desk's board did (`CallStore.saveInk`). */
+export type InkSave = "saved" | "stale" | "busy" | "closed" | "not_found";
 
 /** One line of the transcript, as the admin reads it. */
 export interface TranscriptLine {
@@ -439,7 +450,7 @@ export interface MayaCalls {
    * Keeps the child's desk copy of a text call's board (#534): the encoded board history, live or ended. An older copy
    * (a lower revision) than the one kept changes nothing. Never raises the call's revision.
    */
-  saveInk(id: string, board: string): Promise<{ ok: true } | { ok: false; error: "not_found" | "invalid_input" | "voice_call" }>;
+  saveInk(id: string, board: string): Promise<{ ok: true } | { ok: false; error: "not_found" | "invalid_input" | "busy" | "closed" }>;
   view(id: string): Promise<CallView | null>;
 }
 
@@ -506,12 +517,22 @@ export function boardPlayback(batches: readonly Batch[]): { steps: PlayStep[]; v
   return { steps, viewBox: fitView(steps.flatMap((s) => s.drawn), 0.03) };
 }
 
+/**
+ * The latest time of the child's ink on a call's board, in ms from the call's start (R625-3): the call's end (or its last
+ * turn while live), plus the time a board is still taken after the end.
+ */
+function inkWindowEnd(trace: MayaTrace): number {
+  const start = trace.turns.find((t) => t.kind === "start")?.at ?? 0;
+  const end = trace.endedAt ? Date.parse(trace.endedAt) : Math.max(start, ...trace.turns.map((t) => t.at));
+  return Math.max(0, end - start) + INK_AFTER_END_MS;
+}
+
 export function callView(record: CallRecord, trace: MayaTrace, alerts: AlertState[] = []): CallView {
   // A missing delivery field identifies the legacy contract. An explicit empty delivery is authoritative.
   const observed = record.mode === "voice" && record.boardHistory?.delivery !== undefined;
   const recorded = record.boardHistory ?? boardHistoryOf(trace);
   // A text call's board carries the child's ink from the desk (#534); a voice call's ink is in its observed board.
-  const history = record.mode === "text" ? withChildInk(recorded, record.childInk ?? null) : recorded;
+  const history = record.mode === "text" ? withChildInk(recorded, record.childInk ?? null, { endMs: inkWindowEnd(trace) }) : recorded;
   return {
     id: record.id,
     kind: record.kind,
@@ -1133,12 +1154,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       if (typeof board !== "string" || board.length > MAX_INK_TEXT) return { ok: false, error: "invalid_input" };
       const ink = decodeHistory(board);
       if (!ink) return { ok: false, error: "invalid_input" };
-      const record = await store.get(id);
-      if (!record) return { ok: false, error: "not_found" };
-      if (record.mode === "voice") return { ok: false, error: "voice_call" };
-      // A copy that comes after a newer one (a slow request) changes nothing.
-      if (record.childInk && record.childInk.revision > ink.revision) return { ok: true };
-      return (await store.saveInk(id, ink)) ? { ok: true } : { ok: false, error: "not_found" };
+      // The store compares and writes in one step: a copy that comes after a newer one (a slow request) changes nothing.
+      const saved = await store.saveInk(id, ink);
+      return saved === "saved" || saved === "stale" ? { ok: true } : { ok: false, error: saved };
     },
 
     async view(id) {

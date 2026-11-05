@@ -3,7 +3,7 @@ import { act, createElement, useLayoutEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatBoard, ChatControls, useDeskChat, type DeskChatState } from "@/components/desk-chat";
-import { createHistory, penHolder, type BoardHistory } from "@/lib/board-history";
+import { boardDraftKey, childStrokes, createHistory, drawStroke, mayaWrites, penHolder, saveDraft, takePen, type BoardHistory, type Change, type DraftStore } from "@/lib/board-history";
 import type { ChatReply, ChatView } from "@/lib/maya-chat";
 
 const book = "45100000-0000-4000-8000-000000000031";
@@ -173,5 +173,56 @@ describe("#534: the board in a chat", () => {
     await act(async () => state.saveBoard(id, createHistory()));
     expect(await send("end")).toBe(true);
     expect(urls).toEqual(["/api/desk/chat", "/api/desk/chat/board", "/api/desk/chat"]);
+  });
+
+  it("R625-4: carries the child's ink on the question's board into the chat when it starts", async () => {
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    localStorage.clear();
+    const accepted = (c: Change) => { if (!c.ok) throw Error(c.reason); return c.history; };
+    const question = { transactionId: "desk-question", commands: work.commands };
+    let before = accepted(mayaWrites(createHistory(), question, 0));
+    before = accepted(takePen(before, 1000));
+    before = accepted(drawStroke(before, { erase: false, w: 5, boardWidth: 800, page: 1, pts: [[0.1, 0.7, 1500], [0.2, 0.75, 1700]] }));
+    const local: DraftStore = {
+      read: (k) => localStorage.getItem(k), write: (k, v) => (localStorage.setItem(k, v), true),
+      remove: (k) => localStorage.removeItem(k), keys: () => Object.keys(localStorage),
+    };
+    expect(saveDraft(local, boardDraftKey(book, 1, 1), before, null, Date.now()).status).toBe("saved");
+    const boards: BoardHistory[] = [];
+    await act(async () => root.render(createElement(ChatBoard, { chat: { ...view(1), batches: [work] }, still: true, carry: { book, page: 1, question: 1 }, onBoard: (h: BoardHistory) => boards.push(h) })));
+    await advance(5000);
+    expect(childStrokes(boards.at(-1)!)).toHaveLength(1);
+    expect(childStrokes(boards.at(-1)!)[0].pts.map(([x, y]) => [x, y])).toEqual([[0.1, 0.7], [0.2, 0.75]]);
+  });
+
+  it("R625-5: tries the last board again before the chat ends, keeps it on the device when it still fails, and sends it on the next desk load", async () => {
+    localStorage.clear();
+    let boardStatus = 503;
+    const boards: string[] = [];
+    vi.stubGlobal("fetch", async (url: string, options: RequestInit) => {
+      if (url === "/api/desk/chat/board") { boards.push(String(options.body)); return Response.json({}, { status: boardStatus }); }
+      const action: RequestAction = JSON.parse(String(options.body)); requests.push(action);
+      return Response.json(await answer(action));
+    });
+    await render(); await send("start");
+    await act(async () => state.saveBoard(id, createHistory()));
+    let ended = false;
+    await act(async () => {
+      const ending = state.act("end").then((ok) => { ended = ok; });
+      await vi.advanceTimersByTimeAsync(30_000);
+      await ending;
+    });
+    expect(boards).toHaveLength(3);
+    expect(ended).toBe(true);
+    expect(requests.at(-1)?.type).toBe("end");
+    expect(localStorage.getItem(`unica-chat-board-unsent:${id}`)).not.toBeNull();
+    // The next time the desk opens, the board goes to the call, and the device forgets it.
+    boardStatus = 200;
+    await act(async () => root.unmount());
+    root = createRoot(host);
+    await render(); await advance(100);
+    expect(boards).toHaveLength(4);
+    expect(JSON.parse(boards[3])).toEqual(JSON.parse(boards[0]));
+    expect(localStorage.getItem(`unica-chat-board-unsent:${id}`)).toBeNull();
   });
 });

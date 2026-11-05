@@ -4,7 +4,8 @@ import { isUuid } from "@/lib/workbook-content";
 import { MAX_INK_TEXT } from "@/lib/maya-call";
 
 // The chat's board from the child's desk (#534): `{ id, board }`, the chat's id and the desk's copy of its board (an
-// encoded board history), kept with the call for the admin replay. The same check as the chat itself.
+// encoded board history), kept with the call for the admin replay. The same check as the chat itself. One board a second
+// per chat (429 "busy"), and none once the chat ended more than a few minutes ago (409 "closed").
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "Cache-Control": "no-store" } });
 const MAX_BODY = MAX_INK_TEXT + 200;
 export async function POST(request: Request) {
@@ -19,7 +20,10 @@ export async function POST(request: Request) {
     const gate = await deskChatContext(request);
     if (!gate.ok) return json({ error: gate.error }, gate.status);
     const saved = await saveChatBoard(gate.ctx, save.id, save.board);
-    return saved.ok ? json({ ok: true }) : json({ error: saved.error === "invalid_input" ? "invalid" : "not_found" }, saved.error === "invalid_input" ? 400 : 404);
+    if (saved.ok) return json({ ok: true });
+    const answer = { invalid_input: ["invalid", 400], not_found: ["not_found", 404], busy: ["busy", 429], closed: ["closed", 409] } as const;
+    const [error, status] = answer[saved.error];
+    return json({ error }, status);
   } catch (error) {
     console.error("[desk chat board] request failed", error instanceof Error ? error.message : "unknown");
     return json({ error: "unavailable" }, 503);

@@ -11,7 +11,7 @@
 // to her while she writes, then back to the child), the child keeps the pen tools all through the chat, and every
 // change goes to `onChange`, which sends the board to the call.
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { boardDraftKey, chatBoardKey, childStrokes, createHistory, loadDraft, markClosed, markOpen, mayaSteps, mayaWrites, mayaWritingEnds, penHasMoved, penHolder, type BoardHistory, type DraftStore } from "@/lib/board-history";
+import { boardDraftKey, chatBoardKey, childStrokes, createHistory, keptStroke, loadDraft, markClosed, markOpen, mayaSteps, mayaWrites, mayaWritingEnds, penHasMoved, penHolder, restoreKept, type BoardHistory, type DraftStore } from "@/lib/board-history";
 import type { Batch } from "@/lib/board";
 import { BATCH_GAP_MS, fitView, timeline } from "@/lib/board-svg";
 import { createBoardSession, type SessionNote } from "@/lib/board-session";
@@ -144,7 +144,7 @@ export interface OurBoardProps {
   /** Where the board's draft is kept: the workbook, its page and the question. */
   at: { book: string; page: number; question: number | null };
   /** A chat with Maya (#534): the board is the chat's, with her replies' batches; its draft is kept by the chat's id. */
-  chat?: { id: string; batches: readonly Batch[] };
+  chat?: { id: string; batches: readonly Batch[]; carry?: { book: string; page: number; question: number | null } };
   /** Hears every change of the board this tab holds (a chat sends it to the call). */
   onChange?: (history: BoardHistory) => void;
   label: string;
@@ -166,6 +166,16 @@ const firstBoard = (question: QuestionBoard | null): BoardHistory => {
   return written.ok ? written.history : createHistory();
 };
 
+/**
+ * A new chat's board (R625-4): the child's ink on the question's board, carried over as it is, so starting a chat never
+ * takes the child's writing away. Maya's question is not carried: her chat replies write their own.
+ */
+function carried(store: DraftStore | null, from: { book: string; page: number; question: number | null } | undefined): BoardHistory {
+  const board = store && from ? loadDraft(store, boardDraftKey(from.book, from.page, from.question)) : null;
+  if (!board) return createHistory();
+  return restoreKept(createHistory(), childStrokes(board).map(keptStroke), 0).history;
+}
+
 /** The outlines of the frozen chunks of a stroke in progress: each is made once. */
 const chunkPaths = new WeakMap<object, string>();
 
@@ -185,7 +195,7 @@ function LiveBoard({ question, chat, onChange, label, caption, still, draftKey, 
   const [restored] = useState(() => (store ? loadDraft(store, draftKey) : null));
   const [session] = useState(() =>
     createBoardSession({
-      initial: restored ?? (chat ? createHistory() : firstBoard(question)),
+      initial: restored ?? (chat ? carried(store, chat.carry) : firstBoard(question)),
       restored: restored !== null,
       clock: () => performance.now(),
       wall: () => Date.now(),

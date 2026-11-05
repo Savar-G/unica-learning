@@ -32,6 +32,7 @@ import {
   saveDraft,
   takePen,
   undo,
+  refusedBatches,
   withChildInk,
   type BoardHistory,
   type Change,
@@ -469,5 +470,37 @@ describe("the call's board with the child's ink (#534)", () => {
     const desk = ok(mayaWrites(createHistory(), { ...QUESTION, transactionId: "forged" }, 0));
     expect(withChildInk(call, desk)).toBe(call);
     expect(withChildInk(call, null)).toBe(call);
+  });
+
+  it("R625-1: keeps the child's ink, and Maya's batch as recorded, when the batch could not be drawn over that ink", () => {
+    const glow: Batch = { transactionId: "glow", commands: [{ op: "mark", id: "onesGlow", target: { objectId: "question", part: "column", column: "ones" }, style: "highlight", ink: "yellow" }] };
+    // On the server the highlight went on (it does not know the ink); on the desk the child had drawn across the sum.
+    const call = ok(mayaWrites(ok(mayaWrites(createHistory(), QUESTION, 0)), glow, 10_000));
+    const digits = boardPaths(boardScene(call)).filter((p) => p.objectId === "question").flatMap((p) => p.pts);
+    const [left, right] = [Math.min(...digits.map((p) => p[0])) - 0.02, Math.max(...digits.map((p) => p[0])) + 0.02];
+    const middle = (Math.min(...digits.map((p) => p[1])) + Math.max(...digits.map((p) => p[1]))) / 2;
+    let desk = ok(mayaWrites(createHistory(), QUESTION, 0));
+    desk = ok(takePen(desk, 1000));
+    desk = ok(drawStroke(desk, { erase: false, w: 5, boardWidth: 800, page: 1, pts: [[left, middle, 2000], [right, middle, 2300]] }));
+    const merged = withChildInk(call, desk);
+    expect(childStrokes(merged)).toHaveLength(1);
+    expect(replayFrame(replayOf(merged), Infinity).child).toHaveLength(1);
+    expect(merged.events.flatMap((e) => (e.kind === "maya" ? [[e.batchId, e.t]] : []))).toEqual([["desk-question", 0], ["glow", 10_000]]);
+    expect(refusedBatches(merged)).toEqual(["glow"]);
+    expect(refusedBatches(call)).toEqual([]);
+  });
+
+  it("R625-3: keeps the desk's times inside the call and never moves Maya's batches", () => {
+    const call = ok(mayaWrites(ok(mayaWrites(createHistory(), QUESTION, 0)), batch("b", "2"), 10_000));
+    let desk = ok(mayaWrites(createHistory(), QUESTION, 0));
+    desk = ok(takePen(desk, 1000));
+    desk = ok(drawStroke(desk, line(5000)));
+    // A clock that jumped: a line that ends 31,000 years later.
+    desk = ok(drawStroke(desk, { ...line(6000), pts: [[0.3, 0.8, 6000], [0.4, 0.85, 1e12]] }));
+    const merged = withChildInk(call, desk, { endMs: 60_000 });
+    expect(merged.events.flatMap((e) => (e.kind === "maya" ? [e.t] : []))).toEqual([0, 10_000]);
+    expect(historyLength(merged)).toBeLessThanOrEqual(60_000);
+    expect(childStrokes(merged)).toHaveLength(2);
+    expect(decodeHistory(encodeHistory(merged))).not.toBeNull();
   });
 });

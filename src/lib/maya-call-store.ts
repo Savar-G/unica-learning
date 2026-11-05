@@ -1,7 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/database";
-import type { CallChange, CallRecord, CallStore, ConnectionLog } from "@/lib/maya-call";
+import type { Database, Json } from "@/lib/database";
+import { encodeHistory } from "@/lib/board-history";
+import { INK_AFTER_END_MS, INK_SAVE_GAP_MS, type CallChange, type CallRecord, type CallStore, type ConnectionLog } from "@/lib/maya-call";
 import type { SweepCallSource, SweepCursor } from "@/lib/maya-call-sweep";
 import type { QuestionRef } from "@/lib/question-package";
 
@@ -163,11 +164,13 @@ export function mayaCallStore(admin: SupabaseClient<Database>): CallStore {
       return (data ?? []).map(fromCallRow);
     },
     async saveInk(id, ink) {
-      if (!UUID.test(id)) return false;
-      // Not a change of the call's work: the revision and the write time stay (#534).
-      const { data, error } = await admin.from("maya_calls").update({ child_ink: ink }).eq("id", id.toLowerCase()).eq("mode", "text").select("id");
+      if (!UUID.test(id)) return "not_found";
+      // One statement compares and writes (R625-2); the revision and the call's write time stay (#534). The board goes as
+      // the JSON of its saved copy: Maya's commands are plain JSON, which their type (unknown) does not say.
+      const { data, error } = await admin.rpc("save_maya_call_ink", { p_id: id.toLowerCase(), p_ink: JSON.parse(encodeHistory(ink)) as Json, p_gap_ms: INK_SAVE_GAP_MS, p_after_end_ms: INK_AFTER_END_MS });
       if (error) throw new Error(`maya call save ink: ${error.message}`);
-      return (data ?? []).length === 1;
+      if (data === "saved" || data === "stale" || data === "busy" || data === "closed" || data === "not_found") return data;
+      throw new Error(`maya call save ink: unexpected answer ${String(data)}`);
     },
     async clearNote(id) {
       if (!UUID.test(id)) return false;

@@ -382,48 +382,76 @@ export function mayaSteps(h: BoardHistory): PlayStep[] {
   return steps;
 }
 
-/** An event moved `by` ms later on the board's clock (earlier when negative). */
-function shifted(e: HistoryEvent, by: number): HistoryEvent {
-  if (e.kind === "stroke") return { ...e, pts: e.pts.map(([x, y, t]): TimedPoint => [x, y, t + by]) };
-  if (e.kind === "recovered") return { ...e, t: e.t + by, pts: e.pts.map(([x, y, t]): TimedPoint => [x, y, Math.max(0, t + by)]) };
-  return { ...e, t: e.t + by };
+/** An event with each of its times passed through `at`, which keeps their order. */
+function timed(e: HistoryEvent, at: (t: number) => number): HistoryEvent {
+  if (e.kind === "stroke") return { ...e, pts: e.pts.map(([x, y, t]): TimedPoint => [x, y, at(t)]) };
+  if (e.kind === "recovered") return { ...e, t: at(e.t), pts: e.pts.map(([x, y, t]): TimedPoint => [x, y, at(t)]) };
+  return { ...e, t: at(e.t) };
 }
 
 /**
  * A call's board with the child's ink (#534): Maya's batches as the call recorded them (`call`), and the child's
  * strokes, undos, clears and pen moves from the desk's copy of the board (`desk`). Maya's batches in the desk's copy are
- * not taken: the call's own are the record. The desk's clock starts when its board opened; the first batch both copies
- * hold moves it onto the call's clock (with none, it is left as it is). The events keep their order by time (the
- * child's side first at the same time), and one that would start before the event before it ends moves up to it. When
- * the result does not replay, the call's board is returned as it was.
+ * not taken: the call's own are the record, and their times never move. The desk's clock starts when its board opened;
+ * the first batch both copies hold moves it onto the call's clock (with none, it is left as it is). The child's times
+ * then stay inside the call: from 0 to `endMs` (or Maya's last batch, when later), and between the batches they came
+ * between (R625-3). A batch of Maya's the board cannot draw over the child's ink stays in the history as recorded: the
+ * replay leaves it out (`refusedBatches` names it), and the child's ink is always kept (R625-1).
  */
-export function withChildInk(call: BoardHistory, desk: BoardHistory | null): BoardHistory {
+export function withChildInk(call: BoardHistory, desk: BoardHistory | null, options: { endMs?: number } = {}): BoardHistory {
   const child = desk?.events.filter((e) => e.kind !== "maya") ?? [];
   if (!desk || child.length === 0) return call;
   const recorded = new Map(call.events.flatMap((e) => (e.kind === "maya" ? [[e.batchId, e.t] as const] : [])));
   const anchor = desk.events.find((e) => e.kind === "maya" && recorded.has(e.batchId));
   const by = anchor?.kind === "maya" ? recorded.get(anchor.batchId)! - anchor.t : 0;
+  const end = Math.max(options.endMs ?? Infinity, historyLength(call));
+  const inCall = (t: number) => Math.min(end, Math.max(0, Math.round(t + by)));
+  // At the same time, the child's side first: the desk moves the pen to Maya before she writes.
   const both = [
     ...call.events.map((e, i) => ({ e, side: 0, i })),
-    ...child.map((e, i) => ({ e: shifted(e, by), side: 1, i })),
-    // At the same time, the child's side first: the desk moves the pen to Maya before she writes.
+    ...child.map((e, i) => ({ e: timed(e, inCall), side: 1, i })),
   ].sort((a, b) => startOf(a.e) - startOf(b.e) || b.side - a.side || a.i - b.i);
+  // Each child event stays after the event before it and before Maya's next batch.
+  const nextMaya: number[] = [];
+  let next = Infinity;
+  for (let i = both.length - 1; i >= 0; i--) {
+    nextMaya[i] = next;
+    if (both[i].side === 0 && both[i].e.kind === "maya") next = (both[i].e as { t: number }).t;
+  }
   const events: HistoryEvent[] = [];
   let last = 0;
-  for (const { e } of both) {
-    if (e.kind === "stroke") {
-      const later = Math.max(0, last - e.pts[0][2]);
-      const moved = later ? (shifted(e, later) as typeof e) : e;
-      events.push(moved);
-      last = moved.pts[moved.pts.length - 1][2];
-    } else {
-      const t = Math.max(last, e.t);
-      events.push(t === e.t ? e : ({ ...e, t } as HistoryEvent));
-      last = t;
+  both.forEach(({ e, side }, i) => {
+    if (side === 0) {
+      events.push(e);
+      last = e.kind === "stroke" ? e.pts[e.pts.length - 1][2] : e.t;
+      return;
+    }
+    const lo = last, hi = Math.max(lo, nextMaya[i]);
+    const kept = timed(e, (t) => Math.min(hi, Math.max(lo, t)));
+    events.push(kept);
+    last = kept.kind === "stroke" ? kept.pts[kept.pts.length - 1][2] : kept.t;
+  });
+  return readHistory(JSON.parse(encodeHistory({ v: 1, revision: call.revision + child.length, events }))) ?? call;
+}
+
+/** Maya's batches in a history that the board core refuses where they stand (a call's batch over the child's ink). */
+export function refusedBatches(h: BoardHistory): string[] {
+  let scene = createScene();
+  const refused: string[] = [];
+  for (const e of h.events) {
+    if (e.kind === "maya") {
+      const r = applyBatch(scene, { transactionId: e.batchId, commands: e.commands });
+      if (r.ok) scene = r.scene;
+      else refused.push(e.batchId);
+    } else if (e.kind === "stroke" || e.kind === "recovered") {
+      try {
+        scene = addChildInk(scene, { page: e.page, stroke: { erase: e.erase, w: e.w, pts: e.pts.map(([x, y]) => [x, y]) }, boardWidth: e.boardWidth }).scene;
+      } catch {
+        // A stroke the board could not keep: it was never added.
+      }
     }
   }
-  const merged = decodeHistory(encodeHistory({ v: 1, revision: call.revision + child.length, events }));
-  return merged ?? call;
+  return refused;
 }
 
 // ---------- the saved copy ----------
@@ -474,6 +502,12 @@ export function decodeHistory(raw: string | null): BoardHistory | null {
   } catch {
     return null;
   }
+  const read = readHistory(data);
+  return read && replayScene(read.events) ? read : null;
+}
+
+/** A board history read from plain data: the version, the revision, and events in time order. It may not replay. */
+function readHistory(data: unknown): BoardHistory | null {
   if (!isRecord(data) || data.v !== 1 || !Number.isInteger(data.revision) || (data.revision as number) < 0 || !Array.isArray(data.events) || data.events.length > MAX_LOG) return null;
   const events: HistoryEvent[] = [];
   let last = 0;
@@ -484,7 +518,6 @@ export function decodeHistory(raw: string | null): BoardHistory | null {
     if ((e.kind === "stroke" || e.kind === "recovered") && e.pts.some(([, , t], i) => i > 0 && t < e.pts[i - 1][2])) return null;
     events.push(e);
   }
-  if (!replayScene(events)) return null;
   return { v: 1, revision: data.revision as number, events };
 }
 
