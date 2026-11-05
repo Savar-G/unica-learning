@@ -14,9 +14,9 @@ export function assessmentQuestionReader(db: SupabaseClient<Database>): Assessme
   return {
     async question(ref) {
       if (!UUID.test(ref.assessmentId)) return { status: "not-found" };
-      const { data, error } = await db.from("assessments").select("test, route").eq("id", ref.assessmentId).maybeSingle();
+      const { data, error } = await db.from("assessments").select("test, route, stage3_route").eq("id", ref.assessmentId).maybeSingle();
       if (error) throw new Error(`assessment question load: ${error.message}`);
-      return lookupStoredQuestion(ref, data);
+      return lookupStoredQuestion(ref, data && { test: data.test, route: data.route, stage3Route: data.stage3_route });
     },
   };
 }

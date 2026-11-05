@@ -102,14 +102,16 @@ async function boundaries(){
  const admit=async()=>{const id=randomUUID();return {id,state:ok(await admin.rpc('admit_scan_photo',{p_parent:a.id,p_child:a.child,p_id:id,p_bytes:1000}))};};
  const release=async id=>{ok(await admin.rpc('change_scan_photo',{p_parent:a.id,p_id:id,p_action:'reject'}));ok(await admin.rpc('reconcile_scan_cleanup',{p_id:id}));};
  // Fill only this QA family's admission history. Global limits are never changed.
- for(let n=0;n<19;n++){const r=await admit();assert.equal(r.state,'reserved');await release(r.id);}
+ // D-271: 40 per ten minutes, so 39 before the six simultaneous requests.
+ for(let n=0;n<39;n++){const r=await admit();assert.equal(r.state,'reserved');await release(r.id);}
  const last=await Promise.all(Array.from({length:6},admit));
  assert.equal(last.filter(x=>x.state==='reserved').length,1);assert.equal(last.filter(x=>x.state==='frequency').length,5);
  for(const r of last.filter(x=>x.state==='reserved'))await release(r.id);
  checks.push('ten-minute frequency boundary: six simultaneous requests, one accepted and five refused');
  // Move this QA history outside ten minutes but inside one day; add older rejected admissions for the day boundary.
  ok(await admin.from('scan_photos').update({created_at:new Date(Date.now()-3600000).toISOString()}).eq('parent_id',a.id));
- const rows=Array.from({length:39},()=>({id:randomUUID(),parent_id:a.id,child_id:a.child,state:'rejected',reserved_bytes:0,created_at:new Date(Date.now()-3600000).toISOString(),terminal_at:new Date().toISOString()}));
+ // 40 in the ten minutes moved out, plus 19: photo 60 of the day is the last one admitted.
+ const rows=Array.from({length:19},()=>({id:randomUUID(),parent_id:a.id,child_id:a.child,state:'rejected',reserved_bytes:0,created_at:new Date(Date.now()-3600000).toISOString(),terminal_at:new Date().toISOString()}));
  ok(await admin.from('scan_photos').insert(rows));
  const day=await Promise.all(Array.from({length:6},admit));
  assert.equal(day.filter(x=>x.state==='reserved').length,1);assert.equal(day.filter(x=>x.state==='frequency').length,5);
