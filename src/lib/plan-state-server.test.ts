@@ -16,17 +16,41 @@ const subscription = (over: Partial<Stripe.Subscription> & { end?: number; cents
   } as unknown as Stripe.Subscription;
 };
 const stripeWith = (list: ReturnType<typeof vi.fn>) => ({ subscriptions: { list } }) as unknown as Stripe;
+const page = (data: Stripe.Subscription[], has_more = false) => ({ data, has_more });
 
 describe("Stripe as the plan provider", () => {
   it("reads every subscription of the customer through the parent's plan rule", async () => {
-    const list = vi.fn().mockResolvedValue({ data: [subscription()] });
+    const cancelled = Array.from({ length: 100 }, (_, i) => subscription({ id: `sub_new_${i}`, status: "canceled", created: 2000 - i, ended_at: 1_800_000_500 }));
+    const list = vi.fn()
+      .mockResolvedValueOnce(page(cancelled, true))
+      .mockResolvedValueOnce(page([subscription({ id: "sub_old_active", created: 1 })]));
     expect(await stripePlanProvider(stripeWith(list)).plan("cus_1")).toEqual({ kind: "paying", nextCharge: when(1_800_000_000), monthly: 79.99 });
+    expect(list).toHaveBeenCalledTimes(2);
     expect(list.mock.calls[0][0]).toMatchObject({ customer: "cus_1", status: "all" });
+    expect(list.mock.calls[0][0].starting_after).toBeUndefined();
+    expect(list.mock.calls[1][0]).toMatchObject({ customer: "cus_1", status: "all", starting_after: "sub_new_99" });
   });
 
   it("keeps the date a plan ended", async () => {
-    const list = vi.fn().mockResolvedValue({ data: [subscription({ status: "canceled", ended_at: 1_800_000_500 })] });
+    const list = vi.fn().mockResolvedValue(page([subscription({ status: "canceled", ended_at: 1_800_000_500 })]));
     expect(await stripePlanProvider(stripeWith(list)).plan("cus_1")).toEqual({ kind: "ended", endedOn: when(1_800_000_500) });
+    expect(list).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws instead of answering from part of the list", async () => {
+    const plan = (list: ReturnType<typeof vi.fn>) => stripePlanProvider(stripeWith(list)).plan("cus_1");
+    await expect(plan(vi.fn().mockResolvedValue({ data: [subscription({ id: "sub_1" })] }))).rejects.toThrow("pagination unreadable");
+    await expect(plan(vi.fn().mockResolvedValue(page([], true)))).rejects.toThrow("did not advance");
+    await expect(plan(vi.fn().mockResolvedValue(page([subscription({ id: "sub_1" })], true)))).rejects.toThrow("did not advance");
+    let id = 0;
+    const endless = vi.fn(async () => page([subscription({ id: `sub_${++id}`, status: "canceled" })], true));
+    await expect(plan(endless)).rejects.toThrow("Too many subscriptions");
+    expect(endless).toHaveBeenCalledTimes(10);
+  });
+
+  it("throws when the second page fails", async () => {
+    const list = vi.fn().mockResolvedValueOnce(page([subscription({ id: "sub_1", status: "canceled" })], true)).mockRejectedValueOnce(new Error("Stripe down"));
+    await expect(stripePlanProvider(stripeWith(list)).plan("cus_1")).rejects.toThrow("Stripe down");
   });
 
   it("throws when Stripe fails, and without a key", async () => {

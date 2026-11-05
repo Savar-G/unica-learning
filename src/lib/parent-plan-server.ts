@@ -15,6 +15,8 @@ export interface ChildPlan {
 }
 
 const READ = { timeout: 4000, maxNetworkRetries: 1 };
+/** More subscriptions than these pages hold is not a state the plan rule knows: the read throws. */
+const SUBSCRIPTION_PAGES = 10;
 
 function planSubscription(s: Stripe.Subscription): PlanSubscription {
   const item = s.items.data[0];
@@ -24,10 +26,23 @@ function planSubscription(s: Stripe.Subscription): PlanSubscription {
   };
 }
 
-/** What Stripe says about one customer's plan now. Throws when Stripe does not answer. */
+/**
+ * What Stripe says about one customer's plan now, from all of the customer's subscriptions. Throws when Stripe does not
+ * answer or when it cannot read the whole list: an answer from part of the list could hide a running plan.
+ */
 export async function customerPlan(s: Stripe, customer: string): Promise<KnownPlan> {
-  const list = await s.subscriptions.list({ customer, status: "all", limit: 20 }, READ);
-  return parentPlan(list.data.map(planSubscription));
+  const subscriptions: PlanSubscription[] = [];
+  let after: string | undefined;
+  for (let page = 0; page < SUBSCRIPTION_PAGES; page++) {
+    const list = await s.subscriptions.list({ customer, status: "all", limit: 100, starting_after: after }, READ);
+    if (typeof list.has_more !== "boolean") throw new Error("Subscription pagination unreadable");
+    subscriptions.push(...list.data.map(planSubscription));
+    if (!list.has_more) return parentPlan(subscriptions);
+    const next = list.data.at(-1)?.id;
+    if (!next || next === after) throw new Error("Subscription pagination did not advance");
+    after = next;
+  }
+  throw new Error("Too many subscriptions");
 }
 
 /** One entry per child with a saved card. Null when the store cannot answer. */

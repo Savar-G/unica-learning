@@ -6,9 +6,10 @@ import type { KnownPlan, ParentPlan } from "@/lib/parent-plan";
 // parentPlan makes of them, so the stored kind follows the same rule as the plan page: the zero invoice of a free month
 // does not read as paying, and an event about an old subscription does not end a running one.
 //
-// The order: an event older than the row's event never replaces it. Stripe's event times are whole seconds, so of two
-// events of the same second the later Stripe read wins. A duplicate of the row's event writes nothing. A row filled with
-// no event only fills a missing row, and any event replaces it, because that event's read is fresh.
+// The order: the row keeps the latest Stripe read. `readAt` is when the read started, so the read of the last change's
+// event, or a read that started later, has seen that change and stays. Of two reads that start at the same time, the
+// newer event stays, and an event stays over a fill. A duplicate of the row's event writes nothing. A write with no event
+// only fills a missing row. An event replaces a filled row by the same order.
 //
 // `unknown` is never stored. It is what a child with no row reads as, and a read that fails leaves the row as it is.
 // The store (child_plan_states and card_setups) and the provider (Stripe) are the seams: plan-state-server.ts holds
@@ -90,7 +91,8 @@ export async function applyPlanEvent(event: PlanEvent, { store, provider, now }:
   const owner = await store.ownerOfCustomer(event.customer);
   if (!owner) return "no_match";
   const eventAt = new Date(event.created * 1000).toISOString();
-  // Saves a Stripe read. The save below decides again, in one statement, for an event that arrives during this one.
+  // Saves a Stripe read. The last change's event is never older than the row's event, so this skip cannot lose a change.
+  // The save below decides again, in one statement, for an event that arrives during this one.
   const stored = await store.load(owner);
   if (stored?.eventId === event.id) return "duplicate";
   if (stored?.eventAt && Date.parse(stored.eventAt) > Date.parse(eventAt)) return "older";

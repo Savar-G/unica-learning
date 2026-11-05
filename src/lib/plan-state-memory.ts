@@ -1,7 +1,7 @@
 // The plan state module's store and provider (src/lib/plan-state.ts) in memory, for tests. The store keeps the rules of
 // the database function save_child_plan_state: one row per child, a write with no event only fills a missing row, and an
-// event replaces a filled row, an older event's row, or another event's row of the same second whose read started no
-// later. supabase/tests/child_plan_states.sql checks the same cases on the database. The provider keeps Stripe's list
+// event replaces a row from another event or a fill when its read started later, or at the same time when the row is a
+// fill or its event is not newer. supabase/tests/child_plan_states.sql checks the same cases on the database. The provider keeps Stripe's list
 // of the customer's subscriptions and reads it through parentPlan. Every operation yields first, so two calls started
 // together interleave as two requests would; the check and the write after it happen together, as in one statement.
 import { parentPlan, type KnownPlan, type PlanSubscription } from "@/lib/parent-plan";
@@ -72,16 +72,17 @@ export function memoryPlanStates({ cards, subscriptions: initial = {}, now }: { 
           return answer("save", "stored" as const);
         }
         if (write.eventAt === null) return answer("save", "older" as const);
-        const at = Date.parse(write.eventAt);
-        const stored = row.eventAt === null ? null : Date.parse(row.eventAt);
-        const replaces = stored === null || at > stored
-          || (at === stored && write.eventId !== row.eventId && Date.parse(write.readAt) >= Date.parse(row.readAt));
+        if (row.eventId === write.eventId) return answer("save", "duplicate" as const);
+        const read = Date.parse(write.readAt);
+        const storedRead = Date.parse(row.readAt);
+        const replaces = read > storedRead
+          || (read === storedRead && (row.eventAt === null || Date.parse(write.eventAt) >= Date.parse(row.eventAt)));
         if (replaces) {
           Object.assign(row, write);
           writes++;
           return answer("save", "stored" as const);
         }
-        return answer("save", row.eventId === write.eventId ? "duplicate" as const : "older" as const);
+        return answer("save", "older" as const);
       },
     },
     provider: {

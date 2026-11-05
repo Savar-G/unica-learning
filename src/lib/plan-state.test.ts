@@ -67,7 +67,8 @@ describe("the order of events", () => {
   });
 
   it("an older event that was already reading Stripe when the newer one was stored changes nothing", async () => {
-    const states = family([sub()]);
+    const clock = [new Date("2026-11-04T12:00:01.000Z"), new Date("2026-11-04T12:00:02.000Z")];
+    const states = memoryPlanStates({ cards: [card], subscriptions: { cus_1: [sub()] }, now: () => clock.shift()! });
     const read = states.hold("plan");
     const older = applyPlanEvent(event({ id: "evt_old", created: 100 }), states);
     await read.reached;
@@ -77,6 +78,32 @@ describe("the order of events", () => {
     expect(await older).toBe("older");
     expect(states.rows[0]).toMatchObject({ eventId: "evt_new" });
     expect(await readChildPlan(key, states.store)).toEqual({ kind: "payment_failed" });
+  });
+
+  it("keeps the latest read: a newer event that read first does not replace a delayed older event that read later", async () => {
+    const clock = [new Date("2026-11-04T12:00:01.000Z"), new Date("2026-11-04T12:00:02.000Z")];
+    const states = memoryPlanStates({ cards: [card], subscriptions: { cus_1: [sub()] }, now: () => clock.shift()! });
+    const read = states.hold("plan");
+    const newer = applyPlanEvent(event({ id: "evt_new", created: 200 }), states);
+    await read.reached;
+    states.subscriptions.cus_1 = [sub({ status: "past_due" })];
+    expect(await applyPlanEvent(event({ id: "evt_old", created: 100 }), states)).toBe("stored");
+    read.release();
+    expect(await newer).toBe("older");
+    expect(states.rows[0]).toMatchObject({ eventId: "evt_old", readAt: "2026-11-04T12:00:02.000Z" });
+    expect(await readChildPlan(key, states.store)).toEqual({ kind: "payment_failed" });
+  });
+
+  it("of two reads that start at the same time, keeps the newer event", async () => {
+    const states = family([sub()]);
+    const read = states.hold("plan");
+    const older = applyPlanEvent(event({ id: "evt_old", created: 100 }), states);
+    await read.reached;
+    states.subscriptions.cus_1 = [sub({ status: "past_due" })];
+    expect(await applyPlanEvent(event({ id: "evt_new", created: 200 }), states)).toBe("stored");
+    read.release();
+    expect(await older).toBe("older");
+    expect(states.rows[0]).toMatchObject({ eventId: "evt_new" });
   });
 
   it("two events of one second both count, and the earlier read does not replace the later one", async () => {
@@ -230,6 +257,19 @@ describe("filling a missing row from Stripe", () => {
     await fillChildPlan(key, states);
     states.subscriptions.cus_1 = [sub({ status: "past_due" })];
     expect(await applyPlanEvent(event({ created: 1 }), states)).toBe("stored");
+    expect(await readChildPlan(key, states.store)).toEqual({ kind: "payment_failed" });
+  });
+
+  it("an event whose read started before the fill's read does not replace the filled row", async () => {
+    const clock = [new Date("2026-11-04T12:00:01.000Z"), new Date("2026-11-04T12:00:02.000Z")];
+    const states = memoryPlanStates({ cards: [card], subscriptions: { cus_1: [sub()] }, now: () => clock.shift()! });
+    const read = states.hold("plan");
+    const applying = applyPlanEvent(event(), states);
+    await read.reached;
+    states.subscriptions.cus_1 = [sub({ status: "past_due" })];
+    expect(await fillChildPlan(key, states)).toEqual({ kind: "payment_failed" });
+    read.release();
+    expect(await applying).toBe("older");
     expect(await readChildPlan(key, states.store)).toEqual({ kind: "payment_failed" });
   });
 });

@@ -43,9 +43,11 @@ Stripe tries a failed event again for up to three days in live mode. A customer 
 
 - `src/lib/plan-state.ts` holds the rules, behind a store seam and a provider seam.
 - An event only says that something changed. Each event reads the customer's subscriptions again and stores what `parentPlan` makes of them. So the stored kind follows the same rule as the plan page: the zero invoice of a free month does not read as paying.
-- An event older than the row's event writes nothing. Of two events in the same second, the later Stripe read wins. A duplicate of the row's event writes nothing.
+- The row keeps the latest Stripe read, because each event reads Stripe again. A newer event whose read started first does not replace an older event whose read started later. Of two reads that start at the same time, the newer event stays. A duplicate of the row's event writes nothing.
+- An event older than the row's event skips the Stripe read and writes nothing, so a late event costs no Stripe call. The last change's event is never older than the row's event, so this skip cannot lose a change.
 - `unknown` is never stored. A child with no row reads as `unknown`, and a failed read leaves the row as it is.
-- `fillChildPlan` fills a missing row from Stripe. It never replaces a row, and any event replaces a filled row.
+- `fillChildPlan` fills a missing row from Stripe. It never replaces a row. An event replaces a filled row unless the fill's read started later.
+- `customerPlan` reads all pages of the customer's subscriptions, at most 10 pages of 100. If it cannot read the whole list, it throws: the webhook answers 500 and the plan page shows `unknown`.
 
 ## Limit to know before a page reads the row
 
