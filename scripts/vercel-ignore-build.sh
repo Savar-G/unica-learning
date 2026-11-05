@@ -31,8 +31,10 @@ if ! changed="$(git diff --no-renames --name-only "$prev" HEAD)"; then
 fi
 
 if [ -z "$changed" ]; then
-  echo "No file changed since $prev: skip."
-  exit 0
+  # The same commit as the last deployment: a deliberate redeploy (a new
+  # environment variable, or a build that failed outside the code). Build.
+  echo "No file changed since $prev: a redeploy, build."
+  exit 1
 fi
 
 needs_build=""
