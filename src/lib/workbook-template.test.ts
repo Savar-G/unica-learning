@@ -6,6 +6,7 @@ import { renderWorkbook, type DraftPage, type PrintEngine, type WorkbookDraft } 
 import { sampleBook } from "@/lib/workbook-sample-book";
 import { bandOf, workbookTemplate } from "@/lib/workbook-template";
 import { generatedDayTime } from "@/lib/workbook-feedback-check";
+import { Window } from "happy-dom";
 
 // The workbook templates (#310) through the renderer with the fake print engine: every page type of the sample books
 // has a layout and prints its number and QR code, the rendered book is one the store takes, and the template's fit
@@ -24,20 +25,65 @@ const only = (draft: WorkbookDraft, p: DraftPage): WorkbookDraft => ({ ...draft,
 const first = (draft: WorkbookDraft, type: string) => draft.pages.find((p) => p.type === type)!;
 /** The content area where DESIGN.md puts it: 688 by 720 under the header. */
 const AREA = { "1 slot-content": { x: 64, y: 210, width: 688, height: 720 } };
+const parsedPage = (html: string) => {
+  const root = new Window().document.createElement("div");
+  root.innerHTML = html;
+  return root;
+};
 
 describe("the workbook templates", () => {
-  it.each(["U4", "U16"].flatMap(level => ["practice", "practice-2", "challenge"].map(type => [level, type])))("prints one Extra chip per whole marked block in %s %s and keeps every question", (level, type) => {
+  it.each(["U4", "U16"].flatMap(level => ["practice", "practice-2", "challenge"].map(type => [level, type])))("prints one unambiguous label for a whole Extra page in %s %s", (level, type) => {
     const draft = book(level);
     const p = first(draft, type);
     if (p.content?.kind !== "day") throw new Error("not a day");
     const content = { ...p.content, blocks: p.content.blocks.map(b => ({ ...b, extra: true })) };
     const html = workbookTemplate().page({ ...p, content }, { qr: "", qrUrl: "" }, draft)!;
     const original = workbookTemplate().page(p, { qr: "", qrUrl: "" }, draft)!;
-    expect(html.match(/>Extra<\/span>/g)).toHaveLength(content.blocks.length);
+    const root = parsedPage(html);
+    expect(root.querySelectorAll('[data-measure^="chipbadge-extra-"]')).toHaveLength(1);
+    expect(root.querySelector('.hd [data-measure="chipbadge-extra-page"]')?.textContent).toBe("Extra page: optional");
+    expect(root.querySelectorAll('.ct [data-measure^="chipbadge-extra-"]')).toHaveLength(0);
+    expect(root.querySelectorAll(".optional-block")).toHaveLength(0);
     for (const q of p.questions) expect(html).toContain(`data-measure="question-${q.number}"`);
-    expect(html.match(/data-measure="chipbadge-extra-/g)).toHaveLength(content.blocks.length);
     expect(html.match(/class="chiprow"/g)).toHaveLength(original.match(/class="chiprow"/g)?.length ?? 0);
     expect(original).not.toContain(">Extra</span>");
+  });
+
+  it.each(["U4", "U16"])("labels only the optional example inside its panel on a mixed %s page", level => {
+    const draft = book(level), p = first(draft, "practice");
+    if (p.content?.kind !== "day") throw new Error("not a day");
+    const content = { ...p.content, blocks: p.content.blocks.map(b => ({ ...b, extra: b.slot === "watch-one" })) };
+    const root = parsedPage(workbookTemplate().page({ ...p, content }, { qr: "", qrUrl: "" }, draft)!);
+    expect(root.querySelectorAll('[data-measure^="chipbadge-extra-"]')).toHaveLength(1);
+    expect(root.querySelector('.panel .lab [data-measure^="chipbadge-extra-"]')?.textContent).toBe("Extra");
+    expect(root.querySelectorAll('.chiprow [data-measure^="chipbadge-extra-"], .hd [data-measure^="chipbadge-extra-"]')).toHaveLength(0);
+    for (const q of p.questions) expect(root.querySelector(`[data-measure="question-${q.number}"]`)?.closest(".panel")).toBeNull();
+  });
+
+  it.each(["U4", "U16"])("keeps an optional %s block and its review inside one visible boundary", level => {
+    const draft = book(level), p = first(draft, "practice");
+    if (p.content?.kind !== "day") throw new Error("not a day");
+    const content = { ...p.content, blocks: p.content.blocks.map(b => ({ ...b, extra: b.slot === "on-your-own",
+      ...(b.slot === "on-your-own" ? { reviewFrom: b.items[Math.floor(b.items.length / 2)] } : {}),
+    })) };
+    const root = parsedPage(workbookTemplate().page({ ...p, content }, { qr: "", qrUrl: "" }, draft)!);
+    const group = root.querySelector('.optional-block[data-slot="on-your-own"]');
+    expect(group).not.toBeNull();
+    expect(group!.querySelectorAll('[data-measure^="chipbadge-extra-"]')).toHaveLength(1);
+    expect(group!.querySelector('[data-measure^="review-"]')?.textContent).toBe("Remember these");
+    const optional = content.blocks.find(b => b.extra)!.items;
+    for (const q of p.questions) expect(root.querySelector(`[data-measure="question-${q.number}"]`)?.closest(".optional-block") === group).toBe(optional.includes(q.number));
+    expect(root.querySelectorAll('.chiprow [data-measure^="chipbadge-extra-"], .hd [data-measure^="chipbadge-extra-"]')).toHaveLength(0);
+  });
+
+  it.each(["U4", "U16"])("prints no Extra label or optional boundary on a required %s page", level => {
+    const draft = book(level), p = first(draft, "practice");
+    if (p.content?.kind !== "day") throw new Error("not a day");
+    const template = workbookTemplate();
+    const original = template.page(p, { qr: "", qrUrl: "" }, draft)!;
+    const html = template.page({ ...p, content: { ...p.content, blocks: p.content.blocks.map(b => ({ ...b, extra: false })) } }, { qr: "", qrUrl: "" }, draft)!;
+    expect(html).toBe(original);
+    expect(parsedPage(html).querySelectorAll('[data-measure^="chipbadge-extra-"], .optional-block')).toHaveLength(0);
   });
 
   it("prints required minutes from the draft in How it works and each plan row", () => {

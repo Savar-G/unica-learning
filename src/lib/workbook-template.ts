@@ -261,6 +261,7 @@ const CSS = `
 .ct>*{flex-shrink:0}
 .blk{display:flex;flex:1 0 auto;flex-direction:column;gap:8px}
 .blk.grow{flex-grow:1}
+.blk.optional-block{border:1px solid #5A4300;border-radius:2px}
 .ft{position:absolute;left:64px;top:950px;width:688px;height:58px;display:flex;align-items:center;gap:12px}
 .ft [data-measure="qr"]{width:58px;height:58px;flex:none}
 .ft svg{width:58px;height:58px;display:block}
@@ -1357,8 +1358,10 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
     },
   };
   const label = c.extraPractice ? "Extra practice" : dayLabel(c.day, c.page, c.pages);
+  const wholePageExtra = c.blocks.length > 0 && c.blocks.every(b => b.extra);
+  const pageExtra = wholePageExtra ? `<span data-measure="chipbadge-extra-page" class="chip c-rv c-extra-inline"><span>Extra page: optional</span></span>` : "";
   const header = `<header class="hd">${c.page === 1 ? `<div class="nd" ${mark.slot("name-date")}><span>Name</span><i class="r1"></i><span>Date</span><i class="r2"></i></div>` : ""}`
-    + `<div class="dl" ${mark.slot("day-label")}>${escape(label)}</div><h1 class="tt" ${mark.slot("title")}>${escape(c.title)}</h1>`
+    + `<div class="dl" ${mark.slot("day-label")}>${escape(label)}${pageExtra}</div><h1 class="tt" ${mark.slot("title")}>${escape(c.title)}</h1>`
     + `<p class="st" ${mark.slot("subtitle")}>${escape(c.subtitle)}</p>`
     + (c.level <= 3 && c.grownUp ? `<p class="gu" ${mark.slot("grown-up")}><b>For the grown-up:</b> ${escape(c.grownUp)}</p>` : "") + `</header>`;
   // A Challenge block takes the free room of its page: its work boxes grow into it (DESIGN.md section 4).
@@ -1366,14 +1369,19 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
   const blockRows = (html: string) => [...html.matchAll(/class="(?:two|cols|list|facts|pcards|pcards fill|mxs)" style="--rows:(\d+)"/g)].reduce((n, m) => n + Number(m[1]), 0) || 1;
   const blocks = c.blocks.map((b, i) => {
     let html = blockHtml(b, i, ctx);
-    if (b.extra) {
-      const badge = `<span data-measure="chipbadge-extra-${i}" class="chip c-rv"><span>Extra</span></span>`;
-      if (html.includes('<div class="chiprow">')) html = html.replace('<div class="chiprow">', `<div class="chiprow">${badge}`);
-      else if (/<(?:div|span) class="lab"[^>]*>/.test(html)) html = html.replace(/(<(div|span) class="lab"[^>]*>[\s\S]*?)(<\/\2>)/, `$1${badge.replace('class="chip c-rv"', 'class="chip c-rv c-extra-inline"')}$3`);
-      else html = `<div class="chiprow">${badge}</div>${html}`;
+    const partialExtra = b.extra && !wholePageExtra;
+    if (partialExtra) {
+      // Label the visible optional group, never the shared page-type chip row.
+      const badge = `<span data-measure="chipbadge-extra-${i}" class="chip c-rv c-extra-inline"><span>Extra</span></span>`;
+      if (/<(?:div|span) class="lab"[^>]*>/.test(html)) html = html.replace(/(<(div|span) class="lab"[^>]*>[\s\S]*?)(<\/\2>)/, `$1${badge}$3`);
+      else if (html.includes('<div class="chiprow">')) html = html.replace(/(<div class="chiprow"><span)( class="chip [^"]+">[\s\S]*?<span>)([^<]*)(<\/span>)/,
+        (_tag, open: string, body: string, title: string, close: string) => `${open} data-measure="chipbadge-extra-${i}"${body}Extra block: optional · ${title}${close}`);
+      else html = `<div class="lab">${badge}</div>${html}`;
     }
-    return [b, i, html] as const;
-  }).map(([b, i, html]) => `<section class="blk${GROW.has(b.slot) || c.consistentLayout && b.slot === "word-problems" ? " grow" : ""}" style="--rows:${blockRows(html)}${b.slot === "in-your-head" ? `;flex:0 0 auto` : ""}" data-slot="${b.slot}" data-measure="block-${i}">${html.replace(/<div class="chiprow">([\s\S]*?)<\/div>/g, (_row, inner: string, at: number) => `<div class="chiprow" data-measure="chip-${i}-${at}">${inner.replace('<span class="chip ', `<span data-measure="chipbadge-${i}-${at}" class="chip `).replace('<span class="side">', `<span data-measure="chipnote-${i}-${at}" class="side">`)}</div>`).replace(/<div class="lab"([^>]*)>/g, (tag, attrs: string, at: number) => attrs.includes("data-measure") ? tag : `<div class="lab" data-measure="label-${i}-${at}"${attrs}>`).replace(NUMBER_SPAN, (_tag, cls: string, n: string) => `<span class="${cls}" data-measure="number-${n}">${n}.</span>`).replace(FRAME, (_tag, cls: string, at: number) => `<div class="${cls}" data-measure="frame-${i}-${at}"`)}${missingHtml(b)}</section>`).join("");
+    // Teaching panels already enclose their content. Other optional blocks need a visible boundary around all sections.
+    const outline = partialExtra && !["worked-example", "watch-one", "reminder"].includes(b.slot);
+    return [b, i, html, outline] as const;
+  }).map(([b, i, html, outline]) => `<section class="blk${outline ? " optional-block" : ""}${GROW.has(b.slot) || c.consistentLayout && b.slot === "word-problems" ? " grow" : ""}" style="--rows:${blockRows(html)}${b.slot === "in-your-head" ? `;flex:0 0 auto` : ""}" data-slot="${b.slot}" data-measure="block-${i}">${html.replace(/<div class="chiprow">([\s\S]*?)<\/div>/g, (_row, inner: string, at: number) => `<div class="chiprow" data-measure="chip-${i}-${at}">${inner.replace('<span class="chip ', `<span data-measure="chipbadge-${i}-${at}" class="chip `).replace('<span class="side">', `<span data-measure="chipnote-${i}-${at}" class="side">`)}</div>`).replace(/<div class="lab"([^>]*)>/g, (tag, attrs: string, at: number) => attrs.includes("data-measure") ? tag : `<div class="lab" data-measure="label-${i}-${at}"${attrs}>`).replace(NUMBER_SPAN, (_tag, cls: string, n: string) => `<span class="${cls}" data-measure="number-${n}">${n}.</span>`).replace(FRAME, (_tag, cls: string, at: number) => `<div class="${cls}" data-measure="frame-${i}-${at}"`)}${missingHtml(b)}</section>`).join("");
   // A page at its day's time limit holds no more questions: its rows grow to fill it, each with more room to work
   // (Codex at 47c5fd78: the time limit must not excuse a half-empty page).
   const stretch = c.consistentLayout && c.fillingComplete && c.atMaximum ? " stretch" : "";
